@@ -1,4 +1,5 @@
 using Client.Services;
+using Client.Localization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.Input;
 using RemoteOS.Protocol.Desktop;
@@ -13,13 +14,16 @@ namespace Client.Apps.Settings.ViewModels;
 public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 {
     private readonly IShellCatalog _shellCatalog;
+    private readonly LocalizationService _localization;
     private IReadOnlyList<ShellChoice> _shellChoices = [];
 
     public PersonalizationPageViewModel(ShellSettings settings, Action? save, IShellCatalog? shellCatalog = null) : base(settings, save)
     {
+        _localization = Client.App.Services.GetRequiredService<LocalizationService>();
         _shellCatalog = shellCatalog ?? Client.App.Services.GetRequiredService<IShellCatalog>();
         RefreshShellChoices();
         _shellCatalog.Changed += (_, _) => RefreshShellChoices();
+        _localization.LanguageChanged += (_, _) => RefreshShellChoices();
         // Theme 变化（含外部 Apply 加载）时刷新三个 RadioButton 绑定。
         Settings.PropertyChanged += (_, e) =>
         {
@@ -83,13 +87,26 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     private void RefreshShellChoices()
     {
         var next = _shellCatalog.Available
-            .Select(definition => new ShellChoice(definition.Id, definition.DisplayName, definition.Source, definition.Version, definition.UnavailableReason))
+            .Select(definition => new ShellChoice(
+                definition.Id,
+                LocalizeShellName(definition.Id, definition.DisplayName),
+                definition.Source,
+                definition.Version,
+                definition.UnavailableReason))
             .ToArray();
         if (_shellChoices.SequenceEqual(next)) return;
 
         _shellChoices = next;
         OnPropertyChanged(nameof(ShellChoices));
     }
+
+    private string LocalizeShellName(string id, string fallback) => id switch
+    {
+        "remoteos.windows-like" => T("settings.shell.windows_like", "Windows-style desktop"),
+        "remoteos.macos-like" => T("settings.shell.macos_like", "macOS-style desktop"),
+        "remoteos.ubuntu-like" => T("settings.shell.ubuntu_like", "Ubuntu-style desktop"),
+        _ => fallback,
+    };
 
     /// <summary>Supplied by the Avalonia page so the VM never accesses a TopLevel or filesystem picker.</summary>
     public Func<Task>? RequestShellPackageInstallAsync { get; set; }
@@ -307,7 +324,9 @@ public sealed record ShellChoice(string Id, string DisplayName, ShellSourceKind 
     string? Version = null, string? UnavailableReason = null)
 {
     public bool HasUnavailableReason => !string.IsNullOrWhiteSpace(UnavailableReason);
-    public string SelectionDisplayName => Id == ShellApi.DefaultShellId ? $"{DisplayName} (Default)" : DisplayName;
+    public string SelectionDisplayName => Id == ShellApi.DefaultShellId
+        ? string.Format(LocalizedText.Get("settings.shell.default_format", "{0} (Default)"), DisplayName)
+        : DisplayName;
 }
 
 public sealed record ThemePaletteChoice(string Id, string Name, bool IsCustom);

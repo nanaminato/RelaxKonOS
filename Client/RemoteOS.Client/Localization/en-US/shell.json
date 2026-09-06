@@ -35,6 +35,19 @@
         "shell.desktop_display.show_server_files": "Show files from the server desktop (folders, documents, images, and more)",
         "shell.desktop_display.show_server_shortcuts": "Show server desktop shortcuts (.lnk / .desktop)",
         "shell.desktop_display.shortcuts_tooltip": "Shortcuts often point to paths on the host machine and may not open directly in RemoteOS.",
-        "shell.desktop_display.get_started": "Get started"
+        "shell.desktop_display.get_started": "Get started",
+        "shell.launcher.applications": "Applications",
+        "shell.launcher.files": "Files",
+        "shell.launcher.launchpad": "Launchpad",
+        "shell.launcher.open_files": "Open Files",
+        "shell.launcher.open_launchpad": "Open Launchpad",
+        "shell.launcher.power": "Power",
+        "shell.launcher.search_applications": "Search applications",
+        "shell.launcher.show_applications": "Show Applications",
+        "shell.launcher.show_desktop": "Show desktop",
+        "shell.launcher.start": "Start",
+        "shell.launcher.system_settings": "System Settings",
+        "shell.launcher.task_manager": "Task Manager",
+        "shell.launcher.terminal": "Terminal"
     }
 }

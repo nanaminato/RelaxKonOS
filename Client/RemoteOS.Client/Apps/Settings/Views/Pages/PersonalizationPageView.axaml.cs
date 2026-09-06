@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Client.Apps.Settings.ViewModels;
+using Client.Localization;
 using Client.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -23,7 +24,7 @@ public partial class PersonalizationPageView : UserControl
         var topLevel = TopLevel.GetTopLevel(this);
         if (topLevel?.StorageProvider is null) return;
         var selection = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        { Title = "Select a RemoteOS Shell package folder", AllowMultiple = false });
+        { Title = LocalizedText.Get("settings.shell.package_picker_title"), AllowMultiple = false });
         var path = selection.FirstOrDefault()?.TryGetLocalPath();
         if (string.IsNullOrWhiteSpace(path)) return;
         await Client.App.Services.GetRequiredService<ShellCatalog>().InstallAsync(path);

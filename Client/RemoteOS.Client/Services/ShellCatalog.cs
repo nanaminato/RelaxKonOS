@@ -3,6 +3,7 @@ using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Client.Services.Developer;
+using Client.Localization;
 using Client.Views.Shell;
 using RemoteOS.Shell;
 
@@ -46,11 +47,11 @@ public sealed class ShellCatalog : IShellCatalog
         try
         {
             if (_factories.TryGetValue(id, out var builtIn)) { shell = builtIn(); return true; }
-            if (!_external.TryGetValue(id, out var package)) { error = "Shell is not installed on this device."; return false; }
+            if (!_external.TryGetValue(id, out var package)) { error = LocalizedText.Get("settings.shell.not_installed", "This desktop package is not installed on this device."); return false; }
             if (!package.Descriptor.IsAvailable) { error = package.Descriptor.UnavailableReason; return false; }
             shell = package.Create(); return true;
         }
-        catch (Exception ex) { error = $"Package activation failed: {ex.GetType().Name}"; return false; }
+        catch (Exception ex) { error = string.Format(LocalizedText.Get("settings.shell.activation_failed", "Desktop package activation failed: {0}"), ex.GetType().Name); return false; }
     }
 
     /// <summary>Called only after a user selected a local package folder in Settings.</summary>
@@ -97,23 +98,23 @@ public sealed class ShellCatalog : IShellCatalog
             var assemblyPath = Path.GetFullPath(Path.Combine(root, manifest.EntryAssembly ?? string.Empty));
             if (!assemblyPath.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.Ordinal)
                 || !File.Exists(assemblyPath)) throw new InvalidDataException("Entry assembly is outside the package or missing.");
-            var reason = !validId ? "Invalid external shell id." : manifest.SchemaVersion != 1 ? "Unsupported manifest schema." :
-                manifest.MinimumShellApiVersion > ShellApi.Version ? "This package requires a newer Shell API." :
-                manifest.Capabilities?.Length == 0 ? "Package declares no launcher capabilities." : null;
+            var reason = !validId ? LocalizedText.Get("settings.shell.invalid_id", "The desktop package ID is invalid.") : manifest.SchemaVersion != 1 ? LocalizedText.Get("settings.shell.unsupported_schema", "This desktop package uses an unsupported manifest schema.") :
+                manifest.MinimumShellApiVersion > ShellApi.Version ? LocalizedText.Get("settings.shell.requires_newer_api", "This desktop package requires a newer Shell API.") :
+                manifest.Capabilities?.Length == 0 ? LocalizedText.Get("settings.shell.no_capabilities", "This desktop package declares no launcher capabilities.") : null;
             if (reason is null && !_developerMode.IsEnabled)
             {
-                if (string.IsNullOrWhiteSpace(manifest.Sha256)) reason = "Unsigned package. Enable Developer Mode only for trusted development packages.";
-                else if (!string.Equals(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(assemblyPath))), manifest.Sha256, StringComparison.OrdinalIgnoreCase)) reason = "Entry assembly hash verification failed.";
+                if (string.IsNullOrWhiteSpace(manifest.Sha256)) reason = LocalizedText.Get("settings.shell.unsigned", "This desktop package is unsigned. Enable Developer Mode only for trusted development packages.");
+                else if (!string.Equals(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(assemblyPath))), manifest.Sha256, StringComparison.OrdinalIgnoreCase)) reason = LocalizedText.Get("settings.shell.hash_mismatch", "Desktop package hash verification failed.");
             }
             var descriptor = new ShellDescriptor(id, manifest.DisplayName?.Trim() ?? id, manifest.Version?.Trim() ?? "0.0.0",
                 ShellSourceKind.ExternalPackage, ParseCapabilities(manifest.Capabilities), manifest.PackageId ?? id, reason);
             return new ExternalPackage(descriptor, root, assemblyPath, manifest.EntryType ?? string.Empty);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             var id = "invalid-" + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(root))).ToLowerInvariant()[..10];
             return new ExternalPackage(new ShellDescriptor(id, Path.GetFileName(root), "0", ShellSourceKind.ExternalPackage,
-                ShellCapabilities.None, null, $"Invalid package: {ex.Message}"), root, string.Empty, string.Empty);
+                ShellCapabilities.None, null, LocalizedText.Get("settings.shell.invalid_package", "The desktop package is invalid.")), root, string.Empty, string.Empty);
         }
     }
 

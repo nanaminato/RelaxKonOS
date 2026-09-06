@@ -35,6 +35,19 @@
         "shell.desktop_display.show_server_files": "サーバーのデスクトップのファイル（フォルダー、ドキュメント、画像など）を表示する",
         "shell.desktop_display.show_server_shortcuts": "サーバーのデスクトップ ショートカット（.lnk / .desktop）を表示する",
         "shell.desktop_display.shortcuts_tooltip": "ショートカットはホスト マシン上のパスを指すことが多く、RemoteOS では直接開けない場合があります。",
-        "shell.desktop_display.get_started": "開始する"
+        "shell.desktop_display.get_started": "開始する",
+        "shell.launcher.applications": "アプリケーション",
+        "shell.launcher.files": "ファイル",
+        "shell.launcher.launchpad": "Launchpad",
+        "shell.launcher.open_files": "ファイルを開く",
+        "shell.launcher.open_launchpad": "Launchpad を開く",
+        "shell.launcher.power": "電源",
+        "shell.launcher.search_applications": "アプリケーションを検索",
+        "shell.launcher.show_applications": "アプリケーションを表示",
+        "shell.launcher.show_desktop": "デスクトップを表示",
+        "shell.launcher.start": "スタート",
+        "shell.launcher.system_settings": "システム設定",
+        "shell.launcher.task_manager": "タスク マネージャー",
+        "shell.launcher.terminal": "ターミナル"
     }
 }

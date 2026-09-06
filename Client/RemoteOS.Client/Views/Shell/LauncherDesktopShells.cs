@@ -136,7 +136,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             Content = launcherGlyph, Command = vm.ToggleStartCommand, Width = 38, Height = 34,
             Foreground = Brushes.White,
         };
-        ToolTip.SetTip(launcherButton, "Applications");
+        ToolTip.SetTip(launcherButton, LocalizedText.Get("shell.launcher.applications", "Applications"));
         stack.Children.Add(launcherButton);
         var groups = new ItemsControl
         {
@@ -145,7 +145,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         groups.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
         stack.Children.Add(groups);
         var showDesktopButton = new Button { Content = "⌄", Command = vm.ShowDesktopCommand, Width = 34, Height = 34, Foreground = Brushes.White };
-        ToolTip.SetTip(showDesktopButton, "Show desktop");
+        ToolTip.SetTip(showDesktopButton, LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"));
         stack.Children.Add(showDesktopButton);
         var clock = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0) };
         clock.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
@@ -190,9 +190,9 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             var menu = new ContextMenu();
             menu.ItemsSource = new object[]
             {
-                new MenuItem { Header = "Open", Command = vm.OpenDesktopEntryCommand, CommandParameter = fileEntry },
-                new MenuItem { Header = "Copy", Command = vm.CopyDesktopEntryCommand, CommandParameter = fileEntry },
-                new MenuItem { Header = "Delete", Command = vm.DeleteDesktopEntryCommand, CommandParameter = fileEntry },
+                new MenuItem { Header = LocalizedText.Get("common.open", "Open"), Command = vm.OpenDesktopEntryCommand, CommandParameter = fileEntry },
+                new MenuItem { Header = LocalizedText.Get("common.copy", "Copy"), Command = vm.CopyDesktopEntryCommand, CommandParameter = fileEntry },
+                new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopEntryCommand, CommandParameter = fileEntry },
             };
             button.ContextMenu = menu;
         }
@@ -286,7 +286,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             BorderThickness = new Thickness(0, 0, 1, 0),
         };
         var actions = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto") };
-        var settings = WindowsGlyphButton("⚙", "Settings", vm.OpenSettingsCommand);
+        var settings = WindowsGlyphButton("⚙", LocalizedText.Get("common.settings", "Settings"), vm.OpenSettingsCommand);
         Grid.SetRow(settings, 1);
         actions.Children.Add(settings);
         var shutdown = WindowsPowerButton(vm.ShutdownCommand);
@@ -342,7 +342,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             }),
         };
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("48,*,Auto") };
-        var start = WindowsGlyphButton("⊞", "Start", vm.ToggleStartCommand);
+        var start = WindowsGlyphButton("⊞", LocalizedText.Get("shell.launcher.start", "Start"), vm.ToggleStartCommand);
         layout.Children.Add(start);
 
         // Only live window groups are shown here.  There is deliberately no search or
@@ -383,7 +383,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             BorderBrush = Brushes.Transparent,
             Padding = new Thickness(0),
         };
-        ToolTip.SetTip(showDesktop, "Show desktop");
+        ToolTip.SetTip(showDesktop, LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"));
         Grid.SetColumn(showDesktop, 1);
         systemArea.Children.Add(showDesktop);
         Grid.SetColumn(systemArea, 2);
@@ -463,7 +463,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
         };
-        ToolTip.SetTip(button, "Power");
+        ToolTip.SetTip(button, LocalizedText.Get("shell.launcher.power", "Power"));
         return button;
     }
 
@@ -496,18 +496,18 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         };
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var menus = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1, Margin = new Thickness(7, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        menus.Children.Add(MacosMenuButton("●", "Launchpad", vm.ToggleStartCommand, bold: true));
-        menus.Children.Add(MacosMenuButton("RemoteOS", "System Settings", vm.OpenSettingsCommand, bold: true));
-        menus.Children.Add(MacosMenuButton(LocalizedText.Get("common.file", "File"), "Open Files", vm.OpenFileExplorerCommand));
-        menus.Children.Add(MacosMenuButton(LocalizedText.Get("common.view", "View"), "Show Desktop", vm.ShowDesktopCommand));
-        menus.Children.Add(MacosMenuButton(LocalizedText.Get("shell.macos.menu.window", "Window"), "Task Manager", vm.OpenTaskManagerCommand));
+        menus.Children.Add(MacosMenuButton("●", LocalizedText.Get("shell.launcher.launchpad", "Launchpad"), vm.ToggleStartCommand, bold: true));
+        menus.Children.Add(MacosMenuButton("RemoteOS", LocalizedText.Get("shell.launcher.system_settings", "System Settings"), vm.OpenSettingsCommand, bold: true));
+        menus.Children.Add(MacosMenuButton(LocalizedText.Get("common.file", "File"), LocalizedText.Get("shell.launcher.open_files", "Open Files"), vm.OpenFileExplorerCommand));
+        menus.Children.Add(MacosMenuButton(LocalizedText.Get("common.view", "View"), LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"), vm.ShowDesktopCommand));
+        menus.Children.Add(MacosMenuButton(LocalizedText.Get("shell.macos.menu.window", "Window"), LocalizedText.Get("shell.launcher.task_manager", "Task Manager"), vm.OpenTaskManagerCommand));
         menus.Children.Add(new TextBlock { Text = LocalizedText.Get("shell.macos.menu.help", "Help"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0), Foreground = new SolidColorBrush(Color.Parse("#17212B")) });
         layout.Children.Add(menus);
 
         var status = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-        status.Children.Add(MacosStatusButton("⌂", "Show Desktop", vm.ShowDesktopCommand));
-        status.Children.Add(MacosStatusButton("⌕", "Open Launchpad", vm.ToggleStartCommand));
-        status.Children.Add(MacosStatusButton("⚙", "System Settings", vm.OpenSettingsCommand));
+        status.Children.Add(MacosStatusButton("⌂", LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"), vm.ShowDesktopCommand));
+        status.Children.Add(MacosStatusButton("⌕", LocalizedText.Get("shell.launcher.open_launchpad", "Open Launchpad"), vm.ToggleStartCommand));
+        status.Children.Add(MacosStatusButton("⚙", LocalizedText.Get("shell.launcher.system_settings", "System Settings"), vm.OpenSettingsCommand));
         var clock = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#17212B")), FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 4, 0) };
         clock.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
         var date = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#17212B")), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) };
@@ -539,10 +539,10 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             }),
         };
         var apps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-        apps.Children.Add(MacosDockButton("▰", "Files", vm.OpenFileExplorerCommand));
-        apps.Children.Add(MacosDockButton("›_", "Terminal", vm.OpenTerminalCommand));
-        apps.Children.Add(MacosDockButton("▥", "Task Manager", vm.OpenTaskManagerCommand));
-        apps.Children.Add(MacosDockButton("⚙", "System Settings", vm.OpenSettingsCommand));
+        apps.Children.Add(MacosDockButton("▰", LocalizedText.Get("shell.launcher.files", "Files"), vm.OpenFileExplorerCommand));
+        apps.Children.Add(MacosDockButton("›_", LocalizedText.Get("shell.launcher.terminal", "Terminal"), vm.OpenTerminalCommand));
+        apps.Children.Add(MacosDockButton("▥", LocalizedText.Get("shell.launcher.task_manager", "Task Manager"), vm.OpenTaskManagerCommand));
+        apps.Children.Add(MacosDockButton("⚙", LocalizedText.Get("shell.launcher.system_settings", "System Settings"), vm.OpenSettingsCommand));
         apps.Children.Add(new Border { Width = 1, Height = 36, Background = new SolidColorBrush(Color.Parse("#6677818C")), Margin = new Thickness(5, 5) });
         var runningApps = new ItemsControl
         {
@@ -552,7 +552,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         runningApps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
         apps.Children.Add(runningApps);
         apps.Children.Add(new Border { Width = 1, Height = 36, Background = new SolidColorBrush(Color.Parse("#6677818C")), Margin = new Thickness(5, 5) });
-        apps.Children.Add(MacosDockButton("▦", "Launchpad", vm.ToggleStartCommand));
+        apps.Children.Add(MacosDockButton("▦", LocalizedText.Get("shell.launcher.launchpad", "Launchpad"), vm.ToggleStartCommand));
         dock.Child = apps;
         return dock;
     }
@@ -570,7 +570,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         {
             Width = 430,
             Height = 38,
-            PlaceholderText = "Search applications",
+            PlaceholderText = LocalizedText.Get("shell.launcher.search_applications", "Search applications"),
             FontSize = 14,
             HorizontalAlignment = HorizontalAlignment.Center,
             CornerRadius = new CornerRadius(10),
@@ -711,7 +711,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
 
     private static Button MacosPowerButton(System.Windows.Input.ICommand command)
     {
-        var button = MacosStatusButton(string.Empty, "Power", command);
+        var button = MacosStatusButton(string.Empty, LocalizedText.Get("shell.launcher.power", "Power"), command);
         button.Content = ShellIconFactory.Power(new SolidColorBrush(Color.Parse("#17212B")), 14);
         return button;
     }
@@ -759,7 +759,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         {
             Width = 480,
             Height = 42,
-            PlaceholderText = "Search applications",
+            PlaceholderText = LocalizedText.Get("shell.launcher.search_applications", "Search applications"),
             FontSize = 14,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
@@ -824,8 +824,8 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         };
         runningApps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
         right.Children.Add(runningApps);
-        right.Children.Add(UbuntuTopButton("⌂", "Show desktop", vm.ShowDesktopCommand));
-        right.Children.Add(UbuntuTopButton("⚙", "Settings", vm.OpenSettingsCommand));
+        right.Children.Add(UbuntuTopButton("⌂", LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"), vm.ShowDesktopCommand));
+        right.Children.Add(UbuntuTopButton("⚙", LocalizedText.Get("common.settings", "Settings"), vm.OpenSettingsCommand));
         right.Children.Add(UbuntuPowerButton(vm.ShutdownCommand));
         Grid.SetColumn(right, 2);
         layout.Children.Add(right);
@@ -843,18 +843,18 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             BorderThickness = new Thickness(0, 0, 1, 0),
         };
         var actions = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*,Auto") };
-        actions.Children.Add(UbuntuDockButton("▰", "Files", vm.OpenFileExplorerCommand));
-        var terminal = UbuntuDockButton("›_", "Terminal", vm.OpenTerminalCommand);
+        actions.Children.Add(UbuntuDockButton("▰", LocalizedText.Get("shell.launcher.files", "Files"), vm.OpenFileExplorerCommand));
+        var terminal = UbuntuDockButton("›_", LocalizedText.Get("shell.launcher.terminal", "Terminal"), vm.OpenTerminalCommand);
         Grid.SetRow(terminal, 1);
         actions.Children.Add(terminal);
-        var taskManager = UbuntuDockButton("▥", "Task Manager", vm.OpenTaskManagerCommand);
+        var taskManager = UbuntuDockButton("▥", LocalizedText.Get("shell.launcher.task_manager", "Task Manager"), vm.OpenTaskManagerCommand);
         Grid.SetRow(taskManager, 2);
         actions.Children.Add(taskManager);
-        var settings = UbuntuDockButton("⚙", "Settings", vm.OpenSettingsCommand);
+        var settings = UbuntuDockButton("⚙", LocalizedText.Get("common.settings", "Settings"), vm.OpenSettingsCommand);
         Grid.SetRow(settings, 3);
         actions.Children.Add(settings);
 
-        var applications = UbuntuDockButton("⠿", "Show Applications", vm.ToggleStartCommand, 28);
+        var applications = UbuntuDockButton("⠿", LocalizedText.Get("shell.launcher.show_applications", "Show Applications"), vm.ToggleStartCommand, 28);
         Grid.SetRow(applications, 5);
         actions.Children.Add(applications);
         dock.Child = actions;
@@ -964,7 +964,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
 
     private static Button UbuntuPowerButton(System.Windows.Input.ICommand command)
     {
-        var button = UbuntuTopButton(string.Empty, "Power", command);
+        var button = UbuntuTopButton(string.Empty, LocalizedText.Get("shell.launcher.power", "Power"), command);
         button.Content = ShellIconFactory.Power(Brushes.White, 15);
         return button;
     }

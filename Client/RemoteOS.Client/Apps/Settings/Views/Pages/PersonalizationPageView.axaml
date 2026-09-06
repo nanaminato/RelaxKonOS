@@ -10,8 +10,8 @@
 
         <Border Classes="card">
             <StackPanel Spacing="10">
-                <TextBlock Text="Shell" Classes="title" />
-                <TextBlock Text="Changes the RemoteOS presentation immediately; running applications and windows stay open."
+                <TextBlock Text="{loc:Loc settings.shell}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.shell.description}"
                            Opacity="0.7" TextWrapping="Wrap" />
                 <ComboBox ItemsSource="{Binding ShellChoices}"
                           SelectedValue="{Binding SelectedShellId, Mode=TwoWay}"
@@ -25,8 +25,8 @@
                     </DataTemplate>
                 </ComboBox.ItemTemplate>
                 </ComboBox>
-                <Button Content="Install local Shell package…" Command="{Binding InstallShellPackageCommand}" HorizontalAlignment="Left" />
-                <TextBlock Text="Packages are loaded only after you select one. Unsigned packages require Developer Mode."
+                <Button Content="{loc:Loc settings.shell.install_package}" Command="{Binding InstallShellPackageCommand}" HorizontalAlignment="Left" />
+                <TextBlock Text="{loc:Loc settings.shell.install_package_hint}"
                            Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
