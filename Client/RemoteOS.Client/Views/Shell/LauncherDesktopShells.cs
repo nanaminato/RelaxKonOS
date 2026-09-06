@@ -6,6 +6,7 @@ using Avalonia.Data;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Client.Services;
 using Client.ViewModels.Shell;
 using RemoteOS.Shell;
 
@@ -24,6 +25,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     private readonly Border _backdrop = new() { Background = Brushes.Transparent };
     private ShellPresentationContext? _context;
     private DesktopShellViewModel? _vm;
+    private System.ComponentModel.PropertyChangedEventHandler? _wallpaperChanged;
 
     protected LauncherDesktopShellBase(ShellDescriptor descriptor) => Descriptor = descriptor;
     public ShellDescriptor Descriptor { get; }
@@ -36,6 +38,12 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             ?? throw new InvalidOperationException("The client did not publish a desktop workspace state.");
         _root.DataContext = _vm;
         _root.Background = _vm.Settings.CurrentWallpaper;
+        _wallpaperChanged = (_, args) =>
+        {
+            if (args.PropertyName is null or nameof(ShellSettings.CurrentWallpaper))
+                _root.Background = _vm?.Settings.CurrentWallpaper;
+        };
+        _vm.Settings.PropertyChanged += _wallpaperChanged;
         BuildLayout(_vm);
         // Full-screen windows and system dialogs must cover every launcher chrome, rather than
         // merely the regular work area that deliberately avoids a taskbar or Dock.
@@ -58,7 +66,15 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     }
 
     public virtual Task DeactivateAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        if (_vm is not null && _wallpaperChanged is not null)
+            _vm.Settings.PropertyChanged -= _wallpaperChanged;
+        _wallpaperChanged = null;
+        _context = null;
+        _vm = null;
+        return ValueTask.CompletedTask;
+    }
 
     protected abstract void BuildLayout(DesktopShellViewModel vm);
 
