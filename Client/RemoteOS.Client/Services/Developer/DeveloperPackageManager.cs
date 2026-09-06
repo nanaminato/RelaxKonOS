@@ -338,7 +338,12 @@ public sealed class DeveloperPackageManager
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or JsonException or VirtualSystemDriveException)
             {
-                RecordActivationDiagnostic($"VSD package discovery: app={SafeDiagnosticId(appId)}, code={VirtualSystemDriveProblemCode.PackageLayoutInvalid}.");
+                var code = exception is VirtualSystemDriveException vsd
+                    ? vsd.ProblemCode
+                    : VirtualSystemDriveProblemCode.PackageLayoutInvalid;
+                // Keep the directory intact: an update can repair a damaged descriptor, and
+                // deleting it here makes a transient parser mismatch look like an uninstall.
+                RecordActivationDiagnostic($"VSD package discovery: app={SafeDiagnosticId(appId)}, code={code}, error={exception.GetType().Name}.");
             }
         }
     }
@@ -504,6 +509,12 @@ public sealed class DeveloperPackageManager
         {
             var appId = Path.GetFileName(directory);
             if (appId.Equals(".staging", StringComparison.OrdinalIgnoreCase) || _catalog.ContainsKey(appId))
+                continue;
+            // Uninstall removes current.json before attempting to remove its directory. A
+            // package that still has a current pointer is installed but failed discovery, so it
+            // must remain available for recovery or a later repaired startup.
+            if (ApplicationDescriptorValidator.IsValidAppId(appId)
+                && File.Exists(Path.Combine(directory, "current.json")))
                 continue;
             TryDeleteDirectory(directory);
         }
@@ -694,7 +705,14 @@ public sealed record DeveloperPackageManifest(
     IReadOnlyList<string>? SupportedUriSchemes = null,
     string? IconPath = null,
     int PermissionModelVersion = 0,
-    string? PackageType = null);
+    string? PackageType = null,
+    // Desktop-shell packages include these package-level fields. They are not used by normal
+    // applications, but must be represented here because VSD reads manifests strictly.
+    int SchemaVersion = 1,
+    int MinimumShellApiVersion = 0,
+    IReadOnlyList<string>? Capabilities = null,
+    string? PackageId = null,
+    string? Sha256 = null);
 
 internal sealed record DeveloperAppRecord(
     string Id,
