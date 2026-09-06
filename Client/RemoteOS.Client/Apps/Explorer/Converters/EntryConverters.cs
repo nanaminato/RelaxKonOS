@@ -8,6 +8,33 @@ using RemoteOS.Protocol.Files;
 
 namespace Client.Apps.Explorer.Converters;
 
+/// <summary>Matches a row entry with the view model's active inline-rename entry.</summary>
+public sealed class EntryIsEditingConverter : IMultiValueConverter
+{
+    public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var matches = values.Count >= 2
+            && values[0] is FileSystemEntryDto entry
+            && values[1] is FileSystemEntryDto editing
+            && ExplorerPath.Equal(entry.Path, editing.Path);
+        return string.Equals(parameter as string, "inverse", StringComparison.Ordinal) ? !matches : matches;
+    }
+}
+
+/// <summary>Dims entries that are currently pending a cut operation in the shared clipboard.</summary>
+public sealed class CutEntryOpacityConverter : IMultiValueConverter
+{
+    public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var normal = string.Equals(parameter as string, "secondary", StringComparison.Ordinal) ? 0.8d : 1d;
+        return values.Count >= 2 && values[0] is FileSystemEntryDto entry
+            && values[1] is IReadOnlyList<string> paths
+            && paths.Any(path => ExplorerPath.Equal(path, entry.Path))
+                ? normal * 0.5d
+                : normal;
+    }
+}
+
 /// <summary>条目类型 → 图标可见性转换器。ConverterParameter 指定期望的类别：
 /// "drive" 仅 Drive 为 true；"dir" 仅 Directory 为 true；"file" 仅 File 为 true。</summary>
 public sealed class EntryTypeToGlyphConverter : IValueConverter

@@ -17,13 +17,23 @@ public static class ExplorerBatchChecks
         var fake = (BatchClientFake)(object)client;
         var clipboard = new RemoteFileClipboard();
         var vm = new ExplorerViewModel(client, fileClipboard: clipboard);
+        var peer = new ExplorerViewModel(client, fileClipboard: clipboard);
         await vm.NavigateToAsync("/source");
+        await peer.NavigateToAsync("/source");
         void Select(params FileSystemEntryDto[] entries)
         {
             vm.SelectedEntry = entries.FirstOrDefault();
             vm.UpdatePickerSelection(entries);
         }
         Select(files);
+        vm.CutCommand.Execute(null);
+        check(vm.CutEntryPaths.Count == 3 && peer.CutEntryPaths.Count == 3,
+            "Cut clipboard state is reflected in every open Explorer view model");
+        peer.SelectedEntry = files[0];
+        peer.UpdatePickerSelection([files[0]]);
+        peer.CopyCommand.Execute(null);
+        check(vm.CutEntryPaths.Count == 0 && peer.CutEntryPaths.Count == 0,
+            "Replacing a cut with a copy clears faded entries across windows");
         check(vm.GetDragEntries(files[1]).Count == 3, "Drag snapshot includes whole selection when pressed row is selected");
         check(vm.GetDragEntries(FileEntry("/source/other")).Count == 1, "Dragging an unselected row excludes old selection");
         check(!vm.RenameCommand.CanExecute(null) && !vm.MoveCommand.CanExecute(null) && !vm.PropertiesCommand.CanExecute(null),
@@ -84,6 +94,8 @@ public static class ExplorerBatchChecks
         await vm.PasteCommand.ExecuteAsync(null);
         check(clipboard.Entries.Count == 1 && clipboard.Entries[0].Path == files[1].Path,
             "Partial cut paste removes successful items and retains failures for retry");
+        check(vm.CutEntryPaths.SequenceEqual([files[1].Path]) && peer.CutEntryPaths.SequenceEqual([files[1].Path]),
+            "Partial cut paste keeps only failed items faded across windows");
         fake.Reset();
         clipboard.Set(files, RemoteFileClipboardOperation.Cut);
         var newClipboard = new[] { FileEntry("/other/new.txt") };

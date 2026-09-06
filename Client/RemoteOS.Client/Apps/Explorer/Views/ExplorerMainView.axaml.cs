@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Client.Apps.Explorer.Models;
 using Client.Apps.Explorer.ViewModels;
@@ -22,12 +23,21 @@ public partial class ExplorerMainView : UserControl
     private bool _toggleSelectionOnRelease;
     private Point _dragStart;
     private readonly ContextMenu? _entryContextMenu;
+    private ExplorerViewModel? _attachedViewModel;
 
     public ExplorerMainView()
     {
         InitializeComponent();
         _entryContextMenu = EntriesGrid.ContextMenu;
         EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
+        DataContextChanged += ExplorerMainView_DataContextChanged;
+    }
+
+    private void ExplorerMainView_DataContextChanged(object? sender, EventArgs e)
+    {
+        if (_attachedViewModel is not null) _attachedViewModel.RequestRenameFocus = null;
+        _attachedViewModel = ViewModel;
+        if (_attachedViewModel is not null) _attachedViewModel.RequestRenameFocus = FocusRenameEditor;
     }
 
     /// <summary>Moves keyboard focus to the current-folder address field.</summary>
@@ -113,6 +123,7 @@ public partial class ExplorerMainView : UserControl
     /// <summary>Double-click only activates the row under the pointer.</summary>
     private void EntriesGrid_DoubleTapped(object? sender, RoutedEventArgs e)
     {
+        if (IsWithinTextBox(e.Source)) return;
         if (FindDataContext<FileSystemEntryDto>(e.Source) is { } entry && ViewModel is { IsBusy: false } vm)
             _ = vm.InvokeEntryAsync(entry);
     }
@@ -133,6 +144,7 @@ public partial class ExplorerMainView : UserControl
     private void EntriesGrid_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         ClearPendingDrag();
+        if (IsWithinTextBox(e.Source)) return;
         var entry = FindDataContext<FileSystemEntryDto>(e.Source);
         var point = e.GetCurrentPoint(this);
         if (point.Properties.IsRightButtonPressed)
@@ -271,6 +283,72 @@ public partial class ExplorerMainView : UserControl
             if (control.DataContext is T value)
                 return value;
         return null;
+    }
+
+    private static bool IsWithinTextBox(object? source)
+    {
+        for (var control = source as Control; control is not null; control = control.GetVisualParent() as Control)
+        {
+            if (control is TextBox) return true;
+            if (control is DataGrid) return false;
+        }
+        return false;
+    }
+
+    private void FocusRenameEditor(FileSystemEntryDto entry)
+    {
+        EntriesGrid.ScrollIntoView(entry, null);
+        Dispatcher.UIThread.Post(() =>
+        {
+            var editor = EntriesGrid.GetVisualDescendants().OfType<TextBox>()
+                .FirstOrDefault(textBox => textBox.Classes.Contains("inline-rename")
+                    && ReferenceEquals(textBox.DataContext, entry));
+            if (editor is null) return;
+            editor.Focus();
+            var extensionIndex = entry.Type == FileSystemEntryType.File ? entry.Name.LastIndexOf('.') : -1;
+            if (extensionIndex > 0)
+            {
+                editor.SelectionStart = 0;
+                editor.SelectionEnd = extensionIndex;
+            }
+            else editor.SelectAll();
+        });
+    }
+
+    private async void RenameBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: FileSystemEntryDto entry } editor || ViewModel is not { } vm) return;
+        if (e.Key == Key.Escape)
+        {
+            vm.CancelRename();
+            EntriesGrid.Focus();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
+        {
+            e.Handled = true;
+            await CommitRenameFromEditorAsync(vm, entry, editor);
+        }
+    }
+
+    private async void RenameBox_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: FileSystemEntryDto entry } editor
+            && ViewModel is { } vm && ReferenceEquals(vm.EditingEntry, entry))
+            await CommitRenameFromEditorAsync(vm, entry, editor);
+    }
+
+    private async Task CommitRenameFromEditorAsync(ExplorerViewModel vm, FileSystemEntryDto entry, TextBox editor)
+    {
+        if (!ReferenceEquals(vm.EditingEntry, entry)) return;
+        if (await vm.CommitRenameAsync())
+        {
+            EntriesGrid.Focus();
+            return;
+        }
+
+        if (ReferenceEquals(vm.EditingEntry, entry))
+            Dispatcher.UIThread.Post(() => { editor.Focus(); editor.SelectAll(); });
     }
 
     private void ClearPendingDrag()

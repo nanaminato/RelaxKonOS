@@ -25,7 +25,7 @@ namespace Client.Apps.Explorer.ViewModels;
 ///
 /// 导航树结构（参考 Windows File Explorer Navigation Pane）：主目录组节点（家目录 + 静态快捷入口：桌面/文档/下载/图片/音乐/视频）
 /// + 此电脑节点（盘符懒加载）+ 网络占位节点。路径变化时由 <see cref="SyncTreeSelectionAsync"/> 反向同步树选中（防循环）。</summary>
-public sealed partial class ExplorerViewModel : ObservableObject
+public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 {
     private readonly IExplorerClient _client;
     private readonly IRemoteFileClipboard _fileClipboard;
@@ -54,6 +54,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
     {
         _client = client;
         _fileClipboard = fileClipboard ?? new RemoteFileClipboard();
+        _fileClipboard.Changed += FileClipboard_Changed;
         _pickerOptions = pickerOptions;
         _selectPaths = selectPaths;
         Nodes = new ObservableCollection<TreeNodeModel>();
@@ -64,6 +65,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
             : [ExplorerFileFilter.AllFiles]);
         SelectedFilter = Filters[0];
         PickerEntryName = pickerOptions?.DefaultFileName ?? string.Empty;
+        UpdateCutEntryPaths();
         _pickerInitialized = true;
     }
 
@@ -75,6 +77,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
     /// <summary>Entries currently selected in the picker; supports multi-file selection.</summary>
     public ObservableCollection<FileSystemEntryDto> SelectedEntries { get; }
     public ObservableCollection<ExplorerFileFilter> Filters { get; }
+    public IReadOnlyList<string> CutEntryPaths { get; private set; } = Array.Empty<string>();
+    [ObservableProperty] private FileSystemEntryDto? _editingEntry;
+    [ObservableProperty] private string _renameDraft = string.Empty;
+    public Action<FileSystemEntryDto>? RequestRenameFocus { get; set; }
+    private bool _isRenameCommitInProgress;
     [ObservableProperty] private string? _addressbarPath;
     [ObservableProperty] private string? _addressInput;
     [ObservableProperty] private bool _isEditingAddress;
@@ -154,6 +161,28 @@ public sealed partial class ExplorerViewModel : ObservableObject
     partial void OnSearchTextChanged(string value) => ApplyEntryFilter();
     partial void OnShowHiddenFilesChanged(bool value) => ApplyEntryFilter();
     partial void OnIsCompactViewChanged(bool value) => OnPropertyChanged(nameof(EntryRowHeight));
+
+    partial void OnEditingEntryChanged(FileSystemEntryDto? value)
+    {
+        RenameCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsRenaming));
+    }
+
+    public bool IsRenaming => EditingEntry is not null;
+
+    private void FileClipboard_Changed(object? sender, EventArgs e)
+    {
+        UpdateCutEntryPaths();
+        PasteCommand.NotifyCanExecuteChanged();
+    }
+
+    private void UpdateCutEntryPaths()
+    {
+        CutEntryPaths = _fileClipboard.Operation == RemoteFileClipboardOperation.Cut
+            ? _fileClipboard.Entries.Select(entry => entry.Path).ToArray()
+            : Array.Empty<string>();
+        OnPropertyChanged(nameof(CutEntryPaths));
+    }
 
     private void ApplyEntryFilter()
     {
@@ -439,7 +468,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
     {
         // Keep the committed location and listing intact until the server accepts navigation.
         // Ignore overlapping navigation while a request (including tree synchronization) is active.
-        if (_isNavigating || (IsBatchActive && !batchRefresh)) return false;
+        if (_isNavigating || _isRenameCommitInProgress || (IsBatchActive && !batchRefresh)) return false;
         _isNavigating = true;
         var wasBusy = IsBusy;
         IsBusy = true;
@@ -468,6 +497,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
                 status = LocalizedText.Format("explorer.status.directory_ready", dir.Directories.Count, dir.Files.Count);
             }
             var locationChanged = !PathEquals(AddressbarPath, confirmedPath);
+            CancelRename();
             _directoryEntries.Clear();
             _directoryEntries.AddRange(loaded);
             AddressbarPath = confirmedPath;
@@ -960,7 +990,8 @@ public sealed partial class ExplorerViewModel : ObservableObject
         && GetSelectedEntries().All(e => e.Type != FileSystemEntryType.Drive);
     public bool HasSingleSelection => HasSelection && SelectedEntry is not null && GetSelectedEntries().Count == 1;
     public bool HasSingleFileSelection => HasSingleSelection && SelectedEntry?.Type == FileSystemEntryType.File;
-    public bool CanRenameSelection => HasSingleSelection && !IsPickerMode && SelectedEntry?.Type != FileSystemEntryType.Drive;
+    public bool CanRenameSelection => HasSingleSelection && !IsPickerMode && !IsRenaming
+        && SelectedEntry?.Type != FileSystemEntryType.Drive;
 
     [RelayCommand(CanExecute = nameof(CanDeleteSelection))]
     private async Task DeleteAsync()
@@ -985,26 +1016,70 @@ public sealed partial class ExplorerViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanRenameSelection))]
-    private async Task RenameAsync()
+    private Task RenameAsync()
     {
-        if (!CanRenameSelection) return;
-        if (SelectedEntry is not { } entry) return;
-        var newName = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("common.rename"), LocalizedText.Get("explorer.rename_prompt"), entry.Name, LocalizedText.Get("common.rename"))
-            ?? Task.FromResult<string?>(null));
-        if (string.IsNullOrWhiteSpace(newName) || newName == entry.Name) return;
-        if (!ExplorerPath.IsValidName(newName, entry.Path))
+        if (!CanRenameSelection || SelectedEntry is not { } entry) return Task.CompletedTask;
+        EditingEntry = entry;
+        RenameDraft = entry.Name;
+        RequestRenameFocus?.Invoke(entry);
+        return Task.CompletedTask;
+    }
+
+    public void CancelRename()
+    {
+        if (EditingEntry is null) return;
+        EditingEntry = null;
+        RenameDraft = string.Empty;
+    }
+
+    public async Task<bool> CommitRenameAsync()
+    {
+        if (_isRenameCommitInProgress || EditingEntry is not { } entry) return false;
+        var newName = RenameDraft;
+        if (string.IsNullOrWhiteSpace(newName) || !ExplorerPath.IsValidName(newName, entry.Path))
         {
             StatusText = LocalizedText.Get("explorer.input_invalid");
-            return;
+            return false;
         }
+        if (newName == entry.Name)
+        {
+            CancelRename();
+            return true;
+        }
+
+        _isRenameCommitInProgress = true;
+        IsBusy = true;
+        var clipboardSnapshot = _fileClipboard.Entries;
+        var clipboardOperation = _fileClipboard.Operation;
+        FileSystemEntryDto? renamedEntry = null;
         try
         {
             if (!await RetryWithOperationElevationAsync(
-                    async () => { await _client.RenameAsync(entry.Path, newName); }, FileElevationCapability.Rename, ParentDirectory(entry.Path))) return;
+                    async () => { renamedEntry = await _client.RenameAsync(entry.Path, newName); }, FileElevationCapability.Rename, ParentDirectory(entry.Path))) return false;
+            if (renamedEntry is not null && clipboardOperation == RemoteFileClipboardOperation.Cut
+                && ReferenceEquals(_fileClipboard.Entries, clipboardSnapshot)
+                && _fileClipboard.Operation == clipboardOperation
+                && clipboardSnapshot.Any(item => PathEquals(item.Path, entry.Path)))
+            {
+                _fileClipboard.Set(clipboardSnapshot.Select(item => PathEquals(item.Path, entry.Path) ? renamedEntry : item).ToArray(),
+                    RemoteFileClipboardOperation.Cut);
+            }
+            CancelRename();
+            _isRenameCommitInProgress = false;
             StatusText = LocalizedText.Format("explorer.status.renamed", newName);
             await RefreshAsync();
+            return true;
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.rename_failed", ex.Message); }
+        catch (Exception ex)
+        {
+            StatusText = LocalizedText.Format("explorer.status.rename_failed", ex.Message);
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+            _isRenameCommitInProgress = false;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -1336,5 +1411,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     [RelayCommand]
     private void Close() => CloseAction?.Invoke();
+
+    public void Dispose() => _fileClipboard.Changed -= FileClipboard_Changed;
 
 }

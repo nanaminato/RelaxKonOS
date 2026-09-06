@@ -131,6 +131,26 @@ vm.RequestTextInputAsync = (_, _, _, _) => Task.FromResult<string?>("../escape")
 fake.CreatedPath = null;
 await vm.NewFolderCommand.ExecuteAsync(null);
 Check(fake.CreatedPath is null, "New folder rejects path traversal before calling API");
+await vm.NavigateToAsync("/a");
+var renameEntry = vm.Entries.Single(e => e.Name == "note.txt");
+vm.SelectedEntry = renameEntry;
+vm.UpdatePickerSelection([renameEntry]);
+vm.CutCommand.Execute(null);
+FileSystemEntryDto? renameFocus = null;
+vm.RequestRenameFocus = entry => renameFocus = entry;
+await vm.RenameCommand.ExecuteAsync(null);
+Check(ReferenceEquals(vm.EditingEntry, renameEntry) && ReferenceEquals(renameFocus, renameEntry)
+    && vm.RenameDraft == "note.txt", "Rename command starts inline editing and requests focus");
+vm.RenameDraft = "../escape";
+Check(!await vm.CommitRenameAsync() && ReferenceEquals(vm.EditingEntry, renameEntry) && fake.RenamedSource is null,
+    "Invalid inline rename remains editable and makes no request");
+vm.CancelRename();
+Check(vm.EditingEntry is null && fake.RenamedSource is null, "Escape-style rename cancellation makes no request");
+await vm.RenameCommand.ExecuteAsync(null);
+vm.RenameDraft = "report.txt";
+Check(await vm.CommitRenameAsync() && vm.EditingEntry is null && fake.RenamedSource == "/a/note.txt"
+    && fake.RenamedName == "report.txt" && vm.CutEntryPaths.SequenceEqual(["/a/report.txt"]),
+    "Inline rename commits through the existing file API and updates a pending cut");
 var windowsEntry = sortEntries[2] with { Path = @"C:\data\folder", Name = "folder" };
 Check(!vm.CanMoveEntryToDirectory(windowsEntry, @"c:\DATA\FOLDER\child"), "Drag validation rejects case-varied Windows descendants");
 vm.SelectedEntry = windowsEntry;
@@ -162,6 +182,8 @@ public class ExplorerFake : DispatchProxy
     public string? Denied { get; set; }
     public string? CreatedPath { get; set; }
     public bool RequireElevation { get; set; }
+    public string? RenamedSource { get; set; }
+    public string? RenamedName { get; set; }
     public TaskCompletionSource<DirectoryDto>? Pending { get; set; }
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
@@ -176,6 +198,14 @@ public class ExplorerFake : DispatchProxy
         {
             CreatedPath = (string)args![0]!;
             return Task.FromResult(new FileSystemEntryDto(CreatedPath, "New folder", null, FileSystemEntryType.Directory, null, null, null, false, false, null));
+        }
+        if (method.Name == nameof(IExplorerClient.RenameAsync))
+        {
+            RenamedSource = (string)args![0]!;
+            RenamedName = (string)args[1]!;
+            var renamedPath = ExplorerPath.Combine(ExplorerBreadcrumb.ParentPath(RenamedSource)!, RenamedName);
+            return Task.FromResult(new FileSystemEntryDto(renamedPath, RenamedName, 100, FileSystemEntryType.File,
+                null, null, null, false, false, null));
         }
         if (method.Name == nameof(IExplorerClient.DeleteAsync))
         {

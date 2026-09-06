@@ -94,11 +94,16 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             bounds: new Rect(80, 60, 960, 640),
             iconGlyph: Manifest.IconGlyph);
         _windows[window] = viewModel;
-        viewModel.CloseAction = () => Dispatcher.UIThread.Post(() =>
+        EventHandler<ManagedWindow>? closed = null;
+        closed = (_, item) =>
         {
+            if (!ReferenceEquals(item, window)) return;
+            context.WindowManager.WindowClosed -= closed;
+            viewModel.Dispose();
             _windows.Remove(window);
-            context.WindowManager.Close(window);
-        });
+        };
+        context.WindowManager.WindowClosed += closed;
+        viewModel.CloseAction = () => Dispatcher.UIThread.Post(() => context.WindowManager.Close(window));
         window.KeyDown += (_, e) =>
         {
             if ((e.Key == RemoteKey.Letter('L') && e.Modifiers == RemoteKeyModifiers.Control)
