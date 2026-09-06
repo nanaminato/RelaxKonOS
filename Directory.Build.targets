@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <AvaloniaBuildTelemetryOptOut>true</AvaloniaBuildTelemetryOptOut>
+
+    <!-- 集中定义 .NET 10 核心版本 -->
+    <!-- 避免某些不支持多平台的子库在协商时拿到空值 -->
+    <DefaultTargetFramework>net10.0</DefaultTargetFramework>
+  </PropertyGroup>
+
+  <!-- 如果有需要，可以针对所有项目进行隐式框架后备 -->
+  <ItemDefinitionGroup>
+    <ProjectReference>
+      <SetTargetFramework>TargetFramework=$(DefaultTargetFramework)</SetTargetFramework>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+</Project>

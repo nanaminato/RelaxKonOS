@@ -9,6 +9,7 @@ public static class VirtualSystemDriveProblemCode
     public const string JsonInvalid = "vsd.json.invalid";
     public const string DocumentTooLarge = "vsd.document.too-large";
     public const string AppIdInvalid = "vsd.app-id.invalid";
+    public const string DuplicateAppId = "vsd.app-id.duplicate";
     public const string BuiltInMismatch = "vsd.builtin.mismatch";
     public const string PackageLayoutInvalid = "vsd.package.layout.invalid";
     public const string ShortcutInvalid = "vsd.shortcut.invalid";

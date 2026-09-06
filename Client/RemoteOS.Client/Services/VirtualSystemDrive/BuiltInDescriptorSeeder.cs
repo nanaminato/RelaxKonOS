@@ -24,23 +24,32 @@ public sealed class BuiltInDescriptorSeeder
         _drive.EnsureCreated();
         foreach (var definition in _registry.Definitions)
         {
-            var directory = _drive.ResolveUnder(_drive.BuiltInProgramsDirectory, definition.AppId.Value);
-            Directory.CreateDirectory(directory);
-            var path = _drive.ResolveUnder(directory, "app.remoteos.json");
-            var expected = ToDescriptor(definition);
-            var mustReplace = true;
             try
             {
-                var existing = await _drive.ReadJsonAsync<ApplicationDescriptor>(path, cancellationToken);
-                mustReplace = existing != expected || !ApplicationDescriptorValidator.Validate(existing).IsValid;
+                var directory = _drive.ResolveUnder(_drive.BuiltInProgramsDirectory, definition.AppId.Value);
+                Directory.CreateDirectory(directory);
+                var path = _drive.ResolveUnder(directory, "app.remoteos.json");
+                var expected = ToDescriptor(definition);
+                var mustReplace = true;
+                try
+                {
+                    var existing = await _drive.ReadJsonAsync<ApplicationDescriptor>(path, cancellationToken);
+                    mustReplace = !MatchesDefinition(existing, definition);
+                }
+                catch (VirtualSystemDriveException)
+                {
+                    // The descriptor is a recoverable installation mirror, not user configuration.
+                }
+
+                if (mustReplace)
+                    await _drive.WriteJsonAtomicallyAsync(path, expected, cancellationToken);
             }
             catch (VirtualSystemDriveException)
             {
-                // The descriptor is a recoverable installation mirror, not user configuration.
+                // A bad directory must not prevent other compiled-in applications from seeding.
             }
-
-            if (mustReplace)
-                await _drive.WriteJsonAtomicallyAsync(path, expected, cancellationToken);
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 
@@ -63,4 +72,36 @@ public sealed class BuiltInDescriptorSeeder
             manifest.SupportedClientPlatforms,
             manifest.PermissionModelVersion);
     }
+
+    /// <summary>
+    /// Compares every persisted field with the Host projection. The comparison deliberately does
+    /// not use record equality because deserialized collection instances are not reference-equal.
+    /// </summary>
+    public static bool MatchesDefinition(ApplicationDescriptor? descriptor, BuiltInApplicationDefinition definition)
+    {
+        if (descriptor is null || !ApplicationDescriptorValidator.Validate(descriptor).IsValid)
+            return false;
+
+        var expected = ToDescriptor(definition);
+        return descriptor.SchemaVersion == expected.SchemaVersion
+            && descriptor.Id == expected.Id
+            && descriptor.Kind == expected.Kind
+            && descriptor.DisplayName == expected.DisplayName
+            && descriptor.Version == expected.Version
+            && descriptor.Description == expected.Description
+            && descriptor.PermissionModelVersion == expected.PermissionModelVersion
+            && descriptor.InstancePolicy == expected.InstancePolicy
+            && descriptor.Activation.BuiltInKey == expected.Activation.BuiltInKey
+            && descriptor.Activation.EntryAssembly is null
+            && descriptor.Activation.EntryType is null
+            && descriptor.Icon?.Path == expected.Icon?.Path
+            && descriptor.Icon?.Glyph == expected.Icon?.Glyph
+            && Same(descriptor.RequestedPermissions, expected.RequestedPermissions)
+            && Same(descriptor.SupportedFileExtensions, expected.SupportedFileExtensions)
+            && Same(descriptor.SupportedUriSchemes, expected.SupportedUriSchemes)
+            && Same(descriptor.ClientPlatforms, expected.ClientPlatforms);
+    }
+
+    private static bool Same(IReadOnlyList<string>? left, IReadOnlyList<string>? right) =>
+        (left ?? Array.Empty<string>()).SequenceEqual(right ?? Array.Empty<string>(), StringComparer.Ordinal);
 }

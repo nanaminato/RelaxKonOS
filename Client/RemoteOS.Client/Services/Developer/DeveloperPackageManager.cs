@@ -5,8 +5,10 @@ using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Client.Services.AppPermissions;
+using Client.Services.VirtualSystemDrive;
 using RemoteOS.AppSDK;
 using RemoteOS.Core.Applications;
+using RemoteOS.Core.VirtualSystemDrive;
 using RemoteOS.Runtime;
 using RemoteOS.WindowManager;
 using AppContext = RemoteOS.AppSDK.AppContext;
@@ -24,25 +26,34 @@ public sealed class DeveloperPackageManager
     private readonly IAppPermissionManager _permissions;
     private readonly IWindowManager _windowManager;
     private readonly IAppActivationDiagnostics _activationDiagnostics;
+    private readonly VirtualSystemDrive _drive;
     private readonly string _root;
     private readonly string _catalogPath;
+    private readonly string _legacyRoot;
+    private readonly string _legacyCatalogPath;
     private readonly Dictionary<string, DeveloperAppRecord> _catalog;
     private readonly Dictionary<string, LoadedDeveloperApp> _loaded = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DeveloperAppRecord> _fallbacks = new(StringComparer.Ordinal);
 
     public DeveloperPackageManager(
         ApplicationManager applications,
         ExternalAppContextFactory contextFactory,
         IWindowManager windowManager,
         IAppPermissionManager permissions,
-        IAppActivationDiagnostics activationDiagnostics)
+        IAppActivationDiagnostics activationDiagnostics,
+        VirtualSystemDrive drive)
     {
         _applications = applications;
         _contextFactory = contextFactory;
         _windowManager = windowManager;
         _permissions = permissions;
         _activationDiagnostics = activationDiagnostics;
-        _root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteOS", "developer-apps");
-        _catalogPath = Path.Combine(_root, "catalog.json");
+        _drive = drive;
+        _drive.EnsureCreated();
+        _root = _drive.ExternalProgramsDirectory;
+        _catalogPath = _drive.ResolveRootChild("System/external-catalog.json");
+        _legacyRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteOS", "developer-apps");
+        _legacyCatalogPath = Path.Combine(_legacyRoot, "catalog.json");
         _catalog = LoadCatalog(_catalogPath);
     }
 
@@ -73,6 +84,8 @@ public sealed class DeveloperPackageManager
     /// <summary>Loads installed packages at client startup. Invalid old packages are ignored instead of breaking the shell.</summary>
     public void LoadInstalled()
     {
+        DiscoverExternalPackages();
+        MigrateLegacyPackages();
         CleanupDeferredUninstalls();
         foreach (var record in _catalog.Values.ToArray())
         {
@@ -97,7 +110,7 @@ public sealed class DeveloperPackageManager
 
     public async Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken = default)
     {
-        var staging = Path.Combine(_root, ".staging", Guid.NewGuid().ToString("N"));
+        var staging = _drive.ResolveUnder(_root, $".staging/{Guid.NewGuid():N}");
         Directory.CreateDirectory(staging);
         try
         {
@@ -108,7 +121,8 @@ public sealed class DeveloperPackageManager
             var version = manifest.Version.Trim();
             // Keep every deployment in a distinct folder. A currently loaded DLL can be locked on
             // Windows, so overwriting a version directory would make the development update flaky.
-            var destination = VersionPath(appId);
+            var versionId = Guid.NewGuid().ToString("N");
+            var destination = VersionPath(appId, versionId);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             Directory.Move(staging, destination);
             staging = string.Empty;
@@ -119,6 +133,12 @@ public sealed class DeveloperPackageManager
                 manifest.ClientPlatforms ?? Array.Empty<string>(), manifest.ServerRequirements,
                 manifest.SupportedFileNames ?? Array.Empty<string>(), manifest.SupportsExtensionlessFiles,
                 ParseInstancePolicy(manifest.InstancePolicy), manifest.SupportedUriSchemes ?? Array.Empty<string>(), manifest.PermissionModelVersion);
+            if (_catalog.TryGetValue(appId, out var previous))
+                _fallbacks[appId] = previous;
+            _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.remoteos.json"), ToDescriptor(manifest), cancellationToken)
+                .GetAwaiter().GetResult();
+            _drive.WriteJsonAtomicallyAsync(CurrentPath(appId), new ExternalCurrentVersion(1, appId, versionId), cancellationToken)
+                .GetAwaiter().GetResult();
             await Dispatcher.UIThread.InvokeAsync(() => Register(record));
 
             // A package update is a new authorization subject even when its AppId is stable.
@@ -146,6 +166,10 @@ public sealed class DeveloperPackageManager
         // A collectible context has been unloaded, but Windows can retain a DLL lock briefly.
         // The application is already unregistered and absent from the catalog; defer deleting
         // a locked directory until the next startup instead of reporting a false uninstall failure.
+        // Keep version files for deferred cleanup. current.json is removed first so discovery and
+        // the runtime agree that this app is no longer installed even if a DLL remains locked.
+        var current = CurrentPath(appId);
+        if (File.Exists(current)) File.Delete(current);
         TryDeleteDirectory(AppDirectory(appId));
         return true;
     }
@@ -210,9 +234,34 @@ public sealed class DeveloperPackageManager
         if (_loaded.TryGetValue(record.Id, out var existing))
             return existing;
 
-        var loaded = CreateLoaded(record);
+        LoadedDeveloperApp loaded;
+        try { loaded = CreateLoaded(record); }
+        catch
+        {
+            RestoreFallback(record);
+            throw;
+        }
         _loaded[record.Id] = loaded;
         return loaded;
+    }
+
+    private void RestoreFallback(DeveloperAppRecord failed)
+    {
+        if (!_fallbacks.Remove(failed.Id, out var fallback))
+            return;
+        try
+        {
+            var versionId = Path.GetFileName(fallback.Path);
+            _drive.WriteJsonAtomicallyAsync(CurrentPath(fallback.Id), new ExternalCurrentVersion(1, fallback.Id, versionId)).GetAwaiter().GetResult();
+            _catalog[fallback.Id] = fallback;
+            Register(fallback);
+            SaveCatalog(_catalogPath, _catalog);
+            RecordActivationDiagnostic($"VSD package rollback: app={fallback.Id}, result=previous-version-restored.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or VirtualSystemDriveException)
+        {
+            RecordActivationDiagnostic($"VSD package rollback: app={SafeDiagnosticId(failed.Id)}, code={VirtualSystemDriveProblemCode.PackageLayoutInvalid}.");
+        }
     }
 
     internal void RecordActivationDiagnostic(string message) => _activationDiagnostics.Record(message);
@@ -226,6 +275,110 @@ public sealed class DeveloperPackageManager
         SupportedUriSchemes: record.SupportedUriSchemes,
         IconPath: record.IconPath,
         PermissionModelVersion: record.PermissionModelVersion);
+
+    private static ApplicationDescriptor ToDescriptor(DeveloperPackageManifest manifest) => new(
+        ApplicationDescriptorValidator.CurrentSchemaVersion, manifest.Id.Trim(), ApplicationDescriptorKind.Package,
+        manifest.DisplayName.Trim(), manifest.Version.Trim(),
+        new ApplicationDescriptorActivation(EntryAssembly: manifest.EntryAssembly.Trim(), EntryType: manifest.EntryType.Trim()),
+        manifest.Description, new ApplicationDescriptorIcon(manifest.IconPath, manifest.IconGlyph),
+        manifest.RequestedPermissions, manifest.SupportedFileExtensions, manifest.SupportedUriSchemes,
+        manifest.InstancePolicy, manifest.ClientPlatforms, manifest.PermissionModelVersion);
+
+    private static ApplicationDescriptor ToDescriptor(DeveloperAppRecord record) => new(
+        ApplicationDescriptorValidator.CurrentSchemaVersion, record.Id, ApplicationDescriptorKind.Package,
+        record.DisplayName, record.Version, new ApplicationDescriptorActivation(EntryAssembly: record.EntryAssembly, EntryType: record.EntryType),
+        record.Description, new ApplicationDescriptorIcon(Glyph: record.IconGlyph), record.RequestedPermissions,
+        record.SupportedFileExtensions, record.SupportedUriSchemes, record.InstancePolicy.ToString(),
+        record.ClientPlatforms, record.PermissionModelVersion);
+
+    /// <summary>Rebuilds the package cache from fixed VSD current pointers without loading DLLs.</summary>
+    private void DiscoverExternalPackages()
+    {
+        _catalog.Clear();
+        foreach (var rawDirectory in Directory.EnumerateDirectories(_root))
+        {
+            var appId = Path.GetFileName(rawDirectory);
+            if (appId.Equals(".staging", StringComparison.Ordinal) || !ApplicationDescriptorValidator.IsValidAppId(appId))
+                continue;
+            try
+            {
+                var appDirectory = AppDirectory(appId);
+                var current = _drive.ReadJsonAsync<ExternalCurrentVersion>(CurrentPath(appId)).GetAwaiter().GetResult();
+                if (current.SchemaVersion != 1 || current.AppId != appId || !ApplicationDescriptorValidator.IsSafeRelativePath($"versions/{current.VersionId}"))
+                    throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.PackageLayoutInvalid);
+                var versionDirectory = _drive.ResolveUnder(appDirectory, $"versions/{current.VersionId}");
+                var descriptor = _drive.ReadJsonAsync<ApplicationDescriptor>(_drive.ResolveUnder(versionDirectory, "app.remoteos.json")).GetAwaiter().GetResult();
+                var manifest = JsonSerializer.Deserialize<DeveloperPackageManifest>(File.ReadAllText(_drive.ResolveUnder(versionDirectory, "manifest.json")),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new InvalidOperationException();
+                ValidateManifest(manifest);
+                var validation = ApplicationDescriptorValidator.Validate(descriptor);
+                if (!validation.IsValid || descriptor.Kind != ApplicationDescriptorKind.Package || descriptor.Id != appId
+                    || descriptor.Activation.EntryAssembly != manifest.EntryAssembly.Trim() || descriptor.Activation.EntryType != manifest.EntryType.Trim())
+                    throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.PackageLayoutInvalid);
+
+                _catalog[appId] = new DeveloperAppRecord(appId, manifest.DisplayName.Trim(), manifest.Version.Trim(), versionDirectory,
+                    manifest.EntryAssembly.Trim(), manifest.EntryType.Trim(), manifest.IconGlyph, ResolveIconPath(versionDirectory, manifest.IconPath),
+                    manifest.Description, manifest.RequestedPermissions ?? Array.Empty<string>(), manifest.SupportedFileExtensions ?? Array.Empty<string>(),
+                    manifest.LocalizedMetadata, manifest.ClientPlatforms ?? Array.Empty<string>(), manifest.ServerRequirements,
+                    manifest.SupportedFileNames ?? Array.Empty<string>(), manifest.SupportsExtensionlessFiles, ParseInstancePolicy(manifest.InstancePolicy),
+                    manifest.SupportedUriSchemes ?? Array.Empty<string>(), manifest.PermissionModelVersion);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or JsonException or VirtualSystemDriveException)
+            {
+                RecordActivationDiagnostic($"VSD package discovery: app={SafeDiagnosticId(appId)}, code={VirtualSystemDriveProblemCode.PackageLayoutInvalid}.");
+            }
+        }
+    }
+
+    /// <summary>Copies, rather than deletes, legacy development packages into the VSD layout.</summary>
+    private void MigrateLegacyPackages()
+    {
+        foreach (var legacy in LoadCatalog(_legacyCatalogPath).Values)
+        {
+            if (_catalog.ContainsKey(legacy.Id)) continue;
+            try
+            {
+                ValidateAppId(legacy.Id);
+                if (legacy.PermissionModelVersion != 2 || !Directory.Exists(legacy.Path)) throw new InvalidOperationException();
+                var legacyRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_legacyRoot)) + Path.DirectorySeparatorChar;
+                var source = Path.GetFullPath(legacy.Path);
+                if (!source.StartsWith(legacyRoot, StringComparison.Ordinal)) throw new InvalidOperationException();
+
+                var versionId = $"legacy-{Guid.NewGuid():N}";
+                var destination = VersionPath(legacy.Id, versionId);
+                CopyDirectoryWithoutLinks(source, destination);
+                var migrated = legacy with { Path = destination, IconPath = null };
+                _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.remoteos.json"), ToDescriptor(migrated)).GetAwaiter().GetResult();
+                _drive.WriteJsonAtomicallyAsync(CurrentPath(migrated.Id), new ExternalCurrentVersion(1, migrated.Id, versionId)).GetAwaiter().GetResult();
+                _catalog.Add(migrated.Id, migrated);
+                RecordActivationDiagnostic($"VSD package migration: app={migrated.Id}, result=migrated.");
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or VirtualSystemDriveException)
+            {
+                RecordActivationDiagnostic($"VSD package migration: app={SafeDiagnosticId(legacy.Id)}, result=retained-legacy, code={VirtualSystemDriveProblemCode.PackageLayoutInvalid}.");
+            }
+        }
+        SaveCatalog(_catalogPath, _catalog);
+    }
+
+    private static void CopyDirectoryWithoutLinks(string source, string destination)
+    {
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories).Prepend(source))
+        {
+            if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException();
+            var relative = Path.GetRelativePath(source, directory);
+            Directory.CreateDirectory(relative == "." ? destination : Path.Combine(destination, relative));
+        }
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException();
+            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: false);
+        }
+    }
+
+    private static string SafeDiagnosticId(string value) => ApplicationDescriptorValidator.IsValidAppId(value) ? value : "<unknown>";
 
     private async Task<DeveloperPackageManifest> ExtractAndReadManifestAsync(Stream package, string destination, CancellationToken cancellationToken)
     {
@@ -299,10 +452,11 @@ public sealed class DeveloperPackageManager
     private string AppDirectory(string appId)
     {
         ValidateAppId(appId);
-        return Path.Combine(_root, appId);
+        return _drive.ResolveUnder(_root, appId);
     }
 
-    private string VersionPath(string appId) => Path.Combine(AppDirectory(appId), "versions", Guid.NewGuid().ToString("N"));
+    private string VersionPath(string appId, string versionId) => _drive.ResolveUnder(AppDirectory(appId), $"versions/{versionId}");
+    private string CurrentPath(string appId) => _drive.ResolveUnder(AppDirectory(appId), "current.json");
 
     /// <summary>Removes package directories left behind by a prior successful logical uninstall.</summary>
     private void CleanupDeferredUninstalls()
@@ -523,5 +677,7 @@ internal sealed record DeveloperAppRecord(
     ApplicationInstancePolicy InstancePolicy = ApplicationInstancePolicy.MultiWindow,
     IReadOnlyList<string>? SupportedUriSchemes = null,
     int PermissionModelVersion = 0);
+
+internal sealed record ExternalCurrentVersion(int SchemaVersion, string AppId, string VersionId);
 
 public sealed record DeveloperAppInfo(string Id, string DisplayName, string Version, string InstallationPath);

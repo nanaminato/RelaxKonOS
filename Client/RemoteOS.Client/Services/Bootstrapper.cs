@@ -55,6 +55,11 @@ public static class Bootstrapper
         services.AddSingleton<VirtualSystemDrive>();
         services.AddSingleton<IBuiltInApplicationFactoryRegistry, BuiltInApplicationRegistry>();
         services.AddSingleton<BuiltInDescriptorSeeder>();
+        services.AddSingleton<ApplicationCatalogScanner>();
+        services.AddSingleton<ShortcutStore>();
+        services.AddSingleton<IAutomationRunner, AutomationRunner>();
+        services.AddSingleton<IAutomationNotificationSink, DiagnosticAutomationNotificationSink>();
+        services.AddSingleton<ShortcutActivationRouter>();
 
         // Auth（登录模块）：typed HttpClient + 仅内存认证会话 + 登录视图模型。
         services.AddHttpClient<IRemoteOsClient, RemoteOsClient>()
@@ -246,15 +251,11 @@ public static class Bootstrapper
 
         windowManager.LayoutStore = provider.GetRequiredService<WindowLayoutStore>();
 
-        // The observable built-in descriptor mirror is repaired from Host-compiled definitions.
-        // A disk file never establishes BuiltIn identity or selects code to load.
-        provider.GetRequiredService<BuiltInDescriptorSeeder>().EnsureSeededAsync().GetAwaiter().GetResult();
-
-        // Register applications with the runtime. Goal 2 moves this final registration loop to
-        // Catalog discovery; this registry is already the sole Host-owned factory mapping.
+        // Discovery repairs the observable descriptor mirror, compares every file with the
+        // compiled registry, then registers only Host-selected factories through ApplicationManager.
         var manager = provider.GetRequiredService<ApplicationManager>();
-        foreach (var definition in provider.GetRequiredService<IBuiltInApplicationFactoryRegistry>().Definitions)
-            manager.RegisterBuiltIn(definition.Factory(provider));
+        provider.GetRequiredService<ApplicationCatalogScanner>()
+            .ScanAndRegisterBuiltInsAsync(manager).GetAwaiter().GetResult();
 
         // Development packages follow the same runtime registry as built-in applications.
         provider.GetRequiredService<DeveloperPackageManager>().LoadInstalled();

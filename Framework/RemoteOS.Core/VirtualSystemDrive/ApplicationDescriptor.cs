@@ -101,6 +101,7 @@ public static partial class ApplicationDescriptorValidator
             || !IsSafeRelativePath(descriptor.Activation.EntryAssembly)
             || !descriptor.Activation.EntryAssembly!.StartsWith("lib/", StringComparison.Ordinal)
             || !descriptor.Activation.EntryAssembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            || (!string.IsNullOrWhiteSpace(descriptor.Icon?.Path) && !IsSafeRelativePath(descriptor.Icon.Path))
             || string.IsNullOrWhiteSpace(descriptor.Activation.EntryType))
             return DescriptorValidationResult.Invalid(VirtualSystemDriveProblemCode.PackageLayoutInvalid);
         return DescriptorValidationResult.Valid;
