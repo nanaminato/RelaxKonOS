@@ -136,10 +136,11 @@ public sealed class DeveloperPackageManager
                 ParseInstancePolicy(manifest.InstancePolicy), manifest.SupportedUriSchemes ?? Array.Empty<string>(), manifest.PermissionModelVersion);
             if (_catalog.TryGetValue(appId, out var previous))
                 _fallbacks[appId] = previous;
-            _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.remoteos.json"), ToDescriptor(manifest), cancellationToken)
-                .GetAwaiter().GetResult();
-            _drive.WriteJsonAtomicallyAsync(CurrentPath(appId), new ExternalCurrentVersion(1, appId, versionId), cancellationToken)
-                .GetAwaiter().GetResult();
+            // This method is invoked from the installer command on Avalonia's UI thread. Do not
+            // synchronously wait for asynchronous file I/O here: its continuation may need that
+            // same synchronization context, leaving the installer permanently busy.
+            await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.remoteos.json"), ToDescriptor(manifest), cancellationToken);
+            await _drive.WriteJsonAtomicallyAsync(CurrentPath(appId), new ExternalCurrentVersion(1, appId, versionId), cancellationToken);
             await Dispatcher.UIThread.InvokeAsync(() => Register(record));
 
             // A package update is a new authorization subject even when its AppId is stable.
