@@ -35,6 +35,7 @@
 - 🌐 **Web Server Management** — Nginx discovery, sites, config snapshots, minimal-intrusion integration
 - 🧾 **Git Client** — Remote host Git repositories, branches, commits, pull-conflict resolution, push and history
 - 🚇 **FRP Tunnel Management** — NAT traversal Server Profile / tunnel definitions / secrets and audit
+- 🔀 **Proxy Manager** — Host proxy runtime (Mihomo as the first engine, extensible to sing-box/Xray), TUN mode, subscriptions & profiles, system proxy, traffic/connection monitoring, network safety & recovery
 - 🧱 **Configuration Registry** — Schema-constrained desired/applied state-machine configuration center
 - 🪞 **Mirror Source Management** — APT/Docker/NPM/PyPI mirrors synced with Workspace preferences
 - 🔧 **App Capabilities & Private KV** — `/api/v1/capabilities` + App Settings per-user/per-app isolated KV
@@ -90,6 +91,10 @@
 │  │WebServers│ │ Certificates │ │  Git   │ │ Tunnels  │ │
 │  │(Nginx…)  │ │  (ACME/Host) │ │        │ │  (FRP)   │ │
 │  └──────────┘ └──────────────┘ └────────┘ └──────────┘ │
+│                                                         │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │  Proxy Management (Mihomo runtime · TUN · subs)    │  │
+│  └───────────────────────────────────────────────────┘  │
 │                                                         │
 │  ┌───────────────────────────────────────────────────┐  │
 │  │  OS Abstraction Layer (Provider interface family)  │  │
@@ -148,6 +153,7 @@ RemoteOS/
 │   │   │   ├── Docker/           # Docker Manager
 │   │   │   ├── ProcessGuardian/  # Process Guardian
 │   │   │   ├── Firewall/         # Linux UFW Firewall
+│   │   │   ├── Proxy/            # Proxy Manager (Mihomo runtime, TUN, subscriptions, system proxy)
 │   │   │   ├── PortForwarding/   # SSH Port Forwarding
 │   │   │   ├── Certificates/     # ACME Certificate Manager
 │   │   │   ├── WebServers/       # Web Server Manager (Nginx, etc.)
@@ -175,9 +181,11 @@ RemoteOS/
 │   └── RemoteOS.Protocol/        # Communication contracts (DTOs / routes / Hub interfaces)
 ├── RemoteOS.Server/              # Server (ASP.NET Core)
 ├── RemoteOS.Guardian.Agent/      # Process guardian standalone (native service management)
+├── RemoteOS.PrivilegedHelper/    # Cross-platform privileged operation helper (Windows service / Linux daemon)
 ├── Tools/
 │   ├── RemoteOS.DevCli/          # Developer CLI tool
-│   └── verify-localization.py    # Localization verification script
+│   ├── verify-localization.py    # Localization verification script
+│   └── slice_app_icons.py        # App icon sprite slicing script
 ├── examples/
 │   ├── VideoPlayer/              # Video Player example app
 │   ├── ServerMonitor/            # Server Monitor example app
@@ -213,6 +221,7 @@ RemoteOS/
 | **Web Server Manager** | Nginx instance/site/config snapshot/operation log + audit (host-level HostGlobal persistence) | ✅ MVP |
 | **Git Client** | Remote Git repo registration, branches, commits, pull-conflict resolution, push, history log | ✅ MVP |
 | **Tunnel Manager** | FRP NAT traversal (Server Profile/Definition/Secrets/Audit, server-side persistence) | ✅ MVP |
+| **Proxy Manager** | Proxy manager (Mihomo runtime install/start/stop/upgrade, TUN mode, subscriptions & profiles, system proxy, traffic/connection monitoring, network safety & emergency recovery) | ✅ MVP |
 
 ---
 
@@ -262,6 +271,7 @@ The client will open a login dialog. Enter your host system username and passwor
 | [RemoteOS.Architecture.md](./docs/architecture/RemoteOS.Architecture.md) | Architecture design principles, module dependencies, layered architecture |
 | [RemoteOS.Protocol.md](./docs/architecture/RemoteOS.Protocol.md) | Communication contracts, REST/SignalR, serialization conventions |
 | [RemoteOS.Workspace.md](./docs/architecture/RemoteOS.Workspace.md) | User/Workspace/Session/Device, multi-device model |
+| [RemoteOS.Registry.md](./docs/architecture/RemoteOS.Registry.md) | Configuration Registry architecture, desired/applied state machine |
 | [RemoteOS.ApplicationActivation.md](./docs/architecture/RemoteOS.ApplicationActivation.md) | Application launch URI and window instance policies |
 
 ### Platform Services
@@ -269,6 +279,7 @@ The client will open a login dialog. Enter your host system username and passwor
 | Document | Description |
 |----------|-------------|
 | [RemoteOS.Authentication.md](./docs/platform/RemoteOS.Authentication.md) | Login system, identity model, OS user integration |
+| [RemoteOS.Authentication.Hardening.md](./docs/platform/RemoteOS.Authentication.Hardening.md) | Auth throttling, risk control, and login protection guidance |
 | [RemoteOS.Login.md](./docs/platform/RemoteOS.Login.md) | Login module implementation details, mstsc-style login window |
 | [RemoteOS.Security.md](./docs/platform/RemoteOS.Security.md) | Security design, privilege elevation, dangerous operations |
 | [RemoteOS.Storage.md](./docs/platform/RemoteOS.Storage.md) | Server persistence, EF Core + SQLite |
@@ -279,6 +290,7 @@ The client will open a login dialog. Enter your host system username and passwor
 |----------|-------------|
 | [RemoteOS.Desktop.md](./docs/desktop/RemoteOS.Desktop.md) | Desktop shell, window control, modal dialogs, keyboard routing |
 | [RemoteOS.Settings.md](./docs/desktop/RemoteOS.Settings.md) | Settings center, preference persistence, multi-device sync |
+| [RemoteOS.Theming.md](./docs/desktop/RemoteOS.Theming.md) | Theme system, palettes, and appearance customization |
 | [RemoteOS.Localization.md](./docs/desktop/RemoteOS.Localization.md) | Multi-language mechanism, language pack structure |
 
 ### Built-in Applications
@@ -297,9 +309,22 @@ The client will open a login dialog. Enter your host system username and passwor
 | [RemoteOS.WebServerManager.Design.md](./docs/applications/RemoteOS.WebServerManager.Design.md) | Web Server management, Nginx integration, sites/snapshots/audit |
 | [RemoteOS.GitClient.md](./docs/applications/RemoteOS.GitClient.md) | Git client, repo/branch/commit/conflict/history |
 | [RemoteOS.FRP_Integration.Design.md](./docs/applications/RemoteOS.FRP_Integration.Design.md) | FRP NAT traversal architecture, security & operations boundaries |
+| [RemoteOS.ProxyManager.Design.md](./docs/applications/RemoteOS.ProxyManager.Design.md) | Proxy Manager, Mihomo runtime, TUN, subscriptions & profiles |
 | [RemoteOS.RegistryApp.md](./docs/applications/RemoteOS.RegistryApp.md) | Configuration Registry browsing, writes and isolation boundaries |
 | [RemoteOS.CodeEditor.md](./docs/applications/RemoteOS.CodeEditor.md) | Code editor, syntax highlighting, file security boundaries |
 | [RemoteOS.NetworkInspector.md](./docs/applications/RemoteOS.NetworkInspector.md) | Network inspector, diagnostics tool, network analysis |
+
+### Proxy
+
+| Document | Description |
+|----------|-------------|
+| [architecture.md](./docs/proxy/architecture.md) | Proxy module architecture, engine abstraction (IProxyEngine), Mihomo integration |
+| [installation.md](./docs/proxy/installation.md) | Proxy runtime installation, deployment, and upgrades |
+| [mihomo.md](./docs/proxy/mihomo.md) | Mihomo engine configuration, control plane, and runtime management |
+| [tun.md](./docs/proxy/tun.md) | TUN mode, network stack, and transparent proxy |
+| [recovery.md](./docs/proxy/recovery.md) | Proxy failure recovery, network safety, and emergency disable |
+| [security.md](./docs/proxy/security.md) | Proxy security model, permission boundaries, and audit |
+| [troubleshooting.md](./docs/proxy/troubleshooting.md) | Proxy troubleshooting guide and FAQs |
 
 ### Development & Extension
 

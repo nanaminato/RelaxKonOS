@@ -35,6 +35,7 @@
 - 🌐 **Webサーバー管理** — Nginx検出、サイト、設定スナップショット、最小侵入インテグレーション
 - 🧾 **Gitクライアント** — リモートホストGitリポジトリ、ブランチ、コミット、プル衝突解決、プッシュと履歴
 - 🚇 **FRPトンネル管理** — NATトラバーサル Server Profile / トンネル定義 / シークレットと監査
+- 🔀 **プロキシマネージャー** — ホストプロキシランタイム（Mihomoを初号エンジンとし、sing-box/Xrayに拡張可能）、TUNモード、サブスクリプションとプロファイル、システムプロキシ、トラフィック/接続モニタリング、ネットワークセーフティと復旧
 - 🧱 **設定レジストリ** — schema制約のdesired/applied状態機械設定センター
 - 🪞 **ミラーソース管理** — APT/Docker/NPM/PyPIなどのミラーソースをWorkspace設定と同期
 - 🔧 **アプリケーションケイパビリティとプライベートKV** — `/api/v1/capabilities` + App Settings ユーザー/アプリ単位の隔離KV
@@ -92,6 +93,10 @@
 │  └──────────┘ └──────────────┘ └────────┘ └──────────┘ │
 │                                                         │
 │  ┌───────────────────────────────────────────────────┐  │
+│  │  Proxy Management (Mihomoランタイム · TUN · サブスク) │  │
+│  └───────────────────────────────────────────────────┘  │
+│                                                         │
+│  ┌───────────────────────────────────────────────────┐  │
 │  │  OS Abstraction Layer (Providerインターフェース群)    │  │
 │  │  IIdentityProvider · ISystemMetricsProvider        │  │
 │  │  IFirewallProvider · IWebServerProvider            │  │
@@ -147,6 +152,7 @@ RemoteOS/
 │   │   │   ├── Docker/           # Dockerマネージャ
 │   │   │   ├── ProcessGuardian/  # プロセスガーディアン
 │   │   │   ├── Firewall/         # Linux UFWファイアウォール
+│   │   │   ├── Proxy/            # プロキシマネージャー（Mihomoランタイム、TUN、サブスクリプション、システムプロキシ）
 │   │   │   ├── PortForwarding/   # SSHポートフォワーディング
 │   │   │   ├── Certificates/     # ACME証明書管理
 │   │   │   ├── WebServers/       # Webサーバー管理（Nginxなど）
@@ -174,9 +180,11 @@ RemoteOS/
 │   └── RemoteOS.Protocol/        # 通信契約（DTO / ルート / Hubインターフェース）
 ├── RemoteOS.Server/              # サーバー（ASP.NET Core）
 ├── RemoteOS.Guardian.Agent/      # プロセスガーディアン独立プロセス（ネイティブサービス管理）
+├── RemoteOS.PrivilegedHelper/    # クロスプラットフォーム特権操作ヘルパー（Windowsサービス / Linuxデーモン）
 ├── Tools/
 │   ├── RemoteOS.DevCli/          # デベロッパーCLIツール
-│   └── verify-localization.py    # 多言語検証スクリプト
+│   ├── verify-localization.py    # 多言語検証スクリプト
+│   └── slice_app_icons.py        # アプリアイコンスプライトスライススクリプト
 ├── examples/
 │   ├── VideoPlayer/              # ビデオプレーヤーサンプルアプリ
 │   ├── ServerMonitor/            # サーバーモニターサンプルアプリ
@@ -212,6 +220,7 @@ RemoteOS/
 | **Web Server Manager** | Nginxインスタンス/サイト/設定スナップショット/操作ログ + 監査（ホストレベル HostGlobal永続化） | ✅ MVP |
 | **Git Client** | リモートGitリポジトリ登録、ブランチ、コミット、プル衝突解決、プッシュ、履歴ログ | ✅ MVP |
 | **Tunnel Manager** | FRP NATトラバーサル（Server Profile/Definition/Secrets/Audit、サーバー側永続化） | ✅ MVP |
+| **Proxy Manager** | プロキシマネージャー（Mihomoランタイムのインストール/起動/停止/アップグレード、TUNモード、サブスクリプションとプロファイル、システムプロキシ、トラフィック/接続モニタリング、ネットワークセーフティと緊急復旧） | ✅ MVP |
 
 ---
 
@@ -261,6 +270,7 @@ dotnet run
 | [RemoteOS.Architecture.md](./docs/architecture/RemoteOS.Architecture.md) | アーキテクチャ設計原則、モジュール依存、階層アーキテクチャ |
 | [RemoteOS.Protocol.md](./docs/architecture/RemoteOS.Protocol.md) | 通信契約、REST/SignalR、シリアライズ規約 |
 | [RemoteOS.Workspace.md](./docs/architecture/RemoteOS.Workspace.md) | ユーザー/Workspace/Session/Device、マルチデバイスモデル |
+| [RemoteOS.Registry.md](./docs/architecture/RemoteOS.Registry.md) | 設定レジストリアーキテクチャ、desired/applied状態機械 |
 | [RemoteOS.ApplicationActivation.md](./docs/architecture/RemoteOS.ApplicationActivation.md) | アプリ起動URIとウィンドウインスタンスポリシー |
 
 ### プラットフォームサービス
@@ -268,6 +278,7 @@ dotnet run
 | ドキュメント | 説明 |
 |-------------|------|
 | [RemoteOS.Authentication.md](./docs/platform/RemoteOS.Authentication.md) | ログインシステム、アイデンティティモデル、OSユーザー統合 |
+| [RemoteOS.Authentication.Hardening.md](./docs/platform/RemoteOS.Authentication.Hardening.md) | 認証レート制限、リスク制御、ログイン保護ガイダンス |
 | [RemoteOS.Login.md](./docs/platform/RemoteOS.Login.md) | ログインモジュール実装詳細、mstscスタイルログインウィンドウ |
 | [RemoteOS.Security.md](./docs/platform/RemoteOS.Security.md) | セキュリティ設計、権限昇格、危険操作 |
 | [RemoteOS.Storage.md](./docs/platform/RemoteOS.Storage.md) | サーバーパーシステンス、EF Core + SQLite |
@@ -278,6 +289,7 @@ dotnet run
 |-------------|------|
 | [RemoteOS.Desktop.md](./docs/desktop/RemoteOS.Desktop.md) | デスクトップシェル、ウィンドウ制御、モーダルダイアログ、キーボードルーティング |
 | [RemoteOS.Settings.md](./docs/desktop/RemoteOS.Settings.md) | 設定センター、設定永続化、マルチデバイス同期 |
+| [RemoteOS.Theming.md](./docs/desktop/RemoteOS.Theming.md) | テーマシステム、パレット、外観カスタマイズ |
 | [RemoteOS.Localization.md](./docs/desktop/RemoteOS.Localization.md) | 多言語メカニズム、言語パック構造 |
 
 ### 内蔵アプリケーション
@@ -296,9 +308,22 @@ dotnet run
 | [RemoteOS.WebServerManager.Design.md](./docs/applications/RemoteOS.WebServerManager.Design.md) | Webサーバー管理、Nginx統合、サイト/スナップショット/監査 |
 | [RemoteOS.GitClient.md](./docs/applications/RemoteOS.GitClient.md) | Gitクライアント、リポジトリ/ブランチ/コミット/衝突/履歴 |
 | [RemoteOS.FRP_Integration.Design.md](./docs/applications/RemoteOS.FRP_Integration.Design.md) | FRP NATトラバーサルアーキテクチャ、セキュリティ & 運用境界 |
+| [RemoteOS.ProxyManager.Design.md](./docs/applications/RemoteOS.ProxyManager.Design.md) | プロキシマネージャー、Mihomoランタイム、TUN、サブスクリプションとプロファイル |
 | [RemoteOS.RegistryApp.md](./docs/applications/RemoteOS.RegistryApp.md) | 設定レジストリブラウズ、書き込みと隔離境界 |
 | [RemoteOS.CodeEditor.md](./docs/applications/RemoteOS.CodeEditor.md) | コードエディタ、シンタックスハイライト、ファイルセキュリティ境界 |
 | [RemoteOS.NetworkInspector.md](./docs/applications/RemoteOS.NetworkInspector.md) | ネットワークインスペクター、診断ツール、ネットワーク分析 |
+
+### プロキシ（Proxy）
+
+| ドキュメント | 説明 |
+|-------------|------|
+| [architecture.md](./docs/proxy/architecture.md) | プロキシモジュールアーキテクチャ、エンジン抽象（IProxyEngine）、Mihomo統合 |
+| [installation.md](./docs/proxy/installation.md) | プロキシランタイムのインストール、デプロイ、アップグレード |
+| [mihomo.md](./docs/proxy/mihomo.md) | Mihomoエンジン設定、コントロールプレーン、ランタイム管理 |
+| [tun.md](./docs/proxy/tun.md) | TUNモード、ネットワークスタック、透過プロキシ |
+| [recovery.md](./docs/proxy/recovery.md) | プロキシ障害復旧、ネットワークセーフティ、緊急無効化 |
+| [security.md](./docs/proxy/security.md) | プロキシセキュリティモデル、権限境界、監査 |
+| [troubleshooting.md](./docs/proxy/troubleshooting.md) | プロキシトラブルシューティングガイドとFAQ |
 
 ### 開発 & 拡張
 

@@ -35,6 +35,7 @@
 - 🌐 **Web Server 管理** — Nginx 发现、站点、配置快照与最小侵入集成
 - 🧾 **Git 客户端** — 远端宿主机 Git 仓库、分支、提交、拉取冲突解决、推送与历史
 - 🚇 **FRP 隧道管理** — 内网穿透 Server Profile / 隧道定义 / 密钥与审计
+- 🔀 **代理管理器** — 主机代理运行时（Mihomo 为首款引擎，可扩展 sing-box/Xray）、TUN 模式、订阅与配置档案、系统代理、流量/连接监控、网络安全与恢复
 - 🧱 **配置注册表** — 受 schema 约束的 desired/applied 状态机配置中心
 - 🪞 **镜像源管理** — APT/Docker/NPM/PyPI 等镜像源随 Workspace 偏好同步
 - 🔧 **应用能力与私有 KV** — `/api/v1/capabilities` + App Settings 按用户/应用隔离 KV
@@ -92,6 +93,10 @@
 │  └──────────┘ └──────────────┘ └────────┘ └──────────┘ │
 │                                                         │
 │  ┌───────────────────────────────────────────────────┐  │
+│  │  Proxy Management (Mihomo 运行时 · TUN · 订阅/配置)  │  │
+│  └───────────────────────────────────────────────────┘  │
+│                                                         │
+│  ┌───────────────────────────────────────────────────┐  │
 │  │  OS Abstraction Layer (Provider 接口族)             │  │
 │  │  IIdentityProvider · ISystemMetricsProvider        │  │
 │  │  IFirewallProvider · IWebServerProvider            │  │
@@ -146,6 +151,7 @@ RemoteOS/
 │   │   │   ├── Docker/           # Docker 管理器
 │   │   │   ├── ProcessGuardian/  # 进程守护
 │   │   │   ├── Firewall/         # Linux UFW 防火墙
+│   │   │   ├── Proxy/            # 代理管理器（Mihomo 运行时、TUN、订阅、系统代理）
 │   │   │   ├── PortForwarding/   # SSH 端口转发
 │   │   │   ├── Certificates/     # ACME 证书管理
 │   │   │   ├── WebServers/       # Web Server 管理器（Nginx 等）
@@ -173,9 +179,11 @@ RemoteOS/
 │   └── RemoteOS.Protocol/        # 通信协议契约（DTO / 路由 / Hub 接口）
 ├── RemoteOS.Server/              # 服务端（ASP.NET Core）
 ├── RemoteOS.Guardian.Agent/      # 进程守护独立进程（原生服务管理）
+├── RemoteOS.PrivilegedHelper/    # 跨平台特权操作 Helper（Windows 服务 / Linux 守护）
 ├── Tools/
 │   ├── RemoteOS.DevCli/          # 开发者 CLI 工具
-│   └── verify-localization.py    # 多语言验证脚本
+│   ├── verify-localization.py    # 多语言验证脚本
+│   └── slice_app_icons.py        # 应用图标精灵图切片脚本
 ├── examples/
 │   ├── VideoPlayer/              # 视频播放器示例应用
 │   ├── ServerMonitor/            # 服务器监控示例应用
@@ -211,6 +219,7 @@ RemoteOS/
 | **Web Server Manager** | Nginx 实例/站点/配置快照/操作流水+审计（宿主级 HostGlobal 持久化） | ✅ MVP |
 | **Git Client** | 远端 Git 仓库登记、分支、提交、拉取冲突解决、推送、历史 Log | ✅ MVP |
 | **Tunnel Manager** | FRP 内网穿透（Server Profile/Definition/Secrets/Audit，Server 端持久化） | ✅ MVP |
+| **Proxy Manager** | 代理管理器（Mihomo 运行时安装/启停升级、TUN 模式、订阅与配置档案、系统代理、流量/连接监控、网络安全与紧急恢复） | ✅ MVP |
 
 ---
 
@@ -260,6 +269,7 @@ dotnet run
 | [RemoteOS.Architecture.md](./docs/architecture/RemoteOS.Architecture.md) | 架构设计原则、模块依赖、分层架构 |
 | [RemoteOS.Protocol.md](./docs/architecture/RemoteOS.Protocol.md) | 通信协议契约、REST/SignalR、序列化约定 |
 | [RemoteOS.Workspace.md](./docs/architecture/RemoteOS.Workspace.md) | 用户/工作区/会话/设备、多设备模型 |
+| [RemoteOS.Registry.md](./docs/architecture/RemoteOS.Registry.md) | 配置注册表架构、desired/applied 状态机 |
 | [RemoteOS.ApplicationActivation.md](./docs/architecture/RemoteOS.ApplicationActivation.md) | 应用启动 URI 与窗口实例策略 |
 
 ### 平台服务
@@ -279,6 +289,7 @@ dotnet run
 |------|------|
 | [RemoteOS.Desktop.md](./docs/desktop/RemoteOS.Desktop.md) | 桌面外壳、窗口控制、模态对话框、键盘路由 |
 | [RemoteOS.Settings.md](./docs/desktop/RemoteOS.Settings.md) | 设置中心、偏好持久化、多设备同步 |
+| [RemoteOS.Theming.md](./docs/desktop/RemoteOS.Theming.md) | 主题系统、调色板与外观定制 |
 | [RemoteOS.Localization.md](./docs/desktop/RemoteOS.Localization.md) | 多语言机制、语言包结构 |
 
 ### 内置应用
@@ -297,9 +308,22 @@ dotnet run
 | [RemoteOS.WebServerManager.Design.md](./docs/applications/RemoteOS.WebServerManager.Design.md) | Web Server 管理、Nginx 集成、站点/快照/审计 |
 | [RemoteOS.GitClient.md](./docs/applications/RemoteOS.GitClient.md) | Git 客户端、仓库/分支/提交/冲突/历史 |
 | [RemoteOS.FRP_Integration.Design.md](./docs/applications/RemoteOS.FRP_Integration.Design.md) | FRP 内网穿透架构、安全与运维边界 |
+| [RemoteOS.ProxyManager.Design.md](./docs/applications/RemoteOS.ProxyManager.Design.md) | 代理管理器、Mihomo 运行时、TUN、订阅与配置档案 |
 | [RemoteOS.RegistryApp.md](./docs/applications/RemoteOS.RegistryApp.md) | 配置注册表浏览、写入与隔离边界 |
 | [RemoteOS.CodeEditor.md](./docs/applications/RemoteOS.CodeEditor.md) | 代码编辑器、语法高亮、文件安全边界 |
 | [RemoteOS.NetworkInspector.md](./docs/applications/RemoteOS.NetworkInspector.md) | 网络检查器、诊断工具、网络分析 |
+
+### 代理（Proxy）
+
+| 文档 | 说明 |
+|------|------|
+| [architecture.md](./docs/proxy/architecture.md) | 代理模块架构、引擎抽象（IProxyEngine）、Mihomo 集成 |
+| [installation.md](./docs/proxy/installation.md) | 代理运行时安装、部署与升级 |
+| [mihomo.md](./docs/proxy/mihomo.md) | Mihomo 引擎配置、控制面与运行时管理 |
+| [tun.md](./docs/proxy/tun.md) | TUN 模式、网络栈与透明代理 |
+| [recovery.md](./docs/proxy/recovery.md) | 代理故障恢复、网络安全与紧急禁用 |
+| [security.md](./docs/proxy/security.md) | 代理安全模型、权限边界与审计 |
+| [troubleshooting.md](./docs/proxy/troubleshooting.md) | 代理排障指南与常见问题 |
 
 ### 开发与扩展
 
