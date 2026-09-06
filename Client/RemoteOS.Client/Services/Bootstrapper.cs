@@ -31,7 +31,7 @@ namespace Client.Services;
 /// <summary>Composes the client-side DI container and registers built-in applications.</summary>
 public static class Bootstrapper
 {
-    public static IServiceProvider Build(Application app)
+    public static async Task<IServiceProvider> BuildAsync(Application app)
     {
         var services = new ServiceCollection();
 
@@ -259,8 +259,8 @@ public static class Bootstrapper
         // Discovery repairs the observable descriptor mirror, compares every file with the
         // compiled registry, then registers only Host-selected factories through ApplicationManager.
         var manager = provider.GetRequiredService<ApplicationManager>();
-        provider.GetRequiredService<ApplicationCatalogScanner>()
-            .ScanAndRegisterBuiltInsAsync(manager).GetAwaiter().GetResult();
+        await provider.GetRequiredService<ApplicationCatalogScanner>()
+            .ScanAndRegisterBuiltInsAsync(manager);
 
         // Development packages follow the same runtime registry as built-in applications.
         provider.GetRequiredService<DeveloperPackageManager>().LoadInstalled();
