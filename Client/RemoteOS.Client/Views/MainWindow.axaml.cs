@@ -77,6 +77,7 @@ public partial class MainWindow : Window
         ToolTip.SetTip(FullScreenButton, T(_isFullScreen ? "shell.full_screen.exit" : "shell.full_screen.enter_tooltip", _isFullScreen ? "Exit full screen" : "Enter full screen"));
         ConnectionInfo.IsVisible = false;
         WindowTitleBar.IsVisible = !_isFullScreen;
+        Root.Margin = new Thickness(0, _isFullScreen ? 0 : 34, 0, 0);
 
         if (_isFullScreen && !_isPinned)
             ScheduleConnectionBarHide();

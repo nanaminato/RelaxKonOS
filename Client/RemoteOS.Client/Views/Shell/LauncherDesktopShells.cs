@@ -10,6 +10,7 @@ using Client.Localization;
 using Client.Services;
 using Client.ViewModels.Shell;
 using RemoteOS.Shell;
+using VectorPath = Avalonia.Controls.Shapes.Path;
 
 namespace Client.Views.Shell;
 
@@ -288,7 +289,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         var settings = WindowsGlyphButton("⚙", "Settings", vm.OpenSettingsCommand);
         Grid.SetRow(settings, 1);
         actions.Children.Add(settings);
-        var shutdown = WindowsGlyphButton("⏻", "Power", vm.ShutdownCommand);
+        var shutdown = WindowsPowerButton(vm.ShutdownCommand);
         Grid.SetRow(shutdown, 2);
         actions.Children.Add(shutdown);
         rail.Child = actions;
@@ -444,6 +445,32 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             BorderBrush = Brushes.Transparent,
         };
         ToolTip.SetTip(button, tooltip);
+        return button;
+    }
+
+    private static Button WindowsPowerButton(System.Windows.Input.ICommand command)
+    {
+        // A stroked SVG-style power path avoids font fallback rendering the U+23FB glyph as a box.
+        var icon = new VectorPath
+        {
+            Data = StreamGeometry.Parse("M 12,2 L 12,11 M 7.05,5.05 A 7,7 0 1 0 16.95,5.05"),
+            Stroke = Brushes.White,
+            StrokeThickness = 2,
+            StrokeLineCap = PenLineCap.Round,
+        };
+        var button = new Button
+        {
+            Content = new Viewbox { Width = 20, Height = 20, Child = icon },
+            Command = command,
+            Width = 48,
+            Height = 46,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+        ToolTip.SetTip(button, "Power");
         return button;
     }
 
