@@ -89,12 +89,13 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         };
         panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
         var stack = new StackPanel { Spacing = 6 };
-        stack.Children.Add(new TextBlock { Text = label, FontWeight = FontWeight.SemiBold, FontSize = 15 });
+        stack.Children.Add(new TextBlock { Text = label, FontWeight = FontWeight.SemiBold, FontSize = 15, Foreground = Brushes.White });
         var apps = new ItemsControl
         {
             ItemTemplate = new FuncDataTemplate<AppEntryViewModel>((app, _) => new Button
             {
                 Content = app.DisplayName, Command = app.LaunchCommand, HorizontalContentAlignment = HorizontalAlignment.Left,
+                Foreground = Brushes.White,
             }),
         };
         apps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.StartApps)));
@@ -111,17 +112,22 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             Padding = new Thickness(5),
         };
         var stack = new StackPanel { Orientation = vertical ? Orientation.Vertical : Orientation.Horizontal, Spacing = 4 };
-        stack.Children.Add(new Button { Content = launcherGlyph, Command = vm.ToggleStartCommand });
+        var launcherButton = new Button
+        {
+            Content = launcherGlyph, Command = vm.ToggleStartCommand, Width = 38, Height = 34,
+            Foreground = Brushes.White,
+        };
+        ToolTip.SetTip(launcherButton, "Applications");
+        stack.Children.Add(launcherButton);
         var groups = new ItemsControl
         {
-            ItemTemplate = new FuncDataTemplate<TaskbarGroupViewModel>((group, _) => new Button
-            {
-                Content = group.DisplayName, Command = vm.ToggleTaskbarGroupCommand, CommandParameter = group,
-            }),
+            ItemTemplate = new FuncDataTemplate<TaskbarGroupViewModel>((group, _) => TaskbarButton(vm, group)),
         };
         groups.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
         stack.Children.Add(groups);
-        stack.Children.Add(new Button { Content = "⌄", Command = vm.ShowDesktopCommand });
+        var showDesktopButton = new Button { Content = "⌄", Command = vm.ShowDesktopCommand, Width = 34, Height = 34, Foreground = Brushes.White };
+        ToolTip.SetTip(showDesktopButton, "Show desktop");
+        stack.Children.Add(showDesktopButton);
         var clock = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0) };
         clock.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
         stack.Children.Add(clock);
@@ -131,14 +137,24 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
 
     private static Control Icon(DesktopShellViewModel vm, object item)
     {
-        var name = item switch
+        var (name, glyph, image) = item switch
         {
-            AppEntryViewModel app => app.DisplayName,
-            DesktopFileEntryViewModel file => file.DisplayName,
-            ShortcutEntryViewModel shortcut => shortcut.DisplayName,
-            _ => item.ToString() ?? string.Empty,
+            AppEntryViewModel app => (app.DisplayName, app.IconGlyph ?? "◼", app.IconImage),
+            DesktopFileEntryViewModel file => (file.DisplayName, file.IconGlyph, null),
+            ShortcutEntryViewModel shortcut => (shortcut.DisplayName, shortcut.IconGlyph ?? "↗", null),
+            _ => (item.ToString() ?? string.Empty, "◼", null),
         };
-        var button = new Button { Content = name, Width = 116, Height = 84, Margin = new Thickness(3),
+        var content = new StackPanel { Spacing = 3, HorizontalAlignment = HorizontalAlignment.Center };
+        if (image is not null)
+            content.Children.Add(new Image { Source = image, Width = 32, Height = 32, HorizontalAlignment = HorizontalAlignment.Center });
+        else
+            content.Children.Add(new TextBlock { Text = glyph, FontSize = 30, HorizontalAlignment = HorizontalAlignment.Center });
+        content.Children.Add(new TextBlock
+        {
+            Text = name, MaxWidth = 108, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        var button = new Button { Content = content, Width = 116, Height = 84, Margin = new Thickness(3),
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
         button.Click += (_, _) => vm.SelectDesktopItemCommand.Execute(item);
         button.DoubleTapped += (_, _) =>
@@ -161,6 +177,21 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             };
             button.ContextMenu = menu;
         }
+        return button;
+    }
+
+    private static Button TaskbarButton(DesktopShellViewModel vm, TaskbarGroupViewModel group)
+    {
+        var glyph = group.IconGlyph ?? "◼";
+        var button = new Button
+        {
+            Command = vm.ToggleTaskbarGroupCommand, CommandParameter = group,
+            Width = 38, Height = 34, Padding = new Thickness(2), Foreground = Brushes.White,
+        };
+        ToolTip.SetTip(button, group.DisplayName);
+        button.Content = group.IconImage is { } image
+            ? new Image { Source = image, Width = 22, Height = 22 }
+            : new TextBlock { Text = glyph, FontSize = 20, HorizontalAlignment = HorizontalAlignment.Center };
         return button;
     }
 

@@ -13,10 +13,13 @@ namespace Client.Apps.Settings.ViewModels;
 public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 {
     private readonly IShellCatalog _shellCatalog;
+    private IReadOnlyList<ShellChoice> _shellChoices = [];
+
     public PersonalizationPageViewModel(ShellSettings settings, Action? save, IShellCatalog? shellCatalog = null) : base(settings, save)
     {
         _shellCatalog = shellCatalog ?? Client.App.Services.GetRequiredService<IShellCatalog>();
-        _shellCatalog.Changed += (_, _) => OnPropertyChanged(nameof(ShellChoices));
+        RefreshShellChoices();
+        _shellCatalog.Changed += (_, _) => RefreshShellChoices();
         // Theme 变化（含外部 Apply 加载）时刷新三个 RadioButton 绑定。
         Settings.PropertyChanged += (_, e) =>
         {
@@ -37,6 +40,12 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
                 OnPropertyChanged(nameof(HasSelectedCustomPalette));
                 OnPropertyChanged(nameof(HasAccentOverride));
             }
+            else if (e.PropertyName == nameof(ShellSettings.SelectedShellId))
+            {
+                // Preferences may arrive after Settings is already open. Keep the ComboBox in
+                // sync without treating that inbound update as another user selection.
+                OnPropertyChanged(nameof(SelectedShellId));
+            }
         };
         _accentInput = Settings.ThemePreferences.AccentOverride ?? string.Empty;
     }
@@ -46,8 +55,12 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     public override string DisplayName => "Personalization";
 
     public IReadOnlyList<Client.Services.WallpaperOption> Wallpapers => Settings.Wallpapers;
-    public IReadOnlyList<ShellChoice> ShellChoices => _shellCatalog.Available
-        .Select(definition => new ShellChoice(definition.Id, definition.DisplayName, definition.Source, definition.Version, definition.UnavailableReason)).ToArray();
+    /// <summary>
+    /// A stable snapshot is important here: Avalonia briefly clears SelectedValue while a
+    /// ComboBox receives a new ItemsSource. Recreating this list on every getter made that
+    /// transient null flow back into the shell setting and repeatedly swap the desktop shell.
+    /// </summary>
+    public IReadOnlyList<ShellChoice> ShellChoices => _shellChoices;
 
     /// <summary>Device-local presentation choice; changing it immediately swaps only the shell view.</summary>
     public string SelectedShellId
@@ -55,10 +68,27 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         get => Settings.SelectedShellId;
         set
         {
-            if (Settings.SelectedShellId == value) return;
-            Settings.SelectedShellId = value;
+            // ComboBox writes null/empty while rebuilding its item containers. That is a UI
+            // transition, not a request to select the default shell.
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            var id = ShellApi.NormalizeId(value);
+            if (!_shellCatalog.TryGet(id, out var shell) || !shell.IsAvailable) return;
+            if (Settings.SelectedShellId == id) return;
+            Settings.SelectedShellId = id;
             Save();
         }
+    }
+
+    private void RefreshShellChoices()
+    {
+        var next = _shellCatalog.Available
+            .Select(definition => new ShellChoice(definition.Id, definition.DisplayName, definition.Source, definition.Version, definition.UnavailableReason))
+            .ToArray();
+        if (_shellChoices.SequenceEqual(next)) return;
+
+        _shellChoices = next;
+        OnPropertyChanged(nameof(ShellChoices));
     }
 
     /// <summary>Supplied by the Avalonia page so the VM never accesses a TopLevel or filesystem picker.</summary>
@@ -277,6 +307,7 @@ public sealed record ShellChoice(string Id, string DisplayName, ShellSourceKind 
     string? Version = null, string? UnavailableReason = null)
 {
     public bool HasUnavailableReason => !string.IsNullOrWhiteSpace(UnavailableReason);
+    public string SelectionDisplayName => Id == ShellApi.DefaultShellId ? $"{DisplayName} (Default)" : DisplayName;
 }
 
 public sealed record ThemePaletteChoice(string Id, string Name, bool IsCustom);

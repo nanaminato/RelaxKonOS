@@ -19,7 +19,7 @@
                     <ComboBox.ItemTemplate>
                     <DataTemplate x:DataType="vm:ShellChoice">
                         <StackPanel Spacing="1">
-                            <TextBlock Text="{Binding DisplayName}" />
+                            <TextBlock Text="{Binding SelectionDisplayName}" />
                             <TextBlock Text="{Binding UnavailableReason}" IsVisible="{Binding HasUnavailableReason}" Opacity="0.65" FontSize="11" />
                         </StackPanel>
                     </DataTemplate>
