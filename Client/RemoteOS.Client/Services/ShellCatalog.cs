@@ -90,7 +90,7 @@ public sealed class ShellCatalog : IShellCatalog
     {
         try
         {
-            var manifestPath = Path.Combine(root, "shell.json");
+            var manifestPath = Path.Combine(root, "manifest.json");
             var manifest = JsonSerializer.Deserialize<ShellManifest>(File.ReadAllText(manifestPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                 ?? throw new InvalidDataException("Manifest is empty.");
             var id = manifest.Id?.Trim() ?? string.Empty;

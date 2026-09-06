@@ -146,6 +146,13 @@ public sealed record ShellPresentationContext(
     IShellSurfaceRegistry Surfaces,
     ILocalizationSnapshot Localization);
 
+public interface ILocalizationSnapshot
+{
+    string Language { get; }
+    string Get(string key, string fallback); // 仅宿主术语
+    event EventHandler<ShellLanguageChangedEventArgs>? LanguageChanged;
+}
+
 public interface IShellSurfaceRegistry
 {
     void Register(ShellSurfaces surfaces);
@@ -240,12 +247,13 @@ Shell 必须处理的最小交互：
 
 ```text
 <package-root>/
-  shell.json
+  manifest.json
   lib/<target-framework>/<publisher>.Shell.dll
+  lib/<target-framework>/Localization/*.json
   assets/...
 ```
 
-`shell.json`：
+`manifest.json`：
 
 ```json
 {
@@ -255,7 +263,7 @@ Shell 必须处理的最小交互：
   "version": "1.0.0",
   "entryAssembly": "lib/net10.0/Example.Windows11DesktopShell.dll",
   "entryType": "Example.Windows11DesktopShell.Windows11ShellFactory",
-  "minimumShellApiVersion": 1,
+  "minimumShellApiVersion": 2,
   "capabilities": ["desktop", "shellOverlays"]
 }
 ```
@@ -270,7 +278,7 @@ public interface IDesktopShellFactory
 }
 ```
 
-外部包只能从用户选择的本机目录或 RemoteOS 扩展安装目录安装。不得根据 Workspace 偏好自动下载、加载网络 DLL 或执行脚本。开发者模式可允许未签名包，但必须在设置中显示清晰风险提示；发行模式只接受签名/哈希已验证且 `shell.json` 与程序集白名单匹配的包。
+外部包只能从用户选择的本机目录或 RemoteOS 扩展安装目录安装。不得根据 Workspace 偏好自动下载、加载网络 DLL 或执行脚本。开发者模式可允许未签名包，但必须在设置中显示清晰风险提示；发行模式只接受签名/哈希已验证且 `manifest.json` 与程序集白名单匹配的包。
 
 ### 5.2 生命周期、故障隔离与卸载
 

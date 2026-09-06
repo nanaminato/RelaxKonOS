@@ -1,0 +1,24 @@
+{
+  "culture": "en-US",
+  "strings": {
+    "taskbar.start": "Start",
+    "taskbar.search": "Search",
+    "taskbar.task_view": "Task view",
+    "taskbar.hidden_icons": "Hidden icons",
+    "taskbar.quick_settings": "Quick settings",
+    "common.settings": "Settings",
+    "common.personalization": "Personalization",
+    "common.display_settings": "Display settings",
+    "common.refresh_desktop": "Refresh desktop",
+    "common.show_desktop": "Show desktop",
+    "start.search_placeholder": "Type here to search",
+    "start.pinned": "Pinned",
+    "start.all_apps": "All apps  ›",
+    "start.about": "About this shell",
+    "start.user": "RemoteOS",
+    "quick.wifi": "Wi-Fi",
+    "quick.bluetooth": "Bluetooth",
+    "quick.focus": "Focus",
+    "quick.open_settings": "Open settings"
+  }
+}

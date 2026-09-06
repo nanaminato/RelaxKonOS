@@ -1,0 +1,24 @@
+{
+  "culture": "zh-CN",
+  "strings": {
+    "taskbar.start": "开始",
+    "taskbar.search": "搜索",
+    "taskbar.task_view": "任务视图",
+    "taskbar.hidden_icons": "隐藏的图标",
+    "taskbar.quick_settings": "快速设置",
+    "common.settings": "设置",
+    "common.personalization": "个性化",
+    "common.display_settings": "显示设置",
+    "common.refresh_desktop": "刷新桌面",
+    "common.show_desktop": "显示桌面",
+    "start.search_placeholder": "在此键入以搜索",
+    "start.pinned": "已固定",
+    "start.all_apps": "所有应用  ›",
+    "start.about": "关于此外壳",
+    "start.user": "RemoteOS",
+    "quick.wifi": "无线网络",
+    "quick.bluetooth": "蓝牙",
+    "quick.focus": "专注",
+    "quick.open_settings": "打开设置"
+  }
+}

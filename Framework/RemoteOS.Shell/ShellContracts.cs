@@ -8,7 +8,7 @@ namespace RemoteOS.Shell;
 /// <summary>Versioned, deliberately small contract shared by the client and desktop-shell packages.</summary>
 public static class ShellApi
 {
-    public const int Version = 1;
+    public const int Version = 2;
     public const string DefaultShellId = "remoteos.windows-like";
     public static readonly IReadOnlyDictionary<string, string> LegacyIds = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -104,8 +104,23 @@ public interface IShellOverlayService
 
 public interface ILocalizationSnapshot
 {
+    /// <summary>Current BCP-47 language selected for the RemoteOS workspace.</summary>
     string Language { get; }
+
+    /// <summary>
+    /// Resolves a host-owned string. External shells should use this only for host terminology;
+    /// package UI strings must come from language files shipped by the package.
+    /// </summary>
     string Get(string key, string fallback);
+
+    /// <summary>Raised after the workspace language changes.</summary>
+    event EventHandler<ShellLanguageChangedEventArgs>? LanguageChanged;
+}
+
+public sealed class ShellLanguageChangedEventArgs(string previousLanguage, string currentLanguage) : EventArgs
+{
+    public string PreviousLanguage { get; } = previousLanguage;
+    public string CurrentLanguage { get; } = currentLanguage;
 }
 
 public interface IShellSurfaceRegistry

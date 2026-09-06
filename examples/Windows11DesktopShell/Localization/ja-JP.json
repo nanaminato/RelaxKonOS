@@ -1,0 +1,24 @@
+{
+  "culture": "ja-JP",
+  "strings": {
+    "taskbar.start": "スタート",
+    "taskbar.search": "検索",
+    "taskbar.task_view": "タスク ビュー",
+    "taskbar.hidden_icons": "隠れているインジケーター",
+    "taskbar.quick_settings": "クイック設定",
+    "common.settings": "設定",
+    "common.personalization": "個人用設定",
+    "common.display_settings": "ディスプレイ設定",
+    "common.refresh_desktop": "デスクトップを最新の情報に更新",
+    "common.show_desktop": "デスクトップを表示",
+    "start.search_placeholder": "検索するにはここに入力します",
+    "start.pinned": "ピン留め済み",
+    "start.all_apps": "すべてのアプリ  ›",
+    "start.about": "このシェルについて",
+    "start.user": "RemoteOS",
+    "quick.wifi": "Wi-Fi",
+    "quick.bluetooth": "Bluetooth",
+    "quick.focus": "集中モード",
+    "quick.open_settings": "設定を開く"
+  }
+}

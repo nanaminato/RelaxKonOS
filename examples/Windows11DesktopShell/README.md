@@ -17,12 +17,17 @@ Build from the repository root:
 dotnet build examples/Windows11DesktopShell/RemoteOS.Example.Windows11DesktopShell.csproj
 ```
 
-To assemble a development package, create this layout and copy in `shell.json` plus the built DLL:
+To assemble a development package, create this layout and copy in `manifest.json`, the built DLL,
+and the package-owned language files:
 
 ```text
 Windows11DesktopShell/
-  shell.json
+  manifest.json
   lib/net10.0/Example.Windows11DesktopShell.dll
+  lib/net10.0/Localization/
+    en-US.json
+    zh-CN.json
+    ja-JP.json
 ```
 
 Select that package directory from RemoteOS Personalization while Developer Mode is enabled. See

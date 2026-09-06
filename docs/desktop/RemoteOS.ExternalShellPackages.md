@@ -5,13 +5,16 @@
 包目录由用户在个性化设置页明确选择：
 
 ```text
-shell.json
+manifest.json
 lib/net10.0/<publisher>.Shell.dll
+lib/net10.0/Localization/*.json
 assets/...
 ```
 
 入口实现 `RemoteOS.Shell.IDesktopShellFactory`，并且只能引用 `RemoteOS.Shell`。不要引用 `Client`、服务容器、认证会话或远程文件 API。Shell 使用 `ShellPresentationContext.Actions` 与只读状态投影请求操作，并在 `InitializeAsync` 中登记完整的 `ShellSurfaces`。普通窗口工作区通过 `UpdateWorkArea` 上报；全屏 host 必须覆盖 Shell 根。
 
-`examples/Windows11DesktopShell` 是可构建的 Windows 11 风格外置桌面示例。它演示壁纸、桌面快捷方式、居中任务栏、开始菜单、快速设置，以及窗口、全屏窗口和 Shell 覆盖层的正确注册方式。将其输出 DLL 放到 manifest 所示路径后即可形成开发包。未签名开发包要求用户显式开启 Developer Mode；发行包须提供并通过 `shell.json.sha256` 的 entry assembly 哈希验证。清单发现和校验从不执行程序集，程序集只在用户选择该 Shell 时通过可收集的 `AssemblyLoadContext` 加载。
+桌面包与其他外置应用统一使用根目录 `manifest.json`。包必须自行携带本地化文件，并通过 `ShellPresentationContext.Localization.LanguageChanged` 监听核心工作区语言变化；`Localization.Get` 只用于宿主拥有的术语，不应代替包内语言资源。
+
+`examples/Windows11DesktopShell` 是可构建的 Windows 11 风格外置桌面示例。它使用 AXAML、视图模型和包内 JSON 语言文件，演示壁纸、桌面快捷方式、居中任务栏、开始菜单、快速设置，以及窗口、全屏窗口和 Shell 覆盖层的正确注册方式。将其输出 DLL 与 `Localization` 目录放到 manifest 所示路径后即可形成开发包。未签名开发包要求用户显式开启 Developer Mode；发行包须在 `manifest.json` 的 `sha256` 字段提供 entry assembly 哈希。清单发现和校验从不执行程序集，程序集只在用户选择该 Shell 时通过可收集的 `AssemblyLoadContext` 加载。
 
 如果包缺失、不兼容、禁用、初始化超时或抛异常，当前桌面保持可用；不能激活时回退 `remoteos.windows-like`，而 Workspace 中的跨设备选择意图不被覆盖。

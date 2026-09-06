@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RemoteOS.Core.Applications;
 using RemoteOS.Core.Primitives;
 using RemoteOS.Core.Windows;
+using RemoteOS.AppSDK;
 using RemoteOS.Shell;
 using RemoteOS.WindowManager;
 using RemoteOS.Runtime;
@@ -153,8 +154,31 @@ public sealed class ShellRuntime
     private sealed class LocalizationSnapshot : ILocalizationSnapshot
     {
         private readonly LocalizationService _service = App.Services.GetRequiredService<LocalizationService>();
+        private readonly Dictionary<EventHandler<ShellLanguageChangedEventArgs>, EventHandler<SystemLanguageChangedEventArgs>> _handlers = [];
         public string Language => _service.CurrentLanguage;
         public string Get(string key, string fallback) => _service.Get(key, fallback);
+
+        public event EventHandler<ShellLanguageChangedEventArgs>? LanguageChanged
+        {
+            add
+            {
+                if (value is null) return;
+                EventHandler<SystemLanguageChangedEventArgs> bridge = (_, args) =>
+                    value(this, new ShellLanguageChangedEventArgs(args.PreviousLanguage, args.CurrentLanguage));
+                lock (_handlers) _handlers[value] = bridge;
+                _service.LanguageChanged += bridge;
+            }
+            remove
+            {
+                if (value is null) return;
+                EventHandler<SystemLanguageChangedEventArgs>? bridge;
+                lock (_handlers)
+                {
+                    if (!_handlers.Remove(value, out bridge)) return;
+                }
+                _service.LanguageChanged -= bridge;
+            }
+        }
     }
 }
 
