@@ -33,6 +33,8 @@
         "common.home": "主页",
         "common.stop": "停止",
         "common.view": "查看",
+        "shell.macos.menu.window": "窗口",
+        "shell.macos.menu.help": "帮助",
         "common.go": "转到",
         "common.clear": "清除",
         "common.delete": "删除",

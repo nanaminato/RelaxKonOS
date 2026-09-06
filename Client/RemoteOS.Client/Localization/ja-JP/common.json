@@ -33,6 +33,8 @@
         "common.home": "ホーム",
         "common.stop": "停止",
         "common.view": "表示",
+        "shell.macos.menu.window": "ウインドウ",
+        "shell.macos.menu.help": "ヘルプ",
         "common.go": "移動",
         "common.clear": "クリア",
         "common.delete": "削除",

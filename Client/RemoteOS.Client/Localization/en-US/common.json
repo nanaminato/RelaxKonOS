@@ -33,6 +33,8 @@
         "common.home": "Home",
         "common.stop": "Stop",
         "common.view": "View",
+        "shell.macos.menu.window": "Window",
+        "shell.macos.menu.help": "Help",
         "common.go": "Go",
         "common.clear": "Clear",
         "common.delete": "Delete",

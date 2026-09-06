@@ -6,6 +6,7 @@ using Avalonia.Data;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Client.Localization;
 using Client.Services;
 using Client.ViewModels.Shell;
 using RemoteOS.Shell;
@@ -474,13 +475,13 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             BorderThickness = new Thickness(0, 0, 0, 1),
         };
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var menus = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1, Margin = new Thickness(7, 0, 0, 0) };
+        var menus = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1, Margin = new Thickness(7, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         menus.Children.Add(MacosMenuButton("●", "Launchpad", vm.ToggleStartCommand, bold: true));
         menus.Children.Add(MacosMenuButton("RemoteOS", "System Settings", vm.OpenSettingsCommand, bold: true));
-        menus.Children.Add(MacosMenuButton("File", "Open Files", vm.OpenFileExplorerCommand));
-        menus.Children.Add(MacosMenuButton("View", "Show Desktop", vm.ShowDesktopCommand));
-        menus.Children.Add(MacosMenuButton("Window", "Task Manager", vm.OpenTaskManagerCommand));
-        menus.Children.Add(new TextBlock { Text = "Help", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0), Foreground = new SolidColorBrush(Color.Parse("#17212B")) });
+        menus.Children.Add(MacosMenuButton(LocalizedText.Get("common.file", "File"), "Open Files", vm.OpenFileExplorerCommand));
+        menus.Children.Add(MacosMenuButton(LocalizedText.Get("common.view", "View"), "Show Desktop", vm.ShowDesktopCommand));
+        menus.Children.Add(MacosMenuButton(LocalizedText.Get("shell.macos.menu.window", "Window"), "Task Manager", vm.OpenTaskManagerCommand));
+        menus.Children.Add(new TextBlock { Text = LocalizedText.Get("shell.macos.menu.help", "Help"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0), Foreground = new SolidColorBrush(Color.Parse("#17212B")) });
         layout.Children.Add(menus);
 
         var status = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -667,6 +668,9 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Foreground = new SolidColorBrush(Color.Parse("#17212B")),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
+            VerticalAlignment = VerticalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
         };
         ToolTip.SetTip(button, tooltip);
         return button;
