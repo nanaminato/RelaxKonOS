@@ -33,14 +33,14 @@ public partial class MainWindow : Window
         _hideBarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _hideBarTimer.Tick += (_, _) => HideConnectionBar();
         SizeChanged += (_, _) => ApplyConnectionBarOffset();
-        DataContextChanged += (_, _) => AttachShell();
-        Opened += (_, _) => AttachShell();
+        DataContextChanged += async (_, _) => await AttachShellAsync();
+        Opened += async (_, _) => await AttachShellAsync();
     }
 
-    private void AttachShell()
+    private async Task AttachShellAsync()
     {
         if (DataContext is DesktopShellViewModel shell)
-            App.Services.GetRequiredService<ShellSession>().Attach(ShellHost, shell);
+            await App.Services.GetRequiredService<ShellSession>().AttachAsync(ShellHost, shell);
     }
 
     private void ConnectionInfo_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

@@ -5,19 +5,19 @@ public sealed class ShellPreferenceStore(VirtualSystemDrive drive)
 {
     private const string PreferencePath = "System/shell-preference.json";
 
-    public string Load()
+    public async Task<string> LoadAsync()
     {
         try
         {
-            var value = drive.ReadJsonAsync<ShellPreference>(drive.ResolveRootChild(PreferencePath)).GetAwaiter().GetResult();
+            var value = await drive.ReadJsonAsync<ShellPreference>(drive.ResolveRootChild(PreferencePath));
             return string.IsNullOrWhiteSpace(value.ShellId) ? "remoteos" : value.ShellId;
         }
         catch { return "remoteos"; }
     }
 
-    public void Save(string shellId)
+    public async Task SaveAsync(string shellId)
     {
-        try { drive.WriteJsonAtomicallyAsync(drive.ResolveRootChild(PreferencePath), new ShellPreference(shellId)).GetAwaiter().GetResult(); }
+        try { await drive.WriteJsonAtomicallyAsync(drive.ResolveRootChild(PreferencePath), new ShellPreference(shellId)); }
         catch { /* A preference write never breaks the current shell. */ }
     }
 

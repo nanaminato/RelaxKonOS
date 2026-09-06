@@ -22,6 +22,7 @@ public sealed class ShellSession
     private ContentControl? _host;
     private DesktopShellViewModel? _viewModel;
     private string _activeShellId = "remoteos";
+    private Task? _initializationTask;
 
     public ShellSession(ApplicationManager applications, IWindowManager windows, ShellSettings settings, ShellPreferenceStore preferences)
     {
@@ -29,15 +30,10 @@ public sealed class ShellSession
         _windows = windows;
         _settings = settings;
         _preferences = preferences;
-        _activeShellId = Definitions.Any(definition => definition.Id == preferences.Load()) ? preferences.Load() : "remoteos";
-        _settings.SelectedShellId = _activeShellId;
         _settings.ShellSelectionChanged += (_, id) =>
         {
             if (!string.Equals(id, _activeShellId, StringComparison.Ordinal))
-            {
-                if (!SwitchTo(id))
-                    _settings.SelectedShellId = _activeShellId;
-            }
+                _ = ApplySelectedShellAsync(id);
         };
     }
 
@@ -56,14 +52,32 @@ public sealed class ShellSession
     public IWindowManager Windows => _windows;
     public event EventHandler<string>? ShellChanged;
 
-    public void Attach(ContentControl host, DesktopShellViewModel viewModel)
+    public Task AttachAsync(ContentControl host, DesktopShellViewModel viewModel)
     {
         _host = host;
         _viewModel = viewModel;
-        SwitchTo(_activeShellId);
+        return _initializationTask ??= InitializeAsync();
     }
 
-    public bool SwitchTo(string shellId)
+    private async Task InitializeAsync()
+    {
+        var persistedShellId = await _preferences.LoadAsync();
+        _activeShellId = Definitions.Any(definition => definition.Id == persistedShellId)
+            ? persistedShellId
+            : "remoteos";
+        if (_settings.SelectedShellId != _activeShellId)
+            _settings.SelectedShellId = _activeShellId;
+
+        await SwitchToAsync(_activeShellId);
+    }
+
+    private async Task ApplySelectedShellAsync(string shellId)
+    {
+        if (!await SwitchToAsync(shellId) && _settings.SelectedShellId != _activeShellId)
+            _settings.SelectedShellId = _activeShellId;
+    }
+
+    private async Task<bool> SwitchToAsync(string shellId)
     {
         if (_host is null || _viewModel is null) return false;
         var definition = Definitions.FirstOrDefault(item => item.Id.Equals(shellId, StringComparison.Ordinal));
@@ -76,9 +90,9 @@ public sealed class ShellSession
             view.DataContext = _viewModel;
             _host.Content = view;
             _activeShellId = definition.Id;
-            _preferences.Save(_activeShellId);
             if (_settings.SelectedShellId != _activeShellId)
                 _settings.SelectedShellId = _activeShellId;
+            await _preferences.SaveAsync(_activeShellId);
             ShellChanged?.Invoke(this, _activeShellId);
             return true;
         }
