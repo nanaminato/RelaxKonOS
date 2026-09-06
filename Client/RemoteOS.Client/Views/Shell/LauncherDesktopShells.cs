@@ -451,16 +451,9 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
     private static Button WindowsPowerButton(System.Windows.Input.ICommand command)
     {
         // A stroked SVG-style power path avoids font fallback rendering the U+23FB glyph as a box.
-        var icon = new VectorPath
-        {
-            Data = StreamGeometry.Parse("M 12,2 L 12,11 M 7.05,5.05 A 7,7 0 1 0 16.95,5.05"),
-            Stroke = Brushes.White,
-            StrokeThickness = 2,
-            StrokeLineCap = PenLineCap.Round,
-        };
         var button = new Button
         {
-            Content = new Viewbox { Width = 20, Height = 20, Child = icon },
+            Content = ShellIconFactory.Power(Brushes.White, 20),
             Command = command,
             Width = 48,
             Height = 46,
@@ -521,7 +514,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
         status.Children.Add(clock);
         status.Children.Add(date);
-        status.Children.Add(MacosStatusButton("⏻", "Power", vm.ShutdownCommand));
+        status.Children.Add(MacosPowerButton(vm.ShutdownCommand));
         Grid.SetColumn(status, 1);
         layout.Children.Add(status);
         bar.Child = layout;
@@ -716,6 +709,13 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         return button;
     }
 
+    private static Button MacosPowerButton(System.Windows.Input.ICommand command)
+    {
+        var button = MacosStatusButton(string.Empty, "Power", command);
+        button.Content = ShellIconFactory.Power(new SolidColorBrush(Color.Parse("#17212B")), 14);
+        return button;
+    }
+
     private static Control MacosIcon(AppEntryViewModel app, double size) => app.IconImage is { } image
         ? new Image { Source = image, Width = size, Height = size }
         : new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 6, Foreground = Brushes.White };
@@ -826,7 +826,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         right.Children.Add(runningApps);
         right.Children.Add(UbuntuTopButton("⌂", "Show desktop", vm.ShowDesktopCommand));
         right.Children.Add(UbuntuTopButton("⚙", "Settings", vm.OpenSettingsCommand));
-        right.Children.Add(UbuntuTopButton("⏻", "Power", vm.ShutdownCommand));
+        right.Children.Add(UbuntuPowerButton(vm.ShutdownCommand));
         Grid.SetColumn(right, 2);
         layout.Children.Add(right);
         bar.Child = layout;
@@ -962,6 +962,13 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         return button;
     }
 
+    private static Button UbuntuPowerButton(System.Windows.Input.ICommand command)
+    {
+        var button = UbuntuTopButton(string.Empty, "Power", command);
+        button.Content = ShellIconFactory.Power(Brushes.White, 15);
+        return button;
+    }
+
     private static Control UbuntuAppIcon(AppEntryViewModel app, double size) => app.IconImage is { } image
         ? new Image { Source = image, Width = size, Height = size }
         : new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 5, Foreground = Brushes.White };
@@ -977,4 +984,20 @@ public static class BuiltInShells
     public static readonly ShellDescriptor Macos = new("remoteos.macos-like", "macOS-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
     public static readonly ShellDescriptor Ubuntu = new("remoteos.ubuntu-like", "Ubuntu-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
     public static readonly IReadOnlyList<ShellDescriptor> All = [Windows, Macos, Ubuntu];
+}
+
+/// <summary>Shared vector controls for the built-in shell chrome.</summary>
+internal static class ShellIconFactory
+{
+    public static Viewbox Power(IBrush foreground, double size)
+    {
+        var icon = new VectorPath
+        {
+            Data = StreamGeometry.Parse("M 12,2 L 12,11 M 7.05,5.05 A 7,7 0 1 0 16.95,5.05"),
+            Stroke = foreground,
+            StrokeThickness = 2,
+            StrokeLineCap = PenLineCap.Round,
+        };
+        return new Viewbox { Width = size, Height = size, Child = icon };
+    }
 }

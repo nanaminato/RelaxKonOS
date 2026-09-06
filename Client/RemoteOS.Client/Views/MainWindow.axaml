@@ -123,7 +123,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
                                     ToolTip.Tip="{loc:Loc shell.connection.user}">
                             <TextBlock Text="@" FontSize="12" Opacity="0.65" />
-                            <TextBlock Text="{Binding ConnectionUser}" FontSize="12" MaxWidth="64"
+                            <TextBlock Text="{Binding ConnectionUser}" FontSize="12" MaxWidth="128"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                     </StackPanel>
