@@ -682,6 +682,8 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Foreground = new SolidColorBrush(Color.Parse("#17212B")),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
         };
         ToolTip.SetTip(button, tooltip);
         return button;
