@@ -1,6 +1,14 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:Example.Windows11DesktopShell.Views"
              x:Class="Example.Windows11DesktopShell.Views.Windows11ShellView">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Example.Windows11DesktopShell/Styles/IconGeometries.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
     <UserControl.Styles>
         <Style Selector="Button.taskbar">
             <Setter Property="Width" Value="46" />
@@ -13,13 +21,6 @@
         <Style Selector="Button.taskbar:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="#66FFFFFF" />
         </Style>
-        <Style Selector="Button.desktop-shortcut">
-            <Setter Property="Width" Value="94" />
-            <Setter Property="MinHeight" Value="82" />
-            <Setter Property="Padding" Value="4" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-        </Style>
         <Style Selector="Button.start-tile">
             <Setter Property="Margin" Value="4" />
             <Setter Property="Padding" Value="6,14" />
@@ -29,12 +30,6 @@
         </Style>
         <Style Selector="TextBlock.primary">
             <Setter Property="Foreground" Value="#FF202124" />
-        </Style>
-        <Style Selector="TextBlock.desktop-label">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="TextAlignment" Value="Center" />
-            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
     </UserControl.Styles>
 
@@ -51,26 +46,7 @@
             <Button x:Name="InputBackdrop" Command="{Binding CloseFlyoutsCommand}"
                     Background="Transparent" BorderBrush="Transparent" Padding="0" />
 
-            <StackPanel Margin="18" Spacing="8" HorizontalAlignment="Left" VerticalAlignment="Top">
-                <Button Classes="desktop-shortcut" Command="{Binding OpenDisplaySettingsCommand}">
-                    <StackPanel Width="84" Spacing="3">
-                        <TextBlock Text="▣" FontSize="34" Foreground="White" HorizontalAlignment="Center" />
-                        <TextBlock Classes="desktop-label" Text="{Binding DisplaySettings}" />
-                    </StackPanel>
-                </Button>
-                <Button Classes="desktop-shortcut" Command="{Binding OpenPersonalizationCommand}">
-                    <StackPanel Width="84" Spacing="3">
-                        <TextBlock Text="⚙" FontSize="34" Foreground="White" HorizontalAlignment="Center" />
-                        <TextBlock Classes="desktop-label" Text="{Binding Personalization}" />
-                    </StackPanel>
-                </Button>
-                <Button Classes="desktop-shortcut" Command="{Binding RefreshDesktopCommand}">
-                    <StackPanel Width="84" Spacing="3">
-                        <TextBlock Text="↻" FontSize="34" Foreground="White" HorizontalAlignment="Center" />
-                        <TextBlock Classes="desktop-label" Text="{Binding RefreshDesktop}" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
+            <views:DesktopShortcutsView Margin="14" HorizontalAlignment="Left" VerticalAlignment="Top" />
 
             <Canvas x:Name="WindowHost" ClipToBounds="True" />
         </Grid>
@@ -88,22 +64,25 @@
                         </UniformGrid>
                     </Button>
                     <Button Classes="taskbar" Command="{Binding ToggleStartCommand}" ToolTip.Tip="{Binding Search}">
-                        <TextBlock Classes="primary" Text="⌕" FontSize="27" />
+                        <Path Data="{StaticResource IconSearch}" Stroke="#FF202124" StrokeThickness="1.8" Fill="Transparent" Width="22" Height="22" Stretch="Uniform" />
                     </Button>
                     <Button Classes="taskbar" Command="{Binding ShowDesktopCommand}" ToolTip.Tip="{Binding TaskView}">
-                        <TextBlock Classes="primary" Text="▣" FontSize="21" />
+                        <Path Data="{StaticResource IconTaskView}" Stroke="#FF202124" StrokeThickness="1.7" Fill="Transparent" Width="22" Height="22" Stretch="Uniform" />
                     </Button>
                     <Button Classes="taskbar" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="{Binding Settings}">
-                        <TextBlock Classes="primary" Text="⚙" FontSize="20" />
+                        <Path Data="{StaticResource IconSettings}" Fill="#FF202124" Width="22" Height="22" Stretch="Uniform" />
                     </Button>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0">
                     <Button Classes="taskbar" Width="34" Command="{Binding ToggleQuickSettingsCommand}" ToolTip.Tip="{Binding HiddenIcons}">
-                        <TextBlock Classes="primary" Text="⌃" FontSize="15" />
+                        <Path Data="{StaticResource IconChevronUp}" Stroke="#FF202124" StrokeThickness="2" Fill="Transparent" Width="15" Height="15" Stretch="Uniform" />
                     </Button>
                     <Button Classes="taskbar" Width="68" Command="{Binding ToggleQuickSettingsCommand}" ToolTip.Tip="{Binding QuickSettings}">
-                        <TextBlock Classes="primary" Text="◔  )))" FontSize="13" />
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Path Data="{StaticResource IconWifi}" Stroke="#FF202124" StrokeThickness="1.8" Fill="Transparent" Width="18" Height="18" Stretch="Uniform" />
+                            <Path Data="{StaticResource IconVolume}" Stroke="#FF202124" StrokeThickness="1.7" Fill="Transparent" Width="18" Height="18" Stretch="Uniform" />
+                        </StackPanel>
                     </Button>
                     <Button Classes="taskbar" Width="88" Command="{Binding ToggleQuickSettingsCommand}" ToolTip.Tip="{Binding QuickSettings}">
                         <StackPanel VerticalAlignment="Center">
@@ -130,22 +109,22 @@
                     </Grid>
                     <UniformGrid Grid.Row="2" Columns="3" Rows="2" Margin="30,0,30,26">
                         <Button Classes="start-tile" Command="{Binding OpenSettingsCommand}">
-                            <StackPanel Spacing="7"><TextBlock Text="⚙" FontSize="25" Foreground="#FF0067C0" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding Settings}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconSettings}" Fill="#FF0067C0" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding Settings}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                         <Button Classes="start-tile" Command="{Binding OpenPersonalizationCommand}">
-                            <StackPanel Spacing="7"><TextBlock Text="◩" FontSize="25" Foreground="#FF0067C0" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding Personalization}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconSun}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding Personalization}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                         <Button Classes="start-tile" Command="{Binding OpenDisplaySettingsCommand}">
-                            <StackPanel Spacing="7"><TextBlock Text="▣" FontSize="25" Foreground="#FF0067C0" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding DisplaySettings}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconDisplay}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="27" Height="27" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding DisplaySettings}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                         <Button Classes="start-tile" Command="{Binding RefreshDesktopCommand}">
-                            <StackPanel Spacing="7"><TextBlock Text="↻" FontSize="25" Foreground="#FF0067C0" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding RefreshDesktop}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconRefresh}" Fill="#FF0067C0" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding RefreshDesktop}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                         <Button Classes="start-tile" Command="{Binding ShowDesktopCommand}">
-                            <StackPanel Spacing="7"><TextBlock Text="▰" FontSize="25" Foreground="#FF0067C0" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding ShowDesktop}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconTaskView}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding ShowDesktop}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                         <Button Classes="start-tile" Command="{Binding OpenSettingsCommand}">
-                            <StackPanel Spacing="7"><TextBlock Text="?" FontSize="25" Foreground="#FF0067C0" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding About}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconInfo}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding About}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                     </UniformGrid>
                     <Border Grid.Row="3" Background="#55FFFFFF" BorderBrush="#66FFFFFF" BorderThickness="0,1,0,0"
@@ -157,7 +136,7 @@
                             <TextBlock Grid.Column="1" Classes="primary" Text="{Binding UserName}" FontSize="13" FontWeight="SemiBold"
                                        VerticalAlignment="Center" Margin="10,0,0,0" />
                             <Button Grid.Column="2" Classes="taskbar" Width="40" Command="{Binding ShowDesktopCommand}" ToolTip.Tip="{Binding ShowDesktop}">
-                                <TextBlock Classes="primary" Text="⏻" FontSize="19" />
+                                <Path Data="{StaticResource IconPower}" Stroke="#FF202124" StrokeThickness="2" Fill="Transparent" Width="21" Height="21" Stretch="Uniform" />
                             </Button>
                         </Grid>
                     </Border>
@@ -172,12 +151,12 @@
                     BoxShadow="0 8 30 0 #550A3154">
                 <StackPanel Spacing="16">
                     <UniformGrid Columns="3" Rows="1">
-                        <Button Height="42" Margin="4" Background="#FF0067C0" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Wifi}"><TextBlock Text="◔" FontSize="18" Foreground="White" /></Button>
-                        <Button Height="42" Margin="4" Background="#FF0067C0" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Bluetooth}"><TextBlock Text="ᛒ" FontSize="18" Foreground="White" /></Button>
-                        <Button Height="42" Margin="4" Background="#88FFFFFF" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Focus}"><TextBlock Classes="primary" Text="☾" FontSize="18" /></Button>
+                        <Button Height="42" Margin="4" Background="#FF0067C0" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Wifi}"><Path Data="{StaticResource IconWifi}" Stroke="White" StrokeThickness="1.8" Fill="Transparent" Width="20" Height="20" Stretch="Uniform" /></Button>
+                        <Button Height="42" Margin="4" Background="#FF0067C0" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Bluetooth}"><Path Data="{StaticResource IconBluetooth}" Stroke="White" StrokeThickness="1.8" Fill="Transparent" Width="20" Height="20" Stretch="Uniform" /></Button>
+                        <Button Height="42" Margin="4" Background="#88FFFFFF" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Focus}"><Path Data="{StaticResource IconMoon}" Fill="#FF202124" Width="20" Height="20" Stretch="Uniform" /></Button>
                     </UniformGrid>
-                    <Grid ColumnDefinitions="28,*"><TextBlock Classes="primary" Text="☀" FontSize="17" /><Slider Grid.Column="1" Minimum="0" Maximum="100" Value="72" /></Grid>
-                    <Grid ColumnDefinitions="28,*"><TextBlock Classes="primary" Text="♩" FontSize="17" /><Slider Grid.Column="1" Minimum="0" Maximum="100" Value="48" /></Grid>
+                    <Grid ColumnDefinitions="28,*"><Path Data="{StaticResource IconSun}" Stroke="#FF202124" StrokeThickness="1.7" Fill="Transparent" Width="19" Height="19" Stretch="Uniform" /><Slider Grid.Column="1" Minimum="0" Maximum="100" Value="72" /></Grid>
+                    <Grid ColumnDefinitions="28,*"><Path Data="{StaticResource IconVolume}" Stroke="#FF202124" StrokeThickness="1.7" Fill="Transparent" Width="19" Height="19" Stretch="Uniform" /><Slider Grid.Column="1" Minimum="0" Maximum="100" Value="48" /></Grid>
                     <Button Content="{Binding OpenSettings}" HorizontalAlignment="Right" Command="{Binding OpenSettingsCommand}" />
                 </StackPanel>
             </Border>

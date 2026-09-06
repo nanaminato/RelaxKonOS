@@ -19,6 +19,10 @@
     "quick.wifi": "Wi-Fi",
     "quick.bluetooth": "Bluetooth",
     "quick.focus": "Focus",
-    "quick.open_settings": "Open settings"
+    "quick.open_settings": "Open settings",
+    "desktop.this_pc": "This PC",
+    "desktop.documents": "Documents",
+    "desktop.project_file": "Project notes.txt",
+    "desktop.recycle_bin": "Recycle Bin"
   }
 }

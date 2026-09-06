@@ -10,6 +10,8 @@ The example demonstrates:
 - shell actions for settings, display settings, desktop refresh, and Show Desktop;
 - correct registration of normal-window, full-screen-window, overlay, and input-backdrop surfaces;
 - work-area reporting that reserves the taskbar.
+- package artwork through `assets/icon.png` instead of a font-dependent `iconGlyph`;
+- detailed vector desktop icons for a computer, folder, document, and recycle bin.
 
 Build from the repository root:
 

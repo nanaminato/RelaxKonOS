@@ -66,6 +66,10 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public string Bluetooth => T("quick.bluetooth", "Bluetooth");
     public string Focus => T("quick.focus", "Focus");
     public string OpenSettings => T("quick.open_settings", "Open settings");
+    public string ThisPc => T("desktop.this_pc", "This PC");
+    public string Documents => T("desktop.documents", "Documents");
+    public string ProjectFile => T("desktop.project_file", "Project notes.txt");
+    public string RecycleBin => T("desktop.recycle_bin", "Recycle Bin");
 
     public void Activate() { UpdateClock(); _clockTimer.Start(); }
     public void Deactivate() { _clockTimer.Stop(); CloseFlyouts(); }

@@ -19,6 +19,10 @@
     "quick.wifi": "无线网络",
     "quick.bluetooth": "蓝牙",
     "quick.focus": "专注",
-    "quick.open_settings": "打开设置"
+    "quick.open_settings": "打开设置",
+    "desktop.this_pc": "此电脑",
+    "desktop.documents": "文档",
+    "desktop.project_file": "项目说明.txt",
+    "desktop.recycle_bin": "回收站"
   }
 }

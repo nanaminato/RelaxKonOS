@@ -19,6 +19,10 @@
     "quick.wifi": "Wi-Fi",
     "quick.bluetooth": "Bluetooth",
     "quick.focus": "集中モード",
-    "quick.open_settings": "設定を開く"
+    "quick.open_settings": "設定を開く",
+    "desktop.this_pc": "PC",
+    "desktop.documents": "ドキュメント",
+    "desktop.project_file": "プロジェクト メモ.txt",
+    "desktop.recycle_bin": "ごみ箱"
   }
 }
