@@ -47,7 +47,7 @@
             <Border Grid.Row="4" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="8" Padding="12">
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc certificates.fingerprint.sha256}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBox Text="{Binding SelectedCertificate.FingerprintSha256}" IsReadOnly="True" Watermark="{loc:Loc certificates.fingerprint.select_hint}" />
+                    <TextBox Text="{Binding SelectedCertificate.FingerprintSha256}" IsReadOnly="True" PlaceholderText="{loc:Loc certificates.fingerprint.select_hint}" />
                     <TextBlock Text="{loc:Loc certificates.fingerprint.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
                 </StackPanel>
             </Border>

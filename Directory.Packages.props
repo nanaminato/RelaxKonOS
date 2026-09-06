@@ -20,11 +20,14 @@
         <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
 
         <!-- Server -->
-        <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+        <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+        <!-- Pin fixed transitive dependencies until their upstream packages raise their lower bounds. -->
+        <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
+        <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.13" />
 
         <!-- Server Persistence: EF Core + SQLite（User/Workspace/Device 持久化，含 TerminalSettings） -->
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
 
         <!-- Protocol / SignalR / JWT（为后续实现阶段预备，本次仅定义版本，未在任何 csproj 引用） -->
         <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />

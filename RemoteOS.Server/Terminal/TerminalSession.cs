@@ -29,7 +29,6 @@ public sealed class TerminalSession
 
     private readonly object _connLock = new();
     private string? _currentConnectionId;
-    private bool _disposed;
 
     public string SessionId { get; }
     public string UserId { get; }

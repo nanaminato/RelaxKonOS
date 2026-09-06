@@ -88,7 +88,7 @@
                 <TextBlock Text="{loc:Loc settings.accent}" Classes="title" />
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                     <TextBox Text="{Binding AccentInput, Mode=TwoWay}"
-                             Watermark="{loc:Loc settings.accent.placeholder}" />
+                             PlaceholderText="{loc:Loc settings.accent.placeholder}" />
                     <Button Grid.Column="1" Content="{loc:Loc settings.accent.reset}"
                             Command="{Binding ResetAccentCommand}"
                             IsEnabled="{Binding HasAccentOverride}" />

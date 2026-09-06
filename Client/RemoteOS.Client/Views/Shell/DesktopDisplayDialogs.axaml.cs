@@ -11,11 +11,17 @@ namespace Client.Views.Shell;
 /// <summary>桌面显示配置对话框。</summary>
 public partial class DesktopDisplayDialogs : UserControl
 {
-    private readonly ShellSettings _settings;
-    private readonly Func<Task> _saveAsync;
-    private readonly Action<bool> _close;
+    private ShellSettings _settings = null!;
+    private Func<Task> _saveAsync = () => Task.CompletedTask;
+    private Action<bool> _close = _ => { };
     private readonly bool _isFirstTime;
-    private readonly DesktopDisplayEditBuffer _buffer;
+    private DesktopDisplayEditBuffer _buffer = null!;
+
+    /// <summary>供 Avalonia 运行时 XAML 加载器和设计器创建控件。</summary>
+    public DesktopDisplayDialogs()
+    {
+        InitializeComponent();
+    }
 
     /// <summary>创建桌面显示配置对话框。</summary>
     public DesktopDisplayDialogs(
@@ -24,6 +30,7 @@ public partial class DesktopDisplayDialogs : UserControl
         Func<Task> saveAsync,
         Action<bool> close,
         bool isFirstTime)
+        : this()
     {
         _settings = settings;
         _saveAsync = saveAsync;
@@ -31,7 +38,6 @@ public partial class DesktopDisplayDialogs : UserControl
         _isFirstTime = isFirstTime;
         _buffer = new DesktopDisplayEditBuffer(settings, applications);
 
-        InitializeComponent();
         InitializeDialog();
     }
 
