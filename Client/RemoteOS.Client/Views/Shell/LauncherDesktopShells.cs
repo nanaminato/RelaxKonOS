@@ -208,10 +208,9 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
 {
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
-        _root.RowDefinitions = new RowDefinitions("*,Auto");
-        var desktop = Desktop(vm); Grid.SetRow(desktop, 0); _root.Children.Add(desktop);
-        var taskbar = WindowsTaskbar(vm); Grid.SetRow(taskbar, 1); _root.Children.Add(taskbar);
-        var launcher = WindowsLauncher(vm); Grid.SetRow(launcher, 0); launcher.HorizontalAlignment = HorizontalAlignment.Left; launcher.VerticalAlignment = VerticalAlignment.Bottom; _root.Children.Add(launcher);
+        var layout = new WindowsShellLayoutView();
+        layout.Compose(Desktop(vm), WindowsTaskbar(vm), WindowsLauncher(vm));
+        _root.Children.Add(layout);
     }
 
     /// <summary>
@@ -444,10 +443,9 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
 {
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
-        _root.RowDefinitions = new RowDefinitions("*,Auto");
-        var desktop = Desktop(vm); Grid.SetRow(desktop, 0); _root.Children.Add(desktop);
-        var dock = AppBar(vm, "◉"); Grid.SetRow(dock, 1); dock.HorizontalAlignment = HorizontalAlignment.Center; dock.Margin = new Thickness(0, 0, 0, 10); _root.Children.Add(dock);
-        var launcher = Launcher(vm, "Launchpad"); Grid.SetRow(launcher, 0); launcher.HorizontalAlignment = HorizontalAlignment.Center; launcher.VerticalAlignment = VerticalAlignment.Center; _root.Children.Add(launcher);
+        var layout = new MacosShellLayoutView();
+        layout.Compose(Desktop(vm), AppBar(vm, "◉"), Launcher(vm, "Launchpad"));
+        _root.Children.Add(layout);
     }
 }
 
@@ -455,28 +453,9 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
 {
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
-        _root.RowDefinitions = new RowDefinitions("32,*");
-        _root.ColumnDefinitions = new ColumnDefinitions("60,*");
-
-        var top = UbuntuTopBar(vm);
-        Grid.SetColumnSpan(top, 2);
-        _root.Children.Add(top);
-
-        var dock = UbuntuDock(vm);
-        Grid.SetRow(dock, 1);
-        _root.Children.Add(dock);
-
-        var desktop = Desktop(vm);
-        Grid.SetRow(desktop, 1);
-        Grid.SetColumn(desktop, 1);
-        _root.Children.Add(desktop);
-
-        var launcher = UbuntuLauncher(vm);
-        Grid.SetRow(launcher, 1);
-        Grid.SetColumn(launcher, 1);
-        launcher.HorizontalAlignment = HorizontalAlignment.Center;
-        launcher.VerticalAlignment = VerticalAlignment.Center;
-        _root.Children.Add(launcher);
+        var layout = new UbuntuShellLayoutView();
+        layout.Compose(UbuntuTopBar(vm), UbuntuDock(vm), Desktop(vm), UbuntuLauncher(vm));
+        _root.Children.Add(layout);
     }
 
     /// <summary>
