@@ -267,7 +267,7 @@ public static class Bootstrapper
             .ScanAndRegisterBuiltInsAsync(manager);
 
         // Development packages follow the same runtime registry as built-in applications.
-        provider.GetRequiredService<DeveloperPackageManager>().LoadInstalled();
+        await provider.GetRequiredService<DeveloperPackageManager>().LoadInstalledAsync();
         provider.GetRequiredService<DeveloperBridgeService>();
 
         // Build the desktop / start menu entries.

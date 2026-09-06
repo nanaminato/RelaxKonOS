@@ -83,10 +83,13 @@ public sealed class DeveloperPackageManager
         : null;
 
     /// <summary>Loads installed packages at client startup. Invalid old packages are ignored instead of breaking the shell.</summary>
-    public void LoadInstalled()
+    public async Task LoadInstalledAsync(CancellationToken cancellationToken = default)
     {
-        DiscoverExternalPackages();
-        MigrateLegacyPackages();
+        // Startup invokes this from Avalonia's UI thread. Package discovery reads JSON from disk,
+        // so it must remain asynchronous; synchronously waiting here prevents the UI dispatcher
+        // from running the file I/O continuations and stops the login window from being created.
+        await DiscoverExternalPackagesAsync(cancellationToken);
+        await MigrateLegacyPackagesAsync(cancellationToken);
         CleanupDeferredUninstalls();
         foreach (var record in _catalog.Values.ToArray())
         {
@@ -294,7 +297,7 @@ public sealed class DeveloperPackageManager
         record.ClientPlatforms, record.PermissionModelVersion);
 
     /// <summary>Rebuilds the package cache from fixed VSD current pointers without loading DLLs.</summary>
-    private void DiscoverExternalPackages()
+    private async Task DiscoverExternalPackagesAsync(CancellationToken cancellationToken)
     {
         _catalog.Clear();
         foreach (var rawDirectory in Directory.EnumerateDirectories(_root))
@@ -305,13 +308,14 @@ public sealed class DeveloperPackageManager
             try
             {
                 var appDirectory = AppDirectory(appId);
-                var current = _drive.ReadJsonAsync<ExternalCurrentVersion>(CurrentPath(appId)).GetAwaiter().GetResult();
+                var current = await _drive.ReadJsonAsync<ExternalCurrentVersion>(CurrentPath(appId), cancellationToken);
                 if (current.SchemaVersion != 1 || current.AppId != appId || !IsVersionId(current.VersionId))
                     throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.PackageLayoutInvalid);
                 var versionDirectory = _drive.ResolveUnder(appDirectory, $"versions/{current.VersionId}");
-                var descriptor = _drive.ReadJsonAsync<ApplicationDescriptor>(_drive.ResolveUnder(versionDirectory, "app.remoteos.json")).GetAwaiter().GetResult();
-                var manifest = _drive.ReadJsonAsync<DeveloperPackageManifest>(
-                    _drive.ResolveUnder(versionDirectory, "manifest.json")).GetAwaiter().GetResult();
+                var descriptor = await _drive.ReadJsonAsync<ApplicationDescriptor>(
+                    _drive.ResolveUnder(versionDirectory, "app.remoteos.json"), cancellationToken);
+                var manifest = await _drive.ReadJsonAsync<DeveloperPackageManifest>(
+                    _drive.ResolveUnder(versionDirectory, "manifest.json"), cancellationToken);
                 ValidateManifest(manifest);
                 var validation = ApplicationDescriptorValidator.Validate(descriptor);
                 if (!validation.IsValid || descriptor.Kind != ApplicationDescriptorKind.Package || descriptor.Id != appId
@@ -333,7 +337,7 @@ public sealed class DeveloperPackageManager
     }
 
     /// <summary>Copies, rather than deletes, legacy development packages into the VSD layout.</summary>
-    private void MigrateLegacyPackages()
+    private async Task MigrateLegacyPackagesAsync(CancellationToken cancellationToken)
     {
         foreach (var legacy in LoadCatalog(_legacyCatalogPath).Values)
         {
@@ -350,8 +354,8 @@ public sealed class DeveloperPackageManager
                 var destination = VersionPath(legacy.Id, versionId);
                 CopyDirectoryWithoutLinks(source, destination);
                 var migrated = legacy with { Path = destination, IconPath = null };
-                _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.remoteos.json"), ToDescriptor(migrated)).GetAwaiter().GetResult();
-                _drive.WriteJsonAtomicallyAsync(CurrentPath(migrated.Id), new ExternalCurrentVersion(1, migrated.Id, versionId)).GetAwaiter().GetResult();
+                await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.remoteos.json"), ToDescriptor(migrated), cancellationToken);
+                await _drive.WriteJsonAtomicallyAsync(CurrentPath(migrated.Id), new ExternalCurrentVersion(1, migrated.Id, versionId), cancellationToken);
                 _catalog.Add(migrated.Id, migrated);
                 RecordActivationDiagnostic($"VSD package migration: app={migrated.Id}, result=migrated.");
             }
