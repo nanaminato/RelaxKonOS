@@ -23,7 +23,9 @@ dotnet run --project Tools/RemoteOS.DevCli -- pack .\MyApp --configuration Debug
 dotnet run --project Tools/RemoteOS.DevCli -- watch .\MyApp --configuration Debug
 ```
 
-相同的命令适用于 PowerShell、bash、zsh 和 cmd；只有环境变量语法不同。`watch <project>` 从源码重新构建，创建新包，然后重新安装并重新启动。`watch <package.roapp>` 仍可用于外部生成的归档。更新应用会关闭其窗口，卸载其可收集的程序集加载上下文，注册新版本，然后再次启动。
+在 Linux、macOS 或其他 POSIX shell 中，使用 `export REMOTEOS_DEV_TOKEN="<设置中的令牌>"` 设置令牌，并将项目路径写为 `./MyApp`。PowerShell、bash、zsh 和 cmd 都可以运行相同的 CLI 命令；只有环境变量和路径语法不同。
+
+`watch <project>` 从源码重新构建，创建新包，然后重新安装并重新启动。`watch <package.roapp>` 仍可用于外部生成的归档。更新应用会关闭其窗口，卸载其可收集的程序集加载上下文，注册新版本，然后再次启动。
 
 ## 打包第三方应用
 

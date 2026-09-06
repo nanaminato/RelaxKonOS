@@ -338,6 +338,8 @@ dotnet run --project Tools/RemoteOS.DevCli -- watch ./examples/VideoPlayer --run
 
 `pack` creates the `.roapp` in the application's `artifacts/` directory; pure managed applications can omit `--runtime`. See [Developer Mode](./docs/development/RemoteOS.DeveloperMode.md) for the third-party packaging command reference.
 
+On Windows PowerShell, set the token with `$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"`; the remaining `dotnet` commands are unchanged.
+
 ### App Development Model
 
 ```csharp
