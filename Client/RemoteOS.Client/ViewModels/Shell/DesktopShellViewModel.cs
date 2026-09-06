@@ -52,6 +52,9 @@ public partial class DesktopShellViewModel : ObservableObject
     /// <summary>请求首次桌面配置引导弹窗的回调。由 View 层设置。</summary>
     public Func<Task<bool>>? RequestFirstTimeDesktopSetupAsync { get; set; }
 
+    /// <summary>请求切换宿主远程桌面窗口的全屏状态。由 MainWindow 设置。</summary>
+    public Action? RequestToggleHostFullScreen { get; set; }
+
     public DesktopShellViewModel(
         WindowManager windowManager,
         ApplicationManager applications,
@@ -166,6 +169,14 @@ public partial class DesktopShellViewModel : ObservableObject
     private TaskbarGroupViewModel? _openTaskbarGroup;
     [ObservableProperty] private string _clock = string.Empty;
     [ObservableProperty] private string _dateText = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HostFullScreenMenuText))]
+    private bool _isHostFullScreen;
+
+    /// <summary>macOS-style Window menu label for the host remote-desktop window.</summary>
+    public string HostFullScreenMenuText => T(
+        IsHostFullScreen ? "shell.full_screen.exit" : "shell.full_screen.enter",
+        IsHostFullScreen ? "Exit full screen" : "Full screen");
 
     /// <summary>Populate desktop + start menu from registered applications. Call after DI registration.</summary>
     public void PopulateDesktop()
@@ -594,6 +605,18 @@ public partial class DesktopShellViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenTaskManager() => LaunchApplication("remoteos.taskmanager");
+
+    /// <summary>Opens Help Center through its manifest-declared external <c>help://</c> scheme.</summary>
+    [RelayCommand]
+    private void OpenHelpCenter()
+    {
+        var language = Uri.EscapeDataString(_localization.CurrentLanguage);
+        _applications.Activate(new AppActivationRequest(
+            new Uri($"help://guide/docker/install?lang={language}")));
+    }
+
+    [RelayCommand]
+    private void ToggleHostFullScreen() => RequestToggleHostFullScreen?.Invoke();
 
     [RelayCommand]
     private void ShowDesktop()

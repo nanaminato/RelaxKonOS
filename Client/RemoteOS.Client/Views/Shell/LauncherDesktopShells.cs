@@ -596,8 +596,8 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         menus.Children.Add(MacosMenuButton("RemoteOS", LocalizedText.Get("shell.launcher.system_settings", "System Settings"), vm.OpenSettingsCommand, bold: true));
         menus.Children.Add(MacosMenuButton(LocalizedText.Get("common.file", "File"), LocalizedText.Get("shell.launcher.open_files", "Open Files"), vm.OpenFileExplorerCommand));
         menus.Children.Add(MacosMenuButton(LocalizedText.Get("common.view", "View"), LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"), vm.ShowDesktopCommand));
-        menus.Children.Add(MacosMenuButton(LocalizedText.Get("shell.macos.menu.window", "Window"), LocalizedText.Get("shell.launcher.task_manager", "Task Manager"), vm.OpenTaskManagerCommand));
-        menus.Children.Add(new TextBlock { Text = LocalizedText.Get("shell.macos.menu.help", "Help"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0), Foreground = new SolidColorBrush(Color.Parse("#17212B")) });
+        menus.Children.Add(MacosWindowMenuButton(vm));
+        menus.Children.Add(MacosMenuButton(LocalizedText.Get("shell.macos.menu.help", "Help"), LocalizedText.Get("shell.macos.menu.help", "Help"), vm.OpenHelpCenterCommand));
         layout.Children.Add(menus);
 
         var status = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -782,6 +782,25 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             HorizontalContentAlignment = HorizontalAlignment.Center,
         };
         ToolTip.SetTip(button, tooltip);
+        return button;
+    }
+
+    /// <summary>Creates the macOS Window menu rather than treating it as a Task Manager shortcut.</summary>
+    private static Button MacosWindowMenuButton(DesktopShellViewModel vm)
+    {
+        var button = MacosMenuButton(
+            LocalizedText.Get("shell.macos.menu.window", "Window"),
+            LocalizedText.Get("shell.macos.menu.window", "Window"),
+            vm.ToggleHostFullScreenCommand);
+        button.Command = null;
+
+        var fullScreenItem = new MenuItem { Command = vm.ToggleHostFullScreenCommand };
+        var label = new TextBlock();
+        label.Bind(TextBlock.TextProperty, new Binding(nameof(vm.HostFullScreenMenuText)) { Source = vm });
+        fullScreenItem.Header = label;
+        var menu = new ContextMenu { ItemsSource = new object[] { fullScreenItem } };
+        button.ContextMenu = menu;
+        button.Click += (_, _) => menu.Open(button);
         return button;
     }
 

@@ -61,20 +61,20 @@ public sealed class UriSchemeRoutingUi(
     public async Task NotifyNoHandlerAsync(Uri uri)
     {
         var owner = FindOwner();
-        if (owner is null)
-        {
-            Record($"Missing-handler prompt cannot be displayed: scheme={uri.Scheme}, owner=<none>.");
-            return;
-        }
-
-        Record($"Showing missing-handler prompt: scheme={uri.Scheme}, host={uri.Host}, path={uri.AbsolutePath}.");
-        await windowManager.ShowDialogAsync<bool>(owner, LocalizedText.Get("activation.no_handler.title"), dialog =>
+        Record($"Showing missing-handler prompt: scheme={uri.Scheme}, host={uri.Host}, path={uri.AbsolutePath}, owner={(owner is null ? "shell" : "application")}.");
+        var title = LocalizedText.Get("activation.no_handler.title");
+        Func<ModalDialog<bool>, Control> content = dialog =>
         {
             var messageKey = uri.Scheme.Equals("help", StringComparison.OrdinalIgnoreCase)
                 ? "activation.no_handler.help_message"
                 : "activation.no_handler.message";
             return CreateMessageView(LocalizedText.Format(messageKey, uri.Scheme), dialog);
-        }, new RemoteSize(460, 190));
+        };
+
+        if (owner is not null)
+            await windowManager.ShowDialogAsync(owner, title, content, new RemoteSize(460, 190));
+        else
+            await windowManager.ShowShellDialogAsync(title, content, new RemoteSize(460, 190));
     }
 
     private static Control CreateChoiceView(Uri uri, IReadOnlyList<ApplicationInfo> candidates,

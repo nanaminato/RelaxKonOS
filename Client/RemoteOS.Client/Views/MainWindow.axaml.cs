@@ -40,7 +40,11 @@ public partial class MainWindow : Window
     private async Task AttachShellAsync()
     {
         if (DataContext is DesktopShellViewModel shell)
+        {
+            shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
+            shell.IsHostFullScreen = _isFullScreen;
             await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell);
+        }
     }
 
     private void ConnectionInfo_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -72,6 +76,8 @@ public partial class MainWindow : Window
             _windowStateBeforeFullScreen = WindowState;
 
         _isFullScreen = fullScreen;
+        if (DataContext is DesktopShellViewModel shell)
+            shell.IsHostFullScreen = _isFullScreen;
         WindowState = _isFullScreen ? WindowState.FullScreen : _windowStateBeforeFullScreen;
         FullScreenButton.Content = _isFullScreen ? "↙" : "↗";
         ToolTip.SetTip(FullScreenButton, T(_isFullScreen ? "shell.full_screen.exit" : "shell.full_screen.enter_tooltip", _isFullScreen ? "Exit full screen" : "Enter full screen"));
