@@ -149,6 +149,8 @@ public partial class DesktopShellViewModel : ObservableObject
     /// <summary>Application launchers and remote desktop files in the shared icon grid.</summary>
     public ObservableCollection<object> DesktopItems { get; } = new();
     public ObservableCollection<AppEntryViewModel> StartApps { get; } = new();
+    /// <summary>Application-only results for shells that expose an application overview search.</summary>
+    public ObservableCollection<AppEntryViewModel> StartSearchResults { get; } = new();
 
     // The shell supplies these UI callbacks. Keeping prompts and picker controls out of this
     // view-model lets the actual filesystem operations be shared by desktop context-menu items.
@@ -157,6 +159,7 @@ public partial class DesktopShellViewModel : ObservableObject
     public Func<FilePropertiesDto, Task>? ShowDesktopPropertiesAsync { get; set; }
 
     [ObservableProperty] private bool _isStartOpen;
+    [ObservableProperty] private string _startSearchQuery = string.Empty;
     [ObservableProperty] private bool _areDesktopIconsVisible = true;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTaskbarPreviewOpen))]
@@ -179,6 +182,7 @@ public partial class DesktopShellViewModel : ObservableObject
         StartApps.Clear();
         foreach (var entry in compatibleEntries.OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase))
             StartApps.Add(entry);
+        RefreshStartSearchResults();
 
         // ── 桌面图标：根据桌面显示配置过滤 ──
         DesktopIcons.Clear();
@@ -223,6 +227,27 @@ public partial class DesktopShellViewModel : ObservableObject
     {
         _applications.Launch(id);
         IsStartOpen = false;
+    }
+
+    partial void OnStartSearchQueryChanged(string value) => RefreshStartSearchResults();
+
+    partial void OnIsStartOpenChanged(bool value)
+    {
+        if (!value && !string.IsNullOrEmpty(StartSearchQuery))
+            StartSearchQuery = string.Empty;
+    }
+
+    private void RefreshStartSearchResults()
+    {
+        var query = StartSearchQuery.Trim();
+        var entries = string.IsNullOrEmpty(query)
+            ? StartApps
+            : StartApps.Where(app => app.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || app.Description?.Contains(query, StringComparison.CurrentCultureIgnoreCase) == true);
+
+        StartSearchResults.Clear();
+        foreach (var entry in entries)
+            StartSearchResults.Add(entry);
     }
 
     [RelayCommand]

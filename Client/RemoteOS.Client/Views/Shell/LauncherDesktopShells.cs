@@ -482,38 +482,38 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
     {
         var panel = new Border
         {
-            Width = 700,
-            MaxHeight = 590,
-            Padding = new Thickness(24, 20),
             IsVisible = false,
-            Background = new SolidColorBrush(Color.Parse("#F022252B")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#668B949E")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            BoxShadow = new BoxShadows(new BoxShadow
-            {
-                OffsetX = 0,
-                OffsetY = 18,
-                Blur = 42,
-                Color = Color.Parse("#88000000"),
-            }),
+            // The overview deliberately consumes the desktop work area.  It does not reserve
+            // space for workspace thumbnails: this shell exposes an application-only search.
+            Background = new SolidColorBrush(Color.Parse("#F216181B")),
         };
         panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
 
-        var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 16 };
-        layout.Children.Add(new TextBlock
+        var layout = new Grid
         {
-            Text = "All Applications",
-            FontSize = 20,
-            FontWeight = FontWeight.SemiBold,
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 26,
+            Margin = new Thickness(72, 28, 72, 48),
+        };
+        var search = new TextBox
+        {
+            Width = 480,
+            Height = 42,
+            PlaceholderText = "Search applications",
+            FontSize = 14,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Background = new SolidColorBrush(Color.Parse("#FF34373B")),
             Foreground = Brushes.White,
-        });
+        };
+        search.Bind(TextBox.TextProperty, new Binding(nameof(vm.StartSearchQuery)) { Mode = BindingMode.TwoWay });
+        layout.Children.Add(search);
         var apps = new ItemsControl
         {
             ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel { Orientation = Orientation.Horizontal }),
             ItemTemplate = new FuncDataTemplate<AppEntryViewModel>((app, _) => UbuntuAppTile(vm, app)),
+            HorizontalAlignment = HorizontalAlignment.Center,
         };
-        apps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.StartApps)));
+        apps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.StartSearchResults)));
         var scroller = new ScrollViewer
         {
             Content = apps,
@@ -605,8 +605,8 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
 
     private static Button UbuntuAppTile(DesktopShellViewModel vm, AppEntryViewModel app)
     {
-        var content = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Width = 104, Height = 96 };
-        var icon = UbuntuAppIcon(app, 46);
+        var content = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Width = 118, Height = 108 };
+        var icon = UbuntuAppIcon(app, 56);
         icon.HorizontalAlignment = HorizontalAlignment.Center;
         icon.VerticalAlignment = VerticalAlignment.Center;
         content.Children.Add(icon);
@@ -616,7 +616,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             Foreground = Brushes.White,
             FontSize = 12,
             MaxLines = 2,
-            MaxWidth = 96,
+            MaxWidth = 110,
             TextAlignment = TextAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             TextWrapping = TextWrapping.Wrap,
@@ -627,8 +627,8 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         return new Button
         {
             Content = content,
-            Width = 112,
-            Height = 106,
+            Width = 128,
+            Height = 120,
             Padding = new Thickness(4),
             Margin = new Thickness(4),
             Command = vm.LaunchCommand,
