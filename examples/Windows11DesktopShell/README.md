@@ -5,7 +5,7 @@ This project is a self-contained external RemoteOS desktop shell. It intentional
 
 The example demonstrates:
 
-- a Windows 11-inspired wallpaper, live desktop entries, and a desktop context menu;
+- the host's active wallpaper (including synchronized custom images), live desktop entries, and a desktop context menu;
 - a centered taskbar, live All apps menu, clock, quick-settings flyout, and a short startup transition;
 - shell actions for settings, display settings, desktop refresh, and Show Desktop;
 - correct registration of normal-window, full-screen-window, overlay, and input-backdrop surfaces;

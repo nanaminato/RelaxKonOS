@@ -267,6 +267,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         _workspace.StartApps.CollectionChanged += OnCollectionChanged;
         _workspace.DesktopItems.CollectionChanged += OnCollectionChanged;
         _workspace.PropertyChanged += OnWorkspacePropertyChanged;
+        _workspace.Settings.PropertyChanged += OnSettingsPropertyChanged;
         _catalog.Changed += OnCatalogChanged;
         Current = CreateSnapshot();
     }
@@ -280,6 +281,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         _workspace.StartApps.CollectionChanged -= OnCollectionChanged;
         _workspace.DesktopItems.CollectionChanged -= OnCollectionChanged;
         _workspace.PropertyChanged -= OnWorkspacePropertyChanged;
+        _workspace.Settings.PropertyChanged -= OnSettingsPropertyChanged;
         _catalog.Changed -= OnCatalogChanged;
     }
 
@@ -289,6 +291,12 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     private void OnWorkspacePropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName is nameof(DesktopShellViewModel.AreDesktopIconsVisible))
+            Publish();
+    }
+
+    private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is null or nameof(ShellSettings.CurrentWallpaper))
             Publish();
     }
 
@@ -309,7 +317,8 @@ internal sealed class DesktopShellStateAdapter : IDisposable
             .Where(shell => shell.Source == ShellSourceKind.ExternalPackage && shell.IsAvailable)
             .Select(shell => new ShellDesktopStyleEntry(shell.Id, shell.DisplayName, shell.Version))
             .ToArray();
-        return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible, desktopStyles);
+        return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible, desktopStyles,
+            _workspace.Settings.CurrentWallpaper);
     }
 
     private static ShellDesktopEntry? ToEntry(object item) => item switch

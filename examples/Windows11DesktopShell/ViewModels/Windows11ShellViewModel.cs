@@ -1,6 +1,7 @@
 using System.Windows.Input;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
+using Avalonia.Media;
 using Example.Windows11DesktopShell.Commands;
 using Example.Windows11DesktopShell.Services;
 using RemoteOS.Shell;
@@ -18,6 +19,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private bool _areDesktopIconsVisible = true;
     private bool _hasDesktopStyles;
     private bool _isLoading = true;
+    private IBrush? _wallpaper;
     private int _loadGeneration;
     private string _clock = string.Empty;
     private string _date = string.Empty;
@@ -77,6 +79,8 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public bool AreDesktopIconsVisible { get => _areDesktopIconsVisible; private set => SetProperty(ref _areDesktopIconsVisible, value); }
     public bool HasDesktopStyles { get => _hasDesktopStyles; private set => SetProperty(ref _hasDesktopStyles, value); }
     public bool IsLoading { get => _isLoading; private set => SetProperty(ref _isLoading, value); }
+    /// <summary>Host-owned wallpaper shared by every desktop shell, including custom images.</summary>
+    public IBrush? Wallpaper { get => _wallpaper; private set => SetProperty(ref _wallpaper, value); }
     public string Clock { get => _clock; private set => SetProperty(ref _clock, value); }
     public string Date { get => _date; private set => SetProperty(ref _date, value); }
 
@@ -169,6 +173,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         {
             AreDesktopIconsVisible = false;
             HasDesktopStyles = false;
+            Wallpaper = null;
             return;
         }
         foreach (var application in state.Applications) Applications.Add(application);
@@ -176,6 +181,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         foreach (var desktopStyle in state.DesktopStyles ?? []) DesktopStyleEntries.Add(desktopStyle);
         AreDesktopIconsVisible = state.AreDesktopIconsVisible;
         HasDesktopStyles = DesktopStyleEntries.Count > 0;
+        Wallpaper = state.Wallpaper;
     }
     private async Task OpenApplicationAsync(ShellApplicationEntry? application)
     {

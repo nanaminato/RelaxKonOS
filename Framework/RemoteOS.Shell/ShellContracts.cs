@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using RemoteOS.Core.Applications;
 using RemoteOS.Core.Primitives;
 using RemoteOS.Core.Windows;
@@ -100,7 +101,13 @@ public sealed record ShellDesktopState(
     IReadOnlyList<ShellApplicationEntry> Applications,
     IReadOnlyList<ShellDesktopEntry> DesktopEntries,
     bool AreDesktopIconsVisible,
-    IReadOnlyList<ShellDesktopStyleEntry>? DesktopStyles = null);
+    IReadOnlyList<ShellDesktopStyleEntry>? DesktopStyles = null,
+    /// <summary>
+    /// The host-owned brush for the active workspace wallpaper. External shells render this
+    /// value as-is so built-in presets and downloaded custom images stay consistent whenever
+    /// the user changes the desktop style.
+    /// </summary>
+    IBrush? Wallpaper = null);
 
 /// <summary>A launchable application in an external shell's Start menu or application list.</summary>
 public sealed record ShellApplicationEntry(AppId Id, string DisplayName, string? IconGlyph, string? Description);

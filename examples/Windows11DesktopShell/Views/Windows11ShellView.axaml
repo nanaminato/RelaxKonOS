@@ -34,7 +34,7 @@
     </UserControl.Styles>
 
     <Grid RowDefinitions="*,52">
-        <Grid Grid.Row="0" ClipToBounds="True">
+        <Grid Grid.Row="0" ClipToBounds="True" Background="{Binding Wallpaper}">
             <Grid.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="{Binding RefreshDesktop}" Command="{Binding RefreshDesktopCommand}" />
@@ -43,14 +43,6 @@
                     <MenuItem Header="{Binding Personalization}" Command="{Binding OpenPersonalizationCommand}" />
                 </ContextMenu>
             </Grid.ContextMenu>
-            <Grid.Background>
-                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                    <GradientStop Color="#0B72C9" Offset="0" />
-                    <GradientStop Color="#45B8E8" Offset="0.42" />
-                    <GradientStop Color="#8E58C7" Offset="1" />
-                </LinearGradientBrush>
-            </Grid.Background>
-
             <!-- This is a required surface for shell-hosted modal input. It must not consume
                  ordinary desktop clicks while no modal dialog is active. -->
             <Border x:Name="InputBackdrop" IsHitTestVisible="False" />
