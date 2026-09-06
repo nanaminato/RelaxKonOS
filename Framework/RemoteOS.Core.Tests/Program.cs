@@ -3,6 +3,8 @@ using Client.Services.VirtualSystemDrive;
 
 VerifyDescriptorValidation();
 VerifyRelativePathValidation();
+VerifyShortcutValidation();
+VerifyAutomationValidation();
 await VerifyStorageBoundaryAsync();
 Console.WriteLine("RemoteOS.Core VSD contract verification passed.");
 
@@ -35,6 +37,46 @@ static void VerifyRelativePathValidation()
     Assert(ApplicationDescriptorValidator.IsSafeRelativePath("lib/net10.0/App.dll"), "Safe relative path was rejected.");
     foreach (var unsafePath in new[] { "../outside.dll", "/absolute.dll", "C:/absolute.dll", "lib\\App.dll", "lib//App.dll", "lib/../App.dll" })
         Assert(!ApplicationDescriptorValidator.IsSafeRelativePath(unsafePath), $"Unsafe path '{unsafePath}' was accepted.");
+}
+
+static void VerifyShortcutValidation()
+{
+    var valid = new RemoteOsShortcut(1, Guid.NewGuid().ToString(), "Terminal", RemoteOsShortcutKind.Application, "remoteos.terminal");
+    Assert(RemoteOsShortcutValidator.Validate(valid).IsValid, "Valid application shortcut was rejected.");
+    Assert(!RemoteOsShortcutValidator.Validate(valid with { Target = "/tmp/host-path" }).IsValid,
+        "Shortcut accepted a local absolute path as an app id.");
+    var script = valid with { Kind = RemoteOsShortcutKind.Script, Target = "Scripts/hello.remoteos-script.json" };
+    Assert(RemoteOsShortcutValidator.Validate(script).IsValid, "Valid VSD-relative script shortcut was rejected.");
+    Assert(!RemoteOsShortcutValidator.Validate(script with { Target = "../outside.json" }).IsValid,
+        "Shortcut accepted a script path escape.");
+    Assert(!RemoteOsShortcutValidator.Validate(valid with { Kind = RemoteOsShortcutKind.Uri, Target = "https://example.invalid" }).IsValid,
+        "Shortcut accepted an arbitrary HTTP URI.");
+    Assert(RemoteOsShortcutValidator.Validate(valid with { Kind = RemoteOsShortcutKind.RemoteFolder, Target = "/workspace/projects" }).IsValid,
+        "Shortcut rejected a valid remote POSIX path.");
+    Assert(!RemoteOsShortcutValidator.Validate(valid with { Kind = RemoteOsShortcutKind.RemoteFile, Target = "https://example.invalid/file" }).IsValid,
+        "Shortcut accepted a network URL as a remote path.");
+}
+
+static void VerifyAutomationValidation()
+{
+    var workflow = new AutomationWorkflow(1, Guid.NewGuid().ToString(), "Open terminal",
+    [
+        new AutomationStep("app.launch", AppId: "remoteos.terminal"),
+        new AutomationStep("uri.activate", Uri: "remoteos://settings/apps"),
+        new AutomationStep("remote-folder.open", Target: "/workspace/projects"),
+        new AutomationStep("window.focus", WindowId: 17),
+        new AutomationStep("delay", Milliseconds: 20),
+        new AutomationStep("shell.notify", Title: "RemoteOS", Message: "Ready"),
+    ]);
+    Assert(AutomationWorkflowValidator.Validate(workflow).IsValid, "Valid declarative workflow was rejected.");
+    Assert(!AutomationWorkflowValidator.Validate(workflow with { Steps = [new AutomationStep("process.start", Target: "cmd.exe")] }).IsValid,
+        "Workflow accepted process execution.");
+    Assert(!AutomationWorkflowValidator.Validate(workflow with { Steps = [new AutomationStep("uri.activate", Uri: "https://example.invalid")] }).IsValid,
+        "Workflow accepted arbitrary network URI activation.");
+    Assert(!AutomationWorkflowValidator.Validate(workflow with { Steps = [new AutomationStep("window.close", WindowId: 0)] }).IsValid,
+        "Workflow accepted an invalid managed window id.");
+    Assert(!AutomationWorkflowValidator.Validate(workflow with { Steps = [new AutomationStep("remote-file.open", Target: "https://example.invalid/a")] }).IsValid,
+        "Workflow accepted an arbitrary remote network target.");
 }
 
 static async Task VerifyStorageBoundaryAsync()

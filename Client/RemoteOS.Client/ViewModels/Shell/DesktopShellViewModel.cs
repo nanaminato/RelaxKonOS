@@ -8,6 +8,7 @@ using Client.Localization;
 using Client.Services;
 using Client.Services.Auth;
 using Client.Services.DesktopRestore;
+using Client.Services.VirtualSystemDrive;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RemoteOS.AppSDK;
@@ -41,6 +42,8 @@ public partial class DesktopShellViewModel : ObservableObject
     private readonly ITextFileSniffer _textSniffer;
     private readonly PreferencesSync _preferencesSync;
     private readonly DesktopWelcomePreferenceStore _desktopWelcomePreferences;
+    private readonly ShortcutStore _shortcuts;
+    private readonly ShortcutActivationRouter _shortcutRouter;
     private int _desktopFileLoadGeneration;
 
     /// <summary>打开桌面显示配置窗口的回调。由 View 层设置。</summary>
@@ -64,7 +67,9 @@ public partial class DesktopShellViewModel : ObservableObject
         IAppActivationDiagnostics activationDiagnostics,
         ITextFileSniffer textSniffer,
         PreferencesSync preferencesSync,
-        DesktopWelcomePreferenceStore desktopWelcomePreferences)
+        DesktopWelcomePreferenceStore desktopWelcomePreferences,
+        ShortcutStore shortcuts,
+        ShortcutActivationRouter shortcutRouter)
     {
         _windowManager = windowManager;
         _applications = applications;
@@ -81,6 +86,8 @@ public partial class DesktopShellViewModel : ObservableObject
         _textSniffer = textSniffer;
         _preferencesSync = preferencesSync;
         _desktopWelcomePreferences = desktopWelcomePreferences;
+        _shortcuts = shortcuts;
+        _shortcutRouter = shortcutRouter;
 
         _windowManager.WindowOpened += (_, _) => RefreshTaskbarGroups();
         _windowManager.WindowClosed += (_, _) => RefreshTaskbarGroups();
@@ -136,6 +143,7 @@ public partial class DesktopShellViewModel : ObservableObject
     public ObservableCollection<TaskbarGroupViewModel> TaskbarGroups { get; } = new();
 
     public ObservableCollection<AppEntryViewModel> DesktopIcons { get; } = new();
+    public ObservableCollection<ShortcutEntryViewModel> DesktopShortcuts { get; } = new();
     /// <summary>Entries from the authenticated user's remote Desktop special folder.</summary>
     public ObservableCollection<DesktopFileEntryViewModel> DesktopFiles { get; } = new();
     /// <summary>Application launchers and remote desktop files in the shared icon grid.</summary>
@@ -187,6 +195,7 @@ public partial class DesktopShellViewModel : ObservableObject
         }
 
         RefreshDesktopItems();
+        _ = RefreshDesktopShortcutsAsync();
         RefreshTaskbarGroups();
         _ = LoadDesktopFilesAsync();
     }
@@ -724,7 +733,20 @@ public partial class DesktopShellViewModel : ObservableObject
     {
         DesktopItems.Clear();
         foreach (var app in DesktopIcons) DesktopItems.Add(app);
+        foreach (var shortcut in DesktopShortcuts) DesktopItems.Add(shortcut);
         foreach (var file in DesktopFiles) DesktopItems.Add(file);
+    }
+
+    private async Task RefreshDesktopShortcutsAsync()
+    {
+        var shortcuts = await _shortcuts.ListAsync();
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            DesktopShortcuts.Clear();
+            foreach (var shortcut in shortcuts)
+                DesktopShortcuts.Add(new ShortcutEntryViewModel(shortcut, _shortcutRouter));
+            RefreshDesktopItems();
+        });
     }
 
     private static string CombineRemotePath(string directory, string name)

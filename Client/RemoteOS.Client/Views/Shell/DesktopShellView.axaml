@@ -234,6 +234,24 @@
                             </StackPanel>
                         </Button>
                     </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:ShortcutEntryViewModel}" x:DataType="vm:ShortcutEntryViewModel">
+                        <Button Classes="desktop-icon" Width="120" Height="104" Margin="2"
+                                Classes.desktop-selected="{Binding IsDesktopSelected}"
+                                Command="{Binding ActivateCommand}" ToolTip.Tip="{Binding DisplayName}">
+                            <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                <Border Width="48" Height="48" CornerRadius="8" Background="{DynamicResource SurfaceBrush}"
+                                        HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding IconGlyph}" FontSize="26"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <Border Background="{DynamicResource OverlayScrimBrush}" CornerRadius="4" Padding="4,1">
+                                    <TextBlock Text="{Binding DisplayName}" FontSize="12" Foreground="White"
+                                               HorizontalAlignment="Center" TextAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" MaxLines="1" MaxWidth="108" />
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
                 </ItemsControl.DataTemplates>
             </ItemsControl>
 

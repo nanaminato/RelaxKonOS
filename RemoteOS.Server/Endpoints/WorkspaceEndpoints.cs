@@ -293,13 +293,16 @@ public static class WorkspaceEndpoints
 
         if (!TryNormalizeThemePreferences(request.ThemePreferences, out var themePreferences))
             return false;
+        var shellId = request.ShellId?.Trim() ?? "remoteos";
+        if (shellId is not "remoteos" and not "windows-like" and not "macos-like" and not "ubuntu-like")
+            return false;
 
         preferences = new WorkspacePreferencesDto(
             wallpaperKey, request.Theme, timeFormat!, dateFormat!,
             string.IsNullOrEmpty(language) ? WorkspacePreferencesDto.Default.Language : language,
             string.IsNullOrEmpty(region) ? WorkspacePreferencesDto.Default.Region : region,
             deduped.Values.ToList(), notepadEncoding, codeEditorEncoding,
-            normalizedDesktopDisplay, themePreferences);
+            normalizedDesktopDisplay, themePreferences, shellId);
         return true;
     }
 

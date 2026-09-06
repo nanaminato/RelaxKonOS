@@ -26,6 +26,9 @@ public sealed partial class ShellSettings : ObservableObject
     [ObservableProperty] private string _region = WorkspacePreferencesDto.Default.Region;
     [ObservableProperty] private string _notepadDefaultEncoding = TextEncodingPreferences.Default;
     [ObservableProperty] private string _codeEditorDefaultEncoding = TextEncodingPreferences.Default;
+    // Device-local VSD materializes this selection; the workspace preference schema is extended
+    // separately before cross-device synchronization is enabled.
+    [ObservableProperty] private string _selectedShellId = "remoteos";
 
     // ── 桌面显示配置 ──
     [ObservableProperty] private bool _showBuiltInApps = DesktopDisplaySettingsDto.Default.ShowBuiltInApps;
@@ -92,8 +95,10 @@ public sealed partial class ShellSettings : ObservableObject
 
     /// <summary>桌面显示配置变更事件，供 DesktopShellViewModel 订阅以刷新图标。</summary>
     public event EventHandler? DesktopDisplayChanged;
+    public event EventHandler<string>? ShellSelectionChanged;
 
     private void NotifyDesktopDisplayChanged() => DesktopDisplayChanged?.Invoke(this, EventArgs.Empty);
+    partial void OnSelectedShellIdChanged(string value) => ShellSelectionChanged?.Invoke(this, value);
 
     /// <summary>将服务端偏好应用到本地活状态（登录加载 / 设置编辑后回写）。</summary>
     public void Apply(WorkspacePreferencesDto prefs)
@@ -116,6 +121,8 @@ public sealed partial class ShellSettings : ObservableObject
         ShowServerDesktopFiles = dd.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = dd.ShowServerDesktopShortcuts;
         HasCompletedFirstTimeSetup = dd.HasCompletedFirstTimeSetup;
+        SelectedShellId = prefs.ShellId is "remoteos" or "windows-like" or "macos-like" or "ubuntu-like"
+            ? prefs.ShellId : "remoteos";
 
         if (TryIndexForKey(prefs.WallpaperKey, out var index))
         {
@@ -139,7 +146,7 @@ public sealed partial class ShellSettings : ObservableObject
                 ShowServerDesktopFiles = ShowServerDesktopFiles,
                 ShowServerDesktopShortcuts = ShowServerDesktopShortcuts,
                 HasCompletedFirstTimeSetup = HasCompletedFirstTimeSetup,
-            }, ThemePreferences);
+            }, ThemePreferences, SelectedShellId);
 
     /// <summary>快捷方式文件扩展名判定（Windows .lnk / Linux .desktop）。</summary>
     public static bool IsShortcutFile(string fileName)

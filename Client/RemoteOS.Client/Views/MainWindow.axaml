@@ -72,7 +72,7 @@
              sized from DesktopShell's bounds, so without this inset their own
              caption buttons sit beneath the host title bar and cannot be clicked. -->
         <Grid x:Name="Root" Margin="0,34,0,0" PointerMoved="Root_OnPointerMoved">
-            <shell:DesktopShellView />
+            <ContentControl x:Name="ShellHost" />
         </Grid>
 
         <!-- The title bar and mstsc connection bar deliberately share the same top layer. -->

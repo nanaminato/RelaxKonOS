@@ -2,8 +2,9 @@ namespace RemoteOS.Core.VirtualSystemDrive;
 
 /// <summary>Non-executable, declarative VSD automation document.</summary>
 public sealed record AutomationWorkflow(int SchemaVersion, string Id, string Name, IReadOnlyList<AutomationStep> Steps);
+public enum AutomationInvocationSource { UserShortcut, UserScriptLibrary, Unknown }
 public sealed record AutomationStep(string Action, string? AppId = null, string? Uri = null,
-    int? Milliseconds = null, string? Title = null, string? Message = null);
+    int? Milliseconds = null, string? Title = null, string? Message = null, string? Target = null, int? WindowId = null);
 
 public static class AutomationWorkflowValidator
 {
@@ -31,6 +32,14 @@ public static class AutomationWorkflowValidator
         "shell.notify" => !string.IsNullOrWhiteSpace(step.Title) && !string.IsNullOrWhiteSpace(step.Message)
             && step.Title.Length <= 160 && step.Message.Length <= 1000,
         "delay" => step.Milliseconds is > 0 and <= 30_000,
+        "remote-file.open" or "remote-folder.open" => IsRemotePath(step.Target),
+        "window.focus" or "window.close" => step.WindowId is > 0,
         _ => false,
     };
+
+    // RemoteOS remote paths commonly begin with '/', so do not confuse them with host-local
+    // file URIs. Only an explicit URI scheme/network form is disallowed here; Explorer applies
+    // its existing remote-path authorization when the action is executed.
+    private static bool IsRemotePath(string? path) => !string.IsNullOrWhiteSpace(path) && !path.Contains('\0')
+        && !path.Contains("://", StringComparison.Ordinal) && !path.StartsWith("file:", StringComparison.OrdinalIgnoreCase);
 }

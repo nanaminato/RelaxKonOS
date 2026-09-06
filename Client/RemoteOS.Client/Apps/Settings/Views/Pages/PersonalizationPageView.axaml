@@ -10,6 +10,21 @@
 
         <Border Classes="card">
             <StackPanel Spacing="10">
+                <TextBlock Text="Shell" Classes="title" />
+                <TextBlock Text="Changes the RemoteOS presentation immediately; running applications and windows stay open."
+                           Opacity="0.7" TextWrapping="Wrap" />
+                <ComboBox ItemsSource="{Binding ShellChoices}"
+                          SelectedValue="{Binding SelectedShellId, Mode=TwoWay}"
+                          SelectedValueBinding="{Binding Id}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ShellChoice"><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.wallpaper}" Classes="title" />
                 <TextBlock Text="{loc:Loc settings.wallpaper.description}" Opacity="0.7" />
                 <Button Content="{loc:Loc settings.wallpaper.choose_image}"

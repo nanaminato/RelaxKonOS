@@ -1,16 +1,21 @@
 <Project>
   <PropertyGroup>
+    <!-- 统一在根目录关闭遥测，子项目里就不需要再写了 -->
     <AvaloniaBuildTelemetryOptOut>true</AvaloniaBuildTelemetryOptOut>
-
-    <!-- 集中定义 .NET 10 核心版本 -->
-    <!-- 避免某些不支持多平台的子库在协商时拿到空值 -->
-    <DefaultTargetFramework>net10.0</DefaultTargetFramework>
   </PropertyGroup>
 
-  <!-- 如果有需要，可以针对所有项目进行隐式框架后备 -->
+  <!-- 核心修复：强行拦截并修正项目间引用的 TargetFramework 协商逻辑 -->
   <ItemDefinitionGroup>
     <ProjectReference>
-      <SetTargetFramework>TargetFramework=$(DefaultTargetFramework)</SetTargetFramework>
+      <!-- 如果 MSBuild 没能正确推导并传递 TargetFramework，则强制将当前项目的 net10.0 作为协商值传递过去，绝不允许空值出现 -->
+      <SetTargetFramework Condition="'%(ProjectReference.SetTargetFramework)' == '' and '$(TargetFramework)' != ''">TargetFramework=$(TargetFramework)</SetTargetFramework>
     </ProjectReference>
   </ItemDefinitionGroup>
+
+  <!-- 兼容修复：防止 Avalonia 12 编译器在 .NET 10 下因内部评估顺序导致 TargetFramework 被意外清空 -->
+  <Target Name="EnsureTargetFrameworkNotNull" BeforeTargets="_GetTargetFrameworksOutput">
+    <PropertyGroup>
+      <TargetFramework Condition="'$(TargetFramework)' == ''">net10.0</TargetFramework>
+    </PropertyGroup>
+  </Target>
 </Project>

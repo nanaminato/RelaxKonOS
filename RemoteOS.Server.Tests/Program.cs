@@ -44,6 +44,9 @@ using Server.Firewall;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using RemoteOS.Core.Applications;
+using SQLitePCL;
+
+Batteries_V2.Init();
 
 var root = Path.Combine(Path.GetTempPath(), $"remoteos-server-tests-{Guid.NewGuid():N}");
 Directory.CreateDirectory(root);

@@ -45,6 +45,8 @@ public static class Bootstrapper
         services.AddSingleton<DesktopWelcomePreferenceStore>();
         services.AddSingleton<ThemeService>();
         services.AddSingleton<ShellSettings>();
+        services.AddSingleton<ShellSession>();
+        services.AddSingleton<ShellPreferenceStore>();
         services.AddSingleton<LocalizationService>();
         services.AddSingleton<LoginLocalizationService>();
         services.AddSingleton<ISystemLanguage>(sp => sp.GetRequiredService<LocalizationService>());
@@ -237,7 +239,9 @@ public static class Bootstrapper
                 sp.GetRequiredService<IAppActivationDiagnostics>(),
                 sp.GetRequiredService<ITextFileSniffer>(),
                 sp.GetRequiredService<PreferencesSync>(),
-                sp.GetRequiredService<DesktopWelcomePreferenceStore>());
+                sp.GetRequiredService<DesktopWelcomePreferenceStore>(),
+                sp.GetRequiredService<ShortcutStore>(),
+                sp.GetRequiredService<ShortcutActivationRouter>());
         });
 
         services.AddSingleton<DesktopRestoreOrchestrator>();

@@ -8,6 +8,7 @@ using Client.Services.WindowLayout;
 using Client.Services;
 using Client.Services.Developer;
 using Client.Services.Diagnostics;
+using Client.ViewModels.Shell;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Client.Views;
@@ -32,6 +33,14 @@ public partial class MainWindow : Window
         _hideBarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _hideBarTimer.Tick += (_, _) => HideConnectionBar();
         SizeChanged += (_, _) => ApplyConnectionBarOffset();
+        DataContextChanged += (_, _) => AttachShell();
+        Opened += (_, _) => AttachShell();
+    }
+
+    private void AttachShell()
+    {
+        if (DataContext is DesktopShellViewModel shell)
+            App.Services.GetRequiredService<ShellSession>().Attach(ShellHost, shell);
     }
 
     private void ConnectionInfo_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

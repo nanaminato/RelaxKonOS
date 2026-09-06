@@ -41,7 +41,7 @@ public sealed class ShortcutActivationRouter
 
     private async Task<ShortcutActivationResult> ActivateScriptAsync(string target, CancellationToken cancellationToken)
     {
-        var result = await _automation.RunAsync(target, cancellationToken);
+        var result = await _automation.RunAsync(target, AutomationInvocationSource.UserShortcut, cancellationToken);
         return new ShortcutActivationResult(result.Succeeded, result.ProblemCode);
     }
 }

@@ -41,6 +41,20 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     public override string DisplayName => "Personalization";
 
     public IReadOnlyList<Client.Services.WallpaperOption> Wallpapers => Settings.Wallpapers;
+    public IReadOnlyList<ShellChoice> ShellChoices => ShellSession.Definitions
+        .Select(definition => new ShellChoice(definition.Id, definition.DisplayName)).ToArray();
+
+    /// <summary>Device-local presentation choice; changing it immediately swaps only the shell view.</summary>
+    public string SelectedShellId
+    {
+        get => Settings.SelectedShellId;
+        set
+        {
+            if (Settings.SelectedShellId == value) return;
+            Settings.SelectedShellId = value;
+            Save();
+        }
+    }
 
     /// <summary>由 SettingsApp 提供本机文件选择器；VM 不直接依赖 Avalonia TopLevel。</summary>
     public Func<Task>? RequestCustomWallpaperAsync { get; set; }
@@ -243,6 +257,8 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     private static IBrush Brush(string color) => new SolidColorBrush(Color.Parse(color));
 
 }
+
+public sealed record ShellChoice(string Id, string DisplayName);
 
 public sealed record ThemePaletteChoice(string Id, string Name, bool IsCustom);
 public sealed record ThemePalettePreview(IBrush Background, IBrush Surface, IBrush Accent, IBrush Success, IBrush Danger, string AccentValue);

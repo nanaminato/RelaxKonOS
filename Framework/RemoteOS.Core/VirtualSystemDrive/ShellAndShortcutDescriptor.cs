@@ -45,5 +45,5 @@ public static class RemoteOsShortcutValidator
     }
 
     private static bool IsRemotePath(string path) => !path.Contains('\0') && !path.Contains('\\')
-        && !Uri.TryCreate(path, UriKind.Absolute, out _);
+        && !path.Contains("://", StringComparison.Ordinal) && !path.StartsWith("file:", StringComparison.OrdinalIgnoreCase);
 }
