@@ -27,6 +27,7 @@
     "start.back_to_pinned": "‹ Back",
     "start.all_applications": "All apps",
     "loading.title": "Getting your desktop ready",
-    "loading.description": "Loading applications and desktop items…"
+    "loading.description": "Loading applications and desktop items…",
+    "desktop.styles": "Desktop styles"
   }
 }

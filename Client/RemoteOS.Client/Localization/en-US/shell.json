@@ -5,6 +5,8 @@
         "shell.connection.unknown_user": "Unknown user",
         "shell.connection.default_workspace": "Default workspace",
         "shell.window_title": "RemoteOS Remote Desktop",
+        "shell.desktop_loading.title": "Getting your desktop ready",
+        "shell.desktop_loading.description": "Restoring applications, desktop items, and window layout…",
         "shell.connection.close": "Close connection",
         "shell.connection.close_tooltip": "Disconnect and exit",
         "shell.connection.info": "Connection information",

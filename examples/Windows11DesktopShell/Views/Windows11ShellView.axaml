@@ -57,6 +57,27 @@
 
             <views:DesktopShortcutsView Margin="14" HorizontalAlignment="Left" VerticalAlignment="Top" />
 
+            <Border Margin="0,16,20,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsVisible="{Binding HasDesktopStyles}"
+                    Background="#1AFFFFFF" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="8" Padding="8">
+                <StackPanel Width="96" Spacing="4">
+                    <TextBlock Text="{Binding DesktopStylesTitle}" Foreground="#D9FFFFFF" FontSize="11" TextAlignment="Center" />
+                    <ItemsControl ItemsSource="{Binding DesktopStyleEntries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Classes="desktop-shortcut" Height="86"
+                                        Command="{Binding $parent[UserControl].DataContext.OpenDesktopStyleCommand}"
+                                        CommandParameter="{Binding}" ToolTip.Tip="{Binding DisplayName}">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Text="▣" FontSize="32" Height="40" Foreground="White" TextAlignment="Center" />
+                                        <TextBlock Classes="desktop-label" Text="{Binding DisplayName}" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <Canvas x:Name="WindowHost" ClipToBounds="True" />
         </Grid>
 

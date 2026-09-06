@@ -16,6 +16,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private bool _isAllAppsOpen;
     private bool _isQuickSettingsOpen;
     private bool _areDesktopIconsVisible = true;
+    private bool _hasDesktopStyles;
     private bool _isLoading = true;
     private int _loadGeneration;
     private string _clock = string.Empty;
@@ -39,6 +40,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         ShowDesktopCommand = new DelegateCommand(_context.Actions.ShowDesktop);
         OpenApplicationCommand = new DelegateCommand<ShellApplicationEntry>(OpenApplicationAsync);
         OpenDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(OpenDesktopEntryAsync);
+        OpenDesktopStyleCommand = new DelegateCommand<ShellDesktopStyleEntry>(OpenDesktopStyleAsync);
         _context.State.Changed += OnDesktopStateChanged;
         ReloadDesktopState();
         UpdateClock();
@@ -46,6 +48,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<ShellApplicationEntry> Applications { get; } = new();
     public ObservableCollection<ShellDesktopEntry> DesktopEntries { get; } = new();
+    public ObservableCollection<ShellDesktopStyleEntry> DesktopStyleEntries { get; } = new();
     public ICommand ToggleStartCommand { get; }
     public ICommand ToggleAllAppsCommand { get; }
     public ICommand ToggleQuickSettingsCommand { get; }
@@ -57,6 +60,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public ICommand ShowDesktopCommand { get; }
     public ICommand OpenApplicationCommand { get; }
     public ICommand OpenDesktopEntryCommand { get; }
+    public ICommand OpenDesktopStyleCommand { get; }
     public bool IsStartOpen { get => _isStartOpen; private set => SetProperty(ref _isStartOpen, value); }
     public bool IsAllAppsOpen
     {
@@ -71,6 +75,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     }
     public bool IsQuickSettingsOpen { get => _isQuickSettingsOpen; private set => SetProperty(ref _isQuickSettingsOpen, value); }
     public bool AreDesktopIconsVisible { get => _areDesktopIconsVisible; private set => SetProperty(ref _areDesktopIconsVisible, value); }
+    public bool HasDesktopStyles { get => _hasDesktopStyles; private set => SetProperty(ref _hasDesktopStyles, value); }
     public bool IsLoading { get => _isLoading; private set => SetProperty(ref _isLoading, value); }
     public string Clock { get => _clock; private set => SetProperty(ref _clock, value); }
     public string Date { get => _date; private set => SetProperty(ref _date, value); }
@@ -101,6 +106,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public string OpenSettings => T("quick.open_settings", "Open settings");
     public string LoadingTitle => T("loading.title", "Getting your desktop ready");
     public string LoadingDescription => T("loading.description", "Loading applications and desktop items…");
+    public string DesktopStylesTitle => T("desktop.styles", "Desktop styles");
     public string ThisPc => T("desktop.this_pc", "This PC");
     public string Documents => T("desktop.documents", "Documents");
     public string ProjectFile => T("desktop.project_file", "Project notes.txt");
@@ -158,14 +164,18 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         var state = _context.State.Desktop;
         Applications.Clear();
         DesktopEntries.Clear();
+        DesktopStyleEntries.Clear();
         if (state is null)
         {
             AreDesktopIconsVisible = false;
+            HasDesktopStyles = false;
             return;
         }
         foreach (var application in state.Applications) Applications.Add(application);
         foreach (var entry in state.DesktopEntries) DesktopEntries.Add(entry);
+        foreach (var desktopStyle in state.DesktopStyles ?? []) DesktopStyleEntries.Add(desktopStyle);
         AreDesktopIconsVisible = state.AreDesktopIconsVisible;
+        HasDesktopStyles = DesktopStyleEntries.Count > 0;
     }
     private async Task OpenApplicationAsync(ShellApplicationEntry? application)
     {
@@ -173,11 +183,22 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         await _context.Actions.LaunchAsync(application.Id);
         CloseFlyouts();
     }
-    private async Task OpenDesktopEntryAsync(ShellDesktopEntry? entry)
+    /// <summary>Matches the host desktop: a primary click selects an item, and double-click opens it.</summary>
+    public void SelectDesktopEntry(ShellDesktopEntry? entry)
+    {
+        if (entry is not null) _context.Actions.SelectDesktopEntry(entry.Id);
+    }
+
+    public async Task OpenDesktopEntryAsync(ShellDesktopEntry? entry)
     {
         if (entry is null) return;
         await _context.Actions.OpenDesktopEntryAsync(entry.Id);
         _context.Actions.ClearDesktopSelection();
+    }
+    private async Task OpenDesktopStyleAsync(ShellDesktopStyleEntry? desktopStyle)
+    {
+        if (desktopStyle is null) return;
+        await _context.Actions.ActivateDesktopStyleAsync(desktopStyle.Id);
     }
     private void ShowLoadingTransition()
     {

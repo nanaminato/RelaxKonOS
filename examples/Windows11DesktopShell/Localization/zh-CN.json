@@ -27,6 +27,7 @@
     "start.back_to_pinned": "‹ 返回",
     "start.all_applications": "所有应用",
     "loading.title": "正在准备桌面",
-    "loading.description": "正在载入应用和桌面项目…"
+    "loading.description": "正在载入应用和桌面项目…",
+    "desktop.styles": "桌面样式"
   }
 }

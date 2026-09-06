@@ -119,7 +119,7 @@ public partial class DesktopShellViewModel : ObservableObject
     public async Task TryTriggerFirstTimeSetupAsync()
     {
         if (_session.State != AuthSessionState.Authenticated) return;
-        await _preferencesSync.EnsureCurrentWorkspacePreferencesAsync();
+        await EnsureWorkspacePreferencesAsync();
         if (_session.State != AuthSessionState.Authenticated) return;
         if (_settings.HasCompletedFirstTimeSetup) return;
         if (_desktopWelcomePreferences.HasCompleted(_session.ServerUrl, _session.CurrentUser?.Username)) return;
@@ -131,6 +131,9 @@ public partial class DesktopShellViewModel : ObservableObject
         _ = SavePreferencesFireAndForgetAsync();
         Dispatcher.UIThread.Post(PopulateDesktop);
     }
+
+    /// <summary>Loads the workspace-owned shell preference before a desktop shell is selected.</summary>
+    public Task EnsureWorkspacePreferencesAsync() => _preferencesSync.EnsureCurrentWorkspacePreferencesAsync();
 
     public WindowManager WindowManager => _windowManager;
     public ShellSettings Settings => _settings;

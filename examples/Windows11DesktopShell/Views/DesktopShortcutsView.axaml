@@ -41,8 +41,8 @@
         <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="shell:ShellDesktopEntry">
                 <Button Classes="desktop-shortcut"
-                        Command="{Binding #DesktopShortcutsRoot.DataContext.OpenDesktopEntryCommand}"
-                        CommandParameter="{Binding}"
+                        PointerPressed="DesktopShortcut_OnPointerPressed"
+                        DoubleTapped="DesktopShortcut_OnDoubleTapped"
                         ToolTip.Tip="{Binding DisplayName}">
                     <StackPanel Spacing="4">
                         <TextBlock Classes="desktop-icon" Text="{Binding IconGlyph}" />

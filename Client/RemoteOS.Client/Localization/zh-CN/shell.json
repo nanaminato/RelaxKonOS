@@ -5,6 +5,8 @@
         "shell.connection.unknown_user": "未知用户",
         "shell.connection.default_workspace": "默认工作区",
         "shell.window_title": "RemoteOS 远程桌面",
+        "shell.desktop_loading.title": "正在准备桌面",
+        "shell.desktop_loading.description": "正在恢复应用、桌面项目和窗口布局…",
         "shell.connection.close": "关闭连接",
         "shell.connection.close_tooltip": "断开连接并退出",
         "shell.connection.info": "连接信息",

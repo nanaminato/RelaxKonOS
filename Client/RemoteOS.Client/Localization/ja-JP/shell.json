@@ -5,6 +5,8 @@
         "shell.connection.unknown_user": "不明なユーザー",
         "shell.connection.default_workspace": "既定のワークスペース",
         "shell.window_title": "RemoteOS リモートデスクトップ",
+        "shell.desktop_loading.title": "デスクトップを準備しています",
+        "shell.desktop_loading.description": "アプリ、デスクトップ項目、ウィンドウの配置を復元しています…",
         "shell.connection.close": "接続を閉じる",
         "shell.connection.close_tooltip": "接続を切断して終了",
         "shell.connection.info": "接続情報",

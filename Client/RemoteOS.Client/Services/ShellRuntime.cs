@@ -43,8 +43,14 @@ public sealed class ShellRuntime
         _settings.ShellSelectionChanged += (_, id) => _ = SwitchAsync(id, persist: true);
         _catalog.Changed += (_, _) =>
         {
-            if (_active is not null && !_catalog.TryGet(_activeShellId, out _))
-                _ = SwitchAsync(ShellApi.DefaultShellId, persist: true);
+            if (_active is null) return;
+            var requested = ShellApi.NormalizeId(_settings.ShellSelection?.ShellId);
+            if (requested != _activeShellId && _catalog.TryGet(requested, out var requestedShell) && requestedShell.IsAvailable)
+                _ = SwitchAsync(requested, persist: false);
+            else if (!_catalog.TryGet(_activeShellId, out _))
+                // Keep the selected external shell intent intact: it may be rediscovered when a
+                // package install completes, instead of being permanently replaced by default.
+                _ = SwitchAsync(ShellApi.DefaultShellId, persist: false);
         };
     }
 
@@ -56,9 +62,12 @@ public sealed class ShellRuntime
     {
         if (ReferenceEquals(_host, host) && ReferenceEquals(_state.Snapshot, workspace) && _active is not null)
             return;
+        // Shell preference synchronization is asynchronous. Selecting before it completes
+        // briefly activates the default desktop and can overwrite an external-shell choice.
+        await workspace.EnsureWorkspacePreferencesAsync();
         _host = host;
         _desktopState?.Dispose();
-        _desktopState = new DesktopShellStateAdapter(workspace, _state);
+        _desktopState = new DesktopShellStateAdapter(workspace, _state, _catalog);
         _state.Publish(workspace, _desktopState.Current);
         _overlays.Configure(workspace);
         var local = await _preferences.LoadAsync();
@@ -86,7 +95,7 @@ public sealed class ShellRuntime
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(8));
-                var actions = new DesktopShellActions(_state, _windows);
+                var actions = new DesktopShellActions(_state, _windows, shellId => SwitchAsync(shellId, persist: true));
                 var context = new ShellPresentationContext(_state, actions, _overlays, registry, new LocalizationSnapshot());
                 await candidate.InitializeAsync(context, timeout.Token);
                 if (!registry.IsComplete) throw new InvalidOperationException("Shell did not register a complete surface set.");
@@ -103,7 +112,10 @@ public sealed class ShellRuntime
                     registry.Bind(_windows);
                     await candidate.ActivateAsync(timeout.Token);
                     _active = candidate; _activeSurfaces = registry; _activeShellId = candidate.Descriptor.Id;
-                    if (_settings.SelectedShellId != _activeShellId) _settings.SelectedShellId = _activeShellId;
+                    // The caller may be using the built-in desktop as a temporary fallback
+                    // while an external package is rediscovered. Only an explicit persisted
+                    // selection is allowed to replace the user's stored shell intent.
+                    if (persist && _settings.SelectedShellId != _activeShellId) _settings.SelectedShellId = _activeShellId;
                     if (persist) await _preferences.SaveAsync(_activeShellId, candidate.Descriptor.PackageId, candidate.Descriptor.Version);
                     ShellChanged?.Invoke(this, _activeShellId);
                     if (old is not null) await DisposeQuietly(old);
@@ -194,10 +206,16 @@ public sealed class ShellRuntime
     }
 }
 
-internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager windows) : IShellActions
+internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager windows,
+    Func<string, Task<bool>> activateDesktopStyle) : IShellActions
 {
     private DesktopShellViewModel Vm => state.Snapshot as DesktopShellViewModel ?? throw new InvalidOperationException("Desktop state unavailable.");
     public Task LaunchAsync(AppId appId, CancellationToken cancellationToken = default) { Vm.LaunchCommand.Execute(appId); return Task.CompletedTask; }
+    public async Task ActivateDesktopStyleAsync(string shellId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await activateDesktopStyle(shellId);
+    }
     public Task OpenDesktopEntryAsync(string entryId, CancellationToken cancellationToken = default)
     {
         switch (Find(entryId))
@@ -238,15 +256,18 @@ internal sealed class DesktopShellStateAdapter : IDisposable
 {
     private readonly DesktopShellViewModel _workspace;
     private readonly ShellStateStore _state;
+    private readonly IShellCatalog _catalog;
     private bool _disposed;
 
-    public DesktopShellStateAdapter(DesktopShellViewModel workspace, ShellStateStore state)
+    public DesktopShellStateAdapter(DesktopShellViewModel workspace, ShellStateStore state, IShellCatalog catalog)
     {
         _workspace = workspace;
         _state = state;
+        _catalog = catalog;
         _workspace.StartApps.CollectionChanged += OnCollectionChanged;
         _workspace.DesktopItems.CollectionChanged += OnCollectionChanged;
         _workspace.PropertyChanged += OnWorkspacePropertyChanged;
+        _catalog.Changed += OnCatalogChanged;
         Current = CreateSnapshot();
     }
 
@@ -259,9 +280,11 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         _workspace.StartApps.CollectionChanged -= OnCollectionChanged;
         _workspace.DesktopItems.CollectionChanged -= OnCollectionChanged;
         _workspace.PropertyChanged -= OnWorkspacePropertyChanged;
+        _catalog.Changed -= OnCatalogChanged;
     }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs args) => Publish();
+    private void OnCatalogChanged(object? sender, EventArgs args) => Publish();
 
     private void OnWorkspacePropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
@@ -282,7 +305,11 @@ internal sealed class DesktopShellStateAdapter : IDisposable
             .Select(app => new ShellApplicationEntry(app.Id, app.DisplayName, app.IconGlyph, app.Description))
             .ToArray();
         var entries = _workspace.DesktopItems.Select(ToEntry).Where(entry => entry is not null).Cast<ShellDesktopEntry>().ToArray();
-        return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible);
+        var desktopStyles = _catalog.Available
+            .Where(shell => shell.Source == ShellSourceKind.ExternalPackage && shell.IsAvailable)
+            .Select(shell => new ShellDesktopStyleEntry(shell.Id, shell.DisplayName, shell.Version))
+            .ToArray();
+        return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible, desktopStyles);
     }
 
     private static ShellDesktopEntry? ToEntry(object item) => item switch

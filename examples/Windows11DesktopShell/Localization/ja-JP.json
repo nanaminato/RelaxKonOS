@@ -27,6 +27,7 @@
     "start.back_to_pinned": "‹ 戻る",
     "start.all_applications": "すべてのアプリ",
     "loading.title": "デスクトップを準備しています",
-    "loading.description": "アプリとデスクトップ項目を読み込んでいます…"
+    "loading.description": "アプリとデスクトップ項目を読み込んでいます…",
+    "desktop.styles": "デスクトップ スタイル"
   }
 }
