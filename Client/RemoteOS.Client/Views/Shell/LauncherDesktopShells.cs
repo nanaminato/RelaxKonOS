@@ -502,8 +502,6 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             PlaceholderText = "Search applications",
             FontSize = 14,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Background = new SolidColorBrush(Color.Parse("#FF34373B")),
-            Foreground = Brushes.White,
         };
         search.Bind(TextBox.TextProperty, new Binding(nameof(vm.StartSearchQuery)) { Mode = BindingMode.TwoWay });
         layout.Children.Add(search);
