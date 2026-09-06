@@ -43,6 +43,7 @@ public static class FileEndpoints
             try { return Results.Ok(fs.GetDirectory(path)); }
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "路径不存在", ex.Message); }
             catch (UnauthorizedAccessException ex) { return Problem(403, "access-denied", "访问被拒", ex.Message); }
+            catch (IOException ex) { return Problem(503, "device-unavailable", "设备不可用", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
         .RequireAuthorization(FileAuthorizationPolicies.List)

@@ -458,8 +458,9 @@ public sealed partial class ExplorerViewModel : ObservableObject
     /// </summary>
     private static IReadOnlyList<DriveDto> GetNavigationDrives(IReadOnlyList<DriveDto> drives)
     {
-        var posixRoot = drives.FirstOrDefault(d => string.Equals(d.Path, "/", StringComparison.Ordinal));
-        return posixRoot is null ? drives : [posixRoot];
+        var readyDrives = drives.Where(d => d.IsReady).ToArray();
+        var posixRoot = readyDrives.FirstOrDefault(d => string.Equals(d.Path, "/", StringComparison.Ordinal));
+        return posixRoot is null ? readyDrives : [posixRoot];
     }
 
     /// <summary>ancestor 是否为 descendant 的祖先或相等（用于下钻时判断子节点是否包含目标路径）。</summary>
