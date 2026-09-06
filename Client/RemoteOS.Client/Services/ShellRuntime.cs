@@ -233,16 +233,44 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
         return Task.CompletedTask;
     }
     public Task RefreshDesktopAsync(CancellationToken cancellationToken = default) { Vm.RefreshDesktopCommand.Execute(null); return Task.CompletedTask; }
+    public Task PasteDesktopAsync(CancellationToken cancellationToken = default) { Vm.PasteDesktopCommand.Execute(null); return Task.CompletedTask; }
     public void ClearDesktopSelection() => Vm.ClearDesktopSelectionCommand.Execute(null);
     public void SelectDesktopEntry(string entryId) { var entry = Find(entryId); if (entry is not null) Vm.SelectDesktopItemCommand.Execute(entry); }
+    public void SetDesktopIconsVisible(bool visible) => Vm.AreDesktopIconsVisible = visible;
     public void ShowDesktop() => Vm.ShowDesktopCommand.Execute(null);
     public void ToggleWindowGroup(AppId appId) { var group = Vm.TaskbarGroups.FirstOrDefault(x => x.AppId == appId); if (group is not null) Vm.ToggleTaskbarGroupCommand.Execute(group); }
     public void ActivateWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Focus(w); }
     public void MinimizeWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Minimize(w); }
     public void CloseWindow(WindowId windowId) { var w = windows.Windows.FirstOrDefault(x => x.Info.Id == windowId); if (w is not null) windows.Close(w); }
     public void OpenSettings(SettingsRoute route) => (route == SettingsRoute.Personalization ? Vm.OpenPersonalizationCommand : Vm.OpenSettingsCommand).Execute(null);
+    public void OpenDesktopFolder() => Vm.OpenDesktopFolderCommand.Execute(null);
+    public void OpenFileExplorer() => Vm.OpenFileExplorerCommand.Execute(null);
+    public void OpenTerminal() => Vm.OpenTerminalCommand.Execute(null);
     public Task ExecuteDesktopEntryActionAsync(string entryId, DesktopEntryAction action, CancellationToken cancellationToken = default)
-    { Entry(entryId, action switch { DesktopEntryAction.Open => Vm.OpenDesktopEntryCommand, DesktopEntryAction.OpenWith => Vm.OpenDesktopEntryWithCommand, DesktopEntryAction.Copy => Vm.CopyDesktopEntryCommand, DesktopEntryAction.Cut => Vm.CutDesktopEntryCommand, DesktopEntryAction.Delete => Vm.DeleteDesktopEntryCommand, DesktopEntryAction.ShowInExplorer => Vm.ShowDesktopEntryInExplorerCommand, DesktopEntryAction.Properties => Vm.ShowDesktopEntryPropertiesCommand, _ => Vm.PasteDesktopCommand }); return Task.CompletedTask; }
+    {
+        var entry = Find(entryId);
+        if (entry is null) return Task.CompletedTask;
+        if (action == DesktopEntryAction.Open) return OpenDesktopEntryAsync(entryId, cancellationToken);
+        if (action == DesktopEntryAction.Properties && entry is AppEntryViewModel app)
+        {
+            Vm.ShowDesktopAppDetailsCommand.Execute(app);
+            return Task.CompletedTask;
+        }
+        if (entry is not DesktopFileEntryViewModel file) return Task.CompletedTask;
+        var command = action switch
+        {
+            DesktopEntryAction.OpenWith => Vm.OpenDesktopEntryWithCommand,
+            DesktopEntryAction.Copy => Vm.CopyDesktopEntryCommand,
+            DesktopEntryAction.Cut => Vm.CutDesktopEntryCommand,
+            DesktopEntryAction.Paste => Vm.PasteDesktopCommand,
+            DesktopEntryAction.Delete => Vm.DeleteDesktopEntryCommand,
+            DesktopEntryAction.ShowInExplorer => Vm.ShowDesktopEntryInExplorerCommand,
+            DesktopEntryAction.Properties => Vm.ShowDesktopEntryPropertiesCommand,
+            _ => null,
+        };
+        command?.Execute(file);
+        return Task.CompletedTask;
+    }
     private object? Find(string entryId) => Vm.DesktopItems.FirstOrDefault(x => string.Equals(EntryId(x), entryId, StringComparison.Ordinal));
     private void Entry(string id, System.Windows.Input.ICommand command) { var entry = Find(id); if (entry is not null) command.Execute(entry); }
     private static string EntryId(object item) => item switch { DesktopFileEntryViewModel f => "file:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(f.Entry.Path)))[..16], AppEntryViewModel a => "app:" + a.Id.Value, ShortcutEntryViewModel s => "shortcut:" + s.DisplayName, _ => string.Empty };
@@ -257,6 +285,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     private readonly DesktopShellViewModel _workspace;
     private readonly ShellStateStore _state;
     private readonly IShellCatalog _catalog;
+    private readonly HashSet<INotifyPropertyChanged> _desktopItems = [];
     private bool _disposed;
 
     public DesktopShellStateAdapter(DesktopShellViewModel workspace, ShellStateStore state, IShellCatalog catalog)
@@ -269,6 +298,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         _workspace.PropertyChanged += OnWorkspacePropertyChanged;
         _workspace.Settings.PropertyChanged += OnSettingsPropertyChanged;
         _catalog.Changed += OnCatalogChanged;
+        RefreshDesktopItemSubscriptions();
         Current = CreateSnapshot();
     }
 
@@ -283,9 +313,15 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         _workspace.PropertyChanged -= OnWorkspacePropertyChanged;
         _workspace.Settings.PropertyChanged -= OnSettingsPropertyChanged;
         _catalog.Changed -= OnCatalogChanged;
+        foreach (var item in _desktopItems) item.PropertyChanged -= OnDesktopItemPropertyChanged;
+        _desktopItems.Clear();
     }
 
-    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs args) => Publish();
+    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs args)
+    {
+        RefreshDesktopItemSubscriptions();
+        Publish();
+    }
     private void OnCatalogChanged(object? sender, EventArgs args) => Publish();
 
     private void OnWorkspacePropertyChanged(object? sender, PropertyChangedEventArgs args)
@@ -298,6 +334,29 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     {
         if (args.PropertyName is null or nameof(ShellSettings.CurrentWallpaper))
             Publish();
+    }
+
+    private void OnDesktopItemPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(AppEntryViewModel.IsDesktopSelected)
+            or nameof(DesktopFileEntryViewModel.IsDesktopSelected)
+            or nameof(ShortcutEntryViewModel.IsDesktopSelected))
+            Publish();
+    }
+
+    private void RefreshDesktopItemSubscriptions()
+    {
+        var current = _workspace.DesktopItems.OfType<INotifyPropertyChanged>().ToHashSet();
+        foreach (var item in _desktopItems.Except(current).ToArray())
+        {
+            item.PropertyChanged -= OnDesktopItemPropertyChanged;
+            _desktopItems.Remove(item);
+        }
+        foreach (var item in current.Except(_desktopItems))
+        {
+            item.PropertyChanged += OnDesktopItemPropertyChanged;
+            _desktopItems.Add(item);
+        }
     }
 
     private void Publish()
@@ -324,11 +383,11 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     private static ShellDesktopEntry? ToEntry(object item) => item switch
     {
         AppEntryViewModel app => new ShellDesktopEntry("app:" + app.Id.Value, app.DisplayName,
-            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id),
+            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected),
         DesktopFileEntryViewModel file => new ShellDesktopEntry("file:" + EntryHash(file.Entry.Path), file.DisplayName,
-            file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph),
+            file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph, null, file.IsDesktopSelected),
         ShortcutEntryViewModel shortcut => new ShellDesktopEntry("shortcut:" + shortcut.DisplayName, shortcut.DisplayName,
-            ShellDesktopEntryKind.Shortcut, shortcut.IconGlyph),
+            ShellDesktopEntryKind.Shortcut, shortcut.IconGlyph, null, shortcut.IsDesktopSelected),
         _ => null,
     };
 

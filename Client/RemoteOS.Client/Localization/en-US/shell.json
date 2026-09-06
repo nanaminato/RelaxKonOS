@@ -42,6 +42,8 @@
         "shell.desktop.context.open_folder": "Open desktop folder",
         "shell.desktop.context.open_explorer": "Open File Explorer",
         "shell.desktop.context.open_terminal": "Open Terminal",
+        "shell.desktop.context.show_in_explorer": "Show in File Explorer",
+        "shell.desktop.context.app_details": "App details",
         "shell.desktop.macos.view_options": "Show View Options...",
         "shell.desktop.macos.change_background": "Change Desktop Background...",
         "shell.desktop.ubuntu.display_settings": "Display Settings",

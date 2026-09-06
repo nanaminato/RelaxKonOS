@@ -28,6 +28,21 @@
     "start.all_applications": "すべてのアプリ",
     "loading.title": "デスクトップを準備しています",
     "loading.description": "アプリとデスクトップ項目を読み込んでいます…",
-    "desktop.styles": "デスクトップ スタイル"
+    "desktop.styles": "デスクトップ スタイル",
+    "common.view": "表示",
+    "common.open": "開く",
+    "common.copy": "コピー",
+    "common.cut": "切り取り",
+    "common.paste": "貼り付け",
+    "common.delete": "削除",
+    "desktop.context.show_icons": "デスクトップ アイコンを表示",
+    "desktop.context.configure_display": "デスクトップの表示を構成...",
+    "desktop.context.open_folder": "デスクトップ フォルダーを開く",
+    "desktop.context.open_explorer": "ファイル エクスプローラーを開く",
+    "desktop.context.open_terminal": "ターミナルを開く",
+    "desktop.context.open_with": "プログラムから開く...",
+    "desktop.context.show_in_explorer": "ファイル エクスプローラーに表示",
+    "desktop.context.properties": "プロパティ",
+    "desktop.context.app_details": "アプリの詳細"
   }
 }

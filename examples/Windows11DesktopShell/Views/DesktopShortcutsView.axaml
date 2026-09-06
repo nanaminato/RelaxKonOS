@@ -16,6 +16,11 @@
             <Setter Property="Background" Value="#2EFFFFFF" />
             <Setter Property="BorderBrush" Value="#55FFFFFF" />
         </Style>
+        <Style Selector="Button.desktop-shortcut.selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="#5279B8F3" />
+            <Setter Property="BorderBrush" Value="#AAFFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
         <Style Selector="TextBlock.desktop-label">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Foreground" Value="White" />
@@ -40,7 +45,7 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="shell:ShellDesktopEntry">
-                <Button Classes="desktop-shortcut"
+                <Button Classes="desktop-shortcut" Classes.selected="{Binding IsSelected}"
                         PointerPressed="DesktopShortcut_OnPointerPressed"
                         DoubleTapped="DesktopShortcut_OnDoubleTapped"
                         ToolTip.Tip="{Binding DisplayName}">

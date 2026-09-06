@@ -283,6 +283,8 @@ public partial class DesktopShellViewModel : ObservableObject
     {
         foreach (var app in DesktopIcons)
             app.IsDesktopSelected = ReferenceEquals(app, item);
+        foreach (var shortcut in DesktopShortcuts)
+            shortcut.IsDesktopSelected = ReferenceEquals(shortcut, item);
         foreach (var file in DesktopFiles)
             file.IsDesktopSelected = ReferenceEquals(file, item);
     }
@@ -475,7 +477,7 @@ public partial class DesktopShellViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private Task PasteDesktopAsync() => PasteDesktopEntryAsync(null);
+    private Task PasteDesktopAsync(DesktopFileEntryViewModel? item = null) => PasteDesktopEntryAsync(item);
 
     private async Task PasteDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {

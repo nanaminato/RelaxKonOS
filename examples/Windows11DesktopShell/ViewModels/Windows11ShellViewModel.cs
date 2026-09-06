@@ -43,6 +43,18 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         OpenApplicationCommand = new DelegateCommand<ShellApplicationEntry>(OpenApplicationAsync);
         OpenDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(OpenDesktopEntryAsync);
         OpenDesktopStyleCommand = new DelegateCommand<ShellDesktopStyleEntry>(OpenDesktopStyleAsync);
+        ToggleDesktopIconsCommand = new DelegateCommand(() => _context.Actions.SetDesktopIconsVisible(!AreDesktopIconsVisible));
+        PasteDesktopCommand = new DelegateCommand(() => _context.Actions.PasteDesktopAsync());
+        OpenDesktopFolderCommand = new DelegateCommand(_context.Actions.OpenDesktopFolder);
+        OpenFileExplorerCommand = new DelegateCommand(_context.Actions.OpenFileExplorer);
+        OpenTerminalCommand = new DelegateCommand(_context.Actions.OpenTerminal);
+        OpenDesktopEntryWithCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.OpenWith));
+        CopyDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.Copy));
+        CutDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.Cut));
+        PasteDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.Paste));
+        DeleteDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.Delete));
+        ShowDesktopEntryInExplorerCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.ShowInExplorer));
+        ShowDesktopEntryPropertiesCommand = new DelegateCommand<ShellDesktopEntry>(entry => ExecuteDesktopEntryActionAsync(entry, DesktopEntryAction.Properties));
         _context.State.Changed += OnDesktopStateChanged;
         ReloadDesktopState();
         UpdateClock();
@@ -63,6 +75,18 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public ICommand OpenApplicationCommand { get; }
     public ICommand OpenDesktopEntryCommand { get; }
     public ICommand OpenDesktopStyleCommand { get; }
+    public ICommand ToggleDesktopIconsCommand { get; }
+    public ICommand PasteDesktopCommand { get; }
+    public ICommand OpenDesktopFolderCommand { get; }
+    public ICommand OpenFileExplorerCommand { get; }
+    public ICommand OpenTerminalCommand { get; }
+    public ICommand OpenDesktopEntryWithCommand { get; }
+    public ICommand CopyDesktopEntryCommand { get; }
+    public ICommand CutDesktopEntryCommand { get; }
+    public ICommand PasteDesktopEntryCommand { get; }
+    public ICommand DeleteDesktopEntryCommand { get; }
+    public ICommand ShowDesktopEntryInExplorerCommand { get; }
+    public ICommand ShowDesktopEntryPropertiesCommand { get; }
     public bool IsStartOpen { get => _isStartOpen; private set => SetProperty(ref _isStartOpen, value); }
     public bool IsAllAppsOpen
     {
@@ -111,6 +135,21 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public string LoadingTitle => T("loading.title", "Getting your desktop ready");
     public string LoadingDescription => T("loading.description", "Loading applications and desktop items…");
     public string DesktopStylesTitle => T("desktop.styles", "Desktop styles");
+    public string View => T("common.view", "View");
+    public string ShowDesktopIcons => T("desktop.context.show_icons", "Show desktop icons");
+    public string Paste => T("common.paste", "Paste");
+    public string ConfigureDesktopDisplay => T("desktop.context.configure_display", "Configure desktop display...");
+    public string OpenDesktopFolder => T("desktop.context.open_folder", "Open desktop folder");
+    public string OpenFileExplorer => T("desktop.context.open_explorer", "Open File Explorer");
+    public string OpenTerminal => T("desktop.context.open_terminal", "Open Terminal");
+    public string Open => T("common.open", "Open");
+    public string OpenWith => T("desktop.context.open_with", "Open with...");
+    public string Copy => T("common.copy", "Copy");
+    public string Cut => T("common.cut", "Cut");
+    public string Delete => T("common.delete", "Delete");
+    public string ShowInExplorer => T("desktop.context.show_in_explorer", "Show in File Explorer");
+    public string Properties => T("desktop.context.properties", "Properties");
+    public string AppDetails => T("desktop.context.app_details", "App details");
     public string ThisPc => T("desktop.this_pc", "This PC");
     public string Documents => T("desktop.documents", "Documents");
     public string ProjectFile => T("desktop.project_file", "Project notes.txt");
@@ -201,6 +240,10 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         await _context.Actions.OpenDesktopEntryAsync(entry.Id);
         _context.Actions.ClearDesktopSelection();
     }
+    public void ClearDesktopSelection() => _context.Actions.ClearDesktopSelection();
+
+    private Task ExecuteDesktopEntryActionAsync(ShellDesktopEntry? entry, DesktopEntryAction action) =>
+        entry is null ? Task.CompletedTask : _context.Actions.ExecuteDesktopEntryActionAsync(entry.Id, action);
     private async Task OpenDesktopStyleAsync(ShellDesktopStyleEntry? desktopStyle)
     {
         if (desktopStyle is null) return;

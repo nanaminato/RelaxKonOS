@@ -9,7 +9,7 @@ namespace RemoteOS.Shell;
 /// <summary>Versioned, deliberately small contract shared by the client and desktop-shell packages.</summary>
 public static class ShellApi
 {
-    public const int Version = 4;
+    public const int Version = 5;
     public const string DefaultShellId = "remoteos.windows-like";
     public static readonly IReadOnlyDictionary<string, string> LegacyIds = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -120,7 +120,8 @@ public sealed record ShellDesktopEntry(
     string DisplayName,
     ShellDesktopEntryKind Kind,
     string? IconGlyph,
-    AppId? ApplicationId = null);
+    AppId? ApplicationId = null,
+    bool IsSelected = false);
 
 /// <summary>An installed external desktop style that can be selected from another shell.</summary>
 public sealed record ShellDesktopStyleEntry(string Id, string DisplayName, string Version);
@@ -134,14 +135,19 @@ public interface IShellActions
     Task ActivateDesktopStyleAsync(string shellId, CancellationToken cancellationToken = default);
     Task OpenDesktopEntryAsync(string entryId, CancellationToken cancellationToken = default);
     Task RefreshDesktopAsync(CancellationToken cancellationToken = default);
+    Task PasteDesktopAsync(CancellationToken cancellationToken = default);
     void ClearDesktopSelection();
     void SelectDesktopEntry(string entryId);
+    void SetDesktopIconsVisible(bool visible);
     void ShowDesktop();
     void ToggleWindowGroup(AppId appId);
     void ActivateWindow(WindowId windowId);
     void MinimizeWindow(WindowId windowId);
     void CloseWindow(WindowId windowId);
     void OpenSettings(SettingsRoute route);
+    void OpenDesktopFolder();
+    void OpenFileExplorer();
+    void OpenTerminal();
     Task ExecuteDesktopEntryActionAsync(string entryId, DesktopEntryAction action, CancellationToken cancellationToken = default);
 }
 

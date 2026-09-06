@@ -42,6 +42,8 @@
         "shell.desktop.context.open_folder": "デスクトップ フォルダーを開く",
         "shell.desktop.context.open_explorer": "ファイル エクスプローラーを開く",
         "shell.desktop.context.open_terminal": "ターミナルを開く",
+        "shell.desktop.context.show_in_explorer": "ファイル エクスプローラーに表示",
+        "shell.desktop.context.app_details": "アプリの詳細",
         "shell.desktop.macos.view_options": "表示オプションを表示...",
         "shell.desktop.macos.change_background": "デスクトップの背景を変更...",
         "shell.desktop.ubuntu.display_settings": "ディスプレイ設定",

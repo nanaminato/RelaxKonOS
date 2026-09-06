@@ -33,13 +33,24 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="*,52">
+    <Grid RowDefinitions="*,52" PointerPressed="Desktop_OnPointerPressed">
         <Grid Grid.Row="0" ClipToBounds="True" Background="{Binding Wallpaper}">
             <Grid.ContextMenu>
                 <ContextMenu>
+                    <MenuItem Header="{Binding View}">
+                        <MenuItem Header="{Binding ShowDesktopIcons}" ToggleType="CheckBox"
+                                  IsChecked="{Binding AreDesktopIconsVisible}"
+                                  Command="{Binding ToggleDesktopIconsCommand}" />
+                    </MenuItem>
                     <MenuItem Header="{Binding RefreshDesktop}" Command="{Binding RefreshDesktopCommand}" />
+                    <MenuItem Header="{Binding Paste}" Command="{Binding PasteDesktopCommand}" />
                     <Separator />
-                    <MenuItem Header="{Binding DisplaySettings}" Command="{Binding OpenDisplaySettingsCommand}" />
+                    <MenuItem Header="{Binding ConfigureDesktopDisplay}" Command="{Binding OpenDisplaySettingsCommand}" />
+                    <Separator />
+                    <MenuItem Header="{Binding OpenDesktopFolder}" Command="{Binding OpenDesktopFolderCommand}" />
+                    <MenuItem Header="{Binding OpenFileExplorer}" Command="{Binding OpenFileExplorerCommand}" />
+                    <MenuItem Header="{Binding OpenTerminal}" Command="{Binding OpenTerminalCommand}" />
+                    <Separator />
                     <MenuItem Header="{Binding Personalization}" Command="{Binding OpenPersonalizationCommand}" />
                 </ContextMenu>
             </Grid.ContextMenu>

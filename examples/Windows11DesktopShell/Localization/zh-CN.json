@@ -28,6 +28,21 @@
     "start.all_applications": "所有应用",
     "loading.title": "正在准备桌面",
     "loading.description": "正在载入应用和桌面项目…",
-    "desktop.styles": "桌面样式"
+    "desktop.styles": "桌面样式",
+    "common.view": "查看",
+    "common.open": "打开",
+    "common.copy": "复制",
+    "common.cut": "剪切",
+    "common.paste": "粘贴",
+    "common.delete": "删除",
+    "desktop.context.show_icons": "显示桌面图标",
+    "desktop.context.configure_display": "配置桌面显示...",
+    "desktop.context.open_folder": "打开桌面文件夹",
+    "desktop.context.open_explorer": "打开文件资源管理器",
+    "desktop.context.open_terminal": "打开终端",
+    "desktop.context.open_with": "打开方式...",
+    "desktop.context.show_in_explorer": "在文件资源管理器中显示",
+    "desktop.context.properties": "属性",
+    "desktop.context.app_details": "应用详情"
   }
 }

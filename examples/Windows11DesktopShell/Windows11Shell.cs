@@ -12,6 +12,7 @@ public sealed class Windows11Shell(ShellDescriptor descriptor) : IDesktopShell
     private readonly Windows11ShellView _view = new();
     private Windows11ShellViewModel? _viewModel;
     private IShellSurfaceRegistry? _surfaces;
+    private Window? _window;
 
     public ShellDescriptor Descriptor { get; } = descriptor;
     public Control View => _view;
@@ -32,6 +33,7 @@ public sealed class Windows11Shell(ShellDescriptor descriptor) : IDesktopShell
     public Task ActivateAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        TrackTopLevelActivation();
         _viewModel?.Activate();
         ReportWorkArea();
         return Task.CompletedTask;
@@ -47,6 +49,8 @@ public sealed class Windows11Shell(ShellDescriptor descriptor) : IDesktopShell
     {
         _view.WindowHostSurface.SizeChanged -= OnSurfaceSizeChanged;
         _view.FullScreenHostSurface.SizeChanged -= OnSurfaceSizeChanged;
+        if (_window is not null) _window.Deactivated -= OnTopLevelDeactivated;
+        _window = null;
         _viewModel?.Dispose();
         _viewModel = null;
         _view.DataContext = null;
@@ -62,4 +66,15 @@ public sealed class Windows11Shell(ShellDescriptor descriptor) : IDesktopShell
         var bounds = _view.WindowHostSurface.Bounds;
         _surfaces.UpdateWorkArea(new RemoteOS.Core.Primitives.Rect(0, 0, bounds.Width, bounds.Height));
     }
+
+    private void TrackTopLevelActivation()
+    {
+        var next = TopLevel.GetTopLevel(_view) as Window;
+        if (ReferenceEquals(next, _window)) return;
+        if (_window is not null) _window.Deactivated -= OnTopLevelDeactivated;
+        _window = next;
+        if (_window is not null) _window.Deactivated += OnTopLevelDeactivated;
+    }
+
+    private void OnTopLevelDeactivated(object? sender, EventArgs e) => _viewModel?.ClearDesktopSelection();
 }
