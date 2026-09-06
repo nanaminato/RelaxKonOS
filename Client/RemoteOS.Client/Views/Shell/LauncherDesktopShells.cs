@@ -10,6 +10,8 @@ using Avalonia.Media;
 using Client.Localization;
 using Client.Services;
 using Client.ViewModels.Shell;
+using Microsoft.Extensions.DependencyInjection;
+using RemoteOS.AppSDK;
 using RemoteOS.Shell;
 using VectorPath = Avalonia.Controls.Shapes.Path;
 
@@ -29,6 +31,8 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     private ShellPresentationContext? _context;
     private DesktopShellViewModel? _vm;
     private System.ComponentModel.PropertyChangedEventHandler? _wallpaperChanged;
+    private LocalizationService? _localization;
+    private EventHandler<SystemLanguageChangedEventArgs>? _languageChanged;
 
     protected LauncherDesktopShellBase(ShellDescriptor descriptor) => Descriptor = descriptor;
     public ShellDescriptor Descriptor { get; }
@@ -47,6 +51,13 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                 _root.Background = _vm?.Settings.CurrentWallpaper;
         };
         _vm.Settings.PropertyChanged += _wallpaperChanged;
+        _localization = App.Services.GetRequiredService<LocalizationService>();
+        _languageChanged = (_, _) =>
+        {
+            if (_vm is not null)
+                _backdrop.ContextMenu = CreateDesktopContextMenu(_vm);
+        };
+        _localization.LanguageChanged += _languageChanged;
         BuildLayout(_vm);
         // Full-screen windows and system dialogs must cover every launcher chrome, rather than
         // merely the regular work area that deliberately avoids a taskbar or Dock.
@@ -73,7 +84,11 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     {
         if (_vm is not null && _wallpaperChanged is not null)
             _vm.Settings.PropertyChanged -= _wallpaperChanged;
+        if (_localization is not null && _languageChanged is not null)
+            _localization.LanguageChanged -= _languageChanged;
         _wallpaperChanged = null;
+        _languageChanged = null;
+        _localization = null;
         _context = null;
         _vm = null;
         return ValueTask.CompletedTask;
@@ -148,7 +163,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         // Context menus are detached from the visual tree, so this must use an explicit source
         // rather than relying on inherited DataContext. Otherwise the menu can hide icons but
         // cannot reliably turn them back on.
-        showIcons.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(vm.AreDesktopIconsVisible))
+        showIcons.Bind(MenuItem.IsCheckedProperty, new Binding(nameof(vm.AreDesktopIconsVisible))
         {
             Source = vm,
             Mode = BindingMode.TwoWay,
