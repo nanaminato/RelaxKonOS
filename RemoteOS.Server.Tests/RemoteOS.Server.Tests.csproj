@@ -18,6 +18,18 @@
     <Reference Include="Microsoft.Data.Sqlite" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>../RemoteOS.Server/bin/Debug/net10.0/Microsoft.Data.Sqlite.dll</HintPath>
     </Reference>
+    <Reference Include="SQLitePCLRaw.batteries_v2" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>../RemoteOS.Server/bin/Debug/net10.0/SQLitePCLRaw.batteries_v2.dll</HintPath>
+    </Reference>
+    <Reference Include="SQLitePCLRaw.core" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>../RemoteOS.Server/bin/Debug/net10.0/SQLitePCLRaw.core.dll</HintPath>
+    </Reference>
+    <Reference Include="SQLitePCLRaw.provider.e_sqlite3" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>../RemoteOS.Server/bin/Debug/net10.0/SQLitePCLRaw.provider.e_sqlite3.dll</HintPath>
+    </Reference>
+    <None Include="../RemoteOS.Server/bin/Debug/net10.0/runtimes/linux-x64/native/libe_sqlite3.so"
+          Link="libe_sqlite3.so" CopyToOutputDirectory="PreserveNewest"
+          Condition="'$(UsePrebuiltServerAssembly)' == 'true' and '$(OS)' == 'Unix'" />
     <!-- Prebuilt mode must also expose the Server's compile-time API surface, not merely its
          implementation assembly. This keeps the local smoke suite runnable on SDKs where
          project-reference workload resolution is unavailable. -->

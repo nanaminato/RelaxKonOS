@@ -35,6 +35,27 @@
         "shell.desktop_display.show_server_files": "显示服务器桌面中的文件（文件夹、文档、图片等）",
         "shell.desktop_display.show_server_shortcuts": "显示服务器桌面快捷方式（.lnk / .desktop）",
         "shell.desktop_display.shortcuts_tooltip": "快捷方式通常指向宿主机本地路径，可能无法在 RemoteOS 中直接打开。",
-        "shell.desktop_display.get_started": "开始使用"
+        "shell.desktop_display.get_started": "开始使用",
+        "shell.desktop.context.show_icons": "显示桌面图标",
+        "shell.desktop.context.open_folder": "打开桌面文件夹",
+        "shell.desktop.context.open_explorer": "打开文件资源管理器",
+        "shell.desktop.context.open_terminal": "打开终端",
+        "shell.desktop.macos.view_options": "显示查看选项...",
+        "shell.desktop.macos.change_background": "更改桌面背景...",
+        "shell.desktop.ubuntu.display_settings": "显示设置",
+        "shell.desktop.ubuntu.change_background": "更改背景...",
+        "shell.launcher.applications": "应用程序",
+        "shell.launcher.files": "文件",
+        "shell.launcher.launchpad": "启动台",
+        "shell.launcher.open_files": "打开文件",
+        "shell.launcher.open_launchpad": "打开启动台",
+        "shell.launcher.power": "电源",
+        "shell.launcher.search_applications": "搜索应用程序",
+        "shell.launcher.show_applications": "显示应用程序",
+        "shell.launcher.show_desktop": "显示桌面",
+        "shell.launcher.start": "开始",
+        "shell.launcher.system_settings": "系统设置",
+        "shell.launcher.task_manager": "任务管理器",
+        "shell.launcher.terminal": "终端"
     }
 }

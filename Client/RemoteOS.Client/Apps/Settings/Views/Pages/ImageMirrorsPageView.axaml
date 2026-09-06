@@ -38,9 +38,9 @@
                 <TextBlock Text="{loc:Loc settings.image_mirrors.add_title}" Classes="title" />
                 <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="8">
                     <TextBlock Text="{loc:Loc settings.image_mirrors.name}" VerticalAlignment="Center" />
-                    <TextBox Grid.Column="1" Text="{Binding NewName, Mode=TwoWay}" Watermark="{loc:Loc settings.image_mirrors.name_placeholder}" />
+                    <TextBox Grid.Column="1" Text="{Binding NewName, Mode=TwoWay}" PlaceholderText="{loc:Loc settings.image_mirrors.name_placeholder}" />
                     <TextBlock Grid.Row="1" Text="{loc:Loc settings.image_mirrors.endpoint}" VerticalAlignment="Center" />
-                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding NewEndpoint, Mode=TwoWay}" Watermark="docker.m.daocloud.io" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding NewEndpoint, Mode=TwoWay}" PlaceholderText="docker.m.daocloud.io" />
                 </Grid>
                 <Button Classes="primary" Content="{loc:Loc settings.add}" Command="{Binding AddCommand}" IsEnabled="{Binding !IsLoading}" HorizontalAlignment="Left" Padding="16,7" />
             </StackPanel>

@@ -95,7 +95,7 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
     }
 
     private bool CanKill => SelectedProcess is not null;
-    partial void OnSelectedProcessChanged(ProcessInfoDto? _) => KillProcessCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedProcessChanged(ProcessInfoDto? value) => KillProcessCommand.NotifyCanExecuteChanged();
     [RelayCommand] private void SwitchToPerformance() => ActiveTab = TaskManagerTab.Performance;
     [RelayCommand] private void SwitchToProcesses() => ActiveTab = TaskManagerTab.Processes;
     [RelayCommand] private void ClearFilter() => ProcessFilter = string.Empty;
@@ -116,7 +116,7 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
         else if (!value && _processTimer.IsEnabled) _processTimer.Stop();
     }
 
-    partial void OnProcessFilterChanged(string _) => RebuildFilteredProcesses(SelectedProcess);
+    partial void OnProcessFilterChanged(string value) => RebuildFilteredProcesses(SelectedProcess);
 
     private async Task RefreshPerformanceAsync()
     {

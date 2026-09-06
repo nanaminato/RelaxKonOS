@@ -12,6 +12,9 @@
 # 构建包。默认输出为 <project>/artifacts/<entry-assembly>.roapp。
 dotnet run --project Tools/RemoteOS.DevCli -- pack .\MyApp --configuration Release
 
+# 不重新编译，直接将已编译的 Debug 输出打包。
+dotnet run --project Tools/RemoteOS.DevCli -- pack .\MyApp --configuration Debug --no-build
+
 # 一条命令完成构建、打包、安装和启动。
 $env:REMOTEOS_DEV_TOKEN = "<设置中的令牌>"
 dotnet run --project Tools/RemoteOS.DevCli -- pack .\MyApp --configuration Debug --install
@@ -20,7 +23,9 @@ dotnet run --project Tools/RemoteOS.DevCli -- pack .\MyApp --configuration Debug
 dotnet run --project Tools/RemoteOS.DevCli -- watch .\MyApp --configuration Debug
 ```
 
-相同的命令适用于 PowerShell、bash、zsh 和 cmd；只有环境变量语法不同。`watch <project>` 从源码重新构建，创建新包，然后重新安装并重新启动。`watch <package.roapp>` 仍可用于外部生成的归档。更新应用会关闭其窗口，卸载其可收集的程序集加载上下文，注册新版本，然后再次启动。
+在 Linux、macOS 或其他 POSIX shell 中，使用 `export REMOTEOS_DEV_TOKEN="<设置中的令牌>"` 设置令牌，并将项目路径写为 `./MyApp`。PowerShell、bash、zsh 和 cmd 都可以运行相同的 CLI 命令；只有环境变量和路径语法不同。
+
+`watch <project>` 从源码重新构建，创建新包，然后重新安装并重新启动。`watch <package.roapp>` 仍可用于外部生成的归档。更新应用会关闭其窗口，卸载其可收集的程序集加载上下文，注册新版本，然后再次启动。
 
 ## 打包第三方应用
 
@@ -40,7 +45,7 @@ remoteos-dev pack ./MyApp/MyApp.csproj --configuration Release
 
 当 RemoteOS 将工具发布到包源时，用该源替换 `--add-source`。`remoteos-dev` 命令接受与 `dotnet run --project … --` 相同的参数。
 
-CLI 运行 `dotnet publish` 并将 ZIP 格式的 `.roapp` 写入 `artifacts/<entry-assembly>.roapp`。它将完整的发布输出复制到 `entryAssembly` 声明的 `lib/<TFM>/` 目录下；私有托管依赖、`.deps.json` 和原生运行时资产因此被一致地打包，无需应用特定脚本。
+CLI 默认运行 `dotnet publish`，重新编译指定的 `Debug` 或 `Release` 配置，并将 ZIP 格式的 `.roapp` 写入 `artifacts/<entry-assembly>.roapp`。如已用相同配置（及适用时相同 RID）编译项目，可传入 `--no-build`：CLI 会改用 `dotnet publish --no-build`，不重新编译而直接打包现有输出。它将完整的发布输出复制到 `entryAssembly` 声明的 `lib/<TFM>/` 目录下；私有托管依赖、`.deps.json` 和原生运行时资产因此被一致地打包，无需应用特定脚本。若 manifest 声明 `iconPath`，CLI 还会复制这个安全的相对图标路径，确保安装器能找到图标文件。
 
 对于需要原生平台资产的项目，请显式添加目标运行时：
 
@@ -113,6 +118,8 @@ dotnet run --project Tools/RemoteOS.DevCli -- pack .\examples\ServerMonitor --co
 ## 安全模型
 
 开发包使用保留的外部应用 ID，不能使用 `remoteos.*` 内置命名空间。它们安装在当前用户的本地应用数据下方，不会覆盖商店包。开发者模式不会自动授予清单权限；请在 **应用权限** 下授予或撤销每个请求的能力。
+
+应用安装状态会逐步迁移到 Virtual System Drive（VSD）；详见 [VSD 契约](../architecture/RemoteOS.VirtualSystemDrive.Contracts.md)。VSD 只是 RemoteOS 本地数据目录，不是宿主真实磁盘、文件系统沙箱、包签名或第三方代码信任边界。包中的 `manifest.json` 或派生的 descriptor 只能声明请求，不能把包提升为 BuiltIn、授予权限、请求 Host Elevation 或获得任意代码/命令执行。
 
 桥接没有局域网监听器。不要暴露其配对令牌。重新生成令牌会使现有的开发者工具会话失效。
 

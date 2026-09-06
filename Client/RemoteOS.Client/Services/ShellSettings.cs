@@ -4,6 +4,7 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RemoteOS.Protocol.Desktop;
 using RemoteOS.Protocol.Workspace;
+using RemoteOS.Shell;
 using Client.Services.Theming;
 
 namespace Client.Services;
@@ -26,6 +27,10 @@ public sealed partial class ShellSettings : ObservableObject
     [ObservableProperty] private string _region = WorkspacePreferencesDto.Default.Region;
     [ObservableProperty] private string _notepadDefaultEncoding = TextEncodingPreferences.Default;
     [ObservableProperty] private string _codeEditorDefaultEncoding = TextEncodingPreferences.Default;
+    // Device-local VSD materializes this selection; the workspace preference schema is extended
+    // separately before cross-device synchronization is enabled.
+    [ObservableProperty] private string _selectedShellId = ShellApi.DefaultShellId;
+    [ObservableProperty] private ShellSelectionDto _shellSelection = new(ShellApi.DefaultShellId);
 
     // ── 桌面显示配置 ──
     [ObservableProperty] private bool _showBuiltInApps = DesktopDisplaySettingsDto.Default.ShowBuiltInApps;
@@ -92,8 +97,28 @@ public sealed partial class ShellSettings : ObservableObject
 
     /// <summary>桌面显示配置变更事件，供 DesktopShellViewModel 订阅以刷新图标。</summary>
     public event EventHandler? DesktopDisplayChanged;
+    public event EventHandler<string>? ShellSelectionChanged;
 
     private void NotifyDesktopDisplayChanged() => DesktopDisplayChanged?.Invoke(this, EventArgs.Empty);
+    partial void OnSelectedShellIdChanged(string value)
+    {
+        value = ShellApi.NormalizeId(value);
+        if (!string.Equals(_selectedShellId, value, StringComparison.Ordinal))
+        {
+            _selectedShellId = value;
+            OnPropertyChanged(nameof(SelectedShellId));
+        }
+        if (!string.Equals(ShellSelection.ShellId, value, StringComparison.Ordinal))
+            ShellSelection = new ShellSelectionDto(value, ShellSelection.PackageId, ShellSelection.PackageVersion);
+        ShellSelectionChanged?.Invoke(this, value);
+    }
+
+    partial void OnShellSelectionChanged(ShellSelectionDto value)
+    {
+        var normalized = ShellApi.NormalizeId(value?.ShellId);
+        if (!string.Equals(SelectedShellId, normalized, StringComparison.Ordinal))
+            SelectedShellId = normalized;
+    }
 
     /// <summary>将服务端偏好应用到本地活状态（登录加载 / 设置编辑后回写）。</summary>
     public void Apply(WorkspacePreferencesDto prefs)
@@ -116,6 +141,13 @@ public sealed partial class ShellSettings : ObservableObject
         ShowServerDesktopFiles = dd.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = dd.ShowServerDesktopShortcuts;
         HasCompletedFirstTimeSetup = dd.HasCompletedFirstTimeSetup;
+        // Pre-structured preference payloads can materialize Shell as the legacy "remoteos"
+        // value. Prefer their explicit shellId when present so prior Windows/macOS/Ubuntu
+        // selections are not lost; ShellApi normalizes the retired RemoteOS choices to Windows.
+        var shell = prefs.Shell is { ShellId: "remoteos" } && !string.IsNullOrWhiteSpace(prefs.ShellId)
+            && !string.Equals(prefs.ShellId, "remoteos", StringComparison.Ordinal)
+            ? new ShellSelectionDto(prefs.ShellId) : prefs.Shell ?? new ShellSelectionDto(prefs.ShellId ?? ShellApi.DefaultShellId);
+        ShellSelection = new ShellSelectionDto(ShellApi.NormalizeId(shell.ShellId), shell.PackageId, shell.PackageVersion);
 
         if (TryIndexForKey(prefs.WallpaperKey, out var index))
         {
@@ -139,7 +171,7 @@ public sealed partial class ShellSettings : ObservableObject
                 ShowServerDesktopFiles = ShowServerDesktopFiles,
                 ShowServerDesktopShortcuts = ShowServerDesktopShortcuts,
                 HasCompletedFirstTimeSetup = HasCompletedFirstTimeSetup,
-            }, ThemePreferences);
+            }, ThemePreferences, SelectedShellId, ShellSelection);
 
     /// <summary>快捷方式文件扩展名判定（Windows .lnk / Linux .desktop）。</summary>
     public static bool IsShortcutFile(string fileName)

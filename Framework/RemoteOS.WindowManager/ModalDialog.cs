@@ -49,6 +49,7 @@ internal interface IModalSession
     ManagedWindow DialogWindow { get; }
     ModalBlocker Blocker { get; }
     Canvas Host { get; }
+    void Rehost(Canvas host);
     void Cancel();
 }
 
@@ -57,6 +58,7 @@ internal interface IShellModalSession
     ManagedWindow DialogWindow { get; }
     ModalBlocker Blocker { get; }
     Canvas Host { get; }
+    void Rehost(Canvas host);
     bool CoversFullDesktop { get; }
     void Cancel();
 }
@@ -71,7 +73,8 @@ internal sealed class ModalSession<TResult>(
     public ManagedWindow Owner { get; } = owner;
     public ManagedWindow DialogWindow { get; } = dialogWindow;
     public ModalBlocker Blocker { get; } = blocker;
-    public Canvas Host { get; } = host;
+    public Canvas Host { get; private set; } = host;
+    public void Rehost(Canvas host) => Host = host;
     public void Cancel() => dialog.Cancel();
 }
 
@@ -84,7 +87,8 @@ internal sealed class ShellModalSession<TResult>(
 {
     public ManagedWindow DialogWindow { get; } = dialogWindow;
     public ModalBlocker Blocker { get; } = blocker;
-    public Canvas Host { get; } = host;
+    public Canvas Host { get; private set; } = host;
+    public void Rehost(Canvas host) => Host = host;
     public bool CoversFullDesktop { get; } = coversFullDesktop;
     public void Cancel() => dialog.Cancel();
 }

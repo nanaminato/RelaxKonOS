@@ -2,6 +2,8 @@
 
 > 内置设置中心（Windows 11 / GNOME 风格）：5 个分类页（系统 / 个性化 / 时间和语言 / 网络 / 应用），用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序）持久化到 Server 端 Workspace（`/workspaces/{id}/preferences`），多设备登录同一 Workspace 共享。
 >
+> Shell 选择使用 `WorkspacePreferencesDto.Shell` 保存跨设备意图；本机缺少或禁用扩展包时只回退本机默认 Shell，不覆盖该意图。完整的外部包安装/校验模型见 [`RemoteOS.ShellLauncher.Goal.md`](./RemoteOS.ShellLauncher.Goal.md)。
+>
 > - 架构原则见 [`RemoteOS.Architecture.md`](../architecture/RemoteOS.Architecture.md)
 > - 项目当前状态见 [`RemoteOS.md`](../README.md)（§6 内置应用）
 > - 桌面外壳与窗口管理见 [`RemoteOS.Desktop.md`](./RemoteOS.Desktop.md)
@@ -183,7 +185,7 @@ workspaces
 
 ### 5.3 `ShellSettings`（`Client.Services/`）
 
-桌面外壳的**实时 UI 绑定源**（单例，`DesktopShellView` 绑 `Settings.CurrentWallpaper` / `TaskbarBackground` 等）。是服务端 `WorkspacePreferencesDto` 在客户端的活副本：
+桌面外壳的**实时 UI 绑定源**（单例，当前 `IDesktopShell` 绑定 `Settings.CurrentWallpaper` 等）。是服务端 `WorkspacePreferencesDto` 在客户端的活副本：
 
 ```text
 ShellSettings (ObservableObject, 单例)

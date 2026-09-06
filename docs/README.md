@@ -4,6 +4,7 @@
 >
 > - 架构设计原则见 [`RemoteOS.Architecture.md`](./architecture/RemoteOS.Architecture.md)
 > - 应用启动 URI 与窗口实例策略见 [`RemoteOS.ApplicationActivation.md`](./architecture/RemoteOS.ApplicationActivation.md)
+> - 虚拟系统盘、Catalog、Shell 与受限自动化执行基线见 [`RemoteOS.VirtualSystemDrive.Goal.md`](./architecture/RemoteOS.VirtualSystemDrive.Goal.md)，已冻结的 V1 目录/schema/迁移契约见 [`RemoteOS.VirtualSystemDrive.Contracts.md`](./architecture/RemoteOS.VirtualSystemDrive.Contracts.md)
 > - 用户 Workspace 模型见 [`RemoteOS.Workspace.md`](./architecture/RemoteOS.Workspace.md)
 > - 注册表与配置同步架构见 [`RemoteOS.Registry.md`](./architecture/RemoteOS.Registry.md)（设计中）
 > - 登录与身份模型见 [`RemoteOS.Authentication.md`](./platform/RemoteOS.Authentication.md)

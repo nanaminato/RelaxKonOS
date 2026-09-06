@@ -338,6 +338,8 @@ dotnet run --project Tools/RemoteOS.DevCli -- watch ./examples/VideoPlayer --run
 
 `pack` 在应用目录的 `artifacts/` 下生成 `.roapp`；纯托管应用可省略 `--runtime`。完整的第三方应用打包命令请参阅 [Developer Mode](./docs/development/RemoteOS.DeveloperMode.md)。
 
+Windows PowerShell 中设置令牌时，使用 `$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"`；其余 `dotnet` 命令保持不变。
+
 ### 应用开发模型
 
 ```csharp

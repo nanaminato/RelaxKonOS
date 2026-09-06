@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Client.Services.Auth;
 using RemoteOS.Protocol.Common;
 using RemoteOS.Protocol.Workspace;
@@ -58,10 +59,35 @@ public sealed class WorkspaceWallpaperClient(HttpClient http) : IWallpaperClient
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode) return;
-        ProblemDetails? problem = null;
-        try { problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(RemoteOsJsonOptions.Default, ct); }
-        catch { /* non-ProblemDetails response */ }
-        throw new RemoteOsAuthException(problem ?? new ProblemDetails("https://remoteos.app/problems/http-error",
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            try
+            {
+                var problem = JsonSerializer.Deserialize<ProblemDetails>(body, RemoteOsJsonOptions.Default);
+                if (problem is not null && (!string.IsNullOrWhiteSpace(problem.Title) || !string.IsNullOrWhiteSpace(problem.Detail)))
+                    throw new RemoteOsAuthException(problem);
+
+                using var document = JsonDocument.Parse(body);
+                if (document.RootElement.TryGetProperty("message", out var message)
+                    && message.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(message.GetString()))
+                {
+                    throw new RemoteOsAuthException(new ProblemDetails(
+                        "https://remoteos.app/problems/wallpaper-upload-failed",
+                        "Wallpaper upload failed",
+                        (int)response.StatusCode,
+                        message.GetString(),
+                        null));
+                }
+            }
+            catch (JsonException)
+            {
+                // Non-JSON server responses fall through to the standard HTTP error below.
+            }
+        }
+
+        throw new RemoteOsAuthException(new ProblemDetails("https://remoteos.app/problems/http-error",
             $"HTTP {(int)response.StatusCode}", (int)response.StatusCode, response.ReasonPhrase, null));
     }
 

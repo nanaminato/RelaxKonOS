@@ -8,6 +8,7 @@ using Client.Services.WindowLayout;
 using Client.Services;
 using Client.Services.Developer;
 using Client.Services.Diagnostics;
+using Client.ViewModels.Shell;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Client.Views;
@@ -32,6 +33,18 @@ public partial class MainWindow : Window
         _hideBarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _hideBarTimer.Tick += (_, _) => HideConnectionBar();
         SizeChanged += (_, _) => ApplyConnectionBarOffset();
+        DataContextChanged += async (_, _) => await AttachShellAsync();
+        Opened += async (_, _) => await AttachShellAsync();
+    }
+
+    private async Task AttachShellAsync()
+    {
+        if (DataContext is DesktopShellViewModel shell)
+        {
+            shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
+            shell.IsHostFullScreen = _isFullScreen;
+            await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell);
+        }
     }
 
     private void ConnectionInfo_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -63,11 +76,14 @@ public partial class MainWindow : Window
             _windowStateBeforeFullScreen = WindowState;
 
         _isFullScreen = fullScreen;
+        if (DataContext is DesktopShellViewModel shell)
+            shell.IsHostFullScreen = _isFullScreen;
         WindowState = _isFullScreen ? WindowState.FullScreen : _windowStateBeforeFullScreen;
         FullScreenButton.Content = _isFullScreen ? "↙" : "↗";
         ToolTip.SetTip(FullScreenButton, T(_isFullScreen ? "shell.full_screen.exit" : "shell.full_screen.enter_tooltip", _isFullScreen ? "Exit full screen" : "Enter full screen"));
         ConnectionInfo.IsVisible = false;
         WindowTitleBar.IsVisible = !_isFullScreen;
+        Root.Margin = new Thickness(0, _isFullScreen ? 0 : 34, 0, 0);
 
         if (_isFullScreen && !_isPinned)
             ScheduleConnectionBarHide();

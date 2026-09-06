@@ -94,6 +94,14 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             try
             {
                 await using var stream = await file.OpenReadAsync();
+                if (stream.CanSeek
+                    && (stream.Length < WorkspaceWallpaperUploadLimits.MinFileBytes
+                        || stream.Length > WorkspaceWallpaperUploadLimits.MaxFileBytes))
+                {
+                    throw new InvalidOperationException(LocalizedText.Format(
+                        "settings.wallpaper.size_limit", WorkspaceWallpaperUploadLimits.MaxFileMegabytes));
+                }
+                if (stream.CanSeek) stream.Position = 0;
                 await wallpapers.UploadAndApplyAsync(stream, file.Name);
             }
             catch (OperationCanceledException)

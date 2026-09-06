@@ -69,11 +69,11 @@
                     <StackPanel Spacing="6" IsVisible="{Binding IsServerFileCertificateSource}">
                         <TextBlock Text="{loc:Loc webservers.site.dialog.certificate_source_hint}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBox Text="{Binding SiteCertificatePath, Mode=TwoWay}" Watermark="{loc:Loc webservers.site.dialog.certificate_file}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                            <TextBox Text="{Binding SiteCertificatePath, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.site.dialog.certificate_file}" IsEnabled="{Binding SiteHttpsEnabled}" />
                             <Button Grid.Column="1" Content="{loc:Loc webservers.site.dialog.choose_file}" Command="{Binding ChooseSiteCertificateFileCommand}" IsEnabled="{Binding SiteHttpsEnabled}" />
                         </Grid>
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBox Text="{Binding SitePrivateKeyPath, Mode=TwoWay}" Watermark="{loc:Loc webservers.site.dialog.private_key_file}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                            <TextBox Text="{Binding SitePrivateKeyPath, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.site.dialog.private_key_file}" IsEnabled="{Binding SiteHttpsEnabled}" />
                             <Button Grid.Column="1" Content="{loc:Loc webservers.site.dialog.choose_file}" Command="{Binding ChooseSitePrivateKeyFileCommand}" IsEnabled="{Binding SiteHttpsEnabled}" />
                         </Grid>
                     </StackPanel>

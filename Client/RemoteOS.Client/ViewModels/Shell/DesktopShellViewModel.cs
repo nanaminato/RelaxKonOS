@@ -8,6 +8,7 @@ using Client.Localization;
 using Client.Services;
 using Client.Services.Auth;
 using Client.Services.DesktopRestore;
+using Client.Services.VirtualSystemDrive;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RemoteOS.AppSDK;
@@ -41,6 +42,8 @@ public partial class DesktopShellViewModel : ObservableObject
     private readonly ITextFileSniffer _textSniffer;
     private readonly PreferencesSync _preferencesSync;
     private readonly DesktopWelcomePreferenceStore _desktopWelcomePreferences;
+    private readonly ShortcutStore _shortcuts;
+    private readonly ShortcutActivationRouter _shortcutRouter;
     private int _desktopFileLoadGeneration;
 
     /// <summary>打开桌面显示配置窗口的回调。由 View 层设置。</summary>
@@ -48,6 +51,9 @@ public partial class DesktopShellViewModel : ObservableObject
 
     /// <summary>请求首次桌面配置引导弹窗的回调。由 View 层设置。</summary>
     public Func<Task<bool>>? RequestFirstTimeDesktopSetupAsync { get; set; }
+
+    /// <summary>请求切换宿主远程桌面窗口的全屏状态。由 MainWindow 设置。</summary>
+    public Action? RequestToggleHostFullScreen { get; set; }
 
     public DesktopShellViewModel(
         WindowManager windowManager,
@@ -64,7 +70,9 @@ public partial class DesktopShellViewModel : ObservableObject
         IAppActivationDiagnostics activationDiagnostics,
         ITextFileSniffer textSniffer,
         PreferencesSync preferencesSync,
-        DesktopWelcomePreferenceStore desktopWelcomePreferences)
+        DesktopWelcomePreferenceStore desktopWelcomePreferences,
+        ShortcutStore shortcuts,
+        ShortcutActivationRouter shortcutRouter)
     {
         _windowManager = windowManager;
         _applications = applications;
@@ -81,6 +89,8 @@ public partial class DesktopShellViewModel : ObservableObject
         _textSniffer = textSniffer;
         _preferencesSync = preferencesSync;
         _desktopWelcomePreferences = desktopWelcomePreferences;
+        _shortcuts = shortcuts;
+        _shortcutRouter = shortcutRouter;
 
         _windowManager.WindowOpened += (_, _) => RefreshTaskbarGroups();
         _windowManager.WindowClosed += (_, _) => RefreshTaskbarGroups();
@@ -136,11 +146,14 @@ public partial class DesktopShellViewModel : ObservableObject
     public ObservableCollection<TaskbarGroupViewModel> TaskbarGroups { get; } = new();
 
     public ObservableCollection<AppEntryViewModel> DesktopIcons { get; } = new();
+    public ObservableCollection<ShortcutEntryViewModel> DesktopShortcuts { get; } = new();
     /// <summary>Entries from the authenticated user's remote Desktop special folder.</summary>
     public ObservableCollection<DesktopFileEntryViewModel> DesktopFiles { get; } = new();
     /// <summary>Application launchers and remote desktop files in the shared icon grid.</summary>
     public ObservableCollection<object> DesktopItems { get; } = new();
     public ObservableCollection<AppEntryViewModel> StartApps { get; } = new();
+    /// <summary>Application-only results for shells that expose an application overview search.</summary>
+    public ObservableCollection<AppEntryViewModel> StartSearchResults { get; } = new();
 
     // The shell supplies these UI callbacks. Keeping prompts and picker controls out of this
     // view-model lets the actual filesystem operations be shared by desktop context-menu items.
@@ -149,12 +162,21 @@ public partial class DesktopShellViewModel : ObservableObject
     public Func<FilePropertiesDto, Task>? ShowDesktopPropertiesAsync { get; set; }
 
     [ObservableProperty] private bool _isStartOpen;
+    [ObservableProperty] private string _startSearchQuery = string.Empty;
     [ObservableProperty] private bool _areDesktopIconsVisible = true;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTaskbarPreviewOpen))]
     private TaskbarGroupViewModel? _openTaskbarGroup;
     [ObservableProperty] private string _clock = string.Empty;
     [ObservableProperty] private string _dateText = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HostFullScreenMenuText))]
+    private bool _isHostFullScreen;
+
+    /// <summary>macOS-style Window menu label for the host remote-desktop window.</summary>
+    public string HostFullScreenMenuText => T(
+        IsHostFullScreen ? "shell.full_screen.exit" : "shell.full_screen.enter",
+        IsHostFullScreen ? "Exit full screen" : "Full screen");
 
     /// <summary>Populate desktop + start menu from registered applications. Call after DI registration.</summary>
     public void PopulateDesktop()
@@ -167,10 +189,11 @@ public partial class DesktopShellViewModel : ObservableObject
             .Select(i => new AppEntryViewModel(Localize(i), _applications))
             .ToList();
 
-        // ── Start 菜单始终显示全部兼容应用 ──
+        // ── Start 菜单始终显示全部兼容应用，并按名称保持稳定的“全部应用”列表顺序 ──
         StartApps.Clear();
-        foreach (var entry in compatibleEntries)
+        foreach (var entry in compatibleEntries.OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase))
             StartApps.Add(entry);
+        RefreshStartSearchResults();
 
         // ── 桌面图标：根据桌面显示配置过滤 ──
         DesktopIcons.Clear();
@@ -187,6 +210,7 @@ public partial class DesktopShellViewModel : ObservableObject
         }
 
         RefreshDesktopItems();
+        _ = RefreshDesktopShortcutsAsync();
         RefreshTaskbarGroups();
         _ = LoadDesktopFilesAsync();
     }
@@ -214,6 +238,27 @@ public partial class DesktopShellViewModel : ObservableObject
     {
         _applications.Launch(id);
         IsStartOpen = false;
+    }
+
+    partial void OnStartSearchQueryChanged(string value) => RefreshStartSearchResults();
+
+    partial void OnIsStartOpenChanged(bool value)
+    {
+        if (!value && !string.IsNullOrEmpty(StartSearchQuery))
+            StartSearchQuery = string.Empty;
+    }
+
+    private void RefreshStartSearchResults()
+    {
+        var query = StartSearchQuery.Trim();
+        var entries = string.IsNullOrEmpty(query)
+            ? StartApps
+            : StartApps.Where(app => app.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || app.Description?.Contains(query, StringComparison.CurrentCultureIgnoreCase) == true);
+
+        StartSearchResults.Clear();
+        foreach (var entry in entries)
+            StartSearchResults.Add(entry);
     }
 
     [RelayCommand]
@@ -561,6 +606,18 @@ public partial class DesktopShellViewModel : ObservableObject
     [RelayCommand]
     private void OpenTaskManager() => LaunchApplication("remoteos.taskmanager");
 
+    /// <summary>Opens Help Center through its manifest-declared external <c>help://</c> scheme.</summary>
+    [RelayCommand]
+    private void OpenHelpCenter()
+    {
+        var language = Uri.EscapeDataString(_localization.CurrentLanguage);
+        _applications.Activate(new AppActivationRequest(
+            new Uri($"help://guide/docker/install?lang={language}")));
+    }
+
+    [RelayCommand]
+    private void ToggleHostFullScreen() => RequestToggleHostFullScreen?.Invoke();
+
     [RelayCommand]
     private void ShowDesktop()
     {
@@ -724,7 +781,20 @@ public partial class DesktopShellViewModel : ObservableObject
     {
         DesktopItems.Clear();
         foreach (var app in DesktopIcons) DesktopItems.Add(app);
+        foreach (var shortcut in DesktopShortcuts) DesktopItems.Add(shortcut);
         foreach (var file in DesktopFiles) DesktopItems.Add(file);
+    }
+
+    private async Task RefreshDesktopShortcutsAsync()
+    {
+        var shortcuts = await _shortcuts.ListAsync();
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            DesktopShortcuts.Clear();
+            foreach (var shortcut in shortcuts)
+                DesktopShortcuts.Add(new ShortcutEntryViewModel(shortcut, _shortcutRouter));
+            RefreshDesktopItems();
+        });
     }
 
     private static string CombineRemotePath(string directory, string name)

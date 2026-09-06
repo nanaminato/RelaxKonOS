@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Client.Apps.Browser;
 using Client.Services;
@@ -11,6 +12,7 @@ using RemoteOS.AppSDK;
 using RemoteOS.Core.Applications;
 using RemoteOS.Runtime;
 using RemoteOS.Protocol.Browser;
+using RemoteOS.WindowManager;
 
 namespace Client.Apps.Settings.ViewModels;
 
@@ -43,7 +45,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
     public override string Glyph => "📱";
     public override string DisplayNameKey => "settings.page.applications";
     public override string DisplayName => "Applications";
-    public ObservableCollection<ApplicationInfo> RegisteredApps { get; } = new();
+    public ObservableCollection<SettingsAppEntry> RegisteredApps { get; } = new();
 
     /// <summary>Provided by Settings to open the selected application's permission page.</summary>
     public Func<ApplicationInfo, Task>? RequestPermissionEditorAsync { get; set; }
@@ -65,6 +67,8 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
     public bool IsInstalledApps => Subpage == AppsSubpage.InstalledApps;
     public bool IsAppDetails => Subpage == AppsSubpage.AppDetails;
     public bool HasSelectedAppPermissions => SelectedApp?.Permissions.Count > 0;
+    [ObservableProperty] private IImage? _selectedAppIconImage;
+    public bool HasSelectedAppIconImage => SelectedAppIconImage is not null;
     public bool HasActionStatus => !string.IsNullOrWhiteSpace(ActionStatus);
     public bool CanUninstallSelectedApp => !IsUninstalling && SelectedApp is not null
         && _packages.FindInstalled(SelectedApp.Id.Value) is not null;
@@ -100,10 +104,10 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
 
     private void RefreshApplications()
     {
-        var apps = _apps.Registered.Select(Localize).ToArray();
+        var apps = _apps.Registered.Select(Localize).Select(app => new SettingsAppEntry(app)).ToArray();
         Replace(RegisteredApps, apps);
         if (SelectedApp is not null)
-            SelectedApp = apps.FirstOrDefault(app => app.Id == SelectedApp.Id);
+            SelectedApp = apps.FirstOrDefault(app => app.Id == SelectedApp.Id)?.App;
     }
 
     [RelayCommand]
@@ -142,7 +146,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
         var app = RegisteredApps.FirstOrDefault(candidate =>
             candidate.Id.Value.Equals(appId, StringComparison.OrdinalIgnoreCase));
         if (app is null) return;
-        ShowAppDetails(app);
+        ShowAppDetails(app.App);
         await EditSelectedPermissionsAsync();
     }
 
@@ -257,6 +261,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
 
     partial void OnSelectedAppChanged(ApplicationInfo? value)
     {
+        SelectedAppIconImage = AppIconImageLoader.Load(value?.IconPath);
         OnPropertyChanged(nameof(HasSelectedAppPermissions));
         OnPropertyChanged(nameof(CanUninstallSelectedApp));
         OnPropertyChanged(nameof(SelectedAppPermissionSummary));
@@ -276,6 +281,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
     partial void OnIsClearingDataChanged(bool value) => OnPropertyChanged(nameof(CanUninstallSelectedApp));
 
     partial void OnActionStatusChanged(string value) => OnPropertyChanged(nameof(HasActionStatus));
+    partial void OnSelectedAppIconImageChanged(IImage? value) => OnPropertyChanged(nameof(HasSelectedAppIconImage));
     partial void OnBrowserLinkOpenTargetChanged(BrowserLinkOpenTarget value)
     {
         OnPropertyChanged(nameof(OpenBrowserLinksInBuiltInBrowser));
@@ -306,4 +312,23 @@ public enum AppsSubpage
 {
     InstalledApps,
     AppDetails,
+}
+
+/// <summary>Presentation data for an installed app; image loading matches desktop and start-menu entries.</summary>
+public sealed class SettingsAppEntry
+{
+    public SettingsAppEntry(ApplicationInfo app)
+    {
+        App = app;
+        IconImage = AppIconImageLoader.Load(app.IconPath);
+    }
+
+    public ApplicationInfo App { get; }
+    public AppId Id => App.Id;
+    public string DisplayName => App.DisplayName;
+    public string? IconGlyph => App.IconGlyph;
+    public string? Description => App.Description;
+    public string Version => App.Version;
+    public IImage? IconImage { get; }
+    public bool HasIconImage => IconImage is not null;
 }

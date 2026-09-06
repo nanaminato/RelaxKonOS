@@ -337,6 +337,8 @@ dotnet run --project Tools/RemoteOS.DevCli -- watch ./examples/VideoPlayer --run
 
 `pack` はアプリケーションの `artifacts/` ディレクトリに `.roapp` を生成します。純粋なマネージドアプリケーションでは `--runtime` を省略できます。サードパーティ向けのパッケージコマンドは [Developer Mode](./docs/development/RemoteOS.DeveloperMode.md) を参照してください。
 
+Windows PowerShell では `$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"` でトークンを設定します。残りの `dotnet` コマンドは同じです。
+
 ### アプリ開発モデル
 
 ```csharp

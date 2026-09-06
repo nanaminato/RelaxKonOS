@@ -89,8 +89,8 @@
                             <TextBlock Text="60 秒" Classes="metric-label" />
                             <TextBlock Grid.Column="1" Text="现在" Classes="metric-label" />
                         </Grid>
-                        <Grid Grid.Row="4" IsVisible="{Binding SelectedPerformanceItem.IsCpu}" ColumnDefinitions="220,*" ColumnSpacing="18">
-                            <Grid ColumnDefinitions="82,82,82" RowDefinitions="Auto,Auto,Auto" RowSpacing="8" ColumnSpacing="8">
+                        <Grid Grid.Row="4" IsVisible="{Binding SelectedPerformanceItem.IsCpu}" ColumnDefinitions="280,*" ColumnSpacing="18">
+                            <Grid ColumnDefinitions="82,82,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8" ColumnSpacing="8">
                                 <StackPanel Grid.Row="0" Grid.Column="0"><TextBlock Text="{Binding SelectedPerformanceItem.Detail1Label}" Classes="metric-label" /><TextBlock Text="{Binding SelectedPerformanceItem.Detail1Value}" FontSize="21" /></StackPanel>
                                 <StackPanel Grid.Row="0" Grid.Column="1"><TextBlock Text="{Binding SelectedPerformanceItem.Detail2Label}" Classes="metric-label" /><TextBlock Text="{Binding SelectedPerformanceItem.Detail2Value}" FontSize="21" /></StackPanel>
                                 <StackPanel Grid.Row="1" Grid.Column="0"><TextBlock Text="{Binding SelectedPerformanceItem.Detail3Label}" Classes="metric-label" /><TextBlock Text="{Binding SelectedPerformanceItem.Detail3Value}" FontSize="19" /></StackPanel>

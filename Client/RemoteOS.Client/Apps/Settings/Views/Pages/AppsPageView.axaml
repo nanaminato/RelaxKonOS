@@ -2,7 +2,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Client.Localization"
              xmlns:vm="clr-namespace:Client.Apps.Settings.ViewModels"
-             xmlns:d="clr-namespace:RemoteOS.Core.Applications;assembly=RemoteOS.Core"
              x:Class="Client.Apps.Settings.Views.Pages.AppsPageView"
              x:DataType="vm:AppsPageViewModel"
              x:Name="Root">
@@ -20,11 +19,14 @@
                         </Style>
                     </ItemsControl.Styles>
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="d:ApplicationInfo">
+                        <DataTemplate x:DataType="vm:SettingsAppEntry">
                             <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                                    Command="{Binding DataContext.ShowAppDetailsCommand, ElementName=Root}" CommandParameter="{Binding}">
+                                    Command="{Binding DataContext.ShowAppDetailsCommand, ElementName=Root}" CommandParameter="{Binding App}">
                                 <Grid Height="56" ColumnDefinitions="36,*,Auto" Margin="2" ColumnSpacing="8">
-                                    <TextBlock Text="{Binding IconGlyph}" FontSize="20" VerticalAlignment="Center" />
+                                    <Grid Width="28" Height="28" VerticalAlignment="Center">
+                                        <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
+                                        <TextBlock Text="{Binding IconGlyph}" IsVisible="{Binding !HasIconImage}" FontSize="20" VerticalAlignment="Center" />
+                                    </Grid>
                                     <Grid Grid.Column="1" RowDefinitions="Auto,Auto" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxLines="1" />
                                         <TextBlock Grid.Row="1" Text="{Binding Description}" FontSize="12" Opacity="0.65"
@@ -49,7 +51,10 @@
             <Border Classes="card">
                 <StackPanel Spacing="12">
                     <Grid ColumnDefinitions="38,*" ColumnSpacing="10">
-                        <TextBlock Text="{Binding SelectedApp.IconGlyph}" FontSize="26" />
+                        <Grid Width="30" Height="30">
+                            <Image Source="{Binding SelectedAppIconImage}" IsVisible="{Binding HasSelectedAppIconImage}" Stretch="Uniform" />
+                            <TextBlock Text="{Binding SelectedApp.IconGlyph}" IsVisible="{Binding !HasSelectedAppIconImage}" FontSize="26" />
+                        </Grid>
                         <StackPanel Grid.Column="1" Spacing="2">
                             <TextBlock Text="{Binding SelectedApp.DisplayName}" FontSize="19" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding SelectedApp.Id}" FontSize="12" Opacity="0.62" />

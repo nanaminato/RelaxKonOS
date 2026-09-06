@@ -21,6 +21,9 @@ public sealed class AuthenticatedHttpHandler(IAuthSession session) : DelegatingH
                 ? new HttpRequestException("Unable to refresh the RemoteOS session. Check the network connection.")
                 : new InvalidOperationException("The RemoteOS session has expired. Sign in again.");
 
+        // Buffer once before the initial send. Cloning a StreamContent directly advances its
+        // underlying stream; without replacing the source content too, multipart uploads such
+        // as custom wallpapers arrive at the server as an empty file on their first attempt.
         using var retry = await CloneAsync(request, cancellationToken).ConfigureAwait(false);
         SetAuthorization(request, accessToken);
         var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
@@ -53,10 +56,18 @@ public sealed class AuthenticatedHttpHandler(IAuthSession session) : DelegatingH
         if (source.Content is null)
             return clone;
 
-        var bytes = await source.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
-        clone.Content = new ByteArrayContent(bytes);
-        foreach (var header in source.Content.Headers)
-            clone.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        var originalContent = source.Content;
+        var bytes = await originalContent.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+        source.Content = CreateBufferedContent(bytes, originalContent);
+        clone.Content = CreateBufferedContent(bytes, originalContent);
         return clone;
+    }
+
+    private static ByteArrayContent CreateBufferedContent(byte[] bytes, HttpContent source)
+    {
+        var buffered = new ByteArrayContent(bytes);
+        foreach (var header in source.Headers)
+            buffered.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        return buffered;
     }
 }

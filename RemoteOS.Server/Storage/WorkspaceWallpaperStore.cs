@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
+using RemoteOS.Protocol.Workspace;
 
 namespace Server.Storage;
 
@@ -7,7 +8,7 @@ namespace Server.Storage;
 /// 文件不属于宿主机桌面，也不接受客户端提供的路径；访问始终由 Workspace 端点完成归属校验。</summary>
 public sealed class WorkspaceWallpaperStore
 {
-    public const long MaxFileBytes = 10 * 1024 * 1024;
+    public const long MaxFileBytes = WorkspaceWallpaperUploadLimits.MaxFileBytes;
     private readonly string _root;
 
     public WorkspaceWallpaperStore(IHostEnvironment environment, IOptions<StorageOptions> options)
@@ -20,8 +21,8 @@ public sealed class WorkspaceWallpaperStore
 
     public async Task<StoredWallpaper> SaveAsync(Guid workspaceId, IFormFile file, CancellationToken ct)
     {
-        if (file.Length is <= 0 or > MaxFileBytes)
-            throw new InvalidWallpaperException("The image must be between 1 byte and 10 MB.");
+        if (file.Length < WorkspaceWallpaperUploadLimits.MinFileBytes || file.Length > MaxFileBytes)
+            throw new InvalidWallpaperException($"The image must be between 1 byte and {WorkspaceWallpaperUploadLimits.MaxFileMegabytes} MB.");
 
         await using var source = file.OpenReadStream();
         var header = new byte[16];

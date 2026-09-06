@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Client.Views.Shell.MacosShellLayoutView">
+    <!-- Layout-only: macOS keeps its menu bar at the screen edge while the Dock floats. -->
+    <Grid RowDefinitions="36,*">
+        <ContentControl x:Name="MenuBarHost" Grid.Row="0" ZIndex="2" />
+        <ContentControl x:Name="DesktopHost" Grid.Row="1" />
+        <ContentControl x:Name="DockHost"
+                        Grid.Row="1"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,12"
+                        ZIndex="3" />
+        <ContentControl x:Name="LauncherHost"
+                        Grid.Row="1"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        ZIndex="4" />
+    </Grid>
+</UserControl>

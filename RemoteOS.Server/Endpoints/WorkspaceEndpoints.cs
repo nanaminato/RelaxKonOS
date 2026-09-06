@@ -293,15 +293,42 @@ public static class WorkspaceEndpoints
 
         if (!TryNormalizeThemePreferences(request.ThemePreferences, out var themePreferences))
             return false;
+        // The structured value is the cross-device intent. Retain shellId for one wire-version so
+        // old clients continue to start; only the normalized namespace is written by new clients.
+        var requestedShell = request.Shell is { ShellId: "remoteos" } && !string.IsNullOrWhiteSpace(request.ShellId)
+            && !string.Equals(request.ShellId, "remoteos", StringComparison.Ordinal)
+            ? new ShellSelectionDto(request.ShellId) : request.Shell ?? new ShellSelectionDto(request.ShellId ?? "remoteos.windows-like");
+        var shellId = NormalizeShellId(requestedShell.ShellId);
+        if (!IsValidShellId(shellId))
+            return false;
+        var packageId = requestedShell.PackageId?.Trim();
+        var packageVersion = requestedShell.PackageVersion?.Trim();
+        if (packageId is { Length: > 128 } || packageVersion is { Length: > 64 }) return false;
+        if (shellId.StartsWith("remoteos.", StringComparison.Ordinal) &&
+            (!string.IsNullOrEmpty(packageId) || !string.IsNullOrEmpty(packageVersion))) return false;
 
         preferences = new WorkspacePreferencesDto(
             wallpaperKey, request.Theme, timeFormat!, dateFormat!,
             string.IsNullOrEmpty(language) ? WorkspacePreferencesDto.Default.Language : language,
             string.IsNullOrEmpty(region) ? WorkspacePreferencesDto.Default.Region : region,
             deduped.Values.ToList(), notepadEncoding, codeEditorEncoding,
-            normalizedDesktopDisplay, themePreferences);
+            normalizedDesktopDisplay, themePreferences, shellId,
+            new ShellSelectionDto(shellId, packageId, packageVersion));
         return true;
     }
+
+    private static string NormalizeShellId(string? id) => id?.Trim() switch
+    {
+        null or "" or "remoteos" or "remoteos.default" => "remoteos.windows-like",
+        "windows-like" => "remoteos.windows-like",
+        "macos-like" => "remoteos.macos-like",
+        "ubuntu-like" => "remoteos.ubuntu-like",
+        var value => value,
+    };
+
+    private static bool IsValidShellId(string id) => id is "remoteos.windows-like"
+        or "remoteos.macos-like" or "remoteos.ubuntu-like"
+        || Regex.IsMatch(id, "^[a-z0-9][a-z0-9.-]{2,127}$");
 
     private static bool TryGetCustomWallpaperId(string? key, out string id)
     {

@@ -47,11 +47,36 @@ public sealed class WindowManager : IWindowManager
     public event EventHandler<ManagedWindow>? WindowClosed;
     public event EventHandler<ManagedWindow?>? ActiveWindowChanged;
 
-    public void Attach(Canvas host) => _host = host;
+    public void Attach(Canvas host)
+    {
+        _host = host;
+        ReattachVisuals();
+    }
+
+    /// <summary>
+    /// Removes only visual parents. Window metadata, RemoteWindow instances, modal chains and
+    /// focus remain authoritative in this manager and are restored by the next Attach call.
+    /// </summary>
+    public void Detach()
+    {
+        foreach (var window in _windows)
+            _windowHosts.TryGetValue(window.Info.Id, out var host);
+        foreach (var host in _windowHosts.Values.Distinct().ToList())
+            foreach (var window in _windows.Where(w => ReferenceEquals(GetWindowHost(w), host)))
+                host.Children.Remove(window.View);
+        foreach (var session in _modalSessions)
+            session.Host.Children.Remove(session.Blocker);
+        foreach (var session in _shellModalSessions)
+            session.Host.Children.Remove(session.Blocker);
+        _windowHosts.Clear();
+        _host = null;
+        _fullScreenHost = null;
+    }
 
     public void AttachFullScreenHost(Canvas host)
     {
         _fullScreenHost = host;
+        ReattachVisuals();
         UpdateFullScreenHostInteractivity();
     }
 
@@ -711,6 +736,29 @@ public sealed class WindowManager : IWindowManager
         source.Children.Remove(window.View);
         destination.Children.Add(window.View);
         _windowHosts[window.Info.Id] = destination;
+    }
+
+    private void ReattachVisuals()
+    {
+        if (_host is null) return;
+        foreach (var window in _windows)
+        {
+            var destination = window.Info.State == WindowState.FullScreen ? GetFullScreenHost() : _host;
+            if (!destination.Children.Contains(window.View)) destination.Children.Add(window.View);
+            _windowHosts[window.Info.Id] = destination;
+        }
+        foreach (var session in _modalSessions)
+        {
+            var host = GetWindowHost(session.Owner);
+            session.Rehost(host);
+            if (!host.Children.Contains(session.Blocker)) host.Children.Add(session.Blocker);
+        }
+        foreach (var session in _shellModalSessions)
+        {
+            var host = session.CoversFullDesktop ? GetFullScreenHost() : _host;
+            session.Rehost(host);
+            if (!host.Children.Contains(session.Blocker)) host.Children.Add(session.Blocker);
+        }
     }
 
     private void UpdateFullScreenHostInteractivity()

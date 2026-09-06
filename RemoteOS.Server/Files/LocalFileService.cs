@@ -167,7 +167,47 @@ public sealed class LocalFileService : IFileService
                 Modified: null);
         }
 
-        return ListDirectory(path);
+        // Empty optical drives are still reported by Windows as drive roots, but opening one
+        // raises an IOException ("device not ready") rather than reporting a missing directory.
+        // Treat it as an empty, unavailable location so browsing it never turns into a server error.
+        if (IsUnavailableDrive(path))
+            return CreateUnavailableDirectory(path);
+
+        try
+        {
+            return ListDirectory(path);
+        }
+        catch (IOException) when (IsUnavailableDrive(path))
+        {
+            // Media can be ejected after the readiness check and before enumeration begins.
+            return CreateUnavailableDirectory(path);
+        }
+    }
+
+    private static bool IsUnavailableDrive(string path)
+    {
+        if (IsLinux) return false;
+
+        try
+        {
+            var root = Path.GetPathRoot(path);
+            return !string.IsNullOrWhiteSpace(root) && !new DriveInfo(root).IsReady;
+        }
+        catch (ArgumentException) { return false; }
+        catch (NotSupportedException) { return false; }
+    }
+
+    private static DirectoryDto CreateUnavailableDirectory(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        return new DirectoryDto(
+            Path: fullPath,
+            Name: Path.TrimEndingDirectorySeparator(fullPath),
+            Type: FileSystemEntryType.Directory,
+            Directories: Array.Empty<FileSystemEntryDto>(),
+            Files: Array.Empty<FileEntryDto>(),
+            Created: null,
+            Modified: null);
     }
 
     private static DirectoryDto ListDirectory(string path)

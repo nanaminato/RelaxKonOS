@@ -42,5 +42,6 @@
       <ProjectReference Include="..\..\Framework\RemoteOS.Runtime\RemoteOS.Runtime.csproj" />
       <ProjectReference Include="..\..\Framework\RemoteOS.UI\RemoteOS.UI.csproj" />
       <ProjectReference Include="..\..\Framework\RemoteOS.WindowManager\RemoteOS.WindowManager.csproj" />
+      <ProjectReference Include="..\..\Framework\RemoteOS.Shell\RemoteOS.Shell.csproj" />
     </ItemGroup>
 </Project>

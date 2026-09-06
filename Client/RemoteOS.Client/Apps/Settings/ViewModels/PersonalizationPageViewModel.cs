@@ -1,8 +1,11 @@
 using Client.Services;
+using Client.Localization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.Input;
 using RemoteOS.Protocol.Desktop;
 using RemoteOS.Protocol.Workspace;
+using RemoteOS.Shell;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Client.Apps.Settings.ViewModels;
 
@@ -10,8 +13,17 @@ namespace Client.Apps.Settings.ViewModels;
 /// 透传读写 <see cref="ShellSettings"/>，改动即时反映到桌面外壳（壁纸 / 任务栏底色）并触发保存。</summary>
 public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 {
-    public PersonalizationPageViewModel(ShellSettings settings, Action? save) : base(settings, save)
+    private readonly IShellCatalog _shellCatalog;
+    private readonly LocalizationService _localization;
+    private IReadOnlyList<ShellChoice> _shellChoices = [];
+
+    public PersonalizationPageViewModel(ShellSettings settings, Action? save, IShellCatalog? shellCatalog = null) : base(settings, save)
     {
+        _localization = Client.App.Services.GetRequiredService<LocalizationService>();
+        _shellCatalog = shellCatalog ?? Client.App.Services.GetRequiredService<IShellCatalog>();
+        RefreshShellChoices();
+        _shellCatalog.Changed += (_, _) => RefreshShellChoices();
+        _localization.LanguageChanged += (_, _) => RefreshShellChoices();
         // Theme 变化（含外部 Apply 加载）时刷新三个 RadioButton 绑定。
         Settings.PropertyChanged += (_, e) =>
         {
@@ -32,6 +44,12 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
                 OnPropertyChanged(nameof(HasSelectedCustomPalette));
                 OnPropertyChanged(nameof(HasAccentOverride));
             }
+            else if (e.PropertyName == nameof(ShellSettings.SelectedShellId))
+            {
+                // Preferences may arrive after Settings is already open. Keep the ComboBox in
+                // sync without treating that inbound update as another user selection.
+                OnPropertyChanged(nameof(SelectedShellId));
+            }
         };
         _accentInput = Settings.ThemePreferences.AccentOverride ?? string.Empty;
     }
@@ -41,6 +59,57 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     public override string DisplayName => "Personalization";
 
     public IReadOnlyList<Client.Services.WallpaperOption> Wallpapers => Settings.Wallpapers;
+    /// <summary>
+    /// A stable snapshot is important here: Avalonia briefly clears SelectedValue while a
+    /// ComboBox receives a new ItemsSource. Recreating this list on every getter made that
+    /// transient null flow back into the shell setting and repeatedly swap the desktop shell.
+    /// </summary>
+    public IReadOnlyList<ShellChoice> ShellChoices => _shellChoices;
+
+    /// <summary>Device-local presentation choice; changing it immediately swaps only the shell view.</summary>
+    public string SelectedShellId
+    {
+        get => Settings.SelectedShellId;
+        set
+        {
+            // ComboBox writes null/empty while rebuilding its item containers. That is a UI
+            // transition, not a request to select the default shell.
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            var id = ShellApi.NormalizeId(value);
+            if (!_shellCatalog.TryGet(id, out var shell) || !shell.IsAvailable) return;
+            if (Settings.SelectedShellId == id) return;
+            Settings.SelectedShellId = id;
+            Save();
+        }
+    }
+
+    private void RefreshShellChoices()
+    {
+        var next = _shellCatalog.Available
+            .Select(definition => new ShellChoice(
+                definition.Id,
+                LocalizeShellName(definition.Id, definition.DisplayName),
+                definition.Source,
+                definition.Version,
+                definition.UnavailableReason))
+            .ToArray();
+        if (_shellChoices.SequenceEqual(next)) return;
+
+        _shellChoices = next;
+        OnPropertyChanged(nameof(ShellChoices));
+    }
+
+    private string LocalizeShellName(string id, string fallback) => id switch
+    {
+        "remoteos.windows-like" => T("settings.shell.windows_like", "Windows-style desktop"),
+        "remoteos.macos-like" => T("settings.shell.macos_like", "macOS-style desktop"),
+        "remoteos.ubuntu-like" => T("settings.shell.ubuntu_like", "Ubuntu-style desktop"),
+        _ => fallback,
+    };
+
+    /// <summary>Supplied by the Avalonia page so the VM never accesses a TopLevel or filesystem picker.</summary>
+    public Func<Task>? RequestShellPackageInstallAsync { get; set; }
 
     /// <summary>由 SettingsApp 提供本机文件选择器；VM 不直接依赖 Avalonia TopLevel。</summary>
     public Func<Task>? RequestCustomWallpaperAsync { get; set; }
@@ -240,8 +309,24 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
             await RequestCustomWallpaperAsync();
     }
 
+    [RelayCommand]
+    private async Task InstallShellPackageAsync()
+    {
+        if (RequestShellPackageInstallAsync is not null)
+            await RequestShellPackageInstallAsync();
+    }
+
     private static IBrush Brush(string color) => new SolidColorBrush(Color.Parse(color));
 
+}
+
+public sealed record ShellChoice(string Id, string DisplayName, ShellSourceKind Source = ShellSourceKind.BuiltIn,
+    string? Version = null, string? UnavailableReason = null)
+{
+    public bool HasUnavailableReason => !string.IsNullOrWhiteSpace(UnavailableReason);
+    public string SelectionDisplayName => Id == ShellApi.DefaultShellId
+        ? string.Format(LocalizedText.Get("settings.shell.default_format", "{0} (Default)"), DisplayName)
+        : DisplayName;
 }
 
 public sealed record ThemePaletteChoice(string Id, string Name, bool IsCustom);

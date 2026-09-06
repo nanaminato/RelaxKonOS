@@ -44,6 +44,9 @@ using Server.Firewall;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using RemoteOS.Core.Applications;
+using SQLitePCL;
+
+Batteries_V2.Init();
 
 var root = Path.Combine(Path.GetTempPath(), $"remoteos-server-tests-{Guid.NewGuid():N}");
 Directory.CreateDirectory(root);
@@ -107,6 +110,14 @@ static void VerifyWorkspacePreferencesJsonContract()
 
     Assert(deserialized.WallpaperKey == preferences.WallpaperKey, "Wallpaper key changed during JSON deserialization.");
     Assert(deserialized.DefaultApps.SequenceEqual(preferences.DefaultApps), "Default app mappings changed during JSON deserialization.");
+    Assert(deserialized.Shell?.ShellId == "remoteos.windows-like", "Default Windows shell selection changed during JSON deserialization.");
+
+    var external = preferences with { ShellId = "com.example.neon-desktop", Shell = new ShellSelectionDto("com.example.neon-desktop", "com.example.neon", "1.0.0") };
+    var externalRoundTrip = JsonSerializer.Deserialize<WorkspacePreferencesDto>(
+        JsonSerializer.Serialize(external, RemoteOS.Protocol.Common.RemoteOsJsonOptions.Default), RemoteOS.Protocol.Common.RemoteOsJsonOptions.Default)
+        ?? throw new InvalidOperationException("Structured shell selection did not deserialize.");
+    Assert(externalRoundTrip.Shell?.PackageId == "com.example.neon" && externalRoundTrip.Shell?.PackageVersion == "1.0.0",
+        "Structured shell package identity changed during JSON round-trip.");
 }
 
 static void VerifyFileElevationSessionScope(string root)

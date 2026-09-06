@@ -10,6 +10,29 @@
 
         <Border Classes="card">
             <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.shell}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.shell.description}"
+                           Opacity="0.7" TextWrapping="Wrap" />
+                <ComboBox ItemsSource="{Binding ShellChoices}"
+                          SelectedValue="{Binding SelectedShellId, Mode=TwoWay}"
+                          SelectedValueBinding="{Binding Id}">
+                    <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ShellChoice">
+                        <StackPanel Spacing="1">
+                            <TextBlock Text="{Binding SelectionDisplayName}" />
+                            <TextBlock Text="{Binding UnavailableReason}" IsVisible="{Binding HasUnavailableReason}" Opacity="0.65" FontSize="11" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Content="{loc:Loc settings.shell.install_package}" Command="{Binding InstallShellPackageCommand}" HorizontalAlignment="Left" />
+                <TextBlock Text="{loc:Loc settings.shell.install_package_hint}"
+                           Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.wallpaper}" Classes="title" />
                 <TextBlock Text="{loc:Loc settings.wallpaper.description}" Opacity="0.7" />
                 <Button Content="{loc:Loc settings.wallpaper.choose_image}"
@@ -73,7 +96,7 @@
                 <TextBlock Text="{loc:Loc settings.accent}" Classes="title" />
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                     <TextBox Text="{Binding AccentInput, Mode=TwoWay}"
-                             Watermark="{loc:Loc settings.accent.placeholder}" />
+                             PlaceholderText="{loc:Loc settings.accent.placeholder}" />
                     <Button Grid.Column="1" Content="{loc:Loc settings.accent.reset}"
                             Command="{Binding ResetAccentCommand}"
                             IsEnabled="{Binding HasAccentOverride}" />

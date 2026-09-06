@@ -10,12 +10,13 @@
 
 ## 1. 模块定位
 
-登录成功后，`App.axaml.cs` 把桌面 `MainWindow`（顶层 Avalonia `Window`，`WindowDecorations=None`）显示给用户。`MainWindow` 内部承载 `DesktopShellView`（桌面 + 任务栏 + 开始菜单 + `WindowManager` 的窗口宿主 Canvas）。本文档覆盖这一层新增的两块能力：
+登录成功后，`App.axaml.cs` 把桌面 `MainWindow`（顶层 Avalonia `Window`，`WindowDecorations=None`）显示给用户。`MainWindow` 内部承载由 `ShellRuntime` 激活的 `IDesktopShell`（每个 Shell 提供自己的桌面、启动器、任务栏/Dock 与 `WindowManager` surface）。完整的 launcher 契约、可回滚切换和扩展包边界见 [`RemoteOS.ShellLauncher.Goal.md`](./RemoteOS.ShellLauncher.Goal.md)；本文档覆盖宿主窗口控制与模态机制。
 
 | 能力 | 层 | 说明 |
 |---|---|---|
 | 宿主窗口控制 | `Client`（`MainWindow`） | 标题栏拖动、8 向 resize、最小化/最大化/关闭、全屏切换 |
 | mstsc 连接栏 | `Client`（`MainWindow` + `DesktopShellViewModel`） | 全屏/固定/自动隐藏、连接信息、关闭连接 = 登出 |
+| Launcher runtime | `Client` + `RemoteOS.Shell` | `IDesktopShell` 切换、窗口重挂载、受控外部 Shell 包；不替换宿主 OS shell |
 | 模态对话框 | `Framework`（`WindowManager` + `App.SDK`） | `ModalDialog<TResult>` / `ShowDialogAsync` / `ModalBlocker`，可复用、可嵌套 |
 
 设计目标：

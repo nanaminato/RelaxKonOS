@@ -21,6 +21,9 @@ public interface IWindowManager
     /// <summary>Binds the manager to the canvas that physically hosts window visuals.</summary>
     void Attach(Canvas host);
 
+    /// <summary>Detaches visuals without closing windows or cancelling modal sessions.</summary>
+    void Detach();
+
     /// <summary>
     /// Binds the optional shell-wide overlay used by full-screen windows. If no overlay is
     /// attached, full-screen windows fall back to the regular window host.

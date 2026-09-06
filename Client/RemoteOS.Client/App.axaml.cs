@@ -28,9 +28,15 @@ public partial class App : Application
 #endif
     }
 
-    public override void OnFrameworkInitializationCompleted()
+    public override async void OnFrameworkInitializationCompleted()
     {
-        Services = Bootstrapper.Build(this);
+        // The catalog repair writes descriptor files asynchronously.  Keep the UI thread free
+        // while it runs; synchronously waiting here deadlocks its continuation before the login
+        // window can be created.
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime startupDesktop)
+            startupDesktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        Services = await Bootstrapper.BuildAsync(this);
         // Install the sole palette source before the first (login) window is created.
         _ = Services.GetRequiredService<Client.Services.Theming.ThemeService>();
 
@@ -38,8 +44,6 @@ public partial class App : Application
         {
             // 启动分叉（mstsc 风格）：先弹独立登录窗，登录成功后再进入桌面。
             // OnExplicitShutdown 防止登录窗→桌面切换时进程提前退出。
-            desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-
             var session = Services.GetRequiredService<IAuthSession>();
             var notificationPreferences = Services.GetRequiredService<LoginNotificationPreferenceStore>();
             var loginViewModel = Services.GetRequiredService<LoginViewModel>();

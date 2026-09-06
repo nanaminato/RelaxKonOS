@@ -2,6 +2,7 @@ using Client.Services;
 using Client.Services.Auth;
 using RemoteOS.Protocol.Identity;
 using RemoteOS.Protocol.Workspace;
+using RemoteOS.Protocol.Common;
 
 namespace Client.Apps.Settings.ViewModels;
 
@@ -20,10 +21,19 @@ public sealed class SystemPageViewModel : SettingsPageViewModel
     public string AppVersion => "RemoteOS 0.1";
     public string ServerUrl => _session.ServerUrl ?? T("settings.value.not_connected", "Not connected");
     public string UserName => _session.CurrentUser?.Username ?? "—";
-    public string Platform => _session.CurrentUser?.Platform.ToString() ?? "—";
+    public string Platform => _session.CurrentUser?.Platform switch
+    {
+        PlatformKind.Windows => T("settings.platform.windows", "Windows"),
+        PlatformKind.Linux => T("settings.platform.linux", "Linux"),
+        _ => "—",
+    };
     public string WorkspaceName => _session.CurrentWorkspace?.Name ?? "—";
     public string DeviceName => _session.CurrentDevice?.Name ?? "—";
-    public string DeviceRole => _session.AssignedRole.ToString();
+    public string DeviceRole => _session.AssignedRole switch
+    {
+        RemoteOS.Protocol.Workspace.DeviceRole.Controller => T("settings.device_role.controller", "Controller"),
+        _ => T("settings.device_role.observer", "Observer"),
+    };
     public string ConnectionState => _session.State switch
     {
         AuthSessionState.Authenticated => T("settings.value.connected", "Connected"),
