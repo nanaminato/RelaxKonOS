@@ -9,7 +9,7 @@ namespace RemoteOS.Protocol.Workspace;
 public sealed record ShellSelectionDto
 {
     [JsonPropertyName("shellId")]
-    public string ShellId { get; set; } = "remoteos.default";
+    public string ShellId { get; set; } = "remoteos.windows-like";
 
     [JsonPropertyName("packageId")]
     public string? PackageId { get; set; }

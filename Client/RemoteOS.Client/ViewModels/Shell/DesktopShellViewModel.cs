@@ -175,9 +175,9 @@ public partial class DesktopShellViewModel : ObservableObject
             .Select(i => new AppEntryViewModel(Localize(i), _applications))
             .ToList();
 
-        // ── Start 菜单始终显示全部兼容应用 ──
+        // ── Start 菜单始终显示全部兼容应用，并按名称保持稳定的“全部应用”列表顺序 ──
         StartApps.Clear();
-        foreach (var entry in compatibleEntries)
+        foreach (var entry in compatibleEntries.OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase))
             StartApps.Add(entry);
 
         // ── 桌面图标：根据桌面显示配置过滤 ──

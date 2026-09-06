@@ -110,7 +110,7 @@ static void VerifyWorkspacePreferencesJsonContract()
 
     Assert(deserialized.WallpaperKey == preferences.WallpaperKey, "Wallpaper key changed during JSON deserialization.");
     Assert(deserialized.DefaultApps.SequenceEqual(preferences.DefaultApps), "Default app mappings changed during JSON deserialization.");
-    Assert(deserialized.Shell?.ShellId == "remoteos", "Legacy shellId must remain readable through the structured shell selection.");
+    Assert(deserialized.Shell?.ShellId == "remoteos.windows-like", "Default Windows shell selection changed during JSON deserialization.");
 
     var external = preferences with { ShellId = "com.example.neon-desktop", Shell = new ShellSelectionDto("com.example.neon-desktop", "com.example.neon", "1.0.0") };
     var externalRoundTrip = JsonSerializer.Deserialize<WorkspacePreferencesDto>(

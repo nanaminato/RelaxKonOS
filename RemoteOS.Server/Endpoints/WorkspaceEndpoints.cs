@@ -297,7 +297,7 @@ public static class WorkspaceEndpoints
         // old clients continue to start; only the normalized namespace is written by new clients.
         var requestedShell = request.Shell is { ShellId: "remoteos" } && !string.IsNullOrWhiteSpace(request.ShellId)
             && !string.Equals(request.ShellId, "remoteos", StringComparison.Ordinal)
-            ? new ShellSelectionDto(request.ShellId) : request.Shell ?? new ShellSelectionDto(request.ShellId ?? "remoteos");
+            ? new ShellSelectionDto(request.ShellId) : request.Shell ?? new ShellSelectionDto(request.ShellId ?? "remoteos.windows-like");
         var shellId = NormalizeShellId(requestedShell.ShellId);
         if (!IsValidShellId(shellId))
             return false;
@@ -319,14 +319,14 @@ public static class WorkspaceEndpoints
 
     private static string NormalizeShellId(string? id) => id?.Trim() switch
     {
-        null or "" or "remoteos" => "remoteos.default",
+        null or "" or "remoteos" or "remoteos.default" => "remoteos.windows-like",
         "windows-like" => "remoteos.windows-like",
         "macos-like" => "remoteos.macos-like",
         "ubuntu-like" => "remoteos.ubuntu-like",
         var value => value,
     };
 
-    private static bool IsValidShellId(string id) => id is "remoteos.default" or "remoteos.windows-like"
+    private static bool IsValidShellId(string id) => id is "remoteos.windows-like"
         or "remoteos.macos-like" or "remoteos.ubuntu-like"
         || Regex.IsMatch(id, "^[a-z0-9][a-z0-9.-]{2,127}$");
 

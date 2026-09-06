@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Interactivity;
@@ -203,26 +204,240 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     }
 }
 
-public sealed class RemoteOsDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Default)
-{
-    protected override void BuildLayout(DesktopShellViewModel vm)
-    {
-        _root.RowDefinitions = new RowDefinitions("*,Auto");
-        var desktop = Desktop(vm); Grid.SetRow(desktop, 0); _root.Children.Add(desktop);
-        var bar = AppBar(vm, "⊞"); Grid.SetRow(bar, 1); _root.Children.Add(bar);
-        var launcher = Launcher(vm, "RemoteOS applications"); Grid.SetRow(launcher, 0); launcher.HorizontalAlignment = HorizontalAlignment.Left; launcher.VerticalAlignment = VerticalAlignment.Bottom; launcher.Margin = new Thickness(12); _root.Children.Add(launcher);
-    }
-}
-
 public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Windows)
 {
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
         _root.RowDefinitions = new RowDefinitions("*,Auto");
         var desktop = Desktop(vm); Grid.SetRow(desktop, 0); _root.Children.Add(desktop);
-        var bar = AppBar(vm, "▣"); Grid.SetRow(bar, 1); _root.Children.Add(bar);
-        var launcher = Launcher(vm, "Start / Search"); Grid.SetRow(launcher, 0); launcher.HorizontalAlignment = HorizontalAlignment.Left; launcher.VerticalAlignment = VerticalAlignment.Bottom; launcher.Margin = new Thickness(8); _root.Children.Add(launcher);
+        var taskbar = WindowsTaskbar(vm); Grid.SetRow(taskbar, 1); _root.Children.Add(taskbar);
+        var launcher = WindowsLauncher(vm); Grid.SetRow(launcher, 0); launcher.HorizontalAlignment = HorizontalAlignment.Left; launcher.VerticalAlignment = VerticalAlignment.Bottom; _root.Children.Add(launcher);
     }
+
+    /// <summary>
+    /// The Windows launcher intentionally uses a flat, scrollable application list.  StartApps
+    /// is the compatible application catalog, so folders and desktop files never leak into it.
+    /// </summary>
+    private static Control WindowsLauncher(DesktopShellViewModel vm)
+    {
+        var panel = new Border
+        {
+            Width = 412,
+            MaxHeight = 620,
+            Background = new SolidColorBrush(Color.Parse("#F22B2B2B")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#66787878")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4, 4, 0, 0),
+            IsVisible = false,
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                OffsetX = 0,
+                OffsetY = 8,
+                Blur = 24,
+                Color = Color.Parse("#66000000"),
+            }),
+        };
+        panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
+
+        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("52,*") };
+        layout.Children.Add(WindowsSystemRail(vm));
+
+        var appList = new ItemsControl
+        {
+            Margin = new Thickness(12, 12, 8, 12),
+            ItemTemplate = new FuncDataTemplate<AppEntryViewModel>((app, _) => WindowsStartAppButton(vm, app)),
+        };
+        appList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.StartApps)));
+        var scroller = new ScrollViewer
+        {
+            Content = appList,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
+        Grid.SetColumn(scroller, 1);
+        layout.Children.Add(scroller);
+        panel.Child = layout;
+        return panel;
+    }
+
+    private static Control WindowsSystemRail(DesktopShellViewModel vm)
+    {
+        var rail = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#33202020")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#337A7A7A")),
+            BorderThickness = new Thickness(0, 0, 1, 0),
+        };
+        var actions = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto") };
+        var settings = WindowsGlyphButton("⚙", "Settings", vm.OpenSettingsCommand);
+        Grid.SetRow(settings, 1);
+        actions.Children.Add(settings);
+        var shutdown = WindowsGlyphButton("⏻", "Power", vm.ShutdownCommand);
+        Grid.SetRow(shutdown, 2);
+        actions.Children.Add(shutdown);
+        rail.Child = actions;
+        return rail;
+    }
+
+    private static Button WindowsStartAppButton(DesktopShellViewModel vm, AppEntryViewModel app)
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("40,*"), Height = 46 };
+        row.Children.Add(AppIcon(app, 28));
+        var name = new TextBlock
+        {
+            Text = app.DisplayName,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = Brushes.White,
+            FontSize = 13,
+        };
+        Grid.SetColumn(name, 1);
+        row.Children.Add(name);
+
+        return new Button
+        {
+            Content = row,
+            Command = vm.LaunchCommand,
+            CommandParameter = app.Id,
+            Height = 46,
+            Padding = new Thickness(8, 0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+    }
+
+    private static Control WindowsTaskbar(DesktopShellViewModel vm)
+    {
+        var bar = new Border
+        {
+            Height = 46,
+            Background = new SolidColorBrush(Color.Parse("#E6242424")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#557A7A7A")),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                OffsetX = 0,
+                OffsetY = -2,
+                Blur = 10,
+                Color = Color.Parse("#33000000"),
+            }),
+        };
+        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("48,*,Auto") };
+        var start = WindowsGlyphButton("⊞", "Start", vm.ToggleStartCommand);
+        layout.Children.Add(start);
+
+        // Only live window groups are shown here.  There is deliberately no search or
+        // synthetic notification area until those services expose shell-facing APIs.
+        var groups = new ItemsControl
+        {
+            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
+            ItemTemplate = new FuncDataTemplate<TaskbarGroupViewModel>((group, _) => WindowsTaskbarButton(vm, group)),
+        };
+        groups.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
+        var runningApps = new ScrollViewer
+        {
+            Content = groups,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+        Grid.SetColumn(runningApps, 1);
+        layout.Children.Add(runningApps);
+
+        var systemArea = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,8") };
+        var clock = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(10, 0, 8, 0),
+        };
+        var time = new TextBlock { FontSize = 12, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Right };
+        time.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
+        var date = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(Color.Parse("#D9FFFFFF")), HorizontalAlignment = HorizontalAlignment.Right };
+        date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
+        clock.Children.Add(time);
+        clock.Children.Add(date);
+        systemArea.Children.Add(clock);
+        var showDesktop = new Button
+        {
+            Command = vm.ShowDesktopCommand,
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            Padding = new Thickness(0),
+        };
+        ToolTip.SetTip(showDesktop, "Show desktop");
+        Grid.SetColumn(showDesktop, 1);
+        systemArea.Children.Add(showDesktop);
+        Grid.SetColumn(systemArea, 2);
+        layout.Children.Add(systemArea);
+        bar.Child = layout;
+        return bar;
+    }
+
+    private static Button WindowsTaskbarButton(DesktopShellViewModel vm, TaskbarGroupViewModel group)
+    {
+        var content = new Grid { RowDefinitions = new RowDefinitions("*,3") };
+        var icon = AppIcon(group, 23);
+        icon.HorizontalAlignment = HorizontalAlignment.Center;
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        content.Children.Add(icon);
+        var activeIndicator = new Border
+        {
+            Height = 3,
+            Width = 22,
+            Background = new SolidColorBrush(Color.Parse("#FF4CC2FF")),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            IsVisible = group.IsActive,
+        };
+        activeIndicator.Bind(Visual.IsVisibleProperty, new Binding(nameof(group.IsActive)));
+        Grid.SetRow(activeIndicator, 1);
+        content.Children.Add(activeIndicator);
+        var button = new Button
+        {
+            Content = content,
+            Command = vm.ToggleTaskbarGroupCommand,
+            CommandParameter = group,
+            Width = 46,
+            Height = 46,
+            Padding = new Thickness(2),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+        ToolTip.SetTip(button, group.DisplayName);
+        return button;
+    }
+
+    private static Button WindowsGlyphButton(string glyph, string tooltip, System.Windows.Input.ICommand command)
+    {
+        var button = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = glyph,
+                FontSize = 20,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+            Command = command,
+            Width = 48,
+            Height = 46,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+        ToolTip.SetTip(button, tooltip);
+        return button;
+    }
+
+    private static Control AppIcon(AppEntryViewModel app, double size) => app.IconImage is { } image
+        ? new Image { Source = image, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center }
+        : new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 4, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+
+    private static Control AppIcon(TaskbarGroupViewModel group, double size) => group.IconImage is { } image
+        ? new Image { Source = image, Width = size, Height = size }
+        : new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 3, Foreground = Brushes.White };
 }
 
 public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Macos)
@@ -250,9 +465,8 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
 
 public static class BuiltInShells
 {
-    public static readonly ShellDescriptor Default = new("remoteos.default", "RemoteOS", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
     public static readonly ShellDescriptor Windows = new("remoteos.windows-like", "Windows-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
     public static readonly ShellDescriptor Macos = new("remoteos.macos-like", "macOS-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
     public static readonly ShellDescriptor Ubuntu = new("remoteos.ubuntu-like", "Ubuntu-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
-    public static readonly IReadOnlyList<ShellDescriptor> All = [Default, Windows, Macos, Ubuntu];
+    public static readonly IReadOnlyList<ShellDescriptor> All = [Windows, Macos, Ubuntu];
 }

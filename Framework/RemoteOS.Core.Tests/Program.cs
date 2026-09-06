@@ -84,6 +84,7 @@ static void VerifyAutomationValidation()
 static void VerifyShellIdMigration()
 {
     Assert(ShellApi.NormalizeId("remoteos") == ShellApi.DefaultShellId, "Legacy RemoteOS Shell id was not normalized.");
+    Assert(ShellApi.NormalizeId("remoteos.default") == ShellApi.DefaultShellId, "Retired RemoteOS default Shell id was not normalized.");
     Assert(ShellApi.NormalizeId("windows-like") == "remoteos.windows-like", "Legacy Windows-like Shell id was not normalized.");
     Assert(ShellApi.NormalizeId("com.example.neon") == "com.example.neon", "External Shell id was unexpectedly changed.");
     Assert(ShellApi.NormalizeId(null) == ShellApi.DefaultShellId, "Missing Shell id did not use the safe default.");

@@ -141,9 +141,9 @@ public sealed partial class ShellSettings : ObservableObject
         ShowServerDesktopFiles = dd.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = dd.ShowServerDesktopShortcuts;
         HasCompletedFirstTimeSetup = dd.HasCompletedFirstTimeSetup;
-        // An old JSON payload is materialized through the parameterless DTO constructor, which
-        // contains the legacy default "remoteos" selection. Prefer its explicit shellId when it
-        // differs so a pre-migration Windows/macOS/Ubuntu preference is not lost.
+        // Pre-structured preference payloads can materialize Shell as the legacy "remoteos"
+        // value. Prefer their explicit shellId when present so prior Windows/macOS/Ubuntu
+        // selections are not lost; ShellApi normalizes the retired RemoteOS choices to Windows.
         var shell = prefs.Shell is { ShellId: "remoteos" } && !string.IsNullOrWhiteSpace(prefs.ShellId)
             && !string.Equals(prefs.ShellId, "remoteos", StringComparison.Ordinal)
             ? new ShellSelectionDto(prefs.ShellId) : prefs.Shell ?? new ShellSelectionDto(prefs.ShellId ?? ShellApi.DefaultShellId);

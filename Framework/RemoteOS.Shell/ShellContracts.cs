@@ -9,10 +9,11 @@ namespace RemoteOS.Shell;
 public static class ShellApi
 {
     public const int Version = 1;
-    public const string DefaultShellId = "remoteos.default";
+    public const string DefaultShellId = "remoteos.windows-like";
     public static readonly IReadOnlyDictionary<string, string> LegacyIds = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["remoteos"] = DefaultShellId,
+        ["remoteos.default"] = DefaultShellId,
         ["windows-like"] = "remoteos.windows-like",
         ["macos-like"] = "remoteos.macos-like",
         ["ubuntu-like"] = "remoteos.ubuntu-like",

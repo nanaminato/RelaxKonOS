@@ -21,7 +21,6 @@ public sealed class ShellCatalog : IShellCatalog
     {
         _developerMode = developerMode;
         _root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteOS", "ShellExtensions");
-        Register(BuiltInShells.Default, () => new RemoteOsDesktopShell());
         Register(BuiltInShells.Windows, () => new WindowsLikeDesktopShell());
         Register(BuiltInShells.Macos, () => new MacosLikeDesktopShell());
         Register(BuiltInShells.Ubuntu, () => new UbuntuLikeDesktopShell());

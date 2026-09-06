@@ -14,4 +14,4 @@ assets/...
 
 `examples/NeonDesktopShell` 是可构建的最小示例。将其输出 DLL 放到 manifest 所示路径后即可形成开发包。未签名开发包要求用户显式开启 Developer Mode；发行包须提供并通过 `shell.json.sha256` 的 entry assembly 哈希验证。清单发现和校验从不执行程序集，程序集只在用户选择该 Shell 时通过可收集的 `AssemblyLoadContext` 加载。
 
-如果包缺失、不兼容、禁用、初始化超时或抛异常，当前桌面保持可用；不能激活时回退 `remoteos.default`，而 Workspace 中的跨设备选择意图不被覆盖。
+如果包缺失、不兼容、禁用、初始化超时或抛异常，当前桌面保持可用；不能激活时回退 `remoteos.windows-like`，而 Workspace 中的跨设备选择意图不被覆盖。
