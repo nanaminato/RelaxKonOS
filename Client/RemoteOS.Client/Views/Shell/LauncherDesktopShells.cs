@@ -816,10 +816,10 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         {
             Content = glyph,
             Command = command,
-            Width = 30,
+            Width = 34,
             Height = 35,
             Padding = new Thickness(0),
-            FontSize = 16,
+            FontSize = 20,
             Foreground = new SolidColorBrush(Color.Parse("#17212B")),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
@@ -833,7 +833,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     private static Button MacosPowerButton(System.Windows.Input.ICommand command)
     {
         var button = MacosStatusButton(string.Empty, LocalizedText.Get("shell.launcher.power", "Power"), command);
-        button.Content = ShellIconFactory.Power(new SolidColorBrush(Color.Parse("#17212B")), 16);
+        button.Content = ShellIconFactory.Power(new SolidColorBrush(Color.Parse("#17212B")), 20);
         return button;
     }
 
