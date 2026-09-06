@@ -25,6 +25,7 @@ using RemoteOS.AppSDK;
 using RemoteOS.Core.Applications;
 using RemoteOS.Runtime;
 using RemoteOS.WindowManager;
+using RemoteOS.Shell;
 
 namespace Client.Services;
 
@@ -46,8 +47,11 @@ public static class Bootstrapper
         services.AddSingleton<DesktopWelcomePreferenceStore>();
         services.AddSingleton<ThemeService>();
         services.AddSingleton<ShellSettings>();
-        services.AddSingleton<ShellSession>();
         services.AddSingleton<ShellPreferenceStore>();
+        services.AddSingleton<ShellCatalog>();
+        services.AddSingleton<IShellCatalog>(sp => sp.GetRequiredService<ShellCatalog>());
+        services.AddSingleton<DesktopShellOverlayService>();
+        services.AddSingleton<ShellRuntime>();
         services.AddSingleton<LocalizationService>();
         services.AddSingleton<LoginLocalizationService>();
         services.AddSingleton<ISystemLanguage>(sp => sp.GetRequiredService<LocalizationService>());

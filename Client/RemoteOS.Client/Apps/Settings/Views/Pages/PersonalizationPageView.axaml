@@ -17,9 +17,17 @@
                           SelectedValue="{Binding SelectedShellId, Mode=TwoWay}"
                           SelectedValueBinding="{Binding Id}">
                     <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ShellChoice"><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                    </ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ShellChoice">
+                        <StackPanel Spacing="1">
+                            <TextBlock Text="{Binding DisplayName}" />
+                            <TextBlock Text="{Binding UnavailableReason}" IsVisible="{Binding HasUnavailableReason}" Opacity="0.65" FontSize="11" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
                 </ComboBox>
+                <Button Content="Install local Shell package…" Command="{Binding InstallShellPackageCommand}" HorizontalAlignment="Left" />
+                <TextBlock Text="Packages are loaded only after you select one. Unsigned packages require Developer Mode."
+                           Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 

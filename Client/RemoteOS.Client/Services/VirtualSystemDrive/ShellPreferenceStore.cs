@@ -1,25 +1,26 @@
 namespace Client.Services.VirtualSystemDrive;
 
-/// <summary>Device-local materialization of the selected built-in Shell.</summary>
+/// <summary>Device-local last-known-good shell resolution. It is never uploaded as executable state.</summary>
 public sealed class ShellPreferenceStore(VirtualSystemDrive drive)
 {
     private const string PreferencePath = "System/shell-preference.json";
 
-    public async Task<string> LoadAsync()
+    public async Task<ShellPreference> LoadAsync()
     {
         try
         {
             var value = await drive.ReadJsonAsync<ShellPreference>(drive.ResolveRootChild(PreferencePath));
-            return string.IsNullOrWhiteSpace(value.ShellId) ? "remoteos" : value.ShellId;
+            return string.IsNullOrWhiteSpace(value.ShellId) ? new ShellPreference("remoteos.default") : value;
         }
-        catch { return "remoteos"; }
+        catch { return new ShellPreference("remoteos.default"); }
     }
 
-    public async Task SaveAsync(string shellId)
+    public async Task SaveAsync(string shellId, string? packageId = null, string? packageVersion = null, string? resolvedPackagePath = null)
     {
-        try { await drive.WriteJsonAtomicallyAsync(drive.ResolveRootChild(PreferencePath), new ShellPreference(shellId)); }
+        try { await drive.WriteJsonAtomicallyAsync(drive.ResolveRootChild(PreferencePath), new ShellPreference(shellId, packageId, packageVersion, resolvedPackagePath)); }
         catch { /* A preference write never breaks the current shell. */ }
     }
 
-    private sealed record ShellPreference(string ShellId);
+    public sealed record ShellPreference(string ShellId, string? PackageId = null, string? PackageVersion = null,
+        string? ResolvedPackagePath = null);
 }

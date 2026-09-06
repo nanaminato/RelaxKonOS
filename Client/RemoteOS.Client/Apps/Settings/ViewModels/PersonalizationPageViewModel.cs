@@ -3,6 +3,8 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.Input;
 using RemoteOS.Protocol.Desktop;
 using RemoteOS.Protocol.Workspace;
+using RemoteOS.Shell;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Client.Apps.Settings.ViewModels;
 
@@ -10,8 +12,11 @@ namespace Client.Apps.Settings.ViewModels;
 /// 透传读写 <see cref="ShellSettings"/>，改动即时反映到桌面外壳（壁纸 / 任务栏底色）并触发保存。</summary>
 public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 {
-    public PersonalizationPageViewModel(ShellSettings settings, Action? save) : base(settings, save)
+    private readonly IShellCatalog _shellCatalog;
+    public PersonalizationPageViewModel(ShellSettings settings, Action? save, IShellCatalog? shellCatalog = null) : base(settings, save)
     {
+        _shellCatalog = shellCatalog ?? Client.App.Services.GetRequiredService<IShellCatalog>();
+        _shellCatalog.Changed += (_, _) => OnPropertyChanged(nameof(ShellChoices));
         // Theme 变化（含外部 Apply 加载）时刷新三个 RadioButton 绑定。
         Settings.PropertyChanged += (_, e) =>
         {
@@ -41,8 +46,8 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     public override string DisplayName => "Personalization";
 
     public IReadOnlyList<Client.Services.WallpaperOption> Wallpapers => Settings.Wallpapers;
-    public IReadOnlyList<ShellChoice> ShellChoices => ShellSession.Definitions
-        .Select(definition => new ShellChoice(definition.Id, definition.DisplayName)).ToArray();
+    public IReadOnlyList<ShellChoice> ShellChoices => _shellCatalog.Available
+        .Select(definition => new ShellChoice(definition.Id, definition.DisplayName, definition.Source, definition.Version, definition.UnavailableReason)).ToArray();
 
     /// <summary>Device-local presentation choice; changing it immediately swaps only the shell view.</summary>
     public string SelectedShellId
@@ -55,6 +60,9 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
             Save();
         }
     }
+
+    /// <summary>Supplied by the Avalonia page so the VM never accesses a TopLevel or filesystem picker.</summary>
+    public Func<Task>? RequestShellPackageInstallAsync { get; set; }
 
     /// <summary>由 SettingsApp 提供本机文件选择器；VM 不直接依赖 Avalonia TopLevel。</summary>
     public Func<Task>? RequestCustomWallpaperAsync { get; set; }
@@ -254,11 +262,22 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
             await RequestCustomWallpaperAsync();
     }
 
+    [RelayCommand]
+    private async Task InstallShellPackageAsync()
+    {
+        if (RequestShellPackageInstallAsync is not null)
+            await RequestShellPackageInstallAsync();
+    }
+
     private static IBrush Brush(string color) => new SolidColorBrush(Color.Parse(color));
 
 }
 
-public sealed record ShellChoice(string Id, string DisplayName);
+public sealed record ShellChoice(string Id, string DisplayName, ShellSourceKind Source = ShellSourceKind.BuiltIn,
+    string? Version = null, string? UnavailableReason = null)
+{
+    public bool HasUnavailableReason => !string.IsNullOrWhiteSpace(UnavailableReason);
+}
 
 public sealed record ThemePaletteChoice(string Id, string Name, bool IsCustom);
 public sealed record ThemePalettePreview(IBrush Background, IBrush Surface, IBrush Accent, IBrush Success, IBrush Danger, string AccentValue);

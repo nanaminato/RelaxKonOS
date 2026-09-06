@@ -1,10 +1,12 @@
 using RemoteOS.Core.VirtualSystemDrive;
 using Client.Services.VirtualSystemDrive;
+using RemoteOS.Shell;
 
 VerifyDescriptorValidation();
 VerifyRelativePathValidation();
 VerifyShortcutValidation();
 VerifyAutomationValidation();
+VerifyShellIdMigration();
 await VerifyStorageBoundaryAsync();
 Console.WriteLine("RemoteOS.Core VSD contract verification passed.");
 
@@ -77,6 +79,14 @@ static void VerifyAutomationValidation()
         "Workflow accepted an invalid managed window id.");
     Assert(!AutomationWorkflowValidator.Validate(workflow with { Steps = [new AutomationStep("remote-file.open", Target: "https://example.invalid/a")] }).IsValid,
         "Workflow accepted an arbitrary remote network target.");
+}
+
+static void VerifyShellIdMigration()
+{
+    Assert(ShellApi.NormalizeId("remoteos") == ShellApi.DefaultShellId, "Legacy RemoteOS Shell id was not normalized.");
+    Assert(ShellApi.NormalizeId("windows-like") == "remoteos.windows-like", "Legacy Windows-like Shell id was not normalized.");
+    Assert(ShellApi.NormalizeId("com.example.neon") == "com.example.neon", "External Shell id was unexpectedly changed.");
+    Assert(ShellApi.NormalizeId(null) == ShellApi.DefaultShellId, "Missing Shell id did not use the safe default.");
 }
 
 static async Task VerifyStorageBoundaryAsync()

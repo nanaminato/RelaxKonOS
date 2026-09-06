@@ -40,7 +40,7 @@ public partial class MainWindow : Window
     private async Task AttachShellAsync()
     {
         if (DataContext is DesktopShellViewModel shell)
-            await App.Services.GetRequiredService<ShellSession>().AttachAsync(ShellHost, shell);
+            await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell);
     }
 
     private void ConnectionInfo_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

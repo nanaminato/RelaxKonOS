@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../RemoteOS.Core/RemoteOS.Core.csproj" />
+    <ProjectReference Include="../RemoteOS.Shell/RemoteOS.Shell.csproj" />
     <!-- Keep the storage-boundary test dependency-free while the local desktop SDK is incomplete. -->
     <Compile Include="../../Client/RemoteOS.Client/Services/VirtualSystemDrive/VirtualSystemDrive.cs"
              Link="VirtualSystemDrive.cs" />

@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RemoteOS.App.SDK", "Framewo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RemoteOS.Protocol", "Shared\RemoteOS.Protocol\RemoteOS.Protocol.csproj", "{1B0F59CE-C2BB-46DE-9C75-712A850E45CD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RemoteOS.Shell", "Framework\RemoteOS.Shell\RemoteOS.Shell.csproj", "{A15B80E6-BA16-4B7D-8D46-8B7E2CA03B79}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -72,5 +74,9 @@ Global
 		{1B0F59CE-C2BB-46DE-9C75-712A850E45CD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1B0F59CE-C2BB-46DE-9C75-712A850E45CD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1B0F59CE-C2BB-46DE-9C75-712A850E45CD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A15B80E6-BA16-4B7D-8D46-8B7E2CA03B79}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A15B80E6-BA16-4B7D-8D46-8B7E2CA03B79}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A15B80E6-BA16-4B7D-8D46-8B7E2CA03B79}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A15B80E6-BA16-4B7D-8D46-8B7E2CA03B79}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -110,6 +110,14 @@ static void VerifyWorkspacePreferencesJsonContract()
 
     Assert(deserialized.WallpaperKey == preferences.WallpaperKey, "Wallpaper key changed during JSON deserialization.");
     Assert(deserialized.DefaultApps.SequenceEqual(preferences.DefaultApps), "Default app mappings changed during JSON deserialization.");
+    Assert(deserialized.Shell?.ShellId == "remoteos", "Legacy shellId must remain readable through the structured shell selection.");
+
+    var external = preferences with { ShellId = "com.example.neon-desktop", Shell = new ShellSelectionDto("com.example.neon-desktop", "com.example.neon", "1.0.0") };
+    var externalRoundTrip = JsonSerializer.Deserialize<WorkspacePreferencesDto>(
+        JsonSerializer.Serialize(external, RemoteOS.Protocol.Common.RemoteOsJsonOptions.Default), RemoteOS.Protocol.Common.RemoteOsJsonOptions.Default)
+        ?? throw new InvalidOperationException("Structured shell selection did not deserialize.");
+    Assert(externalRoundTrip.Shell?.PackageId == "com.example.neon" && externalRoundTrip.Shell?.PackageVersion == "1.0.0",
+        "Structured shell package identity changed during JSON round-trip.");
 }
 
 static void VerifyFileElevationSessionScope(string root)

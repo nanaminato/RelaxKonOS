@@ -1,8 +1,10 @@
 # RemoteOS 可插拔桌面 Shell（Launcher）扩展：Goal 执行文档
 
-> **状态：待实施。** 本文是本次扩展的唯一 Goal 模式执行规范。目标是把当前仅改变外框的 Shell 切换，升级为类似 Android Launcher 的完整桌面呈现切换：Shell 自己渲染桌面、应用启动入口、任务栏/停靠栏和系统弹层，同时继续复用 RemoteOS 的应用运行时、窗口管理器、会话与权限边界。
+> **状态：已实施（2026-09）。** 本文是本次扩展的唯一 Goal 模式执行规范。目标是把当前仅改变外框的 Shell 切换，升级为类似 Android Launcher 的完整桌面呈现切换：Shell 自己渲染桌面、应用启动入口、任务栏/停靠栏和系统弹层，同时继续复用 RemoteOS 的应用运行时、窗口管理器、会话与权限边界。
 >
 > 相关现状：[桌面外壳](./RemoteOS.Desktop.md)、[设置](./RemoteOS.Settings.md)、[架构](../architecture/RemoteOS.Architecture.md)。
+>
+> 外部包作者指南与可构建示例见 [RemoteOS.ExternalShellPackages.md](./RemoteOS.ExternalShellPackages.md) 和 `examples/NeonDesktopShell`。
 
 ---
 
@@ -391,4 +393,3 @@ public sealed record ShellSelectionDto(
 以下文本可直接作为 Goal 模式目标：
 
 > 实施 `docs/desktop/RemoteOS.ShellLauncher.Goal.md`。把当前 style-only Shell 切换重构为可插拔 `IDesktopShell` Launcher 架构：每个内置 Shell 必须独立渲染桌面、启动器和任务栏/Dock，并通过受控 Shell 接口复用现有应用、窗口、模态和文件操作真源。实现可事务回滚的 ShellRuntime，使已打开窗口在切换中存活且最大化工作区避让系统栏。扩展 Workspace 偏好以保存可兼容的内置/外部 Shell 选择，并支持本机安装、发现、校验、故障回退的外部 Shell 扩展包。严格执行本文接口、边界、阶段和验收矩阵；每一阶段运行对应测试与构建，更新相关设计文档，并不要实现宿主 OS 的实际 shell replacement。
-
