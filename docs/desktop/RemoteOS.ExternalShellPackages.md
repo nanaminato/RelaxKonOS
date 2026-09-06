@@ -12,6 +12,6 @@ assets/...
 
 入口实现 `RemoteOS.Shell.IDesktopShellFactory`，并且只能引用 `RemoteOS.Shell`。不要引用 `Client`、服务容器、认证会话或远程文件 API。Shell 使用 `ShellPresentationContext.Actions` 与只读状态投影请求操作，并在 `InitializeAsync` 中登记完整的 `ShellSurfaces`。普通窗口工作区通过 `UpdateWorkArea` 上报；全屏 host 必须覆盖 Shell 根。
 
-`examples/NeonDesktopShell` 是可构建的最小示例。将其输出 DLL 放到 manifest 所示路径后即可形成开发包。未签名开发包要求用户显式开启 Developer Mode；发行包须提供并通过 `shell.json.sha256` 的 entry assembly 哈希验证。清单发现和校验从不执行程序集，程序集只在用户选择该 Shell 时通过可收集的 `AssemblyLoadContext` 加载。
+`examples/Windows11DesktopShell` 是可构建的 Windows 11 风格外置桌面示例。它演示壁纸、桌面快捷方式、居中任务栏、开始菜单、快速设置，以及窗口、全屏窗口和 Shell 覆盖层的正确注册方式。将其输出 DLL 放到 manifest 所示路径后即可形成开发包。未签名开发包要求用户显式开启 Developer Mode；发行包须提供并通过 `shell.json.sha256` 的 entry assembly 哈希验证。清单发现和校验从不执行程序集，程序集只在用户选择该 Shell 时通过可收集的 `AssemblyLoadContext` 加载。
 
 如果包缺失、不兼容、禁用、初始化超时或抛异常，当前桌面保持可用；不能激活时回退 `remoteos.windows-like`，而 Workspace 中的跨设备选择意图不被覆盖。

@@ -4,7 +4,7 @@
 >
 > 相关现状：[桌面外壳](./RemoteOS.Desktop.md)、[设置](./RemoteOS.Settings.md)、[架构](../architecture/RemoteOS.Architecture.md)。
 >
-> 外部包作者指南与可构建示例见 [RemoteOS.ExternalShellPackages.md](./RemoteOS.ExternalShellPackages.md) 和 `examples/NeonDesktopShell`。
+> 外部包作者指南与 Windows 11 风格可构建示例见 [RemoteOS.ExternalShellPackages.md](./RemoteOS.ExternalShellPackages.md) 和 `examples/Windows11DesktopShell`。
 
 ---
 
@@ -250,13 +250,13 @@ Shell 必须处理的最小交互：
 ```json
 {
   "schemaVersion": 1,
-  "id": "com.example.neon-desktop",
-  "displayName": "Neon Desktop",
+  "id": "com.example.windows11-desktop",
+  "displayName": "Windows 11 Desktop (External)",
   "version": "1.0.0",
-  "entryAssembly": "lib/net10.0/Example.NeonDesktop.dll",
-  "entryType": "Example.NeonDesktop.NeonShellFactory",
+  "entryAssembly": "lib/net10.0/Example.Windows11DesktopShell.dll",
+  "entryType": "Example.Windows11DesktopShell.Windows11ShellFactory",
   "minimumShellApiVersion": 1,
-  "capabilities": ["desktop", "appLauncher", "runningApps", "shellOverlays"]
+  "capabilities": ["desktop", "shellOverlays"]
 }
 ```
 
