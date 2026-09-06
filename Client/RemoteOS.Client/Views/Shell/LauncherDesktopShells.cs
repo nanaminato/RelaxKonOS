@@ -460,9 +460,243 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
         var layout = new MacosShellLayoutView();
-        layout.Compose(Desktop(vm), AppBar(vm, "◉"), Launcher(vm, "Launchpad"));
+        layout.Compose(MacosMenuBar(vm), Desktop(vm), MacosDock(vm), MacosLaunchpad(vm));
         _root.Children.Add(layout);
     }
+
+    private static Control MacosMenuBar(DesktopShellViewModel vm)
+    {
+        var bar = new Border
+        {
+            Height = 28,
+            Background = new SolidColorBrush(Color.Parse("#D9F7F8FA")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#334D5661")),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+        };
+        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var menus = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1, Margin = new Thickness(7, 0, 0, 0) };
+        menus.Children.Add(MacosMenuButton("●", "Launchpad", vm.ToggleStartCommand, bold: true));
+        menus.Children.Add(MacosMenuButton("RemoteOS", "System Settings", vm.OpenSettingsCommand, bold: true));
+        menus.Children.Add(MacosMenuButton("File", "Open Files", vm.OpenFileExplorerCommand));
+        menus.Children.Add(MacosMenuButton("View", "Show Desktop", vm.ShowDesktopCommand));
+        menus.Children.Add(MacosMenuButton("Window", "Task Manager", vm.OpenTaskManagerCommand));
+        menus.Children.Add(new TextBlock { Text = "Help", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0), Foreground = new SolidColorBrush(Color.Parse("#17212B")) });
+        layout.Children.Add(menus);
+
+        var status = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        status.Children.Add(MacosStatusButton("⌂", "Show Desktop", vm.ShowDesktopCommand));
+        status.Children.Add(MacosStatusButton("⌕", "Open Launchpad", vm.ToggleStartCommand));
+        status.Children.Add(MacosStatusButton("⚙", "System Settings", vm.OpenSettingsCommand));
+        var clock = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#17212B")), FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 4, 0) };
+        clock.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
+        var date = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(Color.Parse("#17212B")), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) };
+        date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
+        status.Children.Add(clock);
+        status.Children.Add(date);
+        status.Children.Add(MacosStatusButton("⏻", "Power", vm.ShutdownCommand));
+        Grid.SetColumn(status, 1);
+        layout.Children.Add(status);
+        bar.Child = layout;
+        return bar;
+    }
+
+    private static Control MacosDock(DesktopShellViewModel vm)
+    {
+        var dock = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#D9F3F5F8")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#80868E99")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(17),
+            Padding = new Thickness(6),
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                OffsetX = 0,
+                OffsetY = 5,
+                Blur = 16,
+                Color = Color.Parse("#55000000"),
+            }),
+        };
+        var apps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+        apps.Children.Add(MacosDockButton("▰", "Files", vm.OpenFileExplorerCommand));
+        apps.Children.Add(MacosDockButton("›_", "Terminal", vm.OpenTerminalCommand));
+        apps.Children.Add(MacosDockButton("▥", "Task Manager", vm.OpenTaskManagerCommand));
+        apps.Children.Add(MacosDockButton("⚙", "System Settings", vm.OpenSettingsCommand));
+        apps.Children.Add(new Border { Width = 1, Height = 36, Background = new SolidColorBrush(Color.Parse("#6677818C")), Margin = new Thickness(5, 5) });
+        var runningApps = new ItemsControl
+        {
+            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 }),
+            ItemTemplate = new FuncDataTemplate<TaskbarGroupViewModel>((group, _) => MacosRunningApp(vm, group)),
+        };
+        runningApps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
+        apps.Children.Add(runningApps);
+        apps.Children.Add(new Border { Width = 1, Height = 36, Background = new SolidColorBrush(Color.Parse("#6677818C")), Margin = new Thickness(5, 5) });
+        apps.Children.Add(MacosDockButton("▦", "Launchpad", vm.ToggleStartCommand));
+        dock.Child = apps;
+        return dock;
+    }
+
+    private static Control MacosLaunchpad(DesktopShellViewModel vm)
+    {
+        var overlay = new Border
+        {
+            IsVisible = false,
+            Background = new SolidColorBrush(Color.Parse("#E8202630")),
+        };
+        overlay.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
+        var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 26, Margin = new Thickness(80, 58, 80, 78) };
+        var search = new TextBox
+        {
+            Width = 430,
+            Height = 38,
+            PlaceholderText = "Search applications",
+            FontSize = 14,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            CornerRadius = new CornerRadius(10),
+        };
+        search.Bind(TextBox.TextProperty, new Binding(nameof(vm.StartSearchQuery)) { Mode = BindingMode.TwoWay });
+        layout.Children.Add(search);
+        var apps = new ItemsControl
+        {
+            ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel { Orientation = Orientation.Horizontal }),
+            ItemTemplate = new FuncDataTemplate<AppEntryViewModel>((app, _) => MacosAppTile(vm, app)),
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        apps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.StartSearchResults)));
+        var scroller = new ScrollViewer
+        {
+            Content = apps,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
+        Grid.SetRow(scroller, 1);
+        layout.Children.Add(scroller);
+        overlay.Child = layout;
+        return overlay;
+    }
+
+    private static Button MacosAppTile(DesktopShellViewModel vm, AppEntryViewModel app)
+    {
+        var content = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Width = 106, Height = 108 };
+        var icon = MacosIcon(app, 58);
+        icon.HorizontalAlignment = HorizontalAlignment.Center;
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        content.Children.Add(icon);
+        var name = new TextBlock
+        {
+            Text = app.DisplayName,
+            Foreground = Brushes.White,
+            FontSize = 12,
+            MaxLines = 2,
+            MaxWidth = 100,
+            TextAlignment = TextAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        Grid.SetRow(name, 1);
+        content.Children.Add(name);
+        return new Button
+        {
+            Content = content,
+            Width = 116,
+            Height = 118,
+            Padding = new Thickness(4),
+            Margin = new Thickness(4),
+            Command = vm.LaunchCommand,
+            CommandParameter = app.Id,
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+    }
+
+    private static Button MacosRunningApp(DesktopShellViewModel vm, TaskbarGroupViewModel group)
+    {
+        var icon = MacosIcon(group, 31);
+        icon.HorizontalAlignment = HorizontalAlignment.Center;
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        var button = MacosInteractiveButton(icon, vm.ToggleTaskbarGroupCommand, group, 44, group.DisplayName);
+        return button;
+    }
+
+    private static Button MacosDockButton(string glyph, string tooltip, System.Windows.Input.ICommand command)
+        => MacosInteractiveButton(new TextBlock
+        {
+            Text = glyph,
+            FontSize = 23,
+            Foreground = new SolidColorBrush(Color.Parse("#17212B")),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        }, command, null, 44, tooltip);
+
+    /// <summary>Dock icons magnify with a short width/height transition, mirroring macOS hover behaviour.</summary>
+    private static Button MacosInteractiveButton(Control content, System.Windows.Input.ICommand command, object? parameter, double size, string tooltip)
+    {
+        var button = new Button
+        {
+            Content = content,
+            Command = command,
+            CommandParameter = parameter,
+            Width = size,
+            Height = size,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            Transitions =
+            [
+                new Avalonia.Animation.DoubleTransition { Property = Layoutable.WidthProperty, Duration = TimeSpan.FromMilliseconds(130) },
+                new Avalonia.Animation.DoubleTransition { Property = Layoutable.HeightProperty, Duration = TimeSpan.FromMilliseconds(130) },
+            ],
+        };
+        button.PointerEntered += (_, _) => { button.Width = size + 10; button.Height = size + 10; };
+        button.PointerExited += (_, _) => { button.Width = size; button.Height = size; };
+        ToolTip.SetTip(button, tooltip);
+        return button;
+    }
+
+    private static Button MacosMenuButton(string title, string tooltip, System.Windows.Input.ICommand command, bool bold = false)
+    {
+        var button = new Button
+        {
+            Content = title,
+            Command = command,
+            Height = 27,
+            Padding = new Thickness(7, 0),
+            FontSize = 12,
+            FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
+            Foreground = new SolidColorBrush(Color.Parse("#17212B")),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+        ToolTip.SetTip(button, tooltip);
+        return button;
+    }
+
+    private static Button MacosStatusButton(string glyph, string tooltip, System.Windows.Input.ICommand command)
+    {
+        var button = new Button
+        {
+            Content = glyph,
+            Command = command,
+            Width = 25,
+            Height = 27,
+            Padding = new Thickness(0),
+            FontSize = 14,
+            Foreground = new SolidColorBrush(Color.Parse("#17212B")),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+        ToolTip.SetTip(button, tooltip);
+        return button;
+    }
+
+    private static Control MacosIcon(AppEntryViewModel app, double size) => app.IconImage is { } image
+        ? new Image { Source = image, Width = size, Height = size }
+        : new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 6, Foreground = Brushes.White };
+
+    private static Control MacosIcon(TaskbarGroupViewModel group, double size) => group.IconImage is { } image
+        ? new Image { Source = image, Width = size, Height = size }
+        : new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 4, Foreground = new SolidColorBrush(Color.Parse("#17212B")) };
 }
 
 public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Ubuntu)

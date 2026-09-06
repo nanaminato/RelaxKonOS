@@ -22,8 +22,9 @@ public partial class MacosShellLayoutView : UserControl
 {
     public MacosShellLayoutView() => InitializeComponent();
 
-    public void Compose(Control desktop, Control dock, Control launcher)
+    public void Compose(Control menuBar, Control desktop, Control dock, Control launcher)
     {
+        MenuBarHost.Content = menuBar;
         DesktopHost.Content = desktop;
         DockHost.Content = dock;
         LauncherHost.Content = launcher;
