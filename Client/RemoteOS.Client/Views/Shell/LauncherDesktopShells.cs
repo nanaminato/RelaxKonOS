@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -84,6 +85,12 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     {
         var workspace = new Grid { ClipToBounds = true };
         _backdrop.PointerPressed += (_, _) => vm.ClearDesktopSelectionCommand.Execute(null);
+        _backdrop.ContextMenu = DesktopContextMenu(vm);
+        workspace.KeyBindings.Add(new KeyBinding
+        {
+            Command = vm.OpenDesktopDisplaySettingsCommand,
+            Gesture = KeyGesture.Parse("Ctrl+Shift+D"),
+        });
         workspace.Children.Add(_backdrop);
         var icons = new ItemsControl
         {
@@ -92,9 +99,46 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             ItemTemplate = new FuncDataTemplate<object>((item, _) => Icon(vm, item)),
         };
         icons.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.DesktopItems)));
+        icons.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.AreDesktopIconsVisible)));
         workspace.Children.Add(icons);
         workspace.Children.Add(_windowHost);
         return workspace;
+    }
+
+    private static ContextMenu DesktopContextMenu(DesktopShellViewModel vm)
+    {
+        var showIcons = new MenuItem
+        {
+            Header = LocalizedText.Get("shell.desktop.context.show_icons", "Show desktop icons"),
+            ToggleType = MenuItemToggleType.CheckBox,
+        };
+        showIcons.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(vm.AreDesktopIconsVisible)) { Mode = BindingMode.TwoWay });
+
+        var view = new MenuItem { Header = LocalizedText.Get("common.view", "View") };
+        view.ItemsSource = new object[] { showIcons };
+
+        return new ContextMenu
+        {
+            ItemsSource = new object[]
+            {
+                view,
+                new MenuItem { Header = LocalizedText.Get("common.refresh", "Refresh"), Command = vm.RefreshDesktopCommand },
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand },
+                new Separator(),
+                new MenuItem
+                {
+                    Header = LocalizedText.Get("shell.desktop_display.configure_ellipsis", "Configure desktop display..."),
+                    Command = vm.OpenDesktopDisplaySettingsCommand,
+                    InputGesture = KeyGesture.Parse("Ctrl+Shift+D"),
+                },
+                new Separator(),
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), Command = vm.OpenDesktopFolderCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_explorer", "Open File Explorer"), Command = vm.OpenFileExplorerCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_terminal", "Open Terminal"), Command = vm.OpenTerminalCommand },
+                new Separator(),
+                new MenuItem { Header = LocalizedText.Get("settings.page.personalization", "Personalization"), Command = vm.OpenPersonalizationCommand },
+            },
+        };
     }
 
     protected Control Launcher(DesktopShellViewModel vm, string label)
