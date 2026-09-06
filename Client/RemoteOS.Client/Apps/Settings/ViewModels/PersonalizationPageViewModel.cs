@@ -109,7 +109,6 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     };
 
     /// <summary>Supplied by the Avalonia page so the VM never accesses a TopLevel or filesystem picker.</summary>
-    public Func<Task>? RequestShellPackageInstallAsync { get; set; }
 
     /// <summary>由 SettingsApp 提供本机文件选择器；VM 不直接依赖 Avalonia TopLevel。</summary>
     public Func<Task>? RequestCustomWallpaperAsync { get; set; }
@@ -307,13 +306,6 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     {
         if (RequestCustomWallpaperAsync is not null)
             await RequestCustomWallpaperAsync();
-    }
-
-    [RelayCommand]
-    private async Task InstallShellPackageAsync()
-    {
-        if (RequestShellPackageInstallAsync is not null)
-            await RequestShellPackageInstallAsync();
     }
 
     private static IBrush Brush(string color) => new SolidColorBrush(Color.Parse(color));

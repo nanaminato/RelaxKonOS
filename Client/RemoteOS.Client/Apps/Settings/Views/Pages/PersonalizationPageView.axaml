@@ -25,9 +25,6 @@
                     </DataTemplate>
                 </ComboBox.ItemTemplate>
                 </ComboBox>
-                <Button Content="{loc:Loc settings.shell.install_package}" Command="{Binding InstallShellPackageCommand}" HorizontalAlignment="Left" />
-                <TextBlock Text="{loc:Loc settings.shell.install_package_hint}"
-                           Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 

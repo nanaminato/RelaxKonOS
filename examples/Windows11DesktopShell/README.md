@@ -16,9 +16,12 @@ Build from the repository root:
 ```powershell
 dotnet build examples/Windows11DesktopShell/RemoteOS.Example.Windows11DesktopShell.csproj
 ```
+如果已由 IDE 或 `dotnet build` 编译过同一 `Debug` 配置，可跳过重新编译，直接根据 `manifest.json` 打包已有输出：
 
-To assemble a development package, create this layout and copy in `manifest.json`, the built DLL,
-and the package-owned language files:
+```bash
+dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/Windows11DesktopShell --configuration Debug --no-build
+```
+The generated `.roapp` contains this layout:
 
 ```text
 Windows11DesktopShell/
@@ -30,6 +33,7 @@ Windows11DesktopShell/
     ja-JP.json
 ```
 
-Select that package directory from RemoteOS Personalization while Developer Mode is enabled. See
+Open the generated `.roapp` with the RemoteOS App Installer. After installation, select the desktop
+from Personalization. Personalization intentionally has no local-folder installation action. See
 [`docs/desktop/RemoteOS.ExternalShellPackages.md`](../../docs/desktop/RemoteOS.ExternalShellPackages.md)
 for validation, signing, and loading details.

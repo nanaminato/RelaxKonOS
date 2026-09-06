@@ -63,6 +63,9 @@ public sealed class DeveloperPackageManager
         .Select(record => new DeveloperAppInfo(record.Id, record.DisplayName, record.Version, record.Path))
         .ToArray();
 
+    /// <summary>Raised after the unified package catalog changes, including desktop-shell packages.</summary>
+    public event EventHandler? PackagesChanged;
+
     /// <summary>Reads package metadata without extracting or installing the archive.</summary>
     public async Task<DeveloperPackageManifest> InspectAsync(string packagePath, CancellationToken cancellationToken = default)
     {
@@ -110,6 +113,7 @@ public sealed class DeveloperPackageManager
             }
         }
         SaveCatalog(_catalogPath, _catalog);
+        PackagesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task<DeveloperAppInfo> InstallAsync(Stream package, bool launch, CancellationToken cancellationToken = default)
@@ -150,7 +154,8 @@ public sealed class DeveloperPackageManager
             _permissions.Clear(new AppId(appId));
             _catalog[appId] = record;
             SaveCatalog(_catalogPath, _catalog);
-            if (launch)
+            PackagesChanged?.Invoke(this, EventArgs.Empty);
+            if (launch && !IsDesktopShellPackage(destination))
                 await Dispatcher.UIThread.InvokeAsync(() => _applications.Launch(new AppId(appId)));
             return new DeveloperAppInfo(record.Id, record.DisplayName, record.Version, record.Path);
         }
@@ -176,6 +181,7 @@ public sealed class DeveloperPackageManager
         var current = CurrentPath(appId);
         if (File.Exists(current)) File.Delete(current);
         TryDeleteDirectory(AppDirectory(appId));
+        PackagesChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
@@ -208,6 +214,7 @@ public sealed class DeveloperPackageManager
     private void Register(DeveloperAppRecord record)
     {
         UnregisterAndUnload(record.Id);
+        if (IsDesktopShellPackage(record.Path)) return;
         _applications.Register(record.SupportedFileExtensions.Count > 0 || (record.SupportedFileNames?.Count ?? 0) > 0 || record.SupportsExtensionlessFiles
             ? new ExternalFileApplicationAdapter(record, this, _contextFactory)
             : new ExternalApplicationAdapter(record, this, _contextFactory));
@@ -424,6 +431,8 @@ public sealed class DeveloperPackageManager
             throw new InvalidOperationException("The remoteos.* application id range is reserved for built-in applications.");
         if (manifest.PermissionModelVersion != 2)
             throw new InvalidOperationException("This package uses an unsupported permission model. Rebuild it with permissionModelVersion: 2.");
+        if (manifest.PackageType is not null and not "application" and not "desktopShell")
+            throw new InvalidOperationException("packageType must be application or desktopShell.");
         if (string.IsNullOrWhiteSpace(manifest.DisplayName) || string.IsNullOrWhiteSpace(manifest.Version)
             || string.IsNullOrWhiteSpace(manifest.EntryAssembly) || string.IsNullOrWhiteSpace(manifest.EntryType))
             throw new InvalidOperationException("manifest.json is missing a required field.");
@@ -447,6 +456,21 @@ public sealed class DeveloperPackageManager
                 || scheme.Equals("remoteos", StringComparison.OrdinalIgnoreCase)) == true)
             throw new InvalidOperationException("supportedUriSchemes must contain non-reserved URI schemes.");
         _ = ParseInstancePolicy(manifest.InstancePolicy);
+    }
+
+    private static bool IsDesktopShellPackage(string packageRoot)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(packageRoot, "manifest.json")));
+            return document.RootElement.TryGetProperty("packageType", out var packageType)
+                && packageType.ValueKind == JsonValueKind.String
+                && string.Equals(packageType.GetString(), "desktopShell", StringComparison.Ordinal);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
     }
 
     private static ApplicationInstancePolicy ParseInstancePolicy(string? value)
@@ -669,7 +693,8 @@ public sealed record DeveloperPackageManifest(
     string? InstancePolicy = null,
     IReadOnlyList<string>? SupportedUriSchemes = null,
     string? IconPath = null,
-    int PermissionModelVersion = 0);
+    int PermissionModelVersion = 0,
+    string? PackageType = null);
 
 internal sealed record DeveloperAppRecord(
     string Id,

@@ -38,6 +38,11 @@ public sealed class ShellRuntime
     {
         _catalog = catalog; _windows = windows; _settings = settings; _preferences = preferences; _overlays = overlays;
         _settings.ShellSelectionChanged += (_, id) => _ = SwitchAsync(id, persist: true);
+        _catalog.Changed += (_, _) =>
+        {
+            if (_active is not null && !_catalog.TryGet(_activeShellId, out _))
+                _ = SwitchAsync(ShellApi.DefaultShellId, persist: true);
+        };
     }
 
     public string ActiveShellId => _activeShellId;

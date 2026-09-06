@@ -258,6 +258,8 @@ Shell 必须处理的最小交互：
 ```json
 {
   "schemaVersion": 1,
+  "permissionModelVersion": 2,
+  "packageType": "desktopShell",
   "id": "com.example.windows11-desktop",
   "displayName": "Windows 11 Desktop (External)",
   "version": "1.0.0",
@@ -278,11 +280,11 @@ public interface IDesktopShellFactory
 }
 ```
 
-外部包只能从用户选择的本机目录或 RemoteOS 扩展安装目录安装。不得根据 Workspace 偏好自动下载、加载网络 DLL 或执行脚本。开发者模式可允许未签名包，但必须在设置中显示清晰风险提示；发行模式只接受签名/哈希已验证且 `manifest.json` 与程序集白名单匹配的包。
+外部 Shell 与第三方应用统一封装为 `.roapp`，只能通过应用安装程序进入版本化软件包目录；个性化页面不提供目录安装入口。安装器验证 `permissionModelVersion: 2`、安全相对路径和清单必填字段，`ShellCatalog` 再验证 `packageType`、Shell API 版本与能力组合。不得根据 Workspace 偏好自动下载、加载网络 DLL 或执行脚本。
 
 ### 5.2 生命周期、故障隔离与卸载
 
-- `ShellCatalog` 先解析 manifest、检查 ID 格式、API 版本、签名、大小和能力组合；不执行程序集即可列出不可用原因。
+- 应用安装程序先验证并登记软件包；`ShellCatalog` 再解析 manifest，检查桌面包类型、ID 格式、API 版本和能力组合，不执行程序集即可列出不可用原因。
 - 只有用户选择该 Shell 时才加载程序集和创建实例。初始化超时、抛异常或未登记有效 surfaces 时，记录诊断，拒绝激活，并回退到当前 Shell。
 - `DeactivateAsync` / `DisposeAsync` 失败不得阻塞回退。`AssemblyLoadContext` 在没有可达对象时卸载；若无法卸载，标记“需重启才能完成卸载”，不能破坏当前桌面。
 - 切换中的外部 Shell 崩溃必须保留现有应用窗口；运行时立即回退到 `remoteos.windows-like` 并向用户显示可复制的诊断 ID。

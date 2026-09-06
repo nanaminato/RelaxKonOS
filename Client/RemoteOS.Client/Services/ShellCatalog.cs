@@ -14,19 +14,20 @@ public sealed class ShellCatalog : IShellCatalog
 {
     private readonly Dictionary<string, Func<IDesktopShell>> _factories = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ExternalPackage> _external = new(StringComparer.Ordinal);
-    private readonly DeveloperModeService _developerMode;
-    private readonly string _root;
+    private readonly DeveloperPackageManager _packages;
+    private readonly LocalizationService _localization;
     public event EventHandler? Changed;
 
-    public ShellCatalog(DeveloperModeService developerMode)
+    public ShellCatalog(DeveloperPackageManager packages, LocalizationService localization)
     {
-        _developerMode = developerMode;
-        _root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteOS", "ShellExtensions");
+        _packages = packages;
+        _localization = localization;
         Register(BuiltInShells.Windows, () => new WindowsLikeDesktopShell());
         Register(BuiltInShells.Macos, () => new MacosLikeDesktopShell());
         Register(BuiltInShells.Ubuntu, () => new UbuntuLikeDesktopShell());
         Discover();
-        _developerMode.Changed += (_, _) => Discover();
+        _packages.PackagesChanged += (_, _) => Discover();
+        _localization.LanguageChanged += (_, _) => Discover();
     }
 
     public IReadOnlyList<ShellDescriptor> Available => _factories.Keys
@@ -54,19 +55,6 @@ public sealed class ShellCatalog : IShellCatalog
         catch (Exception ex) { error = string.Format(LocalizedText.Get("settings.shell.activation_failed", "Desktop package activation failed: {0}"), ex.GetType().Name); return false; }
     }
 
-    /// <summary>Called only after a user selected a local package folder in Settings.</summary>
-    public async Task<ShellDescriptor> InstallAsync(string packageDirectory, CancellationToken cancellationToken = default)
-    {
-        var package = Validate(packageDirectory);
-        if (!package.Descriptor.IsAvailable) throw new InvalidOperationException(package.Descriptor.UnavailableReason);
-        var destination = Path.Combine(_root, package.Descriptor.PackageId ?? package.Descriptor.Id);
-        Directory.CreateDirectory(_root);
-        if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
-        await Task.Run(() => CopyDirectory(packageDirectory, destination), cancellationToken);
-        Discover();
-        return _external.TryGetValue(package.Descriptor.Id, out var installed) ? installed.Descriptor : package.Descriptor;
-    }
-
     public void Disable(string id)
     {
         if (_external.Remove(id)) Changed?.Invoke(this, EventArgs.Empty);
@@ -75,12 +63,12 @@ public sealed class ShellCatalog : IShellCatalog
     public void Discover()
     {
         _external.Clear();
-        if (Directory.Exists(_root))
-            foreach (var directory in Directory.EnumerateDirectories(_root))
-            {
-                var package = Validate(directory);
-                _external[package.Descriptor.Id] = package;
-            }
+        foreach (var installed in _packages.Installed)
+        {
+            if (!IsDesktopShellPackage(installed.InstallationPath)) continue;
+            var package = Validate(installed.InstallationPath);
+            _external[package.Descriptor.Id] = package;
+        }
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -98,15 +86,12 @@ public sealed class ShellCatalog : IShellCatalog
             var assemblyPath = Path.GetFullPath(Path.Combine(root, manifest.EntryAssembly ?? string.Empty));
             if (!assemblyPath.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.Ordinal)
                 || !File.Exists(assemblyPath)) throw new InvalidDataException("Entry assembly is outside the package or missing.");
-            var reason = !validId ? LocalizedText.Get("settings.shell.invalid_id", "The desktop package ID is invalid.") : manifest.SchemaVersion != 1 ? LocalizedText.Get("settings.shell.unsupported_schema", "This desktop package uses an unsupported manifest schema.") :
+            var reason = !string.Equals(manifest.PackageType, "desktopShell", StringComparison.Ordinal) ? LocalizedText.Get("settings.shell.invalid_package", "The desktop package is invalid.") :
+                !validId ? LocalizedText.Get("settings.shell.invalid_id", "The desktop package ID is invalid.") : manifest.SchemaVersion != 1 ? LocalizedText.Get("settings.shell.unsupported_schema", "This desktop package uses an unsupported manifest schema.") :
                 manifest.MinimumShellApiVersion > ShellApi.Version ? LocalizedText.Get("settings.shell.requires_newer_api", "This desktop package requires a newer Shell API.") :
                 manifest.Capabilities?.Length == 0 ? LocalizedText.Get("settings.shell.no_capabilities", "This desktop package declares no launcher capabilities.") : null;
-            if (reason is null && !_developerMode.IsEnabled)
-            {
-                if (string.IsNullOrWhiteSpace(manifest.Sha256)) reason = LocalizedText.Get("settings.shell.unsigned", "This desktop package is unsigned. Enable Developer Mode only for trusted development packages.");
-                else if (!string.Equals(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(assemblyPath))), manifest.Sha256, StringComparison.OrdinalIgnoreCase)) reason = LocalizedText.Get("settings.shell.hash_mismatch", "Desktop package hash verification failed.");
-            }
-            var descriptor = new ShellDescriptor(id, manifest.DisplayName?.Trim() ?? id, manifest.Version?.Trim() ?? "0.0.0",
+            var displayName = ResolveLocalizedDisplayName(manifest) ?? manifest.DisplayName?.Trim() ?? id;
+            var descriptor = new ShellDescriptor(id, displayName, manifest.Version?.Trim() ?? "0.0.0",
                 ShellSourceKind.ExternalPackage, ParseCapabilities(manifest.Capabilities), manifest.PackageId ?? id, reason);
             return new ExternalPackage(descriptor, root, assemblyPath, manifest.EntryType ?? string.Empty);
         }
@@ -124,27 +109,59 @@ public sealed class ShellCatalog : IShellCatalog
         foreach (var value in values ?? []) result |= value switch { "desktop" => ShellCapabilities.Desktop, "appLauncher" => ShellCapabilities.AppLauncher, "runningApps" => ShellCapabilities.RunningApps, "shellOverlays" => ShellCapabilities.ShellOverlays, _ => ShellCapabilities.None };
         return result;
     }
-    private static void CopyDirectory(string source, string target)
+
+    private string? ResolveLocalizedDisplayName(ShellManifest manifest)
     {
-        Directory.CreateDirectory(target);
-        foreach (var file in Directory.EnumerateFiles(source)) File.Copy(file, Path.Combine(target, Path.GetFileName(file)), true);
-        foreach (var directory in Directory.EnumerateDirectories(source)) CopyDirectory(directory, Path.Combine(target, Path.GetFileName(directory)));
+        if (manifest.LocalizedMetadata is null) return null;
+        if (manifest.LocalizedMetadata.TryGetValue(_localization.CurrentLanguage, out var exact)) return exact.DisplayName?.Trim();
+        var neutral = _localization.CurrentLanguage.Split('-', 2)[0];
+        return manifest.LocalizedMetadata.FirstOrDefault(pair =>
+            pair.Key.StartsWith(neutral + "-", StringComparison.OrdinalIgnoreCase)).Value?.DisplayName?.Trim();
+    }
+    private static bool IsDesktopShellPackage(string root)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "manifest.json")));
+            return document.RootElement.TryGetProperty("packageType", out var packageType)
+                && packageType.ValueKind == JsonValueKind.String
+                && string.Equals(packageType.GetString(), "desktopShell", StringComparison.Ordinal);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
     }
 
-    private sealed record ShellManifest(int SchemaVersion, string? Id, string? DisplayName, string? Version, string? PackageId,
-        string? EntryAssembly, string? EntryType, int MinimumShellApiVersion, string[]? Capabilities, string? Sha256);
+    private sealed record ShellManifest(int SchemaVersion, string? PackageType, string? Id, string? DisplayName, string? Version, string? PackageId,
+        string? EntryAssembly, string? EntryType, int MinimumShellApiVersion, string[]? Capabilities, string? Sha256,
+        IReadOnlyDictionary<string, ShellLocalizedMetadata>? LocalizedMetadata);
+    private sealed record ShellLocalizedMetadata(string? DisplayName, string? Description);
     private sealed class ExternalPackage(ShellDescriptor descriptor, string root, string assemblyPath, string entryType)
     {
         public ShellDescriptor Descriptor { get; } = descriptor; public string Root { get; } = root;
         public IDesktopShell Create()
         {
-            var context = new AssemblyLoadContext("RemoteOS.Shell." + Descriptor.Id, isCollectible: true);
-            context.Resolving += (_, name) => File.Exists(Path.Combine(Root, "lib", "net10.0", name.Name + ".dll"))
-                ? context.LoadFromAssemblyPath(Path.Combine(Root, "lib", "net10.0", name.Name + ".dll")) : null;
+            var context = new ShellAssemblyLoadContext(assemblyPath);
             var assembly = context.LoadFromAssemblyPath(assemblyPath);
             var factory = (IDesktopShellFactory?)Activator.CreateInstance(assembly.GetType(entryType, throwOnError: true)!);
             var shell = factory?.Create() ?? throw new InvalidDataException("Entry type is not an IDesktopShellFactory.");
             return new LoadedExternalShell(shell, context);
+        }
+    }
+    private sealed class ShellAssemblyLoadContext(string mainAssemblyPath) : AssemblyLoadContext(isCollectible: true)
+    {
+        private readonly AssemblyDependencyResolver _resolver = new(mainAssemblyPath);
+
+        protected override Assembly? Load(AssemblyName assemblyName)
+        {
+            // Contract and UI framework identities must be shared with the host. Package-private
+            // dependencies continue to resolve beside the package entry assembly.
+            if (assemblyName.Name?.StartsWith("RemoteOS.", StringComparison.Ordinal) == true
+                || assemblyName.Name?.StartsWith("Avalonia", StringComparison.Ordinal) == true)
+                return null;
+            var path = _resolver.ResolveAssemblyToPath(assemblyName);
+            return path is null ? null : LoadFromAssemblyPath(path);
         }
     }
 
