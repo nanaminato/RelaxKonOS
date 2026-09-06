@@ -312,15 +312,24 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
     /// </summary>
     private static Control WindowsLauncher(DesktopShellViewModel vm)
     {
+        // The full workspace backdrop dismisses Start without forwarding the click to the
+        // desktop beneath it, matching the native Start-menu interaction model.
+        var overlay = new Grid { IsVisible = false };
+        overlay.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
+        var dismissArea = new Border { Background = Brushes.Transparent };
+        dismissArea.PointerPressed += (_, _) => vm.CloseStartCommand.Execute(null);
+        overlay.Children.Add(dismissArea);
+
         var panel = new Border
         {
             Width = 412,
             MaxHeight = 620,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Bottom,
             Background = new SolidColorBrush(Color.Parse("#F22B2B2B")),
             BorderBrush = new SolidColorBrush(Color.Parse("#66787878")),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4, 4, 0, 0),
-            IsVisible = false,
             BoxShadow = new BoxShadows(new BoxShadow
             {
                 OffsetX = 0,
@@ -329,7 +338,9 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
                 Color = Color.Parse("#66000000"),
             }),
         };
-        panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
+        // Keep clicks inside Start available to its controls; only the transparent surrounding
+        // area should dismiss the list.
+        panel.PointerPressed += (_, eventArgs) => eventArgs.Handled = true;
 
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("52,*") };
         layout.Children.Add(WindowsSystemRail(vm));
@@ -349,7 +360,8 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         Grid.SetColumn(scroller, 1);
         layout.Children.Add(scroller);
         panel.Child = layout;
-        return panel;
+        overlay.Children.Add(panel);
+        return overlay;
     }
 
     private static Control WindowsSystemRail(DesktopShellViewModel vm)
@@ -418,7 +430,11 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         };
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("48,*,Auto") };
         var start = WindowsGlyphButton("⊞", LocalizedText.Get("shell.launcher.start", "Start"), vm.ToggleStartCommand);
+        // The taskbar's click-to-dismiss handler must not turn an open Start list straight back
+        // on when the user clicks its own launcher button.
+        start.PointerPressed += (_, eventArgs) => eventArgs.Handled = true;
         layout.Children.Add(start);
+        layout.PointerPressed += (_, _) => vm.CloseStartCommand.Execute(null);
 
         // Only live window groups are shown here.  There is deliberately no search or
         // synthetic notification area until those services expose shell-facing APIs.
@@ -662,6 +678,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Background = new SolidColorBrush(Color.Parse("#E8202630")),
         };
         overlay.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
+        overlay.PointerPressed += (_, _) => vm.CloseStartCommand.Execute(null);
         var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 26, Margin = new Thickness(80, 58, 80, 78) };
         var search = new TextBox
         {
@@ -673,6 +690,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             CornerRadius = new CornerRadius(10),
         };
         search.Bind(TextBox.TextProperty, new Binding(nameof(vm.StartSearchQuery)) { Mode = BindingMode.TwoWay });
+        search.PointerPressed += (_, eventArgs) => eventArgs.Handled = true;
         layout.Children.Add(search);
         var apps = new ItemsControl
         {
@@ -714,7 +732,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         };
         Grid.SetRow(name, 1);
         content.Children.Add(name);
-        return new Button
+        var button = new Button
         {
             Content = content,
             Width = 116,
@@ -726,6 +744,10 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
+        // Let selecting an app run its existing launch command, rather than treating the app
+        // tile itself as a blank Launchpad click.
+        button.PointerPressed += (_, eventArgs) => eventArgs.Handled = true;
+        return button;
     }
 
     private static Button MacosRunningApp(DesktopShellViewModel vm, TaskbarGroupViewModel group)
