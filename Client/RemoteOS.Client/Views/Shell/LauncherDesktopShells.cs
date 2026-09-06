@@ -630,7 +630,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             VerticalAlignment = VerticalAlignment.Center,
         }, command, null, 44, tooltip);
 
-    /// <summary>Dock icons magnify with a short width/height transition, mirroring macOS hover behaviour.</summary>
+    /// <summary>Creates a static macOS Dock button.</summary>
     private static Button MacosInteractiveButton(Control content, System.Windows.Input.ICommand command, object? parameter, double size, string tooltip)
     {
         var button = new Button
@@ -643,14 +643,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
-            Transitions =
-            [
-                new Avalonia.Animation.DoubleTransition { Property = Layoutable.WidthProperty, Duration = TimeSpan.FromMilliseconds(130) },
-                new Avalonia.Animation.DoubleTransition { Property = Layoutable.HeightProperty, Duration = TimeSpan.FromMilliseconds(130) },
-            ],
         };
-        button.PointerEntered += (_, _) => { button.Width = size + 10; button.Height = size + 10; };
-        button.PointerExited += (_, _) => { button.Width = size; button.Height = size; };
         ToolTip.SetTip(button, tooltip);
         return button;
     }
