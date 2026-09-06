@@ -455,12 +455,267 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
 {
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
-        _root.RowDefinitions = new RowDefinitions("Auto,*"); _root.ColumnDefinitions = new ColumnDefinitions("Auto,*");
-        var top = AppBar(vm, "◉"); Grid.SetRow(top, 0); Grid.SetColumnSpan(top, 2); _root.Children.Add(top);
-        var dock = AppBar(vm, "▦", vertical: true); Grid.SetRow(dock, 1); _root.Children.Add(dock);
-        var desktop = Desktop(vm); Grid.SetRow(desktop, 1); Grid.SetColumn(desktop, 1); _root.Children.Add(desktop);
-        var launcher = Launcher(vm, "Applications overview"); Grid.SetRow(launcher, 1); Grid.SetColumn(launcher, 1); launcher.HorizontalAlignment = HorizontalAlignment.Center; launcher.VerticalAlignment = VerticalAlignment.Center; _root.Children.Add(launcher);
+        _root.RowDefinitions = new RowDefinitions("32,*");
+        _root.ColumnDefinitions = new ColumnDefinitions("60,*");
+
+        var top = UbuntuTopBar(vm);
+        Grid.SetColumnSpan(top, 2);
+        _root.Children.Add(top);
+
+        var dock = UbuntuDock(vm);
+        Grid.SetRow(dock, 1);
+        _root.Children.Add(dock);
+
+        var desktop = Desktop(vm);
+        Grid.SetRow(desktop, 1);
+        Grid.SetColumn(desktop, 1);
+        _root.Children.Add(desktop);
+
+        var launcher = UbuntuLauncher(vm);
+        Grid.SetRow(launcher, 1);
+        Grid.SetColumn(launcher, 1);
+        launcher.HorizontalAlignment = HorizontalAlignment.Center;
+        launcher.VerticalAlignment = VerticalAlignment.Center;
+        _root.Children.Add(launcher);
     }
+
+    /// <summary>
+    /// GNOME-style overview opened from the bottom dock button.  It contains only the existing
+    /// compatible application catalog, and LaunchCommand closes the overview after activation.
+    /// </summary>
+    private static Control UbuntuLauncher(DesktopShellViewModel vm)
+    {
+        var panel = new Border
+        {
+            Width = 700,
+            MaxHeight = 590,
+            Padding = new Thickness(24, 20),
+            IsVisible = false,
+            Background = new SolidColorBrush(Color.Parse("#F022252B")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#668B949E")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(14),
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                OffsetX = 0,
+                OffsetY = 18,
+                Blur = 42,
+                Color = Color.Parse("#88000000"),
+            }),
+        };
+        panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
+
+        var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 16 };
+        layout.Children.Add(new TextBlock
+        {
+            Text = "All Applications",
+            FontSize = 20,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Brushes.White,
+        });
+        var apps = new ItemsControl
+        {
+            ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel { Orientation = Orientation.Horizontal }),
+            ItemTemplate = new FuncDataTemplate<AppEntryViewModel>((app, _) => UbuntuAppTile(vm, app)),
+        };
+        apps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.StartApps)));
+        var scroller = new ScrollViewer
+        {
+            Content = apps,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
+        Grid.SetRow(scroller, 1);
+        layout.Children.Add(scroller);
+        panel.Child = layout;
+        return panel;
+    }
+
+    private static Control UbuntuTopBar(DesktopShellViewModel vm)
+    {
+        var bar = new Border
+        {
+            Height = 32,
+            Background = new SolidColorBrush(Color.Parse("#F0141517")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#442F3338")),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+        };
+        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,*") };
+        layout.Children.Add(new TextBlock
+        {
+            Text = "RemoteOS",
+            Margin = new Thickness(12, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Brushes.White,
+            FontSize = 12,
+            FontWeight = FontWeight.SemiBold,
+        });
+
+        var clock = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        var date = new TextBlock { Foreground = Brushes.White, FontSize = 12 };
+        date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
+        var time = new TextBlock { Foreground = Brushes.White, FontSize = 12, FontWeight = FontWeight.SemiBold };
+        time.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
+        clock.Children.Add(date);
+        clock.Children.Add(time);
+        Grid.SetColumn(clock, 1);
+        layout.Children.Add(clock);
+
+        // Running applications and the available system actions share one horizontal area at
+        // the top right, matching a GNOME status region instead of a second vertical dock.
+        var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 2, Margin = new Thickness(0, 0, 7, 0) };
+        var runningApps = new ItemsControl
+        {
+            ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal }),
+            ItemTemplate = new FuncDataTemplate<TaskbarGroupViewModel>((group, _) => UbuntuRunningApp(vm, group)),
+        };
+        runningApps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
+        right.Children.Add(runningApps);
+        right.Children.Add(UbuntuTopButton("⌂", "Show desktop", vm.ShowDesktopCommand));
+        right.Children.Add(UbuntuTopButton("⚙", "Settings", vm.OpenSettingsCommand));
+        right.Children.Add(UbuntuTopButton("⏻", "Power", vm.ShutdownCommand));
+        Grid.SetColumn(right, 2);
+        layout.Children.Add(right);
+        bar.Child = layout;
+        return bar;
+    }
+
+    private static Control UbuntuDock(DesktopShellViewModel vm)
+    {
+        var dock = new Border
+        {
+            Width = 60,
+            Background = new SolidColorBrush(Color.Parse("#EE121416")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#55363A3E")),
+            BorderThickness = new Thickness(0, 0, 1, 0),
+        };
+        var actions = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*,Auto") };
+        actions.Children.Add(UbuntuDockButton("▰", "Files", vm.OpenFileExplorerCommand));
+        var terminal = UbuntuDockButton("›_", "Terminal", vm.OpenTerminalCommand);
+        Grid.SetRow(terminal, 1);
+        actions.Children.Add(terminal);
+        var taskManager = UbuntuDockButton("▥", "Task Manager", vm.OpenTaskManagerCommand);
+        Grid.SetRow(taskManager, 2);
+        actions.Children.Add(taskManager);
+        var settings = UbuntuDockButton("⚙", "Settings", vm.OpenSettingsCommand);
+        Grid.SetRow(settings, 3);
+        actions.Children.Add(settings);
+
+        var applications = UbuntuDockButton("⠿", "Show Applications", vm.ToggleStartCommand, 28);
+        Grid.SetRow(applications, 5);
+        actions.Children.Add(applications);
+        dock.Child = actions;
+        return dock;
+    }
+
+    private static Button UbuntuAppTile(DesktopShellViewModel vm, AppEntryViewModel app)
+    {
+        var content = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Width = 104, Height = 96 };
+        var icon = UbuntuAppIcon(app, 46);
+        icon.HorizontalAlignment = HorizontalAlignment.Center;
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        content.Children.Add(icon);
+        var name = new TextBlock
+        {
+            Text = app.DisplayName,
+            Foreground = Brushes.White,
+            FontSize = 12,
+            MaxLines = 2,
+            MaxWidth = 96,
+            TextAlignment = TextAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        Grid.SetRow(name, 1);
+        content.Children.Add(name);
+        return new Button
+        {
+            Content = content,
+            Width = 112,
+            Height = 106,
+            Padding = new Thickness(4),
+            Margin = new Thickness(4),
+            Command = vm.LaunchCommand,
+            CommandParameter = app.Id,
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+    }
+
+    private static Button UbuntuRunningApp(DesktopShellViewModel vm, TaskbarGroupViewModel group)
+    {
+        var icon = UbuntuAppIcon(group, 18);
+        icon.HorizontalAlignment = HorizontalAlignment.Center;
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        var button = new Button
+        {
+            Content = icon,
+            Command = vm.ToggleTaskbarGroupCommand,
+            CommandParameter = group,
+            Width = 30,
+            Height = 30,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+        ToolTip.SetTip(button, group.DisplayName);
+        return button;
+    }
+
+    private static Button UbuntuDockButton(string glyph, string tooltip, System.Windows.Input.ICommand command, double fontSize = 23)
+    {
+        var button = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = glyph,
+                FontSize = fontSize,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+            Command = command,
+            Width = 60,
+            Height = 52,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+        ToolTip.SetTip(button, tooltip);
+        return button;
+    }
+
+    private static Button UbuntuTopButton(string glyph, string tooltip, System.Windows.Input.ICommand command)
+    {
+        var button = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = glyph,
+                FontSize = 15,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+            Command = command,
+            Width = 28,
+            Height = 30,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+        };
+        ToolTip.SetTip(button, tooltip);
+        return button;
+    }
+
+    private static Control UbuntuAppIcon(AppEntryViewModel app, double size) => app.IconImage is { } image
+        ? new Image { Source = image, Width = size, Height = size }
+        : new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 5, Foreground = Brushes.White };
+
+    private static Control UbuntuAppIcon(TaskbarGroupViewModel group, double size) => group.IconImage is { } image
+        ? new Image { Source = image, Width = size, Height = size }
+        : new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 3, Foreground = Brushes.White };
 }
 
 public static class BuiltInShells
