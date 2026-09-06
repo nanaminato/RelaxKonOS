@@ -18,17 +18,75 @@ public partial class ExplorerMainView : UserControl
     private PointerPressedEventArgs? _dragTrigger;
     private FileSystemEntryDto? _dragEntry;
     private Point _dragStart;
+    private readonly ContextMenu? _entryContextMenu;
 
     public ExplorerMainView()
     {
         InitializeComponent();
+        _entryContextMenu = EntriesGrid.ContextMenu;
+        EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
     }
 
     /// <summary>Moves keyboard focus to the current-folder address field.</summary>
     public void FocusAddressBox()
     {
+        if (ViewModel is { } vm)
+        {
+            vm.AddressInput = vm.AddressbarPath;
+            vm.IsEditingAddress = true;
+        }
         AddressBox.Focus();
         AddressBox.SelectAll();
+    }
+
+    public bool IsTextEditing => TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
+
+    public void FocusSearchBox()
+    {
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+    }
+
+    private void EditAddress_Click(object? sender, RoutedEventArgs e) => FocusAddressBox();
+
+    private void Breadcrumb_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button button) _ = ViewModel?.NavigateToAsync(button.Tag as string);
+    }
+
+    private void AddressBox_LostFocus(object? sender, RoutedEventArgs e) => ViewModel?.CancelAddressEdit();
+
+    private void SearchBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        if (ViewModel is { } vm) vm.SearchText = string.Empty;
+        EntriesGrid.Focus();
+        e.Handled = true;
+    }
+
+    private void EntriesGrid_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (ViewModel is not { IsBusy: false } vm) return;
+        if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None && vm.SelectedEntry is { } entry)
+        {
+            _ = vm.InvokeEntryAsync(entry);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.Alt && vm.PropertiesCommand.CanExecute(null))
+        {
+            vm.PropertiesCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Back && e.KeyModifiers == KeyModifiers.None && vm.GoBackCommand.CanExecute(null))
+        {
+            vm.GoBackCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.A && e.KeyModifiers == KeyModifiers.Control && vm.EntrySelectionMode == DataGridSelectionMode.Extended)
+        {
+            EntriesGrid.SelectAll();
+            e.Handled = true;
+        }
     }
 
     private ExplorerViewModel? ViewModel => DataContext as ExplorerViewModel;
@@ -36,22 +94,24 @@ public partial class ExplorerMainView : UserControl
     /// <summary>地址栏回车跳转。</summary>
     private void AddressBox_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && sender is TextBox tb)
+        if (e.Key == Key.Escape)
+        {
+            ViewModel?.CancelAddressEdit();
+            EntriesGrid.Focus();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && sender is TextBox tb)
         {
             _ = ViewModel?.AddressbarGoAsync(tb.Text);
             e.Handled = true;
         }
     }
 
-    /// <summary>"转到"按钮点击。</summary>
-    private void GoButton_Click(object? sender, RoutedEventArgs e)
-        => _ = ViewModel?.AddressbarGoAsync(AddressBox.Text);
-
-    /// <summary>列表双击：进入目录或下载文件。</summary>
+    /// <summary>Double-click only activates the row under the pointer.</summary>
     private void EntriesGrid_DoubleTapped(object? sender, RoutedEventArgs e)
     {
-        if (ViewModel?.SelectedEntry is { } entry)
-            _ = ViewModel.InvokeEntryAsync(entry);
+        if (FindDataContext<FileSystemEntryDto>(e.Source) is { } entry && ViewModel is { IsBusy: false } vm)
+            _ = vm.InvokeEntryAsync(entry);
     }
 
     private void EntriesGrid_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -66,7 +126,9 @@ public partial class ExplorerMainView : UserControl
         var point = e.GetCurrentPoint(this);
         if (point.Properties.IsRightButtonPressed)
         {
-            if (entry is not null && ViewModel is not null) ViewModel.SelectedEntry = entry;
+            EntriesGrid.ContextMenu = entry is null ? EntriesScrollViewer.ContextMenu : _entryContextMenu;
+            if (entry is null) EntriesGrid.SelectedItems.Clear();
+            else if (!EntriesGrid.SelectedItems.Contains(entry)) EntriesGrid.SelectedItem = entry;
             return;
         }
 

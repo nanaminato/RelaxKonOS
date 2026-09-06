@@ -4,6 +4,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Client.Localization"
              xmlns:c="clr-namespace:Client.Apps.Explorer.Converters"
+             xmlns:models="clr-namespace:Client.Apps.Explorer.Models"
              xmlns:vm="clr-namespace:Client.Apps.Explorer.ViewModels"
              xmlns:d="clr-namespace:RemoteOS.Protocol.Files;assembly=RemoteOS.Protocol"
              x:Class="Client.Apps.Explorer.Views.ExplorerMainView"
@@ -20,75 +21,81 @@
     </UserControl.Resources>
 
     <DockPanel LastChildFill="True">
-        <!-- 顶部菜单栏（简化版） -->
-        <Menu DockPanel.Dock="Top" IsVisible="{Binding !IsPickerMode}" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
-            <MenuItem Header="{loc:Loc explorer.menu.file}">
-                <MenuItem Header="{loc:Loc explorer.menu.new_folder}" Command="{Binding NewFolderCommand}" InputGesture="Ctrl+Shift+N" />
-                <MenuItem Header="{loc:Loc explorer.menu.upload}" Command="{Binding UploadCommand}" />
-                <MenuItem Header="{loc:Loc explorer.menu.upload_folder}" Command="{Binding UploadFolderCommand}" />
-                <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
-                <Separator />
-                <MenuItem Header="{loc:Loc explorer.menu.exit}" Command="{Binding CloseCommand}" />
-            </MenuItem>
-            <MenuItem Header="{loc:Loc explorer.menu.edit}">
-                <MenuItem Header="{loc:Loc explorer.menu.delete}" Command="{Binding DeleteCommand}" InputGesture="Delete" />
-                <MenuItem Header="{loc:Loc explorer.menu.rename}" Command="{Binding RenameCommand}" InputGesture="F2" />
-                <Separator />
-                <MenuItem Header="{loc:Loc explorer.menu.copy}" Command="{Binding CopyCommand}" InputGesture="Ctrl+C" />
-                <MenuItem Header="{loc:Loc explorer.menu.cut}" Command="{Binding CutCommand}" InputGesture="Ctrl+X" />
-                <MenuItem Header="{loc:Loc explorer.menu.paste}" Command="{Binding PasteCommand}" InputGesture="Ctrl+V" />
-                <MenuItem Header="{loc:Loc explorer.menu.paste_host}" Command="{Binding PasteFromHostCommand}" />
-                <MenuItem Header="{loc:Loc explorer.menu.move}" Command="{Binding MoveCommand}" />
-            </MenuItem>
-            <MenuItem Header="{loc:Loc explorer.menu.view}">
-                <MenuItem Header="{loc:Loc explorer.menu.refresh}" Command="{Binding RefreshCommand}" InputGesture="F5" />
-            </MenuItem>
-            <MenuItem Header="{loc:Loc explorer.menu.help}">
-                <MenuItem Header="{loc:Loc explorer.menu.about}" Command="{Binding AboutCommand}" />
-            </MenuItem>
-        </Menu>
-
-        <!-- 工具栏 -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="6,4">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <Button Classes="icon" Content="←" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" />
-                <Button Classes="icon" Content="→" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" />
-                <Button Classes="icon" Content="↑" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}" />
-                <Button Classes="icon" Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" />
-                <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="4">
-                    <Separator Margin="6,0" />
-                    <Button Content="{loc:Loc explorer.new_folder}" Command="{Binding NewFolderCommand}" Padding="12,6" />
-                    <Button Content="{loc:Loc common.delete}" Command="{Binding DeleteCommand}" Padding="12,6" />
-                    <Button Content="{loc:Loc common.rename}" Command="{Binding RenameCommand}" Padding="12,6" />
-                    <Button Content="{loc:Loc explorer.copy}" Command="{Binding CopyCommand}" Padding="12,6" />
-                    <Button Content="{loc:Loc explorer.cut}" Command="{Binding CutCommand}" Padding="12,6" />
-                    <Button Content="{loc:Loc explorer.paste}" Command="{Binding PasteCommand}" Padding="12,6" />
-                    <Separator Margin="6,0" />
-                    <Button Content="{loc:Loc common.download}" Command="{Binding DownloadCommand}" Padding="12,6" />
-                    <Button Content="{loc:Loc common.upload}" Command="{Binding UploadCommand}" Padding="12,6" />
-                    <Button Content="{loc:Loc explorer.upload_folder}" Command="{Binding UploadFolderCommand}" Padding="12,6" />
+        <!-- Navigation stays above the command bar, matching the Explorer workflow. -->
+        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button Classes="icon" Content="←" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" />
+                    <Button Classes="icon" Content="→" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" />
+                    <Button Classes="icon" Content="↑" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}" />
+                    <Button Classes="icon" Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" />
                 </StackPanel>
-            </StackPanel>
+                <Grid Grid.Column="1" MinWidth="100">
+                    <TextBox x:Name="AddressBox" Text="{Binding AddressInput, Mode=TwoWay}"
+                             IsVisible="{Binding IsEditingAddress}" PlaceholderText="{loc:Loc explorer.computer}"
+                             KeyDown="AddressBox_KeyDown" LostFocus="AddressBox_LostFocus" />
+                    <Border IsVisible="{Binding !IsEditingAddress}" CornerRadius="5" BorderThickness="1"
+                            BorderBrush="{DynamicResource BorderDefaultBrush}" Padding="4,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                                <ItemsControl ItemsSource="{Binding Breadcrumbs}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:ExplorerBreadcrumb">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="{Binding Label}" Tag="{Binding Path}" Click="Breadcrumb_Click" Padding="8,5" Background="Transparent" BorderThickness="0" />
+                                                <TextBlock Text="›" VerticalAlignment="Center" Opacity="0.5" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <Button Grid.Column="1" Content="✎" Click="EditAddress_Click" ToolTip.Tip="{loc:Loc explorer.edit_address}" Background="Transparent" BorderThickness="0" />
+                        </Grid>
+                    </Border>
+                </Grid>
+                <TextBox Grid.Column="2" x:Name="SearchBox" Width="180" Text="{Binding SearchText, Mode=TwoWay}"
+                         PlaceholderText="{loc:Loc explorer.filter_folder}" KeyDown="SearchBox_KeyDown" />
+            </Grid>
         </Border>
-
-        <!-- 地址栏 -->
-        <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,4">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="📁" VerticalAlignment="Center" Margin="0,0,4,0" FontSize="14" />
-                <TextBox x:Name="AddressBox"
-                         Text="{Binding AddressbarPath, Mode=TwoWay}"
-                         PlaceholderText="{loc:Loc explorer.computer}"
-                         IsReadOnly="False"
-                         MinWidth="500"
-                         KeyDown="AddressBox_KeyDown" />
-                <Button Content="{loc:Loc common.go}" Click="GoButton_Click" Padding="16,6" />
-            </StackPanel>
+        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+            <WrapPanel Orientation="Horizontal" IsEnabled="{Binding !IsBusy}">
+                <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="4" Margin="0,0,12,0">
+                    <Button Content="{loc:Loc explorer.new_folder}" Command="{Binding NewFolderCommand}" />
+                    <Button Content="✂" Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}" />
+                    <Button Content="⧉" Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}" />
+                    <Button Content="▣" Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}" />
+                    <Button Content="{loc:Loc common.rename}" Command="{Binding RenameCommand}" />
+                    <Button Content="{loc:Loc common.delete}" Command="{Binding DeleteCommand}" />
+                    <Button Content="•••" ToolTip.Tip="{loc:Loc explorer.more}">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="{loc:Loc common.download}" Command="{Binding DownloadCommand}" />
+                                <MenuItem Header="{loc:Loc common.upload}" Command="{Binding UploadCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.upload_folder}" Command="{Binding UploadFolderCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.menu.paste_host}" Command="{Binding PasteFromHostCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.menu.move}" Command="{Binding MoveCommand}" />
+                                <Separator />
+                                <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.properties}" Command="{Binding PropertiesCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.menu.about}" Command="{Binding AboutCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.menu.exit}" Command="{Binding CloseCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+                <CheckBox Content="{loc:Loc explorer.compact}" IsChecked="{Binding IsCompactView}" Margin="0,0,12,0" />
+                <CheckBox Content="{loc:Loc explorer.show_hidden}" IsChecked="{Binding ShowHiddenFiles}" />
+            </WrapPanel>
         </Border>
 
         <!-- 状态栏 -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,5">
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="12" Opacity="0.7" />
+                <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding SelectionSummary}" FontSize="12" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
                 <TextBlock Grid.Column="1" Text="{Binding IsBusy, Converter={x:Static c:ExplorerLoadingStatusConverter.Instance}}"
                            FontSize="12" Opacity="0.6" />
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding TransferText}" FontSize="12" Opacity="0.75"
@@ -123,7 +130,7 @@
         </Border>
 
         <!-- 主体：左导航树 | 分隔 | 右条目列表 -->
-        <Grid ColumnDefinitions="240,Auto,*">
+        <Grid ColumnDefinitions="210,Auto,*">
             <!-- 导航树 -->
             <TreeView Grid.Column="0"
                       x:Name="NavigationTree"
@@ -152,7 +159,7 @@
                                     IsVisible="{Binding !IsPlaceholder}">
                             <TextBlock Text="{Binding IconKind, Converter={StaticResource NodeGlyphConverter}}"
                                        FontSize="13" Width="18" />
-                            <TextBlock Text="{Binding Label}" Width="188" MaxLines="1"
+                            <TextBlock Text="{Binding Label}" MaxWidth="170" MaxLines="1"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                     </TreeDataTemplate>
@@ -165,27 +172,25 @@
                  spare viewport space remains empty instead of stretching a column;
                  narrower viewports use the outer horizontal scrollbar. Users can drag
                  the header dividers to change any column width. -->
-            <ScrollViewer Grid.Column="2"
+            <Grid Grid.Column="2"
                           x:Name="EntriesScrollViewer"
                           Background="{DynamicResource SurfaceBrush}"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto"
                           DragDrop.AllowDrop="True"
                           DragDrop.DragOver="Explorer_DragOver"
                           DragDrop.Drop="Explorer_Drop">
                 <!-- The directory background intentionally has its own menu. File-specific
                      commands remain on the DataGrid context menu below. -->
-                <ScrollViewer.ContextMenu>
-                    <ContextMenu DataContext="{Binding #EntriesScrollViewer.DataContext}">
+                <Grid.ContextMenu>
+                    <ContextMenu DataContext="{Binding #EntriesScrollViewer.DataContext}" IsEnabled="{Binding !IsBusy}">
                         <MenuItem Header="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
                         <Separator />
                         <MenuItem Header="{loc:Loc explorer.paste}" Command="{Binding PasteCommand}" />
                         <MenuItem Header="{loc:Loc explorer.new_folder}" Command="{Binding NewFolderCommand}" />
                         <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
                     </ContextMenu>
-                </ScrollViewer.ContextMenu>
+                </Grid.ContextMenu>
                 <DataGrid x:Name="EntriesGrid"
-                      HorizontalAlignment="Left"
+                      HorizontalAlignment="Stretch"
                       ItemsSource="{Binding Entries}"
                       SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
                       SelectionMode="{Binding EntrySelectionMode}"
@@ -194,22 +199,22 @@
                       IsReadOnly="True"
                       CanUserResizeColumns="True"
                       CanUserSortColumns="True"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Disabled"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
                       GridLinesVisibility="None"
-                      RowHeight="32"
+                      RowHeight="{Binding EntryRowHeight}"
                       ColumnHeaderHeight="30"
                       Background="{DynamicResource SurfaceBrush}"
                       BorderThickness="0"
+                      KeyDown="EntriesGrid_KeyDown"
                       DoubleTapped="EntriesGrid_DoubleTapped"
-                      PointerPressed="EntriesGrid_PointerPressed"
                       PointerMoved="EntriesGrid_PointerMoved"
                       PointerReleased="EntriesGrid_PointerReleased"
                       DragDrop.AllowDrop="True"
                       DragDrop.DragOver="Explorer_DragOver"
                       DragDrop.Drop="Explorer_Drop">
                 <DataGrid.ContextMenu>
-                    <ContextMenu DataContext="{Binding #EntriesGrid.DataContext}">
+                    <ContextMenu DataContext="{Binding #EntriesGrid.DataContext}" IsEnabled="{Binding !IsBusy}">
                         <MenuItem Header="{loc:Loc common.open}" Command="{Binding OpenCommand}" />
                         <MenuItem Header="{loc:Loc explorer.open_with}" Command="{Binding OpenWithSelectedCommand}" />
                         <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
@@ -247,14 +252,6 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{loc:Loc explorer.size}" Width="112" MinWidth="96" SortMemberPath="Size">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate x:DataType="d:FileSystemEntryDto">
-                                <TextBlock Text="{Binding Size, Converter={StaticResource SizeConverter}}" Padding="8,0"
-                                           FontSize="12" Opacity="0.8" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
                     <DataGridTemplateColumn Header="{loc:Loc explorer.modified}" Width="164" MinWidth="150" SortMemberPath="Modified">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
@@ -271,9 +268,19 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="{loc:Loc explorer.size}" Width="112" MinWidth="96" SortMemberPath="Size">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:DataType="d:FileSystemEntryDto">
+                                <TextBlock Text="{Binding Size, Converter={StaticResource SizeConverter}}" Padding="8,0"
+                                           FontSize="12" Opacity="0.8" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                 </DataGrid.Columns>
                 </DataGrid>
-            </ScrollViewer>
+                <TextBlock Text="{loc:Loc explorer.empty_view}" IsVisible="{Binding IsEmpty}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" Opacity="0.6" />
+            </Grid>
         </Grid>
     </DockPanel>
 </UserControl>

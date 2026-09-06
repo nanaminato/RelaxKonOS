@@ -11,7 +11,7 @@
 > - 认证限流与登录防护建议见 [`RemoteOS.Authentication.Hardening.md`](./platform/RemoteOS.Authentication.Hardening.md)
 > - 安全设计见 [`RemoteOS.Security.md`](./platform/RemoteOS.Security.md)
 > - 桌面外壳与模态对话框见 [`RemoteOS.Desktop.md`](./desktop/RemoteOS.Desktop.md)
-> - 文件管理器见 [`RemoteOS.Explorer.md`](./applications/RemoteOS.Explorer.md)
+> - 文件管理器见 [`RemoteOS.Explorer.md`](./applications/RemoteOS.Explorer.md)；Windows 11 体验优化进度与后续 API 清单见 [`RemoteOS.Explorer.Progress.md`](./applications/RemoteOS.Explorer.Progress.md)
 > - 浏览器见 [`RemoteOS.Browser.md`](./applications/RemoteOS.Browser.md)
 > - 设置中心见 [`RemoteOS.Settings.md`](./desktop/RemoteOS.Settings.md)
 > - 全局主题与配色系统设计见 [`RemoteOS.Theming.md`](./desktop/RemoteOS.Theming.md)

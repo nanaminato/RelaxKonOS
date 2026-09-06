@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <!-- Exercise the production view model without bootstrapping the desktop or a server. -->
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Controls.DataGrid" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <ProjectReference Include="../../Shared/RemoteOS.Protocol/RemoteOS.Protocol.csproj" />
+    <Compile Include="../RemoteOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.cs" Link="ExplorerViewModel.cs" />
+    <Compile Include="../RemoteOS.Client/Apps/Explorer/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../RemoteOS.Client/Apps/Explorer/IExplorerClient.cs" Link="IExplorerClient.cs" />
+    <Compile Include="../RemoteOS.Client/Apps/Explorer/RemoteFileClipboard.cs" Link="RemoteFileClipboard.cs" />
+    <Compile Include="../RemoteOS.Client/Apps/Explorer/ExplorerPickerOptions.cs" Link="ExplorerPickerOptions.cs" />
+    <Compile Include="../RemoteOS.Client/Services/Auth/RemoteOsAuthException.cs" Link="RemoteOsAuthException.cs" />
+    <Compile Include="../RemoteOS.Client/Services/Privileged/PrivilegedHelperProblemText.cs" Link="PrivilegedHelperProblemText.cs" />
+  </ItemGroup>
+</Project>

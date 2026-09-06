@@ -2,6 +2,7 @@
 
 > 内置文件管理器：UI 移植自 [Jaya File Manager](https://github.com/waliarubal/Jaya)（BSD-3-Clause），所有文件操作经 Server 端 REST API 执行，复用宿主 OS 用户/权限体系。
 >
+> - Windows 11 体验优化的当前完成项、验证与后续 API 计划见 [`RemoteOS.Explorer.Progress.md`](./RemoteOS.Explorer.Progress.md)（2026-09-06）
 > - 架构原则见 [`RemoteOS.Architecture.md`](../architecture/RemoteOS.Architecture.md)
 > - 项目当前状态见 [`RemoteOS.md`](../README.md)（§6 内置应用 / §7 RemoteExplorer）
 > - 桌面外壳与窗口管理见 [`RemoteOS.Desktop.md`](../desktop/RemoteOS.Desktop.md)
@@ -33,8 +34,8 @@ RemoteExplorer 是 RemoteOS 的内置文件管理器，用于浏览与操作**�
 | `Newtonsoft.Json` | 13.0.3 | Jaya 配置模型序列化（保留 Jaya 原始依赖；线协议 DTO 仍用 System.Text.Json） |
 
 - 中心化包管理：版本声明在 [`Directory.Packages.props`](../../Directory.Packages.props)。
-- **DataGrid**：Avalonia 11+ 起 DataGrid 已并入主 `Avalonia` 包，无需单独引用。当前实际用 `ListBox` + `DataTemplate` 实现条目网格（更轻量，列宽自适应）。
-- **不引入** Jaya 原依赖：`AvaloniaUIRibbon`（不兼容 12.1）、`RestSharp`（去 UpdateService）、`Avalonia.ReactiveUI`、`Avalonia.Controls.DataGrid`（旧独立包）、`Avalonia.Xaml.Behaviors`（旧 0.10 线，已弃用）。
+- **DataGrid**：实际使用独立的 `Avalonia.Controls.DataGrid` 包；当前为可调整列宽的详细信息列表，并由 DataGrid 自身管理滚动。
+- **不引入** Jaya 原依赖：`AvaloniaUIRibbon`（不兼容 12.1）、`RestSharp`（去 UpdateService）、`Avalonia.ReactiveUI`、`Avalonia.Xaml.Behaviors`（旧 0.10 线，已弃用）。
 
 ### 2.2 嵌入而非替换 Shell
 
@@ -48,14 +49,13 @@ ExplorerApp (RemoteApplicationBase)
     WindowManager.Create → RemoteWindow
     |
     ExplorerMainView (UserControl)
-    ├── MenuView（顶部：文件/编辑/查看/帮助）
-    ├── ToolbarView（顶部：后退/前进/向上/刷新/新建/删除/重命名/复制/剪切/粘贴/下载/上传）
-    ├── AddressbarView（顶部：路径 TextBox + 转到）
+    ├── NavigationBar（后退/前进/向上/刷新 + 面包屑/可编辑地址 + 当前目录筛选）
+    ├── CommandBar（新建/剪切/复制/粘贴/重命名/删除 + 更多操作 + 视图开关）
     ├── StatusbarView（底部：状态文本 + 加载指示）
     └── Grid（主体）
         ├── NavigationView（左：TreeView 懒加载）
         ├── GridSplitter
-        └── ExplorerView（右：ListBox + 列标题）
+        └── ExplorerView（右：DataGrid + 列标题 + 空视图提示）
 ```
 
 ### 2.3 去插件化

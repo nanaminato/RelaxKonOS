@@ -135,6 +135,13 @@
         "explorer.permission.write": "写入",
         "explorer.permission.execute": "执行",
         "explorer.save_permissions": "保存权限",
-        "explorer.open_with.always_use": "始终使用此应用打开此扩展名的文件"
+        "explorer.open_with.always_use": "始终使用此应用打开此扩展名的文件",
+        "explorer.edit_address": "编辑地址 (Ctrl+L)",
+        "explorer.filter_folder": "筛选当前文件夹 (Ctrl+F)",
+        "explorer.more": "更多操作",
+        "explorer.compact": "紧凑视图",
+        "explorer.show_hidden": "隐藏的项目",
+        "explorer.empty_view": "此视图没有项目",
+        "explorer.status.selection": "{0} 个项目 · 已选择 {1} 个"
     }
 }

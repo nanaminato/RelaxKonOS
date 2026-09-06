@@ -97,12 +97,22 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         });
         window.KeyDown += (_, e) =>
         {
-            if (e.Key == RemoteKey.Letter('L') && e.Modifiers == RemoteKeyModifiers.Control)
+            if ((e.Key == RemoteKey.Letter('L') && e.Modifiers == RemoteKeyModifiers.Control)
+                || (e.Key == RemoteKey.Letter('D') && e.Modifiers == RemoteKeyModifiers.Alt))
             {
                 view.FocusAddressBox();
                 e.Handled = true;
                 return;
             }
+
+            if (e.Key == RemoteKey.Letter('F') && e.Modifiers == RemoteKeyModifiers.Control)
+            {
+                view.FocusSearchBox();
+                e.Handled = true;
+                return;
+            }
+            // Text editing owns Delete / clipboard shortcuts; never mutate remote files here.
+            if (view.IsTextEditing || viewModel.IsBusy) return;
 
             _ = WindowShortcut.TryExecute(e, RemoteKey.Left, RemoteKeyModifiers.Alt, viewModel.GoBackCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Right, RemoteKeyModifiers.Alt, viewModel.GoForwardCommand)
@@ -123,7 +133,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
     private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath)
     {
         await viewModel.LoadRootAsync();
-        if (!string.IsNullOrWhiteSpace(initialPath)) await viewModel.NavigateToAsync(initialPath);
+        await viewModel.NavigateToAsync(string.IsNullOrWhiteSpace(initialPath) ? null : initialPath);
     }
 
     private static string? QueryValue(Uri uri, string key) => uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)

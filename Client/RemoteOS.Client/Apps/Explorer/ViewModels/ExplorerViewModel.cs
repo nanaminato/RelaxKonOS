@@ -35,6 +35,8 @@ public sealed partial class ExplorerViewModel : ObservableObject
     private bool _pickerInitialized;
     private readonly List<string?> _history = new();
     private int _historyIndex = -1;
+    private bool _isNavigating;
+    private readonly List<FileSystemEntryDto> _directoryEntries = [];
 
     /// <summary>路径变化时同步树选中的抑制标志：避免 SyncTreeSelectionAsync 设 SelectedNode 触发 OnSelectedNodeChanged
     /// 再调 NavigateToAsync 形成循环（重复 API 调用 + 重复历史入栈）。</summary>
@@ -74,6 +76,48 @@ public sealed partial class ExplorerViewModel : ObservableObject
     public ObservableCollection<FileSystemEntryDto> SelectedEntries { get; }
     public ObservableCollection<ExplorerFileFilter> Filters { get; }
     [ObservableProperty] private string? _addressbarPath;
+    [ObservableProperty] private string? _addressInput;
+    [ObservableProperty] private bool _isEditingAddress;
+    [ObservableProperty] private string _searchText = string.Empty;
+    [ObservableProperty] private bool _showHiddenFiles;
+    [ObservableProperty] private bool _isCompactView;
+    public ObservableCollection<ExplorerBreadcrumb> Breadcrumbs { get; } = [];
+    public double EntryRowHeight => IsCompactView ? 28 : 36;
+    public bool IsEmpty => !IsBusy && Entries.Count == 0;
+    public string SelectionSummary => LocalizedText.Format("explorer.status.selection", Entries.Count, SelectedEntries.Count);
+
+    partial void OnSearchTextChanged(string value) => ApplyEntryFilter();
+    partial void OnShowHiddenFilesChanged(bool value) => ApplyEntryFilter();
+    partial void OnIsCompactViewChanged(bool value) => OnPropertyChanged(nameof(EntryRowHeight));
+
+    private void ApplyEntryFilter()
+    {
+        SelectedEntry = null;
+        SelectedEntries.Clear();
+        Entries.Clear();
+        foreach (var entry in _directoryEntries.Where(e => (ShowHiddenFiles || !e.IsHidden)
+                     && e.Name.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(e => e.Type == FileSystemEntryType.File ? 1 : 0)
+                     .ThenBy(e => e.Name, StringComparer.CurrentCultureIgnoreCase))
+            Entries.Add(entry);
+        NotifySelectionCommands();
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(SelectionSummary));
+        UpdatePickerEntryName();
+    }
+
+    public void CancelAddressEdit()
+    {
+        AddressInput = AddressbarPath;
+        IsEditingAddress = false;
+    }
+
+    private void UpdateBreadcrumbs()
+    {
+        Breadcrumbs.Clear();
+        Breadcrumbs.Add(new ExplorerBreadcrumb(LocalizedText.Get("explorer.computer"), null));
+        foreach (var crumb in ExplorerBreadcrumb.FromPath(AddressbarPath)) Breadcrumbs.Add(crumb);
+    }
     [ObservableProperty] private string _statusText = LocalizedText.Get("explorer.status.ready");
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private FileSystemEntryDto? _selectedEntry;
@@ -116,7 +160,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
     public bool CanGoBack => _historyIndex > 0;
     public bool CanGoForward => _historyIndex < _history.Count - 1;
     public bool CanGoUp => !string.IsNullOrEmpty(AddressbarPath);
-    public bool HasSelection => SelectedEntries.Count != 0 || SelectedEntry is not null;
+    public bool HasSelection => !IsBusy && (SelectedEntries.Count != 0 || SelectedEntry is not null);
     public bool CanOpenTerminal => SelectedEntry is { } entry && IsFolder(entry)
         || !string.IsNullOrWhiteSpace(AddressbarPath);
     public bool IsPickerMode => _pickerOptions is not null && _selectPaths is not null;
@@ -268,8 +312,8 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     partial void OnAddressbarPathChanged(string? value)
     {
-        // 注意：不在此同步树选中。TextBox.Text TwoWay 绑定默认 PropertyChanged，每个按键都触发本方法，
-        // 路径还是半成品时去查找节点无意义且打断输入。同步在 NavigateToAsyncCore 末尾、路径被服务端确认后做。
+        // AddressbarPath is the committed location; the editable draft lives in AddressInput.
+        // Synchronize the tree after a successful directory load, not from property notifications.
         GoUpCommand.NotifyCanExecuteChanged();
         OpenTerminalCommand.NotifyCanExecuteChanged();
         PasteCommand.NotifyCanExecuteChanged();
@@ -293,6 +337,9 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(HasSelection));
+        NotifySelectionCommands();
         PasteCommand.NotifyCanExecuteChanged();
         PasteFromHostCommand.NotifyCanExecuteChanged();
     }
@@ -314,53 +361,71 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     public async Task NavigateToAsync(string? path)
     {
-        await NavigateToAsyncCore(path);
+        if (!await NavigateToAsyncCore(path)) return;
+        if (_historyIndex >= 0 && PathEquals(_history[_historyIndex], AddressbarPath)) return;
         if (_historyIndex < _history.Count - 1)
             _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
-        _history.Add(path);
+        _history.Add(AddressbarPath);
         _historyIndex = _history.Count - 1;
         RefreshHistoryCommands();
     }
 
-    private async Task NavigateToAsyncCore(string? path)
+    private async Task<bool> NavigateToAsyncCore(string? path)
     {
+        // Keep the committed location and listing intact until the server accepts navigation.
+        // Ignore overlapping navigation while a request (including tree synchronization) is active.
+        if (_isNavigating) return false;
+        _isNavigating = true;
+        var wasBusy = IsBusy;
         IsBusy = true;
         try
         {
-            Entries.Clear();
-            SelectedEntries.Clear();
-            SelectedEntry = null;
-            UpdatePickerEntryName();
+            var loaded = new List<FileSystemEntryDto>();
             string? confirmedPath;
+            string status;
             if (path is null)
             {
                 var drives = GetNavigationDrives(await _client.GetDrivesAsync());
-                foreach (var d in drives)
-                    Entries.Add(new FileSystemEntryDto(d.Path, d.Name, d.TotalSize,
-                        FileSystemEntryType.Drive, null, null, null, false, false, null));
+                loaded.AddRange(drives.Select(d => new FileSystemEntryDto(d.Path, d.Name, d.TotalSize,
+                    FileSystemEntryType.Drive, null, null, null, false, false, null)));
                 confirmedPath = null;
-                AddressbarPath = null;
-                StatusText = LocalizedText.Format("explorer.status.drives_ready", drives.Count);
+                status = LocalizedText.Format("explorer.status.drives_ready", drives.Count);
             }
             else
             {
                 var dir = await _client.GetDirectoryAsync(path);
-                foreach (var d in dir.Directories) Entries.Add(d);
+                loaded.AddRange(dir.Directories);
                 if (!IsFolderPickerMode)
-                {
-                    foreach (var f in dir.Files.Where(f => !IsFilePickerMode || MatchesSelectedFilter(f.Name)))
-                        Entries.Add(new FileSystemEntryDto(f.Path, f.Name, f.Size, FileSystemEntryType.File,
-                            f.Created, f.Modified, f.Accessed, f.IsHidden, f.IsSystem, f.MimeType));
-                }
+                    loaded.AddRange(dir.Files.Where(f => !IsFilePickerMode || MatchesSelectedFilter(f.Name))
+                        .Select(f => new FileSystemEntryDto(f.Path, f.Name, f.Size, FileSystemEntryType.File,
+                            f.Created, f.Modified, f.Accessed, f.IsHidden, f.IsSystem, f.MimeType)));
                 confirmedPath = dir.Path;
-                AddressbarPath = dir.Path;
-                StatusText = LocalizedText.Format("explorer.status.directory_ready", dir.Directories.Count, dir.Files.Count);
+                status = LocalizedText.Format("explorer.status.directory_ready", dir.Directories.Count, dir.Files.Count);
             }
-            // 路径已由服务端确认，反向同步树选中（防循环：被 _isSyncingTreeSelection 抑制）
+            var locationChanged = !PathEquals(AddressbarPath, confirmedPath);
+            _directoryEntries.Clear();
+            _directoryEntries.AddRange(loaded);
+            AddressbarPath = confirmedPath;
+            AddressInput = confirmedPath;
+            IsEditingAddress = false;
+            if (locationChanged) SearchText = string.Empty;
+            ApplyEntryFilter();
+            UpdatePickerEntryName();
+            UpdateBreadcrumbs();
+            StatusText = status;
             await SyncTreeSelectionAsync(confirmedPath);
+            return true;
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.load_failed", ex.Message); }
-        finally { IsBusy = false; }
+        catch (Exception ex)
+        {
+            StatusText = LocalizedText.Format("explorer.status.load_failed", ex.Message);
+            return false;
+        }
+        finally
+        {
+            _isNavigating = false;
+            IsBusy = wasBusy;
+        }
     }
 
     // ---- 树选中同步（防循环） ----
@@ -470,7 +535,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         var d = NormalizePath(descendant);
         if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(d)) return false;
         if (string.Equals(a, d, comparison)) return true;
-        return d.StartsWith(a + '\\', comparison)
+        return (a == "/" && d.StartsWith('/')) || d.StartsWith(a + '\\', comparison)
             || d.StartsWith(a + '/', comparison);
     }
 
@@ -530,25 +595,25 @@ public sealed partial class ExplorerViewModel : ObservableObject
     private async Task GoBackAsync()
     {
         if (!CanGoBack) return;
-        _historyIndex--;
+        var index = _historyIndex - 1;
+        if (await NavigateToAsyncCore(_history[index])) _historyIndex = index;
         RefreshHistoryCommands();
-        await NavigateToAsyncCore(_history[_historyIndex]);
     }
 
     [RelayCommand(CanExecute = nameof(CanGoForward))]
     private async Task GoForwardAsync()
     {
         if (!CanGoForward) return;
-        _historyIndex++;
+        var index = _historyIndex + 1;
+        if (await NavigateToAsyncCore(_history[index])) _historyIndex = index;
         RefreshHistoryCommands();
-        await NavigateToAsyncCore(_history[_historyIndex]);
     }
 
     [RelayCommand(CanExecute = nameof(CanGoUp))]
     private async Task GoUpAsync()
     {
         if (string.IsNullOrEmpty(AddressbarPath)) return;
-        var parent = Path.GetDirectoryName(AddressbarPath);
+        var parent = ExplorerBreadcrumb.ParentPath(AddressbarPath);
         await NavigateToAsync(string.IsNullOrEmpty(parent) ? null : parent);
     }
 
@@ -588,6 +653,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
             SelectedEntries.Add(entry);
         NotifySelectionCommands();
         OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(SelectionSummary));
         if (IsPickerMode) UpdatePickerEntryName();
     }
 
@@ -688,8 +754,8 @@ public sealed partial class ExplorerViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task OpenAsync()
     {
-        if (SelectedEntry is { } entry && entry.Type == FileSystemEntryType.File)
-            await OpenEntryAsync(entry);
+        if (SelectedEntry is { } entry)
+            await InvokeEntryAsync(entry);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

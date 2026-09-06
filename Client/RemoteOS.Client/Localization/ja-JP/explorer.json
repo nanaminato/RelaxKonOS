@@ -135,6 +135,13 @@
         "explorer.permission.write": "書き込み",
         "explorer.permission.execute": "実行",
         "explorer.save_permissions": "アクセス許可を保存",
-        "explorer.open_with.always_use": "この拡張子のファイルには常にこのアプリケーションを使用する"
+        "explorer.open_with.always_use": "この拡張子のファイルには常にこのアプリケーションを使用する",
+        "explorer.edit_address": "アドレスを編集 (Ctrl+L)",
+        "explorer.filter_folder": "このフォルダーを絞り込み (Ctrl+F)",
+        "explorer.more": "その他の操作",
+        "explorer.compact": "コンパクト表示",
+        "explorer.show_hidden": "隠し項目",
+        "explorer.empty_view": "表示する項目がありません",
+        "explorer.status.selection": "{0} 個の項目 · {1} 個を選択"
     }
 }

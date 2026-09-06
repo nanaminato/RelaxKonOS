@@ -135,6 +135,13 @@
         "explorer.permission.write": "Write",
         "explorer.permission.execute": "Execute",
         "explorer.save_permissions": "Save permissions",
-        "explorer.open_with.always_use": "Always use this application for this extension"
+        "explorer.open_with.always_use": "Always use this application for this extension",
+        "explorer.edit_address": "Edit address (Ctrl+L)",
+        "explorer.filter_folder": "Filter this folder (Ctrl+F)",
+        "explorer.more": "More actions",
+        "explorer.compact": "Compact view",
+        "explorer.show_hidden": "Hidden items",
+        "explorer.empty_view": "No items in this view",
+        "explorer.status.selection": "{0} items · {1} selected"
     }
 }
