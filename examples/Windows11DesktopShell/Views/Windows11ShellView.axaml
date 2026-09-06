@@ -35,6 +35,14 @@
 
     <Grid RowDefinitions="*,52">
         <Grid Grid.Row="0" ClipToBounds="True">
+            <Grid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="{Binding RefreshDesktop}" Command="{Binding RefreshDesktopCommand}" />
+                    <Separator />
+                    <MenuItem Header="{Binding DisplaySettings}" Command="{Binding OpenDisplaySettingsCommand}" />
+                    <MenuItem Header="{Binding Personalization}" Command="{Binding OpenPersonalizationCommand}" />
+                </ContextMenu>
+            </Grid.ContextMenu>
             <Grid.Background>
                 <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
                     <GradientStop Color="#0B72C9" Offset="0" />
@@ -43,8 +51,9 @@
                 </LinearGradientBrush>
             </Grid.Background>
 
-            <Button x:Name="InputBackdrop" Command="{Binding CloseFlyoutsCommand}"
-                    Background="Transparent" BorderBrush="Transparent" Padding="0" />
+            <!-- This is a required surface for shell-hosted modal input. It must not consume
+                 ordinary desktop clicks while no modal dialog is active. -->
+            <Border x:Name="InputBackdrop" IsHitTestVisible="False" />
 
             <views:DesktopShortcutsView Margin="14" HorizontalAlignment="Left" VerticalAlignment="Top" />
 
@@ -104,10 +113,10 @@
                 <Grid RowDefinitions="Auto,Auto,*,Auto">
                     <TextBox PlaceholderText="{Binding SearchPlaceholder}" Margin="32,28,32,18" Height="38" CornerRadius="6" />
                     <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="38,0,38,12">
-                        <TextBlock Classes="primary" Text="{Binding Pinned}" FontSize="15" FontWeight="SemiBold" />
-                        <Button Grid.Column="1" Content="{Binding AllApps}" Padding="12,5" Command="{Binding OpenSettingsCommand}" />
+                        <TextBlock Classes="primary" Text="{Binding StartSectionTitle}" FontSize="15" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" Content="{Binding AllAppsButtonText}" Padding="12,5" Command="{Binding ToggleAllAppsCommand}" />
                     </Grid>
-                    <UniformGrid Grid.Row="2" Columns="3" Rows="2" Margin="30,0,30,26">
+                    <UniformGrid Grid.Row="2" Columns="3" Rows="2" Margin="30,0,30,26" IsVisible="{Binding IsPinnedOpen}">
                         <Button Classes="start-tile" Command="{Binding OpenSettingsCommand}">
                             <StackPanel Spacing="7"><Path Data="{StaticResource IconSettings}" Fill="#FF0067C0" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding Settings}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
@@ -127,6 +136,27 @@
                             <StackPanel Spacing="7"><Path Data="{StaticResource IconInfo}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding About}" FontSize="12" TextAlignment="Center" /></StackPanel>
                         </Button>
                     </UniformGrid>
+                    <ScrollViewer Grid.Row="2" Margin="30,0,30,26" IsVisible="{Binding IsAllAppsOpen}"
+                                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Applications}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel ItemWidth="150" ItemHeight="96" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Classes="start-tile" Width="142" Height="88"
+                                            Command="{Binding $parent[UserControl].DataContext.OpenApplicationCommand}"
+                                            CommandParameter="{Binding}">
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="{Binding IconGlyph}" FontSize="26" Height="34" TextAlignment="Center" />
+                                            <TextBlock Classes="primary" Text="{Binding DisplayName}" FontSize="12" MaxLines="2"
+                                                       TextAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                     <Border Grid.Row="3" Background="#55FFFFFF" BorderBrush="#66FFFFFF" BorderThickness="0,1,0,0"
                             CornerRadius="0,0,12,12" Padding="36,14">
                         <Grid ColumnDefinitions="Auto,*,Auto">
@@ -164,5 +194,19 @@
 
         <Canvas x:Name="FullScreenHost" Grid.RowSpan="2" ClipToBounds="True" IsHitTestVisible="False" />
         <Canvas x:Name="ShellOverlayHost" Grid.RowSpan="2" IsHitTestVisible="False" />
+        <Border Grid.RowSpan="2" IsVisible="{Binding IsLoading}"
+                Background="#E8144F85">
+            <StackPanel Width="260" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Width="56" Height="56" CornerRadius="14" Background="#32FFFFFF" BorderBrush="#55FFFFFF" BorderThickness="1">
+                    <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
+                        <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
+                    </UniformGrid>
+                </Border>
+                <TextBlock Text="{Binding LoadingTitle}" Foreground="White" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
+                <TextBlock Text="{Binding LoadingDescription}" Foreground="#D9FFFFFF" FontSize="12" TextAlignment="Center" TextWrapping="Wrap" />
+                <ProgressBar IsIndeterminate="True" Height="4" Foreground="White" Background="#44FFFFFF" />
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

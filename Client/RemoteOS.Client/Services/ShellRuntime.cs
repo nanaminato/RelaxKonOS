@@ -1,5 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using Client.Apps.Explorer.Dialogs;
 using Client.Localization;
 using Client.Services.VirtualSystemDrive;
@@ -31,6 +33,7 @@ public sealed class ShellRuntime
     private ContentControl? _host;
     private IDesktopShell? _active;
     private SurfaceRegistry? _activeSurfaces;
+    private DesktopShellStateAdapter? _desktopState;
     private string _activeShellId = ShellApi.DefaultShellId;
 
     public ShellRuntime(ShellCatalog catalog, IWindowManager windows, ShellSettings settings, ShellPreferenceStore preferences,
@@ -53,7 +56,11 @@ public sealed class ShellRuntime
     {
         if (ReferenceEquals(_host, host) && ReferenceEquals(_state.Snapshot, workspace) && _active is not null)
             return;
-        _host = host; _state.Publish(workspace); _overlays.Configure(workspace);
+        _host = host;
+        _desktopState?.Dispose();
+        _desktopState = new DesktopShellStateAdapter(workspace, _state);
+        _state.Publish(workspace, _desktopState.Current);
+        _overlays.Configure(workspace);
         var local = await _preferences.LoadAsync();
         var requested = ShellApi.NormalizeId(_settings.ShellSelection?.ShellId ?? local.ShellId);
         if (!_catalog.TryGet(requested, out var descriptor) || !descriptor.IsAvailable)
@@ -191,7 +198,22 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
 {
     private DesktopShellViewModel Vm => state.Snapshot as DesktopShellViewModel ?? throw new InvalidOperationException("Desktop state unavailable.");
     public Task LaunchAsync(AppId appId, CancellationToken cancellationToken = default) { Vm.LaunchCommand.Execute(appId); return Task.CompletedTask; }
-    public Task OpenDesktopEntryAsync(string entryId, CancellationToken cancellationToken = default) { Entry(entryId, Vm.OpenDesktopEntryCommand); return Task.CompletedTask; }
+    public Task OpenDesktopEntryAsync(string entryId, CancellationToken cancellationToken = default)
+    {
+        switch (Find(entryId))
+        {
+            case DesktopFileEntryViewModel file:
+                Vm.OpenDesktopEntryCommand.Execute(file);
+                break;
+            case AppEntryViewModel app:
+                app.LaunchCommand.Execute(null);
+                break;
+            case ShortcutEntryViewModel shortcut:
+                shortcut.ActivateCommand.Execute(null);
+                break;
+        }
+        return Task.CompletedTask;
+    }
     public Task RefreshDesktopAsync(CancellationToken cancellationToken = default) { Vm.RefreshDesktopCommand.Execute(null); return Task.CompletedTask; }
     public void ClearDesktopSelection() => Vm.ClearDesktopSelectionCommand.Execute(null);
     public void SelectDesktopEntry(string entryId) { var entry = Find(entryId); if (entry is not null) Vm.SelectDesktopItemCommand.Execute(entry); }
@@ -206,6 +228,76 @@ internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager 
     private object? Find(string entryId) => Vm.DesktopItems.FirstOrDefault(x => string.Equals(EntryId(x), entryId, StringComparison.Ordinal));
     private void Entry(string id, System.Windows.Input.ICommand command) { var entry = Find(id); if (entry is not null) command.Execute(entry); }
     private static string EntryId(object item) => item switch { DesktopFileEntryViewModel f => "file:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(f.Entry.Path)))[..16], AppEntryViewModel a => "app:" + a.Id.Value, ShortcutEntryViewModel s => "shortcut:" + s.DisplayName, _ => string.Empty };
+}
+
+/// <summary>
+/// Keeps the public shell contract in step with the client-owned view model without leaking any
+/// client UI types into external desktop packages.
+/// </summary>
+internal sealed class DesktopShellStateAdapter : IDisposable
+{
+    private readonly DesktopShellViewModel _workspace;
+    private readonly ShellStateStore _state;
+    private bool _disposed;
+
+    public DesktopShellStateAdapter(DesktopShellViewModel workspace, ShellStateStore state)
+    {
+        _workspace = workspace;
+        _state = state;
+        _workspace.StartApps.CollectionChanged += OnCollectionChanged;
+        _workspace.DesktopItems.CollectionChanged += OnCollectionChanged;
+        _workspace.PropertyChanged += OnWorkspacePropertyChanged;
+        Current = CreateSnapshot();
+    }
+
+    public ShellDesktopState Current { get; private set; }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _workspace.StartApps.CollectionChanged -= OnCollectionChanged;
+        _workspace.DesktopItems.CollectionChanged -= OnCollectionChanged;
+        _workspace.PropertyChanged -= OnWorkspacePropertyChanged;
+    }
+
+    private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs args) => Publish();
+
+    private void OnWorkspacePropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(DesktopShellViewModel.AreDesktopIconsVisible))
+            Publish();
+    }
+
+    private void Publish()
+    {
+        if (_disposed) return;
+        Current = CreateSnapshot();
+        _state.PublishDesktop(Current);
+    }
+
+    private ShellDesktopState CreateSnapshot()
+    {
+        var applications = _workspace.StartApps
+            .Select(app => new ShellApplicationEntry(app.Id, app.DisplayName, app.IconGlyph, app.Description))
+            .ToArray();
+        var entries = _workspace.DesktopItems.Select(ToEntry).Where(entry => entry is not null).Cast<ShellDesktopEntry>().ToArray();
+        return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible);
+    }
+
+    private static ShellDesktopEntry? ToEntry(object item) => item switch
+    {
+        AppEntryViewModel app => new ShellDesktopEntry("app:" + app.Id.Value, app.DisplayName,
+            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id),
+        DesktopFileEntryViewModel file => new ShellDesktopEntry("file:" + EntryHash(file.Entry.Path), file.DisplayName,
+            file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph),
+        ShortcutEntryViewModel shortcut => new ShellDesktopEntry("shortcut:" + shortcut.DisplayName, shortcut.DisplayName,
+            ShellDesktopEntryKind.Shortcut, shortcut.IconGlyph),
+        _ => null,
+    };
+
+    private static string EntryHash(string path) => Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(path)))[..16];
 }
 
 /// <summary>Single trusted client adapter for dialogs; packages receive only the narrow overlay contract.</summary>

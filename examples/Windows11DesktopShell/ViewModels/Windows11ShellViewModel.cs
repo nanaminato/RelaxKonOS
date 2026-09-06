@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using Example.Windows11DesktopShell.Commands;
 using Example.Windows11DesktopShell.Services;
@@ -12,7 +13,11 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private readonly ShellLocalizer _localizer;
     private readonly DispatcherTimer _clockTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _isStartOpen;
+    private bool _isAllAppsOpen;
     private bool _isQuickSettingsOpen;
+    private bool _areDesktopIconsVisible = true;
+    private bool _isLoading = true;
+    private int _loadGeneration;
     private string _clock = string.Empty;
     private string _date = string.Empty;
     private bool _disposed;
@@ -24,6 +29,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         _localizer.LanguageChanged += OnLanguageChanged;
         _clockTimer.Tick += OnClockTick;
         ToggleStartCommand = new DelegateCommand(ToggleStart);
+        ToggleAllAppsCommand = new DelegateCommand(ToggleAllApps);
         ToggleQuickSettingsCommand = new DelegateCommand(ToggleQuickSettings);
         CloseFlyoutsCommand = new DelegateCommand(CloseFlyouts);
         OpenSettingsCommand = new DelegateCommand(() => _context.Actions.OpenSettings(SettingsRoute.Root));
@@ -31,10 +37,17 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         OpenDisplaySettingsCommand = new DelegateCommand(() => _context.Overlays.ShowDesktopDisplaySettingsAsync());
         RefreshDesktopCommand = new DelegateCommand(() => _context.Actions.RefreshDesktopAsync());
         ShowDesktopCommand = new DelegateCommand(_context.Actions.ShowDesktop);
+        OpenApplicationCommand = new DelegateCommand<ShellApplicationEntry>(OpenApplicationAsync);
+        OpenDesktopEntryCommand = new DelegateCommand<ShellDesktopEntry>(OpenDesktopEntryAsync);
+        _context.State.Changed += OnDesktopStateChanged;
+        ReloadDesktopState();
         UpdateClock();
     }
 
+    public ObservableCollection<ShellApplicationEntry> Applications { get; } = new();
+    public ObservableCollection<ShellDesktopEntry> DesktopEntries { get; } = new();
     public ICommand ToggleStartCommand { get; }
+    public ICommand ToggleAllAppsCommand { get; }
     public ICommand ToggleQuickSettingsCommand { get; }
     public ICommand CloseFlyoutsCommand { get; }
     public ICommand OpenSettingsCommand { get; }
@@ -42,8 +55,23 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public ICommand OpenDisplaySettingsCommand { get; }
     public ICommand RefreshDesktopCommand { get; }
     public ICommand ShowDesktopCommand { get; }
+    public ICommand OpenApplicationCommand { get; }
+    public ICommand OpenDesktopEntryCommand { get; }
     public bool IsStartOpen { get => _isStartOpen; private set => SetProperty(ref _isStartOpen, value); }
+    public bool IsAllAppsOpen
+    {
+        get => _isAllAppsOpen;
+        private set
+        {
+            if (!SetProperty(ref _isAllAppsOpen, value)) return;
+            OnPropertyChanged(nameof(StartSectionTitle));
+            OnPropertyChanged(nameof(AllAppsButtonText));
+            OnPropertyChanged(nameof(IsPinnedOpen));
+        }
+    }
     public bool IsQuickSettingsOpen { get => _isQuickSettingsOpen; private set => SetProperty(ref _isQuickSettingsOpen, value); }
+    public bool AreDesktopIconsVisible { get => _areDesktopIconsVisible; private set => SetProperty(ref _areDesktopIconsVisible, value); }
+    public bool IsLoading { get => _isLoading; private set => SetProperty(ref _isLoading, value); }
     public string Clock { get => _clock; private set => SetProperty(ref _clock, value); }
     public string Date { get => _date; private set => SetProperty(ref _date, value); }
 
@@ -60,19 +88,37 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public string SearchPlaceholder => T("start.search_placeholder", "Type here to search");
     public string Pinned => T("start.pinned", "Pinned");
     public string AllApps => T("start.all_apps", "All apps  ›");
+    public string BackToPinned => T("start.back_to_pinned", "‹ Back");
+    public string AllApplications => T("start.all_applications", "All apps");
+    public string StartSectionTitle => IsAllAppsOpen ? AllApplications : Pinned;
+    public string AllAppsButtonText => IsAllAppsOpen ? BackToPinned : AllApps;
+    public bool IsPinnedOpen => !IsAllAppsOpen;
     public string About => T("start.about", "About this shell");
     public string UserName => T("start.user", "RemoteOS");
     public string Wifi => T("quick.wifi", "Wi-Fi");
     public string Bluetooth => T("quick.bluetooth", "Bluetooth");
     public string Focus => T("quick.focus", "Focus");
     public string OpenSettings => T("quick.open_settings", "Open settings");
+    public string LoadingTitle => T("loading.title", "Getting your desktop ready");
+    public string LoadingDescription => T("loading.description", "Loading applications and desktop items…");
     public string ThisPc => T("desktop.this_pc", "This PC");
     public string Documents => T("desktop.documents", "Documents");
     public string ProjectFile => T("desktop.project_file", "Project notes.txt");
     public string RecycleBin => T("desktop.recycle_bin", "Recycle Bin");
 
-    public void Activate() { UpdateClock(); _clockTimer.Start(); }
-    public void Deactivate() { _clockTimer.Stop(); CloseFlyouts(); }
+    public void Activate()
+    {
+        UpdateClock();
+        _clockTimer.Start();
+        ShowLoadingTransition();
+    }
+    public void Deactivate()
+    {
+        _loadGeneration++;
+        IsLoading = true;
+        _clockTimer.Stop();
+        CloseFlyouts();
+    }
 
     public void Dispose()
     {
@@ -81,15 +127,67 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         _clockTimer.Stop();
         _clockTimer.Tick -= OnClockTick;
         _localizer.LanguageChanged -= OnLanguageChanged;
+        _context.State.Changed -= OnDesktopStateChanged;
         _localizer.Dispose();
     }
 
     private string T(string key, string fallback) => _localizer.Get(key, fallback);
-    private void ToggleStart() { IsQuickSettingsOpen = false; IsStartOpen = !IsStartOpen; }
+    private void ToggleStart()
+    {
+        IsQuickSettingsOpen = false;
+        IsStartOpen = !IsStartOpen;
+        if (!IsStartOpen) IsAllAppsOpen = false;
+    }
+    private void ToggleAllApps()
+    {
+        IsQuickSettingsOpen = false;
+        IsStartOpen = true;
+        IsAllAppsOpen = !IsAllAppsOpen;
+    }
     private void ToggleQuickSettings() { IsStartOpen = false; IsQuickSettingsOpen = !IsQuickSettingsOpen; }
-    private void CloseFlyouts() { IsStartOpen = false; IsQuickSettingsOpen = false; _context.Actions.ClearDesktopSelection(); }
+    private void CloseFlyouts() { IsStartOpen = false; IsAllAppsOpen = false; IsQuickSettingsOpen = false; _context.Actions.ClearDesktopSelection(); }
     private void OnClockTick(object? sender, EventArgs args) => UpdateClock();
     private void OnLanguageChanged(object? sender, EventArgs args) { UpdateClock(); NotifyAll(); }
+    private void OnDesktopStateChanged(object? sender, EventArgs args)
+    {
+        if (Dispatcher.UIThread.CheckAccess()) ReloadDesktopState();
+        else Dispatcher.UIThread.Post(ReloadDesktopState);
+    }
+    private void ReloadDesktopState()
+    {
+        var state = _context.State.Desktop;
+        Applications.Clear();
+        DesktopEntries.Clear();
+        if (state is null)
+        {
+            AreDesktopIconsVisible = false;
+            return;
+        }
+        foreach (var application in state.Applications) Applications.Add(application);
+        foreach (var entry in state.DesktopEntries) DesktopEntries.Add(entry);
+        AreDesktopIconsVisible = state.AreDesktopIconsVisible;
+    }
+    private async Task OpenApplicationAsync(ShellApplicationEntry? application)
+    {
+        if (application is null) return;
+        await _context.Actions.LaunchAsync(application.Id);
+        CloseFlyouts();
+    }
+    private async Task OpenDesktopEntryAsync(ShellDesktopEntry? entry)
+    {
+        if (entry is null) return;
+        await _context.Actions.OpenDesktopEntryAsync(entry.Id);
+        _context.Actions.ClearDesktopSelection();
+    }
+    private void ShowLoadingTransition()
+    {
+        IsLoading = true;
+        var generation = ++_loadGeneration;
+        DispatcherTimer.RunOnce(() =>
+        {
+            if (!_disposed && generation == _loadGeneration) IsLoading = false;
+        }, TimeSpan.FromMilliseconds(420));
+    }
     private void UpdateClock()
     {
         var now = DateTime.Now;

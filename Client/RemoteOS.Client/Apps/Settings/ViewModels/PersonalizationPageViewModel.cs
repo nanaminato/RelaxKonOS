@@ -78,8 +78,13 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 
             var id = ShellApi.NormalizeId(value);
             if (!_shellCatalog.TryGet(id, out var shell) || !shell.IsAvailable) return;
-            if (Settings.SelectedShellId == id) return;
-            Settings.SelectedShellId = id;
+            // Store the package identity along with the cross-device shell intent.  Resolving
+            // remains device-local, but retaining this metadata prevents an external shell
+            // choice from being reduced to a bare ID on the next launch.
+            if (Settings.ShellSelection.ShellId == id
+                && Settings.ShellSelection.PackageId == shell.PackageId
+                && Settings.ShellSelection.PackageVersion == shell.Version) return;
+            Settings.ShellSelection = new ShellSelectionDto(id, shell.PackageId, shell.Version);
             Save();
         }
     }

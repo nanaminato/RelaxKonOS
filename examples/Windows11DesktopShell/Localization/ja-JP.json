@@ -23,6 +23,10 @@
     "desktop.this_pc": "PC",
     "desktop.documents": "ドキュメント",
     "desktop.project_file": "プロジェクト メモ.txt",
-    "desktop.recycle_bin": "ごみ箱"
+    "desktop.recycle_bin": "ごみ箱",
+    "start.back_to_pinned": "‹ 戻る",
+    "start.all_applications": "すべてのアプリ",
+    "loading.title": "デスクトップを準備しています",
+    "loading.description": "アプリとデスクトップ項目を読み込んでいます…"
   }
 }

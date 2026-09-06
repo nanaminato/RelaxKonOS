@@ -23,6 +23,10 @@
     "desktop.this_pc": "This PC",
     "desktop.documents": "Documents",
     "desktop.project_file": "Project notes.txt",
-    "desktop.recycle_bin": "Recycle Bin"
+    "desktop.recycle_bin": "Recycle Bin",
+    "start.back_to_pinned": "‹ Back",
+    "start.all_applications": "All apps",
+    "loading.title": "Getting your desktop ready",
+    "loading.description": "Loading applications and desktop items…"
   }
 }

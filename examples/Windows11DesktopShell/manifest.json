@@ -4,13 +4,13 @@
   "packageType": "desktopShell",
   "id": "com.example.windows11-desktop",
   "displayName": "Windows 11 Desktop (External)",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "iconPath": "assets/icon.png",
   "description": "Windows 11-inspired external desktop shell for RemoteOS",
   "entryAssembly": "lib/net10.0/Example.Windows11DesktopShell.dll",
   "entryType": "Example.Windows11DesktopShell.Windows11ShellFactory",
-  "minimumShellApiVersion": 2,
-  "capabilities": ["desktop", "shellOverlays"],
+  "minimumShellApiVersion": 3,
+  "capabilities": ["desktop", "appLauncher", "shellOverlays"],
   "requestedPermissions": [],
   "localizedMetadata": {
     "en-US": {

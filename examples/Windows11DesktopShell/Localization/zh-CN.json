@@ -23,6 +23,10 @@
     "desktop.this_pc": "此电脑",
     "desktop.documents": "文档",
     "desktop.project_file": "项目说明.txt",
-    "desktop.recycle_bin": "回收站"
+    "desktop.recycle_bin": "回收站",
+    "start.back_to_pinned": "‹ 返回",
+    "start.all_applications": "所有应用",
+    "loading.title": "正在准备桌面",
+    "loading.description": "正在载入应用和桌面项目…"
   }
 }

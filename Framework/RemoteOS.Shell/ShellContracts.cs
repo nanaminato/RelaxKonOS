@@ -8,7 +8,7 @@ namespace RemoteOS.Shell;
 /// <summary>Versioned, deliberately small contract shared by the client and desktop-shell packages.</summary>
 public static class ShellApi
 {
-    public const int Version = 2;
+    public const int Version = 3;
     public const string DefaultShellId = "remoteos.windows-like";
     public static readonly IReadOnlyDictionary<string, string> LegacyIds = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -72,10 +72,47 @@ public sealed record ShellPresentationContext(ShellStateStore State, IShellActio
 public sealed class ShellStateStore
 {
     private object? _snapshot;
+    private ShellDesktopState? _desktop;
     public object? Snapshot => _snapshot;
+    /// <summary>
+    /// A package-safe projection of the current desktop.  Unlike <see cref="Snapshot"/>, this
+    /// never exposes client implementation types to external shell packages.
+    /// </summary>
+    public ShellDesktopState? Desktop => _desktop;
     public event EventHandler? Changed;
-    public void Publish(object? snapshot) { _snapshot = snapshot; Changed?.Invoke(this, EventArgs.Empty); }
+    public void Publish(object? snapshot, ShellDesktopState? desktop = null)
+    {
+        _snapshot = snapshot;
+        _desktop = desktop;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Publishes a refreshed package-safe desktop projection without replacing host state.</summary>
+    public void PublishDesktop(ShellDesktopState desktop)
+    {
+        _desktop = desktop;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 }
+
+/// <summary>Read-only desktop data made available to external shell packages.</summary>
+public sealed record ShellDesktopState(
+    IReadOnlyList<ShellApplicationEntry> Applications,
+    IReadOnlyList<ShellDesktopEntry> DesktopEntries,
+    bool AreDesktopIconsVisible);
+
+/// <summary>A launchable application in an external shell's Start menu or application list.</summary>
+public sealed record ShellApplicationEntry(AppId Id, string DisplayName, string? IconGlyph, string? Description);
+
+public enum ShellDesktopEntryKind { Application, File, Folder, Shortcut }
+
+/// <summary>A selectable item on the authenticated user's desktop.</summary>
+public sealed record ShellDesktopEntry(
+    string Id,
+    string DisplayName,
+    ShellDesktopEntryKind Kind,
+    string? IconGlyph,
+    AppId? ApplicationId = null);
 
 public enum SettingsRoute { Root, Personalization }
 public enum DesktopEntryAction { Open, OpenWith, Copy, Cut, Paste, Delete, ShowInExplorer, Properties }

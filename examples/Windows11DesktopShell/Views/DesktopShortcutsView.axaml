@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Example.Windows11DesktopShell.Views.DesktopShortcutsView">
+             xmlns:shell="clr-namespace:RemoteOS.Shell;assembly=RemoteOS.Shell"
+             x:Class="Example.Windows11DesktopShell.Views.DesktopShortcutsView"
+             x:Name="DesktopShortcutsRoot">
     <UserControl.Styles>
         <Style Selector="Button.desktop-shortcut">
             <Setter Property="Width" Value="96" />
@@ -19,80 +21,35 @@
             <Setter Property="Foreground" Value="White" />
             <Setter Property="TextAlignment" Value="Center" />
             <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="MaxLines" Value="2" />
+        </Style>
+        <Style Selector="TextBlock.desktop-icon">
+            <Setter Property="FontSize" Value="38" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </UserControl.Styles>
 
-    <WrapPanel Orientation="Vertical" Height="570" ItemWidth="96" ItemHeight="94">
-        <Button Classes="desktop-shortcut" ToolTip.Tip="{Binding ThisPc}">
-            <StackPanel Spacing="4">
-                <Grid Width="48" Height="45" HorizontalAlignment="Center">
-                    <Border Margin="2,2,2,9" CornerRadius="3" BorderBrush="#E6FFFFFF" BorderThickness="2">
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                                <GradientStop Color="#61D5FF" Offset="0" />
-                                <GradientStop Color="#1267D5" Offset="1" />
-                            </LinearGradientBrush>
-                        </Border.Background>
-                        <Path Data="M8 23 L38 7 M17 30 L39 17" Stroke="#55FFFFFF" StrokeThickness="2" />
-                    </Border>
-                    <Path Data="M15 43 L33 43 M24 36 L24 43" Stroke="#E6FFFFFF" StrokeThickness="3" />
-                </Grid>
-                <TextBlock Classes="desktop-label" Text="{Binding ThisPc}" />
-            </StackPanel>
-        </Button>
-
-        <Button Classes="desktop-shortcut" ToolTip.Tip="{Binding Documents}">
-            <StackPanel Spacing="4">
-                <Grid Width="50" Height="44" HorizontalAlignment="Center">
-                    <Path Data="M3 10 L20 10 L25 15 L47 15 L43 40 L6 40 Z" Fill="#F5B83D" Stroke="#FFF3A7" StrokeThickness="1.4" />
-                    <Path Data="M5 8 L20 8 L24 13 L45 13 L46 17 L7 17 Z" Fill="#FFD86A" />
-                    <Path Data="M13 21 L39 21 M12 26 L35 26" Stroke="#B97813" StrokeThickness="1.2" Opacity="0.55" />
-                </Grid>
-                <TextBlock Classes="desktop-label" Text="{Binding Documents}" />
-            </StackPanel>
-        </Button>
-
-        <Button Classes="desktop-shortcut" ToolTip.Tip="{Binding ProjectFile}">
-            <StackPanel Spacing="4">
-                <Grid Width="42" Height="46" HorizontalAlignment="Center">
-                    <Path Data="M5 2 L27 2 L38 13 L38 44 L5 44 Z" Fill="#F8FBFF" Stroke="#C8E5FF" StrokeThickness="1.5" />
-                    <Path Data="M27 2 L27 13 L38 13 Z" Fill="#78B9F2" Stroke="#C8E5FF" StrokeThickness="1" />
-                    <Path Data="M11 21 L32 21 M11 27 L32 27 M11 33 L27 33" Stroke="#347FC3" StrokeThickness="2" />
-                </Grid>
-                <TextBlock Classes="desktop-label" Text="{Binding ProjectFile}" />
-            </StackPanel>
-        </Button>
-
-        <Button Classes="desktop-shortcut" ToolTip.Tip="{Binding RecycleBin}">
-            <StackPanel Spacing="4">
-                <Grid Width="42" Height="46" HorizontalAlignment="Center">
-                    <Path Data="M8 12 L34 12 L31 43 L11 43 Z" Fill="#DDF5FF" Stroke="#F3FCFF" StrokeThickness="1.5" />
-                    <Path Data="M6 12 L36 12 M14 7 L28 7 L31 12 M16 17 L17 37 M26 17 L25 37" Stroke="#64AEDA" StrokeThickness="2" />
-                    <Path Data="M17 26 C19 22 24 22 26 26 C24 30 19 30 17 26 Z" Fill="#63C586" Opacity="0.8" />
-                </Grid>
-                <TextBlock Classes="desktop-label" Text="{Binding RecycleBin}" />
-            </StackPanel>
-        </Button>
-
-        <Button Classes="desktop-shortcut" Command="{Binding OpenDisplaySettingsCommand}">
-            <StackPanel Spacing="4">
-                <Border Width="48" Height="44" CornerRadius="9" Background="#CC1E5A91" HorizontalAlignment="Center">
-                    <Path Data="M7 7 L41 7 L41 31 L7 31 Z M16 38 L32 38 M24 31 L24 38" Stroke="White" StrokeThickness="2" />
-                </Border>
-                <TextBlock Classes="desktop-label" Text="{Binding DisplaySettings}" />
-            </StackPanel>
-        </Button>
-
-        <Button Classes="desktop-shortcut" Command="{Binding OpenPersonalizationCommand}">
-            <StackPanel Spacing="4">
-                <Border Width="46" Height="46" CornerRadius="10" Background="#D1FFFFFF" HorizontalAlignment="Center">
-                    <Grid>
-                        <Path Data="M36 23 C36 30.2 30.2 36 23 36 C15.8 36 10 30.2 10 23 C10 15.8 15.8 10 23 10 C26.5 10 29.7 11.4 32 13.7 L27.8 17.9 C26.5 16.7 24.8 16 23 16 C19.1 16 16 19.1 16 23 C16 26.9 19.1 30 23 30 C26.9 30 30 26.9 30 23 Z" Fill="#1876D2" />
-                        <Ellipse Width="8" Height="8" Fill="#66D4FF" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Grid>
-                </Border>
-                <TextBlock Classes="desktop-label" Text="{Binding Personalization}" />
-            </StackPanel>
-        </Button>
-    </WrapPanel>
+    <ItemsControl ItemsSource="{Binding DesktopEntries}" IsVisible="{Binding AreDesktopIconsVisible}">
+        <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+                <WrapPanel Orientation="Vertical" Height="570" ItemWidth="96" ItemHeight="94" />
+            </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="shell:ShellDesktopEntry">
+                <Button Classes="desktop-shortcut"
+                        Command="{Binding #DesktopShortcutsRoot.DataContext.OpenDesktopEntryCommand}"
+                        CommandParameter="{Binding}"
+                        ToolTip.Tip="{Binding DisplayName}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="desktop-icon" Text="{Binding IconGlyph}" />
+                        <TextBlock Classes="desktop-label" Text="{Binding DisplayName}" />
+                    </StackPanel>
+                </Button>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
 </UserControl>

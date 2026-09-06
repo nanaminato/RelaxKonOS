@@ -5,8 +5,8 @@ This project is a self-contained external RemoteOS desktop shell. It intentional
 
 The example demonstrates:
 
-- a Windows 11-inspired wallpaper and desktop shortcuts;
-- a centered taskbar, Start menu, clock, and quick-settings flyout;
+- a Windows 11-inspired wallpaper, live desktop entries, and a desktop context menu;
+- a centered taskbar, live All apps menu, clock, quick-settings flyout, and a short startup transition;
 - shell actions for settings, display settings, desktop refresh, and Show Desktop;
 - correct registration of normal-window, full-screen-window, overlay, and input-backdrop surfaces;
 - work-area reporting that reserves the taskbar.
@@ -35,7 +35,9 @@ Windows11DesktopShell/
     ja-JP.json
 ```
 
-Open the generated `.roapp` with the RemoteOS App Installer. After installation, select the desktop
-from Personalization. Personalization intentionally has no local-folder installation action. See
+Open the generated `.roapp` with the RemoteOS App Installer. After updating this sample, reinstall
+the new package before selecting it from Personalization. The selection records the package ID and
+version, so it remains available after restarting the client as long as the package is installed.
+Personalization intentionally has no local-folder installation action. See
 [`docs/desktop/RemoteOS.ExternalShellPackages.md`](../../docs/desktop/RemoteOS.ExternalShellPackages.md)
 for validation, signing, and loading details.
