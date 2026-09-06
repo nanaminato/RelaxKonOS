@@ -81,6 +81,8 @@ async Task WatchAsync(List<string> watchArguments)
 
     var install = !ReadFlag(watchArguments, "--no-install");
     var options = ParsePackOptions(watchArguments);
+    if (options.NoBuild)
+        throw new ArgumentException("watch <project> always rebuilds source changes; use watch <package.roapp> to watch an externally built package.");
     if (install)
         EnsureToken();
 
@@ -188,6 +190,7 @@ async Task<string> PackAsync(PackOptions options)
         var libraryDirectory = Path.Combine(stagingDirectory, manifest.TargetFramework.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(libraryDirectory);
         File.Copy(options.ManifestPath, Path.Combine(stagingDirectory, "manifest.json"));
+        CopyManifestAssets(options.ManifestPath, manifest, stagingDirectory);
         CopyDirectory(publishDirectory, libraryDirectory);
 
         var entryAssembly = Path.Combine(stagingDirectory, manifest.EntryAssembly.Replace('/', Path.DirectorySeparatorChar));
@@ -221,6 +224,8 @@ async Task PublishAsync(PackOptions options, string outputDirectory)
     startInfo.ArgumentList.Add(options.Configuration);
     startInfo.ArgumentList.Add("--output");
     startInfo.ArgumentList.Add(outputDirectory);
+    if (options.NoBuild)
+        startInfo.ArgumentList.Add("--no-build");
     if (!string.IsNullOrWhiteSpace(options.RuntimeIdentifier))
     {
         startInfo.ArgumentList.Add("--runtime");
@@ -281,7 +286,10 @@ void EnsureToken()
 
 static PackOptions ParsePackOptions(List<string> packArguments)
 {
+    var noBuild = ReadFlag(packArguments, "--no-build");
     var configuration = ReadOption(packArguments, "--configuration") ?? "Debug";
+    if (string.IsNullOrWhiteSpace(configuration))
+        throw new ArgumentException("--configuration must not be empty.");
     var runtimeIdentifier = ReadOption(packArguments, "--runtime");
     var output = ReadOption(packArguments, "--output");
     var manifest = ReadOption(packArguments, "--manifest");
@@ -298,7 +306,7 @@ static PackOptions ParsePackOptions(List<string> packArguments)
     if (!outputPath.EndsWith(".roapp", StringComparison.OrdinalIgnoreCase))
         throw new ArgumentException("--output must end in .roapp.");
 
-    return new PackOptions(projectPath, manifestPath, outputPath, configuration, runtimeIdentifier);
+    return new PackOptions(projectPath, manifestPath, outputPath, configuration, runtimeIdentifier, noBuild);
 }
 
 static string ResolveProjectPath(string projectOrDirectory)
@@ -340,7 +348,53 @@ static PackageManifest ReadManifest(string manifestPath)
     var segments = entryAssembly.Split('/', StringSplitOptions.RemoveEmptyEntries);
     if (segments.Length < 3)
         throw new InvalidOperationException("manifest entryAssembly must include a target framework below lib/.");
-    return new PackageManifest(entryAssembly, string.Join('/', segments[..^1]));
+
+    string? iconPath = null;
+    if (document.RootElement.TryGetProperty("iconPath", out var iconPathElement)
+        && iconPathElement.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+    {
+        if (iconPathElement.ValueKind != JsonValueKind.String)
+            throw new InvalidOperationException("manifest iconPath must be a string.");
+        iconPath = iconPathElement.GetString()?.Replace('\\', '/');
+        if (!string.IsNullOrWhiteSpace(iconPath)
+            && (!IsSafeRelativeFilePath(iconPath) || !IsSupportedIconExtension(iconPath)))
+            throw new InvalidOperationException("manifest iconPath must be a safe package-relative PNG, JPEG, WebP, BMP, GIF, or ICO file.");
+    }
+
+    return new PackageManifest(entryAssembly, string.Join('/', segments[..^1]), iconPath);
+}
+
+static void CopyManifestAssets(string manifestPath, PackageManifest manifest, string stagingDirectory)
+{
+    if (string.IsNullOrWhiteSpace(manifest.IconPath)) return;
+
+    var manifestDirectory = Path.GetDirectoryName(manifestPath)!;
+    var source = ResolveRelativeFilePath(manifestDirectory, manifest.IconPath);
+    if (!File.Exists(source))
+        throw new FileNotFoundException($"manifest iconPath does not refer to a file: '{manifest.IconPath}'.", source);
+
+    var destination = ResolveRelativeFilePath(stagingDirectory, manifest.IconPath);
+    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+    File.Copy(source, destination, overwrite: true);
+}
+
+static bool IsSafeRelativeFilePath(string path)
+{
+    if (Path.IsPathRooted(path)) return false;
+    return path.Split('/', StringSplitOptions.None).All(segment => !string.IsNullOrWhiteSpace(segment)
+        && segment is not "." and not ".." && !segment.Contains(':'));
+}
+
+static bool IsSupportedIconExtension(string path) => new[] { ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".ico" }
+    .Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+
+static string ResolveRelativeFilePath(string root, string relativePath)
+{
+    var rootPath = Path.GetFullPath(root) + Path.DirectorySeparatorChar;
+    var resolved = Path.GetFullPath(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+    if (!resolved.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException("Package asset path is outside its root directory.");
+    return resolved;
 }
 
 static void CopyDirectory(string source, string destination)
@@ -393,8 +447,8 @@ static void PrintUsage()
 Usage: remoteos-dev [--token <pairing-token>] [--endpoint <url>] <command>
 
 Commands:
-  pack <project.csproj|directory> [--configuration <name>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--install]
-  watch <project.csproj|directory> [--configuration <name>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--no-install]
+  pack <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--no-build] [--install]
+  watch <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--no-install]
   watch <package.roapp>
   apps
   install <package.roapp>
@@ -403,11 +457,12 @@ Commands:
   uninstall <app-id>
 
 pack publishes the project and packages all publish output beneath the manifest's lib/<TFM>/ directory.
+Use --no-build to package the selected configuration's existing build output without recompiling it.
 Use --runtime only for an application with runtime-specific native dependencies. pack does not require a token unless --install is used.
 watch <project> rebuilds, packages, and installs on source changes; use --no-install to only rebuild packages.
 Set REMOTEOS_DEV_TOKEN to avoid passing the pairing token on each install or watch command.
 """);
 }
 
-sealed record PackOptions(string ProjectPath, string ManifestPath, string OutputPath, string Configuration, string? RuntimeIdentifier);
-sealed record PackageManifest(string EntryAssembly, string TargetFramework);
+sealed record PackOptions(string ProjectPath, string ManifestPath, string OutputPath, string Configuration, string? RuntimeIdentifier, bool NoBuild);
+sealed record PackageManifest(string EntryAssembly, string TargetFramework, string? IconPath);

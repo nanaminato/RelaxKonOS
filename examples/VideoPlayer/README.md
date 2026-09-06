@@ -8,6 +8,19 @@ Build and package it:
 dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/VideoPlayer --runtime win-x64 --configuration Release
 ```
 
+If the project has already been built in the selected configuration (for example by the IDE), package that output without compiling again:
+
+```bash
+dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/VideoPlayer --runtime win-x64 --configuration Debug --no-build
+```
+
+To install the existing Debug build immediately, enable Developer Mode, set the pairing token, and add `--install`:
+
+```powershell
+$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"
+dotnet run --project Tools/RemoteOS.DevCli -- pack .\examples\VideoPlayer --runtime win-x64 --configuration Debug --no-build --install
+```
+
 Install it using the Developer Mode CLI, then open a video from RemoteExplorer with **Open with → Video Player**. Grant **读取服务器文件** in Settings → Applications → Video Player before opening remote media.
 
 The example plays the authorized server file through a host-renewed, single-file HTTP media lease. The URL supports HTTP Range requests for seeking and expires automatically when the player closes or the host stops renewing it.

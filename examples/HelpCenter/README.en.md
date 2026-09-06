@@ -11,9 +11,15 @@ help://guide/docker/uninstall?lang=zh-CN
 
 Build and install it from the repository root:
 
-```bash
-export REMOTEOS_DEV_TOKEN="33CqN1nDrp0xP2bBLd7sZfw9APHrnbiIAg_gzYQwo-w"
-dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/HelpCenter --configuration Debug --install
+```powershell
+$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"
+dotnet run --project Tools/RemoteOS.DevCli -- pack .\examples\HelpCenter --configuration Debug --install
+```
+
+If the same `Debug` configuration was already built by the IDE or `dotnet build`, package its existing output directly from `manifest.json` without recompiling:
+
+```powershell
+dotnet run --project Tools/RemoteOS.DevCli -- pack .\examples\HelpCenter --configuration Debug --no-build
 ```
 
 Once installed, choose **Help Center** as the default program for `help` in Settings → Default apps. With no competing `help` handler installed, the Shell selects it automatically.
