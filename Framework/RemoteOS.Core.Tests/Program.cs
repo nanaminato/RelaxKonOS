@@ -111,18 +111,23 @@ static async Task VerifyStorageBoundaryAsync()
     AssertProblem(() => drive.ResolveRootChild("../outside"), VirtualSystemDriveProblemCode.PathInvalid);
     AssertProblem(() => drive.ResolveRootChild("/outside"), VirtualSystemDriveProblemCode.PathInvalid);
 
-    var link = Path.Combine(drive.ExternalProgramsDirectory, "escaped-link");
+    // A prior interrupted run can leave its link behind, so make this fixture unique.
+    var link = Path.Combine(drive.ExternalProgramsDirectory, $"escaped-link-{Guid.NewGuid():N}");
     var outside = Path.Combine(Path.GetTempPath(), $"remoteos-vsd-outside-{Guid.NewGuid():N}");
     try
     {
         Directory.CreateDirectory(outside);
         Directory.CreateSymbolicLink(link, outside);
-        AssertProblem(() => drive.ResolveUnder(drive.ExternalProgramsDirectory, "escaped-link/app.remoteos.json"),
+        AssertProblem(() => drive.ResolveUnder(drive.ExternalProgramsDirectory, $"{Path.GetFileName(link)}/app.remoteos.json"),
             VirtualSystemDriveProblemCode.PathEscape);
     }
     finally
     {
-        if (Directory.Exists(link) || File.Exists(link))
+        // On Windows a directory symbolic link is a reparse-point directory, not a file.
+        // Use the matching deletion API so the containment test itself can clean up reliably.
+        if (Directory.Exists(link))
+            Directory.Delete(link);
+        else if (File.Exists(link))
             File.Delete(link);
         if (Directory.Exists(outside))
             Directory.Delete(outside, recursive: true);

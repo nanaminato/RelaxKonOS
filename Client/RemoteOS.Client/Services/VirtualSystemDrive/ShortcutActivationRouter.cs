@@ -26,7 +26,7 @@ public sealed class ShortcutActivationRouter
         return shortcut.Kind switch
         {
             RemoteOsShortcutKind.Application => Result(_applications.Launch(new AppId(shortcut.Target)), "vsd.shortcut.app-unavailable"),
-            RemoteOsShortcutKind.Uri => Result(_activations.Activate(new Uri(shortcut.Target)).Succeeded, "vsd.shortcut.uri-unavailable"),
+            RemoteOsShortcutKind.Uri => Result(_activations.Activate(new AppActivationRequest(new Uri(shortcut.Target))).Succeeded, "vsd.shortcut.uri-unavailable"),
             RemoteOsShortcutKind.RemoteFile or RemoteOsShortcutKind.RemoteFolder => ActivateRemotePath(shortcut.Target),
             RemoteOsShortcutKind.Script => await ActivateScriptAsync(shortcut.Target, cancellationToken),
             _ => new ShortcutActivationResult(false, VirtualSystemDriveProblemCode.ShortcutInvalid),
@@ -34,7 +34,7 @@ public sealed class ShortcutActivationRouter
     }
 
     private ShortcutActivationResult ActivateRemotePath(string path) =>
-        Result(_activations.Activate(RemoteOsActivationUris.ExplorerPath(path)).Succeeded, "vsd.shortcut.remote-target-unavailable");
+        Result(_activations.Activate(new AppActivationRequest(RemoteOsActivationUris.ExplorerPath(path))).Succeeded, "vsd.shortcut.remote-target-unavailable");
 
     private static ShortcutActivationResult Result(bool succeeded, string failureCode) =>
         new(succeeded, succeeded ? "vsd.shortcut.completed" : failureCode);

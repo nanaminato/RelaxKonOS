@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Client.Services.AppPermissions;
 using Client.Services.VirtualSystemDrive;
+using VirtualSystemDriveService = Client.Services.VirtualSystemDrive.VirtualSystemDrive;
 using RemoteOS.AppSDK;
 using RemoteOS.Core.Applications;
 using RemoteOS.Core.VirtualSystemDrive;
@@ -26,7 +27,7 @@ public sealed class DeveloperPackageManager
     private readonly IAppPermissionManager _permissions;
     private readonly IWindowManager _windowManager;
     private readonly IAppActivationDiagnostics _activationDiagnostics;
-    private readonly VirtualSystemDrive _drive;
+    private readonly VirtualSystemDriveService _drive;
     private readonly string _root;
     private readonly string _catalogPath;
     private readonly string _legacyRoot;
@@ -41,7 +42,7 @@ public sealed class DeveloperPackageManager
         IWindowManager windowManager,
         IAppPermissionManager permissions,
         IAppActivationDiagnostics activationDiagnostics,
-        VirtualSystemDrive drive)
+        VirtualSystemDriveService drive)
     {
         _applications = applications;
         _contextFactory = contextFactory;
@@ -304,12 +305,12 @@ public sealed class DeveloperPackageManager
             {
                 var appDirectory = AppDirectory(appId);
                 var current = _drive.ReadJsonAsync<ExternalCurrentVersion>(CurrentPath(appId)).GetAwaiter().GetResult();
-                if (current.SchemaVersion != 1 || current.AppId != appId || !ApplicationDescriptorValidator.IsSafeRelativePath($"versions/{current.VersionId}"))
+                if (current.SchemaVersion != 1 || current.AppId != appId || !IsVersionId(current.VersionId))
                     throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.PackageLayoutInvalid);
                 var versionDirectory = _drive.ResolveUnder(appDirectory, $"versions/{current.VersionId}");
                 var descriptor = _drive.ReadJsonAsync<ApplicationDescriptor>(_drive.ResolveUnder(versionDirectory, "app.remoteos.json")).GetAwaiter().GetResult();
-                var manifest = JsonSerializer.Deserialize<DeveloperPackageManifest>(File.ReadAllText(_drive.ResolveUnder(versionDirectory, "manifest.json")),
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new InvalidOperationException();
+                var manifest = _drive.ReadJsonAsync<DeveloperPackageManifest>(
+                    _drive.ResolveUnder(versionDirectory, "manifest.json")).GetAwaiter().GetResult();
                 ValidateManifest(manifest);
                 var validation = ApplicationDescriptorValidator.Validate(descriptor);
                 if (!validation.IsValid || descriptor.Kind != ApplicationDescriptorKind.Package || descriptor.Id != appId
@@ -421,13 +422,16 @@ public sealed class DeveloperPackageManager
         if (string.IsNullOrWhiteSpace(manifest.DisplayName) || string.IsNullOrWhiteSpace(manifest.Version)
             || string.IsNullOrWhiteSpace(manifest.EntryAssembly) || string.IsNullOrWhiteSpace(manifest.EntryType))
             throw new InvalidOperationException("manifest.json is missing a required field.");
-        if (!manifest.EntryAssembly.Replace('\\', '/').StartsWith("lib/", StringComparison.Ordinal))
+        var entryAssembly = manifest.EntryAssembly.Replace('\\', '/');
+        if (!ApplicationDescriptorValidator.IsSafeRelativePath(entryAssembly)
+            || !entryAssembly.StartsWith("lib/", StringComparison.Ordinal)
+            || !entryAssembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("entryAssembly must point to a DLL under lib/.");
         if (!string.IsNullOrWhiteSpace(manifest.IconPath))
         {
             var iconPath = manifest.IconPath.Replace('\\', '/');
             var extension = Path.GetExtension(iconPath);
-            if (Path.IsPathRooted(iconPath) || iconPath.StartsWith("../", StringComparison.Ordinal)
+            if (!ApplicationDescriptorValidator.IsSafeRelativePath(iconPath)
                 || !new[] { ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".ico" }.Contains(extension, StringComparer.OrdinalIgnoreCase))
                 throw new InvalidOperationException("iconPath must be a package-relative PNG, JPEG, WebP, BMP, GIF, or ICO file.");
         }
@@ -457,6 +461,11 @@ public sealed class DeveloperPackageManager
 
     private string VersionPath(string appId, string versionId) => _drive.ResolveUnder(AppDirectory(appId), $"versions/{versionId}");
     private string CurrentPath(string appId) => _drive.ResolveUnder(AppDirectory(appId), "current.json");
+
+    private static bool IsVersionId(string? versionId) => !string.IsNullOrWhiteSpace(versionId)
+        && versionId.Length <= 128
+        && !versionId.Contains('/')
+        && ApplicationDescriptorValidator.IsSafeRelativePath(versionId);
 
     /// <summary>Removes package directories left behind by a prior successful logical uninstall.</summary>
     private void CleanupDeferredUninstalls()

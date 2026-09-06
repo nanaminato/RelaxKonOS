@@ -16,6 +16,7 @@ using Client.Services.DesktopRestore;
 using Client.Services.Diagnostics;
 using Client.Services.WindowLayout;
 using Client.Services.VirtualSystemDrive;
+using VirtualSystemDriveService = Client.Services.VirtualSystemDrive.VirtualSystemDrive;
 using Client.Services.Theming;
 using Client.ViewModels.Login;
 using Client.ViewModels.Shell;
@@ -54,7 +55,7 @@ public static class Bootstrapper
         services.AddSingleton<ApplicationManager>(sp =>
             new ApplicationManager(sp.GetRequiredService<IWindowManager>(), sp));
         services.AddSingleton<IAppActivationService>(sp => sp.GetRequiredService<ApplicationManager>());
-        services.AddSingleton<VirtualSystemDrive>();
+        services.AddSingleton<VirtualSystemDriveService>();
         services.AddSingleton<IBuiltInApplicationFactoryRegistry, BuiltInApplicationRegistry>();
         services.AddSingleton<BuiltInDescriptorSeeder>();
         services.AddSingleton<ApplicationCatalogScanner>();
