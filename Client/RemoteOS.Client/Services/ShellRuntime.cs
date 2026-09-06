@@ -14,6 +14,7 @@ using RemoteOS.AppSDK;
 using RemoteOS.Shell;
 using RemoteOS.WindowManager;
 using RemoteOS.Runtime;
+using RemoteOS.Protocol.Workspace;
 
 namespace Client.Services;
 
@@ -35,12 +36,13 @@ public sealed class ShellRuntime
     private SurfaceRegistry? _activeSurfaces;
     private DesktopShellStateAdapter? _desktopState;
     private string _activeShellId = ShellApi.DefaultShellId;
+    private long _switchIntentVersion;
 
     public ShellRuntime(ShellCatalog catalog, IWindowManager windows, ShellSettings settings, ShellPreferenceStore preferences,
         DesktopShellOverlayService overlays)
     {
         _catalog = catalog; _windows = windows; _settings = settings; _preferences = preferences; _overlays = overlays;
-        _settings.ShellSelectionChanged += (_, id) => _ = SwitchAsync(id, persist: true);
+        _settings.ShellSelectionChanged += (_, id) => QueueSelectedShellSwitch(id);
         _catalog.Changed += (_, _) =>
         {
             if (_active is null) return;
@@ -79,12 +81,14 @@ public sealed class ShellRuntime
         await workspace.RestoreDesktopStateAsync(cancellationToken);
     }
 
-    public async Task<bool> SwitchAsync(string requestedId, bool persist = true, CancellationToken cancellationToken = default)
+    public async Task<bool> SwitchAsync(string requestedId, bool persist = true, CancellationToken cancellationToken = default,
+        long? intentVersion = null)
     {
         if (_host is null) return false;
         await _switchGate.WaitAsync(cancellationToken);
         try
         {
+            if (intentVersion is not null && intentVersion != Volatile.Read(ref _switchIntentVersion)) return false;
             var id = ShellApi.NormalizeId(requestedId);
             if (_active is not null && id == _activeShellId) return true;
             if (!_catalog.TryCreate(id, out var candidate, out var createError) || candidate is null)
@@ -95,10 +99,17 @@ public sealed class ShellRuntime
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(8));
-                var actions = new DesktopShellActions(_state, _windows, shellId => SwitchAsync(shellId, persist: true));
+                var actions = new DesktopShellActions(_state, _windows, SelectDesktopStyleAsync);
                 var context = new ShellPresentationContext(_state, actions, _overlays, registry, new LocalizationSnapshot());
                 await candidate.InitializeAsync(context, timeout.Token);
                 if (!registry.IsComplete) throw new InvalidOperationException("Shell did not register a complete surface set.");
+                // A selection made while an external package was loading must win. Without this
+                // check, the older request can later commit and switch the desktop back.
+                if (intentVersion is not null && intentVersion != Volatile.Read(ref _switchIntentVersion))
+                {
+                    await DisposeQuietly(candidate);
+                    return false;
+                }
 
                 var old = _active;
                 var oldView = _host.Content;
@@ -115,8 +126,11 @@ public sealed class ShellRuntime
                     // The caller may be using the built-in desktop as a temporary fallback
                     // while an external package is rediscovered. Only an explicit persisted
                     // selection is allowed to replace the user's stored shell intent.
-                    if (persist && _settings.SelectedShellId != _activeShellId) _settings.SelectedShellId = _activeShellId;
-                    if (persist) await _preferences.SaveAsync(_activeShellId, candidate.Descriptor.PackageId, candidate.Descriptor.Version);
+                    var ownsCurrentIntent = intentVersion is null || intentVersion == Volatile.Read(ref _switchIntentVersion);
+                    if (persist && ownsCurrentIntent && _settings.SelectedShellId != _activeShellId)
+                        _settings.SelectedShellId = _activeShellId;
+                    if (persist && ownsCurrentIntent)
+                        await _preferences.SaveAsync(_activeShellId, candidate.Descriptor.PackageId, candidate.Descriptor.Version);
                     ShellChanged?.Invoke(this, _activeShellId);
                     if (old is not null) await DisposeQuietly(old);
                     return true;
@@ -146,6 +160,24 @@ public sealed class ShellRuntime
 
     private bool Fail(string diagnostic) { ShellActivationFailed?.Invoke(this, diagnostic); return false; }
     private static async Task DisposeQuietly(IDesktopShell shell) { try { await shell.DisposeAsync(); } catch { } }
+
+    private void QueueSelectedShellSwitch(string id)
+    {
+        var intent = Interlocked.Increment(ref _switchIntentVersion);
+        _ = SwitchAsync(id, persist: true, intentVersion: intent);
+    }
+
+    private Task<bool> SelectDesktopStyleAsync(string shellId)
+    {
+        var id = ShellApi.NormalizeId(shellId);
+        if (_catalog.TryGet(id, out var shell))
+            _settings.ShellSelection = new ShellSelectionDto(id, shell.PackageId, shell.Version);
+        else
+            _settings.SelectedShellId = id;
+        // The ShellSelectionChanged event above starts the versioned transition. Returning here
+        // avoids a second, unversioned request that could overwrite a newer user selection.
+        return Task.FromResult(true);
+    }
 
     private sealed class SurfaceRegistry : IShellSurfaceRegistry
     {

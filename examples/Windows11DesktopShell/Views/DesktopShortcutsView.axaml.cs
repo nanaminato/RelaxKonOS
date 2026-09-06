@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Example.Windows11DesktopShell.ViewModels;
@@ -16,7 +17,12 @@ public partial class DesktopShortcutsView : UserControl
             || sender is not Control { DataContext: ShellDesktopEntry entry }
             || DataContext is not Windows11ShellViewModel viewModel) return;
         viewModel.SelectDesktopEntry(entry);
-        if (properties.IsRightButtonPressed && sender is Control control)
+    }
+
+    private void DesktopShortcut_OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is Control { DataContext: ShellDesktopEntry entry } control
+            && DataContext is Windows11ShellViewModel viewModel)
             control.ContextMenu = CreateContextMenu(viewModel, entry);
     }
 

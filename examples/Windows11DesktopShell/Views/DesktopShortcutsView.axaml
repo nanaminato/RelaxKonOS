@@ -5,8 +5,9 @@
              x:Name="DesktopShortcutsRoot">
     <UserControl.Styles>
         <Style Selector="Button.desktop-shortcut">
-            <Setter Property="Width" Value="96" />
-            <Setter Property="Height" Value="94" />
+            <Setter Property="Width" Value="116" />
+            <Setter Property="Height" Value="84" />
+            <Setter Property="Margin" Value="3" />
             <Setter Property="Padding" Value="5" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -40,12 +41,13 @@
     <ItemsControl ItemsSource="{Binding DesktopEntries}" IsVisible="{Binding AreDesktopIconsVisible}">
         <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-                <WrapPanel Orientation="Vertical" Height="570" ItemWidth="96" ItemHeight="94" />
+                <WrapPanel Orientation="Vertical" />
             </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="shell:ShellDesktopEntry">
                 <Button Classes="desktop-shortcut" Classes.selected="{Binding IsSelected}"
+                        AttachedToVisualTree="DesktopShortcut_OnAttachedToVisualTree"
                         PointerPressed="DesktopShortcut_OnPointerPressed"
                         DoubleTapped="DesktopShortcut_OnDoubleTapped"
                         ToolTip.Tip="{Binding DisplayName}">
