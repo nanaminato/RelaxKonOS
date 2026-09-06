@@ -81,6 +81,71 @@ public sealed partial class ExplorerViewModel : ObservableObject
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private bool _showHiddenFiles;
     [ObservableProperty] private bool _isCompactView;
+    [ObservableProperty] private ExplorerSortField _sortField;
+    [ObservableProperty] private bool _sortDescending;
+    public int SortIndex
+    {
+        get => (int)SortField;
+        set { if (Enum.IsDefined(typeof(ExplorerSortField), value)) SortField = (ExplorerSortField)value; }
+    }
+    private Func<ExplorerViewPreferences, Task>? _saveViewPreferencesAsync;
+    public Func<ExplorerViewPreferences, Task>? SaveViewPreferencesAsync
+    {
+        get => _saveViewPreferencesAsync;
+        set { _saveViewPreferencesAsync = value; SaveDefaultViewCommand.NotifyCanExecuteChanged(); }
+    }
+    public bool CanSaveDefaultView => SaveViewPreferencesAsync is not null && !IsBusy;
+    public ExplorerViewPreferences ViewPreferences => new(SortField, SortDescending, ShowHiddenFiles, IsCompactView);
+    public void ApplyViewPreferences(ExplorerViewPreferences preferences)
+    {
+        SortField = Enum.IsDefined(preferences.SortField) ? preferences.SortField : ExplorerSortField.Name;
+        SortDescending = preferences.SortDescending;
+        ShowHiddenFiles = preferences.ShowHiddenFiles;
+        IsCompactView = preferences.IsCompactView;
+    }
+    public string NameColumnHeader => SortHeader("common.name", ExplorerSortField.Name);
+    public string ModifiedColumnHeader => SortHeader("explorer.modified", ExplorerSortField.Modified);
+    public string TypeColumnHeader => SortHeader("common.type", ExplorerSortField.Type);
+    public string SizeColumnHeader => SortHeader("explorer.size", ExplorerSortField.Size);
+    private string SortHeader(string key, ExplorerSortField field)
+        => LocalizedText.Get(key) + (SortField == field ? (SortDescending ? " ▼" : " ▲") : "");
+
+    partial void OnSortFieldChanged(ExplorerSortField value)
+    {
+        OnPropertyChanged(nameof(SortIndex));
+        SortEntries();
+    }
+    partial void OnSortDescendingChanged(bool value) => SortEntries();
+    public void SortBy(ExplorerSortField field)
+    {
+        if (SortField == field) SortDescending = !SortDescending;
+        else { SortDescending = false; SortField = field; }
+    }
+    private void SortEntries()
+    {
+        var sorted = Entries.OrderBy(e => e, new ExplorerEntryComparer(SortField, SortDescending)).ToArray();
+        // Collection moves preserve DataGrid selection; filtering deliberately clears it.
+        for (var i = 0; i < sorted.Length; i++)
+        {
+            var index = Entries.IndexOf(sorted[i]);
+            if (index != i) Entries.Move(index, i);
+        }
+        OnPropertyChanged(nameof(NameColumnHeader));
+        OnPropertyChanged(nameof(ModifiedColumnHeader));
+        OnPropertyChanged(nameof(TypeColumnHeader));
+        OnPropertyChanged(nameof(SizeColumnHeader));
+    }
+    [RelayCommand(CanExecute = nameof(CanSaveDefaultView))]
+    private async Task SaveDefaultViewAsync()
+    {
+        if (SaveViewPreferencesAsync is null) return;
+        try
+        {
+            await SaveViewPreferencesAsync(ViewPreferences);
+            StatusText = LocalizedText.Get("explorer.view_saved");
+        }
+        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.view_save_failed", ex.Message); }
+    }
     public ObservableCollection<ExplorerBreadcrumb> Breadcrumbs { get; } = [];
     public double EntryRowHeight => IsCompactView ? 28 : 36;
     public bool IsEmpty => !IsBusy && Entries.Count == 0;
@@ -97,8 +162,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         Entries.Clear();
         foreach (var entry in _directoryEntries.Where(e => (ShowHiddenFiles || !e.IsHidden)
                      && e.Name.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase))
-                     .OrderBy(e => e.Type == FileSystemEntryType.File ? 1 : 0)
-                     .ThenBy(e => e.Name, StringComparer.CurrentCultureIgnoreCase))
+                     .OrderBy(e => e, new ExplorerEntryComparer(SortField, SortDescending)))
             Entries.Add(entry);
         NotifySelectionCommands();
         OnPropertyChanged(nameof(IsEmpty));
@@ -337,6 +401,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value)
     {
+        SaveDefaultViewCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(HasSelection));
         NotifySelectionCommands();
@@ -396,7 +461,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
                 var dir = await _client.GetDirectoryAsync(path);
                 loaded.AddRange(dir.Directories);
                 if (!IsFolderPickerMode)
-                    loaded.AddRange(dir.Files.Where(f => !IsFilePickerMode || MatchesSelectedFilter(f.Name))
+                    loaded.AddRange(dir.Files.Where(f => !IsFilePickerMode || MatchesSelectedFilter(f.Name, dir.Path))
                         .Select(f => new FileSystemEntryDto(f.Path, f.Name, f.Size, FileSystemEntryType.File,
                             f.Created, f.Modified, f.Accessed, f.IsHidden, f.IsSystem, f.MimeType)));
                 confirmedPath = dir.Path;
@@ -468,21 +533,20 @@ public sealed partial class ExplorerViewModel : ObservableObject
         // 2) 否则按路径分段从"此电脑"下的盘符节点下钻，逐级懒加载祖先
         var thisPc = Nodes.FirstOrDefault(n => n.IsComputer);
         if (thisPc is null) return null;
-        var cmp = PathComparison;
         foreach (var drive in thisPc.Children)
         {
             if (drive.IsPlaceholder) continue;
             // 仅当下钻起点是目标路径的祖先时才进入（避免对每个盘符都展开）
-            if (!IsAncestorOrEqual(drive.Path, path, cmp)) continue;
-            var found = await DescendAsync(drive, path, cmp);
+            if (!ExplorerPath.IsAncestorOrEqual(drive.Path, path)) continue;
+            var found = await DescendAsync(drive, path);
             if (found is not null) return found;
         }
         return null;
 
-        async Task<TreeNodeModel?> DescendAsync(TreeNodeModel start, string target, StringComparison comparison)
+        async Task<TreeNodeModel?> DescendAsync(TreeNodeModel start, string target)
         {
             var current = start;
-            while (current is not null && !PathEquals(current.Path, target, comparison))
+            while (current is not null && !PathEquals(current.Path, target))
             {
                 // 若子节点未懒加载：直接调 OnNodeExpandRequested 并 await（绕过 IsExpanded setter 的 fire-and-forget）
                 if (!current.HasLoadedChildren && current.ExpandRequested is not null)
@@ -491,30 +555,16 @@ public sealed partial class ExplorerViewModel : ObservableObject
                     current.IsExpanded = true;   // 加载已完成，setter 检测 _hasLoadedChildren 不再 Invoke
                 }
                 current = current.Children.FirstOrDefault(c =>
-                    !c.IsPlaceholder && IsAncestorOrEqual(c.Path, target, comparison));
+                    !c.IsPlaceholder && ExplorerPath.IsAncestorOrEqual(c.Path, target));
             }
-            return PathEquals(current?.Path, target, comparison) ? current : null;
+            return PathEquals(current?.Path, target) ? current : null;
         }
     }
 
     // ---- 路径规范化辅助 ----
 
-    /// <summary>路径比较策略：Linux 区分大小写（文件系统大小写敏感），Windows 不区分。</summary>
-    private static StringComparison PathComparison =>
-        OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-
-    /// <summary>规范化路径：去尾部目录分隔符；Linux "/" 根特殊处理（不能 trim 成空串）；非法字符兜底返回原值。</summary>
-    private static string? NormalizePath(string? p)
-    {
-        if (string.IsNullOrEmpty(p)) return p;
-        if (p == "/") return p;             // Linux 根特殊处理
-        try { return Path.GetFullPath(p).TrimEnd('\\', '/'); }
-        catch { return p; }                  // 非法字符 / 非法路径 fallback
-    }
-
-    private static bool PathEquals(string? a, string? b, StringComparison? comparison = null)
-        => string.Equals(NormalizePath(a), NormalizePath(b),
-            comparison ?? PathComparison);
+    private static bool PathEquals(string? a, string? b)
+        => ExplorerPath.Equal(a, b);
 
     /// <summary>
     /// Linux 的 DriveInfo 会把每个挂载点（包括 /dev/shm 与 /dev/pts）都作为一个驱动器返回。
@@ -528,17 +578,6 @@ public sealed partial class ExplorerViewModel : ObservableObject
         return posixRoot is null ? readyDrives : [posixRoot];
     }
 
-    /// <summary>ancestor 是否为 descendant 的祖先或相等（用于下钻时判断子节点是否包含目标路径）。</summary>
-    private static bool IsAncestorOrEqual(string? ancestor, string descendant, StringComparison comparison)
-    {
-        var a = NormalizePath(ancestor);
-        var d = NormalizePath(descendant);
-        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(d)) return false;
-        if (string.Equals(a, d, comparison)) return true;
-        return (a == "/" && d.StartsWith('/')) || d.StartsWith(a + '\\', comparison)
-            || d.StartsWith(a + '/', comparison);
-    }
-
     /// <summary>Whether a list entry can initiate a move drag.</summary>
     public bool CanDragEntry(FileSystemEntryDto entry)
         => !IsPickerMode && !IsBusy && entry.Type != FileSystemEntryType.Drive;
@@ -546,14 +585,15 @@ public sealed partial class ExplorerViewModel : ObservableObject
     /// <summary>Validates a move before advertising the drop target to Avalonia.</summary>
     public bool CanMoveEntryToDirectory(FileSystemEntryDto entry, string targetDirectory)
     {
-        if (!CanDragEntry(entry) || string.IsNullOrWhiteSpace(targetDirectory)) return false;
+        if (!CanDragEntry(entry) || string.IsNullOrWhiteSpace(targetDirectory)
+            || !ExplorerPath.IsValidName(entry.Name, targetDirectory)) return false;
 
         var destinationPath = CombineRemotePath(targetDirectory, entry.Name);
         if (PathEquals(entry.Path, destinationPath)) return false;
 
         // A directory cannot be moved into itself or into one of its descendants.
         return entry.Type != FileSystemEntryType.Directory ||
-               !IsAncestorOrEqual(entry.Path, targetDirectory, PathComparison);
+               !ExplorerPath.IsAncestorOrEqual(entry.Path, targetDirectory);
     }
 
     /// <summary>Moves a dragged entry into a directory and refreshes the current listing.</summary>
@@ -582,14 +622,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         }
     }
 
-    private static string CombineRemotePath(string directory, string name)
-    {
-        var separator = directory.Contains('\\') ? '\\' : '/';
-        var trimmed = directory.TrimEnd('\\', '/');
-        return trimmed.Length == 0
-            ? separator + name
-            : trimmed + separator + name;
-    }
+    private static string CombineRemotePath(string directory, string name) => ExplorerPath.Combine(directory, name);
 
     [RelayCommand(CanExecute = nameof(CanGoBack))]
     private async Task GoBackAsync()
@@ -623,7 +656,14 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     /// <summary>地址栏回车跳转。</summary>
     public async Task AddressbarGoAsync(string? path)
-        => await NavigateToAsync(string.IsNullOrWhiteSpace(path) ? null : path.Trim());
+    {
+        if (string.IsNullOrWhiteSpace(path)) { await NavigateToAsync(null); return; }
+        path = path.Trim();
+        if (ExplorerPath.IsWindows(path) && path.Length == 2) path += "\\";
+        if (!ExplorerPath.IsAbsolute(path) && !string.IsNullOrEmpty(AddressbarPath))
+            path = ExplorerPath.Resolve(AddressbarPath, path);
+        await NavigateToAsync(path);
+    }
 
     private void RefreshHistoryCommands()
     {
@@ -691,11 +731,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
         if (selected.Length == 0 && IsFilePickerMode && !string.IsNullOrWhiteSpace(PickerEntryName))
         {
-            var path = Path.IsPathRooted(PickerEntryName)
+            var path = ExplorerPath.IsAbsolute(PickerEntryName)
                 ? PickerEntryName
                 : string.IsNullOrWhiteSpace(AddressbarPath)
                     ? PickerEntryName
-                    : Path.Combine(AddressbarPath, PickerEntryName);
+                    : ExplorerPath.Resolve(AddressbarPath, PickerEntryName);
             try
             {
                 var entry = await _client.GetInfoAsync(path);
@@ -720,23 +760,16 @@ public sealed partial class ExplorerViewModel : ObservableObject
     private bool IsSelectableFile(FileSystemEntryDto entry)
         => entry.Type == FileSystemEntryType.File && (!IsFilePickerMode || MatchesSelectedFilter(entry.Name));
 
-    private static bool IsValidSaveFileName(string? name)
-    {
-        var trimmed = name?.Trim();
-        return !string.IsNullOrWhiteSpace(trimmed)
-            && trimmed is not "." and not ".."
-            && !trimmed.Contains('/')
-            && !trimmed.Contains('\\');
-    }
+    private bool IsValidSaveFileName(string? name) => ExplorerPath.IsValidName(name?.Trim(), AddressbarPath);
 
     private static bool IsFolder(FileSystemEntryDto entry)
         => entry.Type is FileSystemEntryType.Directory or FileSystemEntryType.Drive;
 
-    private bool MatchesSelectedFilter(string name)
+    private bool MatchesSelectedFilter(string name, string? directory = null)
         => SelectedFilter is { } filter
             && (filter.Patterns.Any(pattern => FileSystemName.MatchesSimpleExpression(pattern, name,
-                    ignoreCase: !OperatingSystem.IsLinux()))
-                || (filter.IncludeExtensionlessFiles && Path.GetExtension(name).Length == 0));
+                    ignoreCase: ExplorerPath.IsWindows(directory ?? AddressbarPath)))
+                || (filter.IncludeExtensionlessFiles && ExplorerPath.Extension(name).Length == 0));
 
     private void UpdatePickerEntryName()
     {
@@ -826,7 +859,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(name)) return;
         try
         {
-            var target = Path.Combine(AddressbarPath, name);
+            var target = CombineRemotePath(AddressbarPath, name);
             if (!await RetryWithOperationElevationAsync(
                     async () => { await _client.CreateDirectoryAsync(target); }, FileElevationCapability.CreateDirectory, AddressbarPath)) return;
             StatusText = LocalizedText.Format("explorer.status.folder_created", name);
@@ -863,6 +896,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
         var newName = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("common.rename"), LocalizedText.Get("explorer.rename_prompt"), entry.Name, LocalizedText.Get("common.rename"))
             ?? Task.FromResult<string?>(null));
         if (string.IsNullOrWhiteSpace(newName) || newName == entry.Name) return;
+        if (!ExplorerPath.IsValidName(newName, entry.Path))
+        {
+            StatusText = LocalizedText.Get("explorer.input_invalid");
+            return;
+        }
         try
         {
             if (!await RetryWithOperationElevationAsync(
@@ -1104,10 +1142,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     private bool CanPlaceEntryInDirectory(FileSystemEntryDto entry, string targetDirectory)
     {
+        if (!ExplorerPath.IsValidName(entry.Name, targetDirectory)) return false;
         var destination = CombineRemotePath(targetDirectory, entry.Name);
         if (PathEquals(entry.Path, destination)) return false;
         return entry.Type != FileSystemEntryType.Directory ||
-               !IsAncestorOrEqual(entry.Path, targetDirectory, PathComparison);
+               !ExplorerPath.IsAncestorOrEqual(entry.Path, targetDirectory);
     }
 
     private void NotifySelectionCommands()
@@ -1138,7 +1177,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
         catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
         {
             var directories = directoryPaths.Where(path => !string.IsNullOrWhiteSpace(path))
-                .Select(path => path!).Distinct(PathStringComparer).ToArray();
+                .Select(path => path!).Aggregate(new List<string>(), (items, path) =>
+                {
+                    if (!items.Any(existing => ExplorerPath.Equal(existing, path))) items.Add(path);
+                    return items;
+                }).ToArray();
             if (directories.Length == 0 || RequestFileOperationElevationAsync is null
                 || !await RequestFileOperationElevationAsync(directories, capability))
             {
@@ -1150,12 +1193,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         }
     }
 
-    private static string ParentDirectory(string path)
-        => Path.GetDirectoryName(path) ?? Path.GetPathRoot(path) ?? path;
-
-    private static StringComparer PathStringComparer => OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
+    private static string ParentDirectory(string path) => ExplorerPath.Parent(path) ?? path;
 
     private void BeginTransfer(string text, int itemTotal, long totalBytes)
     {
@@ -1216,22 +1254,14 @@ public sealed partial class ExplorerViewModel : ObservableObject
     private static string CombineRemoteRelativePath(string directory, string relativePath)
     {
         var result = directory;
-        foreach (var segment in relativePath.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries))
+        foreach (var segment in relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
             result = CombineRemotePath(result, segment);
         return result;
     }
 
-    private static string? GetRelativeDirectory(string relativePath)
-    {
-        var separator = Math.Max(relativePath.LastIndexOf('/'), relativePath.LastIndexOf('\\'));
-        return separator < 0 ? null : relativePath[..separator];
-    }
-
-    private static string GetRelativeFileName(string relativePath)
-    {
-        var separator = Math.Max(relativePath.LastIndexOf('/'), relativePath.LastIndexOf('\\'));
-        return separator < 0 ? relativePath : relativePath[(separator + 1)..];
-    }
+    // These paths originate in the client's upload plan, so System.IO.Path is intentional here.
+    private static string? GetRelativeDirectory(string relativePath) => Path.GetDirectoryName(relativePath);
+    private static string GetRelativeFileName(string relativePath) => Path.GetFileName(relativePath);
 
     [RelayCommand]
     private async Task AboutAsync()

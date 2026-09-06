@@ -142,6 +142,14 @@
         "explorer.compact": "Compact view",
         "explorer.show_hidden": "Hidden items",
         "explorer.empty_view": "No items in this view",
-        "explorer.status.selection": "{0} items · {1} selected"
+        "explorer.status.selection": "{0} items · {1} selected",
+        "explorer.sort": "Sort by",
+        "explorer.descending": "Descending",
+        "explorer.save_default_view": "Set as default view",
+        "explorer.view_saved": "Default view saved for new windows",
+        "explorer.view_save_failed": "Could not save default view: {0}",
+        "explorer.view_load_failed": "Could not load default view; using current settings: {0}",
+        "explorer.view_version_unsupported": "Unsupported default view version",
+        "explorer.entry_type.extension": "{0} file"
     }
 }

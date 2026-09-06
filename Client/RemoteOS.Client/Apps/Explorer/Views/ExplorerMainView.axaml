@@ -16,7 +16,7 @@
         <!-- 文件/目录图标 -->
         <c:EntryTypeToGlyphConverter x:Key="TypeGlyphConverter" />
         <c:EntrySizeToStringConverter x:Key="SizeConverter" />
-        <c:EntryTypeToStringConverter x:Key="TypeTextConverter" />
+        <c:EntryDescriptionConverter x:Key="TypeTextConverter" />
         <c:TreeNodeIconKindToGlyphConverter x:Key="NodeGlyphConverter" />
     </UserControl.Resources>
 
@@ -78,12 +78,21 @@
                                 <Separator />
                                 <MenuItem Header="{loc:Loc explorer.open_terminal}" Command="{Binding OpenTerminalCommand}" />
                                 <MenuItem Header="{loc:Loc explorer.properties}" Command="{Binding PropertiesCommand}" />
+                                <MenuItem Header="{loc:Loc explorer.save_default_view}" Command="{Binding SaveDefaultViewCommand}" />
                                 <MenuItem Header="{loc:Loc explorer.menu.about}" Command="{Binding AboutCommand}" />
                                 <MenuItem Header="{loc:Loc explorer.menu.exit}" Command="{Binding CloseCommand}" />
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
                 </StackPanel>
+                <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <ComboBox SelectedIndex="{Binding SortIndex, Mode=TwoWay}" Width="112" Margin="0,0,10,0">
+                    <ComboBoxItem Content="{loc:Loc common.name}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.modified}" />
+                    <ComboBoxItem Content="{loc:Loc common.type}" />
+                    <ComboBoxItem Content="{loc:Loc explorer.size}" />
+                </ComboBox>
+                <CheckBox Content="{loc:Loc explorer.descending}" IsChecked="{Binding SortDescending}" Margin="0,0,12,0" />
                 <CheckBox Content="{loc:Loc explorer.compact}" IsChecked="{Binding IsCompactView}" Margin="0,0,12,0" />
                 <CheckBox Content="{loc:Loc explorer.show_hidden}" IsChecked="{Binding ShowHiddenFiles}" />
             </WrapPanel>
@@ -195,6 +204,7 @@
                       SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
                       SelectionMode="{Binding EntrySelectionMode}"
                       SelectionChanged="EntriesGrid_SelectionChanged"
+                      Sorting="EntriesGrid_Sorting"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"
                       CanUserResizeColumns="True"
@@ -240,7 +250,7 @@
                     </Style>
                 </DataGrid.Styles>
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="{loc:Loc common.name}" Width="300" MinWidth="180" SortMemberPath="Name">
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.NameColumnHeader}" Width="300" MinWidth="180" SortMemberPath="Name">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="12,2">
@@ -252,7 +262,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{loc:Loc explorer.modified}" Width="164" MinWidth="150" SortMemberPath="Modified">
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.ModifiedColumnHeader}" Width="164" MinWidth="150" SortMemberPath="Modified">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
                                 <TextBlock Text="{Binding Modified, StringFormat='{}{0:yyyy/MM/dd HH:mm}'}" Padding="8,0"
@@ -260,15 +270,15 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{loc:Loc common.type}" Width="120" MinWidth="96" SortMemberPath="Type">
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.TypeColumnHeader}" Width="120" MinWidth="96" SortMemberPath="Type">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
-                                <TextBlock Text="{Binding Type, Converter={StaticResource TypeTextConverter}}" Padding="8,0"
+                                <TextBlock Text="{Binding ., Converter={StaticResource TypeTextConverter}}" Padding="8,0"
                                            FontSize="12" Opacity="0.8" VerticalAlignment="Center" />
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{loc:Loc explorer.size}" Width="112" MinWidth="96" SortMemberPath="Size">
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.SizeColumnHeader}" Width="112" MinWidth="96" SortMemberPath="Size">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
                                 <TextBlock Text="{Binding Size, Converter={StaticResource SizeConverter}}" Padding="8,0"

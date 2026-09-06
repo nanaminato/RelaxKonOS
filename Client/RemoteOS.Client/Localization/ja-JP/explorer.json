@@ -142,6 +142,14 @@
         "explorer.compact": "コンパクト表示",
         "explorer.show_hidden": "隠し項目",
         "explorer.empty_view": "表示する項目がありません",
-        "explorer.status.selection": "{0} 個の項目 · {1} 個を選択"
+        "explorer.status.selection": "{0} 個の項目 · {1} 個を選択",
+        "explorer.sort": "並べ替え",
+        "explorer.descending": "降順",
+        "explorer.save_default_view": "既定の表示に設定",
+        "explorer.view_saved": "新しいウィンドウの既定の表示を保存しました",
+        "explorer.view_save_failed": "既定の表示を保存できませんでした: {0}",
+        "explorer.view_load_failed": "既定の表示を読み込めません。現在の設定を使用します: {0}",
+        "explorer.view_version_unsupported": "既定の表示のバージョンは未対応です",
+        "explorer.entry_type.extension": "{0} ファイル"
     }
 }

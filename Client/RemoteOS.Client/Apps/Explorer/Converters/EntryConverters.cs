@@ -44,6 +44,22 @@ public sealed class EntryTypeToStringConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>File extensions make the displayed type agree with extension-based type sorting.</summary>
+public sealed class EntryDescriptionConverter : IValueConverter
+{
+    private static readonly EntryTypeToStringConverter TypeConverter = new();
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not FileSystemEntryDto entry) return string.Empty;
+        var extension = ExplorerPath.Extension(entry.Name).TrimStart('.');
+        if (entry.Type == FileSystemEntryType.File && extension.Length > 0)
+            return LocalizedText.Format("explorer.entry_type.extension", extension.ToUpperInvariant());
+        return TypeConverter.Convert(entry.Type, targetType, parameter, culture);
+    }
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>Formats the Explorer's loading indicator through localized resources.</summary>
 public sealed class ExplorerLoadingStatusConverter : IValueConverter
 {

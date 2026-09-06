@@ -6,7 +6,7 @@ public sealed record ExplorerBreadcrumb(string Label, string? Path)
     public static IReadOnlyList<ExplorerBreadcrumb> FromPath(string? path)
     {
         if (string.IsNullOrEmpty(path)) return [];
-        var windows = !path.StartsWith('/') && (path.Contains('\\') || (path.Length >= 2 && path[1] == ':'));
+        var windows = ExplorerPath.IsWindows(path);
         var separator = windows ? '\\' : '/';
         var normalized = windows ? path.Replace('/', '\\') : path;
         var segments = normalized.Split(separator, StringSplitOptions.RemoveEmptyEntries);

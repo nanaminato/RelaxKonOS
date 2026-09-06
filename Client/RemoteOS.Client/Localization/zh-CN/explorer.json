@@ -142,6 +142,14 @@
         "explorer.compact": "紧凑视图",
         "explorer.show_hidden": "隐藏的项目",
         "explorer.empty_view": "此视图没有项目",
-        "explorer.status.selection": "{0} 个项目 · 已选择 {1} 个"
+        "explorer.status.selection": "{0} 个项目 · 已选择 {1} 个",
+        "explorer.sort": "排序",
+        "explorer.descending": "降序",
+        "explorer.save_default_view": "设为默认视图",
+        "explorer.view_saved": "已保存默认视图，新窗口将使用这些设置",
+        "explorer.view_save_failed": "默认视图保存失败：{0}",
+        "explorer.view_load_failed": "默认视图加载失败，使用当前设置：{0}",
+        "explorer.view_version_unsupported": "默认视图版本暂不支持",
+        "explorer.entry_type.extension": "{0} 文件"
     }
 }

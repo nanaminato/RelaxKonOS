@@ -114,6 +114,13 @@ public partial class ExplorerMainView : UserControl
             _ = vm.InvokeEntryAsync(entry);
     }
 
+    private void EntriesGrid_Sorting(object? sender, DataGridColumnEventArgs e)
+    {
+        e.Handled = true; // One folder-first ordering for column headers and the command bar.
+        if (ViewModel is not { IsBusy: false } vm) return;
+        if (Enum.TryParse<ExplorerSortField>(e.Column.SortMemberPath, out var field)) vm.SortBy(field);
+    }
+
     private void EntriesGrid_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (sender is DataGrid grid)

@@ -1,3 +1,7 @@
+using System.Text.Json;
+using Client.Apps.Explorer.Models;
+using Client.Services.AppSettings;
+using RemoteOS.Protocol.AppSettings;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -127,13 +131,47 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         };
 
         // 窗口打开后异步加载根；内部路由指定位置时直接导航到该目录。
-        _ = OpenInitialLocationAsync(viewModel, initialPath);
+        var settings = context.Services.GetService(typeof(IAppSettingsClient)) as IAppSettingsClient;
+        _ = OpenInitialLocationAsync(viewModel, initialPath, settings);
     }
 
-    private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath)
+    private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath, IAppSettingsClient? settings)
     {
+        const string appId = "remoteos.explorer";
+        const string key = "view";
+        long? revision = null;
+        string? settingsError = null;
+        if (settings is not null)
+        {
+            // Defaults are opt-in: changing a window view does not silently overwrite other windows.
+            viewModel.SaveViewPreferencesAsync = async preferences =>
+            {
+                if (revision is null)
+                {
+                    var latest = await settings.GetAsync(appId, AppSettingsScope.Workspace, key);
+                    if (latest is { SchemaVersion: not 1 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
+                    revision = latest?.Revision ?? 0;
+                }
+                var saved = await settings.SaveAsync(appId, AppSettingsScope.Workspace, key,
+                    JsonSerializer.SerializeToElement(preferences), schemaVersion: 1, expectedRevision: revision);
+                revision = saved.Revision;
+            };
+            viewModel.IsBusy = true;
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var stored = await settings.GetAsync(appId, AppSettingsScope.Workspace, key, timeout.Token);
+                if (stored is { SchemaVersion: not 1 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
+                revision = stored?.Revision ?? 0;
+                if (stored is not null && stored.Value.Deserialize<ExplorerViewPreferences>() is { } preferences)
+                    viewModel.ApplyViewPreferences(preferences);
+            }
+            catch (Exception ex) { settingsError = LocalizedText.Format("explorer.view_load_failed", ex.Message); }
+            finally { viewModel.IsBusy = false; }
+        }
         await viewModel.LoadRootAsync();
         await viewModel.NavigateToAsync(string.IsNullOrWhiteSpace(initialPath) ? null : initialPath);
+        if (settingsError is not null) viewModel.StatusText = settingsError;
     }
 
     private static string? QueryValue(Uri uri, string key) => uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
@@ -353,7 +391,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         };
         vm.OpenFileAsync = async entry =>
         {
-            var extension = Path.GetExtension(entry.Name);
+            var extension = ExplorerPath.Extension(entry.Name);
             var defaultApplicationId = string.IsNullOrEmpty(extension) ? null : defaults?.Resolve(extension);
             var applicationId = defaultApplicationId is not null && applications?.SupportsFile(new AppId(defaultApplicationId), entry.Path) == true
                 ? defaultApplicationId
@@ -401,7 +439,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         vm.RequestOpenWithAsync = async entry =>
         {
             var owner = FindOwnerWindow(context, vm);
-            var extension = Path.GetExtension(entry.Name);
+            var extension = ExplorerPath.Extension(entry.Name);
             var openers = applications?.FileOpenersForPath(entry.Path) ?? Array.Empty<ApplicationInfo>();
             // 候选为空 + 文件条目 + 有文本编辑器 → 先 MIME 快速判断；不确定再退化嗅探字节
             if (openers.Count == 0 && entry.Type == FileSystemEntryType.File && applications?.TextFileOpeners.Count > 0)
