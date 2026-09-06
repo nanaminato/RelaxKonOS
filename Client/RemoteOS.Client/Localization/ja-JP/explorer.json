@@ -150,6 +150,13 @@
         "explorer.view_save_failed": "既定の表示を保存できませんでした: {0}",
         "explorer.view_load_failed": "既定の表示を読み込めません。現在の設定を使用します: {0}",
         "explorer.view_version_unsupported": "既定の表示のバージョンは未対応です",
-        "explorer.entry_type.extension": "{0} ファイル"
+        "explorer.entry_type.extension": "{0} ファイル",
+        "explorer.batch.invalid_target": "この場所に配置できません。同じフォルダー、子フォルダー、名前の重複、ドライブの選択を確認してください。",
+        "explorer.batch.item": "{0}: {1} ({2}/{3})",
+        "explorer.batch.result": "{0}: 成功 {1} 件、失敗 {2} 件、未実行 {3} 件",
+        "explorer.batch.delete_confirm": "この {0} 個の項目とフォルダー内の内容を完全に削除しますか？元に戻せません。\n\n{1}",
+        "explorer.batch.stop": "現在の項目が完了したら停止",
+        "explorer.batch.details": "操作の詳細",
+        "explorer.batch.not_started": "未実行"
     }
 }

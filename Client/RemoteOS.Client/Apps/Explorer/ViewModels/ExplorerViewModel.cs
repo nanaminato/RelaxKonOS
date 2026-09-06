@@ -435,11 +435,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
         RefreshHistoryCommands();
     }
 
-    private async Task<bool> NavigateToAsyncCore(string? path)
+    private async Task<bool> NavigateToAsyncCore(string? path, bool batchRefresh = false)
     {
         // Keep the committed location and listing intact until the server accepts navigation.
         // Ignore overlapping navigation while a request (including tree synchronization) is active.
-        if (_isNavigating) return false;
+        if (_isNavigating || (IsBatchActive && !batchRefresh)) return false;
         _isNavigating = true;
         var wasBusy = IsBusy;
         IsBusy = true;
@@ -596,28 +596,113 @@ public sealed partial class ExplorerViewModel : ObservableObject
                !ExplorerPath.IsAncestorOrEqual(entry.Path, targetDirectory);
     }
 
-    /// <summary>Moves a dragged entry into a directory and refreshes the current listing.</summary>
-    public async Task MoveEntryToDirectoryAsync(FileSystemEntryDto entry, string targetDirectory)
-    {
-        if (!CanMoveEntryToDirectory(entry, targetDirectory)) return;
+    public IReadOnlyList<FileSystemEntryDto> GetDragEntries(FileSystemEntryDto pressedEntry)
+        => NormalizeBatchSelection(GetSelectedEntries().Any(e => PathEquals(e.Path, pressedEntry.Path))
+            ? GetSelectedEntries() : [pressedEntry]);
 
-        var destinationPath = CombineRemotePath(targetDirectory, entry.Name);
+    private static IReadOnlyList<FileSystemEntryDto> NormalizeBatchSelection(IEnumerable<FileSystemEntryDto> source)
+    {
+        var unique = new List<FileSystemEntryDto>();
+        foreach (var entry in source)
+            if (!unique.Any(e => PathEquals(e.Path, entry.Path))) unique.Add(entry);
+        // Recursive directory operations already include selected descendants.
+        return unique.Where(entry => !unique.Any(parent => parent.Type == FileSystemEntryType.Directory
+            && !ReferenceEquals(parent, entry) && ExplorerPath.IsAncestorOrEqual(parent.Path, entry.Path))).ToArray();
+    }
+
+    public bool CanTransferEntriesToDirectory(IReadOnlyList<FileSystemEntryDto> entries, string targetDirectory)
+    {
+        if (IsBusy || IsPickerMode || entries.Count == 0 || string.IsNullOrWhiteSpace(targetDirectory)) return false;
+        var destinations = new List<string>();
+        foreach (var entry in NormalizeBatchSelection(entries))
+        {
+            if (!CanMoveEntryToDirectory(entry, targetDirectory)) return false;
+            var destination = CombineRemotePath(targetDirectory, entry.Name);
+            if (destinations.Any(path => PathEquals(path, destination))) return false;
+            destinations.Add(destination);
+        }
+        return true;
+    }
+
+    public async Task<ExplorerBatchResult?> TransferEntriesToDirectoryAsync(
+        IReadOnlyList<FileSystemEntryDto> entries, string targetDirectory, bool copy)
+    {
+        if (!CanTransferEntriesToDirectory(entries, targetDirectory))
+        {
+            StatusText = LocalizedText.Get("explorer.batch.invalid_target");
+            return null;
+        }
+        var snapshot = NormalizeBatchSelection(entries);
+        return await RunBatchAsync(snapshot, copy ? "explorer.copy" : "common.move", entry =>
+        {
+            var destination = CombineRemotePath(targetDirectory, entry.Name);
+            return RetryWithOperationElevationAsync(async () =>
+            {
+                if (copy) await _client.CopyAsync(entry.Path, destination, overwrite: false);
+                else await _client.MoveAsync(entry.Path, destination, overwrite: false);
+            }, copy ? FileElevationCapability.Copy : FileElevationCapability.Move, ParentDirectory(entry.Path), targetDirectory);
+        });
+    }
+
+    public async Task MoveEntryToDirectoryAsync(FileSystemEntryDto entry, string targetDirectory)
+        => await TransferEntriesToDirectoryAsync([entry], targetDirectory, copy: false);
+
+    [ObservableProperty] private bool _isBatchActive;
+    [ObservableProperty] private bool _isBatchStopRequested;
+    [ObservableProperty] private string _lastOperationDetails = string.Empty;
+    public bool HasOperationDetails => !string.IsNullOrEmpty(LastOperationDetails);
+    public bool CanStopBatch => IsBatchActive && !IsBatchStopRequested;
+    partial void OnLastOperationDetailsChanged(string value) => OnPropertyChanged(nameof(HasOperationDetails));
+    partial void OnIsBatchActiveChanged(bool value) => StopBatchCommand.NotifyCanExecuteChanged();
+    partial void OnIsBatchStopRequestedChanged(bool value) => StopBatchCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand(CanExecute = nameof(CanStopBatch))]
+    private void StopBatch() => IsBatchStopRequested = true;
+
+    private async Task<ExplorerBatchResult> RunBatchAsync(IReadOnlyList<FileSystemEntryDto> entries,
+        string actionKey, Func<FileSystemEntryDto, Task<bool>> operation)
+    {
+        IsBatchActive = true;
+        IsBatchStopRequested = false;
         IsBusy = true;
-        StatusText = LocalizedText.Format("explorer.status.moving", entry.Name);
+        LastOperationDetails = string.Empty;
+        var completed = new List<FileSystemEntryDto>();
+        var failures = new List<ExplorerOperationFailure>();
+        var attempted = 0;
+        BeginTransfer(LocalizedText.Get(actionKey), entries.Count, 0);
         try
         {
-            if (!await RetryWithOperationElevationAsync(
-                    async () => { await _client.MoveAsync(entry.Path, destinationPath, overwrite: false); },
-                    FileElevationCapability.Move, ParentDirectory(entry.Path), targetDirectory)) return;
-            StatusText = LocalizedText.Format("explorer.status.moved", entry.Name, targetDirectory);
-            await RefreshAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusText = LocalizedText.Format("explorer.status.move_failed", ex.Message);
+            foreach (var entry in entries)
+            {
+                if (IsBatchStopRequested) break;
+                TransferText = LocalizedText.Format("explorer.batch.item", LocalizedText.Get(actionKey), entry.Name, attempted + 1, entries.Count);
+                try
+                {
+                    if (await operation(entry)) completed.Add(entry);
+                    else
+                    {
+                        failures.Add(new(entry.Path, LocalizedText.Get("explorer.status.elevation_required")));
+                        IsBatchStopRequested = true; // Do not repeatedly prompt after elevation was declined.
+                    }
+                }
+                catch (Exception ex) { failures.Add(new(entry.Path, ex.Message)); }
+                TransferItemCompleted = ++attempted;
+            }
+            var result = new ExplorerBatchResult(entries.Count, completed.ToArray(), failures.ToArray(), entries.Count - attempted);
+            var refreshed = await NavigateToAsyncCore(AddressbarPath, batchRefresh: true);
+            var refreshError = refreshed ? null : StatusText;
+            LastOperationDetails = string.Join(Environment.NewLine, failures.Select(f => $"{f.Path}: {f.Message}")
+                .Concat(entries.Skip(attempted).Select(entry => $"{entry.Path}: {LocalizedText.Get("explorer.batch.not_started")}")));
+            if (refreshError is not null)
+                LastOperationDetails += (HasOperationDetails ? Environment.NewLine : string.Empty) + refreshError;
+            StatusText = LocalizedText.Format("explorer.batch.result", LocalizedText.Get(actionKey),
+                result.Completed.Count, result.Failures.Count, result.NotStarted);
+            return result;
         }
         finally
         {
+            IsTransferActive = false;
+            IsBatchActive = false;
             IsBusy = false;
         }
     }
@@ -784,21 +869,24 @@ public sealed partial class ExplorerViewModel : ObservableObject
         ConfirmPickerCommand.NotifyCanExecuteChanged();
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    public bool CanOpenSelection => HasSingleSelection || (!IsBusy && IsFilePickerMode
+        && SelectedEntry?.Type == FileSystemEntryType.File && CanConfirmPicker);
+
+    [RelayCommand(CanExecute = nameof(CanOpenSelection))]
     private async Task OpenAsync()
     {
         if (SelectedEntry is { } entry)
             await InvokeEntryAsync(entry);
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(HasSingleFileSelection))]
     private async Task OpenWithSelectedAsync()
     {
         if (SelectedEntry is { } entry && entry.Type == FileSystemEntryType.File)
             await (RequestOpenWithAsync?.Invoke(entry) ?? Task.CompletedTask);
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(HasSingleSelection))]
     private async Task PropertiesAsync()
     {
         if (SelectedEntry is not { } entry) return;
@@ -868,30 +956,38 @@ public sealed partial class ExplorerViewModel : ObservableObject
         catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.create_failed", ex.Message); }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    public bool CanDeleteSelection => HasSelection && !IsPickerMode
+        && GetSelectedEntries().All(e => e.Type != FileSystemEntryType.Drive);
+    public bool HasSingleSelection => HasSelection && SelectedEntry is not null && GetSelectedEntries().Count == 1;
+    public bool HasSingleFileSelection => HasSingleSelection && SelectedEntry?.Type == FileSystemEntryType.File;
+    public bool CanRenameSelection => HasSingleSelection && !IsPickerMode && SelectedEntry?.Type != FileSystemEntryType.Drive;
+
+    [RelayCommand(CanExecute = nameof(CanDeleteSelection))]
     private async Task DeleteAsync()
     {
-        if (SelectedEntry is not { } entry) return;
-        var confirmed = await (RequestConfirmAsync?.Invoke(LocalizedText.Get("common.delete"),
-            LocalizedText.Format(IsFolder(entry)
-                ? "explorer.delete_confirmation"
-                : "explorer.delete_file_confirmation", entry.Name),
-            LocalizedText.Get("common.delete")) ?? Task.FromResult(false));
-        if (!confirmed) return;
+        if (!CanDeleteSelection) return;
+        var entries = NormalizeBatchSelection(GetSelectedEntries());
+        // Snapshot selection before the confirmation; later selection changes cannot change the scope.
+        IsBusy = true;
         try
         {
-            if (!await RetryWithOperationElevationAsync(
-                    async () => { await _client.DeleteAsync(entry.Path); }, FileElevationCapability.Delete, ParentDirectory(entry.Path))) return;
-            StatusText = LocalizedText.Format("explorer.status.deleted", entry.Name);
-            SelectedEntry = null;
-            await RefreshAsync();
+            var preview = string.Join(Environment.NewLine, entries.Take(8).Select(e => e.Name));
+            if (entries.Count > 8) preview += Environment.NewLine + "…";
+            var confirmed = await (RequestConfirmAsync?.Invoke(LocalizedText.Get("common.delete"),
+                LocalizedText.Format("explorer.batch.delete_confirm", entries.Count, preview),
+                LocalizedText.Get("common.delete")) ?? Task.FromResult(false));
+            if (!confirmed) return;
+            await RunBatchAsync(entries, "common.delete", entry => RetryWithOperationElevationAsync(
+                () => _client.DeleteAsync(entry.Path), FileElevationCapability.Delete, ParentDirectory(entry.Path)));
         }
         catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.delete_failed", ex.Message); }
+        finally { IsBusy = false; }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(CanRenameSelection))]
     private async Task RenameAsync()
     {
+        if (!CanRenameSelection) return;
         if (SelectedEntry is not { } entry) return;
         var newName = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("common.rename"), LocalizedText.Get("explorer.rename_prompt"), entry.Name, LocalizedText.Get("common.rename"))
             ?? Task.FromResult<string?>(null));
@@ -952,43 +1048,18 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     private async Task PasteRemoteClipboardAsync(string targetDirectory)
     {
-        var entries = _fileClipboard.Entries
-            .Where(entry => CanPlaceEntryInDirectory(entry, targetDirectory))
-            .ToArray();
-        if (entries.Length == 0)
-        {
-            StatusText = LocalizedText.Get("explorer.status.paste_no_valid_items");
-            return;
-        }
-
-        IsBusy = true;
-        BeginTransfer(LocalizedText.Format("explorer.status.pasting", 0, entries.Length), entries.Length, 0);
-        try
-        {
-            for (var index = 0; index < entries.Length; index++)
-            {
-                var entry = entries[index];
-                TransferText = LocalizedText.Format("explorer.status.pasting_item", entry.Name, index + 1, entries.Length);
-                var destination = CombineRemotePath(targetDirectory, entry.Name);
-                var transferred = _fileClipboard.Operation == RemoteFileClipboardOperation.Cut
-                    ? await RetryWithOperationElevationAsync(async () => { await _client.MoveAsync(entry.Path, destination, overwrite: false); }, FileElevationCapability.Move, ParentDirectory(entry.Path), targetDirectory)
-                    : await RetryWithOperationElevationAsync(async () => { await _client.CopyAsync(entry.Path, destination, overwrite: false); }, FileElevationCapability.Copy, ParentDirectory(entry.Path), targetDirectory);
-                if (!transferred) return;
-                TransferItemCompleted = index + 1;
-            }
-
-            if (_fileClipboard.Operation == RemoteFileClipboardOperation.Cut)
-                _fileClipboard.Clear();
-            StatusText = LocalizedText.Format("explorer.status.paste_completed", entries.Length);
-            await RefreshAsync();
-        }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.paste_failed", ex.Message); }
-        finally
-        {
-            IsTransferActive = false;
-            IsBusy = false;
-            PasteCommand.NotifyCanExecuteChanged();
-        }
+        var clipboardSnapshot = _fileClipboard.Entries;
+        var operation = _fileClipboard.Operation;
+        var result = await TransferEntriesToDirectoryAsync(clipboardSnapshot, targetDirectory,
+            copy: operation == RemoteFileClipboardOperation.Copy);
+        if (operation != RemoteFileClipboardOperation.Cut || result is null || result.Completed.Count == 0) return;
+        // Another window may have changed the shared clipboard while this batch was running.
+        if (!ReferenceEquals(_fileClipboard.Entries, clipboardSnapshot) || _fileClipboard.Operation != operation) return;
+        var remaining = clipboardSnapshot.Where(entry => !result.Completed.Any(done => PathEquals(done.Path, entry.Path)
+            || (done.Type == FileSystemEntryType.Directory && ExplorerPath.IsAncestorOrEqual(done.Path, entry.Path)))).ToArray();
+        if (remaining.Length == 0) _fileClipboard.Clear();
+        else _fileClipboard.Set(remaining, RemoteFileClipboardOperation.Cut);
+        PasteCommand.NotifyCanExecuteChanged();
     }
 
     private async Task PasteHostClipboardAsync()
@@ -1007,9 +1078,10 @@ public sealed partial class ExplorerViewModel : ObservableObject
         await UploadSourcesAsync(sources, LocalizedText.Get("explorer.status.pasting_host_files"));
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(CanRenameSelection))]
     private async Task MoveAsync()
     {
+        if (!CanRenameSelection) return;
         if (SelectedEntry is not { } entry) return;
         var dest = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("common.move"), LocalizedText.Get("explorer.destination_path_prompt"), entry.Path, LocalizedText.Get("common.move"))
             ?? Task.FromResult<string?>(null));
@@ -1025,7 +1097,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.move_failed", ex.Message); }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(HasSingleFileSelection))]
     private async Task DownloadAsync()
     {
         if (SelectedEntry is not { } entry) return;
@@ -1139,15 +1211,6 @@ public sealed partial class ExplorerViewModel : ObservableObject
     private IReadOnlyList<FileSystemEntryDto> GetSelectedEntries()
         => SelectedEntries.Count > 0 ? SelectedEntries.ToArray()
             : SelectedEntry is null ? [] : [SelectedEntry];
-
-    private bool CanPlaceEntryInDirectory(FileSystemEntryDto entry, string targetDirectory)
-    {
-        if (!ExplorerPath.IsValidName(entry.Name, targetDirectory)) return false;
-        var destination = CombineRemotePath(targetDirectory, entry.Name);
-        if (PathEquals(entry.Path, destination)) return false;
-        return entry.Type != FileSystemEntryType.Directory ||
-               !ExplorerPath.IsAncestorOrEqual(entry.Path, targetDirectory);
-    }
 
     private void NotifySelectionCommands()
     {

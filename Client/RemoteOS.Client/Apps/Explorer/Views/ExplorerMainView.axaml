@@ -100,18 +100,26 @@
 
         <!-- 状态栏 -->
         <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,5">
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
                 <StackPanel Spacing="3">
                     <TextBlock Text="{Binding SelectionSummary}" FontSize="12" />
                     <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
                 <TextBlock Grid.Column="1" Text="{Binding IsBusy, Converter={x:Static c:ExplorerLoadingStatusConverter.Instance}}"
                            FontSize="12" Opacity="0.6" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding TransferText}" FontSize="12" Opacity="0.75"
-                           Margin="0,5,10,0" IsVisible="{Binding HasTransferProgress}" />
+                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4" IsVisible="{Binding HasTransferProgress}">
+                    <Button Content="{loc:Loc explorer.batch.stop}" Command="{Binding StopBatchCommand}"
+                            IsVisible="{Binding IsBatchActive}" HorizontalAlignment="Left" Padding="8,3" />
+                    <TextBlock Text="{Binding TransferText}" FontSize="12" Opacity="0.75"
+                               Margin="0,5,10,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
                 <ProgressBar Grid.Row="1" Grid.Column="1" Width="180" Height="6" Minimum="0" Maximum="100"
                              Value="{Binding TransferProgress}" Margin="0,7,0,0"
                              IsVisible="{Binding HasTransferProgress}" />
+                <Expander Grid.Row="2" Grid.ColumnSpan="2" Header="{loc:Loc explorer.batch.details}"
+                          IsVisible="{Binding HasOperationDetails}" HorizontalAlignment="Stretch">
+                    <ScrollViewer MaxHeight="140"><TextBlock Text="{Binding LastOperationDetails}" TextWrapping="Wrap" /></ScrollViewer>
+                </Expander>
             </Grid>
         </Border>
 
@@ -143,6 +151,7 @@
             <!-- 导航树 -->
             <TreeView Grid.Column="0"
                       x:Name="NavigationTree"
+                      IsEnabled="{Binding !IsBusy}"
                       ItemsSource="{Binding Nodes}"
                       SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"

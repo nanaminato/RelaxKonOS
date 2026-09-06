@@ -150,6 +150,13 @@
         "explorer.view_save_failed": "默认视图保存失败：{0}",
         "explorer.view_load_failed": "默认视图加载失败，使用当前设置：{0}",
         "explorer.view_version_unsupported": "默认视图版本暂不支持",
-        "explorer.entry_type.extension": "{0} 文件"
+        "explorer.entry_type.extension": "{0} 文件",
+        "explorer.batch.invalid_target": "无法将这些项目放到此位置：请检查同目录、子目录、重名或驱动器选择。",
+        "explorer.batch.item": "{0}：{1}（{2}/{3}）",
+        "explorer.batch.result": "{0}：成功 {1} 项，失败 {2} 项，未执行 {3} 项",
+        "explorer.batch.delete_confirm": "永久删除这 {0} 个项目及文件夹中的内容？此操作无法撤销。\n\n{1}",
+        "explorer.batch.stop": "当前项完成后停止",
+        "explorer.batch.details": "操作详情",
+        "explorer.batch.not_started": "未执行"
     }
 }

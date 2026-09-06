@@ -11,12 +11,15 @@ namespace Client.Apps.Explorer.Views;
 
 public partial class ExplorerMainView : UserControl
 {
-    private static readonly DataFormat<FileSystemEntryDto> ExplorerEntryFormat =
-        DataFormat.CreateInProcessFormat<FileSystemEntryDto>("remoteos/explorer-entry");
+    private sealed record ExplorerDragPayload(ExplorerViewModel Source, IReadOnlyList<FileSystemEntryDto> Entries);
+    private static readonly DataFormat<ExplorerDragPayload> ExplorerEntriesFormat =
+        DataFormat.CreateInProcessFormat<ExplorerDragPayload>("remoteos/explorer-entries");
     private const double MinimumDragDistance = 5;
 
     private PointerPressedEventArgs? _dragTrigger;
     private FileSystemEntryDto? _dragEntry;
+    private IReadOnlyList<FileSystemEntryDto>? _preservedDragSelection;
+    private bool _toggleSelectionOnRelease;
     private Point _dragStart;
     private readonly ContextMenu? _entryContextMenu;
 
@@ -67,9 +70,9 @@ public partial class ExplorerMainView : UserControl
     private void EntriesGrid_KeyDown(object? sender, KeyEventArgs e)
     {
         if (ViewModel is not { IsBusy: false } vm) return;
-        if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None && vm.SelectedEntry is { } entry)
+        if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None && vm.OpenCommand.CanExecute(null))
         {
-            _ = vm.InvokeEntryAsync(entry);
+            vm.OpenCommand.Execute(null);
             e.Handled = true;
         }
         else if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.Alt && vm.PropertiesCommand.CanExecute(null))
@@ -129,6 +132,7 @@ public partial class ExplorerMainView : UserControl
 
     private void EntriesGrid_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        ClearPendingDrag();
         var entry = FindDataContext<FileSystemEntryDto>(e.Source);
         var point = e.GetCurrentPoint(this);
         if (point.Properties.IsRightButtonPressed)
@@ -145,6 +149,16 @@ public partial class ExplorerMainView : UserControl
         _dragTrigger = e;
         _dragEntry = entry;
         _dragStart = e.GetPosition(this);
+        // Delay collapsing/toggling an existing multi-selection until a click is released.
+        // If a drag starts, it operates on the whole original selection instead.
+        if (EntriesGrid.SelectedItems.Contains(entry) && EntriesGrid.SelectedItems.Count > 1
+            && (e.KeyModifiers == KeyModifiers.None || e.KeyModifiers == KeyModifiers.Control))
+        {
+            _preservedDragSelection = ViewModel.GetDragEntries(entry);
+            _toggleSelectionOnRelease = e.KeyModifiers == KeyModifiers.Control;
+            EntriesGrid.Focus();
+            e.Handled = true;
+        }
     }
 
     private async void EntriesGrid_PointerMoved(object? sender, PointerEventArgs e)
@@ -163,44 +177,65 @@ public partial class ExplorerMainView : UserControl
 
         var trigger = _dragTrigger;
         var entry = _dragEntry;
+        var vm = ViewModel;
+        var entries = _preservedDragSelection ?? vm?.GetDragEntries(entry);
         ClearPendingDrag();
+        if (vm is null || entries is null || entries.Count == 0) return;
 
         var data = new DataTransfer();
-        data.Add(DataTransferItem.Create(ExplorerEntryFormat, entry));
-        await DragDrop.DoDragDropAsync(trigger, data, DragDropEffects.Move);
+        data.Add(DataTransferItem.Create(ExplorerEntriesFormat, new ExplorerDragPayload(vm, entries.ToArray())));
+        await DragDrop.DoDragDropAsync(trigger, data, DragDropEffects.Move | DragDropEffects.Copy);
     }
 
     private void EntriesGrid_PointerReleased(object? sender, PointerReleasedEventArgs e)
-        => ClearPendingDrag();
+    {
+        if (_preservedDragSelection is not null && _dragEntry is { } entry)
+        {
+            if (_toggleSelectionOnRelease) EntriesGrid.SelectedItems.Remove(entry);
+            else
+            {
+                EntriesGrid.SelectedItems.Clear();
+                EntriesGrid.SelectedItem = entry;
+            }
+        }
+        ClearPendingDrag();
+    }
 
     private void Explorer_DragOver(object? sender, DragEventArgs e)
     {
-        e.DragEffects = TryGetDrop(e, out _, out _) ? DragDropEffects.Move : DragDropEffects.None;
+        e.DragEffects = TryGetDrop(e, out _, out _) ? DropEffect(e) : DragDropEffects.None;
         e.Handled = true;
     }
 
+    private static DragDropEffects DropEffect(DragEventArgs e)
+        => e.KeyModifiers.HasFlag(KeyModifiers.Control) ? DragDropEffects.Copy : DragDropEffects.Move;
+
     private async void Explorer_Drop(object? sender, DragEventArgs e)
     {
-        if (!TryGetDrop(e, out var entry, out var targetDirectory))
+        if (!TryGetDrop(e, out var payload, out var targetDirectory))
         {
             e.DragEffects = DragDropEffects.None;
             e.Handled = true;
             return;
         }
 
-        e.DragEffects = DragDropEffects.Move;
+        var copy = DropEffect(e) == DragDropEffects.Copy;
+        e.DragEffects = DropEffect(e);
         e.Handled = true;
-        if (ViewModel is not null)
-            await ViewModel.MoveEntryToDirectoryAsync(entry, targetDirectory);
+        if (ViewModel is not { } vm) return;
+        var result = await vm.TransferEntriesToDirectoryAsync(payload.Entries, targetDirectory, copy);
+        if (!copy && result?.Completed.Count > 0 && !ReferenceEquals(payload.Source, vm) && !payload.Source.IsBusy)
+            await payload.Source.RefreshCommand.ExecuteAsync(null);
     }
 
-    private bool TryGetDrop(DragEventArgs e, out FileSystemEntryDto entry, out string targetDirectory)
+    private bool TryGetDrop(DragEventArgs e, out ExplorerDragPayload payload, out string targetDirectory)
     {
-        entry = e.DataTransfer.TryGetValue(ExplorerEntryFormat)!;
+        payload = e.DataTransfer.TryGetValue(ExplorerEntriesFormat)!;
         targetDirectory = FindDropTargetPath(e.Source) ?? string.Empty;
-        return entry is not null &&
-               !string.IsNullOrWhiteSpace(targetDirectory) &&
-               ViewModel?.CanMoveEntryToDirectory(entry, targetDirectory) == true;
+        return !e.KeyModifiers.HasFlag(KeyModifiers.Alt)
+            && !(e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            && payload is not null && !payload.Source.IsBusy
+            && ViewModel?.CanTransferEntriesToDirectory(payload.Entries, targetDirectory) == true;
     }
 
     private string? FindDropTargetPath(object? source)
@@ -242,6 +277,8 @@ public partial class ExplorerMainView : UserControl
     {
         _dragTrigger = null;
         _dragEntry = null;
+        _preservedDragSelection = null;
+        _toggleSelectionOnRelease = false;
     }
 
 }

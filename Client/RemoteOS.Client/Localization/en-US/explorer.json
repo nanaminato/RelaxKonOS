@@ -150,6 +150,13 @@
         "explorer.view_save_failed": "Could not save default view: {0}",
         "explorer.view_load_failed": "Could not load default view; using current settings: {0}",
         "explorer.view_version_unsupported": "Unsupported default view version",
-        "explorer.entry_type.extension": "{0} file"
+        "explorer.entry_type.extension": "{0} file",
+        "explorer.batch.invalid_target": "These items cannot be placed here. Check the current folder, descendants, duplicate names, or selected drives.",
+        "explorer.batch.item": "{0}: {1} ({2}/{3})",
+        "explorer.batch.result": "{0}: {1} succeeded, {2} failed, {3} not started",
+        "explorer.batch.delete_confirm": "Permanently delete these {0} items and folder contents? This cannot be undone.\n\n{1}",
+        "explorer.batch.stop": "Stop after current item",
+        "explorer.batch.details": "Operation details",
+        "explorer.batch.not_started": "Not started"
     }
 }

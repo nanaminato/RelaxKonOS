@@ -152,6 +152,7 @@ await vm.AddressbarGoAsync("sub/folder");
 Check(vm.AddressbarPath == @"C:\data\sub\folder", "Relative address resolves against current remote directory");
 await vm.AddressbarGoAsync("D:");
 Check(vm.AddressbarPath == @"D:\", "Bare drive in address bar navigates to drive root");
+await ExplorerBatchChecks.RunAsync(Check);
 Console.WriteLine($"{passed} Explorer regression checks passed.");
 
 
