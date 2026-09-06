@@ -85,7 +85,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     {
         var workspace = new Grid { ClipToBounds = true };
         _backdrop.PointerPressed += (_, _) => vm.ClearDesktopSelectionCommand.Execute(null);
-        _backdrop.ContextMenu = DesktopContextMenu(vm);
+        _backdrop.ContextMenu = CreateDesktopContextMenu(vm);
         workspace.KeyBindings.Add(new KeyBinding
         {
             Command = vm.OpenDesktopDisplaySettingsCommand,
@@ -105,17 +105,14 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         return workspace;
     }
 
-    private static ContextMenu DesktopContextMenu(DesktopShellViewModel vm)
+    /// <summary>
+    /// Default desktop context menu, shared by shells that do not provide a platform-specific
+    /// interaction model. Built-in shells may override this while retaining the same commands.
+    /// </summary>
+    protected virtual ContextMenu CreateDesktopContextMenu(DesktopShellViewModel vm)
     {
-        var showIcons = new MenuItem
-        {
-            Header = LocalizedText.Get("shell.desktop.context.show_icons", "Show desktop icons"),
-            ToggleType = MenuItemToggleType.CheckBox,
-        };
-        showIcons.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(vm.AreDesktopIconsVisible)) { Mode = BindingMode.TwoWay });
-
         var view = new MenuItem { Header = LocalizedText.Get("common.view", "View") };
-        view.ItemsSource = new object[] { showIcons };
+        view.ItemsSource = new object[] { DesktopIconsToggle(vm) };
 
         return new ContextMenu
         {
@@ -139,6 +136,24 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                 new MenuItem { Header = LocalizedText.Get("settings.page.personalization", "Personalization"), Command = vm.OpenPersonalizationCommand },
             },
         };
+    }
+
+    protected static MenuItem DesktopIconsToggle(DesktopShellViewModel vm)
+    {
+        var showIcons = new MenuItem
+        {
+            Header = LocalizedText.Get("shell.desktop.context.show_icons", "Show desktop icons"),
+            ToggleType = MenuItemToggleType.CheckBox,
+        };
+        // Context menus are detached from the visual tree, so this must use an explicit source
+        // rather than relying on inherited DataContext. Otherwise the menu can hide icons but
+        // cannot reliably turn them back on.
+        showIcons.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(vm.AreDesktopIconsVisible))
+        {
+            Source = vm,
+            Mode = BindingMode.TwoWay,
+        });
+        return showIcons;
     }
 
     protected Control Launcher(DesktopShellViewModel vm, string label)
@@ -529,6 +544,28 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         _root.Children.Add(layout);
     }
 
+    /// <summary>macOS-style desktop actions keep view options and background changes prominent.</summary>
+    protected override ContextMenu CreateDesktopContextMenu(DesktopShellViewModel vm)
+    {
+        var menu = new ContextMenu
+        {
+            ItemsSource = new object[]
+            {
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.macos.view_options", "Show View Options..."), Command = vm.OpenDesktopDisplaySettingsCommand },
+                DesktopIconsToggle(vm),
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand },
+                new Separator(),
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), Command = vm.OpenDesktopFolderCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_explorer", "Open File Explorer"), Command = vm.OpenFileExplorerCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_terminal", "Open Terminal"), Command = vm.OpenTerminalCommand },
+                new Separator(),
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.macos.change_background", "Change Desktop Background..."), Command = vm.OpenPersonalizationCommand },
+            },
+        };
+        menu.Classes.Add("macos-desktop-context-menu");
+        return menu;
+    }
+
     private static Control MacosMenuBar(DesktopShellViewModel vm)
     {
         var bar = new Border
@@ -776,6 +813,29 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         var layout = new UbuntuShellLayoutView();
         layout.Compose(UbuntuTopBar(vm), UbuntuDock(vm), Desktop(vm), UbuntuLauncher(vm));
         _root.Children.Add(layout);
+    }
+
+    /// <summary>GNOME-style desktop actions prioritize display and background configuration.</summary>
+    protected override ContextMenu CreateDesktopContextMenu(DesktopShellViewModel vm)
+    {
+        var menu = new ContextMenu
+        {
+            ItemsSource = new object[]
+            {
+                DesktopIconsToggle(vm),
+                new MenuItem { Header = LocalizedText.Get("common.refresh", "Refresh"), Command = vm.RefreshDesktopCommand },
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand },
+                new Separator(),
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.ubuntu.display_settings", "Display Settings"), Command = vm.OpenDesktopDisplaySettingsCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.ubuntu.change_background", "Change Background..."), Command = vm.OpenPersonalizationCommand },
+                new Separator(),
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), Command = vm.OpenDesktopFolderCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_explorer", "Open File Explorer"), Command = vm.OpenFileExplorerCommand },
+                new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_terminal", "Open Terminal"), Command = vm.OpenTerminalCommand },
+            },
+        };
+        menu.Classes.Add("ubuntu-desktop-context-menu");
+        return menu;
     }
 
     /// <summary>
