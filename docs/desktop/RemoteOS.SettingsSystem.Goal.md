@@ -1,7 +1,7 @@
 # RemoteOS 设置系统与设置应用升级（Goal 执行版）
 
-> 日期：2026-09-07。状态：设计基线，尚未实施；本文中的新增类型、路由和能力均为目标契约。
-> 本次交付是实施文档，不执行真实主机配置变更。执行 Goal 时先核对当前代码与本文件，再按里程碑推进。
+> 日期：2026-09-07。状态：执行中，G0 基线已记录，G1 平台底座实施中。未有证据的条目仍是目标契约，不代表已完成。
+> 本轮执行实现与验证；仅在明确指定的远程测试主机/隔离 VM 上执行真实主机配置变更。当前未提供该测试目标，不使用开发机代替。
 
 ## 1. 目标与决策
 
@@ -240,3 +240,36 @@ Windows 只作为信息架构与交互依据，RemoteOS 的路由、权限与跨
 | 日期 | 阶段 | 结果 | 验证与剩余项 |
 | --- | --- | --- | --- |
 | 2026-09-07 | 文档基线 | 已核对八页 Settings、AppSettings、特权协议和 Helper 文档，形成此执行方案 | 仅文档交付；G0–G6 实现及运行验证未开始 |
+
+### 2026-09-07 / G0 执行基线
+
+- 起始 commit：`64ce9194bdd5693237464eec66a3668c3f02fbff`；`git status --short` 为空，起始工作区干净。根 AGENTS.md 仅规定直接升级接口、不保留兼容层。
+- 解决方案：`RemoteOS.sln`。Server 测试是 `OutputType=Exe` 的行为验证程序，必须 `dotnet run --project RemoteOS.Server.Tests`，不能把 `dotnet test` 的无测试退出当作通过；另有 `Framework/RemoteOS.Core.Tests`。
+- Client 注册点：`Client/RemoteOS.Client/Services/Bootstrapper.cs`。既有 `PreferencesSync` 在登录后加载且无需打开 Settings，但写入分散在窗口、Shell、Explorer、SDK 壁纸及编码偏好调用者。底层真源实际为 `Workspace\Desktop` 注册表键，不再是 Workspace JSON 列。
+- Server 注册点：`RemoteOS.Server/Program.cs`；偏好路由 `Endpoints/WorkspaceEndpoints.cs`；注册表 `Registry/CachedSqliteRegistryRepository.cs` 当前为内存真源、5 秒延迟落盘。宿主操作日志不能复用这一延迟写入来保证执行前持久化。
+- Helper 基线：`RemoteOS.PrivilegedHelper/Program.cs` 的 `PrivilegedOperationExecutor`；Linux `LocalPrivilegedOperationRunner`、Windows `WindowsNamedPipePrivilegedOperationTransport` 已存在，不重写传输。`HostElevationSessionStore` 现有授权绑定 sub/jti/capability/target，默认五分钟。
+- 身份：`Domain/User.PlatformIdentity` 已存在；宿主用户目标将从认证 sub 解析服务端 User，再核验平台 UID/SID，不接受请求指定用户或 HKCU。JWT 中的 RemoteOS 用户 GUID 不是宿主 SID/UID。
+
+| provider | 实施方案 | 当前验收状态 |
+| --- | --- | --- |
+| Windows 环境 | Helper 固定 HKLM 环境键 / 目标 SID 下 Environment；保留 REG_SZ/REG_EXPAND_SZ、读回及广播 | 待实现，待指定远程 Windows 测试目标 |
+| Ubuntu 环境 | 固定 `/etc/environment` 受限保真解析、原子替换；用户范围仅 RemoteOS 启动器 | 待实现，待指定 Ubuntu VM |
+| 时区 / 主机名 | 平台枚举合法时区 ID；固定 OS API/绝对程序；主机名校验、策略与待重启结果 | 待实现及远程测试 |
+| DNS | 探测 Windows 网卡 / Ubuntu 实际网络 owner；固定动作 OS 持久恢复任务先落盘，再写 DNS | 待实现；不能因尚未实现就声明平台不支持 |
+| 错误 | 428 缺少 revision/授权前置；409 外部修改或幂等载荷冲突；能力原因独立区分离线、权限、Helper、平台、策略 | Workspace revision 已落地；宿主能力待实现 |
+
+### 2026-09-07 / G1 第一批实现（阶段未完成）
+
+- 新增 Server `Settings/IWorkspaceSettingsService` 与 `WorkspaceSettingsService`、独立偏好校验器。读取不再静默销毁损坏的数据。注册表三个实现新增原子 CompareExchange；偏好 GET 返回 revision，PUT 强制提交观测 revision，旧版本返回 409，缺失返回 428。壁纸上传更新引用同样检查竞争，不吞并发覆盖。
+- Client 原 `Apps/Settings/ISettingsClient` / `SettingsClient` 直接替换为 `Services/WorkspaceSettings/IWorkspaceSettingsService` / `WorkspaceSettingsService`，仓库内 Shell、Explorer、SDK、编码、URI 路由和同步调用者一并迁移；没有旧接口别名。
+- 新增窗口外的 `WorkspacePreferencesEditor`：冻结草稿与连接目标、防抖保存、连接变化清理、保留失败草稿、关闭窗口继续保存。Settings VM 仅调用服务；三语言展示保存中、服务端已接收/等待落盘、失败重试、冲突、离线。
+- 已新增 `SettingsSystemVerification`：三个存储实现的 stale revision 拒绝、32 个并发写者仅一个成功、用户隔离、损坏数据保留、缓存落盘重启后 revision/值一致。提供 `--settings-only` 精确运行入口。测试结果更新如下。
+- **仍需实现**：目录/强类型宿主契约、实时跨客户端同步、偏好冲突合并/放弃 UI、持久化完成状态、注册表通用编辑与删除的并发边界、宿主操作协调器、完整 G2–G6。此记录不表示 G1 验收通过。
+
+| 验证命令 | 当前结果 |
+| --- | --- |
+| `dotnet build RemoteOS.Server/RemoteOS.Server.csproj --no-restore -v quiet` | 通过，0 warning / 0 error |
+| `dotnet build Client/RemoteOS.Client/RemoteOS.Client.csproj --no-restore -v quiet` | Debug 失败：原 App.axaml.cs 的 AttachDeveloperTools 引用不可用；待修复依赖恢复 |
+| `dotnet build Client/RemoteOS.Client/RemoteOS.Client.csproj --no-restore -c Release -p:UsedAvaloniaProducts= -v quiet` | 通过，0 warning / 0 error；关闭构建统计以避免向 sandbox 外的 Avalonia telemetry 目录写入，未跳过 C#/XAML 编译 |
+| `dotnet run --project RemoteOS.Server.Tests/RemoteOS.Server.Tests.csproj --no-restore -- --settings-only` | 初次被旧 restore assets 的 EF Core 10.0.10/10.0.11 不一致阻止；正在恢复依赖，未计作测试通过 |
+| UI 截图 / 640×480、1024×768、1440×900、200% / 两设备 / 宿主写入与恢复 | 待测试；未运行开发机系统配置实验 |

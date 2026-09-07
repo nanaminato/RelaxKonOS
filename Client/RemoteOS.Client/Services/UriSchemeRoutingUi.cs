@@ -1,3 +1,4 @@
+using Client.Services.WorkspaceSettings;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -21,7 +22,7 @@ public sealed class UriSchemeRoutingUi(
     DefaultAppRegistry defaults,
     IAuthSession session,
     ShellSettings settings,
-    ISettingsClient settingsClient,
+    IWorkspaceSettingsService settingsClient,
     IAppActivationDiagnostics diagnostics) : IUriSchemeRoutingUi
 {
     public async Task<UriSchemeHandlerChoice?> ChooseHandlerAsync(Uri uri, IReadOnlyList<ApplicationInfo> candidates)

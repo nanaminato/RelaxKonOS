@@ -1,3 +1,4 @@
+using Client.Services.WorkspaceSettings;
 using Client.Apps.Settings;
 using Client.Services.Auth;
 using RemoteOS.Protocol.Workspace;
@@ -7,11 +8,11 @@ namespace Client.Services;
 /// <summary>用户偏好同步（单例）。监听 <see cref="IAuthSession.StateChanged"/>：
 /// 认证成功 → 从服务端拉取 <see cref="WorkspacePreferencesDto"/>，应用到 <see cref="ShellSettings"/>
 /// （壁纸/主题/时间格式/语言/区域，桌面外壳即时生效）并填充 <see cref="DefaultAppRegistry"/>；
-/// 登出 → 重置为默认偏好。设置应用编辑后的保存由 <c>SettingsViewModel</c> 自行处理。</summary>
+/// 登出 → 重置为默认偏好。设置草稿与保存由独立 <c>WorkspacePreferencesEditor</c> 处理。</summary>
 public sealed class PreferencesSync : IDisposable
 {
     private readonly IAuthSession _session;
-    private readonly ISettingsClient _client;
+    private readonly IWorkspaceSettingsService _client;
     private readonly ShellSettings _settings;
     private readonly DefaultAppRegistry _registry;
     private readonly WallpaperService _wallpapers;
@@ -21,7 +22,7 @@ public sealed class PreferencesSync : IDisposable
 
     public PreferencesSync(
         IAuthSession session,
-        ISettingsClient client,
+        IWorkspaceSettingsService client,
         ShellSettings settings,
         DefaultAppRegistry registry,
         WallpaperService wallpapers)

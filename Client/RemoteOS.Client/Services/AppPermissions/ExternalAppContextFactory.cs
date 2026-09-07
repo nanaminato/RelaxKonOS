@@ -1,3 +1,4 @@
+using Client.Services.WorkspaceSettings;
 using Client.Apps.Settings;
 using Client.Services.AppSettings;
 using Client.Apps.TaskManager;
@@ -22,7 +23,7 @@ public sealed class ExternalAppContextFactory
     private readonly IAppPermissionRequestService _permissionRequests;
     private readonly ISystemLanguage _systemLanguage;
     private readonly ShellSettings _settings;
-    private readonly ISettingsClient _settingsClient;
+    private readonly IWorkspaceSettingsService _settingsClient;
     private readonly IAuthSession _session;
     private readonly DefaultAppRegistry _defaultApps;
     private readonly IWindowManager _windowManager;
@@ -38,7 +39,7 @@ public sealed class ExternalAppContextFactory
         IAppPermissionRequestService permissionRequests,
         ISystemLanguage systemLanguage,
         ShellSettings settings,
-        ISettingsClient settingsClient,
+        IWorkspaceSettingsService settingsClient,
         IAuthSession session,
         DefaultAppRegistry defaultApps,
         IWindowManager windowManager,
@@ -382,7 +383,7 @@ public sealed class ExternalAppContextFactory
         AppId appId,
         IAppPermissionManager permissions,
         ShellSettings settings,
-        ISettingsClient settingsClient,
+        IWorkspaceSettingsService settingsClient,
         IAuthSession session,
         DefaultAppRegistry defaultApps) : IDesktopAppearance
     {

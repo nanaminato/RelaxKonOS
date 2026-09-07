@@ -9,6 +9,7 @@ public interface IRegistryRepository
     IReadOnlyList<RegistryEntry> List(Guid userId, RegistryScope? scope = null);
     RegistryEntry? Find(Guid userId, RegistryScope scope, Guid scopeId, string path, string name);
     RegistryEntry Upsert(RegistryEntry entry);
+    RegistryEntry? CompareExchange(RegistryEntry entry, long expectedRevision);
     bool Delete(Guid userId, RegistryScope scope, Guid scopeId, string path, string name);
     void SeedSynced(RegistryEntry entry);
     IReadOnlyList<RegistryKey> ListChildKeys(Guid userId, RegistryScope scope, Guid scopeId, string parentPath);
@@ -19,6 +20,7 @@ public interface IRegistryRepository
 /// <summary>Development fallback with the same tenant key as SQLite.</summary>
 public sealed class InMemoryRegistryRepository : IRegistryRepository
 {
+    private readonly object _gate = new();
     private readonly ConcurrentDictionary<(Guid, RegistryScope, Guid, string, string), RegistryEntry> _entries = new();
     private readonly ConcurrentDictionary<(Guid, RegistryScope, Guid, string), RegistryKey> _keys = new();
     public IReadOnlyList<RegistryEntry> List(Guid userId, RegistryScope? scope = null) => _entries.Values
@@ -28,12 +30,24 @@ public sealed class InMemoryRegistryRepository : IRegistryRepository
         _entries.TryGetValue((userId, scope, scopeId, path, name), out var entry) ? Copy(entry) : null;
     public RegistryEntry Upsert(RegistryEntry entry)
     {
+        lock (_gate)
+        {
         var saved = _entries.AddOrUpdate(Key(entry), _ => Copy(entry), (_, current) =>
         {
             entry.Revision = current.Revision + 1;
             return Copy(entry);
         });
         return Copy(saved);
+        }
+    }
+    public RegistryEntry? CompareExchange(RegistryEntry entry, long expectedRevision)
+    {
+        lock (_gate)
+        {
+            var revision = _entries.TryGetValue(Key(entry), out var current) ? current.Revision : 0;
+            if (revision != expectedRevision) return null;
+            return Upsert(entry);
+        }
     }
     public bool Delete(Guid userId, RegistryScope scope, Guid scopeId, string path, string name) => _entries.TryRemove((userId, scope, scopeId, path, name), out _);
     public void SeedSynced(RegistryEntry entry) => _entries.TryAdd(Key(entry), Copy(entry));

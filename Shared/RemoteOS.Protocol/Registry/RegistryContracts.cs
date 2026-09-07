@@ -50,4 +50,4 @@ public static class RegistryApiRoutes
 }
 
 /// <summary>Editable value payload. Scope ownership is always resolved from the caller token.</summary>
-public sealed record PutRegistryEntryRequest(RegistryScope Scope, string Path, string Name, RegistryValueType ValueType, JsonElement Value);
+public sealed record PutRegistryEntryRequest(RegistryScope Scope, string Path, string Name, RegistryValueType ValueType, JsonElement Value, long? ExpectedRevision);

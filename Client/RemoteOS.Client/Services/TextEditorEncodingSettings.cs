@@ -1,3 +1,4 @@
+using Client.Services.WorkspaceSettings;
 using Client.Apps.Settings;
 using Client.Apps.TextEditor;
 using Client.Services.Auth;
@@ -8,13 +9,13 @@ namespace Client.Services;
 public sealed class TextEditorEncodingSettings
 {
     private readonly ShellSettings _settings;
-    private readonly ISettingsClient _client;
+    private readonly IWorkspaceSettingsService _client;
     private readonly IAuthSession _session;
     private readonly DefaultAppRegistry _defaultApps;
 
     public TextEditorEncodingSettings(
         ShellSettings settings,
-        ISettingsClient client,
+        IWorkspaceSettingsService client,
         IAuthSession session,
         DefaultAppRegistry defaultApps)
     {

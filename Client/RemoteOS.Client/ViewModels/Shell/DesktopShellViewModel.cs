@@ -1,3 +1,4 @@
+using Client.Services.WorkspaceSettings;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Threading;
@@ -37,7 +38,7 @@ public partial class DesktopShellViewModel : ObservableObject
     private readonly IExplorerClient _files;
     private readonly IRemoteFileClipboard _fileClipboard;
     private readonly DefaultAppRegistry _defaultApps;
-    private readonly ISettingsClient _settingsClient;
+    private readonly IWorkspaceSettingsService _settingsClient;
     private readonly IAppActivationDiagnostics _activationDiagnostics;
     private readonly ITextFileSniffer _textSniffer;
     private readonly PreferencesSync _preferencesSync;
@@ -66,7 +67,7 @@ public partial class DesktopShellViewModel : ObservableObject
         IExplorerClient files,
         IRemoteFileClipboard fileClipboard,
         DefaultAppRegistry defaultApps,
-        ISettingsClient settingsClient,
+        IWorkspaceSettingsService settingsClient,
         IAppActivationDiagnostics activationDiagnostics,
         ITextFileSniffer textSniffer,
         PreferencesSync preferencesSync,

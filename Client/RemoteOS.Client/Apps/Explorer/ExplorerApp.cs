@@ -1,3 +1,4 @@
+using Client.Services.WorkspaceSettings;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -454,7 +455,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var settings = context.Services.GetService(typeof(ShellSettings)) as ShellSettings;
-        var settingsClient = context.Services.GetService(typeof(ISettingsClient)) as ISettingsClient;
+        var settingsClient = context.Services.GetService(typeof(IWorkspaceSettingsService)) as IWorkspaceSettingsService;
         if (session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace }
             || settings is null || settingsClient is null)
             return;

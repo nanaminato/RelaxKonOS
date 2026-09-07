@@ -89,6 +89,13 @@
         </Border>
 
         <!-- 右侧内容 -->
-        <ContentControl Grid.Column="1" Content="{Binding SelectedPage}" />
+        <Grid Grid.Column="1" RowDefinitions="Auto,*">
+            <DockPanel Margin="12,6" LastChildFill="True">
+                <Button DockPanel.Dock="Right" Content="{loc:Loc settings.save.retry}"
+                        IsVisible="{Binding CanRetry}" Command="{Binding RetrySaveCommand}" />
+                <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" VerticalAlignment="Center" />
+            </DockPanel>
+            <ContentControl Grid.Row="1" Content="{Binding SelectedPage}" />
+        </Grid>
     </Grid>
 </UserControl>
