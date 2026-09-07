@@ -15,6 +15,7 @@ using RemoteOS.Shell;
 using RemoteOS.WindowManager;
 using RemoteOS.Runtime;
 using RemoteOS.Protocol.Workspace;
+using RemoteOS.UI.Themes;
 
 namespace Client.Services;
 
@@ -409,13 +410,13 @@ internal sealed class DesktopShellStateAdapter : IDisposable
             .Select(shell => new ShellDesktopStyleEntry(shell.Id, shell.DisplayName, shell.Version))
             .ToArray();
         return new ShellDesktopState(applications, entries, _workspace.AreDesktopIconsVisible, desktopStyles,
-            _workspace.Settings.CurrentWallpaper);
+            _workspace.Settings.CurrentWallpaper, ThemeResources.Brush("TextPrimaryBrush"));
     }
 
     private static ShellDesktopEntry? ToEntry(object item) => item switch
     {
         AppEntryViewModel app => new ShellDesktopEntry("app:" + app.Id.Value, app.DisplayName,
-            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected),
+            ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected, app.IconImage),
         DesktopFileEntryViewModel file => new ShellDesktopEntry("file:" + EntryHash(file.Entry.Path), file.DisplayName,
             file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph, null, file.IsDesktopSelected),
         ShortcutEntryViewModel shortcut => new ShellDesktopEntry("shortcut:" + shortcut.DisplayName, shortcut.DisplayName,

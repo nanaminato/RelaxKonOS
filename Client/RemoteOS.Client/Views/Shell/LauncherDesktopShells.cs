@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RemoteOS.AppSDK;
 using RemoteOS.Shell;
 using RemoteOS.WindowManager;
+using RemoteOS.UI.Themes;
 using VectorPath = Avalonia.Controls.Shapes.Path;
 using System.Globalization;
 
@@ -255,6 +256,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         {
             Text = name, MaxWidth = 108, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = ThemeResources.Brush("TextPrimaryBrush"),
         });
         var button = new Button { Content = content, Width = 116, Height = 84, Margin = new Thickness(3),
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,

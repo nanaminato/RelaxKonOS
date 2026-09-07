@@ -20,6 +20,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     private bool _hasDesktopStyles;
     private bool _isLoading = true;
     private IBrush? _wallpaper;
+    private IBrush? _desktopItemLabelForeground;
     private int _loadGeneration;
     private string _clock = string.Empty;
     private string _date = string.Empty;
@@ -105,6 +106,8 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public bool IsLoading { get => _isLoading; private set => SetProperty(ref _isLoading, value); }
     /// <summary>Host-owned wallpaper shared by every desktop shell, including custom images.</summary>
     public IBrush? Wallpaper { get => _wallpaper; private set => SetProperty(ref _wallpaper, value); }
+    /// <summary>Theme-resolved label foreground supplied by the host's built-in desktop.</summary>
+    public IBrush? DesktopItemLabelForeground { get => _desktopItemLabelForeground; private set => SetProperty(ref _desktopItemLabelForeground, value); }
     public string Clock { get => _clock; private set => SetProperty(ref _clock, value); }
     public string Date { get => _date; private set => SetProperty(ref _date, value); }
 
@@ -213,6 +216,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
             AreDesktopIconsVisible = false;
             HasDesktopStyles = false;
             Wallpaper = null;
+            DesktopItemLabelForeground = null;
             return;
         }
         foreach (var application in state.Applications) Applications.Add(application);
@@ -221,6 +225,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
         AreDesktopIconsVisible = state.AreDesktopIconsVisible;
         HasDesktopStyles = DesktopStyleEntries.Count > 0;
         Wallpaper = state.Wallpaper;
+        DesktopItemLabelForeground = state.DesktopItemLabelForeground;
     }
     private async Task OpenApplicationAsync(ShellApplicationEntry? application)
     {

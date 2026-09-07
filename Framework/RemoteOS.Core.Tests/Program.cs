@@ -83,7 +83,7 @@ static void VerifyAutomationValidation()
 
 static void VerifyShellIdResolution()
 {
-    Assert(ShellApi.Version == "1.0", "Shell API must use version 1.0 before the first release.");
+    Assert(ShellApi.Version == "1.0", "Shell API remains at version 1.0 before the first release.");
     Assert(ShellApi.ResolveId("com.example.neon") == "com.example.neon", "Explicit external Shell id was unexpectedly changed.");
     Assert(ShellApi.ResolveId(null) == ShellApi.DefaultShellId, "Missing Shell id did not use the safe default.");
 }

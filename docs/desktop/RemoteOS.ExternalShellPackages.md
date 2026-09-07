@@ -17,6 +17,6 @@ assets/...
 
 `manifest.json` 必须声明 `permissionModelVersion: 2` 和 `packageType: "desktopShell"`。应用安装程序负责安全解压、版本化安装和软件包目录登记；`ShellCatalog` 只从统一软件包目录发现桌面扩展，不再复制用户选择的任意文件夹。
 
-`examples/Windows11DesktopShell` 是可构建的 Windows 11 风格外置桌面示例。它使用 AXAML、视图模型和包内 JSON 语言文件，演示壁纸、桌面快捷方式、居中任务栏、开始菜单、快速设置，以及窗口、全屏窗口和 Shell 覆盖层的正确注册方式。使用 `RemoteOS.DevCli pack` 生成 `.roapp` 后，通过 RemoteOS 应用安装程序安装。清单发现阶段不会执行程序集；只有用户在个性化页面选择该 Shell 时才通过可收集的 `AssemblyLoadContext` 加载。
+`examples/Windows11DesktopShell` 是可构建的 Windows 11 风格外置桌面示例。它使用 AXAML、视图模型和包内 JSON 语言文件，演示壁纸、与内置桌面一致的主题解析图标名称颜色、优先使用应用图片图标的桌面快捷方式、居中任务栏、开始菜单、快速设置，以及窗口、全屏窗口和 Shell 覆盖层的正确注册方式。使用 `RemoteOS.DevCli pack` 生成 `.roapp` 后，通过 RemoteOS 应用安装程序安装。清单发现阶段不会执行程序集；只有用户在个性化页面选择该 Shell 时才通过可收集的 `AssemblyLoadContext` 加载。
 
 如果包缺失、不兼容、禁用、初始化超时或抛异常，当前桌面保持可用；不能激活时回退 `remoteos.windows-like`，而 Workspace 中的跨设备选择意图不被覆盖。

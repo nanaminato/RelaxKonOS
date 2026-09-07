@@ -5,12 +5,12 @@ This project is a self-contained external RemoteOS desktop shell. It intentional
 
 The example demonstrates:
 
-- the host's active wallpaper (including synchronized custom images), live desktop entries, and a desktop context menu;
+- the host's active wallpaper (including synchronized custom images), theme-resolved desktop-label foreground, live desktop entries, and a desktop context menu;
 - a centered taskbar, live All apps menu, clock, quick-settings flyout, and a short startup transition;
 - shell actions for settings, display settings, desktop refresh, and Show Desktop;
 - correct registration of normal-window, full-screen-window, overlay, and input-backdrop surfaces;
 - work-area reporting that reserves the taskbar.
-- package artwork through `assets/icon.png` instead of a font-dependent `iconGlyph`;
+- host-provided application artwork on desktop entries, with `iconGlyph` used only as the fallback;
 - detailed vector desktop icons for a computer, folder, document, and recycle bin.
 
 Build from the repository root:

@@ -99,7 +99,12 @@ public sealed record ShellDesktopState(
     /// value as-is so built-in presets and downloaded custom images stay consistent whenever
     /// the user changes the desktop style.
     /// </summary>
-    IBrush? Wallpaper = null);
+    IBrush? Wallpaper = null,
+    /// <summary>
+    /// Theme-resolved foreground used for desktop item labels by built-in shells. External
+    /// shells may use their own presentation, but receive this value to remain theme-consistent.
+    /// </summary>
+    IBrush? DesktopItemLabelForeground = null);
 
 /// <summary>A launchable application in an external shell's Start menu or application list.</summary>
 public sealed record ShellApplicationEntry(AppId Id, string DisplayName, string? IconGlyph, string? Description);
@@ -113,7 +118,13 @@ public sealed record ShellDesktopEntry(
     ShellDesktopEntryKind Kind,
     string? IconGlyph,
     AppId? ApplicationId = null,
-    bool IsSelected = false);
+    bool IsSelected = false,
+    /// <summary>Host-loaded application artwork. Use this in preference to <see cref="IconGlyph"/>.</summary>
+    IImage? IconImage = null)
+{
+    /// <summary>Whether the entry has application artwork that should replace its glyph fallback.</summary>
+    public bool HasIconImage => IconImage is not null;
+}
 
 /// <summary>An installed external desktop style that can be selected from another shell.</summary>
 public sealed record ShellDesktopStyleEntry(string Id, string DisplayName, string Version);

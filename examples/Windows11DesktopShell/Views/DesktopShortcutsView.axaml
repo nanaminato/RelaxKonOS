@@ -24,7 +24,6 @@
         </Style>
         <Style Selector="TextBlock.desktop-label">
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="White" />
             <Setter Property="TextAlignment" Value="Center" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -52,8 +51,12 @@
                         DoubleTapped="DesktopShortcut_OnDoubleTapped"
                         ToolTip.Tip="{Binding DisplayName}">
                     <StackPanel Spacing="4">
-                        <TextBlock Classes="desktop-icon" Text="{Binding IconGlyph}" />
-                        <TextBlock Classes="desktop-label" Text="{Binding DisplayName}" />
+                        <Grid Width="48" Height="48">
+                            <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
+                            <TextBlock Classes="desktop-icon" Text="{Binding IconGlyph}" IsVisible="{Binding !HasIconImage}" />
+                        </Grid>
+                        <TextBlock Classes="desktop-label" Text="{Binding DisplayName}"
+                                   Foreground="{Binding DataContext.DesktopItemLabelForeground, ElementName=DesktopShortcutsRoot}" />
                     </StackPanel>
                 </Button>
             </DataTemplate>

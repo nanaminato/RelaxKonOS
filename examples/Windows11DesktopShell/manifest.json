@@ -4,7 +4,7 @@
   "packageType": "desktopShell",
   "id": "com.example.windows11-desktop",
   "displayName": "Windows 11 Desktop (External)",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "iconPath": "assets/icon.png",
   "description": "Windows 11-inspired external desktop shell for RemoteOS",
   "entryAssembly": "lib/net10.0/Example.Windows11DesktopShell.dll",

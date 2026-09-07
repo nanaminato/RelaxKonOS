@@ -88,7 +88,7 @@ public sealed class ShellCatalog : IShellCatalog
                 || !File.Exists(assemblyPath)) throw new InvalidDataException("Entry assembly is outside the package or missing.");
             var reason = !string.Equals(manifest.PackageType, "desktopShell", StringComparison.Ordinal) ? LocalizedText.Get("settings.shell.invalid_package", "The desktop package is invalid.") :
                 !validId ? LocalizedText.Get("settings.shell.invalid_id", "The desktop package ID is invalid.") : manifest.SchemaVersion != 1 ? LocalizedText.Get("settings.shell.unsupported_schema", "This desktop package uses an unsupported manifest schema.") :
-                !string.Equals(manifest.ShellApiVersion, ShellApi.Version, StringComparison.Ordinal) ? LocalizedText.Get("settings.shell.requires_newer_api", "This desktop package requires Shell API 1.0.") :
+                !string.Equals(manifest.ShellApiVersion, ShellApi.Version, StringComparison.Ordinal) ? LocalizedText.Get("settings.shell.requires_newer_api", $"This desktop package requires Shell API {ShellApi.Version}.") :
                 manifest.Capabilities?.Length == 0 ? LocalizedText.Get("settings.shell.no_capabilities", "This desktop package declares no launcher capabilities.") : null;
             var displayName = ResolveLocalizedDisplayName(manifest) ?? manifest.DisplayName?.Trim() ?? id;
             var descriptor = new ShellDescriptor(id, displayName, manifest.Version?.Trim() ?? "0.0.0",

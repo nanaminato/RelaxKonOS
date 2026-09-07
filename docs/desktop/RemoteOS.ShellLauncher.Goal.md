@@ -282,6 +282,8 @@ public interface IDesktopShellFactory
 
 外部 Shell 与第三方应用统一封装为 `.roapp`，只能通过应用安装程序进入版本化软件包目录；个性化页面不提供目录安装入口。安装器验证 `permissionModelVersion: 2`、安全相对路径和清单必填字段，`ShellCatalog` 再验证 `packageType`、Shell API 版本与能力组合。不得根据 Workspace 偏好自动下载、加载网络 DLL 或执行脚本。
 
+当前 Shell API 的桌面投影会提供内置桌面使用的主题解析应用名称前景色，以及桌面应用条目的图片图标。外部 Shell 可以采用自己的视觉设计；若直接呈现这些条目，应优先使用图片图标，并仅在没有图片时回退到 `IconGlyph`。
+
 ### 5.2 生命周期、故障隔离与卸载
 
 - 应用安装程序先验证并登记软件包；`ShellCatalog` 再解析 manifest，检查桌面包类型、ID 格式、API 版本和能力组合，不执行程序集即可列出不可用原因。
