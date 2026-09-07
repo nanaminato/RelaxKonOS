@@ -293,11 +293,7 @@ public static class WorkspaceEndpoints
 
         if (!TryNormalizeThemePreferences(request.ThemePreferences, out var themePreferences))
             return false;
-        // The structured value is the cross-device intent. Retain shellId for one wire-version so
-        // old clients continue to start; only the normalized namespace is written by new clients.
-        var requestedShell = request.Shell is { ShellId: "remoteos" } && !string.IsNullOrWhiteSpace(request.ShellId)
-            && !string.Equals(request.ShellId, "remoteos", StringComparison.Ordinal)
-            ? new ShellSelectionDto(request.ShellId) : request.Shell ?? new ShellSelectionDto(request.ShellId ?? "remoteos.windows-like");
+        var requestedShell = request.Shell ?? new ShellSelectionDto("remoteos.windows-like");
         var shellId = NormalizeShellId(requestedShell.ShellId);
         if (!IsValidShellId(shellId))
             return false;
@@ -312,7 +308,7 @@ public static class WorkspaceEndpoints
             string.IsNullOrEmpty(language) ? WorkspacePreferencesDto.Default.Language : language,
             string.IsNullOrEmpty(region) ? WorkspacePreferencesDto.Default.Region : region,
             deduped.Values.ToList(), notepadEncoding, codeEditorEncoding,
-            normalizedDesktopDisplay, themePreferences, shellId,
+            normalizedDesktopDisplay, themePreferences,
             new ShellSelectionDto(shellId, packageId, packageVersion));
         return true;
     }

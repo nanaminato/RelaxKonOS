@@ -76,10 +76,15 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
             // transition, not a request to select the default shell.
             if (string.IsNullOrWhiteSpace(value)) return;
 
-            var id = ShellApi.NormalizeId(value);
+            var id = ShellApi.ResolveId(value);
             if (!_shellCatalog.TryGet(id, out var shell) || !shell.IsAvailable) return;
-            if (Settings.SelectedShellId == id) return;
-            Settings.SelectedShellId = id;
+            // Store the package identity along with the cross-device shell intent.  Resolving
+            // remains device-local, but retaining this metadata prevents an external shell
+            // choice from being reduced to a bare ID on the next launch.
+            if (Settings.ShellSelection.ShellId == id
+                && Settings.ShellSelection.PackageId == shell.PackageId
+                && Settings.ShellSelection.PackageVersion == shell.Version) return;
+            Settings.ShellSelection = new ShellSelectionDto(id, shell.PackageId, shell.Version);
             Save();
         }
     }
@@ -109,7 +114,6 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     };
 
     /// <summary>Supplied by the Avalonia page so the VM never accesses a TopLevel or filesystem picker.</summary>
-    public Func<Task>? RequestShellPackageInstallAsync { get; set; }
 
     /// <summary>由 SettingsApp 提供本机文件选择器；VM 不直接依赖 Avalonia TopLevel。</summary>
     public Func<Task>? RequestCustomWallpaperAsync { get; set; }
@@ -307,13 +311,6 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     {
         if (RequestCustomWallpaperAsync is not null)
             await RequestCustomWallpaperAsync();
-    }
-
-    [RelayCommand]
-    private async Task InstallShellPackageAsync()
-    {
-        if (RequestShellPackageInstallAsync is not null)
-            await RequestShellPackageInstallAsync();
     }
 
     private static IBrush Brush(string color) => new SolidColorBrush(Color.Parse(color));

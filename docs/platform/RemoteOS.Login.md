@@ -35,7 +35,7 @@ RemoteOS 登录模块参考 Windows Server 远程桌面连接工具 **mstsc** �
 **已实现**：
 
 - 客户端：`LoginWindow` + `LoginView` + `LoginViewModel` + `IRemoteOsClient`（typed HttpClient）+ `IAuthSession`（可选记住设备）+ 统一 bearer 自动刷新/401 单次重试 + 启动分叉
-- 服务端：`/api/v1/auth/login|refresh|logout|me` 端点 + JWT 签发 + `IIdentityProvider` 抽象 + `WindowsLogonProvider`（LogonUser）+ `LinuxPamProvider`（PAM 认证与账户检查、NSS 用户信息）+ 登录端点限流、账号/IP/账号+IP 递增冷却，以及 SQLite 持久化仓储
+- 服务端：`/api/v1.0/auth/login|refresh|logout|me` 端点 + JWT 签发 + `IIdentityProvider` 抽象 + `WindowsLogonProvider`（LogonUser）+ `LinuxPamProvider`（PAM 认证与账户检查、NSS 用户信息）+ 登录端点限流、账号/IP/账号+IP 递增冷却，以及 SQLite 持久化仓储
 - 协议：零改动（复用 Protocol 已有的 `LoginRequest`/`LoginResponse`/`AuthTokens`/`AuthApiRoutes`/`ProblemDetails`）
 
 **非范围（未来扩展）**：
@@ -49,7 +49,7 @@ RemoteOS 登录模块参考 Windows Server 远程桌面连接工具 **mstsc** �
 
 ```text
 Client (LoginViewModel)         Server (AuthEndpoints)         Host OS (LogonUser/PAM)
-    |  POST /api/v1/auth/login       |                               |
+    |  POST /api/v1.0/auth/login       |                               |
     |  { LoginRequest }              |                               |
     |------------------------------>>|                               |
     |                                | IIdentityProvider.Verify(u,p) |
@@ -123,10 +123,10 @@ IAuthSession (AuthSession, 单例；可选记住设备)
   └── RefreshAsync()
 
 IRemoteOsClient (RemoteOsClient, typed HttpClient)
-  ├── LoginAsync(serverUrl, request)   → POST /api/v1/auth/login
-  ├── RefreshAsync(serverUrl, refresh) → POST /api/v1/auth/refresh
-  ├── LogoutAsync(serverUrl, access, refresh?) → POST /api/v1/auth/logout
-  └── GetMeAsync(serverUrl, access)    → GET  /api/v1/auth/me
+  ├── LoginAsync(serverUrl, request)   → POST /api/v1.0/auth/login
+  ├── RefreshAsync(serverUrl, refresh) → POST /api/v1.0/auth/refresh
+  ├── LogoutAsync(serverUrl, access, refresh?) → POST /api/v1.0/auth/logout
+  └── GetMeAsync(serverUrl, access)    → GET  /api/v1.0/auth/me
 ```
 
 ### 3.3 启动状态机
@@ -154,10 +154,10 @@ Unauthenticated ──Connect──>> Connecting ──成功──>> Authentica
 
 | 方法 | 路由 | 认证 | 说明 |
 |---|---|---|---|
-| POST | `/api/v1/auth/login` | 无 | 先限流与风险检查，再验证凭据并签发 JWT；受限时返回 429 + `Retry-After` |
-| POST | `/api/v1/auth/refresh` | 无 | RefreshToken 换新令牌对（旧 refresh 作废） |
-| POST | `/api/v1/auth/logout` | JWT | 吊销 RefreshToken |
-| GET | `/api/v1/auth/me` | JWT | 返回当前 `UserDto` |
+| POST | `/api/v1.0/auth/login` | 无 | 先限流与风险检查，再验证凭据并签发 JWT；受限时返回 429 + `Retry-After` |
+| POST | `/api/v1.0/auth/refresh` | 无 | RefreshToken 换新令牌对（旧 refresh 作废） |
+| POST | `/api/v1.0/auth/logout` | JWT | 吊销 RefreshToken |
+| GET | `/api/v1.0/auth/me` | JWT | 返回当前 `UserDto` |
 
 ### 4.2 IIdentityProvider 抽象
 

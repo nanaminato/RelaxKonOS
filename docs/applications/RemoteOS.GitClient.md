@@ -26,16 +26,16 @@ GitClient 是 RemoteOS 的内置版本控制客户端，参考 TortoiseGit / Git
 
 | 功能 | 能力 | 数据源 |
 |------|------|--------|
-| 仓库选择 | 已注册仓库列表 + 当前选中仓库 + 切换 | `GET /api/v1/git/repositories` |
-| 工作区状态 | 已暂存/未暂存/未跟踪/冲突文件清单 + 当前分支 + upstream 落后/领先计数 | `GET /api/v1/git/repositories/{id}/status` |
-| 分支管理 | 本地+远程分支列表、切换(checkout)、新建、删除 | `GET/POST/DELETE /api/v1/git/repositories/{id}/branches` |
-| 提交 | 暂存选择文件 + 提交消息 + 提交 | `POST /api/v1/git/repositories/{id}/commit` |
-| 拉取 | 当前分支 fetch+merge/fetch+rebase；未检出分支可仅安全快进更新 | `POST /api/v1/git/repositories/{id}/pull` |
-| 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout | `POST /api/v1/git/repositories/{id}/push` |
-| 提交历史 | log 列表（hash/作者/时间/消息）+ 单提交详情 | `GET /api/v1/git/repositories/{id}/log` |
-| Revert | 反向提交指定 commit | `POST /api/v1/git/repositories/{id}/revert` |
-| Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1/git/repositories/{id}/diff` |
-| 冲突解决 | 标记文件已解决（add）+ 继续 merge/rebase | `POST /api/v1/git/repositories/{id}/resolve` |
+| 仓库选择 | 已注册仓库列表 + 当前选中仓库 + 切换 | `GET /api/v1.0/git/repositories` |
+| 工作区状态 | 已暂存/未暂存/未跟踪/冲突文件清单 + 当前分支 + upstream 落后/领先计数 | `GET /api/v1.0/git/repositories/{id}/status` |
+| 分支管理 | 本地+远程分支列表、切换(checkout)、新建、删除 | `GET/POST/DELETE /api/v1.0/git/repositories/{id}/branches` |
+| 提交 | 暂存选择文件 + 提交消息 + 提交 | `POST /api/v1.0/git/repositories/{id}/commit` |
+| 拉取 | 当前分支 fetch+merge/fetch+rebase；未检出分支可仅安全快进更新 | `POST /api/v1.0/git/repositories/{id}/pull` |
+| 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout | `POST /api/v1.0/git/repositories/{id}/push` |
+| 提交历史 | log 列表（hash/作者/时间/消息）+ 单提交详情 | `GET /api/v1.0/git/repositories/{id}/log` |
+| Revert | 反向提交指定 commit | `POST /api/v1.0/git/repositories/{id}/revert` |
+| Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1.0/git/repositories/{id}/diff` |
+| 冲突解决 | 标记文件已解决（add）+ 继续 merge/rebase | `POST /api/v1.0/git/repositories/{id}/resolve` |
 
 **非目标（MVP 不含）**：cherry-pick、rebase 交互式编辑、submodule 深度管理、stash、tag 管理、内置 diff/merge 三方编辑器（冲突解决调用宿主 CodeEditor 或外联）、PR 工作流、多远程管理。这些列入 §8 后续演进。
 
@@ -67,23 +67,23 @@ GitClientApp (RemoteApplicationBase)
 
 ### 3.1 路由（`GitApiRoutes.cs`）
 
-路径含 `/api/v1` 前缀，Server 注册路由与 Client 拼接 URL 共用：
+路径含 `/api/v1.0` 前缀，Server 注册路由与 Client 拼接 URL 共用：
 
 ```text
-Repositories       = /api/v1/git/repositories                       (GET, POST)   # 列表 / 注册
-RepositoryById     = /api/v1/git/repositories/{id}                  (GET, DELETE) # 详情 / 注销
-Status             = /api/v1/git/repositories/{id}/status            (GET)         # 工作区状态
-Branches           = /api/v1/git/repositories/{id}/branches          (GET, POST)   # 列表 / 新建
-BranchByName       = /api/v1/git/repositories/{id}/branches/{name}  (DELETE)      # 删除
-Checkout           = /api/v1/git/repositories/{id}/checkout          (POST)        # 切换分支
-Commit             = /api/v1/git/repositories/{id}/commit            (POST)        # 提交
-Pull               = /api/v1/git/repositories/{id}/pull              (POST)        # 拉取
-Push               = /api/v1/git/repositories/{id}/push              (POST)        # 推送
-Log                = /api/v1/git/repositories/{id}/log              (GET)         # 历史
-Diff               = /api/v1/git/repositories/{id}/diff             (GET)         # 文件 diff
-Revert             = /api/v1/git/repositories/{id}/revert            (POST)        # 反向提交
-Resolve            = /api/v1/git/repositories/{id}/resolve           (POST)        # 标记冲突已解决
-Fetch              = /api/v1/git/repositories/{id}/fetch             (POST)        # 仅抓取
+Repositories       = /api/v1.0/git/repositories                       (GET, POST)   # 列表 / 注册
+RepositoryById     = /api/v1.0/git/repositories/{id}                  (GET, DELETE) # 详情 / 注销
+Status             = /api/v1.0/git/repositories/{id}/status            (GET)         # 工作区状态
+Branches           = /api/v1.0/git/repositories/{id}/branches          (GET, POST)   # 列表 / 新建
+BranchByName       = /api/v1.0/git/repositories/{id}/branches/{name}  (DELETE)      # 删除
+Checkout           = /api/v1.0/git/repositories/{id}/checkout          (POST)        # 切换分支
+Commit             = /api/v1.0/git/repositories/{id}/commit            (POST)        # 提交
+Pull               = /api/v1.0/git/repositories/{id}/pull              (POST)        # 拉取
+Push               = /api/v1.0/git/repositories/{id}/push              (POST)        # 推送
+Log                = /api/v1.0/git/repositories/{id}/log              (GET)         # 历史
+Diff               = /api/v1.0/git/repositories/{id}/diff             (GET)         # 文件 diff
+Revert             = /api/v1.0/git/repositories/{id}/revert            (POST)        # 反向提交
+Resolve            = /api/v1.0/git/repositories/{id}/resolve           (POST)        # 标记冲突已解决
+Fetch              = /api/v1.0/git/repositories/{id}/fetch             (POST)        # 仅抓取
 ```
 
 ### 3.2 DTO
@@ -177,27 +177,27 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 
 | Method | Route | 用途 |
 |--------|-------|------|
-| GET | `/api/v1/git/repositories` | 已注册仓库列表 |
-| POST | `/api/v1/git/repositories` | 注册新仓库（校验路径存在 + 是 git 仓库） |
-| GET | `/api/v1/git/repositories/{id}` | 仓库详情（含当前分支/upstream/ahead-behind） |
-| DELETE | `/api/v1/git/repositories/{id}` | 注销仓库注册（不删目录） |
-| GET | `/api/v1/git/repositories/{id}/status` | 工作区状态 |
-| GET | `/api/v1/git/repositories/{id}/branches` | 分支列表（local+remote） |
-| POST | `/api/v1/git/repositories/{id}/branches` | 新建分支 |
-| DELETE | `/api/v1/git/repositories/{id}/branches/{name}` | 删除分支 |
-| POST | `/api/v1/git/repositories/{id}/checkout` | 切换分支 |
-| POST | `/api/v1/git/repositories/{id}/commit` | 提交 |
-| POST | `/api/v1/git/repositories/{id}/fetch` | 仅抓取 |
-| POST | `/api/v1/git/repositories/{id}/pull` | 拉取（merge/rebase） |
-| POST | `/api/v1/git/repositories/{id}/push` | 推送 |
-| GET | `/api/v1/git/repositories/{id}/log` | 提交历史（query: limit, skip） |
-| GET | `/api/v1/git/repositories/{id}/diff` | 文件 diff（query: path, staged, ref） |
-| POST | `/api/v1/git/repositories/{id}/revert` | 反向提交 |
-| POST | `/api/v1/git/repositories/{id}/resolve` | 标记冲突已解决 + 继续 |
-| POST | `/api/v1/git/repositories/{id}/stage` | 仅暂存指定文件 |
-| POST | `/api/v1/git/repositories/{id}/unstage` | 仅取消暂存指定文件 |
-| POST | `/api/v1/git/repositories/{id}/restore` | 从 HEAD（或指定提交）还原指定文件 |
-| POST | `/api/v1/git/repositories/{id}/reset` | 安全重置到提交（仅 `--soft` / `--mixed`） |
+| GET | `/api/v1.0/git/repositories` | 已注册仓库列表 |
+| POST | `/api/v1.0/git/repositories` | 注册新仓库（校验路径存在 + 是 git 仓库） |
+| GET | `/api/v1.0/git/repositories/{id}` | 仓库详情（含当前分支/upstream/ahead-behind） |
+| DELETE | `/api/v1.0/git/repositories/{id}` | 注销仓库注册（不删目录） |
+| GET | `/api/v1.0/git/repositories/{id}/status` | 工作区状态 |
+| GET | `/api/v1.0/git/repositories/{id}/branches` | 分支列表（local+remote） |
+| POST | `/api/v1.0/git/repositories/{id}/branches` | 新建分支 |
+| DELETE | `/api/v1.0/git/repositories/{id}/branches/{name}` | 删除分支 |
+| POST | `/api/v1.0/git/repositories/{id}/checkout` | 切换分支 |
+| POST | `/api/v1.0/git/repositories/{id}/commit` | 提交 |
+| POST | `/api/v1.0/git/repositories/{id}/fetch` | 仅抓取 |
+| POST | `/api/v1.0/git/repositories/{id}/pull` | 拉取（merge/rebase） |
+| POST | `/api/v1.0/git/repositories/{id}/push` | 推送 |
+| GET | `/api/v1.0/git/repositories/{id}/log` | 提交历史（query: limit, skip） |
+| GET | `/api/v1.0/git/repositories/{id}/diff` | 文件 diff（query: path, staged, ref） |
+| POST | `/api/v1.0/git/repositories/{id}/revert` | 反向提交 |
+| POST | `/api/v1.0/git/repositories/{id}/resolve` | 标记冲突已解决 + 继续 |
+| POST | `/api/v1.0/git/repositories/{id}/stage` | 仅暂存指定文件 |
+| POST | `/api/v1.0/git/repositories/{id}/unstage` | 仅取消暂存指定文件 |
+| POST | `/api/v1.0/git/repositories/{id}/restore` | 从 HEAD（或指定提交）还原指定文件 |
+| POST | `/api/v1.0/git/repositories/{id}/reset` | 安全重置到提交（仅 `--soft` / `--mixed`） |
 
 `Program.cs` 注册：`app.MapGitEndpoints()`。
 
@@ -329,7 +329,7 @@ GitClientViewModel
 
 ```text
 StartAsync
-    ├── GET /api/v1/git/repositories (JWT) → Repositories
+    ├── GET /api/v1.0/git/repositories (JWT) → Repositories
     ├── SelectedRepository = Repositories.FirstOrDefault()
     └── RefreshAllAsync (Interlocked 重入保护)
           ├── GET status      → Status (StagedFiles/UnstagedFiles/UntrackedFiles/ConflictFiles)
@@ -346,7 +346,7 @@ DispatcherTimer (10s tick) → RefreshStatusAsync (仅 status，轻量)
     ↓
 ShowCommitDialogAsync → GitCommitRequest(message, paths, amend)
     ↓
-POST /api/v1/git/repositories/{id}/commit (JWT)
+POST /api/v1.0/git/repositories/{id}/commit (JWT)
     ↓
 GitOperationResult
     ├── Success=true      → StatusText="已提交"；RefreshStatusAsync
@@ -360,7 +360,7 @@ GitOperationResult
     ↓
 ShowPullDialogAsync → GitPullRequest(strategy)
     ↓
-POST /api/v1/git/repositories/{id}/pull (JWT)
+POST /api/v1.0/git/repositories/{id}/pull (JWT)
     ↓
 GitOperationResult
     ├── Success=true                              → StatusText="已拉取"；RefreshAllAsync
@@ -378,7 +378,7 @@ GitOperationResult
 ```text
 用户在分支页选中分支 → 点「切换」
     ↓
-POST /api/v1/git/repositories/{id}/checkout (JWT, branch)
+POST /api/v1.0/git/repositories/{id}/checkout (JWT, branch)
     ↓
 GitOperationResult
     ├── Success=true            → StatusText="已切换到 {branch}"；RefreshAllAsync
@@ -392,7 +392,7 @@ GitOperationResult
     ↓
 ShowConfirmAsync("将创建反向提交，撤销 {shortSha} 的变更？")
     ↓
-POST /api/v1/git/repositories/{id}/revert (JWT, sha)
+POST /api/v1.0/git/repositories/{id}/revert (JWT, sha)
     ↓
 GitOperationResult
     ├── Success=true                → StatusText="已 Revert"；RefreshAllAsync

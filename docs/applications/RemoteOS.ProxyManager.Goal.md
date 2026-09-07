@@ -37,7 +37,7 @@ Phase 0 结论是：仓库还不存在 Proxy API、服务、Mihomo Controller Cl
 
 | 关注点 | 既有模式 / 首选落点 | 本模块要求 |
 |---|---|---|
-| 协议与路由 | `Shared/RemoteOS.Protocol`、`/api/v1`、按模块 DTO/route constants | 添加 `Proxy/` 合约；端点使用 `/api/v1/proxy`，不在 Client 或 Endpoint 重复路由。 |
+| 协议与路由 | `Shared/RemoteOS.Protocol`、`/api/v1.0`、按模块 DTO/route constants | 添加 `Proxy/` 合约；端点使用 `/api/v1.0/proxy`，不在 Client 或 Endpoint 重复路由。 |
 | Server API | `RemoteOS.Server/Endpoints`、`Map*Endpoints`、JWT、角色 policy | 添加 `MapProxyEndpoints`；读、管理、Runtime、TUN、恢复操作均有明确 Server policy。 |
 | 长操作 | Web Server operation store / host operation journal | 复用或有意识地提取其幂等、阶段、取消、持久化、锁和中断恢复语义；额外实现全局 TUN lock 与 recovery marker。 |
 | 秘密与审计 | `ISecretStore` / Data Protection、Tunnel audit | 新建 Proxy 专用 secret purpose/entity 和审计；不复用 Tunnel secret 实体，任何安全 DTO 仅暴露 `*Configured`。 |
@@ -159,7 +159,7 @@ Controller secret、订阅 URL token/认证头、代理凭据、UUID、WireGuard
 
 ### Goal 6：API、授权、操作与审计
 
-**工作**：在 `Program.cs` 注册服务并添加 `/api/v1/proxy` Endpoint family，覆盖 Overview、Runtime、Lifecycle、TUN、Profiles、Groups、Connections、Logs、DNS 与 Recovery。Runtime/TUN/recovery mutation 必须要求 Idempotency-Key，立即返回持久 Operation ID，并沿用现有 operation 语义提供阶段/进度/取消/中断恢复。应用 authenticated + 逐操作 policy；记录无秘密审计。
+**工作**：在 `Program.cs` 注册服务并添加 `/api/v1.0/proxy` Endpoint family，覆盖 Overview、Runtime、Lifecycle、TUN、Profiles、Groups、Connections、Logs、DNS 与 Recovery。Runtime/TUN/recovery mutation 必须要求 Idempotency-Key，立即返回持久 Operation ID，并沿用现有 operation 语义提供阶段/进度/取消/中断恢复。应用 authenticated + 逐操作 policy；记录无秘密审计。
 
 **验收**：未授权/只读/危险操作权限不足均有稳定安全的响应；相同 Idempotency-Key 不执行两次网络或 Runtime 变更；操作重启后可恢复或明确中断；所有危险 Endpoint 仅接受结构化数据；API 响应、审计、日志和 problem detail 均通过秘密扫描/序列化测试。
 

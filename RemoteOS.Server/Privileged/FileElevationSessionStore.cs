@@ -4,19 +4,9 @@ using RemoteOS.Protocol.Privileged;
 
 namespace Server.Privileged;
 
-/// <summary>Explorer compatibility facade over the capability-scoped host elevation store.</summary>
+/// <summary>Maps Explorer elevation capabilities to the capability-scoped host elevation store.</summary>
 public sealed class FileElevationSessionStore(IHostElevationSessionStore elevations) : IFileElevationSessionStore
 {
-    // Retained only for older callers. Endpoint code must use an explicit operation capability.
-    private const HostElevationCapability LegacyCapability = HostElevationCapability.FileWrite;
-
-    public FileElevationSessionStore() : this(new HostElevationSessionStore()) { }
-
-    public bool IsElevated(ClaimsPrincipal principal, string path) => elevations.IsGranted(principal, LegacyCapability, path);
-    public bool IsElevated(ClaimsPrincipal principal, params string[] paths) => paths.All(path => IsElevated(principal, path));
-    public DateTimeOffset Grant(ClaimsPrincipal principal, string path, bool includeDescendants = false)
-        => elevations.Grant(principal, LegacyCapability, path, includeDescendants, "legacy-file-elevation");
-
     public bool IsElevated(ClaimsPrincipal principal, FileElevationCapability capability, params string[] paths)
         => paths.All(path => elevations.IsGranted(principal, ToHostCapability(capability), path));
 

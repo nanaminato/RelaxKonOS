@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using RemoteOS.Core.Applications;
 using RemoteOS.Core.Primitives;
 using RemoteOS.Core.Windows;
@@ -8,19 +9,11 @@ namespace RemoteOS.Shell;
 /// <summary>Versioned, deliberately small contract shared by the client and desktop-shell packages.</summary>
 public static class ShellApi
 {
-    public const int Version = 1;
+    public const string Version = "1.0";
     public const string DefaultShellId = "remoteos.windows-like";
-    public static readonly IReadOnlyDictionary<string, string> LegacyIds = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        ["remoteos"] = DefaultShellId,
-        ["remoteos.default"] = DefaultShellId,
-        ["windows-like"] = "remoteos.windows-like",
-        ["macos-like"] = "remoteos.macos-like",
-        ["ubuntu-like"] = "remoteos.ubuntu-like",
-    };
 
-    public static string NormalizeId(string? id) => string.IsNullOrWhiteSpace(id)
-        ? DefaultShellId : LegacyIds.TryGetValue(id.Trim(), out var normalized) ? normalized : id.Trim();
+    /// <summary>Returns an explicit shell identifier, using the current built-in default only when no selection exists.</summary>
+    public static string ResolveId(string? id) => string.IsNullOrWhiteSpace(id) ? DefaultShellId : id.Trim();
 }
 
 public enum ShellSourceKind { BuiltIn, ExternalPackage }
@@ -72,10 +65,69 @@ public sealed record ShellPresentationContext(ShellStateStore State, IShellActio
 public sealed class ShellStateStore
 {
     private object? _snapshot;
+    private ShellDesktopState? _desktop;
     public object? Snapshot => _snapshot;
+    /// <summary>
+    /// A package-safe projection of the current desktop.  Unlike <see cref="Snapshot"/>, this
+    /// never exposes client implementation types to external shell packages.
+    /// </summary>
+    public ShellDesktopState? Desktop => _desktop;
     public event EventHandler? Changed;
-    public void Publish(object? snapshot) { _snapshot = snapshot; Changed?.Invoke(this, EventArgs.Empty); }
+    public void Publish(object? snapshot, ShellDesktopState? desktop = null)
+    {
+        _snapshot = snapshot;
+        _desktop = desktop;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Publishes a refreshed package-safe desktop projection without replacing host state.</summary>
+    public void PublishDesktop(ShellDesktopState desktop)
+    {
+        _desktop = desktop;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 }
+
+/// <summary>Read-only desktop data made available to external shell packages.</summary>
+public sealed record ShellDesktopState(
+    IReadOnlyList<ShellApplicationEntry> Applications,
+    IReadOnlyList<ShellDesktopEntry> DesktopEntries,
+    bool AreDesktopIconsVisible,
+    IReadOnlyList<ShellDesktopStyleEntry>? DesktopStyles = null,
+    /// <summary>
+    /// The host-owned brush for the active workspace wallpaper. External shells render this
+    /// value as-is so built-in presets and downloaded custom images stay consistent whenever
+    /// the user changes the desktop style.
+    /// </summary>
+    IBrush? Wallpaper = null,
+    /// <summary>
+    /// Theme-resolved foreground used for desktop item labels by built-in shells. External
+    /// shells may use their own presentation, but receive this value to remain theme-consistent.
+    /// </summary>
+    IBrush? DesktopItemLabelForeground = null);
+
+/// <summary>A launchable application in an external shell's Start menu or application list.</summary>
+public sealed record ShellApplicationEntry(AppId Id, string DisplayName, string? IconGlyph, string? Description);
+
+public enum ShellDesktopEntryKind { Application, File, Folder, Shortcut }
+
+/// <summary>A selectable item on the authenticated user's desktop.</summary>
+public sealed record ShellDesktopEntry(
+    string Id,
+    string DisplayName,
+    ShellDesktopEntryKind Kind,
+    string? IconGlyph,
+    AppId? ApplicationId = null,
+    bool IsSelected = false,
+    /// <summary>Host-loaded application artwork. Use this in preference to <see cref="IconGlyph"/>.</summary>
+    IImage? IconImage = null)
+{
+    /// <summary>Whether the entry has application artwork that should replace its glyph fallback.</summary>
+    public bool HasIconImage => IconImage is not null;
+}
+
+/// <summary>An installed external desktop style that can be selected from another shell.</summary>
+public sealed record ShellDesktopStyleEntry(string Id, string DisplayName, string Version);
 
 public enum SettingsRoute { Root, Personalization }
 public enum DesktopEntryAction { Open, OpenWith, Copy, Cut, Paste, Delete, ShowInExplorer, Properties }
@@ -83,16 +135,22 @@ public enum DesktopEntryAction { Open, OpenWith, Copy, Cut, Paste, Delete, ShowI
 public interface IShellActions
 {
     Task LaunchAsync(AppId appId, CancellationToken cancellationToken = default);
+    Task ActivateDesktopStyleAsync(string shellId, CancellationToken cancellationToken = default);
     Task OpenDesktopEntryAsync(string entryId, CancellationToken cancellationToken = default);
     Task RefreshDesktopAsync(CancellationToken cancellationToken = default);
+    Task PasteDesktopAsync(CancellationToken cancellationToken = default);
     void ClearDesktopSelection();
     void SelectDesktopEntry(string entryId);
+    void SetDesktopIconsVisible(bool visible);
     void ShowDesktop();
     void ToggleWindowGroup(AppId appId);
     void ActivateWindow(WindowId windowId);
     void MinimizeWindow(WindowId windowId);
     void CloseWindow(WindowId windowId);
     void OpenSettings(SettingsRoute route);
+    void OpenDesktopFolder();
+    void OpenFileExplorer();
+    void OpenTerminal();
     Task ExecuteDesktopEntryActionAsync(string entryId, DesktopEntryAction action, CancellationToken cancellationToken = default);
 }
 
@@ -104,8 +162,23 @@ public interface IShellOverlayService
 
 public interface ILocalizationSnapshot
 {
+    /// <summary>Current BCP-47 language selected for the RemoteOS workspace.</summary>
     string Language { get; }
+
+    /// <summary>
+    /// Resolves a host-owned string. External shells should use this only for host terminology;
+    /// package UI strings must come from language files shipped by the package.
+    /// </summary>
     string Get(string key, string fallback);
+
+    /// <summary>Raised after the workspace language changes.</summary>
+    event EventHandler<ShellLanguageChangedEventArgs>? LanguageChanged;
+}
+
+public sealed class ShellLanguageChangedEventArgs(string previousLanguage, string currentLanguage) : EventArgs
+{
+    public string PreviousLanguage { get; } = previousLanguage;
+    public string CurrentLanguage { get; } = currentLanguage;
 }
 
 public interface IShellSurfaceRegistry

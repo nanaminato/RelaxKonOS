@@ -422,8 +422,9 @@ public sealed class ExternalAppContextFactory
 
             try
             {
-                var metrics = await systemMonitor.GetMetricsAsync(cancellationToken);
-                return new ServerMetricsResult(AppCapabilityResult.Succeeded, ToSnapshot(metrics));
+                var info = await systemMonitor.GetPerformanceInfoAsync(cancellationToken);
+                var snapshot = await systemMonitor.GetPerformanceSnapshotAsync(cancellationToken);
+                return new ServerMetricsResult(AppCapabilityResult.Succeeded, ToSnapshot(info, snapshot));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -447,19 +448,27 @@ public sealed class ExternalAppContextFactory
             }
         }
 
-        private static ServerMetricsSnapshot ToSnapshot(SystemMetricsDto metrics) => new(
-            metrics.Timestamp,
-            metrics.Cpu.TotalPercent,
-            metrics.Cpu.CoreCount,
-            metrics.Cpu.PerCorePercent,
-            metrics.Memory.TotalBytes,
-            metrics.Memory.UsedBytes,
-            metrics.Memory.AvailableBytes,
-            metrics.Memory.Percent,
-            metrics.Disks.Select(disk => new ServerDiskMetric(disk.Name, disk.TotalBytes, disk.UsedBytes, disk.FreeBytes, disk.Percent)).ToArray(),
-            metrics.Networks.Select(network => new ServerNetworkMetric(network.Name, network.SendRateBytesPerSec, network.ReceiveRateBytesPerSec)).ToArray(),
-            metrics.Gpus.Select(gpu => new ServerGpuMetric(gpu.Name, gpu.UsagePercent, gpu.MemoryTotalBytes, gpu.MemoryUsedBytes, gpu.TemperatureCelsius)).ToArray(),
-            metrics.UptimeSeconds);
+        private static ServerMetricsSnapshot ToSnapshot(PerformanceInfoDto info, PerformanceRealtimeSnapshotDto snapshot)
+        {
+            var filesystemNames = info.Filesystems.ToDictionary(filesystem => filesystem.Id, filesystem => filesystem.Name, StringComparer.Ordinal);
+            var networkNames = info.Networks.ToDictionary(network => network.Id, network => network.Name, StringComparer.Ordinal);
+            return new ServerMetricsSnapshot(
+                snapshot.Timestamp,
+                snapshot.Cpu.TotalPercent,
+                info.Cpu.LogicalProcessorCount,
+                snapshot.Cpu.PerLogicalCpuPercent,
+                snapshot.Memory.TotalBytes,
+                snapshot.Memory.UsedBytes,
+                snapshot.Memory.AvailableBytes,
+                snapshot.Memory.TotalBytes == 0 ? 0 : snapshot.Memory.UsedBytes * 100d / snapshot.Memory.TotalBytes,
+                snapshot.Filesystems.Select(filesystem => new ServerDiskMetric(
+                    filesystemNames.GetValueOrDefault(filesystem.Id, filesystem.Id), filesystem.TotalBytes, filesystem.UsedBytes,
+                    filesystem.AvailableBytes, filesystem.Percent)).ToArray(),
+                snapshot.Networks.Select(network => new ServerNetworkMetric(
+                    networkNames.GetValueOrDefault(network.Id, network.Id), network.SendBytesPerSecond, network.ReceiveBytesPerSecond)).ToArray(),
+                [],
+                snapshot.UptimeSeconds);
+        }
     }
 
     private sealed class ServerFilesCapability(

@@ -2,7 +2,7 @@ using RemoteOS.Protocol.Common;
 
 namespace RemoteOS.Protocol.Identity;
 
-/// <summary>认证相关 REST 端点路由常量。路径已含 /api/v1 前缀。Server 注册路由与 Client 拼接 URL 共用。</summary>
+/// <summary>认证相关 REST 端点路由常量。路径已含 /api/v1.0 前缀。Server 注册路由与 Client 拼接 URL 共用。</summary>
 public static class AuthApiRoutes
 {
     private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;

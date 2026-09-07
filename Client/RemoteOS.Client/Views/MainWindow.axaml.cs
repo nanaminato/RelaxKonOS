@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private double _connectionBarOffset;
     private WindowState _windowStateBeforeFullScreen = WindowState.Maximized;
     private readonly LocalizationService _localization;
+    private int _desktopLoadGeneration;
 
     public MainWindow()
     {
@@ -39,12 +40,20 @@ public partial class MainWindow : Window
 
     private async Task AttachShellAsync()
     {
-        if (DataContext is DesktopShellViewModel shell)
-        {
-            shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
-            shell.IsHostFullScreen = _isFullScreen;
-            await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell);
-        }
+        if (DataContext is not DesktopShellViewModel shell) return;
+
+        var generation = ++_desktopLoadGeneration;
+        var started = DateTime.UtcNow;
+        DesktopLoadingOverlay.IsVisible = true;
+        shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
+        shell.IsHostFullScreen = _isFullScreen;
+        await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell);
+
+        // A tiny minimum keeps a cached shell from flashing a blank frame between Login and Desktop.
+        var remaining = TimeSpan.FromMilliseconds(420) - (DateTime.UtcNow - started);
+        if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
+        if (generation == _desktopLoadGeneration)
+            DesktopLoadingOverlay.IsVisible = false;
     }
 
     private void ConnectionInfo_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

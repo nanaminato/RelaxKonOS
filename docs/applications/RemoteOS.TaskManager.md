@@ -1,6 +1,6 @@
 # RemoteOS TaskManager 模块设计
 
-> **迁移状态（2026-08-24）**：本文以下内容描述第一代 REST 轮询实现与兼容契约。新的目标架构、当前迁移进度和可执行 Goal 见 [`RemoteOS.TaskManager.Rewrite.md`](./RemoteOS.TaskManager.Rewrite.md)：性能页已迁移为“Server 统一采样 + 内存历史 + SignalR 推送”，进程页使用独立低频采样与分页查询。旧 `/api/v1/system/metrics` / `/processes` 仅为兼容保留，禁止在新性能页继续使用。
+> **迁移状态（2026-08-24）**：本文以下内容描述第一代 REST 轮询实现。当前架构见 [`RemoteOS.TaskManager.Rewrite.md`](./RemoteOS.TaskManager.Rewrite.md)：性能页使用“Server 统一采样 + 内存历史 + SignalR 推送”，进程页使用独立低频采样与分页查询。旧 `/api/v1.0/system/metrics` 与非分页 `/processes` 已删除。
 
 > 内置任务管理器：参考 Windows 任务管理器 / GNOME 系统监视器，两个标签页（性能 / 进程）。性能页实时展示 CPU / 内存 / 磁盘 / 网络 / GPU 占用与历史柱状图；进程页列出当前可见进程，可结束任务（权限不足提示需在宿主 OS 提权）。数据经 Server REST API 拉取，服务端以宿主 OS 进程身份采集（复用宿主用户/权限，不另建 ACL）。
 >
@@ -27,8 +27,8 @@ TaskManager 是 RemoteOS 的内置系统监控应用，参考 Windows 任务管�
 
 | 标签页 | 能力 | 数据源 |
 |--------|------|--------|
-| 性能 | CPU（整机 + 每核 + 60 采样柱状图）/ 内存（占用 + 柱状图）/ 磁盘（每盘已用·总计·占比）/ 网络（每接口上下行速率）/ GPU（nvidia-smi）/ 运行时间 | `GET /api/v1/system/metrics` |
-| 进程 | 当前可见进程列表（名称 / PID / CPU% / 内存 / 用户 / 线程），按名称/PID/用户过滤，选中后「结束任务」 | `GET /api/v1/system/processes` + `DELETE /api/v1/system/processes/{id}` |
+| 性能 | CPU（整机 + 每核 + 60 采样柱状图）/ 内存（占用 + 柱状图）/ 磁盘（每盘已用·总计·占比）/ 网络（每接口上下行速率）/ GPU（nvidia-smi）/ 运行时间 | `GET /api/v1.0/system/performance/info` + snapshot/history + SignalR |
+| 进程 | 当前可见进程列表（名称 / PID / CPU% / 内存 / 用户 / 线程），按名称/PID/用户过滤，选中后「结束任务」 | `GET /api/v1.0/system/processes/query` + `DELETE /api/v1.0/system/processes/{id}` |
 
 ---
 
@@ -58,12 +58,13 @@ TaskManagerApp (RemoteApplicationBase)
 
 ### 3.1 路由（`SystemMonitorApiRoutes.cs`）
 
-路径含 `/api/v1` 前缀，Server 注册路由与 Client 拼接 URL 共用：
+路径含 `/api/v1.0` 前缀，Server 注册路由与 Client 拼接 URL 共用：
 
 ```text
-Metrics      = /api/v1/system/metrics              (GET)
-Processes    = /api/v1/system/processes            (GET)
-ProcessKill  = /api/v1/system/processes/{id}       (DELETE, query: force)
+PerformanceInfo     = /api/v1.0/system/performance/info       (GET)
+PerformanceSnapshot = /api/v1.0/system/performance/snapshot   (GET)
+ProcessQuery        = /api/v1.0/system/processes/query        (GET)
+ProcessKill  = /api/v1.0/system/processes/{id}       (DELETE, query: force)
 ```
 
 ### 3.2 DTO
@@ -178,13 +179,15 @@ KillProcessAsync(processId, force)
 
 ### 4.5 REST 端点（`Server.Endpoints/SystemMonitorEndpoints.cs`）
 
-3 个端点，全 `RequireAuthorization()`，错误统一 RFC 7807（与 Browser/Files 端点同风格）：
+5 个端点，全 `RequireAuthorization()`，错误统一 RFC 7807（与 Browser/Files 端点同风格）：
 
 | Method | Route | 用途 |
 |--------|-------|------|
-| GET | `/api/v1/system/metrics` | 整机资源占用快照（直接返回 `provider.GetMetricsAsync`） |
-| GET | `/api/v1/system/processes` | 当前可见进程列表（含每进程 CPU% / 内存 / 属主） |
-| DELETE | `/api/v1/system/processes/{id}?force=` | 结束进程（`force` 可选，默认 false；返回 `KillProcessResultDto`） |
+| GET | `/api/v1.0/system/performance/info` | 低频性能信息与能力 |
+| GET | `/api/v1.0/system/performance/snapshot` | 最近有效实时性能快照 |
+| GET | `/api/v1.0/system/performance/history?seconds=` | 最近 60 秒性能历史 |
+| GET | `/api/v1.0/system/processes/query` | 分页、过滤与排序的进程查询 |
+| DELETE | `/api/v1.0/system/processes/{id}?force=` | 结束进程（`force` 可选，默认 false；返回 `KillProcessResultDto`） |
 
 `Program.cs` 注册：`app.MapSystemMonitorEndpoints()`。
 
@@ -277,7 +280,7 @@ RefreshAsync (Interlocked 重入保护)
 DispatcherTimer (2s tick) 或 用户点「⟳ 刷新」
     ↓
 RefreshAsync (Interlocked 重入保护)
-    ├── 并行：GET /api/v1/system/metrics  +  GET /api/v1/system/processes (JWT)
+    ├── 并行：GET /api/v1.0/system/metrics  +  GET /api/v1.0/system/processes (JWT)
     │
     ├── 性能页更新
     │     ├── Metrics = {Cpu, Memory, Disks, Networks, Gpus, Uptime}
@@ -296,7 +299,7 @@ RefreshAsync (Interlocked 重入保护)
     ↓
 KillProcessCommand (CanExecute = SelectedProcess != null)
     ↓
-DELETE /api/v1/system/processes/{id}?force=false (JWT)
+DELETE /api/v1.0/system/processes/{id}?force=false (JWT)
     ↓
 KillProcessResultDto
     ├── Success=true      → KillFeedback="已结束进程..."，SelectedProcess=null

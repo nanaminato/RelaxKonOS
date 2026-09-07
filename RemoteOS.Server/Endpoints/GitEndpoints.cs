@@ -12,7 +12,7 @@ public static class GitEndpoints
 
     public static IEndpointRouteBuilder MapGitEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/git").RequireAuthorization().WithTags("Git");
+        var group = app.MapGroup($"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/git").RequireAuthorization().WithTags("Git");
 
         // ── Host Git engine probe & install (host-level, user-agnostic) ──
         group.MapGet("/engine/status", (Server.Git.IGitRepositoryService service, CancellationToken ct) =>

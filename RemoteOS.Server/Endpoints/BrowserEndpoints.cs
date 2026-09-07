@@ -49,7 +49,7 @@ public static class BrowserEndpoints
             if (string.IsNullOrWhiteSpace(req.Url))
                 return Problem(400, "invalid-input", "输入无效", "url 不能为空");
             var bm = repo.UpsertBookmark(GetUserId(principal), req.Title, req.Url);
-            return Results.Created($"/api/v1/browser/bookmarks/{bm.Id}", bm.ToDto());
+            return Results.Created($"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/browser/bookmarks/{bm.Id}", bm.ToDto());
         })
         .RequireAuthorization()
         .WithTags("Browser");
@@ -92,7 +92,7 @@ public static class BrowserEndpoints
             if (string.IsNullOrWhiteSpace(req.Url))
                 return Problem(400, "invalid-input", "输入无效", "url 不能为空");
             var h = repo.UpsertHistory(GetUserId(principal), req.Title, req.Url);
-            return Results.Created($"/api/v1/browser/history/{h.Id}", h.ToDto());
+            return Results.Created($"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/browser/history/{h.Id}", h.ToDto());
         })
         .RequireAuthorization()
         .WithTags("Browser");

@@ -31,7 +31,7 @@ public sealed class DeveloperModeService
         get { lock (_gate) return _state.PairingToken; }
     }
 
-    public string Endpoint => $"http://127.0.0.1:{BridgePort}/api/developer/v1/";
+    public string Endpoint => $"http://127.0.0.1:{BridgePort}/api/developer/v1.0/";
 
     public void SetEnabled(bool enabled)
     {

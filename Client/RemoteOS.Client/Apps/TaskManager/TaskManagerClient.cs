@@ -22,9 +22,6 @@ public sealed class TaskManagerClient : ITaskManagerClient
         _session = session;
     }
 
-    public Task<SystemMetricsDto> GetMetricsAsync(CancellationToken ct = default)
-        => SendAsync<SystemMetricsDto>(HttpMethod.Get, SystemMonitorApiRoutes.Metrics, ct: ct);
-
     public Task<PerformanceInfoDto> GetPerformanceInfoAsync(CancellationToken ct = default)
         => SendAsync<PerformanceInfoDto>(HttpMethod.Get, SystemMonitorApiRoutes.PerformanceInfo, ct: ct);
 
@@ -37,9 +34,6 @@ public sealed class TaskManagerClient : ITaskManagerClient
 
     public Task<IReadOnlyList<NetworkAddressDto>> GetNetworkAddressesAsync(CancellationToken ct = default)
         => SendAsync<IReadOnlyList<NetworkAddressDto>>(HttpMethod.Get, SystemMonitorApiRoutes.NetworkAddresses, ct: ct);
-
-    public Task<IReadOnlyList<ProcessInfoDto>> ListProcessesAsync(CancellationToken ct = default)
-        => SendAsync<IReadOnlyList<ProcessInfoDto>>(HttpMethod.Get, SystemMonitorApiRoutes.Processes, ct: ct);
 
     public Task<ProcessPageDto> QueryProcessesAsync(int page = 1, int pageSize = 100, string? filter = null,
         string? sort = null, bool descending = true, CancellationToken ct = default)

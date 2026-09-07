@@ -30,11 +30,11 @@ RemoteBrowser 只负责网页导航、展示以及书签、历史和主页等浏
 
 | Method | Route | 用途 |
 | --- | --- | --- |
-| GET / PUT | `/api/v1/browser/settings` | 读取或保存 `BrowserSettings` |
-| GET / POST / DELETE | `/api/v1/browser/bookmarks` | 管理当前用户书签 |
-| DELETE | `/api/v1/browser/bookmarks/{id}` | 删除单个书签 |
-| GET / POST / DELETE | `/api/v1/browser/history` | 管理当前用户历史 |
-| DELETE | `/api/v1/browser/history/{id}` | 删除单条历史 |
+| GET / PUT | `/api/v1.0/browser/settings` | 读取或保存 `BrowserSettings` |
+| GET / POST / DELETE | `/api/v1.0/browser/bookmarks` | 管理当前用户书签 |
+| DELETE | `/api/v1.0/browser/bookmarks/{id}` | 删除单个书签 |
+| GET / POST / DELETE | `/api/v1.0/browser/history` | 管理当前用户历史 |
+| DELETE | `/api/v1.0/browser/history/{id}` | 删除单条历史 |
 
 `BrowserSettingsDto` 包含 `HomePage` 和 `LinkOpenTarget`，作为 Workspace 的 `browser_settings` JSON 列持久化。旧数据中已废弃的转发字段会由 JSON 反序列化忽略，不会影响升级。
 

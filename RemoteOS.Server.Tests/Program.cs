@@ -112,7 +112,7 @@ static void VerifyWorkspacePreferencesJsonContract()
     Assert(deserialized.DefaultApps.SequenceEqual(preferences.DefaultApps), "Default app mappings changed during JSON deserialization.");
     Assert(deserialized.Shell?.ShellId == "remoteos.windows-like", "Default Windows shell selection changed during JSON deserialization.");
 
-    var external = preferences with { ShellId = "com.example.neon-desktop", Shell = new ShellSelectionDto("com.example.neon-desktop", "com.example.neon", "1.0.0") };
+    var external = preferences with { Shell = new ShellSelectionDto("com.example.neon-desktop", "com.example.neon", "1.0.0") };
     var externalRoundTrip = JsonSerializer.Deserialize<WorkspacePreferencesDto>(
         JsonSerializer.Serialize(external, RemoteOS.Protocol.Common.RemoteOsJsonOptions.Default), RemoteOS.Protocol.Common.RemoteOsJsonOptions.Default)
         ?? throw new InvalidOperationException("Structured shell selection did not deserialize.");
@@ -127,18 +127,18 @@ static void VerifyFileElevationSessionScope(string root)
     var sibling = Path.Combine(root, "unrelated", "file.txt");
     var principal = Principal("jwt-one");
     var otherPrincipal = Principal("jwt-two");
-    var store = new FileElevationSessionStore();
+    var store = new FileElevationSessionStore(new HostElevationSessionStore());
 
-    var expiry = store.Grant(principal, directory, includeDescendants: true);
+    var expiry = store.Grant(principal, FileElevationCapability.Write, directory, includeDescendants: true);
     Assert(expiry > DateTimeOffset.UtcNow.AddMinutes(4), "File elevation grant did not retain the five-minute lifetime.");
-    Assert(store.IsElevated(principal, directory, nestedFile), "A directory elevation grant did not cover a nested mutation target.");
-    Assert(!store.IsElevated(principal, sibling), "A directory elevation grant leaked to a sibling path.");
-    Assert(!store.IsElevated(otherPrincipal, nestedFile), "A directory elevation grant leaked to a different JWT.");
+    Assert(store.IsElevated(principal, FileElevationCapability.Write, directory, nestedFile), "A directory elevation grant did not cover a nested mutation target.");
+    Assert(!store.IsElevated(principal, FileElevationCapability.Write, sibling), "A directory elevation grant leaked to a sibling path.");
+    Assert(!store.IsElevated(otherPrincipal, FileElevationCapability.Write, nestedFile), "A directory elevation grant leaked to a different JWT.");
 
     var exactFile = Path.Combine(root, "exact", "file.txt");
-    store.Grant(principal, exactFile);
-    Assert(store.IsElevated(principal, exactFile), "An exact file elevation grant was not recognized.");
-    Assert(!store.IsElevated(principal, Path.Combine(exactFile, "child")), "An exact file elevation grant unexpectedly covered descendants.");
+    store.Grant(principal, FileElevationCapability.Write, exactFile);
+    Assert(store.IsElevated(principal, FileElevationCapability.Write, exactFile), "An exact file elevation grant was not recognized.");
+    Assert(!store.IsElevated(principal, FileElevationCapability.Write, Path.Combine(exactFile, "child")), "An exact file elevation grant unexpectedly covered descendants.");
 
     var request = new RemoteOS.Protocol.Files.FileElevationRequest(directory, "password", [Path.Combine(root, "second")], IncludeDescendants: true);
     var json = JsonSerializer.Serialize(request, RemoteOS.Protocol.Common.RemoteOsJsonOptions.Default);
@@ -397,15 +397,15 @@ static async Task VerifyCertificateStoreAndSniAsync(string root)
 
 static void VerifyCertificateApiRoutes()
 {
-    Assert(CertificateApiRoutes.Certificates == "/api/v1/certificates", "Certificate collection route changed unexpectedly.");
+    Assert(CertificateApiRoutes.Certificates == "/api/v1.0/certificates", "Certificate collection route changed unexpectedly.");
     Assert(CertificateApiRoutes.Request == CertificateApiRoutes.Certificates, "Certificate request route must use the collection endpoint.");
-    Assert(CertificateApiRoutes.SelfSigned == "/api/v1/certificates/self-signed", "Self-signed certificate route changed unexpectedly.");
+    Assert(CertificateApiRoutes.SelfSigned == "/api/v1.0/certificates/self-signed", "Self-signed certificate route changed unexpectedly.");
     Assert(CertificateApiRoutes.CollectionPattern.Length == 0, "Certificate collection pattern must remain group-relative.");
 }
 
 static void VerifyTunnelProtocolContract()
 {
-    Assert(TunnelApiRoutes.Tunnels == "/api/v1/tunnels", "Tunnel API base route changed unexpectedly.");
+    Assert(TunnelApiRoutes.Tunnels == "/api/v1.0/tunnels", "Tunnel API base route changed unexpectedly.");
     var profile = new TunnelServerProfileDto(Guid.NewGuid(), "edge", "frps.example.test", 7000,
         TunnelAuthKind.Token, true, TunnelTlsMode.Default, TunnelRuntimeMode.External, "/opt/frp/frpc", 3,
         DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
@@ -420,7 +420,7 @@ static void VerifyTunnelProtocolContract()
 
 static void VerifyProxyProtocolContract()
 {
-    Assert(ProxyApiRoutes.Proxy == "/api/v1/proxy" && ProxyApiRoutes.ProfilePattern.StartsWith("/profiles/", StringComparison.Ordinal),
+    Assert(ProxyApiRoutes.Proxy == "/api/v1.0/proxy" && ProxyApiRoutes.ProfilePattern.StartsWith("/profiles/", StringComparison.Ordinal),
         "Proxy routes must keep one versioned public base and group-relative patterns.");
     Assert(ProxyApiRoutes.RuntimeInstallFromFile == ProxyApiRoutes.Runtime + "/install/from-file", "Proxy server-file runtime install route changed unexpectedly.");
     Assert(ProxyApiRoutes.Traffic == ProxyApiRoutes.Proxy + "/traffic", "Proxy traffic route changed unexpectedly.");
