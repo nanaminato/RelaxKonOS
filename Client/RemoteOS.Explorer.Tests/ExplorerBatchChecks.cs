@@ -110,6 +110,25 @@ public static class ExplorerBatchChecks
         check(clipboard.Entries.Count == 3 && clipboard.Operation == RemoteFileClipboardOperation.Copy, "Successful copy leaves reusable clipboard intact");
         fake.Reset();
         check(!vm.CanTransferEntriesToDirectory(files, "/source"), "Drop into current parent is rejected");
+        check(vm.CanTransferEntriesToDirectory(files, "/source", copy: true), "Same-directory copy is accepted");
+        var occupied = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "A (2).TXT" };
+        check(ExplorerPath.ReserveCopyName("a.txt", false, occupied) == "a (3).txt",
+            "Windows sibling names skip case-insensitive collisions");
+        check(ExplorerPath.ReserveCopyName("a.txt", false, occupied) == "a (4).txt",
+            "Generated names are reserved for subsequent batch entries");
+        check(ExplorerPath.ReserveCopyName(".env", false, occupied) == ".env (2)", "Dotfiles keep their complete name");
+        check(ExplorerPath.ReserveCopyName("folder.ext", true, occupied) == "folder.ext (2)", "Folder dots are not extensions");
+        fake.DirectoryEntries = [FileEntry("/source/a (2).txt", FileSystemEntryType.Directory)];
+        result = await vm.TransferEntriesToDirectoryAsync(files, "/source", copy: true);
+        check(result is { Completed.Count: 3 } && fake.Calls[0].Destination == "/source/a (3).txt"
+            && fake.Calls[1].Destination == "/source/b (2).txt" && fake.Calls.All(c => !c.Overwrite),
+            "Same-directory copy uses remote occupied names and preserves extensions without overwrite");
+        fake.Reset();
+        fake.FailRefresh = true;
+        result = await vm.TransferEntriesToDirectoryAsync(files, "/source", copy: true);
+        check(result is { Failures.Count: 3 } && fake.Calls.Count == 0 && !vm.IsBusy,
+            "Failed destination listing prevents copy mutation and releases busy state");
+        fake.Reset();
         check(!vm.CanTransferEntriesToDirectory([files[0], FileEntry("/other/a.txt")], "/destination"), "Duplicate destination names reject whole batch before mutation");
         var folder = FileEntry("/source/folder", FileSystemEntryType.Directory);
         check(!vm.CanTransferEntriesToDirectory([folder, files[0]], "/source/folder/child"), "One invalid descendant target rejects whole mixed batch");
@@ -150,13 +169,14 @@ public class BatchClientFake : DispatchProxy
     public Func<string, Task>? BeforeMutation { get; set; }
     public bool RequireElevation { get; set; }
     public bool FailRefresh { get; set; }
-    public void Reset() { Calls.Clear(); FailPaths.Clear(); BeforeMutation = null; RequireElevation = false; FailRefresh = false; }
+    public IReadOnlyList<FileSystemEntryDto> DirectoryEntries { get; set; } = [];
+    public void Reset() { Calls.Clear(); FailPaths.Clear(); BeforeMutation = null; RequireElevation = false; FailRefresh = false; DirectoryEntries = []; }
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         var path = (string)args![0]!;
         if (method!.Name == nameof(IExplorerClient.GetDirectoryAsync))
             return FailRefresh ? Task.FromException<DirectoryDto>(new IOException("Refresh failed"))
-                : Task.FromResult(ExplorerFake.Directory(path));
+                : Task.FromResult(ExplorerFake.Directory(path) with { Directories = DirectoryEntries });
         if (method.Name is nameof(IExplorerClient.CopyAsync) or nameof(IExplorerClient.MoveAsync) or nameof(IExplorerClient.DeleteAsync))
         {
             Calls.Add(new(method.Name, path, method.Name == nameof(IExplorerClient.DeleteAsync) ? null : (string)args[1]!,

@@ -640,13 +640,16 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             && !ReferenceEquals(parent, entry) && ExplorerPath.IsAncestorOrEqual(parent.Path, entry.Path))).ToArray();
     }
 
-    public bool CanTransferEntriesToDirectory(IReadOnlyList<FileSystemEntryDto> entries, string targetDirectory)
+    public bool CanTransferEntriesToDirectory(IReadOnlyList<FileSystemEntryDto> entries, string targetDirectory, bool copy = false)
     {
         if (IsBusy || IsPickerMode || entries.Count == 0 || string.IsNullOrWhiteSpace(targetDirectory)) return false;
         var destinations = new List<string>();
         foreach (var entry in NormalizeBatchSelection(entries))
         {
-            if (!CanMoveEntryToDirectory(entry, targetDirectory)) return false;
+            var sameDirectoryCopy = copy && CanDragEntry(entry)
+                && ExplorerPath.IsValidName(entry.Name, targetDirectory)
+                && PathEquals(entry.Path, CombineRemotePath(targetDirectory, entry.Name));
+            if (!sameDirectoryCopy && !CanMoveEntryToDirectory(entry, targetDirectory)) return false;
             var destination = CombineRemotePath(targetDirectory, entry.Name);
             if (destinations.Any(path => PathEquals(path, destination))) return false;
             destinations.Add(destination);
@@ -657,16 +660,30 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public async Task<ExplorerBatchResult?> TransferEntriesToDirectoryAsync(
         IReadOnlyList<FileSystemEntryDto> entries, string targetDirectory, bool copy)
     {
-        if (!CanTransferEntriesToDirectory(entries, targetDirectory))
+        if (!CanTransferEntriesToDirectory(entries, targetDirectory, copy))
         {
             StatusText = LocalizedText.Get("explorer.batch.invalid_target");
             return null;
         }
         var snapshot = NormalizeBatchSelection(entries);
-        return await RunBatchAsync(snapshot, copy ? "explorer.copy" : "common.move", entry =>
+        HashSet<string>? reservedNames = null;
+        return await RunBatchAsync(snapshot, copy ? "explorer.copy" : "common.move", async entry =>
         {
             var destination = CombineRemotePath(targetDirectory, entry.Name);
-            return RetryWithOperationElevationAsync(async () =>
+            if (copy && PathEquals(entry.Path, destination))
+            {
+                if (reservedNames is null)
+                {
+                    // Read the complete remote directory, including entries hidden by the current view.
+                    var directory = await _client.GetDirectoryAsync(targetDirectory);
+                    reservedNames = new HashSet<string>(directory.Directories.Select(e => e.Name)
+                        .Concat(directory.Files.Select(e => e.Name)).Concat(snapshot.Select(e => e.Name)),
+                        ExplorerPath.IsWindows(targetDirectory) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+                }
+                destination = CombineRemotePath(targetDirectory, ExplorerPath.ReserveCopyName(
+                    entry.Name, entry.Type == FileSystemEntryType.Directory, reservedNames));
+            }
+            return await RetryWithOperationElevationAsync(async () =>
             {
                 if (copy) await _client.CopyAsync(entry.Path, destination, overwrite: false);
                 else await _client.MoveAsync(entry.Path, destination, overwrite: false);

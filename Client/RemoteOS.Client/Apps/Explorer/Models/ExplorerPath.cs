@@ -62,6 +62,20 @@ public static class ExplorerPath
             && !(stem.Length == 4 && (stem.StartsWith("COM") || stem.StartsWith("LPT")) && stem[3] is >= '1' and <= '9');
     }
 
+    /// <summary>Reserves a numbered sibling name without changing a file's final extension.</summary>
+    public static string ReserveCopyName(string name, bool isDirectory, ISet<string> reservedNames)
+    {
+        var dot = isDirectory ? -1 : name.LastIndexOf('.');
+        // Dotfiles are names, not extension-only files.
+        var extension = dot > 0 ? name[dot..] : string.Empty;
+        var stem = dot > 0 ? name[..dot] : name;
+        for (long number = 2; ; number++)
+        {
+            var candidate = $"{stem} ({number}){extension}";
+            if (reservedNames.Add(candidate)) return candidate;
+        }
+    }
+
     public static string? Parent(string path) => ExplorerBreadcrumb.ParentPath(path);
     public static string Extension(string name)
     {

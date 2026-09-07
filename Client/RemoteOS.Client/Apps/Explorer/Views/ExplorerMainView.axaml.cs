@@ -247,7 +247,7 @@ public partial class ExplorerMainView : UserControl
         return !e.KeyModifiers.HasFlag(KeyModifiers.Alt)
             && !(e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
             && payload is not null && !payload.Source.IsBusy
-            && ViewModel?.CanTransferEntriesToDirectory(payload.Entries, targetDirectory) == true;
+            && ViewModel?.CanTransferEntriesToDirectory(payload.Entries, targetDirectory, DropEffect(e) == DragDropEffects.Copy) == true;
     }
 
     private string? FindDropTargetPath(object? source)
