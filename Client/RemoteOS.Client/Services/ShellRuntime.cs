@@ -46,7 +46,7 @@ public sealed class ShellRuntime
         _catalog.Changed += (_, _) =>
         {
             if (_active is null) return;
-            var requested = ShellApi.NormalizeId(_settings.ShellSelection?.ShellId);
+            var requested = ShellApi.ResolveId(_settings.ShellSelection?.ShellId);
             if (requested != _activeShellId && _catalog.TryGet(requested, out var requestedShell) && requestedShell.IsAvailable)
                 _ = SwitchAsync(requested, persist: false);
             else if (!_catalog.TryGet(_activeShellId, out _))
@@ -73,7 +73,7 @@ public sealed class ShellRuntime
         _state.Publish(workspace, _desktopState.Current);
         _overlays.Configure(workspace);
         var local = await _preferences.LoadAsync();
-        var requested = ShellApi.NormalizeId(_settings.ShellSelection?.ShellId ?? local.ShellId);
+        var requested = ShellApi.ResolveId(_settings.ShellSelection?.ShellId ?? local.ShellId);
         if (!_catalog.TryGet(requested, out var descriptor) || !descriptor.IsAvailable)
             requested = ShellApi.DefaultShellId;
         await SwitchAsync(requested, persist: false, cancellationToken);
@@ -89,7 +89,7 @@ public sealed class ShellRuntime
         try
         {
             if (intentVersion is not null && intentVersion != Volatile.Read(ref _switchIntentVersion)) return false;
-            var id = ShellApi.NormalizeId(requestedId);
+            var id = ShellApi.ResolveId(requestedId);
             if (_active is not null && id == _activeShellId) return true;
             if (!_catalog.TryCreate(id, out var candidate, out var createError) || candidate is null)
                 return Fail(createError ?? "Shell is unavailable.");
@@ -169,7 +169,7 @@ public sealed class ShellRuntime
 
     private Task<bool> SelectDesktopStyleAsync(string shellId)
     {
-        var id = ShellApi.NormalizeId(shellId);
+        var id = ShellApi.ResolveId(shellId);
         if (_catalog.TryGet(id, out var shell))
             _settings.ShellSelection = new ShellSelectionDto(id, shell.PackageId, shell.Version);
         else

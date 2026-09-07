@@ -37,5 +37,5 @@ public sealed record HostElevationResult(
 
 public static class PrivilegedApiRoutes
 {
-    public const string Elevation = "/api/v1/privileged/elevation";
+    public const string Elevation = $"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/privileged/elevation";
 }

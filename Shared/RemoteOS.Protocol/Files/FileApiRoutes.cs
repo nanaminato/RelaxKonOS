@@ -2,7 +2,7 @@ using RemoteOS.Protocol.Common;
 
 namespace RemoteOS.Protocol.Files;
 
-/// <summary>文件管理 REST 端点路由常量。路径已含 /api/v1 前缀。Server 注册路由与 Client 拼接 URL 共用。
+/// <summary>文件管理 REST 端点路由常量。路径已含 /api/v1.0 前缀。Server 注册路由与 Client 拼接 URL 共用。
 /// 所有端点需 JWT（[Authorize]），错误统一返回 RFC 7807 ProblemDetails。</summary>
 public static class FileApiRoutes
 {

@@ -84,10 +84,10 @@ DefaultAppMappingDto
 
 ### 3.3 路由（`WorkspaceApiRoutes.cs`）
 
-新增常量（路径含 `/api/v1` 前缀）：
+新增常量（路径含 `/api/v1.0` 前缀）：
 
 ```text
-Preferences = /api/v1/workspaces/{id}/preferences   (GET / PUT)
+Preferences = /api/v1.0/workspaces/{id}/preferences   (GET / PUT)
 ```
 
 ---
@@ -126,8 +126,8 @@ workspaces
 
 | Method | Route | 用途 |
 |--------|-------|------|
-| GET | `/api/v1/workspaces/{id}/preferences` | 读取偏好（直接返回 `workspace.Preferences`） |
-| PUT | `/api/v1/workspaces/{id}/preferences` | 校验 + 整列覆盖（返回归一化后 DTO） |
+| GET | `/api/v1.0/workspaces/{id}/preferences` | 读取偏好（直接返回 `workspace.Preferences`） |
+| PUT | `/api/v1.0/workspaces/{id}/preferences` | 校验 + 整列覆盖（返回归一化后 DTO） |
 
 **校验（`TryNormalize`）**：
 
@@ -261,7 +261,7 @@ DateText = now.ToString(dateFmt, culture);
 IAuthSession.StateChanged(Authenticated)
     ↓
 PreferencesSync.LoadIfAuthenticatedAsync
-    ├── GET /api/v1/workspaces/{id}/preferences (JWT)
+    ├── GET /api/v1.0/workspaces/{id}/preferences (JWT)
     ├── ShellSettings.Apply(prefs)           → 桌面外壳即时生效（壁纸/主题/时钟格式）
     └── DefaultAppRegistry.SetMappings(prefs.DefaultApps)
 ```
@@ -279,7 +279,7 @@ PageViewModel.Save() → SettingsViewModel.Save()
           ↓
           SettingsViewModel.SaveAsync
             ├── prefs = ShellSettings.ToPreferences(mappings)
-            └── PUT /api/v1/workspaces/{id}/preferences (JWT)
+            └── PUT /api/v1.0/workspaces/{id}/preferences (JWT)
                   └── 失败保留本地值，后续改动可重试
 ```
 

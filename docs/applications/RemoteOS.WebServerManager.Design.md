@@ -1174,46 +1174,46 @@ IntegrationState = Integrated
 发现 Web Server：
 
 ```text
-POST /api/v1/webservers/discover
+POST /api/v1.0/webservers/discover
 ```
 
 列出：
 
 ```text
-GET /api/v1/webservers
+GET /api/v1.0/webservers
 ```
 
 状态：
 
 ```text
-GET /api/v1/webservers/{id}/status
+GET /api/v1.0/webservers/{id}/status
 ```
 
 启用集成：
 
 ```text
-POST /api/v1/webservers/{id}/integrate
+POST /api/v1.0/webservers/{id}/integrate
 ```
 
 测试配置：
 
 ```text
-POST /api/v1/webservers/{id}/config/test
+POST /api/v1.0/webservers/{id}/config/test
 ```
 
 Reload：
 
 ```text
-POST /api/v1/webservers/{id}/reload
+POST /api/v1.0/webservers/{id}/reload
 ```
 
 站点：
 
 ```text
-GET    /api/v1/webservers/{id}/sites
-POST   /api/v1/webservers/{id}/sites
-PUT    /api/v1/webservers/{id}/sites/{siteId}
-DELETE /api/v1/webservers/{id}/sites/{siteId}
+GET    /api/v1.0/webservers/{id}/sites
+POST   /api/v1.0/webservers/{id}/sites
+PUT    /api/v1.0/webservers/{id}/sites/{siteId}
+DELETE /api/v1.0/webservers/{id}/sites/{siteId}
 ```
 
 ---

@@ -225,7 +225,7 @@ Client ←── Protocol ──→ Server
 - **端点族（Program.cs 已注册 17 组 + 健康检查）**：
   - `MapAuthEndpoints`（login/refresh/logout/me）、`MapWorkspaceEndpoints`（preferences / window-layout）
   - `MapFileEndpoints`、`MapBrowserEndpoints`（书签/历史/设置）、`MapSystemMonitorEndpoints` + SignalR `/hubs/performance`
-  - `MapAppCapabilityEndpoints`（`/api/v1/capabilities`，宣告当前 Server 身份/平台支持）
+  - `MapAppCapabilityEndpoints`（`/api/v1.0/capabilities`，宣告当前 Server 身份/平台支持）
   - `MapAppSettingsEndpoints`（应用私有 KV，按 UserId/Scope/ScopeId/AppId/Key 隔离）
   - `MapRegistryEndpoints`（配置注册表 keys/values 浏览+写入 desired/applied 状态机）
   - `MapImageMirrorEndpoints`（APT/Docker/NPM/PyPI 等镜像源配置随 Workspace 同步）

@@ -13,7 +13,7 @@ public static class ImageMirrorEndpoints
 
     public static IEndpointRouteBuilder MapImageMirrorEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/image-mirrors").RequireAuthorization().WithTags("Image mirrors");
+        var group = app.MapGroup($"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/image-mirrors").RequireAuthorization().WithTags("Image mirrors");
         group.MapGet("/{target}", (string target, ClaimsPrincipal principal, IImageMirrorRepository mirrors) =>
         {
             if (!TryGetOwnerAndTarget(target, principal, out var userId, out var parsedTarget)) return Results.BadRequest();
@@ -31,7 +31,7 @@ public static class ImageMirrorEndpoints
                 || !TryValidate(request.Name, request.Endpoint, out var name, out var endpoint))
                 return Results.BadRequest(new { message = "A name and HTTPS registry host are required." });
             var saved = mirrors.Create(new ImageMirror { UserId = userId, Target = parsedTarget, Name = name, Endpoint = endpoint });
-            return Results.Created($"/api/v1/image-mirrors/{target}/{saved.Id}", ToDto(saved));
+            return Results.Created($"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/image-mirrors/{target}/{saved.Id}", ToDto(saved));
         });
         group.MapPut("/{target}/{id:guid}", (string target, Guid id, UpdateImageMirrorRequest request, ClaimsPrincipal principal, IImageMirrorRepository mirrors) =>
         {

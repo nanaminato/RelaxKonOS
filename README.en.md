@@ -38,7 +38,7 @@
 - 🔀 **Proxy Manager** — Host proxy runtime (Mihomo as the first engine, extensible to sing-box/Xray), TUN mode, subscriptions & profiles, system proxy, traffic/connection monitoring, network safety & recovery
 - 🧱 **Configuration Registry** — Schema-constrained desired/applied state-machine configuration center
 - 🪞 **Mirror Source Management** — APT/Docker/NPM/PyPI mirrors synced with Workspace preferences
-- 🔧 **App Capabilities & Private KV** — `/api/v1/capabilities` + App Settings per-user/per-app isolated KV
+- 🔧 **App Capabilities & Private KV** — `/api/v1.0/capabilities` + App Settings per-user/per-app isolated KV
 - 🌍 **Multi-Language Support** — Built-in language packs for Chinese, English, and Japanese
 - 🔧 **Developer Extensibility** — Install and manage custom application packages via the `DevCli` tool
 

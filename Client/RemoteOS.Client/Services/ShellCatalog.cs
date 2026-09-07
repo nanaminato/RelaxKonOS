@@ -36,7 +36,7 @@ public sealed class ShellCatalog : IShellCatalog
 
     public bool TryGet(string id, out ShellDescriptor descriptor)
     {
-        id = ShellApi.NormalizeId(id);
+        id = ShellApi.ResolveId(id);
         if (_factories.TryGetValue(id, out var factory)) { descriptor = factory().Descriptor; return true; }
         if (_external.TryGetValue(id, out var package)) { descriptor = package.Descriptor; return true; }
         descriptor = null!; return false;
@@ -44,7 +44,7 @@ public sealed class ShellCatalog : IShellCatalog
 
     public bool TryCreate(string id, out IDesktopShell? shell, out string? error)
     {
-        shell = null; error = null; id = ShellApi.NormalizeId(id);
+        shell = null; error = null; id = ShellApi.ResolveId(id);
         try
         {
             if (_factories.TryGetValue(id, out var builtIn)) { shell = builtIn(); return true; }
@@ -88,7 +88,7 @@ public sealed class ShellCatalog : IShellCatalog
                 || !File.Exists(assemblyPath)) throw new InvalidDataException("Entry assembly is outside the package or missing.");
             var reason = !string.Equals(manifest.PackageType, "desktopShell", StringComparison.Ordinal) ? LocalizedText.Get("settings.shell.invalid_package", "The desktop package is invalid.") :
                 !validId ? LocalizedText.Get("settings.shell.invalid_id", "The desktop package ID is invalid.") : manifest.SchemaVersion != 1 ? LocalizedText.Get("settings.shell.unsupported_schema", "This desktop package uses an unsupported manifest schema.") :
-                manifest.MinimumShellApiVersion > ShellApi.Version ? LocalizedText.Get("settings.shell.requires_newer_api", "This desktop package requires a newer Shell API.") :
+                !string.Equals(manifest.ShellApiVersion, ShellApi.Version, StringComparison.Ordinal) ? LocalizedText.Get("settings.shell.requires_newer_api", "This desktop package requires Shell API 1.0.") :
                 manifest.Capabilities?.Length == 0 ? LocalizedText.Get("settings.shell.no_capabilities", "This desktop package declares no launcher capabilities.") : null;
             var displayName = ResolveLocalizedDisplayName(manifest) ?? manifest.DisplayName?.Trim() ?? id;
             var descriptor = new ShellDescriptor(id, displayName, manifest.Version?.Trim() ?? "0.0.0",
@@ -134,7 +134,7 @@ public sealed class ShellCatalog : IShellCatalog
     }
 
     private sealed record ShellManifest(int SchemaVersion, string? PackageType, string? Id, string? DisplayName, string? Version, string? PackageId,
-        string? EntryAssembly, string? EntryType, int MinimumShellApiVersion, string[]? Capabilities, string? Sha256,
+        string? EntryAssembly, string? EntryType, string? ShellApiVersion, string[]? Capabilities, string? Sha256,
         IReadOnlyDictionary<string, ShellLocalizedMetadata>? LocalizedMetadata);
     private sealed record ShellLocalizedMetadata(string? DisplayName, string? Description);
     private sealed class ExternalPackage(ShellDescriptor descriptor, string root, string assemblyPath, string entryType)

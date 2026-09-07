@@ -265,7 +265,7 @@ Shell 必须处理的最小交互：
   "version": "1.0.0",
   "entryAssembly": "lib/net10.0/Example.Windows11DesktopShell.dll",
   "entryType": "Example.Windows11DesktopShell.Windows11ShellFactory",
-  "minimumShellApiVersion": 2,
+  "shellApiVersion": "1.0",
   "capabilities": ["desktop", "shellOverlays"]
 }
 ```

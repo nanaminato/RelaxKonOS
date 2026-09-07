@@ -7,7 +7,7 @@ public static class DockerEndpoints
 {
     public static IEndpointRouteBuilder MapDockerEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/docker").RequireAuthorization().WithTags("Docker");
+        var group = app.MapGroup($"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/docker").RequireAuthorization().WithTags("Docker");
         group.MapGet("/status", (Server.Docker.IDockerEngineService service, CancellationToken ct) => service.GetStatusAsync(ct));
         group.MapPost("/installation/plan", (Server.Docker.IDockerRuntimeInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct));
         group.MapPost("/installation/execute", (DockerInstallationExecutionRequest request, Server.Docker.IDockerRuntimeInstaller installer, CancellationToken ct) => installer.ExecuteAsync(request, ct));

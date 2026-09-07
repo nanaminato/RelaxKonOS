@@ -116,15 +116,15 @@ IDockerEngineService ── IDockerRuntimeInstaller ── IDockerComposeService
 
 | 方法 | 路由 | 权限 | 说明 |
 |---|---|---|---|
-| GET | `/api/v1/docker/status` | `server.docker.read` | 状态、能力、安装建议，不含密钥 |
-| POST | `/api/v1/docker/installation/plan` | `server.docker.install` | 仅预检与生成计划 |
-| POST | `/api/v1/docker/installation/execute` | `server.docker.install` | 明确确认后启动受提权任务 |
-| GET/POST | `/api/v1/docker/containers` | read/manage | 列表、创建 |
-| POST/DELETE | `/api/v1/docker/containers/{id}/{action}` | manage | 生命周期、删除、复制、exec |
-| GET | `/api/v1/docker/containers/{id}/logs` | read | 带游标/时间范围；follow 用 SignalR |
-| GET/POST | `/api/v1/docker/stacks` | read/manage | Compose 项目列表、定义校验与部署；可读取项目服务并执行启动/停止/重启 |
-| GET/POST/DELETE | `/api/v1/docker/images|networks|volumes` | read/manage | 资源管理，删除前依赖检查 |
-| GET | `/api/v1/docker/events` | `server.docker.read` | 过滤后的事件和审计只读流 |
+| GET | `/api/v1.0/docker/status` | `server.docker.read` | 状态、能力、安装建议，不含密钥 |
+| POST | `/api/v1.0/docker/installation/plan` | `server.docker.install` | 仅预检与生成计划 |
+| POST | `/api/v1.0/docker/installation/execute` | `server.docker.install` | 明确确认后启动受提权任务 |
+| GET/POST | `/api/v1.0/docker/containers` | read/manage | 列表、创建 |
+| POST/DELETE | `/api/v1.0/docker/containers/{id}/{action}` | manage | 生命周期、删除、复制、exec |
+| GET | `/api/v1.0/docker/containers/{id}/logs` | read | 带游标/时间范围；follow 用 SignalR |
+| GET/POST | `/api/v1.0/docker/stacks` | read/manage | Compose 项目列表、定义校验与部署；可读取项目服务并执行启动/停止/重启 |
+| GET/POST/DELETE | `/api/v1.0/docker/images|networks|volumes` | read/manage | 资源管理，删除前依赖检查 |
+| GET | `/api/v1.0/docker/events` | `server.docker.read` | 过滤后的事件和审计只读流 |
 
 长任务（拉取、构建、部署、导入导出、安装）返回 `OperationId`，以通用 SignalR 任务通道推送阶段、百分比、可本地化消息键和终态。日志与终端必须设置最大帧、速率限制、取消和断连清理；浏览器/客户端不保留 raw Docker stream。
 

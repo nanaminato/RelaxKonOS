@@ -76,7 +76,7 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
             // transition, not a request to select the default shell.
             if (string.IsNullOrWhiteSpace(value)) return;
 
-            var id = ShellApi.NormalizeId(value);
+            var id = ShellApi.ResolveId(value);
             if (!_shellCatalog.TryGet(id, out var shell) || !shell.IsAvailable) return;
             // Store the package identity along with the cross-device shell intent.  Resolving
             // remains device-local, but retaining this metadata prevents an external shell

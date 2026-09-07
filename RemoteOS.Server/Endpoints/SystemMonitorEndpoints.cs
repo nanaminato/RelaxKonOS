@@ -36,25 +36,10 @@ public static class SystemMonitorEndpoints
            .RequireAuthorization()
            .WithTags("System Performance");
 
-        // GET system/metrics — 整机资源占用快照（CPU/内存/磁盘/网络/GPU/运行时间）
-        app.MapGet(SystemMonitorApiRoutes.Metrics,
-            (Server.SystemMonitor.ISystemMetricsProvider provider, CancellationToken ct)
-                => provider.GetMetricsAsync(ct))
-           .RequireAuthorization()
-           .WithTags("System");
-
         app.MapGet(SystemMonitorApiRoutes.NetworkAddresses, () => Results.Ok(GetNetworkAddresses()))
            .RequireAuthorization()
            .WithTags("System");
 
-        // GET system/processes — 当前可见进程列表（每进程 CPU% / 内存 / 属主）
-        app.MapGet(SystemMonitorApiRoutes.Processes,
-            (Server.SystemMonitor.ISystemMetricsProvider provider, CancellationToken ct)
-                => provider.ListProcessesAsync(ct))
-           .RequireAuthorization()
-           .WithTags("System");
-
-        // 新进程查询路径：性能页不再调用它。保留旧 Processes 列表端点，给现有 App SDK 能力和旧客户端兼容。
         app.MapGet(SystemMonitorApiRoutes.ProcessQuery,
             async (int? page, int? pageSize, string? filter, string? sort, string? direction,
                 IProcessService processes, CancellationToken ct) => Results.Ok(await processes.QueryAsync(page ?? 1, pageSize ?? 100,

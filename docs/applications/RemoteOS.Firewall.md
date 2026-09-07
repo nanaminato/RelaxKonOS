@@ -17,7 +17,7 @@ Firewall 是 RemoteOS 的内置 Linux Server 防火墙编辑器。它读取并�
 
 | 层 | 职责 |
 | --- | --- |
-| Protocol | `Firewall*` DTO 与 `/api/v1/firewall/*` 路由，传输结构化策略和规则，不传 shell 命令。 |
+| Protocol | `Firewall*` DTO 与 `/api/v1.0/firewall/*` 路由，传输结构化策略和规则，不传 shell 命令。 |
 | Client | Avalonia 本地窗口、状态和一次性密码输入；`IRemoteFirewallClient` 带 JWT 调用服务端。 |
 | Server | `IFirewallChangeAuthorizationService` 使用 PAM 验证非 root 的当前登录用户；`IHostFirewallService` 为宿主 UFW 边界。 |
 | Linux Provider | `LinuxUfwFirewallService` 经 `IPrivilegedOperationTransport` 发送封闭的 `FirewallUfw*` 请求；Helper 使用固定 UFW 路径，规则的动作、方向、协议、端口和 IP/CIDR 均经过白名单/范围校验。 |

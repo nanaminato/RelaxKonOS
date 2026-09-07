@@ -9,19 +9,11 @@ namespace RemoteOS.Shell;
 /// <summary>Versioned, deliberately small contract shared by the client and desktop-shell packages.</summary>
 public static class ShellApi
 {
-    public const int Version = 5;
+    public const string Version = "1.0";
     public const string DefaultShellId = "remoteos.windows-like";
-    public static readonly IReadOnlyDictionary<string, string> LegacyIds = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        ["remoteos"] = DefaultShellId,
-        ["remoteos.default"] = DefaultShellId,
-        ["windows-like"] = "remoteos.windows-like",
-        ["macos-like"] = "remoteos.macos-like",
-        ["ubuntu-like"] = "remoteos.ubuntu-like",
-    };
 
-    public static string NormalizeId(string? id) => string.IsNullOrWhiteSpace(id)
-        ? DefaultShellId : LegacyIds.TryGetValue(id.Trim(), out var normalized) ? normalized : id.Trim();
+    /// <summary>Returns an explicit shell identifier, using the current built-in default only when no selection exists.</summary>
+    public static string ResolveId(string? id) => string.IsNullOrWhiteSpace(id) ? DefaultShellId : id.Trim();
 }
 
 public enum ShellSourceKind { BuiltIn, ExternalPackage }

@@ -709,7 +709,7 @@ public sealed record DeveloperPackageManifest(
     // Desktop-shell packages include these package-level fields. They are not used by normal
     // applications, but must be represented here because VSD reads manifests strictly.
     int SchemaVersion = 1,
-    int MinimumShellApiVersion = 0,
+    string? ShellApiVersion = null,
     IReadOnlyList<string>? Capabilities = null,
     string? PackageId = null,
     string? Sha256 = null);
