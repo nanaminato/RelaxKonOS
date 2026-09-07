@@ -72,6 +72,7 @@
                     <Button Content="•••" ToolTip.Tip="{loc:Loc explorer.more}">
                         <Button.Flyout>
                             <MenuFlyout>
+                                <MenuItem Header="{loc:Loc explorer.operations.title}" Command="{Binding ShowOperationsCommand}" />
                                 <MenuItem Header="{loc:Loc common.download}" Command="{Binding DownloadCommand}" />
                                 <MenuItem Header="{loc:Loc common.upload}" Command="{Binding UploadCommand}" />
                                 <MenuItem Header="{loc:Loc explorer.upload_folder}" Command="{Binding UploadFolderCommand}" />

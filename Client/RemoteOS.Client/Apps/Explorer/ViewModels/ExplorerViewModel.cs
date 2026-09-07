@@ -235,6 +235,29 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public Func<string, FileElevationCapability, Task<bool>>? RequestFileElevationAsync { get; set; }
     /// <summary>Requests a five-minute elevated directory grant after a mutating operation was denied.</summary>
     public Func<IReadOnlyList<string>, FileElevationCapability, Task<bool>>? RequestFileOperationElevationAsync { get; set; }
+    public Func<StartFileOperationRequest, Action<FileOperationDto>, Task>? QueueOperationAsync { get; set; }
+    public Action? ShowFileOperations { get; set; }
+    [RelayCommand] private void ShowOperations() => ShowFileOperations?.Invoke();
+
+    private async Task SubmitOperationAsync(FileOperationKind kind, IReadOnlyList<FileOperationItem> items)
+    {
+        var sharedClipboard = _fileClipboard;
+        var clipboard = sharedClipboard.Entries;
+        var clipboardOperation = sharedClipboard.Operation;
+        await QueueOperationAsync!(new(Guid.NewGuid(), kind, items), result =>
+        {
+            if (kind == FileOperationKind.Move && clipboardOperation == RemoteFileClipboardOperation.Cut
+                && ReferenceEquals(clipboard, sharedClipboard.Entries) && sharedClipboard.Operation == clipboardOperation)
+            {
+                var remaining = clipboard.Where(entry => !result.CompletedSources.Any(path =>
+                    ExplorerPath.IsAncestorOrEqual(path, entry.Path))).ToArray();
+                if (remaining.Length == 0) sharedClipboard.Clear();
+                else sharedClipboard.Set(remaining, RemoteFileClipboardOperation.Cut);
+            }
+        });
+        StatusText = LocalizedText.Get("explorer.operations.submitted");
+    }
+
     /// <summary>使用默认程序打开一个远程文件。</summary>
     public Func<FileSystemEntryDto, Task>? OpenFileAsync { get; set; }
     /// <summary>选择程序后打开一个远程文件。</summary>
@@ -666,6 +689,16 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             return null;
         }
         var snapshot = NormalizeBatchSelection(entries);
+        if (QueueOperationAsync is not null)
+        {
+            try
+            {
+                await SubmitOperationAsync(copy ? FileOperationKind.Copy : FileOperationKind.Move,
+                    snapshot.Select(e => new FileOperationItem(e.Path, CombineRemotePath(targetDirectory, e.Name))).ToArray());
+            }
+            catch (Exception ex) { StatusText = ex.Message; }
+            return null; // Completion and refresh are owned by the shared operation center.
+        }
         HashSet<string>? reservedNames = null;
         return await RunBatchAsync(snapshot, copy ? "explorer.copy" : "common.move", async entry =>
         {
@@ -1025,6 +1058,11 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 LocalizedText.Format("explorer.batch.delete_confirm", entries.Count, preview),
                 LocalizedText.Get("common.delete")) ?? Task.FromResult(false));
             if (!confirmed) return;
+            if (QueueOperationAsync is not null)
+            {
+                await SubmitOperationAsync(FileOperationKind.Delete, entries.Select(e => new FileOperationItem(e.Path)).ToArray());
+                return;
+            }
             await RunBatchAsync(entries, "common.delete", entry => RetryWithOperationElevationAsync(
                 () => _client.DeleteAsync(entry.Path), FileElevationCapability.Delete, ParentDirectory(entry.Path)));
         }
@@ -1180,6 +1218,12 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         if (string.IsNullOrWhiteSpace(dest) || dest == entry.Path) return;
         try
         {
+            if (QueueOperationAsync is not null)
+            {
+                var resolved = ExplorerPath.Resolve(ExplorerPath.Parent(entry.Path)!, dest);
+                await SubmitOperationAsync(FileOperationKind.Move, [new(entry.Path, resolved)]);
+                return;
+            }
             if (!await RetryWithOperationElevationAsync(
                     async () => { await _client.MoveAsync(entry.Path, dest, overwrite: false); },
                     FileElevationCapability.Move, ParentDirectory(entry.Path), ParentDirectory(dest))) return;

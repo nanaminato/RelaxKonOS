@@ -89,16 +89,39 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         var clipboard = context.Services.GetService(typeof(IRemoteFileClipboard)) as IRemoteFileClipboard;
         var viewModel = new ExplorerViewModel(client, fileClipboard: clipboard);
         WireDialogs(context, viewModel, client);
+        var operations = context.Services.GetService(typeof(ExplorerOperationCenter)) as ExplorerOperationCenter;
+        if (operations is not null)
+        {
+            ConfigureOperationsWindow(context, operations);
+            viewModel.QueueOperationAsync = operations.SubmitAsync;
+            viewModel.ShowFileOperations = operations.Show;
+            operations.ElevateAsync = (issue, kind) => RequestOperationElevationAsync(context, client,
+                new[] { ExplorerPath.Parent(issue.SourcePath), issue.DestinationPath is null ? null : ExplorerPath.Parent(issue.DestinationPath) }
+                    .OfType<string>().Distinct().ToArray(),
+                kind == FileOperationKind.Copy ? FileElevationCapability.Copy : kind == FileOperationKind.Move ? FileElevationCapability.Move : FileElevationCapability.Delete);
+            _ = operations.RestoreAsync();
+        }
         var view = new ExplorerMainView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.remoteos.explorer.display_name"), view,
             bounds: new Rect(80, 60, 960, 640),
             iconGlyph: Manifest.IconGlyph);
         _windows[window] = viewModel;
+        void RefreshAfterOperation(FileOperationDto result)
+        {
+            if (viewModel.IsBusy || string.IsNullOrEmpty(viewModel.AddressbarPath)) return;
+            if (result.Items.Any(item => ExplorerPath.IsAncestorOrEqual(item.SourcePath, viewModel.AddressbarPath)
+                || ExplorerPath.Equal(ExplorerPath.Parent(item.SourcePath), viewModel.AddressbarPath)
+                || item.DestinationPath is { } destination && (ExplorerPath.IsAncestorOrEqual(destination, viewModel.AddressbarPath)
+                    || ExplorerPath.Equal(ExplorerPath.Parent(destination), viewModel.AddressbarPath))))
+                _ = viewModel.RefreshCommand.ExecuteAsync(null);
+        }
+        if (operations is not null) operations.Completed += RefreshAfterOperation;
         EventHandler<ManagedWindow>? closed = null;
         closed = (_, item) =>
         {
             if (!ReferenceEquals(item, window)) return;
             context.WindowManager.WindowClosed -= closed;
+            if (operations is not null) operations.Completed -= RefreshAfterOperation;
             viewModel.Dispose();
             _windows.Remove(window);
         };
@@ -138,6 +161,57 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         // 窗口打开后异步加载根；内部路由指定位置时直接导航到该目录。
         var settings = context.Services.GetService(typeof(IAppSettingsClient)) as IAppSettingsClient;
         _ = OpenInitialLocationAsync(viewModel, initialPath, settings);
+    }
+
+    private static async Task<bool> RequestOperationElevationAsync(AppContext context, IExplorerClient client,
+        IReadOnlyList<string> paths, FileElevationCapability capability)
+    {
+        try
+        {
+            await client.ElevateFileOperationAsync(paths, capability);
+            return true;
+        }
+        catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
+        {
+            var password = await context.WindowManager.ShowSystemDialogAsync<string?>(LocalizedText.Get("explorer.operations.elevation_title"), dialog =>
+            {
+                var input = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("explorer.operations.elevation_password") };
+                var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
+                cancel.Click += (_, _) => dialog.Cancel();
+                var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
+                confirm.Click += (_, _) => dialog.Close(input.Text);
+                return new StackPanel
+                {
+                    Margin = new Thickness(20), Spacing = 12,
+                    Children =
+                    {
+                        new TextBlock { Text = LocalizedText.Get("explorer.operations.elevation_prompt"), TextWrapping = TextWrapping.Wrap },
+                        input,
+                        new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
+                    },
+                };
+            }, new Size(420, 190));
+            if (password is null) return false;
+            await client.ElevateFileOperationAsync(paths, capability, password);
+            return true;
+        }
+    }
+
+    private static void ConfigureOperationsWindow(AppContext context, ExplorerOperationCenter center)
+    {
+        if (center.ShowRequested is not null) return;
+        ManagedWindow? progressWindow = null;
+        center.ShowRequested = () =>
+        {
+            if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
+            {
+                context.WindowManager.Restore(progressWindow);
+                context.WindowManager.Focus(progressWindow);
+                return;
+            }
+            progressWindow = context.ShowWindow(LocalizedText.Get("explorer.operations.title"),
+                new ExplorerOperationsView { DataContext = center }, bounds: new Rect(180, 90, 680, 560), iconGlyph: "📁");
+        };
     }
 
     private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath, IAppSettingsClient? settings)
@@ -343,46 +417,8 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             }
         };
 
-        vm.RequestFileOperationElevationAsync = async (paths, capability) =>
-        {
-            try
-            {
-                await client.ElevateFileOperationAsync(paths, capability);
-                return true;
-            }
-            catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
-            {
-                var password = await context.WindowManager.ShowSystemDialogAsync<string?>("管理员认证", dialog =>
-                {
-                    var input = new TextBox { PasswordChar = '•', PlaceholderText = "请输入当前管理员密码" };
-                    var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
-                    cancel.Click += (_, _) => dialog.Cancel();
-                    var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
-                    confirm.Click += (_, _) => dialog.Close(input.Text);
-                    return new StackPanel
-                    {
-                        Margin = new Thickness(20), Spacing = 12,
-                        Children =
-                        {
-                            new TextBlock { Text = "此操作需要管理员权限才能继续。授权将在当前会话中保留 5 分钟。", TextWrapping = TextWrapping.Wrap },
-                            input,
-                            new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
-                        },
-                    };
-                }, new Size(420, 190));
-                if (password is null) return false;
-                try
-                {
-                    await client.ElevateFileOperationAsync(paths, capability, password);
-                    return true;
-                }
-                catch (RemoteOsAuthException retry) when (retry.Type.EndsWith("/elevation-password-invalid", StringComparison.Ordinal))
-                {
-                    await (vm.ShowMessageAsync?.Invoke("管理员认证", "密码不正确，未执行该操作。") ?? Task.CompletedTask);
-                    return false;
-                }
-            }
-        };
+        vm.RequestFileOperationElevationAsync = (paths, capability) =>
+            RequestOperationElevationAsync(context, client, paths, capability);
 
         var applications = context.Services.GetService(typeof(ApplicationManager)) as ApplicationManager;
         var defaults = context.Services.GetService(typeof(DefaultAppRegistry)) as DefaultAppRegistry;

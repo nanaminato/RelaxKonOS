@@ -497,6 +497,7 @@ builder.Services.AddHostedService<PerformanceBroadcastService>();
 // 文件管理：以宿主 OS 进程身份执行 IO，复用宿主用户/权限（不另建 ACL——见 project_memory 硬约束）。
 // LocalFileService 移植自 Jaya FileSystemService 的目录枚举逻辑并扩展为完整文件操作；平台感知（Windows 盘符 / Linux "/" 根）。
 builder.Services.AddSingleton<Server.Files.IFileService, Server.Files.LocalFileService>();
+builder.Services.AddSingleton<Server.Files.FileOperationService>();
 builder.Services.AddSingleton<Server.Files.MediaLeaseStore>();
 builder.Services.AddSingleton<WorkspaceWallpaperStore>();
 

@@ -173,6 +173,7 @@ Check(vm.AddressbarPath == @"C:\data\sub\folder", "Relative address resolves aga
 await vm.AddressbarGoAsync("D:");
 Check(vm.AddressbarPath == @"D:\", "Bare drive in address bar navigates to drive root");
 await ExplorerBatchChecks.RunAsync(Check);
+await ExplorerOperationCenterChecks.RunAsync(Check);
 Console.WriteLine($"{passed} Explorer regression checks passed.");
 
 

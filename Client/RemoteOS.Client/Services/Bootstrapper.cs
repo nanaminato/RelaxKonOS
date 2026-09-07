@@ -89,6 +89,17 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "explorer"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRemoteOsAuthentication();
+        services.AddSingleton(sp =>
+        {
+            var session = sp.GetRequiredService<IAuthSession>();
+            var center = new Client.Apps.Explorer.Models.ExplorerOperationCenter(sp.GetRequiredService<Client.Apps.Explorer.IExplorerClient>())
+            {
+                SessionKey = () => session.State == AuthSessionState.Authenticated
+                    ? $"{session.ServerUrl}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null,
+            };
+            session.StateChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(center.SessionChanged);
+            return center;
+        });
         services.AddSingleton<Client.Apps.Explorer.IRemoteFileClipboard, Client.Apps.Explorer.RemoteFileClipboard>();
 
         // Browser（浏览器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。
