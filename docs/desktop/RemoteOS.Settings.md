@@ -1,5 +1,7 @@
 # RemoteOS Settings 模块设计
 
+> 演进基线（2026-09-07）：后续升级遵循 [`SettingsSystem.Goal`](./RemoteOS.SettingsSystem.Goal.md)。本文下述五页结构等内容是早期实现说明，当前代码已有八页；新 Goal 将设置提升为独立平台服务，并允许通过受限特权助手修改远程环境变量、时区、主机名与 DNS。新增能力尚未实现，不应将本文旧范围视为禁止实现的约束。
+
 > 内置设置中心（Windows 11 / GNOME 风格）：5 个分类页（系统 / 个性化 / 时间和语言 / 网络 / 应用），用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序）持久化到 Server 端 Workspace（`/workspaces/{id}/preferences`），多设备登录同一 Workspace 共享。
 >
 > Shell 选择使用 `WorkspacePreferencesDto.Shell` 保存跨设备意图；本机缺少或禁用扩展包时只回退本机默认 Shell，不覆盖该意图。完整的外部包安装/校验模型见 [`RemoteOS.ShellLauncher.Goal.md`](./RemoteOS.ShellLauncher.Goal.md)。
@@ -19,7 +21,7 @@ Settings 是 RemoteOS 的内置系统设置应用，参考 Windows 11 设置 / G
 
 - **架构归属**：§6.2 Remote Service Application —— UI 完全在 Client 本地渲染；偏好**真源在 Server 端 Workspace**（与 `TerminalSettings` / `BrowserSettings` 同模式：`OwnsOne + ToJson` 单列 JSON 持久化）。
 - **多设备共享**：同一用户的持久 Workspace 持有一份偏好，多设备登录同一 Workspace 自动拉取同一份设置（符合 project_memory 硬约束「User → Workspace → Session → Device」模型）。
-- **复用宿主 OS 权限**（硬约束）：时区切换 / 网卡配置 / DNS 等宿主 OS 级设置需 sudo/UAC 提权，Settings **不触及**——「时间」页只读展示宿主时区，「网络」页只读展示 Client→Server 连接状态。Settings 仅管理 RemoteOS 自身的桌面外观与默认程序映射。
+- **复用宿主 OS 权限**：早期 Settings 主要管理 RemoteOS 偏好，宿主配置以只读展示为主。后续按 [`SettingsSystem.Goal`](./RemoteOS.SettingsSystem.Goal.md) 增加真实宿主写入；需要特权的接口经封闭 Helper 操作执行，Server 保持非特权。此前“Settings 不触及宿主设置”的限制已被此决策替换。
 - **不存储密码**：认证委托宿主 OS，Settings 仅消费 `IAuthSession.Tokens.AccessToken`。
 
 **5 个分类页**：

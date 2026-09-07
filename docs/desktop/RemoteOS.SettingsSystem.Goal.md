@@ -1,0 +1,242 @@
+# RemoteOS 设置系统与设置应用升级（Goal 执行版）
+
+> 日期：2026-09-07。状态：设计基线，尚未实施；本文中的新增类型、路由和能力均为目标契约。
+> 本次交付是实施文档，不执行真实主机配置变更。执行 Goal 时先核对当前代码与本文件，再按里程碑推进。
+
+## 1. 目标与决策
+
+把设置建设为 RemoteOS 的平台能力：提供可发现、可读写、可授权、可订阅、可恢复的配置服务，设置应用负责其中一个交互入口。参考 Windows 的分类导航、搜索、详情页、关联入口和定向打开设置页的方式，结合远程主机管理的实际需要设计。
+
+必须支持直接修改远程宿主的受支持配置，包括环境变量、时区、主机名与 DNS；需特权的请求通过现有 PrivilegedHelper。不得因为旧文档把设置限定为桌面偏好而省略这些功能。目标不是让用户复制命令到终端才能完成常规设置。
+
+本决策替换“Settings 不触及宿主配置”“环境变量操作一律禁止”的旧限制。保留非特权 Server、宿主身份认证、应用权限隔离、封闭 Helper 操作集、审计与本地渲染。允许结构化的环境配置数据，不允许把这些数据作为 Helper 自身或其管理子进程的启动环境注入。
+
+遵守根目录 `AGENTS.md`：首个正式版本之前直接升级内置接口，同时修改仓库内调用者、测试、示例及文档；不增加旧路由别名、双格式解析或兼容适配层。
+
+## 2. 已核实基线与缺口
+
+| 代码/文档 | 当前状态 | 本 Goal 的改动 |
+| --- | --- | --- |
+| `Client/RemoteOS.Client/Apps/Settings/ViewModels/SettingsViewModel.cs` | 实际有系统、个性化、时间语言、网络、应用、镜像源、默认应用、开发者八页；整体偏好防抖保存，保存失败被吞掉 | 注册式导航、领域服务、明确保存状态、冲突处理 |
+| `Client/RemoteOS.Client/Apps/Settings/Views/SettingsView.axaml` | 固定 220px 导航与页面模板，无统一搜索和面包屑 | 响应式导航、搜索、详情页及一致卡片 |
+| `Client/RemoteOS.Client/Services/SettingsNavigationService.cs` | SDK 入口仅提供打开应用页；Settings VM 另有个性化与应用权限定位 | 统一类型化路由与参数校验 |
+| `ShellSettings`、Workspace preferences | 桌面运行态与跨设备偏好 | 保留职责，由独立设置服务驱动，消除 Settings 窗口生命周期依赖 |
+| `docs/development/RemoteOS.AppSettings.md` | 按用户、Workspace、设备隔离应用私有 JSON，已有 revision | 继续用于应用私有偏好，不用来存宿主配置 |
+| `Shared/RemoteOS.Protocol/Privileged/` | 封闭操作与短期 capability 授权；注释仍禁止 environment operation | 新增专用环境、时区、主机名与 DNS 操作、授权目标与结果 |
+| `RemoteOS.PrivilegedHelper` | Linux one-shot，Windows 认证命名管道、服务与开发控制台 | 扩展现有分派器及平台实现，不新建万能管理员执行器 |
+| `docs/desktop/RemoteOS.Settings.md` | 仍按五页介绍，并声明宿主只读 | 作为历史实现说明，实施阶段整体更新 |
+| `docs/platform/RemoteOS.PrivilegedOperations.Goal.md` | 部分当前状态描述已落后于代码 | 复核现状，保留安全模型并纳入本次允许的结构化操作 |
+
+执行开始时记录 commit、工作区改动、测试项目与实际服务注册位置。代码事实优先于旧文档的“已实现/待实现”标签；不得重写已完成的 Helper transport。
+
+## 3. 设置范围与真源
+
+每个设置在 UI 与协议中明确目标、作用域、来源、权限、持久化与生效时间。页面顶部持续展示当前远程主机与连接身份；本机配置标注“此客户端设备”。切换连接必须清空旧主机草稿与授权引用。
+
+| 范围 | 真源与身份 | 例子 | 写入/生效 |
+| --- | --- | --- | --- |
+| ClientDevice | 当前客户端设备的既有受管本地存储 | 窗口布局、客户端辅助功能、开发模式 | 本机运行态；不能冒充宿主设置 |
+| Workspace | 服务端当前用户拥有的 Workspace | 主题、壁纸、语言、默认应用、Workspace 环境覆盖 | 服务端保存，通知所有连接设备 |
+| AppPrivate | AppSettings 现有隔离键 | 编辑器、终端显示偏好 | 应用服务负责解释 |
+| HostUser | 认证身份映射到远程 UID/SID 的宿主配置 | 用户环境变量 | 在正确用户身份下写入；不可误写 Server 服务账户 |
+| HostMachine | 远程 OS 的真实配置 | 机器环境、主机名、时区、DNS | 宿主 provider；受保护写入走 Helper |
+
+HostMachine 不归某个 Workspace 所有；读写权限由宿主策略和认证决定。设置目录只返回调用者可获知的描述与能力状态，不泄漏其他用户变量或秘密。持久状态以 provider 读回的 OS 配置为准；数据库只保存操作记录、受保护恢复材料、版本元数据，不能把 JSON 写成功当作系统修改成功。
+
+## 4. 产品结构与 UI 验收
+
+| 一级导航 | 子页与主要能力 | 第一轮范围 |
+| --- | --- | --- |
+| 首页 | 主机/Workspace 卡片、常用入口、搜索、待生效操作、Helper 状态 | 必做；不加入广告或无数据推荐 |
+| 系统 | 关于、主机名、环境变量、存储概览、服务与恢复入口 | 环境、主机名可写；存储复用既有读取能力 |
+| 网络与 Internet | 网卡详情、地址、DNS、连接诊断、代理、防火墙 | DNS 可写；代理与防火墙复用现有领域服务 |
+| 个性化 | 主题、壁纸、Shell、桌面表现 | 保留已有完整功能并统一布局 |
+| 应用 | 已安装应用、权限、默认应用、镜像源、应用设置入口 | 保留能力，避免全部堆在一个长页面 |
+| 账户与权限 | 当前宿主身份、会话、应用授权、特权助手状态 | 复用认证；不另造账号或密码库 |
+| 时间和语言 | 显示格式、语言、区域、远程时区、时间同步状态 | 时区可写；手动改系统时钟不是本轮要求 |
+| 辅助功能 | 客户端字号、动画、对比度、键盘可达性 | 有真实绑定效果；不假装控制服务器显示器 |
+| 开发者 | 环境变量关联入口、开发模式、包工具、诊断 | 环境页单一实例/路由；保留已有开发工具 |
+
+UI 要求：
+
+- 宽窗口使用侧栏、内容标题、面包屑与分组卡片；窄窗口折叠导航。验证 640×480、1024×768、1440×900 及 200% 缩放，无关键按钮被裁切、无全页横向滚动。
+- 统一图标与现有主题资源，不以 emoji 作为核心导航图标；亮/暗主题、焦点、高对比度、屏幕阅读名称和键盘顺序完整。中文、英文、日文文案同步。
+- 每项提供标题、说明、当前值、范围、生效提示与状态。详情页有相关设置和返回入口；搜索支持标题、关键词、同义词（例如 PATH/路径/环境变量），结果显示分类路径、范围与不可用原因。
+- 目录加载不阻塞本地搜索；普通已缓存搜索目标为 150ms 内呈现，基于至少 200 个设置项测量。网络探测异步更新，不让首页串行等待所有 provider。
+- 偏好可即时预览并防抖保存，显示“保存中/已保存/失败可重试”；失败保留草稿但不伪装为已保存。离开有未提交页面给出保留/放弃选择。
+- 宿主修改采用编辑草稿、预览差异、应用、结果读回；不对每次键入发起特权操作。有效短期授权范围内复用认证，高影响修改仍展示准确变更内容。
+- 区分未登录、离线、加载失败、无权限、需要提权、Helper 不可用、平台不支持、外部策略锁定；不得统一变成灰按钮。离线宿主写入不排队自动重放。
+
+## 5. 独立平台能力
+
+目标依赖关系：
+
+```text
+Settings UI / Shell 快捷入口 / 内置应用 / 授权 SDK / DevCli
+    → 类型化客户端服务与设置目录
+    → Server 授权 + 领域服务 + 操作协调器
+    → Workspace/AppSettings 存储 或 宿主平台 provider
+    → 需要特权时复用 Privileged transport → Helper 封闭操作
+```
+
+新增职责（名称为设计建议，实施时一次性落实）：
+
+- `SettingsCatalog`：稳定 settingId、分类、资源键、路由、作用域、值类型、可读写状态、能力原因与生效方式。目录提供发现，不接受任意路径或任意对象写入。
+- `IWorkspaceSettingsService`：偏好读取、变更、revision 与同步；从 SettingsViewModel 移出保存与默认应用传播。
+- `IHostEnvironmentService`、`IHostTimeService`、`IHostIdentitySettingsService`、`IHostNetworkSettingsService`：强类型领域契约，独立于 Avalonia、页面 VM 和 Shell。
+- `SettingsOperationCoordinator`：预览、授权校验、并发控制、持久操作状态、恢复与通知。领域提供者负责真实读写；不得把所有领域逻辑塞进协调器。
+- `SettingsNavigationService`：使用既有激活体系扩展 `remoteos://settings/...`，支持目录定位和 settingId 聚焦；保留语义仍有效的已有路径。若接口替换则同步所有调用者，不留兼容别名。
+- 外置应用经 SDK 请求粒度化 capability，宿主绑定 appId、用户、目标主机与 scope，不暴露 JWT 或 Helper IPC。打开设置页不授予写权限。
+
+至少接入三个非设置窗口入口：Shell 快捷项、终端“环境变量”入口、DevCli 的读取/预览/应用/查询。关闭设置应用后调用 API 仍可写入，Shell 与其他客户端仍能收到变化。高权限自动化沿用认证与目标范围；无交互且缺少授权时返回结构化错误，不启动密码对话框或降级绕过。
+
+## 6. 协议、并发和操作状态
+
+在 `Shared/RemoteOS.Protocol` 定义 DTO、枚举和路由常量；沿用当前 API 前缀。以下为拟定新路由，不代表已有实现：
+
+| 路由（相对于 `/api/v1.0`） | 语义 |
+| --- | --- |
+| `GET /settings/catalog` | 当前连接可见目录、能力和平台原因 |
+| `GET /host-settings/environment?scope=hostUser|hostMachine` | 当前绑定目标的环境快照 |
+| `POST /host-settings/environment/preview` | 强类型环境变更预览 |
+| `POST /host-settings/environment/apply` | 根据预览应用环境变更 |
+| `GET /host-settings/time`、`identity`、`network` | 各领域快照；network 支持按网卡 ID 查询 |
+| `POST /host-settings/{domain}/preview`、`apply` | domain 仅注册 time、identity、network，各自 DTO/验证器 |
+| `GET /settings/operations/{id}` | 有权限的调用者查询结果、恢复与待生效状态 |
+| `POST /settings/operations/{id}/confirm` | 在期限内确认网络连接仍可用 |
+| `POST /settings/operations/{id}/rollback` | 授权后回退该操作可恢复的状态 |
+
+Workspace 环境覆盖与偏好属于 Workspace 授权路径，不接受借用 host scope 绕过归属检查。AppSettings 继续使用现有协议。不得复制同一宿主能力到每个应用的专有路由。
+
+快照包括 `revision`、`observedAt`、`scope`、`target`、`capabilityState`、`effectiveState`；target 由服务端身份解析，客户端只允许选择已获权的目标。环境快照区分原始值、展开预览、来源、敏感状态，不自动把所有原始值广播出去。
+
+写请求包含 expectedRevision、幂等键和强类型 change set。预览返回短期 planId、脱敏差异、影响、需授权能力和期限；plan 绑定 actor、目标、变更摘要及基线 revision。应用不得用新载荷替换已确认计划。应用前重新检查授权、外部变更和能力状态；冲突返回 409，缺失必要前置条件返回 428。
+
+服务端状态：`Prepared → Applying → Applied | Failed | PartiallyApplied | Unknown`；需连接确认时为 `AwaitingConfirmation → Applied | RolledBack | RecoveryRequired`。生效时间另用 `Immediate | NewProcess | NewLogin | ServiceRestart | HostRestart`，避免“已持久化”与“运行态生效”混淆。
+
+同幂等键同载荷返回既有操作；异载荷冲突。Helper 现有重复 ID 拒绝语义不等同 HTTP 幂等：由 Server 持久操作日志承接重试；不在断连后盲目生成新 Helper ID 重做写入。未知结果先查日志并读回资源，无法确认则进入恢复状态。
+
+按资源串行写入；revision 必须覆盖宿主外部变更（例如规范化快照摘要/平台版本），不能只增长数据库计数。跨多个 OS 资源无法承诺 ACID，应保存步骤结果与补偿状态。回滚也检查新 revision，避免覆盖另一管理员后续修改。
+
+变化通知只包含 settingId、scope、资源标识和 revision，通过现有实时通道扩展；接收端按权限重新读取。重连先重取快照，禁止用旧缓存覆盖新状态。
+
+## 7. 环境变量：必须完成的纵向切片
+
+### 7.1 交互与共同语义
+
+提供 Workspace、远程当前用户、远程机器三个明确分区；新增、编辑、删除、筛选、PATH 分项增删与排序、原始/展开预览、重复与不存在路径提示。区分删除操作与空字符串；不能把空值静默转换为删除。
+
+记录变量来源与覆盖关系。普通变量对 RemoteOS 创建的非特权用户工作负载按 HostMachine → HostUser → Workspace → 已授权的单次工作负载覆盖构建；不得直接复制 Server 服务进程环境。PATH 使用平台环境构建规则与显式覆盖/追加模式，展示最终顺序；不要把 Windows 用户 PATH 简化为覆盖系统 PATH。
+
+Windows 名称大小写不敏感，Linux 大小写敏感；PATH 分隔符分别为 `;` 与 `:`。不自动删掉空路径项、重排或大小写归一化；对当前目录搜索等危险语义提示确认。变量名、值、批次数量与总请求大小有明确上限并在两端校验；拒绝 NUL、非法名称和 provider 无法无损表达的数据。
+
+展开预览有限深度，检测循环引用；原始字符串不经 shell 求值。`$(...)`、反引号、分号、引号和换行按数据校验与转义，绝不拼入 shell/PowerShell 程序。
+
+读取变量本身也需要权限。敏感值默认掩码，单独授权显示；搜索、日志、通知、导出及预览不包含秘密值。恢复材料必须限制访问并按保留期清理，不把完整环境保存为普通审计日志。
+
+### 7.2 Windows provider
+
+用户范围明确绑定认证用户 SID，并正确访问对应用户配置单元；LocalSystem 的 HKCU 不是目标用户。机器范围使用固定系统环境存储位置，客户端不能提交注册表路径；保留字符串类型及可展开字符串语义，写后重新读取。
+
+发送适当环境变化通知，但 UI 明示不会重写已运行进程的环境。新建 Terminal、任务及受管非特权工作负载必须获取新快照构造环境；Windows 服务与其他登录会话可能需要独立重启/重新登录。不得为使变量生效自动重启整个服务器。
+
+### 7.3 Linux provider
+
+Linux 不存在覆盖所有 shell、PAM、systemd 服务的统一用户环境存储。第一轮明确支持：Ubuntu 的机器 `/etc/environment` 受限无 shell 语法，以及 RemoteOS 启动器使用的用户/Workspace 环境；用户持久范围标注“RemoteOS 启动的进程”，不宣传为所有宿主登录程序生效。
+
+执行阶段核对目标发行版真实加载机制；读到不能无损编辑的语法时给出具体错误并保持文件不变。保留无关条目和文件元数据，采用受限解析、受保护临时文件、原子替换与读回；不向 `.bashrc`、`.profile` 批量追加脚本。未来增加 PAM/environment.d provider 必须单独声明支持的消费者与优先级。
+
+### 7.4 提权边界
+
+新增专用 EnvironmentRead/EnvironmentApply（最终命名与枚举统一）及 host-user/host-machine capability；Helper 再验证身份绑定、scope、变量名、长度、变更数、revision 和目标文件/注册表键。不得借 FileWrite 任意写环境文件代替领域校验。
+
+允许用户编辑 PATH、JAVA_HOME 等以及经明确高影响确认的加载器/运行时变量。机器范围变更可影响其他进程，应按管理员操作处理。Helper 与所有特权子进程始终使用由安装策略控制的干净环境和可信绝对可执行路径，不能继承被编辑的 PATH、LD_PRELOAD、运行时注入变量或 Workspace 环境。需要重启受管服务时另行走该服务能力与确认。
+
+## 8. 其他宿主能力与恢复
+
+| 能力 | Windows / Linux 第一轮 | 关键约束 |
+| --- | --- | --- |
+| 时区 | 两平台枚举与设置本机有效时区 ID | ID 由远程系统列举；不把 IANA/Windows ID 混用；显示格式和宿主时区分开 |
+| 主机名 | 两平台读取与设置 | 平台校验、影响预览、读回；域加入或组织策略限制给出具体原因，支持待重启状态 |
+| DNS | Windows 网卡；Ubuntu NetworkManager 或 systemd-resolved/networkd 的明确可写组合 | 执行时探测实际 owner，只对声明支持且经过测试的 provider 开放写入；不可直接覆盖被托管的 resolv.conf |
+| 代理/防火墙 | 复用现有领域能力与平台支持矩阵 | 一个真源；不在设置应用复制规则引擎或绕过 Proxy/Firewall 授权 |
+| 服务、存储、恢复 | 接入已支持的管理/诊断与关联入口 | 不凭空增加磁盘格式化、任意服务执行等功能 |
+
+DNS 编辑支持网卡选择、自动/手动、IPv4/IPv6 地址与顺序，展示变更影响。可能断开当前连接的操作必须在应用前建立宿主侧持久恢复任务；推荐 60 秒确认期限，可在计划中明确实际值。恢复任务不能依赖 Client、Server 请求线程或 Linux one-shot Helper 继续存活；复用或实现固定动作的 OS 调度恢复机制。
+
+客户端从新连接确认后取消恢复；超时自动恢复旧配置。主机重启后读取恢复日志并处理未完成计划。若部署无法提供独立恢复能力，DNS 写入标为暂不可用并说明前置条件，不悄悄取消恢复要求。主机名等不保证完全自动恢复的操作必须明确手动恢复路径和待生效条件。
+
+## 9. 实施里程碑
+
+以下全部为本 Goal 必做；平台明确不适用不算失败，但不能把未实现填成“不支持”来完成阶段。
+
+| 阶段 | 工作与主要落点 | 完成证据 |
+| --- | --- | --- |
+| G0 基线与契约 | 核对 Settings、Runtime/SDK、Server Privileged、部署和测试；固定作用域、身份映射、支持矩阵及错误码 | 代码清单、冲突文档修订、具体 provider 方案、逐项验收表 |
+| G1 平台底座 | Protocol 目录/路由/DTO；Server 领域接口、权限、revision、操作日志、通知；提取 Workspace 服务 | 不创建窗口也能读写偏好；两客户端同步；过期 revision 与越权被拒 |
+| G2 UI 框架 | Settings 导航、搜索、卡片、面包屑、响应式与状态组件；迁移现有八页能力 | 三语言、亮暗主题、键盘和尺寸截图；原有入口无回归 |
+| G3 环境变量 | 两平台 provider、Helper capability、PATH 编辑器、终端/工作负载环境构建 | 用户与机器隔离、持久化读回、新进程生效、特权环境隔离的集成证据 |
+| G4 宿主扩展 | 时区、主机名、DNS 与独立超时恢复；关联代理、防火墙、诊断 | Windows 与 Ubuntu 实机/隔离 VM 用例，断网及重启恢复证据 |
+| G5 全系统接入 | Shell、Terminal、SDK、DevCli 共用服务；关闭 Settings 仍工作；修订旧接口调用者 | 至少三个非窗口入口、自动化无 UI 测试、manifest/capability 一致 |
+| G6 收尾验收 | 运行相关构建/测试、UI 检查、部署文档与所有冲突清理 | 完整验收矩阵、已知平台限制、变更清单，无伪成功/占位写入 |
+
+G1 后可进行 G2；G3 依赖 G1，G4 依赖操作恢复底座；G5/G6 集成所有阶段。每阶段更新本文执行记录，包含变更、验证命令、结果、尚未解决的问题和下一步。不要只留下设计或 UI mock 就标记完成。
+
+## 10. 验收矩阵与完成定义
+
+| 场景 | 必须观测到的结果 |
+| --- | --- |
+| 设置应用从未打开，API 修改主题/默认程序 | Shell、文件关联及另一设备刷新 |
+| 保存失败、断网、切换用户/服务器 | 草稿状态真实；不向错误主机或新用户重放写入 |
+| 两个客户端和宿主外部工具同时编辑 | 冲突被检测；无整份偏好或 PATH 静默覆盖 |
+| 普通用户尝试机器变量；有授权后重试 | 首次拒绝/要求提权，授权后真实持久化；Helper 缺失时可解释 |
+| Windows Helper 以 LocalSystem 运行 | 用户变量写入目标 SID，服务账户与其他用户不受误写 |
+| 环境值含引号、特殊字符、空值、循环引用 | 无命令执行；删除与空值明确；不支持值无部分写入 |
+| 改 PATH/运行时加载变量后触发特权操作 | Helper 与管理子进程仍使用可信路径和干净环境 |
+| 修改环境后新开终端，旧终端仍运行 | 新进程按声明规则取新值，旧进程不被伪称已更新 |
+| HTTP 重试、Helper 断连、Server 重启 | 操作可查询；不盲重放，不把 Unknown 当 Success |
+| DNS 修改导致断连且无确认 | 独立恢复任务按期限回退，Server/Client 退出也有效 |
+| 宿主策略锁定、未知网络后端 | 原因具体；无假开关或无效“已保存” |
+| app capability 拒绝、跨用户/Workspace 请求 | 所有入口一致拒绝，导航入口不能越权 |
+| 查看日志、事件、搜索索引和导出 | 不含密码、JWT、环境秘密值或恢复快照明文 |
+
+验证包括 Protocol/领域单测、Server 授权与幂等集成测试、Helper 输入与恢复测试、Windows 服务身份及 Ubuntu 真正 provider 测试，以及 Avalonia 人工/自动 UI 检查。先发现现有测试组织再添加有行为价值的用例；不只测 DTO 与自身实现镜像。
+
+可从 `dotnet build RemoteOS.sln`（先核实解决方案文件名）及 `dotnet test RemoteOS.Server.Tests/RemoteOS.Server.Tests.csproj`、`dotnet test Framework/RemoteOS.Core.Tests/RemoteOS.Core.Tests.csproj` 开始，按实际改动补充项目。实机修改仅在明确指定的测试主机/隔离 VM 执行并记录原值和恢复结果；缺少环境时如实标记未验证，不能宣布全量完成。
+
+完成条件：G0–G6 证据齐全；设置服务可脱离窗口运行；必做宿主能力真实可用；特权路径完整；相关调用者/示例/协议同步升级；未解决阻塞、测试失败及平台缺口均不被“UI 完成”掩盖。
+
+## 11. 文档冲突清理清单
+
+- `docs/desktop/RemoteOS.Settings.md`：替换仅五页、宿主只读、吞保存错误等旧设计，记录新导航与服务分工。
+- `docs/platform/RemoteOS.PrivilegedOperations.Goal.md`：将笼统环境禁令改为禁止特权执行环境注入，纳入封闭环境操作；更新过期代码基线。
+- `Shared/RemoteOS.Protocol/Privileged/PrivilegedOperationContracts.cs`：实施新增操作时同步修改禁止 environment operation 的注释与相关拒绝测试，保留禁止通用执行字段。
+- `docs/platform/RemoteOS.PrivilegedOperations.Operations.md`、`RemoteOS.PrivilegedHelper/README.md` 及英文版本：补安装条件、capability、环境隔离、恢复任务与诊断。
+- `docs/architecture/RemoteOS.Protocol.md`、`docs/platform/RemoteOS.Storage.md`、`docs/development/RemoteOS.AppSettings.md`：补新契约、操作日志与真源边界，不把 OS 状态塞进 AppSettings。
+- `docs/platform/RemoteOS.Security.md`、`docs/RemoteOS 权限模型与项目重构规范.md` 及应用权限文档：同步设置能力、目标绑定和敏感值读取授权；不放宽其他领域边界。
+- `docs/applications/RemoteOS.Terminal.md`、相关工作负载文档、DevCli README、SDK 示例与 manifest：同步环境生效语义及新能力调用方式。
+
+## 12. 可直接用于 Goal 模式的指令
+
+```text
+依据 docs/desktop/RemoteOS.SettingsSystem.Goal.md 完成 RemoteOS 设置系统与设置应用升级，逐阶段执行 G0–G6，并维护该文件的执行记录与验收证据。
+目标是独立于设置窗口的系统配置服务、参考 Windows 的设置体验，以及真实可写的远程环境变量、时区、主机名和受支持的 DNS。复用已有特权助手，Server 保持非特权；明确区分客户端、Workspace、远程用户与远程机器。
+本需求已明确替换旧文档“Settings 不触及宿主配置”和“环境变量操作一律禁止”的限制；保留封闭操作、认证、权限、审计和恢复要求。同步修订冲突文档及仓库内调用者，不增加兼容别名或双格式解析。
+持续完成实现、相关测试和 UI 验证，不停在规划、mock 或只读页面。不要创建新的 Goal 或预算，除非当前模式的用户指令要求。没有测试主机时继续可独立完成的工作，准确记录尚未验证的跨平台项；不要用开发机替代远程测试目标进行系统配置实验。
+每阶段给出简明进度；最终报告具体变更、验证证据、剩余限制。所有必做验收完成后才能标记目标完成。
+```
+
+## 13. 参考依据
+
+Windows 只作为信息架构与交互依据，RemoteOS 的路由、权限与跨平台 provider 以本文设计为准。
+
+- [Microsoft：探索 Windows 设置](https://support.microsoft.com/en-us/windows/experience/exploring-windows-settings)：分类与设置发现。
+- [Microsoft：启动特定 Windows 设置页](https://learn.microsoft.com/zh-cn/windows/apps/develop/launch/launch-settings)：页面深链接和平台可用性思想。
+- [Microsoft：Windows 环境变量](https://learn.microsoft.com/en-us/windows/win32/procthread/environment-variables)：用户/系统环境、子进程继承与变更通知。
+- [Microsoft：PowerShell 环境变量](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_environment_variables?view=powershell-7.5)：作用域与跨平台大小写差异。
+
+## 14. 执行记录
+
+| 日期 | 阶段 | 结果 | 验证与剩余项 |
+| --- | --- | --- | --- |
+| 2026-09-07 | 文档基线 | 已核对八页 Settings、AppSettings、特权协议和 Helper 文档，形成此执行方案 | 仅文档交付；G0–G6 实现及运行验证未开始 |
