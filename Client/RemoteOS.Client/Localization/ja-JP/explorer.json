@@ -159,6 +159,7 @@
         "explorer.batch.details": "操作の詳細",
         "explorer.batch.not_started": "未実行",
         "explorer.operations.title": "ファイル操作",
+        "explorer.operations.upload": "ホストからアップロード",
         "explorer.operations.close_hint": "終了した操作は自動的に消去され、すべて終了するとウィンドウが閉じます。",
         "explorer.operations.clear": "終了した操作を消去",
         "explorer.operations.apply_all": "この操作の以降の同種の問題に適用",

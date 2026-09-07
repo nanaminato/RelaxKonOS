@@ -236,6 +236,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     /// <summary>Requests a five-minute elevated directory grant after a mutating operation was denied.</summary>
     public Func<IReadOnlyList<string>, FileElevationCapability, Task<bool>>? RequestFileOperationElevationAsync { get; set; }
     public Func<StartFileOperationRequest, Action<FileOperationDto>, Task>? QueueOperationAsync { get; set; }
+    public Action<IReadOnlyList<FileOperationItem>, long, Func<Action<string, long, int>, CancellationToken, Task>>? QueueUpload { get; set; }
     public Action? ShowFileOperations { get; set; }
     [RelayCommand] private void ShowOperations() => ShowFileOperations?.Invoke();
 
@@ -1325,6 +1326,52 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         if (plan.Files.Count == 0 && plan.Directories.Count == 0)
         {
             StatusText = LocalizedText.Get("explorer.status.no_uploadable_files");
+            return;
+        }
+
+        var destination = AddressbarPath;
+        if (QueueUpload is not null)
+        {
+            var items = plan.Directories.Select(path => new FileOperationItem(path, CombineRemoteRelativePath(destination, path)))
+                .Concat(plan.Files.Select(file => new FileOperationItem(file.SourcePath, CombineRemoteRelativePath(destination, file.RelativePath)))).ToArray();
+            QueueUpload(items, plan.TotalBytes, async (report, ct) =>
+            {
+                var count = 0;
+                long bytes = 0;
+                foreach (var directory in plan.Directories)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var path = CombineRemoteRelativePath(destination, directory);
+                    report(path, bytes, count);
+                    if (!await RetryWithOperationElevationAsync(async () =>
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            await _client.CreateDirectoryAsync(path, ct);
+                        }, FileElevationCapability.CreateDirectory, destination))
+                        throw new InvalidOperationException(LocalizedText.Get("explorer.status.elevation_required"));
+                    report(path, bytes, ++count);
+                }
+                foreach (var file in plan.Files)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var path = CombineRemoteRelativePath(destination, file.RelativePath);
+                    var start = bytes;
+                    var processed = count;
+                    var progress = new Progress<long>(uploaded => report(path, start + uploaded, processed));
+                    report(path, bytes, count);
+                    if (!await RetryWithOperationElevationAsync(async () =>
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            // Open a fresh stream on retry so an elevation response cannot truncate the upload.
+                            using var stream = File.OpenRead(file.SourcePath);
+                            await _client.UploadAsync(ExplorerPath.Parent(path)!, GetRelativeFileName(file.RelativePath), stream, progress, ct);
+                        }, FileElevationCapability.Upload, destination))
+                        throw new InvalidOperationException(LocalizedText.Get("explorer.status.elevation_required"));
+                    bytes += file.Length;
+                    report(path, bytes, ++count);
+                }
+            });
+            StatusText = LocalizedText.Get("explorer.operations.submitted");
             return;
         }
 

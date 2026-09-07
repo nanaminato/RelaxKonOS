@@ -159,6 +159,7 @@
         "explorer.batch.details": "操作详情",
         "explorer.batch.not_started": "未执行",
         "explorer.operations.title": "文件操作",
+        "explorer.operations.upload": "从宿主机上传",
         "explorer.operations.close_hint": "操作结束后自动清除，全部完成后自动关闭窗口。",
         "explorer.operations.clear": "清除已结束",
         "explorer.operations.apply_all": "应用到此任务后续同类问题",

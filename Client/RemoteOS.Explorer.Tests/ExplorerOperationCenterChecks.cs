@@ -59,11 +59,50 @@ public static class ExplorerOperationCenterChecks
         await Eventually(() => fake.DirectoryReads > reads);
         check(fake.DirectoryReads == reads + 1, "Completion refreshes the affected folder after Explorer becomes idle");
 
+        vm.QueueUpload = center.QueueUpload;
+        var localFile = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(localFile, "upload");
+            vm.RequestClipboardUploadSourcesAsync = () =>
+                Task.FromResult<IReadOnlyList<LocalUploadSource>>([new(localFile)]);
+            fake.UploadCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await vm.PasteFromHostCommand.ExecuteAsync(null);
+            check(center.Jobs.Single().IsUpload && !vm.IsBusy && !vm.PasteFromHostCommand.IsRunning,
+                "Host paste uses shared operation window and releases Explorer");
+            check(fake.UploadTarget == "/target", "Host upload captures its destination");
+            await vm.NavigateToAsync("/next");
+            check(fake.UploadTarget == "/target", "Navigation cannot redirect a host upload");
+            await vm.NavigateToAsync("/target");
+            reads = fake.DirectoryReads;
+            fake.UploadCompletion.SetResult(null!);
+            await Eventually(() => center.Jobs.Count == 0 && fake.DirectoryReads > reads);
+            check(center.Jobs.Count == 0, "Host upload clears and refreshes its destination on completion");
+
+            fake.UploadCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await vm.PasteFromHostCommand.ExecuteAsync(null);
+            await center.Jobs.Single().CancelCommand.ExecuteAsync(null);
+            await Eventually(() => center.Jobs.Count == 0);
+            check(fake.UploadToken.IsCancellationRequested, "Upload cancellation reaches the HTTP request");
+
+            var uploadEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            center.QueueUpload([new("host", "/target/host")], 1, (_, _) => uploadEnd.Task);
+            await center.SubmitAsync(new(Guid.NewGuid(), FileOperationKind.Copy, [new("/a", "/target/a")]), _ => { });
+            var remote = center.Jobs.Single(j => !j.IsUpload);
+            var closeCount = closed;
+            uploadEnd.SetResult();
+            await Eventually(() => center.Jobs.Count == 1);
+            check(closed == closeCount, "Upload completion does not close a running remote operation");
+            fake.Finish(remote.Snapshot.Id, ["/a"]);
+            await Eventually(() => center.Jobs.Count == 0);
+        }
+        finally { File.Delete(localFile); }
+
         var callbackCount = 0;
         fake.LoseSubmissionResponse = true;
         try { await center.SubmitAsync(new(Guid.NewGuid(), FileOperationKind.Copy, [new("/a", "/b")]), _ => callbackCount++); }
         catch (IOException) { }
-        check(center.Jobs.Count == 1 && fake.Requests.Count == 3,
+        check(center.Jobs.Count == 1 && fake.Requests.Count == 4,
             "Lost submission response recovers the existing job without resubmitting");
         fake.Finish(center.Jobs[0].Snapshot.Id, ["/a"]);
         await Eventually(() => callbackCount == 1);
@@ -102,6 +141,9 @@ public class OperationClientFake : DispatchProxy
 {
     public List<StartFileOperationRequest> Requests { get; } = [];
     public Dictionary<Guid, FileOperationDto> Jobs { get; } = [];
+    public TaskCompletionSource<FileEntryDto>? UploadCompletion { get; set; }
+    public string? UploadTarget { get; private set; }
+    public CancellationToken UploadToken { get; private set; }
     public int DirectoryReads { get; private set; }
     public bool LoseSubmissionResponse { get; set; }
     public bool ReadHeld { get; set; }
@@ -113,6 +155,10 @@ public class OperationClientFake : DispatchProxy
         switch (method!.Name)
         {
             case nameof(IExplorerClient.GetDirectoryAsync): DirectoryReads++; return Task.FromResult(ExplorerFake.Directory((string)args![0]!));
+            case nameof(IExplorerClient.UploadAsync):
+                UploadTarget = (string)args![0]!;
+                UploadToken = (CancellationToken)args[4]!;
+                return UploadCompletion!.Task.WaitAsync(UploadToken);
             case nameof(IExplorerClient.StartOperationAsync):
                 var request = (StartFileOperationRequest)args![0]!;
                 Requests.Add(request);

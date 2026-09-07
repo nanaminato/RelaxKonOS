@@ -94,6 +94,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         {
             ConfigureOperationsWindow(context, operations);
             viewModel.QueueOperationAsync = operations.SubmitAsync;
+            viewModel.QueueUpload = operations.QueueUpload;
             viewModel.ShowFileOperations = operations.Show;
             operations.ElevateAsync = (issue, kind) => RequestOperationElevationAsync(context, client,
                 new[] { ExplorerPath.Parent(issue.SourcePath), issue.DestinationPath is null ? null : ExplorerPath.Parent(issue.DestinationPath) }
