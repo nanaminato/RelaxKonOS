@@ -264,12 +264,16 @@ Windows 只作为信息架构与交互依据，RemoteOS 的路由、权限与跨
 - Client 原 `Apps/Settings/ISettingsClient` / `SettingsClient` 直接替换为 `Services/WorkspaceSettings/IWorkspaceSettingsService` / `WorkspaceSettingsService`，仓库内 Shell、Explorer、SDK、编码、URI 路由和同步调用者一并迁移；没有旧接口别名。
 - 新增窗口外的 `WorkspacePreferencesEditor`：冻结草稿与连接目标、防抖保存、连接变化清理、保留失败草稿、关闭窗口继续保存。Settings VM 仅调用服务；三语言展示保存中、服务端已接收/等待落盘、失败重试、冲突、离线。
 - 已新增 `SettingsSystemVerification`：三个存储实现的 stale revision 拒绝、32 个并发写者仅一个成功、用户隔离、损坏数据保留、缓存落盘重启后 revision/值一致。提供 `--settings-only` 精确运行入口。测试结果更新如下。
-- **仍需实现**：目录/强类型宿主契约、实时跨客户端同步、偏好冲突合并/放弃 UI、持久化完成状态、注册表通用编辑与删除的并发边界、宿主操作协调器、完整 G2–G6。此记录不表示 G1 验收通过。
+- **仍需实现**：目录/强类型宿主契约、实时跨客户端同步、偏好冲突合并/放弃 UI、持久化完成状态、宿主操作协调器、完整 G2–G6。此记录不表示 G1 验收通过。
 
 | 验证命令 | 当前结果 |
 | --- | --- |
 | `dotnet build RemoteOS.Server/RemoteOS.Server.csproj --no-restore -v quiet` | 通过，0 warning / 0 error |
 | `dotnet build Client/RemoteOS.Client/RemoteOS.Client.csproj --no-restore -v quiet` | Debug 失败：原 App.axaml.cs 的 AttachDeveloperTools 引用不可用；待修复依赖恢复 |
 | `dotnet build Client/RemoteOS.Client/RemoteOS.Client.csproj --no-restore -c Release -p:UsedAvaloniaProducts= -v quiet` | 通过，0 warning / 0 error；关闭构建统计以避免向 sandbox 外的 Avalonia telemetry 目录写入，未跳过 C#/XAML 编译 |
-| `dotnet run --project RemoteOS.Server.Tests/RemoteOS.Server.Tests.csproj --no-restore -- --settings-only` | 初次被旧 restore assets 的 EF Core 10.0.10/10.0.11 不一致阻止；正在恢复依赖，未计作测试通过 |
+| `dotnet run --project RemoteOS.Server.Tests/RemoteOS.Server.Tests.csproj --no-restore -- --settings-only` | 通过（退出 0）。恢复本地依赖后，HTTP 428/409、跨用户读写拒绝、注册表绕过拒绝、三个存储实现及 SQLite 重启用例全部通过。仍有 NuGet 源不可达 NU1801 警告 |
 | UI 截图 / 640×480、1024×768、1440×900、200% / 两设备 / 宿主写入与恢复 | 待测试；未运行开发机系统配置实验 |
+
+- G1 补充：注册表 PUT 契约增加必传 `expectedRevision`（创建用 0），两个编辑器调用者同步升级；受管 Desktop JSON 走相同校验；拒绝删除受管默认偏好及其祖先键，避免删除/重建重置版本后接受旧草稿。默认注册表键创建改为 insert-only CompareExchange，避免并发初始读取覆盖已保存值。
+- HTTP 行为验证使用临时 loopback Kestrel 和测试身份运行实际生产路由，数据仅在临时目录；验证 428、409、跨用户 GET/PUT、注册表 stale PUT 与受管删除拒绝。此测试不替代真实 JWT 认证、两设备 UI、宿主 provider 或恢复验收。
+- 下一批顺序：先补偏好持久状态/实时变化通知与断线重取、客户端草稿冲突处理及服务行为测试；再完成目录与宿主强类型协议、持久操作协调器，并推进 G2–G6。未将任何阶段或总 Goal 标记完成。

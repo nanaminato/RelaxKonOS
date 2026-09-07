@@ -32,12 +32,12 @@ public sealed class InMemoryRegistryRepository : IRegistryRepository
     {
         lock (_gate)
         {
-        var saved = _entries.AddOrUpdate(Key(entry), _ => Copy(entry), (_, current) =>
-        {
-            entry.Revision = current.Revision + 1;
-            return Copy(entry);
-        });
-        return Copy(saved);
+            var saved = _entries.AddOrUpdate(Key(entry), _ => Copy(entry), (_, current) =>
+            {
+                entry.Revision = current.Revision + 1;
+                return Copy(entry);
+            });
+            return Copy(saved);
         }
     }
     public RegistryEntry? CompareExchange(RegistryEntry entry, long expectedRevision)
@@ -49,8 +49,14 @@ public sealed class InMemoryRegistryRepository : IRegistryRepository
             return Upsert(entry);
         }
     }
-    public bool Delete(Guid userId, RegistryScope scope, Guid scopeId, string path, string name) => _entries.TryRemove((userId, scope, scopeId, path, name), out _);
-    public void SeedSynced(RegistryEntry entry) => _entries.TryAdd(Key(entry), Copy(entry));
+    public bool Delete(Guid userId, RegistryScope scope, Guid scopeId, string path, string name)
+    {
+        lock (_gate) return _entries.TryRemove((userId, scope, scopeId, path, name), out _);
+    }
+    public void SeedSynced(RegistryEntry entry)
+    {
+        lock (_gate) _entries.TryAdd(Key(entry), Copy(entry));
+    }
     public IReadOnlyList<RegistryKey> ListChildKeys(Guid userId, RegistryScope scope, Guid scopeId, string parentPath) =>
         _keys.Values.Concat(_entries.Values.Select(x => new RegistryKey { UserId = x.UserId, Scope = x.Scope, ScopeId = x.ScopeId, Path = x.Path }))
             .Where(x => x.UserId == userId && x.Scope == scope && x.ScopeId == scopeId && IsDirectChild(x.Path, parentPath))
@@ -58,13 +64,16 @@ public sealed class InMemoryRegistryRepository : IRegistryRepository
     public RegistryKey CreateKey(RegistryKey key) => Copy(_keys.GetOrAdd(Key(key), _ => Copy(key)));
     public bool DeleteKeyTree(Guid userId, RegistryScope scope, Guid scopeId, string path)
     {
-        var prefix = path + "\\";
-        var removed = false;
-        foreach (var key in _keys.Keys.Where(x => x.Item1 == userId && x.Item2 == scope && x.Item3 == scopeId && (x.Item4 == path || x.Item4.StartsWith(prefix, StringComparison.Ordinal))).ToArray())
-            removed |= _keys.TryRemove(key, out _);
-        foreach (var key in _entries.Keys.Where(x => x.Item1 == userId && x.Item2 == scope && x.Item3 == scopeId && (x.Item4 == path || x.Item4.StartsWith(prefix, StringComparison.Ordinal))).ToArray())
-            removed |= _entries.TryRemove(key, out _);
-        return removed;
+        lock (_gate)
+        {
+            var prefix = path + "\\";
+            var removed = false;
+            foreach (var key in _keys.Keys.Where(x => x.Item1 == userId && x.Item2 == scope && x.Item3 == scopeId && (x.Item4 == path || x.Item4.StartsWith(prefix, StringComparison.Ordinal))).ToArray())
+                removed |= _keys.TryRemove(key, out _);
+            foreach (var key in _entries.Keys.Where(x => x.Item1 == userId && x.Item2 == scope && x.Item3 == scopeId && (x.Item4 == path || x.Item4.StartsWith(prefix, StringComparison.Ordinal))).ToArray())
+                removed |= _entries.TryRemove(key, out _);
+            return removed;
+        }
     }
     private static (Guid, RegistryScope, Guid, string, string) Key(RegistryEntry x) => (x.UserId, x.Scope, x.ScopeId, x.Path, x.Name);
     private static (Guid, RegistryScope, Guid, string) Key(RegistryKey x) => (x.UserId, x.Scope, x.ScopeId, x.Path);

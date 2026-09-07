@@ -644,3 +644,5 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 ### SettingsSystem 升级（2026-09-07，G1 实施中）
 
 Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。完整执行与待验证项见 [SettingsSystem.Goal](../desktop/RemoteOS.SettingsSystem.Goal.md)。
+
+注册表 `PutRegistryEntryRequest.expectedRevision` 必传；创建使用 0，更新使用已读 `RegistryEntryDto.revision`。缺失 428、冲突 409。`Workspace\Desktop` 默认值仍可经注册表编辑，但必须通过偏好校验；不能删除受管偏好或其祖先键来重置版本。需恢复默认值时通过携带当前 revision 的偏好更新实现。

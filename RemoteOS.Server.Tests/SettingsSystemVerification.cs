@@ -7,11 +7,24 @@ using Server.Domain;
 using Server.Settings;
 using Server.Storage;
 using Server.Storage.Sqlite;
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using RemoteOS.Protocol.Common;
+using RemoteOS.Protocol.Registry;
+using Server.Endpoints;
 
 internal static class SettingsSystemVerification
 {
     public static async Task RunAsync(string root)
     {
+        await VerifyHttpAsync(root);
         Verify(new InMemoryRegistryRepository());
         var options = new DbContextOptionsBuilder<RemoteOsDbContext>()
             .UseSqlite($"Data Source={Path.Combine(root, "settings-concurrency.db")};Pooling=False").Options;
@@ -36,6 +49,78 @@ internal static class SettingsSystemVerification
         }
         finally { await restarted.StopAsync(CancellationToken.None); }
         Console.WriteLine("Settings verification passed: stale writes, parallel writers, tenant isolation, corrupt data, SQLite restart.");
+    }
+
+    private static async Task VerifyHttpAsync(string root)
+    {
+        var owner = Guid.NewGuid();
+        var workspace = new Workspace { Id = Guid.NewGuid(), UserId = owner };
+        var workspaces = new InMemoryWorkspaceRepository();
+        workspaces.Add(workspace);
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddAuthorization();
+        builder.Services.ConfigureHttpJsonOptions(options =>
+        {
+            foreach (var converter in RemoteOsJsonOptions.Default.Converters)
+                options.SerializerOptions.Converters.Add(converter);
+        });
+        builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
+        builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
+        builder.Services.AddScoped<IWorkspaceSettingsService, WorkspaceSettingsService>();
+        builder.Services.AddSingleton<WorkspaceWallpaperStore>();
+        builder.Services.Configure<StorageOptions>(_ => { });
+        await using var app = builder.Build();
+        // Test-only authenticated principals exercise production authorization/ownership checks.
+        // This harness is bound solely to ephemeral loopback, never a remote configuration target.
+        app.Use(async (context, next) =>
+        {
+            var subject = context.Request.Headers["X-Test-Subject"].FirstOrDefault() ?? owner.ToString();
+            context.User = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim(ClaimTypes.NameIdentifier, subject), new Claim("workspace_id", workspace.Id.ToString())
+            ], "settings-test"));
+            await next(context);
+        });
+        app.UseAuthorization();
+        app.MapWorkspaceEndpoints();
+        app.MapRegistryEndpoints();
+        await app.StartAsync();
+        try
+        {
+            var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            using var http = new HttpClient { BaseAddress = new Uri(address) };
+            var route = WorkspaceApiRoutes.Preferences.Replace("{id}", workspace.Id.ToString());
+            var initial = await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RemoteOsJsonOptions.Default);
+            Check(initial?.Revision > 0, "HTTP GET must return a preference revision.");
+            using var missing = await http.PutAsJsonAsync(route, initial! with { Revision = null }, RemoteOsJsonOptions.Default);
+            Check((int)missing.StatusCode == 428, "HTTP PUT without revision must return 428.");
+            using var saved = await http.PutAsJsonAsync(route, initial! with { Theme = ThemeKind.Dark }, RemoteOsJsonOptions.Default);
+            Check(saved.IsSuccessStatusCode, "Versioned HTTP preference write failed.");
+            using var stale = await http.PutAsJsonAsync(route, initial!, RemoteOsJsonOptions.Default);
+            Check(stale.StatusCode == HttpStatusCode.Conflict, "Stale HTTP PUT must return 409.");
+            using var foreignRequest = new HttpRequestMessage(HttpMethod.Get, route);
+            foreignRequest.Headers.Add("X-Test-Subject", Guid.NewGuid().ToString());
+            using var foreign = await http.SendAsync(foreignRequest);
+            Check(foreign.StatusCode == HttpStatusCode.NotFound, "Cross-user HTTP reads must not reveal preferences.");
+            using var foreignWrite = new HttpRequestMessage(HttpMethod.Put, route)
+            {
+                Content = JsonContent.Create(initial!, options: RemoteOsJsonOptions.Default)
+            };
+            foreignWrite.Headers.Add("X-Test-Subject", Guid.NewGuid().ToString());
+            using var denied = await http.SendAsync(foreignWrite);
+            Check(denied.StatusCode == HttpStatusCode.NotFound, "Cross-user HTTP writes must be rejected.");
+
+            var value = System.Text.Json.JsonSerializer.SerializeToElement(initial!, RemoteOsJsonOptions.Default);
+            using var registryStale = await http.PutAsJsonAsync(RegistryApiRoutes.Entries,
+                new PutRegistryEntryRequest(RegistryScope.Workspace, WorkspaceConfigurationRegistry.DesktopPath,
+                    WorkspaceConfigurationRegistry.DefaultValueName, RegistryValueType.Json, value, initial!.Revision), RemoteOsJsonOptions.Default);
+            Check(registryStale.StatusCode == HttpStatusCode.Conflict, "The registry editor must not bypass preference revisions.");
+            using var deleted = await http.DeleteAsync(RegistryApiRoutes.Entries + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
+            Check(deleted.StatusCode == HttpStatusCode.Conflict, "Deleting managed preferences must not reset their revision.");
+            Console.WriteLine("Settings HTTP verification passed: 428, 409, cross-user read/write denial, registry bypass rejection.");
+        }
+        finally { await app.StopAsync(); }
     }
 
     private static Workspace Verify(IRegistryRepository registry, bool concurrent = true)
