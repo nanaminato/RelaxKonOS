@@ -159,7 +159,7 @@
         "explorer.batch.details": "Operation details",
         "explorer.batch.not_started": "Not started",
         "explorer.operations.title": "File operations",
-        "explorer.operations.close_hint": "Operations continue when this window closes. Reopen it from Explorer’s More menu.",
+        "explorer.operations.close_hint": "Finished operations are cleared automatically. This window closes when all operations finish.",
         "explorer.operations.clear": "Clear finished",
         "explorer.operations.apply_all": "Apply to similar issues in this operation",
         "explorer.operations.retry": "Retry",

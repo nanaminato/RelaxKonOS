@@ -13,6 +13,8 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
     public Func<string?>? SessionKey { get; set; }
     public Func<FileOperationIssue, FileOperationKind, Task<bool>>? ElevateAsync { get; set; }
     public Action? ShowRequested { get; set; }
+    public Action? CloseRequested { get; set; }
+    private int _pendingRequests;
     public event Action<FileOperationDto>? Completed;
     private readonly Dictionary<Guid, Action<FileOperationDto>> _callbacks = [];
     private readonly HashSet<Guid> _dismissed = [];
@@ -43,6 +45,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         var session = _session;
         if (!IsCurrent(session)) throw new InvalidOperationException(LocalizedText.Get("explorer.error.not_signed_in"));
         ShowRequested?.Invoke();
+        _pendingRequests++;
         _callbacks[request.RequestId] = completed;
         try
         {
@@ -66,12 +69,18 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             Error = LocalizedText.Format("explorer.operations.submit_unknown", ex.Message);
             throw;
         }
+        finally { _pendingRequests--; CloseIfFinished(); }
+    }
+    private void CloseIfFinished()
+    {
+        if (_pendingRequests == 0 && Jobs.Count == 0 && string.IsNullOrEmpty(Error)) CloseRequested?.Invoke();
     }
     public async Task RestoreAsync()
     {
         BindSession();
         var session = _session;
         if (!IsCurrent(session)) return;
+        _pendingRequests++;
         try
         {
             var jobs = await client.ListOperationsAsync(_sessionCancellation.Token);
@@ -81,6 +90,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             EnsurePolling();
         }
         catch (Exception ex) { if (IsCurrent(session)) Error = ex.Message; }
+        finally { _pendingRequests--; CloseIfFinished(); }
     }
     public void Show() { BindSession(); ShowRequested?.Invoke(); _ = RestoreAsync(); }
     [RelayCommand] private void ClearCompleted()
@@ -105,6 +115,9 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
         {
             if (_callbacks.Remove(dto.RequestId, out var callback)) callback(dto);
             if (!wasTerminal) Completed?.Invoke(dto);
+            _dismissed.Add(dto.Id);
+            Jobs.Remove(card);
+            CloseIfFinished();
         }
     }
     private void EnsurePolling()

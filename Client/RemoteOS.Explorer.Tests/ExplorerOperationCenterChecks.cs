@@ -15,6 +15,9 @@ public static class ExplorerOperationCenterChecks
         var vm = new ExplorerViewModel(client, fileClipboard: clipboard) { QueueOperationAsync = center.SubmitAsync };
         var file = new FileSystemEntryDto("/source/a.txt", "a.txt", 4, FileSystemEntryType.File, null, null, null, false, false, null);
         var shown = 0;
+        var closed = 0;
+        center.CloseRequested = () => closed++;
+        center.Completed += vm.RefreshAfterOperation;
         center.ShowRequested = () => shown++;
         await vm.NavigateToAsync("/source");
         vm.SelectedEntry = file;
@@ -34,13 +37,27 @@ public static class ExplorerOperationCenterChecks
             "Another operation can be submitted while the first remains active");
         await vm.NavigateToAsync("/next");
         check(vm.AddressbarPath == "/next" && !vm.IsBusy, "Navigation remains available during background operations");
+        var deleteId = center.Jobs[1].Snapshot.Id;
         fake.Finish(center.Jobs[0].Snapshot.Id, [file.Path]);
         await Eventually(() => clipboard.Entries.Count == 0);
         check(clipboard.Entries.Count == 0, "Completed background moves consume only successful cut sources");
-        fake.Finish(center.Jobs[1].Snapshot.Id, []);
-        await Eventually(() => center.Jobs.All(j => j.Snapshot.IsTerminal));
+        check(center.Jobs.Count == 1 && closed == 0, "Completed cards clear without closing active operations");
+        fake.Finish(deleteId, []);
+        await Eventually(() => center.Jobs.Count == 0);
+        check(closed > 0, "Window closes automatically when all operations finish");
+        await center.RestoreAsync();
+        check(center.Jobs.Count == 0, "Restoring does not resurrect automatically cleared operations");
         center.ClearCompletedCommand.Execute(null);
         check(center.Jobs.Count == 0, "Finished cards can be cleared");
+
+        await vm.NavigateToAsync("/target");
+        var reads = fake.DirectoryReads;
+        vm.IsBusy = true;
+        vm.RefreshAfterOperation(fake.Jobs[deleteId] with { Items = [new("/target/a.txt")] });
+        check(fake.DirectoryReads == reads, "Completion waits while Explorer is busy");
+        vm.IsBusy = false;
+        await Eventually(() => fake.DirectoryReads > reads);
+        check(fake.DirectoryReads == reads + 1, "Completion refreshes the affected folder after Explorer becomes idle");
 
         var callbackCount = 0;
         fake.LoseSubmissionResponse = true;
@@ -85,6 +102,7 @@ public class OperationClientFake : DispatchProxy
 {
     public List<StartFileOperationRequest> Requests { get; } = [];
     public Dictionary<Guid, FileOperationDto> Jobs { get; } = [];
+    public int DirectoryReads { get; private set; }
     public bool LoseSubmissionResponse { get; set; }
     public bool ReadHeld { get; set; }
     public TaskCompletionSource<FileOperationDto>? HoldNextRead { get; set; }
@@ -94,7 +112,7 @@ public class OperationClientFake : DispatchProxy
     {
         switch (method!.Name)
         {
-            case nameof(IExplorerClient.GetDirectoryAsync): return Task.FromResult(ExplorerFake.Directory((string)args![0]!));
+            case nameof(IExplorerClient.GetDirectoryAsync): DirectoryReads++; return Task.FromResult(ExplorerFake.Directory((string)args![0]!));
             case nameof(IExplorerClient.StartOperationAsync):
                 var request = (StartFileOperationRequest)args![0]!;
                 Requests.Add(request);

@@ -108,12 +108,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         _windows[window] = viewModel;
         void RefreshAfterOperation(FileOperationDto result)
         {
-            if (viewModel.IsBusy || string.IsNullOrEmpty(viewModel.AddressbarPath)) return;
-            if (result.Items.Any(item => ExplorerPath.IsAncestorOrEqual(item.SourcePath, viewModel.AddressbarPath)
-                || ExplorerPath.Equal(ExplorerPath.Parent(item.SourcePath), viewModel.AddressbarPath)
-                || item.DestinationPath is { } destination && (ExplorerPath.IsAncestorOrEqual(destination, viewModel.AddressbarPath)
-                    || ExplorerPath.Equal(ExplorerPath.Parent(destination), viewModel.AddressbarPath))))
-                _ = viewModel.RefreshCommand.ExecuteAsync(null);
+            viewModel.RefreshAfterOperation(result);
         }
         if (operations is not null) operations.Completed += RefreshAfterOperation;
         EventHandler<ManagedWindow>? closed = null;
@@ -201,6 +196,12 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
     {
         if (center.ShowRequested is not null) return;
         ManagedWindow? progressWindow = null;
+        center.CloseRequested = () =>
+        {
+            if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
+                context.WindowManager.Close(progressWindow);
+            progressWindow = null;
+        };
         center.ShowRequested = () =>
         {
             if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
@@ -210,7 +211,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 return;
             }
             progressWindow = context.ShowWindow(LocalizedText.Get("explorer.operations.title"),
-                new ExplorerOperationsView { DataContext = center }, bounds: new Rect(180, 90, 680, 560), iconGlyph: "📁");
+                new ExplorerOperationsView { DataContext = center }, bounds: new Rect(180, 90, 560, 400), iconGlyph: "📁");
         };
     }
 

@@ -239,6 +239,42 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public Action? ShowFileOperations { get; set; }
     [RelayCommand] private void ShowOperations() => ShowFileOperations?.Invoke();
 
+    private bool _operationRefreshPending;
+    private bool _operationRefreshRunning;
+    private bool _disposed;
+
+    public void RefreshAfterOperation(FileOperationDto result)
+    {
+        // Navigation may still be loading a different directory: refresh its committed result too.
+        if (!_isNavigating && !result.Items.Any(item =>
+            ExplorerPath.IsAncestorOrEqual(item.SourcePath, AddressbarPath ?? string.Empty)
+            || ExplorerPath.Equal(ExplorerPath.Parent(item.SourcePath), AddressbarPath)
+            || item.DestinationPath is { } destination &&
+                (ExplorerPath.IsAncestorOrEqual(destination, AddressbarPath ?? string.Empty)
+                 || ExplorerPath.Equal(ExplorerPath.Parent(destination), AddressbarPath)))) return;
+        _operationRefreshPending = true;
+        if (!_operationRefreshRunning) _ = DrainOperationRefreshAsync();
+    }
+
+    private async Task DrainOperationRefreshAsync()
+    {
+        _operationRefreshRunning = true;
+        try
+        {
+            while (_operationRefreshPending && !_disposed)
+            {
+                if (IsBusy || _isNavigating || _isRenameCommitInProgress || IsBatchActive)
+                {
+                    await Task.Delay(50);
+                    continue;
+                }
+                _operationRefreshPending = false;
+                await RefreshAsync();
+            }
+        }
+        finally { _operationRefreshRunning = false; }
+    }
+
     private async Task SubmitOperationAsync(FileOperationKind kind, IReadOnlyList<FileOperationItem> items)
     {
         var sharedClipboard = _fileClipboard;
@@ -1473,6 +1509,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Close() => CloseAction?.Invoke();
 
-    public void Dispose() => _fileClipboard.Changed -= FileClipboard_Changed;
+    public void Dispose()
+    {
+        _disposed = true;
+        _fileClipboard.Changed -= FileClipboard_Changed;
+    }
 
 }
