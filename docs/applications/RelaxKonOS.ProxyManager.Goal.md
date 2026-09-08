@@ -11,7 +11,7 @@
 
 ## 1. 目标与交付边界
 
-首个可发布版本（V1）提供一个宿主机全局的 `remoteos.proxy` 内置应用。它以 Mihomo 为首个 Engine，在 Windows、Windows Server、Ubuntu 和 Ubuntu Server 上管理已验证的 Managed Runtime 或明确选择的 External Runtime，并提供 Profile、原始 YAML 的事务化应用、服务生命周期、节点组、连接、受限日志、基础 DNS 状态、审计和网络恢复。
+首个可发布版本（V1）提供一个宿主机全局的 `relaxkonos.proxy` 内置应用。它以 Mihomo 为首个 Engine，在 Windows、Windows Server、Ubuntu 和 Ubuntu Server 上管理已验证的 Managed Runtime 或明确选择的 External Runtime，并提供 Profile、原始 YAML 的事务化应用、服务生命周期、节点组、连接、受限日志、基础 DNS 状态、审计和网络恢复。
 
 TUN 是 V1 的一级能力，而不是 UI 开关：只有在管理流量保护、路由/DNS 快照、可恢复标记、串行化操作和紧急恢复均已实现并完成平台验证后，才能公开启用入口。
 
@@ -165,7 +165,7 @@ Controller secret、订阅 URL token/认证头、代理凭据、UUID、WireGuard
 
 ### Goal 7：Avalonia 内置应用
 
-**工作**：注册 typed repository、`remoteos.proxy` manifest 和单窗口内置应用。实现独立的 Overview、Profiles、Proxies、Connections、DNS、Logs、Settings 页面及 Profile/config/recovery managed dialogs；页面按 capability 驱动而非 Mihomo 名称驱动。复用 MVVM、取消/轮询、theme、`ShowDialogAsync` 和三语本地化。
+**工作**：注册 typed repository、`relaxkonos.proxy` manifest 和单窗口内置应用。实现独立的 Overview、Profiles、Proxies、Connections、DNS、Logs、Settings 页面及 Profile/config/recovery managed dialogs；页面按 capability 驱动而非 Mihomo 名称驱动。复用 MVVM、取消/轮询、theme、`ShowDialogAsync` 和三语本地化。
 
 **验收**：ViewModel 不直接使用 `HttpClient`，不解析 Mihomo JSON，也不持有 Controller secret；无 Runtime、外部路径失效、服务崩溃、操作中、恢复必需、权限拒绝和 API 断线均显示真实状态；TUN 卡片明确显示管理保护与 Emergency Restore；关闭窗口只取消 Client 请求/轮询，不停止 Server Runtime；不使用原生弹窗、硬编码 UI 文案或硬编码颜色。
 

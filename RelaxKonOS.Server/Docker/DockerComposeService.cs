@@ -203,7 +203,7 @@ public sealed class DockerComposeService : IDockerComposeService
         if (OperatingSystem.IsWindows())
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "docker-compose");
         if (OperatingSystem.IsLinux())
-            return "/var/lib/remoteos/docker-compose";
+            return "/var/lib/relaxkonos/docker-compose";
 
         throw new PlatformNotSupportedException("RelaxKonOS Docker Compose storage supports Windows and Linux hosts only.");
     }

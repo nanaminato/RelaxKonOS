@@ -32,14 +32,14 @@ internal sealed partial class NginxWebServerManager(
     ILogger<NginxWebServerManager> logger) : IWebServerProvider
 {
     private const string ProviderKey = "nginx";
-    private const string OwnedFileName = "remoteos.conf";
+    private const string OwnedFileName = "relaxkonos.conf";
     private const string AcmeEnabledFileName = "acme-http01.enabled";
     private const string OwnershipMarker = "# Managed by RelaxKonOS. Do not edit.";
-    private const string ManagedMarkerName = ".remoteos-managed";
+    private const string ManagedMarkerName = ".relaxkonos-managed";
     private const string ManagedMarkerContent = "RelaxKonOS owns this Nginx installation. Do not move this marker.\n";
     private static readonly JsonSerializerOptions SiteJson = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private static readonly string LegacyOwnedContent = $"{OwnershipMarker}\n# RelaxKonOS-owned Nginx integration anchor.\n";
-    private static readonly string PreviousOwnedContent = $"{OwnershipMarker}\n# RelaxKonOS-owned Nginx integration anchor.\ninclude remoteos.d/*.conf;\n";
+    private static readonly string PreviousOwnedContent = $"{OwnershipMarker}\n# RelaxKonOS-owned Nginx integration anchor.\ninclude relaxkonos.d/*.conf;\n";
     private static readonly SemaphoreSlim IntegrationGate = new(1, 1);
     // A managed instance has one fixed root, so concurrent installs must serialize their
     // directory checks, replacement, and extraction.
@@ -331,7 +331,7 @@ internal sealed partial class NginxWebServerManager(
             var sites = (await ReadSitesAsync(instance, cancellationToken)).ToList();
             if (!sites.RemoveAll(site => site.Id == siteId).Equals(1)) return false;
             var config = Path.Combine(directory, $"{siteId}.conf");
-            if (!IsRemoteOsSiteConfig(config)) return null;
+            if (!IsRelaxKonOSSiteConfig(config)) return null;
             var backup = config + ".rollback";
             File.Move(config, backup, false);
             try
@@ -372,7 +372,7 @@ internal sealed partial class NginxWebServerManager(
             : FindOwnedIncludeDirectory(instance.ConfigurationPath);
         if (include is null) return "include_directory_not_found";
         var anchor = Path.Combine(include, OwnedFileName);
-        var expected = AnchorContent(Path.Combine(include, "remoteos.d"));
+        var expected = AnchorContent(Path.Combine(include, "relaxkonos.d"));
         if (!File.Exists(anchor))
         {
             // A managed installation owns the entire generated conf.d layout. Its initial
@@ -549,12 +549,12 @@ internal sealed partial class NginxWebServerManager(
             if (!File.Exists(index)) await File.WriteAllTextAsync(index, "<h1>Welcome to RelaxKonOS</h1>\n", new UTF8Encoding(false), cancellationToken);
         }
         var config = Path.Combine(directory, $"{site.Id}.conf");
-        if (File.Exists(config) && !IsRemoteOsSiteConfig(config))
+        if (File.Exists(config) && !IsRelaxKonOSSiteConfig(config))
         {
             logger.LogWarning("Nginx site save rejected because an existing configuration is not owned by RelaxKonOS. InstanceId={InstanceId}, SiteId={SiteId}, Configuration={Configuration}", instance.Id, site.Id, config);
             return "webserver.site_save_failed";
         }
-        var stage = Path.Combine(directory, $"remoteos.{Guid.NewGuid():N}.conf");
+        var stage = Path.Combine(directory, $"relaxkonos.{Guid.NewGuid():N}.conf");
         var backup = config + ".rollback";
         var acmeChallengeRoot = IsAcmeHttp01Enabled(directory) ? webRootChallenges.RootPath : null;
         await File.WriteAllTextAsync(stage, RenderSiteConfiguration(site, certificatePaths, acmeChallengeRoot), new UTF8Encoding(false), cancellationToken);
@@ -648,7 +648,7 @@ internal sealed partial class NginxWebServerManager(
         var confd = instance.ManagementMode == WebServerManagementMode.Managed
             ? Path.Combine(Path.GetDirectoryName(instance.ConfigurationPath)!, "conf.d")
             : FindOwnedIncludeDirectory(instance.ConfigurationPath);
-        return confd is null ? null : Path.Combine(confd, "remoteos.d");
+        return confd is null ? null : Path.Combine(confd, "relaxkonos.d");
     }
 
     private static bool IsAcmeHttp01Enabled(string sitesDirectory)
@@ -664,7 +664,7 @@ internal sealed partial class NginxWebServerManager(
         if (instance.ManagementMode == WebServerManagementMode.Managed && UsesSystemPackageManagedService())
             return Path.Combine(GetManagedLayout().Root, "sites");
         var configDirectory = Path.GetDirectoryName(instance.ConfigurationPath!)!;
-        return Path.Combine(configDirectory, "remoteos-sites");
+        return Path.Combine(configDirectory, "relaxkonos-sites");
     }
 
     private static string ToSiteId(string name)
@@ -673,7 +673,7 @@ internal sealed partial class NginxWebServerManager(
         return string.IsNullOrEmpty(slug) ? $"site-{Guid.NewGuid():N}"[..13] : slug[..Math.Min(slug.Length, 60)];
     }
 
-    private static bool IsRemoteOsSiteConfig(string path)
+    private static bool IsRelaxKonOSSiteConfig(string path)
     {
         try { return File.Exists(path) && !IsSymbolicLink(path) && File.ReadLines(path).FirstOrDefault()?.StartsWith("# Managed by RelaxKonOS. Site: ", StringComparison.Ordinal) == true; }
         catch (IOException) { return false; }
@@ -730,11 +730,11 @@ internal sealed partial class NginxWebServerManager(
             if (File.Exists(destination)) return new WebServerOperationResult(IsOwnedFile(destination) ? "" : "webserver.ownership_conflict", snapshot.Id);
             // Keep the staged file in the include graph (and on the same filesystem), so
             // nginx -t validates the exact file that will be atomically renamed into place.
-            var stage = Path.Combine(includeDirectory, $"remoteos.{Guid.NewGuid():N}.conf");
+            var stage = Path.Combine(includeDirectory, $"relaxkonos.{Guid.NewGuid():N}.conf");
             var committed = false;
             try
             {
-                await File.WriteAllTextAsync(stage, AnchorContent(Path.Combine(includeDirectory, "remoteos.d")), new UTF8Encoding(false), cancellationToken);
+                await File.WriteAllTextAsync(stage, AnchorContent(Path.Combine(includeDirectory, "relaxkonos.d")), new UTF8Encoding(false), cancellationToken);
                 if (!await metadata.IsSnapshotCurrentAsync(instance.ConfigurationPath, snapshot, cancellationToken))
                     return new WebServerOperationResult("webserver.configuration_changed", snapshot.Id);
                 var test = await RunNginxAsync(instance.ExecutablePath, ["-t"], cancellationToken);
@@ -1218,7 +1218,7 @@ internal sealed partial class NginxWebServerManager(
         var root = string.IsNullOrWhiteSpace(managedOptions.InstallationRoot)
             ? OperatingSystem.IsWindows()
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "webserver", "nginx")
-                : "/var/lib/remoteos/webserver/nginx"
+                : "/var/lib/relaxkonos/webserver/nginx"
             : managedOptions.InstallationRoot;
         root = Path.GetFullPath(root);
         // APT owns the Linux executable at /usr/sbin/nginx.  The old implementation copied
@@ -1348,7 +1348,7 @@ internal sealed partial class NginxWebServerManager(
         {
             if (!File.Exists(path) || IsSymbolicLink(path)) return false;
             var content = File.ReadAllText(path);
-            var expected = AnchorContent(Path.Combine(Path.GetDirectoryName(path)!, "remoteos.d"));
+            var expected = AnchorContent(Path.Combine(Path.GetDirectoryName(path)!, "relaxkonos.d"));
             return content == expected || content == LegacyOwnedContent || content == PreviousOwnedContent;
         }
         catch (IOException) { return false; }

@@ -12,9 +12,9 @@ DEVELOPMENT_USER="${1:-${SUDO_USER:-}}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 SOURCE_HELPER="$PROJECT_ROOT/RelaxKonOS.PrivilegedHelper/bin/Debug/net10.0/RelaxKonOS.PrivilegedHelper"
-INSTALL_DIRECTORY=/usr/local/lib/remoteos/privileged-helper-development
+INSTALL_DIRECTORY=/usr/local/lib/relaxkonos/privileged-helper-development
 INSTALLED_HELPER="$INSTALL_DIRECTORY/RelaxKonOS.PrivilegedHelper"
-SUDOERS_FILE=/etc/sudoers.d/remoteos-privileged-helper-development
+SUDOERS_FILE=/etc/sudoers.d/relaxkonos-privileged-helper-development
 FILE_ACCESS=restricted
 FILE_ROOTS_FILE=
 
@@ -72,13 +72,13 @@ validate_file_roots() {
 
 install_file_root_policy() {
   local temporary_policy
-  install -d -m 0700 /etc/remoteos
-  temporary_policy="$(mktemp /etc/remoteos/privileged-helper-roots.XXXXXX)"
+  install -d -m 0700 /etc/relaxkonos
+  temporary_policy="$(mktemp /etc/relaxkonos/privileged-helper-roots.XXXXXX)"
   case "$FILE_ACCESS" in
     restricted)
       cat >"$temporary_policy" <<EOF
-/etc/remoteos
-/var/lib/remoteos
+/etc/relaxkonos
+/var/lib/relaxkonos
 EOF
       ;;
     full)
@@ -91,7 +91,7 @@ EOF
   esac
   chown root:root "$temporary_policy"
   chmod 0600 "$temporary_policy"
-  mv -f -- "$temporary_policy" /etc/remoteos/privileged-helper-roots
+  mv -f -- "$temporary_policy" /etc/relaxkonos/privileged-helper-roots
 }
 
 [[ "$DEVELOPMENT_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo "Invalid development user." >&2; exit 1; }
@@ -109,13 +109,13 @@ install_file_root_policy
 
 # Copy the complete .NET output (apphost, runtimeconfig, deps, assemblies and PDB) before
 # granting sudo. The development account cannot modify this target after installation.
-install -d -o root -g root -m 0755 /usr/local/lib/remoteos "$INSTALL_DIRECTORY"
+install -d -o root -g root -m 0755 /usr/local/lib/relaxkonos "$INSTALL_DIRECTORY"
 cp -a "$(dirname -- "$SOURCE_HELPER")/." "$INSTALL_DIRECTORY/"
 chown -R root:root "$INSTALL_DIRECTORY"
 chmod -R go-w "$INSTALL_DIRECTORY"
 chmod 0755 "$INSTALLED_HELPER"
 
-SUDOERS_TEMP="$(mktemp /etc/sudoers.d/remoteos-privileged-helper-development.XXXXXX)"
+SUDOERS_TEMP="$(mktemp /etc/sudoers.d/relaxkonos-privileged-helper-development.XXXXXX)"
 trap 'rm -f "$SUDOERS_TEMP"' EXIT
 cat >"$SUDOERS_TEMP" <<EOF
 # Managed by RelaxKonOS development setup. Re-run this script after rebuilding the Helper.

@@ -82,11 +82,11 @@ public static partial class RegistryEndpoints
             {
                 if (request.ValueType != RegistryValueType.Json) return Results.BadRequest();
                 WorkspacePreferencesDto? preferences;
-                try { preferences = request.Value.Deserialize<WorkspacePreferencesDto>(RemoteOsJsonOptions.Default); }
+                try { preferences = request.Value.Deserialize<WorkspacePreferencesDto>(RelaxKonOSJsonOptions.Default); }
                 catch (JsonException) { return Results.BadRequest(); }
                 if (preferences is null || !WorkspacePreferencesValidator.TryNormalize(preferences, out var normalized))
                     return Results.BadRequest(new { message = "Invalid workspace preferences." });
-                valueJson = JsonSerializer.Serialize(normalized with { Revision = null }, RemoteOsJsonOptions.Default);
+                valueJson = JsonSerializer.Serialize(normalized with { Revision = null }, RelaxKonOSJsonOptions.Default);
             }
             var saved = registry.CompareExchange(new RelaxKonOS.Server.Domain.RegistryEntry
             {

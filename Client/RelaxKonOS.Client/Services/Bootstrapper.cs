@@ -71,13 +71,13 @@ public static class Bootstrapper
         services.AddSingleton<ShortcutActivationRouter>();
 
         // Auth（登录模块）：typed HttpClient + 仅内存认证会话 + 登录视图模型。
-        services.AddHttpClient<IRemoteOsClient, RemoteOsClient>()
+        services.AddHttpClient<IRelaxKonOSClient, RelaxKonOSClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "auth"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<ITerminalSettingsClient, TerminalSettingsClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "terminal-settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddSingleton<IRememberedSessionStore, RememberedSessionStore>();
         services.AddSingleton<IAuthSession, AuthSession>();
         services.AddTransient<AuthenticatedHttpHandler>();
@@ -90,7 +90,7 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.Explorer.IExplorerClient, RelaxKonOS.Client.Apps.Explorer.ExplorerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "explorer"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddSingleton(sp =>
         {
             var session = sp.GetRequiredService<IAuthSession>();
@@ -110,23 +110,23 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.Browser.IBrowserClient, RelaxKonOS.Client.Apps.Browser.BrowserClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "browser"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
 
         // TaskManager（任务管理器）：typed HttpClient（JWT from IAuthSession，与 Browser/Explorer 同模式）。
         // 拉取服务端采集的宿主 OS 资源占用（CPU/内存/磁盘/网络/GPU）与进程列表；结束进程权限不足提示需在宿主 OS 提权。
         services.AddHttpClient<RelaxKonOS.Client.Apps.TaskManager.ITaskManagerClient, RelaxKonOS.Client.Apps.TaskManager.TaskManagerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "task-manager"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddTransient<RelaxKonOS.Client.Apps.TaskManager.PerformanceStream>();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Docker.IRemoteDockerClient, RelaxKonOS.Client.Apps.Docker.RemoteDockerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "docker"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.ProcessGuardian.IProcessGuardianClient, RelaxKonOS.Client.Apps.ProcessGuardian.ProcessGuardianClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "process-guardian"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Firewall.IRemoteFirewallClient, RelaxKonOS.Client.Apps.Firewall.RemoteFirewallClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "firewall"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
@@ -141,35 +141,35 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.Tunnels.IRemoteTunnelClient, RelaxKonOS.Client.Apps.Tunnels.RemoteTunnelClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "tunnels"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Proxy.IProxyRepository, RelaxKonOS.Client.Apps.Proxy.RemoteProxyRepository>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "proxy"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Git.IRemoteGitClient, RelaxKonOS.Client.Apps.Git.RemoteGitClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "git"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
 
         // Settings（设置中心）：typed HttpClient（JWT from IAuthSession，与 Browser/Explorer 同模式）。
         // 偏好持久化到服务端 Workspace（/workspaces/{id}/preferences），多设备共享。
         services.AddHttpClient<IWorkspaceSettingsService, WorkspaceSettingsService>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<IImageMirrorClient, ImageMirrorClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "image-mirrors"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<IWallpaperClient, WorkspaceWallpaperClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "wallpaper"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<IWindowLayoutClient, WindowLayoutClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "window-layout"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddSingleton<WindowLayoutStore>();
         services.AddSingleton<DefaultAppRegistry>();
         services.AddSingleton<IUriSchemeDefaultResolver>(sp => sp.GetRequiredService<DefaultAppRegistry>());
@@ -191,15 +191,15 @@ public static class Bootstrapper
         services.AddHttpClient<IAppCapabilityClient, AppCapabilityClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "capabilities"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<IAppSettingsClient, AppSettingsClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "app-settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Registry.IRegistryClient, RelaxKonOS.Client.Apps.Registry.RegistryClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "registry"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
-            .AddRemoteOsAuthentication();
+            .AddRelaxKonOSAuthentication();
         services.AddSingleton<ISettingsNavigation, SettingsNavigationService>();
         services.AddSingleton<ExternalAppContextFactory>();
         services.AddSingleton<DeveloperPackageManager>();

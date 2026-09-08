@@ -235,7 +235,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
     public async Task<DockerImageArchiveDto?> ExportImageAsync(string imageId, CancellationToken cancellationToken = default)
     {
         if (!IsImageReference(imageId)) return null;
-        var archivePath = Path.Combine(Path.GetTempPath(), $"remoteos-docker-{Guid.NewGuid():N}.tar");
+        var archivePath = Path.Combine(Path.GetTempPath(), $"relaxkonos-docker-{Guid.NewGuid():N}.tar");
         try
         {
             var result = await RunAsync(["image", "save", "--output", archivePath, imageId], cancellationToken);
@@ -255,7 +255,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         try { content = Convert.FromBase64String(archive.ContentBase64); }
         catch (FormatException) { return new DockerOperationResult(false, "docker.validation_failed"); }
         if (content.Length > MaxArchiveBytes) return new DockerOperationResult(false, "docker.archive_too_large");
-        var archivePath = Path.Combine(Path.GetTempPath(), $"remoteos-docker-{Guid.NewGuid():N}.tar");
+        var archivePath = Path.Combine(Path.GetTempPath(), $"relaxkonos-docker-{Guid.NewGuid():N}.tar");
         try
         {
             await File.WriteAllBytesAsync(archivePath, content, cancellationToken);

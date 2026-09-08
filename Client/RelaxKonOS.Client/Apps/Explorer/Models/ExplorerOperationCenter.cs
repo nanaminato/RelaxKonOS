@@ -102,7 +102,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
             EnsurePolling();
         }
         catch (OperationCanceledException) when (!IsCurrent(session)) { }
-        catch (RelaxKonOS.Client.Services.Auth.RemoteOsAuthException ex) when (ex.Status is >= 400 and < 500)
+        catch (RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException ex) when (ex.Status is >= 400 and < 500)
         {
             _callbacks.Remove(request.RequestId);
             Error = ex.Message;
@@ -195,7 +195,7 @@ public sealed partial class ExplorerOperationCenter(IExplorerClient client) : Ob
                     {
                         if (!IsCurrent(session)) return;
                         job.Error = LocalizedText.Format("explorer.operations.connection_error", ex.Message);
-                        if (ex is RelaxKonOS.Client.Services.Auth.RemoteOsAuthException { Status: 404 })
+                        if (ex is RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException { Status: 404 })
                         {
                             job.Missing = true;
                             _callbacks.Remove(job.Snapshot.RequestId);

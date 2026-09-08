@@ -27,11 +27,11 @@ public sealed class TerminalSettingsClient : ITerminalSettingsClient
         using var request = new HttpRequestMessage(method, new Uri(new Uri(serverUrl), route.TrimStart('/')))
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", accessToken) },
-            Content = content is null ? null : JsonContent.Create(content, options: RemoteOsJsonOptions.Default),
+            Content = content is null ? null : JsonContent.Create(content, options: RelaxKonOSJsonOptions.Default),
         };
         using var response = await _http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TerminalSettingsDto>(RemoteOsJsonOptions.Default, ct)
+        return await response.Content.ReadFromJsonAsync<TerminalSettingsDto>(RelaxKonOSJsonOptions.Default, ct)
             ?? throw new InvalidOperationException("Server returned no terminal settings.");
     }
 }

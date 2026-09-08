@@ -64,7 +64,7 @@ dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -m:1
 dotnet run --project Client/RelaxKonOS.Explorer.Tests -p:MSBuildEnableWorkloadResolver=false -m:1 --verbosity quiet
 dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false -v minimal
 dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false -p:UsePrebuiltServerAssembly=true -v minimal
-REMOTEOS_FILE_JOB_SECONDARY_ROOT="$PWD/.codex-scratch" dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --file-operations-only
+RELAXKONOS_FILE_JOB_SECONDARY_ROOT="$PWD/.codex-scratch" dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --file-operations-only
 git diff --check
 ```
 

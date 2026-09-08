@@ -4,7 +4,7 @@ namespace RelaxKonOS.Client.Apps.Browser;
 
 /// <summary>RelaxKonOS Server 浏览器书签/历史记录 HTTP 客户端抽象。typed HttpClient 实现（见 <see cref="BrowserClient"/>）。
 /// 所有方法从 <c>IAuthSession</c> 取 <c>serverUrl</c> + <c>accessToken</c> 构造绝对 URI 与 Authorization 头。
-/// 路由常量见 <see cref="BrowserApiRoutes"/>。错误统一为 <see cref="RemoteOsAuthException"/>（含 ProblemDetails）。</summary>
+/// 路由常量见 <see cref="BrowserApiRoutes"/>。错误统一为 <see cref="RelaxKonOSAuthException"/>（含 ProblemDetails）。</summary>
 public interface IBrowserClient
 {
     // ── persistent browser settings ──

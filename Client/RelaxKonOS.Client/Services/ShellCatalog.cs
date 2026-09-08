@@ -82,7 +82,7 @@ public sealed class ShellCatalog : IShellCatalog
             var manifest = JsonSerializer.Deserialize<ShellManifest>(File.ReadAllText(manifestPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                 ?? throw new InvalidDataException("Manifest is empty.");
             var id = manifest.Id?.Trim() ?? string.Empty;
-            var validId = System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-z0-9][a-z0-9.-]{2,127}$") && !id.StartsWith("remoteos.", StringComparison.Ordinal);
+            var validId = System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-z0-9][a-z0-9.-]{2,127}$") && !id.StartsWith("relaxkonos.", StringComparison.Ordinal);
             var assemblyPath = Path.GetFullPath(Path.Combine(root, manifest.EntryAssembly ?? string.Empty));
             if (!assemblyPath.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar, StringComparison.Ordinal)
                 || !File.Exists(assemblyPath)) throw new InvalidDataException("Entry assembly is outside the package or missing.");

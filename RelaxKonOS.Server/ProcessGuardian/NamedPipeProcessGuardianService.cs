@@ -54,9 +54,9 @@ public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options
             await pipe.ConnectAsync(timeout.Token);
             using var reader = new StreamReader(pipe, leaveOpen: true);
             await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-            await writer.WriteLineAsync(JsonSerializer.Serialize(request, RemoteOsJsonOptions.Default));
+            await writer.WriteLineAsync(JsonSerializer.Serialize(request, RelaxKonOSJsonOptions.Default));
             var line = await reader.ReadLineAsync(timeout.Token);
-            return string.IsNullOrWhiteSpace(line) ? null : JsonSerializer.Deserialize<GuardianAgentResponse>(line, RemoteOsJsonOptions.Default);
+            return string.IsNullOrWhiteSpace(line) ? null : JsonSerializer.Deserialize<GuardianAgentResponse>(line, RelaxKonOSJsonOptions.Default);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new GuardianAgentResponse(false, "guardian.agent_timeout"); }
         catch (IOException) { return new GuardianAgentResponse(false, "guardian.agent_unavailable"); }

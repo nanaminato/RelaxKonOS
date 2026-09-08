@@ -6,9 +6,9 @@ namespace RelaxKonOS.Protocol.Files;
 /// 所有端点需 JWT（[Authorize]），错误统一返回 RFC 7807 ProblemDetails。</summary>
 public static class FileApiRoutes
 {
-    public const string Operations = $"/{RemoteOsEndpoints.ApiVersionPrefix}/files/operations";
+    public const string Operations = $"/{RelaxKonOSEndpoints.ApiVersionPrefix}/files/operations";
 
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
 
     /// <summary>列举驱动器/根挂载点（GET，需 JWT）。</summary>
     public const string Drives = $"/{V1}/files/drives";

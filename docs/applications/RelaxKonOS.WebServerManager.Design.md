@@ -185,8 +185,8 @@ RelaxKonOS 与现有 Web Server 集成，但不拥有它。
 ├── nginx.conf
 ├── conf.d/
 │
-└── remoteos.d/
-    ├── remoteos.conf
+└── relaxkonos.d/
+    ├── relaxkonos.conf
     ├── acme.conf
     └── sites/
 ```
@@ -194,7 +194,7 @@ RelaxKonOS 与现有 Web Server 集成，但不拥有它。
 RelaxKonOS 只拥有：
 
 ```text
-/etc/nginx/remoteos.d/*
+/etc/nginx/relaxkonos.d/*
 ```
 
 这是推荐的默认集成模式。
@@ -221,7 +221,7 @@ Nginx 由 RelaxKonOS 安装并完整管理。
 Windows 示例：
 
 ```text
-C:\ProgramData\RemoteOS\
+C:\ProgramData\RelaxKonOS\
 └── webserver\
     └── nginx\
         ├── nginx.exe
@@ -414,7 +414,7 @@ public sealed record WebServerInstance
 
     public string? Version { get; init; }
 
-    public bool IsRemoteOsManaged { get; init; }
+    public bool IsRelaxKonOSManaged { get; init; }
 }
 ```
 
@@ -425,7 +425,7 @@ public sealed record WebServerInstance
 ```text
 /usr/sbin/nginx
 /usr/local/openresty/nginx/sbin/nginx
-C:\ProgramData\RemoteOS\webserver\nginx\nginx.exe
+C:\ProgramData\RelaxKonOS\webserver\nginx\nginx.exe
 ```
 
 内部推荐统一使用：
@@ -473,7 +473,7 @@ Windows 可检测：
 ```text
 C:\nginx\nginx.exe
 C:\Program Files\nginx\nginx.exe
-C:\ProgramData\RemoteOS\webserver\nginx\nginx.exe
+C:\ProgramData\RelaxKonOS\webserver\nginx\nginx.exe
 ```
 
 最终应执行类似：
@@ -531,7 +531,7 @@ public enum ConfigOwnership
 {
     External,
     Shared,
-    RemoteOs
+    RelaxKonOS
 }
 ```
 
@@ -556,7 +556,7 @@ public enum ConfigOwnership
 可以修改，但必须备份并验证
 ```
 
-### RemoteOs
+### RelaxKonOS
 
 ```text
 RelaxKonOS 可以完全管理
@@ -565,7 +565,7 @@ RelaxKonOS 可以完全管理
 例如：
 
 ```text
-/etc/nginx/remoteos.d/*
+/etc/nginx/relaxkonos.d/*
 ```
 
 这样可以避免删除站点、卸载 RelaxKonOS、配置恢复时误伤用户配置。
@@ -577,14 +577,14 @@ RelaxKonOS 可以完全管理
 对于现有 Nginx，建议只做一次最小侵入式修改：
 
 ```nginx
-include /etc/nginx/remoteos.d/*.conf;
-include /etc/nginx/remoteos.d/sites/*.conf;
+include /etc/nginx/relaxkonos.d/*.conf;
+include /etc/nginx/relaxkonos.d/sites/*.conf;
 ```
 
 之后所有 RelaxKonOS 配置都进入：
 
 ```text
-/etc/nginx/remoteos.d/
+/etc/nginx/relaxkonos.d/
 ```
 
 不要持续修改：
@@ -842,10 +842,10 @@ WebRoot 只负责写 challenge 文件。
 
 ```text
 Linux:
-  /var/lib/remoteos/acme-challenge/
+  /var/lib/relaxkonos/acme-challenge/
 
 Windows:
-  C:\ProgramData\RemoteOS\acme-challenge\
+  C:\ProgramData\RelaxKonOS\acme-challenge\
 ```
 
 然后额外增加：
@@ -870,7 +870,7 @@ Nginx 实现仅负责暴露：
 
 ```nginx
 location /.well-known/acme-challenge/ {
-    root /var/lib/remoteos;
+    root /var/lib/relaxkonos;
 }
 ```
 
@@ -1505,7 +1505,7 @@ Detected
     ↓
 Integrated
     ↓
-RelaxKonOS 只管理 remoteos.d/
+RelaxKonOS 只管理 relaxkonos.d/
 ```
 
 如果没有 Nginx：

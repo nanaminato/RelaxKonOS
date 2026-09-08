@@ -14,14 +14,14 @@ Build and install it from the repository root:
 On Linux, macOS, or another POSIX shell:
 
 ```bash
-export REMOTEOS_DEV_TOKEN="<pairing-token>"
+export RELAXKONOS_DEV_TOKEN="<pairing-token>"
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/HelpCenter --configuration Debug --install
 ```
 
 On Windows PowerShell:
 
 ```powershell
-$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"
+$env:RELAXKONOS_DEV_TOKEN = "<pairing-token>"
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\HelpCenter --configuration Debug --install
 ```
 

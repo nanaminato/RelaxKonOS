@@ -224,6 +224,6 @@ public static class ProxyEndpoints
         catch (ProxyProfileValidationException error) { await audit.RecordAsync(Actor(context.User), name, "failed", error.ProblemCode, ct); return Problem(error.ProblemCode, StatusCodes.Status400BadRequest); }
     }
     private static IResult Problem(string code, int status) => Results.Problem(statusCode: status, title: code, detail: code,
-        type: "https://remoteos.app/problems/" + code, extensions: new Dictionary<string, object?> { ["problemCode"] = code });
+        type: "https://relaxkonos.app/problems/" + code, extensions: new Dictionary<string, object?> { ["problemCode"] = code });
     private static string Actor(ClaimsPrincipal principal) => principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? principal.FindFirstValue("sub") ?? "unknown";
 }

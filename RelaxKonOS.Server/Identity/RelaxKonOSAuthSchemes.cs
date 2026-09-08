@@ -1,7 +1,7 @@
 namespace RelaxKonOS.Server.Identity;
 
 /// <summary>Authentication schemes that keep user tokens separate from app capability tokens.</summary>
-public static class RemoteOsAuthSchemes
+public static class RelaxKonOSAuthSchemes
 {
     public const string User = "RelaxKonOS.User";
     public const string FileCapability = "RelaxKonOS.FileCapability";

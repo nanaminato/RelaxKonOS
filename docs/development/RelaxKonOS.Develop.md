@@ -8,13 +8,13 @@
 
 ### 特权 Helper 日常调试
 
-不要为日常断点调试安装 `RemoteOSPrivilegedHelper` 服务。创建开发专用配置（不可放在
+不要为日常断点调试安装 `RelaxKonOSPrivilegedHelper` 服务。创建开发专用配置（不可放在
 `ProgramData\RelaxKonOS\privileged-helper`，且仅允许测试目录）。例如
 `C:\RelaxKonOS-dev\privileged-helper.debug.json`：
 
 ```json
 {
-  "pipeName": "remoteos-privileged-helper-dev",
+  "pipeName": "relaxkonos-privileged-helper-dev",
   "sharedSecret": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
@@ -88,19 +88,19 @@ Server 不会继承 root 身份，UFW、受保护文件和受限服务操作才�
 
 ```bash
 dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj
-sudo deployment/linux/install-remoteos-privileged-helper-development.sh "$USER"
+sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER"
 ```
 
 该脚本复制完整 Debug 输出（包括 PDB）到
-`/usr/local/lib/remoteos/privileged-helper-development/`，使其归 `root:root` 且开发账户不可写；
+`/usr/local/lib/relaxkonos/privileged-helper-development/`，使其归 `root:root` 且开发账户不可写；
 再创建只允许当前 IDE 用户启动该 apphost 的无密码 sudoers 规则。它不会创建或启动 systemd
 服务，也不会启动 Server、Guardian 或 Client。每次改动 Helper 后，重新执行构建和该脚本以部署新副本。
 
-该脚本默认安装 `restricted` 文件策略（`/etc/remoteos` 和 `/var/lib/remoteos`）。如需调试由
+该脚本默认安装 `restricted` 文件策略（`/etc/relaxkonos` 和 `/var/lib/relaxkonos`）。如需调试由
 Helper 访问的受保护文件，请使用单独的无敏感数据夹具，并通过白名单显式授权：
 
 ```bash
-sudo deployment/linux/install-remoteos-privileged-helper-development.sh "$USER" \
+sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER" \
   --file-access whitelist \
   --file-roots deployment/linux/privileged-helper-roots.example
 ```
@@ -128,15 +128,15 @@ printf '%s' '{"operation":"FirewallUfwStatus","operationId":"11111111-1111-1111-
 ### 1. 配置 Agent 环境变量
 新建 RelaxKonOS.Guardian.Agent 的 .NET Project 启动配置，在“环境变量”中逐项加入：
 ```bash
-REMOTEOS_GUARDIAN_PIPE=remoteos-guardian-dev
-REMOTEOS_GUARDIAN_SHARED_SECRET=dev-guardian-secret-local-only
-REMOTEOS_GUARDIAN_DATA_DIR=E:\riderprojects\RelaxKonOS\.codex-scratch\guardian-dev
+RELAXKONOS_GUARDIAN_PIPE=relaxkonos-guardian-dev
+RELAXKONOS_GUARDIAN_SHARED_SECRET=dev-guardian-secret-local-only
+RELAXKONOS_GUARDIAN_DATA_DIR=E:\riderprojects\RelaxKonOS\.codex-scratch\guardian-dev
 ```
-注意：REMOTEOS_GUARDIAN_DATA_DIR 需要替换为计算机上实际存在的目录。
+注意：RELAXKONOS_GUARDIAN_DATA_DIR 需要替换为计算机上实际存在的目录。
 ### 2. 配置 Server 环境变量
 在 RelaxKonOS.Server 的启动配置中加入同一对 Pipe/密钥：
 ```bash
-GuardianAgent__PipeName=remoteos-guardian-dev
+GuardianAgent__PipeName=relaxkonos-guardian-dev
 GuardianAgent__SharedSecret=dev-guardian-secret-local-only
 ```
 注意在 Rider 中每个环境变量单独添加。

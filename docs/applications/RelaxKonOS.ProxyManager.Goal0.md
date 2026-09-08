@@ -19,14 +19,14 @@ V1 唯一的托管运行时版本是稳定版 `v1.19.30`。预发布/Alpha、“
 
 ## 主机所有权、架构与受保护路径
 
-代理状态由机器拥有，绝不存入 `RemoteOsDbContext`、工作区偏好、应用清单或用户拥有的行。Goal 4 在 `HostGlobalMigrationRunner` 新增迁移 **8**，用于 `proxy_profiles`、`proxy_runtime_state`、`proxy_operations`、`proxy_audit_entries` 和 `proxy_safety_state`。ID 使用 GUID、日期使用 UTC 文本，列中不存 YAML 或密钥；专用代理元数据仓库只使用此主机全局架构。
+代理状态由机器拥有，绝不存入 `RelaxKonOSDbContext`、工作区偏好、应用清单或用户拥有的行。Goal 4 在 `HostGlobalMigrationRunner` 新增迁移 **8**，用于 `proxy_profiles`、`proxy_runtime_state`、`proxy_operations`、`proxy_audit_entries` 和 `proxy_safety_state`。ID 使用 GUID、日期使用 UTC 文本，列中不存 YAML 或密钥；专用代理元数据仓库只使用此主机全局架构。
 
 | 类型 | Windows | Linux | 保留/访问 |
 | --- | --- | --- | --- |
-| 托管二进制 | `%ProgramData%\\RelaxKonOS\\Proxy\\engines\\mihomo\\versions` | `/opt/remoteos/proxy/engines/mihomo/versions` | 仅机器管理员；`active` 与 `previous` 是原子指针 |
-| 原始 YAML、覆盖层、备份、运行时状态、恢复标记 | `%ProgramData%\\RelaxKonOS\\Proxy\\state` | `/var/lib/remoteos/proxy` | 仅服务账户和管理员；备份轮换保留最近 5 个成功代际 |
-| 服务配置 | `%ProgramData%\\RelaxKonOS\\Proxy\\config` | `/etc/remoteos/proxy` | 受保护；只能由结构化输入及已验证原始 YAML 生成 |
-| 脱敏运维日志 | `%ProgramData%\\RelaxKonOS\\Proxy\\logs` | `/var/log/remoteos/proxy` | 每文件 10 MiB、5 文件；写入前删除控制器/凭据值 |
+| 托管二进制 | `%ProgramData%\\RelaxKonOS\\Proxy\\engines\\mihomo\\versions` | `/opt/relaxkonos/proxy/engines/mihomo/versions` | 仅机器管理员；`active` 与 `previous` 是原子指针 |
+| 原始 YAML、覆盖层、备份、运行时状态、恢复标记 | `%ProgramData%\\RelaxKonOS\\Proxy\\state` | `/var/lib/relaxkonos/proxy` | 仅服务账户和管理员；备份轮换保留最近 5 个成功代际 |
+| 服务配置 | `%ProgramData%\\RelaxKonOS\\Proxy\\config` | `/etc/relaxkonos/proxy` | 受保护；只能由结构化输入及已验证原始 YAML 生成 |
+| 脱敏运维日志 | `%ProgramData%\\RelaxKonOS\\Proxy\\logs` | `/var/log/relaxkonos/proxy` | 每文件 10 MiB、5 文件；写入前删除控制器/凭据值 |
 | 加密的控制器/订阅密钥 | 代理专用 Data Protection 存储 | 代理专用 Data Protection 存储 | 按用途隔离 `RelaxKonOS.Proxy.SecretStore.v1`；无列表/导出/读取 API |
 
 配置文件元数据仅可通过不透明标识符引用受保护 YAML，不含文本。活动配置文件、恢复标记引用、运行时选择、操作/审计引用与安全状态均为主机范围。所有路径由 `IProxyPlatformPaths` 提供；业务服务不得接收或创建绝对路径。

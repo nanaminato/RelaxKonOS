@@ -85,7 +85,7 @@ Settings UI / Shell 快捷入口 / 内置应用 / 授权 SDK / DevCli
 - `IWorkspaceSettingsService`：偏好读取、变更、revision 与同步；从 SettingsViewModel 移出保存与默认应用传播。
 - `IHostEnvironmentService`、`IHostTimeService`、`IHostIdentitySettingsService`、`IHostNetworkSettingsService`：强类型领域契约，独立于 Avalonia、页面 VM 和 Shell。
 - `SettingsOperationCoordinator`：预览、授权校验、并发控制、持久操作状态、恢复与通知。领域提供者负责真实读写；不得把所有领域逻辑塞进协调器。
-- `SettingsNavigationService`：使用既有激活体系扩展 `remoteos://settings/...`，支持目录定位和 settingId 聚焦；保留语义仍有效的已有路径。若接口替换则同步所有调用者，不留兼容别名。
+- `SettingsNavigationService`：使用既有激活体系扩展 `relaxkonos://settings/...`，支持目录定位和 settingId 聚焦；保留语义仍有效的已有路径。若接口替换则同步所有调用者，不留兼容别名。
 - 外置应用经 SDK 请求粒度化 capability，宿主绑定 appId、用户、目标主机与 scope，不暴露 JWT 或 Helper IPC。打开设置页不授予写权限。
 
 至少接入三个非设置窗口入口：Shell 快捷项、终端“环境变量”入口、DevCli 的读取/预览/应用/查询。关闭设置应用后调用 API 仍可写入，Shell 与其他客户端仍能收到变化。高权限自动化沿用认证与目标范围；无交互且缺少授权时返回结构化错误，不启动密码对话框或降级绕过。

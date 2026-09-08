@@ -12,7 +12,7 @@ Console.WriteLine("RelaxKonOS.Core VSD contract verification passed.");
 
 static void VerifyDescriptorValidation()
 {
-    var builtIn = new ApplicationDescriptor(1, "remoteos.terminal", ApplicationDescriptorKind.BuiltIn,
+    var builtIn = new ApplicationDescriptor(1, "relaxkonos.terminal", ApplicationDescriptorKind.BuiltIn,
         "Terminal", "1.0.0", new ApplicationDescriptorActivation(BuiltInKey: "terminal"));
     Assert(ApplicationDescriptorValidator.Validate(builtIn).IsValid, "Host-shaped BuiltIn descriptor was rejected.");
 
@@ -43,19 +43,19 @@ static void VerifyRelativePathValidation()
 
 static void VerifyShortcutValidation()
 {
-    var valid = new RemoteOsShortcut(1, Guid.NewGuid().ToString(), "Terminal", RemoteOsShortcutKind.Application, "remoteos.terminal");
-    Assert(RemoteOsShortcutValidator.Validate(valid).IsValid, "Valid application shortcut was rejected.");
-    Assert(!RemoteOsShortcutValidator.Validate(valid with { Target = "/tmp/host-path" }).IsValid,
+    var valid = new RelaxKonOSShortcut(1, Guid.NewGuid().ToString(), "Terminal", RelaxKonOSShortcutKind.Application, "relaxkonos.terminal");
+    Assert(RelaxKonOSShortcutValidator.Validate(valid).IsValid, "Valid application shortcut was rejected.");
+    Assert(!RelaxKonOSShortcutValidator.Validate(valid with { Target = "/tmp/host-path" }).IsValid,
         "Shortcut accepted a local absolute path as an app id.");
-    var script = valid with { Kind = RemoteOsShortcutKind.Script, Target = "Scripts/hello.remoteos-script.json" };
-    Assert(RemoteOsShortcutValidator.Validate(script).IsValid, "Valid VSD-relative script shortcut was rejected.");
-    Assert(!RemoteOsShortcutValidator.Validate(script with { Target = "../outside.json" }).IsValid,
+    var script = valid with { Kind = RelaxKonOSShortcutKind.Script, Target = "Scripts/hello.relaxkonos-script.json" };
+    Assert(RelaxKonOSShortcutValidator.Validate(script).IsValid, "Valid VSD-relative script shortcut was rejected.");
+    Assert(!RelaxKonOSShortcutValidator.Validate(script with { Target = "../outside.json" }).IsValid,
         "Shortcut accepted a script path escape.");
-    Assert(!RemoteOsShortcutValidator.Validate(valid with { Kind = RemoteOsShortcutKind.Uri, Target = "https://example.invalid" }).IsValid,
+    Assert(!RelaxKonOSShortcutValidator.Validate(valid with { Kind = RelaxKonOSShortcutKind.Uri, Target = "https://example.invalid" }).IsValid,
         "Shortcut accepted an arbitrary HTTP URI.");
-    Assert(RemoteOsShortcutValidator.Validate(valid with { Kind = RemoteOsShortcutKind.RemoteFolder, Target = "/workspace/projects" }).IsValid,
+    Assert(RelaxKonOSShortcutValidator.Validate(valid with { Kind = RelaxKonOSShortcutKind.RemoteFolder, Target = "/workspace/projects" }).IsValid,
         "Shortcut rejected a valid remote POSIX path.");
-    Assert(!RemoteOsShortcutValidator.Validate(valid with { Kind = RemoteOsShortcutKind.RemoteFile, Target = "https://example.invalid/file" }).IsValid,
+    Assert(!RelaxKonOSShortcutValidator.Validate(valid with { Kind = RelaxKonOSShortcutKind.RemoteFile, Target = "https://example.invalid/file" }).IsValid,
         "Shortcut accepted a network URL as a remote path.");
 }
 
@@ -63,8 +63,8 @@ static void VerifyAutomationValidation()
 {
     var workflow = new AutomationWorkflow(1, Guid.NewGuid().ToString(), "Open terminal",
     [
-        new AutomationStep("app.launch", AppId: "remoteos.terminal"),
-        new AutomationStep("uri.activate", Uri: "remoteos://settings/apps"),
+        new AutomationStep("app.launch", AppId: "relaxkonos.terminal"),
+        new AutomationStep("uri.activate", Uri: "relaxkonos://settings/apps"),
         new AutomationStep("remote-folder.open", Target: "/workspace/projects"),
         new AutomationStep("window.focus", WindowId: 17),
         new AutomationStep("delay", Milliseconds: 20),
@@ -122,12 +122,12 @@ static async Task VerifyStorageBoundaryAsync()
 
     // A prior interrupted run can leave its link behind, so make this fixture unique.
     var link = Path.Combine(drive.ExternalProgramsDirectory, $"escaped-link-{Guid.NewGuid():N}");
-    var outside = Path.Combine(Path.GetTempPath(), $"remoteos-vsd-outside-{Guid.NewGuid():N}");
+    var outside = Path.Combine(Path.GetTempPath(), $"relaxkonos-vsd-outside-{Guid.NewGuid():N}");
     try
     {
         Directory.CreateDirectory(outside);
         Directory.CreateSymbolicLink(link, outside);
-        AssertProblem(() => drive.ResolveUnder(drive.ExternalProgramsDirectory, $"{Path.GetFileName(link)}/app.remoteos.json"),
+        AssertProblem(() => drive.ResolveUnder(drive.ExternalProgramsDirectory, $"{Path.GetFileName(link)}/app.relaxkonos.json"),
             VirtualSystemDriveProblemCode.PathEscape);
     }
     finally

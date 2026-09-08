@@ -87,7 +87,7 @@ public static partial class ApplicationDescriptorValidator
 
     private static DescriptorValidationResult ValidateBuiltIn(ApplicationDescriptor descriptor)
     {
-        if (!descriptor.Id.StartsWith("remoteos.", StringComparison.Ordinal)
+        if (!descriptor.Id.StartsWith("relaxkonos.", StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(descriptor.Activation.BuiltInKey)
             || descriptor.Activation.EntryAssembly is not null || descriptor.Activation.EntryType is not null)
             return DescriptorValidationResult.Invalid(VirtualSystemDriveProblemCode.BuiltInMismatch);
@@ -96,7 +96,7 @@ public static partial class ApplicationDescriptorValidator
 
     private static DescriptorValidationResult ValidatePackage(ApplicationDescriptor descriptor)
     {
-        if (descriptor.Id.StartsWith("remoteos.", StringComparison.Ordinal)
+        if (descriptor.Id.StartsWith("relaxkonos.", StringComparison.Ordinal)
             || !string.IsNullOrWhiteSpace(descriptor.Activation.BuiltInKey)
             || !IsSafeRelativePath(descriptor.Activation.EntryAssembly)
             || !descriptor.Activation.EntryAssembly!.StartsWith("lib/", StringComparison.Ordinal)

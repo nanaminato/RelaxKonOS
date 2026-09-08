@@ -40,7 +40,7 @@ Protocol 程序集**零 PackageReference**，不引用 Core（避免线协议与
 | **SignalR Hub**（`/hubs/performance`）   | 实时单向：服务端统一采样器每秒广播 `PerformanceRealtimeSnapshotDto`（CPU/内存/文件系统/磁盘/网络/GPU/网络地址）；客户端显式订阅并以 REST history 回补重连空洞                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **SignalR Hub**（`/hubs/guardian-logs`） | 实时单向：Process Guardian 守护日志广播；客户端 `Subscribe/Unsubscribe` 按工作负载订阅，服务端推送结构化日志事件（包含 workload id、级别、消息、时间戳）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
-SignalR 内部走 WebSocket（不可用降级 SSE/长轮询），**不裸用 WebSocket**。Workspace 多设备通过 SignalR Group（一个 Workspace 一个 Group）广播。Terminal Hub 不启用 `WithAutomaticReconnect`（自动重连后服务端不会自动重新附加会话），恢复路径是"再次登录打开终端 → 重新 `Start(Attach)` → 回放 1MB 缓冲快照"。所有 Hub 路径常量集中在 `RemoteOsEndpoints`（`WorkspaceHubPath` / `PerformanceHubPath` / `GuardianLogsHubPath`）。
+SignalR 内部走 WebSocket（不可用降级 SSE/长轮询），**不裸用 WebSocket**。Workspace 多设备通过 SignalR Group（一个 Workspace 一个 Group）广播。Terminal Hub 不启用 `WithAutomaticReconnect`（自动重连后服务端不会自动重新附加会话），恢复路径是"再次登录打开终端 → 重新 `Start(Attach)` → 回放 1MB 缓冲快照"。所有 Hub 路径常量集中在 `RelaxKonOSEndpoints`（`WorkspaceHubPath` / `PerformanceHubPath` / `GuardianLogsHubPath`）。
 
 ***
 
@@ -48,7 +48,7 @@ SignalR 内部走 WebSocket（不可用降级 SSE/长轮询），**不裸用 Web
 
 ```text
 Shared/RelaxKonOS.Protocol/
-├── Common/              # PlatformKind、RemoteOsEndpoints（含 Hub 路径）、ProblemDetails、RemoteOsJsonOptions、ServerDescriptorDto
+├── Common/              # PlatformKind、RelaxKonOSEndpoints（含 Hub 路径）、ProblemDetails、RelaxKonOSJsonOptions、ServerDescriptorDto
 ├── Identity/            # UserDto、AuthTokens、LoginRequest/Response、RefreshToken、Logout、AuthApiRoutes
 ├── Workspace/           # WorkspaceDto、SessionDto、DeviceDto、ControllerLeaseInfo、3 enum
 │                        # WorkspacePreferencesDto（含 desktopDisplay + themePreferences + 文本编码）、DefaultAppMappingDto
@@ -72,7 +72,7 @@ Shared/RelaxKonOS.Protocol/
 ├── WebServers/          # WebServerContracts（Nginx 实例/状态/配置测试/集成/operation DTO）
 │                        # WebServerSiteContracts（站点/配置/证书绑定 DTO）、WebServerApiRoutes
 ├── Registry/            # RegistryContracts（Schema/Key/Value/浏览 DTO）、RegistryApiRoutes（注入 AppSettings 路径，共用 app-settings 端点前缀）
-├── AppSettings/         # AppSettingsContracts（应用私有配置 DTO、乐观并发 revision）、注入 WorkspaceApiRoutes/RemoteOsEndpoints
+├── AppSettings/         # AppSettingsContracts（应用私有配置 DTO、乐观并发 revision）、注入 WorkspaceApiRoutes/RelaxKonOSEndpoints
 ├── Capabilities/        # AppCapabilityContracts（应用能力/权限声明/授权 DTO）、注入 AppSettings 端点前缀
 ├── ImageMirrors/        # ImageMirrorContracts（镜像源 DTO、选择/目标服务）、注入相关端点路径常量
 ├── ProcessGuardian/     # GuardianStatusDto（工作负载/状态/健康/安装 DTO）、ProcessGuardianApiRoutes
@@ -90,7 +90,7 @@ DTO 风格：`sealed record` + 主构造（或无参构造 + 公开 setter，供
 
 ## 4. 序列化约定
 
-`RemoteOsJsonOptions.Default` 统一序列化：
+`RelaxKonOSJsonOptions.Default` 统一序列化：
 
 * `JsonSerializerDefaults.Web`：camelCase + 大小写不敏感
 
@@ -584,7 +584,7 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 
 * Workspace 偏好 JSON 列的可变集合（如 `DefaultApps`）**必须**用 `List<T>` 且保留公开 setter，不能以新集合整体替换（EF Core JSON 子项以合成序号追踪）
 
-* 所有 Hub 路径常量集中在 `RemoteOsEndpoints`（`WorkspaceHubPath` / `PerformanceHubPath` / `GuardianLogsHubPath`），Endpoint、Client、UI 三方共享
+* 所有 Hub 路径常量集中在 `RelaxKonOSEndpoints`（`WorkspaceHubPath` / `PerformanceHubPath` / `GuardianLogsHubPath`），Endpoint、Client、UI 三方共享
 
 **禁止**：
 

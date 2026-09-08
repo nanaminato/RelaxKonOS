@@ -1,5 +1,5 @@
 {
-  "id": "com.remoteos.example.server-monitor",
+  "id": "com.relaxkonos.example.server-monitor",
   "permissionModelVersion": 2,
   "displayName": "Server Monitor",
   "version": "0.2.0-dev",

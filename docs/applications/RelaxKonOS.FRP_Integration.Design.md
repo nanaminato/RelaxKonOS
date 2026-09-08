@@ -309,7 +309,7 @@ ITunnelProvider
     ├── FrpTunnelProvider
     ├── CloudflareTunnelProvider
     ├── TailscaleTunnelProvider
-    └── RemoteOsTunnelProvider
+    └── RelaxKonOSTunnelProvider
 ```
 
 这样 UI 只面向统一的：
@@ -344,7 +344,7 @@ FRP 只是 Runtime Manager 中的一种 Runtime。
 ### Linux
 
 ```text
-/opt/remoteos/
+/opt/relaxkonos/
 ├── RelaxKonOS
 ├── runtimes/
 │   └── frp/
@@ -363,7 +363,7 @@ FRP 只是 Runtime Manager 中的一种 Runtime。
 ### Windows
 
 ```text
-C:\ProgramData\RemoteOS\
+C:\ProgramData\RelaxKonOS\
 ├── runtimes\
 │   └── frp\
 │       ├── 0.69.0\
@@ -518,7 +518,7 @@ Internet
       │
     frps
       │
-remoteos.example.com
+relaxkonos.example.com
 ```
 
 客户端连接方式可以设计成：
@@ -654,7 +654,7 @@ RelaxKonOS 不修改 Windows Defender
 绝对不要排除整个：
 
 ```text
-C:\ProgramData\RemoteOS
+C:\ProgramData\RelaxKonOS
 ```
 
 因为其中未来可能包含：
@@ -673,15 +673,15 @@ cache
 推荐范围：
 
 ```text
-C:\ProgramData\RemoteOS\runtimes\frp\
+C:\ProgramData\RelaxKonOS\runtimes\frp\
 ```
 
 更严格时可以只排除：
 
 ```text
-C:\ProgramData\RemoteOS\runtimes\frp\0.70.0\frpc.exe
+C:\ProgramData\RelaxKonOS\runtimes\frp\0.70.0\frpc.exe
 
-C:\ProgramData\RemoteOS\runtimes\frp\0.70.0\frps.exe
+C:\ProgramData\RelaxKonOS\runtimes\frp\0.70.0\frps.exe
 ```
 
 推荐：
@@ -858,7 +858,7 @@ Possible causes:
 ```text
 请由组织管理员添加以下排除项：
 
-C:\ProgramData\RemoteOS\runtimes\frp\...
+C:\ProgramData\RelaxKonOS\runtimes\frp\...
 ```
 
 RelaxKonOS 不应该尝试绕过企业策略。
@@ -955,7 +955,7 @@ RelaxKonOS Installer
 
 ```text
 RelaxKonOS.exe
-RemoteOS.Service.exe
+RelaxKonOS.Service.exe
 RelaxKonOS.Installer.exe
 ```
 
@@ -1215,7 +1215,7 @@ RelaxKonOS 下载的是官方 FRP Runtime，
 ○ 为 FRP Runtime 添加最小范围排除项
 
 排除范围：
-C:\ProgramData\RemoteOS\runtimes\frp\
+C:\ProgramData\RelaxKonOS\runtimes\frp\
 
 RelaxKonOS 将继续强制验证下载文件 SHA-256。
 

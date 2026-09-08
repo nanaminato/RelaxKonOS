@@ -87,14 +87,14 @@ public static class WorkspacePreferencesValidator
 
         if (!TryNormalizeThemePreferences(request.ThemePreferences, out var themePreferences))
             return false;
-        var requestedShell = request.Shell ?? new ShellSelectionDto("remoteos.windows-like");
+        var requestedShell = request.Shell ?? new ShellSelectionDto("relaxkonos.windows-like");
         var shellId = NormalizeShellId(requestedShell.ShellId);
         if (!IsValidShellId(shellId))
             return false;
         var packageId = requestedShell.PackageId?.Trim();
         var packageVersion = requestedShell.PackageVersion?.Trim();
         if (packageId is { Length: > 128 } || packageVersion is { Length: > 64 }) return false;
-        if (shellId.StartsWith("remoteos.", StringComparison.Ordinal) &&
+        if (shellId.StartsWith("relaxkonos.", StringComparison.Ordinal) &&
             (!string.IsNullOrEmpty(packageId) || !string.IsNullOrEmpty(packageVersion))) return false;
 
         preferences = new WorkspacePreferencesDto(
@@ -109,15 +109,15 @@ public static class WorkspacePreferencesValidator
 
     private static string NormalizeShellId(string? id) => id?.Trim() switch
     {
-        null or "" or "remoteos" or "remoteos.default" => "remoteos.windows-like",
-        "windows-like" => "remoteos.windows-like",
-        "macos-like" => "remoteos.macos-like",
-        "ubuntu-like" => "remoteos.ubuntu-like",
+        null or "" or "relaxkonos" or "relaxkonos.default" => "relaxkonos.windows-like",
+        "windows-like" => "relaxkonos.windows-like",
+        "macos-like" => "relaxkonos.macos-like",
+        "ubuntu-like" => "relaxkonos.ubuntu-like",
         var value => value,
     };
 
-    private static bool IsValidShellId(string id) => id is "remoteos.windows-like"
-        or "remoteos.macos-like" or "remoteos.ubuntu-like"
+    private static bool IsValidShellId(string id) => id is "relaxkonos.windows-like"
+        or "relaxkonos.macos-like" or "relaxkonos.ubuntu-like"
         || Regex.IsMatch(id, "^[a-z0-9][a-z0-9.-]{2,127}$");
 
     public static bool TryGetCustomWallpaperId(string? key, out string id)
@@ -136,11 +136,11 @@ public static class WorkspacePreferencesValidator
     {
         var source = request ?? ThemePreferencesDto.Default;
         preferences = ThemePreferencesDto.Default;
-        if (!string.Equals(source.StyleId?.Trim(), "remoteos", StringComparison.Ordinal)
+        if (!string.Equals(source.StyleId?.Trim(), "relaxkonos", StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(source.PaletteId) || source.PaletteId.Length > 72)
             return false;
         var paletteId = source.PaletteId.Trim();
-        if (paletteId is not "builtin:remoteos-blue" and not "builtin:nord" and not "builtin:catppuccin"
+        if (paletteId is not "builtin:relaxkonos-blue" and not "builtin:nord" and not "builtin:catppuccin"
             && !paletteId.StartsWith("custom:", StringComparison.Ordinal))
             return false;
         if (!IsOptionalColor(source.AccentOverride)) return false;
@@ -158,7 +158,7 @@ public static class WorkspacePreferencesValidator
             normalized.Add(new ThemePaletteDto { FormatVersion = 2, Id = palette.Id, Name = palette.Name.Trim(), LightColors = light, DarkColors = dark });
         }
         if (paletteId.StartsWith("custom:", StringComparison.Ordinal) && !ids.Contains(paletteId[7..])) return false;
-        preferences = new ThemePreferencesDto { StyleId = "remoteos", PaletteId = paletteId,
+        preferences = new ThemePreferencesDto { StyleId = "relaxkonos", PaletteId = paletteId,
             AccentOverride = source.AccentOverride?.ToUpperInvariant(), CustomPalettes = normalized };
         return HasValidResolvedTheme(preferences);
     }

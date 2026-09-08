@@ -17,7 +17,7 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/VideoPlayer --ru
 To install the existing Debug build immediately, enable Developer Mode, set the pairing token, and add `--install`:
 
 ```powershell
-$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"
+$env:RELAXKONOS_DEV_TOKEN = "<pairing-token>"
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\VideoPlayer --runtime win-x64 --configuration Debug --no-build --install
 ```
 

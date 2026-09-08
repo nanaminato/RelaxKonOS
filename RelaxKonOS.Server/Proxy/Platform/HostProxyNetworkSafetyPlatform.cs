@@ -18,7 +18,7 @@ public sealed class HostProxyNetworkSafetyPlatform : IProxyNetworkSafetyPlatform
             if (route is null || !NetworkInterface.GetAllNetworkInterfaces().Any(item => item.Name == route.Interface && item.OperationalStatus == OperationalStatus.Up))
                 return Task.FromResult<ProxyManagementRouteSnapshot?>(null);
             // System bypasses are invariant safety requirements, not user-editable proxy rules.
-            IReadOnlyList<string> bypass = ["loopback", "remoteos-listeners", "active-management-session", "default-gateway", "lan", "ssh", "rdp"];
+            IReadOnlyList<string> bypass = ["loopback", "relaxkonos-listeners", "active-management-session", "default-gateway", "lan", "ssh", "rdp"];
             return Task.FromResult<ProxyManagementRouteSnapshot?>(new(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, true, route.Interface, route.Gateway, bypass));
         }
         catch (IOException) { return Task.FromResult<ProxyManagementRouteSnapshot?>(null); }

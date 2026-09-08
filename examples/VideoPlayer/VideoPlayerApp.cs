@@ -11,7 +11,7 @@ namespace RelaxKonOS.Examples.VideoPlayer;
 public sealed class VideoPlayerApp : IExternalRemoteApplication, IExternalFileOpenApplication
 {
     public ApplicationManifest Manifest { get; } = new(
-        new AppId("com.remoteos.example.video-player"),
+        new AppId("com.relaxkonos.example.video-player"),
         "Video Player",
         "0.2.1-dev",
         "🎞️",

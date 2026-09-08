@@ -23,7 +23,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
     public async Task<IReadOnlyList<TunnelDefinitionDto>> ListAsync(string userId, CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<RemoteOsDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
         return (await db.TunnelDefinitions.AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.Name).ToListAsync(ct)).Select(x => ToDto(x) with { State = _states.TryGetValue(x.ServerProfileId, out var state) ? state.State : TunnelConnectionState.SavedNotApplied, ProblemCode = _states.TryGetValue(x.ServerProfileId, out state) ? state.ProblemCode : "" }).ToList();
     }
 
@@ -34,7 +34,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
         try
         {
             await using var scope = scopes.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<RemoteOsDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
             var secrets = scope.ServiceProvider.GetRequiredService<ISecretStore>();
             var profile = await db.TunnelServerProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == profileId && x.UserId == userId, ct);
             if (profile is null) return new(false, TunnelConnectionState.Unknown, "tunnel.profile_not_found");
@@ -92,7 +92,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
         try
         {
             await using var scope = scopes.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<RemoteOsDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
             if (!await db.TunnelServerProfiles.AsNoTracking().AnyAsync(x => x.Id == profileId && x.UserId == userId, ct))
                 return new(false, TunnelConnectionState.Unknown, "tunnel.profile_not_found");
             await StopCoreAsync(profileId); return await CompleteAsync(db, profileId, userId, new(true, TunnelConnectionState.Disconnected), ct);
@@ -119,7 +119,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
     public async Task<IReadOnlyList<TunnelLogEntryDto>?> GetLogsAsync(Guid profileId, string userId, CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<RemoteOsDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
         if (!await db.TunnelServerProfiles.AsNoTracking().AnyAsync(x => x.Id == profileId && x.UserId == userId, ct)) return null;
         return _logs.TryGetValue(profileId, out var records) ? records.ToArray() : [];
     }
@@ -171,7 +171,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
         finally { managed.Process.Dispose(); }
     }
     private static TunnelDefinitionDto ToDto(RelaxKonOS.Server.Domain.TunnelDefinition x) => new(x.Id, x.ServerProfileId, x.Name, x.ProviderId, x.Protocol, x.LocalHost, x.LocalPort, x.RemotePort, x.Domain, x.Enabled, x.Encryption, x.Compression, x.Revision, x.CreatedAt, x.UpdatedAt);
-    private async Task<TunnelOperationResultDto> CompleteAsync(RemoteOsDbContext db, Guid profileId, string userId, TunnelOperationResultDto result, CancellationToken ct)
+    private async Task<TunnelOperationResultDto> CompleteAsync(RelaxKonOSDbContext db, Guid profileId, string userId, TunnelOperationResultDto result, CancellationToken ct)
     {
         var snapshot = new RuntimeSnapshot(result.State, result.ProblemCode);
         _states.AddOrUpdate(

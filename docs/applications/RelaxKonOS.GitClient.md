@@ -123,7 +123,7 @@ Fetch              = /api/v1.0/git/repositories/{id}/fetch             (POST)   
 IGitRepositoryService (接口)
     │
     └── LocalGitRepositoryService (Singleton, 依赖 IHostGitCli)
-          ├── 仓库注册表：从 RemoteOsDbContext 读写 GitRepository(Name, Path) 记录
+          ├── 仓库注册表：从 RelaxKonOSDbContext 读写 GitRepository(Name, Path) 记录
           ├── 所有 git 操作：捕获 stdout/stderr + exit code → GitOperationResult
           ├── 路径校验：Path.IsPathRooted + 白名单根（注册时记的 Path，禁止越权到仓库外）
           └── 凭据：完全不介入——由宿主 git 凭据助手处理
@@ -213,18 +213,18 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 - **不 mutate `HttpClient.BaseAddress`**（避免共享实例并发竞态），每请求用 `IAuthSession.ServerUrl` 构造绝对 URI。
 - `Authorization: Bearer {AccessToken}` 从 `IAuthSession.Tokens` 取；未登录抛 `InvalidOperationException`。
 - 路由常量共用 `GitApiRoutes`，`{id}`/`{name}` 用 `Uri.EscapeDataString` 替换，禁止硬编码字符串。
-- 失败读 `ProblemDetails` 抛 `RemoteOsAuthException`（与 `TaskManagerClient` / `DockerClient` 同源模式）。
-- JSON 用 `RemoteOsJsonOptions.Default`。
+- 失败读 `ProblemDetails` 抛 `RelaxKonOSAuthException`（与 `TaskManagerClient` / `DockerClient` 同源模式）。
+- JSON 用 `RelaxKonOSJsonOptions.Default`。
 
 ### 5.2 应用入口（`GitClientApp`）
 
-`RemoteApplicationBase`：`Manifest`（Id=`remoteos.git`，Icon=`🌿`）+ `Activate(AppContext)`。
+`RemoteApplicationBase`：`Manifest`（Id=`relaxkonos.git`，Icon=`🌿`）+ `Activate(AppContext)`。
 
 ```csharp
 public sealed class GitClientApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("remoteos.git"), "Git Client", "0.1.0", "🌿",
+        new AppId("relaxkonos.git"), "Git Client", "0.1.0", "🌿",
         "Manage Git repositories on the RelaxKonOS Server",
         [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage],
         ServerRequirements: new ApplicationServerRequirements(
@@ -479,11 +479,11 @@ GitOperationResult
 5. **不存储 Git 凭据**：push/pull 的 SSH 私钥 / HTTPS 密码完全由宿主 OS git 凭据体系处理。RelaxKonOS 不代理、不收集、不存储。凭据缺失时 `RequiresCredentials=true`，引导用户在宿主 OS 配置（硬约束 §5.2）。
 6. **不 mutate `HttpClient.BaseAddress`**：每请求用绝对 URI，与 `TaskManagerClient` / `DockerClient` 同模式。
 7. **路由常量共用 `GitApiRoutes`**：Server 注册路由与 Client 拼接 URL 必须用同一常量，`{id}`/`{name}` 用 `Uri.EscapeDataString` 替换，禁止硬编码字符串。
-8. **DTO 用 `sealed record` + `[property: JsonPropertyName]`**（Protocol 约定），JSON 用 `RemoteOsJsonOptions.Default`。
+8. **DTO 用 `sealed record` + `[property: JsonPropertyName]`**（Protocol 约定），JSON 用 `RelaxKonOSJsonOptions.Default`。
 9. **porcelain 而非人类文案**：所有 `git` 输出用 `--porcelain=v2` / `--pretty=format` / `--for-each-ref --format` 机器可读格式，不解析本地化人类文案。
 10. **路径越权防护**：所有 `git` 命令 `cwd` = 注册仓库 `Path`；`<path>` 参数校验在仓库根下，禁止 `../` 越权。
 11. **危险操作确认**：删除未合并分支、revert、checkout 覆盖、删除仓库注册需二次确认；MVP 不暴露 `--force` / `reset --hard`。
-12. **错误统一 RFC 7807**：Server `Results.Problem(..., type: "https://remoteos.app/problems/git-" + suffix)`；Client 解析 `ProblemDetails` 抛 `RemoteOsAuthException`，VM catch 后写 `StatusText`。
+12. **错误统一 RFC 7807**：Server `Results.Problem(..., type: "https://relaxkonos.app/problems/git-" + suffix)`；Client 解析 `ProblemDetails` 抛 `RelaxKonOSAuthException`，VM catch 后写 `StatusText`。
 13. **DispatcherTimer 生命周期**：View `Unloaded` 时必须调 `viewModel.Stop()` 停止定时器。`RefreshStatusAsync` 用 `Interlocked` 重入保护。
 14. **国际化三语言**：所有可见文案用 `loc:Loc` 绑定 key，`en-US`/`zh-CN`/`ja-JP` 同步新增，key 层级 `git.*` 隔离。
 15. **编译验证**：`dotnet build RelaxKonOS.sln -c Debug` 必须 0 错误。

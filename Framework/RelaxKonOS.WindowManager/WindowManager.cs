@@ -258,7 +258,7 @@ public sealed class WindowManager : IWindowManager
             height);
         var dialog = new ModalDialog<TResult>(this, owner: null);
         var dialogWindow = Create(new WindowCreateOptions(
-            OwnerAppId: new AppId("remoteos.shell"),
+            OwnerAppId: new AppId("relaxkonos.shell"),
             Title: title,
             Content: contentFactory(dialog),
             Bounds: bounds,
@@ -304,7 +304,7 @@ public sealed class WindowManager : IWindowManager
             height);
         var dialog = new ModalDialog<TResult>(this, owner: null);
         var dialogWindow = Create(new WindowCreateOptions(
-            OwnerAppId: new AppId("remoteos.shell"),
+            OwnerAppId: new AppId("relaxkonos.shell"),
             Title: title,
             Content: contentFactory(dialog),
             Bounds: dialogBounds,

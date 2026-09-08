@@ -37,7 +37,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
     [".gitignore", ".gitattributes", ".gitmodules", ".dockerignore", ".npmignore", ".editorconfig", ".env", ".env.local", ".env.development", ".env.production", "Dockerfile", "Makefile", "README", "LICENSE", "CHANGELOG", "CONTRIBUTING"];
 
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.codeeditor"),
+        Id: new AppId("relaxkonos.codeeditor"),
         DisplayName: "Code Editor",
         Version: "1.0.0",
         IconGlyph: "💻",
@@ -63,7 +63,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
             SaveDefaultEncodingAsync = encoding => encodingSettings?.SetCodeEditorDefaultEncodingAsync(encoding) ?? Task.CompletedTask,
         };
         var view = new CodeEditorView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.codeeditor.display_name"), view,
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.codeeditor.display_name"), view,
             bounds: new Rect(140, 80, 920, 640),
             iconGlyph: Manifest.IconGlyph);
         window.KeyDown += (_, e) =>

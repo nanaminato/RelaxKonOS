@@ -8,7 +8,7 @@ namespace RelaxKonOS.Server.Endpoints;
 /// <summary>Generic elevation grant endpoint for non-file, exact-resource capabilities.</summary>
 public static class PrivilegedEndpoints
 {
-    private const string ProblemBase = "https://remoteos.app/problems/";
+    private const string ProblemBase = "https://relaxkonos.app/problems/";
 
     public static IEndpointRouteBuilder MapPrivilegedEndpoints(this IEndpointRouteBuilder app)
     {

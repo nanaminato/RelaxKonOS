@@ -26,14 +26,14 @@ internal static class SettingsSystemVerification
     {
         await VerifyHttpAsync(root);
         Verify(new InMemoryRegistryRepository());
-        var options = new DbContextOptionsBuilder<RemoteOsDbContext>()
+        var options = new DbContextOptionsBuilder<RelaxKonOSDbContext>()
             .UseSqlite($"Data Source={Path.Combine(root, "settings-concurrency.db")};Pooling=False").Options;
-        await using (var db = new RemoteOsDbContext(options))
+        await using (var db = new RelaxKonOSDbContext(options))
         {
             await db.Database.EnsureCreatedAsync();
             Verify(new SqliteRegistryRepository(db), concurrent: false);
         }
-        var factory = new PooledDbContextFactory<RemoteOsDbContext>(options);
+        var factory = new PooledDbContextFactory<RelaxKonOSDbContext>(options);
         var cache = new CachedSqliteRegistryRepository(factory);
         await cache.StartAsync(CancellationToken.None);
         var workspace = Verify(cache);
@@ -63,7 +63,7 @@ internal static class SettingsSystemVerification
         builder.Services.AddAuthorization();
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
-            foreach (var converter in RemoteOsJsonOptions.Default.Converters)
+            foreach (var converter in RelaxKonOSJsonOptions.Default.Converters)
                 options.SerializerOptions.Converters.Add(converter);
         });
         builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
@@ -91,13 +91,13 @@ internal static class SettingsSystemVerification
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             using var http = new HttpClient { BaseAddress = new Uri(address) };
             var route = WorkspaceApiRoutes.Preferences.Replace("{id}", workspace.Id.ToString());
-            var initial = await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RemoteOsJsonOptions.Default);
+            var initial = await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default);
             Check(initial?.Revision > 0, "HTTP GET must return a preference revision.");
-            using var missing = await http.PutAsJsonAsync(route, initial! with { Revision = null }, RemoteOsJsonOptions.Default);
+            using var missing = await http.PutAsJsonAsync(route, initial! with { Revision = null }, RelaxKonOSJsonOptions.Default);
             Check((int)missing.StatusCode == 428, "HTTP PUT without revision must return 428.");
-            using var saved = await http.PutAsJsonAsync(route, initial! with { Theme = ThemeKind.Dark }, RemoteOsJsonOptions.Default);
+            using var saved = await http.PutAsJsonAsync(route, initial! with { Theme = ThemeKind.Dark }, RelaxKonOSJsonOptions.Default);
             Check(saved.IsSuccessStatusCode, "Versioned HTTP preference write failed.");
-            using var stale = await http.PutAsJsonAsync(route, initial!, RemoteOsJsonOptions.Default);
+            using var stale = await http.PutAsJsonAsync(route, initial!, RelaxKonOSJsonOptions.Default);
             Check(stale.StatusCode == HttpStatusCode.Conflict, "Stale HTTP PUT must return 409.");
             using var foreignRequest = new HttpRequestMessage(HttpMethod.Get, route);
             foreignRequest.Headers.Add("X-Test-Subject", Guid.NewGuid().ToString());
@@ -105,16 +105,16 @@ internal static class SettingsSystemVerification
             Check(foreign.StatusCode == HttpStatusCode.NotFound, "Cross-user HTTP reads must not reveal preferences.");
             using var foreignWrite = new HttpRequestMessage(HttpMethod.Put, route)
             {
-                Content = JsonContent.Create(initial!, options: RemoteOsJsonOptions.Default)
+                Content = JsonContent.Create(initial!, options: RelaxKonOSJsonOptions.Default)
             };
             foreignWrite.Headers.Add("X-Test-Subject", Guid.NewGuid().ToString());
             using var denied = await http.SendAsync(foreignWrite);
             Check(denied.StatusCode == HttpStatusCode.NotFound, "Cross-user HTTP writes must be rejected.");
 
-            var value = System.Text.Json.JsonSerializer.SerializeToElement(initial!, RemoteOsJsonOptions.Default);
+            var value = System.Text.Json.JsonSerializer.SerializeToElement(initial!, RelaxKonOSJsonOptions.Default);
             using var registryStale = await http.PutAsJsonAsync(RegistryApiRoutes.Entries,
                 new PutRegistryEntryRequest(RegistryScope.Workspace, WorkspaceConfigurationRegistry.DesktopPath,
-                    WorkspaceConfigurationRegistry.DefaultValueName, RegistryValueType.Json, value, initial!.Revision), RemoteOsJsonOptions.Default);
+                    WorkspaceConfigurationRegistry.DefaultValueName, RegistryValueType.Json, value, initial!.Revision), RelaxKonOSJsonOptions.Default);
             Check(registryStale.StatusCode == HttpStatusCode.Conflict, "The registry editor must not bypass preference revisions.");
             using var deleted = await http.DeleteAsync(RegistryApiRoutes.Entries + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
             Check(deleted.StatusCode == HttpStatusCode.Conflict, "Deleting managed preferences must not reset their revision.");

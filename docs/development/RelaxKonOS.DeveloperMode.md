@@ -4,7 +4,7 @@
 
 ## 启用与配对
 
-打开 **设置 → 应用 → 开发者模式**，启用它，然后复制配对令牌。该桥接仅在 `http://127.0.0.1:45321/api/developer/v1.0/` 上监听，并在每个 `X-RemoteOS-Dev-Token` 请求头中要求提供令牌。
+打开 **设置 → 应用 → 开发者模式**，启用它，然后复制配对令牌。该桥接仅在 `http://127.0.0.1:45321/api/developer/v1.0/` 上监听，并在每个 `X-RelaxKonOS-Dev-Token` 请求头中要求提供令牌。
 
 从仓库根目录使用内置 CLI。`pack` 命令只需要 .NET SDK；只有当命令安装、更新、监视或以其他方式与运行中的 Shell 通信时才需要令牌：
 
@@ -16,14 +16,14 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\MyApp --configuration Rel
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\MyApp --configuration Debug --no-build
 
 # 一条命令完成构建、打包、安装和启动。
-$env:REMOTEOS_DEV_TOKEN = "<设置中的令牌>"
+$env:RELAXKONOS_DEV_TOKEN = "<设置中的令牌>"
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\MyApp --configuration Debug --install
 
 # 当项目源码更改时重新构建、打包和重新安装。
 dotnet run --project Tools/RelaxKonOS.DevCli -- watch .\MyApp --configuration Debug
 ```
 
-在 Linux、macOS 或其他 POSIX shell 中，使用 `export REMOTEOS_DEV_TOKEN="<设置中的令牌>"` 设置令牌，并将项目路径写为 `./MyApp`。PowerShell、bash、zsh 和 cmd 都可以运行相同的 CLI 命令；只有环境变量和路径语法不同。
+在 Linux、macOS 或其他 POSIX shell 中，使用 `export RELAXKONOS_DEV_TOKEN="<设置中的令牌>"` 设置令牌，并将项目路径写为 `./MyApp`。PowerShell、bash、zsh 和 cmd 都可以运行相同的 CLI 命令；只有环境变量和路径语法不同。
 
 `watch <project>` 从源码重新构建，创建新包，然后重新安装并重新启动。`watch <package.roapp>` 仍可用于外部生成的归档。更新应用会关闭其窗口，卸载其可收集的程序集加载上下文，注册新版本，然后再次启动。
 
@@ -38,12 +38,12 @@ dotnet run --project /path/to/RelaxKonOS/Tools/RelaxKonOS.DevCli -- pack ./MyApp
 要获得可复用的 shell 命令，请构建内置的 .NET 工具一次，然后从其本地包目录安装：
 
 ```bash
-dotnet pack /path/to/RelaxKonOS/Tools/RelaxKonOS.DevCli --output /tmp/remoteos-dev-tool
-dotnet tool install --global --add-source /tmp/remoteos-dev-tool RelaxKonOS.DevCli
-remoteos-dev pack ./MyApp/MyApp.csproj --configuration Release
+dotnet pack /path/to/RelaxKonOS/Tools/RelaxKonOS.DevCli --output /tmp/relaxkonos-dev-tool
+dotnet tool install --global --add-source /tmp/relaxkonos-dev-tool RelaxKonOS.DevCli
+relaxkonos-dev pack ./MyApp/MyApp.csproj --configuration Release
 ```
 
-当 RelaxKonOS 将工具发布到包源时，用该源替换 `--add-source`。`remoteos-dev` 命令接受与 `dotnet run --project … --` 相同的参数。
+当 RelaxKonOS 将工具发布到包源时，用该源替换 `--add-source`。`relaxkonos-dev` 命令接受与 `dotnet run --project … --` 相同的参数。
 
 CLI 默认运行 `dotnet publish`，重新编译指定的 `Debug` 或 `Release` 配置，并将 ZIP 格式的 `.roapp` 写入 `artifacts/<entry-assembly>.roapp`。如已用相同配置（及适用时相同 RID）编译项目，可传入 `--no-build`：CLI 会改用 `dotnet publish --no-build`，不重新编译而直接打包现有输出。它将完整的发布输出复制到 `entryAssembly` 声明的 `lib/<TFM>/` 目录下；私有托管依赖、`.deps.json` 和原生运行时资产因此被一致地打包，无需应用特定脚本。若 manifest 声明 `iconPath`，CLI 还会复制这个安全的相对图标路径，确保安装器能找到图标文件。
 
@@ -96,7 +96,7 @@ lib/net10.0/<私有依赖>.dll
 
 要出现在 RemoteExplorer 的 **打开方式** 菜单中，入口类型还必须实现 `IExternalFileOpenApplication` 并声明至少一个接受的路径规则。`supportedFileExtensions` 不区分大小写，每个扩展名必须以点开头。`supportedFileNames` 接受精确文件名，例如 `.gitignore`；这些优先于扩展名匹配。`supportsExtensionlessFiles` 仅对没有扩展名的文件启用低优先级回退。省略这三个字段的包仍可启动，但永远不会获得文件路径。
 
-`supportedUriSchemes` 可选地声明包拥有的自定义 URI 方案。每个方案必须匹配 `^[a-z][a-z0-9+.-]{0,31}$`；`remoteos` 保留给 Shell 使用。入口类型必须实现 `IExternalAppActivationHandler` 以接收其声明的 URI 之一。Shell 为该方案选择用户有效的默认应用，或者在没有设置默认值时选择唯一兼容的处理程序。对导航器（如帮助中心）使用 `instancePolicy: "SingleWindow"`，这样重复的链接会导航到同一窗口而不是打开重复的窗口。
+`supportedUriSchemes` 可选地声明包拥有的自定义 URI 方案。每个方案必须匹配 `^[a-z][a-z0-9+.-]{0,31}$`；`relaxkonos` 保留给 Shell 使用。入口类型必须实现 `IExternalAppActivationHandler` 以接收其声明的 URI 之一。Shell 为该方案选择用户有效的默认应用，或者在没有设置默认值时选择唯一兼容的处理程序。对导航器（如帮助中心）使用 `instancePolicy: "SingleWindow"`，这样重复的链接会导航到同一窗口而不是打开重复的窗口。
 
 ## 服务器监控能力
 
@@ -105,7 +105,7 @@ lib/net10.0/<私有依赖>.dll
 完整示例位于 [`examples/ServerMonitor`](../../examples/ServerMonitor)。构建、打包并安装：
 
 ```powershell
-$env:REMOTEOS_DEV_TOKEN = "<设置中的令牌>"
+$env:RELAXKONOS_DEV_TOKEN = "<设置中的令牌>"
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\ServerMonitor --configuration Debug --install
 ```
 
@@ -117,7 +117,7 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\ServerMonitor --
 
 ## 安全模型
 
-开发包使用保留的外部应用 ID，不能使用 `remoteos.*` 内置命名空间。它们安装在当前用户的本地应用数据下方，不会覆盖商店包。开发者模式不会自动授予清单权限；请在 **应用权限** 下授予或撤销每个请求的能力。
+开发包使用保留的外部应用 ID，不能使用 `relaxkonos.*` 内置命名空间。它们安装在当前用户的本地应用数据下方，不会覆盖商店包。开发者模式不会自动授予清单权限；请在 **应用权限** 下授予或撤销每个请求的能力。
 
 应用安装状态会逐步迁移到 Virtual System Drive（VSD）；详见 [VSD 契约](../architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)。VSD 只是 RelaxKonOS 本地数据目录，不是宿主真实磁盘、文件系统沙箱、包签名或第三方代码信任边界。包中的 `manifest.json` 或派生的 descriptor 只能声明请求，不能把包提升为 BuiltIn、授予权限、请求 Host Elevation 或获得任意代码/命令执行。
 
@@ -162,7 +162,7 @@ if (status != AppPermissionStatus.Granted)
 if (status == AppPermissionStatus.Granted)
     await LoadMetricsAsync();
 
-// 打开 remoteos://settings/apps/{this-app}/permissions。
+// 打开 relaxkonos://settings/apps/{this-app}/permissions。
 await context.Permissions.OpenSettingsAsync();
 ```
 

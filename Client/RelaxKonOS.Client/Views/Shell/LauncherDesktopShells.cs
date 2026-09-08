@@ -1245,9 +1245,9 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
 
 public static class BuiltInShells
 {
-    public static readonly ShellDescriptor Windows = new("remoteos.windows-like", "Windows-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
-    public static readonly ShellDescriptor Macos = new("remoteos.macos-like", "macOS-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
-    public static readonly ShellDescriptor Ubuntu = new("remoteos.ubuntu-like", "Ubuntu-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
+    public static readonly ShellDescriptor Windows = new("relaxkonos.windows-like", "Windows-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
+    public static readonly ShellDescriptor Macos = new("relaxkonos.macos-like", "macOS-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
+    public static readonly ShellDescriptor Ubuntu = new("relaxkonos.ubuntu-like", "Ubuntu-like", "1.0.0", ShellSourceKind.BuiltIn, ShellCapabilities.All);
     public static readonly IReadOnlyList<ShellDescriptor> All = [Windows, Macos, Ubuntu];
 }
 

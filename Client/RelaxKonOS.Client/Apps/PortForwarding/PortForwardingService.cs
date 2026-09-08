@@ -177,8 +177,8 @@ public sealed class PortForwardingService : IPortForwardingService
             start.ArgumentList.Add("PubkeyAuthentication=no");
             start.Environment["SSH_ASKPASS"] = askPassHelperPath;
             start.Environment["SSH_ASKPASS_REQUIRE"] = "force";
-            start.Environment["REMOTEOS_SSH_ASKPASS_PASSWORD"] = password;
-            start.Environment["DISPLAY"] = "remoteos-askpass";
+            start.Environment["RELAXKONOS_SSH_ASKPASS_PASSWORD"] = password;
+            start.Environment["DISPLAY"] = "relaxkonos-askpass";
             AddForwardArguments(start, server, request, localPort);
             return new SshLaunch(new Process { StartInfo = start }, askPassHelperPath);
         }
@@ -203,8 +203,8 @@ public sealed class PortForwardingService : IPortForwardingService
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"{Guid.NewGuid():N}{(OperatingSystem.IsWindows() ? ".cmd" : ".sh")}");
         var contents = OperatingSystem.IsWindows()
-            ? "@echo off\r\npowershell -NoProfile -NonInteractive -Command \"[Console]::Out.Write($env:REMOTEOS_SSH_ASKPASS_PASSWORD)\"\r\n"
-            : "#!/bin/sh\nprintf '%s\\n' \"$REMOTEOS_SSH_ASKPASS_PASSWORD\"\n";
+            ? "@echo off\r\npowershell -NoProfile -NonInteractive -Command \"[Console]::Out.Write($env:RELAXKONOS_SSH_ASKPASS_PASSWORD)\"\r\n"
+            : "#!/bin/sh\nprintf '%s\\n' \"$RELAXKONOS_SSH_ASKPASS_PASSWORD\"\n";
         File.WriteAllText(path, contents);
         if (!OperatingSystem.IsWindows())
         {

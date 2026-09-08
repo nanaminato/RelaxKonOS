@@ -188,7 +188,7 @@ public class BatchClientFake : DispatchProxy
     private async Task<FileSystemEntryDto> MutateAsync(string path)
     {
         if (BeforeMutation is not null) await BeforeMutation(path);
-        if (RequireElevation) throw new RemoteOsAuthException(new ProblemDetails("test/elevation-required", "Elevation", 403, "Denied", null));
+        if (RequireElevation) throw new RelaxKonOSAuthException(new ProblemDetails("test/elevation-required", "Elevation", 403, "Denied", null));
         if (FailPaths.Contains(path)) throw new IOException("Simulated conflict");
         return new(path, path, 0, FileSystemEntryType.File, null, null, null, false, false, null);
     }

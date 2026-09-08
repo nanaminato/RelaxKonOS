@@ -13,7 +13,7 @@ namespace RelaxKonOS.Examples.ServerMonitor;
 public sealed class ServerMonitorApp : IExternalRemoteApplication
 {
     public ApplicationManifest Manifest { get; } = new(
-        new AppId("com.remoteos.example.server-monitor"),
+        new AppId("com.relaxkonos.example.server-monitor"),
         "Server Monitor",
         "0.2.0-dev",
         "📊",

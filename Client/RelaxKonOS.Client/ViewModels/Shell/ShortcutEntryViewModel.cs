@@ -10,13 +10,13 @@ public partial class ShortcutEntryViewModel : ObservableObject
 {
     private readonly ShortcutActivationRouter _router;
 
-    public ShortcutEntryViewModel(RemoteOsShortcut shortcut, ShortcutActivationRouter router)
+    public ShortcutEntryViewModel(RelaxKonOSShortcut shortcut, ShortcutActivationRouter router)
     {
         Shortcut = shortcut;
         _router = router;
     }
 
-    public RemoteOsShortcut Shortcut { get; }
+    public RelaxKonOSShortcut Shortcut { get; }
     public string DisplayName => Shortcut.DisplayName;
     public string? IconGlyph => Shortcut.Icon?.Glyph ?? "↗";
     [ObservableProperty] private bool _isDesktopSelected;

@@ -36,7 +36,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
     private SettingsViewModel? _viewModel;
     private ManagedWindow? _window;
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.settings"),
+        Id: new AppId("relaxkonos.settings"),
         DisplayName: "Settings",
         Version: "1.0.0",
         IconGlyph: "⚙️",
@@ -50,7 +50,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var session = context.Services.GetRequiredService<IAuthSession>();
         var settingsClient = context.Services.GetRequiredService<IWorkspaceSettingsService>();
         var apps = context.Services.GetRequiredService<ApplicationManager>();
-        var remote = context.Services.GetRequiredService<IRemoteOsClient>();
+        var remote = context.Services.GetRequiredService<IRelaxKonOSClient>();
         var system = context.Services.GetRequiredService<ITaskManagerClient>();
         var registry = context.Services.GetRequiredService<DefaultAppRegistry>();
         var permissions = context.Services.GetRequiredService<IAppPermissionManager>();
@@ -133,7 +133,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                 [
                     new FilePickerFileType(LocalizedText.Get("settings.custom_theme"))
                     {
-                        Patterns = ["*.remoteos-theme.json", "*.json"],
+                        Patterns = ["*.relaxkonos-theme.json", "*.json"],
                     },
                 ],
             });
@@ -142,7 +142,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             try
             {
                 await using var stream = await file.OpenReadAsync();
-                var palette = await JsonSerializer.DeserializeAsync<ThemePaletteDto>(stream, RemoteOsJsonOptions.Default);
+                var palette = await JsonSerializer.DeserializeAsync<ThemePaletteDto>(stream, RelaxKonOSJsonOptions.Default);
                 if (!personalizationPage.TryImportCustomPalette(palette, out var error))
                 {
                     await ShowThemeMessageAsync(context, window, error!);
@@ -165,12 +165,12 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
             {
                 Title = LocalizedText.Get("settings.theme_export"),
-                SuggestedFileName = palette.Id + ".remoteos-theme.json",
+                SuggestedFileName = palette.Id + ".relaxkonos-theme.json",
                 FileTypeChoices =
                 [
                     new FilePickerFileType(LocalizedText.Get("settings.custom_theme"))
                     {
-                        Patterns = ["*.remoteos-theme.json"],
+                        Patterns = ["*.relaxkonos-theme.json"],
                     },
                 ],
             });
@@ -178,7 +178,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             try
             {
                 await using var stream = await file.OpenWriteAsync();
-                await JsonSerializer.SerializeAsync(stream, palette, RemoteOsJsonOptions.Default);
+                await JsonSerializer.SerializeAsync(stream, palette, RelaxKonOSJsonOptions.Default);
             }
             catch (OperationCanceledException)
             {
@@ -256,7 +256,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
 
     public bool CanHandleActivation(Uri uri)
     {
-        if (!uri.Scheme.Equals("remoteos", StringComparison.OrdinalIgnoreCase)
+        if (!uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
             || !uri.Host.Equals("settings", StringComparison.OrdinalIgnoreCase))
             return false;
 

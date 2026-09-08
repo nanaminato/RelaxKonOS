@@ -5,9 +5,9 @@ namespace RelaxKonOS.Server.Storage.Sqlite;
 
 /// <summary>EF Core DbContext。持久化 User / Workspace（身份与归属）/ Device / Bookmark / HistoryEntry 等实体。
 /// Session / refresh token / PTY 进程不在本上下文（维持内存，见 docs/RelaxKonOS.Storage.md）。</summary>
-public sealed class RemoteOsDbContext : DbContext
+public sealed class RelaxKonOSDbContext : DbContext
 {
-    public RemoteOsDbContext(DbContextOptions<RemoteOsDbContext> options) : base(options) { }
+    public RelaxKonOSDbContext(DbContextOptions<RelaxKonOSDbContext> options) : base(options) { }
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();

@@ -186,7 +186,7 @@ public sealed class ApplicationManager : IAppActivationService
     }
 
     /// <summary>
-    /// Resolves a Shell-owned <c>remoteos://</c> URI or a manifest-declared external URI scheme.
+    /// Resolves a Shell-owned <c>relaxkonos://</c> URI or a manifest-declared external URI scheme.
     /// </summary>
     public AppActivationResult Activate(AppActivationRequest request)
     {
@@ -200,7 +200,7 @@ public sealed class ApplicationManager : IAppActivationService
             return new AppActivationResult(AppActivationStatus.InvalidUri);
         }
 
-        if (!uri.Scheme.Equals("remoteos", StringComparison.OrdinalIgnoreCase))
+        if (!uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase))
             return ActivateExternalUri(request);
 
         if (string.IsNullOrWhiteSpace(uri.Host))
@@ -354,7 +354,7 @@ public sealed class ApplicationManager : IAppActivationService
         // Host paths are intentionally not an inter-package protocol. Only the first-party
         // Explorer and the Shell (SourceAppId is null) may use this route; package applications
         // must use their file capability APIs.
-        if (request.SourceAppId is { Value: not "remoteos.explorer" })
+        if (request.SourceAppId is { Value: not "relaxkonos.explorer" })
             return new AppActivationResult(AppActivationStatus.Unavailable);
 
         var values = ParseQuery(request.Uri);

@@ -1456,7 +1456,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             await operation();
             return true;
         }
-        catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
+        catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
         {
             var directories = directoryPaths.Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(path => path!).Aggregate(new List<string>(), (items, path) =>

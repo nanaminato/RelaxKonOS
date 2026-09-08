@@ -26,7 +26,7 @@ public sealed class NotepadApp : RemoteApplicationBase, IFileOpenApplication
     ];
 
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.notepad"),
+        Id: new AppId("relaxkonos.notepad"),
         DisplayName: "Notebook",
         Version: "1.0.0",
         IconGlyph: "📝",
@@ -52,7 +52,7 @@ public sealed class NotepadApp : RemoteApplicationBase, IFileOpenApplication
             SaveDefaultEncodingAsync = encoding => encodingSettings?.SetNotepadDefaultEncodingAsync(encoding) ?? Task.CompletedTask,
         };
         var view = new NotepadView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.notepad.display_name"), view,
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.notepad.display_name"), view,
             bounds: new Rect(160, 100, 820, 580),
             iconGlyph: Manifest.IconGlyph);
         window.KeyDown += (_, e) =>

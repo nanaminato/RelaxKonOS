@@ -200,7 +200,7 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         if (File.Exists(_linuxProfilesPath))
         {
             await using var stream = File.OpenRead(_linuxProfilesPath);
-            metadata = await JsonSerializer.DeserializeAsync<SavedLoginProfileCollection>(stream, RemoteOsJsonOptions.Default, ct)
+            metadata = await JsonSerializer.DeserializeAsync<SavedLoginProfileCollection>(stream, RelaxKonOSJsonOptions.Default, ct)
                 ?? new SavedLoginProfileCollection(Array.Empty<SavedLoginProfile>());
         }
         else
@@ -243,7 +243,7 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
             .Select(profile => profile with { Password = null })
             .ToArray());
         await using (var stream = new FileStream(_linuxProfilesPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            await JsonSerializer.SerializeAsync(stream, metadata, RemoteOsJsonOptions.Default, ct);
+            await JsonSerializer.SerializeAsync(stream, metadata, RelaxKonOSJsonOptions.Default, ct);
         File.SetUnixFileMode(_linuxProfilesPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
 
         if (profiles.Any(profile => profile.HasPassword))
@@ -259,17 +259,17 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
     }
 
     private static string Serialize(SavedLoginProfileCollection profiles)
-        => Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(profiles, RemoteOsJsonOptions.Default));
+        => Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(profiles, RelaxKonOSJsonOptions.Default));
 
     private static IReadOnlyList<SavedLoginProfile> Deserialize(string payload)
     {
         var bytes = Convert.FromBase64String(payload);
         using var document = JsonDocument.Parse(bytes);
         if (document.RootElement.TryGetProperty("profiles", out _))
-            return JsonSerializer.Deserialize<SavedLoginProfileCollection>(bytes, RemoteOsJsonOptions.Default)?.Profiles
+            return JsonSerializer.Deserialize<SavedLoginProfileCollection>(bytes, RelaxKonOSJsonOptions.Default)?.Profiles
                 ?? Array.Empty<SavedLoginProfile>();
 
-        var legacy = JsonSerializer.Deserialize<LegacyRememberedSession>(bytes, RemoteOsJsonOptions.Default);
+        var legacy = JsonSerializer.Deserialize<LegacyRememberedSession>(bytes, RelaxKonOSJsonOptions.Default);
         return legacy is null
             ? Array.Empty<SavedLoginProfile>()
             : [new SavedLoginProfile(legacy.ServerUrl, legacy.User.Username, legacy.Password, DateTimeOffset.UtcNow)];
@@ -385,7 +385,7 @@ internal static class MacKeychain
 
 internal static class LinuxSecretService
 {
-    private const string SchemaName = "com.remoteos.client.remembered-session";
+    private const string SchemaName = "com.relaxkonos.client.remembered-session";
     private const string AttributeName = "application";
     private const string AttributeValue = "RelaxKonOS.Client";
     private static readonly GlibHashFunction HashFunction = Hash;

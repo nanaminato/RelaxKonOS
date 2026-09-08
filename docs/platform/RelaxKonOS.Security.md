@@ -450,18 +450,18 @@ RelaxKonOS Server 应：
 - 不默认 root（Linux）/ 不默认 Administrator（Windows）
 - 使用 sudo / UAC 执行需要权限的任务
 
-当前 Linux 部署脚本会创建（或复用）`remoteos-server` 系统账户，以该账户运行 HTTP Server，并仅通过 root-owned 的受限 helper 执行防火墙操作。推荐模式为：
+当前 Linux 部署脚本会创建（或复用）`relaxkonos-server` 系统账户，以该账户运行 HTTP Server，并仅通过 root-owned 的受限 helper 执行防火墙操作。推荐模式为：
 
 ```text
-Linux:    remoteos-server → sudo limited commands
-Windows:  remoteos-server → elevated limited commands (via UAC)
+Linux:    relaxkonos-server → sudo limited commands
+Windows:  relaxkonos-server → elevated limited commands (via UAC)
 ```
 
 而不是：
 
 ```text
-Linux:    remoteos-server → root
-Windows:  remoteos-server → Administrator
+Linux:    relaxkonos-server → root
+Windows:  relaxkonos-server → Administrator
 ```
 
 ---

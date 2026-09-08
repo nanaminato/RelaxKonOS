@@ -9,7 +9,7 @@ namespace RelaxKonOS.Client.Apps.Welcome;
 public sealed class WelcomeApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.welcome"),
+        Id: new AppId("relaxkonos.welcome"),
         DisplayName: "Welcome",
         Version: "1.0.0",
         IconGlyph: "🏠",

@@ -3,7 +3,7 @@ namespace RelaxKonOS.Core.VirtualSystemDrive;
 public sealed record ShellDescriptor(int SchemaVersion, string Id, string DisplayName,
     string? PreviewPath = null, IReadOnlyList<string>? Features = null);
 
-public enum RemoteOsShortcutKind
+public enum RelaxKonOSShortcutKind
 {
     Application,
     RemoteFile,
@@ -13,15 +13,15 @@ public enum RemoteOsShortcutKind
 }
 
 /// <summary>Persisted desktop link. Target interpretation belongs exclusively to the Host router.</summary>
-public sealed record RemoteOsShortcut(int SchemaVersion, string Id, string DisplayName,
-    RemoteOsShortcutKind Kind, string Target, ApplicationDescriptorIcon? Icon = null);
+public sealed record RelaxKonOSShortcut(int SchemaVersion, string Id, string DisplayName,
+    RelaxKonOSShortcutKind Kind, string Target, ApplicationDescriptorIcon? Icon = null);
 
 /// <summary>Pure validation; shortcut payloads never carry local paths, command lines, or grants.</summary>
-public static class RemoteOsShortcutValidator
+public static class RelaxKonOSShortcutValidator
 {
     public const int CurrentSchemaVersion = 1;
 
-    public static DescriptorValidationResult Validate(RemoteOsShortcut? shortcut)
+    public static DescriptorValidationResult Validate(RelaxKonOSShortcut? shortcut)
     {
         if (shortcut is null) return DescriptorValidationResult.Invalid(VirtualSystemDriveProblemCode.ShortcutInvalid);
         if (shortcut.SchemaVersion != CurrentSchemaVersion || !Guid.TryParse(shortcut.Id, out _)
@@ -30,15 +30,15 @@ public static class RemoteOsShortcutValidator
 
         return shortcut.Kind switch
         {
-            RemoteOsShortcutKind.Application when ApplicationDescriptorValidator.IsValidAppId(shortcut.Target)
+            RelaxKonOSShortcutKind.Application when ApplicationDescriptorValidator.IsValidAppId(shortcut.Target)
                 => DescriptorValidationResult.Valid,
-            RemoteOsShortcutKind.Script when ApplicationDescriptorValidator.IsSafeRelativePath(shortcut.Target)
+            RelaxKonOSShortcutKind.Script when ApplicationDescriptorValidator.IsSafeRelativePath(shortcut.Target)
                 && shortcut.Target.StartsWith("Scripts/", StringComparison.Ordinal)
                 => DescriptorValidationResult.Valid,
-            RemoteOsShortcutKind.Uri when Uri.TryCreate(shortcut.Target, UriKind.Absolute, out var uri)
-                && uri.Scheme.Equals("remoteos", StringComparison.OrdinalIgnoreCase)
+            RelaxKonOSShortcutKind.Uri when Uri.TryCreate(shortcut.Target, UriKind.Absolute, out var uri)
+                && uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
                 => DescriptorValidationResult.Valid,
-            RemoteOsShortcutKind.RemoteFile or RemoteOsShortcutKind.RemoteFolder when IsRemotePath(shortcut.Target)
+            RelaxKonOSShortcutKind.RemoteFile or RelaxKonOSShortcutKind.RemoteFolder when IsRemotePath(shortcut.Target)
                 => DescriptorValidationResult.Valid,
             _ => DescriptorValidationResult.Invalid(VirtualSystemDriveProblemCode.ShortcutInvalid),
         };

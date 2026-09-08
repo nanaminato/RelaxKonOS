@@ -19,7 +19,7 @@
         "common.error.empty_response_title": "空のレスポンス",
         "common.error.empty_response_detail": "サーバーから空のレスポンス本文が返されました。",
         "common.problem.privileged_helper_unavailable.title": "特権ヘルパーを利用できません",
-        "common.problem.privileged_helper_unavailable": "サーバーの特権ヘルパーを利用できません。サーバー管理者にインストールまたは修復を依頼してください。Linux では RelaxKonOS.PrivilegedHelper、root 所有の公開ディレクトリ、sudoers ルールを、Windows では RemoteOSPrivilegedHelper サービス、名前付きパイプ ACL、共有シークレットを確認し、修復後に再試行してください。",
+        "common.problem.privileged_helper_unavailable": "サーバーの特権ヘルパーを利用できません。サーバー管理者にインストールまたは修復を依頼してください。Linux では RelaxKonOS.PrivilegedHelper、root 所有の公開ディレクトリ、sudoers ルールを、Windows では RelaxKonOSPrivilegedHelper サービス、名前付きパイプ ACL、共有シークレットを確認し、修復後に再試行してください。",
         "common.done": "完了",
         "common.file": "ファイル",
         "common.new": "新規",

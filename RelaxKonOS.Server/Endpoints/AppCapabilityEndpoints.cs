@@ -100,7 +100,7 @@ public static class AppCapabilityEndpoints
         .RequireAuthorization()
         .WithTags("Application capabilities");
 
-        app.MapMethods($"/{RelaxKonOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/media/{{leaseId}}", ["GET", "HEAD"], (
+        app.MapMethods($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/media/{{leaseId}}", ["GET", "HEAD"], (
             string leaseId,
             HttpContext context,
             IFileService files,

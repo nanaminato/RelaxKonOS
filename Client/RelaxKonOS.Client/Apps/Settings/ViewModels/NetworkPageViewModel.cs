@@ -13,13 +13,13 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 public sealed partial class NetworkPageViewModel : SettingsPageViewModel
 {
     private readonly IAuthSession _session;
-    private readonly IRemoteOsClient _remote;
+    private readonly IRelaxKonOSClient _remote;
     private readonly ITaskManagerClient _system;
 
     public NetworkPageViewModel(
         ShellSettings settings,
         IAuthSession session,
-        IRemoteOsClient remote,
+        IRelaxKonOSClient remote,
         ITaskManagerClient system,
         Action? save)
         : base(settings, save)

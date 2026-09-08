@@ -18,7 +18,7 @@ namespace RelaxKonOS.Client.Apps.Firewall;
 public sealed class FirewallApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("remoteos.firewall"), "Firewall", "0.2.0", "🧱", "Manage Linux Server UFW firewall rules",
+        new AppId("relaxkonos.firewall"), "Firewall", "0.2.0", "🧱", "Manage Linux Server UFW firewall rules",
         [AppPermissions.ServerFirewallRead, AppPermissions.ServerFirewallManage],
         ServerRequirements: new ApplicationServerRequirements(Platforms: [ApplicationPlatformNames.Linux], Capabilities: [ServerCapabilities.Firewall]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
@@ -29,11 +29,11 @@ public sealed class FirewallApp : RemoteApplicationBase
         var client = context.Services.GetService(typeof(IRemoteFirewallClient)) as IRemoteFirewallClient;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.remoteos.firewall.display_name"), new TextBlock { Text = LocalizedText.Get("firewall.login_required"), Margin = new Avalonia.Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"), new TextBlock { Text = LocalizedText.Get("firewall.login_required"), Margin = new Avalonia.Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
         var viewModel = new FirewallViewModel(client, session, context.Permissions);
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.firewall.display_name"), CreateView(viewModel), new Rect(70, 55, 1160, 760), Manifest.IconGlyph);
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.firewall.display_name"), CreateView(viewModel), new Rect(70, 55, 1160, 760), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestPasswordAsync = () => RequestPasswordAsync(context, window);
         viewModel.ShowRuleEditorAsync = editing => ShowRuleEditorAsync(context, window, viewModel, editing);

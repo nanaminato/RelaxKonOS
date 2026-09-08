@@ -22,8 +22,8 @@ public sealed class ProcessGuardianClient(HttpClient http, IAuthSession session)
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
-        if (body is not null) request.Content = JsonContent.Create(body, options: RemoteOsJsonOptions.Default);
+        if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, cancellationToken); response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, cancellationToken) ?? throw new InvalidOperationException("RelaxKonOS returned an empty response.");
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken) ?? throw new InvalidOperationException("RelaxKonOS returned an empty response.");
     }
 }

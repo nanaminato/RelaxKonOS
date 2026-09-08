@@ -24,7 +24,7 @@ namespace RelaxKonOS.Client.Apps.Browser;
 public sealed class BrowserApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.browser"),
+        Id: new AppId("relaxkonos.browser"),
         DisplayName: "RemoteBrowser",
         Version: "1.0.0",
         IconGlyph: "🌐",

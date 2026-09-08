@@ -12,6 +12,6 @@ public partial class WelcomeViewModel : ObservableObject
     private void OpenNotepad()
     {
         App.Services.GetRequiredService<ApplicationManager>()
-            .Launch(new AppId("remoteos.notepad"));
+            .Launch(new AppId("relaxkonos.notepad"));
     }
 }

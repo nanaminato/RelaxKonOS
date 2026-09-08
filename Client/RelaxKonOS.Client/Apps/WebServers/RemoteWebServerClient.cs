@@ -49,7 +49,7 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
             throw new WebServerApiException(await ReadProblemCodeAsync(response, cancellationToken)
                 ?? FallbackProblemCode(response.StatusCode), response.StatusCode);
         }
-        return await response.Content.ReadFromJsonAsync<WebServerInstallPackageDto>(RemoteOsJsonOptions.Default, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<WebServerInstallPackageDto>(RelaxKonOSJsonOptions.Default, cancellationToken);
     }
 
     public Task<WebServerInstallCatalogDto?> GetManagedInstallCatalogAsync(string providerId, CancellationToken cancellationToken = default)
@@ -111,7 +111,7 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
         {
-            Content = body is null ? null : JsonContent.Create(body, options: RemoteOsJsonOptions.Default),
+            Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         if (idempotencyKey is not null)
@@ -124,7 +124,7 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
             throw new WebServerApiException(await ReadProblemCodeAsync(response, cancellationToken)
                 ?? FallbackProblemCode(response.StatusCode), response.StatusCode);
         }
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, cancellationToken)
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException("RelaxKonOS returned an empty response.");
     }
 
@@ -139,7 +139,7 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
         if (string.IsNullOrWhiteSpace(payload)) return null;
         try
         {
-            return JsonSerializer.Deserialize<WebServerProblemDetails>(payload, RemoteOsJsonOptions.Default)?.ProblemCode;
+            return JsonSerializer.Deserialize<WebServerProblemDetails>(payload, RelaxKonOSJsonOptions.Default)?.ProblemCode;
         }
         catch (JsonException)
         {

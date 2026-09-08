@@ -8,11 +8,11 @@ namespace RelaxKonOS.Server.Endpoints;
 
 public static class GitEndpoints
 {
-    private const string ProblemBase = "https://remoteos.app/problems/git-";
+    private const string ProblemBase = "https://relaxkonos.app/problems/git-";
 
     public static IEndpointRouteBuilder MapGitEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/git").RequireAuthorization().WithTags("Git");
+        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/git").RequireAuthorization().WithTags("Git");
 
         // ── Host Git engine probe & install (host-level, user-agnostic) ──
         group.MapGet("/engine/status", (RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
@@ -21,7 +21,7 @@ public static class GitEndpoints
         group.MapPost("/engine/install", async (HttpContext http, IHostElevationSessionStore elevations, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(http.User, HostElevationCapability.GitPackageInstall, "git"))
-                return Results.Problem(statusCode: 403, title: "需要管理员权限", detail: "Git 安装需要当前会话的管理员授权。", type: "https://remoteos.app/problems/elevation-required");
+                return Results.Problem(statusCode: 403, title: "需要管理员权限", detail: "Git 安装需要当前会话的管理员授权。", type: "https://relaxkonos.app/problems/elevation-required");
             try { return Results.Ok(await service.InstallEngineAsync(ct)); }
             catch (InvalidOperationException ex) { return Results.Problem(detail: ex.Message, statusCode: 500, title: "Git install", type: ProblemBase + "install-failed"); }
         });

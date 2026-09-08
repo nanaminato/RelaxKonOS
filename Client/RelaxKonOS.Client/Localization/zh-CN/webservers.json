@@ -95,7 +95,7 @@
     "webservers.managed.uninstall.message": "此操作会停止并删除仅由 RelaxKonOS 管理的 Nginx 及其专用配置。该操作不可恢复。继续吗？",
     "webservers.managed.uninstall.confirm": "确认卸载",
     "webservers.integration.confirmation.title": "集成 Nginx",
-    "webservers.integration.confirmation.message": "此操作会在 Nginx 已包含的 conf.d 目录中创建仅由 RelaxKonOS 所有的 remoteos.conf，并先运行配置测试后才重载 Nginx。不会修改现有站点配置。是否继续？",
+    "webservers.integration.confirmation.message": "此操作会在 Nginx 已包含的 conf.d 目录中创建仅由 RelaxKonOS 所有的 relaxkonos.conf，并先运行配置测试后才重载 Nginx。不会修改现有站点配置。是否继续？",
     "webservers.integration.confirmation.confirm": "确认集成",
     "webservers.column.id": "ID",
     "webservers.column.type": "类型",

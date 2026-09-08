@@ -7,7 +7,7 @@ using RelaxKonOS.Server.Storage.Sqlite;
 namespace RelaxKonOS.Server.Tunnels;
 
 /// <summary>Transactional desired-state service. It never starts a process while saving user input.</summary>
-public sealed class TunnelService(RemoteOsDbContext db, ISecretStore secrets, ITunnelAudit audit) : ITunnelService
+public sealed class TunnelService(RelaxKonOSDbContext db, ISecretStore secrets, ITunnelAudit audit) : ITunnelService
 {
     public async Task<IReadOnlyList<TunnelServerProfileDto>> ListProfilesAsync(string userId, CancellationToken ct) =>
         (await db.TunnelServerProfiles.AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.Name).ToListAsync(ct))

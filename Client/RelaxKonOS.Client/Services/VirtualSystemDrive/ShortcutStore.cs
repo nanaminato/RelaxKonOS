@@ -9,17 +9,17 @@ public sealed class ShortcutStore
 
     public ShortcutStore(VirtualSystemDrive drive) => _drive = drive;
 
-    public async Task<IReadOnlyList<RemoteOsShortcut>> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RelaxKonOSShortcut>> ListAsync(CancellationToken cancellationToken = default)
     {
         _drive.EnsureCreated();
         var desktop = _drive.ResolveRootChild($"Users/{_drive.LocalProfileId}/Desktop");
-        var links = new List<RemoteOsShortcut>();
-        foreach (var file in Directory.EnumerateFiles(desktop, "*.remoteos-link.json", SearchOption.TopDirectoryOnly))
+        var links = new List<RelaxKonOSShortcut>();
+        foreach (var file in Directory.EnumerateFiles(desktop, "*.relaxkonos-link.json", SearchOption.TopDirectoryOnly))
         {
             try
             {
-                var shortcut = await _drive.ReadJsonAsync<RemoteOsShortcut>(file, cancellationToken);
-                if (RemoteOsShortcutValidator.Validate(shortcut).IsValid)
+                var shortcut = await _drive.ReadJsonAsync<RelaxKonOSShortcut>(file, cancellationToken);
+                if (RelaxKonOSShortcutValidator.Validate(shortcut).IsValid)
                     links.Add(shortcut);
             }
             catch (VirtualSystemDriveException) { }
@@ -29,9 +29,9 @@ public sealed class ShortcutStore
         return links.OrderBy(link => link.DisplayName, StringComparer.Ordinal).ToArray();
     }
 
-    public async Task<RemoteOsShortcut> CreateAsync(RemoteOsShortcut shortcut, CancellationToken cancellationToken = default)
+    public async Task<RelaxKonOSShortcut> CreateAsync(RelaxKonOSShortcut shortcut, CancellationToken cancellationToken = default)
     {
-        if (!RemoteOsShortcutValidator.Validate(shortcut).IsValid)
+        if (!RelaxKonOSShortcutValidator.Validate(shortcut).IsValid)
             throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.ShortcutInvalid);
         var normalized = shortcut with { Id = shortcut.Id.ToLowerInvariant() };
         await _drive.WriteJsonAtomicallyAsync(PathFor(normalized.Id), normalized, cancellationToken);
@@ -57,13 +57,13 @@ public sealed class ShortcutStore
     private async Task RenameCoreAsync(string id, string displayName, CancellationToken cancellationToken)
     {
         var path = PathFor(id);
-        var existing = await _drive.ReadJsonAsync<RemoteOsShortcut>(path, cancellationToken);
+        var existing = await _drive.ReadJsonAsync<RelaxKonOSShortcut>(path, cancellationToken);
         await CreateAsync(existing with { DisplayName = displayName }, cancellationToken);
     }
 
     private string PathFor(string id)
     {
         if (!Guid.TryParse(id, out _)) throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.ShortcutInvalid);
-        return _drive.ResolveRootChild($"Users/{_drive.LocalProfileId}/Desktop/{id.ToLowerInvariant()}.remoteos-link.json");
+        return _drive.ResolveRootChild($"Users/{_drive.LocalProfileId}/Desktop/{id.ToLowerInvariant()}.relaxkonos-link.json");
     }
 }

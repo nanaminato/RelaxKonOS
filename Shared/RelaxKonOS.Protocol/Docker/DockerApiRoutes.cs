@@ -5,7 +5,7 @@ namespace RelaxKonOS.Protocol.Docker;
 /// <summary>Routes for the server-side local Docker integration.</summary>
 public static class DockerApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Status = $"/{V1}/docker/status";
     public const string InstallationPlan = $"/{V1}/docker/installation/plan";
     public const string InstallationExecute = $"/{V1}/docker/installation/execute";

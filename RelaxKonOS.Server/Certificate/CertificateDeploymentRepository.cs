@@ -11,7 +11,7 @@ internal sealed record KestrelDeploymentRecord(Guid CertificateId, string Curren
 internal sealed class CertificateDeploymentRepository
 {
     private const string KestrelTargetType = "kestrel";
-    private const string KestrelTargetName = "remoteos";
+    private const string KestrelTargetName = "relaxkonos";
     private readonly string _connectionString;
     private readonly bool _enabled;
 

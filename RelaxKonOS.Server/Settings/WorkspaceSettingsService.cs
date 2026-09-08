@@ -28,7 +28,7 @@ public sealed class WorkspaceSettingsService(IRegistryRepository registry) : IWo
             entry = registry.Find(workspace.UserId, RegistryScope.Workspace, workspace.Id,
                 WorkspaceConfigurationRegistry.DesktopPath, WorkspaceConfigurationRegistry.DefaultValueName)!;
         }
-        var value = JsonSerializer.Deserialize<WorkspacePreferencesDto>(entry.ValueJson, RemoteOsJsonOptions.Default);
+        var value = JsonSerializer.Deserialize<WorkspacePreferencesDto>(entry.ValueJson, RelaxKonOSJsonOptions.Default);
         if (value is null || !WorkspacePreferencesValidator.TryNormalize(value, out var normalized))
             throw new InvalidDataException("Stored workspace preferences are invalid; they have not been overwritten.");
         normalized.Revision = entry.Revision;
@@ -51,7 +51,7 @@ public sealed class WorkspaceSettingsService(IRegistryRepository registry) : IWo
         UserId = workspace.UserId, Scope = RegistryScope.Workspace, ScopeId = workspace.Id,
         Path = WorkspaceConfigurationRegistry.DesktopPath, Name = WorkspaceConfigurationRegistry.DefaultValueName,
         ValueType = RegistryValueType.Json,
-        ValueJson = JsonSerializer.Serialize(value with { Revision = null }, RemoteOsJsonOptions.Default),
+        ValueJson = JsonSerializer.Serialize(value with { Revision = null }, RelaxKonOSJsonOptions.Default),
         DesiredUpdatedAt = DateTimeOffset.UtcNow, DesiredUpdatedBy = actor,
     };
 }

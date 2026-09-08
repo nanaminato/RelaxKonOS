@@ -1,5 +1,5 @@
 {
-  "id": "com.remoteos.example.video-player",
+  "id": "com.relaxkonos.example.video-player",
   "permissionModelVersion": 2,
   "displayName": "Video Player",
   "version": "0.2.1-dev",

@@ -352,7 +352,7 @@ RelaxKonOS supports building custom application packages (`.roapp`) that can be 
 
 ```bash
 # Set the development token (or pass it as a parameter)
-export REMOTEOS_DEV_TOKEN="<pairing-token>"
+export RELAXKONOS_DEV_TOKEN="<pairing-token>"
 
 # Package and install an app without per-application PowerShell scripts
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/VideoPlayer --runtime win-x64 --configuration Release --install
@@ -363,7 +363,7 @@ dotnet run --project Tools/RelaxKonOS.DevCli -- watch ./examples/VideoPlayer --r
 
 `pack` creates the `.roapp` in the application's `artifacts/` directory; pure managed applications can omit `--runtime`. See [Developer Mode](./docs/development/RelaxKonOS.DeveloperMode.md) for the third-party packaging command reference.
 
-On Windows PowerShell, set the token with `$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"`; the remaining `dotnet` commands are unchanged.
+On Windows PowerShell, set the token with `$env:RELAXKONOS_DEV_TOKEN = "<pairing-token>"`; the remaining `dotnet` commands are unchanged.
 
 ### App Development Model
 

@@ -16,7 +16,7 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 
     private WindowsPrivilegedHelperService(WindowsHelperServiceConfiguration configuration)
     {
-        ServiceName = "RemoteOSPrivilegedHelper";
+        ServiceName = "RelaxKonOSPrivilegedHelper";
         CanStop = true;
         AutoLog = true;
         _configuration = configuration;

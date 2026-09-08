@@ -22,23 +22,23 @@ public sealed class ImageMirrorClient(HttpClient http, IAuthSession session) : I
         using var request = await CreateRequestAsync(HttpMethod.Get, ImageMirrorApiRoutes.Target.Replace("{target}", Target(target)), cancellationToken);
         using var response = await http.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<IReadOnlyList<ImageMirrorDto>>(RemoteOsJsonOptions.Default, cancellationToken) ?? [];
+        return await response.Content.ReadFromJsonAsync<IReadOnlyList<ImageMirrorDto>>(RelaxKonOSJsonOptions.Default, cancellationToken) ?? [];
     }
 
     public async Task<ImageMirrorDto> CreateAsync(ImageMirrorTarget target, CreateImageMirrorRequest body, CancellationToken cancellationToken = default)
     {
         using var request = await CreateRequestAsync(HttpMethod.Post, ImageMirrorApiRoutes.Target.Replace("{target}", Target(target)), cancellationToken);
-        request.Content = JsonContent.Create(body, options: RemoteOsJsonOptions.Default);
+        request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<ImageMirrorDto>(RemoteOsJsonOptions.Default, cancellationToken)
+        return await response.Content.ReadFromJsonAsync<ImageMirrorDto>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException("The server returned an empty image mirror.");
     }
 
     public async Task SelectAsync(ImageMirrorTarget target, Guid? mirrorId, CancellationToken cancellationToken = default)
     {
         using var request = await CreateRequestAsync(HttpMethod.Put, ImageMirrorApiRoutes.Selection.Replace("{target}", Target(target)), cancellationToken);
-        request.Content = JsonContent.Create(new SelectImageMirrorRequest(mirrorId), options: RemoteOsJsonOptions.Default);
+        request.Content = JsonContent.Create(new SelectImageMirrorRequest(mirrorId), options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
     }

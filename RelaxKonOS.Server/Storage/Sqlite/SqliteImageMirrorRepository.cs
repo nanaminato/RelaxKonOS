@@ -4,7 +4,7 @@ using RelaxKonOS.Server.Domain;
 
 namespace RelaxKonOS.Server.Storage.Sqlite;
 
-public sealed class SqliteImageMirrorRepository(RemoteOsDbContext db) : IImageMirrorRepository
+public sealed class SqliteImageMirrorRepository(RelaxKonOSDbContext db) : IImageMirrorRepository
 {
     public IReadOnlyList<ImageMirror> List(Guid userId, ImageMirrorTarget target) => db.ImageMirrors.AsNoTracking()
         .Where(x => x.UserId == userId && x.Target == target).ToArray()

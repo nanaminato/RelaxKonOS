@@ -21,7 +21,7 @@ public sealed class PerformanceStream(IAuthSession session) : IAsyncDisposable
             throw new InvalidOperationException("Not signed in.");
         if (_connection is not null) return;
 
-        var hubUrl = new Uri(new Uri(session.ServerUrl), RemoteOsEndpoints.PerformanceHubPath.TrimStart('/')).ToString();
+        var hubUrl = new Uri(new Uri(session.ServerUrl), RelaxKonOSEndpoints.PerformanceHubPath.TrimStart('/')).ToString();
         var connection = new HubConnectionBuilder()
             .WithUrl(hubUrl, options => options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1)))
             .WithAutomaticReconnect()

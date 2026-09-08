@@ -11,7 +11,7 @@
 
 网络调试器采用“**系统窗口、宿主采集**”的单一信任边界：
 
-- `NetworkInspectorWindowService` 是 RelaxKonOS Shell 的系统服务，直接通过 `IWindowManager` 创建 `remoteos.system.network-inspector` 窗口；它不是内置应用，也不是可安装的 `.roapp`。
+- `NetworkInspectorWindowService` 是 RelaxKonOS Shell 的系统服务，直接通过 `IWindowManager` 创建 `relaxkonos.system.network-inspector` 窗口；它不是内置应用，也不是可安装的 `.roapp`。
 - 采集器 `NetworkDiagnosticsService` 是客户端宿主的 singleton。它负责内存上限、脱敏、分类和事件订阅；检查器窗口直接读取其已脱敏事件流。
 - V1 只承诺监视通过 RelaxKonOS 宿主通信栈发起的调用：已注册 typed `HttpClient` 的 REST 请求、以及明确接入包装器的 SignalR Hub 生命周期和协商请求。
 - 默认不录制；仅当 **Developer Mode 已开启、用户开始录制** 时采集。关闭录制、关闭开发者模式或登出都会立即清空内存中的记录。
@@ -95,7 +95,7 @@ public sealed class NetworkDiagnosticsService
 
 - 环形缓冲区固定为 **500 条记录或 4 MiB 估算负载**，任一上限先到即淘汰最旧条目；不写盘、不上传、不跨进程共享。
 - 非媒体 HTTP 的请求、响应预览各至多 **8 KiB UTF-8**；只允许 `application/json`、`text/*`、`application/problem+json`，无法安全解码时不预览。
-- Header 最多各 32 项、单项值最多 512 字符；`Authorization`、`Cookie`、`Set-Cookie`、`X-RemoteOS-Dev-Token`、含 `token` / `secret` / `password` / `key` 名称的 Header 与 JSON 字段均替换为 `[redacted]`。URL 中同名 query 参数也脱敏。
+- Header 最多各 32 项、单项值最多 512 字符；`Authorization`、`Cookie`、`Set-Cookie`、`X-RelaxKonOS-Dev-Token`、含 `token` / `secret` / `password` / `key` 名称的 Header 与 JSON 字段均替换为 `[redacted]`。URL 中同名 query 参数也脱敏。
 - 媒体/二进制/流式响应永不读取或缓冲 body；只记录方法、净化路径、成功/失败、HTTP 状态、耗时、Content-Type 和声明的 Content-Length。未知长度显示 `—`，不为测量它而读取流。
 - 默认 `BodyPreviewMode = Off`；检查器中可在当前会话临时改为“文本 API 预览”。它不是 Workspace 偏好，也不随下次启动保留。
 

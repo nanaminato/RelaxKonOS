@@ -255,7 +255,7 @@ internal sealed class FileCertificateStore : ICertificateStore
 
     private static string DefaultRoot(IHostEnvironment environment) => OperatingSystem.IsWindows()
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "certificates")
-        : "/var/lib/remoteos/certificates";
+        : "/var/lib/relaxkonos/certificates";
 
     private static void CreateProtectedDirectory(string path)
     {

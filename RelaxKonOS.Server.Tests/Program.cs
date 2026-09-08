@@ -48,7 +48,7 @@ using SQLitePCL;
 
 Batteries_V2.Init();
 
-var root = Path.Combine(Path.GetTempPath(), $"remoteos-server-tests-{Guid.NewGuid():N}");
+var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewGuid():N}");
 Directory.CreateDirectory(root);
 try
 {
@@ -107,19 +107,19 @@ static void VerifyWorkspacePreferencesJsonContract()
         "M/d/yyyy",
         "en-US",
         "en-US",
-        [new DefaultAppMappingDto("https", "remoteos.browser")]);
+        [new DefaultAppMappingDto("https", "relaxkonos.browser")]);
 
-    var json = JsonSerializer.Serialize(preferences, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
-    var deserialized = JsonSerializer.Deserialize<WorkspacePreferencesDto>(json, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default)
+    var json = JsonSerializer.Serialize(preferences, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+    var deserialized = JsonSerializer.Deserialize<WorkspacePreferencesDto>(json, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)
         ?? throw new InvalidOperationException("Workspace preferences JSON did not deserialize.");
 
     Assert(deserialized.WallpaperKey == preferences.WallpaperKey, "Wallpaper key changed during JSON deserialization.");
     Assert(deserialized.DefaultApps.SequenceEqual(preferences.DefaultApps), "Default app mappings changed during JSON deserialization.");
-    Assert(deserialized.Shell?.ShellId == "remoteos.windows-like", "Default Windows shell selection changed during JSON deserialization.");
+    Assert(deserialized.Shell?.ShellId == "relaxkonos.windows-like", "Default Windows shell selection changed during JSON deserialization.");
 
     var external = preferences with { Shell = new ShellSelectionDto("com.example.neon-desktop", "com.example.neon", "1.0.0") };
     var externalRoundTrip = JsonSerializer.Deserialize<WorkspacePreferencesDto>(
-        JsonSerializer.Serialize(external, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default), RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default)
+        JsonSerializer.Serialize(external, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)
         ?? throw new InvalidOperationException("Structured shell selection did not deserialize.");
     Assert(externalRoundTrip.Shell?.PackageId == "com.example.neon" && externalRoundTrip.Shell?.PackageVersion == "1.0.0",
         "Structured shell package identity changed during JSON round-trip.");
@@ -146,7 +146,7 @@ static void VerifyFileElevationSessionScope(string root)
     Assert(!store.IsElevated(principal, FileElevationCapability.Write, Path.Combine(exactFile, "child")), "An exact file elevation grant unexpectedly covered descendants.");
 
     var request = new RelaxKonOS.Protocol.Files.FileElevationRequest(directory, "password", [Path.Combine(root, "second")], IncludeDescendants: true);
-    var json = JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
+    var json = JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     Assert(json.Contains("includeDescendants", StringComparison.Ordinal) && json.Contains("relatedPaths", StringComparison.Ordinal),
         "File elevation request lost its multi-directory grant contract.");
 }
@@ -167,12 +167,12 @@ static void VerifyHostElevationCapabilityScope(string root)
     Assert(!store.IsGranted(principal, HostElevationCapability.FileCopy, nestedFile), "Revoked JWT retained an elevation grant.");
 
     var nonFileDescendantRejected = false;
-    try { store.Grant(principal, HostElevationCapability.NativeServiceAction, "remoteos-server.service", includeDescendants: true, "test"); }
+    try { store.Grant(principal, HostElevationCapability.NativeServiceAction, "relaxkonos-server.service", includeDescendants: true, "test"); }
     catch (ArgumentException) { nonFileDescendantRejected = true; }
     Assert(nonFileDescendantRejected, "A non-file capability must not receive a descendant scope.");
 
     var request = new FileElevationRequest(directory, "password", Capability: FileElevationCapability.Copy);
-    var json = JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
+    var json = JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     Assert(json.Contains("capability", StringComparison.Ordinal), "File elevation request did not serialize its operation capability.");
 }
 
@@ -190,17 +190,17 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
     Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.NginxSystemServiceAction
         && transport.LastRequest.NginxServiceAction == NginxSystemServiceAction.Reload,
         "Nginx facade did not preserve its closed lifecycle action.");
-    Assert((await nginx.WriteManagedFileAsync("/etc/nginx/conf.d/remoteos.d/example.conf", Encoding.UTF8.GetBytes("server {}\n"))).Success,
+    Assert((await nginx.WriteManagedFileAsync("/etc/nginx/conf.d/relaxkonos.d/example.conf", Encoding.UTF8.GetBytes("server {}\n"))).Success,
         "Nginx managed-file write was not accepted by the transport facade.");
     Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.NginxWriteManagedFile
-        && transport.LastRequest.Path == "/etc/nginx/conf.d/remoteos.d/example.conf"
+        && transport.LastRequest.Path == "/etc/nginx/conf.d/relaxkonos.d/example.conf"
         && !string.IsNullOrWhiteSpace(transport.LastRequest.ContentBase64),
         "Nginx facade did not preserve its closed managed-file write request.");
 
     var services = new PrivilegedNativeServiceOperations(transport);
-    Assert((await services.ApplyAsync("remoteos-server.service", PrivilegedServiceAction.Restart)).Success, "Native service operation was not accepted by the transport facade.");
+    Assert((await services.ApplyAsync("relaxkonos-server.service", PrivilegedServiceAction.Restart)).Success, "Native service operation was not accepted by the transport facade.");
     Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.NativeServiceAction
-        && transport.LastRequest.ServiceId == "remoteos-server.service" && transport.LastRequest.ServiceAction == PrivilegedServiceAction.Restart,
+        && transport.LastRequest.ServiceId == "relaxkonos-server.service" && transport.LastRequest.ServiceAction == PrivilegedServiceAction.Restart,
         "Native-service facade did not preserve its allowlisted structured request.");
 
     var firewall = new LinuxUfwFirewallService(transport, NullLogger<LinuxUfwFirewallService>.Instance);
@@ -220,7 +220,7 @@ static ClaimsPrincipal Principal(string tokenId) => new(new ClaimsIdentity(
 
 static void VerifyAppPermissionEvaluator()
 {
-    var appId = new AppId("com.remoteos.tests.permissions");
+    var appId = new AppId("com.relaxkonos.tests.permissions");
     var manifest = new ApplicationManifest(appId, "Permission tests", RequestedPermissions: [AppPermissions.ServerFilesRead]);
     var store = new MemoryPermissionStore();
     var evaluator = new AppPermissionEvaluator(new TestPolicyProvider(), store);
@@ -245,20 +245,20 @@ static void VerifyAppPermissionEvaluator()
     Assert(evaluator.Evaluate(development, manifest, AppPermissions.ServerFilesRead) == PermissionDecision.Prompt,
         "Expired temporary grant was treated as active.");
 
-    var scope = PermissionScope.Path(Path.Combine(Path.GetTempPath(), "remoteos-permission-root"));
-    Assert(scope.Matches(PermissionScope.Path(Path.Combine(Path.GetTempPath(), "remoteos-permission-root", "nested", "file.txt"))),
+    var scope = PermissionScope.Path(Path.Combine(Path.GetTempPath(), "relaxkonos-permission-root"));
+    Assert(scope.Matches(PermissionScope.Path(Path.Combine(Path.GetTempPath(), "relaxkonos-permission-root", "nested", "file.txt"))),
         "Path scope did not match a descendant.");
-    Assert(!scope.Matches(PermissionScope.Path(Path.Combine(Path.GetTempPath(), "remoteos-permission-root-other", "file.txt"))),
+    Assert(!scope.Matches(PermissionScope.Path(Path.Combine(Path.GetTempPath(), "relaxkonos-permission-root-other", "file.txt"))),
         "Path scope leaked through a string prefix.");
 }
 
 static async Task VerifyRegistryRuntimeCacheAsync(string root)
 {
     var path = Path.Combine(root, "registry-cache.db");
-    var options = new DbContextOptionsBuilder<RemoteOsDbContext>().UseSqlite($"Data Source={path}").Options;
+    var options = new DbContextOptionsBuilder<RelaxKonOSDbContext>().UseSqlite($"Data Source={path}").Options;
     var userId = Guid.NewGuid();
     var workspaceId = Guid.NewGuid();
-    await using (var db = new RemoteOsDbContext(options))
+    await using (var db = new RelaxKonOSDbContext(options))
     {
         await db.Database.EnsureCreatedAsync();
         db.RegistryEntries.Add(new RegistryEntry
@@ -272,7 +272,7 @@ static async Task VerifyRegistryRuntimeCacheAsync(string root)
         await db.SaveChangesAsync();
     }
 
-    var factory = new PooledDbContextFactory<RemoteOsDbContext>(options);
+    var factory = new PooledDbContextFactory<RelaxKonOSDbContext>(options);
     var cache = new CachedSqliteRegistryRepository(factory);
     await cache.StartAsync(CancellationToken.None);
     Assert(cache.Find(userId, RegistryScope.Workspace, workspaceId, "Workspace\\Custom\\Appearance", "(Default)")?.ValueJson == "14",
@@ -293,12 +293,12 @@ static async Task VerifyRegistryRuntimeCacheAsync(string root)
     });
     Assert(updated.ValueJson == "12" && updated.State == RegistryEntryState.PendingSync && updated.Revision == 2,
         "Registry writes must update the in-memory source before durable synchronization.");
-    await using (var db = new RemoteOsDbContext(options))
+    await using (var db = new RelaxKonOSDbContext(options))
         Assert((await db.RegistryEntries.FindAsync(userId, RegistryScope.Workspace, workspaceId, "Workspace\\Custom\\Appearance", "(Default)"))?.ValueJson == "14",
             "Registry cache unexpectedly wrote through instead of batching durable synchronization.");
 
     await cache.StopAsync(CancellationToken.None);
-    await using (var db = new RemoteOsDbContext(options))
+    await using (var db = new RelaxKonOSDbContext(options))
     {
         var persisted = await db.RegistryEntries.FindAsync(userId, RegistryScope.Workspace, workspaceId, "Workspace\\Custom\\Appearance", "(Default)");
         Assert(persisted?.ValueJson == "12" && persisted.State == RegistryEntryState.Synced,
@@ -337,8 +337,8 @@ static void VerifyThemePaletteContract()
     Assert(ThemePaletteValidator.TryValidate(light, out _) && ThemePaletteValidator.TryValidate(dark, out _), "Built palette did not meet contrast requirements.");
     Assert(light["TextOnAccent"] == "#000000" && dark["TextOnAccent"] == "#000000", "Accent foreground was not chosen for contrast.");
 
-    var exported = JsonSerializer.Serialize(preferences.CustomPalettes.Single(), RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
-    var imported = JsonSerializer.Deserialize<ThemePaletteDto>(exported, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
+    var exported = JsonSerializer.Serialize(preferences.CustomPalettes.Single(), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+    var imported = JsonSerializer.Deserialize<ThemePaletteDto>(exported, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     Assert(ThemePaletteImport.TryNormalize(imported, ["paired"], accentOverride: null, out var normalized, out var importError),
         $"Exported custom palette could not be imported: {importError}.");
     Assert(normalized!.Id == "paired-2" && normalized.LightColors!["Accent"] == "#0078D4" && normalized.DarkColors!["Accent"] == "#89B4FA",
@@ -351,7 +351,7 @@ static void VerifyThemePaletteContract()
 
     var legacy = JsonSerializer.Deserialize<ThemePaletteDto>("""
         { "formatVersion": 1, "id": "legacy", "name": "Legacy", "mode": "light", "colors": { "Accent": "#0078D4" } }
-        """, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
+        """, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     Assert(!ThemePaletteImport.TryNormalize(legacy, [], accentOverride: null, out _, out var legacyError)
            && legacyError == ThemePaletteImportError.InvalidFormat,
         "Palette import accepted the removed v1 compatibility format.");
@@ -414,12 +414,12 @@ static void VerifyTunnelProtocolContract()
     var profile = new TunnelServerProfileDto(Guid.NewGuid(), "edge", "frps.example.test", 7000,
         TunnelAuthKind.Token, true, TunnelTlsMode.Default, TunnelRuntimeMode.External, "/opt/frp/frpc", 3,
         DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-    var json = JsonSerializer.Serialize(profile, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
+    var json = JsonSerializer.Serialize(profile, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     Assert(!json.Contains("\"token\":", StringComparison.OrdinalIgnoreCase) && !json.Contains("secret", StringComparison.OrdinalIgnoreCase),
         "Safe tunnel profile DTO must not serialize credential material.");
     Assert(json.Contains("tokenConfigured", StringComparison.Ordinal), "Safe tunnel profile DTO lost configured-state indicator.");
     var definition = new TunnelDefinitionDto(Guid.NewGuid(), profile.Id, "ssh", "frp", TunnelProtocol.Tcp, "127.0.0.1", 22, 6000, null, true, false, false, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-    var roundTrip = JsonSerializer.Deserialize<TunnelDefinitionDto>(JsonSerializer.Serialize(definition, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default), RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
+    var roundTrip = JsonSerializer.Deserialize<TunnelDefinitionDto>(JsonSerializer.Serialize(definition, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     Assert(roundTrip?.Protocol == TunnelProtocol.Tcp && roundTrip.RemotePort == 6000, "Tunnel desired-state DTO JSON contract changed.");
 }
 
@@ -433,7 +433,7 @@ static void VerifyProxyProtocolContract()
         new("test-engine", ProxyRuntimeMode.Managed, ProxyRuntimeState.Running, "1.0.0", null, true, false),
         new(ProxyRuntimeState.Running, ProxyTunState.Disabled, ProxyHealthState.Healthy, true, true, true), ProxyOperatingMode.ListenerOnly,
         new(Guid.NewGuid(), "profile", "test-engine", true, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow), 0, new(false, false, null));
-    var json = JsonSerializer.Serialize(overview, RelaxKonOS.Protocol.Common.RemoteOsJsonOptions.Default);
+    var json = JsonSerializer.Serialize(overview, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     Assert(!json.Contains("secret", StringComparison.OrdinalIgnoreCase) && !json.Contains("token", StringComparison.OrdinalIgnoreCase)
         && !json.Contains("yaml", StringComparison.OrdinalIgnoreCase) && !json.Contains("\"externalPath\"", StringComparison.OrdinalIgnoreCase),
         "Proxy public contracts must not serialize secret, raw configuration, or host-path material.");
@@ -571,7 +571,7 @@ static async Task VerifyMihomoRuntimeSafetyAsync(string root)
         && checksumDiagnostic.Message.Contains($"actual={digest}", StringComparison.Ordinal),
         "Mihomo archive checksum diagnostics did not record the expected and actual values.");
 
-    var crossFilesystemRoot = Path.Combine("/var/tmp", "remoteos-mihomo-runtime-tests-" + Guid.NewGuid().ToString("N"));
+    var crossFilesystemRoot = Path.Combine("/var/tmp", "relaxkonos-mihomo-runtime-tests-" + Guid.NewGuid().ToString("N"));
     try
     {
         var crossFilesystemPrivileged = new TestProxyPrivilegedOperations();
@@ -763,7 +763,7 @@ static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnvironment env
 {
     var path = Path.Combine(root, "frp-apply-lifecycle.db");
     var services = new ServiceCollection();
-    services.AddDbContext<RemoteOsDbContext>(options => options.UseSqlite($"Data Source={path}"));
+    services.AddDbContext<RelaxKonOSDbContext>(options => options.UseSqlite($"Data Source={path}"));
     services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(root, "frp-apply-keys")));
     services.AddScoped<ISecretStore, DataProtectionSecretStore>();
     services.AddScoped<ITunnelAudit, TunnelAudit>();
@@ -773,7 +773,7 @@ static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnvironment env
     await using var container = services.BuildServiceProvider();
     await using (var scope = container.CreateAsyncScope())
     {
-        var db = scope.ServiceProvider.GetRequiredService<RemoteOsDbContext>(); await db.Database.EnsureCreatedAsync();
+        var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>(); await db.Database.EnsureCreatedAsync();
         var service = scope.ServiceProvider.GetRequiredService<ITunnelService>();
         var profile = await service.UpsertProfileAsync(null, new UpsertTunnelServerProfileRequest("managed", "frps.example.test", 7000, TunnelAuthKind.None, TunnelTlsMode.Default, TunnelRuntimeMode.Managed, null), "apply-user", CancellationToken.None);
         await service.UpsertTunnelAsync(null, new UpsertTunnelDefinitionRequest(profile.Id, "ssh", TunnelProtocol.Tcp, "127.0.0.1", 22, 6000, null, true, false, false), "apply-user", CancellationToken.None);
@@ -796,8 +796,8 @@ static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnvironment env
 static async Task VerifyTunnelSecretLifecycleAsync(string root)
 {
     var path = Path.Combine(root, "tunnel-secret-lifecycle.db");
-    var dbOptions = new DbContextOptionsBuilder<RemoteOsDbContext>().UseSqlite($"Data Source={path}").Options;
-    await using var db = new RemoteOsDbContext(dbOptions); await db.Database.EnsureCreatedAsync();
+    var dbOptions = new DbContextOptionsBuilder<RelaxKonOSDbContext>().UseSqlite($"Data Source={path}").Options;
+    await using var db = new RelaxKonOSDbContext(dbOptions); await db.Database.EnsureCreatedAsync();
     var protection = DataProtectionProvider.Create(Path.Combine(root, "data-protection"));
     var secrets = new DataProtectionSecretStore(db, protection);
     var service = new TunnelService(db, secrets, new TunnelAudit(db));
@@ -887,7 +887,7 @@ static async Task VerifyHostGlobalMigrationAsync(string root)
     await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath}");
     await connection.OpenAsync();
     await using var command = connection.CreateCommand();
-    command.CommandText = "SELECT MAX(version) FROM remoteos_host_schema_migrations;";
+    command.CommandText = "SELECT MAX(version) FROM relaxkonos_host_schema_migrations;";
     Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 10, "HostGlobal migrations did not reach the expected version.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_profiles');";
     Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy profile metadata table was not migrated.");
@@ -1054,7 +1054,7 @@ static async Task VerifyHostNetworkSafetyDiscoveryAsync()
     var snapshot = await new HostProxyNetworkSafetyPlatform().CaptureManagementRouteAsync(CancellationToken.None);
     if (snapshot is null) return; // Minimal containers may have no usable host route; that is fail-closed.
     Assert(snapshot.ManagementPathSafe && !string.IsNullOrWhiteSpace(snapshot.EgressInterface)
-        && snapshot.SystemBypass.Contains("loopback") && snapshot.SystemBypass.Contains("remoteos-listeners")
+        && snapshot.SystemBypass.Contains("loopback") && snapshot.SystemBypass.Contains("relaxkonos-listeners")
         && snapshot.SystemBypass.Contains("default-gateway") && snapshot.SystemBypass.Contains("ssh"),
         "Linux management-route snapshot omitted mandatory system bypass protections.");
 }
@@ -1111,7 +1111,7 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
         ?? throw new InvalidOperationException("Nginx site anchor initializer was not found.");
     var anchorResult = (Task<string?>)ensureAnchor.Invoke(null, [managedInstance, CancellationToken.None])!;
     Assert(await anchorResult is null, "A managed Nginx instance did not create its first site anchor.");
-    Assert(File.Exists(Path.Combine(managedConfD, "remoteos.conf")), "The managed Nginx site anchor was not created.");
+    Assert(File.Exists(Path.Combine(managedConfD, "relaxkonos.conf")), "The managed Nginx site anchor was not created.");
 
     var resolveManagedExecutable = typeof(NginxWebServerManager).GetMethod("ResolveManagedExecutablePath", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Managed Nginx executable resolver was not found.");
@@ -1147,7 +1147,7 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     Assert(!(bool)isNginxProcessName.Invoke(null, ["nginx-helper"])!, "An unrelated process name was accepted as Nginx.");
 
     var multiPortSite = new WebServerSiteDto("multi-port", "nginx-test", "multi-port", WebServerSiteKind.Static,
-        ["app.example.test", "admin.example.test"], 5000, null, "/srv/remoteos-sites/multi-port", null, false, DateTimeOffset.UtcNow,
+        ["app.example.test", "admin.example.test"], 5000, null, "/srv/relaxkonos-sites/multi-port", null, false, DateTimeOffset.UtcNow,
         [new WebServerSiteBindingDto("app.example.test", 5000), new WebServerSiteBindingDto("admin.example.test", 6000)]);
     Assert(multiPortSite.DomainsDisplay == "app.example.test:5000, admin.example.test:6000", "Multi-port bindings were not formatted for the site table.");
     var renderSite = typeof(NginxWebServerManager).GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
@@ -1168,18 +1168,18 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
         "An unrelated Nginx configuration error was misclassified as an upstream-resolution error.");
     var renderWithAcme = typeof(NginxWebServerManager).GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
         .Single(method => method.Name == "RenderSiteConfiguration" && method.GetParameters().Length == 3);
-    var renderedWithAcme = (string)renderWithAcme.Invoke(null, [proxySite, null, "/var/lib/remoteos/acme-challenge"])!;
+    var renderedWithAcme = (string)renderWithAcme.Invoke(null, [proxySite, null, "/var/lib/relaxkonos/acme-challenge"])!;
     Assert(renderedWithAcme.Contains("location ^~ /.well-known/acme-challenge/")
-        && renderedWithAcme.Contains("alias /var/lib/remoteos/acme-challenge/;")
+        && renderedWithAcme.Contains("alias /var/lib/relaxkonos/acme-challenge/;")
         && renderedWithAcme.Contains("location / {"), "ACME HTTP-01 routing was not rendered ahead of the site location.");
 
     var findRoutingConflict = typeof(NginxWebServerManager).GetMethod("FindRoutingConflict", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Nginx site conflict detector was not found.");
     var existingSite = new WebServerSiteDto("existing", "nginx-test", "existing", WebServerSiteKind.Static,
-        ["app.example.test"], 5000, null, "/srv/remoteos-sites/existing", null, false, DateTimeOffset.UtcNow,
+        ["app.example.test"], 5000, null, "/srv/relaxkonos-sites/existing", null, false, DateTimeOffset.UtcNow,
         [new WebServerSiteBindingDto("app.example.test", 5000)]);
     var conflictingSite = new WebServerSiteDto("new-site", "nginx-test", "new-site", WebServerSiteKind.Static,
-        ["app.example.test"], 5000, null, "/srv/remoteos-sites/new-site", null, false, DateTimeOffset.UtcNow,
+        ["app.example.test"], 5000, null, "/srv/relaxkonos-sites/new-site", null, false, DateTimeOffset.UtcNow,
         [new WebServerSiteBindingDto("app.example.test", 5000)]);
     Assert(findRoutingConflict.Invoke(null, [new[] { existingSite }, conflictingSite]) is not null, "Duplicate domain and port bindings were not rejected.");
     var tlsSite = existingSite with { Id = "tls-site", HttpsEnabled = true };
@@ -1215,7 +1215,7 @@ static Task VerifyTrackedWorkspaceWallpaperUpdateAsync(string root)
 {
     var workspaceId = Guid.NewGuid();
     var userId = Guid.NewGuid();
-    var originalMapping = new DefaultAppMappingDto("https", "remoteos.browser");
+    var originalMapping = new DefaultAppMappingDto("https", "relaxkonos.browser");
     var themePreferences = new ThemePreferencesDto
     {
         PaletteId = "custom:test-palette",
@@ -1500,7 +1500,7 @@ sealed class TestProxyNetworkSafetyPlatform : IProxyNetworkSafetyPlatform
     public bool ManagementRouteVerifies { get; set; } = true;
     public int ApplyCount { get; private set; }
     public int RestoreCount { get; private set; }
-    public Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(CancellationToken cancellationToken) => Task.FromResult<ProxyManagementRouteSnapshot?>(new("test", DateTimeOffset.UtcNow, SnapshotSafe, "eth0", "192.0.2.1", ["loopback", "remoteos-listeners"]));
+    public Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(CancellationToken cancellationToken) => Task.FromResult<ProxyManagementRouteSnapshot?>(new("test", DateTimeOffset.UtcNow, SnapshotSafe, "eth0", "192.0.2.1", ["loopback", "relaxkonos-listeners"]));
     public Task<bool> ApplyTunAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { ApplyCount++; return Task.FromResult(ApplySucceeds); }
     public Task<bool> VerifyManagementRouteAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) => Task.FromResult(ManagementRouteVerifies);
     public Task<bool> RestoreAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { RestoreCount++; return Task.FromResult(true); }

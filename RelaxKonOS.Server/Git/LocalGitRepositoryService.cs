@@ -17,7 +17,7 @@ namespace RelaxKonOS.Server.Git;
 /// Write operations are serialized per-repository via SemaphoreSlim to avoid index.lock conflicts.
 /// Runtime state (status/branches/log/diff) is never persisted—only GitRepository registration records.</summary>
 public sealed class LocalGitRepositoryService(
-    IDbContextFactory<RemoteOsDbContext> dbFactory,
+    IDbContextFactory<RelaxKonOSDbContext> dbFactory,
     IHostGitCli gitCli,
     IDataProtectionProvider dataProtection,
     RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport transport,
@@ -28,7 +28,7 @@ public sealed class LocalGitRepositoryService(
 
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _writeLocks = new();
     private readonly IDataProtector _credentialProtector = dataProtection.CreateProtector("RelaxKonOS.GitCredentials.v1");
-    private const string CredentialAppId = "remoteos.git.internal";
+    private const string CredentialAppId = "relaxkonos.git.internal";
 
     // ── Host Git engine probe & install ──
 
@@ -1167,7 +1167,7 @@ public sealed class LocalGitRepositoryService(
     private string ResolveGitPathOrThrow() => gitCli.ResolveGitPath()
         ?? throw new InvalidOperationException("Git executable not found on the host.");
 
-    private static async Task<GitRepository> GetRepoOrThrowAsync(RemoteOsDbContext db, Guid id, Guid userId, CancellationToken cancellationToken)
+    private static async Task<GitRepository> GetRepoOrThrowAsync(RelaxKonOSDbContext db, Guid id, Guid userId, CancellationToken cancellationToken)
     {
         return await db.Set<GitRepository>().FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken)
             ?? throw new InvalidOperationException($"Repository {id} not found.");
@@ -1493,8 +1493,8 @@ public sealed class LocalGitRepositoryService(
             {
                 process.StartInfo.Environment["GIT_ASKPASS"] = askPass.Path;
                 process.StartInfo.Environment["GIT_ASKPASS_REQUIRE"] = "force";
-                process.StartInfo.Environment["REMOTEOS_GIT_ASKPASS_USERNAME"] = credentials!.Username;
-                process.StartInfo.Environment["REMOTEOS_GIT_ASKPASS_PASSWORD"] = credentials.Password;
+                process.StartInfo.Environment["RELAXKONOS_GIT_ASKPASS_USERNAME"] = credentials!.Username;
+                process.StartInfo.Environment["RELAXKONOS_GIT_ASKPASS_PASSWORD"] = credentials.Password;
             }
             foreach (var arg in arguments) process.StartInfo.ArgumentList.Add(arg);
             if (!process.Start())
@@ -1548,10 +1548,10 @@ public sealed class LocalGitRepositoryService(
         public GitAskPassScope(GitCredentialRequest credentials)
         {
             var extension = OperatingSystem.IsWindows() ? ".cmd" : ".sh";
-            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"remoteos-git-askpass-{Guid.NewGuid():N}{extension}");
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"relaxkonos-git-askpass-{Guid.NewGuid():N}{extension}");
             var script = OperatingSystem.IsWindows()
-                ? "@echo off\r\nset \"prompt=%~1\"\r\necho %prompt% | findstr /I /C:\"username\" >nul\r\nif not errorlevel 1 ( <nul set /p \"=%REMOTEOS_GIT_ASKPASS_USERNAME%\" & exit /b 0 )\r\necho %prompt% | findstr /I /C:\"password\" >nul\r\nif not errorlevel 1 ( <nul set /p \"=%REMOTEOS_GIT_ASKPASS_PASSWORD%\" & exit /b 0 )\r\nexit /b 1\r\n"
-                : "#!/bin/sh\ncase \"$1\" in\n  *[Uu]sername*) printf '%s\\n' \"$REMOTEOS_GIT_ASKPASS_USERNAME\" ;;\n  *[Pp]assword*) printf '%s\\n' \"$REMOTEOS_GIT_ASKPASS_PASSWORD\" ;;\n  *) exit 1 ;;\nesac\n";
+                ? "@echo off\r\nset \"prompt=%~1\"\r\necho %prompt% | findstr /I /C:\"username\" >nul\r\nif not errorlevel 1 ( <nul set /p \"=%RELAXKONOS_GIT_ASKPASS_USERNAME%\" & exit /b 0 )\r\necho %prompt% | findstr /I /C:\"password\" >nul\r\nif not errorlevel 1 ( <nul set /p \"=%RELAXKONOS_GIT_ASKPASS_PASSWORD%\" & exit /b 0 )\r\nexit /b 1\r\n"
+                : "#!/bin/sh\ncase \"$1\" in\n  *[Uu]sername*) printf '%s\\n' \"$RELAXKONOS_GIT_ASKPASS_USERNAME\" ;;\n  *[Pp]assword*) printf '%s\\n' \"$RELAXKONOS_GIT_ASKPASS_PASSWORD\" ;;\n  *) exit 1 ;;\nesac\n";
             File.WriteAllText(Path, script, Encoding.UTF8);
             if (!OperatingSystem.IsWindows())
                 File.SetUnixFileMode(Path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);

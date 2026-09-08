@@ -17,7 +17,7 @@ RelaxKonOS 需要让用户在不重启应用的情况下改变整个桌面、窗
 | 层 | 决定什么 | v1 决策 |
 |---|---|---|
 | **外观模式**（Appearance mode） | 浅色、深色，或跟随本机系统 | `Light` / `Dark` / `System`，沿用并扩展现有 `ThemeKind` |
-| **视觉样式**（Visual style） | 控件形状、圆角、间距、字体、阴影、控件模板与动画 | v1 固定为 `remoteos`；预留 `StyleId`，不在首期实现 Fluent / Compact 等第二套控件模板 |
+| **视觉样式**（Visual style） | 控件形状、圆角、间距、字体、阴影、控件模板与动画 | v1 固定为 `relaxkonos`；预留 `StyleId`，不在首期实现 Fluent / Compact 等第二套控件模板 |
 | **调色板**（Palette） | 语义颜色及其派生状态色 | 内置 RelaxKonOS Blue、Nord、Catppuccin；支持用户导入的 JSON 调色板与单独强调色覆盖 |
 
 换言之：**视觉样式决定“长什么样”，调色板决定“用什么颜色”，外观模式决定选取浅色或深色变体。**
@@ -96,7 +96,7 @@ Framework/RelaxKonOS.UI/
     │   ├── Controls.axaml               # Button、TextBox、ListBox、菜单等
     │   └── Helpers.axaml                # card / surface / title 等语义类
     └── Palettes/
-        ├── remoteos-blue.json           # 内置数据，不是 AXAML
+        ├── relaxkonos-blue.json           # 内置数据，不是 AXAML
         ├── nord.json
         └── catppuccin-mocha.json
 
@@ -174,7 +174,7 @@ Client/RelaxKonOS.Client/
 
 | ID | 浅色变体 | 深色变体 | 备注 |
 |---|---|---|---|
-| `builtin:remoteos-blue` | `remoteos-blue-light` | `remoteos-blue-dark` | 默认与缺失回退 |
+| `builtin:relaxkonos-blue` | `relaxkonos-blue-light` | `relaxkonos-blue-dark` | 默认与缺失回退 |
 | `builtin:nord` | `nord-light` | `nord-dark` | 两种模式都必须完整定义 |
 | `builtin:catppuccin` | `catppuccin-latte` | `catppuccin-mocha` | 两种模式都必须完整定义 |
 
@@ -220,8 +220,8 @@ Client/RelaxKonOS.Client/
 WorkspacePreferencesDto
 ├── Theme: ThemeKind                         # 现有：Light / Dark / System
 └── ThemePreferences: ThemePreferencesDto?   # 新增
-    ├── StyleId: "remoteos"
-    ├── PaletteId: "builtin:remoteos-blue" | "custom:<id>"
+    ├── StyleId: "relaxkonos"
+    ├── PaletteId: "builtin:relaxkonos-blue" | "custom:<id>"
     ├── AccentOverride: "#RRGGBB"?
     └── CustomPalettes: List<ThemePaletteDto>
 ```
@@ -245,7 +245,7 @@ WorkspacePreferencesDto
 1. 建立第 3.2 节的资源布局，提供完整浅/深 RelaxKonOS Blue 令牌；将 `App.axaml` 引用切换到新汇总入口。
 2. 实现 `ThemeService`：读取 `ShellSettings`，把 `ThemeKind.Light/Dark/System` 映射到 Avalonia `RequestedThemeVariant`，并将当前调色板的语义令牌写入专用、可替换的 `ResourceDictionary`。
 3. 在 `Bootstrapper` 注册 singleton，并保证 PreferencesSync 在初始偏好加载和后续保存后调用服务。订阅设置变化时防抖持久化，但 UI 立即更新。
-4. 令牌缺失、JSON 解析异常、资源注入异常均回退 `builtin:remoteos-blue`；记录可诊断日志，不把用户输入显示为异常堆栈。
+4. 令牌缺失、JSON 解析异常、资源注入异常均回退 `builtin:relaxkonos-blue`；记录可诊断日志，不把用户输入显示为异常堆栈。
 
 ### Phase 2 — 框架、桌面与窗口
 

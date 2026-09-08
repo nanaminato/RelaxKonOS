@@ -25,7 +25,7 @@ public sealed class AppSettingsClient(HttpClient http, IAuthSession session) : I
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<AppSettingsDocumentDto>(RemoteOsJsonOptions.Default, cancellationToken)
+        return await response.Content.ReadFromJsonAsync<AppSettingsDocumentDto>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException("The server returned an empty application settings document.");
     }
 
@@ -33,12 +33,12 @@ public sealed class AppSettingsClient(HttpClient http, IAuthSession session) : I
         int schemaVersion = 1, long? expectedRevision = null, CancellationToken cancellationToken = default)
     {
         using var request = await CreateRequestAsync(HttpMethod.Put, appId, scope, key, cancellationToken);
-        request.Content = JsonContent.Create(new PutAppSettingsRequest(value, schemaVersion), options: RemoteOsJsonOptions.Default);
+        request.Content = JsonContent.Create(new PutAppSettingsRequest(value, schemaVersion), options: RelaxKonOSJsonOptions.Default);
         if (expectedRevision is { } revision)
             request.Headers.IfMatch.Add(new EntityTagHeaderValue($"\"{revision}\""));
         using var response = await http.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<AppSettingsDocumentDto>(RemoteOsJsonOptions.Default, cancellationToken)
+        return await response.Content.ReadFromJsonAsync<AppSettingsDocumentDto>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException("The server returned an empty application settings document.");
     }
 

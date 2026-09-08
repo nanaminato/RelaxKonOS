@@ -5,8 +5,8 @@ using System.Text.Json;
 
 const string defaultEndpoint = "http://127.0.0.1:45321/api/developer/v1.0/";
 var arguments = args.ToList();
-var token = ReadOption(arguments, "--token") ?? Environment.GetEnvironmentVariable("REMOTEOS_DEV_TOKEN");
-var endpoint = ReadOption(arguments, "--endpoint") ?? Environment.GetEnvironmentVariable("REMOTEOS_DEV_ENDPOINT") ?? defaultEndpoint;
+var token = ReadOption(arguments, "--token") ?? Environment.GetEnvironmentVariable("RELAXKONOS_DEV_TOKEN");
+var endpoint = ReadOption(arguments, "--endpoint") ?? Environment.GetEnvironmentVariable("RELAXKONOS_DEV_ENDPOINT") ?? defaultEndpoint;
 HttpClient? http = null;
 
 if (arguments.Count == 0)
@@ -274,14 +274,14 @@ HttpClient GetHttpClient()
     if (http is not null) return http;
     EnsureToken();
     http = new HttpClient { BaseAddress = new Uri(endpoint, UriKind.Absolute) };
-    http.DefaultRequestHeaders.Add("X-RemoteOS-Dev-Token", token);
+    http.DefaultRequestHeaders.Add("X-RelaxKonOS-Dev-Token", token);
     return http;
 }
 
 void EnsureToken()
 {
     if (string.IsNullOrWhiteSpace(token))
-        throw new InvalidOperationException("Set REMOTEOS_DEV_TOKEN or pass --token before installing, watching, or managing packages.");
+        throw new InvalidOperationException("Set RELAXKONOS_DEV_TOKEN or pass --token before installing, watching, or managing packages.");
 }
 
 static PackOptions ParsePackOptions(List<string> packArguments)
@@ -444,7 +444,7 @@ static string? ReadOption(List<string> arguments, string option)
 static void PrintUsage()
 {
     Console.WriteLine("""
-Usage: remoteos-dev [--token <pairing-token>] [--endpoint <url>] <command>
+Usage: relaxkonos-dev [--token <pairing-token>] [--endpoint <url>] <command>
 
 Commands:
   pack <project.csproj|directory> [--configuration <Debug|Release>] [--runtime <rid>] [--manifest <path>] [--output <package.roapp>] [--no-build] [--install]
@@ -460,7 +460,7 @@ pack publishes the project and packages all publish output beneath the manifest'
 Use --no-build to package the selected configuration's existing build output without recompiling it.
 Use --runtime only for an application with runtime-specific native dependencies. pack does not require a token unless --install is used.
 watch <project> rebuilds, packages, and installs on source changes; use --no-install to only rebuild packages.
-Set REMOTEOS_DEV_TOKEN to avoid passing the pairing token on each install or watch command.
+Set RELAXKONOS_DEV_TOKEN to avoid passing the pairing token on each install or watch command.
 """);
 }
 

@@ -30,8 +30,8 @@ public sealed record ApplicationManifest(
     /// <summary>Image icon supplied by a package, or the convention-based built-in application icon.</summary>
     public string? EffectiveIconPath => !string.IsNullOrWhiteSpace(IconPath)
         ? IconPath
-        : Id.Value.StartsWith("remoteos.", StringComparison.Ordinal)
-            ? $"avares://RelaxKonOS.Client/Assets/AppIcons/{Id.Value["remoteos.".Length..]}.png"
+        : Id.Value.StartsWith("relaxkonos.", StringComparison.Ordinal)
+            ? $"avares://RelaxKonOS.Client/Assets/AppIcons/{Id.Value["relaxkonos.".Length..]}.png"
             : null;
 
     /// <summary>Requirements imposed on the connected server. A null value means unrestricted.</summary>
@@ -87,7 +87,7 @@ public sealed record ApplicationManifest(
         .Where(scheme => !string.IsNullOrWhiteSpace(scheme))
         .Select(scheme => scheme.Trim().ToLowerInvariant())
         .Where(scheme => System.Text.RegularExpressions.Regex.IsMatch(scheme, "^[a-z][a-z0-9+.-]{0,31}$"))
-        .Where(scheme => !scheme.Equals("remoteos", StringComparison.OrdinalIgnoreCase))
+        .Where(scheme => !scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray()
         ?? Array.Empty<string>();

@@ -6,8 +6,8 @@ param(
     [string] $PrivilegedHelperExecutable,
     [int] $ServerPort = 5000,
     [string] $ServerServiceName = 'RelaxKonOSServer',
-    [string] $GuardianServiceName = 'RemoteOSGuardian',
-    [string] $PrivilegedHelperServiceName = 'RemoteOSPrivilegedHelper',
+    [string] $GuardianServiceName = 'RelaxKonOSGuardian',
+    [string] $PrivilegedHelperServiceName = 'RelaxKonOSPrivilegedHelper',
     [ValidateSet('restricted', 'full', 'whitelist')]
     [string] $FileAccess = 'restricted',
     [string] $FileRootsFile
@@ -96,7 +96,7 @@ $helperSecretBytes = New-Object byte[] 48
 $helperSecret = [Convert]::ToBase64String($helperSecretBytes)
 
 $agentSettings = [ordered]@{
-    pipeName = 'remoteos-guardian'
+    pipeName = 'relaxkonos-guardian'
     sharedSecret = $sharedSecret
     dataDirectory = $guardianData
     protectedServerMonitor = [ordered]@{
@@ -109,17 +109,17 @@ $agentSettings = [ordered]@{
 }
 $serverSettings = [ordered]@{
     GuardianAgent = [ordered]@{
-        PipeName = 'remoteos-guardian'
+        PipeName = 'relaxkonos-guardian'
         SharedSecret = $sharedSecret
     }
     DockerCompose = [ordered]@{
         DataDirectory = $composeData
     }
     Storage = [ordered]@{
-        DatabasePath = (Join-Path $serverData 'remoteos.db')
+        DatabasePath = (Join-Path $serverData 'relaxkonos.db')
     }
     PrivilegedHelper = [ordered]@{
-        PipeName = 'remoteos-privileged-helper'
+        PipeName = 'relaxkonos-privileged-helper'
         SharedSecret = $helperSecret
         TimeoutSeconds = 30
     }
@@ -153,7 +153,7 @@ if ([string]::IsNullOrWhiteSpace($serverServiceSid)) { throw "Could not resolve 
 & sc.exe config $ServerServiceName obj= 'NT AUTHORITY\LocalService' password= '' | Out-Null
 
 $helperSettings = [ordered]@{
-    pipeName = 'remoteos-privileged-helper'
+    pipeName = 'relaxkonos-privileged-helper'
     sharedSecret = $helperSecret
     serverServiceSid = $serverServiceSid
     fileAllowedRoots = $fileAllowedRoots

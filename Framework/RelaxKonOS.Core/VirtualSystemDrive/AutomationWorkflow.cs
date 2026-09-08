@@ -28,7 +28,7 @@ public static class AutomationWorkflowValidator
     {
         "app.launch" => ApplicationDescriptorValidator.IsValidAppId(step.AppId),
         "uri.activate" => Uri.TryCreate(step.Uri, UriKind.Absolute, out var uri)
-            && uri.Scheme.Equals("remoteos", StringComparison.OrdinalIgnoreCase),
+            && uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase),
         "shell.notify" => !string.IsNullOrWhiteSpace(step.Title) && !string.IsNullOrWhiteSpace(step.Message)
             && step.Title.Length <= 160 && step.Message.Length <= 1000,
         "delay" => step.Milliseconds is > 0 and <= 30_000,

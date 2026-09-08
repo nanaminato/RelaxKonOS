@@ -23,7 +23,7 @@ namespace RelaxKonOS.Client.Apps.WebServers;
 public sealed class WebServerManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("remoteos.webservers"), "Web Server Manager", "0.1.0", "🌐", "Manage web servers on the RelaxKonOS Server",
+        new AppId("relaxkonos.webservers"), "Web Server Manager", "0.1.0", "🌐", "Manage web servers on the RelaxKonOS Server",
         [AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
@@ -35,14 +35,14 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         var explorer = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         if (session is null || client is null || certificates is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.remoteos.webservers.display_name"),
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
                 new WebServerLoginRequiredView(),
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
         var viewModel = new WebServerManagerViewModel(client, certificates, session, context.Permissions);
         var view = WebServerManagerWorkspace.Create(viewModel);
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.webservers.display_name"),
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
             view, new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestIntegrationConfirmationAsync = async () =>
@@ -59,7 +59,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         viewModel.ShowManagedDownloadUrlAsync = url => ShowDownloadUrlAsync(LocalizedText.Get("webservers.managed.download_title"), url);
         viewModel.OpenFileBrowserAtPathAsync = path =>
         {
-            var activation = context.Activations.Activate(RemoteOsActivationUris.ExplorerPath(path));
+            var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));
             if (!activation.Succeeded && !activation.IsPendingUserChoice)
                 viewModel.SiteStatusText = LocalizedText.Get("webservers.site.file_browser_failed");
             return Task.CompletedTask;

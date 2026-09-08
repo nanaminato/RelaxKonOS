@@ -95,7 +95,7 @@
     "webservers.managed.uninstall.message": "この操作では、RelaxKonOS が管理する Nginx と専用構成のみを停止して削除します。この操作は元に戻せません。続行しますか？",
     "webservers.managed.uninstall.confirm": "アンインストール",
     "webservers.integration.confirmation.title": "Nginx を統合",
-    "webservers.integration.confirmation.message": "Nginx が既に読み込んでいる conf.d ディレクトリに RelaxKonOS 所有の remoteos.conf を作成し、構成テストに成功した場合のみ Nginx をリロードします。既存のサイト構成は変更しません。続行しますか？",
+    "webservers.integration.confirmation.message": "Nginx が既に読み込んでいる conf.d ディレクトリに RelaxKonOS 所有の relaxkonos.conf を作成し、構成テストに成功した場合のみ Nginx をリロードします。既存のサイト構成は変更しません。続行しますか？",
     "webservers.integration.confirmation.confirm": "統合する",
     "webservers.column.id": "ID",
     "webservers.column.type": "種類",

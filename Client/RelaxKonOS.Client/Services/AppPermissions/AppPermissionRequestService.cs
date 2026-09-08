@@ -52,7 +52,7 @@ public sealed class AppPermissionRequestService : IAppPermissionRequestService
             return;
         await OnUiThreadAsync(() =>
         {
-            _applications.Activate(new AppActivationRequest(RemoteOsActivationUris.SettingsAppPermissions(appId), appId));
+            _applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.SettingsAppPermissions(appId), appId));
             return Task.FromResult(true);
         });
     }

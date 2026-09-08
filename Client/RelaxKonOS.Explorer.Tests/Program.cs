@@ -213,7 +213,7 @@ public class ExplorerFake : DispatchProxy
             if (RequireElevation)
             {
                 RequireElevation = false;
-                return Task.FromException(new RelaxKonOS.Client.Services.Auth.RemoteOsAuthException(
+                return Task.FromException(new RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException(
                     new RelaxKonOS.Protocol.Common.ProblemDetails("test/elevation-required", "Elevation", 403, "Denied", null)));
             }
             return Task.CompletedTask;

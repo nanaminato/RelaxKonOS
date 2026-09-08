@@ -5,7 +5,7 @@ using RelaxKonOS.Server.Domain;
 namespace RelaxKonOS.Server.Storage.Sqlite;
 
 /// <summary>SQLite implementation of application-private settings with revision-based optimistic concurrency.</summary>
-public sealed class SqliteAppSettingsRepository(RemoteOsDbContext db) : IAppSettingsRepository
+public sealed class SqliteAppSettingsRepository(RelaxKonOSDbContext db) : IAppSettingsRepository
 {
     public AppSetting? Find(Guid userId, AppSettingsScope scope, Guid scopeId, string appId, string key)
         => db.AppSettings.AsNoTracking().FirstOrDefault(setting =>

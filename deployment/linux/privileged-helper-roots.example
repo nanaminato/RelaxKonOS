@@ -6,12 +6,12 @@
 # explicitly intended and all RelaxKonOS users are trusted.
 
 # RelaxKonOS-owned protected configuration and state (the restricted installer profile).
-/etc/remoteos
-/var/lib/remoteos
+/etc/relaxkonos
+/var/lib/relaxkonos
 
 # Add an application-specific protected directory only when its users should be able to manage it.
-# /etc/nginx/remoteos.d
+# /etc/nginx/relaxkonos.d
 
 # Development fixture example. Prefer an isolated directory with no production secrets.
-# /var/lib/remoteos-dev/privileged-files
+# /var/lib/relaxkonos-dev/privileged-files
 /etc/ssh

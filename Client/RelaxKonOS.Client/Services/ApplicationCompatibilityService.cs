@@ -15,7 +15,7 @@ namespace RelaxKonOS.Client.Services;
 /// </summary>
 public sealed class ApplicationCompatibilityService : IApplicationCompatibilityEvaluator, IApplicationCompatibilityNotifier
 {
-    private static readonly AppId SystemAppId = new("remoteos.system");
+    private static readonly AppId SystemAppId = new("relaxkonos.system");
     private readonly IAuthSession _session;
     private readonly IWindowManager _windows;
     private readonly LocalizationService _localization;

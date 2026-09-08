@@ -5,7 +5,7 @@ namespace RelaxKonOS.Protocol.Capabilities;
 /// <summary>Routes for host-issued, application-scoped file capabilities and media leases.</summary>
 public static class AppCapabilityRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
 
     /// <summary>Issues a short-lived file API credential for a package application.</summary>
     public const string FileToken = $"/{V1}/app-capabilities/files/token";

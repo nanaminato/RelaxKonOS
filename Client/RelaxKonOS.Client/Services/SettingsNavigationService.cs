@@ -11,5 +11,5 @@ public sealed class SettingsNavigationService : ISettingsNavigation
     public SettingsNavigationService(IAppActivationService activations) => _activations = activations;
 
     public Task OpenApplicationsAsync() => Dispatcher.UIThread.InvokeAsync(() =>
-        _activations.Activate(new AppActivationRequest(RemoteOsActivationUris.SettingsApplications))).GetTask();
+        _activations.Activate(new AppActivationRequest(RelaxKonOSActivationUris.SettingsApplications))).GetTask();
 }

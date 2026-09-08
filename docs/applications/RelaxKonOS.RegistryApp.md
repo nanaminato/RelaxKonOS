@@ -4,7 +4,7 @@
 
 ## 定位与边界
 
-内置应用 `remoteos.registry` 浏览服务器 schema 明确允许的配置型期望状态及其同步状态。它不提供宿主 Windows Registry、任意 SQLite 表、机密、会话或高风险命令的入口。
+内置应用 `relaxkonos.registry` 浏览服务器 schema 明确允许的配置型期望状态及其同步状态。它不提供宿主 Windows Registry、任意 SQLite 表、机密、会话或高风险命令的入口。
 
 ## 流程与信息架构
 

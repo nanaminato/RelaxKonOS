@@ -88,7 +88,7 @@ public sealed class AutomationRunner : IAutomationRunner
         "uri.activate" => Task.FromResult<string?>(_activations.Activate(new AppActivationRequest(new Uri(step.Uri!))).Succeeded ? null : "vsd.script.uri-unavailable"),
         "shell.notify" => NotifyAsync(step),
         "delay" => DelayAsync(step.Milliseconds!.Value, cancellationToken),
-        "remote-file.open" or "remote-folder.open" => Task.FromResult<string?>(_activations.Activate(new AppActivationRequest(RemoteOsActivationUris.ExplorerPath(step.Target!))).Succeeded
+        "remote-file.open" or "remote-folder.open" => Task.FromResult<string?>(_activations.Activate(new AppActivationRequest(RelaxKonOSActivationUris.ExplorerPath(step.Target!))).Succeeded
             ? null : "vsd.script.remote-target-unavailable"),
         "window.focus" => Task.FromResult(Focus(step.WindowId!.Value)),
         "window.close" => Task.FromResult(Close(step.WindowId!.Value)),

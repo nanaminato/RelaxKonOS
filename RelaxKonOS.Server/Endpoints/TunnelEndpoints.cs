@@ -110,6 +110,6 @@ public static class TunnelEndpoints
         try { return await operation() ? Results.NoContent() : Results.NotFound(); }
         catch (TunnelValidationException ex) { return Problem(ex.ProblemCode, StatusCodes.Status409Conflict); }
     }
-    private static IResult Problem(string code, int status) => Results.Problem(statusCode: status, title: code, type: $"https://remoteos.app/problems/{code}", extensions: new Dictionary<string, object?> { ["problemCode"] = code });
+    private static IResult Problem(string code, int status) => Results.Problem(statusCode: status, title: code, type: $"https://relaxkonos.app/problems/{code}", extensions: new Dictionary<string, object?> { ["problemCode"] = code });
     private static string UserId(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
 }

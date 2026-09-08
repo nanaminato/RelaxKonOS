@@ -172,7 +172,7 @@ public static class FileOperationChecks
         result = await Wait(copy.Id);
         Check(result.State == FileOperationState.Cancelled, "Large file copy cancels during streaming");
         Check(File.ReadAllText(largeTarget) == "original", "Cancelling a replacement preserves original target content");
-        Check(!Directory.EnumerateFiles(directory, ".remoteos-*.tmp", SearchOption.AllDirectories).Any(), "Cancellation removes uncommitted temporary files");
+        Check(!Directory.EnumerateFiles(directory, ".relaxkonos-*.tmp", SearchOption.AllDirectories).Any(), "Cancellation removes uncommitted temporary files");
         var secondLarge = Path.Combine(directory, "large-two.bin");
         await using (var stream = File.Create(secondLarge)) stream.SetLength(512L * 1024 * 1024);
         var firstParallel = Start(FileOperationKind.Copy, new FileOperationItem(large, Path.Combine(directory, "parallel-large-one.bin")));
@@ -197,7 +197,7 @@ public static class FileOperationChecks
                 && !File.Exists(nativeSource) && new FileInfo(nativeTarget).Length == 512L * 1024 * 1024,
                 "Same-volume file moves use rename without streaming the file contents");
         }
-        if (Environment.GetEnvironmentVariable("REMOTEOS_FILE_JOB_SECONDARY_ROOT") is { Length: > 0 } secondaryRoot)
+        if (Environment.GetEnvironmentVariable("RELAXKONOS_FILE_JOB_SECONDARY_ROOT") is { Length: > 0 } secondaryRoot)
         {
             var secondary = Path.Combine(secondaryRoot, "file-job-tests-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(secondary);

@@ -12,7 +12,7 @@ internal static class HostGlobalMigrationRunner
         await connection.OpenAsync(cancellationToken);
         await using var transaction = connection.BeginTransaction();
         await ExecuteAsync(connection, transaction, """
-            CREATE TABLE IF NOT EXISTS remoteos_host_schema_migrations (
+            CREATE TABLE IF NOT EXISTS relaxkonos_host_schema_migrations (
                 version INTEGER NOT NULL PRIMARY KEY,
                 applied_at TEXT NOT NULL
             );
@@ -137,7 +137,7 @@ internal static class HostGlobalMigrationRunner
                     completed_at TEXT NULL
                 );
                 CREATE INDEX ix_webserver_operations_instance_id ON webserver_operations(instance_id);
-                INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (1, CURRENT_TIMESTAMP);
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (1, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 2, cancellationToken))
@@ -145,7 +145,7 @@ internal static class HostGlobalMigrationRunner
             if (!await HasColumnAsync(connection, transaction, "certificate_records", "contact_email", cancellationToken))
                 await ExecuteAsync(connection, transaction, "ALTER TABLE certificate_records ADD COLUMN contact_email TEXT NULL;", cancellationToken);
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (2, CURRENT_TIMESTAMP);", cancellationToken);
+                "INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (2, CURRENT_TIMESTAMP);", cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 3, cancellationToken))
         {
@@ -160,7 +160,7 @@ internal static class HostGlobalMigrationRunner
                     problem_code TEXT NULL,
                     created_at TEXT NOT NULL
                 );
-                INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (3, CURRENT_TIMESTAMP);
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (3, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 4, cancellationToken))
@@ -170,14 +170,14 @@ internal static class HostGlobalMigrationRunner
             if (!await HasColumnAsync(connection, transaction, "certificate_records", "renewal_window_end", cancellationToken))
                 await ExecuteAsync(connection, transaction, "ALTER TABLE certificate_records ADD COLUMN renewal_window_end TEXT NULL;", cancellationToken);
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (4, CURRENT_TIMESTAMP);", cancellationToken);
+                "INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (4, CURRENT_TIMESTAMP);", cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 5, cancellationToken))
         {
             if (!await HasColumnAsync(connection, transaction, "certificate_records", "key_algorithm", cancellationToken))
                 await ExecuteAsync(connection, transaction, "ALTER TABLE certificate_records ADD COLUMN key_algorithm TEXT NULL;", cancellationToken);
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (5, CURRENT_TIMESTAMP);", cancellationToken);
+                "INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (5, CURRENT_TIMESTAMP);", cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 6, cancellationToken))
         {
@@ -186,7 +186,7 @@ internal static class HostGlobalMigrationRunner
             if (!await HasColumnAsync(connection, transaction, "certificate_records", "last_renewal_problem_code", cancellationToken))
                 await ExecuteAsync(connection, transaction, "ALTER TABLE certificate_records ADD COLUMN last_renewal_problem_code TEXT NULL;", cancellationToken);
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (6, CURRENT_TIMESTAMP);", cancellationToken);
+                "INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (6, CURRENT_TIMESTAMP);", cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 7, cancellationToken))
         {
@@ -195,7 +195,7 @@ internal static class HostGlobalMigrationRunner
             if (!await HasColumnAsync(connection, transaction, "certificate_records", "fingerprint_sha256", cancellationToken))
                 await ExecuteAsync(connection, transaction, "ALTER TABLE certificate_records ADD COLUMN fingerprint_sha256 TEXT NULL;", cancellationToken);
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (7, CURRENT_TIMESTAMP);", cancellationToken);
+                "INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (7, CURRENT_TIMESTAMP);", cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 8, cancellationToken))
         {
@@ -218,7 +218,7 @@ internal static class HostGlobalMigrationRunner
                     problem_code TEXT NULL,
                     created_at TEXT NOT NULL
                 );
-                INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (8, CURRENT_TIMESTAMP);
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (8, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 9, cancellationToken))
@@ -234,7 +234,7 @@ internal static class HostGlobalMigrationRunner
                     updated_at TEXT NOT NULL
                 );
                 CREATE INDEX ix_proxy_subscriptions_profile_id ON proxy_subscriptions(profile_id);
-                INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (9, CURRENT_TIMESTAMP);
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (9, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
         if (!await IsAppliedAsync(connection, transaction, 10, cancellationToken))
@@ -242,7 +242,7 @@ internal static class HostGlobalMigrationRunner
             if (!await HasColumnAsync(connection, transaction, "proxy_subscriptions", "download_route", cancellationToken))
                 await ExecuteAsync(connection, transaction, "ALTER TABLE proxy_subscriptions ADD COLUMN download_route INTEGER NOT NULL DEFAULT 0;", cancellationToken);
             await ExecuteAsync(connection, transaction,
-                "INSERT INTO remoteos_host_schema_migrations(version, applied_at) VALUES (10, CURRENT_TIMESTAMP);", cancellationToken);
+                "INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (10, CURRENT_TIMESTAMP);", cancellationToken);
         }
         transaction.Commit();
     }
@@ -251,7 +251,7 @@ internal static class HostGlobalMigrationRunner
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "SELECT EXISTS(SELECT 1 FROM remoteos_host_schema_migrations WHERE version = $version);";
+        command.CommandText = "SELECT EXISTS(SELECT 1 FROM relaxkonos_host_schema_migrations WHERE version = $version);";
         command.Parameters.AddWithValue("$version", version);
         return Convert.ToInt64(await command.ExecuteScalarAsync(ct)) != 0;
     }

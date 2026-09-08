@@ -43,7 +43,7 @@ public sealed record CreateRegistryKeyRequest(RegistryScope Scope, string Path);
 /// <summary>Stable REST routes for the server-owned registry control plane.</summary>
 public static class RegistryApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Entries = $"/{V1}/registry/entries";
     public const string Keys = $"/{V1}/registry/keys";
     public const string Summary = $"/{V1}/registry/summary";

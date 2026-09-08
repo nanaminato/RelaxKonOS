@@ -16,19 +16,19 @@
 
 ## 2. URI 约定
 
-`remoteos://` 是 Shell 保留 URI；scheme、host 和路径由 Shell 验证，不能动态反射调用应用。
+`relaxkonos://` 是 Shell 保留 URI；scheme、host 和路径由 Shell 验证，不能动态反射调用应用。
 当前已注册：
 
 ```text
-remoteos://settings/personalization
-remoteos://settings/apps
-remoteos://settings/apps/{appId}/permissions
-remoteos://file/open?appId={appId}&path={encodedPath}
+relaxkonos://settings/personalization
+relaxkonos://settings/apps
+relaxkonos://settings/apps/{appId}/permissions
+relaxkonos://file/open?appId={appId}&path={encodedPath}
 ```
 
-最后一条仅允许 `remoteos.explorer` 作为来源，以兼容现有内置文件打开模型；外置包不能用它
+最后一条仅允许 `relaxkonos.explorer` 作为来源，以兼容现有内置文件打开模型；外置包不能用它
 传递宿主路径，而应使用其受限的文件 capability。调用方应使用
-`RemoteOsActivationUris`，不能手工拼接字符串。
+`RelaxKonOSActivationUris`，不能手工拼接字符串。
 
 未匹配、歧义或不合法的 URI 分别得到 `RouteNotFound` 或 `InvalidUri`；应用不应猜测目标或
 降级为直接调用另一个应用。
@@ -47,7 +47,7 @@ scheme 且 `CanHandleActivation` 返回真时才投递。若设置了该 scheme 
 候选集中并直接启动；否则只有唯一候选程序时才会启动。多个候选程序时，Shell 显示“选择应用”
 对话框，用户可以仅本次打开，或保存为此 scheme 的默认程序再打开。没有候选程序时，Shell 显示
 明确的未处理程序提示；对于 `help://`，提示安装 Help Center 并将其设为 help 链接处理程序。
-安装入口及安装后重试属于后续受信任应用目录流程。`remoteos` 为保留 scheme，外部包不可声明。
+安装入口及安装后重试属于后续受信任应用目录流程。`relaxkonos` 为保留 scheme，外部包不可声明。
 
 第三方 handler 仅接收 host 已验证后的 URI 与受限 `IExternalAppContext`，不能获得另一个应用或
 宿主的实现对象。应用自身必须继续验证它所拥有的 authority、路径与 query 参数。
@@ -74,7 +74,7 @@ Firewall、Process Guardian 与 Docker 也已声明单窗口；Docker 尚未接�
 
 ## 4. 扩展规则
 
-新增 `remoteos://` 公开路线时，内置应用实现 `IAppActivationHandler`；第三方 scheme 则声明
+新增 `relaxkonos://` 公开路线时，内置应用实现 `IAppActivationHandler`；第三方 scheme 则声明
 `supportedUriSchemes` 并实现 `IExternalAppActivationHandler`。两者都应在应用设计文档中定义：路径、参数、
 权限、同 URI 行为、单/多窗口策略和本地化错误 UX。Shell 要拒绝两个应用同时声明同一路线。
 

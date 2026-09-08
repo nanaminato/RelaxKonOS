@@ -4,7 +4,7 @@
 >
 > 当前状态：**已实现**独立 Guardian Agent 可执行体、本机认证 IPC、工作负载声明持久化、启动/停止/重启/删除、退出退避、健康检查、审计，以及 Windows/Linux 的服务部署脚本。`RunAs` 已实现为工作负载的声明字段、Server 一次性管理员认证和 Linux Agent 的受控 `runuser` 启动；Windows 跨账户令牌启动、内置 Server/Agent 的服务账户变更、正式安装包、可视化安装向导、日志轮转和完整原生服务管理仍待完成；Server 不会替代 Agent 守护任何用户工作负载。
 >
-> 当前 Agent 启动时必须由宿主配置 `REMOTEOS_GUARDIAN_SHARED_SECRET`。仓库现提供 Windows/Linux 部署脚本，用于一次性注册 Server 和 Agent 系统服务、生成受 ACL 保护的配置及 IPC 密钥；最终安装包应调用这些脚本，最终用户无需手动把 Agent 配置成服务。**当前尚未有接入客户端或 Server 的成品安装向导。**用户可登记任意位置的现有绝对可执行文件，或填写 Agent `PATH` 中的程序名；工作目录仍必须为绝对路径。Agent 仍拒绝 `cmd`、PowerShell、`sh` 和 `bash` 作为隐式 shell 入口。
+> 当前 Agent 启动时必须由宿主配置 `RELAXKONOS_GUARDIAN_SHARED_SECRET`。仓库现提供 Windows/Linux 部署脚本，用于一次性注册 Server 和 Agent 系统服务、生成受 ACL 保护的配置及 IPC 密钥；最终安装包应调用这些脚本，最终用户无需手动把 Agent 配置成服务。**当前尚未有接入客户端或 Server 的成品安装向导。**用户可登记任意位置的现有绝对可执行文件，或填写 Agent `PATH` 中的程序名；工作目录仍必须为绝对路径。Agent 仍拒绝 `cmd`、PowerShell、`sh` 和 `bash` 作为隐式 shell 入口。
 
 > **面向的对象是用户后台工作负载，而非 RelaxKonOS.Server。**例如，自包含 .NET 应用可直接登记发布后的可执行文件；依赖运行时的 .NET 应用可登记绝对路径或 Agent `PATH` 中的 `dotnet` 并将 `MyApp.dll` 作为独立参数；Spring Boot 可登记绝对路径或 Agent `PATH` 中的 `java` 并使用 `-jar`、`app.jar` 等独立参数。路径不再有 Guardian 白名单；实际访问权限由目标运行账户和宿主 OS 决定。RelaxKonOS Server 的健康监控是安装程序创建的受保护基础设施规则，不会出现在用户可编辑的 workload 列表中。
 
@@ -17,7 +17,7 @@ C:\Program Files\RelaxKonOS\
 ├── server\RelaxKonOS.Server.exe
 └── guardian\RelaxKonOS.Guardian.Agent.exe
 
-C:\ProgramData\RemoteOS\
+C:\ProgramData\RelaxKonOS\
 ├── guardian\guardian.json       # 安装程序生成，ACL 保护
 └── workloads\                    # 用户的受守护应用发布目录
 ```
@@ -32,7 +32,7 @@ C:\ProgramData\RemoteOS\
 
 ## 1. 定位和边界
 
-`RemoteProcessGuardian`（应用 ID：`remoteos.processguardian`）提供“定义 → 验证 → 部署 → 启动 → 健康检查 → 自动恢复 → 日志/审计 → 停用”的服务化闭环。它借鉴 PM2 的进程清单、启动恢复、生态配置与实时日志，以及 systemd/Windows 服务的启动类型和依赖模型。PM2 将守护进程清单持久化并在主机重启后恢复，且支持实时及落盘日志。[PM2 Process Management](https://pm2.io/docs/runtime/guide/process-management/) [PM2 Log Management](https://pm2.io/docs/runtime/guide/log-management/)
+`RemoteProcessGuardian`（应用 ID：`relaxkonos.processguardian`）提供“定义 → 验证 → 部署 → 启动 → 健康检查 → 自动恢复 → 日志/审计 → 停用”的服务化闭环。它借鉴 PM2 的进程清单、启动恢复、生态配置与实时日志，以及 systemd/Windows 服务的启动类型和依赖模型。PM2 将守护进程清单持久化并在主机重启后恢复，且支持实时及落盘日志。[PM2 Process Management](https://pm2.io/docs/runtime/guide/process-management/) [PM2 Log Management](https://pm2.io/docs/runtime/guide/log-management/)
 
 任务管理器面对“主机当前所有可见进程”，可直接结束；守护管理器面对“已登记的工作负载”，关心所需状态、退出原因、重启预算、依赖和启动恢复。两者必须互相链接，但不得共享可变状态或绕开各自权限。
 
@@ -127,7 +127,7 @@ RelaxKonOS 内置程序（包括 RelaxKonOS.Server 和 Guardian Agent）也支�
 
 | 能力 | Ubuntu | Windows |
 |---|---|---|
-| Guardian Agent | `remoteos-guardian.service`，由 systemd 在开机启动 | `RemoteOSGuardian` Windows Service，SCM 管理 |
+| Guardian Agent | `relaxkonos-guardian.service`，由 systemd 在开机启动 | `RelaxKonOSGuardian` Windows Service，SCM 管理 |
 | workload 启动 | Agent 直接 fork/exec；不要求用户 shell | Agent 以结构化 `ProcessStartInfo` 启动，使用 Job Object 管理进程树 |
 | 原生服务读取/控制 | `systemctl`/D-Bus 适配器，白名单单元 | `ServiceController`/SCM 适配器，白名单服务 |
 | 重启语义 | Agent 统一执行；不依赖单元 `Restart=` | Agent 统一执行；不伪造每个 workload 为 SCM 服务 |
@@ -179,7 +179,7 @@ Protocol 放于 `Shared/RelaxKonOS.Protocol/ProcessGuardian/`，仅以 DTO、路
 
 创建或更新定义时，`RunAs` 是持久化字段；任何用户为其他账户指定 `RunAs` 时，POST/PATCH 都额外携带一次性的管理员认证数据。认证错误统一返回 `guardian.run_as_admin_authentication_failed`，缺少认证返回 `guardian.run_as_admin_authentication_required`；账户无效、平台无法启动或路径无权访问分别使用不同问题码，不能把密码或账户探测细节返回给客户端。
 
-`IProcessGuardianService`（Server）和 `IGuardianAgentClient`（IPC）实现两层边界。当前实现以受共享机密认证的本机 named pipe（Unix 上由 .NET 映射为本机 socket）传递一行 JSON 请求/响应；`GuardianAgent:SharedSecret` 必须由受保护的宿主配置注入，Agent 从 `REMOTEOS_GUARDIAN_SHARED_SECRET` 读取，绝不写入仓储或 HTTP DTO。调用超时、取消、断线和幂等键必须贯穿两层；Agent 事件通过 Server 过滤后使用 SignalR 推送。只有日志尾部/增量事件可流式传输，历史日志按游标分页并应用大小限制。
+`IProcessGuardianService`（Server）和 `IGuardianAgentClient`（IPC）实现两层边界。当前实现以受共享机密认证的本机 named pipe（Unix 上由 .NET 映射为本机 socket）传递一行 JSON 请求/响应；`GuardianAgent:SharedSecret` 必须由受保护的宿主配置注入，Agent 从 `RELAXKONOS_GUARDIAN_SHARED_SECRET` 读取，绝不写入仓储或 HTTP DTO。调用超时、取消、断线和幂等键必须贯穿两层；Agent 事件通过 Server 过滤后使用 SignalR 推送。只有日志尾部/增量事件可流式传输，历史日志按游标分页并应用大小限制。
 
 `ProcessDefinition`/`LaunchSpec` 增加已规范化的 `RunAs` 标识及实际生效身份的只读回显。用于任何跨账户指定的管理员账户名和密码是一次性 HTTP 请求数据：只在 Server 的 HTTPS 边界内校验，绝不进入 `ProcessDefinition`、`LaunchSpec`、SQLite、重放快照或 Agent IPC。Agent 不重新解释 UI 权限规则，只验证 IPC 对端、目标账户与平台启动条件；这样 Server 是唯一的授权决策点，Agent 是唯一的进程创建者。
 

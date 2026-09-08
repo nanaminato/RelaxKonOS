@@ -80,7 +80,7 @@
 
 ## 5. 表结构
 
-数据库文件默认 `{ContentRoot}/data/remoteos.db`（见 §7）。表名小写复数，由 `RemoteOsDbContext.OnModelCreating` 定义。
+数据库文件默认 `{ContentRoot}/data/relaxkonos.db`（见 §7）。表名小写复数，由 `RelaxKonOSDbContext.OnModelCreating` 定义。
 
 ### 5.1 users
 
@@ -309,7 +309,7 @@
 
 ### A. HostGlobal 库（certificates / webservers 元数据与 operation）
 
-由 `HostGlobalMigrationRunner` 管理的独立 SQLite 库（默认 `data/remoteos-hostglobal.db`），因为证书、WebServer 实例、全局操作不属于任何 User 或 Workspace，且必须随 Server 安装生命周期独立迁移（**不使用 `EnsureCreated()`，必须使用 Migrations**）。这组表第一次落地时使用 EF Core Migrations 并建立 `__EFMigrationsHistory` 基线。
+由 `HostGlobalMigrationRunner` 管理的独立 SQLite 库（默认 `data/relaxkonos-hostglobal.db`），因为证书、WebServer 实例、全局操作不属于任何 User 或 Workspace，且必须随 Server 安装生命周期独立迁移（**不使用 `EnsureCreated()`，必须使用 Migrations**）。这组表第一次落地时使用 EF Core Migrations 并建立 `__EFMigrationsHistory` 基线。
 
 **通用原则**：数据库只保存规范化元数据、受保护文件引用（路径 + hash + 权限位）、版本号、状态、稳定问题码、审计引用和保留期。**绝不保存私钥 PEM、ACME account key、DNS-01 token 或导入密码**——这些保存在受 ACL 保护的文件系统（Linux 0600 root:root / Windows NT SERVICE\TrustedInstaller 级 ACL）并通过 `ISecretStore` 记录保护引用。
 
@@ -440,9 +440,9 @@
 ### 6.2 新增 EF 实现
 
 [`RelaxKonOS.Server/Storage/Sqlite/`](../../RelaxKonOS.Server/Storage/Sqlite)：
-- [`RemoteOsDbContext`](../../RelaxKonOS.Server/Storage/Sqlite/RemoteOsDbContext.cs)：`DbSet<User/Workspace/Device/Bookmark/HistoryEntry/AppSetting/ImageMirror/GitRepository/RegistryEntry/TunnelDefinition/TunnelSecret/TunnelServerProfile/TunnelAuditEntry/AccountFailureState/AuthenticationSecurityEvent>` + `OnModelCreating`
-- 各 `Sqlite*Repository`：注入 DbContext，用 EF 查询实现接口。`RemoteOsDbContext` 还保存 Workspace 拥有的 `TerminalSettings` / `BrowserSettings` / `Preferences`（含 `ThemePreferences` / `DesktopDisplay` / 文本编码）/ `WindowLayouts`，全部用 `OwnsOne + ToJson` JSON 列。
-- HostGlobal 库：由 `HostGlobalMigrationRunner` 在 `Program.cs` 启动时独立执行 Migrations（`MigrateAsync()`），使用 `HostGlobalDbContext`（单独 EF Context，不与业务 `RemoteOsDbContext` 混用）。Certificate / WebServer / Operation / 审计 Repository 只操作 HostGlobal 库。
+- [`RelaxKonOSDbContext`](../../RelaxKonOS.Server/Storage/Sqlite/RelaxKonOSDbContext.cs)：`DbSet<User/Workspace/Device/Bookmark/HistoryEntry/AppSetting/ImageMirror/GitRepository/RegistryEntry/TunnelDefinition/TunnelSecret/TunnelServerProfile/TunnelAuditEntry/AccountFailureState/AuthenticationSecurityEvent>` + `OnModelCreating`
+- 各 `Sqlite*Repository`：注入 DbContext，用 EF 查询实现接口。`RelaxKonOSDbContext` 还保存 Workspace 拥有的 `TerminalSettings` / `BrowserSettings` / `Preferences`（含 `ThemePreferences` / `DesktopDisplay` / 文本编码）/ `WindowLayouts`，全部用 `OwnsOne + ToJson` JSON 列。
+- HostGlobal 库：由 `HostGlobalMigrationRunner` 在 `Program.cs` 启动时独立执行 Migrations（`MigrateAsync()`），使用 `HostGlobalDbContext`（单独 EF Context，不与业务 `RelaxKonOSDbContext` 混用）。Certificate / WebServer / Operation / 审计 Repository 只操作 HostGlobal 库。
 
 实现要点：
 - **查询**用 `AsNoTracking()` 返回 detached 实体（避免跨请求 stale tracking）。
@@ -454,7 +454,7 @@
 
 ### 6.3 生命周期
 
-业务仓储与 `RemoteOsDbContext` 均为 **Scoped**（每请求一个 DbContext）。Minimal API `[FromServices]` 每请求创建 scope，兼容。Singleton 服务（`AuthSessionStore` / `JwtTokenService` / `TerminalSessionManager` / `PerformanceSampler` / `TunnelService` / `FrpRuntimeManager`）只依赖抽象仓储接口，并不直接持有 DbContext。HostGlobal 库的 Repository 与 `HostGlobalDbContext` 也是 Scoped；后台长期运行的 Worker（`CertificateRenewalWorker` 等）通过 `IServiceScopeFactory` 为每个迭代周期创建独立 scope。
+业务仓储与 `RelaxKonOSDbContext` 均为 **Scoped**（每请求一个 DbContext）。Minimal API `[FromServices]` 每请求创建 scope，兼容。Singleton 服务（`AuthSessionStore` / `JwtTokenService` / `TerminalSessionManager` / `PerformanceSampler` / `TunnelService` / `FrpRuntimeManager`）只依赖抽象仓储接口，并不直接持有 DbContext。HostGlobal 库的 Repository 与 `HostGlobalDbContext` 也是 Scoped；后台长期运行的 Worker（`CertificateRenewalWorker` 等）通过 `IServiceScopeFactory` 为每个迭代周期创建独立 scope。
 
 ---
 
@@ -465,17 +465,17 @@
 ```json
 "Storage": {
   "Provider": "sqlite",
-  "DatabasePath": "data/remoteos.db"
+  "DatabasePath": "data/relaxkonos.db"
 }
 ```
 
 | 项 | 默认 | 说明 |
 |----|------|------|
 | Provider | `sqlite` | `sqlite`（EF Core + SQLite，默认）或 `memory`（内存仓储，开发回退） |
-| DatabasePath | `data/remoteos.db` | SQLite 文件相对路径（相对 ContentRoot）；启动时自动建目录 |
+| DatabasePath | `data/relaxkonos.db` | SQLite 文件相对路径（相对 ContentRoot）；启动时自动建目录 |
 
 绑定到 [`StorageOptions`](../../RelaxKonOS.Server/Storage/StorageOptions.cs)。`Program.cs` 按 Provider 注册：
-- `sqlite`：`AddDbContext<RemoteOsDbContext>(UseSqlite)` + `AddScoped<I*Repository, Sqlite*Repository>` + 启动建库
+- `sqlite`：`AddDbContext<RelaxKonOSDbContext>(UseSqlite)` + `AddScoped<I*Repository, Sqlite*Repository>` + 启动建库
 - `memory`：`AddSingleton<I*Repository, InMemory*Repository>`（开发回退，重启丢失）
 
 ---
@@ -489,7 +489,7 @@
 // 2) 安全防护：account_failure_states / authentication_security_events
 // 3) HostGlobal：证书/WebServer 等宿主级资源走独立版本化迁移
 using var scope = app.Services.CreateScope();
-var db = scope.ServiceProvider.GetRequiredService<RemoteOsDbContext>();
+var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
 db.Database.EnsureCreated();
 db.Database.ExecuteSqlRaw("""
     CREATE TABLE IF NOT EXISTS "bookmarks" (...);
@@ -513,15 +513,15 @@ await HostGlobalMigrationRunner.MigrateAsync(
 
 ### 8.1 业务库（User/Workspace 域）
 
-- **`EnsureCreated()`**：库不存在时按 `RemoteOsDbContext.OnModelCreating` 一次性建表；库已存在则跳过。
+- **`EnsureCreated()`**：库不存在时按 `RelaxKonOSDbContext.OnModelCreating` 一次性建表；库已存在则跳过。
 - **增量补齐**：`EnsureCreated` 不会为既有库追加新表（例如新增的 `bookmarks` / `history_entries` / `app_settings` / `image_mirrors` / `git_repositories` / `tunnel_*` / `registry_*` / 安全防护表），因此紧接着以 `CREATE TABLE IF NOT EXISTS` 方式补齐。每批次 DDL 与 `OnModelCreating` 的列、类型、索引保持一致，保证「首次部署」和「升级部署」都能落到同一 schema。
 - **新增列演进**：若后续需要给旧表加列，遵循相同模式——在 `ExecuteSqlRaw` 中追加 `ALTER TABLE ... ADD COLUMN ... IF NOT EXISTS` 风格的补丁（SQLite 原生支持 IF NOT EXISTS 加列需自行封装 `HasColumnAsync` 判断）。
 
 ### 8.2 HostGlobal 域（证书 / WebServer 宿主资源）
 
-证书记录、WebServer 实例、操作流水、审计日志等**不属于**某个 User/Workspace，是宿主机器级资源；且对「可恢复性/幂等性」要求高于普通用户表（例如签发流程必须能跨进程续跑）。因此不放进 `RemoteOsDbContext` 的 `EnsureCreated` 路径，改用 [`HostGlobalMigrationRunner`](../../RelaxKonOS.Server/Storage/Sqlite/HostGlobalMigrationRunner.cs) 提供**独立版本化迁移**：
+证书记录、WebServer 实例、操作流水、审计日志等**不属于**某个 User/Workspace，是宿主机器级资源；且对「可恢复性/幂等性」要求高于普通用户表（例如签发流程必须能跨进程续跑）。因此不放进 `RelaxKonOSDbContext` 的 `EnsureCreated` 路径，改用 [`HostGlobalMigrationRunner`](../../RelaxKonOS.Server/Storage/Sqlite/HostGlobalMigrationRunner.cs) 提供**独立版本化迁移**：
 
-- 元数据表：`remoteos_host_schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT)`，每个版本仅执行一次。
+- 元数据表：`relaxkonos_host_schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT)`，每个版本仅执行一次。
 - 迁移版本（截至当前代码）：
   - **v1**：一次性创建 `certificate_operations` / `certificate_records` / `acme_account_records` / `certificate_deployment_records` / `certificate_renewal_attempts` / `certificate_audit_entries` / `webserver_instances` / `webserver_sites` / `webserver_config_snapshots` / `webserver_operations` 及其索引。
   - **v2**：`certificate_records` 补齐 `contact_email`。

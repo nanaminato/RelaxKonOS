@@ -14,7 +14,7 @@ public sealed class InMemoryAuthenticationProtectionStore : IAuthenticationProte
     public Task AddEventAsync(AuthenticationSecurityEvent entry, CancellationToken ct) => Task.CompletedTask;
 }
 
-public sealed class SqliteAuthenticationProtectionStore(RemoteOsDbContext db) : IAuthenticationProtectionStore
+public sealed class SqliteAuthenticationProtectionStore(RelaxKonOSDbContext db) : IAuthenticationProtectionStore
 {
     public Task<AccountFailureState?> FindAccountAsync(string key, CancellationToken ct) => db.AccountFailureStates.FindAsync([key], ct).AsTask();
     public async Task SaveAccountAsync(AccountFailureState state, CancellationToken ct)

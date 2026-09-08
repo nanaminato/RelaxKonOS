@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Certificates;
 public sealed class CertificateManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("remoteos.certificates"), "Certificate Manager", "0.1.0", "🔐", "Manage TLS certificates on the RelaxKonOS Server",
+        new AppId("relaxkonos.certificates"), "Certificate Manager", "0.1.0", "🔐", "Manage TLS certificates on the RelaxKonOS Server",
         [AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage],
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
@@ -23,7 +23,7 @@ public sealed class CertificateManagerApp : RemoteApplicationBase
         var client = context.Services.GetService(typeof(IRemoteCertificateClient)) as IRemoteCertificateClient;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.remoteos.certificates.display_name"),
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.certificates.display_name"),
                 new CertificateLoginRequiredView(),
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
@@ -34,7 +34,7 @@ public sealed class CertificateManagerApp : RemoteApplicationBase
             viewModel,
             () => CertificateManagerDialogs.ShowRequestCertificateAsync(context, window!, viewModel),
             () => CertificateManagerDialogs.ShowCreateSelfSignedCertificateAsync(context, window!, viewModel));
-        window = context.ShowWindow(LocalizedText.Get("application.remoteos.certificates.display_name"),
+        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.certificates.display_name"),
             view, new Rect(60, 50, 1180, 780), Manifest.IconGlyph);
         _ = viewModel.StartAsync();
     }

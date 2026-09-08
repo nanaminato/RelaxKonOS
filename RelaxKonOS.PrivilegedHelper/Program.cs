@@ -239,10 +239,10 @@ static IReadOnlyList<string> LoadAllowedRoots()
 {
     // The policy file is installed root-owned beside the service configuration. Environment
     // fallback is solely for isolated Helper tests; sudo's default env_reset excludes it.
-    const string policyPath = "/etc/remoteos/privileged-helper-roots";
+    const string policyPath = "/etc/relaxkonos/privileged-helper-roots";
     var configured = File.Exists(policyPath)
         ? File.ReadAllText(policyPath)
-        : Environment.GetEnvironmentVariable("REMOTEOS_PRIVILEGED_FILE_ROOTS") ?? string.Empty;
+        : Environment.GetEnvironmentVariable("RELAXKONOS_PRIVILEGED_FILE_ROOTS") ?? string.Empty;
     return configured.Split([Path.PathSeparator, '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
     .Where(line => !line.StartsWith('#'))
     .Where(Path.IsPathFullyQualified).Select(Path.GetFullPath).Distinct(GetPathComparer()).ToArray();
@@ -296,9 +296,9 @@ static bool IsServiceId(string serviceId) => serviceId.Length is > 0 and <= 256
 
 static IReadOnlyList<string> LoadAllowedServices()
 {
-    const string policyPath = "/etc/remoteos/privileged-services";
+    const string policyPath = "/etc/relaxkonos/privileged-services";
     var configured = File.Exists(policyPath) ? File.ReadAllText(policyPath)
-        : Environment.GetEnvironmentVariable("REMOTEOS_PRIVILEGED_SERVICE_IDS") ?? string.Empty;
+        : Environment.GetEnvironmentVariable("RELAXKONOS_PRIVILEGED_SERVICE_IDS") ?? string.Empty;
     return configured.Split(['\r', '\n', Path.PathSeparator], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .Where(IsServiceId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 }
@@ -327,12 +327,12 @@ static async Task<PrivilegedOperationResult> ApplyProxyMihomoServiceActionAsync(
     var arguments = action.Value switch
     {
         ProxyMihomoServiceAction.DaemonReload => new[] { "daemon-reload" },
-        ProxyMihomoServiceAction.Enable => new[] { "enable", "remoteos-mihomo.service" },
-        ProxyMihomoServiceAction.Disable => new[] { "disable", "remoteos-mihomo.service" },
-        ProxyMihomoServiceAction.Start => new[] { "start", "remoteos-mihomo.service" },
-        ProxyMihomoServiceAction.Stop => new[] { "stop", "remoteos-mihomo.service" },
-        ProxyMihomoServiceAction.Restart => new[] { "restart", "remoteos-mihomo.service" },
-        ProxyMihomoServiceAction.TryRestart => new[] { "try-restart", "remoteos-mihomo.service" },
+        ProxyMihomoServiceAction.Enable => new[] { "enable", "relaxkonos-mihomo.service" },
+        ProxyMihomoServiceAction.Disable => new[] { "disable", "relaxkonos-mihomo.service" },
+        ProxyMihomoServiceAction.Start => new[] { "start", "relaxkonos-mihomo.service" },
+        ProxyMihomoServiceAction.Stop => new[] { "stop", "relaxkonos-mihomo.service" },
+        ProxyMihomoServiceAction.Restart => new[] { "restart", "relaxkonos-mihomo.service" },
+        ProxyMihomoServiceAction.TryRestart => new[] { "try-restart", "relaxkonos-mihomo.service" },
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
     return await RunFixedCommandAsync("/usr/bin/systemctl", arguments, TimeSpan.FromSeconds(30), "proxy service operation failed");
@@ -341,8 +341,8 @@ static async Task<PrivilegedOperationResult> ApplyProxyMihomoServiceActionAsync(
 static async Task<PrivilegedOperationResult> InstallProxyMihomoSystemServiceAsync()
 {
     if (!OperatingSystem.IsLinux()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "proxy system service operation is unavailable");
-    const string unitPath = "/etc/systemd/system/remoteos-mihomo.service";
-    const string unit = "[Unit]\nDescription=RelaxKonOS managed Mihomo\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=/var/lib/remoteos/proxy/engines/mihomo/versions/current/mihomo -d /var/lib/remoteos/proxy/engines/mihomo/data -f /etc/remoteos/proxy/active.yaml\nRestart=on-failure\nRestartSec=3\nNoNewPrivileges=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\n";
+    const string unitPath = "/etc/systemd/system/relaxkonos-mihomo.service";
+    const string unit = "[Unit]\nDescription=RelaxKonOS managed Mihomo\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=/var/lib/relaxkonos/proxy/engines/mihomo/versions/current/mihomo -d /var/lib/relaxkonos/proxy/engines/mihomo/data -f /etc/relaxkonos/proxy/active.yaml\nRestart=on-failure\nRestartSec=3\nNoNewPrivileges=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\n";
     try
     {
         var staging = unitPath + ".new";
@@ -359,7 +359,7 @@ static PrivilegedOperationResult RemoveProxyMihomoSystemService()
     if (!OperatingSystem.IsLinux()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "proxy system service operation is unavailable");
     try
     {
-        const string unitPath = "/etc/systemd/system/remoteos-mihomo.service";
+        const string unitPath = "/etc/systemd/system/relaxkonos-mihomo.service";
         if (File.Exists(unitPath)) File.Delete(unitPath);
         return new(true);
     }
@@ -388,7 +388,7 @@ static async Task<PrivilegedOperationResult> WriteNginxManagedFileAsync(string? 
     var content = DecodeContent(contentBase64);
     var directory = Path.GetDirectoryName(destination)!;
     Directory.CreateDirectory(directory);
-    var temporary = Path.Combine(directory, ".remoteos-write-" + Guid.NewGuid().ToString("N"));
+    var temporary = Path.Combine(directory, ".relaxkonos-write-" + Guid.NewGuid().ToString("N"));
     try
     {
         await File.WriteAllBytesAsync(temporary, content);
@@ -421,10 +421,10 @@ static string ValidateNginxManagedFile(string? path)
         throw new UnauthorizedAccessException();
     var canonical = Path.GetFullPath(path);
     const string includeRoot = "/etc/nginx/conf.d";
-    var remoteosDirectory = Path.Combine(includeRoot, "remoteos.d");
-    var allowed = string.Equals(canonical, Path.Combine(includeRoot, "remoteos.conf"), StringComparison.Ordinal)
-        || IsWithin(canonical, remoteosDirectory)
-        || Path.GetFileName(canonical).StartsWith("remoteos.", StringComparison.Ordinal) && IsWithin(canonical, includeRoot);
+    var relaxkonosDirectory = Path.Combine(includeRoot, "relaxkonos.d");
+    var allowed = string.Equals(canonical, Path.Combine(includeRoot, "relaxkonos.conf"), StringComparison.Ordinal)
+        || IsWithin(canonical, relaxkonosDirectory)
+        || Path.GetFileName(canonical).StartsWith("relaxkonos.", StringComparison.Ordinal) && IsWithin(canonical, includeRoot);
     if (!allowed || Path.GetExtension(canonical) is not (".conf" or ".json" or ".stage" or ".rollback"))
         throw new UnauthorizedAccessException();
     EnsureNoReparsePoints(includeRoot, canonical);

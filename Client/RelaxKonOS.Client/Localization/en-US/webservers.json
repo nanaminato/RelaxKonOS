@@ -95,7 +95,7 @@
     "webservers.managed.uninstall.message": "This stops and removes only the Nginx installation and isolated configuration managed by RelaxKonOS. This cannot be undone. Continue?",
     "webservers.managed.uninstall.confirm": "Uninstall",
     "webservers.integration.confirmation.title": "Integrate Nginx",
-    "webservers.integration.confirmation.message": "This creates a RelaxKonOS-owned remoteos.conf in Nginx's already-included conf.d directory, tests the configuration, and only then reloads Nginx. Existing site configuration is not changed. Continue?",
+    "webservers.integration.confirmation.message": "This creates a RelaxKonOS-owned relaxkonos.conf in Nginx's already-included conf.d directory, tests the configuration, and only then reloads Nginx. Existing site configuration is not changed. Continue?",
     "webservers.integration.confirmation.confirm": "Integrate",
     "webservers.column.id": "ID",
     "webservers.column.type": "Type",

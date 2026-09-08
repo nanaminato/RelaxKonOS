@@ -7,7 +7,7 @@ public static class DockerEndpoints
 {
     public static IEndpointRouteBuilder MapDockerEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/docker").RequireAuthorization().WithTags("Docker");
+        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/docker").RequireAuthorization().WithTags("Docker");
         group.MapGet("/status", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.GetStatusAsync(ct));
         group.MapPost("/installation/plan", (RelaxKonOS.Server.Docker.IDockerRuntimeInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct));
         group.MapPost("/installation/execute", (DockerInstallationExecutionRequest request, RelaxKonOS.Server.Docker.IDockerRuntimeInstaller installer, CancellationToken ct) => installer.ExecuteAsync(request, ct));

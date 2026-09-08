@@ -6,19 +6,19 @@ LocalSystem 或 Administrator 身份运行；所有成功的宿主特权操作�
 
 ## Linux
 
-使用签名发布包中的 `deployment/linux/install-remoteos-services.sh` 安装。安装程序会：
+使用签名发布包中的 `deployment/linux/install-relaxkonos-services.sh` 安装。安装程序会：
 
-- 创建 `remoteos-server` 系统账户；
+- 创建 `relaxkonos-server` 系统账户；
 - 将 Helper 发布目录、sudoers 与策略文件设为 root 所有且 Server 用户不可写；
-- 将受管文件根和服务 ID 写入 `/etc/remoteos/privileged-helper-roots` 与
-  `/etc/remoteos/privileged-services`；
+- 将受管文件根和服务 ID 写入 `/etc/relaxkonos/privileged-helper-roots` 与
+  `/etc/relaxkonos/privileged-services`；
 - 仅允许 Server 用户以 `sudo -n` 调用无参数 Helper apphost。
 
 安装后检查：
 
 ```text
-systemctl status remoteos-server remoteos-guardian
-sudo -u remoteos-server sudo -n /usr/local/lib/remoteos/privileged-helper/<apphost>
+systemctl status relaxkonos-server relaxkonos-guardian
+sudo -u relaxkonos-server sudo -n /usr/local/lib/relaxkonos/privileged-helper/<apphost>
 ```
 
 第二个命令没有 JSON 请求时必须失败；它只能证明 sudoers 指向固定 apphost，不能用于
@@ -29,23 +29,23 @@ sudo -u remoteos-server sudo -n /usr/local/lib/remoteos/privileged-helper/<appho
 安装器默认使用 `--file-access restricted`，仅允许：
 
 ```text
-/etc/remoteos
-/var/lib/remoteos
+/etc/relaxkonos
+/var/lib/relaxkonos
 ```
 
 可在常规安装参数之后明确选择下列模式：
 
 ```bash
 # 默认；适合生产环境。
-sudo deployment/linux/install-remoteos-services.sh ... --file-access restricted
+sudo deployment/linux/install-relaxkonos-services.sh ... --file-access restricted
 
 # 从审查过的白名单文件安装策略。
-sudo deployment/linux/install-remoteos-services.sh ... \
+sudo deployment/linux/install-relaxkonos-services.sh ... \
   --file-access whitelist \
   --file-roots deployment/linux/privileged-helper-roots.example
 
 # 允许所有绝对路径；仅限隔离的、所有 RelaxKonOS 使用者均可信的测试主机。
-sudo deployment/linux/install-remoteos-services.sh ... --file-access full
+sudo deployment/linux/install-relaxkonos-services.sh ... --file-access full
 ```
 
 `whitelist` 文件每行一个绝对目录；空行和以 `#` 开头的注释会被忽略。可从
@@ -60,7 +60,7 @@ sudo deployment/linux/install-remoteos-services.sh ... --file-access full
 开发安装脚本也支持相同参数。例如，调试受保护文件流程时可以使用独立夹具：
 
 ```bash
-sudo deployment/linux/install-remoteos-privileged-helper-development.sh "$USER" \
+sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER" \
   --file-access whitelist \
   --file-roots deployment/linux/privileged-helper-roots.example
 ```
@@ -74,9 +74,9 @@ sudo deployment/linux/install-remoteos-privileged-helper-development.sh "$USER" 
 
 使用提升的会话运行 `deployment/windows/Install-RelaxKonOSServices.ps1`。它会安装：
 
-- `RemoteOSPrivilegedHelper`：LocalSystem Windows Service；
+- `RelaxKonOSPrivilegedHelper`：LocalSystem Windows Service；
 - `RelaxKonOSServer`：LocalService，启用 service SID；
-- `RemoteOSGuardian`：安装器声明的 Guardian 服务。
+- `RelaxKonOSGuardian`：安装器声明的 Guardian 服务。
 
 Helper 仅监听本机命名管道。管道 ACL 仅包含 LocalSystem、Administrators 和 Server
 service SID；每条消息还必须通过安装时生成的共享密钥 HMAC 验证。`helper.json` 只能由
@@ -87,7 +87,7 @@ Helper 以冲突结果拒绝而不会再次执行。
 清单，完整性不匹配时不会监听管道。升级或修复 Helper 必须重新运行安装脚本，不能直接
 替换可执行文件。
 
-安装后检查服务状态和 Event Viewer 中 `RemoteOSPrivilegedHelper` 的事件。若 Helper
+安装后检查服务状态和 Event Viewer 中 `RelaxKonOSPrivilegedHelper` 的事件。若 Helper
 缺失、密钥不匹配或协议版本不匹配，Server 必须返回 Helper 不可用，不能回退为启动提升的
 可执行文件。
 

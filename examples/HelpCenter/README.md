@@ -14,14 +14,14 @@ help://guide/docker/uninstall?lang=zh-CN
 在 Linux、macOS 或其他 POSIX shell 中：
 
 ```bash
-export REMOTEOS_DEV_TOKEN="<设置中的配对令牌>"
+export RELAXKONOS_DEV_TOKEN="<设置中的配对令牌>"
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/HelpCenter --configuration Debug --install
 ```
 
 在 Windows PowerShell 中：
 
 ```powershell
-$env:REMOTEOS_DEV_TOKEN = "<设置中的配对令牌>"
+$env:RELAXKONOS_DEV_TOKEN = "<设置中的配对令牌>"
 dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\HelpCenter --configuration Debug --install
 ```
 

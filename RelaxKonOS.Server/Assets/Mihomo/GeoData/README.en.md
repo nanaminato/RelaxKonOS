@@ -15,7 +15,7 @@ They are copied to the private mihomo data directory before the managed runtime 
 profile is validated:
 
 - Windows: `%ProgramData%\RelaxKonOS\Proxy\engines\mihomo\data`
-- Linux: `/var/lib/remoteos/proxy/engines/mihomo/data`
+- Linux: `/var/lib/relaxkonos/proxy/engines/mihomo/data`
 
 `MihomoManagedConfiguration` removes GEO download settings supplied by a profile and appends
 `geodata-mode: false` plus `geo-auto-update: false`. Consequently `geoip.metadb` is used for

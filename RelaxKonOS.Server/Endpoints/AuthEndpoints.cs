@@ -16,7 +16,7 @@ namespace RelaxKonOS.Server.Endpoints;
 /// 错误码通过 type URI 传递（ProblemDetails 无 Errors 字段，见 Protocol.md）。</summary>
 public static class AuthEndpoints
 {
-    private const string ProblemBase = "https://remoteos.app/problems/";
+    private const string ProblemBase = "https://relaxkonos.app/problems/";
 
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {

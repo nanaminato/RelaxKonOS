@@ -138,8 +138,8 @@ Desktop State 表示桌面环境状态，包含：Wallpaper、Theme、Desktop La
 |------|------|------|--------|
 | `wallpaperKey` | `string` | 壁纸标识。前缀 `builtin:` 表示内置壁纸，`custom:` 表示 Workspace 托管图片 blob id。 | `builtin:bloom` |
 | `theme` | `ThemeKind` enum | 明亮/暗黑主题。 | `Light` |
-| `themePreferences.styleId` | `string` | 主题风格标识。 | `remoteos` |
-| `themePreferences.paletteId` | `string` | 调色板标识。`builtin:remoteos-blue` 为默认；可选择自定义调色板（见下）。 | `builtin:remoteos-blue` |
+| `themePreferences.styleId` | `string` | 主题风格标识。 | `relaxkonos` |
+| `themePreferences.paletteId` | `string` | 调色板标识。`builtin:relaxkonos-blue` 为默认；可选择自定义调色板（见下）。 | `builtin:relaxkonos-blue` |
 | `themePreferences.accentOverride` | `string?` | 可选强调色覆盖（`#RRGGBB[AA]`）。若设置则覆盖当前调色板中的 Accent token。 | `null` |
 | `themePreferences.customPalettes[]` | `ThemePaletteDto[]` | 工作区自定义调色板列表，每项包含 `id/name/lightColors/darkColors`。Light/Dark 同一调色板共用 `id`，颜色字典必须符合 `ThemePaletteContract.RequiredColorTokens` 且由 `ThemePaletteValidator` 完成对比度校验。 | `[]` |
 | `desktopDisplay.showBuiltInApps` | `bool` | 是否在桌面显示内置应用图标。 | `true` |
@@ -153,7 +153,7 @@ Desktop State 表示桌面环境状态，包含：Wallpaper、Theme、Desktop La
 ```text
 Desktop
   Wallpaper: builtin:bloom
-  Theme:     Dark  (palette = builtin:remoteos-blue)
+  Theme:     Dark  (palette = builtin:relaxkonos-blue)
   Icons:     Browser, Terminal, Explorer    (desktopDisplay.visibleAppIds 过滤)
 ```
 

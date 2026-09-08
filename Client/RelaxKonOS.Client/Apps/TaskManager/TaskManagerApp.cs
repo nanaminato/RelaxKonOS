@@ -24,7 +24,7 @@ namespace RelaxKonOS.Client.Apps.TaskManager;
 public sealed class TaskManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.taskmanager"),
+        Id: new AppId("relaxkonos.taskmanager"),
         DisplayName: "任务管理器",
         Version: "1.0.0",
         IconGlyph: "📊",
@@ -46,7 +46,7 @@ public sealed class TaskManagerApp : RemoteApplicationBase
                 Margin = new Thickness(24),
                 TextWrapping = TextWrapping.Wrap,
             };
-            context.ShowWindow(LocalizedText.Get("application.remoteos.taskmanager.display_name"), stub,
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.taskmanager.display_name"), stub,
                 bounds: new Rect(200, 160, 460, 180),
                 iconGlyph: Manifest.IconGlyph,
                 canResize: false, canMinimize: false, canMaximize: false);
@@ -55,7 +55,7 @@ public sealed class TaskManagerApp : RemoteApplicationBase
 
         var viewModel = new TaskManagerViewModel(client, performanceStream);
         var view = new TaskManagerMainView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.taskmanager.display_name"), view,
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.taskmanager.display_name"), view,
             bounds: new Rect(70, 55, 1080, 720),
             iconGlyph: Manifest.IconGlyph);
         window.KeyDown += (_, e) =>

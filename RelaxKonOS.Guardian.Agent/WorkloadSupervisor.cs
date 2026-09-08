@@ -23,7 +23,7 @@ internal sealed partial class WorkloadSupervisor
     {
         Directory.CreateDirectory(_options.DataDirectory);
         if (!File.Exists(DefinitionsPath)) return;
-        var definitions = JsonSerializer.Deserialize<IReadOnlyList<ProcessDefinitionDto>>(await File.ReadAllTextAsync(DefinitionsPath, cancellationToken), RemoteOsJsonOptions.Default) ?? [];
+        var definitions = JsonSerializer.Deserialize<IReadOnlyList<ProcessDefinitionDto>>(await File.ReadAllTextAsync(DefinitionsPath, cancellationToken), RelaxKonOSJsonOptions.Default) ?? [];
         var requiresPersist = false;
         foreach (var definition in definitions)
         {
@@ -452,7 +452,7 @@ internal sealed partial class WorkloadSupervisor
     private async Task PersistAsync(CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(_options.DataDirectory);
-        await File.WriteAllTextAsync(DefinitionsPath, JsonSerializer.Serialize(_workloads.Values.Select(item => item.Definition), RemoteOsJsonOptions.Default), cancellationToken);
+        await File.WriteAllTextAsync(DefinitionsPath, JsonSerializer.Serialize(_workloads.Values.Select(item => item.Definition), RelaxKonOSJsonOptions.Default), cancellationToken);
     }
 
     private async Task WriteAuditAsync(string action, string? workloadId, GuardianAgentResponse response, CancellationToken cancellationToken)
@@ -462,7 +462,7 @@ internal sealed partial class WorkloadSupervisor
             ? workload.Definition.RunAs
             : null;
         var entry = new GuardianAuditEntryDto(DateTimeOffset.UtcNow, action, workloadId, response.Success ? "success" : "failed", response.ProblemCode, runAs);
-        await File.AppendAllTextAsync(AuditPath, JsonSerializer.Serialize(entry, RemoteOsJsonOptions.Default) + Environment.NewLine, cancellationToken);
+        await File.AppendAllTextAsync(AuditPath, JsonSerializer.Serialize(entry, RelaxKonOSJsonOptions.Default) + Environment.NewLine, cancellationToken);
     }
 
     private async Task<GuardianAgentResponse> ReadAuditAsync(CancellationToken cancellationToken)
@@ -471,7 +471,7 @@ internal sealed partial class WorkloadSupervisor
         var lines = await File.ReadAllLinesAsync(AuditPath, cancellationToken);
         var entries = lines.TakeLast(500).Select(line =>
         {
-            try { return JsonSerializer.Deserialize<GuardianAuditEntryDto>(line, RemoteOsJsonOptions.Default); }
+            try { return JsonSerializer.Deserialize<GuardianAuditEntryDto>(line, RelaxKonOSJsonOptions.Default); }
             catch (JsonException) { return null; }
         }).Where(entry => entry is not null).Select(entry => entry!).ToArray();
         return new GuardianAgentResponse(true, string.Empty, Audits: entries);

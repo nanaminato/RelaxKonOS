@@ -107,9 +107,9 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
 
     private string LocalizeShellName(string id, string fallback) => id switch
     {
-        "remoteos.windows-like" => T("settings.shell.windows_like", "Windows-style desktop"),
-        "remoteos.macos-like" => T("settings.shell.macos_like", "macOS-style desktop"),
-        "remoteos.ubuntu-like" => T("settings.shell.ubuntu_like", "Ubuntu-style desktop"),
+        "relaxkonos.windows-like" => T("settings.shell.windows_like", "Windows-style desktop"),
+        "relaxkonos.macos-like" => T("settings.shell.macos_like", "macOS-style desktop"),
+        "relaxkonos.ubuntu-like" => T("settings.shell.ubuntu_like", "Ubuntu-style desktop"),
         _ => fallback,
     };
 
@@ -140,7 +140,7 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
     /// <summary>Built-ins deliberately share the same semantic token contract in every RelaxKonOS app.</summary>
     public IReadOnlyList<ThemePaletteChoice> PaletteChoices =>
     [
-        new("builtin:remoteos-blue", "RelaxKonOS Blue", false),
+        new("builtin:relaxkonos-blue", "RelaxKonOS Blue", false),
         new("builtin:nord", "Nord", false),
         new("builtin:catppuccin", "Catppuccin", false),
         .. (Settings.ThemePreferences.CustomPalettes ?? [])
@@ -222,7 +222,7 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         var current = Settings.ThemePreferences;
         Settings.ThemePreferences = new ThemePreferencesDto
         {
-            StyleId = "remoteos", PaletteId = paletteId, AccentOverride = accent,
+            StyleId = "relaxkonos", PaletteId = paletteId, AccentOverride = accent,
             CustomPalettes = current.CustomPalettes ?? [],
         };
         OnPropertyChanged(nameof(PaletteId));
@@ -260,7 +260,7 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         }
         var candidate = new ThemePreferencesDto
         {
-            StyleId = "remoteos", PaletteId = "custom:" + imported!.Id,
+            StyleId = "relaxkonos", PaletteId = "custom:" + imported!.Id,
             AccentOverride = Settings.ThemePreferences.AccentOverride,
             CustomPalettes = [.. existing, imported],
         };
@@ -276,7 +276,7 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         var remaining = Settings.ThemePreferences.CustomPalettes?.Where(p => p.Id != selected.Id).ToList() ?? [];
         Settings.ThemePreferences = new ThemePreferencesDto
         {
-            StyleId = "remoteos", PaletteId = ThemePreferencesDto.DefaultPaletteId,
+            StyleId = "relaxkonos", PaletteId = ThemePreferencesDto.DefaultPaletteId,
             AccentOverride = Settings.ThemePreferences.AccentOverride, CustomPalettes = remaining,
         };
         Save();

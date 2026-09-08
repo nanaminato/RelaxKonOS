@@ -6,7 +6,7 @@ using RelaxKonOS.Server.Storage.Sqlite;
 namespace RelaxKonOS.Server.Secrets;
 
 /// <summary>Persists only data-protection ciphertext. It deliberately has no list or export API.</summary>
-public sealed class DataProtectionSecretStore(RemoteOsDbContext db, IDataProtectionProvider protectionProvider) : ISecretStore
+public sealed class DataProtectionSecretStore(RelaxKonOSDbContext db, IDataProtectionProvider protectionProvider) : ISecretStore
 {
     private readonly IDataProtector _protector = protectionProvider.CreateProtector("RelaxKonOS.Tunnels.SecretStore.v1");
 

@@ -29,17 +29,17 @@ public sealed class RegistryClient(HttpClient http, IAuthSession session) : IReg
         using var request = CreateRequest(HttpMethod.Get, route);
         using var response = await http.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, cancellationToken)
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException(LocalizedText.Get("registry.error.empty_response", "The registry server returned an empty response."));
     }
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
     {
         using var request = CreateRequest(method, route);
-        if (body is not null) request.Content = JsonContent.Create(body, options: RemoteOsJsonOptions.Default);
+        if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         if (typeof(T) == typeof(object)) return (T)(object)new object();
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, cancellationToken)
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException(LocalizedText.Get("registry.error.empty_response", "The registry server returned an empty response."));
     }
     private HttpRequestMessage CreateRequest(HttpMethod method, string route)

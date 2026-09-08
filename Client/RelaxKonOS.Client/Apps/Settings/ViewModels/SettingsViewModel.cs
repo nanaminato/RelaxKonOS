@@ -23,7 +23,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly IWorkspaceSettingsService _client;
     private readonly IAuthSession _session;
     private readonly ApplicationManager? _apps;
-    private readonly IRemoteOsClient? _remote;
+    private readonly IRelaxKonOSClient? _remote;
     private readonly ITaskManagerClient? _system;
     private readonly DefaultAppRegistry? _registry;
     private readonly DeveloperModeService? _developerMode;
@@ -38,7 +38,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         IAuthSession session,
         WorkspacePreferencesEditor editor,
         ApplicationManager? apps,
-        IRemoteOsClient? remote,
+        IRelaxKonOSClient? remote,
         ITaskManagerClient? system,
         DefaultAppRegistry? registry,
         DeveloperModeService? developerMode,
@@ -88,7 +88,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public void SelectApplicationsPage() =>
         SelectedPage = Pages.OfType<AppsPageViewModel>().FirstOrDefault() ?? SelectedPage;
 
-    /// <summary>Host activation entry point for <c>remoteos://settings/personalization</c>.</summary>
+    /// <summary>Host activation entry point for <c>relaxkonos://settings/personalization</c>.</summary>
     public void SelectPersonalizationPage() =>
         SelectedPage = Pages.OfType<PersonalizationPageViewModel>().FirstOrDefault() ?? SelectedPage;
 

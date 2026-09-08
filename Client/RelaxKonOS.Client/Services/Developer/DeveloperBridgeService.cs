@@ -11,7 +11,7 @@ namespace RelaxKonOS.Client.Services.Developer;
 /// </summary>
 public sealed class DeveloperBridgeService : IDisposable
 {
-    private const string TokenHeader = "X-RemoteOS-Dev-Token";
+    private const string TokenHeader = "X-RelaxKonOS-Dev-Token";
     private readonly DeveloperModeService _mode;
     private readonly DeveloperPackageManager _packages;
     private readonly object _gate = new();

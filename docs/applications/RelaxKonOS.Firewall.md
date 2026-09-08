@@ -32,7 +32,7 @@ Firewall 是 RelaxKonOS 的内置 Linux Server 防火墙编辑器。它读取并
 
 Linux 部署脚本会安装 root:root 的统一 `RelaxKonOS.PrivilegedHelper`，并创建仅允许 Server 服务账户无密码调用该固定 apphost 的 `sudoers` 规则。Helper 不是常驻进程，只接受版本化的封闭 `FirewallUfw*` operation，并再次校验参数后才执行 UFW。应用绝不把用户密码传给 `sudo`，也不接受任意命令。Helper 或其权限缺失时返回 `firewall.privileged_proxy_required`。
 
-安装脚本默认创建 `remoteos-server` 系统账户并以其运行 Server；可用第五个参数指定已有账户（例如开发机上的 `nanami`）。脚本可重复执行：它会修复 helper、sudoers 规则、服务单元和运行数据目录权限，而不会自动启用 UFW。
+安装脚本默认创建 `relaxkonos-server` 系统账户并以其运行 Server；可用第五个参数指定已有账户（例如开发机上的 `nanami`）。脚本可重复执行：它会修复 helper、sudoers 规则、服务单元和运行数据目录权限，而不会自动启用 UFW。
 
 ## 安全与错误行为
 

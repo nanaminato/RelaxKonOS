@@ -5,7 +5,7 @@ namespace RelaxKonOS.Protocol.Firewall;
 /// <summary>Routes for the Linux host firewall facade.</summary>
 public static class FirewallApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Status = $"/{V1}/firewall/status";
     public const string Rules = $"/{V1}/firewall/rules";
     public const string Rule = $"/{V1}/firewall/rules/{{number}}";

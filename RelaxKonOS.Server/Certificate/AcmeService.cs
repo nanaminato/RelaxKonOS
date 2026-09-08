@@ -205,7 +205,7 @@ internal sealed class AnvilAcmeService(FileHttp01ChallengeStore webRootChallenge
     {
         var root = options.StorageRoot ?? (OperatingSystem.IsWindows()
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "certificates")
-            : "/var/lib/remoteos/certificates");
+            : "/var/lib/relaxkonos/certificates");
         var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(directoryUri.AbsoluteUri)))[..24].ToLowerInvariant();
         return Path.Combine(Path.GetFullPath(root), "acme", id, "account.key");
     }

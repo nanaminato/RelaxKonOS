@@ -21,7 +21,7 @@ namespace RelaxKonOS.Client.Apps.ProcessGuardian;
 /// <summary>Built-in UI for workloads supervised by the separately installed Guardian Agent.</summary>
 public sealed class ProcessGuardianApp : RemoteApplicationBase
 {
-    public override ApplicationManifest Manifest { get; } = new(new AppId("remoteos.processguardian"), "Process Guardian", "0.1.0", "🛡", "View RelaxKonOS Guardian Agent workloads", [AppPermissions.ServerGuardianRead, AppPermissions.ServerGuardianManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.processguardian"), "Process Guardian", "0.1.0", "🛡", "View RelaxKonOS Guardian Agent workloads", [AppPermissions.ServerGuardianRead, AppPermissions.ServerGuardianManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
@@ -29,14 +29,14 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         var client = context.Services.GetService(typeof(IProcessGuardianClient)) as IProcessGuardianClient;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.remoteos.processguardian.display_name"),
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.processguardian.display_name"),
                 new TextBlock { Text = LocalizedText.Get("guardian.login_required"), Margin = new Avalonia.Thickness(24), TextWrapping = TextWrapping.Wrap },
                 new Rect(200, 160, 460, 180), Manifest.IconGlyph, false, false, false);
             return;
         }
 
         var viewModel = new ProcessGuardianViewModel(client, session);
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.processguardian.display_name"), CreateView(viewModel), new Rect(80, 60, 1240, 700), Manifest.IconGlyph);
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.processguardian.display_name"), CreateView(viewModel), new Rect(80, 60, 1240, 700), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestAdministratorApprovalAsync = () => RequestAdministratorApprovalAsync(context, window, session);
         viewModel.ShowEditorAsync = async isEdit =>

@@ -170,7 +170,7 @@ deployment/windows/
 
 ### Goal 2：Linux 统一受限 Helper 与 generic-run 移除
 
-**工作**：将 Linux one-shot helper 改为 capability dispatcher；为文件、Nginx、native service、Proxy 与 Firewall 建立各自强类型 operation。更新 `install-remoteos-services.sh`，使发布目录 root-owned、sudoers 仅允许 Helper apphost；删掉独立路径或将 Firewall 迁入同一 transport。为每个操作定义输入大小、路径根、超时和并发限制。
+**工作**：将 Linux one-shot helper 改为 capability dispatcher；为文件、Nginx、native service、Proxy 与 Firewall 建立各自强类型 operation。更新 `install-relaxkonos-services.sh`，使发布目录 root-owned、sudoers 仅允许 Helper apphost；删掉独立路径或将 Firewall 迁入同一 transport。为每个操作定义输入大小、路径根、超时和并发限制。
 
 **验收**：Server 服务账户无法通过任何请求执行 `/bin/sh`、`bash -c`、任意 `systemctl` 参数或任意文件路径；已批准的 Nginx/service/file 操作在 unprivileged Server 下可成功执行；非批准资源稳定拒绝；sudoers、Helper 可执行文件和父目录不可由 Server 用户写入。
 

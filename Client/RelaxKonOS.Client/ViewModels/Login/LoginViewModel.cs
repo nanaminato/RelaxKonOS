@@ -160,7 +160,7 @@ public partial class LoginViewModel : ObservableObject
             await _session.LoginAsync(serverUrl, request, RememberServer, RememberPassword, ct);
             StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
         }
-        catch (RemoteOsAuthException ex)
+        catch (RelaxKonOSAuthException ex)
         {
             ErrorMessage = MapProblemToMessage(ex);
             HasError = true;
@@ -295,16 +295,16 @@ public partial class LoginViewModel : ObservableObject
     }
 
     /// <summary>ProblemDetails.Type → 本地化 UI 文案。错误码见 RelaxKonOS.Login.md 错误处理矩阵。</summary>
-    private string MapProblemToMessage(RemoteOsAuthException ex) => ex.Type switch
+    private string MapProblemToMessage(RelaxKonOSAuthException ex) => ex.Type switch
     {
-        "https://remoteos.app/problems/invalid-credential"  => T("api.auth.invalid_credential", "The username or password is incorrect."),
-        "https://remoteos.app/problems/account-locked"      => T("api.auth.account_locked", "This account is locked. Contact an administrator."),
-        "https://remoteos.app/problems/account-disabled"    => T("api.auth.account_disabled", "This account is disabled."),
-        "https://remoteos.app/problems/password-expired"    => T("api.auth.password_expired", "This password has expired. Change it on the server first."),
-        "https://remoteos.app/problems/account-expired"     => T("api.auth.account_expired", "This account has expired."),
-        "https://remoteos.app/problems/account-restriction" => T("api.auth.account_restriction", "This account is restricted from signing in."),
-        "https://remoteos.app/problems/invalid-input"       => T("api.auth.invalid_input", "Enter all required information."),
-        "https://remoteos.app/problems/auth-failed"         => T("api.auth.failed", "Sign-in failed. Try again later."),
+        "https://relaxkonos.app/problems/invalid-credential"  => T("api.auth.invalid_credential", "The username or password is incorrect."),
+        "https://relaxkonos.app/problems/account-locked"      => T("api.auth.account_locked", "This account is locked. Contact an administrator."),
+        "https://relaxkonos.app/problems/account-disabled"    => T("api.auth.account_disabled", "This account is disabled."),
+        "https://relaxkonos.app/problems/password-expired"    => T("api.auth.password_expired", "This password has expired. Change it on the server first."),
+        "https://relaxkonos.app/problems/account-expired"     => T("api.auth.account_expired", "This account has expired."),
+        "https://relaxkonos.app/problems/account-restriction" => T("api.auth.account_restriction", "This account is restricted from signing in."),
+        "https://relaxkonos.app/problems/invalid-input"       => T("api.auth.invalid_input", "Enter all required information."),
+        "https://relaxkonos.app/problems/auth-failed"         => T("api.auth.failed", "Sign-in failed. Try again later."),
         _ => string.IsNullOrEmpty(ex.Detail) ? T("api.auth.failed_short", "Sign-in failed.") : ex.Detail,
     };
 

@@ -17,11 +17,11 @@ For real Server → sudo → Helper integration testing, install the built outpu
 development directory and create a narrow sudoers rule:
 
 ```bash
-sudo deployment/linux/install-remoteos-privileged-helper-development.sh "$USER"
+sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER"
 ```
 
 This copies the complete Debug output to
-`/usr/local/lib/remoteos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`, then grants
+`/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`, then grants
 the development account permission to run only that exact apphost as root. Select the Server
 `http-linux-privileged` profile, which sets `PrivilegedHelper__HelperPath` to this copy and
 `PrivilegedHelper__SudoPath` to `/usr/bin/sudo`. Re-run the script after each Helper rebuild.
@@ -30,7 +30,7 @@ The Server itself remains unprivileged: sudo starts one Helper process for each 
 and the Helper permits only the closed operation set. Never point a sudoers rule at a development
 account-writable `bin/Debug` executable; that would give the account root-equivalent control.
 
-The development installer defaults to `/etc/remoteos` and `/var/lib/remoteos`. To test another
+The development installer defaults to `/etc/relaxkonos` and `/var/lib/relaxkonos`. To test another
 protected directory, use `--file-access whitelist --file-roots deployment/linux/privileged-helper-roots.example`
 and retain only the absolute test roots you need. `--file-access full` permits every path below `/`;
 use it only on an isolated test host whose RelaxKonOS users are all trusted. Never use it to expose
@@ -44,7 +44,7 @@ new random Base64 secret (at least 32 bytes) and only disposable file roots:
 
 ```json
 {
-  "pipeName": "remoteos-privileged-helper-dev",
+  "pipeName": "relaxkonos-privileged-helper-dev",
   "sharedSecret": "replace-with-a-random-base64-secret-of-at-least-32-bytes",
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
@@ -61,7 +61,7 @@ dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxK
 Configure the debug Server with the same pipe name and secret:
 
 ```text
-PrivilegedHelper__PipeName=remoteos-privileged-helper-dev
+PrivilegedHelper__PipeName=relaxkonos-privileged-helper-dev
 PrivilegedHelper__SharedSecret=<same Base64 secret>
 ```
 
@@ -83,6 +83,6 @@ dotnet publish RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj -c
 ```
 
 Pass the published apphost as the fourth argument of
-[`install-remoteos-services.sh`](../deployment/linux/install-remoteos-services.sh). The installer
+[`install-relaxkonos-services.sh`](../deployment/linux/install-relaxkonos-services.sh). The installer
 copies the whole publish directory into a root-owned location and creates the narrow sudoers rule
 for the Server service account.

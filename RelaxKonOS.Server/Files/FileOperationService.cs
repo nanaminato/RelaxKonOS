@@ -323,7 +323,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
     private static async Task CopyFileAsync(Job job, string source, string destination, bool replace)
     {
         var ct = job.Cancellation.Token;
-        var temporary = Path.Combine(Path.GetDirectoryName(destination)!, $".remoteos-{Guid.NewGuid():N}.tmp");
+        var temporary = Path.Combine(Path.GetDirectoryName(destination)!, $".relaxkonos-{Guid.NewGuid():N}.tmp");
         try
         {
             await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 131072, true))

@@ -36,7 +36,7 @@ can add or replace an entry. The source of record is the official
 
 ## Host ownership, schema, and protected paths
 
-Proxy state is machine-owned and never stored in `RemoteOsDbContext`, workspace
+Proxy state is machine-owned and never stored in `RelaxKonOSDbContext`, workspace
 preferences, an app manifest, or a user-owned row. Goal 4 adds schema migration
 **8** to `HostGlobalMigrationRunner` for `proxy_profiles`, `proxy_runtime_state`,
 `proxy_operations`, `proxy_audit_entries`, and `proxy_safety_state`. IDs are
@@ -45,10 +45,10 @@ Proxy metadata repository uses this host-global schema exclusively.
 
 | Kind | Windows | Linux | Retention / access |
 | --- | --- | --- | --- |
-| managed binaries | `%ProgramData%\\RelaxKonOS\\Proxy\\engines\\mihomo\\versions` | `/opt/remoteos/proxy/engines/mihomo/versions` | machine administrators only; `active` and `previous` are atomic pointers |
-| raw YAML, overlay, backup, runtime state, recovery marker | `%ProgramData%\\RelaxKonOS\\Proxy\\state` | `/var/lib/remoteos/proxy` | service account and administrators only; backups rotate to the most recent 5 successful generations |
-| service configuration | `%ProgramData%\\RelaxKonOS\\Proxy\\config` | `/etc/remoteos/proxy` | protected, generated only from structured inputs plus validated raw YAML |
-| sanitized operational log | `%ProgramData%\\RelaxKonOS\\Proxy\\logs` | `/var/log/remoteos/proxy` | 10 MiB per file, 5 files; controller/credential values are redacted before write |
+| managed binaries | `%ProgramData%\\RelaxKonOS\\Proxy\\engines\\mihomo\\versions` | `/opt/relaxkonos/proxy/engines/mihomo/versions` | machine administrators only; `active` and `previous` are atomic pointers |
+| raw YAML, overlay, backup, runtime state, recovery marker | `%ProgramData%\\RelaxKonOS\\Proxy\\state` | `/var/lib/relaxkonos/proxy` | service account and administrators only; backups rotate to the most recent 5 successful generations |
+| service configuration | `%ProgramData%\\RelaxKonOS\\Proxy\\config` | `/etc/relaxkonos/proxy` | protected, generated only from structured inputs plus validated raw YAML |
+| sanitized operational log | `%ProgramData%\\RelaxKonOS\\Proxy\\logs` | `/var/log/relaxkonos/proxy` | 10 MiB per file, 5 files; controller/credential values are redacted before write |
 | encrypted controller/subscription secrets | Proxy-specific Data Protection storage | Proxy-specific Data Protection storage | purpose-separated `RelaxKonOS.Proxy.SecretStore.v1`; no list/export/read API |
 
 Profile metadata may reference a protected YAML file by opaque identifier, but

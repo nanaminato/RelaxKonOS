@@ -22,7 +22,7 @@ namespace RelaxKonOS.Client.Apps.AppInstaller;
 public sealed class AppInstallerApp : RemoteApplicationBase, IFileOpenApplication
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("remoteos.appinstaller"), "App Installer", "1.0.0", "📦",
+        new AppId("relaxkonos.appinstaller"), "App Installer", "1.0.0", "📦",
         "Install or update RelaxKonOS application packages.", SupportedFileExtensions: [".roapp"]);
 
     public override void Activate(AppContext context) => OpenInstaller(context, []);

@@ -49,7 +49,7 @@ public sealed partial class DefaultAppsPageViewModel : SettingsPageViewModel, ID
     {
         var preset = AvailableSchemes.FirstOrDefault(scheme => Mappings.All(mapping => !string.Equals(mapping.Scheme, scheme, StringComparison.OrdinalIgnoreCase)))
             ?? AvailableSchemes.FirstOrDefault() ?? "http";
-        var defaultApp = AvailableApps.FirstOrDefault()?.Id ?? "remoteos.browser";
+        var defaultApp = AvailableApps.FirstOrDefault()?.Id ?? "relaxkonos.browser";
         Mappings.Add(new DefaultAppMappingViewModel(preset, defaultApp, AvailableApps, Save, mapping => { Mappings.Remove(mapping); Save(); }));
         Save();
     }

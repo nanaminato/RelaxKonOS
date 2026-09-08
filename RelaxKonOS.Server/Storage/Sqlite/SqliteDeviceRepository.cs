@@ -6,9 +6,9 @@ namespace RelaxKonOS.Server.Storage.Sqlite;
 /// <summary>Device 仓储的 EF Core + SQLite 实现。Scoped。对应 InMemoryDeviceRepository。</summary>
 public sealed class SqliteDeviceRepository : IDeviceRepository
 {
-    private readonly RemoteOsDbContext _db;
+    private readonly RelaxKonOSDbContext _db;
 
-    public SqliteDeviceRepository(RemoteOsDbContext db) => _db = db;
+    public SqliteDeviceRepository(RelaxKonOSDbContext db) => _db = db;
 
     public Device? FindByNameAndPlatform(string name, string platform)
         => _db.Devices.AsNoTracking().FirstOrDefault(d => d.Name == name && d.Platform == platform);

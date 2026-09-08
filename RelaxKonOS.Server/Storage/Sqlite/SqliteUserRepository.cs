@@ -7,9 +7,9 @@ namespace RelaxKonOS.Server.Storage.Sqlite;
 /// <summary>User 仓储的 EF Core + SQLite 实现。Scoped（依赖 Scoped DbContext）。对应 InMemoryUserRepository。</summary>
 public sealed class SqliteUserRepository : IUserRepository
 {
-    private readonly RemoteOsDbContext _db;
+    private readonly RelaxKonOSDbContext _db;
 
-    public SqliteUserRepository(RemoteOsDbContext db) => _db = db;
+    public SqliteUserRepository(RelaxKonOSDbContext db) => _db = db;
 
     public User? FindByUsername(string username, PlatformKind platform)
         => _db.Users.AsNoTracking().FirstOrDefault(u => u.Username == username && u.Platform == platform);

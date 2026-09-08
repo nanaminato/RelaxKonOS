@@ -38,7 +38,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         }
         // Shell owns mutable lists: freeze the edit and its target before the debounce delay.
         var frozen = JsonSerializer.Deserialize<WorkspacePreferencesDto>(
-            JsonSerializer.Serialize(preferences, RemoteOsJsonOptions.Default), RemoteOsJsonOptions.Default)!;
+            JsonSerializer.Serialize(preferences, RelaxKonOSJsonOptions.Default), RelaxKonOSJsonOptions.Default)!;
         _draft = new(url, tokens.AccessToken, workspace.Id, frozen);
         OnPropertyChanged(nameof(HasDraft));
         _registry.SetMappings(frozen.DefaultApps);
@@ -73,7 +73,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
             State = PreferencesSaveState.Accepted;
         }
         catch (OperationCanceledException) when (pending.IsCancellationRequested) { }
-        catch (RemoteOsAuthException ex)
+        catch (RelaxKonOSAuthException ex)
         {
             if (ReferenceEquals(_draft, draft) && IsCurrent(draft))
                 State = ex.Status == 409 ? PreferencesSaveState.Conflict : PreferencesSaveState.Failed;

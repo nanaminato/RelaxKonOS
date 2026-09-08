@@ -8,9 +8,9 @@ namespace RelaxKonOS.Server.Storage.Sqlite;
 /// <summary>Workspace 仓储的 EF Core + SQLite 实现。Workspace 配置由注册表持有，不映射到本实体。</summary>
 public sealed class SqliteWorkspaceRepository : IWorkspaceRepository
 {
-    private readonly RemoteOsDbContext _db;
+    private readonly RelaxKonOSDbContext _db;
 
-    public SqliteWorkspaceRepository(RemoteOsDbContext db) => _db = db;
+    public SqliteWorkspaceRepository(RelaxKonOSDbContext db) => _db = db;
 
     public Workspace? FindByUserId(Guid userId)
         => Normalize(_db.Workspaces.FirstOrDefault(w => w.UserId == userId));

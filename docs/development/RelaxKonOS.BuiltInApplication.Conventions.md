@@ -4,7 +4,7 @@
 
 ## 1. 架构与项目边界
 
-1. 内置应用实现 `IRemoteApplication` 或继承 `RemoteApplicationBase`，使用 `remoteos.<name>` App ID；客户端 UI 通过 `AppContext.ShowWindow` 创建，不自行管理原生窗口。
+1. 内置应用实现 `IRemoteApplication` 或继承 `RemoteApplicationBase`，使用 `relaxkonos.<name>` App ID；客户端 UI 通过 `AppContext.ShowWindow` 创建，不自行管理原生窗口。
 2. 客户端负责 Avalonia UI、本地交互状态和显示；访问远程宿主机、账户、文件、进程、服务、容器或持久化数据时，必须经过 `RelaxKonOS.Server` 的授权 API。客户端不得直接访问服务器文件、Docker socket、named pipe、操作系统服务或数据库。
 3. Client/Server 通信必须在 `Shared/RelaxKonOS.Protocol` 定义 DTO、枚举、路由/Hub 常量和序列化约定。业务代码禁止硬编码 API 字符串或复制 DTO；Protocol 保持零业务依赖。
 4. Server 的系统能力先定义接口，再实现 Ubuntu/Linux 与 Windows Provider。`Program.cs` 只做运行时选择；Endpoint、Client、ViewModel 和共享 DTO 不出现 `OperatingSystem.Is...`、P/Invoke、`/proc` 路径、PowerShell 或 shell 命令。

@@ -7,12 +7,12 @@ namespace RelaxKonOS.Client.Services.Auth;
 /// <summary>Holds the current authenticated session and the locally remembered RelaxKonOS connections.</summary>
 public sealed class AuthSession : IAuthSession
 {
-    private readonly IRemoteOsClient _client;
+    private readonly IRelaxKonOSClient _client;
     private readonly IRememberedSessionStore _rememberedSessionStore;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
-    public AuthSession(IRemoteOsClient client, IRememberedSessionStore rememberedSessionStore)
+    public AuthSession(IRelaxKonOSClient client, IRememberedSessionStore rememberedSessionStore)
     {
         _client = client;
         _rememberedSessionStore = rememberedSessionStore;
@@ -154,7 +154,7 @@ public sealed class AuthSession : IAuthSession
             }
             return true;
         }
-        catch (RemoteOsAuthException ex) when (ex.Status == 401)
+        catch (RelaxKonOSAuthException ex) when (ex.Status == 401)
         {
             Reset(AuthSessionEndReason.RefreshTokenInvalid);
             return false;

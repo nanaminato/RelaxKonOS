@@ -57,7 +57,7 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
         {
-            Content = body is null ? null : JsonContent.Create(body, options: RemoteOsJsonOptions.Default),
+            Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         if (idempotencyKey is not null)
@@ -72,7 +72,7 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
             throw new CertificateApiException(await ReadProblemCodeAsync(response, cancellationToken)
                 ?? FallbackProblemCode(response.StatusCode), response.StatusCode);
         }
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, cancellationToken)
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException("RelaxKonOS returned an empty response.");
     }
 
@@ -80,7 +80,7 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
     {
         var payload = await response.Content.ReadAsStringAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(payload)) return null;
-        try { return JsonSerializer.Deserialize<CertificateProblemDetails>(payload, RemoteOsJsonOptions.Default)?.ProblemCode; }
+        try { return JsonSerializer.Deserialize<CertificateProblemDetails>(payload, RelaxKonOSJsonOptions.Default)?.ProblemCode; }
         catch (JsonException) { return null; }
     }
 

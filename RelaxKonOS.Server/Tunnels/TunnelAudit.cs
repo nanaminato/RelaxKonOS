@@ -5,7 +5,7 @@ using RelaxKonOS.Server.Storage.Sqlite;
 
 namespace RelaxKonOS.Server.Tunnels;
 
-public sealed class TunnelAudit(RemoteOsDbContext db) : ITunnelAudit
+public sealed class TunnelAudit(RelaxKonOSDbContext db) : ITunnelAudit
 {
     public async Task RecordAsync(string actorUserId, string action, Guid? targetId, string result, string? problemCode, CancellationToken ct)
     {

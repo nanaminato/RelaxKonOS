@@ -32,7 +32,7 @@ public sealed class AppContext
     public IServiceProvider Services { get; }
     public ApplicationManifest? Manifest { get; }
 
-    /// <summary>Activates a host-validated <c>remoteos://</c> route or manifest-declared external URI as this application.</summary>
+    /// <summary>Activates a host-validated <c>relaxkonos://</c> route or manifest-declared external URI as this application.</summary>
     public IAppActivation Activations => new AppActivationScope(AppId, Services.GetService(typeof(IAppActivationService)) as IAppActivationService);
 
     /// <summary>Permission status and approval requests scoped to this built-in application.</summary>

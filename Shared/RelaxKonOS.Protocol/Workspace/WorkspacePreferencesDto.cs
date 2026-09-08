@@ -79,7 +79,7 @@ public sealed record WorkspacePreferencesDto
         this.CodeEditorDefaultEncoding = CodeEditorDefaultEncoding;
         this.DesktopDisplay = DesktopDisplay ?? DesktopDisplaySettingsDto.Default;
         this.ThemePreferences = ThemePreferences ?? ThemePreferencesDto.Default;
-        this.Shell = Shell ?? new ShellSelectionDto("remoteos.windows-like");
+        this.Shell = Shell ?? new ShellSelectionDto("relaxkonos.windows-like");
     }
 
     // Both EF Core and System.Text.Json must use the parameterless constructor. JSON cannot
@@ -88,7 +88,7 @@ public sealed record WorkspacePreferencesDto
     public WorkspacePreferencesDto()
         : this(string.Empty, default, string.Empty, string.Empty, string.Empty, string.Empty,
             [], TextEncodingPreferences.Default, TextEncodingPreferences.Default,
-            DesktopDisplaySettingsDto.Default, ThemePreferencesDto.Default, new ShellSelectionDto("remoteos.windows-like"))
+            DesktopDisplaySettingsDto.Default, ThemePreferencesDto.Default, new ShellSelectionDto("relaxkonos.windows-like"))
     {
     }
 
@@ -118,5 +118,5 @@ public sealed record WorkspacePreferencesDto
         CodeEditorDefaultEncoding: TextEncodingPreferences.Default,
         DesktopDisplay: DesktopDisplaySettingsDto.Default,
         ThemePreferences: ThemePreferencesDto.Default,
-        Shell: new ShellSelectionDto("remoteos.windows-like"));
+        Shell: new ShellSelectionDto("relaxkonos.windows-like"));
 }

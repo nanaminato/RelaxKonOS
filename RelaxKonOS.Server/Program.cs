@@ -175,7 +175,7 @@ foreach (var network in authSecurity.TrustedNetworks)
     forwardedHeaders.KnownIPNetworks.Add(parsedNetwork);
 }
 
-// 序列化：与 RemoteOsJsonOptions.Default 对齐（camelCase + 枚举字符串），保证线协议一致
+// 序列化：与 RelaxKonOSJsonOptions.Default 对齐（camelCase + 枚举字符串），保证线协议一致
 builder.Services.ConfigureHttpJsonOptions(opts =>
 {
     opts.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -213,10 +213,10 @@ builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
 builder.Services.AddAuthentication(options =>
     {
-        options.DefaultAuthenticateScheme = RemoteOsAuthSchemes.User;
-        options.DefaultChallengeScheme = RemoteOsAuthSchemes.User;
+        options.DefaultAuthenticateScheme = RelaxKonOSAuthSchemes.User;
+        options.DefaultChallengeScheme = RelaxKonOSAuthSchemes.User;
     })
-    .AddJwtBearer(RemoteOsAuthSchemes.User, opts =>
+    .AddJwtBearer(RelaxKonOSAuthSchemes.User, opts =>
     {
         opts.TokenValidationParameters = new TokenValidationParameters
         {
@@ -235,7 +235,7 @@ builder.Services.AddAuthentication(options =>
         {
             OnTokenValidated = context =>
             {
-                if (context.Principal?.HasClaim(RemoteOsAuthSchemes.TokenTypeClaim, RemoteOsAuthSchemes.FileCapabilityTokenType) == true)
+                if (context.Principal?.HasClaim(RelaxKonOSAuthSchemes.TokenTypeClaim, RelaxKonOSAuthSchemes.FileCapabilityTokenType) == true)
                     context.Fail("File capability tokens cannot be used as user access tokens.");
                 return Task.CompletedTask;
             },
@@ -244,8 +244,8 @@ builder.Services.AddAuthentication(options =>
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
                 if (!string.IsNullOrEmpty(accessToken) &&
-                    (path.StartsWithSegments("/hubs/terminals") || path.StartsWithSegments(RemoteOsEndpoints.GuardianLogsHubPath)
-                     || path.StartsWithSegments(RemoteOsEndpoints.PerformanceHubPath)))
+                    (path.StartsWithSegments("/hubs/terminals") || path.StartsWithSegments(RelaxKonOSEndpoints.GuardianLogsHubPath)
+                     || path.StartsWithSegments(RelaxKonOSEndpoints.PerformanceHubPath)))
                 {
                     context.Token = accessToken;
                 }
@@ -253,7 +253,7 @@ builder.Services.AddAuthentication(options =>
             }
         };
     })
-    .AddJwtBearer(RemoteOsAuthSchemes.FileCapability, opts =>
+    .AddJwtBearer(RelaxKonOSAuthSchemes.FileCapability, opts =>
     {
         opts.TokenValidationParameters = new TokenValidationParameters
         {
@@ -270,7 +270,7 @@ builder.Services.AddAuthentication(options =>
         {
             OnTokenValidated = context =>
             {
-                if (context.Principal?.HasClaim(RemoteOsAuthSchemes.TokenTypeClaim, RemoteOsAuthSchemes.FileCapabilityTokenType) != true)
+                if (context.Principal?.HasClaim(RelaxKonOSAuthSchemes.TokenTypeClaim, RelaxKonOSAuthSchemes.FileCapabilityTokenType) != true)
                     context.Fail("This endpoint requires a file capability token.");
                 return Task.CompletedTask;
             },
@@ -288,11 +288,11 @@ builder.Services.AddAuthorization(options =>
     {
         var requiredScope = RelaxKonOS.Server.Files.FileAuthorizationPolicies.ScopeForPolicy(policyName);
         options.AddPolicy(policyName, policy => policy
-            .AddAuthenticationSchemes(RemoteOsAuthSchemes.User, RemoteOsAuthSchemes.FileCapability)
+            .AddAuthenticationSchemes(RelaxKonOSAuthSchemes.User, RelaxKonOSAuthSchemes.FileCapability)
             .RequireAuthenticatedUser()
             .RequireAssertion(context =>
-                !context.User.HasClaim(RemoteOsAuthSchemes.TokenTypeClaim, RemoteOsAuthSchemes.FileCapabilityTokenType)
-                || context.User.HasClaim(RemoteOsAuthSchemes.ScopeClaim, requiredScope)));
+                !context.User.HasClaim(RelaxKonOSAuthSchemes.TokenTypeClaim, RelaxKonOSAuthSchemes.FileCapabilityTokenType)
+                || context.User.HasClaim(RelaxKonOSAuthSchemes.ScopeClaim, requiredScope)));
     }
     // JwtBearer may map the standard role claim to ClaimTypes.Role depending on the host's
     // inbound-claim mapping setting. Accept either representation, but never a client app id.
@@ -438,10 +438,10 @@ if (storageProvider == "sqlite")
     var dbDir = Path.GetDirectoryName(dbPath);
     if (!string.IsNullOrEmpty(dbDir))
         Directory.CreateDirectory(dbDir);
-    // AddDbContextFactory: 注册 IDbContextFactory<RemoteOsDbContext>（Singleton）供 Singleton 消费者
-    // （如 LocalGitRepositoryService）按操作创建短生命周期 DbContext；同时保留 RemoteOsDbContext 为
+    // AddDbContextFactory: 注册 IDbContextFactory<RelaxKonOSDbContext>（Singleton）供 Singleton 消费者
+    // （如 LocalGitRepositoryService）按操作创建短生命周期 DbContext；同时保留 RelaxKonOSDbContext 为
     // Scoped，使既有 Scoped 仓储（SqliteUserRepository 等）直接注入不变。
-    builder.Services.AddDbContextFactory<RemoteOsDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
+    builder.Services.AddDbContextFactory<RelaxKonOSDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
     // 仓储为 Scoped（依赖 Scoped 的 DbContext）；Minimal API [FromServices] 每请求创建 scope，兼容
     builder.Services.AddScoped<IUserRepository, SqliteUserRepository>();
     builder.Services.AddScoped<IAuthenticationProtectionStore, SqliteAuthenticationProtectionStore>();
@@ -529,7 +529,7 @@ app.Use(async (context, next) =>
 if (storageProvider == "sqlite")
 {
     using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<RemoteOsDbContext>();
+    var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
     db.Database.EnsureCreated();
 
     // 增量补齐：仅当表不存在时创建（与 EF Core 模型一致，索引/列类型对齐 OnModelCreating）。
@@ -723,7 +723,7 @@ app.MapProxyEndpoints();
 if (OperatingSystem.IsLinux())
     app.MapFirewallEndpoints();
 app.MapHub<TerminalHub>("/hubs/terminals");
-app.MapHub<GuardianLogsHub>(RemoteOsEndpoints.GuardianLogsHubPath);
-app.MapHub<PerformanceHub>(RemoteOsEndpoints.PerformanceHubPath);
+app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath);
+app.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath);
 
 app.Run();

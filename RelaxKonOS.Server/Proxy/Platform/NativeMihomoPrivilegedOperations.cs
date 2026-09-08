@@ -17,7 +17,7 @@ public sealed class NativeMihomoPrivilegedOperations(
     IProxyDiagnosticLogStore? diagnostics = null) : IProxyPrivilegedOperations
 {
     private const string Engine = Mihomo.MihomoEngine.Id;
-    private const string Service = "remoteos-mihomo";
+    private const string Service = "relaxkonos-mihomo";
     private const string ConfigId = "mihomo-default";
     private const string ActiveLink = "current";
 

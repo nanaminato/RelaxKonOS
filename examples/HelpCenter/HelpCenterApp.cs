@@ -14,7 +14,7 @@ public sealed class HelpCenterApp : IExternalRemoteApplication, IExternalAppActi
     private IExternalAppWindowHandle? _window;
 
     public ApplicationManifest Manifest { get; } = new(
-        new AppId("com.remoteos.example.help-center"),
+        new AppId("com.relaxkonos.example.help-center"),
         "Help Center",
         "0.1.0-dev",
         "❔",

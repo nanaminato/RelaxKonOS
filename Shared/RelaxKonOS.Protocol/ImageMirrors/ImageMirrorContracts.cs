@@ -19,7 +19,7 @@ public sealed record SelectImageMirrorRequest(Guid? MirrorId);
 
 public static class ImageMirrorApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Target = $"/{V1}/image-mirrors/{{target}}";
     public const string Mirror = $"/{V1}/image-mirrors/{{target}}/{{id}}";
     public const string Selection = $"/{V1}/image-mirrors/{{target}}/selection";

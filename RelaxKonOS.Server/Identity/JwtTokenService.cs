@@ -81,10 +81,10 @@ public sealed class JwtTokenService
             new("workspace_id", workspaceId.ToString()),
             new("device_id", deviceId.ToString()),
             new("app_id", appId),
-            new(RemoteOsAuthSchemes.TokenTypeClaim, RemoteOsAuthSchemes.FileCapabilityTokenType),
+            new(RelaxKonOSAuthSchemes.TokenTypeClaim, RelaxKonOSAuthSchemes.FileCapabilityTokenType),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
-        claims.AddRange(scopes.Distinct(StringComparer.Ordinal).Select(scope => new Claim(RemoteOsAuthSchemes.ScopeClaim, scope)));
+        claims.AddRange(scopes.Distinct(StringComparer.Ordinal).Select(scope => new Claim(RelaxKonOSAuthSchemes.ScopeClaim, scope)));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_opt.Secret));
         var token = new JwtSecurityToken(

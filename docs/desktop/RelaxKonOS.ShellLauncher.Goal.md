@@ -98,7 +98,7 @@ MainWindow（宿主窗口控制、连接栏、退出）
 public enum ShellSourceKind { BuiltIn, ExternalPackage }
 
 public sealed record ShellDescriptor(
-    string Id,                 // 例：remoteos.windows-like；外部：com.example.shell
+    string Id,                 // 例：relaxkonos.windows-like；外部：com.example.shell
     string DisplayName,
     string Version,
     ShellSourceKind Source,
@@ -124,7 +124,7 @@ public interface IShellCatalog
 }
 ```
 
-内置 ID 使用稳定命名空间：`remoteos.windows-like`、`remoteos.macos-like`、`remoteos.ubuntu-like`。Windows 风格为默认值；读取已移除的 `remoteos`、`remoteos.default` 以及旧值 `windows-like`、`macos-like`、`ubuntu-like` 时在客户端归一化到对应的新 ID；服务端在迁移期同时接受旧值，写回时只写新值。
+内置 ID 使用稳定命名空间：`relaxkonos.windows-like`、`relaxkonos.macos-like`、`relaxkonos.ubuntu-like`。Windows 风格为默认值；读取已移除的 `relaxkonos`、`relaxkonos.default` 以及旧值 `windows-like`、`macos-like`、`ubuntu-like` 时在客户端归一化到对应的新 ID；服务端在迁移期同时接受旧值，写回时只写新值。
 
 ### 3.2 Shell 运行时接口
 
@@ -207,7 +207,7 @@ public interface IShellActions
   → 停止并释放旧 Shell
 ```
 
-在上述任一步失败时：移除候选视图、释放候选、重新挂回旧 surface；如果旧 surface 已不可用则启动 `remoteos.windows-like`。切换期间应显示宿主级不可交互遮罩，且不得关闭、最小化或重建现有 `ManagedWindow`。
+在上述任一步失败时：移除候选视图、释放候选、重新挂回旧 surface；如果旧 surface 已不可用则启动 `relaxkonos.windows-like`。切换期间应显示宿主级不可交互遮罩，且不得关闭、最小化或重建现有 `ManagedWindow`。
 
 `IShellSurfaceRegistry.UpdateWorkArea` 在布局变化（窗口 resize、任务栏自动隐藏、Dock 位置变动）后节流到 UI tick 调用；运行时把矩形转给 `IWindowManager.SetHostBounds`。全屏应用仍使用 `FullScreenWindowHost` 覆盖整个 Shell，不受普通工作区约束。
 
@@ -289,7 +289,7 @@ public interface IDesktopShellFactory
 - 应用安装程序先验证并登记软件包；`ShellCatalog` 再解析 manifest，检查桌面包类型、ID 格式、API 版本和能力组合，不执行程序集即可列出不可用原因。
 - 只有用户选择该 Shell 时才加载程序集和创建实例。初始化超时、抛异常或未登记有效 surfaces 时，记录诊断，拒绝激活，并回退到当前 Shell。
 - `DeactivateAsync` / `DisposeAsync` 失败不得阻塞回退。`AssemblyLoadContext` 在没有可达对象时卸载；若无法卸载，标记“需重启才能完成卸载”，不能破坏当前桌面。
-- 切换中的外部 Shell 崩溃必须保留现有应用窗口；运行时立即回退到 `remoteos.windows-like` 并向用户显示可复制的诊断 ID。
+- 切换中的外部 Shell 崩溃必须保留现有应用窗口；运行时立即回退到 `relaxkonos.windows-like` 并向用户显示可复制的诊断 ID。
 - 外部 Shell 无权添加应用、读取 Token、调用网络或访问 VSD；任何将来要开放的能力必须以独立、可授权接口加入，不通过 `IServiceProvider` 旁路。
 
 ### 5.3 偏好同步规则
@@ -306,7 +306,7 @@ public sealed record ShellSelectionDto(
 `WorkspacePreferencesDto.Shell` 为跨设备的**意图**；本机 `ShellPreferenceStore` 保存最后一次可成功激活的选择和包解析结果。登录时：
 
 1. 读取 Workspace 选择；本机有兼容包则激活它。
-2. 包不存在、版本/API 不兼容或被禁用时，激活 `remoteos.windows-like`，但不覆盖服务端选择。
+2. 包不存在、版本/API 不兼容或被禁用时，激活 `relaxkonos.windows-like`，但不覆盖服务端选择。
 3. 在设置页显示“此设备未安装/不可用”，提供安装或切换到已安装 Shell 的入口。
 4. 用户主动选择另一个 Shell 后才更新 Workspace 偏好；不要用设备回退结果覆盖其他设备的偏好。
 

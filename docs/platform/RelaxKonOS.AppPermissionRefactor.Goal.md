@@ -48,7 +48,7 @@
 | `ApplicationManifest.RequestedPermissions` | 保持为“声明需求”，不是 Grant。 |
 | `JsonAppPermissionManager` 和权限 UI | 迁为统一评估器的本地 Grant/Explicit Deny 存储适配层；旧授权文件不迁移。 |
 | `ExternalAppContextFactory` / SDK | 继续作为外置包的推荐能力入口，逐步接入统一评估器。 |
-| 内置 App 的 `remoteos.*` ID | 作为 BuiltIn Policy 的键；不因命名空间直接得到全权限。 |
+| 内置 App 的 `relaxkonos.*` ID | 作为 BuiltIn Policy 的键；不因命名空间直接得到全权限。 |
 | `IHostElevationSessionStore` / Privileged Helper | 保持独立；不合并进 App Permission Store。 |
 
 当前 `AppCapabilityEndpoints` 是用户 JWT 下的过渡产品接口。新模型可以替换其 App capability 调用方式，不为旧包保留兼容分支；它也不得被扩展为“Server 可信地识别第三方 App”的机制或高风险能力入口。

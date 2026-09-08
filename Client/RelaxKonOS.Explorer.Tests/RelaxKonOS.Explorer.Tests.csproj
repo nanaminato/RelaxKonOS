@@ -15,7 +15,7 @@
     <Compile Include="../RelaxKonOS.Client/Apps/Explorer/IExplorerClient.cs" Link="IExplorerClient.cs" />
     <Compile Include="../RelaxKonOS.Client/Apps/Explorer/RemoteFileClipboard.cs" Link="RemoteFileClipboard.cs" />
     <Compile Include="../RelaxKonOS.Client/Apps/Explorer/ExplorerPickerOptions.cs" Link="ExplorerPickerOptions.cs" />
-    <Compile Include="../RelaxKonOS.Client/Services/Auth/RemoteOsAuthException.cs" Link="RemoteOsAuthException.cs" />
+    <Compile Include="../RelaxKonOS.Client/Services/Auth/RelaxKonOSAuthException.cs" Link="RelaxKonOSAuthException.cs" />
     <Compile Include="../RelaxKonOS.Client/Services/Privileged/PrivilegedHelperProblemText.cs" Link="PrivilegedHelperProblemText.cs" />
   </ItemGroup>
 </Project>

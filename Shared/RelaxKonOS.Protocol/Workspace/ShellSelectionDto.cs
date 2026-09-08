@@ -9,7 +9,7 @@ namespace RelaxKonOS.Protocol.Workspace;
 public sealed record ShellSelectionDto
 {
     [JsonPropertyName("shellId")]
-    public string ShellId { get; set; } = "remoteos.windows-like";
+    public string ShellId { get; set; } = "relaxkonos.windows-like";
 
     [JsonPropertyName("packageId")]
     public string? PackageId { get; set; }

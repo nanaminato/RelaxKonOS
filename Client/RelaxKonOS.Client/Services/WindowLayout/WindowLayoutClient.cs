@@ -19,11 +19,11 @@ public sealed class WindowLayoutClient(HttpClient http) : IWindowLayoutClient
         using var request = new HttpRequestMessage(method, new Uri(new Uri(serverUrl), route.TrimStart('/')))
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", accessToken) },
-            Content = body is null ? null : JsonContent.Create(body, options: RemoteOsJsonOptions.Default),
+            Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default),
         };
         using var response = await http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, ct)
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
             ?? throw new InvalidOperationException("The server returned an empty window-layout response.");
     }
 }

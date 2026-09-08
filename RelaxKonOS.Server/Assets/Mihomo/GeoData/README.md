@@ -13,7 +13,7 @@
 托管运行时启动或校验配置文件前，文件会复制到私有 Mihomo 数据目录：
 
 - Windows：`%ProgramData%\RelaxKonOS\Proxy\engines\mihomo\data`
-- Linux：`/var/lib/remoteos/proxy/engines/mihomo/data`
+- Linux：`/var/lib/relaxkonos/proxy/engines/mihomo/data`
 
 `MihomoManagedConfiguration` 会移除配置文件提供的 GEO 下载设置，并追加 `geodata-mode: false` 与 `geo-auto-update: false`。因此，`geoip.metadb` 用于 `GEOIP` 规则，`geosite.dat` 可用于 `GEOSITE` 规则，无需首次运行下载。其余文件提供 DAT 模式兼容性、国家 MMDB 查询和 ASN 规则支持。管理员选择的 Server 本地 `geoip.metadb` 仍是显式覆盖；未设置时使用内置版本。
 

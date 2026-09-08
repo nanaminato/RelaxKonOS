@@ -52,7 +52,7 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session) : 
     private async Task<TunnelOperationResultDto> SendOperationAsync(HttpMethod method, string path, object? payload, CancellationToken ct)
     {
         using var response = await SendRawAsync(method, path, payload, ct);
-        var result = await response.Content.ReadFromJsonAsync<TunnelOperationResultDto>(RemoteOsJsonOptions.Default, ct);
+        var result = await response.Content.ReadFromJsonAsync<TunnelOperationResultDto>(RelaxKonOSJsonOptions.Default, ct);
         if (result is not null) return result;
         await EnsureSuccessAsync(response, ct);
         throw new HttpRequestException("Tunnel operation response was empty.");
@@ -65,7 +65,7 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session) : 
     {
         using var response = await SendRawAsync(method, path, payload, ct);
         await EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, ct);
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct);
     }
     private async Task SendNoContentAsync(HttpMethod method, string path, object? payload = null, CancellationToken ct = default)
     {
@@ -77,7 +77,7 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session) : 
         if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null)
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), path.TrimStart('/')));
-        if (payload is not null) request.Content = JsonContent.Create(payload, options: RemoteOsJsonOptions.Default);
+        if (payload is not null) request.Content = JsonContent.Create(payload, options: RelaxKonOSJsonOptions.Default);
         return await http.SendAsync(request, ct);
     }
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
@@ -85,7 +85,7 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session) : 
         if (response.IsSuccessStatusCode) return;
         try
         {
-            var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(RemoteOsJsonOptions.Default, ct);
+            var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(RelaxKonOSJsonOptions.Default, ct);
             if (!string.IsNullOrWhiteSpace(problem?.Title)) throw new TunnelRequestException(problem.Title);
         }
         catch (TunnelRequestException) { throw; }

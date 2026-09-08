@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.PortForwarding;
 public sealed class PortForwardingApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.port-forwarding"),
+        Id: new AppId("relaxkonos.port-forwarding"),
         DisplayName: "Port Forwarding",
         Version: "1.0.0",
         IconGlyph: "↔",
@@ -24,7 +24,7 @@ public sealed class PortForwardingApp : RemoteApplicationBase
     {
         var viewModel = new PortForwardingViewModel(context.Services.GetRequiredService<IPortForwardingService>());
         var view = new PortForwardingMainView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.port-forwarding.display_name"), view,
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.port-forwarding.display_name"), view,
             bounds: new Rect(160, 100, 760, 650), iconGlyph: Manifest.IconGlyph);
         viewModel.ShowForwardEditorAsync = async forward =>
         {

@@ -128,12 +128,12 @@ AllowEverything
 以下应用即使由 RelaxKonOS 官方开发，也必须拥有独立身份：
 
 ```text
-remoteos.files
-remoteos.git
-remoteos.terminal
-remoteos.docker
-remoteos.nginx
-remoteos.certificates
+relaxkonos.files
+relaxkonos.git
+relaxkonos.terminal
+relaxkonos.docker
+relaxkonos.nginx
+relaxkonos.certificates
 ```
 
 它们必须：
@@ -164,7 +164,7 @@ User Prompt
 例如：
 
 ```text
-remoteos.files
+relaxkonos.files
 filesystem.read
 ```
 
@@ -304,7 +304,7 @@ Built-in Registry
 例如：
 
 ```text
-remoteos.files
+relaxkonos.files
 +
 RelaxKonOS 官方签名
 +
@@ -318,7 +318,7 @@ BuiltIn
 第三方伪造：
 
 ```text
-id = remoteos.files
+id = relaxkonos.files
 ```
 
 但签名不匹配时：
@@ -349,9 +349,9 @@ Manifest 不负责授权。
 
 ```json
 {
-  "id": "remoteos.files",
+  "id": "relaxkonos.files",
   "name": "Files",
-  "publisher": "remoteos",
+  "publisher": "relaxkonos",
   "version": "1.0.0",
 
   "capabilities": [
@@ -488,7 +488,7 @@ public sealed record PermissionScope(
 
 ```text
 Type: Path
-Value: /home/user/projects/remoteos
+Value: /home/user/projects/relaxkonos
 ```
 
 未来可扩展：
@@ -537,7 +537,7 @@ public enum GrantSource
 
 ```text
 App:
-remoteos.files
+relaxkonos.files
 
 Capability:
 filesystem.read
@@ -587,7 +587,7 @@ RelaxKonOS 愿意默认给什么
 
 ```json
 {
-  "remoteos.files": {
+  "relaxkonos.files": {
     "filesystem.read": "allow",
     "filesystem.write": "allow",
     "filesystem.delete": "allow",
@@ -628,7 +628,7 @@ public enum DefaultPermissionPolicy
 例如：
 
 ```text
-remoteos.files
+relaxkonos.files
 filesystem.read
 → Allow
 ```
@@ -642,7 +642,7 @@ filesystem.read
 例如：
 
 ```text
-remoteos.git
+relaxkonos.git
 credential.read
 → Prompt
 ```
@@ -656,7 +656,7 @@ credential.read
 例如：
 
 ```text
-remoteos.files
+relaxkonos.files
 credential.read
 → Deny
 ```
@@ -714,14 +714,14 @@ Prompt
 官方文件浏览器：
 
 ```text
-remoteos.files
+relaxkonos.files
 ```
 
 Manifest：
 
 ```json
 {
-  "id": "remoteos.files",
+  "id": "relaxkonos.files",
   "capabilities": [
     "filesystem.read",
     "filesystem.write",
@@ -788,7 +788,7 @@ Operating System Privilege
 例如：
 
 ```text
-remoteos.files
+relaxkonos.files
 filesystem.write = Allow
 ```
 
@@ -1133,7 +1133,7 @@ Git App 建议声明：
 
 ```json
 {
-  "id": "remoteos.git",
+  "id": "relaxkonos.git",
 
   "capabilities": [
     "git.repository.read",
@@ -1256,7 +1256,7 @@ Git App 不应该读取：
 
 ```text
 database/*
-remoteos/*
+relaxkonos/*
 system/*
 ```
 
@@ -1513,7 +1513,7 @@ AppId
 
 ```json
 {
-  "appId": "remoteos.files"
+  "appId": "relaxkonos.files"
 }
 ```
 
@@ -1709,7 +1709,7 @@ Reason
 例如：
 
 ```text
-remoteos.files
+relaxkonos.files
 network
 *
 DENY
@@ -1846,10 +1846,10 @@ manifest
 例如：
 
 ```text
-remoteos.files
-remoteos.git
-remoteos.docker
-remoteos.nginx
+relaxkonos.files
+relaxkonos.git
+relaxkonos.docker
+relaxkonos.nginx
 ```
 
 但仍可保持原有服务调用。

@@ -37,7 +37,7 @@
 - [x] 类型列显示扩展名类型（例如 TXT 文件），与类型排序一致；列标题显示当前排序方向。
 - [x] 排序使用集合移动，保留逻辑选择；改变筛选条件仍会清除选择。真实 DataGrid 选择显示待桌面验收。
 - [x] “更多操作 → 设为默认视图”：使用现有 AppSettings API，保存排序字段、方向、隐藏项、紧凑视图；普通新窗口读取，不改变已经打开的其他窗口和文件选择器默认值。
-- [x] 默认视图持久化契约：appId=`remoteos.explorer`，scope=`workspace`，key=`view`，schemaVersion=1；字段为 `SortField`、`SortDescending`、`ShowHiddenFiles`、`IsCompactView`。保存带 `expectedRevision`，并发冲突显示失败而不自动覆盖；重新打开窗口读取最新版本后可再次保存。
+- [x] 默认视图持久化契约：appId=`relaxkonos.explorer`，scope=`workspace`，key=`view`，schemaVersion=1；字段为 `SortField`、`SortDescending`、`ShowHiddenFiles`、`IsCompactView`。保存带 `expectedRevision`，并发冲突显示失败而不自动覆盖；重新打开窗口读取最新版本后可再次保存。
 - [x] 设置读取最多等待 5 秒；读取失败仍打开文件浏览器并显示原因；未知 schema 不覆盖，未知排序枚举回退名称排序。
 - [x] 新增英文、中文、日文排序、默认视图与扩展名类型资源。
 

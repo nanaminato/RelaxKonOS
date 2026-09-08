@@ -28,7 +28,7 @@ public sealed class BuiltInDescriptorSeeder
             {
                 var directory = _drive.ResolveUnder(_drive.BuiltInProgramsDirectory, definition.AppId.Value);
                 Directory.CreateDirectory(directory);
-                var path = _drive.ResolveUnder(directory, "app.remoteos.json");
+                var path = _drive.ResolveUnder(directory, "app.relaxkonos.json");
                 var expected = ToDescriptor(definition);
                 var mustReplace = true;
                 try

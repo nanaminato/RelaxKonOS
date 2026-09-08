@@ -21,7 +21,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
     private static readonly SemaphoreSlim Opening = new(1, 1);
 
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.terminal"),
+        Id: new AppId("relaxkonos.terminal"),
         DisplayName: "Terminal",
         Version: "1.0.0",
         IconGlyph: "🖥",
@@ -132,7 +132,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         {
             DataContext = viewModel,
         };
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.terminal.display_name"), view,
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.terminal.display_name"), view,
             bounds: new Rect(120, 80, 820, 540),
             iconGlyph: Manifest.IconGlyph);
         viewModel.RequestSettingsAsync = async () =>

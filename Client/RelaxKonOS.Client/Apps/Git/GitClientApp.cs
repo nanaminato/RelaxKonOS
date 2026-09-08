@@ -20,7 +20,7 @@ namespace RelaxKonOS.Client.Apps.Git;
 public sealed class GitClientApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
-        new AppId("remoteos.git"), "Git Client", "0.2.0", "\U0001f33f",
+        new AppId("relaxkonos.git"), "Git Client", "0.2.0", "\U0001f33f",
         "Manage Git repositories on the RelaxKonOS Server",
         [AppPermissions.ServerGitRead, AppPermissions.ServerGitManage],
         InstancePolicy: ApplicationInstancePolicy.MultiWindow);
@@ -31,7 +31,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         var client = context.Services.GetService(typeof(IRemoteGitClient)) as IRemoteGitClient;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.remoteos.git.display_name"),
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
                 new GitLoginRequiredView(),
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
@@ -84,7 +84,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         vm.ShowRemoteBranchPickerDialogAsync = (owner, remote, branch) => GitClientDialogs.ShowRemoteBranchPickerDialogAsync(context, owner ?? window!, remote, branch, vm);
 
         var view = GitClientWorkspace.Create(vm);
-        window = context.ShowWindow(LocalizedText.Get("application.remoteos.git.display_name"),
+        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
             view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         _ = vm.StartAsync();

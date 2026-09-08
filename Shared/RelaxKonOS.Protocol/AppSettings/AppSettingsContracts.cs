@@ -14,7 +14,7 @@ public enum AppSettingsScope
 /// <summary>Routes for application-private, server-persisted configuration documents.</summary>
 public static class AppSettingsApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
 
     /// <summary>GET/PUT one configuration document. App id, scope, and key are path parameters.</summary>
     public const string Document = $"/{V1}/app-settings/{{appId}}/{{scope}}/{{key}}";

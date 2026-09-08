@@ -6,7 +6,7 @@ namespace RelaxKonOS.Protocol.Browser;
 /// 所有端点需 JWT（[Authorize]），按 JWT sub claim 限定到当前用户。错误统一返回 RFC 7807 ProblemDetails。</summary>
 public static class BrowserApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
 
     /// <summary>Read or persist browser preferences for the authenticated user's workspace.</summary>
     public const string Settings = $"/{V1}/browser/settings";

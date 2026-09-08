@@ -20,7 +20,7 @@ public sealed partial class FileHttp01ChallengeStore : IHttp01ChallengeStore
         _usesDefaultRoot = string.IsNullOrWhiteSpace(options.ChallengeRoot);
         _root = Path.GetFullPath(options.ChallengeRoot ?? (OperatingSystem.IsWindows()
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "acme-challenge")
-            : "/var/lib/remoteos/acme-challenge"));
+            : "/var/lib/relaxkonos/acme-challenge"));
     }
 
     /// <summary>Filesystem root Nginx must expose for WebRoot HTTP-01 validation.</summary>

@@ -6,7 +6,7 @@ namespace RelaxKonOS.Protocol.SystemMonitor;
 /// 所有端点需 JWT（[Authorize]）。错误统一返回 RFC 7807 ProblemDetails。</summary>
 public static class SystemMonitorApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
 
     /// <summary>获取低频系统性能信息与能力（GET，需 JWT）。</summary>
     public const string PerformanceInfo = $"/{V1}/system/performance/info";

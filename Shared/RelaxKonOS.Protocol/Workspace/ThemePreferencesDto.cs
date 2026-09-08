@@ -5,9 +5,9 @@ namespace RelaxKonOS.Protocol.Workspace;
 /// <summary>Workspace-synchronised theme choice. Palettes are data only; no AXAML is accepted.</summary>
 public sealed record ThemePreferencesDto
 {
-    public const string DefaultPaletteId = "builtin:remoteos-blue";
+    public const string DefaultPaletteId = "builtin:relaxkonos-blue";
 
-    [JsonPropertyName("styleId")] public string StyleId { get; set; } = "remoteos";
+    [JsonPropertyName("styleId")] public string StyleId { get; set; } = "relaxkonos";
     [JsonPropertyName("paletteId")] public string PaletteId { get; set; } = DefaultPaletteId;
     [JsonPropertyName("accentOverride")] public string? AccentOverride { get; set; }
     [JsonPropertyName("customPalettes")] public List<ThemePaletteDto> CustomPalettes { get; set; } = [];

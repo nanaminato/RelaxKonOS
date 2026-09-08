@@ -14,29 +14,29 @@ internal sealed record GuardianAgentOptions(
     public static GuardianAgentOptions Load(string[] args)
     {
         var config = LoadMachineConfiguration(args);
-        var dataDirectory = Environment.GetEnvironmentVariable("REMOTEOS_GUARDIAN_DATA_DIR")
+        var dataDirectory = Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_DATA_DIR")
             ?? config.DataDirectory
             ?? Path.Combine(AppContext.BaseDirectory, "data");
         var monitor = config.ProtectedServerMonitor ?? new ProtectedServerMonitorOptions();
         monitor = monitor with
         {
-            ServiceName = Environment.GetEnvironmentVariable("REMOTEOS_GUARDIAN_SERVER_SERVICE") ?? monitor.ServiceName,
-            HealthUrl = Environment.GetEnvironmentVariable("REMOTEOS_GUARDIAN_SERVER_HEALTH_URL") ?? monitor.HealthUrl,
+            ServiceName = Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_SERVER_SERVICE") ?? monitor.ServiceName,
+            HealthUrl = Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_SERVER_HEALTH_URL") ?? monitor.HealthUrl,
         };
         return new GuardianAgentOptions(
-            Environment.GetEnvironmentVariable("REMOTEOS_GUARDIAN_PIPE") ?? config.PipeName ?? "remoteos-guardian",
-            Environment.GetEnvironmentVariable("REMOTEOS_GUARDIAN_SHARED_SECRET") ?? config.SharedSecret ?? string.Empty,
+            Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_PIPE") ?? config.PipeName ?? "relaxkonos-guardian",
+            Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_SHARED_SECRET") ?? config.SharedSecret ?? string.Empty,
             dataDirectory, monitor);
     }
 
     private static GuardianMachineConfiguration LoadMachineConfiguration(string[] args)
     {
-        var configuredPath = TryGetArgument(args, "--config") ?? Environment.GetEnvironmentVariable("REMOTEOS_GUARDIAN_CONFIG");
+        var configuredPath = TryGetArgument(args, "--config") ?? Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_CONFIG");
         var path = configuredPath ?? Path.Combine(AppContext.BaseDirectory, "guardian.json");
         if (!File.Exists(path)) return new GuardianMachineConfiguration();
         try
         {
-            return JsonSerializer.Deserialize<GuardianMachineConfiguration>(File.ReadAllText(path), RemoteOsJsonOptions.Default)
+            return JsonSerializer.Deserialize<GuardianMachineConfiguration>(File.ReadAllText(path), RelaxKonOSJsonOptions.Default)
                    ?? new GuardianMachineConfiguration();
         }
         catch (JsonException exception)

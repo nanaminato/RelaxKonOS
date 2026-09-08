@@ -4,7 +4,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 
 /// <summary>RelaxKonOS Server 文件管理 HTTP 客户端抽象。typed HttpClient 实现（见 <see cref="ExplorerClient"/>）。
 /// 所有方法从 <c>IAuthSession</c> 取 <c>serverUrl</c> + <c>accessToken</c> 构造绝对 URI 与 Authorization 头。
-/// 路由常量见 <see cref="FileApiRoutes"/>。错误统一为 <see cref="RemoteOsAuthException"/>（含 ProblemDetails）。</summary>
+/// 路由常量见 <see cref="FileApiRoutes"/>。错误统一为 <see cref="RelaxKonOSAuthException"/>（含 ProblemDetails）。</summary>
 public interface IExplorerClient
 {
     Task<FileOperationDto> StartOperationAsync(StartFileOperationRequest request, CancellationToken ct = default);

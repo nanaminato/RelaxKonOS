@@ -2,7 +2,7 @@
 
 ## 定位与范围
 
-`remoteos.port-forwarding` 是 RelaxKonOS 的第一方客户端应用，用于为监听在 RelaxKonOS Server 环回接口上的服务创建本地 SSH 转发。当请求 `localhost:7000` 时，会生成客户端托管的 URL，如 `http://localhost:7000`；若该端口被占用，则搜索下一个可用的环回端口并返回实际的有效 URL。
+`relaxkonos.port-forwarding` 是 RelaxKonOS 的第一方客户端应用，用于为监听在 RelaxKonOS Server 环回接口上的服务创建本地 SSH 转发。当请求 `localhost:7000` 时，会生成客户端托管的 URL，如 `http://localhost:7000`；若该端口被占用，则搜索下一个可用的环回端口并返回实际的有效 URL。
 
 ## 边界与安全模型
 

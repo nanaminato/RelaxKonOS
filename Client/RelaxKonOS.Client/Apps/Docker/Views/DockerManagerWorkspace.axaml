@@ -39,7 +39,7 @@
                     <TextBlock Text="🐳" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="{loc:Loc application.remoteos.docker.display_name}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc application.relaxkonos.docker.display_name}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                     <TextBlock Text="{loc:Loc docker.subtitle}" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
                 </StackPanel>
                 <Button Grid.Column="2"

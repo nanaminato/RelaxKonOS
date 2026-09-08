@@ -72,7 +72,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
     public bool HasActionStatus => !string.IsNullOrWhiteSpace(ActionStatus);
     public bool CanUninstallSelectedApp => !IsUninstalling && SelectedApp is not null
         && _packages.FindInstalled(SelectedApp.Id.Value) is not null;
-    public bool IsBrowserSettingsVisible => SelectedApp?.Id.Value == "remoteos.browser";
+    public bool IsBrowserSettingsVisible => SelectedApp?.Id.Value == "relaxkonos.browser";
     public bool OpenBrowserLinksInBuiltInBrowser
     {
         get => BrowserLinkOpenTarget == BrowserLinkOpenTarget.BuiltInBrowser;

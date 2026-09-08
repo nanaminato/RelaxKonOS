@@ -9,7 +9,7 @@ namespace RelaxKonOS.Client.Services.WorkspaceSettings;
 
 /// <summary><see cref="IWorkspaceSettingsService"/> 的 typed HttpClient 实现。
 /// 不 mutate <c>HttpClient.BaseAddress</c>，每个请求用绝对 URI（避免共享实例并发竞态）。
-/// 失败读 ProblemDetails 抛 <see cref="RemoteOsAuthException"/>（与 BrowserClient/ExplorerClient 同源）。</summary>
+/// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>（与 BrowserClient/ExplorerClient 同源）。</summary>
 public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
 {
     private readonly HttpClient _http;
@@ -43,26 +43,26 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", accessToken) },
         };
         if (body is not null)
-            req.Content = JsonContent.Create(body, options: RemoteOsJsonOptions.Default);
+            req.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var resp = await _http.SendAsync(req, ct);
         if (!resp.IsSuccessStatusCode)
             await EnsureSuccessAsync(resp, ct);
-        return await resp.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, ct)
-            ?? throw new RemoteOsAuthException(NoBodyProblem());
+        return await resp.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         ProblemDetails? problem = null;
-        try { problem = await resp.Content.ReadFromJsonAsync<ProblemDetails>(RemoteOsJsonOptions.Default, ct); }
+        try { problem = await resp.Content.ReadFromJsonAsync<ProblemDetails>(RelaxKonOSJsonOptions.Default, ct); }
         catch { /* 非 JSON 错误体回退通用错误 */ }
         throw problem is null
-            ? new RemoteOsAuthException(new ProblemDetails(
-                "https://remoteos.app/problems/http-error", $"HTTP {(int)resp.StatusCode}",
+            ? new RelaxKonOSAuthException(new ProblemDetails(
+                "https://relaxkonos.app/problems/http-error", $"HTTP {(int)resp.StatusCode}",
                 (int)resp.StatusCode, resp.ReasonPhrase, null))
-            : new RemoteOsAuthException(problem);
+            : new RelaxKonOSAuthException(problem);
     }
 
     private static ProblemDetails NoBodyProblem()
-        => new("https://remoteos.app/problems/empty-response", LocalizedText.Get("common.error.empty_response_title"), 500, LocalizedText.Get("common.error.empty_response_detail"), null);
+        => new("https://relaxkonos.app/problems/empty-response", LocalizedText.Get("common.error.empty_response_title"), 500, LocalizedText.Get("common.error.empty_response_detail"), null);
 }

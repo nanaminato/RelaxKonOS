@@ -11,7 +11,7 @@ namespace RelaxKonOS.Server.ConfigurationRegistry;
 /// The configuration registry's authoritative runtime copy. Reads and mutations are served
 /// from memory; SQLite is a durable, delayed write-behind copy used for restart recovery.
 /// </summary>
-public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RemoteOsDbContext> dbFactory) : IRegistryRepository, IHostedService
+public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RelaxKonOSDbContext> dbFactory) : IRegistryRepository, IHostedService
 {
     private static readonly TimeSpan FlushInterval = TimeSpan.FromSeconds(5);
     private readonly object _gate = new();

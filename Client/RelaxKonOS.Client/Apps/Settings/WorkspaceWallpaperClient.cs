@@ -24,13 +24,13 @@ public sealed class WorkspaceWallpaperClient(HttpClient http) : IWallpaperClient
         await EnsureSuccessAsync(response, ct);
         try
         {
-            return await response.Content.ReadFromJsonAsync<WorkspacePreferencesDto>(RemoteOsJsonOptions.Default, ct)
-                ?? throw new RemoteOsAuthException(EmptyResponse());
+            return await response.Content.ReadFromJsonAsync<WorkspacePreferencesDto>(RelaxKonOSJsonOptions.Default, ct)
+                ?? throw new RelaxKonOSAuthException(EmptyResponse());
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or NotSupportedException)
         {
-            throw new RemoteOsAuthException(new ProblemDetails(
-                "https://remoteos.app/problems/invalid-response",
+            throw new RelaxKonOSAuthException(new ProblemDetails(
+                "https://relaxkonos.app/problems/invalid-response",
                 "Invalid server response",
                 502,
                 "The server returned invalid wallpaper preferences.",
@@ -64,17 +64,17 @@ public sealed class WorkspaceWallpaperClient(HttpClient http) : IWallpaperClient
         {
             try
             {
-                var problem = JsonSerializer.Deserialize<ProblemDetails>(body, RemoteOsJsonOptions.Default);
+                var problem = JsonSerializer.Deserialize<ProblemDetails>(body, RelaxKonOSJsonOptions.Default);
                 if (problem is not null && (!string.IsNullOrWhiteSpace(problem.Title) || !string.IsNullOrWhiteSpace(problem.Detail)))
-                    throw new RemoteOsAuthException(problem);
+                    throw new RelaxKonOSAuthException(problem);
 
                 using var document = JsonDocument.Parse(body);
                 if (document.RootElement.TryGetProperty("message", out var message)
                     && message.ValueKind == JsonValueKind.String
                     && !string.IsNullOrWhiteSpace(message.GetString()))
                 {
-                    throw new RemoteOsAuthException(new ProblemDetails(
-                        "https://remoteos.app/problems/wallpaper-upload-failed",
+                    throw new RelaxKonOSAuthException(new ProblemDetails(
+                        "https://relaxkonos.app/problems/wallpaper-upload-failed",
                         "Wallpaper upload failed",
                         (int)response.StatusCode,
                         message.GetString(),
@@ -87,10 +87,10 @@ public sealed class WorkspaceWallpaperClient(HttpClient http) : IWallpaperClient
             }
         }
 
-        throw new RemoteOsAuthException(new ProblemDetails("https://remoteos.app/problems/http-error",
+        throw new RelaxKonOSAuthException(new ProblemDetails("https://relaxkonos.app/problems/http-error",
             $"HTTP {(int)response.StatusCode}", (int)response.StatusCode, response.ReasonPhrase, null));
     }
 
-    private static ProblemDetails EmptyResponse() => new("https://remoteos.app/problems/empty-response",
+    private static ProblemDetails EmptyResponse() => new("https://relaxkonos.app/problems/empty-response",
         "Empty response", 500, "The server did not return wallpaper preferences.", null);
 }

@@ -19,7 +19,7 @@
         "common.error.empty_response_title": "空响应",
         "common.error.empty_response_detail": "服务器返回了空的响应体。",
         "common.problem.privileged_helper_unavailable.title": "特权助手不可用",
-        "common.problem.privileged_helper_unavailable": "服务器的特权助手不可用。请让服务器管理员完成安装或修复：Linux 请检查 RelaxKonOS.PrivilegedHelper、root:root 发布目录和 sudoers 规则；Windows 请检查 RemoteOSPrivilegedHelper 服务、命名管道 ACL 与共享密钥。修复后重试。",
+        "common.problem.privileged_helper_unavailable": "服务器的特权助手不可用。请让服务器管理员完成安装或修复：Linux 请检查 RelaxKonOS.PrivilegedHelper、root:root 发布目录和 sudoers 规则；Windows 请检查 RelaxKonOSPrivilegedHelper 服务、命名管道 ACL 与共享密钥。修复后重试。",
         "common.done": "完成",
         "common.file": "文件",
         "common.new": "新建",

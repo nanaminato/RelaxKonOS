@@ -32,7 +32,7 @@ public static class WorkspaceConfigurationRegistry
         {
             try
             {
-                var value = JsonSerializer.Deserialize<T>(entry.ValueJson, RemoteOsJsonOptions.Default);
+                var value = JsonSerializer.Deserialize<T>(entry.ValueJson, RelaxKonOSJsonOptions.Default);
                 if (value is not null) return value;
             }
             catch (JsonException) { }
@@ -47,7 +47,7 @@ public static class WorkspaceConfigurationRegistry
         {
             UserId = workspace.UserId, Scope = RegistryScope.Workspace, ScopeId = workspace.Id,
             Path = path, Name = DefaultValueName, ValueType = RegistryValueType.Json,
-            ValueJson = JsonSerializer.Serialize(value, RemoteOsJsonOptions.Default),
+            ValueJson = JsonSerializer.Serialize(value, RelaxKonOSJsonOptions.Default),
             DesiredUpdatedAt = DateTimeOffset.UtcNow, DesiredUpdatedBy = updatedBy,
         });
     }
@@ -58,7 +58,7 @@ public static class WorkspaceConfigurationRegistry
         {
             UserId = workspace.UserId, Scope = RegistryScope.Workspace, ScopeId = workspace.Id,
             Path = path, Name = DefaultValueName, ValueType = RegistryValueType.Json,
-            ValueJson = JsonSerializer.Serialize(value, RemoteOsJsonOptions.Default),
+            ValueJson = JsonSerializer.Serialize(value, RelaxKonOSJsonOptions.Default),
             DesiredUpdatedAt = DateTimeOffset.UtcNow, DesiredUpdatedBy = updatedBy,
         }, 0);
     }

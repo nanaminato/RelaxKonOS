@@ -164,14 +164,14 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken);
     }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
     {
         var response = await SendRawAsync(method, route, body, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, cancellationToken)
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException("RelaxKonOS returned an empty response.");
     }
 
@@ -181,7 +181,7 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
         {
-            Content = body is null ? null : JsonContent.Create(body, options: RemoteOsJsonOptions.Default),
+            Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         return await http.SendAsync(request, cancellationToken);

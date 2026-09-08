@@ -14,7 +14,7 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// <summary>Built-in client for the server-local Docker Engine.</summary>
 public sealed class DockerManagerApp : RemoteApplicationBase
 {
-    public override ApplicationManifest Manifest { get; } = new(new AppId("remoteos.docker"), "Docker Manager", "0.2.0", "🐳", "Manage the local Docker Engine on the RelaxKonOS Server", [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.docker"), "Docker Manager", "0.2.0", "🐳", "Manage the local Docker Engine on the RelaxKonOS Server", [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
@@ -22,7 +22,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         var client = context.Services.GetService(typeof(IRemoteDockerClient)) as IRemoteDockerClient;
         if (session is null || client is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.remoteos.docker.display_name"),
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"),
                 new DockerLoginRequiredView(),
                 new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false);
             return;
@@ -36,7 +36,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
-        window = context.ShowWindow(LocalizedText.Get("application.remoteos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         vm.ShowDockerUnavailableAsync = () => DockerManagerDialogs.ShowDockerUnavailableAsync(context, window, vm);
         vm.ShowEditContainerAsync = () => DockerManagerDialogs.ShowEditContainerAsync(context, window!, vm);
         vm.ShowEditStackAsync = () => DockerManagerDialogs.ShowEditStackAsync(context, window!, vm);
@@ -54,7 +54,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         };
         vm.OpenFileBrowserAtPathAsync = path =>
         {
-            var activation = context.Activations.Activate(RemoteOsActivationUris.ExplorerPath(path));
+            var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));
             if (!activation.Succeeded && !activation.IsPendingUserChoice)
                 vm.StatusText = LocalizedText.Get("docker.stack.explorer_unavailable");
             return Task.CompletedTask;

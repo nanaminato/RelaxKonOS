@@ -22,7 +22,7 @@ namespace RelaxKonOS.Client.Apps.Proxy;
 /// <summary>Built-in host-global proxy workspace. All actions traverse the RelaxKonOS API.</summary>
 public sealed class ProxyManagerApp : RemoteApplicationBase
 {
-    public override ApplicationManifest Manifest { get; } = new(new AppId("remoteos.proxy"), "Proxy Manager", "1.0.0", "⇄", "Manage the host Proxy runtime and recovery state",
+    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.proxy"), "Proxy Manager", "1.0.0", "⇄", "Manage the host Proxy runtime and recovery state",
         [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyTunManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
@@ -31,7 +31,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         var repository = context.Services.GetService(typeof(IProxyRepository)) as IProxyRepository;
         if (session is null || repository is null || session.State != AuthSessionState.Authenticated)
         {
-            context.ShowWindow(LocalizedText.Get("application.remoteos.proxy.display_name"), new TextBlock { Text = LocalizedText.Get("proxy.login_required"), Margin = new Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), new TextBlock { Text = LocalizedText.Get("proxy.login_required"), Margin = new Thickness(24), TextWrapping = Avalonia.Media.TextWrapping.Wrap }, new Rect(180, 160, 470, 180), Manifest.IconGlyph, false, false, false); return;
         }
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var systemMonitor = context.Services.GetService(typeof(ITaskManagerClient)) as ITaskManagerClient;
@@ -39,7 +39,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         // ApplicationManager presents prompts after Activate returns, so this workspace owns
         // the first request and waits for its decision before enabling server actions.
         var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false, systemMonitor);
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.proxy.display_name"), new ProxyManagerWorkspace(vm), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), new ProxyManagerWorkspace(vm), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         vm.SetServerRuntimePackageRequest(async () =>
         {

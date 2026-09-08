@@ -11,9 +11,9 @@ public static class RegistrySchema
 {
     public static IReadOnlyList<RegistrySchemaDefinition> Definitions { get; } =
     [
-        new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.TerminalPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.RestartApplication, "remoteos.terminal"),
+        new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.TerminalPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.RestartApplication, "relaxkonos.terminal"),
         new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.DesktopPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
-        new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.BrowserPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.RestartApplication, "remoteos.browser"),
+        new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.BrowserPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.RestartApplication, "relaxkonos.browser"),
         new(RegistryScope.Workspace, WorkspaceConfigurationRegistry.WindowManagerPath, "(Default)", RegistryValueType.Json, RegistryApplyMode.Immediate),
     ];
 

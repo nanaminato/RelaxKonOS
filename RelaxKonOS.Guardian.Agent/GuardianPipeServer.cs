@@ -26,13 +26,13 @@ internal sealed class GuardianPipeServer(GuardianAgentOptions options, WorkloadS
         GuardianAgentResponse response;
         try
         {
-            var request = JsonSerializer.Deserialize<GuardianAgentRequest>(line ?? string.Empty, RemoteOsJsonOptions.Default);
+            var request = JsonSerializer.Deserialize<GuardianAgentRequest>(line ?? string.Empty, RelaxKonOSJsonOptions.Default);
             response = request is null || !CryptographicEquals(request.SharedSecret, options.SharedSecret)
                 ? new GuardianAgentResponse(false, "guardian.ipc_unauthorized")
                 : await supervisor.HandleAsync(request, cancellationToken);
         }
         catch (JsonException) { response = new GuardianAgentResponse(false, "guardian.ipc_invalid_request"); }
-        await writer.WriteLineAsync(JsonSerializer.Serialize(response, RemoteOsJsonOptions.Default));
+        await writer.WriteLineAsync(JsonSerializer.Serialize(response, RelaxKonOSJsonOptions.Default));
     }
 
     private static bool CryptographicEquals(string left, string right)

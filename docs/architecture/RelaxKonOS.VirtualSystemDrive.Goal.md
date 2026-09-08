@@ -72,31 +72,31 @@ SystemDrive/
     automation-audit/            # 有上限且脱敏的本地执行摘要
   Programs/
     BuiltIn/
-      remoteos.terminal/
-        app.remoteos.json
-      remoteos.explorer/
-        app.remoteos.json
+      relaxkonos.terminal/
+        app.relaxkonos.json
+      relaxkonos.explorer/
+        app.relaxkonos.json
     External/
       com.example.hello/
         versions/<immutable-id>/
-          app.remoteos.json
+          app.relaxkonos.json
           lib/
           assets/
         current.json
   Shells/
-    remoteos/
-      shell.remoteos.json
+    relaxkonos/
+      shell.relaxkonos.json
     windows-like/
-      shell.remoteos.json
+      shell.relaxkonos.json
   Users/
     <local-profile-id>/
       Desktop/
-        Terminal.remoteos-link.json
-        Project.remoteos-link.json
+        Terminal.relaxkonos-link.json
+        Project.relaxkonos-link.json
       Documents/
       Downloads/
       Scripts/
-        Open Development Environment.remoteos-script.yaml
+        Open Development Environment.relaxkonos-script.yaml
       AppData/
         <app-id>/
 ```
@@ -116,7 +116,7 @@ SystemDrive/
 
 ### 4.1 统一描述文件
 
-文件名固定为 `app.remoteos.json`。它是应用被发现、显示和注册前所读取的描述，不等同于已加载应用对象。建议的 v1 schema：
+文件名固定为 `app.relaxkonos.json`。它是应用被发现、显示和注册前所读取的描述，不等同于已加载应用对象。建议的 v1 schema：
 
 ```json
 {
@@ -149,7 +149,7 @@ SystemDrive/
 ```json
 {
   "schemaVersion": 1,
-  "id": "remoteos.terminal",
+  "id": "relaxkonos.terminal",
   "kind": "builtin",
   "displayName": "Terminal",
   "version": "1.0.0",
@@ -174,7 +174,7 @@ Host 维护 `IBuiltInApplicationFactoryRegistry`，它是 `builtinKey → IRemot
 `.roapp` 继续作为传输/安装归档。安装器在受控 staging 目录中读取旧包根目录 `manifest.json`，完成当前已有的路径遍历、ID、URI 和权限模型校验后：
 
 1. 解压到 `Programs/External/<app-id>/versions/<immutable-id>/`；
-2. 生成或规范化该版本目录的 `app.remoteos.json`；
+2. 生成或规范化该版本目录的 `app.relaxkonos.json`；
 3. 校验图标、程序集和 entry type 路径都在该版本目录中；
 4. 原子写入 `current.json`；
 5. 更新可重建 catalog，再向运行时注册 manifest metadata；
@@ -200,7 +200,7 @@ VSD Bootstrap
 
 ## 5. 快捷方式、文件与激活
 
-用户桌面目录只存 `*.remoteos-link.json`，而不是应用 descriptor 的副本。建议模型：
+用户桌面目录只存 `*.relaxkonos-link.json`，而不是应用 descriptor 的副本。建议模型：
 
 ```json
 {
@@ -208,7 +208,7 @@ VSD Bootstrap
   "id": "4b7e9a2a-1e4d-4b7b-9b88-1c8c3a2b0c12",
   "displayName": "Open development environment",
   "kind": "script",
-  "target": "Scripts/Open Development Environment.remoteos-script.yaml",
+  "target": "Scripts/Open Development Environment.relaxkonos-script.yaml",
   "icon": { "glyph": "⚡" }
 }
 ```
@@ -218,10 +218,10 @@ VSD Bootstrap
 | 类型 | target 语义 | 激活方式 |
 | --- | --- | --- |
 | `application` | 已注册的 AppId | `ApplicationManager.Launch` |
-| `remote-file` | 受现有 Explorer 校验的远端路径 | `remoteos://file/open` 或打开方式流程 |
+| `remote-file` | 受现有 Explorer 校验的远端路径 | `relaxkonos://file/open` 或打开方式流程 |
 | `remote-folder` | 受现有 Explorer 校验的远端目录 | Shell-owned Explorer activation |
 | `script` | 当前用户 `Scripts/` 下的相对文件 | `IAutomationRunner.RunAsync` |
-| `uri` | 已验证的 `remoteos://` 或 manifest 声明 URI | `IAppActivationService.Activate` |
+| `uri` | 已验证的 `relaxkonos://` 或 manifest 声明 URI | `IAppActivationService.Activate` |
 
 快捷方式不可保存任意本地绝对路径、程序集类型、命令行、HTTP URL 凭据或权限 grant。应用卸载后，指向该 AppId 的快捷方式保留为“目标不可用”，用户可删除、重定向或在应用重新安装后恢复；不得静默把它重定向给名称相似的应用。
 
@@ -250,7 +250,7 @@ IShellController（可替换、短生命周期）
   └─ 请求布局策略，不直接持有窗口真相
 ```
 
-`remoteos` 是首个内置 Shell。`windows-like`、`macos-like`、`ubuntu-like` 在首版可只作为内置 Shell 风格，不能让外置包获得替换整个 Shell 或截获全局输入的权限。
+`relaxkonos` 是首个内置 Shell。`windows-like`、`macos-like`、`ubuntu-like` 在首版可只作为内置 Shell 风格，不能让外置包获得替换整个 Shell 或截获全局输入的权限。
 
 ### 6.2 切换事务
 
@@ -266,7 +266,7 @@ IShellController（可替换、短生命周期）
   → 标记偏好为已应用；失败则恢复旧 controller
 ```
 
-切换过程中不得重新创建 `ApplicationManager`、`WindowManager`、认证会话、网络客户端或已运行应用窗口。单个 Shell 挂载失败必须回退到 `remoteos` Shell，并写入不含敏感内容的本地诊断。设置中的默认 Shell 需要明确 Scope：默认建议为 Workspace 偏好，允许 Device 覆盖；实现前必须与现有 `WorkspacePreferencesDto` schema 对齐。
+切换过程中不得重新创建 `ApplicationManager`、`WindowManager`、认证会话、网络客户端或已运行应用窗口。单个 Shell 挂载失败必须回退到 `relaxkonos` Shell，并写入不含敏感内容的本地诊断。设置中的默认 Shell 需要明确 Scope：默认建议为 Workspace 偏好，允许 Device 覆盖；实现前必须与现有 `WorkspacePreferencesDto` schema 对齐。
 
 ### 6.3 统一与差异化的边界
 
@@ -286,9 +286,9 @@ name: Open development environment
 requestedPermissions: []
 steps:
   - action: app.launch
-    appId: remoteos.terminal
+    appId: relaxkonos.terminal
   - action: uri.activate
-    uri: remoteos://settings/apps
+    uri: relaxkonos://settings/apps
   - action: shell.notify
     title: RelaxKonOS
     message: Development environment is ready.
@@ -337,7 +337,7 @@ V1 只允许用户从快捷方式或脚本库显式启动。登录后自动运�
 **工作**
 
 - 在 Client 新建 `VirtualSystemDrive` 服务，负责计算 Root、建立固定目录、完整路径校验和原子 JSON 读写。
-- 在 Core 或 Runtime 建立纯 DTO/validator：`ApplicationDescriptor`、`ApplicationDescriptorKind`、`ShellDescriptor`、`RemoteOsShortcut`、稳定问题码。
+- 在 Core 或 Runtime 建立纯 DTO/validator：`ApplicationDescriptor`、`ApplicationDescriptorKind`、`ShellDescriptor`、`RelaxKonOSShortcut`、稳定问题码。
 - 编写 `IBuiltInApplicationFactoryRegistry` 并把当前内置 App 的工厂映射从 Bootstrapper 的直接枚举中抽离。
 - 实现内置 descriptor seeder：缺失时创建，损坏/陈旧时根据 Host 固定映射恢复，且保留独立用户配置。
 
@@ -396,7 +396,7 @@ V1 只允许用户从快捷方式或脚本库显式启动。登录后自动运�
 
 **工作**
 
-- 抽取 `ShellSession` 和 `IShellDefinition` / `IShellController`；将当前桌面作为 `remoteos` Shell 的首个实现。
+- 抽取 `ShellSession` 和 `IShellDefinition` / `IShellController`；将当前桌面作为 `relaxkonos` Shell 的首个实现。
 - 将 Shell 设置持久化到现有 Workspace/Device 偏好模型，并在认证状态和偏好变化时安全应用。
 - 实现切换事务、旧 Shell 视图状态导出、新 Shell 视图挂载、失败回退和 UI 测试入口。
 - 构建第二个最小 `windows-like` Shell，验证同一应用、任务栏窗口和快捷方式在不同 Shell 中即时呈现。
@@ -404,7 +404,7 @@ V1 只允许用户从快捷方式或脚本库显式启动。登录后自动运�
 **验收**
 
 - 用户切换默认 Shell 后无需退出应用，当前已打开窗口、焦点、窗口布局和认证会话保持。
-- 新 Shell 发生构造或挂载异常时自动回退 `remoteos`，不出现空白桌面或无法交互的窗口层。
+- 新 Shell 发生构造或挂载异常时自动回退 `relaxkonos`，不出现空白桌面或无法交互的窗口层。
 - Shell 不直接注册/卸载应用、不拥有 WindowManager 真相，且不通过反射访问 App 私有对象。
 
 ### Goal 6：受限自动化工作流与脚本快捷方式
@@ -446,7 +446,7 @@ V1 只允许用户从快捷方式或脚本库显式启动。登录后自动运�
 
 **验收**
 
-- VSD 被部分删除或单项损坏后，客户端能恢复到可用 `remoteos` Shell，内置应用仍可重新播种。
+- VSD 被部分删除或单项损坏后，客户端能恢复到可用 `relaxkonos` Shell，内置应用仍可重新播种。
 - 旧开发包用户得到明确迁移/重装结果，迁移不静默删除其包或授权数据。
 - 构建、现有测试及新增安全/迁移测试稳定；文档不承诺当前版本未实现的沙箱、任意脚本或真实 OS 仿真能力。
 
@@ -480,7 +480,7 @@ V1 只允许用户从快捷方式或脚本库显式启动。登录后自动运�
 2. 内置与外置应用都经 Catalog 发现后注册，`ApplicationManager` 仍是唯一运行时注册与启动入口。
 3. 外置包无法靠修改 descriptor 冒充内置应用；包 DLL 在验证、兼容性判断和首次启动前不会执行。
 4. 包更新不覆盖在用版本，失败能回退；一个坏包、描述文件或快捷方式不阻断 Shell。
-5. 至少 `remoteos` 和 `windows-like` 两种 Shell 能即时切换，运行中应用和 WindowManager 状态保持。
+5. 至少 `relaxkonos` 和 `windows-like` 两种 Shell 能即时切换，运行中应用和 WindowManager 状态保持。
 6. 快捷方式与自动化只经受控 Host API 激活；首版不存在任意 shell、进程、网络或本地文件执行入口。
 7. 权限文档持续明确：当前第三方包模型不是恶意代码沙箱，VSD 和 AppId 也不构成安全隔离。
 8. Windows 和 Linux 的首次启动、迁移、更新、回退和失败路径均经过测试或明确标为发布前阻塞项。

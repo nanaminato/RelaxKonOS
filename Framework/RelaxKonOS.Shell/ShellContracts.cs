@@ -10,7 +10,7 @@ namespace RelaxKonOS.Shell;
 public static class ShellApi
 {
     public const string Version = "1.0";
-    public const string DefaultShellId = "remoteos.windows-like";
+    public const string DefaultShellId = "relaxkonos.windows-like";
 
     /// <summary>Returns an explicit shell identifier, using the current built-in default only when no selection exists.</summary>
     public static string ResolveId(string? id) => string.IsNullOrWhiteSpace(id) ? DefaultShellId : id.Trim();

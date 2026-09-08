@@ -37,5 +37,5 @@ public sealed record HostElevationResult(
 
 public static class PrivilegedApiRoutes
 {
-    public const string Elevation = $"/{RelaxKonOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/privileged/elevation";
+    public const string Elevation = $"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/privileged/elevation";
 }

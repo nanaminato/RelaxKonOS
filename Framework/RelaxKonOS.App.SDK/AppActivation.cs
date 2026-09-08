@@ -3,7 +3,7 @@ using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.AppSDK;
 
-/// <summary>One request to activate a Shell-owned <c>remoteos://</c> route or a manifest-declared external URI.</summary>
+/// <summary>One request to activate a Shell-owned <c>relaxkonos://</c> route or a manifest-declared external URI.</summary>
 public sealed record AppActivationRequest(
     Uri Uri,
     AppId? SourceAppId = null,
@@ -73,7 +73,7 @@ public interface IAppActivationDiagnostics
 }
 
 /// <summary>
-/// Optional built-in application extension for registered <c>remoteos://</c> routes. The handler is also
+/// Optional built-in application extension for registered <c>relaxkonos://</c> routes. The handler is also
 /// invoked for an already-open single-window application, before that window is focused.
 /// </summary>
 public interface IAppActivationHandler
@@ -90,15 +90,15 @@ public interface IAppActivation
 }
 
 /// <summary>Stable Shell-owned activation URIs exposed to built-in and package applications.</summary>
-public static class RemoteOsActivationUris
+public static class RelaxKonOSActivationUris
 {
-    public static Uri SettingsPersonalization { get; } = new("remoteos://settings/personalization");
-    public static Uri SettingsApplications { get; } = new("remoteos://settings/apps");
+    public static Uri SettingsPersonalization { get; } = new("relaxkonos://settings/personalization");
+    public static Uri SettingsApplications { get; } = new("relaxkonos://settings/apps");
 
     public static Uri SettingsAppPermissions(AppId appId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appId.Value);
-        return new Uri($"remoteos://settings/apps/{Uri.EscapeDataString(appId.Value)}/permissions");
+        return new Uri($"relaxkonos://settings/apps/{Uri.EscapeDataString(appId.Value)}/permissions");
     }
 
     /// <summary>
@@ -109,13 +109,13 @@ public static class RemoteOsActivationUris
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appId.Value);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        return new Uri($"remoteos://file/open?appId={Uri.EscapeDataString(appId.Value)}&path={Uri.EscapeDataString(path)}");
+        return new Uri($"relaxkonos://file/open?appId={Uri.EscapeDataString(appId.Value)}&path={Uri.EscapeDataString(path)}");
     }
 
     /// <summary>Internal route to navigate RemoteExplorer to a server-side directory.</summary>
     public static Uri ExplorerPath(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        return new Uri($"remoteos://explorer/open?path={Uri.EscapeDataString(path)}");
+        return new Uri($"relaxkonos://explorer/open?path={Uri.EscapeDataString(path)}");
     }
 }

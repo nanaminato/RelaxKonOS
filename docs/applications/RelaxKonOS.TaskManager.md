@@ -191,7 +191,7 @@ KillProcessAsync(processId, force)
 
 `Program.cs` 注册：`app.MapSystemMonitorEndpoints()`。
 
-> **不持久化**：TaskManager 不接入 `RemoteOsDbContext`——指标与进程列表均为实时采样，每次请求返回当下快照。无 SQLite 表、无增量补齐。
+> **不持久化**：TaskManager 不接入 `RelaxKonOSDbContext`——指标与进程列表均为实时采样，每次请求返回当下快照。无 SQLite 表、无增量补齐。
 
 ---
 
@@ -203,12 +203,12 @@ KillProcessAsync(processId, force)
 - **不 mutate `HttpClient.BaseAddress`**（避免共享实例并发竞态），每请求用 `IAuthSession.ServerUrl` 构造绝对 URI。
 - `Authorization: Bearer {AccessToken}` 从 `IAuthSession.Tokens` 取；未登录抛 `InvalidOperationException`。
 - 路由常量共用 `SystemMonitorApiRoutes`，`{id}` 用 `processId.ToString(InvariantCulture)` 替换，禁止硬编码字符串。
-- 失败读 `ProblemDetails` 抛 `RemoteOsAuthException`（与 `BrowserClient` / `ExplorerClient` / `SettingsClient` 同源模式）。
-- JSON 用 `RemoteOsJsonOptions.Default`（与线协议一致）。
+- 失败读 `ProblemDetails` 抛 `RelaxKonOSAuthException`（与 `BrowserClient` / `ExplorerClient` / `SettingsClient` 同源模式）。
+- JSON 用 `RelaxKonOSJsonOptions.Default`（与线协议一致）。
 
 ### 5.2 应用入口（`TaskManagerApp`）
 
-`RemoteApplicationBase`：`Manifest`（Id=`remoteos.taskmanager`，Icon=`📊`）+ `Activate(AppContext)`。
+`RemoteApplicationBase`：`Manifest`（Id=`relaxkonos.taskmanager`，Icon=`📊`）+ `Activate(AppContext)`。
 
 - 未登录：弹 `TextBlock` 提示窗（460x180，`canResize/canMinimize/canMaximize=false`），不崩溃。
 - 登录：构造 `TaskManagerViewModel(client)` + `TaskManagerMainView`，`context.ShowWindow`（bounds 980x680），注入 `CloseAction`，`_ = viewModel.StartAsync()` 异步启动刷新。
@@ -324,7 +324,7 @@ KillProcessResultDto
 9. **`IsAutoRefresh` 双向绑定**：CheckBox `IsChecked` 双向绑定驱动；`OnIsAutoRefreshChanged` 直接启停定时器（避免 Command + IsChecked 双触发）。`StartAsync` 仅在 `IsAutoRefresh=true` 时启动定时器。
 10. **`Kill(entireProcessTree: false)`**：结束进程仅终止目标进程，不波及子进程（与 Windows 任务管理器「结束任务」一致）。`WaitForExit(3000)` 等待退出，超时不阻塞返回。
 11. **网络计数器回绕保护**：`NetworkInterface.GetIPv4Statistics()` 的 `BytesSent`/`BytesReceived` 可能因接口重置而回绕/归零，差分时做下界保护（`sent >= prev ? delta/elapsed : 0`）。
-12. **不持久化**：TaskManager 不接入 `RemoteOsDbContext`——指标与进程列表均为实时采样，无 SQLite 表、无增量补齐。Server 重启后下次请求重新开始差分（首次 CPU% 为 0，第二次起正常）。
+12. **不持久化**：TaskManager 不接入 `RelaxKonOSDbContext`——指标与进程列表均为实时采样，无 SQLite 表、无增量补齐。Server 重启后下次请求重新开始差分（首次 CPU% 为 0，第二次起正常）。
 
 ---
 
@@ -345,14 +345,14 @@ KillProcessResultDto
 
 > 实现与维护本模块时必须遵守的规则。
 
-1. **真源在 Server 实时采集**：指标与进程列表均由 `ISystemMetricsProvider` 以宿主 OS 进程身份实时读取，**不持久化**（不接入 `RemoteOsDbContext`，无 SQLite 表）。每次请求返回当下快照。禁止为指标/进程新建数据库表。
+1. **真源在 Server 实时采集**：指标与进程列表均由 `ISystemMetricsProvider` 以宿主 OS 进程身份实时读取，**不持久化**（不接入 `RelaxKonOSDbContext`，无 SQLite 表）。每次请求返回当下快照。禁止为指标/进程新建数据库表。
 2. **跨平台抽象**：与 `IIdentityProvider` 同模式——`ISystemMetricsProvider` 接口 + `WindowsMetricsProvider` / `LinuxMetricsProvider` 实现，`Program.cs` 按 `RuntimeInformation.IsOSPlatform` 选择。平台差异（CPU/内存/进程属主）封装在子类，磁盘/网络/GPU/进程列表/结束进程跨平台共享在 `SystemMetricsProviderBase`。
 3. **Provider 必须 Singleton**：`ISystemMetricsProvider` 持有相邻采样差分状态（CPU% 与网络速率的基准），必须 Singleton 保证跨请求状态连续性。禁止 Scoped/Transient。
 4. **复用 `IAuthSession` JWT**：`ITaskManagerClient` 不持有独立凭据；未登录时 `TaskManagerApp.Activate` 弹提示窗，不崩溃。`TaskManagerClient.RequireSession` 检查 `State == Authenticated`。
 5. **不 mutate `HttpClient.BaseAddress`**：每请求用绝对 URI（避免共享 typed HttpClient 实例并发竞态），与 `BrowserClient` / `ExplorerClient` / `SettingsClient` 同模式。
 6. **路由常量共用 `SystemMonitorApiRoutes`**：Server 注册路由与 Client 拼接 URL 必须用同一常量，`{id}` 用 `processId.ToString(InvariantCulture)` 替换，禁止硬编码字符串。
-7. **DTO 用 `sealed record` + `[property: JsonPropertyName]`**（Protocol 约定），JSON 用 `RemoteOsJsonOptions.Default`。
+7. **DTO 用 `sealed record` + `[property: JsonPropertyName]`**（Protocol 约定），JSON 用 `RelaxKonOSJsonOptions.Default`。
 8. **结束进程不自动提权**：权限不足（Win32 错误码 5/1/13）返回 `RequiresElevation=true`，提示用户在宿主 OS 提权（`sudo kill` / UAC 运行）。RelaxKonOS 不存储宿主密码、不自动提权（硬约束「权限提升委托宿主 OS」）。`Kill(entireProcessTree: false)` 仅终止目标进程。
-9. **错误统一 RFC 7807**：Server `Results.Problem(..., type: "https://remoteos.app/problems/" + suffix)`；Client `TaskManagerClient` 解析 `ProblemDetails` 抛 `RemoteOsAuthException`，VM catch 后写 `StatusText`。
+9. **错误统一 RFC 7807**：Server `Results.Problem(..., type: "https://relaxkonos.app/problems/" + suffix)`；Client `TaskManagerClient` 解析 `ProblemDetails` 抛 `RelaxKonOSAuthException`，VM catch 后写 `StatusText`。
 10. **DispatcherTimer 生命周期**：View `Unloaded` 时必须调 `viewModel.Stop()` 停止定时器。`RefreshAsync` 用 `Interlocked` 重入保护防止请求堆积。
 11. **编译验证**：`dotnet build RelaxKonOS.sln -c Debug` 必须 0 错误（NU1903 Microsoft.OpenApi / SQLitePCLRaw.lib.e_sqlite3 与 CS0169 TerminalSession._disposed 为既有警告，非本模块引入）。

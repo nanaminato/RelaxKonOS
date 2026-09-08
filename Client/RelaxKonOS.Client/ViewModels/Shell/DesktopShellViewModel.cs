@@ -277,7 +277,7 @@ public partial class DesktopShellViewModel : ObservableObject
     private void OpenDesktopFolder()
     {
         if (!string.IsNullOrWhiteSpace(_desktopPath))
-            _applications.Activate(new AppActivationRequest(RemoteOsActivationUris.ExplorerPath(_desktopPath)));
+            _applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.ExplorerPath(_desktopPath)));
     }
 
     [RelayCommand]
@@ -305,7 +305,7 @@ public partial class DesktopShellViewModel : ObservableObject
     private void ShowDesktopAppDetails(AppEntryViewModel? app)
     {
         if (app is not null)
-            _applications.Activate(new AppActivationRequest(RemoteOsActivationUris.SettingsAppPermissions(app.Id)));
+            _applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.SettingsAppPermissions(app.Id)));
     }
 
     [RelayCommand]
@@ -319,7 +319,7 @@ public partial class DesktopShellViewModel : ObservableObject
 
         if (item.IsDirectory)
         {
-            var folderResult = _applications.Activate(new AppActivationRequest(RemoteOsActivationUris.ExplorerPath(item.Entry.Path)));
+            var folderResult = _applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.ExplorerPath(item.Entry.Path)));
             RecordDesktopFileMenuDiagnostic($"folder open result: entry={item.DisplayName}, result={folderResult.Status}, target={folderResult.TargetAppId?.Value ?? "<none>"}.");
             return;
         }
@@ -365,7 +365,7 @@ public partial class DesktopShellViewModel : ObservableObject
         }
         if (opener is not null)
         {
-            var result = _applications.Activate(new AppActivationRequest(RemoteOsActivationUris.OpenFile(opener.Value, item.Entry.Path)));
+            var result = _applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.OpenFile(opener.Value, item.Entry.Path)));
             RecordDesktopFileMenuDiagnostic($"file open result: entry={item.DisplayName}, result={result.Status}, target={result.TargetAppId?.Value ?? "<none>"}.");
             return;
         }
@@ -448,7 +448,7 @@ public partial class DesktopShellViewModel : ObservableObject
             await SaveDesktopDefaultAppAsync(extension, selectedApplication);
 
         // 用户选中的可能是 SupportsTextFiles 应用但未声明该扩展名（如 .enabled → Notepad）。
-        // 若走 remoteos://file/open 路由会被 ApplicationManager.OpenFile 的 SupportsFile 校验拦截，
+        // 若走 relaxkonos://file/open 路由会被 ApplicationManager.OpenFile 的 SupportsFile 校验拦截，
         // 这里分流：选中的应用是 TextFileOpeners 之一时用 OpenFileAsText 绕过校验。
         var appId = new AppId(selectedApplication);
         var isTextFallbackChoice = _applications.TextFileOpeners.Any(o => o.Id == appId)
@@ -458,7 +458,7 @@ public partial class DesktopShellViewModel : ObservableObject
                 ? new AppActivationResult(AppActivationStatus.Activated, appId)
                 : new AppActivationResult(AppActivationStatus.Unavailable, appId))
             : _applications.Activate(new AppActivationRequest(
-                RemoteOsActivationUris.OpenFile(appId, item.Entry.Path)));
+                RelaxKonOSActivationUris.OpenFile(appId, item.Entry.Path)));
         RecordDesktopFileMenuDiagnostic($"open-with result: entry={item.DisplayName}, app={selectedApplication}, textFallback={isTextFallbackChoice}, result={result.Status}.");
     }
 
@@ -593,25 +593,25 @@ public partial class DesktopShellViewModel : ObservableObject
         if (item is null) return;
         var path = item.IsDirectory ? item.Entry.Path : Path.GetDirectoryName(item.Entry.Path);
         if (!string.IsNullOrWhiteSpace(path))
-            _applications.Activate(new AppActivationRequest(RemoteOsActivationUris.ExplorerPath(path)));
+            _applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.ExplorerPath(path)));
     }
 
     [RelayCommand]
-    private void OpenFileExplorer() => LaunchApplication("remoteos.explorer");
+    private void OpenFileExplorer() => LaunchApplication("relaxkonos.explorer");
 
     [RelayCommand]
-    private void OpenTerminal() => LaunchApplication("remoteos.terminal");
+    private void OpenTerminal() => LaunchApplication("relaxkonos.terminal");
 
     [RelayCommand]
-    private void OpenSettings() => LaunchApplication("remoteos.settings");
+    private void OpenSettings() => LaunchApplication("relaxkonos.settings");
 
     /// <summary>Opens Settings directly on its Personalization page.</summary>
     [RelayCommand]
     private void OpenPersonalization() =>
-        _applications.Activate(new AppActivationRequest(RemoteOsActivationUris.SettingsPersonalization));
+        _applications.Activate(new AppActivationRequest(RelaxKonOSActivationUris.SettingsPersonalization));
 
     [RelayCommand]
-    private void OpenTaskManager() => LaunchApplication("remoteos.taskmanager");
+    private void OpenTaskManager() => LaunchApplication("relaxkonos.taskmanager");
 
     /// <summary>Opens Help Center through its manifest-declared external <c>help://</c> scheme.</summary>
     [RelayCommand]

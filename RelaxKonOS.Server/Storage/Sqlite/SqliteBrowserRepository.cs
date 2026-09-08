@@ -7,9 +7,9 @@ namespace RelaxKonOS.Server.Storage.Sqlite;
 /// 对应 InMemoryBrowserRepository。同用户 URL 唯一（bookmark）由唯一索引保证；历史合并通过 Find+Update 实现。</summary>
 public sealed class SqliteBrowserRepository : IBrowserRepository
 {
-    private readonly RemoteOsDbContext _db;
+    private readonly RelaxKonOSDbContext _db;
 
-    public SqliteBrowserRepository(RemoteOsDbContext db) => _db = db;
+    public SqliteBrowserRepository(RelaxKonOSDbContext db) => _db = db;
 
     // ── bookmarks ──
 

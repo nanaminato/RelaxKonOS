@@ -13,7 +13,7 @@ namespace RelaxKonOS.Server.Endpoints;
 /// 服务端以宿主 OS 进程身份执行 IO，复用宿主用户/权限。</summary>
 public static class FileEndpoints
 {
-    private const string ProblemBase = "https://remoteos.app/problems/";
+    private const string ProblemBase = "https://relaxkonos.app/problems/";
 
     public static IEndpointRouteBuilder MapFileEndpoints(this IEndpointRouteBuilder app)
     {

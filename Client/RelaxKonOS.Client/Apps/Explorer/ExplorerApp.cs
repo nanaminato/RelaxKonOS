@@ -39,7 +39,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 {
     private readonly Dictionary<ManagedWindow, ExplorerViewModel> _windows = [];
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.explorer"),
+        Id: new AppId("relaxkonos.explorer"),
         DisplayName: "RemoteExplorer",
         Version: "1.0.0",
         IconGlyph: "📁",
@@ -49,7 +49,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
     public override void Activate(AppContext context) => OpenExplorer(context, null);
 
     public bool CanHandleActivation(Uri uri) =>
-        uri.Scheme.Equals("remoteos", StringComparison.OrdinalIgnoreCase)
+        uri.Scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)
         && uri.Host.Equals("explorer", StringComparison.OrdinalIgnoreCase)
         && uri.AbsolutePath.Equals("/open", StringComparison.OrdinalIgnoreCase)
         && !string.IsNullOrWhiteSpace(QueryValue(uri, "path"));
@@ -80,7 +80,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 Margin = new Thickness(24),
                 TextWrapping = TextWrapping.Wrap,
             };
-            context.ShowWindow(LocalizedText.Get("application.remoteos.explorer.display_name"), stub,
+            context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), stub,
                 bounds: new Rect(200, 160, 460, 180),
                 iconGlyph: Manifest.IconGlyph,
                 canResize: false, canMinimize: false, canMaximize: false);
@@ -104,7 +104,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             _ = operations.RestoreAsync();
         }
         var view = new ExplorerMainView { DataContext = viewModel };
-        var window = context.ShowWindow(LocalizedText.Get("application.remoteos.explorer.display_name"), view,
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.explorer.display_name"), view,
             bounds: new Rect(80, 60, 960, 640),
             iconGlyph: Manifest.IconGlyph);
         _windows[window] = viewModel;
@@ -168,7 +168,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             await client.ElevateFileOperationAsync(paths, capability);
             return true;
         }
-        catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
+        catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
         {
             var password = await context.WindowManager.ShowSystemDialogAsync<string?>(LocalizedText.Get("explorer.operations.elevation_title"), dialog =>
             {
@@ -219,7 +219,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 
     private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath, IAppSettingsClient? settings)
     {
-        const string appId = "remoteos.explorer";
+        const string appId = "relaxkonos.explorer";
         const string key = "view";
         long? revision = null;
         string? settingsError = null;
@@ -386,7 +386,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 await client.ElevateFileAccessAsync(path, capability);
                 return true;
             }
-            catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
+            catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
             {
                 var password = await context.WindowManager.ShowSystemDialogAsync<string?>("管理员认证", dialog =>
                 {
@@ -412,7 +412,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                     await client.ElevateFileAccessAsync(path, capability, password);
                     return true;
                 }
-                catch (RemoteOsAuthException retry) when (retry.Type.EndsWith("/elevation-password-invalid", StringComparison.Ordinal))
+                catch (RelaxKonOSAuthException retry) when (retry.Type.EndsWith("/elevation-password-invalid", StringComparison.Ordinal))
                 {
                     await (vm.ShowMessageAsync?.Invoke("管理员认证", "密码不正确。") ?? Task.CompletedTask);
                     return false;
@@ -443,7 +443,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             AppActivationResult result;
             if (applicationId is not null)
             {
-                result = context.Activations.Activate(RemoteOsActivationUris.OpenFile(new AppId(applicationId), entry.Path));
+                result = context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(new AppId(applicationId), entry.Path));
             }
             // 用户显式绑定（设置页自由添加的未知扩展名）但应用未声明支持时：若该应用 SupportsTextFiles
             // 且文件确认为文本 → OpenFileAsText 绕过 Manifest 校验，保持绑定权威性。
@@ -518,7 +518,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 && !applications.SupportsFile(appId, entry.Path);
             var opened = isTextFallback
                 ? applications?.OpenFileAsText(appId, entry.Path) == true
-                : context.Activations.Activate(RemoteOsActivationUris.OpenFile(appId, entry.Path)).Succeeded;
+                : context.Activations.Activate(RelaxKonOSActivationUris.OpenFile(appId, entry.Path)).Succeeded;
             if (!opened)
                 await (vm.ShowMessageAsync?.Invoke(LocalizedText.Get("explorer.open_file"), LocalizedText.Get("explorer.selected_app_unavailable")) ?? Task.CompletedTask);
         };

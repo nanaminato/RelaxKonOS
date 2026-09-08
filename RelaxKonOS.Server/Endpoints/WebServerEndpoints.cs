@@ -133,5 +133,5 @@ public static class WebServerEndpoints
         ?? context.User.Identity?.Name;
 
     private static IResult ElevationRequired(string detail) => Results.Problem(statusCode: StatusCodes.Status403Forbidden,
-        title: "需要管理员权限", detail: detail, type: "https://remoteos.app/problems/elevation-required");
+        title: "需要管理员权限", detail: detail, type: "https://relaxkonos.app/problems/elevation-required");
 }

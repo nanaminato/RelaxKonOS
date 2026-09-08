@@ -23,7 +23,7 @@ public sealed class MihomoRuntimeManager(
     IProxyDiagnosticLogStore? diagnostics = null,
     IProxyGeoDataService? geoData = null) : IProxyRuntimeManager, IMihomoConfigurationValidator
 {
-    private const string ServiceName = "remoteos-mihomo";
+    private const string ServiceName = "relaxkonos-mihomo";
     private const string ServiceConfigurationId = "mihomo-default";
     private readonly SemaphoreSlim _gate = new(1, 1);
 

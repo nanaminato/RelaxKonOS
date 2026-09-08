@@ -4,7 +4,7 @@ namespace RelaxKonOS.Protocol.Certificates;
 
 public static class CertificateApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Certificates = $"/{V1}/certificates";
     public const string CollectionPattern = "";
     public const string Preflight = $"{Certificates}/preflight";

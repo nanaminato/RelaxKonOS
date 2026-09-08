@@ -53,13 +53,13 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
         {
-            Content = body is null ? null : JsonContent.Create(body, options: RemoteOsJsonOptions.Default),
+            Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         if (idempotent) request.Headers.TryAddWithoutValidation("Idempotency-Key", Guid.NewGuid().ToString("N"));
         using var response = await http.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode) throw await CreateRequestExceptionAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, cancellationToken) ?? throw new ProxyRequestException("proxy.response_empty");
+        return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken) ?? throw new ProxyRequestException("proxy.response_empty");
     }
 
     private async Task SendNoContentAsync(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
@@ -67,7 +67,7 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
         {
-            Content = body is null ? null : JsonContent.Create(body, options: RemoteOsJsonOptions.Default),
+            Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
@@ -81,7 +81,7 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
     {
         try
         {
-            var problem = await response.Content.ReadFromJsonAsync<ProxyProblemResponse>(RemoteOsJsonOptions.Default, cancellationToken);
+            var problem = await response.Content.ReadFromJsonAsync<ProxyProblemResponse>(RelaxKonOSJsonOptions.Default, cancellationToken);
             var problemCode = ExtractProblemCode(problem);
             if (problemCode is not null) return new ProxyRequestException(problemCode);
         }
@@ -94,9 +94,9 @@ public sealed class RemoteProxyRepository(HttpClient http, IAuthSession session)
         foreach (var candidate in new[] { problem?.ProblemCode, problem?.Detail, problem?.Title })
             if (!string.IsNullOrWhiteSpace(candidate) && candidate.StartsWith("proxy.", StringComparison.Ordinal)) return candidate;
 
-        const string prefix = "https://remoteos.app/problems/proxy.";
+        const string prefix = "https://relaxkonos.app/problems/proxy.";
         return problem?.Type is { } type && type.StartsWith(prefix, StringComparison.Ordinal)
-            ? type["https://remoteos.app/problems/".Length..]
+            ? type["https://relaxkonos.app/problems/".Length..]
             : null;
     }
 

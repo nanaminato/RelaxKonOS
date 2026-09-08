@@ -10,9 +10,9 @@ public sealed class ShellPreferenceStore(VirtualSystemDrive drive)
         try
         {
             var value = await drive.ReadJsonAsync<ShellPreference>(drive.ResolveRootChild(PreferencePath));
-            return string.IsNullOrWhiteSpace(value.ShellId) ? new ShellPreference("remoteos.windows-like") : value;
+            return string.IsNullOrWhiteSpace(value.ShellId) ? new ShellPreference("relaxkonos.windows-like") : value;
         }
-        catch { return new ShellPreference("remoteos.windows-like"); }
+        catch { return new ShellPreference("relaxkonos.windows-like"); }
     }
 
     public async Task SaveAsync(string shellId, string? packageId = null, string? packageVersion = null, string? resolvedPackagePath = null)

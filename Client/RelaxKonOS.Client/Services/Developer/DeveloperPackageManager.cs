@@ -18,7 +18,7 @@ namespace RelaxKonOS.Client.Services.Developer;
 
 /// <summary>
 /// Installs development <c>.roapp</c> archives and loads them into their own assembly load context.
-/// A development package may never use the reserved <c>remoteos.*</c> identifier range.
+/// A development package may never use the reserved <c>relaxkonos.*</c> identifier range.
 /// </summary>
 public sealed class DeveloperPackageManager
 {
@@ -146,7 +146,7 @@ public sealed class DeveloperPackageManager
             // This method is invoked from the installer command on Avalonia's UI thread. Do not
             // synchronously wait for asynchronous file I/O here: its continuation may need that
             // same synchronization context, leaving the installer permanently busy.
-            await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.remoteos.json"), ToDescriptor(manifest), cancellationToken);
+            await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.relaxkonos.json"), ToDescriptor(manifest), cancellationToken);
             await _drive.WriteJsonAtomicallyAsync(CurrentPath(appId), new ExternalCurrentVersion(1, appId, versionId), cancellationToken);
             await Dispatcher.UIThread.InvokeAsync(() => Register(record));
 
@@ -320,7 +320,7 @@ public sealed class DeveloperPackageManager
                     throw new VirtualSystemDriveException(VirtualSystemDriveProblemCode.PackageLayoutInvalid);
                 var versionDirectory = _drive.ResolveUnder(appDirectory, $"versions/{current.VersionId}");
                 var descriptor = await _drive.ReadJsonAsync<ApplicationDescriptor>(
-                    _drive.ResolveUnder(versionDirectory, "app.remoteos.json"), cancellationToken);
+                    _drive.ResolveUnder(versionDirectory, "app.relaxkonos.json"), cancellationToken);
                 var manifest = await _drive.ReadJsonAsync<DeveloperPackageManifest>(
                     _drive.ResolveUnder(versionDirectory, "manifest.json"), cancellationToken);
                 ValidateManifest(manifest);
@@ -366,7 +366,7 @@ public sealed class DeveloperPackageManager
                 var destination = VersionPath(legacy.Id, versionId);
                 CopyDirectoryWithoutLinks(source, destination);
                 var migrated = legacy with { Path = destination, IconPath = null };
-                await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.remoteos.json"), ToDescriptor(migrated), cancellationToken);
+                await _drive.WriteJsonAtomicallyAsync(_drive.ResolveUnder(destination, "app.relaxkonos.json"), ToDescriptor(migrated), cancellationToken);
                 await _drive.WriteJsonAtomicallyAsync(CurrentPath(migrated.Id), new ExternalCurrentVersion(1, migrated.Id, versionId), cancellationToken);
                 _catalog.Add(migrated.Id, migrated);
                 RecordActivationDiagnostic($"VSD package migration: app={migrated.Id}, result=migrated.");
@@ -432,8 +432,8 @@ public sealed class DeveloperPackageManager
     {
         if (string.IsNullOrWhiteSpace(manifest.Id) || !System.Text.RegularExpressions.Regex.IsMatch(manifest.Id, "^[a-z0-9][a-z0-9.-]{2,127}$"))
             throw new InvalidOperationException("Application id must use lowercase letters, digits, dots, or hyphens.");
-        if (manifest.Id.StartsWith("remoteos.", StringComparison.Ordinal))
-            throw new InvalidOperationException("The remoteos.* application id range is reserved for built-in applications.");
+        if (manifest.Id.StartsWith("relaxkonos.", StringComparison.Ordinal))
+            throw new InvalidOperationException("The relaxkonos.* application id range is reserved for built-in applications.");
         if (manifest.PermissionModelVersion != 2)
             throw new InvalidOperationException("This package uses an unsupported permission model. Rebuild it with permissionModelVersion: 2.");
         if (manifest.PackageType is not null and not "application" and not "desktopShell")
@@ -458,7 +458,7 @@ public sealed class DeveloperPackageManager
             throw new InvalidOperationException("localizedMetadata must use non-empty culture names and display names.");
         if (manifest.SupportedUriSchemes?.Any(scheme => string.IsNullOrWhiteSpace(scheme)
                 || !System.Text.RegularExpressions.Regex.IsMatch(scheme, "^[a-z][a-z0-9+.-]{0,31}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                || scheme.Equals("remoteos", StringComparison.OrdinalIgnoreCase)) == true)
+                || scheme.Equals("relaxkonos", StringComparison.OrdinalIgnoreCase)) == true)
             throw new InvalidOperationException("supportedUriSchemes must contain non-reserved URI schemes.");
         _ = ParseInstancePolicy(manifest.InstancePolicy);
     }
@@ -551,7 +551,7 @@ public sealed class DeveloperPackageManager
 
     private static void ValidateAppId(string appId)
     {
-        if (!System.Text.RegularExpressions.Regex.IsMatch(appId, "^[a-z0-9][a-z0-9.-]{2,127}$") || appId.StartsWith("remoteos.", StringComparison.Ordinal))
+        if (!System.Text.RegularExpressions.Regex.IsMatch(appId, "^[a-z0-9][a-z0-9.-]{2,127}$") || appId.StartsWith("relaxkonos.", StringComparison.Ordinal))
             throw new InvalidOperationException("Invalid developer application id.");
     }
 

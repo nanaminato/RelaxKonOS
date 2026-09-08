@@ -286,8 +286,8 @@ password123
 123456789
 qwerty...
 admin123
-remoteos
-remoteos123
+relaxkonos
+relaxkonos123
 用户名本身
 ...
 ```
@@ -483,7 +483,7 @@ HttpContext.Connection.RemoteIpAddress
 RelaxKonOS 必须始终保留本机恢复路径。服务器本地可执行：
 
 ```bash
-remoteos auth status
+relaxkonos auth status
 ```
 
 查看：
@@ -498,7 +498,7 @@ Trusted devices: 2
 然后执行：
 
 ```bash
-sudo remoteos auth unlock admin
+sudo relaxkonos auth unlock admin
 
 # Windows
 RelaxKonOS.Server.exe auth unlock admin

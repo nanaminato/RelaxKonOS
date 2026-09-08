@@ -5,7 +5,7 @@ namespace RelaxKonOS.Protocol.WebServers;
 /// <summary>Host-global Web Server API routes. Consumers must not duplicate these strings.</summary>
 public static class WebServerApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string WebServers = $"/{V1}/webservers";
     public const string CollectionPattern = "";
     public const string Discover = $"{WebServers}/discover";

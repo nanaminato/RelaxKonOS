@@ -38,7 +38,7 @@ V1 明确不包括：
 |---|---|
 | 线协议 | `Shared/RelaxKonOS.Protocol`：DTO、路由常量和 JSON 名称；该项目保持零 PackageReference。 |
 | Server API | `RelaxKonOS.Server/Endpoints`：按模块 `Map*Endpoints`，JWT `RequireAuthorization()`，并在 `Program.cs` 注册。 |
-| 持久化 | `RelaxKonOS.Server/Domain` + `Storage` + `Storage/Sqlite/RemoteOsDbContext.cs`；Runtime 状态和短期日志不得伪装成 Workspace 偏好。 |
+| 持久化 | `RelaxKonOS.Server/Domain` + `Storage` + `Storage/Sqlite/RelaxKonOSDbContext.cs`；Runtime 状态和短期日志不得伪装成 Workspace 偏好。 |
 | 受管二进制与进程 | 参考 `DockerRuntimeInstaller`、`NginxManagedOptions` 和 Web Server 操作存储；使用 `ProcessStartInfo.ArgumentList`，禁止 shell 拼接。 |
 | Client 应用 | `Client/RelaxKonOS.Client/Apps/<App>`、`IRemote*Client`、Bootstrapper 注册、`ApplicationManifest` 和现有 Avalonia / 本地化模式。 |
 | App 权限 | 在 `Framework/RelaxKonOS.Core/Applications/AppPermissions.cs` 增加读/管理权限，并在 Manifest 和 UI 使用；注意这只是本地应用授权，不能替代 Server 端的操作授权。 |
@@ -129,7 +129,7 @@ External Runtime 绝不下载、升级、删除或修改给定可执行文件。
 
 标准模式不修改 Defender。若检测到安装后文件被隔离或删除，应报告可操作的状态（含可公开的检测名称/系统错误），保留安装失败记录，并提供重新尝试或查看管理员指引。
 
-Defender compatibility 只能作为后续独立 Goal：Windows 专用、默认关闭、逐次明确确认、显示精确排除目标、实际读取回显验证、可撤销并写审计。优先文件级、其次具体版本目录，禁止排除 `C:\ProgramData\RemoteOS`、RelaxKonOS 数据根目录或整个磁盘；不得使用 Process Exclusion 替代文件/目录排除。企业策略、Tamper Protection、GPO、Intune 或 Defender for Endpoint 拒绝操作时，必须如实返回拒绝，不尝试绕过。
+Defender compatibility 只能作为后续独立 Goal：Windows 专用、默认关闭、逐次明确确认、显示精确排除目标、实际读取回显验证、可撤销并写审计。优先文件级、其次具体版本目录，禁止排除 `C:\ProgramData\RelaxKonOS`、RelaxKonOS 数据根目录或整个磁盘；不得使用 Process Exclusion 替代文件/目录排除。企业策略、Tamper Protection、GPO、Intune 或 Defender for Endpoint 拒绝操作时，必须如实返回拒绝，不尝试绕过。
 
 RelaxKonOS 不自行请求 UAC、`sudo`、宿主密码或管理员凭据。需要特权的下载目录、服务注册、端口绑定或 Defender 设置必须采用已批准的宿主操作路径，且 HTTP 客户端不能提交任意待执行命令。所有外部进程参数必须由结构化模型映射到 `ArgumentList`；无 shell、无 `cmd.exe` / `sh -c`、无用户提供的可执行文件参数拼接。
 
@@ -145,7 +145,7 @@ RelaxKonOS 不自行请求 UAC、`sudo`、宿主密码或管理员凭据。需�
 
 ### Goal 1：协议、权限和无秘密领域模型
 
-**工作**：在 `Shared/RelaxKonOS.Protocol/Tunnels` 建立稳定 JSON DTO、路由常量和 problem-code 约定；定义 Provider 状态、Server Profile（无秘密视图）、Tunnel Definition、Runtime 状态、操作结果和日志元数据。新增 `AppPermissions.ServerTunnelsRead` / `ServerTunnelsManage`，再创建 `remoteos.tunnels` 单窗口 Manifest、空状态和最小 Client Proxy 骨架。注册 Endpoint 映射，但尚不执行 FRP。
+**工作**：在 `Shared/RelaxKonOS.Protocol/Tunnels` 建立稳定 JSON DTO、路由常量和 problem-code 约定；定义 Provider 状态、Server Profile（无秘密视图）、Tunnel Definition、Runtime 状态、操作结果和日志元数据。新增 `AppPermissions.ServerTunnelsRead` / `ServerTunnelsManage`，再创建 `relaxkonos.tunnels` 单窗口 Manifest、空状态和最小 Client Proxy 骨架。注册 Endpoint 映射，但尚不执行 FRP。
 
 **验收**：Protocol 保持零 PackageReference；Client / Server 不硬编码路由；任何 DTO、API 响应或序列化测试都不包含秘密字段；无权限 UI 不暴露管理操作；Server API 的授权策略不是从客户端传来的 app id 推断。
 

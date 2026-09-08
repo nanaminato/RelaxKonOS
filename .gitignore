@@ -42,8 +42,8 @@ bld/
 [Ll]og/
 [Ll]ogs/
 wallpapers/
-RemoteOS.Server/data/docker-compose/
-RemoteOS.Server/data/
+RelaxKonOS.Server/data/docker-compose/
+RelaxKonOS.Server/data/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

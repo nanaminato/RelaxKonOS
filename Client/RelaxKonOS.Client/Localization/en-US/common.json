@@ -19,7 +19,7 @@
         "common.error.empty_response_title": "Empty response",
         "common.error.empty_response_detail": "The server returned an empty response body.",
         "common.problem.privileged_helper_unavailable.title": "Privileged helper unavailable",
-        "common.problem.privileged_helper_unavailable": "The server's privileged helper is unavailable. Ask the server administrator to install or repair it: on Linux, check RelaxKonOS.PrivilegedHelper, the root-owned publish directory, and the sudoers rule; on Windows, check the RemoteOSPrivilegedHelper service, named-pipe ACL, and shared secret. Then try again.",
+        "common.problem.privileged_helper_unavailable": "The server's privileged helper is unavailable. Ask the server administrator to install or repair it: on Linux, check RelaxKonOS.PrivilegedHelper, the root-owned publish directory, and the sudoers rule; on Windows, check the RelaxKonOSPrivilegedHelper service, named-pipe ACL, and shared secret. Then try again.",
         "common.done": "Done",
         "common.file": "File",
         "common.new": "New",

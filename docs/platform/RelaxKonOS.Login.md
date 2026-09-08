@@ -34,7 +34,7 @@ RelaxKonOS 登录模块参考 Windows Server 远程桌面连接工具 **mstsc** 
 
 **已实现**：
 
-- 客户端：`LoginWindow` + `LoginView` + `LoginViewModel` + `IRemoteOsClient`（typed HttpClient）+ `IAuthSession`（可选记住设备）+ 统一 bearer 自动刷新/401 单次重试 + 启动分叉
+- 客户端：`LoginWindow` + `LoginView` + `LoginViewModel` + `IRelaxKonOSClient`（typed HttpClient）+ `IAuthSession`（可选记住设备）+ 统一 bearer 自动刷新/401 单次重试 + 启动分叉
 - 服务端：`/api/v1.0/auth/login|refresh|logout|me` 端点 + JWT 签发 + `IIdentityProvider` 抽象 + `WindowsLogonProvider`（LogonUser）+ `LinuxPamProvider`（PAM 认证与账户检查、NSS 用户信息）+ 登录端点限流、账号/IP/账号+IP 递增冷却，以及 SQLite 持久化仓储
 - 协议：零改动（复用 Protocol 已有的 `LoginRequest`/`LoginResponse`/`AuthTokens`/`AuthApiRoutes`/`ProblemDetails`）
 
@@ -73,7 +73,7 @@ Client (LoginViewModel)         Server (AuthEndpoints)         Host OS (LogonUse
     App 关闭 LoginWindow，打开 MainWindow（桌面）
 ```
 
-失败路径：Server 返回 RFC 7807 `ProblemDetails`（错误码在 `type` URI），Client `RemoteOsClient` 抛 `RemoteOsAuthException`，`LoginViewModel` 按 `type` 映射本地化文案显示在登录窗口。
+失败路径：Server 返回 RFC 7807 `ProblemDetails`（错误码在 `type` URI），Client `RelaxKonOSClient` 抛 `RelaxKonOSAuthException`，`LoginViewModel` 按 `type` 映射本地化文案显示在登录窗口。
 
 ---
 
@@ -84,7 +84,7 @@ Client (LoginViewModel)         Server (AuthEndpoints)         Host OS (LogonUse
 ```text
 App.OnFrameworkInitializationCompleted
     |
-    Bootstrapper.Build(this)  → IServiceProvider（含 IAuthSession / IRemoteOsClient / LoginViewModel / DesktopShellViewModel）
+    Bootstrapper.Build(this)  → IServiceProvider（含 IAuthSession / IRelaxKonOSClient / LoginViewModel / DesktopShellViewModel）
     |
     desktop.ShutdownMode = OnExplicitShutdown
     |
@@ -122,7 +122,7 @@ IAuthSession (AuthSession, 单例；可选记住设备)
   ├── LogoutAsync()
   └── RefreshAsync()
 
-IRemoteOsClient (RemoteOsClient, typed HttpClient)
+IRelaxKonOSClient (RelaxKonOSClient, typed HttpClient)
   ├── LoginAsync(serverUrl, request)   → POST /api/v1.0/auth/login
   ├── RefreshAsync(serverUrl, refresh) → POST /api/v1.0/auth/refresh
   ├── LogoutAsync(serverUrl, access, refresh?) → POST /api/v1.0/auth/logout
@@ -141,10 +141,10 @@ Unauthenticated ──Connect──>> Connecting ──成功──>> Authentica
 
 ### 3.4 关键约束
 
-- **不 mutate `HttpClient.BaseAddress`**：`RemoteOsClient` 每个方法接收 `serverUrl` 构造绝对 URI（`new Uri(new Uri(serverUrl), route.TrimStart('/'))`），避免 typed HttpClient 共享实例并发竞态。
+- **不 mutate `HttpClient.BaseAddress`**：`RelaxKonOSClient` 每个方法接收 `serverUrl` 构造绝对 URI（`new Uri(new Uri(serverUrl), route.TrimStart('/'))`），避免 typed HttpClient 共享实例并发竞态。
 - **登录窗用顶层 `Window`**，不用 `RemoteWindow`（`RemoteWindow` 必须挂在 `DesktopShellView` 的 `PART_WindowHost` Canvas，登录前桌面尚未建立）。
 - **已保存连接**：客户端可保存多组 `Server URL + 用户名`，并可选择通过平台安全存储加密保存密码；登录窗保持可见，用户从下拉列表选择任意已保存项以回填凭据，再明确点击“连接”登录。不会保存 `RefreshToken` 或任何可替代密码的令牌；登出不会删除已保存连接。Linux 即使 Secret Service 暂不可用，也会保留服务器和用户名，只禁用该记录的免密码登录。
-- **HTTP 调用经 `IRemoteOsClient` 抽象**，业务代码不直接 `new HttpClient`（Architecture.md §4.8）。
+- **HTTP 调用经 `IRelaxKonOSClient` 抽象**，业务代码不直接 `new HttpClient`（Architecture.md §4.8）。
 
 ---
 
@@ -233,7 +233,7 @@ InMemory*Repository (Singleton, ConcurrentDictionary, 重启丢失)
 
 ## 5. 错误处理矩阵
 
-`ProblemDetails`（Protocol.Common）只有 `type/title/status/detail/traceId` 五字段，**无 Errors 字典**。错误码通过 RFC 7807 的 `type` URI 传递，客户端按 `type` 字符串映射本地化文案。`type` 前缀统一 `https://remoteos.app/problems/`。
+`ProblemDetails`（Protocol.Common）只有 `type/title/status/detail/traceId` 五字段，**无 Errors 字典**。错误码通过 RFC 7807 的 `type` URI 传递，客户端按 `type` 字符串映射本地化文案。`type` 前缀统一 `https://relaxkonos.app/problems/`。
 
 | 场景 | HTTP | ProblemDetails.type | UI 文案 |
 |---|---|---|---|
@@ -312,12 +312,12 @@ Linux 服务端部署要求系统提供 PAM 运行库（Ubuntu 的 `libpam0g`，
 
 - 启动顺序：先 `LoginWindow`，登录成功后才创建 `MainWindow`。
 - 登录窗口用顶层 `Window`，不用 `RemoteWindow`（RemoteWindow 必须挂在 DesktopShellView 内）。
-- HTTP 调用经 `IRemoteOsClient` 抽象，业务代码不直接 `new HttpClient`。
+- HTTP 调用经 `IRelaxKonOSClient` 抽象，业务代码不直接 `new HttpClient`。
 - 凭据验证经 `IIdentityProvider` 抽象，平台差异封装在 Provider 实现。
 - 错误响应解析 `ProblemDetails`，用 `type` 字段做错误码映射（无 Errors 字典）。
 - 未勾选“记住此计算机和用户名”时，不新增本地记录；勾选后保存 `Server URL + 用户名`。只有额外勾选“加密保存密码”时才将密码写入操作系统安全存储；不保存 RefreshToken，且启动后由用户选择目标服务器，避免在多服务器环境中错误地自动连到上一台机器。
 - Server 领域模型与 Protocol DTO 分离，端点处手动 `ToDto()` 映射。
-- 序列化统一用 `RemoteOsJsonOptions.Default`（camelCase + 枚举字符串）。
+- 序列化统一用 `RelaxKonOSJsonOptions.Default`（camelCase + 枚举字符串）。
 
 **禁止**：
 

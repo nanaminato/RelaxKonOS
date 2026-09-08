@@ -1,6 +1,6 @@
 # RelaxKonOS Code Editor 设计
 
-> 内置代码编辑器（`remoteos.codeeditor`）。它在 Client 本地渲染编辑体验，经既有 Files API 读取和保存 **RelaxKonOS.Server 宿主机** 上的代码文件；不直接访问客户端或服务端文件系统。
+> 内置代码编辑器（`relaxkonos.codeeditor`）。它在 Client 本地渲染编辑体验，经既有 Files API 读取和保存 **RelaxKonOS.Server 宿主机** 上的代码文件；不直接访问客户端或服务端文件系统。
 >
 > 当前状态：**设计中**。现有版本可打开、编辑和保存单个远程文本文件，并按扩展名提供基础语法高亮。本设计为其增加多文件夹工作区、左侧活动栏/功能区域和多标签编辑区。
 

@@ -49,7 +49,7 @@ public static class ProxyProblemCodes
 
 public static class ProxyApiRoutes
 {
-    public const string Proxy = $"/{RelaxKonOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/proxy";
+    public const string Proxy = $"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/proxy";
     public const string Overview = Proxy;
     public const string Runtime = Proxy + "/runtime";
     public const string LifecyclePattern = "/lifecycle/{action}";

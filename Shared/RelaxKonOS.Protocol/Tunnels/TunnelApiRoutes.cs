@@ -5,7 +5,7 @@ namespace RelaxKonOS.Protocol.Tunnels;
 /// <summary>Stable, host-side tunnel-management routes. Clients must use these constants.</summary>
 public static class TunnelApiRoutes
 {
-    private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;
+    private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Tunnels = $"/{V1}/tunnels";
     public const string Profiles = $"{Tunnels}/profiles";
     public const string ProfilePattern = "/profiles/{profileId:guid}";

@@ -365,13 +365,13 @@ Table: `device`
 RelaxKonOS Server 运行于宿主 OS 之上：
 
 ```text
-remoteos-server
+relaxkonos-server
     |
     v
 Host OS (Ubuntu / Windows Server)
 ```
 
-RelaxKonOS 不管理用于登录的宿主 OS 用户或密码数据库。Linux 部署脚本唯一的例外是创建/复用不允许交互登录的 `remoteos-server` **服务账户**，用于以最小权限运行 Server；它不属于 RelaxKonOS 登录账户，不写入业务用户资料。Windows 不操作 SAM / AD。
+RelaxKonOS 不管理用于登录的宿主 OS 用户或密码数据库。Linux 部署脚本唯一的例外是创建/复用不允许交互登录的 `relaxkonos-server` **服务账户**，用于以最小权限运行 Server；它不属于 RelaxKonOS 登录账户，不写入业务用户资料。Windows 不操作 SAM / AD。
 
 ---
 

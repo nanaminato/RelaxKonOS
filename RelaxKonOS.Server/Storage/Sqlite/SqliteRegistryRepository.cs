@@ -4,7 +4,7 @@ using RelaxKonOS.Server.Domain;
 
 namespace RelaxKonOS.Server.Storage.Sqlite;
 
-public sealed class SqliteRegistryRepository(RemoteOsDbContext db) : IRegistryRepository
+public sealed class SqliteRegistryRepository(RelaxKonOSDbContext db) : IRegistryRepository
 {
     public IReadOnlyList<RegistryEntry> List(Guid userId, RegistryScope? scope = null)
     {

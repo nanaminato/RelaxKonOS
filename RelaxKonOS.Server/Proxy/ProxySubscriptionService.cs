@@ -228,7 +228,7 @@ public sealed class ProxySubscriptionDownloader(
 internal static class ProxySubscriptionNetworkPolicy
 {
     public static bool HasSystemProxy() =>
-        HasSystemProxy(new Uri("https://remoteos.invalid/")) || HasSystemProxy(new Uri("http://remoteos.invalid/"));
+        HasSystemProxy(new Uri("https://relaxkonos.invalid/")) || HasSystemProxy(new Uri("http://relaxkonos.invalid/"));
 
     public static bool HasSystemProxy(Uri destination)
         => TryGetSystemProxy(HttpClient.DefaultProxy, destination) is not null;

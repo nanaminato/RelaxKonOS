@@ -14,7 +14,7 @@ public partial class ExplorerMainView : UserControl
 {
     private sealed record ExplorerDragPayload(ExplorerViewModel Source, IReadOnlyList<FileSystemEntryDto> Entries);
     private static readonly DataFormat<ExplorerDragPayload> ExplorerEntriesFormat =
-        DataFormat.CreateInProcessFormat<ExplorerDragPayload>("remoteos/explorer-entries");
+        DataFormat.CreateInProcessFormat<ExplorerDragPayload>("relaxkonos/explorer-entries");
     private const double MinimumDragDistance = 5;
 
     private PointerPressedEventArgs? _dragTrigger;

@@ -11,18 +11,18 @@ SystemDrive/
   System/catalog.json
   System/associations.json
   System/automation-audit/
-  Programs/BuiltIn/<app-id>/app.remoteos.json
-  Programs/External/<app-id>/versions/<immutable-id>/app.remoteos.json
+  Programs/BuiltIn/<app-id>/app.relaxkonos.json
+  Programs/External/<app-id>/versions/<immutable-id>/app.relaxkonos.json
   Programs/External/<app-id>/current.json
-  Shells/<shell-id>/shell.remoteos.json
-  Users/<local-profile-id>/Desktop/*.remoteos-link.json
-  Users/<local-profile-id>/Scripts/*.remoteos-script.json
+  Shells/<shell-id>/shell.relaxkonos.json
+  Users/<local-profile-id>/Desktop/*.relaxkonos-link.json
+  Users/<local-profile-id>/Scripts/*.relaxkonos-script.json
   Users/<local-profile-id>/Documents/
   Users/<local-profile-id>/Downloads/
   Users/<local-profile-id>/AppData/<app-id>/
 ```
 
-固定扩展名为 `app.remoteos.json`、`shell.remoteos.json`、`*.remoteos-link.json` 与 `*.remoteos-script.json`；所有 V1 JSON 文档均使用 `schemaVersion: 1`。脚本刻意只采用 JSON，避免在 V1 引入可执行 YAML 标签或自定义类型解析。
+固定扩展名为 `app.relaxkonos.json`、`shell.relaxkonos.json`、`*.relaxkonos-link.json` 与 `*.relaxkonos-script.json`；所有 V1 JSON 文档均使用 `schemaVersion: 1`。脚本刻意只采用 JSON，避免在 V1 引入可执行 YAML 标签或自定义类型解析。
 
 ## 字段归属
 
@@ -44,7 +44,7 @@ SystemDrive/
 
 `ShellDescriptor`：`schemaVersion`、`id`、显示名、预览资源与受支持功能。Shell 只能由 Host 受控工厂创建；V1 不支持外置 Shell 插件。
 
-`RemoteOsShortcut`：`schemaVersion`、稳定 `id`、显示名、`kind` (`application`、`remote-file`、`remote-folder`、`script`、`uri`)、受限 `target` 与可选图标。不得含绝对本地路径、命令行、程序集类型、权限 grant 或 HTTP 凭据。
+`RelaxKonOSShortcut`：`schemaVersion`、稳定 `id`、显示名、`kind` (`application`、`remote-file`、`remote-folder`、`script`、`uri`)、受限 `target` 与可选图标。不得含绝对本地路径、命令行、程序集类型、权限 grant 或 HTTP 凭据。
 
 所有解析失败使用稳定问题码，而不是异常文本：`vsd.path.invalid`、`vsd.path.escape`、`vsd.schema.unsupported`、`vsd.json.invalid`、`vsd.document.too-large`、`vsd.app-id.invalid`、`vsd.app-id.duplicate`、`vsd.builtin.mismatch`、`vsd.package.layout.invalid`、`vsd.shortcut.invalid` 与 `vsd.script.invalid`。
 
@@ -56,4 +56,4 @@ SystemDrive/
 
 ## 安全与产品声明
 
-VSD 不是真实 `C:`、宿主文件系统映射或沙箱。第三方 `.roapp` 仍不是恶意代码隔离、签名验证或可信发布者模型；它们只在现有 Host 权限门控下运行。内置 `remoteos`、`windows-like`、`macos-like` 与 `ubuntu-like` 仅是 RelaxKonOS 自己的视觉样式，不冒充原始操作系统，也不允许外置包替换 Shell 或截获全局输入。自动化调用必须携带 `UserShortcut` 或 `UserScriptLibrary` 来源并写入脱敏审计；未知/后台来源被拒绝。V1 不执行任意宿主命令、EXE、网络请求、反射代码、程序集片段或静默自动化。
+VSD 不是真实 `C:`、宿主文件系统映射或沙箱。第三方 `.roapp` 仍不是恶意代码隔离、签名验证或可信发布者模型；它们只在现有 Host 权限门控下运行。内置 `relaxkonos`、`windows-like`、`macos-like` 与 `ubuntu-like` 仅是 RelaxKonOS 自己的视觉样式，不冒充原始操作系统，也不允许外置包替换 Shell 或截获全局输入。自动化调用必须携带 `UserShortcut` 或 `UserScriptLibrary` 来源并写入脱敏审计；未知/后台来源被拒绝。V1 不执行任意宿主命令、EXE、网络请求、反射代码、程序集片段或静默自动化。

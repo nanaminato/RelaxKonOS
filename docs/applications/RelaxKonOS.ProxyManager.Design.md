@@ -326,7 +326,7 @@ if (OperatingSystem.IsLinux())
 # 7. Mihomo 运行时生命周期
 
 Windows 由长期运行的 `RelaxKonOS.Server` 直接托管 Mihomo；不再额外注册
-`remoteos-mihomo` SCM 服务：
+`relaxkonos-mihomo` SCM 服务：
 
 ```text
 Windows SCM（如 RelaxKonOS.Server 作为 Windows Service）
@@ -745,7 +745,7 @@ public sealed record ProxyConfigurationValidationResult
 建议：
 
 ```text
-C:\ProgramData\RemoteOS\Proxy\
+C:\ProgramData\RelaxKonOS\Proxy\
 ```
 
 结构：
@@ -777,31 +777,31 @@ Proxy\
 推荐遵循 Linux 目录语义：
 
 ```text
-/etc/remoteos/proxy/
+/etc/relaxkonos/proxy/
 
-/var/lib/remoteos/proxy/
+/var/lib/relaxkonos/proxy/
 
-/var/log/remoteos/proxy/
+/var/log/relaxkonos/proxy/
 
-/opt/remoteos/proxy/
+/opt/relaxkonos/proxy/
 ```
 
 例如：
 
 ```text
-/etc/remoteos/proxy/
+/etc/relaxkonos/proxy/
     configuration metadata
 
-/var/lib/remoteos/proxy/
+/var/lib/relaxkonos/proxy/
     profiles
     subscriptions
     runtime state
     backups
 
-/var/log/remoteos/proxy/
+/var/log/relaxkonos/proxy/
     logs
 
-/opt/remoteos/proxy/engines/
+/opt/relaxkonos/proxy/engines/
     mihomo binary
 ```
 

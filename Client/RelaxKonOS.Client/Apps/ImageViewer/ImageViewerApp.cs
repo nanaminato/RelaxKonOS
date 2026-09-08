@@ -17,7 +17,7 @@ public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
     [".png", ".apng", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".bmp", ".dib", ".webp", ".ico"];
 
     public override ApplicationManifest Manifest { get; } = new(
-        Id: new AppId("remoteos.imageviewer"),
+        Id: new AppId("relaxkonos.imageviewer"),
         DisplayName: "Image Viewer",
         Version: "1.0.0",
         IconGlyph: "🖼️",

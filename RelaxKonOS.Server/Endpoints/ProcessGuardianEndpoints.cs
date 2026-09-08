@@ -10,7 +10,7 @@ public static class ProcessGuardianEndpoints
 {
     public static IEndpointRouteBuilder MapProcessGuardianEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/guardian").RequireAuthorization().WithTags("Process Guardian");
+        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/guardian").RequireAuthorization().WithTags("Process Guardian");
         group.MapGet("/status", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.GetStatusAsync(ct));
         group.MapGet("/workloads", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ListWorkloadsAsync(ct));
         group.MapGet("/workloads/{id}", (string id, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.GetDefinitionAsync(id, ct));
@@ -39,7 +39,7 @@ public static class ProcessGuardianEndpoints
         {
             if (!elevations.IsGranted(http.User, HostElevationCapability.NativeServiceAction, id))
                 return Results.Problem(statusCode: 403, title: "需要管理员权限", detail: "此服务操作需要当前会话的管理员授权。",
-                    type: "https://remoteos.app/problems/elevation-required");
+                    type: "https://relaxkonos.app/problems/elevation-required");
             return Results.Ok(await services.ApplyActionAsync(id, action, request, ct));
         });
         group.MapPost("/agent/installation/plan", (RelaxKonOS.Server.ProcessGuardian.IGuardianAgentInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct));

@@ -13,7 +13,7 @@ namespace RelaxKonOS.Server.Endpoints;
 /// 错误统一返回 RFC 7807 ProblemDetails（type URI 作错误码）。</summary>
 public static class SystemMonitorEndpoints
 {
-    private const string ProblemBase = "https://remoteos.app/problems/";
+    private const string ProblemBase = "https://relaxkonos.app/problems/";
 
     public static IEndpointRouteBuilder MapSystemMonitorEndpoints(this IEndpointRouteBuilder app)
     {

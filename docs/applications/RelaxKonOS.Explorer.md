@@ -98,7 +98,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 与终端模块（SignalR 流式字节）不同，Explorer 用 **REST HTTP**：
 
 1. **请求/响应天然契合**目录列举（一次请求返回完整 `DirectoryDto`）。
-2. 与 Auth 端点同构（`Results.Ok` / `Results.Problem`），错误处理复用 `RemoteOsAuthException`。
+2. 与 Auth 端点同构（`Results.Ok` / `Results.Problem`），错误处理复用 `RelaxKonOSAuthException`。
 3. 文件下载用 `Results.File(stream, ...)` 流式返回；上传用 `multipart/form-data`。
 4. SignalR 仅未来 watch（目录变化推送）/大文件分块流式才需要，当前不引入。
 
@@ -106,7 +106,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 
 `IExplorerClient` 从 `IAuthSession` 取 `ServerUrl` + `Tokens.AccessToken`：
 
-- 不 mutate `HttpClient.BaseAddress`（每个请求用 `serverUrl` 构造绝对 URI，避免共享实例并发竞态——与 `IRemoteOsClient` 同模式）。
+- 不 mutate `HttpClient.BaseAddress`（每个请求用 `serverUrl` 构造绝对 URI，避免共享实例并发竞态——与 `IRelaxKonOSClient` 同模式）。
 - 未登录（`State != Authenticated`）调用抛 `InvalidOperationException`；`ExplorerApp.Activate` 在未登录时弹提示窗。
 - 所有端点 `[Authorize]`，错误统一 RFC 7807 `ProblemDetails`（错误码在 `type` URI，无 `Errors` 字典——见 Protocol.md）。
 
@@ -131,7 +131,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 
 ### 4.2 FileEndpoints
 
-[`RelaxKonOS.Server/Endpoints/FileEndpoints.cs`](../../RelaxKonOS.Server/Endpoints/FileEndpoints.cs) — 静态 `MapFileEndpoints(this IEndpointRouteBuilder)`，minimal API，全部 `RequireAuthorization()`。错误用 `Results.Problem(detail, statusCode, title, type: "https://remoteos.app/problems/" + suffix)`（仿 `AuthEndpoints.cs`）。
+[`RelaxKonOS.Server/Endpoints/FileEndpoints.cs`](../../RelaxKonOS.Server/Endpoints/FileEndpoints.cs) — 静态 `MapFileEndpoints(this IEndpointRouteBuilder)`，minimal API，全部 `RequireAuthorization()`。错误用 `Results.Problem(detail, statusCode, title, type: "https://relaxkonos.app/problems/" + suffix)`（仿 `AuthEndpoints.cs`）。
 
 ### 4.3 REST 端点签名
 
@@ -174,7 +174,7 @@ Client/RelaxKonOS.Client/Apps/Explorer/
 ├── ExplorerPickerOptions.cs       可复用远端文件选择器配置（打开文件 / 选择文件夹、多选、通配符过滤）
 ├── ExplorerApp.cs                 RemoteApplicationBase，Activate 创建 VM+View+Window，注入对话框回调
 ├── IExplorerClient.cs             typed HttpClient 抽象
-├── ExplorerClient.cs              实现：JWT from IAuthSession，绝对 URI，ProblemDetails → RemoteOsAuthException
+├── ExplorerClient.cs              实现：JWT from IAuthSession，绝对 URI，ProblemDetails → RelaxKonOSAuthException
 ├── Models/
 │   ├── TreeNodeModel.cs           导航树节点（懒加载 + dummy child 模式，移植自 Jaya TreeNodeModel；加 IconKind 驱动 emoji）
 │   └── TreeNodeIconKind.cs        导航树节点图标种类枚举（Computer/Drive/Folder/Home/Desktop/Documents/Downloads/Pictures/Music/Videos/Network）
@@ -275,7 +275,7 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 
 ## 6. Protocol 层
 
-[`Shared/RelaxKonOS.Protocol/Files/`](../../Shared/RelaxKonOS.Protocol/Files) — 零 Newtonsoft，纯 `System.Text.Json`，`sealed record` + `[property: JsonPropertyName("...")]`（camelCase，对齐 `RemoteOsJsonOptions.Default`）。
+[`Shared/RelaxKonOS.Protocol/Files/`](../../Shared/RelaxKonOS.Protocol/Files) — 零 Newtonsoft，纯 `System.Text.Json`，`sealed record` + `[property: JsonPropertyName("...")]`（camelCase，对齐 `RelaxKonOSJsonOptions.Default`）。
 
 | 文件 | 职责 |
 |------|------|
@@ -285,7 +285,7 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 | `FilePropertiesDto.cs` / `UpdateUnixPermissionsRequest.cs` | 文件/目录属性、宿主权限摘要与 Linux POSIX 权限更新契约 |
 | `DirectoryDto.cs` | 目录列举结果：目录自身元数据 + `Directories[]` + `Files[]` |
 | `DriveDto.cs` | 驱动器/根挂载点：name/path/totalSize/isReady |
-| `SpecialFolderKind.cs` | enum `Home/Desktop/Documents/Downloads/Pictures/Music/Videos`（camelCase 序列化，由 `RemoteOsJsonOptions.Default` 全局生效，无需显式 `[JsonStringEnumConverter]`） |
+| `SpecialFolderKind.cs` | enum `Home/Desktop/Documents/Downloads/Pictures/Music/Videos`（camelCase 序列化，由 `RelaxKonOSJsonOptions.Default` 全局生效，无需显式 `[JsonStringEnumConverter]`） |
 | `SpecialLocationDto.cs` | 特殊文件夹位置：kind/name/path（Server `GetSpecialLocations` 返回，已 `Directory.Exists` 过滤） |
 | `RenameRequest.cs` / `MoveRequest.cs` / `CopyRequest.cs` | 操作请求 body |
 | `FileApiRoutes.cs` | 路由常量（路径含 `/api/v1.0` 前缀，Server 注册与 Client 拼接共用；含 `Content` / `Properties` / `Permissions` 等文件读写与属性路由） |
@@ -316,9 +316,9 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 1. **所有文件 IO 必须经 `IExplorerClient` → REST API**。客户端不得直接访问本地文件系统（上传/下载的本地源/目标除外，走 `StorageProvider`）。Server 端 IO 只在 `LocalFileService` 内。
 2. **复用宿主 OS 权限，不另建 ACL**（project_memory 硬约束）。Server 以进程身份执行 `System.IO`，权限不足返回 `access-denied`（403）。当前不做 sudo/UAC 提升。
 3. **JWT 复用 `IAuthSession`**：`IExplorerClient` 不持有独立凭据；未登录调 `ExplorerApp.Activate` 弹提示窗，不崩溃。
-4. **错误统一 RFC 7807**：Server `Results.Problem(..., type: "https://remoteos.app/problems/" + suffix)`；Client `ExplorerClient` 解析 `ProblemDetails` 抛 `RemoteOsAuthException`，VM catch 后写 `StatusText`。
+4. **错误统一 RFC 7807**：Server `Results.Problem(..., type: "https://relaxkonos.app/problems/" + suffix)`；Client `ExplorerClient` 解析 `ProblemDetails` 抛 `RelaxKonOSAuthException`，VM catch 后写 `StatusText`。
 5. **路由常量共用 `FileApiRoutes`**：Server 注册与 Client 拼接 URL 必须用同一常量，禁止硬编码字符串。
-6. **DTO 用 `sealed record` + `[property: JsonPropertyName]`**（Protocol 约定），线协议用 `System.Text.Json`（`RemoteOsJsonOptions.Default`）。Jaya 配置模型（如未来引入 `PaneConfigModel`）保留 Newtonsoft，但不进入线协议。
+6. **DTO 用 `sealed record` + `[property: JsonPropertyName]`**（Protocol 约定），线协议用 `System.Text.Json`（`RelaxKonOSJsonOptions.Default`）。Jaya 配置模型（如未来引入 `PaneConfigModel`）保留 Newtonsoft，但不进入线协议。
 7. **移植 Jaya 文件保留原始版权头**（`// Copyright (c) Rubal Walia...`），不删改；新增文件用 RelaxKonOS 自己的版权头。Jaya 归属见 [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md)。
 8. **不引入 Jaya 的 `ServiceLocator` / `ViewModelLocator` / `EventAggregator` 反射基础设施**。新代码用 RelaxKonOS DI（`Microsoft.Extensions.DependencyInjection`）+ `CommunityToolkit.Mvvm`（`[ObservableProperty]` / `[RelayCommand]`）。
 9. **对话框走 `AppContext.ShowDialogAsync`**（与 Notepad 同模式），不直接创建 Avalonia `Window`。本地文件选择走 `StorageProvider`（TopLevel = `MainWindow`）。

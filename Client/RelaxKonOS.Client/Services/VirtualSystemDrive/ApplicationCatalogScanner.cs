@@ -88,7 +88,7 @@ public sealed class ApplicationCatalogScanner
             try
             {
                 var directory = _drive.ResolveUnder(_drive.BuiltInProgramsDirectory, directoryName);
-                var descriptorPath = _drive.ResolveUnder(directory, "app.remoteos.json");
+                var descriptorPath = _drive.ResolveUnder(directory, "app.relaxkonos.json");
                 var descriptor = await _drive.ReadJsonAsync<ApplicationDescriptor>(descriptorPath, cancellationToken);
                 var validation = ApplicationDescriptorValidator.Validate(descriptor);
                 if (!validation.IsValid)

@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace RelaxKonOS.Protocol.Common;
 
 /// <summary>RelaxKonOS 线协议统一序列化约定。Server MVC / SignalR 与 Client Http 共用此配置以保证 JSON 一致。</summary>
-public static class RemoteOsJsonOptions
+public static class RelaxKonOSJsonOptions
 {
     /// <summary>
     /// 默认序列化选项：camelCase + 大小写不敏感 + 枚举字符串（camelCase）。

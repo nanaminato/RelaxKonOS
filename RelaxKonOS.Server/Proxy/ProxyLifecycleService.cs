@@ -20,7 +20,7 @@ public sealed class ProxyLifecycleService(
     IProxyRecoveryService recovery,
     IProxyPrivilegedOperations privileged) : IProxyLifecycleService
 {
-    private const string ServiceName = "remoteos-mihomo";
+    private const string ServiceName = "relaxkonos-mihomo";
 
     public async Task<ProxyOverviewDto> GetOverviewAsync(CancellationToken cancellationToken)
     {

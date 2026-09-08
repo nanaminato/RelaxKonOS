@@ -61,7 +61,7 @@ RelaxKonOS 采用状态同步模式（非像素流）：Client 本地渲染 UI�
 
 本地 RelaxKonOS Shell 已完成（Desktop、Window Manager、Application Runtime、Application SDK、内置应用 Welcome/Notebook/Code Editor/Image Viewer/Settings 等）。
 
-应用启动与跨应用导航已具备首个可运行基础：Shell 解析受控 `remoteos://` URI，Settings 支持直达个性化和指定应用权限页；RemoteExplorer 通过此入口打开文件。`ApplicationManifest.InstancePolicy` 可声明多窗口或单窗口，Settings/任务管理器/端口转发/防火墙/进程守护/Docker 为单窗口，Notebook 与 Code Editor 明确支持多窗口。详见 [`RelaxKonOS.ApplicationActivation.md`](./architecture/RelaxKonOS.ApplicationActivation.md)。
+应用启动与跨应用导航已具备首个可运行基础：Shell 解析受控 `relaxkonos://` URI，Settings 支持直达个性化和指定应用权限页；RemoteExplorer 通过此入口打开文件。`ApplicationManifest.InstancePolicy` 可声明多窗口或单窗口，Settings/任务管理器/端口转发/防火墙/进程守护/Docker 为单窗口，Notebook 与 Code Editor 明确支持多窗口。详见 [`RelaxKonOS.ApplicationActivation.md`](./architecture/RelaxKonOS.ApplicationActivation.md)。
 
 桌面外壳已增强：宿主窗口控制（标题栏拖动 / 8 向 resize / 最小化·最大化·关闭 / 全屏）、mstsc 风格连接栏（全屏切换、固定与自动隐藏、连接信息、关闭连接 = 登出）、可复用模态对话框机制（`AppContext.ShowDialogAsync`，支持嵌套与任意结果类型）。详见 [`RelaxKonOS.Desktop.md`](./desktop/RelaxKonOS.Desktop.md)。
 
@@ -415,7 +415,7 @@ RelaxKonOS.Server     = Cloud Backend
 | [`Architecture`](./architecture/RelaxKonOS.Architecture.md) | 模块设计、依赖关系、架构原则 |
 | [`Protocol`](./architecture/RelaxKonOS.Protocol.md) | 通信协议契约层、REST/SignalR、序列化约定 |
 | [`Workspace`](./architecture/RelaxKonOS.Workspace.md) | User / Workspace / Session / Device、多设备、云桌面状态 |
-| [`ApplicationActivation`](./architecture/RelaxKonOS.ApplicationActivation.md) | 应用启动 URI、窗口实例策略、受控 `remoteos://` 路由 |
+| [`ApplicationActivation`](./architecture/RelaxKonOS.ApplicationActivation.md) | 应用启动 URI、窗口实例策略、受控 `relaxkonos://` 路由 |
 
 ### 平台服务
 

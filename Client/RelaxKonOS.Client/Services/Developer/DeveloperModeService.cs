@@ -25,7 +25,7 @@ public sealed class DeveloperModeService
         get { lock (_gate) return _state.Enabled; }
     }
 
-    /// <summary>Secret used by local tools in the <c>X-RemoteOS-Dev-Token</c> request header.</summary>
+    /// <summary>Secret used by local tools in the <c>X-RelaxKonOS-Dev-Token</c> request header.</summary>
     public string PairingToken
     {
         get { lock (_gate) return _state.PairingToken; }

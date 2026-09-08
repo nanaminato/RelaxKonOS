@@ -11,7 +11,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 /// <summary>IExplorerClient 的 typed HttpClient 实现。
 /// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.ServerUrl"/> 构造绝对 URI（避免共享实例并发竞态）。
 /// Authorization 头从 <see cref="IAuthSession.Tokens"/> 取；未登录抛 <see cref="InvalidOperationException"/>。
-/// 失败读 ProblemDetails 抛 <see cref="RemoteOsAuthException"/>（与 <see cref="RemoteOsClient"/> 同源）。</summary>
+/// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>（与 <see cref="RelaxKonOSClient"/> 同源）。</summary>
 public sealed class ExplorerClient : IExplorerClient
 {
     private readonly HttpClient _http;
@@ -196,15 +196,15 @@ public sealed class ExplorerClient : IExplorerClient
         using var req = new HttpRequestMessage(method, BuildUri(serverUrl, route, query));
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.Tokens!.AccessToken);
         if (body is not null)
-            req.Content = JsonContent.Create(body, options: RemoteOsJsonOptions.Default);
+            req.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         return await _http.SendAsync(req, ct);
     }
 
     private static async Task<T> ReadAsync<T>(HttpResponseMessage resp, CancellationToken ct)
     {
         if (!resp.IsSuccessStatusCode) await EnsureSuccessAsync(resp, ct);
-        return await resp.Content.ReadFromJsonAsync<T>(RemoteOsJsonOptions.Default, ct)
-            ?? throw new RemoteOsAuthException(NoBodyProblem());
+        return await resp.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
     }
 
     private string RequireSession()
@@ -228,13 +228,13 @@ public sealed class ExplorerClient : IExplorerClient
     {
         if (resp.IsSuccessStatusCode) return;
         ProblemDetails? problem = null;
-        try { problem = await resp.Content.ReadFromJsonAsync<ProblemDetails>(RemoteOsJsonOptions.Default, ct); }
+        try { problem = await resp.Content.ReadFromJsonAsync<ProblemDetails>(RelaxKonOSJsonOptions.Default, ct); }
         catch { /* 非 JSON 错误体回退通用错误 */ }
         throw problem is null
-            ? new RemoteOsAuthException(new ProblemDetails(
-                "https://remoteos.app/problems/http-error", $"HTTP {(int)resp.StatusCode}",
+            ? new RelaxKonOSAuthException(new ProblemDetails(
+                "https://relaxkonos.app/problems/http-error", $"HTTP {(int)resp.StatusCode}",
                 (int)resp.StatusCode, resp.ReasonPhrase, null))
-            : new RemoteOsAuthException(problem);
+            : new RelaxKonOSAuthException(problem);
     }
 
     private static string? ContentDispositionFileName(ContentDispositionHeaderValue? cd)
@@ -279,5 +279,5 @@ public sealed class ExplorerClient : IExplorerClient
     }
 
     private static ProblemDetails NoBodyProblem()
-        => new("https://remoteos.app/problems/empty-response", LocalizedText.Get("common.error.empty_response_title"), 500, LocalizedText.Get("common.error.empty_response_detail"), null);
+        => new("https://relaxkonos.app/problems/empty-response", LocalizedText.Get("common.error.empty_response_title"), 500, LocalizedText.Get("common.error.empty_response_detail"), null);
 }

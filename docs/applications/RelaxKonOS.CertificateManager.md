@@ -356,13 +356,13 @@ RelaxKonOS 创建一个固定目录：
 ### Linux
 
 ```text
-/var/lib/remoteos/acme-challenge/
+/var/lib/relaxkonos/acme-challenge/
 ```
 
 ### Windows
 
 ```text
-C:\ProgramData\RemoteOS\acme-challenge\
+C:\ProgramData\RelaxKonOS\acme-challenge\
 ```
 
 RelaxKonOS 只需要：
@@ -410,7 +410,7 @@ server {
     server_name remote.example.com;
 
     location /.well-known/acme-challenge/ {
-        root /var/lib/remoteos;
+        root /var/lib/relaxkonos;
     }
 
     location / {
@@ -580,14 +580,14 @@ HTTP-01 固定使用 80，仅仅是 ACME 的**域名所有权验证过程**。
 ### Linux
 
 ```text
-/var/lib/remoteos/
+/var/lib/relaxkonos/
 └── certificates/
 ```
 
 ### Windows
 
 ```text
-C:\ProgramData\RemoteOS\
+C:\ProgramData\RelaxKonOS\
 └── certificates\
 ```
 
@@ -629,7 +629,7 @@ Private Key: 600
 并确保 owner 为：
 
 ```text
-remoteos
+relaxkonos
 ```
 
 或 RelaxKonOS service account。
