@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tunnels" x:Class="RelaxKonOS.Client.Apps.Tunnels.Views.TunnelRuntimeView" x:DataType="vm:TunnelManagerViewModel">
+  <StackPanel Spacing="18">
+    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+      <StackPanel Spacing="12">
+        <TextBlock Text="{loc:Loc tunnels.runtime_page}" FontSize="19" FontWeight="SemiBold"/>
+
+        <StackPanel IsVisible="{Binding RuntimeIsInstalled}" Spacing="14">
+          <Border Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="10" Padding="16">
+            <StackPanel Spacing="7">
+              <TextBlock Text="{loc:Loc tunnels.runtime.install_state.Succeeded}" FontSize="18" FontWeight="SemiBold"/>
+              <TextBlock Text="{Binding RuntimeInstalledVersion}" FontSize="16"/>
+            </StackPanel>
+          </Border>
+          <TextBlock Text="{Binding RuntimeText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+          <WrapPanel ItemHeight="34">
+            <Button Content="{loc:Loc common.delete}" Command="{Binding UninstallRuntimeCommand}" Foreground="{DynamicResource DangerBrush}"/>
+            <Button Content="{loc:Loc tunnels.rollback}" Command="{Binding RollbackRuntimeCommand}" Margin="10,0,0,0"/>
+          </WrapPanel>
+        </StackPanel>
+
+        <StackPanel IsVisible="{Binding RuntimeIsNotInstalled}" Spacing="12">
+          <TextBlock Text="{Binding RuntimeText}" FontSize="18"/>
+          <TextBlock Text="{loc:Loc tunnels.runtime_install_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+          <WrapPanel ItemHeight="34"><TextBlock Text="{loc:Loc tunnels.runtime.download_hint}" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/><Button Content="{loc:Loc tunnels.runtime_download}" Command="{Binding ShowRuntimeDownloadCommand}" Margin="10,0,0,0"/></WrapPanel>
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10"><TextBlock Text="{loc:Loc tunnels.version}" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding RuntimeVersion, Mode=TwoWay}"/><Button Grid.Column="2" Classes="primary" Content="{loc:Loc tunnels.install}" Command="{Binding InstallRuntimeCommand}"/></Grid>
+          <WrapPanel ItemHeight="34"><Button Content="{loc:Loc tunnels.runtime.install_from_server_file}" Command="{Binding InstallRuntimeFromServerFileCommand}"/><TextBlock Text="{loc:Loc tunnels.runtime.server_file_hint}" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/></WrapPanel>
+          <Border Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="8" Padding="12"><StackPanel Spacing="7"><TextBlock Text="{Binding RuntimeInstallationText}" FontWeight="SemiBold"/><ProgressBar Minimum="0" Maximum="100" Value="{Binding RuntimeInstallationProgress}" IsIndeterminate="{Binding RuntimeInstallationInProgress}" Height="8"/></StackPanel></Border>
+          <TextBlock Text="{loc:Loc tunnels.runtime_platform_hint}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

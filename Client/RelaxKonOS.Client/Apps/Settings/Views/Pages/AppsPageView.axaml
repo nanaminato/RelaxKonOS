@@ -1,0 +1,99 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AppsPageView"
+             x:DataType="vm:AppsPageViewModel"
+             x:Name="Root">
+    <StackPanel Spacing="16" MaxWidth="720">
+        <StackPanel IsVisible="{Binding IsInstalledApps}" Spacing="16">
+            <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Text="{loc:Loc settings.apps.description}" Opacity="0.68" TextWrapping="Wrap" />
+            <Border Classes="card">
+                <ItemsControl ItemsSource="{Binding RegisteredApps}">
+                    <ItemsControl.Styles>
+                        <!-- Item presenters otherwise size to the button's content instead of the list width. -->
+                        <Style Selector="ContentPresenter">
+                            <Setter Property="HorizontalAlignment" Value="Stretch" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        </Style>
+                    </ItemsControl.Styles>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SettingsAppEntry">
+                            <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                    Command="{Binding DataContext.ShowAppDetailsCommand, ElementName=Root}" CommandParameter="{Binding App}">
+                                <Grid Height="56" ColumnDefinitions="36,*,Auto" Margin="2" ColumnSpacing="8">
+                                    <Grid Width="28" Height="28" VerticalAlignment="Center">
+                                        <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
+                                        <TextBlock Text="{Binding IconGlyph}" IsVisible="{Binding !HasIconImage}" FontSize="20" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <Grid Grid.Column="1" RowDefinitions="Auto,Auto" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                        <TextBlock Grid.Row="1" Text="{Binding Description}" FontSize="12" Opacity="0.65"
+                                                   TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                    </Grid>
+                                    <TextBlock Grid.Column="2" Text="{Binding Version}" FontSize="12" Opacity="0.62"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxLines="1" MaxWidth="110" />
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+            <TextBlock Text="{Binding ActionStatus}" IsVisible="{Binding HasActionStatus}" Opacity="0.68" />
+        </StackPanel>
+
+        <StackPanel IsVisible="{Binding IsAppDetails}" Spacing="16">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button Content="{loc:Loc settings.back_to_apps}" Command="{Binding ShowInstalledAppsCommand}" />
+                <TextBlock Text="{loc:Loc settings.app_information}" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+            <Border Classes="card">
+                <StackPanel Spacing="12">
+                    <Grid ColumnDefinitions="38,*" ColumnSpacing="10">
+                        <Grid Width="30" Height="30">
+                            <Image Source="{Binding SelectedAppIconImage}" IsVisible="{Binding HasSelectedAppIconImage}" Stretch="Uniform" />
+                            <TextBlock Text="{Binding SelectedApp.IconGlyph}" IsVisible="{Binding !HasSelectedAppIconImage}" FontSize="26" />
+                        </Grid>
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock Text="{Binding SelectedApp.DisplayName}" FontSize="19" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedApp.Id}" FontSize="12" Opacity="0.62" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="{Binding SelectedApp.Description}" TextWrapping="Wrap" Opacity="0.78" />
+                    <Grid ColumnDefinitions="120,*"><TextBlock Text="{loc:Loc settings.version}" Opacity="0.65" /><TextBlock Grid.Column="1" Text="{Binding SelectedApp.Version}" /></Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="primary" Content="{loc:Loc common.open}" Command="{Binding OpenSelectedAppCommand}" Padding="16,7" />
+                        <Button Content="{loc:Loc settings.clear_data}" Command="{Binding ClearSelectedAppDataCommand}" IsEnabled="{Binding !IsClearingData}" Padding="16,7" />
+                        <Button Content="{loc:Loc settings.uninstall}" Command="{Binding UninstallSelectedAppCommand}" IsVisible="{Binding CanUninstallSelectedApp}" Padding="16,7" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding UninstallAvailabilityText}" FontSize="12" Opacity="0.62" TextWrapping="Wrap" />
+                    <Border IsVisible="{Binding IsBrowserSettingsVisible}" Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{loc:Loc settings.apps.browser.settings}" FontWeight="SemiBold" />
+                            <TextBlock Text="{loc:Loc settings.apps.browser.link_open_target}" FontSize="12" Opacity="0.65" />
+                            <StackPanel Orientation="Horizontal" Spacing="14" IsEnabled="{Binding !IsBrowserSettingsLoading}">
+                                <RadioButton Content="{loc:Loc browser.settings.open_built_in}" IsChecked="{Binding OpenBrowserLinksInBuiltInBrowser, Mode=TwoWay}" />
+                                <RadioButton Content="{loc:Loc browser.settings.open_host}" IsChecked="{Binding OpenBrowserLinksOnHost, Mode=TwoWay}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button Content="{loc:Loc common.save}" Command="{Binding SaveBrowserLinkOpenTargetCommand}" IsEnabled="{Binding !IsSavingBrowserSettings}" />
+                                <TextBlock Text="{Binding BrowserSettingsStatus}" IsVisible="{Binding HasBrowserSettingsStatus}" FontSize="12" Opacity="0.68" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{loc:Loc settings.app_permissions}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedAppPermissionSummary}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="{loc:Loc settings.manage_permissions}" Command="{Binding EditSelectedPermissionsCommand}" IsVisible="{Binding HasSelectedAppPermissions}" VerticalAlignment="Center" Padding="14,6" />
+                        </Grid>
+                    </Border>
+                    <TextBlock Text="{Binding ActionStatus}" IsVisible="{Binding HasActionStatus}" Opacity="0.68" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

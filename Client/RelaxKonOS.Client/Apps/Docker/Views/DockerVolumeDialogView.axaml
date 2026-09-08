@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerVolumeDialogView"
+             x:DataType="docker:DockerManagerViewModel">
+    <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="16">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="4" VerticalAlignment="Top">
+            <TextBlock Text="{loc:Loc common.name}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <TextBox Grid.Row="1" Text="{Binding VolumeName, Mode=TwoWay}" />
+            <TextBlock Grid.Row="2" Text="{loc:Loc docker.volume.driver}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
+            <ComboBox Grid.Row="3" ItemsSource="{Binding VolumeDrivers}" SelectedItem="{Binding SelectedVolumeDriver, Mode=TwoWay}" />
+        </Grid>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" />
+            <Button Classes="primary" Content="{loc:Loc common.create}" Click="Create_Click" HorizontalContentAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

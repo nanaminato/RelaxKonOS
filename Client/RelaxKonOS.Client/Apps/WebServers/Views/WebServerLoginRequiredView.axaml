@@ -1,0 +1,6 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerLoginRequiredView">
+    <TextBlock Margin="24" Text="{loc:Loc webservers.login_required}" TextWrapping="Wrap" />
+</UserControl>

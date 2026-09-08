@@ -1,0 +1,34 @@
+# RelaxKonOS FRP integration — current implementation boundary
+
+This document records the code-level V1 boundary implemented from the FRP integration Goal. It does not change the architecture or security constraints in the Goal document.
+
+## Implemented control plane
+
+- `Shared/RelaxKonOS.Protocol/Tunnels` owns the JSON contract and route constants. Profile lists and normal FRPS status responses expose only `tokenConfigured`; Controller-authorized profile and FRPS editing endpoints additionally return their Token so the editor can show the current value. Generated TOML and protected-secret payloads are never exposed.
+- The Server persists FRP server profiles and tunnel desired state in SQLite, scoped to the JWT subject, with optimistic revision checks and unique remote-port constraints. Runtime/process state remains host-local and is not a Workspace preference.
+- Tokens enter through `PUT /api/v1.0/tunnels/profiles/{id}/secret` or the Controller-authorized FRPS configuration update, are protected with ASP.NET Core Data Protection, and are returned only by `GET /api/v1.0/tunnels/profiles/{id}` or `GET /api/v1.0/tunnels/frps/editor` to a Controller-authorized editor. Lists, ordinary FRPS status reads, exports, configuration downloads, generated TOML, and protected-secret payloads never expose secrets; each successful Token read is audited.
+- `TunnelsRead` permits Controller and Observer sessions to read safe state; `TunnelsManage` requires a Controller session. The policies recognize both raw JWT `role` and the framework-mapped role claim, while never trusting a client app id. Profile, tunnel, and token mutations write sanitized audit records without request bodies or TOML.
+- External Runtime detection accepts only a canonical absolute file path, checks existence and executable status, and invokes only `<fixed-path> --version` through `ProcessStartInfo.ArgumentList`. It never modifies, starts, upgrades, or kills an external executable while detecting it.
+- Applying a profile serializes work per profile, writes a private temporary TOML, invokes only `<fixed-path> verify -c <fixed-temp-path>`, then replaces the managed configuration and starts a RelaxKonOS-owned `frpc` child process using an argument list. A failed verification or start returns a stable problem code and keeps/restores the previous configuration. Stop uses the stored process object plus PID/start-time check; it does not search for or kill processes by name.
+
+## Supported configuration surface
+
+Only `tcp`, `udp`, `http`, and `https` desired state is accepted. The generator has a closed schema: server host/port, token authentication, TLS enablement, local host/port, remote port/domain, and per-proxy transport compression/encryption. It emits no `includes`, plugins, environment substitution, arbitrary TOML, arbitrary command arguments, OIDC, STCP, XTCP, visitor, or `frps` settings.
+
+The Avalonia Tunnel Manager is a single-window workspace with Overview, Tunnels, FRP Servers, and Runtime pages. Profile and tunnel editors open in their own windows. Each server row opens an independent, auto-refreshing log window, so several server logs can be viewed at once. It uses the authenticated session's absolute Server URL for every request (it never relies on an unset `HttpClient.BaseAddress`), supports Profile/Tunnel Desired State CRUD and explicit External-runtime probing, and shows the existing Token when a Controller opens a profile editor. Runtime installation requires an explicit in-UI confirmation in addition to the Server-side confirmation check.
+
+## Runtime trust and release operations
+
+Managed Runtime installation is an explicit Controller-only action (`POST /api/v1.0/tunnels/runtime/managed/install`) requiring a confirmation and a requested **pinned** version. The UI also exposes the official FRP release page and can select an archive that is already present on the RelaxKonOS Server (`POST /api/v1.0/tunnels/runtime/managed/install/from-file`). The server accepts either source only when its host-admin configuration supplies the current RID, an HTTPS official GitHub release URL, a fixed 64-character SHA-256 and a recognized archive format. A server-selected archive is copied into a private temporary file and must match that configured SHA-256 before extraction. It never has a “latest” route.
+
+The install pipeline downloads to a private temporary file with a bounded stream, verifies the SHA-256 before extraction, rejects path traversal, symlink/device entries, oversized entries and unexpected archive contents, extracts only `frpc` / `frps`, checks `frpc --version`, and then activates the new version by atomically replacing a private `state.json` pointer. Previous versions remain in distinct version directories; rollback verifies the previous `frpc` again before switching the pointer. Failed downloads, checksums, extraction and health checks cannot replace the active version.
+
+The shipped `appsettings.json` freezes FRP `v0.71.0` Linux x64/arm64 and Windows x64/arm64 assets with fixed GitHub-release SHA-256 values. A host without a matching RID entry returns `tunnel.runtime_release_not_configured` rather than downloading an unverified binary; releases must never be selected as “latest”.
+
+The Server verification suite uses a local `tar.gz` fixture and replaceable HTTP client to cover successful installation, active/previous switching, rollback, wrong checksum rejection, unexpected archive-content rejection, and Desired State → `frpc verify` → process start/stop. It does not require a network download or a locally installed FRP binary.
+
+FRP's official configuration reference documents `frpc verify -c <config>` as the validation contract used here. The official release page publishes per-asset SHA-256 values; a release manifest must copy those values before any managed installer is exposed. Current upstream compatibility and lifecycle information must be revalidated during that work; do not infer a version from this document.
+
+## Operations
+
+Private generated files are under `data/tunnels/frp/<profile-id>` below the Server content root; Unix modes are tightened to `0700` for the directory and `0600` for TOML and backup files. Runtime versions and their state pointer are likewise private. Windows uses the service account's data directory and must be deployed with an ACL granting only that account access. Defender is never modified. A quarantined or missing Runtime is reported as unavailable; RelaxKonOS authentication and LAN APIs have no FRP dependency. Runtime stdout/stderr is drained, bounded to 200 sanitized lines per profile, and a dedicated read endpoint never returns generated configuration or credentials. The state transitions to `Connected` only after FRP reports a successful server login; recognized authentication failures are shown as disconnected rather than a synthetic healthy state.

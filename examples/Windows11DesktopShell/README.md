@@ -1,7 +1,7 @@
 # Windows 11 Desktop Shell example
 
-This project is a self-contained external RemoteOS desktop shell. It intentionally references only
-`RemoteOS.Shell`; it does not depend on the Client project or its service container.
+This project is a self-contained external RelaxKonOS desktop shell. It intentionally references only
+`RelaxKonOS.Shell`; it does not depend on the Client project or its service container.
 
 The example demonstrates:
 
@@ -16,28 +16,28 @@ The example demonstrates:
 Build from the repository root:
 
 ```powershell
-dotnet build examples/Windows11DesktopShell/RemoteOS.Example.Windows11DesktopShell.csproj
+dotnet build examples/Windows11DesktopShell/RelaxKonOS.Example.Windows11DesktopShell.csproj
 ```
 如果已由 IDE 或 `dotnet build` 编译过同一 `Debug` 配置，可跳过重新编译，直接根据 `manifest.json` 打包已有输出：
 
 ```bash
-dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/Windows11DesktopShell --configuration Debug --no-build
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/Windows11DesktopShell --configuration Debug --no-build
 ```
 The generated `.roapp` contains this layout:
 
 ```text
 Windows11DesktopShell/
   manifest.json
-  lib/net10.0/Example.Windows11DesktopShell.dll
+  lib/net10.0/RelaxKonOS.Example.Windows11DesktopShell.dll
   lib/net10.0/Localization/
     en-US.json
     zh-CN.json
     ja-JP.json
 ```
 
-Open the generated `.roapp` with the RemoteOS App Installer. After updating this sample, reinstall
+Open the generated `.roapp` with the RelaxKonOS App Installer. After updating this sample, reinstall
 the new package before selecting it from Personalization. The selection records the package ID and
 version, so it remains available after restarting the client as long as the package is installed.
 Personalization intentionally has no local-folder installation action. See
-[`docs/desktop/RemoteOS.ExternalShellPackages.md`](../../docs/desktop/RemoteOS.ExternalShellPackages.md)
+[`docs/desktop/RelaxKonOS.ExternalShellPackages.md`](../../docs/desktop/RelaxKonOS.ExternalShellPackages.md)
 for validation, signing, and loading details.

@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:app="clr-namespace:RelaxKonOS.Client.Apps"
+             xmlns:terminal="clr-namespace:RelaxKonOS.Client.Apps.Terminal"
+             x:Class="RelaxKonOS.Client.Apps.Terminal.TerminalSettingsView"
+             x:DataType="terminal:TerminalViewModel"
+             Width="460">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="20" RowSpacing="14">
+        <TextBlock Text="{loc:Loc terminal.settings}" FontSize="18" FontWeight="SemiBold" />
+        <Grid Grid.Row="1" ColumnDefinitions="150,*" ColumnSpacing="12">
+            <TextBlock Text="{loc:Loc terminal.font_family}" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding FontFamilies}" SelectedItem="{Binding FontFamily, Mode=TwoWay}" />
+        </Grid>
+        <Grid Grid.Row="2" ColumnDefinitions="150,*" ColumnSpacing="12">
+            <TextBlock Text="{loc:Loc terminal.font_size}" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding FontSizes}" SelectedItem="{Binding FontSize, Mode=TwoWay}" />
+        </Grid>
+        <Grid Grid.Row="3" ColumnDefinitions="150,*" ColumnSpacing="12">
+            <TextBlock Text="{loc:Loc terminal.color_scheme}" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding ColorSchemes}" SelectedItem="{Binding ColorScheme, Mode=TwoWay}" />
+        </Grid>
+        <TextBlock Grid.Row="4" Text="{loc:Loc terminal.settings.description}"
+                   TextWrapping="Wrap" Opacity="0.7" />
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Classes="primary" Content="{loc:Loc common.done}" Command="{Binding CloseSettingsCommand}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

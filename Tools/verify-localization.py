@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 
-root = Path(__file__).resolve().parents[1] / "Client" / "RemoteOS.Client"
+root = Path(__file__).resolve().parents[1] / "Client" / "RelaxKonOS.Client"
 language_dir = root / "Localization"
 # Resource segments may use protocol enum names (for example `install_state.Idle`).
 # Keep the namespace segment lowercase while accepting those established enum suffixes.

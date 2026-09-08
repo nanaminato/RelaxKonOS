@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Slice the RemoteOS application icon sprite at transparent divider bands.
+"""Slice the RelaxKonOS application icon sprite at transparent divider bands.
 
 The sprite contains transparent horizontal and vertical gaps between icons.
 This script finds those gaps from the alpha channel, then crops the resulting
@@ -27,29 +27,29 @@ class IconSpec:
 
 
 # Ordered left-to-right, top-to-bottom.  Destination names follow the names
-# currently used by RemoteOS (for example, "explorer" rather than
+# currently used by RelaxKonOS (for example, "explorer" rather than
 # "file-manager").
 ICONS = (
-    IconSpec("welcome.png", Path("Client/RemoteOS.Client/Assets/AppIcons/welcome.png")),
-    IconSpec("notepad.png", Path("Client/RemoteOS.Client/Assets/AppIcons/notepad.png")),
-    IconSpec("code-editor.png", Path("Client/RemoteOS.Client/Assets/AppIcons/codeeditor.png")),
-    IconSpec("image-viewer.png", Path("Client/RemoteOS.Client/Assets/AppIcons/imageviewer.png")),
-    IconSpec("settings.png", Path("Client/RemoteOS.Client/Assets/AppIcons/settings.png")),
-    IconSpec("terminal.png", Path("Client/RemoteOS.Client/Assets/AppIcons/terminal.png")),
-    IconSpec("file-manager.png", Path("Client/RemoteOS.Client/Assets/AppIcons/explorer.png")),
-    IconSpec("browser.png", Path("Client/RemoteOS.Client/Assets/AppIcons/browser.png")),
-    IconSpec("port-forwarding.png", Path("Client/RemoteOS.Client/Assets/AppIcons/port-forwarding.png")),
-    IconSpec("task-manager.png", Path("Client/RemoteOS.Client/Assets/AppIcons/taskmanager.png")),
-    IconSpec("docker.png", Path("Client/RemoteOS.Client/Assets/AppIcons/docker.png")),
-    IconSpec("process-guardian.png", Path("Client/RemoteOS.Client/Assets/AppIcons/processguardian.png")),
-    IconSpec("firewall.png", Path("Client/RemoteOS.Client/Assets/AppIcons/firewall.png")),
-    IconSpec("certificate-manager.png", Path("Client/RemoteOS.Client/Assets/AppIcons/certificates.png")),
-    IconSpec("web-server.png", Path("Client/RemoteOS.Client/Assets/AppIcons/webservers.png")),
-    IconSpec("tunnel-manager.png", Path("Client/RemoteOS.Client/Assets/AppIcons/tunnels.png")),
-    IconSpec("proxy-manager.png", Path("Client/RemoteOS.Client/Assets/AppIcons/proxy.png")),
-    IconSpec("git-client.png", Path("Client/RemoteOS.Client/Assets/AppIcons/git.png")),
-    IconSpec("app-installer.png", Path("Client/RemoteOS.Client/Assets/AppIcons/appinstaller.png")),
-    IconSpec("registry.png", Path("Client/RemoteOS.Client/Assets/AppIcons/registry.png")),
+    IconSpec("welcome.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/welcome.png")),
+    IconSpec("notepad.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/notepad.png")),
+    IconSpec("code-editor.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/codeeditor.png")),
+    IconSpec("image-viewer.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/imageviewer.png")),
+    IconSpec("settings.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/settings.png")),
+    IconSpec("terminal.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/terminal.png")),
+    IconSpec("file-manager.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/explorer.png")),
+    IconSpec("browser.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/browser.png")),
+    IconSpec("port-forwarding.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/port-forwarding.png")),
+    IconSpec("task-manager.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/taskmanager.png")),
+    IconSpec("docker.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/docker.png")),
+    IconSpec("process-guardian.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/processguardian.png")),
+    IconSpec("firewall.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/firewall.png")),
+    IconSpec("certificate-manager.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/certificates.png")),
+    IconSpec("web-server.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/webservers.png")),
+    IconSpec("tunnel-manager.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/tunnels.png")),
+    IconSpec("proxy-manager.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/proxy.png")),
+    IconSpec("git-client.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/git.png")),
+    IconSpec("app-installer.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/appinstaller.png")),
+    IconSpec("registry.png", Path("Client/RelaxKonOS.Client/Assets/AppIcons/registry.png")),
     IconSpec("video-player.png", Path("examples/VideoPlayer/assets/icon.png")),
     IconSpec("server-monitor.png", Path("examples/ServerMonitor/assets/icon.png")),
     IconSpec("help-center.png", Path("examples/HelpCenter/assets/icon.png")),
@@ -74,7 +74,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--debug-grid",
         type=Path,
-        default=repository_root / "Client/RemoteOS.Client/Assets/AppIcons/debug-grid.png",
+        default=repository_root / "Client/RelaxKonOS.Client/Assets/AppIcons/debug-grid.png",
         help="destination for the labelled source-grid image",
     )
     return parser.parse_args()

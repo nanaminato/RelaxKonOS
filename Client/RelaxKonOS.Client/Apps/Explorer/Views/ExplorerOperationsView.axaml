@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:m="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Models"
+             x:Class="RelaxKonOS.Client.Apps.Explorer.Views.ExplorerOperationsView" x:DataType="m:ExplorerOperationCenter"
+             Background="{DynamicResource SurfaceBrush}">
+    <Grid RowDefinitions="Auto,Auto,*" Margin="16" RowSpacing="10">
+        <TextBlock Text="{loc:Loc explorer.operations.close_hint}" TextWrapping="Wrap" FontSize="12"
+                   Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.65" />
+        <TextBlock Grid.Row="1" Text="{Binding Error}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Jobs}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="m:ExplorerOperationCard">
+                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="18" Margin="0,0,0,12">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Spacing="4" Margin="0,0,8,0">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="20" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding StateText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="{loc:Loc common.cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancel}" />
+                                </Grid>
+                                <TextBlock Text="{Binding Locations}" TextTrimming="CharacterEllipsis" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding Snapshot.CurrentPath}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{loc:Loc explorer.operations.current_file}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <ProgressBar Value="{Binding Progress}" IsIndeterminate="{Binding Indeterminate}" Minimum="0" Maximum="100" Height="18" Foreground="#60B158" />
+                                <TextBlock Text="{Binding Bytes}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding Counts}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <StackPanel IsVisible="{Binding HasIssue}" Spacing="8">
+                                    <TextBlock Text="{Binding IssueText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <CheckBox Content="{loc:Loc explorer.operations.apply_all}" IsChecked="{Binding ApplyToAll}" />
+                                    <WrapPanel>
+                                        <Button Content="{Binding RetryLabel}" Command="{Binding RetryCommand}" IsVisible="{Binding CanRetry}" Margin="0,0,8,4" />
+                                        <Button Content="{loc:Loc explorer.operations.replace}" Command="{Binding ReplaceCommand}" IsVisible="{Binding CanReplace}" Margin="0,0,8,4" />
+                                        <Button Content="{loc:Loc explorer.operations.keep_both}" Command="{Binding KeepBothCommand}" IsVisible="{Binding CanKeepBoth}" Margin="0,0,8,4" />
+                                        <Button Content="{loc:Loc explorer.operations.skip}" Command="{Binding SkipCommand}" Margin="0,0,8,4" />
+                                    </WrapPanel>
+                                </StackPanel>
+                                <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

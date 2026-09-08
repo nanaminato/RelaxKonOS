@@ -2,9 +2,9 @@ using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using RemoteOS.UI.Themes;
+using RelaxKonOS.UI.Themes;
 
-namespace RemoteOS.Examples.ServerMonitor.Controls;
+namespace RelaxKonOS.Examples.ServerMonitor.Controls;
 
 /// <summary>Presentation-only line chart bound to an observable metric history.</summary>
 public sealed class HistoryChart : Control

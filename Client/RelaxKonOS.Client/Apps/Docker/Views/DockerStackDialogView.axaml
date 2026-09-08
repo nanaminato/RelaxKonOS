@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerStackDialogView"
+             x:DataType="docker:DockerManagerViewModel">
+    <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="12">
+        <Grid Grid.Row="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />  
+                <RowDefinition Height="Auto" />  
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="{loc:Loc docker.stacks_hint}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <StackPanel Grid.Row="1" Spacing="4" Margin="0,12,0,12">
+                <TextBlock Text="{loc:Loc docker.stack.name}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBox Text="{Binding StackName, Mode=TwoWay}" PlaceholderText="{loc:Loc docker.stack.name_placeholder}" />
+            </StackPanel>
+            <StackPanel Grid.Row="2" Spacing="4">
+                <TextBlock Text="{loc:Loc docker.stack.compose}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBox Text="{Binding ComposeYaml, Mode=TwoWay}" PlaceholderText="{loc:Loc docker.stack.compose_placeholder}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="270" />
+            </StackPanel>
+        </Grid>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc docker.stack.validate}" Command="{Binding ValidateStackCommand}" HorizontalContentAlignment="Center" />
+            <Button Classes="primary" Content="{loc:Loc docker.stack.deploy}" Click="Deploy_Click" HorizontalContentAlignment="Center" />
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

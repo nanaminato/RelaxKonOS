@@ -15,20 +15,20 @@ On Linux, macOS, or another POSIX shell:
 
 ```bash
 export REMOTEOS_DEV_TOKEN="<pairing-token>"
-dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/HelpCenter --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/HelpCenter --configuration Debug --install
 ```
 
 On Windows PowerShell:
 
 ```powershell
 $env:REMOTEOS_DEV_TOKEN = "<pairing-token>"
-dotnet run --project Tools/RemoteOS.DevCli -- pack .\examples\HelpCenter --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\HelpCenter --configuration Debug --install
 ```
 
 If the same `Debug` configuration was already built by the IDE or `dotnet build`, package its existing output directly from `manifest.json` without recompiling:
 
 ```bash
-dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/HelpCenter --configuration Debug --no-build
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/HelpCenter --configuration Debug --no-build
 ```
 
 In PowerShell, use `.\examples\HelpCenter` for the project path instead.

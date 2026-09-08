@@ -1,10 +1,10 @@
 using System.ComponentModel;
-using RemoteOS.AppSDK;
-using RemoteOS.WindowManager;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.WindowManager;
 
-namespace RemoteOS.Examples.VideoPlayer.Services;
+namespace RelaxKonOS.Examples.VideoPlayer.Services;
 
-/// <summary>Keeps the native VLC child window aligned with the managed RemoteOS window lifecycle.</summary>
+/// <summary>Keeps the native VLC child window aligned with the managed RelaxKonOS window lifecycle.</summary>
 public sealed class VideoPlayerWindowLifetime
 {
     private readonly IExternalAppWindowHandle _window;

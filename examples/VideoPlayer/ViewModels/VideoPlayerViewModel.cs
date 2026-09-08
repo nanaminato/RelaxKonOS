@@ -1,9 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RemoteOS.AppSDK;
-using RemoteOS.Examples.VideoPlayer.Services;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Examples.VideoPlayer.Services;
 
-namespace RemoteOS.Examples.VideoPlayer.ViewModels;
+namespace RelaxKonOS.Examples.VideoPlayer.ViewModels;
 
 /// <summary>Coordinates the permission-gated media lease and playback service for one file.</summary>
 public sealed partial class VideoPlayerViewModel : ObservableObject, IDisposable

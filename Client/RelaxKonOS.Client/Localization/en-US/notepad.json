@@ -1,0 +1,27 @@
+{
+    "Culture": "en-US",
+    "Strings": {
+        "notepad.settings.title": "Notebook settings",
+        "notepad.settings.default_encoding": "Default encoding",
+        "notepad.encoding.reopen_with": "Reopen with Encoding",
+        "notepad.encoding.save_with": "Save with Encoding",
+        "notepad.status.ready": "Ready",
+        "notepad.document.untitled": "Untitled",
+        "notepad.status.new_document": "New document",
+        "notepad.status.save_or_discard": "Save or discard edits before reopening with another encoding.",
+        "notepad.reopen_dirty_title": "Discard unsaved changes?",
+        "notepad.reopen_dirty_message": "Reopening will discard the current unsaved changes. Do you want to continue?",
+        "notepad.discard_changes": "Discard changes",
+        "notepad.status.connect_before_open": "Connect to RelaxKonOS Server before opening files.",
+        "notepad.status.file_missing": "File no longer exists.",
+        "notepad.status.opened": "Opened {0} as {1}",
+        "notepad.status.open_failed": "Cannot open file: {0}",
+        "notepad.status.connect_before_save": "Connect to RelaxKonOS Server before saving files.",
+        "notepad.status.saved": "Saved {0} as {1}",
+        "notepad.status.save_failed": "Cannot save file: {0}",
+        "notepad.open_remote_file": "Open remote file",
+        "notepad.save_remote_file": "Save remote file",
+        "notepad.remote_path_prompt": "Enter a full remote path:",
+        "notepad.text_file_filter": "Text files"
+    }
+}

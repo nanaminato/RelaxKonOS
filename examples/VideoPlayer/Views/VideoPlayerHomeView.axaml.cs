@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace RemoteOS.Examples.VideoPlayer.Views;
+namespace RelaxKonOS.Examples.VideoPlayer.Views;
 
 public partial class VideoPlayerHomeView : UserControl
 {

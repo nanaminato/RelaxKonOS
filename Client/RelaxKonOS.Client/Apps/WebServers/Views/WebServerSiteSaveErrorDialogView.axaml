@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:webservers="clr-namespace:RelaxKonOS.Client.Apps.WebServers.Views"
+             x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteSaveErrorDialogView"
+             x:DataType="webservers:WebServerSiteSaveErrorDialogView"
+             Background="{DynamicResource SurfaceBrush}">
+    <Grid Margin="22" RowDefinitions="Auto,Auto" RowSpacing="18">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+            <TextBlock Text="⚠" FontSize="28" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Top" />
+            <StackPanel Spacing="5">
+                <TextBlock Text="{loc:Loc webservers.site.save_error.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" MaxWidth="390" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+        </StackPanel>
+        <Button Grid.Row="1" Classes="primary" Content="{loc:Loc webservers.site.save_error.acknowledge}" Click="Close_Click" HorizontalAlignment="Right" Padding="18,7" />
+    </Grid>
+</UserControl>

@@ -1,6 +1,6 @@
 # Docker をインストールする
 
-このガイドでは、RemoteOS Server を実行する Windows または Linux ホストに Docker を導入します。Docker 公式のインストーラーまたはパッケージリポジトリを優先し、組織のレジストリ・プロキシのポリシーに従ってください。
+このガイドでは、RelaxKonOS Server を実行する Windows または Linux ホストに Docker を導入します。Docker 公式のインストーラーまたはパッケージリポジトリを優先し、組織のレジストリ・プロキシのポリシーに従ってください。
 
 ## 始める前に
 
@@ -15,7 +15,7 @@
 2. Docker Desktop では通常 WSL 2 または Hyper-V が必要です。インストーラーの案内に従い、有効化と再起動を行います。
 3. Docker Desktop（または Docker サービス）を開始し、実行中であることを確認します。
 
-RemoteOS Server が WSL、仮想マシン、またはコンテナー内で実行される場合は、その環境から Docker デーモンまたは socket に接続できることを確認してください。
+RelaxKonOS Server が WSL、仮想マシン、またはコンテナー内で実行される場合は、その環境から Docker デーモンまたは socket に接続できることを確認してください。
 
 ## Linux
 
@@ -39,6 +39,6 @@ docker info
 
 クライアントとサーバーの情報が表示される必要があります。サーバーへ接続できない場合は、まず Docker Desktop または Docker サービスが開始されているかを確認します。
 
-## RemoteOS で確認する
+## RelaxKonOS で確認する
 
-Docker Manager を開き、ステータスカードに Engine が利用可能と表示されるまで待ちます。利用できない場合は Docker サービスログを確認し、RemoteOS Server を実行するアカウントが Docker socket（Linux）または Docker Desktop/Engine（Windows）へアクセスできることを確認してください。
+Docker Manager を開き、ステータスカードに Engine が利用可能と表示されるまで待ちます。利用できない場合は Docker サービスログを確認し、RelaxKonOS Server を実行するアカウントが Docker socket（Linux）または Docker Desktop/Engine（Windows）へアクセスできることを確認してください。

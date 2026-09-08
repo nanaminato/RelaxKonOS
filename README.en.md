@@ -1,6 +1,6 @@
 <div align="center">
 
-# RemoteOS
+# RelaxKonOS
 
 **Cloud-Native Desktop Operating System Environment**
 
@@ -17,9 +17,9 @@
 
 ## ✨ Introduction
 
-**RemoteOS** is a cross-platform, cloud-native desktop operating system environment that uses a **State-Sync** model instead of pixel streaming. The client renders the UI locally while the server provides cloud capabilities (accounts, storage, synchronization, remote runtime), giving users a consistent desktop experience across any device.
+**RelaxKonOS** is a cross-platform, cloud-native desktop operating system environment that uses a **State-Sync** model instead of pixel streaming. The client renders the UI locally while the server provides cloud capabilities (accounts, storage, synchronization, remote runtime), giving users a consistent desktop experience across any device.
 
-**RemoteOS is NOT** a remote desktop tool (RDP/VNC/Screen Streaming). It transmits system state, application state, and user interaction intent — not screen pixels.
+**RelaxKonOS is NOT** a remote desktop tool (RDP/VNC/Screen Streaming). It transmits system state, application state, and user interaction intent — not screen pixels.
 
 ### Key Features
 
@@ -48,7 +48,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    RemoteOS.Client                       │
+│                    RelaxKonOS.Client                       │
 │          (Avalonia Desktop Shell · Local Render)         │
 │                                                         │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
@@ -70,7 +70,7 @@
                                │ HTTP REST / SignalR
                                ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   RemoteOS.Server                        │
+│                   RelaxKonOS.Server                        │
 │         (ASP.NET Core · Cloud Backend · Cross-Platform)  │
 │                                                         │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌───────┐ ┌──────┐  │
@@ -112,7 +112,7 @@
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────┐
-│              RemoteOS.Guardian.Agent                     │
+│              RelaxKonOS.Guardian.Agent                     │
 │    (Standalone Process · Guarded Workloads · Native      │
 │     Service Management)                                  │
 └─────────────────────────────────────────────────────────┘
@@ -141,9 +141,9 @@
 ## 📁 Project Structure
 
 ```
-RemoteOS/
+RelaxKonOS/
 ├── Client/
-│   ├── RemoteOS.Client/          # Desktop Shell + Built-in Apps (class library)
+│   ├── RelaxKonOS.Client/          # Desktop Shell + Built-in Apps (class library)
 │   │   ├── Apps/                 # Built-in applications
 │   │   │   ├── Explorer/         # File Manager
 │   │   │   ├── Terminal/         # Terminal
@@ -170,20 +170,20 @@ RemoteOS/
 │   │   ├── Services/             # Auth, Permissions, Dev Mode services
 │   │   ├── ViewModels/           # Shell / Login ViewModels
 │   │   └── Views/                # Shell / Login / MainWindow Views
-│   └── RemoteOS.Client.Desktop/  # Platform Entry Point (WinExe)
+│   └── RelaxKonOS.Client.Desktop/  # Platform Entry Point (WinExe)
 ├── Framework/
-│   ├── RemoteOS.Core/            # Platform-agnostic primitives (geometry, window, app models)
-│   ├── RemoteOS.UI/              # Avalonia shared themes/styles
-│   ├── RemoteOS.WindowManager/   # Window Manager + RemoteWindow control
-│   ├── RemoteOS.App.SDK/         # App development API (AppContext / IRemoteApplication)
-│   └── RemoteOS.Runtime/         # App runtime (ApplicationManager)
+│   ├── RelaxKonOS.Core/            # Platform-agnostic primitives (geometry, window, app models)
+│   ├── RelaxKonOS.UI/              # Avalonia shared themes/styles
+│   ├── RelaxKonOS.WindowManager/   # Window Manager + RemoteWindow control
+│   ├── RelaxKonOS.App.SDK/         # App development API (AppContext / IRemoteApplication)
+│   └── RelaxKonOS.Runtime/         # App runtime (ApplicationManager)
 ├── Shared/
-│   └── RemoteOS.Protocol/        # Communication contracts (DTOs / routes / Hub interfaces)
-├── RemoteOS.Server/              # Server (ASP.NET Core)
-├── RemoteOS.Guardian.Agent/      # Process guardian standalone (native service management)
-├── RemoteOS.PrivilegedHelper/    # Cross-platform privileged operation helper (Windows service / Linux daemon)
+│   └── RelaxKonOS.Protocol/        # Communication contracts (DTOs / routes / Hub interfaces)
+├── RelaxKonOS.Server/              # Server (ASP.NET Core)
+├── RelaxKonOS.Guardian.Agent/      # Process guardian standalone (native service management)
+├── RelaxKonOS.PrivilegedHelper/    # Cross-platform privileged operation helper (Windows service / Linux daemon)
 ├── Tools/
-│   ├── RemoteOS.DevCli/          # Developer CLI tool
+│   ├── RelaxKonOS.DevCli/          # Developer CLI tool
 │   ├── verify-localization.py    # Localization verification script
 │   └── slice_app_icons.py        # App icon sprite slicing script
 ├── examples/
@@ -193,7 +193,7 @@ RemoteOS/
 ├── deployment/                   # Deployment scripts (Linux / Windows)
 ├── docs/                         # Detailed design documentation
 ├── Directory.Packages.props      # Central package management
-└── RemoteOS.sln                  # Solution file
+└── RelaxKonOS.sln                  # Solution file
 ```
 
 ---
@@ -237,13 +237,13 @@ RemoteOS/
 
 ```bash
 git clone <repository-url>
-cd RemoteOS
+cd RelaxKonOS
 ```
 
 ### 2. Start the Server
 
 ```bash
-cd RemoteOS.Server
+cd RelaxKonOS.Server
 
 # Run in development mode (default: http://localhost:5000)
 dotnet run
@@ -254,7 +254,7 @@ dotnet run
 ### 3. Start the Client
 
 ```bash
-cd Client/RemoteOS.Client.Desktop
+cd Client/RelaxKonOS.Client.Desktop
 dotnet run
 ```
 
@@ -268,51 +268,51 @@ The client will open a login dialog. Enter your host system username and passwor
 
 | Document | Description |
 |----------|-------------|
-| [RemoteOS.Architecture.md](./docs/architecture/RemoteOS.Architecture.md) | Architecture design principles, module dependencies, layered architecture |
-| [RemoteOS.Protocol.md](./docs/architecture/RemoteOS.Protocol.md) | Communication contracts, REST/SignalR, serialization conventions |
-| [RemoteOS.Workspace.md](./docs/architecture/RemoteOS.Workspace.md) | User/Workspace/Session/Device, multi-device model |
-| [RemoteOS.Registry.md](./docs/architecture/RemoteOS.Registry.md) | Configuration Registry architecture, desired/applied state machine |
-| [RemoteOS.ApplicationActivation.md](./docs/architecture/RemoteOS.ApplicationActivation.md) | Application launch URI and window instance policies |
+| [RelaxKonOS.Architecture.md](./docs/architecture/RelaxKonOS.Architecture.md) | Architecture design principles, module dependencies, layered architecture |
+| [RelaxKonOS.Protocol.md](./docs/architecture/RelaxKonOS.Protocol.md) | Communication contracts, REST/SignalR, serialization conventions |
+| [RelaxKonOS.Workspace.md](./docs/architecture/RelaxKonOS.Workspace.md) | User/Workspace/Session/Device, multi-device model |
+| [RelaxKonOS.Registry.md](./docs/architecture/RelaxKonOS.Registry.md) | Configuration Registry architecture, desired/applied state machine |
+| [RelaxKonOS.ApplicationActivation.md](./docs/architecture/RelaxKonOS.ApplicationActivation.md) | Application launch URI and window instance policies |
 
 ### Platform Services
 
 | Document | Description |
 |----------|-------------|
-| [RemoteOS.Authentication.md](./docs/platform/RemoteOS.Authentication.md) | Login system, identity model, OS user integration |
-| [RemoteOS.Authentication.Hardening.md](./docs/platform/RemoteOS.Authentication.Hardening.md) | Auth throttling, risk control, and login protection guidance |
-| [RemoteOS.Login.md](./docs/platform/RemoteOS.Login.md) | Login module implementation details, mstsc-style login window |
-| [RemoteOS.Security.md](./docs/platform/RemoteOS.Security.md) | Security design, privilege elevation, dangerous operations |
-| [RemoteOS.Storage.md](./docs/platform/RemoteOS.Storage.md) | Server persistence, EF Core + SQLite |
+| [RelaxKonOS.Authentication.md](./docs/platform/RelaxKonOS.Authentication.md) | Login system, identity model, OS user integration |
+| [RelaxKonOS.Authentication.Hardening.md](./docs/platform/RelaxKonOS.Authentication.Hardening.md) | Auth throttling, risk control, and login protection guidance |
+| [RelaxKonOS.Login.md](./docs/platform/RelaxKonOS.Login.md) | Login module implementation details, mstsc-style login window |
+| [RelaxKonOS.Security.md](./docs/platform/RelaxKonOS.Security.md) | Security design, privilege elevation, dangerous operations |
+| [RelaxKonOS.Storage.md](./docs/platform/RelaxKonOS.Storage.md) | Server persistence, EF Core + SQLite |
 
 ### Desktop Experience
 
 | Document | Description |
 |----------|-------------|
-| [RemoteOS.Desktop.md](./docs/desktop/RemoteOS.Desktop.md) | Desktop shell, window control, modal dialogs, keyboard routing |
-| [RemoteOS.Settings.md](./docs/desktop/RemoteOS.Settings.md) | Settings center, preference persistence, multi-device sync |
-| [RemoteOS.Theming.md](./docs/desktop/RemoteOS.Theming.md) | Theme system, palettes, and appearance customization |
-| [RemoteOS.Localization.md](./docs/desktop/RemoteOS.Localization.md) | Multi-language mechanism, language pack structure |
+| [RelaxKonOS.Desktop.md](./docs/desktop/RelaxKonOS.Desktop.md) | Desktop shell, window control, modal dialogs, keyboard routing |
+| [RelaxKonOS.Settings.md](./docs/desktop/RelaxKonOS.Settings.md) | Settings center, preference persistence, multi-device sync |
+| [RelaxKonOS.Theming.md](./docs/desktop/RelaxKonOS.Theming.md) | Theme system, palettes, and appearance customization |
+| [RelaxKonOS.Localization.md](./docs/desktop/RelaxKonOS.Localization.md) | Multi-language mechanism, language pack structure |
 
 ### Built-in Applications
 
 | Document | Description |
 |----------|-------------|
-| [RemoteOS.Terminal.md](./docs/applications/RemoteOS.Terminal.md) | Terminal app, SignalR, PTY, persistent session management |
-| [RemoteOS.Explorer.md](./docs/applications/RemoteOS.Explorer.md) | File manager, REST API, permission reuse |
-| [RemoteOS.Browser.md](./docs/applications/RemoteOS.Browser.md) | Browser, bookmarks/history/preference sync |
-| [RemoteOS.PortForwarding.md](./docs/applications/RemoteOS.PortForwarding.md) | SSH port forwarding, local loopback tunnels |
-| [RemoteOS.TaskManager.md](./docs/applications/RemoteOS.TaskManager.md) | Task manager, system metrics, process management, SignalR push rewrite |
-| [RemoteOS.DockerManager.md](./docs/applications/RemoteOS.DockerManager.md) | Docker manager, container/image/Stack/network/volume |
-| [RemoteOS.Firewall.md](./docs/applications/RemoteOS.Firewall.md) | Linux Server UFW firewall app |
-| [RemoteOS.ProcessGuardian.md](./docs/applications/RemoteOS.ProcessGuardian.md) | Process guardian, health checks, native service management, log Hub |
-| [RemoteOS.CertificateManager.md](./docs/applications/RemoteOS.CertificateManager.md) | ACME certificate lifecycle, Kestrel deployment, renewal, HostGlobal persistence |
-| [RemoteOS.WebServerManager.Design.md](./docs/applications/RemoteOS.WebServerManager.Design.md) | Web Server management, Nginx integration, sites/snapshots/audit |
-| [RemoteOS.GitClient.md](./docs/applications/RemoteOS.GitClient.md) | Git client, repo/branch/commit/conflict/history |
-| [RemoteOS.FRP_Integration.Design.md](./docs/applications/RemoteOS.FRP_Integration.Design.md) | FRP NAT traversal architecture, security & operations boundaries |
-| [RemoteOS.ProxyManager.Design.md](./docs/applications/RemoteOS.ProxyManager.Design.md) | Proxy Manager, Mihomo runtime, TUN, subscriptions & profiles |
-| [RemoteOS.RegistryApp.md](./docs/applications/RemoteOS.RegistryApp.md) | Configuration Registry browsing, writes and isolation boundaries |
-| [RemoteOS.CodeEditor.md](./docs/applications/RemoteOS.CodeEditor.md) | Code editor, syntax highlighting, file security boundaries |
-| [RemoteOS.NetworkInspector.md](./docs/applications/RemoteOS.NetworkInspector.md) | Network inspector, diagnostics tool, network analysis |
+| [RelaxKonOS.Terminal.md](./docs/applications/RelaxKonOS.Terminal.md) | Terminal app, SignalR, PTY, persistent session management |
+| [RelaxKonOS.Explorer.md](./docs/applications/RelaxKonOS.Explorer.md) | File manager, REST API, permission reuse |
+| [RelaxKonOS.Browser.md](./docs/applications/RelaxKonOS.Browser.md) | Browser, bookmarks/history/preference sync |
+| [RelaxKonOS.PortForwarding.md](./docs/applications/RelaxKonOS.PortForwarding.md) | SSH port forwarding, local loopback tunnels |
+| [RelaxKonOS.TaskManager.md](./docs/applications/RelaxKonOS.TaskManager.md) | Task manager, system metrics, process management, SignalR push rewrite |
+| [RelaxKonOS.DockerManager.md](./docs/applications/RelaxKonOS.DockerManager.md) | Docker manager, container/image/Stack/network/volume |
+| [RelaxKonOS.Firewall.md](./docs/applications/RelaxKonOS.Firewall.md) | Linux Server UFW firewall app |
+| [RelaxKonOS.ProcessGuardian.md](./docs/applications/RelaxKonOS.ProcessGuardian.md) | Process guardian, health checks, native service management, log Hub |
+| [RelaxKonOS.CertificateManager.md](./docs/applications/RelaxKonOS.CertificateManager.md) | ACME certificate lifecycle, Kestrel deployment, renewal, HostGlobal persistence |
+| [RelaxKonOS.WebServerManager.Design.md](./docs/applications/RelaxKonOS.WebServerManager.Design.md) | Web Server management, Nginx integration, sites/snapshots/audit |
+| [RelaxKonOS.GitClient.md](./docs/applications/RelaxKonOS.GitClient.md) | Git client, repo/branch/commit/conflict/history |
+| [RelaxKonOS.FRP_Integration.Design.md](./docs/applications/RelaxKonOS.FRP_Integration.Design.md) | FRP NAT traversal architecture, security & operations boundaries |
+| [RelaxKonOS.ProxyManager.Design.md](./docs/applications/RelaxKonOS.ProxyManager.Design.md) | Proxy Manager, Mihomo runtime, TUN, subscriptions & profiles |
+| [RelaxKonOS.RegistryApp.md](./docs/applications/RelaxKonOS.RegistryApp.md) | Configuration Registry browsing, writes and isolation boundaries |
+| [RelaxKonOS.CodeEditor.md](./docs/applications/RelaxKonOS.CodeEditor.md) | Code editor, syntax highlighting, file security boundaries |
+| [RelaxKonOS.NetworkInspector.md](./docs/applications/RelaxKonOS.NetworkInspector.md) | Network inspector, diagnostics tool, network analysis |
 
 ### Proxy
 
@@ -330,23 +330,23 @@ The client will open a login dialog. Enter your host system username and passwor
 
 | Document | Description |
 |----------|-------------|
-| [RemoteOS.Develop.md](./docs/development/RemoteOS.Develop.md) | Developer quick start, code structure, debugging guide |
-| [RemoteOS.DeveloperMode.md](./docs/development/RemoteOS.DeveloperMode.md) | Developer mode, DevCli, app package publishing |
-| [RemoteOS.AppSettings.md](./docs/development/RemoteOS.AppSettings.md) | App private configuration storage |
-| [RemoteOS.BuiltInApplication.Conventions.md](./docs/development/RemoteOS.BuiltInApplication.Conventions.md) | Built-in app design constraints, i18n, cross-platform |
-| [RemoteOS.ApplicationCompatibility.md](./docs/development/RemoteOS.ApplicationCompatibility.md) | Application compatibility, platform adaptation, fallback |
+| [RelaxKonOS.Develop.md](./docs/development/RelaxKonOS.Develop.md) | Developer quick start, code structure, debugging guide |
+| [RelaxKonOS.DeveloperMode.md](./docs/development/RelaxKonOS.DeveloperMode.md) | Developer mode, DevCli, app package publishing |
+| [RelaxKonOS.AppSettings.md](./docs/development/RelaxKonOS.AppSettings.md) | App private configuration storage |
+| [RelaxKonOS.BuiltInApplication.Conventions.md](./docs/development/RelaxKonOS.BuiltInApplication.Conventions.md) | Built-in app design constraints, i18n, cross-platform |
+| [RelaxKonOS.ApplicationCompatibility.md](./docs/development/RelaxKonOS.ApplicationCompatibility.md) | Application compatibility, platform adaptation, fallback |
 
 ### Project Document Index
 
 | Document | Description |
 |----------|-------------|
-| [RemoteOS.md](./docs/README.md) | Project structure, code map, current progress |
+| [RelaxKonOS.md](./docs/README.md) | Project structure, code map, current progress |
 
 ---
 
 ## 🔧 Development & Extensibility
 
-RemoteOS supports building custom application packages (`.roapp`) that can be installed into the RemoteOS Shell via the `DevCli` tool.
+RelaxKonOS supports building custom application packages (`.roapp`) that can be installed into the RelaxKonOS Shell via the `DevCli` tool.
 
 ### Build, Install, and Watch an Example App
 
@@ -355,13 +355,13 @@ RemoteOS supports building custom application packages (`.roapp`) that can be in
 export REMOTEOS_DEV_TOKEN="<pairing-token>"
 
 # Package and install an app without per-application PowerShell scripts
-dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/VideoPlayer --runtime win-x64 --configuration Release --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/VideoPlayer --runtime win-x64 --configuration Release --install
 
 # Watch source changes, package, and update automatically
-dotnet run --project Tools/RemoteOS.DevCli -- watch ./examples/VideoPlayer --runtime win-x64 --configuration Debug
+dotnet run --project Tools/RelaxKonOS.DevCli -- watch ./examples/VideoPlayer --runtime win-x64 --configuration Debug
 ```
 
-`pack` creates the `.roapp` in the application's `artifacts/` directory; pure managed applications can omit `--runtime`. See [Developer Mode](./docs/development/RemoteOS.DeveloperMode.md) for the third-party packaging command reference.
+`pack` creates the `.roapp` in the application's `artifacts/` directory; pure managed applications can omit `--runtime`. See [Developer Mode](./docs/development/RelaxKonOS.DeveloperMode.md) for the third-party packaging command reference.
 
 On Windows PowerShell, set the token with `$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"`; the remaining `dotnet` commands are unchanged.
 
@@ -386,13 +386,13 @@ public class MyApp : RemoteApplicationBase
 
 ## 🌍 Multi-Language
 
-RemoteOS includes built-in support for three languages:
+RelaxKonOS includes built-in support for three languages:
 
 | Language | Code | Language Pack Path |
 |----------|------|-------------------|
-| 🇨🇳 Simplified Chinese | `zh-CN` | `Client/RemoteOS.Client/Localization/zh-CN/` |
-| 🇺🇸 English | `en-US` | `Client/RemoteOS.Client/Localization/en-US/` |
-| 🇯🇵 Japanese | `ja-JP` | `Client/RemoteOS.Client/Localization/ja-JP/` |
+| 🇨🇳 Simplified Chinese | `zh-CN` | `Client/RelaxKonOS.Client/Localization/zh-CN/` |
+| 🇺🇸 English | `en-US` | `Client/RelaxKonOS.Client/Localization/en-US/` |
+| 🇯🇵 Japanese | `ja-JP` | `Client/RelaxKonOS.Client/Localization/ja-JP/` |
 
 Language packs use a JSON key-value structure. The UI updates in real-time when the language is switched.
 
@@ -409,7 +409,7 @@ This project uses the following third-party resources:
 
 ## 📄 License
 
-This project is licensed under the **RemoteOS Non-Commercial Source-Available License**.
+This project is licensed under the **RelaxKonOS Non-Commercial Source-Available License**.
 
 **Allowed**: Free use, modification, development, study, and non-commercial distribution.
 **Prohibited**: Commercial sale, resale, SaaS hosting, or other commercial use.
@@ -434,6 +434,6 @@ Contributions are welcome! Please:
 
 <div align="center">
 
-**RemoteOS** — Desktops Beyond Devices. State Defines Experience.
+**RelaxKonOS** — Desktops Beyond Devices. State Defines Experience.
 
 </div>

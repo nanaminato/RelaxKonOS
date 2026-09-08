@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:certificates="clr-namespace:RelaxKonOS.Client.Apps.Certificates"
+             x:Class="RelaxKonOS.Client.Apps.Certificates.Views.CertificateRequestDialogView"
+             x:DataType="certificates:CertificateManagerViewModel">
+    <!-- The form scrolls independently, so the decision controls remain visible at the lower right. -->
+    <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="16">
+        <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12" Margin="0,0,12,0">
+                <TextBlock Text="{loc:Loc certificates.request.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc certificates.request.domains}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Text="{Binding Domains, Mode=TwoWay}" PlaceholderText="{loc:Loc certificates.request.domains_hint}" />
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc certificates.request.contact_email}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Text="{Binding ContactEmail, Mode=TwoWay}" PlaceholderText="{loc:Loc certificates.request.contact_email_hint}" />
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc certificates.request.challenge}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <ComboBox ItemsSource="{Binding ChallengeTypes}"
+                                  DisplayMemberBinding="{ReflectionBinding Label}"
+                                  SelectedItem="{Binding SelectedChallengeType, Mode=TwoWay}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="4">
+                        <TextBlock Text="{loc:Loc certificates.request.key_algorithm}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <ComboBox ItemsSource="{Binding KeyAlgorithms}"
+                                  DisplayMemberBinding="{ReflectionBinding Label}"
+                                  SelectedItem="{Binding SelectedKeyAlgorithm, Mode=TwoWay}" />
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Spacing="6">
+                    <CheckBox Content="{loc:Loc certificates.request.accept_terms}" IsChecked="{Binding AcceptedTerms, Mode=TwoWay}" />
+                    <CheckBox Content="{loc:Loc certificates.request.confirm_reachability}" IsChecked="{Binding PublicReachabilityConfirmed, Mode=TwoWay}" />
+                </StackPanel>
+
+                <Border IsVisible="{Binding HasPreflightResult}" Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                    <TextBlock Text="{Binding PreflightText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                </Border>
+                <Border IsVisible="{Binding HasOperationActivity}" Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                    <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc certificates.request.preflight}" Command="{Binding PreflightCommand}" HorizontalContentAlignment="Center" />
+            <Button Classes="primary" Content="{loc:Loc certificates.request.submit}" Click="Request_Click" HorizontalContentAlignment="Center" />
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" HorizontalContentAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

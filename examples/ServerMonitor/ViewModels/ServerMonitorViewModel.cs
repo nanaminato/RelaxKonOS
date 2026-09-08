@@ -2,10 +2,10 @@ using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using RemoteOS.AppSDK;
-using RemoteOS.Examples.ServerMonitor.Services;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Examples.ServerMonitor.Services;
 
-namespace RemoteOS.Examples.ServerMonitor.ViewModels;
+namespace RelaxKonOS.Examples.ServerMonitor.ViewModels;
 
 /// <summary>Sampling, formatting, and settings state for one Server Monitor window.</summary>
 public sealed partial class ServerMonitorViewModel : ObservableObject
@@ -43,7 +43,7 @@ public sealed partial class ServerMonitorViewModel : ObservableObject
     public ObservableCollection<MetricRow> Networks { get; } = [];
     public ObservableCollection<MetricRow> Gpus { get; } = [];
 
-    [ObservableProperty] private string _statusText = "正在连接 RemoteOS 服务器性能指标…";
+    [ObservableProperty] private string _statusText = "正在连接 RelaxKonOS 服务器性能指标…";
     [ObservableProperty] private string _lastUpdatedText = "等待首个采样结果";
     [ObservableProperty] private string _cpuPercentText = "—";
     [ObservableProperty] private string _memoryPercentText = "—";

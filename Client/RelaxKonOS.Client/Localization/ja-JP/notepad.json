@@ -1,0 +1,27 @@
+{
+    "Culture": "ja-JP",
+    "Strings": {
+        "notepad.settings.title": "メモ帳の設定",
+        "notepad.settings.default_encoding": "既定のエンコーディング",
+        "notepad.encoding.reopen_with": "エンコーディングを指定して再度開く",
+        "notepad.encoding.save_with": "エンコーディングを指定して保存",
+        "notepad.status.ready": "準備完了",
+        "notepad.document.untitled": "無題",
+        "notepad.status.new_document": "新しいドキュメント",
+        "notepad.status.save_or_discard": "別のエンコーディングで開き直す前に、編集内容を保存するか破棄してください。",
+        "notepad.reopen_dirty_title": "未保存の変更を破棄しますか？",
+        "notepad.reopen_dirty_message": "再度開くと現在の未保存の変更は破棄されます。続行しますか？",
+        "notepad.discard_changes": "変更を破棄",
+        "notepad.status.connect_before_open": "ファイルを開く前に RelaxKonOS Server に接続してください。",
+        "notepad.status.file_missing": "ファイルは存在しなくなりました。",
+        "notepad.status.opened": "{0} を {1} で開きました",
+        "notepad.status.open_failed": "ファイルを開けません: {0}",
+        "notepad.status.connect_before_save": "ファイルを保存する前に RelaxKonOS Server に接続してください。",
+        "notepad.status.saved": "{0} を {1} で保存しました",
+        "notepad.status.save_failed": "ファイルを保存できません: {0}",
+        "notepad.open_remote_file": "リモートファイルを開く",
+        "notepad.save_remote_file": "リモートファイルを保存",
+        "notepad.remote_path_prompt": "完全なリモートパスを入力してください：",
+        "notepad.text_file_filter": "テキストファイル"
+    }
+}

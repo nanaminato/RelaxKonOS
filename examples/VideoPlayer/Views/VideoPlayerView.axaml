@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
-             x:Class="RemoteOS.Examples.VideoPlayer.Views.VideoPlayerView"
+             x:Class="RelaxKonOS.Examples.VideoPlayer.Views.VideoPlayerView"
              Background="{DynamicResource SurfaceBrush}" Foreground="{DynamicResource TextPrimaryBrush}">
   <Grid RowDefinitions="Auto,*,Auto">
     <Border Background="{DynamicResource SurfaceBrush}" Padding="14,10">

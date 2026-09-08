@@ -1,10 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using RemoteOS.Examples.HelpCenter.Services;
-using RemoteOS.UI.Themes;
+using RelaxKonOS.Examples.HelpCenter.Services;
+using RelaxKonOS.UI.Themes;
 
-namespace RemoteOS.Examples.HelpCenter.Controls;
+namespace RelaxKonOS.Examples.HelpCenter.Controls;
 
 /// <summary>
 /// Small, safe, read-only Markdown presenter for offline package documentation. It deliberately

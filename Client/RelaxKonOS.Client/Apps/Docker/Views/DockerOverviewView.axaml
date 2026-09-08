@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerOverviewView"
+             x:DataType="docker:DockerManagerViewModel">
+    <StackPanel Spacing="18">
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="18">
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc docker.engine}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                    <TextBlock Text="{Binding EngineVersion}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding EnginePlatform}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc docker.running_containers}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                    <TextBlock Text="{Binding RunningContainerCount}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc docker.running_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{loc:Loc docker.overview}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{loc:Loc docker.overview_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">
+                    <StackPanel Spacing="3"><TextBlock Text="{loc:Loc docker.containers}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding Containers.Count}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /></StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="3"><TextBlock Text="{loc:Loc docker.stacks}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding Stacks.Count}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /></StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="3"><TextBlock Text="{loc:Loc docker.images}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding Images.Count}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /></StackPanel>
+                    <StackPanel Grid.Column="3" Spacing="3"><TextBlock Text="{loc:Loc docker.networks}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding Networks.Count}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /></StackPanel>
+                    <StackPanel Grid.Column="4" Spacing="3"><TextBlock Text="{loc:Loc docker.volumes}" Foreground="{DynamicResource TextSecondaryBrush}" /><TextBlock Text="{Binding Volumes.Count}" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /></StackPanel>
+                </Grid>
+                <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+            </StackPanel>
+        </Border>
+        <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
+            <TextBlock Text="{loc:Loc docker.safety_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+        </Border>
+    </StackPanel>
+</UserControl>

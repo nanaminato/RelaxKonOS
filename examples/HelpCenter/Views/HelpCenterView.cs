@@ -4,11 +4,11 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
-using RemoteOS.UI.Themes;
-using RemoteOS.Examples.HelpCenter.Controls;
-using RemoteOS.Examples.HelpCenter.Services;
+using RelaxKonOS.UI.Themes;
+using RelaxKonOS.Examples.HelpCenter.Controls;
+using RelaxKonOS.Examples.HelpCenter.Services;
 
-namespace RemoteOS.Examples.HelpCenter.Views;
+namespace RelaxKonOS.Examples.HelpCenter.Views;
 
 /// <summary>Two-pane help UI: language-aware tree on the left and a read-only Markdown renderer on the right.</summary>
 public sealed class HelpCenterView : UserControl

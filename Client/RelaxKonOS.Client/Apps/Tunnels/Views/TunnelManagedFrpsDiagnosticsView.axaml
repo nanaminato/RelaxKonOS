@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Tunnels" x:Class="RelaxKonOS.Client.Apps.Tunnels.Views.TunnelManagedFrpsDiagnosticsView" x:DataType="vm:TunnelManagerViewModel">
+  <Grid RowDefinitions="*,Auto">
+    <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled"><StackPanel Spacing="12" Margin="22,22,22,14">
+      <TextBlock Text="{loc:Loc tunnels.frps.diagnostics}" FontSize="19" FontWeight="SemiBold"/>
+      <TextBlock Text="{loc:Loc tunnels.frps.diagnostics_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+      <TextBlock Text="{loc:Loc tunnels.frps.logs}" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBox Text="{Binding FrpsLogsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="190"/>
+      <TextBlock Text="{loc:Loc tunnels.frps.audit}" FontWeight="SemiBold"/><TextBox Text="{Binding FrpsAuditText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="150"/>
+    </StackPanel></ScrollViewer>
+    <Border Grid.Row="1" Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="18,12"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshManagedFrpsDiagnosticsCommand}" Margin="0,0,8,0"/><Button Content="{loc:Loc common.close}" Click="CloseButton_Click"/></StackPanel></Border>
+  </Grid>
+</UserControl>

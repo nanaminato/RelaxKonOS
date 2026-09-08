@@ -1,9 +1,9 @@
 using System.Reflection;
 using LibVLCSharp.Avalonia;
 using LibVLCSharp.Shared;
-using RemoteOS.AppSDK;
+using RelaxKonOS.AppSDK;
 
-namespace RemoteOS.Examples.VideoPlayer.Services;
+namespace RelaxKonOS.Examples.VideoPlayer.Services;
 
 /// <summary>Owns LibVLC native resources; it contains no window or view-model policy.</summary>
 public sealed class LibVlcPlaybackService : IAsyncDisposable

@@ -1,6 +1,6 @@
-using RemoteOS.Shell;
+using RelaxKonOS.Shell;
 
-namespace Example.Windows11DesktopShell;
+namespace RelaxKonOS.Example.Windows11DesktopShell;
 
 public sealed class Windows11ShellFactory : IDesktopShellFactory
 {

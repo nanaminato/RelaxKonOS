@@ -1,0 +1,91 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:webservers="clr-namespace:RelaxKonOS.Client.Apps.WebServers"
+             x:Class="RelaxKonOS.Client.Apps.WebServers.Views.WebServerSiteDialogView"
+             x:DataType="webservers:WebServerManagerViewModel">
+    <Grid Margin="20" MinWidth="0" MinHeight="0" RowDefinitions="*,Auto" RowSpacing="12">
+        <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <!-- Fluent scrollbars overlay their content. Reserve a gutter so they never cover
+                 NumericUpDown arrows or the right edge of text fields. -->
+            <StackPanel Margin="0,0,20,0" MinWidth="0" Spacing="10">
+                <TextBlock Text="{loc:Loc webservers.site.dialog.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.name}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Text="{Binding SiteName, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.site.dialog.name_hint}" />
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.kind}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <ComboBox ItemsSource="{Binding SiteKinds}" SelectedItem="{Binding SelectedSiteKind, Mode=TwoWay}" />
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.bindings_batch}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.bindings_batch_help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBox Text="{Binding SiteBindingsBatch, Mode=TwoWay}" PlaceholderText="app.example.com:5000&#10;app.example.com:6000" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" />
+                        <Button Grid.Column="1" Content="{loc:Loc webservers.site.dialog.generate}" Command="{Binding GenerateSiteBindingsCommand}" VerticalAlignment="Top" />
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.bindings}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.bindings_help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding SiteBindings}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="webservers:WebServerSiteBindingEditor">
+                                <Grid ColumnDefinitions="*,130,Auto" ColumnSpacing="8" Margin="0,0,0,4">
+                                    <TextBox Text="{Binding Domain, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.site.dialog.domain_hint}" />
+                                    <NumericUpDown Grid.Column="1" Minimum="1" Maximum="65535" Value="{Binding Port, Mode=TwoWay}" />
+                                    <Button Grid.Column="2" Content="{loc:Loc webservers.site.dialog.remove_binding}" Tag="{Binding}" Click="RemoveBinding_Click" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="{loc:Loc webservers.site.dialog.add_binding}" Command="{Binding AddSiteBindingCommand}" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding IsReverseProxySite}">
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.upstream}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Text="{Binding SiteUpstream, Mode=TwoWay}" PlaceholderText="http://127.0.0.1:3000" />
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding IsStaticSite}">
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.static_root}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.static_root_help}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <CheckBox Content="{loc:Loc webservers.site.dialog.enable_https}" IsChecked="{Binding SiteHttpsEnabled, Mode=TwoWay}" />
+                    <ComboBox ItemsSource="{Binding SiteCertificateSources}" SelectedItem="{Binding SelectedSiteCertificateSource, Mode=TwoWay}"
+                              DisplayMemberBinding="{ReflectionBinding Label}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding IsManagedCertificateSource}">
+                        <ComboBox ItemsSource="{Binding Certificates}" SelectedItem="{Binding SelectedSiteCertificate, Mode=TwoWay}"
+                                  DisplayMemberBinding="{ReflectionBinding PrimaryDomain}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                        <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCertificatesCommand}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                    </Grid>
+                    <StackPanel Spacing="6" IsVisible="{Binding IsServerFileCertificateSource}">
+                        <TextBlock Text="{loc:Loc webservers.site.dialog.certificate_source_hint}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox Text="{Binding SiteCertificatePath, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.site.dialog.certificate_file}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                            <Button Grid.Column="1" Content="{loc:Loc webservers.site.dialog.choose_file}" Command="{Binding ChooseSiteCertificateFileCommand}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox Text="{Binding SitePrivateKeyPath, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.site.dialog.private_key_file}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                            <Button Grid.Column="1" Content="{loc:Loc webservers.site.dialog.choose_file}" Command="{Binding ChooseSitePrivateKeyFileCommand}" IsEnabled="{Binding SiteHttpsEnabled}" />
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Text="{Binding SiteStatusText}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+            <Button Classes="primary" Content="{loc:Loc webservers.site.dialog.save_apply}" Command="{Binding SaveSiteCommand}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

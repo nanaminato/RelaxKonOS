@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Called by the signed package installer, not by RemoteOS HTTP endpoints. It registers
+# Called by the signed package installer, not by RelaxKonOS HTTP endpoints. It registers
 # both units, generates the local IPC secret, and leaves end users no Agent setup step.
 if [[ ${EUID} -ne 0 ]]; then
   echo "Run as root through the host's approved elevation flow." >&2
@@ -162,7 +162,7 @@ chmod 0755 "$PRIVILEGED_HELPER"
 SUDOERS_TEMP="$(mktemp /etc/sudoers.d/remoteos-helpers.XXXXXX)"
 trap 'rm -f "$SUDOERS_TEMP"' EXIT
 cat >"$SUDOERS_TEMP" <<EOF
-# Managed by RemoteOS. Do not edit: reinstall to regenerate.
+# Managed by RelaxKonOS. Do not edit: reinstall to regenerate.
 $SERVICE_USER ALL=(root) NOPASSWD: $PRIVILEGED_HELPER
 EOF
 chmod 0440 "$SUDOERS_TEMP"
@@ -173,7 +173,7 @@ trap - EXIT
 
 cat >/etc/systemd/system/remoteos-guardian.service <<EOF
 [Unit]
-Description=RemoteOS Guardian Agent
+Description=RelaxKonOS Guardian Agent
 After=network-online.target
 Wants=network-online.target
 
@@ -189,7 +189,7 @@ WantedBy=multi-user.target
 EOF
 cat >/etc/systemd/system/remoteos-server.service <<EOF
 [Unit]
-Description=RemoteOS Server
+Description=RelaxKonOS Server
 After=network-online.target remoteos-guardian.service
 Wants=network-online.target remoteos-guardian.service
 
@@ -209,4 +209,4 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now remoteos-guardian.service remoteos-server.service
-echo "Installed RemoteOS Server and Guardian services (Server user: $SERVICE_USER)."
+echo "Installed RelaxKonOS Server and Guardian services (Server user: $SERVICE_USER)."

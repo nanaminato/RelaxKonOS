@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.DeveloperPageView"
+             x:DataType="vm:DeveloperPageViewModel">
+    <StackPanel Spacing="16" MaxWidth="640">
+        <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.developer_mode}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.developer_mode.description}"
+                           Opacity="0.7" TextWrapping="Wrap" />
+                <CheckBox Content="{loc:Loc settings.enable_developer_mode}" IsChecked="{Binding DeveloperMode.IsEnabled, Mode=TwoWay}" />
+                <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                    <TextBlock Text="{loc:Loc settings.local_address}" VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1" Text="{Binding DeveloperMode.Endpoint}" IsReadOnly="True" />
+                </Grid>
+                <Grid ColumnDefinitions="120,*,Auto" ColumnSpacing="10">
+                    <TextBlock Text="{loc:Loc settings.pairing_token}" VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1" Text="{Binding DeveloperMode.PairingToken}" IsReadOnly="True" />
+                    <Button Grid.Column="2" Content="{loc:Loc settings.regenerate}" Command="{Binding DeveloperMode.RegeneratePairingTokenCommand}" />
+                </Grid>
+                <TextBlock Text="{loc:Loc settings.developer_mode.note}"
+                           Opacity="0.55" FontSize="12" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.network_inspector}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.network_inspector.description}" Opacity="0.7" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding NetworkInspector.Status}" Opacity="0.65" TextWrapping="Wrap" />
+                <Button Classes="primary" Content="{loc:Loc settings.network_inspector.open}"
+                        Command="{Binding NetworkInspector.OpenCommand}" IsEnabled="{Binding NetworkInspector.CanOpen}" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

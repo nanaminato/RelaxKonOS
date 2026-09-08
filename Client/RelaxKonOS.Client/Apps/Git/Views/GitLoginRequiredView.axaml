@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitLoginRequiredView">
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+        <TextBlock Text="🌿" FontSize="32" HorizontalAlignment="Center" />
+        <TextBlock Text="{loc:Loc git.login_required.message}"
+                   TextWrapping="Wrap" TextAlignment="Center"
+                   FontSize="14" Foreground="{DynamicResource TextSecondaryBrush}" Margin="24,0" />
+    </StackPanel>
+</UserControl>

@@ -1,11 +1,11 @@
-using RemoteOS.AppSDK;
-using RemoteOS.Core.Applications;
-using RemoteOS.Examples.VideoPlayer.Services;
-using RemoteOS.Examples.VideoPlayer.ViewModels;
-using RemoteOS.Examples.VideoPlayer.Views;
-using RemoteRect = RemoteOS.Core.Primitives.Rect;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Examples.VideoPlayer.Services;
+using RelaxKonOS.Examples.VideoPlayer.ViewModels;
+using RelaxKonOS.Examples.VideoPlayer.Views;
+using RemoteRect = RelaxKonOS.Core.Primitives.Rect;
 
-namespace RemoteOS.Examples.VideoPlayer;
+namespace RelaxKonOS.Examples.VideoPlayer;
 
 /// <summary>Composition root for the Video Player development package.</summary>
 public sealed class VideoPlayerApp : IExternalRemoteApplication, IExternalFileOpenApplication

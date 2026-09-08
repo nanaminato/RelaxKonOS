@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Installs the Debug build of the unified Helper into a root-owned directory for
-# Server → sudo → Helper integration testing. It does not install RemoteOS services.
+# Server → sudo → Helper integration testing. It does not install RelaxKonOS services.
 if [[ ${EUID} -ne 0 ]]; then
   echo "Run as root, for example: sudo $0 \"\$USER\"" >&2
   exit 1
@@ -11,9 +11,9 @@ fi
 DEVELOPMENT_USER="${1:-${SUDO_USER:-}}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
-SOURCE_HELPER="$PROJECT_ROOT/RemoteOS.PrivilegedHelper/bin/Debug/net10.0/RemoteOS.PrivilegedHelper"
+SOURCE_HELPER="$PROJECT_ROOT/RelaxKonOS.PrivilegedHelper/bin/Debug/net10.0/RelaxKonOS.PrivilegedHelper"
 INSTALL_DIRECTORY=/usr/local/lib/remoteos/privileged-helper-development
-INSTALLED_HELPER="$INSTALL_DIRECTORY/RemoteOS.PrivilegedHelper"
+INSTALLED_HELPER="$INSTALL_DIRECTORY/RelaxKonOS.PrivilegedHelper"
 SUDOERS_FILE=/etc/sudoers.d/remoteos-privileged-helper-development
 FILE_ACCESS=restricted
 FILE_ROOTS_FILE=
@@ -99,7 +99,7 @@ id -u "$DEVELOPMENT_USER" >/dev/null 2>&1 || { echo "User does not exist: $DEVEL
 [[ "$DEVELOPMENT_USER" != root ]] || { echo "Specify the unprivileged account that runs your IDE." >&2; exit 1; }
 SOURCE_HELPER="$(readlink -f -- "$SOURCE_HELPER")"
 [[ -x "$SOURCE_HELPER" ]] || { echo "Build the Helper first or pass its apphost path: $SOURCE_HELPER" >&2; exit 1; }
-[[ "$(basename -- "$SOURCE_HELPER")" == "RemoteOS.PrivilegedHelper" ]] || { echo "HELPER_APPHOST must be the RemoteOS.PrivilegedHelper apphost." >&2; exit 1; }
+[[ "$(basename -- "$SOURCE_HELPER")" == "RelaxKonOS.PrivilegedHelper" ]] || { echo "HELPER_APPHOST must be the RelaxKonOS.PrivilegedHelper apphost." >&2; exit 1; }
 command -v sudo >/dev/null || { echo "sudo is required for the privileged helper." >&2; exit 1; }
 command -v visudo >/dev/null || { echo "visudo is required for validating the sudoers rule." >&2; exit 1; }
 
@@ -118,7 +118,7 @@ chmod 0755 "$INSTALLED_HELPER"
 SUDOERS_TEMP="$(mktemp /etc/sudoers.d/remoteos-privileged-helper-development.XXXXXX)"
 trap 'rm -f "$SUDOERS_TEMP"' EXIT
 cat >"$SUDOERS_TEMP" <<EOF
-# Managed by RemoteOS development setup. Re-run this script after rebuilding the Helper.
+# Managed by RelaxKonOS development setup. Re-run this script after rebuilding the Helper.
 $DEVELOPMENT_USER ALL=(root) NOPASSWD: $INSTALLED_HELPER
 EOF
 chmod 0440 "$SUDOERS_TEMP"

@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerContainerDetailsDialogView"
+             x:DataType="docker:DockerManagerViewModel">
+    <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="12">
+        <TextBlock Text="{loc:Loc docker.container.details_copy_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6" ColumnSpacing="12">
+                    <TextBlock Text="{loc:Loc docker.container.name}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Column="1" Text="{Binding ContainerDetails.Name}" IsReadOnly="True" />
+                    <TextBlock Grid.Row="1" Text="{loc:Loc docker.container.id}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ContainerDetails.Id}" IsReadOnly="True" />
+                    <TextBlock Grid.Row="2" Text="{loc:Loc docker.container.image}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ContainerDetails.Image}" IsReadOnly="True" />
+                    <TextBlock Grid.Row="3" Text="{loc:Loc docker.table.state}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding ContainerDetails.State}" IsReadOnly="True" />
+                    <TextBlock Grid.Row="4" Text="{loc:Loc docker.table.status}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding ContainerDetails.Status}" IsReadOnly="True" />
+                    <TextBlock Grid.Row="5" Text="{loc:Loc docker.container.created_at}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding ContainerDetails.Created}" IsReadOnly="True" />
+                    <TextBlock Grid.Row="6" Text="{loc:Loc docker.container.restart}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding ContainerDetails.RestartPolicy}" IsReadOnly="True" />
+                    <TextBlock Grid.Row="7" Text="{loc:Loc docker.container.working_directory}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding ContainerDetails.WorkingDirectory}" IsReadOnly="True" />
+                    <TextBlock Grid.Row="8" Text="{loc:Loc docker.container.command}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding ContainerDetails.Command}" IsReadOnly="True" />
+                </Grid>
+                <TextBlock Text="{loc:Loc docker.container.ports}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                <TextBox Text="{Binding ContainerPortsText}" IsReadOnly="True" />
+                <TextBlock Text="{loc:Loc docker.container.networks}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                <TextBox Text="{Binding ContainerNetworksText}" IsReadOnly="True" />
+                <TextBlock Text="{loc:Loc docker.container.mounts}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                <TextBox Text="{Binding ContainerMountsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="72" MaxHeight="150" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                <TextBlock Text="{loc:Loc docker.container.environment}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                <TextBox Text="{Binding ContainerEnvironmentText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="92" MaxHeight="210" FontFamily="Cascadia Mono,Consolas,monospace" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                <TextBlock Text="{loc:Loc docker.container.labels}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                <TextBox Text="{Binding ContainerLabelsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="92" MaxHeight="210" FontFamily="Cascadia Mono,Consolas,monospace" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+            </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc common.copy}" Click="Copy_Click" />
+            <Button Content="{loc:Loc common.close}" Click="Close_Click" />
+        </StackPanel>
+    </Grid>
+</UserControl>

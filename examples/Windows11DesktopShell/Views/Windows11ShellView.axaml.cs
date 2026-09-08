@@ -1,8 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Input;
-using Example.Windows11DesktopShell.ViewModels;
+using RelaxKonOS.Example.Windows11DesktopShell.ViewModels;
 
-namespace Example.Windows11DesktopShell.Views;
+namespace RelaxKonOS.Example.Windows11DesktopShell.Views;
 
 public partial class Windows11ShellView : UserControl
 {

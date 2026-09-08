@@ -1,0 +1,50 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.ImageMirrorsPageView"
+             x:DataType="vm:ImageMirrorsPageViewModel"
+             x:Name="Root">
+    <StackPanel Spacing="16" MaxWidth="680">
+        <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
+        <TextBlock Text="{loc:Loc settings.image_mirrors.description}" Opacity="0.7" TextWrapping="Wrap" />
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.image_mirrors.docker}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.image_mirrors.hint}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
+                <ItemsControl ItemsSource="{Binding Mirrors}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ImageMirrorItemViewModel">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="0,4">
+                                <RadioButton GroupName="dockerImageMirror" IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                             Command="{Binding DataContext.SelectCommand, ElementName=Root}" CommandParameter="{Binding}" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Spacing="1">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Endpoint}" IsVisible="{Binding CanRemove}" FontFamily="Consolas" FontSize="12" Opacity="0.65" />
+                                    <TextBlock Text="{loc:Loc settings.image_mirrors.default_hint}" IsVisible="{Binding IsDefault}" FontSize="12" Opacity="0.65" />
+                                </StackPanel>
+                                <Button Grid.Column="2" Content="{loc:Loc common.delete}" IsVisible="{Binding CanRemove}"
+                                        Command="{Binding DataContext.RemoveCommand, ElementName=Root}" CommandParameter="{Binding}" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.image_mirrors.add_title}" Classes="title" />
+                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+                    <TextBlock Text="{loc:Loc settings.image_mirrors.name}" VerticalAlignment="Center" />
+                    <TextBox Grid.Column="1" Text="{Binding NewName, Mode=TwoWay}" PlaceholderText="{loc:Loc settings.image_mirrors.name_placeholder}" />
+                    <TextBlock Grid.Row="1" Text="{loc:Loc settings.image_mirrors.endpoint}" VerticalAlignment="Center" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding NewEndpoint, Mode=TwoWay}" PlaceholderText="docker.m.daocloud.io" />
+                </Grid>
+                <Button Classes="primary" Content="{loc:Loc settings.add}" Command="{Binding AddCommand}" IsEnabled="{Binding !IsLoading}" HorizontalAlignment="Left" Padding="16,7" />
+            </StackPanel>
+        </Border>
+        <TextBlock Text="{Binding StatusText}" IsVisible="{Binding HasStatus}" Opacity="0.7" TextWrapping="Wrap" />
+    </StackPanel>
+</UserControl>

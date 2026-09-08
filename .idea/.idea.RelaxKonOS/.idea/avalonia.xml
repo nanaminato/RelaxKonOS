@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AvaloniaProject">
+    <option name="projectPerEditor">
+      <map>
+        <entry key="Client/RelaxKonOS.Client/Apps/AppInstaller/Views/AppInstallerView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Browser/Views/BrowserSettingsView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Certificates/Views/CertificateLoginRequiredView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Certificates/Views/CertificateManagerWorkspace.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/CodeEditor/CodeEditorSettingsView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/CodeEditor/CodeEditorView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerContainerDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerContainersView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerLoginRequiredView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerManagerWorkspace.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerNetworkDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerOverviewView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerPullImageDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerStackDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerUnavailableDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerVolumeDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Explorer/Views/ExplorerMainView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Git/Views/GitClientWorkspace.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Git/Views/GitPushDialog.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Git/Views/GitRemoteBranchPickerDialog.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/ImageViewer/Views/ImageViewerView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/PortForwarding/Views/PortForwardingMainView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Proxy/Views/ProxyNetworkSettingsDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Proxy/Views/ProxyOverviewView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Settings/Views/Pages/AppsPageView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Settings/Views/Pages/NetworkPageView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Settings/Views/Pages/PersonalizationPageView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Settings/Views/Pages/TimeLanguagePageView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/TaskManager/Views/TaskManagerMainView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/WebServers/Views/ExistingNginxInstallationDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/WebServers/Views/NginxIntegrationConfirmationDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/WebServers/Views/WebServerLoginRequiredView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/WebServers/Views/WebServerManagerWorkspace.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/WebServers/Views/WebServerSiteSaveErrorDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Services/Diagnostics/NetworkInspectorView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Views/Login/LoginView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Views/Shell/DesktopShellView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Framework/RelaxKonOS.UI/Themes/RelaxKonOSTheme.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Framework/RelaxKonOS.UI/Themes/Styles.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Framework/RelaxKonOS.UI/Themes/Tokens/TokenContract.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Framework/RelaxKonOS.WindowManager/Themes/RemoteWindowTheme.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+      </map>
+    </option>
+  </component>
+</project>

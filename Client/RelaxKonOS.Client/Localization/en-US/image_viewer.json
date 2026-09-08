@@ -1,0 +1,16 @@
+{
+    "Culture":  "en-US",
+    "Strings":  {
+                    "image_viewer.title":  "Image Viewer",
+                    "image_viewer.dimensions":  "{0} × {1}px",
+                    "image_viewer.zoom_in":  "Zoom in",
+                    "image_viewer.zoom_out":  "Zoom out",
+                    "image_viewer.reset_zoom":  "Reset zoom",
+                    "image_viewer.status.open_hint":  "Open an image from File Explorer to preview it.",
+                    "image_viewer.status.connect_before_open":  "Connect to RelaxKonOS Server before opening image files.",
+                    "image_viewer.status.loading":  "Loading image…",
+                    "image_viewer.status.file_missing":  "The image file no longer exists.",
+                    "image_viewer.status.opened":  "{0} · {1}",
+                    "image_viewer.status.open_failed":  "Cannot open image: {0}"
+                }
+}

@@ -1,11 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:views="clr-namespace:Example.Windows11DesktopShell.Views"
-             x:Class="Example.Windows11DesktopShell.Views.Windows11ShellView">
+             xmlns:views="clr-namespace:RelaxKonOS.Example.Windows11DesktopShell.Views"
+             x:Class="RelaxKonOS.Example.Windows11DesktopShell.Views.Windows11ShellView">
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceInclude Source="avares://Example.Windows11DesktopShell/Styles/IconGeometries.axaml" />
+                <ResourceInclude Source="avares://RelaxKonOS.Example.Windows11DesktopShell/Styles/IconGeometries.axaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </UserControl.Resources>

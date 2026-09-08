@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Dialogs"
+             x:Class="RelaxKonOS.Client.Apps.Explorer.Dialogs.TextInputDialogView"
+             x:DataType="vm:TextInputDialogViewModel"
+             Background="{DynamicResource SurfaceBrush}"
+             Width="440">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto" Margin="20" RowSpacing="10">
+        <TextBlock Grid.Row="0" Text="{Binding Prompt}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBox Grid.Row="1" x:Name="InputBox" Text="{Binding Input, Mode=TwoWay}" />
+        <TextBlock Grid.Row="2" Text="{Binding ErrorMessage}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static vm:StringToVisibilityConverter.Instance}}" />
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc common.cancel}" Command="{Binding CancelCommand}" Padding="16,6" />
+            <Button Classes="primary" Content="{Binding ConfirmLabel}" Command="{Binding ConfirmCommand}" Padding="16,6" />
+        </StackPanel>
+    </Grid>
+</UserControl>

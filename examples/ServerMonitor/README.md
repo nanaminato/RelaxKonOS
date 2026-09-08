@@ -8,20 +8,20 @@
 
 ```bash
 export REMOTEOS_DEV_TOKEN="<设置中的配对令牌>"
-dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/ServerMonitor --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/ServerMonitor --configuration Debug --install
 ```
 
 在 Windows PowerShell 中：
 
 ```powershell
 $env:REMOTEOS_DEV_TOKEN = "<设置中的配对令牌>"
-dotnet run --project Tools/RemoteOS.DevCli -- pack .\examples\ServerMonitor --configuration Debug --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack .\examples\ServerMonitor --configuration Debug --install
 ```
 
 如果已用相同配置编译该项目（例如直接在 IDE 中构建），可跳过重新编译，直接依据 `manifest.json` 打包已有输出：
 
 ```bash
-dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/ServerMonitor --configuration Debug --no-build
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/ServerMonitor --configuration Debug --no-build
 ```
 
 PowerShell 中只需将项目路径写为 `.\examples\ServerMonitor`。

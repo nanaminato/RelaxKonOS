@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace RemoteOS.Examples.HelpCenter.Services;
+namespace RelaxKonOS.Examples.HelpCenter.Services;
 
 public sealed class HelpCenterViewModel : INotifyPropertyChanged
 {

@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="clr-namespace:RelaxKonOS.Client.Apps"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:welcome="clr-namespace:RelaxKonOS.Client.Apps.Welcome"
+             x:Class="RelaxKonOS.Client.Apps.Welcome.WelcomeView"
+             x:DataType="welcome:WelcomeViewModel"
+             Background="{DynamicResource SurfaceBrush}">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="28">
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock Text="{loc:Loc welcome.title}" FontSize="28" FontWeight="Bold" />
+            <TextBlock Text="{loc:Loc welcome.tagline}" Opacity="0.8" FontSize="13" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Classes="card" Margin="0,18,0,0">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{loc:Loc welcome.overview}" Classes="title" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Text="{loc:Loc welcome.feature.window_manager}" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Text="{loc:Loc welcome.feature.desktop}" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Text="{loc:Loc welcome.feature.local_apps}" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Text="{loc:Loc welcome.feature.built_in_apps}" />
+                <TextBlock TextWrapping="Wrap" Opacity="0.9"
+                           Text="{loc:Loc welcome.feature.server}" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Classes="primary" Content="{loc:Loc welcome.open_notepad}" Command="{Binding OpenNotepadCommand}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

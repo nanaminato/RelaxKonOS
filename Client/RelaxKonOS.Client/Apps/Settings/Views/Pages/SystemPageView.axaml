@@ -1,0 +1,64 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.SystemPageView"
+             x:DataType="vm:SystemPageViewModel">
+    <StackPanel Spacing="16" MaxWidth="640">
+        <StackPanel Spacing="2">
+            <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Text="{loc:Loc settings.system.tagline}" Opacity="0.65" />
+        </StackPanel>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.about}" Classes="title" />
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.version}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding AppVersion}" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.connection_status}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding ConnectionState}" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.server}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding ServerUrl}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.account_workspace}" Classes="title" />
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.username}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding UserName}" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.host_platform}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding Platform}" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.workspace}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding WorkspaceName}" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.device}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding DeviceName}" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.device_role}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding DeviceRole}" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.last_login}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding LastLogin}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Opacity="0.55" FontSize="12" TextWrapping="Wrap"
+                   Text="{loc:Loc settings.system.description}" />
+    </StackPanel>
+</UserControl>
