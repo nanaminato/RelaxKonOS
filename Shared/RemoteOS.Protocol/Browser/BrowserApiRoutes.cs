@@ -2,7 +2,7 @@ using RemoteOS.Protocol.Common;
 
 namespace RemoteOS.Protocol.Browser;
 
-/// <summary>浏览器书签/历史记录 REST 端点路由常量。路径已含 /api/v1 前缀。Server 注册路由与 Client 拼接 URL 共用。
+/// <summary>浏览器书签/历史记录 REST 端点路由常量。路径已含 /api/v1.0 前缀。Server 注册路由与 Client 拼接 URL 共用。
 /// 所有端点需 JWT（[Authorize]），按 JWT sub claim 限定到当前用户。错误统一返回 RFC 7807 ProblemDetails。</summary>
 public static class BrowserApiRoutes
 {

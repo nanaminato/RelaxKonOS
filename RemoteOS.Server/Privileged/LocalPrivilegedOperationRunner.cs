@@ -7,7 +7,7 @@ using RemoteOS.Protocol.Privileged;
 namespace Server.Privileged;
 
 /// <summary>Runs the installed helper. Linux uses its dedicated passwordless sudoers rule.</summary>
-public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions options, ILogger<LocalPrivilegedOperationRunner> logger) : IPrivilegedOperationRunner
+public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions options, ILogger<LocalPrivilegedOperationRunner> logger) : IPrivilegedOperationTransport
 {
     public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
     {

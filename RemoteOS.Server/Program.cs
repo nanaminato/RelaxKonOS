@@ -324,7 +324,6 @@ var privilegedHelperOptions = builder.Configuration.GetSection("PrivilegedHelper
                              ?? new Server.Privileged.PrivilegedHelperOptions();
 builder.Services.AddSingleton(privilegedHelperOptions);
 builder.Services.AddSingleton<Server.Privileged.LocalPrivilegedOperationRunner>();
-builder.Services.AddSingleton<Server.Privileged.IPrivilegedOperationRunner>(sp => sp.GetRequiredService<Server.Privileged.LocalPrivilegedOperationRunner>());
 builder.Services.AddSingleton<Server.Privileged.IPrivilegedOperationTransport>(sp =>
     OperatingSystem.IsWindows()
         ? ActivatorUtilities.CreateInstance<Server.Privileged.WindowsNamedPipePrivilegedOperationTransport>(sp)

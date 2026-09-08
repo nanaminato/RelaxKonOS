@@ -5,7 +5,7 @@ namespace RemoteOS.Protocol.Privileged;
 /// <summary>Versioning and size limits for the local Helper protocol.</summary>
 public static class PrivilegedOperationProtocol
 {
-    public const int Version = 1;
+    public const string Version = "1.0";
     public const int MaximumRequestBytes = 16 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
 }
@@ -140,7 +140,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("firewallRuleNumber")] int? FirewallRuleNumber = null,
     [property: JsonPropertyName("firewallCompanionRuleNumber")] int? FirewallCompanionRuleNumber = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
-    [property: JsonPropertyName("version")] int Version = PrivilegedOperationProtocol.Version);
+    [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(
@@ -149,4 +149,4 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("outputBase64")] string? OutputBase64 = null,
     [property: JsonPropertyName("error")] string? Error = null,
     [property: JsonPropertyName("problemCode")] PrivilegedProblemCode ProblemCode = PrivilegedProblemCode.None,
-    [property: JsonPropertyName("version")] int Version = PrivilegedOperationProtocol.Version);
+    [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);

@@ -4,9 +4,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>Example.NeonDesktopShell</RootNamespace>
+    <RootNamespace>Example.Windows11DesktopShell</RootNamespace>
+    <AssemblyName>Example.Windows11DesktopShell</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Framework\RemoteOS.Shell\RemoteOS.Shell.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

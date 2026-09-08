@@ -6,7 +6,7 @@ VerifyDescriptorValidation();
 VerifyRelativePathValidation();
 VerifyShortcutValidation();
 VerifyAutomationValidation();
-VerifyShellIdMigration();
+    VerifyShellIdResolution();
 await VerifyStorageBoundaryAsync();
 Console.WriteLine("RemoteOS.Core VSD contract verification passed.");
 
@@ -81,13 +81,11 @@ static void VerifyAutomationValidation()
         "Workflow accepted an arbitrary remote network target.");
 }
 
-static void VerifyShellIdMigration()
+static void VerifyShellIdResolution()
 {
-    Assert(ShellApi.NormalizeId("remoteos") == ShellApi.DefaultShellId, "Legacy RemoteOS Shell id was not normalized.");
-    Assert(ShellApi.NormalizeId("remoteos.default") == ShellApi.DefaultShellId, "Retired RemoteOS default Shell id was not normalized.");
-    Assert(ShellApi.NormalizeId("windows-like") == "remoteos.windows-like", "Legacy Windows-like Shell id was not normalized.");
-    Assert(ShellApi.NormalizeId("com.example.neon") == "com.example.neon", "External Shell id was unexpectedly changed.");
-    Assert(ShellApi.NormalizeId(null) == ShellApi.DefaultShellId, "Missing Shell id did not use the safe default.");
+    Assert(ShellApi.Version == "1.0", "Shell API remains at version 1.0 before the first release.");
+    Assert(ShellApi.ResolveId("com.example.neon") == "com.example.neon", "Explicit external Shell id was unexpectedly changed.");
+    Assert(ShellApi.ResolveId(null) == ShellApi.DefaultShellId, "Missing Shell id did not use the safe default.");
 }
 
 static async Task VerifyStorageBoundaryAsync()

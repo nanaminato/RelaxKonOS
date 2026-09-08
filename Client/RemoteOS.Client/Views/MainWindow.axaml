@@ -73,6 +73,23 @@
              the connection bar. -->
         <Grid x:Name="Root" Margin="0,34,0,0" PointerMoved="Root_OnPointerMoved">
             <ContentControl x:Name="ShellHost" />
+            <!-- Covers the hand-off from the login window until the selected desktop has
+                 registered its window hosts and restored its desktop state. -->
+            <Border x:Name="DesktopLoadingOverlay" Background="#F0144F85" ZIndex="50">
+                <StackPanel Width="280" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Border Width="56" Height="56" CornerRadius="14" Background="#32FFFFFF" BorderBrush="#55FFFFFF" BorderThickness="1">
+                        <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
+                            <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
+                        </UniformGrid>
+                    </Border>
+                    <TextBlock Text="{loc:Loc shell.desktop_loading.title}" Foreground="White" FontSize="18"
+                               FontWeight="SemiBold" TextAlignment="Center" />
+                    <TextBlock Text="{loc:Loc shell.desktop_loading.description}" Foreground="#D9FFFFFF" FontSize="12"
+                               TextAlignment="Center" TextWrapping="Wrap" />
+                    <ProgressBar IsIndeterminate="True" Height="4" Foreground="White" Background="#44FFFFFF" />
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- The title bar and mstsc connection bar deliberately share the same top layer. -->

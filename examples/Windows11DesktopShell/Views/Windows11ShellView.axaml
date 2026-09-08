@@ -1,0 +1,236 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:Example.Windows11DesktopShell.Views"
+             x:Class="Example.Windows11DesktopShell.Views.Windows11ShellView">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Example.Windows11DesktopShell/Styles/IconGeometries.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <UserControl.Styles>
+        <Style Selector="Button.taskbar">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+        <Style Selector="Button.taskbar:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#66FFFFFF" />
+        </Style>
+        <Style Selector="Button.start-tile">
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Padding" Value="6,14" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="TextBlock.primary">
+            <Setter Property="Foreground" Value="#FF202124" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="*,52" PointerPressed="Desktop_OnPointerPressed">
+        <Grid Grid.Row="0" ClipToBounds="True" Background="{Binding Wallpaper}">
+            <Grid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="{Binding View}">
+                        <MenuItem Header="{Binding ShowDesktopIcons}" ToggleType="CheckBox"
+                                  IsChecked="{Binding AreDesktopIconsVisible}"
+                                  Command="{Binding ToggleDesktopIconsCommand}" />
+                    </MenuItem>
+                    <MenuItem Header="{Binding RefreshDesktop}" Command="{Binding RefreshDesktopCommand}" />
+                    <MenuItem Header="{Binding Paste}" Command="{Binding PasteDesktopCommand}" />
+                    <Separator />
+                    <MenuItem Header="{Binding ConfigureDesktopDisplay}" Command="{Binding OpenDisplaySettingsCommand}" />
+                    <Separator />
+                    <MenuItem Header="{Binding OpenDesktopFolder}" Command="{Binding OpenDesktopFolderCommand}" />
+                    <MenuItem Header="{Binding OpenFileExplorer}" Command="{Binding OpenFileExplorerCommand}" />
+                    <MenuItem Header="{Binding OpenTerminal}" Command="{Binding OpenTerminalCommand}" />
+                    <Separator />
+                    <MenuItem Header="{Binding Personalization}" Command="{Binding OpenPersonalizationCommand}" />
+                </ContextMenu>
+            </Grid.ContextMenu>
+            <!-- This is a required surface for shell-hosted modal input. It must not consume
+                 ordinary desktop clicks while no modal dialog is active. -->
+            <Border x:Name="InputBackdrop" IsHitTestVisible="False" />
+
+            <views:DesktopShortcutsView Margin="14" HorizontalAlignment="Left" VerticalAlignment="Top" />
+
+            <Border Margin="0,16,20,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsVisible="{Binding HasDesktopStyles}"
+                    Background="#1AFFFFFF" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="8" Padding="8">
+                <StackPanel Width="96" Spacing="4">
+                    <TextBlock Text="{Binding DesktopStylesTitle}" Foreground="#D9FFFFFF" FontSize="11" TextAlignment="Center" />
+                    <ItemsControl ItemsSource="{Binding DesktopStyleEntries}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Classes="desktop-shortcut" Height="86"
+                                        Command="{Binding $parent[UserControl].DataContext.OpenDesktopStyleCommand}"
+                                        CommandParameter="{Binding}" ToolTip.Tip="{Binding DisplayName}">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Text="▣" FontSize="32" Height="40" Foreground="White" TextAlignment="Center" />
+                                        <TextBlock Classes="desktop-label" Text="{Binding DisplayName}" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Canvas x:Name="WindowHost" ClipToBounds="True" />
+        </Grid>
+
+        <Border Grid.Row="1" Height="52" Background="#E6F3F6FA" BorderBrush="#99FFFFFF"
+                BorderThickness="0,1,0,0" BoxShadow="0 -3 18 0 #330A3154">
+            <Grid ColumnDefinitions="*,Auto,*">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                    <Button Classes="taskbar" Command="{Binding ToggleStartCommand}" ToolTip.Tip="{Binding Start}">
+                        <UniformGrid Columns="2" Rows="2" Width="20" Height="20">
+                            <Border Background="#FF0067C0" Margin="1" />
+                            <Border Background="#FF0067C0" Margin="1" />
+                            <Border Background="#FF0067C0" Margin="1" />
+                            <Border Background="#FF0067C0" Margin="1" />
+                        </UniformGrid>
+                    </Button>
+                    <Button Classes="taskbar" Command="{Binding ToggleStartCommand}" ToolTip.Tip="{Binding Search}">
+                        <Path Data="{StaticResource IconSearch}" Stroke="#FF202124" StrokeThickness="1.8" Fill="Transparent" Width="22" Height="22" Stretch="Uniform" />
+                    </Button>
+                    <Button Classes="taskbar" Command="{Binding ShowDesktopCommand}" ToolTip.Tip="{Binding TaskView}">
+                        <Path Data="{StaticResource IconTaskView}" Stroke="#FF202124" StrokeThickness="1.7" Fill="Transparent" Width="22" Height="22" Stretch="Uniform" />
+                    </Button>
+                    <Button Classes="taskbar" Command="{Binding OpenSettingsCommand}" ToolTip.Tip="{Binding Settings}">
+                        <Path Data="{StaticResource IconSettings}" Fill="#FF202124" Width="22" Height="22" Stretch="Uniform" />
+                    </Button>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,8,0">
+                    <Button Classes="taskbar" Width="34" Command="{Binding ToggleQuickSettingsCommand}" ToolTip.Tip="{Binding HiddenIcons}">
+                        <Path Data="{StaticResource IconChevronUp}" Stroke="#FF202124" StrokeThickness="2" Fill="Transparent" Width="15" Height="15" Stretch="Uniform" />
+                    </Button>
+                    <Button Classes="taskbar" Width="68" Command="{Binding ToggleQuickSettingsCommand}" ToolTip.Tip="{Binding QuickSettings}">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Path Data="{StaticResource IconWifi}" Stroke="#FF202124" StrokeThickness="1.8" Fill="Transparent" Width="18" Height="18" Stretch="Uniform" />
+                            <Path Data="{StaticResource IconVolume}" Stroke="#FF202124" StrokeThickness="1.7" Fill="Transparent" Width="18" Height="18" Stretch="Uniform" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="taskbar" Width="88" Command="{Binding ToggleQuickSettingsCommand}" ToolTip.Tip="{Binding QuickSettings}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Classes="primary" Text="{Binding Clock}" FontSize="11" HorizontalAlignment="Right" />
+                            <TextBlock Classes="primary" Text="{Binding Date}" FontSize="11" HorizontalAlignment="Right" />
+                        </StackPanel>
+                    </Button>
+                    <Button Width="7" Padding="0" Background="Transparent" BorderBrush="#557A8792"
+                            BorderThickness="1,0,0,0" Command="{Binding ShowDesktopCommand}" ToolTip.Tip="{Binding ShowDesktop}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.RowSpan="2" IsVisible="{Binding IsStartOpen}">
+            <Button Command="{Binding CloseFlyoutsCommand}" Background="Transparent" BorderBrush="Transparent" />
+            <Border Width="590" Height="610" Margin="0,0,0,62" HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom" Background="#F2F3F6FA" BorderBrush="#99FFFFFF"
+                    BorderThickness="1" CornerRadius="12" BoxShadow="0 10 40 0 #660A3154">
+                <Grid RowDefinitions="Auto,Auto,*,Auto">
+                    <TextBox PlaceholderText="{Binding SearchPlaceholder}" Margin="32,28,32,18" Height="38" CornerRadius="6" />
+                    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="38,0,38,12">
+                        <TextBlock Classes="primary" Text="{Binding StartSectionTitle}" FontSize="15" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" Content="{Binding AllAppsButtonText}" Padding="12,5" Command="{Binding ToggleAllAppsCommand}" />
+                    </Grid>
+                    <UniformGrid Grid.Row="2" Columns="3" Rows="2" Margin="30,0,30,26" IsVisible="{Binding IsPinnedOpen}">
+                        <Button Classes="start-tile" Command="{Binding OpenSettingsCommand}">
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconSettings}" Fill="#FF0067C0" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding Settings}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                        </Button>
+                        <Button Classes="start-tile" Command="{Binding OpenPersonalizationCommand}">
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconSun}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding Personalization}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                        </Button>
+                        <Button Classes="start-tile" Command="{Binding OpenDisplaySettingsCommand}">
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconDisplay}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="27" Height="27" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding DisplaySettings}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                        </Button>
+                        <Button Classes="start-tile" Command="{Binding RefreshDesktopCommand}">
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconRefresh}" Fill="#FF0067C0" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding RefreshDesktop}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                        </Button>
+                        <Button Classes="start-tile" Command="{Binding ShowDesktopCommand}">
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconTaskView}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding ShowDesktop}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                        </Button>
+                        <Button Classes="start-tile" Command="{Binding OpenSettingsCommand}">
+                            <StackPanel Spacing="7"><Path Data="{StaticResource IconInfo}" Stroke="#FF0067C0" StrokeThickness="1.8" Fill="Transparent" Width="26" Height="26" Stretch="Uniform" HorizontalAlignment="Center" /><TextBlock Classes="primary" Text="{Binding About}" FontSize="12" TextAlignment="Center" /></StackPanel>
+                        </Button>
+                    </UniformGrid>
+                    <ScrollViewer Grid.Row="2" Margin="30,0,30,26" IsVisible="{Binding IsAllAppsOpen}"
+                                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Applications}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel ItemWidth="150" ItemHeight="96" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Classes="start-tile" Width="142" Height="88"
+                                            Command="{Binding $parent[UserControl].DataContext.OpenApplicationCommand}"
+                                            CommandParameter="{Binding}">
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="{Binding IconGlyph}" FontSize="26" Height="34" TextAlignment="Center" />
+                                            <TextBlock Classes="primary" Text="{Binding DisplayName}" FontSize="12" MaxLines="2"
+                                                       TextAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <Border Grid.Row="3" Background="#55FFFFFF" BorderBrush="#66FFFFFF" BorderThickness="0,1,0,0"
+                            CornerRadius="0,0,12,12" Padding="36,14">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Border Width="32" Height="32" CornerRadius="16" Background="#FF0067C0">
+                                <TextBlock Text="R" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Classes="primary" Text="{Binding UserName}" FontSize="13" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="10,0,0,0" />
+                            <Button Grid.Column="2" Classes="taskbar" Width="40" Command="{Binding ShowDesktopCommand}" ToolTip.Tip="{Binding ShowDesktop}">
+                                <Path Data="{StaticResource IconPower}" Stroke="#FF202124" StrokeThickness="2" Fill="Transparent" Width="21" Height="21" Stretch="Uniform" />
+                            </Button>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.RowSpan="2" IsVisible="{Binding IsQuickSettingsOpen}">
+            <Button Command="{Binding CloseFlyoutsCommand}" Background="Transparent" BorderBrush="Transparent" />
+            <Border Width="340" Margin="0,0,12,62" Padding="20" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Background="#F2F3F6FA" BorderBrush="#99FFFFFF" BorderThickness="1" CornerRadius="12"
+                    BoxShadow="0 8 30 0 #550A3154">
+                <StackPanel Spacing="16">
+                    <UniformGrid Columns="3" Rows="1">
+                        <Button Height="42" Margin="4" Background="#FF0067C0" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Wifi}"><Path Data="{StaticResource IconWifi}" Stroke="White" StrokeThickness="1.8" Fill="Transparent" Width="20" Height="20" Stretch="Uniform" /></Button>
+                        <Button Height="42" Margin="4" Background="#FF0067C0" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Bluetooth}"><Path Data="{StaticResource IconBluetooth}" Stroke="White" StrokeThickness="1.8" Fill="Transparent" Width="20" Height="20" Stretch="Uniform" /></Button>
+                        <Button Height="42" Margin="4" Background="#88FFFFFF" BorderBrush="#99FFFFFF" CornerRadius="6" ToolTip.Tip="{Binding Focus}"><Path Data="{StaticResource IconMoon}" Fill="#FF202124" Width="20" Height="20" Stretch="Uniform" /></Button>
+                    </UniformGrid>
+                    <Grid ColumnDefinitions="28,*"><Path Data="{StaticResource IconSun}" Stroke="#FF202124" StrokeThickness="1.7" Fill="Transparent" Width="19" Height="19" Stretch="Uniform" /><Slider Grid.Column="1" Minimum="0" Maximum="100" Value="72" /></Grid>
+                    <Grid ColumnDefinitions="28,*"><Path Data="{StaticResource IconVolume}" Stroke="#FF202124" StrokeThickness="1.7" Fill="Transparent" Width="19" Height="19" Stretch="Uniform" /><Slider Grid.Column="1" Minimum="0" Maximum="100" Value="48" /></Grid>
+                    <Button Content="{Binding OpenSettings}" HorizontalAlignment="Right" Command="{Binding OpenSettingsCommand}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Canvas x:Name="FullScreenHost" Grid.RowSpan="2" ClipToBounds="True" IsHitTestVisible="False" />
+        <Canvas x:Name="ShellOverlayHost" Grid.RowSpan="2" IsHitTestVisible="False" />
+        <Border Grid.RowSpan="2" IsVisible="{Binding IsLoading}"
+                Background="#E8144F85">
+            <StackPanel Width="260" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Width="56" Height="56" CornerRadius="14" Background="#32FFFFFF" BorderBrush="#55FFFFFF" BorderThickness="1">
+                    <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
+                        <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
+                    </UniformGrid>
+                </Border>
+                <TextBlock Text="{Binding LoadingTitle}" Foreground="White" FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
+                <TextBlock Text="{Binding LoadingDescription}" Foreground="#D9FFFFFF" FontSize="12" TextAlignment="Center" TextWrapping="Wrap" />
+                <ProgressBar IsIndeterminate="True" Height="4" Foreground="White" Background="#44FFFFFF" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

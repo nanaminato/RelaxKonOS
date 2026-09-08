@@ -111,12 +111,12 @@ public sealed class DeveloperBridgeService : IDisposable
             }
 
             var path = context.Request.Url?.AbsolutePath.TrimEnd('/') ?? string.Empty;
-            if (context.Request.HttpMethod == "GET" && path == "/api/developer/v1/apps")
+            if (context.Request.HttpMethod == "GET" && path == "/api/developer/v1.0/apps")
             {
                 await WriteJsonAsync(context.Response, HttpStatusCode.OK, _packages.Installed);
                 return;
             }
-            if (context.Request.HttpMethod == "POST" && path == "/api/developer/v1/packages")
+            if (context.Request.HttpMethod == "POST" && path == "/api/developer/v1.0/packages")
             {
                 var launch = !string.Equals(context.Request.QueryString["launch"], "false", StringComparison.OrdinalIgnoreCase);
                 var app = await _packages.InstallAsync(context.Request.InputStream, launch, cancellationToken);
@@ -124,7 +124,7 @@ public sealed class DeveloperBridgeService : IDisposable
                 return;
             }
 
-            const string appPrefix = "/api/developer/v1/apps/";
+            const string appPrefix = "/api/developer/v1.0/apps/";
             if (path.StartsWith(appPrefix, StringComparison.Ordinal))
             {
                 var remainder = path[appPrefix.Length..];

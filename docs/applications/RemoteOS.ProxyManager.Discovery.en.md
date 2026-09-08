@@ -6,7 +6,7 @@
 
 ## Current conclusion
 
-The former Phase 0 conclusion—“there is no Proxy Manager and implementation must start at Phase 1”—is obsolete. This branch now contains the `remoteos.proxy` built-in app, the `/api/v1/proxy` API, a Server-only Mihomo adapter, protected configuration and subscription storage, runtime lifecycle management, a constrained privileged-operation boundary, a TUN transaction framework, and audit/operation ledgers.
+The former Phase 0 conclusion—“there is no Proxy Manager and implementation must start at Phase 1”—is obsolete. This branch now contains the `remoteos.proxy` built-in app, the `/api/v1.0/proxy` API, a Server-only Mihomo adapter, protected configuration and subscription storage, runtime lifecycle management, a constrained privileged-operation boundary, a TUN transaction framework, and audit/operation ledgers.
 
 That does not make Proxy Manager V1 release-ready. Real Windows/Ubuntu privileged operations, Mihomo lifecycle, TUN route/DNS changes, and crash/reboot recovery have not yet been validated on isolated hosts; the current production network platform refuses a change when it cannot prove it is safe. The next phase is **controlled platform validation and release closure**, not a restart at Phase 1.
 
@@ -14,7 +14,7 @@ That does not make Proxy Manager V1 release-ready. Real Windows/Ubuntu privilege
 
 | Area | Current implementation |
 | --- | --- |
-| Contracts and authorization | `Shared/RemoteOS.Protocol/Proxy` supplies engine-neutral DTOs, routes, states, and stable `proxy.*` problem codes; `MapProxyEndpoints` maps `/api/v1/proxy`. `ProxyRead`, `ProxyManage`, and `ProxyDangerous` policies separate reading, management, and dangerous runtime/TUN work. Long operations use durable operation IDs and `Idempotency-Key`. |
+| Contracts and authorization | `Shared/RemoteOS.Protocol/Proxy` supplies engine-neutral DTOs, routes, states, and stable `proxy.*` problem codes; `MapProxyEndpoints` maps `/api/v1.0/proxy`. `ProxyRead`, `ProxyManage`, and `ProxyDangerous` policies separate reading, management, and dangerous runtime/TUN work. Long operations use durable operation IDs and `Idempotency-Key`. |
 | Server and Mihomo | `MihomoEngine`, a Server-only loopback Controller client, protected Controller-secret storage, runtime status, groups, selection, routing mode, latency tests, connection closure, traffic/memory, logs, and DNS status are wired up. The Controller address, secret, and raw Controller JSON do not cross the Client API. |
 | Managed runtime | `MihomoRuntimeManager` uses a source-controlled trusted manifest. It installs from download or a Server file and applies size/archive-path/hash/architecture/version checks, staging, health checks, active/previous switching, rollback, and uninstall. Linux uses constrained `systemd` operations; Windows uses `WindowsMihomoProcessHost` for the Mihomo process tree, restart after unexpected exit, and cleanup on host shutdown. |
 | Configuration and subscriptions | Host-global SQLite metadata, protected raw YAML, serialized configuration transactions, backup/atomic commit/reload/health-check/rollback, and subscription import/refresh/activation with encrypted URLs are implemented. Subscriptions default to public HTTPS only, disallow redirects, and bound response size; a verified system-proxy route can be selected explicitly. Base64/plain node lists can be converted to Mihomo YAML, and protected local `geoip.metadb` supports offline validation and runtime use. |

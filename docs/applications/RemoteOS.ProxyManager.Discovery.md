@@ -6,7 +6,7 @@
 
 ## 当前结论
 
-旧的阶段 0 结论（“尚无 Proxy Manager，必须从阶段 1 开始”）已不再适用。当前分支已有可运行的 `remoteos.proxy` 内置应用、`/api/v1/proxy` API、Server-only Mihomo 适配器、受保护的配置/订阅存储、运行时生命周期、受限特权操作边界、TUN 事务框架和审计/操作台账。
+旧的阶段 0 结论（“尚无 Proxy Manager，必须从阶段 1 开始”）已不再适用。当前分支已有可运行的 `remoteos.proxy` 内置应用、`/api/v1.0/proxy` API、Server-only Mihomo 适配器、受保护的配置/订阅存储、运行时生命周期、受限特权操作边界、TUN 事务框架和审计/操作台账。
 
 这不等于 Proxy Manager 已达到 V1 发布条件：真实 Windows/Ubuntu 特权、Mihomo 生命周期、TUN 路由/DNS 变更、崩溃/重启恢复仍未在隔离主机上验证；当前生产网络平台实现会在不能证明安全时拒绝变更。下一阶段是**受控平台验证与发布收尾**，不是重新实现阶段 1。
 
@@ -14,7 +14,7 @@
 
 | 层面 | 当前实现 |
 | --- | --- |
-| 协议与授权 | `Shared/RemoteOS.Protocol/Proxy` 提供 engine-neutral DTO、路由、状态和稳定 `proxy.*` 问题码；`MapProxyEndpoints` 已映射 `/api/v1/proxy`。`ProxyRead`、`ProxyManage` 和 `ProxyDangerous` 策略将读取、管理及运行时/TUN 等危险操作分开；长操作使用持久化 operation ID 和 `Idempotency-Key`。 |
+| 协议与授权 | `Shared/RemoteOS.Protocol/Proxy` 提供 engine-neutral DTO、路由、状态和稳定 `proxy.*` 问题码；`MapProxyEndpoints` 已映射 `/api/v1.0/proxy`。`ProxyRead`、`ProxyManage` 和 `ProxyDangerous` 策略将读取、管理及运行时/TUN 等危险操作分开；长操作使用持久化 operation ID 和 `Idempotency-Key`。 |
 | Server 与 Mihomo | `MihomoEngine`、仅 Server 使用的 loopback Controller client、控制器密钥保护存储、运行状态/代理组/节点选择、路由模式、延迟测试、连接关闭、流量/内存、日志和 DNS 状态均已接入。Controller 地址、密钥和原始 Controller JSON 不会进入 Client API。 |
 | 托管运行时 | `MihomoRuntimeManager` 使用源代码固定的受信任清单；支持下载或从 Server 文件安装，执行大小/归档路径/哈希/架构/版本检查、暂存、健康检查、active/previous 切换、回滚和卸载。Linux 使用受限的 `systemd` 操作；Windows 由 `WindowsMihomoProcessHost` 管理 Mihomo 进程树及异常重启/宿主停止清理。 |
 | 配置与订阅 | 主机全局 SQLite 元数据、受保护 raw YAML、串行配置事务、备份/原子提交/reload/健康检查/回滚、订阅导入/刷新/激活和加密 URL 存储均已实现。订阅默认仅接受公网 HTTPS、禁止重定向并限制响应；可显式选择经过验证的系统代理路径。Base64/明文节点列表可转换为 Mihomo YAML；受保护的本地 `geoip.metadb` 支持离线校验与运行。 |

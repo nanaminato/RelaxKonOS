@@ -4,7 +4,7 @@
 >
 > 相关现状：[桌面外壳](./RemoteOS.Desktop.md)、[设置](./RemoteOS.Settings.md)、[架构](../architecture/RemoteOS.Architecture.md)。
 >
-> 外部包作者指南与可构建示例见 [RemoteOS.ExternalShellPackages.md](./RemoteOS.ExternalShellPackages.md) 和 `examples/NeonDesktopShell`。
+> 外部包作者指南与 Windows 11 风格可构建示例见 [RemoteOS.ExternalShellPackages.md](./RemoteOS.ExternalShellPackages.md) 和 `examples/Windows11DesktopShell`。
 
 ---
 
@@ -146,6 +146,13 @@ public sealed record ShellPresentationContext(
     IShellSurfaceRegistry Surfaces,
     ILocalizationSnapshot Localization);
 
+public interface ILocalizationSnapshot
+{
+    string Language { get; }
+    string Get(string key, string fallback); // 仅宿主术语
+    event EventHandler<ShellLanguageChangedEventArgs>? LanguageChanged;
+}
+
 public interface IShellSurfaceRegistry
 {
     void Register(ShellSurfaces surfaces);
@@ -240,23 +247,26 @@ Shell 必须处理的最小交互：
 
 ```text
 <package-root>/
-  shell.json
+  manifest.json
   lib/<target-framework>/<publisher>.Shell.dll
+  lib/<target-framework>/Localization/*.json
   assets/...
 ```
 
-`shell.json`：
+`manifest.json`：
 
 ```json
 {
   "schemaVersion": 1,
-  "id": "com.example.neon-desktop",
-  "displayName": "Neon Desktop",
+  "permissionModelVersion": 2,
+  "packageType": "desktopShell",
+  "id": "com.example.windows11-desktop",
+  "displayName": "Windows 11 Desktop (External)",
   "version": "1.0.0",
-  "entryAssembly": "lib/net10.0/Example.NeonDesktop.dll",
-  "entryType": "Example.NeonDesktop.NeonShellFactory",
-  "minimumShellApiVersion": 1,
-  "capabilities": ["desktop", "appLauncher", "runningApps", "shellOverlays"]
+  "entryAssembly": "lib/net10.0/Example.Windows11DesktopShell.dll",
+  "entryType": "Example.Windows11DesktopShell.Windows11ShellFactory",
+  "shellApiVersion": "1.0",
+  "capabilities": ["desktop", "shellOverlays"]
 }
 ```
 
@@ -270,11 +280,13 @@ public interface IDesktopShellFactory
 }
 ```
 
-外部包只能从用户选择的本机目录或 RemoteOS 扩展安装目录安装。不得根据 Workspace 偏好自动下载、加载网络 DLL 或执行脚本。开发者模式可允许未签名包，但必须在设置中显示清晰风险提示；发行模式只接受签名/哈希已验证且 `shell.json` 与程序集白名单匹配的包。
+外部 Shell 与第三方应用统一封装为 `.roapp`，只能通过应用安装程序进入版本化软件包目录；个性化页面不提供目录安装入口。安装器验证 `permissionModelVersion: 2`、安全相对路径和清单必填字段，`ShellCatalog` 再验证 `packageType`、Shell API 版本与能力组合。不得根据 Workspace 偏好自动下载、加载网络 DLL 或执行脚本。
+
+当前 Shell API 的桌面投影会提供内置桌面使用的主题解析应用名称前景色，以及桌面应用条目的图片图标。外部 Shell 可以采用自己的视觉设计；若直接呈现这些条目，应优先使用图片图标，并仅在没有图片时回退到 `IconGlyph`。
 
 ### 5.2 生命周期、故障隔离与卸载
 
-- `ShellCatalog` 先解析 manifest、检查 ID 格式、API 版本、签名、大小和能力组合；不执行程序集即可列出不可用原因。
+- 应用安装程序先验证并登记软件包；`ShellCatalog` 再解析 manifest，检查桌面包类型、ID 格式、API 版本和能力组合，不执行程序集即可列出不可用原因。
 - 只有用户选择该 Shell 时才加载程序集和创建实例。初始化超时、抛异常或未登记有效 surfaces 时，记录诊断，拒绝激活，并回退到当前 Shell。
 - `DeactivateAsync` / `DisposeAsync` 失败不得阻塞回退。`AssemblyLoadContext` 在没有可达对象时卸载；若无法卸载，标记“需重启才能完成卸载”，不能破坏当前桌面。
 - 切换中的外部 Shell 崩溃必须保留现有应用窗口；运行时立即回退到 `remoteos.windows-like` 并向用户显示可复制的诊断 ID。

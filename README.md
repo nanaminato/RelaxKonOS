@@ -38,7 +38,7 @@
 - 🔀 **代理管理器** — 主机代理运行时（Mihomo 为首款引擎，可扩展 sing-box/Xray）、TUN 模式、订阅与配置档案、系统代理、流量/连接监控、网络安全与恢复
 - 🧱 **配置注册表** — 受 schema 约束的 desired/applied 状态机配置中心
 - 🪞 **镜像源管理** — APT/Docker/NPM/PyPI 等镜像源随 Workspace 偏好同步
-- 🔧 **应用能力与私有 KV** — `/api/v1/capabilities` + App Settings 按用户/应用隔离 KV
+- 🔧 **应用能力与私有 KV** — `/api/v1.0/capabilities` + App Settings 按用户/应用隔离 KV
 - 🌍 **多语言支持** — 内置中文、英文、日文语言包
 - 🔧 **开发者扩展** — 支持通过 `DevCli` 工具安装和管理自定义应用包
 

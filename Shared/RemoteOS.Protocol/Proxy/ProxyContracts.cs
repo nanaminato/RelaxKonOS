@@ -49,7 +49,7 @@ public static class ProxyProblemCodes
 
 public static class ProxyApiRoutes
 {
-    public const string Proxy = "/api/v1/proxy";
+    public const string Proxy = $"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/proxy";
     public const string Overview = Proxy;
     public const string Runtime = Proxy + "/runtime";
     public const string LifecyclePattern = "/lifecycle/{action}";

@@ -12,7 +12,7 @@
 
 ## 1. 背景
 
-`RemoteOS.Server` 此前所有仓储均为内存实现（`InMemory*Repository`，Singleton，`ConcurrentDictionary`），重启即丢。其中**终端外观配置**（`TerminalSettingsDto`：FontFamily / FontSize / ColorScheme / Background/Foreground/CursorColor）作为 [Workspace](../../RemoteOS.Server/Domain/Workspace.cs) 的属性存在内存中，经 `GET/PUT /api/v1/workspaces/{id}/terminal-settings` 读写——用户改完配置重启服务就丢失。
+`RemoteOS.Server` 此前所有仓储均为内存实现（`InMemory*Repository`，Singleton，`ConcurrentDictionary`），重启即丢。其中**终端外观配置**（`TerminalSettingsDto`：FontFamily / FontSize / ColorScheme / Background/Foreground/CursorColor）作为 [Workspace](../../RemoteOS.Server/Domain/Workspace.cs) 的属性存在内存中，经 `GET/PUT /api/v1.0/workspaces/{id}/terminal-settings` 读写——用户改完配置重启服务就丢失。
 
 而 Workspace 在 [`RemoteOS.Workspace.md`](../architecture/RemoteOS.Workspace.md) §22/§23 中被明确定义为 **「One Persistent Workspace」**。本次引入 SQLite 持久化层，先把「配置 + 身份」这一组持久实体落地，让终端配置跨重启保留，并为后续 Storage / 同步能力奠基。
 

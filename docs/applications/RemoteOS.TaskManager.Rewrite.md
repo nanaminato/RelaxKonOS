@@ -8,7 +8,7 @@
 ### 当前实施备注
 
 - 已完成：统一 1 秒 `PerformanceSampler`、60 点内存 RingBuffer、Linux `/proc`/`/sys` 原始采集、Windows CPU/内存/网络与 `IOCTL_DISK_PERFORMANCE` 原始采集、性能 REST API、`/hubs/performance` 推送、客户端重连/历史回补，以及独立的 5 秒进程采样器。
-- 兼容：旧 `GET /api/v1/system/metrics` 与旧进程列表暂保留给 App SDK 和已发布客户端；新任务管理器使用新的 performance API 与进程查询 API。
+- 当前 API：性能页使用 performance API，进程页使用分页查询 API；旧 metrics 和非分页进程列表端点已删除。
 - 降级：Windows 服务账户若无权读取物理磁盘性能，或宿主机未提供该计数器时 `diskIo=false`；UI 不显示伪造 0 值。GPU 与传感器仍为后续可选提供方。
 
 ## 1. 结论与目标
@@ -149,14 +149,14 @@ Linux 适配器必须过滤或标记 loop、ram、zram、重复的 device-mapper
 
 | 通道 | 路由/事件 | 目的 |
 |---|---|---|
-| REST | `GET /api/v1/system/performance/info` | 静态信息与能力 |
-| REST | `GET /api/v1/system/performance/snapshot` | 当前有效快照；首次进入、重连和测试的降级路径 |
-| REST | `GET /api/v1/system/performance/history?seconds=60` | 最近有效点；上限 60，不能作长期查询 |
+| REST | `GET /api/v1.0/system/performance/info` | 静态信息与能力 |
+| REST | `GET /api/v1.0/system/performance/snapshot` | 当前有效快照；首次进入、重连和测试的降级路径 |
+| REST | `GET /api/v1.0/system/performance/history?seconds=60` | 最近有效点；上限 60，不能作长期查询 |
 | SignalR | `/hubs/performance` | 性能实时订阅 Hub |
 | Server → Client | `performanceSnapshot` | `PerformanceRealtimeSnapshotDto` |
 | Client → Server | `subscribePerformance` / `unsubscribePerformance` | 显式控制接收；断开自动取消 |
-| REST | `GET /api/v1/system/processes?...` | 按需、可分页的进程查询 |
-| REST | `DELETE /api/v1/system/processes/{id}` | 结束进程；保持不自动提权 |
+| REST | `GET /api/v1.0/system/processes?...` | 按需、可分页的进程查询 |
+| REST | `DELETE /api/v1.0/system/processes/{id}` | 结束进程；保持不自动提权 |
 
 所有路径、Hub 名和事件名必须定义在 `Shared/RemoteOS.Protocol`；Server 与 Client 禁止硬编码。Hub 使用 JWT 认证并遵循现有 SignalR JSON 选项。初始渲染顺序：取 `info` → 取 `history`/`snapshot` → 建连并订阅 → 按 `Sequence` 丢弃过期或重复事件。
 
@@ -256,12 +256,11 @@ Linux 适配器必须过滤或标记 loop、ram、zram、重复的 device-mapper
 
 运行时采集错误必须归类到安全日志/健康状态；API 不返回 `/proc` 原文、命令行、完整环境变量、MAC 地址等未经确认允许暴露的敏感信息。
 
-## 10. 迁移与兼容策略
+## 10. 迁移策略
 
-1. 先加入新协议和 Hub，不立刻改变旧任务管理器路径。
-2. 新客户端通过 Windows/Linux 测试后切到新路径；旧 `GET /api/v1/system/metrics` 暂作为 `snapshot` 的兼容适配器。
-3. 发布说明标注废弃版本和移除版本；兼容期结束后一次性删除旧 ViewModel 轮询、旧 DTO 和旧 Endpoint，避免长期双写。
-4. `DELETE /processes/{id}` 的不自动提权语义保持不变；如果参数或响应变化，提供显式适配器。
+1. 新协议和 Hub 直接替换旧任务管理器路径。
+2. metrics 和非分页进程列表端点不再提供。
+3. `DELETE /processes/{id}` 的不自动提权语义保持不变；接口发生变化时同步更新所有调用方。
 
 ## 11. 后续扩展点
 

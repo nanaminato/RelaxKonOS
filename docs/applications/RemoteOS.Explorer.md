@@ -90,7 +90,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 │  IExplorerClient (typed HttpClient, JWT via IAuthSession)        │    │                                                │
 │    └─ ExplorerClient                                             │    │                                                │
 └──────────────────────────────────────────────────────────────────┘    └────────────────────────────────────────────────┘
-              ↕  REST /api/v1/files/*  +  Shared/RemoteOS.Protocol/Files (DTO + FileApiRoutes)
+              ↕  REST /api/v1.0/files/*  +  Shared/RemoteOS.Protocol/Files (DTO + FileApiRoutes)
 ```
 
 ### 3.2 传输选型：REST HTTP（非 SignalR）
@@ -135,7 +135,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 
 ### 4.3 REST 端点签名
 
-路由常量见 [`FileApiRoutes`](../../Shared/RemoteOS.Protocol/Files/FileApiRoutes.cs)，均 `$"/api/v1/files/..."`。
+路由常量见 [`FileApiRoutes`](../../Shared/RemoteOS.Protocol/Files/FileApiRoutes.cs)，均 `$"/api/v1.0/files/..."`。
 
 | 方法 | 入参 | 返回 | 错误码（type suffix） |
 |------|------|------|----------------------|
@@ -288,7 +288,7 @@ services.AddSingleton<IRemoteApplication, Client.Apps.Explorer.ExplorerApp>();
 | `SpecialFolderKind.cs` | enum `Home/Desktop/Documents/Downloads/Pictures/Music/Videos`（camelCase 序列化，由 `RemoteOsJsonOptions.Default` 全局生效，无需显式 `[JsonStringEnumConverter]`） |
 | `SpecialLocationDto.cs` | 特殊文件夹位置：kind/name/path（Server `GetSpecialLocations` 返回，已 `Directory.Exists` 过滤） |
 | `RenameRequest.cs` / `MoveRequest.cs` / `CopyRequest.cs` | 操作请求 body |
-| `FileApiRoutes.cs` | 路由常量（路径含 `/api/v1` 前缀，Server 注册与 Client 拼接共用；含 `Content` / `Properties` / `Permissions` 等文件读写与属性路由） |
+| `FileApiRoutes.cs` | 路由常量（路径含 `/api/v1.0` 前缀，Server 注册与 Client 拼接共用；含 `Content` / `Properties` / `Permissions` 等文件读写与属性路由） |
 
 **设计说明**：`FileEntryDto` 与 `FileSystemEntryDto` 是独立 record（非继承），因为 `FileEntryDto` 多 `Extension` 字段且 `Size` 为非空 `long`。Client 网格绑定 `FileSystemEntryDto`，`ExplorerViewModel` 在填充 `Entries` 时将 `FileEntryDto` 转为 `FileSystemEntryDto`（`Type=File`），丢弃 `Extension`（网格不展示）。
 

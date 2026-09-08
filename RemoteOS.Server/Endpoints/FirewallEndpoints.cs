@@ -10,7 +10,7 @@ public static class FirewallEndpoints
 {
     public static IEndpointRouteBuilder MapFirewallEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/firewall").RequireAuthorization().WithTags("Firewall");
+        var group = app.MapGroup($"/{RemoteOS.Protocol.Common.RemoteOsEndpoints.ApiVersionPrefix}/firewall").RequireAuthorization().WithTags("Firewall");
         group.MapGet("/status", (Server.Firewall.IHostFirewallService firewall, CancellationToken ct) => firewall.GetStatusAsync(ct));
         group.MapGet("/rules", (Server.Firewall.IHostFirewallService firewall, CancellationToken ct) => firewall.ListRulesAsync(ct));
         group.MapPut("/enabled", (UpdateFirewallEnabledRequest request, HttpContext context, IHostElevationSessionStore elevations, Server.Firewall.IFirewallChangeAuthorizationService authorization, Server.Firewall.IHostFirewallService firewall, ILoggerFactory loggers, CancellationToken ct) =>

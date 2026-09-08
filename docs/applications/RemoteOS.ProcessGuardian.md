@@ -168,14 +168,14 @@ Protocol 放于 `Shared/RemoteOS.Protocol/ProcessGuardian/`，仅以 DTO、路�
 
 | 方法 | 路由 | 权限 |
 |---|---|---|
-| GET | `/api/v1/guardian/status` | `server.guardian.read` |
-| GET/POST | `/api/v1/guardian/workloads` | read/manage |
-| GET/PATCH/DELETE | `/api/v1/guardian/workloads/{id}` | read/manage |
-| POST | `/api/v1/guardian/workloads/{id}/{start|stop|restart|reload}` | `server.guardian.manage` |
-| GET | `/api/v1/guardian/workloads/{id}/logs` | read |
-| GET | `/api/v1/guardian/services` | `server.services.read` |
-| POST | `/api/v1/guardian/services/{id}/{action}` | `server.services.manage` |
-| POST | `/api/v1/guardian/agent/installation/{plan|execute}` | `server.guardian.install` |
+| GET | `/api/v1.0/guardian/status` | `server.guardian.read` |
+| GET/POST | `/api/v1.0/guardian/workloads` | read/manage |
+| GET/PATCH/DELETE | `/api/v1.0/guardian/workloads/{id}` | read/manage |
+| POST | `/api/v1.0/guardian/workloads/{id}/{start|stop|restart|reload}` | `server.guardian.manage` |
+| GET | `/api/v1.0/guardian/workloads/{id}/logs` | read |
+| GET | `/api/v1.0/guardian/services` | `server.services.read` |
+| POST | `/api/v1.0/guardian/services/{id}/{action}` | `server.services.manage` |
+| POST | `/api/v1.0/guardian/agent/installation/{plan|execute}` | `server.guardian.install` |
 
 创建或更新定义时，`RunAs` 是持久化字段；任何用户为其他账户指定 `RunAs` 时，POST/PATCH 都额外携带一次性的管理员认证数据。认证错误统一返回 `guardian.run_as_admin_authentication_failed`，缺少认证返回 `guardian.run_as_admin_authentication_required`；账户无效、平台无法启动或路径无权访问分别使用不同问题码，不能把密码或账户探测细节返回给客户端。
 

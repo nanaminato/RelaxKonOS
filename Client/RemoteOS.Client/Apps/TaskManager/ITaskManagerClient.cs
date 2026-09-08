@@ -7,9 +7,6 @@ namespace Client.Apps.TaskManager;
 /// 路由常量见 <see cref="SystemMonitorApiRoutes"/>。错误统一为 <see cref="RemoteOsAuthException"/>（含 ProblemDetails）。</summary>
 public interface ITaskManagerClient
 {
-    /// <summary>获取整机资源占用快照（CPU/内存/磁盘/网络/GPU/运行时间）。</summary>
-    Task<SystemMetricsDto> GetMetricsAsync(CancellationToken ct = default);
-
     /// <summary>获取性能页低频信息与能力。</summary>
     Task<PerformanceInfoDto> GetPerformanceInfoAsync(CancellationToken ct = default);
 
@@ -21,9 +18,6 @@ public interface ITaskManagerClient
 
     /// <summary>获取服务器所有可用的非回环 IPv4/IPv6 地址。</summary>
     Task<IReadOnlyList<NetworkAddressDto>> GetNetworkAddressesAsync(CancellationToken ct = default);
-
-    /// <summary>列举当前可见进程（含每进程 CPU% 与内存）。</summary>
-    Task<IReadOnlyList<ProcessInfoDto>> ListProcessesAsync(CancellationToken ct = default);
 
     /// <summary>按页、过滤和排序查询进程；性能页不会调用此方法。</summary>
     Task<ProcessPageDto> QueryProcessesAsync(int page = 1, int pageSize = 100, string? filter = null,

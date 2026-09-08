@@ -28,8 +28,8 @@
 ## 3. REST 契约
 
 ```
-GET /api/v1/app-settings/{appId}/{scope}/{key}
-PUT /api/v1/app-settings/{appId}/{scope}/{key}
+GET /api/v1.0/app-settings/{appId}/{scope}/{key}
+PUT /api/v1.0/app-settings/{appId}/{scope}/{key}
 ```
 
 `GET` 未找到返回 `404`，成功返回：

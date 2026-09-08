@@ -3,7 +3,7 @@ using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-const string defaultEndpoint = "http://127.0.0.1:45321/api/developer/v1/";
+const string defaultEndpoint = "http://127.0.0.1:45321/api/developer/v1.0/";
 var arguments = args.ToList();
 var token = ReadOption(arguments, "--token") ?? Environment.GetEnvironmentVariable("REMOTEOS_DEV_TOKEN");
 var endpoint = ReadOption(arguments, "--endpoint") ?? Environment.GetEnvironmentVariable("REMOTEOS_DEV_ENDPOINT") ?? defaultEndpoint;

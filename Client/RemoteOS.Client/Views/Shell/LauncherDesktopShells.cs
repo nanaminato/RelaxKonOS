@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
+using Avalonia.Data.Converters;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -14,7 +15,9 @@ using Microsoft.Extensions.DependencyInjection;
 using RemoteOS.AppSDK;
 using RemoteOS.Shell;
 using RemoteOS.WindowManager;
+using RemoteOS.UI.Themes;
 using VectorPath = Avalonia.Controls.Shapes.Path;
+using System.Globalization;
 
 namespace Client.Views.Shell;
 
@@ -34,6 +37,8 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     private System.ComponentModel.PropertyChangedEventHandler? _wallpaperChanged;
     private LocalizationService? _localization;
     private EventHandler<SystemLanguageChangedEventArgs>? _languageChanged;
+    private Window? _topLevel;
+    private static readonly object DesktopEntryMarker = new();
 
     protected LauncherDesktopShellBase(ShellDescriptor descriptor) => Descriptor = descriptor;
     public ShellDescriptor Descriptor { get; }
@@ -45,6 +50,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         _vm = context.State.Snapshot as DesktopShellViewModel
             ?? throw new InvalidOperationException("The client did not publish a desktop workspace state.");
         _root.DataContext = _vm;
+        _root.PointerPressed += OnRootPointerPressed;
         _root.Background = _vm.Settings.CurrentWallpaper;
         _wallpaperChanged = (_, args) =>
         {
@@ -76,6 +82,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
 
     public virtual Task ActivateAsync(CancellationToken cancellationToken)
     {
+        TrackTopLevelActivation();
         ReportWorkArea();
         return Task.CompletedTask;
     }
@@ -87,6 +94,9 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             _vm.Settings.PropertyChanged -= _wallpaperChanged;
         if (_localization is not null && _languageChanged is not null)
             _localization.LanguageChanged -= _languageChanged;
+        _root.PointerPressed -= OnRootPointerPressed;
+        if (_topLevel is not null) _topLevel.Deactivated -= OnTopLevelDeactivated;
+        _topLevel = null;
         _wallpaperChanged = null;
         _languageChanged = null;
         _localization = null;
@@ -100,7 +110,6 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     protected Control Desktop(DesktopShellViewModel vm)
     {
         var workspace = new Grid { ClipToBounds = true };
-        _backdrop.PointerPressed += (_, _) => vm.ClearDesktopSelectionCommand.Execute(null);
         _backdrop.ContextMenu = CreateDesktopContextMenu(vm);
         workspace.KeyBindings.Add(new KeyBinding
         {
@@ -247,10 +256,20 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         {
             Text = name, MaxWidth = 108, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = ThemeResources.Brush("TextPrimaryBrush"),
         });
         var button = new Button { Content = content, Width = 116, Height = 84, Margin = new Thickness(3),
-            HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center };
-        button.Click += (_, _) => vm.SelectDesktopItemCommand.Execute(item);
+            HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
+            Tag = DesktopEntryMarker };
+        button.Bind(Button.BackgroundProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBrushConverter.Instance });
+        button.Bind(Button.BorderBrushProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBorderBrushConverter.Instance });
+        button.Bind(Button.BorderThicknessProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBorderThicknessConverter.Instance });
+        button.PointerPressed += (_, args) =>
+        {
+            var properties = args.GetCurrentPoint(button).Properties;
+            if (properties.IsLeftButtonPressed || properties.IsRightButtonPressed)
+                vm.SelectDesktopItemCommand.Execute(item);
+        };
         button.DoubleTapped += (_, _) =>
         {
             switch (item)
@@ -260,18 +279,69 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
                 case ShortcutEntryViewModel shortcut: shortcut.ActivateCommand.Execute(null); break;
             }
         };
-        if (item is DesktopFileEntryViewModel fileEntry)
-        {
-            var menu = new ContextMenu();
-            menu.ItemsSource = new object[]
-            {
-                new MenuItem { Header = LocalizedText.Get("common.open", "Open"), Command = vm.OpenDesktopEntryCommand, CommandParameter = fileEntry },
-                new MenuItem { Header = LocalizedText.Get("common.copy", "Copy"), Command = vm.CopyDesktopEntryCommand, CommandParameter = fileEntry },
-                new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopEntryCommand, CommandParameter = fileEntry },
-            };
-            button.ContextMenu = menu;
-        }
+        button.ContextMenu = CreateDesktopItemContextMenu(vm, item);
         return button;
+    }
+
+    /// <summary>All built-in shells use the same item operations; only their desktop chrome differs.</summary>
+    private static ContextMenu CreateDesktopItemContextMenu(DesktopShellViewModel vm, object item)
+    {
+        if (item is AppEntryViewModel app)
+            return new ContextMenu
+            {
+                ItemsSource = new object[]
+                {
+                    new MenuItem { Header = LocalizedText.Get("common.open", "Open"), Command = vm.OpenDesktopAppCommand, CommandParameter = app },
+                    new Separator(),
+                    new MenuItem { Header = LocalizedText.Get("shell.desktop.context.app_details", "App details"), Command = vm.ShowDesktopAppDetailsCommand, CommandParameter = app },
+                },
+            };
+
+        if (item is ShortcutEntryViewModel shortcut)
+            return new ContextMenu
+            {
+                ItemsSource = new object[]
+                {
+                    new MenuItem { Header = LocalizedText.Get("common.open", "Open"), Command = shortcut.ActivateCommand },
+                },
+            };
+
+        if (item is not DesktopFileEntryViewModel file) return new ContextMenu();
+        var items = new List<object>
+        {
+            new MenuItem { Header = LocalizedText.Get("common.open", "Open"), Command = vm.OpenDesktopEntryCommand, CommandParameter = file },
+        };
+        if (!file.IsDirectory)
+            items.Add(new MenuItem { Header = LocalizedText.Get("explorer.open_with", "Open with..."), Command = vm.OpenDesktopEntryWithCommand, CommandParameter = file });
+        items.Add(new Separator());
+        items.Add(new MenuItem { Header = LocalizedText.Get("common.copy", "Copy"), Command = vm.CopyDesktopEntryCommand, CommandParameter = file });
+        items.Add(new MenuItem { Header = LocalizedText.Get("explorer.cut", "Cut"), Command = vm.CutDesktopEntryCommand, CommandParameter = file });
+        if (file.IsDirectory)
+            items.Add(new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, CommandParameter = file });
+        items.Add(new Separator());
+        items.Add(new MenuItem { Header = LocalizedText.Get("shell.desktop.context.show_in_explorer", "Show in File Explorer"), Command = vm.ShowDesktopEntryInExplorerCommand, CommandParameter = file });
+        items.Add(new MenuItem { Header = LocalizedText.Get("explorer.properties", "Properties"), Command = vm.ShowDesktopEntryPropertiesCommand, CommandParameter = file });
+        items.Add(new Separator());
+        items.Add(new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopEntryCommand, CommandParameter = file });
+        return new ContextMenu { ItemsSource = items };
+    }
+
+    private void TrackTopLevelActivation()
+    {
+        var next = TopLevel.GetTopLevel(_root) as Window;
+        if (ReferenceEquals(_topLevel, next)) return;
+        if (_topLevel is not null) _topLevel.Deactivated -= OnTopLevelDeactivated;
+        _topLevel = next;
+        if (_topLevel is not null) _topLevel.Deactivated += OnTopLevelDeactivated;
+    }
+
+    private void OnTopLevelDeactivated(object? sender, EventArgs args) => _vm?.ClearDesktopSelectionCommand.Execute(null);
+
+    private void OnRootPointerPressed(object? sender, PointerPressedEventArgs args)
+    {
+        for (var current = args.Source as Control; current is not null; current = current.Parent as Control)
+            if (current is Control { Tag: var tag } && ReferenceEquals(tag, DesktopEntryMarker)) return;
+        _vm?.ClearDesktopSelectionCommand.Execute(null);
     }
 
     private static Button TaskbarButton(DesktopShellViewModel vm, TaskbarGroupViewModel group)
@@ -295,6 +365,32 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         var b = _windowHost.Bounds;
         _context.Surfaces.UpdateWorkArea(new RemoteOS.Core.Primitives.Rect(0, 0, b.Width, b.Height));
     }
+}
+
+internal sealed class DesktopSelectionBrushConverter : IValueConverter
+{
+    private static readonly IBrush Selected = new SolidColorBrush(Color.Parse("#5279B8F3"));
+    public static readonly DesktopSelectionBrushConverter Instance = new();
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? Selected : Brushes.Transparent;
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+internal sealed class DesktopSelectionBorderBrushConverter : IValueConverter
+{
+    private static readonly IBrush Selected = new SolidColorBrush(Color.Parse("#AAFFFFFF"));
+    public static readonly DesktopSelectionBorderBrushConverter Instance = new();
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? Selected : Brushes.Transparent;
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+}
+
+internal sealed class DesktopSelectionBorderThicknessConverter : IValueConverter
+{
+    public static readonly DesktopSelectionBorderThicknessConverter Instance = new();
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? new Thickness(1) : new Thickness(0);
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
 public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Windows)

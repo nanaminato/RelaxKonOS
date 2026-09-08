@@ -2,7 +2,7 @@ using RemoteOS.Protocol.Common;
 
 namespace RemoteOS.Protocol.Workspace;
 
-/// <summary>Workspace 相关 REST 端点路由常量。路径已含 /api/v1 前缀。Server 注册路由与 Client 拼接 URL 共用。含 {id} 占位符的常量格式化时替换。</summary>
+/// <summary>Workspace 相关 REST 端点路由常量。路径已含 /api/v1.0 前缀。Server 注册路由与 Client 拼接 URL 共用。含 {id} 占位符的常量格式化时替换。</summary>
 public static class WorkspaceApiRoutes
 {
     private const string V1 = RemoteOsEndpoints.ApiVersionPrefix;

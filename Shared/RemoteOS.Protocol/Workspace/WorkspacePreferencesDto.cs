@@ -46,10 +46,7 @@ public sealed record WorkspacePreferencesDto
     [JsonPropertyName("themePreferences")]
     public ThemePreferencesDto? ThemePreferences { get; set; }
 
-    [JsonPropertyName("shellId")]
-    public string? ShellId { get; set; }
-
-    /// <summary>Versioned shell intent. <see cref="ShellId"/> remains a one-release wire compatibility alias.</summary>
+    /// <summary>Versioned shell selection for the current Shell API.</summary>
     [JsonPropertyName("shell")]
     public ShellSelectionDto? Shell { get; set; }
 
@@ -65,7 +62,6 @@ public sealed record WorkspacePreferencesDto
         string? CodeEditorDefaultEncoding = TextEncodingPreferences.Default,
         DesktopDisplaySettingsDto? DesktopDisplay = null,
         ThemePreferencesDto? ThemePreferences = null,
-        string? ShellId = "remoteos.windows-like",
         ShellSelectionDto? Shell = null)
     {
         this.WallpaperKey = WallpaperKey;
@@ -79,8 +75,7 @@ public sealed record WorkspacePreferencesDto
         this.CodeEditorDefaultEncoding = CodeEditorDefaultEncoding;
         this.DesktopDisplay = DesktopDisplay ?? DesktopDisplaySettingsDto.Default;
         this.ThemePreferences = ThemePreferences ?? ThemePreferencesDto.Default;
-        this.ShellId = ShellId;
-        this.Shell = Shell ?? new ShellSelectionDto(ShellId ?? "remoteos.windows-like");
+        this.Shell = Shell ?? new ShellSelectionDto("remoteos.windows-like");
     }
 
     // Both EF Core and System.Text.Json must use the parameterless constructor. JSON cannot
@@ -89,7 +84,7 @@ public sealed record WorkspacePreferencesDto
     public WorkspacePreferencesDto()
         : this(string.Empty, default, string.Empty, string.Empty, string.Empty, string.Empty,
             [], TextEncodingPreferences.Default, TextEncodingPreferences.Default,
-            DesktopDisplaySettingsDto.Default, ThemePreferencesDto.Default, "remoteos.windows-like", new ShellSelectionDto("remoteos.windows-like"))
+            DesktopDisplaySettingsDto.Default, ThemePreferencesDto.Default, new ShellSelectionDto("remoteos.windows-like"))
     {
     }
 
@@ -119,5 +114,5 @@ public sealed record WorkspacePreferencesDto
         CodeEditorDefaultEncoding: TextEncodingPreferences.Default,
         DesktopDisplay: DesktopDisplaySettingsDto.Default,
         ThemePreferences: ThemePreferencesDto.Default,
-        ShellId: "remoteos.windows-like", Shell: new ShellSelectionDto("remoteos.windows-like"));
+        Shell: new ShellSelectionDto("remoteos.windows-like"));
 }

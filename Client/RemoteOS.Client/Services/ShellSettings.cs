@@ -102,7 +102,7 @@ public sealed partial class ShellSettings : ObservableObject
     private void NotifyDesktopDisplayChanged() => DesktopDisplayChanged?.Invoke(this, EventArgs.Empty);
     partial void OnSelectedShellIdChanged(string value)
     {
-        value = ShellApi.NormalizeId(value);
+        value = ShellApi.ResolveId(value);
         if (!string.Equals(_selectedShellId, value, StringComparison.Ordinal))
         {
             _selectedShellId = value;
@@ -115,7 +115,7 @@ public sealed partial class ShellSettings : ObservableObject
 
     partial void OnShellSelectionChanged(ShellSelectionDto value)
     {
-        var normalized = ShellApi.NormalizeId(value?.ShellId);
+        var normalized = ShellApi.ResolveId(value?.ShellId);
         if (!string.Equals(SelectedShellId, normalized, StringComparison.Ordinal))
             SelectedShellId = normalized;
     }
@@ -141,13 +141,8 @@ public sealed partial class ShellSettings : ObservableObject
         ShowServerDesktopFiles = dd.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = dd.ShowServerDesktopShortcuts;
         HasCompletedFirstTimeSetup = dd.HasCompletedFirstTimeSetup;
-        // Pre-structured preference payloads can materialize Shell as the legacy "remoteos"
-        // value. Prefer their explicit shellId when present so prior Windows/macOS/Ubuntu
-        // selections are not lost; ShellApi normalizes the retired RemoteOS choices to Windows.
-        var shell = prefs.Shell is { ShellId: "remoteos" } && !string.IsNullOrWhiteSpace(prefs.ShellId)
-            && !string.Equals(prefs.ShellId, "remoteos", StringComparison.Ordinal)
-            ? new ShellSelectionDto(prefs.ShellId) : prefs.Shell ?? new ShellSelectionDto(prefs.ShellId ?? ShellApi.DefaultShellId);
-        ShellSelection = new ShellSelectionDto(ShellApi.NormalizeId(shell.ShellId), shell.PackageId, shell.PackageVersion);
+        var shell = prefs.Shell ?? new ShellSelectionDto(ShellApi.DefaultShellId);
+        ShellSelection = new ShellSelectionDto(ShellApi.ResolveId(shell.ShellId), shell.PackageId, shell.PackageVersion);
 
         if (TryIndexForKey(prefs.WallpaperKey, out var index))
         {
@@ -171,7 +166,7 @@ public sealed partial class ShellSettings : ObservableObject
                 ShowServerDesktopFiles = ShowServerDesktopFiles,
                 ShowServerDesktopShortcuts = ShowServerDesktopShortcuts,
                 HasCompletedFirstTimeSetup = HasCompletedFirstTimeSetup,
-            }, ThemePreferences, SelectedShellId, ShellSelection);
+            }, ThemePreferences, ShellSelection);
 
     /// <summary>快捷方式文件扩展名判定（Windows .lnk / Linux .desktop）。</summary>
     public static bool IsShortcutFile(string fileName)
