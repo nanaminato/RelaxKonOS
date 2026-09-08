@@ -52,6 +52,8 @@ var root = Path.Combine(Path.GetTempPath(), $"remoteos-server-tests-{Guid.NewGui
 Directory.CreateDirectory(root);
 try
 {
+    await FileOperationChecks.RunAsync(root);
+    if (args.Contains("--file-operations-only")) return;
     await VerifyPrivilegedOperationProtocolAsync();
     await VerifyCertificateStoreAndSniAsync(root);
     VerifyCertificateApiRoutes();

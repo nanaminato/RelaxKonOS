@@ -17,6 +17,8 @@ public static class FileEndpoints
 
     public static IEndpointRouteBuilder MapFileEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapFileOperationEndpoints();
+
         // GET drives
         app.MapGet(FileApiRoutes.Drives, (IFileService fs) =>
             Results.Ok(fs.GetDrives()))

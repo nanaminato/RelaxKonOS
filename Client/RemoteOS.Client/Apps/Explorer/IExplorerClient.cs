@@ -7,6 +7,12 @@ namespace Client.Apps.Explorer;
 /// 路由常量见 <see cref="FileApiRoutes"/>。错误统一为 <see cref="RemoteOsAuthException"/>（含 ProblemDetails）。</summary>
 public interface IExplorerClient
 {
+    Task<FileOperationDto> StartOperationAsync(StartFileOperationRequest request, CancellationToken ct = default);
+    Task<IReadOnlyList<FileOperationDto>> ListOperationsAsync(CancellationToken ct = default);
+    Task<FileOperationDto> GetOperationAsync(Guid id, CancellationToken ct = default);
+    Task<FileOperationDto> CancelOperationAsync(Guid id, CancellationToken ct = default);
+    Task<FileOperationDto> DecideOperationAsync(Guid id, FileOperationDecisionRequest request, CancellationToken ct = default);
+
     /// <summary>列举驱动器/根挂载点（GET /files/drives）。</summary>
     Task<IReadOnlyList<DriveDto>> GetDrivesAsync(CancellationToken ct = default);
 
