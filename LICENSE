@@ -1,14 +1,14 @@
-RemoteOS Non-Commercial Source-Available License
+RelaxKonOS Non-Commercial Source-Available License
 
-Copyright (c) 2026 RemoteOS. All rights reserved.
+Copyright (c) 2026 RelaxKonOS. All rights reserved.
 
-https://github.com/remoteos/remoteos
+https://github.com/relaxkonos/relaxkonos
 
 ---
 
 1. Definitions
 
-   "Software" refers to the RemoteOS project, including all source code,
+   "Software" refers to the RelaxKonOS project, including all source code,
    documentation, configuration files, and associated materials published
    under this repository, excluding third-party components that are
    distributed under their own licenses (see THIRD_PARTY_NOTICES.md).
@@ -56,7 +56,7 @@ https://github.com/remoteos/remoteos
 
      a. A copy of this LICENSE file;
      b. The following copyright notice:
-        "Copyright (c) 2026 RemoteOS. All rights reserved.";
+        "Copyright (c) 2026 RelaxKonOS. All rights reserved.";
      c. A clear statement of the license under which the distribution
         is made (this License);
      d. Retention of all existing copyright and license notices

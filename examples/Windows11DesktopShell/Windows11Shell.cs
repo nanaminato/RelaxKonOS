@@ -1,10 +1,10 @@
 using Avalonia.Controls;
-using Example.Windows11DesktopShell.Services;
-using Example.Windows11DesktopShell.ViewModels;
-using Example.Windows11DesktopShell.Views;
-using RemoteOS.Shell;
+using RelaxKonOS.Example.Windows11DesktopShell.Services;
+using RelaxKonOS.Example.Windows11DesktopShell.ViewModels;
+using RelaxKonOS.Example.Windows11DesktopShell.Views;
+using RelaxKonOS.Shell;
 
-namespace Example.Windows11DesktopShell;
+namespace RelaxKonOS.Example.Windows11DesktopShell;
 
 /// <summary>Owns only shell lifecycle and host-surface registration; layout lives in AXAML.</summary>
 public sealed class Windows11Shell(ShellDescriptor descriptor) : IDesktopShell
@@ -64,7 +64,7 @@ public sealed class Windows11Shell(ShellDescriptor descriptor) : IDesktopShell
     {
         if (_surfaces is null) return;
         var bounds = _view.WindowHostSurface.Bounds;
-        _surfaces.UpdateWorkArea(new RemoteOS.Core.Primitives.Rect(0, 0, bounds.Width, bounds.Height));
+        _surfaces.UpdateWorkArea(new RelaxKonOS.Core.Primitives.Rect(0, 0, bounds.Width, bounds.Height));
     }
 
     private void TrackTopLevelActivation()

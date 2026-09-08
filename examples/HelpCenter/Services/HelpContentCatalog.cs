@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 
-namespace RemoteOS.Examples.HelpCenter.Services;
+namespace RelaxKonOS.Examples.HelpCenter.Services;
 
 public sealed class HelpContentCatalog
 {

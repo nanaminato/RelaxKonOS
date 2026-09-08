@@ -1,6 +1,0 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:Client.Localization"
-             x:Class="Client.Apps.Certificates.Views.CertificateLoginRequiredView">
-    <TextBlock Margin="24" Text="{loc:Loc certificates.login_required}" TextWrapping="Wrap" />
-</UserControl>

@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerContainersView"
+             x:DataType="docker:DockerManagerViewModel">
+    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+        <StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <TextBlock Text="{loc:Loc docker.containers}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
+            </Grid>
+            <TextBlock Text="{loc:Loc docker.containers_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+            <Button Classes="primary" Content="{loc:Loc docker.container.create}" Click="CreateContainer_Click" HorizontalAlignment="Left" />
+            <Border Height="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,2" />
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding Containers}" SelectedItem="{Binding SelectedContainer, Mode=TwoWay}" DoubleTapped="ContainersGrid_DoubleTapped" AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False" GridLinesVisibility="Horizontal" SelectionMode="Single" HorizontalScrollBarVisibility="Disabled" MinWidth="900" Height="230">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="{loc:Loc docker.table.name}" Binding="{ReflectionBinding Names}" Width="180" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.image}" Binding="{ReflectionBinding Image}" Width="210" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.status}" Binding="{ReflectionBinding Status}" Width="360" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.state}" Binding="{ReflectionBinding State}" Width="120" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </ScrollViewer>
+            <WrapPanel Margin="0,10,0,0" ItemHeight="34" HorizontalAlignment="Left">
+                <Button Content="{loc:Loc docker.action.start}" Command="{Binding StartContainerCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc docker.action.stop}" Command="{Binding StopContainerCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc docker.action.restart}" Command="{Binding RestartContainerCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc docker.action.pause}" Command="{Binding PauseContainerCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc docker.action.unpause}" Command="{Binding UnpauseContainerCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc docker.resource.details}" Command="{Binding LoadContainerDetailsCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc docker.container.edit}" Command="{Binding EditContainerCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc docker.container.logs}" Command="{Binding LoadContainerLogsCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc docker.container.stats}" Command="{Binding LoadContainerStatsCommand}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc common.delete}" Command="{Binding DeleteContainerCommand}" Foreground="{DynamicResource DangerBrush}" Margin="0,0,8,8" />
+            </WrapPanel>
+            <TextBox Text="{Binding ContainerStats}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="32" MaxHeight="32" />
+            <TextBox Text="{Binding ContainerLogs}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" MaxHeight="140" />
+        </StackPanel>
+    </Border>
+</UserControl>

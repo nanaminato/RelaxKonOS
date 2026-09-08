@@ -1,0 +1,192 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+        xmlns:shell="clr-namespace:RelaxKonOS.Client.Views.Shell"
+        xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.Shell"
+        x:Class="RelaxKonOS.Client.Views.MainWindow"
+        x:DataType="vm:DesktopShellViewModel"
+        Title="RelaxKonOS"
+        Icon="/Assets/RelaxKonOS-client-icon.ico"
+        WindowState="Maximized"
+        WindowDecorations="None"
+        CanResize="True"
+        MinWidth="800"
+        MinHeight="520"
+        ShowInTaskbar="True"
+        Background="{DynamicResource SurfaceBrush}"
+        FontFamily="{DynamicResource ContentFont}"
+        mc:Ignorable="d"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+    <Window.Styles>
+        <Style Selector="Border.connection-bar">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="0,0,7,7" />
+        </Style>
+        <Style Selector="Button.connection-action">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Padding" Value="13,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.connection-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        </Style>
+        <Style Selector="Button.disconnect-action:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        </Style>
+        <Style Selector="Border.window-titlebar">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        </Style>
+        <Style Selector="Button.window-control">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontFamily" Value="Inter, Segoe UI, Noto Sans" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <!-- This is the outer desktop-host control, rather than a managed app-window caption.
+             Its restore/maximize glyph is optically larger than the minus and close symbols. -->
+        <Style Selector="Button.window-control.window-maximize">
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style Selector="Button.window-control:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        </Style>
+        <Style Selector="Button.window-close:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        </Style>
+    </Window.Styles>
+
+    <Grid PointerMoved="Root_OnPointerMoved" KeyDown="Root_OnKeyDown">
+        <!-- Reserve the host window's caption area outside full screen.  The margin is
+             removed when entering full screen so the desktop fills the top edge behind
+             the connection bar. -->
+        <Grid x:Name="Root" Margin="0,34,0,0" PointerMoved="Root_OnPointerMoved">
+            <ContentControl x:Name="ShellHost" />
+            <!-- Covers the hand-off from the login window until the selected desktop has
+                 registered its window hosts and restored its desktop state. -->
+            <Border x:Name="DesktopLoadingOverlay" Background="#F0144F85" ZIndex="50">
+                <StackPanel Width="280" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Border Width="56" Height="56" CornerRadius="14" Background="#32FFFFFF" BorderBrush="#55FFFFFF" BorderThickness="1">
+                        <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
+                            <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
+                        </UniformGrid>
+                    </Border>
+                    <TextBlock Text="{loc:Loc shell.desktop_loading.title}" Foreground="White" FontSize="18"
+                               FontWeight="SemiBold" TextAlignment="Center" />
+                    <TextBlock Text="{loc:Loc shell.desktop_loading.description}" Foreground="#D9FFFFFF" FontSize="12"
+                               TextAlignment="Center" TextWrapping="Wrap" />
+                    <ProgressBar IsIndeterminate="True" Height="4" Foreground="White" Background="#44FFFFFF" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- The title bar and mstsc connection bar deliberately share the same top layer. -->
+        <Border x:Name="WindowTitleBar" Classes="window-titlebar" Height="34"
+                VerticalAlignment="Top" ZIndex="10" PointerPressed="TitleBar_OnPointerPressed">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Image Width="26" Height="26" Margin="8,0,6,0" VerticalAlignment="Center"
+                       Source="/Assets/RelaxKonOS-client-icon.png" />
+                <TextBlock Grid.Column="1" Text="{loc:Loc shell.window_title}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12"
+                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button Classes="window-control" Content="&#x2212;" Click="Minimize_OnClick" ToolTip.Tip="{loc:Loc common.minimize}" />
+                    <Button x:Name="MaximizeButton" Classes="window-control window-maximize" Content="&#x2750;"
+                            Click="Maximize_OnClick" ToolTip.Tip="{loc:Loc common.restore}" />
+                    <Button Classes="window-control window-close" Content="&#x00D7;"
+                            Click="CloseWindow_OnClick" ToolTip.Tip="{loc:Loc shell.connection.close}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- mstsc-style connection bar. Its centre exposes connection context and a drag handle. -->
+        <Border x:Name="ConnectionBar" Classes="connection-bar"
+                HorizontalAlignment="Center" VerticalAlignment="Top" Width="520" Height="34"
+                ZIndex="20"
+                PointerEntered="ConnectionBar_OnPointerEntered"
+                PointerExited="ConnectionBar_OnPointerExited">
+            <!-- Fixed side controls leave the centre a real, shrinkable region instead of
+                 allowing long server/user names to overlap neighbouring buttons. -->
+            <Grid ColumnDefinitions="150,1,42,*,42,1,42">
+                <Button Grid.Column="0" Classes="connection-action" Click="ConnectionInfo_OnClick"
+                        ToolTip.Tip="{loc:Loc shell.connection.info_tooltip}">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                        <TextBlock Text="●" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ConnectionServer}" FontSize="12" MaxWidth="106"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Border Grid.Column="1" Width="1" Background="{DynamicResource SurfaceBrush}" Margin="0,7" />
+                <Button Grid.Column="2" x:Name="PinButton" Classes="connection-action" Click="Pin_OnClick"
+                        Content="○" ToolTip.Tip="{loc:Loc shell.connection_bar.pin_tooltip}" />
+                <Border Grid.Column="3" x:Name="ConnectionDragHandle" Cursor="SizeWestEast"
+                        PointerPressed="ConnectionDragHandle_OnPointerPressed"
+                        PointerMoved="ConnectionDragHandle_OnPointerMoved"
+                        PointerReleased="ConnectionDragHandle_OnPointerReleased"
+                        ToolTip.Tip="{loc:Loc shell.connection_bar.drag_tooltip}">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                        <TextBlock Text="↔" FontSize="14" Opacity="0.45" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                                    ToolTip.Tip="{loc:Loc shell.connection.user}">
+                            <TextBlock Text="@" FontSize="12" Opacity="0.65" />
+                            <TextBlock Text="{Binding ConnectionUser}" FontSize="12" MaxWidth="128"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <Button Grid.Column="4" x:Name="FullScreenButton" Classes="connection-action"
+                        Click="FullScreen_OnClick" Content="↗" ToolTip.Tip="{loc:Loc shell.full_screen.enter_tooltip}" />
+                <Border Grid.Column="5" Width="1" Background="{DynamicResource SurfaceBrush}" Margin="0,7" />
+                <Button Grid.Column="6" Classes="connection-action disconnect-action" Click="Disconnect_OnClick"
+                        Content="×" ToolTip.Tip="{loc:Loc shell.connection.close_tooltip}" />
+            </Grid>
+        </Border>
+
+        <Border x:Name="ConnectionInfo" IsVisible="False"
+                HorizontalAlignment="Center" VerticalAlignment="Top" Width="360" Margin="0,42,0,0"
+                ZIndex="30"
+                Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="4"
+                Padding="16">
+            <StackPanel Spacing="8">
+                <TextBlock Text="{loc:Loc shell.connection.info}" FontWeight="SemiBold" FontSize="14" />
+                <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Loc shell.connection.server}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ConnectionServer}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Loc shell.connection.user}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="1"  Text="{Binding ConnectionUser}" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Loc shell.connection.workspace}" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="1"  Text="{Binding ConnectionWorkspace}" Margin="0,7,0,0" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Transparent hit targets keep every edge and corner resizable. -->
+        <Border HorizontalAlignment="Left" Width="8" Background="Transparent" Cursor="SizeWestEast"
+                PointerPressed="Resize_OnPointerPressed" Tag="West" />
+        <Border HorizontalAlignment="Right" Width="8" Background="Transparent" Cursor="SizeWestEast"
+                PointerPressed="Resize_OnPointerPressed" Tag="East" />
+        <Border VerticalAlignment="Top" Height="8" Background="Transparent" Cursor="SizeNorthSouth"
+                PointerPressed="Resize_OnPointerPressed" Tag="North" />
+        <Border VerticalAlignment="Bottom" Height="8" Background="Transparent" Cursor="SizeNorthSouth"
+                PointerPressed="Resize_OnPointerPressed" Tag="South" />
+        <Border HorizontalAlignment="Left" VerticalAlignment="Top" Width="12" Height="12" Background="Transparent"
+                Cursor="TopLeftCorner" PointerPressed="Resize_OnPointerPressed" Tag="NorthWest" />
+        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Width="12" Height="12" Background="Transparent"
+                Cursor="TopRightCorner" PointerPressed="Resize_OnPointerPressed" Tag="NorthEast" />
+        <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Width="12" Height="12" Background="Transparent"
+                Cursor="BottomLeftCorner" PointerPressed="Resize_OnPointerPressed" Tag="SouthWest" />
+        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Width="12" Height="12" Background="Transparent"
+                Cursor="BottomRightCorner" PointerPressed="Resize_OnPointerPressed" Tag="SouthEast" />
+    </Grid>
+</Window>

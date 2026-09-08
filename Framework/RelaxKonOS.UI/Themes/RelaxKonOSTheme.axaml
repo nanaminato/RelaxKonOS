@@ -1,0 +1,10 @@
+<Styles xmlns="https://github.com/avaloniaui">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://RelaxKonOS.UI/Themes/Tokens/TokenContract.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+  <StyleInclude Source="avares://RelaxKonOS.UI/Themes/Styles.axaml" />
+</Styles>

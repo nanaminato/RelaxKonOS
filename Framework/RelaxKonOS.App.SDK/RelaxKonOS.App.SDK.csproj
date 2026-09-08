@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <RootNamespace>RelaxKonOS.AppSDK</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\RelaxKonOS.Core\RelaxKonOS.Core.csproj" />
+        <ProjectReference Include="..\RelaxKonOS.WindowManager\RelaxKonOS.WindowManager.csproj" />
+    </ItemGroup>
+
+</Project>

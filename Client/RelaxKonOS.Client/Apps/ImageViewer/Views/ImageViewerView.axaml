@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.ImageViewer.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.ImageViewer.Views.ImageViewerView"
+             x:DataType="vm:ImageViewerViewModel"
+             Background="{DynamicResource SurfaceBrush}">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="14,10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding DocumentName}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding DimensionsText}" FontSize="12" Opacity="0.62" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Content="−" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Command="{Binding ZoomOutCommand}" ToolTip.Tip="{loc:Loc image_viewer.zoom_out}" Width="32" Padding="0" />
+                    <Slider Minimum="25" Maximum="400" Width="130" Value="{Binding ZoomPercent, Mode=TwoWay}" />
+                    <TextBlock Text="{Binding ZoomPercent, StringFormat={}{0}%}" MinWidth="42" VerticalAlignment="Center" />
+                    <Button Content="{loc:Loc image_viewer.reset_zoom}" Command="{Binding ResetZoomCommand}" />
+                    <Button Content="+" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Command="{Binding ZoomInCommand}" ToolTip.Tip="{loc:Loc image_viewer.zoom_in}" Width="32" Padding="0" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <Grid MinWidth="100" MinHeight="100">
+                    <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.8"
+                               IsVisible="{Binding !ImageSource}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Image Source="{Binding ImageSource}" Width="{Binding DisplayWidth}" Height="{Binding DisplayHeight}"
+                           Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                </Grid>
+            </ScrollViewer>
+        </Border>
+
+        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
+            <TextBlock Text="{Binding StatusText}" FontSize="12" Opacity="0.68" TextTrimming="CharacterEllipsis" />
+        </Border>
+    </Grid>
+</UserControl>

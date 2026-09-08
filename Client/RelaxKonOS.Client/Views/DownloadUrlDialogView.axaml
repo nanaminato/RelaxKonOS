@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Views"
+             x:Class="RelaxKonOS.Client.Views.DownloadUrlDialogView"
+             x:DataType="vm:DownloadUrlDialogViewModel"
+             Background="{DynamicResource SurfaceBrush}"
+             Width="620">
+  <Grid Margin="20" RowDefinitions="Auto,Auto,Auto" RowSpacing="14">
+    <TextBlock Grid.Row="0" Text="{loc:Loc download_url.message}" TextWrapping="Wrap" />
+    <TextBox Grid.Row="1" Text="{Binding Url}" IsReadOnly="True" TextWrapping="Wrap" MinHeight="68" VerticalContentAlignment="Center" />
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock Text="{Binding CopyStatus}" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+      <Button Grid.Column="1" Classes="primary" Content="{loc:Loc common.copy}" Command="{Binding CopyCommand}" Padding="16,6" />
+      <Button Grid.Column="2" Content="{loc:Loc common.close}" Command="{Binding CloseCommand}" Padding="16,6" />
+    </Grid>
+  </Grid>
+</UserControl>

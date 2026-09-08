@@ -1,11 +1,11 @@
-using RemoteOS.AppSDK;
-using RemoteOS.Core.Applications;
-using RemoteOS.Examples.ServerMonitor.Services;
-using RemoteOS.Examples.ServerMonitor.ViewModels;
-using RemoteOS.Examples.ServerMonitor.Views;
-using RemoteRect = RemoteOS.Core.Primitives.Rect;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Examples.ServerMonitor.Services;
+using RelaxKonOS.Examples.ServerMonitor.ViewModels;
+using RelaxKonOS.Examples.ServerMonitor.Views;
+using RemoteRect = RelaxKonOS.Core.Primitives.Rect;
 
-namespace RemoteOS.Examples.ServerMonitor;
+namespace RelaxKonOS.Examples.ServerMonitor;
 
 /// <summary>
 /// Composition root for the Server Monitor development application.
@@ -13,11 +13,11 @@ namespace RemoteOS.Examples.ServerMonitor;
 public sealed class ServerMonitorApp : IExternalRemoteApplication
 {
     public ApplicationManifest Manifest { get; } = new(
-        new AppId("com.remoteos.example.server-monitor"),
+        new AppId("com.relaxkonos.example.server-monitor"),
         "Server Monitor",
         "0.2.0-dev",
         "📊",
-        "A lightweight performance dashboard for a RemoteOS server",
+        "A lightweight performance dashboard for a RelaxKonOS server",
         [AppPermissions.ServerMetricsRead]);
 
     public Task ActivateAsync(IExternalAppContext context, CancellationToken cancellationToken = default)

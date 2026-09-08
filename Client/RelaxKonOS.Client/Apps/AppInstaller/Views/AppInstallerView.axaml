@@ -1,0 +1,64 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.AppInstaller.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.AppInstaller.Views.AppInstallerView"
+             x:DataType="vm:AppInstallerViewModel"
+             Background="{DynamicResource SurfaceBrush}">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="24" Spacing="16" MaxWidth="620">
+            <StackPanel Spacing="4">
+                <TextBlock Text="{loc:Loc app_installer.title}" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock Text="{loc:Loc app_installer.description}" Opacity="0.7" TextWrapping="Wrap" />
+                <TextBlock Text="{loc:Loc app_installer.security_warning}" Opacity="0.82" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button Content="{loc:Loc app_installer.choose_local}" Command="{Binding ChooseLocalCommand}" Padding="16,8" />
+                <Button Content="{loc:Loc app_installer.choose_server}" Command="{Binding ChooseServerCommand}" Padding="16,8" />
+            </StackPanel>
+
+            <Border Classes="card" IsVisible="{Binding HasPackage}">
+                <StackPanel Spacing="12">
+                    <Grid ColumnDefinitions="36,*,Auto" ColumnSpacing="10">
+                        <TextBlock Text="{Binding CurrentPackage.Manifest.IconGlyph}" FontSize="24" />
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock Text="{Binding CurrentPackage.Manifest.DisplayName}" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding CurrentPackage.Manifest.Id}" FontSize="12" Opacity="0.62" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" Text="{Binding CurrentPackage.Manifest.Version}" VerticalAlignment="Center" Opacity="0.7" />
+                    </Grid>
+                    <TextBlock Text="{Binding CurrentPackage.Manifest.Description}" TextWrapping="Wrap" Opacity="0.78" />
+                    <TextBlock Text="{Binding CurrentVersionText}" FontSize="12" Opacity="0.65" />
+                    <TextBlock FontSize="12" Opacity="0.65">
+                        <Run Text="{loc:Loc app_installer.source}" />
+                        <Run Text="{Binding CurrentPackage.SourceName}" />
+                    </TextBlock>
+
+                    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{loc:Loc app_installer.requested_permissions}" FontWeight="SemiBold" />
+                            <ItemsControl ItemsSource="{Binding RequestedPermissions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LocalizedPermissionInfo">
+                                        <StackPanel Margin="0,2" Spacing="1">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                            <TextBlock Text="{Binding Description}" FontSize="12" Opacity="0.68" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{loc:Loc app_installer.no_requested_permissions}" IsVisible="{Binding !HasRequestedPermissions}" Opacity="0.62" FontSize="12" />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Content="{loc:Loc common.skip}" Command="{Binding SkipCommand}" Padding="16,7" />
+                        <Button Classes="primary" Content="{Binding ActionLabel}" Command="{Binding InstallCommand}" Padding="18,7" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Opacity="0.72" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

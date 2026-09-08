@@ -1,0 +1,14 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:login="clr-namespace:RelaxKonOS.Client.Views.Login"
+        x:Class="RelaxKonOS.Client.Views.Login.LoginWindow"
+        Icon="/Assets/RelaxKonOS-client-icon.ico"
+        Title="Remote Desktop Connection"
+        Width="680" Height="700"
+        WindowStartupLocation="CenterScreen"
+        CanResize="True"
+        ShowInTaskbar="True"
+        Background="{DynamicResource AppBackgroundBrush}"
+        FontFamily="{DynamicResource ContentFont}">
+    <login:LoginView />
+</Window>

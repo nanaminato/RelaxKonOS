@@ -1,17 +1,17 @@
-# RemoteOS Privileged Helper file-root whitelist
+# RelaxKonOS Privileged Helper file-root whitelist
 #
 # One absolute directory per line. Blank lines and lines beginning with '#' are ignored.
 # A root permits every descendant for FileRead, FileWrite, delete, move, copy, upload and
 # directory creation. Do not list '/', '/etc', '/home' or '/tmp' unless that broad access is
-# explicitly intended and all RemoteOS users are trusted.
+# explicitly intended and all RelaxKonOS users are trusted.
 
-# RemoteOS-owned protected configuration and state (the restricted installer profile).
-/etc/remoteos
-/var/lib/remoteos
+# RelaxKonOS-owned protected configuration and state (the restricted installer profile).
+/etc/relaxkonos
+/var/lib/relaxkonos
 
 # Add an application-specific protected directory only when its users should be able to manage it.
-# /etc/nginx/remoteos.d
+# /etc/nginx/relaxkonos.d
 
 # Development fixture example. Prefer an isolated directory with no production secrets.
-# /var/lib/remoteos-dev/privileged-files
+# /var/lib/relaxkonos-dev/privileged-files
 /etc/ssh

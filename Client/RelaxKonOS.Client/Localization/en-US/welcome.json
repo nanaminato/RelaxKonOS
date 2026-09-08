@@ -1,0 +1,14 @@
+{
+    "Culture": "en-US",
+    "Strings": {
+        "welcome.title": "🏠 RelaxKonOS",
+        "welcome.tagline": "A cross-platform, cloud-native desktop environment.",
+        "welcome.overview": "Feature overview",
+        "welcome.feature.window_manager": "• Custom window manager — drag, resize, minimize, maximize, focus, and Z-order, all rendered locally.",
+        "welcome.feature.desktop": "• Desktop: desktop icons, taskbar with live window list, and Start menu.",
+        "welcome.feature.local_apps": "• Applications run and render locally — RelaxKonOS is not a remote desktop tool.",
+        "welcome.feature.built_in_apps": "• Built-in apps: Welcome, Notebook, Settings, Terminal, Explorer, Browser, and Task Manager.",
+        "welcome.feature.server": "• Server capabilities: authentication, SQLite persistence, file management, system monitoring, and workspace preference sync.",
+        "welcome.open_notepad": "Open Notebook"
+    }
+}

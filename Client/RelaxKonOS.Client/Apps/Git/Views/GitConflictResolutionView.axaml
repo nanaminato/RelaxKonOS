@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
+             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitConflictResolutionView"
+             x:DataType="git:GitClientViewModel">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12">
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc git.conflicts.title}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc git.conflicts.message}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                </StackPanel>
+            </Border>
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="8">
+                <ItemsControl ItemsSource="{Binding ConflictFiles}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="proto:GitFileChangeDto">
+                            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4" Padding="8" Margin="0,2">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding Path}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Status}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

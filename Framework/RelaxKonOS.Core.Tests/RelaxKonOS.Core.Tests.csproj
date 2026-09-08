@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RelaxKonOS.Core/RelaxKonOS.Core.csproj" />
+    <ProjectReference Include="../RelaxKonOS.Shell/RelaxKonOS.Shell.csproj" />
+    <!-- Keep the storage-boundary test dependency-free while the local desktop SDK is incomplete. -->
+    <Compile Include="../../Client/RelaxKonOS.Client/Services/VirtualSystemDrive/VirtualSystemDrive.cs"
+             Link="VirtualSystemDrive.cs" />
+  </ItemGroup>
+</Project>

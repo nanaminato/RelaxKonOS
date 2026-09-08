@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerManagerWorkspace"
+             x:DataType="docker:DockerManagerViewModel"
+             Background="{DynamicResource AppBackgroundBrush}">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Grid.Styles>
+            <!-- 基础状态 -->
+            <Style Selector="Button.docker-status">
+                <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            </Style>
+
+            <!-- 悬停状态 (使用 /template/ 穿透默认模板防线) -->
+            <Style Selector="Button.docker-status:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="Foreground" Value="White" />
+            </Style>
+
+            <!-- 禁用状态 -->
+            <Style Selector="Button.docker-status:disabled">
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+
+            <Style Selector="Button.docker-status:disabled /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource AccentMutedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            </Style>
+        </Grid.Styles>
+        <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="28,18">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Width="46" Height="46" Background="{DynamicResource AccentBrush}" CornerRadius="14">
+                    <TextBlock Text="🐳" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{loc:Loc application.relaxkonos.docker.display_name}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc docker.subtitle}" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
+                </StackPanel>
+                <Button Grid.Column="2"
+                        Classes="docker-status"
+                        Content="{Binding StatusText}"
+                        Command="{Binding OpenInstallGuideCommand}"
+                        IsEnabled="{Binding IsDockerInstallRequired}"
+                        ToolTip.Tip="{loc:Loc docker.status.open_install_guide}"
+                        VerticalAlignment="Center"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Padding="12,6"
+                        CornerRadius="16"
+                        FontSize="12">
+                </Button>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" IsVisible="{Binding HasOperationActivity}" Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="0,0,0,1" Padding="18,10">
+            <docker:DockerOperationActivityView />
+        </Border>
+
+        <Grid Grid.Row="2" ColumnDefinitions="190,*">
+            <Border Grid.Column="0" Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+                <StackPanel Spacing="4" Margin="14,22">
+                    <TextBlock Text="{loc:Loc docker.workspace}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" FontWeight="SemiBold" Margin="10,0,0,6" />
+                    <Button x:Name="OverviewButton" Classes="workspace-nav" Tag="overview" Click="NavigationButton_Click" Content="{loc:Loc docker.overview}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="containers" Click="NavigationButton_Click" Content="{loc:Loc docker.containers}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="stacks" Click="NavigationButton_Click" Content="{loc:Loc docker.orchestration}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="images" Click="NavigationButton_Click" Content="{loc:Loc docker.images}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="networks" Click="NavigationButton_Click" Content="{loc:Loc docker.networks}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="volumes" Click="NavigationButton_Click" Content="{loc:Loc docker.volumes}" HorizontalContentAlignment="Left" Padding="10,8" />
+                </StackPanel>
+            </Border>
+            <!-- Pages with DataGrid columns must be measured against the workspace width.  An
+                 unconstrained horizontal ScrollViewer lets their desired width grow indefinitely. -->
+            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ContentControl x:Name="ContentHost" Margin="30,24" HorizontalAlignment="Stretch" />
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

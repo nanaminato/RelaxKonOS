@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RelaxKonOS.Client.Views.Shell.UbuntuShellLayoutView">
+    <!-- Layout-only: GNOME top bar, fixed left dock and a full workspace application overview. -->
+    <Grid RowDefinitions="40,*" ColumnDefinitions="60,*">
+        <ContentControl x:Name="TopBarHost" Grid.Row="0" Grid.ColumnSpan="2" />
+        <ContentControl x:Name="DockHost" Grid.Row="1" Grid.Column="0" />
+        <ContentControl x:Name="DesktopHost" Grid.Row="1" Grid.Column="1" />
+        <ContentControl x:Name="LauncherHost"
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch" />
+    </Grid>
+</UserControl>

@@ -1,6 +1,6 @@
 using System.Windows.Input;
 
-namespace Example.Windows11DesktopShell.Commands;
+namespace RelaxKonOS.Example.Windows11DesktopShell.Commands;
 
 public sealed class DelegateCommand : ICommand
 {

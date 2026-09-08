@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.AppPermissionDialogView"
+             x:DataType="vm:AppPermissionDialogViewModel"
+             Background="{DynamicResource SurfaceBrush}"
+             MinWidth="320"
+             MinHeight="240">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="20" RowSpacing="14">
+        <StackPanel Spacing="4">
+            <TextBlock Text="{Binding AppName}" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding AppId}" FontSize="12" Opacity="0.6" />
+            <TextBlock Text="{loc:Loc settings.permission_dialog.description}"
+                       FontSize="12" Opacity="0.72" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding PermissionGroups}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AppPermissionCategoryViewModel">
+                        <StackPanel Spacing="8" Margin="0,10">
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" />
+                            <ItemsControl ItemsSource="{Binding Permissions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:AppPermissionChoiceViewModel">
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="0,2">
+                                            <CheckBox IsChecked="{Binding IsGranted, Mode=TwoWay}"
+                                                      VerticalAlignment="Top"
+                                                      Margin="0,2,0,0" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="{Binding DisplayName}" />
+                                                <TextBlock Text="{Binding Description}" FontSize="12" Opacity="0.65"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc common.cancel}" Command="{Binding CancelCommand}" Padding="16,6" />
+            <Button Classes="primary" Content="{loc:Loc common.save}" Command="{Binding SaveCommand}" Padding="16,6" />
+        </StackPanel>
+    </Grid>
+</UserControl>

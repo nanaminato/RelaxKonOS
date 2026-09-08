@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace Example.Windows11DesktopShell.ViewModels;
+namespace RelaxKonOS.Example.Windows11DesktopShell.ViewModels;
 
 public abstract class ObservableObject : INotifyPropertyChanged
 {

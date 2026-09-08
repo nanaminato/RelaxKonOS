@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker.Views"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerErrorDialogView"
+             x:DataType="docker:DockerErrorDialogView"
+             Background="{DynamicResource SurfaceBrush}">
+    <Grid Margin="22" RowDefinitions="Auto,Auto" RowSpacing="18">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+            <TextBlock Text="⚠" FontSize="28" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Top" />
+            <StackPanel Spacing="5">
+                <TextBlock Text="{loc:Loc docker.read_error.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" MaxWidth="390" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+        </StackPanel>
+        <Button Grid.Row="1" Classes="primary" Content="{loc:Loc common.ok}" Click="Close_Click" HorizontalAlignment="Right" Padding="18,7" />
+    </Grid>
+</UserControl>

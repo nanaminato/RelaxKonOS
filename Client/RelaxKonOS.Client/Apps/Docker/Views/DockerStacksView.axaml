@@ -1,0 +1,51 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerStacksView"
+             x:DataType="docker:DockerManagerViewModel">
+    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+        <Grid RowDefinitions="Auto,Auto,Auto,210,Auto,Auto,180" RowSpacing="12">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                <TextBlock Text="{loc:Loc docker.orchestration}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
+                <Button Grid.Column="2" Classes="primary" Content="{loc:Loc docker.stack.deploy}" Click="DeployStack_Click" />
+            </Grid>
+            <TextBlock Grid.Row="1" Text="{loc:Loc docker.orchestration_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+            <TextBlock Grid.Row="2" Text="{loc:Loc docker.stack.projects}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding Stacks}" SelectedItem="{Binding SelectedStack, Mode=TwoWay}"
+                          AutoGenerateColumns="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="False"
+                          GridLinesVisibility="Horizontal" SelectionMode="Single" HorizontalScrollBarVisibility="Disabled" MinWidth="980">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="{loc:Loc docker.table.name}" Binding="{ReflectionBinding Name}" Width="200" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.status}" Binding="{ReflectionBinding Status}" Width="250" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.config_files}" Binding="{ReflectionBinding ConfigFiles}" Width="500" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </ScrollViewer>
+            <WrapPanel Grid.Row="4" ItemHeight="34" HorizontalAlignment="Left">
+                <Button Content="{loc:Loc docker.action.start}" Command="{Binding StartStackCommand}" Margin="0,0,8,0" />
+                <Button Content="{loc:Loc docker.action.stop}" Command="{Binding StopStackCommand}" Margin="0,0,8,0" />
+                <Button Content="{loc:Loc docker.action.restart}" Command="{Binding RestartStackCommand}" Margin="0,0,8,0" />
+                <Button Content="{loc:Loc docker.stack.edit}" Command="{Binding EditStackCommand}" Margin="0,0,8,0" />
+                <Button Content="{loc:Loc docker.stack.open_source}" Command="{Binding OpenSelectedStackSourceCommand}" Margin="0,0,8,0" />
+                <Button Content="{loc:Loc docker.stack.refresh_services}" Command="{Binding LoadStackServicesCommand}" />
+                <Button Content="{loc:Loc common.delete}" Command="{Binding DeleteStackCommand}" Foreground="{DynamicResource DangerBrush}" />
+            </WrapPanel>
+            <TextBlock Grid.Row="5" Text="{loc:Loc docker.stack.services}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <ScrollViewer Grid.Row="6" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding StackServices}" AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserResizeColumns="True" CanUserReorderColumns="False" GridLinesVisibility="Horizontal" HorizontalScrollBarVisibility="Disabled" MinWidth="1100">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="{loc:Loc docker.table.service}" Binding="{ReflectionBinding Service}" Width="170" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.container}" Binding="{ReflectionBinding Container}" Width="230" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.image}" Binding="{ReflectionBinding Image}" Width="240" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.state}" Binding="{ReflectionBinding State}" Width="130" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.status}" Binding="{ReflectionBinding Status}" Width="300" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</UserControl>

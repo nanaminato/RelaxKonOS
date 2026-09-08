@@ -1,4 +1,4 @@
 ﻿<Solution>
-  <Project Path="Client.Desktop/Client.Desktop.csproj" />
-  <Project Path="Client/Client.csproj" />
+  <Project Path="RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+  <Project Path="Client/RelaxKonOS.Client.csproj" />
 </Solution>

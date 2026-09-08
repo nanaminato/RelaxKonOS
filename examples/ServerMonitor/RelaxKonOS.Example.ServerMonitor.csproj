@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <AssemblyName>RelaxKonOS.Example.ServerMonitor</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Framework\RelaxKonOS.App.SDK\RelaxKonOS.App.SDK.csproj" />
+    <ProjectReference Include="..\..\Framework\RelaxKonOS.UI\RelaxKonOS.UI.csproj" />
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+</Project>

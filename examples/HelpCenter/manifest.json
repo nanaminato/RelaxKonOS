@@ -1,10 +1,10 @@
 {
-  "id": "com.remoteos.example.help-center",
+  "id": "com.relaxkonos.example.help-center",
   "permissionModelVersion": 2,
   "displayName": "Help Center",
   "version": "0.1.0-dev",
-  "entryAssembly": "lib/net10.0/RemoteOS.Example.HelpCenter.dll",
-  "entryType": "RemoteOS.Examples.HelpCenter.HelpCenterApp",
+  "entryAssembly": "lib/net10.0/RelaxKonOS.Example.HelpCenter.dll",
+  "entryType": "RelaxKonOS.Examples.HelpCenter.HelpCenterApp",
   "iconPath": "assets/icon.png",
   "iconGlyph": "❔",
   "description": "Offline, localized guides opened through help:// links",

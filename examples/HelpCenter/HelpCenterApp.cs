@@ -1,10 +1,10 @@
-using RemoteOS.AppSDK;
-using RemoteOS.Core.Applications;
-using RemoteOS.Examples.HelpCenter.Services;
-using RemoteOS.Examples.HelpCenter.Views;
-using RemoteRect = RemoteOS.Core.Primitives.Rect;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Examples.HelpCenter.Services;
+using RelaxKonOS.Examples.HelpCenter.Views;
+using RemoteRect = RelaxKonOS.Core.Primitives.Rect;
 
-namespace RemoteOS.Examples.HelpCenter;
+namespace RelaxKonOS.Examples.HelpCenter;
 
 /// <summary>Package entry point for the offline, manifest-declared <c>help://</c> handler.</summary>
 public sealed class HelpCenterApp : IExternalRemoteApplication, IExternalAppActivationHandler
@@ -14,7 +14,7 @@ public sealed class HelpCenterApp : IExternalRemoteApplication, IExternalAppActi
     private IExternalAppWindowHandle? _window;
 
     public ApplicationManifest Manifest { get; } = new(
-        new AppId("com.remoteos.example.help-center"),
+        new AppId("com.relaxkonos.example.help-center"),
         "Help Center",
         "0.1.0-dev",
         "❔",

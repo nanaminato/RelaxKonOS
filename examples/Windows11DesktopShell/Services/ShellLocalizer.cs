@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using Avalonia.Threading;
-using RemoteOS.Shell;
+using RelaxKonOS.Shell;
 
-namespace Example.Windows11DesktopShell.Services;
+namespace RelaxKonOS.Example.Windows11DesktopShell.Services;
 
 /// <summary>Loads package-owned language files and follows the host workspace language.</summary>
 public sealed class ShellLocalizer : IDisposable

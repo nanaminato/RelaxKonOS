@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:shell="clr-namespace:RemoteOS.Shell;assembly=RemoteOS.Shell"
-             x:Class="Example.Windows11DesktopShell.Views.DesktopShortcutsView"
+             xmlns:shell="clr-namespace:RelaxKonOS.Shell;assembly=RelaxKonOS.Shell"
+             x:Class="RelaxKonOS.Example.Windows11DesktopShell.Views.DesktopShortcutsView"
              x:Name="DesktopShortcutsRoot">
     <UserControl.Styles>
         <Style Selector="Button.desktop-shortcut">

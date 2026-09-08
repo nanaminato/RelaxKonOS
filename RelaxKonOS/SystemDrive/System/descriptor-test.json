@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"com.example.storage","kind":"package","displayName":"Storage","version":"1.0.0","activation":{"entryAssembly":"lib/net10.0/Storage.dll","entryType":"RelaxKonOS.Example.Storage"},"permissionModelVersion":2,"unexpected":true}

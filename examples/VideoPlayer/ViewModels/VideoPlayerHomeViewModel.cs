@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using RemoteOS.Examples.VideoPlayer.Services;
+using RelaxKonOS.Examples.VideoPlayer.Services;
 
-namespace RemoteOS.Examples.VideoPlayer.ViewModels;
+namespace RelaxKonOS.Examples.VideoPlayer.ViewModels;
 
 public sealed partial class VideoPlayerHomeViewModel : ObservableObject, IDisposable
 {

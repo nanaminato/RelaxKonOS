@@ -1,0 +1,190 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:proxy="clr-namespace:RelaxKonOS.Client.Apps.Proxy"
+             xmlns:dto="clr-namespace:RelaxKonOS.Protocol.Proxy;assembly=RelaxKonOS.Protocol"
+             x:Class="RelaxKonOS.Client.Apps.Proxy.Views.ProxyOverviewView"
+             x:DataType="proxy:ProxyManagerViewModel">
+  <UserControl.Styles>
+    <Style Selector="Border.proxy-running-pulse">
+      <Style.Animations>
+        <Animation Duration="0:0:1.8" IterationCount="INFINITE">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.18"/></KeyFrame>
+          <KeyFrame Cue="50%"><Setter Property="Opacity" Value="0.7"/></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.18"/></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="ToggleButton.network-mode-tab">
+      <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="10,7"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="ToggleButton.network-mode-tab:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <ScrollViewer x:Name="OverviewScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <!-- The code-behind gives this container the finite viewport width needed for star columns. -->
+    <Border x:Name="OverviewContent" Padding="0,0,14,14">
+    <Grid RowDefinitions="Auto,16,Auto,16,Auto,16,Auto">
+      <!-- The existing lifecycle control intentionally remains the only legacy overview card. -->
+      <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+        <StackPanel Spacing="12">
+          <TextBlock Text="{loc:Loc proxy.runtime_control}" FontSize="19" FontWeight="SemiBold" />
+          <TextBlock Text="{loc:Loc proxy.runtime_control_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+          <Grid ColumnDefinitions="132,*" ColumnSpacing="18">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+              <Button Classes="proxy-power" Command="{Binding ToggleProxyCommand}" ToolTip.Tip="{Binding ProxyActionText}">
+                <Grid Width="112" Height="112">
+                  <Border Classes="proxy-running-pulse" Background="{DynamicResource SuccessMutedBrush}" CornerRadius="56" IsVisible="{Binding ProxyIsRunning}"/>
+                  <Border Background="{DynamicResource WarningMutedBrush}" CornerRadius="56" IsVisible="{Binding !ProxyIsRunning}" Opacity="0.55"/>
+                  <Border Background="{DynamicResource SuccessBrush}" CornerRadius="46" Margin="10" IsVisible="{Binding ProxyIsRunning}"/>
+                  <Border Background="{DynamicResource WarningBrush}" CornerRadius="46" Margin="10" IsVisible="{Binding !ProxyIsRunning}"/>
+                  <Path Data="M13,3 H11 V13 H13 Z M17.83,5.17 L16.41,6.59 A7,7 0 1,1 7.59,6.59 L6.17,5.17 A9,9 0 1,0 17.83,5.17 Z"
+                        Width="42" Height="42" Stretch="Uniform" Fill="{DynamicResource TextOnAccentBrush}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+              </Button>
+              <TextBlock Text="{Binding ProxyActionText}" HorizontalAlignment="Center" FontWeight="SemiBold"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Width="10" Height="10" CornerRadius="5" Background="{DynamicResource SuccessBrush}" IsVisible="{Binding ProxyIsRunning}" VerticalAlignment="Center"/>
+                <Border Width="10" Height="10" CornerRadius="5" Background="{DynamicResource WarningBrush}" IsVisible="{Binding !ProxyIsRunning}" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding ProxyStateLabel}" FontSize="20" FontWeight="SemiBold"/>
+              </StackPanel>
+              <TextBlock Text="{Binding RuntimeVersion}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Border>
+      <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="16" HorizontalAlignment="Stretch">
+        <!-- 订阅 -->
+        <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                <Border Width="36" Height="36" Background="{DynamicResource AccentMutedBrush}" CornerRadius="9"><TextBlock Text="☁" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <TextBlock Grid.Column="1" Text="{Binding ActiveSubscriptionName}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <Border Grid.Column="2" Padding="8,4" PointerPressed="SubscriptionNavigation_PointerPressed"><TextBlock Text="{loc:Loc proxy.subscriptions}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold"/></Border>
+              </Grid>
+              <StackPanel Grid.Row="1" Spacing="6" Margin="0,4,0,0"><TextBlock Text="{loc:Loc proxy.subscription_last_updated}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/><TextBlock Text="{Binding ActiveSubscriptionUpdatedAt}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12"/></StackPanel>
+              <TextBlock Grid.Row="2" Text="{loc:Loc proxy.subscriptions_hint}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+            </Grid>
+        </Border>
+        <!-- 当前节点 -->
+        <Border Grid.Row="0" Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                <Border Width="36" Height="36" Background="{DynamicResource SuccessMutedBrush}" CornerRadius="9"><TextBlock Text="◈" FontSize="20" Foreground="{DynamicResource SuccessBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <TextBlock Grid.Column="1" Text="{loc:Loc proxy.current_node}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Border Grid.Column="2" Padding="8,4" PointerPressed="ProxyNavigation_PointerPressed"><TextBlock Text="{loc:Loc proxy.proxies}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold"/></Border>
+              </Grid>
+              <StackPanel Grid.Row="1" Spacing="5" Margin="0,4,0,0"><TextBlock Text="{Binding CurrentProxyGroupName}" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><ComboBox ItemsSource="{Binding OverviewProxyNodes}" SelectedItem="{Binding SelectedOverviewProxyNode, Mode=TwoWay}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
+              <TextBlock Grid.Row="2" Text="{Binding CurrentProxyNodeName}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+            </Grid>
+        </Border>
+        <!-- 网络设置 -->
+        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="11">
+              <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <Border Grid.Column="0" Width="36" Height="36" Background="{DynamicResource AccentMutedBrush}" CornerRadius="9"><TextBlock Text="▣" FontSize="18" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <TextBlock Grid.Column="1" Text="{loc:Loc proxy.network_settings}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              </Grid>
+              <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="10">
+                <ToggleButton Classes="network-mode-tab" IsChecked="{Binding IsSystemProxySettingsSelected, Mode=OneWay}" Command="{Binding SelectNetworkSettingsPageCommand}">
+                  <ToggleButton.CommandParameter><x:Boolean>False</x:Boolean></ToggleButton.CommandParameter>
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="7"><TextBlock Text="▣"/><TextBlock Text="{loc:Loc proxy.system_proxy}" FontWeight="SemiBold"/></StackPanel>
+                </ToggleButton>
+                <ToggleButton Grid.Column="1" Classes="network-mode-tab" IsChecked="{Binding IsTunSettingsSelected, Mode=OneWay}" Command="{Binding SelectNetworkSettingsPageCommand}">
+                  <ToggleButton.CommandParameter><x:Boolean>True</x:Boolean></ToggleButton.CommandParameter>
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="7"><TextBlock Text="◉"/><TextBlock Text="{loc:Loc proxy.tun_mode}" FontWeight="SemiBold"/></StackPanel>
+                </ToggleButton>
+              </Grid>
+              <Border Grid.Row="2" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="10" Padding="13" IsVisible="{Binding IsSystemProxySettingsSelected}">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="3"><TextBlock Text="{loc:Loc proxy.system_proxy}" FontWeight="SemiBold"/><TextBlock Text="{Binding SystemProxyEndpoint}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis"/></StackPanel>
+                  <Button Grid.Column="1" Classes="flat" Command="{Binding ShowSystemProxySettingsDialogCommand}" ToolTip.Tip="{loc:Loc proxy.system_proxy_settings}" Content="⚙" FontSize="18"/>
+                  <ToggleSwitch Grid.Column="2" IsChecked="{Binding SystemProxyEnabled, Mode=OneWay}" Command="{Binding ToggleSystemProxyCommand}" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+              <Border Grid.Row="2" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="10" Padding="13" IsVisible="{Binding IsTunSettingsSelected}">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="3"><TextBlock Text="{loc:Loc proxy.tun_mode}" FontWeight="SemiBold"/><TextBlock Text="{Binding TunOverviewState}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/></StackPanel>
+                  <Button Grid.Column="1" Classes="flat" Command="{Binding ShowTunSettingsDialogCommand}" ToolTip.Tip="{loc:Loc proxy.tun_managed_settings}" Content="⚙" FontSize="18"/>
+                  <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsTunEnabled, Mode=OneWay}" Command="{Binding ToggleTunCommand}" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+            </Grid>
+        </Border>
+        <!-- 代理模式 -->
+        <Border Grid.Row="1" Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+          <Grid RowDefinitions="Auto,*,Auto" RowSpacing="11">
+            <Grid Grid.Row="0"  ColumnDefinitions="Auto,*" ColumnSpacing="10">
+              <Border Grid.Column="0" Width="36" Height="36" Background="{DynamicResource AccentMutedBrush}" CornerRadius="9"><TextBlock Text="⇆" FontSize="19" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <TextBlock Grid.Column="1" Text="{loc:Loc proxy.routing_mode}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </Grid>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
+              <RadioButton Content="{loc:Loc proxy.routing_rule}" IsChecked="{Binding IsRuleRouting, Mode=OneWay}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Rule}"/>
+              <RadioButton Content="{loc:Loc proxy.routing_global}" IsChecked="{Binding IsGlobalRouting, Mode=OneWay}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Global}" Margin="8,0,0,0"/>
+              <RadioButton Content="{loc:Loc proxy.routing_direct}" IsChecked="{Binding IsDirectRouting, Mode=OneWay}" Command="{Binding SetRoutingModeCommand}" CommandParameter="{x:Static dto:ProxyRoutingMode.Direct}" Margin="8,0,0,0"/>
+            </StackPanel>
+            <TextBlock Grid.Row="2" Text="{loc:Loc proxy.routing_mode_hint}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12" TextAlignment="Center" TextWrapping="Wrap"/>
+          </Grid>
+        </Border>
+      </Grid>
+      <!-- 流量统计 -->
+      <Border Grid.Row="4" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="18">
+        <StackPanel Spacing="14">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <Border Width="36" Height="36" Background="{DynamicResource WarningMutedBrush}" CornerRadius="9"><TextBlock Text="⌁" FontSize="20" Foreground="{DynamicResource WarningBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+            <StackPanel Grid.Column="1" Spacing="1"><TextBlock Text="{loc:Loc proxy.traffic_statistics}" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="{loc:Loc proxy.traffic_statistics_hint}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12"/></StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="10">
+            <Border Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="9" Padding="12,10"><StackPanel Spacing="4"><TextBlock Text="{loc:Loc proxy.upload_speed}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/><TextBlock Text="{Binding UploadRate}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource WarningBrush}"/></StackPanel></Border>
+            <Border Grid.Column="1" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="9" Padding="12,10"><StackPanel Spacing="4"><TextBlock Text="{loc:Loc proxy.download_speed}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/><TextBlock Text="{Binding DownloadRate}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"/></StackPanel></Border>
+            <Border Grid.Column="2" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="9" Padding="12,10"><StackPanel Spacing="4"><TextBlock Text="{loc:Loc proxy.upload_total}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/><TextBlock Text="{Binding UploadTotal}" FontSize="18" FontWeight="SemiBold"/></StackPanel></Border>
+            <Border Grid.Column="3" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="9" Padding="12,10"><StackPanel Spacing="4"><TextBlock Text="{loc:Loc proxy.download_total}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/><TextBlock Text="{Binding DownloadTotal}" FontSize="18" FontWeight="SemiBold"/></StackPanel></Border>
+            <Border Grid.Column="4" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="9" Padding="12,10"><StackPanel Spacing="4"><TextBlock Text="{loc:Loc proxy.connections}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/><TextBlock Text="{Binding RunningConnectionCount}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SuccessBrush}"/></StackPanel></Border>
+            <Border Grid.Column="5" Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="9" Padding="12,10"><StackPanel Spacing="4"><TextBlock Text="{loc:Loc proxy.memory_usage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/><TextBlock Text="{Binding MemoryUsage}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource DangerBrush}"/></StackPanel></Border>
+          </Grid>
+        </StackPanel>
+      </Border>
+      <!-- 运行时与系统信息。开机自启只显示固定状态，不关联任何配置或操作。 -->
+      <Grid Grid.Row="6" ColumnDefinitions="*,*" ColumnSpacing="16" HorizontalAlignment="Stretch">
+        <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="16">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="0,0,0,6">
+              <Border Width="36" Height="36" Background="{DynamicResource WarningMutedBrush}" CornerRadius="9"><TextBlock Text="▦" FontSize="19" Foreground="{DynamicResource WarningBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <TextBlock Grid.Column="1" Text="{loc:Loc proxy.runtime_information}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </Grid>
+            <Border Grid.Row="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,10,0,8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.runtime_core_version}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding RuntimeVersion}" FontWeight="SemiBold"/></Grid></Border>
+            <Border Grid.Row="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.system_proxy_address}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding SystemProxyEndpoint}" FontWeight="SemiBold"/></Grid></Border>
+            <Border Grid.Row="3" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.mixed_proxy_port}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding MixedPort}" FontWeight="SemiBold"/></Grid></Border>
+            <Border Grid.Row="4" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.running_time}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding RuntimeUptime}" FontWeight="SemiBold"/></Grid></Border>
+            <Border Grid.Row="5" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,0"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.rule_count}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding RuleCount}" FontWeight="SemiBold"/></Grid></Border>
+          </Grid>
+        </Border>
+        <Border Grid.Column="1" Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="16">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="0,0,0,6">
+              <Border Width="36" Height="36" Background="{DynamicResource WarningMutedBrush}" CornerRadius="9"><TextBlock Text="!" FontSize="20" Foreground="{DynamicResource DangerBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <TextBlock Grid.Column="1" Text="{loc:Loc proxy.system_information}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </Grid>
+            <Border Grid.Row="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,10,0,8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.operating_system}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding ServerOperatingSystem}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="280"/></Grid></Border>
+            <Border Grid.Row="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.start_on_boot}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding StartupState}" FontWeight="SemiBold" Foreground="{DynamicResource TextTertiaryBrush}"/></Grid></Border>
+            <Border Grid.Row="3" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.runtime_mode}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding RuntimeServiceMode}" FontWeight="SemiBold"/></Grid></Border>
+            <Border Grid.Row="4" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.last_configuration_update}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding ConfigurationUpdatedAt}" FontWeight="SemiBold"/></Grid></Border>
+            <Border Grid.Row="5" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,0"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{loc:Loc proxy.client_version}" Foreground="{DynamicResource TextSecondaryBrush}"/><TextBlock Grid.Column="1" Text="{Binding ClientVersion}" FontWeight="SemiBold"/></Grid></Border>
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+    </Border>
+  </ScrollViewer>
+</UserControl>

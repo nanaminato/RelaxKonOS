@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:app="clr-namespace:RelaxKonOS.Client.Apps.TextEditor"
+             x:Class="RelaxKonOS.Client.Apps.TextEditor.EncodingActionDialogView"
+             x:DataType="app:EncodingActionDialogViewModel"
+             Background="{DynamicResource SurfaceBrush}">
+    <Grid Margin="12"
+          RowDefinitions="Auto,Auto,Auto"
+          RowSpacing="10">
+
+        <Grid.Styles>
+            <!-- 编码操作 -->
+            <Style Selector="Button.encodingAction">
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                <Setter Property="Padding" Value="10,5" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="CornerRadius" Value="2" />
+            </Style>
+
+            <!-- VS Code 亮色主题 hover -->
+            <Style Selector="Button.encodingAction:pointerover /template/ ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            </Style>
+
+            <!-- 按下 -->
+            <Style Selector="Button.encodingAction:pressed /template/ ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            </Style>
+        </Grid.Styles>
+
+        <!-- 提示 -->
+        <TextBlock Grid.Row="0"
+                   Margin="8,0"
+                   Text="{loc:Loc common.encoding_action_hint}"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
+
+        <!-- 操作列表 -->
+        <StackPanel Grid.Row="1"
+                    HorizontalAlignment="Stretch"
+                    Spacing="1">
+
+            <Button Classes="encodingAction"
+                    Content="{loc:Loc common.reopen}"
+                    Command="{Binding ReopenCommand}" />
+
+            <Button Classes="encodingAction"
+                    Content="{loc:Loc common.save}"
+                    Command="{Binding SaveCommand}" />
+        </StackPanel>
+
+        <!-- Cancel -->
+        <Button Grid.Row="2"
+                HorizontalAlignment="Right"
+                Content="{loc:Loc common.cancel}"
+                Command="{Binding CancelCommand}"
+                Padding="16,6" />
+
+    </Grid>
+</UserControl>

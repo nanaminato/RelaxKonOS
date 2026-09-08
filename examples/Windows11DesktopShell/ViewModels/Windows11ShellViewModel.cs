@@ -2,11 +2,11 @@ using System.Windows.Input;
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using Avalonia.Media;
-using Example.Windows11DesktopShell.Commands;
-using Example.Windows11DesktopShell.Services;
-using RemoteOS.Shell;
+using RelaxKonOS.Example.Windows11DesktopShell.Commands;
+using RelaxKonOS.Example.Windows11DesktopShell.Services;
+using RelaxKonOS.Shell;
 
-namespace Example.Windows11DesktopShell.ViewModels;
+namespace RelaxKonOS.Example.Windows11DesktopShell.ViewModels;
 
 public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
 {
@@ -130,7 +130,7 @@ public sealed class Windows11ShellViewModel : ObservableObject, IDisposable
     public string AllAppsButtonText => IsAllAppsOpen ? BackToPinned : AllApps;
     public bool IsPinnedOpen => !IsAllAppsOpen;
     public string About => T("start.about", "About this shell");
-    public string UserName => T("start.user", "RemoteOS");
+    public string UserName => T("start.user", "RelaxKonOS");
     public string Wifi => T("quick.wifi", "Wi-Fi");
     public string Bluetooth => T("quick.bluetooth", "Bluetooth");
     public string Focus => T("quick.focus", "Focus");

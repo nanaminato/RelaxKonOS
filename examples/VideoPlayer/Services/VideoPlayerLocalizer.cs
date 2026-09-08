@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Text.Json;
 using Avalonia.Threading;
-using RemoteOS.AppSDK;
+using RelaxKonOS.AppSDK;
 
-namespace RemoteOS.Examples.VideoPlayer.Services;
+namespace RelaxKonOS.Examples.VideoPlayer.Services;
 
-/// <summary>Package-owned strings that follow the UI culture selected by the RemoteOS host.</summary>
+/// <summary>Package-owned strings that follow the UI culture selected by the RelaxKonOS host.</summary>
 public sealed class VideoPlayerLocalizer : IDisposable
 {
     private const string DefaultCulture = "en-US";

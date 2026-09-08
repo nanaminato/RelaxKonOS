@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace RemoteOS.Examples.ServerMonitor.Services;
+namespace RelaxKonOS.Examples.ServerMonitor.Services;
 
 /// <summary>Locally persisted preferences for the Server Monitor package.</summary>
 public sealed record MonitorSettings(int RefreshIntervalMilliseconds = 1000, int HistoryLength = 60)
@@ -17,7 +17,7 @@ public sealed class MonitorSettingsStore
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RemoteOS", "external-app-settings", "server-monitor.json");
+        "RelaxKonOS", "external-app-settings", "server-monitor.json");
 
     public MonitorSettings Load()
     {

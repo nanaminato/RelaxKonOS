@@ -1,0 +1,28 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.PortForwarding.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.PortForwarding.Views.PortForwardingEditorDialogView"
+             x:DataType="vm:PortForwardingViewModel">
+    <Grid Margin="20" RowDefinitions="*,Auto">
+        <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                <TextBlock Text="{loc:Loc port_forwarding.forward_service}" FontWeight="SemiBold" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="1" Text="{loc:Loc port_forwarding.editor_note}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,0,0,14" />
+
+                <TextBlock Grid.Row="2" Text="{loc:Loc port_forwarding.target_address}" FontWeight="SemiBold" HorizontalAlignment="Left" Margin="0,0,0,6" />
+                <TextBox Grid.Row="3" Text="{Binding TargetAddress, Mode=TwoWay}" PlaceholderText="http://localhost:7000" MinWidth="0" HorizontalAlignment="Stretch" />
+
+                <TextBlock Grid.Row="4" Text="{loc:Loc port_forwarding.preferred_local_port}" FontWeight="SemiBold" HorizontalAlignment="Left" Margin="0,14,0,6" />
+                <TextBox Grid.Row="5" Text="{Binding PreferredLocalPortText, Mode=TwoWay}" PlaceholderText="{loc:Loc port_forwarding.preferred_local_port_placeholder}" MinWidth="0" HorizontalAlignment="Stretch" />
+
+                <TextBlock Grid.Row="6" Text="{loc:Loc port_forwarding.fallback_note}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" HorizontalAlignment="Left" Margin="0,10,0,0" />
+            </Grid>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+            <Button x:Name="SaveButton" Classes="primary" IsEnabled="{Binding !IsBusy}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

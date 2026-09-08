@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:certificates="clr-namespace:RelaxKonOS.Client.Apps.Certificates"
+             x:Class="RelaxKonOS.Client.Apps.Certificates.Views.SelfSignedCertificateDialogView"
+             x:DataType="certificates:CertificateManagerViewModel">
+    <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="16">
+        <StackPanel Spacing="12">
+            <TextBlock Text="{loc:Loc certificates.self_signed.help}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <StackPanel Spacing="4">
+                <TextBlock Text="{loc:Loc certificates.request.domains}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBox Text="{Binding SelfSignedDomains, Mode=TwoWay}" PlaceholderText="{loc:Loc certificates.self_signed.identifiers_hint}" />
+            </StackPanel>
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc certificates.request.key_algorithm}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <ComboBox ItemsSource="{Binding KeyAlgorithms}" DisplayMemberBinding="{ReflectionBinding Label}"
+                              SelectedItem="{Binding SelectedKeyAlgorithm, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="{loc:Loc certificates.self_signed.validity_days}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <NumericUpDown Value="{Binding SelfSignedValidityDays, Mode=TwoWay}" Minimum="1" Maximum="825" />
+                </StackPanel>
+            </Grid>
+            <Border IsVisible="{Binding HasOperationActivity}" Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+            </Border>
+        </StackPanel>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Classes="primary" Content="{loc:Loc certificates.self_signed.create}" Click="Create_Click" />
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+        </StackPanel>
+    </Grid>
+</UserControl>

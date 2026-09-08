@@ -1,1 +1,0 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Client.Apps.Tunnels.Views.TunnelLoginRequiredView"><Grid Margin="24"><TextBlock Text="Sign in to manage tunnels." VerticalAlignment="Center" HorizontalAlignment="Center"/></Grid></UserControl>

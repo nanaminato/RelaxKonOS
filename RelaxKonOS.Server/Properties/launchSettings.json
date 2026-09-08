@@ -1,0 +1,40 @@
+﻿{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://0.0.0.0:5090",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
+        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only"
+      }
+    },
+    "https": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:7260;http://localhost:5090",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
+        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only"
+      }
+    },
+    "http-linux-privileged": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://0.0.0.0:5090",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
+        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
+        "PrivilegedHelper__HelperPath": "/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper",
+        "PrivilegedHelper__SudoPath": "/usr/bin/sudo"
+      }
+    }
+  }
+}

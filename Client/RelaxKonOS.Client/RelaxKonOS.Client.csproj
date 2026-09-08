@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <RootNamespace>RelaxKonOS.Client</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AvaloniaResource Include="Assets\**"/>
+        <Content Include="Localization\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia"/>
+        <PackageReference Include="Avalonia.Themes.Fluent"/>
+        <PackageReference Include="Avalonia.Fonts.Inter"/>
+        <PackageReference Include="Avalonia.Controls.DataGrid"/>
+        <PackageReference Include="Avalonia.AvaloniaEdit" />
+        <PackageReference Include="AvaloniaUI.DiagnosticsSupport">
+            <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+            <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="CommunityToolkit.Mvvm"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection"/>
+        <PackageReference Include="Microsoft.Extensions.Http"/>
+        <PackageReference Include="System.Security.Cryptography.ProtectedData"/>
+        <PackageReference Include="Microsoft.AspNetCore.SignalR.Client"/>
+        <PackageReference Include="RoyalApps.RoyalTerminal.Avalonia"/>
+        <!-- Explorer: behaviors 用于双击导航等交互；Newtonsoft 保留 Jaya 配置模型序列化 -->
+        <PackageReference Include="Xaml.Behaviors.Avalonia"/>
+        <PackageReference Include="Newtonsoft.Json"/>
+        <!-- Browser: NativeWebView 控件 -->
+        <PackageReference Include="Avalonia.Controls.WebView"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\Framework\RelaxKonOS.Core\RelaxKonOS.Core.csproj" />
+      <ProjectReference Include="..\..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />
+      <ProjectReference Include="..\..\Framework\RelaxKonOS.App.SDK\RelaxKonOS.App.SDK.csproj" />
+      <ProjectReference Include="..\..\Framework\RelaxKonOS.Runtime\RelaxKonOS.Runtime.csproj" />
+      <ProjectReference Include="..\..\Framework\RelaxKonOS.UI\RelaxKonOS.UI.csproj" />
+      <ProjectReference Include="..\..\Framework\RelaxKonOS.WindowManager\RelaxKonOS.WindowManager.csproj" />
+      <ProjectReference Include="..\..\Framework\RelaxKonOS.Shell\RelaxKonOS.Shell.csproj" />
+    </ItemGroup>
+</Project>

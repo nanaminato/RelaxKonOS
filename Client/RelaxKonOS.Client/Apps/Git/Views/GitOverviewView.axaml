@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitOverviewView"
+             x:DataType="git:GitClientViewModel">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12">
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="20">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc git.overview.repository}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding SelectedRepository.Name}" FontSize="16" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding SelectedRepository.Path}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,8,0,0">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{loc:Loc git.overview.branch}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding Status.Branch}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{loc:Loc git.overview.upstream}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding Status.Upstream}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{loc:Loc git.overview.ahead_behind}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="{Binding Status.Ahead}" /> / <Run Text="{Binding Status.Behind}" />
+                            </TextBlock>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="20">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc git.overview.working_tree}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="24" Margin="0,8,0,0">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{loc:Loc git.overview.staged}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding StagedFiles.Count}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{loc:Loc git.overview.unstaged}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding UnstagedFiles.Count}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{loc:Loc git.overview.untracked}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding UntrackedFiles.Count}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{loc:Loc git.overview.conflicts}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding ConflictFiles.Count}" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                <Button Command="{Binding PullCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="⬇" />
+                        <TextBlock Text="{loc:Loc git.overview.pull}" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding PushCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="⬆" />
+                        <TextBlock Text="{loc:Loc git.overview.push}" />
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding FetchCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="📥" />
+                        <TextBlock Text="{loc:Loc git.overview.fetch}" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

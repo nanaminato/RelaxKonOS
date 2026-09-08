@@ -1,6 +1,6 @@
 <div align="center">
 
-# RemoteOS
+# RelaxKonOS
 
 **云原生桌面操作系统环境**
 
@@ -17,9 +17,9 @@
 
 ## ✨ 项目简介
 
-**RemoteOS** 是一个跨平台的云原生桌面操作系统环境，采用 **状态同步（State-Sync）** 模式而非像素流（Pixel Streaming）模式。客户端在本地渲染 UI，服务端提供云端能力（账户、存储、同步、远程运行时），让用户在任何设备上获得一致的桌面体验。
+**RelaxKonOS** 是一个跨平台的云原生桌面操作系统环境，采用 **状态同步（State-Sync）** 模式而非像素流（Pixel Streaming）模式。客户端在本地渲染 UI，服务端提供云端能力（账户、存储、同步、远程运行时），让用户在任何设备上获得一致的桌面体验。
 
-**RemoteOS 不是** 远程桌面工具（RDP/VNC/Screen Streaming）。它传输的是系统状态、应用状态和用户操作意图，而非屏幕像素。
+**RelaxKonOS 不是** 远程桌面工具（RDP/VNC/Screen Streaming）。它传输的是系统状态、应用状态和用户操作意图，而非屏幕像素。
 
 ### 核心特性
 
@@ -48,7 +48,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    RemoteOS.Client                       │
+│                    RelaxKonOS.Client                       │
 │          (Avalonia Desktop Shell · 本地渲染)             │
 │                                                         │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
@@ -70,7 +70,7 @@
                                │ HTTP REST / SignalR
                                ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   RemoteOS.Server                        │
+│                   RelaxKonOS.Server                        │
 │            (ASP.NET Core · 云端后端 · 跨平台)              │
 │                                                         │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌───────┐ ┌──────┐  │
@@ -111,7 +111,7 @@
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────┐
-│              RemoteOS.Guardian.Agent                     │
+│              RelaxKonOS.Guardian.Agent                     │
 │       (独立进程 · 受守护工作负载 · 原生服务管理)            │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -139,9 +139,9 @@
 ## 📁 项目结构
 
 ```
-RemoteOS/
+RelaxKonOS/
 ├── Client/
-│   ├── RemoteOS.Client/          # 桌面 Shell + 内置应用（类库）
+│   ├── RelaxKonOS.Client/          # 桌面 Shell + 内置应用（类库）
 │   │   ├── Apps/                 # 内置应用
 │   │   │   ├── Explorer/         # 文件管理器
 │   │   │   ├── Terminal/         # 终端
@@ -168,20 +168,20 @@ RemoteOS/
 │   │   ├── Services/             # 认证、权限、开发模式等服务
 │   │   ├── ViewModels/           # Shell / Login ViewModel
 │   │   └── Views/                # Shell / Login / MainWindow 视图
-│   └── RemoteOS.Client.Desktop/  # 平台入口（WinExe）
+│   └── RelaxKonOS.Client.Desktop/  # 平台入口（WinExe）
 ├── Framework/
-│   ├── RemoteOS.Core/            # 平台无关原语（几何、窗口、应用模型）
-│   ├── RemoteOS.UI/              # Avalonia 共享主题/样式
-│   ├── RemoteOS.WindowManager/   # 窗口管理器 + RemoteWindow 控件
-│   ├── RemoteOS.App.SDK/         # 应用开发 API（AppContext / IRemoteApplication）
-│   └── RemoteOS.Runtime/         # 应用运行时（ApplicationManager）
+│   ├── RelaxKonOS.Core/            # 平台无关原语（几何、窗口、应用模型）
+│   ├── RelaxKonOS.UI/              # Avalonia 共享主题/样式
+│   ├── RelaxKonOS.WindowManager/   # 窗口管理器 + RemoteWindow 控件
+│   ├── RelaxKonOS.App.SDK/         # 应用开发 API（AppContext / IRemoteApplication）
+│   └── RelaxKonOS.Runtime/         # 应用运行时（ApplicationManager）
 ├── Shared/
-│   └── RemoteOS.Protocol/        # 通信协议契约（DTO / 路由 / Hub 接口）
-├── RemoteOS.Server/              # 服务端（ASP.NET Core）
-├── RemoteOS.Guardian.Agent/      # 进程守护独立进程（原生服务管理）
-├── RemoteOS.PrivilegedHelper/    # 跨平台特权操作 Helper（Windows 服务 / Linux 守护）
+│   └── RelaxKonOS.Protocol/        # 通信协议契约（DTO / 路由 / Hub 接口）
+├── RelaxKonOS.Server/              # 服务端（ASP.NET Core）
+├── RelaxKonOS.Guardian.Agent/      # 进程守护独立进程（原生服务管理）
+├── RelaxKonOS.PrivilegedHelper/    # 跨平台特权操作 Helper（Windows 服务 / Linux 守护）
 ├── Tools/
-│   ├── RemoteOS.DevCli/          # 开发者 CLI 工具
+│   ├── RelaxKonOS.DevCli/          # 开发者 CLI 工具
 │   ├── verify-localization.py    # 多语言验证脚本
 │   └── slice_app_icons.py        # 应用图标精灵图切片脚本
 ├── examples/
@@ -191,7 +191,7 @@ RemoteOS/
 ├── deployment/                   # 部署脚本（Linux / Windows）
 ├── docs/                         # 详细设计文档
 ├── Directory.Packages.props      # 中央包管理
-└── RemoteOS.sln                  # 解决方案文件
+└── RelaxKonOS.sln                  # 解决方案文件
 ```
 
 ---
@@ -235,13 +235,13 @@ RemoteOS/
 
 ```bash
 git clone <repository-url>
-cd RemoteOS
+cd RelaxKonOS
 ```
 
 ### 2. 启动服务端
 
 ```bash
-cd RemoteOS.Server
+cd RelaxKonOS.Server
 
 # 开发模式运行（默认监听 http://localhost:5000）
 dotnet run
@@ -252,7 +252,7 @@ dotnet run
 ### 3. 启动客户端
 
 ```bash
-cd Client/RemoteOS.Client.Desktop
+cd Client/RelaxKonOS.Client.Desktop
 dotnet run
 ```
 
@@ -266,52 +266,52 @@ dotnet run
 
 | 文档 | 说明 |
 |------|------|
-| [RemoteOS.Architecture.md](./docs/architecture/RemoteOS.Architecture.md) | 架构设计原则、模块依赖、分层架构 |
-| [RemoteOS.Protocol.md](./docs/architecture/RemoteOS.Protocol.md) | 通信协议契约、REST/SignalR、序列化约定 |
-| [RemoteOS.Workspace.md](./docs/architecture/RemoteOS.Workspace.md) | 用户/工作区/会话/设备、多设备模型 |
-| [RemoteOS.Registry.md](./docs/architecture/RemoteOS.Registry.md) | 配置注册表架构、desired/applied 状态机 |
-| [RemoteOS.ApplicationActivation.md](./docs/architecture/RemoteOS.ApplicationActivation.md) | 应用启动 URI 与窗口实例策略 |
+| [RelaxKonOS.Architecture.md](./docs/architecture/RelaxKonOS.Architecture.md) | 架构设计原则、模块依赖、分层架构 |
+| [RelaxKonOS.Protocol.md](./docs/architecture/RelaxKonOS.Protocol.md) | 通信协议契约、REST/SignalR、序列化约定 |
+| [RelaxKonOS.Workspace.md](./docs/architecture/RelaxKonOS.Workspace.md) | 用户/工作区/会话/设备、多设备模型 |
+| [RelaxKonOS.Registry.md](./docs/architecture/RelaxKonOS.Registry.md) | 配置注册表架构、desired/applied 状态机 |
+| [RelaxKonOS.ApplicationActivation.md](./docs/architecture/RelaxKonOS.ApplicationActivation.md) | 应用启动 URI 与窗口实例策略 |
 
 ### 平台服务
 
 | 文档 | 说明 |
 |------|------|
-| [RemoteOS.Authentication.md](./docs/platform/RemoteOS.Authentication.md) | 登录系统、身份模型、OS 用户集成 |
-| [RemoteOS.Authentication.Hardening.md](./docs/platform/RemoteOS.Authentication.Hardening.md) | 认证限流、风险控制与登录防护建议 |
-| [RemoteOS.Login.md](./docs/platform/RemoteOS.Login.md) | 登录模块实现细节、mstsc 风格登录窗 |
-| [RemoteOS.Security.md](./docs/platform/RemoteOS.Security.md) | 安全设计、权限提升、危险操作 |
-| [RemoteOS.PrivilegedOperations.Goal.md](./docs/platform/RemoteOS.PrivilegedOperations.Goal.md) | 跨平台受限 Helper、Windows Server 支持与特权操作迁移执行计划 |
-| [RemoteOS.Storage.md](./docs/platform/RemoteOS.Storage.md) | 服务端持久化、EF Core + SQLite |
+| [RelaxKonOS.Authentication.md](./docs/platform/RelaxKonOS.Authentication.md) | 登录系统、身份模型、OS 用户集成 |
+| [RelaxKonOS.Authentication.Hardening.md](./docs/platform/RelaxKonOS.Authentication.Hardening.md) | 认证限流、风险控制与登录防护建议 |
+| [RelaxKonOS.Login.md](./docs/platform/RelaxKonOS.Login.md) | 登录模块实现细节、mstsc 风格登录窗 |
+| [RelaxKonOS.Security.md](./docs/platform/RelaxKonOS.Security.md) | 安全设计、权限提升、危险操作 |
+| [RelaxKonOS.PrivilegedOperations.Goal.md](./docs/platform/RelaxKonOS.PrivilegedOperations.Goal.md) | 跨平台受限 Helper、Windows Server 支持与特权操作迁移执行计划 |
+| [RelaxKonOS.Storage.md](./docs/platform/RelaxKonOS.Storage.md) | 服务端持久化、EF Core + SQLite |
 
 ### 桌面体验
 
 | 文档 | 说明 |
 |------|------|
-| [RemoteOS.Desktop.md](./docs/desktop/RemoteOS.Desktop.md) | 桌面外壳、窗口控制、模态对话框、键盘路由 |
-| [RemoteOS.Settings.md](./docs/desktop/RemoteOS.Settings.md) | 设置中心、偏好持久化、多设备同步 |
-| [RemoteOS.Theming.md](./docs/desktop/RemoteOS.Theming.md) | 主题系统、调色板与外观定制 |
-| [RemoteOS.Localization.md](./docs/desktop/RemoteOS.Localization.md) | 多语言机制、语言包结构 |
+| [RelaxKonOS.Desktop.md](./docs/desktop/RelaxKonOS.Desktop.md) | 桌面外壳、窗口控制、模态对话框、键盘路由 |
+| [RelaxKonOS.Settings.md](./docs/desktop/RelaxKonOS.Settings.md) | 设置中心、偏好持久化、多设备同步 |
+| [RelaxKonOS.Theming.md](./docs/desktop/RelaxKonOS.Theming.md) | 主题系统、调色板与外观定制 |
+| [RelaxKonOS.Localization.md](./docs/desktop/RelaxKonOS.Localization.md) | 多语言机制、语言包结构 |
 
 ### 内置应用
 
 | 文档 | 说明 |
 |------|------|
-| [RemoteOS.Terminal.md](./docs/applications/RemoteOS.Terminal.md) | 终端应用、SignalR、PTY、持久会话管理 |
-| [RemoteOS.Explorer.md](./docs/applications/RemoteOS.Explorer.md) | 文件管理器、REST API、权限复用 |
-| [RemoteOS.Browser.md](./docs/applications/RemoteOS.Browser.md) | 浏览器、书签/历史/偏好同步 |
-| [RemoteOS.PortForwarding.md](./docs/applications/RemoteOS.PortForwarding.md) | SSH 端口转发、本机 loopback 隧道 |
-| [RemoteOS.TaskManager.md](./docs/applications/RemoteOS.TaskManager.md) | 任务管理器、系统指标、进程管理、SignalR 推送重写 |
-| [RemoteOS.DockerManager.md](./docs/applications/RemoteOS.DockerManager.md) | Docker 管理器、容器/镜像/Stack/网络/卷 |
-| [RemoteOS.Firewall.md](./docs/applications/RemoteOS.Firewall.md) | Linux Server UFW 防火墙应用 |
-| [RemoteOS.ProcessGuardian.md](./docs/applications/RemoteOS.ProcessGuardian.md) | 进程守护、健康检查、原生服务管理、日志 Hub |
-| [RemoteOS.CertificateManager.md](./docs/applications/RemoteOS.CertificateManager.md) | ACME 证书生命周期、Kestrel 部署、续期、HostGlobal 持久化 |
-| [RemoteOS.WebServerManager.Design.md](./docs/applications/RemoteOS.WebServerManager.Design.md) | Web Server 管理、Nginx 集成、站点/快照/审计 |
-| [RemoteOS.GitClient.md](./docs/applications/RemoteOS.GitClient.md) | Git 客户端、仓库/分支/提交/冲突/历史 |
-| [RemoteOS.FRP_Integration.Design.md](./docs/applications/RemoteOS.FRP_Integration.Design.md) | FRP 内网穿透架构、安全与运维边界 |
-| [RemoteOS.ProxyManager.Design.md](./docs/applications/RemoteOS.ProxyManager.Design.md) | 代理管理器、Mihomo 运行时、TUN、订阅与配置档案 |
-| [RemoteOS.RegistryApp.md](./docs/applications/RemoteOS.RegistryApp.md) | 配置注册表浏览、写入与隔离边界 |
-| [RemoteOS.CodeEditor.md](./docs/applications/RemoteOS.CodeEditor.md) | 代码编辑器、语法高亮、文件安全边界 |
-| [RemoteOS.NetworkInspector.md](./docs/applications/RemoteOS.NetworkInspector.md) | 网络检查器、诊断工具、网络分析 |
+| [RelaxKonOS.Terminal.md](./docs/applications/RelaxKonOS.Terminal.md) | 终端应用、SignalR、PTY、持久会话管理 |
+| [RelaxKonOS.Explorer.md](./docs/applications/RelaxKonOS.Explorer.md) | 文件管理器、REST API、权限复用 |
+| [RelaxKonOS.Browser.md](./docs/applications/RelaxKonOS.Browser.md) | 浏览器、书签/历史/偏好同步 |
+| [RelaxKonOS.PortForwarding.md](./docs/applications/RelaxKonOS.PortForwarding.md) | SSH 端口转发、本机 loopback 隧道 |
+| [RelaxKonOS.TaskManager.md](./docs/applications/RelaxKonOS.TaskManager.md) | 任务管理器、系统指标、进程管理、SignalR 推送重写 |
+| [RelaxKonOS.DockerManager.md](./docs/applications/RelaxKonOS.DockerManager.md) | Docker 管理器、容器/镜像/Stack/网络/卷 |
+| [RelaxKonOS.Firewall.md](./docs/applications/RelaxKonOS.Firewall.md) | Linux Server UFW 防火墙应用 |
+| [RelaxKonOS.ProcessGuardian.md](./docs/applications/RelaxKonOS.ProcessGuardian.md) | 进程守护、健康检查、原生服务管理、日志 Hub |
+| [RelaxKonOS.CertificateManager.md](./docs/applications/RelaxKonOS.CertificateManager.md) | ACME 证书生命周期、Kestrel 部署、续期、HostGlobal 持久化 |
+| [RelaxKonOS.WebServerManager.Design.md](./docs/applications/RelaxKonOS.WebServerManager.Design.md) | Web Server 管理、Nginx 集成、站点/快照/审计 |
+| [RelaxKonOS.GitClient.md](./docs/applications/RelaxKonOS.GitClient.md) | Git 客户端、仓库/分支/提交/冲突/历史 |
+| [RelaxKonOS.FRP_Integration.Design.md](./docs/applications/RelaxKonOS.FRP_Integration.Design.md) | FRP 内网穿透架构、安全与运维边界 |
+| [RelaxKonOS.ProxyManager.Design.md](./docs/applications/RelaxKonOS.ProxyManager.Design.md) | 代理管理器、Mihomo 运行时、TUN、订阅与配置档案 |
+| [RelaxKonOS.RegistryApp.md](./docs/applications/RelaxKonOS.RegistryApp.md) | 配置注册表浏览、写入与隔离边界 |
+| [RelaxKonOS.CodeEditor.md](./docs/applications/RelaxKonOS.CodeEditor.md) | 代码编辑器、语法高亮、文件安全边界 |
+| [RelaxKonOS.NetworkInspector.md](./docs/applications/RelaxKonOS.NetworkInspector.md) | 网络检查器、诊断工具、网络分析 |
 
 ### 代理（Proxy）
 
@@ -329,40 +329,40 @@ dotnet run
 
 | 文档 | 说明 |
 |------|------|
-| [RemoteOS.Develop.md](./docs/development/RemoteOS.Develop.md) | 开发者快速上手、代码结构、调试指南 |
-| [RemoteOS.DeveloperMode.md](./docs/development/RemoteOS.DeveloperMode.md) | 开发模式、DevCli、应用包发布 |
-| [RemoteOS.AppSettings.md](./docs/development/RemoteOS.AppSettings.md) | 应用私有配置存储 |
-| [RemoteOS.BuiltInApplication.Conventions.md](./docs/development/RemoteOS.BuiltInApplication.Conventions.md) | 内置应用设计约束、国际化、跨平台 |
-| [RemoteOS.ApplicationCompatibility.md](./docs/development/RemoteOS.ApplicationCompatibility.md) | 应用兼容性、平台适配、降级策略 |
+| [RelaxKonOS.Develop.md](./docs/development/RelaxKonOS.Develop.md) | 开发者快速上手、代码结构、调试指南 |
+| [RelaxKonOS.DeveloperMode.md](./docs/development/RelaxKonOS.DeveloperMode.md) | 开发模式、DevCli、应用包发布 |
+| [RelaxKonOS.AppSettings.md](./docs/development/RelaxKonOS.AppSettings.md) | 应用私有配置存储 |
+| [RelaxKonOS.BuiltInApplication.Conventions.md](./docs/development/RelaxKonOS.BuiltInApplication.Conventions.md) | 内置应用设计约束、国际化、跨平台 |
+| [RelaxKonOS.ApplicationCompatibility.md](./docs/development/RelaxKonOS.ApplicationCompatibility.md) | 应用兼容性、平台适配、降级策略 |
 
 ### 项目文档索引
 
 | 文档 | 说明 |
 |------|------|
-| [RemoteOS.md](./docs/README.md) | 项目结构、代码地图、当前进度 |
+| [RelaxKonOS.md](./docs/README.md) | 项目结构、代码地图、当前进度 |
 
 ---
 
 ## 🔧 开发模式与扩展
 
-RemoteOS 支持开发者构建自定义应用包（`.roapp`），通过 `DevCli` 工具安装到 RemoteOS Shell 中。
+RelaxKonOS 支持开发者构建自定义应用包（`.roapp`），通过 `DevCli` 工具安装到 RelaxKonOS Shell 中。
 
 ### 构建、安装与监视示例应用
 
 ```bash
 # 设置开发令牌（或通过参数传递）
-export REMOTEOS_DEV_TOKEN="<pairing-token>"
+export RELAXKONOS_DEV_TOKEN="<pairing-token>"
 
 # 打包并安装应用；无需为每个应用维护 PowerShell 脚本
-dotnet run --project Tools/RemoteOS.DevCli -- pack ./examples/VideoPlayer --runtime win-x64 --configuration Release --install
+dotnet run --project Tools/RelaxKonOS.DevCli -- pack ./examples/VideoPlayer --runtime win-x64 --configuration Release --install
 
 # 监听源码，自动重新打包并更新
-dotnet run --project Tools/RemoteOS.DevCli -- watch ./examples/VideoPlayer --runtime win-x64 --configuration Debug
+dotnet run --project Tools/RelaxKonOS.DevCli -- watch ./examples/VideoPlayer --runtime win-x64 --configuration Debug
 ```
 
-`pack` 在应用目录的 `artifacts/` 下生成 `.roapp`；纯托管应用可省略 `--runtime`。完整的第三方应用打包命令请参阅 [Developer Mode](./docs/development/RemoteOS.DeveloperMode.md)。
+`pack` 在应用目录的 `artifacts/` 下生成 `.roapp`；纯托管应用可省略 `--runtime`。完整的第三方应用打包命令请参阅 [Developer Mode](./docs/development/RelaxKonOS.DeveloperMode.md)。
 
-Windows PowerShell 中设置令牌时，使用 `$env:REMOTEOS_DEV_TOKEN = "<pairing-token>"`；其余 `dotnet` 命令保持不变。
+Windows PowerShell 中设置令牌时，使用 `$env:RELAXKONOS_DEV_TOKEN = "<pairing-token>"`；其余 `dotnet` 命令保持不变。
 
 ### 应用开发模型
 
@@ -385,13 +385,13 @@ public class MyApp : RemoteApplicationBase
 
 ## 🌍 多语言
 
-RemoteOS 内置三种语言支持：
+RelaxKonOS 内置三种语言支持：
 
 | 语言 | 代码 | 语言包路径 |
 |------|------|-----------|
-| 🇨🇳 简体中文 | `zh-CN` | `Client/RemoteOS.Client/Localization/zh-CN/` |
-| 🇺🇸 English | `en-US` | `Client/RemoteOS.Client/Localization/en-US/` |
-| 🇯🇵 日本語 | `ja-JP` | `Client/RemoteOS.Client/Localization/ja-JP/` |
+| 🇨🇳 简体中文 | `zh-CN` | `Client/RelaxKonOS.Client/Localization/zh-CN/` |
+| 🇺🇸 English | `en-US` | `Client/RelaxKonOS.Client/Localization/en-US/` |
+| 🇯🇵 日本語 | `ja-JP` | `Client/RelaxKonOS.Client/Localization/ja-JP/` |
 
 语言包采用 JSON 格式，键值对结构。切换语言后 UI 实时更新。
 
@@ -408,7 +408,7 @@ RemoteOS 内置三种语言支持：
 
 ## 📄 许可证
 
-本项目采用 **RemoteOS Non-Commercial Source-Available License** 许可。
+本项目采用 **RelaxKonOS Non-Commercial Source-Available License** 许可。
 
 **允许**：免费使用、修改、开发、学习、非商业目的分发。
 **禁止**：商业售卖、转售、SaaS 托管或其他商业用途。
@@ -433,6 +433,6 @@ RemoteOS 内置三种语言支持：
 
 <div align="center">
 
-**RemoteOS** — 让桌面跨越设备，让状态定义体验。
+**RelaxKonOS** — 让桌面跨越设备，让状态定义体验。
 
 </div>

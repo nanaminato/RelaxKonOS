@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.DefaultAppsPageView"
+             x:DataType="vm:DefaultAppsPageViewModel"
+             x:Name="Root">
+    <StackPanel Spacing="16" MaxWidth="720">
+        <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.default_apps}" Classes="title" />
+                    <Button Grid.Column="1" Content="{loc:Loc settings.add}" Command="{Binding AddMappingCommand}" Padding="14,6" />
+                </Grid>
+                <TextBlock Text="{loc:Loc settings.default_apps.description}" Opacity="0.7" TextWrapping="Wrap" />
+                <ItemsControl ItemsSource="{Binding Mappings}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DefaultAppMappingViewModel">
+                            <Grid ColumnDefinitions="*,*,Auto" Margin="0,3">
+                                <AutoCompleteBox Grid.Column="0" Margin="0,0,8,0"
+                                                 ItemsSource="{Binding DataContext.AvailableSchemes, ElementName=Root}"
+                                                 Text="{Binding Scheme, Mode=TwoWay}"
+                                                 IsTextCompletionEnabled="True"
+                                                 FilterMode="ContainsOrdinal" />
+                                <ComboBox Grid.Column="1" Margin="0,0,8,0"
+                                          ItemsSource="{Binding CompatibleApps}"
+                                          SelectedItem="{Binding SelectedApp, Mode=TwoWay}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:AppOption"><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Grid.Column="2" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Content="×" Command="{Binding RemoveCommand}" Width="36" Height="32" Padding="0" ToolTip.Tip="{loc:Loc settings.remove_mapping}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

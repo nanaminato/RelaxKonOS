@@ -1,7 +1,7 @@
 using Avalonia.Controls;
 using LibVLCSharp.Avalonia;
 
-namespace RemoteOS.Examples.VideoPlayer.Views;
+namespace RelaxKonOS.Examples.VideoPlayer.Views;
 
 public partial class VideoPlayerView : UserControl
 {

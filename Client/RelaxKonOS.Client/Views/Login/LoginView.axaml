@@ -1,0 +1,151 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.Login"
+             x:Class="RelaxKonOS.Client.Views.Login.LoginView"
+             x:DataType="vm:LoginViewModel"
+             Background="{DynamicResource SurfaceBrush}"
+             FontFamily="{DynamicResource ContentFont}">
+
+    <UserControl.Styles>
+        <Style Selector="Border.login-divider">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Height" Value="1" />
+        </Style>
+        <Style Selector="TextBlock.login-label">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox.connection-input">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="9,4" />
+            <Setter Property="CornerRadius" Value="2" />
+        </Style>
+        <Style Selector="ComboBox.connection-input">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="9,4" />
+            <Setter Property="CornerRadius" Value="2" />
+        </Style>
+        <Style Selector="Button.connect-button">
+            <Setter Property="MinWidth" Value="92" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="16,5" />
+            <Setter Property="CornerRadius" Value="2" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- mstsc-like product banner -->
+        <Grid Margin="32,28,32,22" ColumnDefinitions="70,*">
+            <Image Width="58" Height="48" VerticalAlignment="Center"
+                   Source="/Assets/RelaxKonOS-client-icon.png"
+                   Stretch="Uniform" />
+            <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                <TextBlock Text="RelaxKonOS" FontSize="24" FontWeight="Light" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{Binding RemoteDesktopConnectionText}" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" />
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="1">
+            <Border Classes="login-divider" />
+            <StackPanel Margin="32,22,32,18" Spacing="0">
+                <TextBlock Text="{Binding ConnectionInstructions}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" />
+                <TextBlock Text="{Binding CredentialsInstructions}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" Margin="0,3,0,12" />
+                <Grid ColumnDefinitions="108,*" Margin="0,0,0,10">
+                    <TextBlock Classes="login-label" Text="{Binding DisplayLanguageText}" />
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}"
+                              MinWidth="440">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
+                <StackPanel Spacing="12">
+                    <Grid ColumnDefinitions="108,*">
+                    <TextBlock Classes="login-label" Text="{Binding ComputerLabel}" />
+                    <ComboBox Classes="connection-input" Grid.Column="1"
+                              ItemsSource="{Binding SavedProfiles}"
+                              SelectedItem="{Binding SelectedProfile}"
+                              IsEditable="True"
+                              Text="{Binding ServerUrl}"
+                              HorizontalAlignment="Stretch"
+                              MinWidth="440"
+                              PlaceholderText="http://host:port">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding ServerUrl}" MinHeight="32"
+                                           VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="108,*">
+                    <TextBlock Classes="login-label" Text="{Binding UsernameLabel}" />
+                    <TextBox Classes="connection-input" Grid.Column="1"
+                             Text="{Binding Username}"
+                             IsReadOnly="{Binding !ShowOptions}"
+                             PlaceholderText="{Binding UsernamePlaceholder}" />
+                    </Grid>
+
+                    <Grid IsVisible="{Binding ShowOptions}" ColumnDefinitions="108,*,Auto">
+                    <TextBlock Classes="login-label" Text="{Binding PasswordLabel}" />
+                    <TextBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding !IsPasswordVisible}"
+                             Text="{Binding Password}"
+                             PasswordChar="●"
+                             PlaceholderText="{Binding PasswordPlaceholder}" />
+                    <TextBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding IsPasswordVisible}"
+                             Text="{Binding Password}"
+                             PlaceholderText="{Binding PasswordPlaceholder}" />
+                    <Button Grid.Column="2" Command="{Binding TogglePasswordVisibilityCommand}"
+                            Content="{Binding PasswordVisibilityText}" Margin="8,0,0,0"
+                            MinWidth="52" Height="32" Padding="8,4" />
+                    </Grid>
+                </StackPanel>
+
+                <Button Command="{Binding ToggleOptionsCommand}"
+                        Content="{Binding OptionsToggleText}" HorizontalAlignment="Left" Margin="108,12,0,0"
+                        Padding="0" Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource AccentBrush}" />
+
+                <CheckBox IsVisible="{Binding ShowOptions}" IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
+                          Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="108,12,0,0" />
+                <CheckBox IsVisible="{Binding ShowOptions}" IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"
+                          Content="{Binding RememberPasswordText}"
+                          Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="108,6,0,0" />
+
+                <TextBlock Text="{Binding IdentityNotice}"
+                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="88,11,0,0" />
+
+                <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1"
+                        CornerRadius="2" Margin="0,24,0,0" Padding="13,11">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding ConnectionSettingsText}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding ConnectionSettingsDescription}"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsConnecting}"
+                             Height="3" Margin="0,18,0,0"
+                             Foreground="{DynamicResource AccentBrush}" />
+            </StackPanel>
+        </StackPanel>
+
+        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0"
+                Padding="32,14">
+            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <!-- Keep connection feedback in the fixed footer so expanding options cannot clip it. -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding StatusMessage}" IsVisible="{Binding !HasError}"
+                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,0,0,8" />
+                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Classes="error" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}"
+                           FontSize="12" Margin="0,0,0,8" TextWrapping="Wrap" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding ClientNameText}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12"
+                           VerticalAlignment="Center" />
+                <Button Grid.Row="1" Grid.Column="1" Classes="primary connect-button" Content="{Binding ConnectText}"
+                        Command="{Binding ConnectCommand}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

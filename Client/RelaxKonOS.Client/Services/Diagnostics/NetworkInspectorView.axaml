@@ -1,0 +1,137 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:diagnostics="clr-namespace:RelaxKonOS.Client.Services.Diagnostics"
+             x:Class="RelaxKonOS.Client.Services.Diagnostics.NetworkInspectorView">
+    <Grid RowDefinitions="Auto,*">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="12,10,12,8">
+            <Button x:Name="RecordButton" MinWidth="84" Click="Record_Click" />
+            <Button x:Name="ClearButton" MinWidth="64" Click="Clear_Click" />
+            <TextBox x:Name="FilterBox" Width="300" TextChanged="Filter_TextChanged" />
+            <TextBlock x:Name="StatusText" Opacity="0.72" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <Grid x:Name="ContentGrid" Grid.Row="1" ColumnDefinitions="*,0,0">
+            <DataGrid x:Name="RequestsGrid"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      CanUserResizeColumns="True"
+                      CanUserSortColumns="True"
+                      GridLinesVisibility="Horizontal"
+                      RowHeight="NaN"
+                      Margin="10 0"
+                      ColumnHeaderHeight="28"
+                      BorderThickness="0"
+                      >
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="{loc:Loc network_inspector.name}" 
+                                            SortMemberPath="Name" 
+                                            Width="*" 
+                                            MinWidth="140">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:DataType="diagnostics:NetworkInspectorRow">
+                                <Button Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        VerticalContentAlignment="Center"
+                                        Click="RequestName_Click">
+                                    <TextBlock Text="{Binding Name}"
+                                               TextWrapping="NoWrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxLines="1"
+                                               VerticalAlignment="Center" />
+                                </Button>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="{loc:Loc network_inspector.status}" SortMemberPath="Status" Width="76" MinWidth="60">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:DataType="diagnostics:NetworkInspectorRow">
+                                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="{loc:Loc network_inspector.type}" SortMemberPath="Type" Width="120" MinWidth="90">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:DataType="diagnostics:NetworkInspectorRow">
+                                <TextBlock Text="{Binding Type}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="{loc:Loc network_inspector.size}" SortMemberPath="Size" Width="76" MinWidth="60">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:DataType="diagnostics:NetworkInspectorRow">
+                                <TextBlock Text="{Binding Size}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <GridSplitter x:Name="DetailsSplitter" Grid.Column="1" Width="5" ResizeDirection="Columns" IsVisible="False" />
+
+            <Grid x:Name="DetailsPanel" Grid.Column="2" RowDefinitions="Auto,*" IsVisible="False">
+                <Grid Margin="0,0,12,4">
+                    <Button Content="&#x00D7;" ToolTip.Tip="{loc:Loc network_inspector.close_details}"
+                            HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="32" Click="CloseDetails_Click" />
+                </Grid>
+
+                <TabControl Grid.Row="1" Margin="0,0,12,12">
+                    <TabItem Header="{loc:Loc network_inspector.headers}">
+                        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel 
+                                Spacing="8"
+                                Margin="8,6,8,8"
+                                HorizontalAlignment="Stretch">
+
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="{loc:Loc network_inspector.general}"
+                                               FontWeight="SemiBold" />
+
+                                    <TextBox x:Name="GeneralText"
+                                             IsReadOnly="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             MinHeight="130" />
+                                </StackPanel>
+
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="{loc:Loc network_inspector.response_headers}"
+                                               FontWeight="SemiBold" />
+
+                                    <TextBox x:Name="ResponseHeadersText"
+                                             IsReadOnly="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             MinHeight="180" />
+                                </StackPanel>
+
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="{loc:Loc network_inspector.request_headers}"
+                                               FontWeight="SemiBold" />
+
+                                    <TextBox x:Name="RequestHeadersText"
+                                             IsReadOnly="True"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             MinHeight="180" />
+                                </StackPanel>
+
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="{loc:Loc network_inspector.payload}">
+                        <TextBox x:Name="PayloadText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                                 VerticalContentAlignment="Stretch" />
+                    </TabItem>
+                    <TabItem Header="{loc:Loc network_inspector.response}">
+                        <TextBox x:Name="ResponseText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                                 VerticalContentAlignment="Stretch" />
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>
