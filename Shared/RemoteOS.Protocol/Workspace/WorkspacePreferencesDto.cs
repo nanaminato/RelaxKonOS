@@ -11,6 +11,10 @@ namespace RemoteOS.Protocol.Workspace;
 /// </summary>
 public sealed record WorkspacePreferencesDto
 {
+    /// <summary>Observed registry revision. Required on writes; never synthesize a fresh baseline for an old draft.</summary>
+    [JsonPropertyName("revision")]
+    public long? Revision { get; set; }
+
     [JsonPropertyName("wallpaperKey")]
     public string WallpaperKey { get; set; }
 

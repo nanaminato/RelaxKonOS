@@ -5,22 +5,35 @@ using Client.Services.Auth;
 using RemoteOS.Protocol.Common;
 using RemoteOS.Protocol.Workspace;
 
-namespace Client.Apps.Settings;
+namespace Client.Services.WorkspaceSettings;
 
-/// <summary><see cref="ISettingsClient"/> 的 typed HttpClient 实现。
+/// <summary><see cref="IWorkspaceSettingsService"/> 的 typed HttpClient 实现。
 /// 不 mutate <c>HttpClient.BaseAddress</c>，每个请求用绝对 URI（避免共享实例并发竞态）。
 /// 失败读 ProblemDetails 抛 <see cref="RemoteOsAuthException"/>（与 BrowserClient/ExplorerClient 同源）。</summary>
-public sealed class SettingsClient : ISettingsClient
+public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
 {
     private readonly HttpClient _http;
+    private readonly IAuthSession _session;
+    private readonly ShellSettings _settings;
 
-    public SettingsClient(HttpClient http) => _http = http;
+    public WorkspaceSettingsService(HttpClient http, IAuthSession session, ShellSettings settings)
+    {
+        _http = http;
+        _session = session;
+        _settings = settings;
+    }
 
     public Task<WorkspacePreferencesDto> GetAsync(string serverUrl, string accessToken, Guid workspaceId, CancellationToken ct = default)
         => SendAsync<WorkspacePreferencesDto>(HttpMethod.Get, serverUrl, accessToken, workspaceId, null, ct);
 
-    public Task<WorkspacePreferencesDto> SaveAsync(string serverUrl, string accessToken, Guid workspaceId, WorkspacePreferencesDto preferences, CancellationToken ct = default)
-        => SendAsync<WorkspacePreferencesDto>(HttpMethod.Put, serverUrl, accessToken, workspaceId, preferences, ct);
+    public async Task<WorkspacePreferencesDto> SaveAsync(string serverUrl, string accessToken, Guid workspaceId, WorkspacePreferencesDto preferences, CancellationToken ct = default)
+    {
+        var saved = await SendAsync<WorkspacePreferencesDto>(HttpMethod.Put, serverUrl, accessToken, workspaceId, preferences, ct);
+        if (_session.State == AuthSessionState.Authenticated && _session.ServerUrl == serverUrl
+            && _session.CurrentWorkspace?.Id == workspaceId && _session.Tokens?.AccessToken == accessToken)
+            _settings.AcknowledgePreferences(preferences.Revision, saved.Revision);
+        return saved;
+    }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string serverUrl, string accessToken, Guid workspaceId, object? body, CancellationToken ct)
     {

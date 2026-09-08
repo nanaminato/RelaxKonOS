@@ -37,7 +37,8 @@ public sealed partial class RegistryValueDialogViewModel : ObservableObject
             using var value = JsonDocument.Parse(ValueText);
             var compact = JsonSerializer.Serialize(value.RootElement);
             using var compactDocument = JsonDocument.Parse(compact);
-            var result = await _client.SaveAsync(new PutRegistryEntryRequest(Scope, Path, Name, ValueType, compactDocument.RootElement.Clone()));
+            var result = await _client.SaveAsync(new PutRegistryEntryRequest(Scope, Path, Name, ValueType, compactDocument.RootElement.Clone(),
+                Entry is { } entry && entry.Name == Name ? entry.Revision : 0));
             _saved(result);
             _close(true);
         }

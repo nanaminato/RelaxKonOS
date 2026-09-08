@@ -7,7 +7,7 @@ namespace Client.Services;
 
 /// <summary>默认程序注册表（单例）。持有当前 Workspace 的 scheme/ext → appId 映射，
 /// 供启动路由查询（如点选 http 链接用映射应用打开）。
-/// 由 <see cref="PreferencesSync"/> 在登录时加载、<c>SettingsViewModel</c> 在编辑保存时同步更新。
+/// 由 <see cref="PreferencesSync"/> 在登录时加载、<c>WorkspacePreferencesEditor</c> 在编辑保存时同步更新。
 /// 映射按 scheme 不区分大小写索引；扩展名以 '.' 开头，scheme 不带（http/mailto）。</summary>
 public sealed class DefaultAppRegistry : IUriSchemeDefaultResolver
 {

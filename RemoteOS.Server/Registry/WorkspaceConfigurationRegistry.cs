@@ -54,7 +54,12 @@ public static class WorkspaceConfigurationRegistry
 
     private static void Ensure<T>(IRegistryRepository registry, Workspace workspace, string path, T value, string updatedBy)
     {
-        if (registry.Find(workspace.UserId, RegistryScope.Workspace, workspace.Id, path, DefaultValueName) is null)
-            Write(registry, workspace, path, value, updatedBy);
+        registry.CompareExchange(new RegistryEntry
+        {
+            UserId = workspace.UserId, Scope = RegistryScope.Workspace, ScopeId = workspace.Id,
+            Path = path, Name = DefaultValueName, ValueType = RegistryValueType.Json,
+            ValueJson = JsonSerializer.Serialize(value, RemoteOsJsonOptions.Default),
+            DesiredUpdatedAt = DateTimeOffset.UtcNow, DesiredUpdatedBy = updatedBy,
+        }, 0);
     }
 }

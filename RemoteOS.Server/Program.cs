@@ -499,6 +499,7 @@ builder.Services.AddSingleton<Server.Files.IFileService, Server.Files.LocalFileS
 builder.Services.AddSingleton<Server.Files.FileOperationService>();
 builder.Services.AddSingleton<Server.Files.MediaLeaseStore>();
 builder.Services.AddSingleton<WorkspaceWallpaperStore>();
+builder.Services.AddScoped<Server.Settings.IWorkspaceSettingsService, Server.Settings.WorkspaceSettingsService>();
 
 // CORS（开发期允许客户端跨域）
 builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>

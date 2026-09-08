@@ -123,6 +123,7 @@ public sealed partial class ShellSettings : ObservableObject
     /// <summary>将服务端偏好应用到本地活状态（登录加载 / 设置编辑后回写）。</summary>
     public void Apply(WorkspacePreferencesDto prefs)
     {
+        PreferencesRevision = prefs.Revision;
         Theme = prefs.Theme;
         ThemePreferences = prefs.ThemePreferences ?? ThemePreferencesDto.Default;
         TimeFormat = prefs.TimeFormat;
@@ -166,7 +167,15 @@ public sealed partial class ShellSettings : ObservableObject
                 ShowServerDesktopFiles = ShowServerDesktopFiles,
                 ShowServerDesktopShortcuts = ShowServerDesktopShortcuts,
                 HasCompletedFirstTimeSetup = HasCompletedFirstTimeSetup,
-            }, ThemePreferences, ShellSelection);
+            }, ThemePreferences, ShellSelection) { Revision = PreferencesRevision };
+
+    public long? PreferencesRevision { get; private set; }
+
+    /// <summary>Acknowledge only the baseline that was actually submitted; an old response cannot replace a newer load.</summary>
+    public void AcknowledgePreferences(long? expectedRevision, long? savedRevision)
+    {
+        if (PreferencesRevision == expectedRevision) PreferencesRevision = savedRevision;
+    }
 
     /// <summary>快捷方式文件扩展名判定（Windows .lnk / Linux .desktop）。</summary>
     public static bool IsShortcutFile(string fileName)

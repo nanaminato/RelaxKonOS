@@ -1,3 +1,4 @@
+using Client.Services.WorkspaceSettings;
 using Client.Services;
 using Client.Services.Auth;
 using Client.Services.Developer;
@@ -12,14 +13,14 @@ using RemoteOS.Runtime;
 
 namespace Client.Apps.Settings.ViewModels;
 
-/// <summary>设置应用根 VM。左侧导航（5 个分类页）+ 右侧内容（当前选中页）。
+/// <summary>设置应用根 VM。左侧导航（八个分类页）+ 右侧内容（当前选中页）。
 /// 透传编辑 <see cref="ShellSettings"/>（即时反映到桌面外壳），并由 <see cref="Save"/> 触发防抖保存到服务端
 /// （<c>/workspaces/{id}/preferences</c>，与 TerminalSettings/BrowserSettings 同模式）。
 /// <see cref="InitializeAsync"/> 在窗口打开后调用一次：从服务端拉取偏好应用到 ShellSettings + 填充默认程序映射。</summary>
 public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private readonly ShellSettings _settings;
-    private readonly ISettingsClient _client;
+    private readonly IWorkspaceSettingsService _client;
     private readonly IAuthSession _session;
     private readonly ApplicationManager? _apps;
     private readonly IRemoteOsClient? _remote;
@@ -28,13 +29,14 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly DeveloperModeService? _developerMode;
     private readonly DeveloperPackageManager? _packages;
     private readonly WallpaperService? _wallpapers;
-    private CancellationTokenSource? _saveCts;
+    private readonly WorkspacePreferencesEditor _editor;
     private bool _initialized;
 
     public SettingsViewModel(
         ShellSettings settings,
-        ISettingsClient client,
+        IWorkspaceSettingsService client,
         IAuthSession session,
+        WorkspacePreferencesEditor editor,
         ApplicationManager? apps,
         IRemoteOsClient? remote,
         ITaskManagerClient? system,
@@ -50,6 +52,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _settings = settings;
         _client = client;
         _session = session;
+        _editor = editor;
+        _editor.PropertyChanged += OnEditorChanged;
         _apps = apps;
         _remote = remote;
         _system = system;
@@ -72,6 +76,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
         };
         _selectedPage = Pages[0];
+        Pages.OfType<DefaultAppsPageViewModel>().Single().SetMappings(registry?.Snapshot);
     }
 
     public ShellSettings Settings => _settings;
@@ -112,7 +117,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         try
         {
+            if (_editor.HasDraft) return;
             var prefs = await _client.GetAsync(url, tokens.AccessToken, ws.Id);
+            if (_editor.HasDraft || _session.ServerUrl != url || _session.CurrentWorkspace?.Id != ws.Id || _session.Tokens?.AccessToken != tokens.AccessToken) return;
             if (_wallpapers is not null)
                 await _wallpapers.ApplyAsync(prefs);
             else
@@ -122,38 +129,33 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch
         {
-            // 服务端无偏好或旧版本：沿用 ShellSettings 默认值，设置仍可用（仅本地，不持久化）。
+            // Keep the last local snapshot. A missing revision cannot be submitted as a successful write.
         }
     }
 
-    /// <summary>页 VM 编辑后调用：防抖 300ms 后保存到服务端。</summary>
-    internal void Save()
+    public string SaveStatus => Client.Localization.LocalizedText.Get("settings.save." + _editor.State.ToString().ToLowerInvariant());
+    public bool CanRetry => _editor.State == PreferencesSaveState.Failed;
+
+    private void OnEditorChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
-        if (!_initialized) return; // 初始化 Apply 期间不保存
-        // 即时同步默认程序映射到全局注册表（启动路由可立即读到最新意图）。
-        _registry?.SetMappings(Pages.OfType<DefaultAppsPageViewModel>().FirstOrDefault()?.ToMappings());
-        _saveCts?.Cancel();
-        _saveCts = new CancellationTokenSource();
-        _ = SaveAsync(_saveCts.Token);
+        OnPropertyChanged(nameof(SaveStatus));
+        OnPropertyChanged(nameof(CanRetry));
     }
 
-    private async Task SaveAsync(CancellationToken ct)
+    [RelayCommand]
+    private void RetrySave() => _editor.Retry();
+
+    /// <summary>Drafts, target binding, and debounce belong to the independent service.</summary>
+    internal void Save()
     {
-        try { await Task.Delay(300, ct); }
-        catch (OperationCanceledException) { return; }
-
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } ws })
-            return;
-
+        if (!_initialized) return;
         var mappings = Pages.OfType<DefaultAppsPageViewModel>().FirstOrDefault()?.ToMappings() ?? Array.Empty<DefaultAppMappingDto>();
-        var prefs = _settings.ToPreferences(mappings);
-        try { await _client.SaveAsync(url, tokens.AccessToken, ws.Id, prefs, ct); }
-        catch { /* 保留本地值，后续改动可重试 */ }
+        _editor.Schedule(_settings.ToPreferences(mappings));
     }
 
     public void Dispose()
     {
-        _saveCts?.Cancel();
+        _editor.PropertyChanged -= OnEditorChanged;
         foreach (var page in Pages.OfType<IDisposable>())
             page.Dispose();
     }

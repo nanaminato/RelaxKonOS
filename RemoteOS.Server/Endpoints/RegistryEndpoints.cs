@@ -6,6 +6,8 @@ using RemoteOS.Protocol.Common;
 using RemoteOS.Protocol.Registry;
 using Server.ConfigurationRegistry;
 using Server.Storage;
+using Server.Settings;
+using RemoteOS.Protocol.Workspace;
 
 namespace Server.Endpoints;
 
@@ -72,12 +74,27 @@ public static partial class RegistryEndpoints
             var now = DateTimeOffset.UtcNow;
             if (!VerifyWorkspaceOwner(request.Scope, userId, scopeId, workspaces, out var ownershipError))
                 return Results.BadRequest(new { message = ownershipError });
-            var saved = registry.Upsert(new Server.Domain.RegistryEntry
+            if (request.ExpectedRevision is null) return Results.Problem(statusCode: 428, title: "settings.revision_required");
+            if (request.ExpectedRevision < 0) return Results.BadRequest();
+            var valueJson = request.Value.GetRawText();
+            if (request.Scope == RegistryScope.Workspace && request.Path == WorkspaceConfigurationRegistry.DesktopPath
+                && request.Name == WorkspaceConfigurationRegistry.DefaultValueName)
+            {
+                if (request.ValueType != RegistryValueType.Json) return Results.BadRequest();
+                WorkspacePreferencesDto? preferences;
+                try { preferences = request.Value.Deserialize<WorkspacePreferencesDto>(RemoteOsJsonOptions.Default); }
+                catch (JsonException) { return Results.BadRequest(); }
+                if (preferences is null || !WorkspacePreferencesValidator.TryNormalize(preferences, out var normalized))
+                    return Results.BadRequest(new { message = "Invalid workspace preferences." });
+                valueJson = JsonSerializer.Serialize(normalized with { Revision = null }, RemoteOsJsonOptions.Default);
+            }
+            var saved = registry.CompareExchange(new Server.Domain.RegistryEntry
             {
                 UserId = userId, Scope = request.Scope, ScopeId = scopeId, Path = request.Path.Trim(), Name = request.Name.Trim(),
-                ValueType = request.ValueType, ValueJson = request.Value.GetRawText(), State = RegistryEntryState.Synced,
+                ValueType = request.ValueType, ValueJson = valueJson, State = RegistryEntryState.Synced,
                 DesiredUpdatedAt = now, DesiredUpdatedBy = userId.ToString("D"), AppliedRevision = 1, AppliedAt = now,
-            });
+            }, request.ExpectedRevision.Value);
+            if (saved is null) return Results.Problem(statusCode: 409, title: "settings.revision_conflict");
             return Results.Ok(ToDto(saved));
         }).RequireAuthorization().WithTags("Registry");
 
@@ -86,6 +103,9 @@ public static partial class RegistryEndpoints
             if (!TryUserId(principal, out var userId)) return Results.Unauthorized();
             if (!TryScopeId(principal, userId, scope, out var scopeId) || !PathPattern().IsMatch(path) || !(name == "(Default)" || NamePattern().IsMatch(name)))
                 return Results.BadRequest(new { message = "Invalid registry value." });
+            if (scope == RegistryScope.Workspace && path == WorkspaceConfigurationRegistry.DesktopPath
+                && name == WorkspaceConfigurationRegistry.DefaultValueName)
+                return Results.Problem(statusCode: 409, title: "settings.managed_value", detail: "Reset preferences through a versioned settings update.");
             return registry.Delete(userId, scope, scopeId, path, name) ? Results.NoContent() : Results.NotFound();
         }).RequireAuthorization().WithTags("Registry");
 
@@ -94,6 +114,9 @@ public static partial class RegistryEndpoints
             if (!TryUserId(principal, out var userId)) return Results.Unauthorized();
             if (scope != RegistryScope.Workspace || !TryScopeId(principal, userId, scope, out var scopeId) || !IsWorkspaceChildPath(path))
                 return Results.BadRequest(new { message = "Only keys below Workspace can be deleted." });
+            if (path == WorkspaceConfigurationRegistry.DesktopPath
+                || WorkspaceConfigurationRegistry.DesktopPath.StartsWith(path + "\\", StringComparison.Ordinal))
+                return Results.Problem(statusCode: 409, title: "settings.managed_value", detail: "This key contains managed workspace preferences.");
             return registry.DeleteKeyTree(userId, scope, scopeId, path) ? Results.NoContent() : Results.NotFound();
         }).RequireAuthorization().WithTags("Registry");
         return app;

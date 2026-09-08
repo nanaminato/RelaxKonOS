@@ -43,6 +43,40 @@ public sealed class SqliteRegistryRepository(RemoteOsDbContext db) : IRegistryRe
         db.SaveChanges();
         return true;
     }
+
+    public RegistryEntry? CompareExchange(RegistryEntry entry, long expectedRevision)
+    {
+        if (expectedRevision == 0)
+        {
+            if (db.RegistryEntries.AsNoTracking().Any(x => x.UserId == entry.UserId && x.Scope == entry.Scope
+                && x.ScopeId == entry.ScopeId && x.Path == entry.Path && x.Name == entry.Name)) return null;
+            db.RegistryEntries.Add(entry);
+            try { db.SaveChanges(); return entry; }
+            catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 })
+            {
+                db.Entry(entry).State = EntityState.Detached;
+                return null;
+            }
+        }
+        var count = db.RegistryEntries.Where(x => x.UserId == entry.UserId && x.Scope == entry.Scope
+            && x.ScopeId == entry.ScopeId && x.Path == entry.Path && x.Name == entry.Name
+            && x.Revision == expectedRevision).ExecuteUpdate(setters => setters
+                .SetProperty(x => x.ValueType, entry.ValueType)
+                .SetProperty(x => x.ValueJson, entry.ValueJson)
+                .SetProperty(x => x.Revision, expectedRevision + 1)
+                .SetProperty(x => x.State, entry.State)
+                .SetProperty(x => x.DesiredUpdatedAt, entry.DesiredUpdatedAt)
+                .SetProperty(x => x.DesiredUpdatedBy, entry.DesiredUpdatedBy)
+                .SetProperty(x => x.AppliedRevision, entry.AppliedRevision)
+                .SetProperty(x => x.AppliedAt, entry.AppliedAt)
+                .SetProperty(x => x.LastErrorCode, entry.LastErrorCode)
+                .SetProperty(x => x.LastErrorMessage, entry.LastErrorMessage));
+        if (count == 0) return null;
+        var tracked = db.ChangeTracker.Entries<RegistryEntry>().FirstOrDefault(x => x.Entity.UserId == entry.UserId
+            && x.Entity.Scope == entry.Scope && x.Entity.ScopeId == entry.ScopeId && x.Entity.Path == entry.Path && x.Entity.Name == entry.Name);
+        if (tracked is not null) tracked.State = EntityState.Detached;
+        return Find(entry.UserId, entry.Scope, entry.ScopeId, entry.Path, entry.Name);
+    }
     public void SeedSynced(RegistryEntry entry)
     {
         if (Find(entry.UserId, entry.Scope, entry.ScopeId, entry.Path, entry.Name) is not null) return;

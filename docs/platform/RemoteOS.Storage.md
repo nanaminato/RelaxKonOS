@@ -625,3 +625,8 @@ webserver_config_snapshots       webserver_operations
 PEM、私钥、ACME account key 和 challenge 文件仍位于受平台 ACL 保护的文件系统；数据库只保存规范化元数据、受保护文件引用、版本、状态、稳定问题码、审计引用和保留期信息，绝不保存私钥、account key、DNS token 或导入密码。
 
 这组表第一次落地时必须从 `EnsureCreated()` 迁移到带 `__EFMigrationsHistory` 的 EF Core Migrations，或提供经过验证的一次性基线迁移。不得在启动时以临时 `CREATE TABLE` / `ALTER TABLE` 拼接生产 schema。每个可变实体使用 revision 并发令牌；Operation、重试、审计和配置快照须保存到服务重启后仍可恢复的存储中。具体字段和保留策略分别以 [`RemoteOS.CertificateManager.md`](../applications/RemoteOS.CertificateManager.md) §35.5 与 [`RemoteOS.WebServerManager.Design.md`](../applications/RemoteOS.WebServerManager.Design.md) §30.5 为准。
+
+
+### SettingsSystem 升级（2026-09-07，G1 实施中）
+
+Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。完整执行与待验证项见 [SettingsSystem.Goal](../desktop/RemoteOS.SettingsSystem.Goal.md)。

@@ -83,6 +83,16 @@ public sealed class CachedSqliteRegistryRepository(IDbContextFactory<RemoteOsDbC
         }
     }
 
+    public RegistryEntry? CompareExchange(RegistryEntry entry, long expectedRevision)
+    {
+        lock (_gate)
+        {
+            var revision = _entries.TryGetValue(EntryKey.From(entry), out var current) ? current.Revision : 0;
+            if (revision != expectedRevision) return null;
+            return Upsert(entry);
+        }
+    }
+
     public bool Delete(Guid userId, RegistryScope scope, Guid scopeId, string path, string name)
     {
         var key = new EntryKey(userId, scope, scopeId, path, name);

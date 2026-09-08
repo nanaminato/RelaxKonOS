@@ -171,6 +171,13 @@
         "settings.theme_import.inaccessible": "このテーマはコントラストの要件を満たしていません。",
         "settings.theme_import.failed": "テーマをインポートできません: {0}",
         "settings.theme_export.failed": "テーマをエクスポートできません: {0}",
-        "settings.theme_delete.confirmation": "カスタム テーマ「{0}」を削除しますか？この操作は元に戻せません。"
+        "settings.theme_delete.confirmation": "カスタム テーマ「{0}」を削除しますか？この操作は元に戻せません。",
+        "settings.save.idle": "",
+        "settings.save.saving": "保存中…",
+        "settings.save.accepted": "サーバーが受信しました。永続化待ちです",
+        "settings.save.failed": "保存に失敗しました。下書きは保持されています。",
+        "settings.save.conflict": "別の場所で変更されました。再読み込みして統合してください。",
+        "settings.save.offline": "オフラインです。変更は自動再送されません。",
+        "settings.save.retry": "再試行"
     }
 }

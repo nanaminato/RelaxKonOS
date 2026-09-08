@@ -459,6 +459,7 @@ RemoteOS.Server     = Cloud Backend
 
 | 文档 | 用途 |
 |------|------|
+| [`SettingsSystem.Goal`](./desktop/RemoteOS.SettingsSystem.Goal.md) | 设置平台与 Windows 风格 UI 升级、远程宿主配置、特权助手与分阶段验收 |
 | [`AppSettings`](./development/RemoteOS.AppSettings.md) | 应用私有配置存储 |
 | [`ApplicationCompatibility`](./development/RemoteOS.ApplicationCompatibility.md) | 应用兼容性、平台适配与降级策略 |
 | [`BuiltInApplication.Conventions`](./development/RemoteOS.BuiltInApplication.Conventions.md) | 内置应用设计、国际化与跨平台约束 |

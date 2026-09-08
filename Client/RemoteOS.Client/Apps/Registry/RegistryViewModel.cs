@@ -77,7 +77,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
         try
         {
             using var document = JsonDocument.Parse(ValueText);
-            var saved = await client.SaveAsync(new PutRegistryEntryRequest(Scope, Path, Name, ValueType, document.RootElement.Clone()));
+            var baseline = SelectedEntry?.Source;
+            var saved = await client.SaveAsync(new PutRegistryEntryRequest(Scope, Path, Name, ValueType, document.RootElement.Clone(),
+                baseline is not null && baseline.Scope == Scope && baseline.Path == Path && baseline.Name == Name ? baseline.Revision : 0));
             ApplySaved(saved);
             StatusText = LocalizedText.Get("registry.status.saved", "Value saved.");
         }

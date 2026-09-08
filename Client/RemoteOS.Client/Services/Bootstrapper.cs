@@ -1,3 +1,4 @@
+using Client.Services.WorkspaceSettings;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Client.Apps;
@@ -152,7 +153,7 @@ public static class Bootstrapper
 
         // Settings（设置中心）：typed HttpClient（JWT from IAuthSession，与 Browser/Explorer 同模式）。
         // 偏好持久化到服务端 Workspace（/workspaces/{id}/preferences），多设备共享。
-        services.AddHttpClient<ISettingsClient, SettingsClient>()
+        services.AddHttpClient<IWorkspaceSettingsService, WorkspaceSettingsService>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRemoteOsAuthentication();
@@ -209,6 +210,7 @@ public static class Bootstrapper
         services.AddSingleton<Client.Apps.PortForwarding.IPortForwardingService, Client.Apps.PortForwarding.PortForwardingService>();
         // PreferencesSync 监听登录态，登录后把服务端偏好应用到 ShellSettings + DefaultAppRegistry。
         services.AddSingleton<PreferencesSync>();
+        services.AddSingleton<WorkspacePreferencesEditor>();
 
         // Built-in applications.
         services.AddSingleton<WelcomeApp>();
@@ -251,7 +253,7 @@ public static class Bootstrapper
                 sp.GetRequiredService<Client.Apps.Explorer.IExplorerClient>(),
                 sp.GetRequiredService<Client.Apps.Explorer.IRemoteFileClipboard>(),
                 sp.GetRequiredService<DefaultAppRegistry>(),
-                sp.GetRequiredService<ISettingsClient>(),
+                sp.GetRequiredService<IWorkspaceSettingsService>(),
                 sp.GetRequiredService<IAppActivationDiagnostics>(),
                 sp.GetRequiredService<ITextFileSniffer>(),
                 sp.GetRequiredService<PreferencesSync>(),

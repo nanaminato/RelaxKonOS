@@ -1,5 +1,7 @@
 # RemoteOS 跨平台特权操作与 Helper（Goal 执行版）
 
+> 2026-09-07 设置能力补充：[`SettingsSystem.Goal`](../desktop/RemoteOS.SettingsSystem.Goal.md) 允许新增结构化宿主环境变量、时区、主机名与 DNS 操作。环境配置数据与特权进程启动环境必须隔离；禁止通用执行的原则保持不变。本文部分“当前状态”为早期基线，实施前应核对已存在的 Windows 管道与封闭操作实现。
+
 > 状态：待实施
 >
 > 建立日期：2026-09-04
@@ -22,7 +24,7 @@
 
 这条路径可以扩展为统一的 Linux Helper transport，但存在两个必须修复的边界：
 
-- Helper 当前包含通用 `run` 操作。它不能成为产品级 API，也不能接收任意 executable、参数、shell 文本或环境变量；必须删除，或在 production build 中拒绝。
+- 早期 Helper 的通用 `run` 操作不能成为产品级 API；当前实现应维持封闭操作集，不接受任意 executable、参数、shell 文本或特权执行环境注入。专用环境配置操作按 SettingsSystem Goal 的目标绑定与校验规则扩展。
 - Nginx、受限 native service、Proxy 生命周期、Git/Docker 安装等仍会由 Server 直接启动 `systemctl`、`apt-get` 或其他宿主进程，不能满足本 Goal。
 
 ### 1.2 Windows Server
@@ -64,7 +66,7 @@ Windows Helper 服务必须同时满足：
 
 ### 3.1 不提供通用命令执行
 
-公开或内部协议不得包含 `executable`、`arguments`、shell 文本、PowerShell 脚本、命令行、工作目录、环境变量或任意路径白名单。删除现有 `PrivilegedOperationRequest.run` 生产能力。
+特权操作的公开或内部协议不得提供 `executable`、`arguments`、shell 文本、PowerShell 脚本、命令行、工作目录、特权执行环境覆盖或任意路径白名单等通用执行输入。不得恢复 `PrivilegedOperationRequest.run` 生产能力。允许按 [`SettingsSystem.Goal`](../desktop/RemoteOS.SettingsSystem.Goal.md) 提交强类型的环境变量配置变更；这些值仅用于目标用户/机器配置，绝不注入 Helper 或特权子进程的启动环境。
 
 每项能力必须是封闭的结构化请求，例如：
 
