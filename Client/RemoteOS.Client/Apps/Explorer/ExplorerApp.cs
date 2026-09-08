@@ -1,4 +1,8 @@
 using Client.Services.WorkspaceSettings;
+using System.Text.Json;
+using Client.Apps.Explorer.Models;
+using Client.Services.AppSettings;
+using RemoteOS.Protocol.AppSettings;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -86,24 +90,58 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         var clipboard = context.Services.GetService(typeof(IRemoteFileClipboard)) as IRemoteFileClipboard;
         var viewModel = new ExplorerViewModel(client, fileClipboard: clipboard);
         WireDialogs(context, viewModel, client);
+        var operations = context.Services.GetService(typeof(ExplorerOperationCenter)) as ExplorerOperationCenter;
+        if (operations is not null)
+        {
+            ConfigureOperationsWindow(context, operations);
+            viewModel.QueueOperationAsync = operations.SubmitAsync;
+            viewModel.QueueUpload = operations.QueueUpload;
+            viewModel.ShowFileOperations = operations.Show;
+            operations.ElevateAsync = (issue, kind) => RequestOperationElevationAsync(context, client,
+                new[] { ExplorerPath.Parent(issue.SourcePath), issue.DestinationPath is null ? null : ExplorerPath.Parent(issue.DestinationPath) }
+                    .OfType<string>().Distinct().ToArray(),
+                kind == FileOperationKind.Copy ? FileElevationCapability.Copy : kind == FileOperationKind.Move ? FileElevationCapability.Move : FileElevationCapability.Delete);
+            _ = operations.RestoreAsync();
+        }
         var view = new ExplorerMainView { DataContext = viewModel };
         var window = context.ShowWindow(LocalizedText.Get("application.remoteos.explorer.display_name"), view,
             bounds: new Rect(80, 60, 960, 640),
             iconGlyph: Manifest.IconGlyph);
         _windows[window] = viewModel;
-        viewModel.CloseAction = () => Dispatcher.UIThread.Post(() =>
+        void RefreshAfterOperation(FileOperationDto result)
         {
+            viewModel.RefreshAfterOperation(result);
+        }
+        if (operations is not null) operations.Completed += RefreshAfterOperation;
+        EventHandler<ManagedWindow>? closed = null;
+        closed = (_, item) =>
+        {
+            if (!ReferenceEquals(item, window)) return;
+            context.WindowManager.WindowClosed -= closed;
+            if (operations is not null) operations.Completed -= RefreshAfterOperation;
+            viewModel.Dispose();
             _windows.Remove(window);
-            context.WindowManager.Close(window);
-        });
+        };
+        context.WindowManager.WindowClosed += closed;
+        viewModel.CloseAction = () => Dispatcher.UIThread.Post(() => context.WindowManager.Close(window));
         window.KeyDown += (_, e) =>
         {
-            if (e.Key == RemoteKey.Letter('L') && e.Modifiers == RemoteKeyModifiers.Control)
+            if ((e.Key == RemoteKey.Letter('L') && e.Modifiers == RemoteKeyModifiers.Control)
+                || (e.Key == RemoteKey.Letter('D') && e.Modifiers == RemoteKeyModifiers.Alt))
             {
                 view.FocusAddressBox();
                 e.Handled = true;
                 return;
             }
+
+            if (e.Key == RemoteKey.Letter('F') && e.Modifiers == RemoteKeyModifiers.Control)
+            {
+                view.FocusSearchBox();
+                e.Handled = true;
+                return;
+            }
+            // Text editing owns Delete / clipboard shortcuts; never mutate remote files here.
+            if (view.IsTextEditing || viewModel.IsBusy) return;
 
             _ = WindowShortcut.TryExecute(e, RemoteKey.Left, RemoteKeyModifiers.Alt, viewModel.GoBackCommand)
                 || WindowShortcut.TryExecute(e, RemoteKey.Right, RemoteKeyModifiers.Alt, viewModel.GoForwardCommand)
@@ -118,13 +156,104 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         };
 
         // 窗口打开后异步加载根；内部路由指定位置时直接导航到该目录。
-        _ = OpenInitialLocationAsync(viewModel, initialPath);
+        var settings = context.Services.GetService(typeof(IAppSettingsClient)) as IAppSettingsClient;
+        _ = OpenInitialLocationAsync(viewModel, initialPath, settings);
     }
 
-    private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath)
+    private static async Task<bool> RequestOperationElevationAsync(AppContext context, IExplorerClient client,
+        IReadOnlyList<string> paths, FileElevationCapability capability)
     {
+        try
+        {
+            await client.ElevateFileOperationAsync(paths, capability);
+            return true;
+        }
+        catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
+        {
+            var password = await context.WindowManager.ShowSystemDialogAsync<string?>(LocalizedText.Get("explorer.operations.elevation_title"), dialog =>
+            {
+                var input = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("explorer.operations.elevation_password") };
+                var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
+                cancel.Click += (_, _) => dialog.Cancel();
+                var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
+                confirm.Click += (_, _) => dialog.Close(input.Text);
+                return new StackPanel
+                {
+                    Margin = new Thickness(20), Spacing = 12,
+                    Children =
+                    {
+                        new TextBlock { Text = LocalizedText.Get("explorer.operations.elevation_prompt"), TextWrapping = TextWrapping.Wrap },
+                        input,
+                        new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
+                    },
+                };
+            }, new Size(420, 190));
+            if (password is null) return false;
+            await client.ElevateFileOperationAsync(paths, capability, password);
+            return true;
+        }
+    }
+
+    private static void ConfigureOperationsWindow(AppContext context, ExplorerOperationCenter center)
+    {
+        if (center.ShowRequested is not null) return;
+        ManagedWindow? progressWindow = null;
+        center.CloseRequested = () =>
+        {
+            if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
+                context.WindowManager.Close(progressWindow);
+            progressWindow = null;
+        };
+        center.ShowRequested = () =>
+        {
+            if (progressWindow is not null && context.WindowManager.Windows.Contains(progressWindow))
+            {
+                context.WindowManager.Restore(progressWindow);
+                context.WindowManager.Focus(progressWindow);
+                return;
+            }
+            progressWindow = context.ShowWindow(LocalizedText.Get("explorer.operations.title"),
+                new ExplorerOperationsView { DataContext = center }, bounds: new Rect(180, 90, 560, 400), iconGlyph: "📁");
+        };
+    }
+
+    private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath, IAppSettingsClient? settings)
+    {
+        const string appId = "remoteos.explorer";
+        const string key = "view";
+        long? revision = null;
+        string? settingsError = null;
+        if (settings is not null)
+        {
+            // Defaults are opt-in: changing a window view does not silently overwrite other windows.
+            viewModel.SaveViewPreferencesAsync = async preferences =>
+            {
+                if (revision is null)
+                {
+                    var latest = await settings.GetAsync(appId, AppSettingsScope.Workspace, key);
+                    if (latest is { SchemaVersion: not 1 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
+                    revision = latest?.Revision ?? 0;
+                }
+                var saved = await settings.SaveAsync(appId, AppSettingsScope.Workspace, key,
+                    JsonSerializer.SerializeToElement(preferences), schemaVersion: 1, expectedRevision: revision);
+                revision = saved.Revision;
+            };
+            viewModel.IsBusy = true;
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var stored = await settings.GetAsync(appId, AppSettingsScope.Workspace, key, timeout.Token);
+                if (stored is { SchemaVersion: not 1 }) throw new InvalidOperationException(LocalizedText.Get("explorer.view_version_unsupported"));
+                revision = stored?.Revision ?? 0;
+                if (stored is not null && stored.Value.Deserialize<ExplorerViewPreferences>() is { } preferences)
+                    viewModel.ApplyViewPreferences(preferences);
+            }
+            catch (Exception ex) { settingsError = LocalizedText.Format("explorer.view_load_failed", ex.Message); }
+            finally { viewModel.IsBusy = false; }
+        }
         await viewModel.LoadRootAsync();
-        if (!string.IsNullOrWhiteSpace(initialPath)) await viewModel.NavigateToAsync(initialPath);
+        await viewModel.NavigateToAsync(string.IsNullOrWhiteSpace(initialPath) ? null : initialPath);
+        if (settingsError is not null) viewModel.StatusText = settingsError;
     }
 
     private static string? QueryValue(Uri uri, string key) => uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
@@ -291,46 +420,8 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             }
         };
 
-        vm.RequestFileOperationElevationAsync = async (paths, capability) =>
-        {
-            try
-            {
-                await client.ElevateFileOperationAsync(paths, capability);
-                return true;
-            }
-            catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
-            {
-                var password = await context.WindowManager.ShowSystemDialogAsync<string?>("管理员认证", dialog =>
-                {
-                    var input = new TextBox { PasswordChar = '•', PlaceholderText = "请输入当前管理员密码" };
-                    var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
-                    cancel.Click += (_, _) => dialog.Cancel();
-                    var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
-                    confirm.Click += (_, _) => dialog.Close(input.Text);
-                    return new StackPanel
-                    {
-                        Margin = new Thickness(20), Spacing = 12,
-                        Children =
-                        {
-                            new TextBlock { Text = "此操作需要管理员权限才能继续。授权将在当前会话中保留 5 分钟。", TextWrapping = TextWrapping.Wrap },
-                            input,
-                            new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
-                        },
-                    };
-                }, new Size(420, 190));
-                if (password is null) return false;
-                try
-                {
-                    await client.ElevateFileOperationAsync(paths, capability, password);
-                    return true;
-                }
-                catch (RemoteOsAuthException retry) when (retry.Type.EndsWith("/elevation-password-invalid", StringComparison.Ordinal))
-                {
-                    await (vm.ShowMessageAsync?.Invoke("管理员认证", "密码不正确，未执行该操作。") ?? Task.CompletedTask);
-                    return false;
-                }
-            }
-        };
+        vm.RequestFileOperationElevationAsync = (paths, capability) =>
+            RequestOperationElevationAsync(context, client, paths, capability);
 
         var applications = context.Services.GetService(typeof(ApplicationManager)) as ApplicationManager;
         var defaults = context.Services.GetService(typeof(DefaultAppRegistry)) as DefaultAppRegistry;
@@ -344,7 +435,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         };
         vm.OpenFileAsync = async entry =>
         {
-            var extension = Path.GetExtension(entry.Name);
+            var extension = ExplorerPath.Extension(entry.Name);
             var defaultApplicationId = string.IsNullOrEmpty(extension) ? null : defaults?.Resolve(extension);
             var applicationId = defaultApplicationId is not null && applications?.SupportsFile(new AppId(defaultApplicationId), entry.Path) == true
                 ? defaultApplicationId
@@ -392,7 +483,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         vm.RequestOpenWithAsync = async entry =>
         {
             var owner = FindOwnerWindow(context, vm);
-            var extension = Path.GetExtension(entry.Name);
+            var extension = ExplorerPath.Extension(entry.Name);
             var openers = applications?.FileOpenersForPath(entry.Path) ?? Array.Empty<ApplicationInfo>();
             // 候选为空 + 文件条目 + 有文本编辑器 → 先 MIME 快速判断；不确定再退化嗅探字节
             if (openers.Count == 0 && entry.Type == FileSystemEntryType.File && applications?.TextFileOpeners.Count > 0)

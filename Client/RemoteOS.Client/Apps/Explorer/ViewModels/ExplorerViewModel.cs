@@ -25,7 +25,7 @@ namespace Client.Apps.Explorer.ViewModels;
 ///
 /// 导航树结构（参考 Windows File Explorer Navigation Pane）：主目录组节点（家目录 + 静态快捷入口：桌面/文档/下载/图片/音乐/视频）
 /// + 此电脑节点（盘符懒加载）+ 网络占位节点。路径变化时由 <see cref="SyncTreeSelectionAsync"/> 反向同步树选中（防循环）。</summary>
-public sealed partial class ExplorerViewModel : ObservableObject
+public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 {
     private readonly IExplorerClient _client;
     private readonly IRemoteFileClipboard _fileClipboard;
@@ -35,6 +35,8 @@ public sealed partial class ExplorerViewModel : ObservableObject
     private bool _pickerInitialized;
     private readonly List<string?> _history = new();
     private int _historyIndex = -1;
+    private bool _isNavigating;
+    private readonly List<FileSystemEntryDto> _directoryEntries = [];
 
     /// <summary>路径变化时同步树选中的抑制标志：避免 SyncTreeSelectionAsync 设 SelectedNode 触发 OnSelectedNodeChanged
     /// 再调 NavigateToAsync 形成循环（重复 API 调用 + 重复历史入栈）。</summary>
@@ -52,6 +54,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
     {
         _client = client;
         _fileClipboard = fileClipboard ?? new RemoteFileClipboard();
+        _fileClipboard.Changed += FileClipboard_Changed;
         _pickerOptions = pickerOptions;
         _selectPaths = selectPaths;
         Nodes = new ObservableCollection<TreeNodeModel>();
@@ -62,6 +65,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
             : [ExplorerFileFilter.AllFiles]);
         SelectedFilter = Filters[0];
         PickerEntryName = pickerOptions?.DefaultFileName ?? string.Empty;
+        UpdateCutEntryPaths();
         _pickerInitialized = true;
     }
 
@@ -73,7 +77,140 @@ public sealed partial class ExplorerViewModel : ObservableObject
     /// <summary>Entries currently selected in the picker; supports multi-file selection.</summary>
     public ObservableCollection<FileSystemEntryDto> SelectedEntries { get; }
     public ObservableCollection<ExplorerFileFilter> Filters { get; }
+    public IReadOnlyList<string> CutEntryPaths { get; private set; } = Array.Empty<string>();
+    [ObservableProperty] private FileSystemEntryDto? _editingEntry;
+    [ObservableProperty] private string _renameDraft = string.Empty;
+    public Action<FileSystemEntryDto>? RequestRenameFocus { get; set; }
+    private bool _isRenameCommitInProgress;
     [ObservableProperty] private string? _addressbarPath;
+    [ObservableProperty] private string? _addressInput;
+    [ObservableProperty] private bool _isEditingAddress;
+    [ObservableProperty] private string _searchText = string.Empty;
+    [ObservableProperty] private bool _showHiddenFiles;
+    [ObservableProperty] private bool _isCompactView;
+    [ObservableProperty] private ExplorerSortField _sortField;
+    [ObservableProperty] private bool _sortDescending;
+    public int SortIndex
+    {
+        get => (int)SortField;
+        set { if (Enum.IsDefined(typeof(ExplorerSortField), value)) SortField = (ExplorerSortField)value; }
+    }
+    private Func<ExplorerViewPreferences, Task>? _saveViewPreferencesAsync;
+    public Func<ExplorerViewPreferences, Task>? SaveViewPreferencesAsync
+    {
+        get => _saveViewPreferencesAsync;
+        set { _saveViewPreferencesAsync = value; SaveDefaultViewCommand.NotifyCanExecuteChanged(); }
+    }
+    public bool CanSaveDefaultView => SaveViewPreferencesAsync is not null && !IsBusy;
+    public ExplorerViewPreferences ViewPreferences => new(SortField, SortDescending, ShowHiddenFiles, IsCompactView);
+    public void ApplyViewPreferences(ExplorerViewPreferences preferences)
+    {
+        SortField = Enum.IsDefined(preferences.SortField) ? preferences.SortField : ExplorerSortField.Name;
+        SortDescending = preferences.SortDescending;
+        ShowHiddenFiles = preferences.ShowHiddenFiles;
+        IsCompactView = preferences.IsCompactView;
+    }
+    public string NameColumnHeader => SortHeader("common.name", ExplorerSortField.Name);
+    public string ModifiedColumnHeader => SortHeader("explorer.modified", ExplorerSortField.Modified);
+    public string TypeColumnHeader => SortHeader("common.type", ExplorerSortField.Type);
+    public string SizeColumnHeader => SortHeader("explorer.size", ExplorerSortField.Size);
+    private string SortHeader(string key, ExplorerSortField field)
+        => LocalizedText.Get(key) + (SortField == field ? (SortDescending ? " ▼" : " ▲") : "");
+
+    partial void OnSortFieldChanged(ExplorerSortField value)
+    {
+        OnPropertyChanged(nameof(SortIndex));
+        SortEntries();
+    }
+    partial void OnSortDescendingChanged(bool value) => SortEntries();
+    public void SortBy(ExplorerSortField field)
+    {
+        if (SortField == field) SortDescending = !SortDescending;
+        else { SortDescending = false; SortField = field; }
+    }
+    private void SortEntries()
+    {
+        var sorted = Entries.OrderBy(e => e, new ExplorerEntryComparer(SortField, SortDescending)).ToArray();
+        // Collection moves preserve DataGrid selection; filtering deliberately clears it.
+        for (var i = 0; i < sorted.Length; i++)
+        {
+            var index = Entries.IndexOf(sorted[i]);
+            if (index != i) Entries.Move(index, i);
+        }
+        OnPropertyChanged(nameof(NameColumnHeader));
+        OnPropertyChanged(nameof(ModifiedColumnHeader));
+        OnPropertyChanged(nameof(TypeColumnHeader));
+        OnPropertyChanged(nameof(SizeColumnHeader));
+    }
+    [RelayCommand(CanExecute = nameof(CanSaveDefaultView))]
+    private async Task SaveDefaultViewAsync()
+    {
+        if (SaveViewPreferencesAsync is null) return;
+        try
+        {
+            await SaveViewPreferencesAsync(ViewPreferences);
+            StatusText = LocalizedText.Get("explorer.view_saved");
+        }
+        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.view_save_failed", ex.Message); }
+    }
+    public ObservableCollection<ExplorerBreadcrumb> Breadcrumbs { get; } = [];
+    public double EntryRowHeight => IsCompactView ? 28 : 36;
+    public bool IsEmpty => !IsBusy && Entries.Count == 0;
+    public string SelectionSummary => LocalizedText.Format("explorer.status.selection", Entries.Count, SelectedEntries.Count);
+
+    partial void OnSearchTextChanged(string value) => ApplyEntryFilter();
+    partial void OnShowHiddenFilesChanged(bool value) => ApplyEntryFilter();
+    partial void OnIsCompactViewChanged(bool value) => OnPropertyChanged(nameof(EntryRowHeight));
+
+    partial void OnEditingEntryChanged(FileSystemEntryDto? value)
+    {
+        RenameCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsRenaming));
+    }
+
+    public bool IsRenaming => EditingEntry is not null;
+
+    private void FileClipboard_Changed(object? sender, EventArgs e)
+    {
+        UpdateCutEntryPaths();
+        PasteCommand.NotifyCanExecuteChanged();
+    }
+
+    private void UpdateCutEntryPaths()
+    {
+        CutEntryPaths = _fileClipboard.Operation == RemoteFileClipboardOperation.Cut
+            ? _fileClipboard.Entries.Select(entry => entry.Path).ToArray()
+            : Array.Empty<string>();
+        OnPropertyChanged(nameof(CutEntryPaths));
+    }
+
+    private void ApplyEntryFilter()
+    {
+        SelectedEntry = null;
+        SelectedEntries.Clear();
+        Entries.Clear();
+        foreach (var entry in _directoryEntries.Where(e => (ShowHiddenFiles || !e.IsHidden)
+                     && e.Name.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(e => e, new ExplorerEntryComparer(SortField, SortDescending)))
+            Entries.Add(entry);
+        NotifySelectionCommands();
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(SelectionSummary));
+        UpdatePickerEntryName();
+    }
+
+    public void CancelAddressEdit()
+    {
+        AddressInput = AddressbarPath;
+        IsEditingAddress = false;
+    }
+
+    private void UpdateBreadcrumbs()
+    {
+        Breadcrumbs.Clear();
+        Breadcrumbs.Add(new ExplorerBreadcrumb(LocalizedText.Get("explorer.computer"), null));
+        foreach (var crumb in ExplorerBreadcrumb.FromPath(AddressbarPath)) Breadcrumbs.Add(crumb);
+    }
     [ObservableProperty] private string _statusText = LocalizedText.Get("explorer.status.ready");
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private FileSystemEntryDto? _selectedEntry;
@@ -98,6 +235,66 @@ public sealed partial class ExplorerViewModel : ObservableObject
     public Func<string, FileElevationCapability, Task<bool>>? RequestFileElevationAsync { get; set; }
     /// <summary>Requests a five-minute elevated directory grant after a mutating operation was denied.</summary>
     public Func<IReadOnlyList<string>, FileElevationCapability, Task<bool>>? RequestFileOperationElevationAsync { get; set; }
+    public Func<StartFileOperationRequest, Action<FileOperationDto>, Task>? QueueOperationAsync { get; set; }
+    public Action<IReadOnlyList<FileOperationItem>, long, Func<Action<string, long, int>, CancellationToken, Task>>? QueueUpload { get; set; }
+    public Action? ShowFileOperations { get; set; }
+    [RelayCommand] private void ShowOperations() => ShowFileOperations?.Invoke();
+
+    private bool _operationRefreshPending;
+    private bool _operationRefreshRunning;
+    private bool _disposed;
+
+    public void RefreshAfterOperation(FileOperationDto result)
+    {
+        // Navigation may still be loading a different directory: refresh its committed result too.
+        if (!_isNavigating && !result.Items.Any(item =>
+            ExplorerPath.IsAncestorOrEqual(item.SourcePath, AddressbarPath ?? string.Empty)
+            || ExplorerPath.Equal(ExplorerPath.Parent(item.SourcePath), AddressbarPath)
+            || item.DestinationPath is { } destination &&
+                (ExplorerPath.IsAncestorOrEqual(destination, AddressbarPath ?? string.Empty)
+                 || ExplorerPath.Equal(ExplorerPath.Parent(destination), AddressbarPath)))) return;
+        _operationRefreshPending = true;
+        if (!_operationRefreshRunning) _ = DrainOperationRefreshAsync();
+    }
+
+    private async Task DrainOperationRefreshAsync()
+    {
+        _operationRefreshRunning = true;
+        try
+        {
+            while (_operationRefreshPending && !_disposed)
+            {
+                if (IsBusy || _isNavigating || _isRenameCommitInProgress || IsBatchActive)
+                {
+                    await Task.Delay(50);
+                    continue;
+                }
+                _operationRefreshPending = false;
+                await RefreshAsync();
+            }
+        }
+        finally { _operationRefreshRunning = false; }
+    }
+
+    private async Task SubmitOperationAsync(FileOperationKind kind, IReadOnlyList<FileOperationItem> items)
+    {
+        var sharedClipboard = _fileClipboard;
+        var clipboard = sharedClipboard.Entries;
+        var clipboardOperation = sharedClipboard.Operation;
+        await QueueOperationAsync!(new(Guid.NewGuid(), kind, items), result =>
+        {
+            if (kind == FileOperationKind.Move && clipboardOperation == RemoteFileClipboardOperation.Cut
+                && ReferenceEquals(clipboard, sharedClipboard.Entries) && sharedClipboard.Operation == clipboardOperation)
+            {
+                var remaining = clipboard.Where(entry => !result.CompletedSources.Any(path =>
+                    ExplorerPath.IsAncestorOrEqual(path, entry.Path))).ToArray();
+                if (remaining.Length == 0) sharedClipboard.Clear();
+                else sharedClipboard.Set(remaining, RemoteFileClipboardOperation.Cut);
+            }
+        });
+        StatusText = LocalizedText.Get("explorer.operations.submitted");
+    }
+
     /// <summary>使用默认程序打开一个远程文件。</summary>
     public Func<FileSystemEntryDto, Task>? OpenFileAsync { get; set; }
     /// <summary>选择程序后打开一个远程文件。</summary>
@@ -116,7 +313,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
     public bool CanGoBack => _historyIndex > 0;
     public bool CanGoForward => _historyIndex < _history.Count - 1;
     public bool CanGoUp => !string.IsNullOrEmpty(AddressbarPath);
-    public bool HasSelection => SelectedEntries.Count != 0 || SelectedEntry is not null;
+    public bool HasSelection => !IsBusy && (SelectedEntries.Count != 0 || SelectedEntry is not null);
     public bool CanOpenTerminal => SelectedEntry is { } entry && IsFolder(entry)
         || !string.IsNullOrWhiteSpace(AddressbarPath);
     public bool IsPickerMode => _pickerOptions is not null && _selectPaths is not null;
@@ -268,8 +465,8 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     partial void OnAddressbarPathChanged(string? value)
     {
-        // 注意：不在此同步树选中。TextBox.Text TwoWay 绑定默认 PropertyChanged，每个按键都触发本方法，
-        // 路径还是半成品时去查找节点无意义且打断输入。同步在 NavigateToAsyncCore 末尾、路径被服务端确认后做。
+        // AddressbarPath is the committed location; the editable draft lives in AddressInput.
+        // Synchronize the tree after a successful directory load, not from property notifications.
         GoUpCommand.NotifyCanExecuteChanged();
         OpenTerminalCommand.NotifyCanExecuteChanged();
         PasteCommand.NotifyCanExecuteChanged();
@@ -293,6 +490,10 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value)
     {
+        SaveDefaultViewCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(HasSelection));
+        NotifySelectionCommands();
         PasteCommand.NotifyCanExecuteChanged();
         PasteFromHostCommand.NotifyCanExecuteChanged();
     }
@@ -314,53 +515,72 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     public async Task NavigateToAsync(string? path)
     {
-        await NavigateToAsyncCore(path);
+        if (!await NavigateToAsyncCore(path)) return;
+        if (_historyIndex >= 0 && PathEquals(_history[_historyIndex], AddressbarPath)) return;
         if (_historyIndex < _history.Count - 1)
             _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
-        _history.Add(path);
+        _history.Add(AddressbarPath);
         _historyIndex = _history.Count - 1;
         RefreshHistoryCommands();
     }
 
-    private async Task NavigateToAsyncCore(string? path)
+    private async Task<bool> NavigateToAsyncCore(string? path, bool batchRefresh = false)
     {
+        // Keep the committed location and listing intact until the server accepts navigation.
+        // Ignore overlapping navigation while a request (including tree synchronization) is active.
+        if (_isNavigating || _isRenameCommitInProgress || (IsBatchActive && !batchRefresh)) return false;
+        _isNavigating = true;
+        var wasBusy = IsBusy;
         IsBusy = true;
         try
         {
-            Entries.Clear();
-            SelectedEntries.Clear();
-            SelectedEntry = null;
-            UpdatePickerEntryName();
+            var loaded = new List<FileSystemEntryDto>();
             string? confirmedPath;
+            string status;
             if (path is null)
             {
                 var drives = GetNavigationDrives(await _client.GetDrivesAsync());
-                foreach (var d in drives)
-                    Entries.Add(new FileSystemEntryDto(d.Path, d.Name, d.TotalSize,
-                        FileSystemEntryType.Drive, null, null, null, false, false, null));
+                loaded.AddRange(drives.Select(d => new FileSystemEntryDto(d.Path, d.Name, d.TotalSize,
+                    FileSystemEntryType.Drive, null, null, null, false, false, null)));
                 confirmedPath = null;
-                AddressbarPath = null;
-                StatusText = LocalizedText.Format("explorer.status.drives_ready", drives.Count);
+                status = LocalizedText.Format("explorer.status.drives_ready", drives.Count);
             }
             else
             {
                 var dir = await _client.GetDirectoryAsync(path);
-                foreach (var d in dir.Directories) Entries.Add(d);
+                loaded.AddRange(dir.Directories);
                 if (!IsFolderPickerMode)
-                {
-                    foreach (var f in dir.Files.Where(f => !IsFilePickerMode || MatchesSelectedFilter(f.Name)))
-                        Entries.Add(new FileSystemEntryDto(f.Path, f.Name, f.Size, FileSystemEntryType.File,
-                            f.Created, f.Modified, f.Accessed, f.IsHidden, f.IsSystem, f.MimeType));
-                }
+                    loaded.AddRange(dir.Files.Where(f => !IsFilePickerMode || MatchesSelectedFilter(f.Name, dir.Path))
+                        .Select(f => new FileSystemEntryDto(f.Path, f.Name, f.Size, FileSystemEntryType.File,
+                            f.Created, f.Modified, f.Accessed, f.IsHidden, f.IsSystem, f.MimeType)));
                 confirmedPath = dir.Path;
-                AddressbarPath = dir.Path;
-                StatusText = LocalizedText.Format("explorer.status.directory_ready", dir.Directories.Count, dir.Files.Count);
+                status = LocalizedText.Format("explorer.status.directory_ready", dir.Directories.Count, dir.Files.Count);
             }
-            // 路径已由服务端确认，反向同步树选中（防循环：被 _isSyncingTreeSelection 抑制）
+            var locationChanged = !PathEquals(AddressbarPath, confirmedPath);
+            CancelRename();
+            _directoryEntries.Clear();
+            _directoryEntries.AddRange(loaded);
+            AddressbarPath = confirmedPath;
+            AddressInput = confirmedPath;
+            IsEditingAddress = false;
+            if (locationChanged) SearchText = string.Empty;
+            ApplyEntryFilter();
+            UpdatePickerEntryName();
+            UpdateBreadcrumbs();
+            StatusText = status;
             await SyncTreeSelectionAsync(confirmedPath);
+            return true;
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.load_failed", ex.Message); }
-        finally { IsBusy = false; }
+        catch (Exception ex)
+        {
+            StatusText = LocalizedText.Format("explorer.status.load_failed", ex.Message);
+            return false;
+        }
+        finally
+        {
+            _isNavigating = false;
+            IsBusy = wasBusy;
+        }
     }
 
     // ---- 树选中同步（防循环） ----
@@ -403,21 +623,20 @@ public sealed partial class ExplorerViewModel : ObservableObject
         // 2) 否则按路径分段从"此电脑"下的盘符节点下钻，逐级懒加载祖先
         var thisPc = Nodes.FirstOrDefault(n => n.IsComputer);
         if (thisPc is null) return null;
-        var cmp = PathComparison;
         foreach (var drive in thisPc.Children)
         {
             if (drive.IsPlaceholder) continue;
             // 仅当下钻起点是目标路径的祖先时才进入（避免对每个盘符都展开）
-            if (!IsAncestorOrEqual(drive.Path, path, cmp)) continue;
-            var found = await DescendAsync(drive, path, cmp);
+            if (!ExplorerPath.IsAncestorOrEqual(drive.Path, path)) continue;
+            var found = await DescendAsync(drive, path);
             if (found is not null) return found;
         }
         return null;
 
-        async Task<TreeNodeModel?> DescendAsync(TreeNodeModel start, string target, StringComparison comparison)
+        async Task<TreeNodeModel?> DescendAsync(TreeNodeModel start, string target)
         {
             var current = start;
-            while (current is not null && !PathEquals(current.Path, target, comparison))
+            while (current is not null && !PathEquals(current.Path, target))
             {
                 // 若子节点未懒加载：直接调 OnNodeExpandRequested 并 await（绕过 IsExpanded setter 的 fire-and-forget）
                 if (!current.HasLoadedChildren && current.ExpandRequested is not null)
@@ -426,30 +645,16 @@ public sealed partial class ExplorerViewModel : ObservableObject
                     current.IsExpanded = true;   // 加载已完成，setter 检测 _hasLoadedChildren 不再 Invoke
                 }
                 current = current.Children.FirstOrDefault(c =>
-                    !c.IsPlaceholder && IsAncestorOrEqual(c.Path, target, comparison));
+                    !c.IsPlaceholder && ExplorerPath.IsAncestorOrEqual(c.Path, target));
             }
-            return PathEquals(current?.Path, target, comparison) ? current : null;
+            return PathEquals(current?.Path, target) ? current : null;
         }
     }
 
     // ---- 路径规范化辅助 ----
 
-    /// <summary>路径比较策略：Linux 区分大小写（文件系统大小写敏感），Windows 不区分。</summary>
-    private static StringComparison PathComparison =>
-        OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-
-    /// <summary>规范化路径：去尾部目录分隔符；Linux "/" 根特殊处理（不能 trim 成空串）；非法字符兜底返回原值。</summary>
-    private static string? NormalizePath(string? p)
-    {
-        if (string.IsNullOrEmpty(p)) return p;
-        if (p == "/") return p;             // Linux 根特殊处理
-        try { return Path.GetFullPath(p).TrimEnd('\\', '/'); }
-        catch { return p; }                  // 非法字符 / 非法路径 fallback
-    }
-
-    private static bool PathEquals(string? a, string? b, StringComparison? comparison = null)
-        => string.Equals(NormalizePath(a), NormalizePath(b),
-            comparison ?? PathComparison);
+    private static bool PathEquals(string? a, string? b)
+        => ExplorerPath.Equal(a, b);
 
     /// <summary>
     /// Linux 的 DriveInfo 会把每个挂载点（包括 /dev/shm 与 /dev/pts）都作为一个驱动器返回。
@@ -463,17 +668,6 @@ public sealed partial class ExplorerViewModel : ObservableObject
         return posixRoot is null ? readyDrives : [posixRoot];
     }
 
-    /// <summary>ancestor 是否为 descendant 的祖先或相等（用于下钻时判断子节点是否包含目标路径）。</summary>
-    private static bool IsAncestorOrEqual(string? ancestor, string descendant, StringComparison comparison)
-    {
-        var a = NormalizePath(ancestor);
-        var d = NormalizePath(descendant);
-        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(d)) return false;
-        if (string.Equals(a, d, comparison)) return true;
-        return d.StartsWith(a + '\\', comparison)
-            || d.StartsWith(a + '/', comparison);
-    }
-
     /// <summary>Whether a list entry can initiate a move drag.</summary>
     public bool CanDragEntry(FileSystemEntryDto entry)
         => !IsPickerMode && !IsBusy && entry.Type != FileSystemEntryType.Drive;
@@ -481,74 +675,180 @@ public sealed partial class ExplorerViewModel : ObservableObject
     /// <summary>Validates a move before advertising the drop target to Avalonia.</summary>
     public bool CanMoveEntryToDirectory(FileSystemEntryDto entry, string targetDirectory)
     {
-        if (!CanDragEntry(entry) || string.IsNullOrWhiteSpace(targetDirectory)) return false;
+        if (!CanDragEntry(entry) || string.IsNullOrWhiteSpace(targetDirectory)
+            || !ExplorerPath.IsValidName(entry.Name, targetDirectory)) return false;
 
         var destinationPath = CombineRemotePath(targetDirectory, entry.Name);
         if (PathEquals(entry.Path, destinationPath)) return false;
 
         // A directory cannot be moved into itself or into one of its descendants.
         return entry.Type != FileSystemEntryType.Directory ||
-               !IsAncestorOrEqual(entry.Path, targetDirectory, PathComparison);
+               !ExplorerPath.IsAncestorOrEqual(entry.Path, targetDirectory);
     }
 
-    /// <summary>Moves a dragged entry into a directory and refreshes the current listing.</summary>
-    public async Task MoveEntryToDirectoryAsync(FileSystemEntryDto entry, string targetDirectory)
-    {
-        if (!CanMoveEntryToDirectory(entry, targetDirectory)) return;
+    public IReadOnlyList<FileSystemEntryDto> GetDragEntries(FileSystemEntryDto pressedEntry)
+        => NormalizeBatchSelection(GetSelectedEntries().Any(e => PathEquals(e.Path, pressedEntry.Path))
+            ? GetSelectedEntries() : [pressedEntry]);
 
-        var destinationPath = CombineRemotePath(targetDirectory, entry.Name);
+    private static IReadOnlyList<FileSystemEntryDto> NormalizeBatchSelection(IEnumerable<FileSystemEntryDto> source)
+    {
+        var unique = new List<FileSystemEntryDto>();
+        foreach (var entry in source)
+            if (!unique.Any(e => PathEquals(e.Path, entry.Path))) unique.Add(entry);
+        // Recursive directory operations already include selected descendants.
+        return unique.Where(entry => !unique.Any(parent => parent.Type == FileSystemEntryType.Directory
+            && !ReferenceEquals(parent, entry) && ExplorerPath.IsAncestorOrEqual(parent.Path, entry.Path))).ToArray();
+    }
+
+    public bool CanTransferEntriesToDirectory(IReadOnlyList<FileSystemEntryDto> entries, string targetDirectory, bool copy = false)
+    {
+        if (IsBusy || IsPickerMode || entries.Count == 0 || string.IsNullOrWhiteSpace(targetDirectory)) return false;
+        var destinations = new List<string>();
+        foreach (var entry in NormalizeBatchSelection(entries))
+        {
+            var sameDirectoryCopy = copy && CanDragEntry(entry)
+                && ExplorerPath.IsValidName(entry.Name, targetDirectory)
+                && PathEquals(entry.Path, CombineRemotePath(targetDirectory, entry.Name));
+            if (!sameDirectoryCopy && !CanMoveEntryToDirectory(entry, targetDirectory)) return false;
+            var destination = CombineRemotePath(targetDirectory, entry.Name);
+            if (destinations.Any(path => PathEquals(path, destination))) return false;
+            destinations.Add(destination);
+        }
+        return true;
+    }
+
+    public async Task<ExplorerBatchResult?> TransferEntriesToDirectoryAsync(
+        IReadOnlyList<FileSystemEntryDto> entries, string targetDirectory, bool copy)
+    {
+        if (!CanTransferEntriesToDirectory(entries, targetDirectory, copy))
+        {
+            StatusText = LocalizedText.Get("explorer.batch.invalid_target");
+            return null;
+        }
+        var snapshot = NormalizeBatchSelection(entries);
+        if (QueueOperationAsync is not null)
+        {
+            try
+            {
+                await SubmitOperationAsync(copy ? FileOperationKind.Copy : FileOperationKind.Move,
+                    snapshot.Select(e => new FileOperationItem(e.Path, CombineRemotePath(targetDirectory, e.Name))).ToArray());
+            }
+            catch (Exception ex) { StatusText = ex.Message; }
+            return null; // Completion and refresh are owned by the shared operation center.
+        }
+        HashSet<string>? reservedNames = null;
+        return await RunBatchAsync(snapshot, copy ? "explorer.copy" : "common.move", async entry =>
+        {
+            var destination = CombineRemotePath(targetDirectory, entry.Name);
+            if (copy && PathEquals(entry.Path, destination))
+            {
+                if (reservedNames is null)
+                {
+                    // Read the complete remote directory, including entries hidden by the current view.
+                    var directory = await _client.GetDirectoryAsync(targetDirectory);
+                    reservedNames = new HashSet<string>(directory.Directories.Select(e => e.Name)
+                        .Concat(directory.Files.Select(e => e.Name)).Concat(snapshot.Select(e => e.Name)),
+                        ExplorerPath.IsWindows(targetDirectory) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+                }
+                destination = CombineRemotePath(targetDirectory, ExplorerPath.ReserveCopyName(
+                    entry.Name, entry.Type == FileSystemEntryType.Directory, reservedNames));
+            }
+            return await RetryWithOperationElevationAsync(async () =>
+            {
+                if (copy) await _client.CopyAsync(entry.Path, destination, overwrite: false);
+                else await _client.MoveAsync(entry.Path, destination, overwrite: false);
+            }, copy ? FileElevationCapability.Copy : FileElevationCapability.Move, ParentDirectory(entry.Path), targetDirectory);
+        });
+    }
+
+    public async Task MoveEntryToDirectoryAsync(FileSystemEntryDto entry, string targetDirectory)
+        => await TransferEntriesToDirectoryAsync([entry], targetDirectory, copy: false);
+
+    [ObservableProperty] private bool _isBatchActive;
+    [ObservableProperty] private bool _isBatchStopRequested;
+    [ObservableProperty] private string _lastOperationDetails = string.Empty;
+    public bool HasOperationDetails => !string.IsNullOrEmpty(LastOperationDetails);
+    public bool CanStopBatch => IsBatchActive && !IsBatchStopRequested;
+    partial void OnLastOperationDetailsChanged(string value) => OnPropertyChanged(nameof(HasOperationDetails));
+    partial void OnIsBatchActiveChanged(bool value) => StopBatchCommand.NotifyCanExecuteChanged();
+    partial void OnIsBatchStopRequestedChanged(bool value) => StopBatchCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand(CanExecute = nameof(CanStopBatch))]
+    private void StopBatch() => IsBatchStopRequested = true;
+
+    private async Task<ExplorerBatchResult> RunBatchAsync(IReadOnlyList<FileSystemEntryDto> entries,
+        string actionKey, Func<FileSystemEntryDto, Task<bool>> operation)
+    {
+        IsBatchActive = true;
+        IsBatchStopRequested = false;
         IsBusy = true;
-        StatusText = LocalizedText.Format("explorer.status.moving", entry.Name);
+        LastOperationDetails = string.Empty;
+        var completed = new List<FileSystemEntryDto>();
+        var failures = new List<ExplorerOperationFailure>();
+        var attempted = 0;
+        BeginTransfer(LocalizedText.Get(actionKey), entries.Count, 0);
         try
         {
-            if (!await RetryWithOperationElevationAsync(
-                    async () => { await _client.MoveAsync(entry.Path, destinationPath, overwrite: false); },
-                    FileElevationCapability.Move, ParentDirectory(entry.Path), targetDirectory)) return;
-            StatusText = LocalizedText.Format("explorer.status.moved", entry.Name, targetDirectory);
-            await RefreshAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusText = LocalizedText.Format("explorer.status.move_failed", ex.Message);
+            foreach (var entry in entries)
+            {
+                if (IsBatchStopRequested) break;
+                TransferText = LocalizedText.Format("explorer.batch.item", LocalizedText.Get(actionKey), entry.Name, attempted + 1, entries.Count);
+                try
+                {
+                    if (await operation(entry)) completed.Add(entry);
+                    else
+                    {
+                        failures.Add(new(entry.Path, LocalizedText.Get("explorer.status.elevation_required")));
+                        IsBatchStopRequested = true; // Do not repeatedly prompt after elevation was declined.
+                    }
+                }
+                catch (Exception ex) { failures.Add(new(entry.Path, ex.Message)); }
+                TransferItemCompleted = ++attempted;
+            }
+            var result = new ExplorerBatchResult(entries.Count, completed.ToArray(), failures.ToArray(), entries.Count - attempted);
+            var refreshed = await NavigateToAsyncCore(AddressbarPath, batchRefresh: true);
+            var refreshError = refreshed ? null : StatusText;
+            LastOperationDetails = string.Join(Environment.NewLine, failures.Select(f => $"{f.Path}: {f.Message}")
+                .Concat(entries.Skip(attempted).Select(entry => $"{entry.Path}: {LocalizedText.Get("explorer.batch.not_started")}")));
+            if (refreshError is not null)
+                LastOperationDetails += (HasOperationDetails ? Environment.NewLine : string.Empty) + refreshError;
+            StatusText = LocalizedText.Format("explorer.batch.result", LocalizedText.Get(actionKey),
+                result.Completed.Count, result.Failures.Count, result.NotStarted);
+            return result;
         }
         finally
         {
+            IsTransferActive = false;
+            IsBatchActive = false;
             IsBusy = false;
         }
     }
 
-    private static string CombineRemotePath(string directory, string name)
-    {
-        var separator = directory.Contains('\\') ? '\\' : '/';
-        var trimmed = directory.TrimEnd('\\', '/');
-        return trimmed.Length == 0
-            ? separator + name
-            : trimmed + separator + name;
-    }
+    private static string CombineRemotePath(string directory, string name) => ExplorerPath.Combine(directory, name);
 
     [RelayCommand(CanExecute = nameof(CanGoBack))]
     private async Task GoBackAsync()
     {
         if (!CanGoBack) return;
-        _historyIndex--;
+        var index = _historyIndex - 1;
+        if (await NavigateToAsyncCore(_history[index])) _historyIndex = index;
         RefreshHistoryCommands();
-        await NavigateToAsyncCore(_history[_historyIndex]);
     }
 
     [RelayCommand(CanExecute = nameof(CanGoForward))]
     private async Task GoForwardAsync()
     {
         if (!CanGoForward) return;
-        _historyIndex++;
+        var index = _historyIndex + 1;
+        if (await NavigateToAsyncCore(_history[index])) _historyIndex = index;
         RefreshHistoryCommands();
-        await NavigateToAsyncCore(_history[_historyIndex]);
     }
 
     [RelayCommand(CanExecute = nameof(CanGoUp))]
     private async Task GoUpAsync()
     {
         if (string.IsNullOrEmpty(AddressbarPath)) return;
-        var parent = Path.GetDirectoryName(AddressbarPath);
+        var parent = ExplorerBreadcrumb.ParentPath(AddressbarPath);
         await NavigateToAsync(string.IsNullOrEmpty(parent) ? null : parent);
     }
 
@@ -558,7 +858,14 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     /// <summary>地址栏回车跳转。</summary>
     public async Task AddressbarGoAsync(string? path)
-        => await NavigateToAsync(string.IsNullOrWhiteSpace(path) ? null : path.Trim());
+    {
+        if (string.IsNullOrWhiteSpace(path)) { await NavigateToAsync(null); return; }
+        path = path.Trim();
+        if (ExplorerPath.IsWindows(path) && path.Length == 2) path += "\\";
+        if (!ExplorerPath.IsAbsolute(path) && !string.IsNullOrEmpty(AddressbarPath))
+            path = ExplorerPath.Resolve(AddressbarPath, path);
+        await NavigateToAsync(path);
+    }
 
     private void RefreshHistoryCommands()
     {
@@ -588,6 +895,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
             SelectedEntries.Add(entry);
         NotifySelectionCommands();
         OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(SelectionSummary));
         if (IsPickerMode) UpdatePickerEntryName();
     }
 
@@ -625,11 +933,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
         if (selected.Length == 0 && IsFilePickerMode && !string.IsNullOrWhiteSpace(PickerEntryName))
         {
-            var path = Path.IsPathRooted(PickerEntryName)
+            var path = ExplorerPath.IsAbsolute(PickerEntryName)
                 ? PickerEntryName
                 : string.IsNullOrWhiteSpace(AddressbarPath)
                     ? PickerEntryName
-                    : Path.Combine(AddressbarPath, PickerEntryName);
+                    : ExplorerPath.Resolve(AddressbarPath, PickerEntryName);
             try
             {
                 var entry = await _client.GetInfoAsync(path);
@@ -654,23 +962,16 @@ public sealed partial class ExplorerViewModel : ObservableObject
     private bool IsSelectableFile(FileSystemEntryDto entry)
         => entry.Type == FileSystemEntryType.File && (!IsFilePickerMode || MatchesSelectedFilter(entry.Name));
 
-    private static bool IsValidSaveFileName(string? name)
-    {
-        var trimmed = name?.Trim();
-        return !string.IsNullOrWhiteSpace(trimmed)
-            && trimmed is not "." and not ".."
-            && !trimmed.Contains('/')
-            && !trimmed.Contains('\\');
-    }
+    private bool IsValidSaveFileName(string? name) => ExplorerPath.IsValidName(name?.Trim(), AddressbarPath);
 
     private static bool IsFolder(FileSystemEntryDto entry)
         => entry.Type is FileSystemEntryType.Directory or FileSystemEntryType.Drive;
 
-    private bool MatchesSelectedFilter(string name)
+    private bool MatchesSelectedFilter(string name, string? directory = null)
         => SelectedFilter is { } filter
             && (filter.Patterns.Any(pattern => FileSystemName.MatchesSimpleExpression(pattern, name,
-                    ignoreCase: !OperatingSystem.IsLinux()))
-                || (filter.IncludeExtensionlessFiles && Path.GetExtension(name).Length == 0));
+                    ignoreCase: ExplorerPath.IsWindows(directory ?? AddressbarPath)))
+                || (filter.IncludeExtensionlessFiles && ExplorerPath.Extension(name).Length == 0));
 
     private void UpdatePickerEntryName()
     {
@@ -685,21 +986,24 @@ public sealed partial class ExplorerViewModel : ObservableObject
         ConfirmPickerCommand.NotifyCanExecuteChanged();
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    public bool CanOpenSelection => HasSingleSelection || (!IsBusy && IsFilePickerMode
+        && SelectedEntry?.Type == FileSystemEntryType.File && CanConfirmPicker);
+
+    [RelayCommand(CanExecute = nameof(CanOpenSelection))]
     private async Task OpenAsync()
     {
-        if (SelectedEntry is { } entry && entry.Type == FileSystemEntryType.File)
-            await OpenEntryAsync(entry);
+        if (SelectedEntry is { } entry)
+            await InvokeEntryAsync(entry);
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(HasSingleFileSelection))]
     private async Task OpenWithSelectedAsync()
     {
         if (SelectedEntry is { } entry && entry.Type == FileSystemEntryType.File)
             await (RequestOpenWithAsync?.Invoke(entry) ?? Task.CompletedTask);
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(HasSingleSelection))]
     private async Task PropertiesAsync()
     {
         if (SelectedEntry is not { } entry) return;
@@ -760,7 +1064,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(name)) return;
         try
         {
-            var target = Path.Combine(AddressbarPath, name);
+            var target = CombineRemotePath(AddressbarPath, name);
             if (!await RetryWithOperationElevationAsync(
                     async () => { await _client.CreateDirectoryAsync(target); }, FileElevationCapability.CreateDirectory, AddressbarPath)) return;
             StatusText = LocalizedText.Format("explorer.status.folder_created", name);
@@ -769,42 +1073,105 @@ public sealed partial class ExplorerViewModel : ObservableObject
         catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.create_failed", ex.Message); }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    public bool CanDeleteSelection => HasSelection && !IsPickerMode
+        && GetSelectedEntries().All(e => e.Type != FileSystemEntryType.Drive);
+    public bool HasSingleSelection => HasSelection && SelectedEntry is not null && GetSelectedEntries().Count == 1;
+    public bool HasSingleFileSelection => HasSingleSelection && SelectedEntry?.Type == FileSystemEntryType.File;
+    public bool CanRenameSelection => HasSingleSelection && !IsPickerMode && !IsRenaming
+        && SelectedEntry?.Type != FileSystemEntryType.Drive;
+
+    [RelayCommand(CanExecute = nameof(CanDeleteSelection))]
     private async Task DeleteAsync()
     {
-        if (SelectedEntry is not { } entry) return;
-        var confirmed = await (RequestConfirmAsync?.Invoke(LocalizedText.Get("common.delete"),
-            LocalizedText.Format(IsFolder(entry)
-                ? "explorer.delete_confirmation"
-                : "explorer.delete_file_confirmation", entry.Name),
-            LocalizedText.Get("common.delete")) ?? Task.FromResult(false));
-        if (!confirmed) return;
+        if (!CanDeleteSelection) return;
+        var entries = NormalizeBatchSelection(GetSelectedEntries());
+        // Snapshot selection before the confirmation; later selection changes cannot change the scope.
+        IsBusy = true;
         try
         {
-            if (!await RetryWithOperationElevationAsync(
-                    async () => { await _client.DeleteAsync(entry.Path); }, FileElevationCapability.Delete, ParentDirectory(entry.Path))) return;
-            StatusText = LocalizedText.Format("explorer.status.deleted", entry.Name);
-            SelectedEntry = null;
-            await RefreshAsync();
+            var preview = string.Join(Environment.NewLine, entries.Take(8).Select(e => e.Name));
+            if (entries.Count > 8) preview += Environment.NewLine + "…";
+            var confirmed = await (RequestConfirmAsync?.Invoke(LocalizedText.Get("common.delete"),
+                LocalizedText.Format("explorer.batch.delete_confirm", entries.Count, preview),
+                LocalizedText.Get("common.delete")) ?? Task.FromResult(false));
+            if (!confirmed) return;
+            if (QueueOperationAsync is not null)
+            {
+                await SubmitOperationAsync(FileOperationKind.Delete, entries.Select(e => new FileOperationItem(e.Path)).ToArray());
+                return;
+            }
+            await RunBatchAsync(entries, "common.delete", entry => RetryWithOperationElevationAsync(
+                () => _client.DeleteAsync(entry.Path), FileElevationCapability.Delete, ParentDirectory(entry.Path)));
         }
         catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.delete_failed", ex.Message); }
+        finally { IsBusy = false; }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task RenameAsync()
+    [RelayCommand(CanExecute = nameof(CanRenameSelection))]
+    private Task RenameAsync()
     {
-        if (SelectedEntry is not { } entry) return;
-        var newName = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("common.rename"), LocalizedText.Get("explorer.rename_prompt"), entry.Name, LocalizedText.Get("common.rename"))
-            ?? Task.FromResult<string?>(null));
-        if (string.IsNullOrWhiteSpace(newName) || newName == entry.Name) return;
+        if (!CanRenameSelection || SelectedEntry is not { } entry) return Task.CompletedTask;
+        EditingEntry = entry;
+        RenameDraft = entry.Name;
+        RequestRenameFocus?.Invoke(entry);
+        return Task.CompletedTask;
+    }
+
+    public void CancelRename()
+    {
+        if (EditingEntry is null) return;
+        EditingEntry = null;
+        RenameDraft = string.Empty;
+    }
+
+    public async Task<bool> CommitRenameAsync()
+    {
+        if (_isRenameCommitInProgress || EditingEntry is not { } entry) return false;
+        var newName = RenameDraft;
+        if (string.IsNullOrWhiteSpace(newName) || !ExplorerPath.IsValidName(newName, entry.Path))
+        {
+            StatusText = LocalizedText.Get("explorer.input_invalid");
+            return false;
+        }
+        if (newName == entry.Name)
+        {
+            CancelRename();
+            return true;
+        }
+
+        _isRenameCommitInProgress = true;
+        IsBusy = true;
+        var clipboardSnapshot = _fileClipboard.Entries;
+        var clipboardOperation = _fileClipboard.Operation;
+        FileSystemEntryDto? renamedEntry = null;
         try
         {
             if (!await RetryWithOperationElevationAsync(
-                    async () => { await _client.RenameAsync(entry.Path, newName); }, FileElevationCapability.Rename, ParentDirectory(entry.Path))) return;
+                    async () => { renamedEntry = await _client.RenameAsync(entry.Path, newName); }, FileElevationCapability.Rename, ParentDirectory(entry.Path))) return false;
+            if (renamedEntry is not null && clipboardOperation == RemoteFileClipboardOperation.Cut
+                && ReferenceEquals(_fileClipboard.Entries, clipboardSnapshot)
+                && _fileClipboard.Operation == clipboardOperation
+                && clipboardSnapshot.Any(item => PathEquals(item.Path, entry.Path)))
+            {
+                _fileClipboard.Set(clipboardSnapshot.Select(item => PathEquals(item.Path, entry.Path) ? renamedEntry : item).ToArray(),
+                    RemoteFileClipboardOperation.Cut);
+            }
+            CancelRename();
+            _isRenameCommitInProgress = false;
             StatusText = LocalizedText.Format("explorer.status.renamed", newName);
             await RefreshAsync();
+            return true;
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.rename_failed", ex.Message); }
+        catch (Exception ex)
+        {
+            StatusText = LocalizedText.Format("explorer.status.rename_failed", ex.Message);
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+            _isRenameCommitInProgress = false;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -848,43 +1215,18 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     private async Task PasteRemoteClipboardAsync(string targetDirectory)
     {
-        var entries = _fileClipboard.Entries
-            .Where(entry => CanPlaceEntryInDirectory(entry, targetDirectory))
-            .ToArray();
-        if (entries.Length == 0)
-        {
-            StatusText = LocalizedText.Get("explorer.status.paste_no_valid_items");
-            return;
-        }
-
-        IsBusy = true;
-        BeginTransfer(LocalizedText.Format("explorer.status.pasting", 0, entries.Length), entries.Length, 0);
-        try
-        {
-            for (var index = 0; index < entries.Length; index++)
-            {
-                var entry = entries[index];
-                TransferText = LocalizedText.Format("explorer.status.pasting_item", entry.Name, index + 1, entries.Length);
-                var destination = CombineRemotePath(targetDirectory, entry.Name);
-                var transferred = _fileClipboard.Operation == RemoteFileClipboardOperation.Cut
-                    ? await RetryWithOperationElevationAsync(async () => { await _client.MoveAsync(entry.Path, destination, overwrite: false); }, FileElevationCapability.Move, ParentDirectory(entry.Path), targetDirectory)
-                    : await RetryWithOperationElevationAsync(async () => { await _client.CopyAsync(entry.Path, destination, overwrite: false); }, FileElevationCapability.Copy, ParentDirectory(entry.Path), targetDirectory);
-                if (!transferred) return;
-                TransferItemCompleted = index + 1;
-            }
-
-            if (_fileClipboard.Operation == RemoteFileClipboardOperation.Cut)
-                _fileClipboard.Clear();
-            StatusText = LocalizedText.Format("explorer.status.paste_completed", entries.Length);
-            await RefreshAsync();
-        }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.paste_failed", ex.Message); }
-        finally
-        {
-            IsTransferActive = false;
-            IsBusy = false;
-            PasteCommand.NotifyCanExecuteChanged();
-        }
+        var clipboardSnapshot = _fileClipboard.Entries;
+        var operation = _fileClipboard.Operation;
+        var result = await TransferEntriesToDirectoryAsync(clipboardSnapshot, targetDirectory,
+            copy: operation == RemoteFileClipboardOperation.Copy);
+        if (operation != RemoteFileClipboardOperation.Cut || result is null || result.Completed.Count == 0) return;
+        // Another window may have changed the shared clipboard while this batch was running.
+        if (!ReferenceEquals(_fileClipboard.Entries, clipboardSnapshot) || _fileClipboard.Operation != operation) return;
+        var remaining = clipboardSnapshot.Where(entry => !result.Completed.Any(done => PathEquals(done.Path, entry.Path)
+            || (done.Type == FileSystemEntryType.Directory && ExplorerPath.IsAncestorOrEqual(done.Path, entry.Path)))).ToArray();
+        if (remaining.Length == 0) _fileClipboard.Clear();
+        else _fileClipboard.Set(remaining, RemoteFileClipboardOperation.Cut);
+        PasteCommand.NotifyCanExecuteChanged();
     }
 
     private async Task PasteHostClipboardAsync()
@@ -903,15 +1245,22 @@ public sealed partial class ExplorerViewModel : ObservableObject
         await UploadSourcesAsync(sources, LocalizedText.Get("explorer.status.pasting_host_files"));
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(CanRenameSelection))]
     private async Task MoveAsync()
     {
+        if (!CanRenameSelection) return;
         if (SelectedEntry is not { } entry) return;
         var dest = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("common.move"), LocalizedText.Get("explorer.destination_path_prompt"), entry.Path, LocalizedText.Get("common.move"))
             ?? Task.FromResult<string?>(null));
         if (string.IsNullOrWhiteSpace(dest) || dest == entry.Path) return;
         try
         {
+            if (QueueOperationAsync is not null)
+            {
+                var resolved = ExplorerPath.Resolve(ExplorerPath.Parent(entry.Path)!, dest);
+                await SubmitOperationAsync(FileOperationKind.Move, [new(entry.Path, resolved)]);
+                return;
+            }
             if (!await RetryWithOperationElevationAsync(
                     async () => { await _client.MoveAsync(entry.Path, dest, overwrite: false); },
                     FileElevationCapability.Move, ParentDirectory(entry.Path), ParentDirectory(dest))) return;
@@ -921,7 +1270,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.move_failed", ex.Message); }
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelection))]
+    [RelayCommand(CanExecute = nameof(HasSingleFileSelection))]
     private async Task DownloadAsync()
     {
         if (SelectedEntry is not { } entry) return;
@@ -977,6 +1326,52 @@ public sealed partial class ExplorerViewModel : ObservableObject
         if (plan.Files.Count == 0 && plan.Directories.Count == 0)
         {
             StatusText = LocalizedText.Get("explorer.status.no_uploadable_files");
+            return;
+        }
+
+        var destination = AddressbarPath;
+        if (QueueUpload is not null)
+        {
+            var items = plan.Directories.Select(path => new FileOperationItem(path, CombineRemoteRelativePath(destination, path)))
+                .Concat(plan.Files.Select(file => new FileOperationItem(file.SourcePath, CombineRemoteRelativePath(destination, file.RelativePath)))).ToArray();
+            QueueUpload(items, plan.TotalBytes, async (report, ct) =>
+            {
+                var count = 0;
+                long bytes = 0;
+                foreach (var directory in plan.Directories)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var path = CombineRemoteRelativePath(destination, directory);
+                    report(path, bytes, count);
+                    if (!await RetryWithOperationElevationAsync(async () =>
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            await _client.CreateDirectoryAsync(path, ct);
+                        }, FileElevationCapability.CreateDirectory, destination))
+                        throw new InvalidOperationException(LocalizedText.Get("explorer.status.elevation_required"));
+                    report(path, bytes, ++count);
+                }
+                foreach (var file in plan.Files)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var path = CombineRemoteRelativePath(destination, file.RelativePath);
+                    var start = bytes;
+                    var processed = count;
+                    var progress = new Progress<long>(uploaded => report(path, start + uploaded, processed));
+                    report(path, bytes, count);
+                    if (!await RetryWithOperationElevationAsync(async () =>
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            // Open a fresh stream on retry so an elevation response cannot truncate the upload.
+                            using var stream = File.OpenRead(file.SourcePath);
+                            await _client.UploadAsync(ExplorerPath.Parent(path)!, GetRelativeFileName(file.RelativePath), stream, progress, ct);
+                        }, FileElevationCapability.Upload, destination))
+                        throw new InvalidOperationException(LocalizedText.Get("explorer.status.elevation_required"));
+                    bytes += file.Length;
+                    report(path, bytes, ++count);
+                }
+            });
+            StatusText = LocalizedText.Get("explorer.operations.submitted");
             return;
         }
 
@@ -1036,14 +1431,6 @@ public sealed partial class ExplorerViewModel : ObservableObject
         => SelectedEntries.Count > 0 ? SelectedEntries.ToArray()
             : SelectedEntry is null ? [] : [SelectedEntry];
 
-    private bool CanPlaceEntryInDirectory(FileSystemEntryDto entry, string targetDirectory)
-    {
-        var destination = CombineRemotePath(targetDirectory, entry.Name);
-        if (PathEquals(entry.Path, destination)) return false;
-        return entry.Type != FileSystemEntryType.Directory ||
-               !IsAncestorOrEqual(entry.Path, targetDirectory, PathComparison);
-    }
-
     private void NotifySelectionCommands()
     {
         DeleteCommand.NotifyCanExecuteChanged();
@@ -1072,7 +1459,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
         catch (RemoteOsAuthException ex) when (ex.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
         {
             var directories = directoryPaths.Where(path => !string.IsNullOrWhiteSpace(path))
-                .Select(path => path!).Distinct(PathStringComparer).ToArray();
+                .Select(path => path!).Aggregate(new List<string>(), (items, path) =>
+                {
+                    if (!items.Any(existing => ExplorerPath.Equal(existing, path))) items.Add(path);
+                    return items;
+                }).ToArray();
             if (directories.Length == 0 || RequestFileOperationElevationAsync is null
                 || !await RequestFileOperationElevationAsync(directories, capability))
             {
@@ -1084,12 +1475,7 @@ public sealed partial class ExplorerViewModel : ObservableObject
         }
     }
 
-    private static string ParentDirectory(string path)
-        => Path.GetDirectoryName(path) ?? Path.GetPathRoot(path) ?? path;
-
-    private static StringComparer PathStringComparer => OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
+    private static string ParentDirectory(string path) => ExplorerPath.Parent(path) ?? path;
 
     private void BeginTransfer(string text, int itemTotal, long totalBytes)
     {
@@ -1150,22 +1536,14 @@ public sealed partial class ExplorerViewModel : ObservableObject
     private static string CombineRemoteRelativePath(string directory, string relativePath)
     {
         var result = directory;
-        foreach (var segment in relativePath.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries))
+        foreach (var segment in relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
             result = CombineRemotePath(result, segment);
         return result;
     }
 
-    private static string? GetRelativeDirectory(string relativePath)
-    {
-        var separator = Math.Max(relativePath.LastIndexOf('/'), relativePath.LastIndexOf('\\'));
-        return separator < 0 ? null : relativePath[..separator];
-    }
-
-    private static string GetRelativeFileName(string relativePath)
-    {
-        var separator = Math.Max(relativePath.LastIndexOf('/'), relativePath.LastIndexOf('\\'));
-        return separator < 0 ? relativePath : relativePath[(separator + 1)..];
-    }
+    // These paths originate in the client's upload plan, so System.IO.Path is intentional here.
+    private static string? GetRelativeDirectory(string relativePath) => Path.GetDirectoryName(relativePath);
+    private static string GetRelativeFileName(string relativePath) => Path.GetFileName(relativePath);
 
     [RelayCommand]
     private async Task AboutAsync()
@@ -1177,5 +1555,11 @@ public sealed partial class ExplorerViewModel : ObservableObject
 
     [RelayCommand]
     private void Close() => CloseAction?.Invoke();
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _fileClipboard.Changed -= FileClipboard_Changed;
+    }
 
 }

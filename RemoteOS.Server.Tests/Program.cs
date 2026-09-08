@@ -52,8 +52,11 @@ var root = Path.Combine(Path.GetTempPath(), $"remoteos-server-tests-{Guid.NewGui
 Directory.CreateDirectory(root);
 try
 {
-    await SettingsSystemVerification.RunAsync(root);
-    if (args.Contains("--settings-only", StringComparer.Ordinal)) return;
+    var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
+    var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
+    if (!fileOperationsOnly || settingsOnly) await SettingsSystemVerification.RunAsync(root);
+    if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
+    if (settingsOnly || fileOperationsOnly) return;
     await VerifyPrivilegedOperationProtocolAsync();
     await VerifyCertificateStoreAndSniAsync(root);
     VerifyCertificateApiRoutes();

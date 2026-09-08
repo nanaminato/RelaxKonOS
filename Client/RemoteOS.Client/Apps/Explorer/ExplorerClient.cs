@@ -23,6 +23,17 @@ public sealed class ExplorerClient : IExplorerClient
         _session = session;
     }
 
+    public Task<FileOperationDto> StartOperationAsync(StartFileOperationRequest request, CancellationToken ct = default)
+        => SendAsync<FileOperationDto>(HttpMethod.Post, FileApiRoutes.Operations, body: request, ct: ct);
+    public Task<IReadOnlyList<FileOperationDto>> ListOperationsAsync(CancellationToken ct = default)
+        => SendAsync<IReadOnlyList<FileOperationDto>>(HttpMethod.Get, FileApiRoutes.Operations, ct: ct);
+    public Task<FileOperationDto> GetOperationAsync(Guid id, CancellationToken ct = default)
+        => SendAsync<FileOperationDto>(HttpMethod.Get, $"{FileApiRoutes.Operations}/{id}", ct: ct);
+    public Task<FileOperationDto> CancelOperationAsync(Guid id, CancellationToken ct = default)
+        => SendAsync<FileOperationDto>(HttpMethod.Post, $"{FileApiRoutes.Operations}/{id}/cancel", ct: ct);
+    public Task<FileOperationDto> DecideOperationAsync(Guid id, FileOperationDecisionRequest request, CancellationToken ct = default)
+        => SendAsync<FileOperationDto>(HttpMethod.Post, $"{FileApiRoutes.Operations}/{id}/decision", body: request, ct: ct);
+
     public Task<IReadOnlyList<DriveDto>> GetDrivesAsync(CancellationToken ct = default)
         => SendAsync<IReadOnlyList<DriveDto>>(HttpMethod.Get, FileApiRoutes.Drives, ct: ct);
 
