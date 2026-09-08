@@ -53,7 +53,12 @@ public partial class MainWindow : Window
         var remaining = TimeSpan.FromMilliseconds(420) - (DateTime.UtcNow - started);
         if (remaining > TimeSpan.Zero) await Task.Delay(remaining);
         if (generation == _desktopLoadGeneration)
+        {
             DesktopLoadingOverlay.IsVisible = false;
+            // First-time setup shows a modal dialog. It must run only after the loading
+            // overlay is hidden, otherwise the dialog is unreachable behind it.
+            await shell.TryTriggerFirstTimeSetupAsync();
+        }
     }
 
     private void ConnectionInfo_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

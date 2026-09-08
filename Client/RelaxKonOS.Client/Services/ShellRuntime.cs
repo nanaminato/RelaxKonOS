@@ -78,8 +78,11 @@ public sealed class ShellRuntime
         if (!_catalog.TryGet(requested, out var descriptor) || !descriptor.IsAvailable)
             requested = ShellApi.DefaultShellId;
         await SwitchAsync(requested, persist: false, cancellationToken);
-        await workspace.TryTriggerFirstTimeSetupAsync();
         await workspace.RestoreDesktopStateAsync(cancellationToken);
+        // First-time desktop setup shows a modal dialog. It must not run while the host's
+        // "Getting your desktop ready" overlay is still covering the shell, or the user
+        // cannot interact with it. The caller invokes TryTriggerFirstTimeSetupAsync after
+        // hiding that overlay.
     }
 
     public async Task<bool> SwitchAsync(string requestedId, bool persist = true, CancellationToken cancellationToken = default,
