@@ -14,11 +14,13 @@ public sealed class WallpaperService(IAuthSession session, IWallpaperClient clie
         if (session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             throw new InvalidOperationException("Sign in before setting a synchronized wallpaper.");
         var preferences = await client.UploadAsync(url, tokens.AccessToken, workspace.Id, image, fileName, ct);
+        if (!IsCurrent(url, tokens.AccessToken, workspace.Id) || ct.IsCancellationRequested) return;
         await ApplyAsync(preferences, ct);
     }
 
     public async Task ApplyAsync(WorkspacePreferencesDto preferences, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         settings.Apply(preferences);
         if (!TryGetBlobId(preferences.WallpaperKey, out var blobId)) return;
         if (session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
@@ -26,6 +28,8 @@ public sealed class WallpaperService(IAuthSession session, IWallpaperClient clie
         try
         {
             var bytes = await client.DownloadAsync(url, tokens.AccessToken, workspace.Id, blobId, ct);
+            if (ct.IsCancellationRequested || !IsCurrent(url, tokens.AccessToken, workspace.Id)
+                || settings.CurrentWallpaperKey != preferences.WallpaperKey) return;
             using var stream = new MemoryStream(bytes, writable: false);
             settings.SetCustomWallpaper(preferences.WallpaperKey, new Bitmap(stream));
         }
@@ -34,6 +38,10 @@ public sealed class WallpaperService(IAuthSession session, IWallpaperClient clie
             // Keep the built-in fallback selected by ShellSettings. The next sync / login retries.
         }
     }
+
+    private bool IsCurrent(string url, string token, Guid workspaceId) =>
+        session.State == AuthSessionState.Authenticated && session.ServerUrl == url
+        && session.Tokens?.AccessToken == token && session.CurrentWorkspace?.Id == workspaceId;
 
     private static bool TryGetBlobId(string? key, out string blobId)
     {

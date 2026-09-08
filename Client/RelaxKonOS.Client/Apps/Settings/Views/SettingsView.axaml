@@ -93,6 +93,8 @@
             <DockPanel Margin="12,6" LastChildFill="True">
                 <Button DockPanel.Dock="Right" Content="{loc:Loc settings.save.retry}"
                         IsVisible="{Binding CanRetry}" Command="{Binding RetrySaveCommand}" />
+                <Button DockPanel.Dock="Right" Content="{loc:Loc settings.save.discard}"
+                        IsVisible="{Binding CanDiscard}" Command="{Binding DiscardDraftCommand}" Margin="0,0,6,0" />
                 <TextBlock Text="{Binding SaveStatus}" TextWrapping="Wrap" VerticalAlignment="Center" />
             </DockPanel>
             <ContentControl Grid.Row="1" Content="{Binding SelectedPage}" />

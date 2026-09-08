@@ -630,3 +630,9 @@ PEM、私钥、ACME account key 和 challenge 文件仍位于受平台 ACL 保�
 ### SettingsSystem 升级（2026-09-07，G1 实施中）
 
 Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。完整执行与待验证项见 [SettingsSystem.Goal](../desktop/RelaxKonOS.SettingsSystem.Goal.md)。
+
+## 设置操作日志（2026-09-08）
+
+设置宿主操作日志使用 ContentRoot 下 `data/settings-operations/operations.db`，独立于延迟落盘的配置注册表。`SettingsOperationJournal` 使用 SQLite `synchronous=FULL`，在 Helper 写入前提交 Applying；跨进程文件锁串行化协调操作，进程退出后留下持久状态用于查询而非重放。记录文档由现有 ASP.NET Data Protection 加密，必须持久保管相应密钥。数据库不作为 OS 配置真源。
+
+Linux 新建目录为 0700、数据库为 0600。部署仍须保护既有目录及 Windows 继承 ACL。当前时区记录支持查询、幂等重试和检查读回版本后的回滚；记录保留期清理、宿主恢复任务与完整跨平台部署检查仍待实现/验收。

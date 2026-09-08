@@ -86,3 +86,13 @@ Pass the published apphost as the fourth argument of
 [`install-relaxkonos-services.sh`](../deployment/linux/install-relaxkonos-services.sh). The installer
 copies the whole publish directory into a root-owned location and creates the narrow sudoers rule
 for the Server service account.
+
+## Settings timezone operations (2026-09-08; platform acceptance pending)
+
+The closed `HostTimeRead` / `HostTimeApply` operations accept only an OS-listed `TimeZoneId` and `ExpectedRevision`. Mixed file/service fields are rejected. The Helper compares the observed OS content revision before changing the zone and reads it back afterward. Windows uses `tzutil.exe` in the system directory; Linux uses `/usr/bin/timedatectl` and requires systemd-timedated. An unavailable backend fails explicitly.
+
+Server authorization uses `HostTimeChange` with the exact target `host/time`. Encrypted, synchronous SQLite records own HTTP idempotency and operation status. Lost results remain Unknown and must not be blindly replayed with another Helper id.
+
+Linux Helper launch and privileged child launches clear inherited environment values and use trusted absolute executable paths. Linux file/service allowlists come only from the installed root-owned policy files, with no environment overrides. Installation must supply a trusted runtime without relying on a user's DOTNET_ROOT/PATH. Windows service runtime isolation before managed startup still requires installation review and target-host verification; cleaning child environments alone does not prove full launch isolation.
+
+Real Windows/Ubuntu timezone changes, external changes, policy rejection and recovery remain unverified on designated test hosts.

@@ -67,6 +67,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
     {
         return request.Operation switch
         {
+            PrivilegedOperationKind.HostTimeRead or PrivilegedOperationKind.HostTimeApply => await RelaxKonOS.PrivilegedHelper.HostTimeOperations.ExecuteAsync(request),
             PrivilegedOperationKind.FileRead => await ReadFileAsync(request.Path, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileWrite => await WriteFileAsync(request.Path, request.ContentBase64, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileDelete => Delete(request.Path, policy.FileAllowedRoots),
@@ -237,12 +238,11 @@ static bool IsWithin(string path, string root) => string.Equals(path, root, GetP
 
 static IReadOnlyList<string> LoadAllowedRoots()
 {
-    // The policy file is installed root-owned beside the service configuration. Environment
-    // fallback is solely for isolated Helper tests; sudo's default env_reset excludes it.
+    // Policy comes only from root-owned installation files, never a caller process environment.
     const string policyPath = "/etc/relaxkonos/privileged-helper-roots";
     var configured = File.Exists(policyPath)
         ? File.ReadAllText(policyPath)
-        : Environment.GetEnvironmentVariable("RELAXKONOS_PRIVILEGED_FILE_ROOTS") ?? string.Empty;
+        : string.Empty;
     return configured.Split([Path.PathSeparator, '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
     .Where(line => !line.StartsWith('#'))
     .Where(Path.IsPathFullyQualified).Select(Path.GetFullPath).Distinct(GetPathComparer()).ToArray();
@@ -275,7 +275,7 @@ static async Task<PrivilegedOperationResult> ApplyNativeServiceActionAsync(strin
         PrivilegedServiceAction.Restart => "restart",
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
-    var fileName = OperatingSystem.IsWindows() ? "sc.exe" : "systemctl";
+    var fileName = OperatingSystem.IsWindows() ? Path.Combine(Environment.SystemDirectory, "sc.exe") : "/usr/bin/systemctl";
     var arguments = OperatingSystem.IsWindows() ? new[] { command, serviceId } : new[] { command, serviceId };
     using var process = new System.Diagnostics.Process
     {
@@ -284,6 +284,7 @@ static async Task<PrivilegedOperationResult> ApplyNativeServiceActionAsync(strin
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
         },
     };
+    TrustedProcessEnvironment.Apply(process.StartInfo);
     foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
     if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "service manager could not start");
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -298,7 +299,7 @@ static IReadOnlyList<string> LoadAllowedServices()
 {
     const string policyPath = "/etc/relaxkonos/privileged-services";
     var configured = File.Exists(policyPath) ? File.ReadAllText(policyPath)
-        : Environment.GetEnvironmentVariable("RELAXKONOS_PRIVILEGED_SERVICE_IDS") ?? string.Empty;
+        : string.Empty;
     return configured.Split(['\r', '\n', Path.PathSeparator], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .Where(IsServiceId).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 }
@@ -533,6 +534,7 @@ static Task<PrivilegedOperationResult> RunUfwAsync(IReadOnlyList<string> argumen
 static async Task<PrivilegedOperationResult> RunFixedCommandWithOutputAsync(string executable, IReadOnlyList<string> arguments, string failure)
 {
     using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true } };
+    TrustedProcessEnvironment.Apply(process.StartInfo);
     foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
     if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "host operation could not start");
     using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -546,6 +548,7 @@ static async Task<PrivilegedOperationResult> RunFixedCommandWithOutputAsync(stri
 static async Task<PrivilegedOperationResult> RunFixedCommandAsync(string executable, IReadOnlyList<string> arguments, TimeSpan timeout, string failure)
 {
     using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true } };
+    TrustedProcessEnvironment.Apply(process.StartInfo);
     process.StartInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
     foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
     if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "host operation could not start");

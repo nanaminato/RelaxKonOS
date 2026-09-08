@@ -62,3 +62,13 @@ dotnet publish RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj -c
 ```
 
 将发布的 apphost 作为 [`install-relaxkonos-services.sh`](../deployment/linux/install-relaxkonos-services.sh) 的第四个参数传入。安装程序会将完整发布目录复制到 root 拥有的位置，并为 Server 服务账户创建狭窄的 sudoers 规则。
+
+## 设置系统时区操作（2026-09-08，实现待平台验收）
+
+新增封闭 `HostTimeRead` / `HostTimeApply`。写入仅接受远程系统列举的 `TimeZoneId` 与 `ExpectedRevision`，禁止混入文件、服务等字段；Helper 再读取当前时区并比较内容摘要，写后读回。Windows 使用系统目录下的 `tzutil.exe`，Linux 使用固定 `/usr/bin/timedatectl`（要求 systemd-timedated 可用）。不存在该后端则明确失败，不以写 JSON 替代 OS 写入。
+
+Server 使用现有 `HostTimeChange` 短期授权，精确目标 `host/time`。预览、幂等与操作状态存于 Server 独立加密 SQLite 日志；Helper 不处理 HTTP 幂等。结果丢失后不能生成新请求盲目重试。
+
+Linux Helper 启动及 Helper 管理子进程现在显式清空继承环境，设置安装控制的固定 PATH；特权程序使用绝对路径。Linux 文件/服务白名单只读 `/etc/relaxkonos/privileged-helper-roots` 与 `/etc/relaxkonos/privileged-services`，不再接受环境变量覆盖。安装必须提供可信运行时，不依赖调用用户的 DOTNET_ROOT/PATH。Windows 服务启动前的运行时环境隔离仍需安装链路审计与实机验证；不能把子进程清理等同于全部启动隔离已验收。
+
+真实 Windows/Ubuntu 写入、策略锁定、外部时区编辑与回滚尚未在指定测试主机验证。详见 SettingsSystem.Goal 执行记录。

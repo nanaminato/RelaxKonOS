@@ -18,6 +18,7 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
             return Complete(request, new(false, 69, Error: "privileged helper is not installed", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
 
         var start = new ProcessStartInfo(options.SudoPath) { ArgumentList = { "-n", options.HelperPath } };
+        TrustedProcessEnvironment.Apply(start);
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
         start.RedirectStandardError = true;

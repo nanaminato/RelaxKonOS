@@ -261,8 +261,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             return false;
 
         var segments = GetPathSegments(uri);
-        return (segments.Length == 1 && (segments[0].Equals("personalization", StringComparison.OrdinalIgnoreCase)
-                                       || segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)))
+        return (segments.Length == 1 && new[] { "system", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                    && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(segments[1]));
@@ -273,10 +272,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var viewModel = _viewModel;
         if (viewModel is null) return;
         var segments = GetPathSegments(request.Uri);
-        if (segments.Length == 1 && segments[0].Equals("personalization", StringComparison.OrdinalIgnoreCase))
-            viewModel.SelectPersonalizationPage();
-        else if (segments.Length == 1 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase))
-            viewModel.SelectApplicationsPage();
+        if (segments.Length == 1)
+            viewModel.SelectPage(segments[0]);
         else if (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                  && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase))
             _ = viewModel.SelectApplicationPermissionsAsync(segments[1]);

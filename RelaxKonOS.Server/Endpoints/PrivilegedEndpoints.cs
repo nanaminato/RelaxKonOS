@@ -15,6 +15,7 @@ public static class PrivilegedEndpoints
         app.MapPost(PrivilegedApiRoutes.Elevation, (HostElevationRequest request, HttpContext http,
             IHostAdministratorAuthenticator administrators, IHostElevationSessionStore elevations) =>
         {
+            if (!Enum.IsDefined(request.Capability)) return Problem(400, "elevation-capability-invalid", "授权能力无效。");
             if (request.Capability is >= HostElevationCapability.FileRead and <= HostElevationCapability.FileUpload)
                 return Problem(400, "file-elevation-capability-invalid", "文件操作必须使用文件授权入口。");
             var username = http.User.FindFirstValue(JwtRegisteredClaimNames.Name);

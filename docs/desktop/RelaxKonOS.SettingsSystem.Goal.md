@@ -277,3 +277,47 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 - G1 补充：注册表 PUT 契约增加必传 `expectedRevision`（创建用 0），两个编辑器调用者同步升级；受管 Desktop JSON 走相同校验；拒绝删除受管默认偏好及其祖先键，避免删除/重建重置版本后接受旧草稿。默认注册表键创建改为 insert-only CompareExchange，避免并发初始读取覆盖已保存值。
 - HTTP 行为验证使用临时 loopback Kestrel 和测试身份运行实际生产路由，数据仅在临时目录；验证 428、409、跨用户 GET/PUT、注册表 stale PUT 与受管删除拒绝。此测试不替代真实 JWT 认证、两设备 UI、宿主 provider 或恢复验收。
 - 下一批顺序：先补偏好持久状态/实时变化通知与断线重取、客户端草稿冲突处理及服务行为测试；再完成目录与宿主强类型协议、持久操作协调器，并推进 G2–G6。未将任何阶段或总 Goal 标记完成。
+
+### 2026-09-08 / G1 持久化状态与会话隔离（阶段未完成）
+
+- 本次继续执行起点 commit：`05481ba2da44c0fb6f7318e374fa02899dbed58b`；已有用户改动为删除 `.idea/.idea.RelaxKonOS/.idea/.name`，保持不动。
+- 偏好协议增加服务端观测的 `persistedRevision`，由注册表 `AppliedRevision` 填充；客户端提交的持久版本不作为真源，也不进入偏好 JSON。修正 DTO 中仍声称 Workspace JSON 列是真源的注释。
+- 窗口外草稿服务在接收成功后最多进行 12 次间隔一秒的只读确认；仅对应 revision 确实落盘才显示三语言“已保存”。读取失败、超时或版本被其他写者替换时保留“服务端已接收/等待落盘”，不伪报成功、不自动重写。新编辑和会话切换取消旧确认。
+- `PreferencesSync` 增加返回结果的 token 身份检查，登出清除加载去重标识，读取失败允许下次重新尝试。完整实时事件、重连刷新与壁纸异步应用期间会话切换仍待后续完成。
+- 验证：`dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -v quiet` 通过，0 warning / 0 error；Client Release 首次并行构建退出 1 且无诊断，改用 `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -c Release -p:UsedAvaloniaProducts= -v normal -m:1` 通过，0 warning / 0 error（编译服务器管道权限不足后回退编译成功）；`git diff --check` 通过。
+- **未测试**：本批行为测试、持久化失败/竞争测试、登录切换测试、UI 人工验证；按用户允许暂缓，不能引用前批测试作为本批通过证据。远程 Windows/Ubuntu 目标未提供，未在开发机做系统配置实验。
+- 下一步：继续 G1 实时变化、冲突处理、目录与宿主协调器，再推进 G2–G6；G0–G6 的剩余必做验收均未宣称完成。
+
+### 2026-09-08 / G1 跨连接同步与草稿恢复（阶段未完成）
+
+- 代码核对纠正：此前只有 Workspace Hub 协议声明，没有 Server 实现或路由。新增 `/hubs/settings-changes`，复用 SignalR/JWT 注册；`Subscribe` 按认证 sub 校验 Workspace 所有权，连接到期关闭。后台按订阅资源分组，每秒观察真源版本及持久版本，覆盖偏好 API、壁纸和注册表写入者；只推送 Workspace 标识与版本。
+- Client `SettingsChangesStream` 生命周期由单例 `PreferencesSync` 管理，独立于 Settings 窗口；首次连接/重连先订阅再重读，30 秒只读恢复检查并触发令牌续期，不重放写入。连接更换取消旧订阅；刷新串行并在 UI 线程应用，草稿存在时保留草稿并记录冲突。
+- 草稿目标改用远程地址、Workspace、Session 标识绑定，正常 token 续期不会使同会话草稿失效；发送仍使用当前认证 token。新增三语言“放弃草稿并重载”操作，先成功获取快照才丢弃草稿；默认应用注册表变化同步到已打开的设置页。完整逐字段合并仍待实现。
+- 壁纸上传/下载结果在应用前检查原连接身份；下载还检查当前壁纸键及取消状态，避免旧连接或旧壁纸请求返回后替换当前图片。
+- 构建：Server Debug 与 Client Release 均使用 `--no-restore -m:1 -p:UseSharedCompilation=false -v quiet`（Client 另加 `-p:UsedAvaloniaProducts=`），通过，均 0 warning / 0 error。
+- 新增 `SettingsNotificationsVerification`：使用真实 SignalR WebSocket 握手、两个连接、跨用户订阅拒绝、重新连接时当前版本通知、严格限定通知字段；SQLite 验证补充落盘前不得报告持久版本、重启后持久版本一致。
+- 测试依赖最初缺少 assets，已用 `dotnet restore RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --source /home/nanami/.nuget/packages -p:NuGetAudit=false -p:BuildInParallel=false -v quiet` 从本地缓存恢复。沙箱禁止 loopback socket，已通过工具审批在沙箱外运行刚构建的 `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only`，退出 0；输出确认通知用例、HTTP 428/409/越权/注册表绕过拒绝、三个存储实现及 SQLite 重启通过。仅临时测试数据，不进行开发机宿主配置实验。
+- **仍未验证**：真实 JWT 到期/续期/撤销的端到端行为、客户端草稿与壁纸竞态行为测试、两台真实设备、所有 UI 尺寸/语言/键盘截图、Windows/Ubuntu provider。SignalR 测试使用测试身份中间件，不冒充真实 JWT 验收。
+- G1 下一步仍为目录及宿主强类型契约、权限与持久操作协调器、逐字段冲突处理；G2–G6 未完成。不得因通知测试通过将 G1 或总目标标记完成。
+
+### 2026-09-08 / G1 目录与持久操作底座、时区后端切片（阶段未完成）
+
+- 新增 `Protocol/Settings/SettingsContracts.cs`：范围、能力原因、生效时间、目录、时区快照/预览、planId 应用、查询及回滚契约。`SettingsApiRoutes` 为唯一新路由常量；无旧路由别名或双格式解析。Workspace 通知补充 settingId/scope。
+- `/settings/catalog` 提供已实现偏好和时区的发现元数据，不在目录请求中串行调用 Helper；具体平台状态由领域读取探测。Client 的既有八页均可通过对应 settings URI 导航，移除已被统一入口取代且无调用者的 VM 导航方法。目录仍待扩充和接入 UI 搜索。
+- 新增 `IHostTimeService`、`SettingsOperationCoordinator` 与 `SettingsOperationJournal`。预览绑定认证 actor、资源、请求摘要、观测 revision 和五分钟期限；幂等键同载荷取原计划、异载荷 409，应用只接收 planId。机器写入复用 `HostTimeChange` / `host/time` 的短期授权。
+- 独立 SQLite 日志使用 `synchronous=FULL` 和 Data Protection 加密文档，Helper 写入前提交 Applying。跨进程文件锁串行化协调器；已执行计划重试返回原结果，丢失结果/中断保持 Unknown，禁止盲目重放。回滚要求原操作读回版本仍与 OS 一致并重新授权。数据库只记录操作，不充当 OS 配置真源。
+- 新增封闭 Helper `HostTimeRead` / `HostTimeApply`，拒绝混合文件/服务字段；Windows 固定系统目录 tzutil.exe，Linux 固定 `/usr/bin/timedatectl`，使用参数列表而非 shell，枚举远端 OS 时区 ID，Helper 自行比较基线并写后读回。Server 保持非特权。
+- Linux Helper 启动与所有现有 Helper 子进程新增清空继承环境和可信固定 PATH；NativeService 改为绝对程序路径。Linux policy 移除环境变量覆盖，仅从安装控制文件加载。Windows 服务 managed runtime 启动前的隔离仍需安装链路完善与验证，未将子进程清理当作全部启动隔离已完成。
+- 同步更新 Settings 说明、Protocol、Storage 和 Helper 中英文 README。官方实现依据：[Microsoft tzutil](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/tzutil)、[systemd timedatectl 实现](https://github.com/systemd/systemd/blob/main/src/timedate/timedatectl.c)。未执行这些修改命令。
+
+| 本批验证 | 结果 / 证据边界 |
+| --- | --- |
+| `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 通过，包含 Server 构建；0 warning / 0 error |
+| `dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 通过；0 warning / 0 error；没有启动 Helper 执行写入 |
+| `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -p:UsedAvaloniaProducts= -v quiet` | 通过；0 warning / 0 error |
+| `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only` | 新增操作用例通过：加密日志重开、actor 隔离、授权前置、幂等、读回、外部编辑阻止回滚、Unknown 不重放、启动环境去除注入变量；使用受控内存 provider，不等于时区平台测试 |
+| 原有 Workspace HTTP、SignalR、并发与 SQLite 重启用例 | 前次完整运行退出 0，最终重建后的复验结果见下方补充 |
+| 时区端点真实 JWT HTTP、Windows/Ubuntu 实际读写、外部策略、真实进程重启与 OS 回滚 | **未测试**；未提供指定远程测试目标，未使用开发机进行配置实验 |
+
+- **必做剩余**：时区 UI/SDK/CLI 与宿主通知；目录 UI、逐字段草稿合并；环境变量/主机名/DNS 领域及平台实现；DNS 独立恢复任务；日志保留期清理、Unknown 读回协调、部署 ACL/密钥/运行时隔离；完整 G2–G6 及跨平台验收。时区回滚与协调器已有实现，但宿主侧故障恢复不能据此宣称完成。G1 与总目标保持执行中。
+- 最终重建后复验：上述 `--settings-only` 退出 0；操作协调器、两连接通知/越权/重连/无值载荷、HTTP 428/409/跨用户拒绝、存储并发与 SQLite 重启全部通过。为允许临时 loopback socket 经工具审批运行，未扩大为宿主配置测试。
