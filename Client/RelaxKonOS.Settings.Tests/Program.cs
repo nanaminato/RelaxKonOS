@@ -19,3 +19,5 @@ for (var i = 0; i < timings.Length; i++)
 }
 Array.Sort(timings);
 Console.WriteLine($"200 entries, 1000 cached queries: p95={timings[949]:F3} ms, max={timings[^1]:F3} ms; alias/case/multi-term/unavailable/empty checks passed. No UI rendering measured.");
+
+EnvironmentChecks.Run();

@@ -75,7 +75,7 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
 
     private void Audit(PrivilegedOperationRequest request, PrivilegedOperationResult result)
     {
-        var resource = string.Join("\n", new[] { request.Path, request.DestinationPath, request.ServiceId }.Where(value => !string.IsNullOrWhiteSpace(value))!);
+        var resource = string.Join("\n", new[] { request.Path, request.DestinationPath, request.ServiceId, request.EnvironmentTarget?.ResourceId }.Where(value => !string.IsNullOrWhiteSpace(value))!);
         var resourceHash = resource.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resource)))[..16];
         logger.LogInformation("Privileged Helper operation completed. OperationId={OperationId} Operation={Operation} ResourceHash={ResourceHash} Success={Success} ProblemCode={ProblemCode}",
             request.OperationId, request.Operation, resourceHash, result.Success, result.ProblemCode);

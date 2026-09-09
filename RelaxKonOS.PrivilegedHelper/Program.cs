@@ -63,10 +63,17 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
     if (request.OperationId is not { } operationId || operationId == Guid.Empty)
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
 
+    if (request.Operation is not (PrivilegedOperationKind.HostEnvironmentRead or PrivilegedOperationKind.HostEnvironmentApply)
+        && (request.EnvironmentTarget is not null || request.EnvironmentChange is not null))
+        return Fail(64, PrivilegedProblemCode.InvalidRequest, "environment fields require a dedicated operation");
+
     try
     {
         return request.Operation switch
         {
+            PrivilegedOperationKind.HostEnvironmentRead or PrivilegedOperationKind.HostEnvironmentApply => OperatingSystem.IsWindows()
+                ? RelaxKonOS.PrivilegedHelper.WindowsEnvironmentOperations.Execute(request)
+                : Fail(69, PrivilegedProblemCode.UnsupportedOperation, "environment provider implementation is pending for this platform"),
             PrivilegedOperationKind.HostTimeRead or PrivilegedOperationKind.HostTimeApply => await RelaxKonOS.PrivilegedHelper.HostTimeOperations.ExecuteAsync(request),
             PrivilegedOperationKind.FileRead => await ReadFileAsync(request.Path, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileWrite => await WriteFileAsync(request.Path, request.ContentBase64, policy.FileAllowedRoots),

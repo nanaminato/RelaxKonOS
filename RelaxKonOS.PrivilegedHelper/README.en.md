@@ -96,3 +96,11 @@ Server authorization uses `HostTimeChange` with the exact target `host/time`. En
 Linux Helper launch and privileged child launches clear inherited environment values and use trusted absolute executable paths. Linux file/service allowlists come only from the installed root-owned policy files, with no environment overrides. Installation must supply a trusted runtime without relying on a user's DOTNET_ROOT/PATH. Windows service runtime isolation before managed startup still requires installation review and target-host verification; cleaning child environments alone does not prove full launch isolation.
 
 Real Windows/Ubuntu timezone changes, external changes, policy rejection and recovery remain unverified on designated test hosts.
+
+### Settings environment operations (integration in progress)
+
+Closed `HostEnvironmentRead` / `HostEnvironmentApply` operations accept only structured `environmentTarget` / `environmentChange` fields. They reject mixed file, service or time fields; other operations reject environment payloads. Windows uses fixed machine storage or `HKEY_USERS/<SID>/Environment`, never the Helper's HKCU. A canonical, resolvable account SID and a loaded user hive are required. The Server must map the authenticated user to the SID; clients must not choose arbitrary accounts.
+
+Raw REG_SZ / REG_EXPAND_SZ values and types are preserved. Writes compare the full snapshot revision, mutate the requested values, flush, read back and broadcast the Environment change notification. Registry batches are not transactions: the Server must persist recovery material before dispatch and reconcile interrupted or partial writes as uncertain outcomes. Broadcast does not replace running process environments or guarantee delivery to other sessions/services.
+
+Raw values are restricted to authenticated local IPC and must never be forwarded directly to HTTP, normal audit or diagnostics. Audit records only a resource hash. Environment HTTP authorization/coordinator integration is pending; real Windows registry/ACL and service runtime isolation validation require a designated remote test host. Linux currently has only the restricted document core; its provider remains required work, not a platform exemption.

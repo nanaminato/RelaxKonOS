@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+    <Compile Include="../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentDocument.cs" Link="LinuxEnvironmentDocument.cs" />
     <Compile Include="../RelaxKonOS.Client/Services/SettingsSearchIndex.cs" Link="SettingsSearchIndex.cs" />
   </ItemGroup>
 </Project>

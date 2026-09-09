@@ -351,3 +351,26 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 - 编译：首次 Client 构建发现当前 Avalonia 不允许 DataTemplate 内声明 xmlns，移至根节点后，`dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -p:UsedAvaloniaProducts= -v quiet` 通过，0 warning / 0 error。`git diff --check` 通过。
 - 新增可独立复跑的 `Client/RelaxKonOS.Settings.Tests` 控制台验证程序（必须 `dotnet run`，不是 `dotnet test`）。从本地 NuGet 缓存恢复后运行 `dotnet run --project Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false`，退出 0；英文大小写、中/日文同义词、多关键词、不可用项仍可发现及空结果检查通过。200 项**合成目录**、50 次预热、1000 次查询测量 p95=0.075ms / max=1.132ms；只测生产索引查询，不测网络、UI 调度或渲染，不能据此验收“150ms 内呈现”或声称存在 200 项真实设置。
 - **未测试/未完成**：首页、账户、辅助功能、子页分组及关联入口；settingId 定位到具体控件（目前只打开所属页面）；离开草稿保留/放弃确认；页面内部窄布局整改；真实 UI 的 640×480、1024×768、1440×900、200% 缩放，亮暗主题、三语言、键盘/屏幕阅读器与焦点截图；远程目录加载/连接切换竞态测试。G1 及 G3–G6 的既有剩余工作全部保留，未标记任何阶段完成。
+
+### 2026-09-09 / G3 环境契约与 Linux 受限文档核心（阶段未完成）
+
+- 新增共享强类型 Environment 契约：显式 Set/Delete、String/ExpandString、Workspace PATH Replace/Append、宿主/Workspace 快照、来源与掩码标识、环境预览请求。空字符串不会解释为删除；尚未注册环境 HTTP 或 Helper 操作，不能把协议类型视为可用写入 API。
+- `EnvironmentValidation` 固定批次 128 项、名称 255 字符、值 32767 字符、总名称/值 UTF-8 数据 256KiB 上限；验证 NUL/不完整 Unicode、非法名称、重复名称、删除载荷、平台值类型。Windows 大小写不敏感、Linux 大小写敏感；PATH/加载器/运行时注入相关项要求显式高影响确认。名称启发式敏感分类只是基础工具，不能替代读取授权或完整秘密保护。
+- 新增纯数据展开器，支持 Windows `%NAME%` 与 Linux `$NAME`/`${NAME}` 的显示预览；循环、16 层深度、128KiB 输出及全局工作量限制，不读取本进程环境、不执行命令替换。PATH 分项保留空项、重复项及顺序，并提供当前目录搜索/重复提示。此展开器尚未接入工作负载构造；Linux 原始持久值不会因这个预览工具自动获得 shell 展开语义。
+- Helper 新增 `LinuxEnvironmentDocument`，实现受限 `/etc/environment` 文档的全量先解析/验证、纯内存编辑与结果重解析；保留未修改行、注释、顺序、缩进及 LF/CRLF。拒绝重复变量、export 声明、等号附近歧义空白、转义、换行值及无法无损表达的数据。失败不产出部分文件，也不执行任何文件写入。
+- 官方实现核对：[Linux-PAM pam_env.c](https://github.com/linux-pam/linux-pam/blob/master/modules/pam_env/pam_env.c) 的 `_parse_env_file` 在引号处理前截断 `#`。据此拒绝包含 `#` 的变量值，避免错误地把引号当作通用 shell 转义。不同构建/发行版消费者仍需在目标 Ubuntu 上核验；此解析器不宣称支持任意 PAM/systemd/shell 语法。
+- 验证：`dotnet run --project Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false` 退出 0，新增环境检查覆盖保真行/CRLF、空值与删除、拒绝语法、失败保留源对象、平台名称、高影响确认、NUL/删除载荷、命令文本保持数据、展开循环/资源界限、PATH 顺序；原搜索验证也通过。全部使用内存字符串，未读取或修改开发机宿主配置。Helper 构建通过结果见本批收尾；`git diff --check` 通过。
+- **仍未实现/未测试**：Helper 环境封闭操作及 actor/UID/SID 绑定、真实 Linux 文件元数据/ACL 保留与原子替换、Windows 注册表 provider、受保护恢复材料、Server 环境协调器/授权/审计、Workspace 环境存储、工作负载传播、敏感值揭示授权、环境 UI/SDK/CLI；远程 Ubuntu/Windows 的真实写入/读回/回滚全部未测试。当前交付是生产契约/解析核心，不是 mock provider，也不能算完整 G3 纵向切片。继续完成这些实际落点，G0–G6 均按既有未完成验收继续推进。
+- 收尾构建：`dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` 通过，0 warning / 0 error（包含新 Protocol 核心）；未启动 Helper。
+
+### 2026-09-09 / G3 Windows Helper 环境 provider（纵向切片仍未完成）
+
+- 新增封闭 `HostEnvironmentRead` / `HostEnvironmentApply` 及本地 IPC 原始环境状态类型。环境请求严格对照允许字段，拒绝混合文件/服务/时区载荷；其他 Helper 操作也明确拒绝环境字段。没有新增任意注册表路径或执行字段，没有旧协议别名。
+- Windows provider 使用固定 HKLM 环境键或目标 SID 下的 HKU Environment；验证规范账户 SID 与宿主账户解析，用户 hive 未加载时失败，不写 Helper/LocalSystem HKCU，不挂载或创建任意用户 hive。Server 认证 actor 到 SID 的映射和授权仍待接入，当前没有环境 HTTP 入口。
+- 保留 REG_SZ/REG_EXPAND_SZ，使用 DoNotExpandEnvironmentNames 读取原值；内容/类型/目标参与 revision。命名互斥锁串行化同一资源的 Helper 写入，重新核对 expectedRevision，验证批次/高影响确认，逐项写注册表、Flush、读回后报告成功。批次不承诺 ACID，中断/部分失败必须由后续 Server 日志协调，不在 Helper 盲目补偿。
+- 写后发送 Environment 的 WM_SETTINGCHANGE 广播，并单独报告通知结果；不能把广播成功当作运行进程已更新，也不保证跨 Windows 会话/服务生效。未执行广播或任何真实注册表读写。
+- 两种既有 transport 的审计资源摘要纳入环境资源标识；不记录名称、原值、恢复材料或完整 IPC 载荷。中英文 Helper README 同步边界与待接入项。
+- 实现依据：[Microsoft RegistryKey.GetValue](https://learn.microsoft.com/en-us/dotnet/api/microsoft.win32.registrykey.getvalue?view=net-10.0)、[Microsoft WM_SETTINGCHANGE](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-settingchange)。平台实际效果仍需指定 Windows 测试主机验证。
+- 构建：`dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` 与 Helper 同参数构建均通过，0 warning / 0 error；包含新 Protocol 类型。`git diff --check` 通过。
+- **本批未测试**：Helper 字段拒绝/账户 SID/命名互斥锁行为测试、Windows 注册表/ACL/外部修改/中断/读回/广播/多登录会话、Windows 服务启动运行时隔离、真实授权/审计端到端。未提供指定远程主机，未在开发机试验系统配置。
+- **继续必做**：Server 身份解析及环境读/写/敏感揭示授权、持久计划与恢复日志、Linux 文件 provider、Workspace/工作负载构造、环境 UI/SDK/CLI。Linux 分派当前返回明确的实现待接入错误，不能把这一暂态当作平台不支持而通过验收。G3 及总目标保持未完成。
