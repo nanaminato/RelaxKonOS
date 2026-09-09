@@ -1,6 +1,8 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "git.picker.loading": "Git プロジェクトを読み込み中…",
+        "git.picker.loading_hint": "プロジェクト一覧を取得しています。しばらくお待ちください。",
         "git.log.no_results": "一致するコミットがありません。絞り込み条件を変更してください。",
         "git.conflicts.block_ours": "この部分: Ours",
         "git.conflicts.block_theirs": "この部分: Theirs",

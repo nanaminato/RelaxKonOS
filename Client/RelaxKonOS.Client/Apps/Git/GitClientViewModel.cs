@@ -113,6 +113,16 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     // ── 项目选择器状态：IsPickerMode=true 时显示项目选择视图而非工作区 ──
     [ObservableProperty] private bool _isPickerMode = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLoadingProjects))]
+    private bool _isStarting = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLoadingProjects))]
+    private bool _isLoadingRepositories;
+    [ObservableProperty] private bool _hasLoadedRepositories;
+    [ObservableProperty] private string? _repositoryLoadError;
+    public bool IsLoadingProjects => IsStarting || IsLoadingRepositories;
+
     [ObservableProperty] private string _probeHint = string.Empty;
     [ObservableProperty] private bool _isProbing;
 
@@ -187,27 +197,33 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     public async Task StartAsync()
     {
-        SelectedLogDate ??= LogDateOptions[0];
-        Log("StartAsync 开始");
-        await RefreshEngineStatusAsync();
-        Log($"引擎状态: IsAvailable={IsGitAvailable} Version={EngineVersion} Problem={ProblemCode}");
-        if (!IsGitAvailable)
+        IsStarting = true;
+        try
         {
-            IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
-            StatusText = LocalizedText.Get("git.vm.git_unavailable");
-            if (ShowGitUnavailableAsync is not null)
-                await ShowGitUnavailableAsync();
-            if (!IsGitAvailable) return; // still unavailable after dialog → stop further init
+            SelectedLogDate ??= LogDateOptions[0];
+            Log("StartAsync 开始");
+            await RefreshEngineStatusAsync();
+            Log($"引擎状态: IsAvailable={IsGitAvailable} Version={EngineVersion} Problem={ProblemCode}");
+            if (!IsGitAvailable)
+            {
+                IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
+                StatusText = LocalizedText.Get("git.vm.git_unavailable");
+                if (ShowGitUnavailableAsync is not null)
+                    await ShowGitUnavailableAsync();
+                if (!IsGitAvailable) return; // still unavailable after dialog → stop further init
+            }
+
+            await RefreshRepositoriesAsync();
+            Log($"项目列表: Repositories.Count={Repositories.Count} IsPickerMode={IsPickerMode}");
+            if (RepositoryLoadError is null)
+                StatusText = IsPickerMode
+                ? (Repositories.Count > 0 ? LocalizedText.Get("git.status.select_project") : LocalizedText.Get("git.status.click_open_folder"))
+                : LocalizedText.Get("git.status.ready");
+
+            if (!IsPickerMode && IsAutoRefresh)
+                StartStatusTimer();
         }
-
-        await RefreshRepositoriesAsync();
-        Log($"项目列表: Repositories.Count={Repositories.Count} IsPickerMode={IsPickerMode}");
-        StatusText = IsPickerMode
-            ? (Repositories.Count > 0 ? LocalizedText.Get("git.status.select_project") : LocalizedText.Get("git.status.click_open_folder"))
-            : LocalizedText.Get("git.status.ready");
-
-        if (!IsPickerMode && IsAutoRefresh)
-            StartStatusTimer();
+        finally { IsStarting = false; }
     }
 
     public void Stop()
@@ -230,19 +246,26 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     [RelayCommand]
     public async Task RefreshRepositoriesAsync()
     {
+        if (IsLoadingRepositories) return;
+        IsLoadingRepositories = true;
+        HasLoadedRepositories = false;
+        RepositoryLoadError = null;
         Log("RefreshRepositoriesAsync 开始调用 client.ListRepositoriesAsync …");
         try
         {
             var repos = await client.ListRepositoriesAsync();
             Repositories.Clear();
             foreach (var repo in repos) Repositories.Add(repo);
+            HasLoadedRepositories = true;
             Log($"RefreshRepositoriesAsync 完成，项目数={Repositories.Count}");
         }
         catch (Exception ex)
         {
-            await NotifyAsync(LocalizedText.Format("git.vm.load_repositories_failed_format", ex.Message));
+            RepositoryLoadError = LocalizedText.Format("git.vm.load_repositories_failed_format", ex.Message);
+            StatusText = RepositoryLoadError;
             Log($"RefreshRepositoriesAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
+        finally { IsLoadingRepositories = false; }
     }
 
     private async Task RefreshAllAsync()
@@ -1018,7 +1041,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         Changes.Clear();
         TrackedChanges.Clear();
         UntrackedChanges.Clear();
-        
+
         // Add unstaged files (tracked files with modifications)
         foreach (var f in UnstagedFiles)
         {
@@ -1027,7 +1050,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             Changes.Add(item);
             TrackedChanges.Add(item);
         }
-        
+
         // Add untracked files (new files not yet in version control)
         foreach (var f in UntrackedFiles)
         {
@@ -1039,7 +1062,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 UntrackedChanges.Add(item);
             }
         }
-        
+
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(SelectedFilePaths));
     }

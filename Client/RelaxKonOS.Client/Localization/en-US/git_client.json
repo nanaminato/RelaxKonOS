@@ -1,6 +1,8 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "git.picker.loading": "Loading Git projects…",
+        "git.picker.loading_hint": "Fetching the project list. Please wait.",
         "git.log.no_results": "No matching commits. Try adjusting the filters.",
         "git.conflicts.block_ours": "Block: ours",
         "git.conflicts.block_theirs": "Block: theirs",

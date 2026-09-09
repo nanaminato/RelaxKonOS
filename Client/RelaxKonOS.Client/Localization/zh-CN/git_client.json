@@ -1,6 +1,8 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "git.picker.loading": "正在加载 Git 项目…",
+        "git.picker.loading_hint": "正在获取项目列表，请稍候。",
         "git.log.no_results": "没有匹配的提交，请尝试调整筛选条件。",
         "git.conflicts.block_ours": "此块采用 Ours",
         "git.conflicts.block_theirs": "此块采用 Theirs",
