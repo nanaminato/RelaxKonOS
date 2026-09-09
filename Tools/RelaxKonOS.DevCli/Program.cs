@@ -22,6 +22,8 @@ try
 {
     switch (command)
     {
+        case "settings":
+            return await SettingsCommands.RunAsync(arguments);
         case "apps" when arguments.Count == 0:
             await SendAsync(new HttpRequestMessage(HttpMethod.Get, "apps"));
             break;
@@ -455,6 +457,7 @@ Commands:
   update <package.roapp>
   launch <app-id>
   uninstall <app-id>
+  settings --server <https://host:port> catalog|time|preview-time|apply-time|operation|rollback [options]
 
 pack publishes the project and packages all publish output beneath the manifest's lib/<TFM>/ directory.
 Use --no-build to package the selected configuration's existing build output without recompiling it.

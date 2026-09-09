@@ -25,7 +25,7 @@ public sealed class SettingsCatalog(PrivilegedHelperOptions helper, IHostElevati
                 : !grants.IsGranted(principal, HostElevationCapability.HostTimeChange, SettingsOperationCoordinator.TimeResource)
                     ? new(SettingsCapabilityState.ElevationRequired, "settings.elevation_required")
                     : new(SettingsCapabilityState.Available);
-        items.Add(new("host.time.zone", "time-language", "settings.time_zone", "settings.time_zone.description",
+        items.Add(new("host.time.zone", "time-language", "settings.time_zone", "settings.host_time.scope",
             "relaxkonos://settings/time-language", SettingsScope.HostMachine, "timeZoneId", capability,
             SettingsEffectiveState.Immediate, ["timezone", "time zone", "时区", "タイムゾーン"]));
         return new(items, DateTimeOffset.UtcNow);

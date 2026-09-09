@@ -18,6 +18,10 @@ public static class PrivilegedEndpoints
             if (!Enum.IsDefined(request.Capability)) return Problem(400, "elevation-capability-invalid", "授权能力无效。");
             if (request.Capability is >= HostElevationCapability.FileRead and <= HostElevationCapability.FileUpload)
                 return Problem(400, "file-elevation-capability-invalid", "文件操作必须使用文件授权入口。");
+            if (string.IsNullOrWhiteSpace(request.Target) || request.Target.Length > 256 || request.IncludeDescendants)
+                return Problem(400, "elevation-target-invalid", "目标资源无效。");
+            if (elevations.IsGranted(http.User, request.Capability, request.Target))
+                return Results.Ok(new HostElevationResult(true));
             var username = http.User.FindFirstValue(JwtRegisteredClaimNames.Name);
             if (string.IsNullOrWhiteSpace(username)) return Results.Unauthorized();
             var authentication = administrators.Authenticate(username, request.AdministratorUsername, request.Password);

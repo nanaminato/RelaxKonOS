@@ -68,7 +68,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         {
             new SystemPageViewModel(settings, session, save),
             new PersonalizationPageViewModel(settings, save),
-            new TimeLanguagePageViewModel(settings, localization, save),
+            new TimeLanguagePageViewModel(settings, localization, save,
+                new HostTimeEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>(), session, localization)),
             new NetworkPageViewModel(settings, session, remote!, system!, save),
             new AppsPageViewModel(settings, apps!, packages!, localization, browserClient!),
             new ImageMirrorsPageViewModel(settings, imageMirrors!, session),
@@ -76,6 +77,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
         };
         _selectedPage = Pages[0];
+        InitializeNavigation(localization, App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>());
         Pages.OfType<DefaultAppsPageViewModel>().Single().SetMappings(registry?.Snapshot);
         if (_registry is not null) _registry.Changed += OnMappingsChanged;
     }
@@ -87,18 +89,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void SelectPage(string route)
     {
-        var page = route.ToLowerInvariant() switch
-        {
-            "system" => Pages.OfType<SystemPageViewModel>().FirstOrDefault(),
-            "personalization" => Pages.OfType<PersonalizationPageViewModel>().FirstOrDefault(),
-            "time-language" => Pages.OfType<TimeLanguagePageViewModel>().FirstOrDefault(),
-            "network" => Pages.OfType<NetworkPageViewModel>().FirstOrDefault(),
-            "apps" => Pages.OfType<AppsPageViewModel>().FirstOrDefault(),
-            "image-mirrors" => Pages.OfType<ImageMirrorsPageViewModel>().FirstOrDefault(),
-            "default-apps" => Pages.OfType<DefaultAppsPageViewModel>().FirstOrDefault(),
-            "developer" => Pages.OfType<DeveloperPageViewModel>().FirstOrDefault(),
-            _ => (SettingsPageViewModel?)null,
-        };
+        var page = Pages.FirstOrDefault(page => string.Equals(page.Route, route, StringComparison.OrdinalIgnoreCase));
         if (page is not null) SelectedPage = page;
     }
 
@@ -116,6 +107,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (_initialized) return;
         _initialized = true;
+        _ = RefreshCatalogAsync();
 
         if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } ws })
             return;
@@ -187,6 +179,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        DisposeNavigation();
         _editor.PropertyChanged -= OnEditorChanged;
         if (_registry is not null) _registry.Changed -= OnMappingsChanged;
         foreach (var page in Pages.OfType<IDisposable>())

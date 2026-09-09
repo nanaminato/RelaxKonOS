@@ -20,7 +20,7 @@ public sealed partial class DefaultAppsPageViewModel : SettingsPageViewModel, ID
         RefreshApplications();
     }
 
-    public override string Glyph => "🔗";
+    public override string Route => "default-apps";
     public override string DisplayNameKey => "settings.page.default_apps";
     public override string DisplayName => "Default apps";
     public ObservableCollection<AppOption> AvailableApps { get; } = new();

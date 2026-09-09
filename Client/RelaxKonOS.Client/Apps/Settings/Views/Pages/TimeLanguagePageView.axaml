@@ -24,12 +24,29 @@
                     <TextBlock Grid.Column="2" Text="{Binding DateSample}" VerticalAlignment="Center"
                                Margin="12,0,0,0" Opacity="0.8" />
                 </Grid>
-                <Grid ColumnDefinitions="180,*">
-                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.time_zone}" Opacity="0.7" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1" Text="{Binding TimeZone}" VerticalAlignment="Center" />
-                </Grid>
-                <TextBlock Opacity="0.55" FontSize="12" TextWrapping="Wrap"
-                           Text="{loc:Loc settings.time_zone.description}" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.host_time.title}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.host_time.scope}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding HostTime.TargetText}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding HostTime.CurrentZone}" FontWeight="SemiBold" />
+                <ComboBox ItemsSource="{Binding HostTime.AvailableZones}" SelectedItem="{Binding HostTime.SelectedZone, Mode=TwoWay}"
+                          IsEnabled="{Binding HostTime.CanEdit}" HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="{loc:Loc settings.time_zone}" />
+                <TextBlock Text="{Binding HostTime.PreviewText}" TextWrapping="Wrap" />
+                <WrapPanel Orientation="Horizontal">
+                    <Button Content="{loc:Loc settings.host_time.reload}" Command="{Binding HostTime.ReloadCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.host_time.preview}" Command="{Binding HostTime.PreviewCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.host_time.apply}" Command="{Binding HostTime.ApplyCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.host_time.query}" Command="{Binding HostTime.QueryCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.host_time.rollback}" Command="{Binding HostTime.RollbackCommand}" Margin="0,0,8,8" />
+                </WrapPanel>
+                <TextBlock Text="{Binding HostTime.StatusText}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding HostTime.ProblemCode}" TextWrapping="Wrap" />
+                <SelectableTextBlock Text="{Binding HostTime.OperationId}" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 

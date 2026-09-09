@@ -71,6 +71,41 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             iconGlyph: Manifest.IconGlyph);
         _viewModel = viewModel;
         _window = window;
+        var hostTimeService = context.Services.GetRequiredService<Services.HostSettings.IHostTimeService>();
+        viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestAuthorizationAsync = async connection =>
+        {
+            try { return (await hostTimeService.AuthorizeAsync(connection)).Elevated; }
+            catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
+            {
+                var credentials = await context.WindowManager.ShowSystemDialogAsync<(string Password, string? Administrator)?>(
+                    LocalizedText.Get("settings.host_time.authorize"), dialog =>
+                    {
+                        var password = new Avalonia.Controls.TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("settings.host_time.password") };
+                        var administrator = new Avalonia.Controls.TextBox { PlaceholderText = LocalizedText.Get("settings.host_time.administrator") };
+                        var cancel = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.cancel") };
+                        cancel.Click += (_, _) => { password.Text = ""; dialog.Cancel(); };
+                        var confirm = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.ok") };
+                        confirm.Click += (_, _) =>
+                        {
+                            var secret = password.Text ?? "";
+                            password.Text = "";
+                            dialog.Close((secret, string.IsNullOrWhiteSpace(administrator.Text) ? null : administrator.Text));
+                        };
+                        return new Avalonia.Controls.StackPanel
+                        {
+                            Margin = new Avalonia.Thickness(20), Spacing = 10,
+                            Children =
+                            {
+                                new Avalonia.Controls.TextBlock { Text = connection.ServerUrl + " · host/time", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                                administrator, password,
+                                new Avalonia.Controls.WrapPanel { Children = { cancel, confirm } }
+                            }
+                        };
+                    }, new Size(440, 260));
+                if (credentials is not { } value || !hostTimeService.IsCurrent(connection)) return false;
+                return (await hostTimeService.AuthorizeAsync(connection, value.Password, value.Administrator)).Elevated;
+            }
+        };
         var appsPage = viewModel.Pages.OfType<AppsPageViewModel>().Single();
         var personalizationPage = viewModel.Pages.OfType<PersonalizationPageViewModel>().Single();
         personalizationPage.RequestCustomWallpaperAsync = async () =>

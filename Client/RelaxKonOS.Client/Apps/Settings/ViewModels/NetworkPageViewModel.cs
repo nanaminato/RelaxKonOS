@@ -32,7 +32,7 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         ServerAddressesStatus = T("settings.network.not_loaded", "Server addresses have not been loaded.");
     }
 
-    public override string Glyph => "🌐";
+    public override string Route => "network";
     public override string DisplayNameKey => "settings.page.network";
     public override string DisplayName => "Network";
 

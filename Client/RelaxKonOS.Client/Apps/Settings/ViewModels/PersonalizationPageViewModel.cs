@@ -54,7 +54,7 @@ public sealed partial class PersonalizationPageViewModel : SettingsPageViewModel
         _accentInput = Settings.ThemePreferences.AccentOverride ?? string.Empty;
     }
 
-    public override string Glyph => "🎨";
+    public override string Route => "personalization";
     public override string DisplayNameKey => "settings.page.personalization";
     public override string DisplayName => "Personalization";
 
