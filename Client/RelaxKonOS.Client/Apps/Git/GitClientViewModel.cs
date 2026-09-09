@@ -284,6 +284,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 Log("⚠ Status 返回为 null — 工作区变更与分支信息无法呈现");
             }
 
+            await RefreshConflictStateAsync();
             RebuildChangesList();
             StatusText = LocalizedText.Format("git.status.ready_branch_format", Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
         }
@@ -300,7 +301,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     private async Task RefreshStatusAsync()
     {
-        if (SelectedRepository is null) return;
+        if (SelectedRepository is null || IsBusy) return;
         if (Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0) return;
         try
         {
@@ -317,6 +318,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 foreach (var f in Status.Conflicts) ConflictFiles.Add(f);
                 HasConflicts = ConflictFiles.Count > 0;
             }
+            await RefreshConflictStateAsync();
             RebuildChangesList();
         }
         catch { /* silent — timer tick */ }
@@ -683,7 +685,10 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             {
                 await NotifyAsync(LocalizedText.Format("git.vm.checkout_failed_format", result.Message));
                 if (result.Conflicts is not null && result.Conflicts.Count > 0)
+                {
+                    await RefreshAllAsync();
                     ActivePage = GitClientPage.ConflictResolution;
+                }
             }
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
@@ -833,19 +838,21 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         try
         {
             var result = await client.PullAsync(SelectedRepository.Id, request);
-            if (result.RequiresCredentials)
+            if (result.Conflicts is { Count: > 0 })
+            {
+                await RefreshAllAsync();
+                ActivePage = GitClientPage.ConflictResolution;
+                StatusText = LocalizedText.Format("git.vm.merge_conflicts_format", result.Conflicts.Count);
+            }
+            else if (result.RequiresCredentials)
                 await NotifyAsync(LocalizedText.Get("git.vm.credentials_required"));
             else if (result.Success)
             {
-                StatusText = LocalizedText.Get("git.vm.pulled");
                 await RefreshAllAsync();
+                StatusText = LocalizedText.Get("git.vm.pulled");
             }
             else
-            {
                 await NotifyAsync(LocalizedText.Format("git.vm.pull_failed_format", result.Message));
-                if (result.Conflicts is not null && result.Conflicts.Count > 0)
-                    ActivePage = GitClientPage.ConflictResolution;
-            }
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }

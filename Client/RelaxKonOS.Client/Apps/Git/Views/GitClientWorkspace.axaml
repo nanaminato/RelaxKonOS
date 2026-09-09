@@ -96,7 +96,7 @@
                     <Button Classes="workspace-nav" Tag="conflicts" Click="NavigationButton_Click"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                             Padding="16,10"
-                            IsVisible="{Binding HasConflicts}">
+                            IsVisible="{Binding ShowConflictPage}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="⚠" />
                             <TextBlock Text="{loc:Loc git.page.conflicts}" />

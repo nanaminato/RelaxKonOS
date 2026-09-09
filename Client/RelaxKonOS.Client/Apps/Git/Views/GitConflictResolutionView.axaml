@@ -2,31 +2,65 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:git="clr-namespace:RelaxKonOS.Client.Apps.Git"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
-             xmlns:proto="clr-namespace:RelaxKonOS.Protocol.Git;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Git.Views.GitConflictResolutionView"
              x:DataType="git:GitClientViewModel">
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="12">
-            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="4">
-                    <TextBlock Text="{loc:Loc git.conflicts.title}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{loc:Loc git.conflicts.message}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
-                </StackPanel>
-            </Border>
-            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="8">
-                <ItemsControl ItemsSource="{Binding ConflictFiles}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="proto:GitFileChangeDto">
-                            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4" Padding="8" Margin="0,2">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="{Binding Path}" FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Status}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </Border>
+    <Grid RowDefinitions="Auto,Auto,*" Margin="8" RowSpacing="8">
+        <StackPanel Spacing="4">
+            <TextBlock Text="{loc:Loc git.conflicts.title}" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ConflictOperationLabel}" TextWrapping="Wrap" />
+            <TextBlock Text="{loc:Loc git.conflicts.guide}" TextWrapping="Wrap" FontSize="12" />
         </StackPanel>
-    </ScrollViewer>
+        <WrapPanel Grid.Row="1">
+            <Button Content="{loc:Loc git.conflicts.continue}" Command="{Binding ContinueConflictCommand}" Margin="0,0,8,4" />
+            <Button Content="{loc:Loc git.conflicts.abort}" Command="{Binding AbortConflictCommand}" Margin="0,0,8,4" />
+            <Button Content="{loc:Loc git.refresh}" Command="{Binding RefreshCommand}" Margin="0,0,8,4" />
+        </WrapPanel>
+        <Grid Grid.Row="2" ColumnDefinitions="180,5,*">
+            <ListBox ItemsSource="{Binding ConflictPaths}" SelectedItem="{Binding SelectedConflictPath}" IsEnabled="{Binding !ConflictBusy}" />
+            <GridSplitter Grid.Column="1" ResizeDirection="Columns" HorizontalAlignment="Stretch" />
+            <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto,Auto,Auto" RowSpacing="8" Margin="8,0,0,0">
+                <TextBlock Text="{Binding SelectedConflictPath}" TextTrimming="CharacterEllipsis" />
+                <Grid Grid.Row="1" ColumnDefinitions="*,5,*,5,*">
+                    <Grid RowDefinitions="Auto,*">
+                        <TextBlock Text="{loc:Loc git.conflicts.ours}" />
+                        <TextBox Grid.Row="1" Text="{Binding ConflictDetail.OursVersion}" IsReadOnly="True" AcceptsReturn="True" FontFamily="monospace" TextWrapping="NoWrap" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                    </Grid>
+                    <GridSplitter Grid.Column="1" ResizeDirection="Columns" HorizontalAlignment="Stretch" />
+                    <Grid Grid.Column="2" RowDefinitions="Auto,*">
+                        <TextBlock Text="{loc:Loc git.conflicts.result}" />
+                        <TextBox Grid.Row="1" Text="{Binding ConflictResult, Mode=TwoWay}" IsEnabled="{Binding CanEditConflict}" AcceptsReturn="True" AcceptsTab="True" FontFamily="monospace" TextWrapping="NoWrap" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                    </Grid>
+                    <GridSplitter Grid.Column="3" ResizeDirection="Columns" HorizontalAlignment="Stretch" />
+                    <Grid Grid.Column="4" RowDefinitions="Auto,*">
+                        <TextBlock Text="{loc:Loc git.conflicts.theirs}" />
+                        <TextBox Grid.Row="1" Text="{Binding ConflictDetail.TheirsVersion}" IsReadOnly="True" AcceptsReturn="True" FontFamily="monospace" TextWrapping="NoWrap" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                    </Grid>
+                </Grid>
+                <StackPanel Grid.Row="2" Spacing="4">
+                    <WrapPanel>
+                        <ComboBox ItemsSource="{Binding ConflictBlocks}" SelectedItem="{Binding SelectedConflictBlock}" MinWidth="100" Margin="0,0,8,0">
+                            <ComboBox.ItemTemplate><DataTemplate x:DataType="git:GitConflictBlock"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Content="{loc:Loc git.conflicts.block_ours}" Command="{Binding ApplyConflictBlockCommand}" CommandParameter="ours" />
+                        <Button Content="{loc:Loc git.conflicts.block_theirs}" Command="{Binding ApplyConflictBlockCommand}" CommandParameter="theirs" />
+                        <Button Content="{loc:Loc git.conflicts.block_both}" Command="{Binding ApplyConflictBlockCommand}" CommandParameter="both" />
+                    </WrapPanel>
+                    <Grid ColumnDefinitions="*,*" MaxHeight="120">
+                        <TextBox Text="{Binding SelectedConflictBlock.Ours}" IsReadOnly="True" AcceptsReturn="True" Background="#20309060" FontFamily="monospace" />
+                        <TextBox Grid.Column="1" Text="{Binding SelectedConflictBlock.Theirs}" IsReadOnly="True" AcceptsReturn="True" Background="#203060C0" FontFamily="monospace" />
+                    </Grid>
+                </StackPanel>
+                <Expander Grid.Row="3" Header="{loc:Loc git.conflicts.base}">
+                    <TextBox Text="{Binding ConflictDetail.BaseVersion}" IsReadOnly="True" AcceptsReturn="True" FontFamily="monospace" MaxHeight="140" />
+                </Expander>
+                <WrapPanel Grid.Row="4">
+                    <Button Content="{loc:Loc git.conflicts.accept_ours}" Command="{Binding ResolveConflictCommand}" CommandParameter="ours" Margin="0,0,8,4" />
+                    <Button Content="{loc:Loc git.conflicts.accept_theirs}" Command="{Binding ResolveConflictCommand}" CommandParameter="theirs" Margin="0,0,8,4" />
+                    <Button Content="{loc:Loc git.conflicts.delete}" Command="{Binding ResolveConflictCommand}" CommandParameter="delete" Margin="0,0,8,4" />
+                    <Button Content="{loc:Loc git.conflicts.save}" Command="{Binding SaveConflictCommand}" Margin="0,0,8,4" />
+                    <Button Content="{loc:Loc git.conflicts.reload}" Command="{Binding ReloadConflictCommand}" Margin="0,0,8,4" />
+                </WrapPanel>
+            </Grid>
+        </Grid>
+    </Grid>
 </UserControl>

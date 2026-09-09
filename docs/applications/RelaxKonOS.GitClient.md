@@ -35,7 +35,7 @@ GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / G
 | 提交历史 | log 列表（hash/作者/时间/消息）+ 单提交详情 | `GET /api/v1.0/git/repositories/{id}/log` |
 | Revert | 反向提交指定 commit | `POST /api/v1.0/git/repositories/{id}/revert` |
 | Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1.0/git/repositories/{id}/diff` |
-| 冲突解决 | 标记文件已解决（add）+ 继续 merge/rebase | `POST /api/v1.0/git/repositories/{id}/resolve` |
+| 冲突解决 | 三栏编辑、逐块选择、逐文件暂存与独立继续/中止 | `POST /api/v1.0/git/repositories/{id}/resolve` |
 
 **非目标（MVP 不含）**：cherry-pick、rebase 交互式编辑、submodule 深度管理、stash、tag 管理、内置 diff/merge 三方编辑器（冲突解决调用宿主 CodeEditor 或外联）、PR 工作流、多远程管理。这些列入 §8 后续演进。
 
@@ -82,6 +82,9 @@ Push               = /api/v1.0/git/repositories/{id}/push              (POST)   
 Log                = /api/v1.0/git/repositories/{id}/log              (GET)         # 历史
 Diff               = /api/v1.0/git/repositories/{id}/diff             (GET)         # 文件 diff
 Revert             = /api/v1.0/git/repositories/{id}/revert            (POST)        # 反向提交
+Conflicts          = /api/v1.0/git/repositories/{id}/conflicts         (GET)         # 操作状态和冲突路径
+Conflict           = /api/v1.0/git/repositories/{id}/conflicts/file    (GET)         # ?path= 单文件版本
+ConflictOperation  = /api/v1.0/git/repositories/{id}/conflicts/operation (POST)       # continue / abort
 Resolve            = /api/v1.0/git/repositories/{id}/resolve           (POST)        # 标记冲突已解决
 Fetch              = /api/v1.0/git/repositories/{id}/fetch             (POST)        # 仅抓取
 ```
@@ -193,7 +196,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | GET | `/api/v1.0/git/repositories/{id}/log` | 提交历史（query: limit, skip） |
 | GET | `/api/v1.0/git/repositories/{id}/diff` | 文件 diff（query: path, staged, ref） |
 | POST | `/api/v1.0/git/repositories/{id}/revert` | 反向提交 |
-| POST | `/api/v1.0/git/repositories/{id}/resolve` | 标记冲突已解决 + 继续 |
+| POST | `/api/v1.0/git/repositories/{id}/resolve` | 保存选定版本/编辑结果并暂存 |
 | POST | `/api/v1.0/git/repositories/{id}/stage` | 仅暂存指定文件 |
 | POST | `/api/v1.0/git/repositories/{id}/unstage` | 仅取消暂存指定文件 |
 | POST | `/api/v1.0/git/repositories/{id}/restore` | 从 HEAD（或指定提交）还原指定文件 |
@@ -285,10 +288,10 @@ GitClientViewModel
 | `RevertCommand` | 二次确认 → `POST revert` → 冲突则进冲突视图 | SelectedCommit != null && !IsBusy |
 | `StageCommand`/`UnstageCommand` | `POST stage` / `POST unstage` 暂存调整 | SelectedFile != null |
 | `ViewDiffCommand` | `GET diff` | SelectedFile != null |
-| `ResolveConflictCommand` | 弹冲突解决对话框 → `POST resolve` | ConflictFiles 非空 |
+| `ResolveConflictCommand` | 采用整个 ours/theirs 或删除文件 → `POST resolve` | 已加载冲突且空闲 |
 | `RegisterRepositoryCommand` | 弹注册对话框 → `POST repositories` | server.git.manage 权限 |
 
-**冲突解决流程**：`pull`/`revert` 返回 `Conflicts` 非空 → `ActivePage` 自动切到「冲突解决」视图，列出冲突文件，每个文件可选「保留 ours/theirs/打开编辑器」→ 标记全部已解决后「继续合并」→ `POST resolve(continue=true)`。
+**冲突解决流程**：`pull`/`merge`/`revert` 返回 `Conflicts` 非空时刷新并进入冲突页面。通过 `GET conflicts` 读取真实操作类型和精确路径，`GET conflicts/file?path=…` 读取 base/ours/theirs/工作区结果。三栏编辑器支持逐冲突块采用 ours/theirs/双方、整文件采用、删除以及手动编辑。`POST resolve` 使用 `{ path, revision, choice, content }` 保存并暂存单文件；全部解决后独立调用 `POST conflicts/operation`，请求 `{ operation, action: "continue" }`。中止使用 `action: "abort"` 并要求界面确认。无操作状态（如 squash）时解决后在工作区提交，不执行 rebase。详见 [冲突可视化设计](RelaxKonOS.GitClient.ConflictResolution.md)。
 
 ### 5.4 视图（`GitClientWorkspace.axaml`）
 
@@ -364,10 +367,10 @@ POST /api/v1.0/git/repositories/{id}/pull (JWT)
     ↓
 GitOperationResult
     ├── Success=true                              → StatusText="已拉取"；RefreshAllAsync
-    ├── Success=true && Conflicts 非空            → ActivePage=ConflictResolution
+    ├── Success=false && Conflicts 非空            → ActivePage=ConflictResolution
     │     ├── 列出冲突文件（每个 ours/theirs）
     │     ├── 用户逐文件选择 → ShowResolveConflictDialogAsync
-    │     └── POST resolve(paths, continue=true)
+    │     └── POST resolve(path, revision, choice, content) → POST conflicts/operation(operation, action)
     │           ├── Success → RefreshAllAsync
     │           └── 仍有冲突 → 继续显示冲突视图
     └── RequiresCredentials=true → StatusText="需在宿主 OS 配置 Git 凭据"
@@ -382,7 +385,7 @@ POST /api/v1.0/git/repositories/{id}/checkout (JWT, branch)
     ↓
 GitOperationResult
     ├── Success=true            → StatusText="已切换到 {branch}"；RefreshAllAsync
-    └── Success=false && Conflicts → 提示「工作区有未提交变更，先提交或丢弃」
+    └── Success=false && Conflicts → 刷新并进入冲突解决页面
 ```
 
 ### 6.5 Revert 流

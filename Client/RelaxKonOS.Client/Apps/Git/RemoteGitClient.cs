@@ -116,6 +116,13 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
     public Task<GitOperationResult> RevertAsync(string id, GitRevertRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Revert.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
 
+    public Task<GitConflictStateDto> GetConflictStateAsync(string id, CancellationToken cancellationToken = default)
+        => SendAsync<GitConflictStateDto>(HttpMethod.Get, GitApiRoutes.Conflicts.Replace("{id}", Uri.EscapeDataString(id)), null, cancellationToken);
+    public Task<GitConflictFileDto> GetConflictAsync(string id, string path, CancellationToken cancellationToken = default)
+        => SendAsync<GitConflictFileDto>(HttpMethod.Get, GitApiRoutes.Conflict.Replace("{id}", Uri.EscapeDataString(id)) + "?path=" + Uri.EscapeDataString(path), null, cancellationToken);
+    public Task<GitOperationResult> ConflictOperationAsync(string id, GitConflictOperationRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.ConflictOperation.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
+
     public Task<GitOperationResult> ResolveConflictsAsync(string id, GitResolveRequest request, CancellationToken cancellationToken = default)
         => SendAsync<GitOperationResult>(HttpMethod.Post, GitApiRoutes.Resolve.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
 
