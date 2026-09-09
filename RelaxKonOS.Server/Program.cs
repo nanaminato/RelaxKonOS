@@ -505,6 +505,8 @@ builder.Services.AddSingleton<WorkspaceWallpaperStore>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.IWorkspaceSettingsService, RelaxKonOS.Server.Settings.WorkspaceSettingsService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Settings.SettingsOperationJournal>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.SettingsCatalog>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.EnvironmentOperationCoordinator>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.IHostEnvironmentService, RelaxKonOS.Server.Settings.HostEnvironmentService>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.IHostTimeService, RelaxKonOS.Server.Settings.HostTimeService>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.SettingsOperationCoordinator>();
 

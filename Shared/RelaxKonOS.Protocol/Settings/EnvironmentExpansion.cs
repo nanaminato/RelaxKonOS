@@ -2,7 +2,7 @@ using System.Text;
 
 namespace RelaxKonOS.Protocol.Settings;
 
-public sealed record EnvironmentExpansionResult(string Value, IReadOnlyList<string> Warnings);
+public sealed record EnvironmentExpansionResult(string Value, IReadOnlyList<string> Warnings, IReadOnlyList<string> ReferencedNames);
 
 /// <summary>Display-only bounded substitution. Never executes shell expressions or reads process environment.</summary>
 public static class EnvironmentExpansion
@@ -14,9 +14,10 @@ public static class EnvironmentExpansion
         foreach (var pair in variables)
             if (!values.TryAdd(pair.Key, pair.Value)) throw new ArgumentException("settings.environment.duplicate_name");
         var warnings = new HashSet<string>(StringComparer.Ordinal);
+        var referenced = new HashSet<string>(comparer);
         var work = 0;
         var value = ExpandValue(raw, new HashSet<string>(comparer), 0);
-        return new(value, warnings.Order(StringComparer.Ordinal).ToArray());
+        return new(value, warnings.Order(StringComparer.Ordinal).ToArray(), referenced.Order(comparer).ToArray());
 
         string ExpandValue(string source, HashSet<string> stack, int depth)
         {
@@ -49,6 +50,7 @@ public static class EnvironmentExpansion
                         { name = source[(i + 1)..end]; i = end; }
                     }
                 }
+                if (name is not null) referenced.Add(name);
                 string part;
                 if (name is null) { part = source[i++].ToString(); }
                 else if (!values.TryGetValue(name, out var replacement))

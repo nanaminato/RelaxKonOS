@@ -28,7 +28,7 @@ public sealed class SettingsOperationJournal
         _protector = protection.CreateProtector("RelaxKonOS.Settings.Operations.v1");
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "CREATE TABLE IF NOT EXISTS operations (id TEXT PRIMARY KEY, document BLOB NOT NULL)";
+        command.CommandText = "CREATE TABLE IF NOT EXISTS operations (id TEXT PRIMARY KEY, document BLOB NOT NULL); CREATE TABLE IF NOT EXISTS environment_operations (id TEXT PRIMARY KEY, document BLOB NOT NULL)";
         command.ExecuteNonQuery();
     }
 
@@ -67,6 +67,28 @@ public sealed class SettingsOperationJournal
         command.ExecuteNonQuery();
     }
 
+    public StoredEnvironmentOperation? ReadEnvironment(Guid id)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT document FROM environment_operations WHERE id = $id";
+        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        return command.ExecuteScalar() is byte[] bytes
+            ? JsonSerializer.Deserialize<StoredEnvironmentOperation>(_protector.Unprotect(bytes), RelaxKonOSJsonOptions.Default)
+                ?? throw new InvalidDataException("settings.operation.invalid_record") : null;
+    }
+
+    public void Save(StoredEnvironmentOperation operation)
+    {
+        var bytes = _protector.Protect(JsonSerializer.SerializeToUtf8Bytes(operation, RelaxKonOSJsonOptions.Default));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO environment_operations(id, document) VALUES ($id, $document) ON CONFLICT(id) DO UPDATE SET document = excluded.document";
+        command.Parameters.AddWithValue("$id", operation.Plan.PlanId.ToString("D"));
+        command.Parameters.AddWithValue("$document", bytes);
+        command.ExecuteNonQuery();
+    }
+
     private SqliteConnection Open()
     {
         var connection = new SqliteConnection(_connectionString);
@@ -80,3 +102,6 @@ public sealed class SettingsOperationJournal
 
 public sealed record StoredTimeOperation(string Actor, string RequestHash, TimeZoneChange Change, string OriginalTimeZone,
     SettingsPlan Plan, SettingsOperation Operation, bool RollingBack = false);
+
+public sealed record StoredEnvironmentOperation(string Actor, string RequestHash, EnvironmentChangeSet Change,
+    EnvironmentChangeSet Restore, SettingsPlan Plan, SettingsOperation Operation, bool RollingBack = false);

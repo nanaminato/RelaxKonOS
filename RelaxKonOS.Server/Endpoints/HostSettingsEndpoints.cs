@@ -10,6 +10,18 @@ public static class HostSettingsEndpoints
     public static IEndpointRouteBuilder MapHostSettingsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet(SettingsApiRoutes.Catalog, (HttpContext http, SettingsCatalog catalog) => Results.Ok(catalog.Read(http.User))).RequireAuthorization();
+        app.MapGet(SettingsApiRoutes.Environment, async (string scope, bool? reveal, HttpContext http, IHostEnvironmentService environment) =>
+            await ExecuteAsync(async () =>
+            {
+                http.Response.Headers.CacheControl = "no-store";
+                var targetScope = scope switch { "hostUser" => SettingsScope.HostUser, "hostMachine" => SettingsScope.HostMachine,
+                    _ => throw new SettingsException(400, "settings.environment.invalid_scope") };
+                return Results.Ok(await environment.ReadAsync(http.User, targetScope, reveal == true, http.RequestAborted));
+            })).RequireAuthorization();
+        app.MapPost(SettingsApiRoutes.EnvironmentPreview, async (EnvironmentPreviewRequest request, HttpContext http, EnvironmentOperationCoordinator coordinator) =>
+            await ExecuteAsync(async () => Results.Ok(await coordinator.PreviewAsync(http.User, request, http.RequestAborted)))).RequireAuthorization();
+        app.MapPost(SettingsApiRoutes.EnvironmentApply, async (SettingsApplyRequest request, HttpContext http, EnvironmentOperationCoordinator coordinator) =>
+            await ExecuteAsync(async () => Results.Ok(await coordinator.ApplyAsync(http.User, request.PlanId, http.RequestAborted)))).RequireAuthorization();
         app.MapGet(SettingsApiRoutes.Time, async (HttpContext http, IHostTimeService time, IHostElevationSessionStore grants) =>
             await ExecuteAsync(async () => Results.Ok(new HostTimeSnapshot(await time.ReadAsync(http.RequestAborted),
                 new(SettingsOperationCoordinator.TimeResource, SettingsScope.HostMachine),
@@ -19,10 +31,12 @@ public static class HostSettingsEndpoints
             await ExecuteAsync(async () => Results.Ok(await coordinator.PreviewTimeAsync(http.User, request, http.RequestAborted)))).RequireAuthorization();
         app.MapPost(SettingsApiRoutes.TimeApply, async (SettingsApplyRequest request, HttpContext http, SettingsOperationCoordinator coordinator) =>
             await ExecuteAsync(async () => Results.Ok(await coordinator.ApplyTimeAsync(http.User, request.PlanId, http.RequestAborted)))).RequireAuthorization();
-        app.MapGet(SettingsApiRoutes.Operation, async (Guid id, HttpContext http, SettingsOperationCoordinator coordinator) =>
-            await ExecuteAsync(async () => Results.Ok(await coordinator.GetAsync(http.User, id, http.RequestAborted)))).RequireAuthorization();
-        app.MapPost(SettingsApiRoutes.Rollback, async (Guid id, SettingsRollbackRequest request, HttpContext http, SettingsOperationCoordinator coordinator) =>
-            await ExecuteAsync(async () => Results.Ok(await coordinator.RollbackAsync(http.User, id, request, http.RequestAborted)))).RequireAuthorization();
+        app.MapGet(SettingsApiRoutes.Operation, async (Guid id, HttpContext http, SettingsOperationCoordinator coordinator, EnvironmentOperationCoordinator environment) =>
+            await ExecuteAsync(async () => Results.Ok(await environment.GetIfExistsAsync(http.User, id, http.RequestAborted)
+                ?? await coordinator.GetAsync(http.User, id, http.RequestAborted)))).RequireAuthorization();
+        app.MapPost(SettingsApiRoutes.Rollback, async (Guid id, SettingsRollbackRequest request, HttpContext http, SettingsOperationCoordinator coordinator, EnvironmentOperationCoordinator environment) =>
+            await ExecuteAsync(async () => Results.Ok(await environment.RollbackIfExistsAsync(http.User, id, request, http.RequestAborted)
+                ?? await coordinator.RollbackAsync(http.User, id, request, http.RequestAborted)))).RequireAuthorization();
         return app;
     }
 

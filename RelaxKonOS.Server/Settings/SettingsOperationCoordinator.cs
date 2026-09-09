@@ -36,7 +36,7 @@ public sealed class SettingsOperationCoordinator(SettingsOperationJournal journa
         var plan = new SettingsPlan(id, TimeTarget, snapshot.Revision, DateTimeOffset.UtcNow.AddMinutes(5),
             [new("host.time.zone", snapshot.TimeZoneId, request.Change.TimeZoneId)], HostElevationCapability.HostTimeChange,
             TimeResource, SettingsEffectiveState.Immediate, "settings.time.affects_host_time_display");
-        journal.Save(new(actor, requestHash, request.Change, snapshot.TimeZoneId, plan,
+        journal.Save(new StoredTimeOperation(actor, requestHash, request.Change, snapshot.TimeZoneId, plan,
             new(id, "host.time.zone", TimeTarget, SettingsOperationState.Prepared, DateTimeOffset.UtcNow)));
         return plan;
     }
