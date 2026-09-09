@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
+using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.Client.Apps.Git;
 
@@ -12,6 +13,24 @@ public sealed partial class GitClientViewModel
     private readonly Dictionary<(string Repo, string Path), (GitConflictFileDto Detail, string Text)> _conflictDrafts = [];
     private string? _conflictDetailRepository;
     public bool ShowConflictPage => HasConflicts || ConflictOperation is not null;
+
+    /// <summary>
+    /// Keeps conflict handling in a modal workflow.  The command that detected the conflict is
+    /// otherwise still busy, which would disable the resolver's own save/continue controls.
+    /// </summary>
+    private async Task PresentConflictResolutionAsync(ManagedWindow? owner = null)
+    {
+        if (ShowConflictResolutionDialogAsync is null || (!HasConflicts && ConflictOperation is null)) return;
+        var restoreBusy = IsBusy;
+        IsBusy = false;
+        try { await ShowConflictResolutionDialogAsync(owner); }
+        finally { if (restoreBusy) IsBusy = true; }
+    }
+
+    private bool CanOpenConflictResolution() => (HasConflicts || ConflictOperation is not null) && !ConflictBusy;
+
+    [RelayCommand(CanExecute = nameof(CanOpenConflictResolution))]
+    private Task OpenConflictResolutionAsync() => PresentConflictResolutionAsync();
     partial void OnConflictResultChanged(string value)
     {
         var index = SelectedConflictBlock is null ? 0 : ConflictBlocks.IndexOf(SelectedConflictBlock);
@@ -58,6 +77,7 @@ public sealed partial class GitClientViewModel
         SaveConflictCommand.NotifyCanExecuteChanged();
         ContinueConflictCommand.NotifyCanExecuteChanged();
         AbortConflictCommand.NotifyCanExecuteChanged();
+        OpenConflictResolutionCommand.NotifyCanExecuteChanged();
     }
     partial void OnSelectedConflictPathChanged(string? value) => _ = LoadConflictAsync(value);
 
@@ -178,7 +198,6 @@ public sealed partial class GitClientViewModel
             }
             await RefreshAllAsync();
             if (!result.Success) await NotifyAsync(result.Message ?? LocalizedText.Get("git.conflicts.failed"));
-            else if (!HasConflicts && ConflictOperation is null) ActivePage = GitClientPage.Workspace;
         }
         catch (Exception ex) { await NotifyAsync(ex.Message); }
         finally { IsBusy = false; ConflictBusy = false; }

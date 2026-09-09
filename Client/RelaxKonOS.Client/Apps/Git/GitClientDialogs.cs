@@ -38,6 +38,20 @@ internal static class GitClientDialogs
             dialog => BuildPullDialog(dialog),
             new RelaxKonOS.Core.Primitives.Size(420, 200));
 
+    /// <summary>Prompts for the integration strategy after a non-fast-forward push rejection.</summary>
+    public static Task<GitPullRequest?> ShowPushRejectedDialogAsync(AppContext context, ManagedWindow owner) =>
+        context.ShowDialogAsync<GitPullRequest?>(owner, LocalizedText.Get("git.dialog.push_rejected.title"),
+            BuildPushRejectedDialog,
+            new RelaxKonOS.Core.Primitives.Size(500, 250));
+
+    /// <summary>Hosts the multi-file three-way resolver as a modal child of the Git window.</summary>
+    public static async Task ShowConflictResolutionDialogAsync(AppContext context, ManagedWindow owner, GitClientViewModel vm)
+    {
+        _ = await context.ShowDialogAsync<bool>(owner, LocalizedText.Get("git.dialog.conflicts.title"),
+            dialog => new Views.GitConflictResolutionDialog(vm, dialog),
+            new RelaxKonOS.Core.Primitives.Size(1120, 740));
+    }
+
     public static Task<GitRepositoryRegistration?> ShowRegisterRepositoryDialogAsync(AppContext context, ManagedWindow owner, GitClientViewModel vm) =>
         context.ShowDialogAsync<GitRepositoryRegistration?>(owner, LocalizedText.Get("git.dialog.register.title"),
             dialog => BuildRegisterDialog(dialog),
@@ -129,6 +143,51 @@ internal static class GitClientDialogs
                     Orientation = Orientation.Horizontal,
                     HorizontalAlignment = HorizontalAlignment.Right,
                     Children = { initBtn, cancelBtn },
+                },
+            },
+        };
+    }
+
+    private static Control BuildPushRejectedDialog(ModalDialog<GitPullRequest?> dialog)
+    {
+        var message = new TextBlock
+        {
+            Text = LocalizedText.Get("git.dialog.push_rejected.message"),
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 14,
+        };
+        var detail = new TextBlock
+        {
+            Text = LocalizedText.Get("git.dialog.push_rejected.detail"),
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12,
+            Foreground = ThemeBrushes.Get("TextSecondaryBrush"),
+        };
+        var merge = new Button
+        {
+            Content = LocalizedText.Get("git.dialog.push_rejected.merge"),
+            Background = ThemeBrushes.Get("AccentBrush"),
+            Foreground = ThemeBrushes.Get("TextOnAccentBrush"),
+            Padding = new(14, 6),
+        };
+        merge.Click += (_, _) => dialog.Close(new GitPullRequest("merge"));
+        var rebase = new Button { Content = LocalizedText.Get("git.dialog.push_rejected.rebase"), Padding = new(14, 6), Margin = new(8, 0, 0, 0) };
+        rebase.Click += (_, _) => dialog.Close(new GitPullRequest("rebase"));
+        var cancel = new Button { Content = LocalizedText.Get("git.dialog.push_rejected.cancel"), Padding = new(14, 6), Margin = new(8, 0, 0, 0) };
+        cancel.Click += (_, _) => dialog.Cancel();
+        return new StackPanel
+        {
+            Margin = new(20),
+            Spacing = 14,
+            Children =
+            {
+                message,
+                detail,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Children = { merge, rebase, cancel },
                 },
             },
         };

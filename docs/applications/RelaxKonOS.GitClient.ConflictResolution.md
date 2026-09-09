@@ -18,7 +18,7 @@
 
 ## 用户流程
 
-1. 拉取、合并或撤销遇到冲突后刷新状态，进入冲突页面；重新打开仓库也从 Git 实际状态恢复。
+1. 拉取、合并、撤销、签出等操作遇到冲突后刷新状态，并以模态窗口打开冲突解决器；重新打开有进行中冲突的仓库也会恢复并打开该窗口。推送因远端已有新提交而被拒绝时，先在弹窗中选择 merge、rebase 或取消；同步产生冲突时继续进入同一解决器。
 2. 文件列表选择一个冲突文件；左右显示索引阶段 2/3，中间显示工作区内容，基础版本来自阶段 1。
 3. 下方下拉框按结果文本中的行号选择冲突块，使用带颜色的双方预览，采用 ours/theirs/双方。块操作只编辑草稿，不立即暂存；支持 merge、diff3、zdiff3 标记和自定义标记宽度。
 4. 用户也可手动编辑结果；保存时拒绝残留的冲突标记。整文件采用一侧或删除均明确确认，并直接暂存。
@@ -59,7 +59,7 @@ rebase 中 ours 是目标分支及已重放内容，theirs 是正在重放的提
 
 - 协议：`Shared/RelaxKonOS.Protocol/Git/GitDtos.cs`、`GitApiRoutes.cs`。
 - 服务端：`LocalGitRepositoryService.Conflicts.cs` 独立 partial 实现；原服务修正冲突路径和操作结果，`GitEndpoints.cs` 注册路由。
-- 客户端：`GitClientViewModel.Conflicts.cs`、`GitConflictBlock.cs`、`GitConflictResolutionView.axaml`；RemoteGitClient 连接新接口。
+- 客户端：`GitClientViewModel.Conflicts.cs`、`GitConflictBlock.cs`、`GitConflictResolutionView.axaml`、`GitConflictResolutionDialog.axaml`；RemoteGitClient 连接新接口。冲突文件列表与三栏编辑器由同一个模态窗口承载，可逐文件保存、继续或中止。
 - 本地化：zh-CN、en-US、ja-JP 同步新增文案。
 - 集成检查：`RelaxKonOS.Server.Tests/GitConflictChecks.cs`，使用真实临时 Git 仓库与 SQLite，不操作开发仓库。
 

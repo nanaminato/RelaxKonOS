@@ -93,7 +93,7 @@
                             <TextBlock Text="{loc:Loc git.page.remotes}" />
                         </StackPanel>
                     </Button>
-                    <Button Classes="workspace-nav" Tag="conflicts" Click="NavigationButton_Click"
+                    <Button Classes="workspace-nav" Tag="conflicts" Command="{Binding OpenConflictResolutionCommand}"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                             Padding="16,10"
                             IsVisible="{Binding ShowConflictPage}">
