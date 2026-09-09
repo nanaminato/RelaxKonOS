@@ -1,6 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
+        "git.log.no_results": "没有匹配的提交，请尝试调整筛选条件。",
         "git.conflicts.block_ours": "此块采用 Ours",
         "git.conflicts.block_theirs": "此块采用 Theirs",
         "git.conflicts.block_both": "此块保留双方",

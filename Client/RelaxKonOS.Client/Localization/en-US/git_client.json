@@ -1,6 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "git.log.no_results": "No matching commits. Try adjusting the filters.",
         "git.conflicts.block_ours": "Block: ours",
         "git.conflicts.block_theirs": "Block: theirs",
         "git.conflicts.block_both": "Block: both",

@@ -21,12 +21,12 @@
         <Style Selector="Button.titlebarAction:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         </Style>
 
         <!-- 禁用状态 -->
         <Style Selector="Button.titlebarAction:disabled">
-            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Opacity" Value="0.5" />
         </Style>
 
         <Style Selector="Button.titlebarAction:disabled /template/ ContentPresenter#PART_ContentPresenter">

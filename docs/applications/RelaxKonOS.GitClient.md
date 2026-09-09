@@ -61,6 +61,13 @@ GitClientApp (RemoteApplicationBase)
 
 ---
 
+### 日志页交互
+
+- 双击左侧「本地分支」中的分支名称，将日志历史的分支下拉框同步设为该分支，并通过同一筛选流程加载提交。保留搜索、作者、日期与路径条件；不执行 checkout，不修改当前工作区分支。
+- 单击仅选择分支；分组与远程分支双击不触发此本地分支快捷操作。检出仍由分支右键菜单执行。
+- 筛选工具栏随中间面板宽度自动换行，窄窗口中仍能访问所有条件。提交行分两层显示主题与短 SHA、作者、日期，悬停可查看完整主题与时间；无匹配记录时显示提示。
+- 日志页仅展示真实提交信息，不使用固定 HEAD/master/origin/master 徽章标记提交。
+
 ## 3. 协议契约（`Shared/RelaxKonOS.Protocol/Git/`）
 
 沿用 Protocol 约定（`sealed record` + `[property: JsonPropertyName]`，零 PackageReference）。

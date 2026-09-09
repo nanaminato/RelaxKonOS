@@ -1,6 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "git.log.no_results": "一致するコミットがありません。絞り込み条件を変更してください。",
         "git.conflicts.block_ours": "この部分: Ours",
         "git.conflicts.block_theirs": "この部分: Theirs",
         "git.conflicts.block_both": "この部分: 両方",
