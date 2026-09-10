@@ -55,9 +55,11 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
     public async Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct)
     {
         var status = await GetStatusAsync(ct);
-        return new(status.State != FileServiceRuntimeState.Unsupported, false, false, true, true, status.HealthProblemCode);
+        return new(status.State != FileServiceRuntimeState.Unsupported, WindowsPlatformInfo.IsWindowsServer(), false, true, true, status.HealthProblemCode);
     }
-    public Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, false, FileServiceProblemCodes.WindowsApiUnavailable));
+    public Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => WindowsPlatformInfo.IsWindowsServer()
+        ? platform.InstallAsync(id, ct)
+        : Task.FromResult(new FileServiceOperationResultDto(id, false, FileServiceProblemCodes.WindowsServerRequired));
     public async Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct)
     {
         var security = await EnsureServerSecurityAsync(id, ct);

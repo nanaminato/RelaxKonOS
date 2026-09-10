@@ -19,6 +19,7 @@ public interface ISambaPlatformAdapter
 public interface IWindowsSmbPlatformAdapter
 {
     Task<FileServiceStatusDto> DetectAsync(CancellationToken ct);
+    Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct);
     Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct);
     Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct);
     Task<FileServiceOperationResultDto> ApplyShareAsync(FileShareDto share, string? expectedSnapshot, Guid id, CancellationToken ct);
@@ -102,6 +103,16 @@ public sealed class WindowsSmbPlatformAdapter(IPrivilegedSmbOperations helper) :
         var result = await helper.DetectAsync(Guid.NewGuid(), ct);
         return result.Success ? LinuxSambaPlatformAdapter.DecodeStatus(result) ?? new(FileServiceProtocol.Smb, FileServiceRuntimeState.Unavailable, null, false, false, FileServiceProblemCodes.WindowsApiUnavailable)
             : new(FileServiceProtocol.Smb, FileServiceRuntimeState.Unavailable, null, false, false, result.ProblemCode == PrivilegedProblemCode.HelperUnavailable ? FileServiceProblemCodes.HelperUnavailable : FileServiceProblemCodes.WindowsApiUnavailable);
+    }
+    public async Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct)
+    {
+        var result = await helper.InstallAsync(id, ct);
+        return new(id, result.Success, result.Success ? null : result.ProblemCode switch
+        {
+            PrivilegedProblemCode.UnsupportedOperation => FileServiceProblemCodes.WindowsServerRequired,
+            PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
+            _ => FileServiceProblemCodes.WindowsApiUnavailable,
+        });
     }
     public async Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => LinuxSambaPlatformAdapter.Result(id,
         await helper.ServiceAsync(action switch { SmbLifecycleAction.Start => SmbServiceAction.Start, SmbLifecycleAction.Stop => SmbServiceAction.Stop, _ => SmbServiceAction.Restart }, id, ct));

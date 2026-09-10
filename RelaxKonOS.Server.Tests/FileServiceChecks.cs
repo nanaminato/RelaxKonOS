@@ -66,6 +66,7 @@ public static class FileServiceChecks
         public int SecurityCalls { get; private set; }
         public bool FailSecurityWithDrift { get; set; }
         public Task<FileServiceStatusDto> DetectAsync(CancellationToken ct) => Task.FromResult(new FileServiceStatusDto(FileServiceProtocol.Smb, FileServiceRuntimeState.Running, "fake", true, true));
+        public Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
         public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
         public Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileShareDto>>([]);
         public Task<FileServiceOperationResultDto> ApplyShareAsync(FileShareDto share, string? snapshot, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));

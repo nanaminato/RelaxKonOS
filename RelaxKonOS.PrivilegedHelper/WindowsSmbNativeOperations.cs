@@ -22,6 +22,7 @@ internal static class WindowsSmbNativeOperations
     public static Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request) => request.Operation switch
     {
         PrivilegedOperationKind.SmbDetect => Task.FromResult(Detect()),
+        PrivilegedOperationKind.SmbPackageInstall => Task.FromResult(WindowsFileServerFeatureOperations.Install()),
         PrivilegedOperationKind.SmbServiceAction => Lifecycle(request.SmbServiceAction),
         PrivilegedOperationKind.SmbReadManagedConfiguration => Task.FromResult(ListShares()),
         PrivilegedOperationKind.SmbApplyWindowsShare => Task.FromResult(ApplyShare(request.SmbShare, request.SmbExpectedSnapshot)),
@@ -33,12 +34,15 @@ internal static class WindowsSmbNativeOperations
     {
         try
         {
-            var security = WindowsSmbServerSecurity.Read();
-            if (!security.Success) return security;
-            var securitySnapshot = DecodeSecuritySnapshot(security);
-            if (securitySnapshot is null) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB Server security snapshot was invalid");
             using var service = new ServiceController(ServiceName);
             var active = service.Status == ServiceControllerStatus.Running;
+            var security = WindowsSmbServerSecurity.Read();
+            // File Server adds the SMB Server WMI provider. A missing provider is therefore an
+            // installable state on Windows Server, not a reason to block the Install action.
+            if (!security.Success)
+                return Output(new FileServiceStatusDto(FileServiceProtocol.Smb, FileServiceRuntimeState.NotInstalled, null, active, false, FileServiceProblemCodes.NotInstalled));
+            var securitySnapshot = DecodeSecuritySnapshot(security);
+            if (securitySnapshot is null) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB Server security snapshot was invalid");
             var port = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(x => x.Port == 445);
             var state = active ? (port ? FileServiceRuntimeState.Running : FileServiceRuntimeState.Failed) : FileServiceRuntimeState.Stopped;
             var status = new FileServiceStatusDto(FileServiceProtocol.Smb, state, Environment.OSVersion.Version.ToString(), active, port,

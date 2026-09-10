@@ -32,7 +32,7 @@ RelaxKonOS Client → Server → PrivilegedHelper  # 仅管理和状态控制
 因此 V1 必须具备：
 
 - Samba 或 Windows SMB Server 的可用性、版本、服务状态、管理状态和健康状态的真实检测。
-- 受支持 Linux 发行版上的受控 Samba 安装；安装源、包名和包管理器在 Server 平台适配层固定，Client 不传递包名或命令。Windows 使用随系统提供的 SMB Server / `LanmanServer`，首轮只检测、启用和管理它，不安装 Windows Server role 或 Feature。
+- 受支持 Linux 发行版上的受控 Samba 安装；安装源、包名和包管理器在 Server 平台适配层固定，Client 不传递包名或命令。Windows Server 使用固定的 File Server role（`FS-FileServer`）和 `LanmanServer`；安装仅由受限 Helper 调用 Windows servicing API 完成，不接受 feature 名、源、参数或命令文本。
 - 服务启动、停止、重启；Linux 额外支持安全 reload。所有写操作使用已存在的受限 Helper transport。
 - 只管理 RelaxKonOS 拥有的 Samba 配置片段和共享；读到的系统实际配置是状态真源。
 - 创建、修改、禁用和删除 RelaxKonOS 托管 SMB 共享；支持只读、禁用、描述、guest 开关以及用户/组的 Read 或 ReadWrite 访问规则。
@@ -56,7 +56,7 @@ V1 不包括：
 | --- | --- |
 | 平台 | Linux：Debian/Ubuntu 系 + systemd + Samba 4。Windows：Windows Server 2019+、`LanmanServer` 与 Windows `SmbShare` 管理能力。其他平台/发行版返回明确“不受支持”，不猜测其 service/package 命令。 |
 | 服务后端 | Linux 为 `smbd`；Windows 为 `LanmanServer`。`nmbd`/WS-Discovery、域控制器/AD 管理、打印服务和 cluster/Scale-Out File Server 不在范围。 |
-| 安装 | Linux 仅由平台适配器选择固定受信任包与固定包管理器，Helper 接受 `SmbPackageInstall`，不接受包名、版本、仓库、参数或 shell 文本。Windows 不安装 role/feature，只验证和管理已有 SMB Server 能力。 |
+| 安装 | Linux 仅由平台适配器选择固定受信任包与固定包管理器，Helper 接受 `SmbPackageInstall`，不接受包名、版本、仓库、参数或 shell 文本。Windows Server 的同一封闭操作仅安装固定 `FS-FileServer` role；不支持客户端 Windows，也不接受 role/feature 名、源、参数或 shell 文本。 |
 | 管理模式 | 仅 `RelaxKonOS managed`。Linux 不编辑非托管 share，不能安全建立托管 include 时返回 `smb.configuration_unmanaged`。Windows 通过 HostGlobal ownership ledger 识别由 RelaxKonOS 创建的 share；实际 API 状态仍是真源，账本不重建、接管或覆盖外部 share。 |
 | 配置真源 | Linux 为已解析、已验证的 Samba 实际配置；Windows 为 SMB 系统 API 返回的实际 service、share、share ACL 与 server configuration。数据库只保存 ownership、审计和操作记录，不能成为 shares 的第二个 Desired State。 |
 | 身份 | Linux 的 Samba user 关联现有本地系统账户；Windows share ACL 使用现有 local/domain account 或 group SID。它们都不是 RelaxKonOS 登录账户；本轮不管理任何宿主账户或密码，Linux 的 Samba password backend 设置是唯一例外。 |
@@ -155,7 +155,7 @@ GET    /api/v1.0/file-services/smb/connection
 
 ```text
 SmbDetect
-SmbPackageInstall                           # Linux only
+SmbPackageInstall                           # Linux Samba or the fixed Windows Server FS-FileServer role
 SmbServiceAction(action = Start | Stop | Restart | Reload)
 SmbReadManagedConfiguration                 # Linux only
 SmbApplyManagedConfiguration(managedShares, globalSecurityPolicy, operationId) # Linux only
@@ -219,7 +219,7 @@ Windows 事务在同一 SMB lock 内执行：读取并验证实际 share/server 
 
 ### Goal 3：安装与安全服务生命周期
 
-**工作**：Linux 实现固定 Samba 包安装、重新检测、Start/Stop/Restart/Reload 与端口冲突检查；Windows 实现 `LanmanServer` Start/Stop/Restart、SMB security preflight 与端口冲突检查。Windows 不尝试安装 File Server role/feature，缺失 API/服务返回可操作状态。服务动作绑定 `SmbManage` elevation 和 operation ID；所有非幂等执行采用每 SMB protocol lock 串行化。写入真正配置前先建立服务/操作审计基础。
+**工作**：Linux 实现固定 Samba 包安装、重新检测、Start/Stop/Restart/Reload 与端口冲突检查；Windows Server 通过受限 servicing API 安装固定 `FS-FileServer` role，并实现 `LanmanServer` Start/Stop/Restart、SMB security preflight 与端口冲突检查。安装与服务动作绑定 `SmbManage` elevation 和 operation ID；所有非幂等执行采用每 SMB protocol lock 串行化。写入真正配置前先建立服务/操作审计基础。
 
 **验收**：未获 elevation 的管理请求不触及 Helper；Linux 安装输入不能改变包、源或命令；服务动作不会影响非 `smbd` 或 `LanmanServer`；状态和健康分别报告 service stopped、service failed、port unavailable、port conflicted、Windows API unavailable 与 Helper unavailable；重复/并发 start/restart 不产生竞争或错误的成功状态。
 
@@ -278,10 +278,10 @@ SMB V1 稳定后，后续 Goal 按独立设计审查推进：
 2. Windows OpenSSH SFTP；
 3. Firewall 与端口变更的显式跨模块工作流；
 4. FTPS（优先）及明文 FTP 的安全警告；
-5. WebDAV、NFS、Windows File Server role 安装、宿主账户生命周期或更高级 Samba/AD/cluster 能力。
+5. WebDAV、NFS、宿主账户生命周期或更高级 Samba/AD/cluster 能力。
 
 每项都必须复用本文件确立的控制面、Provider、最小权限、秘密、配置事务和审计原则，但必须重新定义自己的协议、host scope、配置所有权、威胁模型和验收；不得通过在本次 SMB 实现中提前塞入未验证的泛化接口来“预实现”。
 
 ## 7. 后续 Goal 模式提示
 
-> 依据 `docs/RelaxKonOS.FileServices.Smb.Goal.md` 与 `docs/RelaxKonoS File Services 设计与实现规格.md` 实现 RelaxKonOS 的首轮 File Services。严格按 Goal 0–7 顺序，实现 Linux（Debian/Ubuntu 系）Samba 与 Windows Server 2019+ Windows SMB Server 的 SMB 控制面；SFTP、FTP/FTPS、WebDAV、NFS 和 Windows File Server role 安装全部留到后续独立 Goal。RelaxKonOS 不实现或代理 SMB 数据面，所有 Client↔Server 契约置于 Protocol，所有高权限操作经封闭的 `IPrivilegedOperationTransport` / PrivilegedHelper，禁止 shell、PowerShell、任意命令、任意服务/包/路径/SID 或 generic config write。Linux 只管理 RelaxKonOS 拥有的 Samba include/share，先 `testparm` 验证、原子应用、reload 和 health check；Windows 只管理 ownership ledger 标识的 share/ACL/security snapshot，经受限系统 API apply、health check 和失败回滚。不得覆盖管理员配置/share、泄露 Samba 密码或管理宿主账户。每个 Goal 的构建、测试和验收完成后才能进入下一项。
+> 依据 `docs/RelaxKonOS.FileServices.Smb.Goal.md` 与 `docs/RelaxKonoS File Services 设计与实现规格.md` 实现 RelaxKonOS 的首轮 File Services。严格按 Goal 0–7 顺序，实现 Linux（Debian/Ubuntu 系）Samba 与 Windows Server 2019+ Windows SMB Server 的 SMB 控制面；Windows Server 安装仅限固定 `FS-FileServer` role，SFTP、FTP/FTPS、WebDAV 和 NFS 留到后续独立 Goal。RelaxKonOS 不实现或代理 SMB 数据面，所有 Client↔Server 契约置于 Protocol，所有高权限操作经封闭的 `IPrivilegedOperationTransport` / PrivilegedHelper，禁止 shell、PowerShell、任意命令、任意服务/包/路径/SID 或 generic config write。Linux 只管理 RelaxKonOS 拥有的 Samba include/share，先 `testparm` 验证、原子应用、reload 和 health check；Windows 只管理 ownership ledger 标识的 share/ACL/security snapshot，经受限系统 API apply、health check 和失败回滚。不得覆盖管理员配置/share、泄露 Samba 密码或管理宿主账户。每个 Goal 的构建、测试和验收完成后才能进入下一项。

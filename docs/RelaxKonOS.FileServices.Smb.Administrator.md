@@ -11,7 +11,7 @@ RelaxKonOS 管理 SMB 的控制面，不转发、不代理、不检查 SMB 文�
 
 Server 本身不应以 root、Administrator 或 LocalSystem 运行。Helper 不监听网络端口，不接受 shell、PowerShell、可执行文件、参数、任意 service/package/config path 或 SID 输入。
 
-首次 Linux 安装由 Helper 从受信任默认 APT 源安装固定 `samba` 包；Windows 不安装 File Server role/Feature。防火墙不由本模块更改：TCP 445 冲突和防火墙状态只会显示为诊断。
+首次 Linux 安装由 Helper 从受信任默认 APT 源安装固定 `samba` 包；Windows Server 安装由 Helper 通过 Windows servicing API 启用固定 `FS-FileServer` role。该操作不接受 role 名、源、参数或命令文本；客户端 Windows 不支持此安装。防火墙不由本模块更改：TCP 445 冲突和防火墙状态只会显示为诊断。
 
 ## 所有权与共享根
 
@@ -51,7 +51,7 @@ Windows principal 必须是现有 SID，且只能用于 share ACL；V1 不管理
 - `file-services.smb.reconciliation_required`：检查 Windows share API 实际状态与 ACL，选择保持外部修改或在 UI 中重新确认新的受管资源；不要编辑数据库账本。
 - `file-services.smb.system_account_not_found`：先在宿主操作系统中准备用户；V1 不提供账户创建。
 
-卸载时先删除所有 RelaxKonOS 管理 share；Linux 再删除唯一 marker 与 `/etc/samba/relaxkonos.conf`，但绝不删除 Samba 包、宿主用户、共享目录或管理员 share。Windows 仅删除 ledger 仍拥有且 API snapshot 未 drift 的 share；drift 资源必须由管理员手工处置。SFTP、FTP/FTPS、WebDAV、NFS 和 Windows File Server role 安装均不属于 V1。
+卸载时先删除所有 RelaxKonOS 管理 share；Linux 再删除唯一 marker 与 `/etc/samba/relaxkonos.conf`，但绝不删除 Samba 包、宿主用户、共享目录或管理员 share。Windows 仅删除 ledger 仍拥有且 API snapshot 未 drift 的 share；drift 资源必须由管理员手工处置，且不会移除 File Server role。SFTP、FTP/FTPS、WebDAV 和 NFS 均不属于 V1。
 
 
 ## Desktop file service pages

@@ -72,6 +72,7 @@
     "file_services.problem.file-services.smb.service_failed": "SMB サービスに障害があります",
     "file_services.problem.file-services.smb.system_account_not_found": "システムアカウントまたはパスワードが無効です",
     "file_services.problem.file-services.smb.windows_api_unavailable": "Windows SMB API を利用できません",
+    "file_services.problem.file-services.smb.windows_server_required": "ファイル サーバーの役割をインストールするには Windows Server が必要です",
     "file_services.problem.file-services.smb.reconciliation_required": "構成の差異を修正してください",
     "file_services.problem.file-services.smb.elevation_required": "ホスト管理者の認証が必要です",
     "file_services.refresh_failed": "操作は応答しましたが更新に失敗しました。再読み込みして状態を確認してください。",
