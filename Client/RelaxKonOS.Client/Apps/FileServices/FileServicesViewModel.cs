@@ -12,7 +12,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
 {
     public ObservableCollection<FileShareDto> Shares { get; } = [];
     public ObservableCollection<FileServiceUserDto> Users { get; } = [];
-    [ObservableProperty] private string _statusText = "Loading SMB status…";
+    [ObservableProperty] private string _statusText = LocalizedText.Get("file_services.status.loading", "Loading SMB status…");
     [ObservableProperty] private string _connectionText = "—";
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(InstallCommand), nameof(StartServiceCommand), nameof(StopCommand), nameof(RestartCommand), nameof(EditShareCommand), nameof(DeleteShareCommand), nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private bool _isBusy;
     [ObservableProperty] private FileServiceCapabilitiesDto? _capabilities;
@@ -32,7 +32,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     public async Task StartAsync() => await RefreshAsync();
     [RelayCommand(CanExecute = nameof(CanRead))] private async Task RefreshAsync()
     {
-        if (!CanRead()) { StatusText = "File Services read permission is required."; return; }
+        if (!CanRead()) { StatusText = LocalizedText.Get("file_services.status.read_required", "File Services read permission is required."); return; }
         IsBusy = true;
         try
         {
@@ -40,7 +40,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
             Shares.Clear(); foreach (var share in await client.ListSharesAsync()) Shares.Add(share);
             Users.Clear(); if (Capabilities.SambaCredentialsSupported) foreach (var user in await client.ListUsersAsync()) Users.Add(user);
             var connection = await client.GetConnectionAsync(); ConnectionText = connection.WindowsUncPrefix + "share  ·  " + connection.SmbUriPrefix + "share";
-            StatusText = status.HealthProblemCode ?? $"SMB {status.State}";
+            StatusText = status.HealthProblemCode ?? LocalizedText.Format("file_services.status.ready", status.State);
         }
         catch (Exception ex) { StatusText = ex.Message; }
         finally { IsBusy = false; }
@@ -52,7 +52,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     [RelayCommand(CanExecute = nameof(CanManage))] private async Task NewShareAsync() { ClearEditor(); if (ShowShareEditorAsync is not null) await ShowShareEditorAsync(false); }
     [RelayCommand(CanExecute = nameof(CanEditShare))] private async Task EditShareAsync()
     {
-        if (SelectedShare is null || !SelectedShare.Managed) { StatusText = "Only RelaxKonOS-managed shares can be edited."; return; }
+        if (SelectedShare is null || !SelectedShare.Managed) { StatusText = LocalizedText.Get("file_services.status.managed_only", "Only RelaxKonOS-managed shares can be edited."); return; }
         ShareName = SelectedShare.Name; SharePath = SelectedShare.Path; ShareDescription = SelectedShare.Description ?? string.Empty; ShareReadOnly = SelectedShare.ReadOnly; ShareEnabled = SelectedShare.Enabled; ShareGuestAllowed = SelectedShare.GuestAllowed;
         SharePrincipals = string.Join(',', SelectedShare.Permissions.Select(x => x.Principal + ":" + x.Access)); if (ShowShareEditorAsync is not null) await ShowShareEditorAsync(true);
     }
@@ -79,16 +79,16 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         var rules = new List<FileSharePermissionDto>();
         foreach (var item in SharePrincipals.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            var pair = item.Split(':', 2, StringSplitOptions.TrimEntries); if (pair.Length != 2 || !Enum.TryParse<FileShareAccess>(pair[1], true, out var access)) { StatusText = "Permissions use principal:Read or principal:ReadWrite."; request = default!; return false; }
+            var pair = item.Split(':', 2, StringSplitOptions.TrimEntries); if (pair.Length != 2 || !Enum.TryParse<FileShareAccess>(pair[1], true, out var access)) { StatusText = LocalizedText.Get("file_services.share_permission_invalid", "Permissions use principal:Read or principal:ReadWrite."); request = default!; return false; }
             rules.Add(new(pair[0], access));
         }
         request = new(ShareName.Trim(), SharePath.Trim(), string.IsNullOrWhiteSpace(ShareDescription) ? null : ShareDescription.Trim(), ShareReadOnly, ShareEnabled, ShareGuestAllowed, rules); return true;
     }
     private async Task Apply(Func<Task<FileServiceOperationResultDto>> action)
     {
-        if (!await EnsureElevatedAsync()) { StatusText = "SMB host-administrator authorization is required."; return; }
+        if (!await EnsureElevatedAsync()) { StatusText = LocalizedText.Get("file_services.status.manage_required", "SMB host-administrator authorization is required."); return; }
         IsBusy = true;
-        try { var result = await action(); StatusText = result.Succeeded ? "SMB operation completed." : result.ProblemCode ?? "SMB operation failed."; await RefreshAsync(); }
+        try { var result = await action(); StatusText = result.Succeeded ? LocalizedText.Get("file_services.status.operation_completed", "SMB operation completed.") : result.ProblemCode ?? "SMB operation failed."; await RefreshAsync(); }
         catch (Exception ex) { StatusText = ex.Message; }
         finally { IsBusy = false; }
     }
