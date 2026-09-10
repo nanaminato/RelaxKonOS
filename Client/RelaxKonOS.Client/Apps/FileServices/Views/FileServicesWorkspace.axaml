@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
+             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesWorkspace" x:DataType="fs:FileServicesViewModel">
+    <Grid RowDefinitions="Auto,*" Margin="20">
+        <StackPanel Spacing="8" Margin="0,0,0,16">
+            <TextBlock Text="{Binding PlatformText}" FontSize="24" />
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+            <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsBusy}" />
+            <Button Content="{loc:Loc file_services.refresh}" Command="{Binding RefreshCommand}" HorizontalAlignment="Left" />
+        </StackPanel>
+        <Grid Grid.Row="1" ColumnDefinitions="190,*" ColumnSpacing="16">
+            <StackPanel Spacing="8">
+                <Button Classes="workspace-nav" x:Name="OverviewButton" Content="{loc:Loc file_services.overview}" Tag="overview" Click="Navigation_Click" HorizontalAlignment="Stretch" />
+                <Button Classes="workspace-nav" x:Name="SharesButton" Content="{loc:Loc file_services.shares}" Tag="shares" Click="Navigation_Click" HorizontalAlignment="Stretch" />
+                <Button Classes="workspace-nav" x:Name="UsersButton" Content="{loc:Loc file_services.users}" Tag="users" Click="Navigation_Click" IsVisible="{Binding SupportsSambaCredentials}" HorizontalAlignment="Stretch" />
+            </StackPanel>
+            <ContentControl x:Name="ContentHost" Grid.Column="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+        </Grid>
+    </Grid>
+</UserControl>

@@ -1,0 +1,28 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
+             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesShareDialogView" x:DataType="fs:FileServicesViewModel">
+    <ScrollViewer>
+        <StackPanel Margin="20" Spacing="8">
+            <TextBlock Text="{Binding PlatformHelp}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+            <TextBlock Text="{loc:Loc file_services.share_name}" />
+            <TextBox Text="{Binding ShareName, Mode=TwoWay}" />
+            <TextBlock Text="{loc:Loc file_services.share_path}" />
+            <TextBox Text="{Binding SharePath, Mode=TwoWay}" />
+            <TextBlock Text="{loc:Loc file_services.share_description}" />
+            <TextBox Text="{Binding ShareDescription, Mode=TwoWay}" />
+            <TextBlock Text="{loc:Loc file_services.share_permissions}" />
+            <TextBox Text="{Binding SharePrincipals, Mode=TwoWay}" />
+            <CheckBox Content="{loc:Loc file_services.share_read_only}" IsChecked="{Binding ShareReadOnly, Mode=TwoWay}" />
+            <CheckBox Content="{loc:Loc file_services.share_enabled}" IsChecked="{Binding ShareEnabled, Mode=TwoWay}" />
+            <CheckBox Content="{loc:Loc file_services.share_guest}" IsChecked="{Binding ShareGuestAllowed, Mode=TwoWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+                <Button x:Name="SaveButton" Content="{loc:Loc common.save}" Click="Save_Click" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

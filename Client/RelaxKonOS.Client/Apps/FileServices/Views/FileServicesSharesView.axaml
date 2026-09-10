@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
+             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesSharesView" x:DataType="fs:FileServicesViewModel">
+    <UserControl.Resources><views:FileSharePermissionsConverter x:Key="PermissionsConverter" /></UserControl.Resources>
+    <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <StackPanel Spacing="12">
+            <TextBlock Text="{loc:Loc file_services.shares_help}" TextWrapping="Wrap" />
+            <WrapPanel>
+                <Button Content="{loc:Loc file_services.new_share}" Command="{Binding NewShareCommand}" />
+                <Button Content="{loc:Loc file_services.edit}" Command="{Binding EditShareCommand}" />
+                <Button Content="{loc:Loc file_services.delete}" Command="{Binding DeleteShareCommand}" />
+            </WrapPanel>
+        </StackPanel>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Shares}" SelectedItem="{Binding SelectedShare, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" GridLinesVisibility="Horizontal">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Name}" Binding="{ReflectionBinding Name}" Width="160" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Path}" Binding="{ReflectionBinding Path}" Width="260" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Description}" Binding="{ReflectionBinding Description}" Width="160" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.ReadOnly}" Binding="{ReflectionBinding ReadOnly}" Width="110" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Enabled}" Binding="{ReflectionBinding Enabled}" Width="110" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.GuestAllowed}" Binding="{ReflectionBinding GuestAllowed}" Width="110" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Managed}" Binding="{ReflectionBinding Managed}" Width="110" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Drifted}" Binding="{ReflectionBinding Drifted}" Width="110" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Permissions}" Binding="{ReflectionBinding Permissions, Converter={StaticResource PermissionsConverter}}" Width="240" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>
