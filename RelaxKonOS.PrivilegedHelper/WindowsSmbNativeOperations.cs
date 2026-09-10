@@ -13,7 +13,8 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>Windows SMB service detection/lifecycle through compiled ServiceController APIs.
-/// It intentionally has no PowerShell, CIM, registry, command, or arbitrary service surface.</summary>
+/// It intentionally has no PowerShell, registry, command, or arbitrary service surface; the only
+/// server-configuration path is the fixed WMI binding in <see cref="WindowsSmbServerSecurity"/>.</summary>
 [SupportedOSPlatform("windows")]
 internal static class WindowsSmbNativeOperations
 {
@@ -25,23 +26,33 @@ internal static class WindowsSmbNativeOperations
         PrivilegedOperationKind.SmbReadManagedConfiguration => Task.FromResult(ListShares()),
         PrivilegedOperationKind.SmbApplyWindowsShare => Task.FromResult(ApplyShare(request.SmbShare, request.SmbExpectedSnapshot)),
         PrivilegedOperationKind.SmbRemoveWindowsShare => Task.FromResult(RemoveShare(request.SmbUsername, request.SmbExpectedSnapshot)),
-        PrivilegedOperationKind.SmbSetWindowsServerSecurity => Task.FromResult(Fail(PrivilegedProblemCode.UnsupportedOperation, "SMB server security policy is unavailable")),
+        PrivilegedOperationKind.SmbSetWindowsServerSecurity => Task.FromResult(WindowsSmbServerSecurity.ApplyBaseline(request.SmbExpectedSnapshot)),
         _ => Task.FromResult(Fail(PrivilegedProblemCode.UnsupportedOperation, "SMB operation is unavailable on Windows")),
     };
     private static PrivilegedOperationResult Detect()
     {
         try
         {
+            var security = WindowsSmbServerSecurity.Read();
+            if (!security.Success) return security;
+            var securitySnapshot = DecodeSecuritySnapshot(security);
+            if (securitySnapshot is null) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB Server security snapshot was invalid");
             using var service = new ServiceController(ServiceName);
             var active = service.Status == ServiceControllerStatus.Running;
             var port = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(x => x.Port == 445);
             var state = active ? (port ? FileServiceRuntimeState.Running : FileServiceRuntimeState.Failed) : FileServiceRuntimeState.Stopped;
             var status = new FileServiceStatusDto(FileServiceProtocol.Smb, state, Environment.OSVersion.Version.ToString(), active, port,
-                state == FileServiceRuntimeState.Running ? null : port ? "file-services.smb.service_stopped" : "file-services.smb.port_unavailable");
+                !securitySnapshot.Compliant ? FileServiceProblemCodes.ConfigurationInvalid
+                    : state == FileServiceRuntimeState.Running ? null : port ? "file-services.smb.service_stopped" : "file-services.smb.port_unavailable");
             return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status)));
         }
         catch (InvalidOperationException) { return Fail(PrivilegedProblemCode.NotFound, "LanmanServer is unavailable"); }
         catch (System.ComponentModel.Win32Exception) { return Fail(PrivilegedProblemCode.AccessDenied, "LanmanServer access was denied"); }
+    }
+    private static SmbWindowsServerSecuritySnapshot? DecodeSecuritySnapshot(PrivilegedOperationResult result)
+    {
+        try { return result.OutputBase64 is null ? null : JsonSerializer.Deserialize<SmbWindowsServerSecuritySnapshot>(Convert.FromBase64String(result.OutputBase64)); }
+        catch (JsonException) { return null; }
     }
     private static async Task<PrivilegedOperationResult> Lifecycle(SmbServiceAction? action)
     {

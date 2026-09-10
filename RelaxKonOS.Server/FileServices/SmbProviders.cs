@@ -58,7 +58,11 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         return new(status.State != FileServiceRuntimeState.Unsupported, false, false, true, true, status.HealthProblemCode);
     }
     public Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, false, FileServiceProblemCodes.WindowsApiUnavailable));
-    public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => platform.LifecycleAsync(action, id, ct);
+    public async Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct)
+    {
+        var security = await EnsureServerSecurityAsync(id, ct);
+        return security ?? await platform.LifecycleAsync(action, id, ct);
+    }
     public async Task<IReadOnlyList<FileShareDto>> ListSharesAsync(CancellationToken ct)
     {
         var shares = await platform.ReadManagedSharesAsync(ct);
@@ -73,6 +77,7 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         if (SmbValidators.ValidateShare(request, windows: true) is { } invalid) return new(id, false, invalid);
         var actual = await platform.ReadManagedSharesAsync(ct);
         if (actual.Any(s => string.Equals(s.Name, request.Name, StringComparison.OrdinalIgnoreCase))) return new(id, false, FileServiceProblemCodes.ShareConflict);
+        if (await EnsureServerSecurityAsync(id, ct) is { } security) return security;
         // Windows NetShare APIs use the share name as their immutable system resource key.
         // The ledger may never synthesize a second identifier that cannot be re-read from API state.
         var share = ToDto(request.Name, request);
@@ -89,6 +94,7 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         if (record is null || actual is null || !string.Equals(record.PathHash, WindowsSmbOwnershipLedger.PathHash(actual.Path), StringComparison.Ordinal)
             || !string.Equals(record.Snapshot, WindowsSmbOwnershipLedger.SnapshotHash(Snapshot(actual)), StringComparison.Ordinal))
             return new(operationId, false, FileServiceProblemCodes.ReconciliationRequired);
+        if (await EnsureServerSecurityAsync(operationId, ct) is { } security) return security;
         var replacement = ToDto(id, request);
         var applied = await platform.ApplyShareAsync(replacement, record.Snapshot, operationId, ct);
         if (applied.Succeeded && (await platform.ReadManagedSharesAsync(ct)).FirstOrDefault(item => item.Id == replacement.Id) is { } actualShare)
@@ -102,6 +108,7 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         var actual = (await platform.ReadManagedSharesAsync(ct)).FirstOrDefault(s => s.Id == id);
         if (actual is null || !string.Equals(record.PathHash, WindowsSmbOwnershipLedger.PathHash(actual.Path), StringComparison.Ordinal)
             || !string.Equals(record.Snapshot, WindowsSmbOwnershipLedger.SnapshotHash(Snapshot(actual)), StringComparison.Ordinal)) return new(operationId, false, FileServiceProblemCodes.ReconciliationRequired);
+        if (await EnsureServerSecurityAsync(operationId, ct) is { } security) return security;
         var deleted = await platform.RemoveShareAsync(id, record.Snapshot, operationId, ct);
         if (deleted.Succeeded) await ledger.RemoveAsync(id, ct);
         return deleted;
@@ -109,6 +116,20 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
     public Task<IReadOnlyList<FileServiceUserDto>> ListUsersAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileServiceUserDto>>([]);
     public Task<FileServiceOperationResultDto> SetUserEnabledAsync(string username, bool enabled, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, false, FileServiceProblemCodes.WindowsApiUnavailable));
     public Task<FileServiceOperationResultDto> SetUserPasswordAsync(string username, string password, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, false, FileServiceProblemCodes.WindowsApiUnavailable));
+    private async Task<FileServiceOperationResultDto?> EnsureServerSecurityAsync(Guid operationId, CancellationToken ct)
+    {
+        var record = await ledger.GetServerSecurityAsync(ct);
+        if (record?.ReconciliationRequired == true) return new(operationId, false, FileServiceProblemCodes.ReconciliationRequired);
+        var applied = await platform.ApplyServerSecurityAsync(record?.SnapshotHash, operationId, ct);
+        if (applied.Operation.Succeeded && applied.SnapshotHash is { } snapshot)
+        {
+            await ledger.UpsertServerSecurityAsync(new(snapshot, false), ct);
+            return null;
+        }
+        if (record is not null && applied.Operation.ProblemCode == FileServiceProblemCodes.ReconciliationRequired)
+            await ledger.UpsertServerSecurityAsync(record with { ReconciliationRequired = true }, ct);
+        return applied.Operation;
+    }
     private static FileShareDto ToDto(string id, UpsertFileShareRequest request) => new(id, request.Name, Path.GetFullPath(request.Path), request.Description, request.ReadOnly, request.Enabled, request.GuestAllowed, request.Permissions, true);
     private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.Select(p => p.Principal + ':' + p.Access))}";
 }

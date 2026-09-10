@@ -23,7 +23,10 @@ public interface IWindowsSmbPlatformAdapter
     Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct);
     Task<FileServiceOperationResultDto> ApplyShareAsync(FileShareDto share, string? expectedSnapshot, Guid id, CancellationToken ct);
     Task<FileServiceOperationResultDto> RemoveShareAsync(string id, string? expectedSnapshot, Guid operationId, CancellationToken ct);
+    Task<WindowsSmbSecurityOperationResult> ApplyServerSecurityAsync(string? expectedSnapshot, Guid operationId, CancellationToken ct);
 }
+
+public sealed record WindowsSmbSecurityOperationResult(FileServiceOperationResultDto Operation, string? SnapshotHash);
 
 public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) : ISambaPlatformAdapter
 {
@@ -108,4 +111,21 @@ public sealed class WindowsSmbPlatformAdapter(IPrivilegedSmbOperations helper) :
             share.Permissions.Select(p => new SmbSharePermissionRequest(p.Principal, p.Access.ToString())).ToArray()), expectedSnapshot, id, ct));
     public async Task<FileServiceOperationResultDto> RemoveShareAsync(string id, string? expectedSnapshot, Guid operationId, CancellationToken ct) => LinuxSambaPlatformAdapter.Result(operationId,
         await helper.RemoveWindowsShareAsync(id, expectedSnapshot, operationId, ct));
+    public async Task<WindowsSmbSecurityOperationResult> ApplyServerSecurityAsync(string? expectedSnapshot, Guid operationId, CancellationToken ct)
+    {
+        var result = await helper.SetWindowsServerSecurityAsync(expectedSnapshot, operationId, ct);
+        if (!result.Success)
+        {
+            var code = result.ProblemCode switch
+            {
+                PrivilegedProblemCode.Conflict => FileServiceProblemCodes.ReconciliationRequired,
+                PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
+                _ => FileServiceProblemCodes.WindowsApiUnavailable,
+            };
+            return new(new(operationId, false, code), null);
+        }
+        var snapshot = LinuxSambaPlatformAdapter.Decode<SmbWindowsServerSecuritySnapshot>(result);
+        return snapshot is { Compliant: true } ? new(new(operationId, true), snapshot.SnapshotHash)
+            : new(new(operationId, false, FileServiceProblemCodes.WindowsApiUnavailable), null);
+    }
 }

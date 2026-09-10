@@ -277,6 +277,18 @@ internal static class HostGlobalMigrationRunner
                 INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (12, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
+        if (!await IsAppliedAsync(connection, transaction, 13, cancellationToken))
+        {
+            await ExecuteAsync(connection, transaction, """
+                CREATE TABLE smb_windows_server_security_ledger (
+                    ledger_id INTEGER NOT NULL PRIMARY KEY CHECK(ledger_id = 1),
+                    snapshot_hash TEXT NOT NULL,
+                    reconciliation_required INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (13, CURRENT_TIMESTAMP);
+                """, cancellationToken);
+        }
         transaction.Commit();
     }
 

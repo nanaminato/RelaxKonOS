@@ -16,6 +16,15 @@ public static class FileServiceChecks
         Check(unsupportedStatus.State == FileServiceRuntimeState.Unsupported && unsupportedStatus.HealthProblemCode == FileServiceProblemCodes.UnsupportedPlatform, "Missing provider fails closed as unsupported platform");
         var result = await manager.LifecycleAsync(SmbLifecycleAction.Restart, CancellationToken.None);
         Check(result.Succeeded && provider.LifecycleCalls == 1, "Manager dispatches lifecycle through provider abstraction");
+        var windows = new FakeWindowsPlatform(); var windowsLedger = new FakeWindowsLedger();
+        var windowsProvider = new WindowsSmbFileServiceProvider(windows, windowsLedger);
+        var lifecycle = await windowsProvider.LifecycleAsync(SmbLifecycleAction.Start, Guid.NewGuid(), CancellationToken.None);
+        Check(lifecycle.Succeeded && windows.SecurityCalls == 1 && (await windowsLedger.GetServerSecurityAsync(CancellationToken.None))?.SnapshotHash == "security-snapshot",
+            "Windows lifecycle establishes the fixed server-security snapshot before service mutation");
+        windows.FailSecurityWithDrift = true;
+        var drift = await windowsProvider.LifecycleAsync(SmbLifecycleAction.Restart, Guid.NewGuid(), CancellationToken.None);
+        Check(!drift.Succeeded && drift.ProblemCode == FileServiceProblemCodes.ReconciliationRequired && (await windowsLedger.GetServerSecurityAsync(CancellationToken.None))?.ReconciliationRequired == true,
+            "Windows server-security drift is fail-closed and marked for reconciliation");
     }
     private static void Check(bool condition, string message)
     {
@@ -38,5 +47,33 @@ public static class FileServiceChecks
         public Task<IReadOnlyList<FileServiceUserDto>> ListUsersAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileServiceUserDto>>([]);
         public Task<FileServiceOperationResultDto> SetUserEnabledAsync(string username, bool enabled, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
         public Task<FileServiceOperationResultDto> SetUserPasswordAsync(string username, string password, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
+    }
+    private sealed class FakeWindowsPlatform : IWindowsSmbPlatformAdapter
+    {
+        public int SecurityCalls { get; private set; }
+        public bool FailSecurityWithDrift { get; set; }
+        public Task<FileServiceStatusDto> DetectAsync(CancellationToken ct) => Task.FromResult(new FileServiceStatusDto(FileServiceProtocol.Smb, FileServiceRuntimeState.Running, "fake", true, true));
+        public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
+        public Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileShareDto>>([]);
+        public Task<FileServiceOperationResultDto> ApplyShareAsync(FileShareDto share, string? snapshot, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
+        public Task<FileServiceOperationResultDto> RemoveShareAsync(string id, string? snapshot, Guid operationId, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(operationId, true));
+        public Task<WindowsSmbSecurityOperationResult> ApplyServerSecurityAsync(string? expectedSnapshot, Guid operationId, CancellationToken ct)
+        {
+            SecurityCalls++;
+            return Task.FromResult(FailSecurityWithDrift
+                ? new WindowsSmbSecurityOperationResult(new(operationId, false, FileServiceProblemCodes.ReconciliationRequired), null)
+                : new WindowsSmbSecurityOperationResult(new(operationId, true), "security-snapshot"));
+        }
+    }
+    private sealed class FakeWindowsLedger : IWindowsSmbOwnershipLedger
+    {
+        private readonly Dictionary<string, WindowsSmbOwnershipRecord> _shares = new(StringComparer.Ordinal);
+        private WindowsSmbServerSecurityRecord? _security;
+        public Task<WindowsSmbOwnershipRecord?> GetAsync(string id, CancellationToken ct) => Task.FromResult(_shares.GetValueOrDefault(id));
+        public Task<IReadOnlyDictionary<string, WindowsSmbOwnershipRecord>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyDictionary<string, WindowsSmbOwnershipRecord>>(_shares);
+        public Task UpsertAsync(WindowsSmbOwnershipRecord record, CancellationToken ct) { _shares[record.Id] = record; return Task.CompletedTask; }
+        public Task RemoveAsync(string id, CancellationToken ct) { _shares.Remove(id); return Task.CompletedTask; }
+        public Task<WindowsSmbServerSecurityRecord?> GetServerSecurityAsync(CancellationToken ct) => Task.FromResult(_security);
+        public Task UpsertServerSecurityAsync(WindowsSmbServerSecurityRecord record, CancellationToken ct) { _security = record; return Task.CompletedTask; }
     }
 }

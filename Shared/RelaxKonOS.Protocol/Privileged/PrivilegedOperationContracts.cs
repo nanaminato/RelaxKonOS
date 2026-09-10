@@ -100,6 +100,14 @@ public sealed record SmbSharePermissionRequest(string Principal, string Access);
 public sealed record SmbManagedShareRequest(string Id, string Name, string Path, string? Description, bool ReadOnly, bool Enabled,
     bool GuestAllowed, IReadOnlyList<SmbSharePermissionRequest> Permissions);
 
+/// <summary>
+/// Non-secret result of the fixed Windows SMB Server security baseline. The snapshot is a hash;
+/// raw server configuration (including any administrator-owned null-session entries) never leaves
+/// the LocalSystem Helper.
+/// </summary>
+public sealed record SmbWindowsServerSecuritySnapshot(string SnapshotHash, bool Smb1Enabled, bool Smb2Enabled,
+    bool AuthenticatedUserSharingEnabled, bool NullSessionsDisabled, bool Compliant);
+
 /// <summary>Closed UFW rule verbs. Endpoint values are validated again by the Helper.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<FirewallRuleAction>))]
 public enum FirewallRuleAction { Allow, Deny, Reject, Limit }

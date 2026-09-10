@@ -12,6 +12,7 @@ public interface IPrivilegedSmbOperations
     Task<PrivilegedOperationResult> ApplyLinuxConfigurationAsync(IReadOnlyList<SmbManagedShareRequest> shares, Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> ApplyWindowsShareAsync(SmbManagedShareRequest share, string? snapshot, Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> RemoveWindowsShareAsync(string id, string? snapshot, Guid operationId, CancellationToken ct);
+    Task<PrivilegedOperationResult> SetWindowsServerSecurityAsync(string? snapshot, Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> SetUserEnabledAsync(string username, bool enabled, Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> SetUserPasswordAsync(string username, string password, Guid operationId, CancellationToken ct);
 }
@@ -27,6 +28,7 @@ public sealed class PrivilegedSmbOperations(RelaxKonOS.Server.Privileged.IPrivil
     public Task<PrivilegedOperationResult> ApplyLinuxConfigurationAsync(IReadOnlyList<SmbManagedShareRequest> shares, Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbApplyManagedConfiguration, SmbShares: shares, OperationId: id), ct);
     public Task<PrivilegedOperationResult> ApplyWindowsShareAsync(SmbManagedShareRequest share, string? snapshot, Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbApplyWindowsShare, SmbShare: share, SmbExpectedSnapshot: snapshot, OperationId: id), ct);
     public Task<PrivilegedOperationResult> RemoveWindowsShareAsync(string id, string? snapshot, Guid op, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbRemoveWindowsShare, SmbUsername: id, SmbExpectedSnapshot: snapshot, OperationId: op), ct);
+    public Task<PrivilegedOperationResult> SetWindowsServerSecurityAsync(string? snapshot, Guid op, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbSetWindowsServerSecurity, SmbExpectedSnapshot: snapshot, OperationId: op), ct);
     public Task<PrivilegedOperationResult> SetUserEnabledAsync(string username, bool enabled, Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbSetUserEnabled, SmbUsername: username, FirewallEnabled: enabled, OperationId: id), ct);
     public Task<PrivilegedOperationResult> SetUserPasswordAsync(string username, string password, Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbSetUserPassword, SmbUsername: username, SmbPassword: password, OperationId: id), ct);
 }

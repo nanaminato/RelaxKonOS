@@ -7,12 +7,15 @@ using RelaxKonOS.Server.Storage;
 namespace RelaxKonOS.Server.FileServices;
 
 public sealed record WindowsSmbOwnershipRecord(string Id, string Name, string PathHash, string Snapshot, bool ReconciliationRequired);
+public sealed record WindowsSmbServerSecurityRecord(string SnapshotHash, bool ReconciliationRequired);
 public interface IWindowsSmbOwnershipLedger
 {
     Task<WindowsSmbOwnershipRecord?> GetAsync(string id, CancellationToken ct);
     Task<IReadOnlyDictionary<string, WindowsSmbOwnershipRecord>> ListAsync(CancellationToken ct);
     Task UpsertAsync(WindowsSmbOwnershipRecord record, CancellationToken ct);
     Task RemoveAsync(string id, CancellationToken ct);
+    Task<WindowsSmbServerSecurityRecord?> GetServerSecurityAsync(CancellationToken ct);
+    Task UpsertServerSecurityAsync(WindowsSmbServerSecurityRecord record, CancellationToken ct);
 }
 
 /// <summary>Host-global ownership boundary. It records only ownership/snapshots, never a desired share configuration.</summary>
@@ -21,6 +24,7 @@ public sealed class WindowsSmbOwnershipLedger : IWindowsSmbOwnershipLedger
     private readonly string _connectionString;
     private readonly bool _memory;
     private readonly ConcurrentDictionary<string, WindowsSmbOwnershipRecord> _fallback = new(StringComparer.Ordinal);
+    private WindowsSmbServerSecurityRecord? _securityFallback;
     public WindowsSmbOwnershipLedger(IConfiguration configuration, IHostEnvironment environment)
     {
         var options = configuration.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
@@ -50,6 +54,20 @@ public sealed class WindowsSmbOwnershipLedger : IWindowsSmbOwnershipLedger
         command.Parameters.AddWithValue("$id", record.Id); command.Parameters.AddWithValue("$name", record.Name); command.Parameters.AddWithValue("$path", record.PathHash); command.Parameters.AddWithValue("$snapshot", SnapshotHash(record.Snapshot)); command.Parameters.AddWithValue("$reconcile", record.ReconciliationRequired); command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O")); await command.ExecuteNonQueryAsync(ct);
     }
     public async Task RemoveAsync(string id, CancellationToken ct) { if (_memory) { _fallback.TryRemove(id, out _); return; } await using var connection = await OpenAsync(ct); await using var command = connection.CreateCommand(); command.CommandText = "DELETE FROM smb_windows_ownership_ledger WHERE share_id=$id;"; command.Parameters.AddWithValue("$id", id); await command.ExecuteNonQueryAsync(ct); }
+    public async Task<WindowsSmbServerSecurityRecord?> GetServerSecurityAsync(CancellationToken ct)
+    {
+        if (_memory) return _securityFallback;
+        await using var connection = await OpenAsync(ct); await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT snapshot_hash, reconciliation_required FROM smb_windows_server_security_ledger WHERE ledger_id=1;";
+        await using var row = await command.ExecuteReaderAsync(ct); return await row.ReadAsync(ct) ? new(row.GetString(0), row.GetBoolean(1)) : null;
+    }
+    public async Task UpsertServerSecurityAsync(WindowsSmbServerSecurityRecord record, CancellationToken ct)
+    {
+        if (_memory) { _securityFallback = record; return; }
+        await using var connection = await OpenAsync(ct); await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO smb_windows_server_security_ledger(ledger_id, snapshot_hash, reconciliation_required, updated_at) VALUES(1,$snapshot,$reconcile,$now) ON CONFLICT(ledger_id) DO UPDATE SET snapshot_hash=$snapshot,reconciliation_required=$reconcile,updated_at=$now;";
+        command.Parameters.AddWithValue("$snapshot", record.SnapshotHash); command.Parameters.AddWithValue("$reconcile", record.ReconciliationRequired); command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O")); await command.ExecuteNonQueryAsync(ct);
+    }
     public static string PathHash(string path) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(path))));
     private async Task<SqliteConnection> OpenAsync(CancellationToken ct) { var connection = new SqliteConnection(_connectionString); await connection.OpenAsync(ct); return connection; }
     public static string SnapshotHash(string snapshot) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(snapshot)));

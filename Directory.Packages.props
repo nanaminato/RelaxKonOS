@@ -36,6 +36,8 @@
         <PackageVersion Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.0" />
         <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
         <PackageVersion Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
+        <!-- Windows SMB Server configuration is accessed only through its fixed WMI provider. -->
+        <PackageVersion Include="System.Management" Version="10.0.0" />
         <!-- Certificate manager: ACME v2 client, isolated behind RelaxKonOS.Server.Certificate. -->
         <PackageVersion Include="Webprofusion.Certify.ACME.Anvil" Version="3.3.3" />
         <!-- RoyalTerminal 0.5.2 传递依赖要求 >= 10.0.11。集中管理中必须只保留一个版本声明。 -->
