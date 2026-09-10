@@ -11,6 +11,7 @@ public interface ISambaPlatformAdapter
     Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct);
     Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct);
     Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct);
+    Task<IReadOnlyList<FileServiceUserDto>> ReadUsersAsync(CancellationToken ct);
     Task<FileServiceOperationResultDto> ApplySharesAsync(IReadOnlyList<FileShareDto> current, CancellationToken ct);
     Task<FileServiceOperationResultDto> SetUserAsync(string username, bool enabled, string? password, Guid id, CancellationToken ct);
 }
@@ -41,6 +42,11 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
     {
         var result = await helper.ReadManagedConfigurationAsync(Guid.NewGuid(), ct);
         return result.Success ? Decode<List<FileShareDto>>(result) ?? [] : [];
+    }
+    public async Task<IReadOnlyList<FileServiceUserDto>> ReadUsersAsync(CancellationToken ct)
+    {
+        var result = await helper.ReadUsersAsync(Guid.NewGuid(), ct);
+        return result.Success ? Decode<List<FileServiceUserDto>>(result) ?? [] : [];
     }
     public async Task<FileServiceOperationResultDto> ApplySharesAsync(IReadOnlyList<FileShareDto> current, CancellationToken ct)
     {

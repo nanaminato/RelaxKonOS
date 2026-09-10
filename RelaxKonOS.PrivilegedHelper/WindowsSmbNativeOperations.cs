@@ -1,5 +1,10 @@
 using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Security.Cryptography;
+using System.Text;
 using System.ServiceProcess;
 using System.Text.Json;
 using RelaxKonOS.Protocol.FileServices;
@@ -17,10 +22,10 @@ internal static class WindowsSmbNativeOperations
     {
         PrivilegedOperationKind.SmbDetect => Task.FromResult(Detect()),
         PrivilegedOperationKind.SmbServiceAction => Lifecycle(request.SmbServiceAction),
-        // Share and ACL mutation remains unavailable until the deployment contains the reviewed
-        // Win32 SMB API binding. Failing closed protects non-ledger shares.
-        PrivilegedOperationKind.SmbApplyWindowsShare or PrivilegedOperationKind.SmbRemoveWindowsShare or PrivilegedOperationKind.SmbSetWindowsServerSecurity
-            => Task.FromResult(Fail(PrivilegedProblemCode.UnsupportedOperation, "Windows SMB share API binding is unavailable")),
+        PrivilegedOperationKind.SmbReadManagedConfiguration => Task.FromResult(ListShares()),
+        PrivilegedOperationKind.SmbApplyWindowsShare => Task.FromResult(ApplyShare(request.SmbShare, request.SmbExpectedSnapshot)),
+        PrivilegedOperationKind.SmbRemoveWindowsShare => Task.FromResult(RemoveShare(request.SmbUsername, request.SmbExpectedSnapshot)),
+        PrivilegedOperationKind.SmbSetWindowsServerSecurity => Task.FromResult(Fail(PrivilegedProblemCode.UnsupportedOperation, "SMB server security policy is unavailable")),
         _ => Task.FromResult(Fail(PrivilegedProblemCode.UnsupportedOperation, "SMB operation is unavailable on Windows")),
     };
     private static PrivilegedOperationResult Detect()
@@ -52,5 +57,171 @@ internal static class WindowsSmbNativeOperations
         catch (InvalidOperationException) { return Fail(PrivilegedProblemCode.NotFound, "LanmanServer is unavailable"); }
         catch (System.ComponentModel.Win32Exception) { return Fail(PrivilegedProblemCode.AccessDenied, "LanmanServer lifecycle was denied"); }
     }
+    private static PrivilegedOperationResult ListShares()
+    {
+        IntPtr buffer = IntPtr.Zero;
+        try
+        {
+            var shares = new List<FileShareDto>(); var resume = 0;
+            do
+            {
+                var status = NetShareEnum(null, 502, out buffer, uint.MaxValue, out var read, out _, ref resume);
+                if (status is not (0 or ErrorMoreData)) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share enumeration failed");
+                var size = Marshal.SizeOf<ShareInfo502>();
+                for (var index = 0; index < read; index++)
+                {
+                    var info = Marshal.PtrToStructure<ShareInfo502>(IntPtr.Add(buffer, checked((int)(index * size))));
+                    if (IsDefaultShare(info.Name) || string.IsNullOrWhiteSpace(info.Path)) continue;
+                    shares.Add(ToDto(info));
+                }
+                if (buffer != IntPtr.Zero) { NetApiBufferFree(buffer); buffer = IntPtr.Zero; }
+                if (status == 0) break;
+            } while (true);
+            return Output(shares);
+        }
+        catch (Exception exception) when (exception is ArgumentException or System.ComponentModel.Win32Exception) { return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share enumeration failed"); }
+        finally { if (buffer != IntPtr.Zero) NetApiBufferFree(buffer); }
+    }
+    private static PrivilegedOperationResult ApplyShare(SmbManagedShareRequest? request, string? expectedSnapshot)
+    {
+        if (request is null || !IsValid(request) || IsDefaultShare(request.Name)) return Fail(PrivilegedProblemCode.InvalidRequest, "invalid Windows SMB share request");
+        try
+        {
+            var existing = GetShare(request.Name);
+            if (existing is not null && (string.IsNullOrEmpty(expectedSnapshot) || !SnapshotMatches(existing, expectedSnapshot))) return Fail(PrivilegedProblemCode.Conflict, "Windows SMB share changed externally");
+            var descriptor = CreateDescriptor(request.Permissions, request.ReadOnly, request.GuestAllowed);
+            var descriptorMemory = Marshal.AllocHGlobal(descriptor.Length);
+            try
+            {
+                Marshal.Copy(descriptor, 0, descriptorMemory, descriptor.Length);
+                var info = new ShareInfo502(request.Name, 0, request.Description, request.Path, null, 0, descriptorMemory);
+                uint parameterError;
+                var status = existing is null ? NetShareAdd(null, 502, ref info, out parameterError) : NetShareSetInfo(null, request.Name, 502, ref info, out parameterError);
+                if (status != 0) return Fail(status is ErrorAccessDenied ? PrivilegedProblemCode.AccessDenied : status is ErrorAlreadyExists ? PrivilegedProblemCode.Conflict : PrivilegedProblemCode.InternalError, "Windows SMB share apply failed");
+            }
+            finally { Marshal.FreeHGlobal(descriptorMemory); }
+            var applied = GetShare(request.Name);
+            if (applied is null || !string.Equals(applied.Path, request.Path, StringComparison.OrdinalIgnoreCase) || !IsLanmanServerRunning() || !IsTcpPortListening())
+            {
+                if (!RestoreShare(existing, request.Name)) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share rollback failed");
+                return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share health check failed");
+            }
+            return new(true);
+        }
+        catch (Exception exception) when (exception is ArgumentException or UnauthorizedAccessException) { return Fail(PrivilegedProblemCode.InvalidRequest, "invalid Windows SMB share request"); }
+    }
+    private static PrivilegedOperationResult RemoveShare(string? name, string? expectedSnapshot)
+    {
+        if (string.IsNullOrWhiteSpace(name) || IsDefaultShare(name)) return Fail(PrivilegedProblemCode.InvalidRequest, "invalid Windows SMB share name");
+        var existing = GetShare(name); if (existing is null) return Fail(PrivilegedProblemCode.NotFound, "Windows SMB share not found");
+        if (string.IsNullOrWhiteSpace(expectedSnapshot) || !SnapshotMatches(existing, expectedSnapshot)) return Fail(PrivilegedProblemCode.Conflict, "Windows SMB share changed externally");
+        var status = NetShareDel(null, name, 0);
+        if (status != 0) return Fail(status == ErrorAccessDenied ? PrivilegedProblemCode.AccessDenied : PrivilegedProblemCode.InternalError, "Windows SMB share removal failed");
+        if (!IsLanmanServerRunning() || !IsTcpPortListening())
+        {
+            if (!RestoreDeletedShare(existing)) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share removal rollback failed");
+            return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share removal health check failed");
+        }
+        return new(true);
+    }
+    private static bool RestoreShare(FileShareDto? snapshot, string name)
+    {
+        if (snapshot is null) return NetShareDel(null, name, 0) is 0 or ErrorNotFound;
+        try
+        {
+            var request = new SmbManagedShareRequest(snapshot.Id, snapshot.Name, snapshot.Path, snapshot.Description, snapshot.ReadOnly, snapshot.Enabled, snapshot.GuestAllowed,
+                snapshot.Permissions.Select(x => new SmbSharePermissionRequest(x.Principal, x.Access.ToString())).ToArray());
+            var descriptor = CreateDescriptor(request.Permissions, request.ReadOnly, request.GuestAllowed); var memory = Marshal.AllocHGlobal(descriptor.Length);
+            try { Marshal.Copy(descriptor, 0, memory, descriptor.Length); var info = new ShareInfo502(request.Name, 0, request.Description, request.Path, null, 0, memory); uint error; return NetShareSetInfo(null, request.Name, 502, ref info, out error) == 0; }
+            finally { Marshal.FreeHGlobal(memory); }
+        }
+        catch { return false; }
+    }
+    private static bool RestoreDeletedShare(FileShareDto snapshot)
+    {
+        try
+        {
+            var descriptor = CreateDescriptor(snapshot.Permissions.Select(x => new SmbSharePermissionRequest(x.Principal, x.Access.ToString())).ToArray(), snapshot.ReadOnly, snapshot.GuestAllowed); var memory = Marshal.AllocHGlobal(descriptor.Length);
+            try { Marshal.Copy(descriptor, 0, memory, descriptor.Length); var info = new ShareInfo502(snapshot.Name, 0, snapshot.Description, snapshot.Path, null, 0, memory); uint error; return NetShareAdd(null, 502, ref info, out error) == 0; }
+            finally { Marshal.FreeHGlobal(memory); }
+        }
+        catch { return false; }
+    }
+    private static FileShareDto? GetShare(string name)
+    {
+        var status = NetShareGetInfo(null, name, 502, out var value);
+        if (status == ErrorNotFound) return null;
+        if (status != 0) throw new System.ComponentModel.Win32Exception((int)status);
+        try { return ToDto(Marshal.PtrToStructure<ShareInfo502>(value)); }
+        finally { NetApiBufferFree(value); }
+    }
+    private static FileShareDto ToDto(ShareInfo502 info)
+    {
+        var permissions = ReadPermissions(info.SecurityDescriptor);
+        var guest = permissions.Any(x => x.Principal == "S-1-5-7");
+        var nonAdministrative = permissions.Where(x => x.Principal is not "S-1-5-32-544").ToArray();
+        var readOnly = nonAdministrative.Length > 0 && nonAdministrative.All(x => x.Access == FileShareAccess.Read);
+        return new(info.Name, info.Name, info.Path, info.Remark, readOnly, true, guest, permissions, false);
+    }
+    private static IReadOnlyList<FileSharePermissionDto> ReadPermissions(IntPtr pointer)
+    {
+        if (pointer == IntPtr.Zero) return [];
+        var length = GetSecurityDescriptorLength(pointer); if (length is < 1 or > 65536) return [];
+        var bytes = new byte[length]; Marshal.Copy(pointer, bytes, 0, length);
+        var descriptor = new RawSecurityDescriptor(bytes, 0); if (descriptor.DiscretionaryAcl is null) return [];
+        var permissions = new List<FileSharePermissionDto>();
+        foreach (GenericAce ace in descriptor.DiscretionaryAcl)
+            if (ace is CommonAce { AceQualifier: AceQualifier.AccessAllowed } allowed && allowed.SecurityIdentifier is { } sid)
+                permissions.Add(new(sid.Value, (allowed.AccessMask & 0x00000002) != 0 || (allowed.AccessMask & 0x001F01FF) == 0x001F01FF ? FileShareAccess.ReadWrite : FileShareAccess.Read));
+        return permissions.OrderBy(x => x.Principal, StringComparer.Ordinal).ToArray();
+    }
+    private static byte[] CreateDescriptor(IReadOnlyList<SmbSharePermissionRequest> permissions, bool readOnly, bool guest)
+    {
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        var acl = new DiscretionaryAcl(false, false, permissions.Count + 1);
+        acl.AddAccess(AccessControlType.Allow, administrators, 0x001F01FF, InheritanceFlags.None, PropagationFlags.None);
+        foreach (var permission in permissions)
+        {
+            var sid = new SecurityIdentifier(permission.Principal);
+            var write = permission.Access == "ReadWrite" && !readOnly;
+            acl.AddAccess(AccessControlType.Allow, sid, write ? 0x001F01FF : 0x00120089, InheritanceFlags.None, PropagationFlags.None);
+        }
+        if (guest) acl.AddAccess(AccessControlType.Allow, new SecurityIdentifier(WellKnownSidType.AnonymousSid, null), 0x00120089, InheritanceFlags.None, PropagationFlags.None);
+        var descriptor = new CommonSecurityDescriptor(false, false, ControlFlags.DiscretionaryAclPresent | ControlFlags.SelfRelative, administrators, administrators, null, acl);
+        var bytes = new byte[descriptor.BinaryLength]; descriptor.GetBinaryForm(bytes, 0); return bytes;
+    }
+    private static bool SnapshotMatches(FileShareDto actual, string expected) => string.Equals(SnapshotHash(Snapshot(actual)), expected, StringComparison.Ordinal);
+    private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.Select(p => p.Principal + ':' + p.Access))}";
+    private static string SnapshotHash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+    private static bool IsValid(SmbManagedShareRequest share)
+    {
+        if (share.Id != share.Name || share.Name.Length is < 1 or > 80 || share.Name.Any(c => char.IsControl(c) || c is '\\' or '/' or '[' or ']' or '=')) return false;
+        if (!Path.IsPathFullyQualified(share.Path) || !Directory.Exists(share.Path) || HasReparsePoint(@"D:\RelaxKonOSShares", share.Path) || share.Description?.Any(char.IsControl) == true || !(string.Equals(share.Path, @"D:\RelaxKonOSShares", StringComparison.OrdinalIgnoreCase) || share.Path.StartsWith(@"D:\RelaxKonOSShares\", StringComparison.OrdinalIgnoreCase))) return false;
+        try { return share.Permissions.All(p => p.Access is "Read" or "ReadWrite" && new SecurityIdentifier(p.Principal).Value == p.Principal); }
+        catch (ArgumentException) { return false; }
+    }
+    private static bool IsDefaultShare(string? name) => string.IsNullOrWhiteSpace(name) || name.Equals("IPC$", StringComparison.OrdinalIgnoreCase) || name.EndsWith('$');
+    private static bool HasReparsePoint(string root, string path)
+    {
+        for (var current = root; ;)
+        {
+            if (Directory.Exists(current) && File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint)) return true;
+            var segment = Path.GetRelativePath(current, path).Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (segment is null) return false; current = Path.Combine(current, segment);
+        }
+    }
+    private static bool IsTcpPortListening() => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(x => x.Port == 445);
+    private static bool IsLanmanServerRunning() { using var service = new ServiceController(ServiceName); return service.Status == ServiceControllerStatus.Running; }
+    private static PrivilegedOperationResult Output<T>(T result) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(result)));
+    private const int ErrorMoreData = 234, ErrorAlreadyExists = 2118, ErrorAccessDenied = 5, ErrorNotFound = 2310;
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct ShareInfo502(string name, uint type, string? remark, string path, string? password, uint reserved, IntPtr securityDescriptor)
+    { [MarshalAs(UnmanagedType.LPWStr)] public string Name = name; public uint Type = type; [MarshalAs(UnmanagedType.LPWStr)] public string? Remark = remark; [MarshalAs(UnmanagedType.LPWStr)] public string Path = path; [MarshalAs(UnmanagedType.LPWStr)] public string? Password = password; public uint Reserved = reserved; public IntPtr SecurityDescriptor = securityDescriptor; }
+    [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern int NetShareEnum(string? server, int level, out IntPtr buffer, uint preferredMaximumLength, out uint entriesRead, out uint totalEntries, ref int resumeHandle);
+    [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern int NetShareGetInfo(string? server, string netName, int level, out IntPtr buffer);
+    [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern int NetShareAdd(string? server, int level, ref ShareInfo502 buffer, out uint parameterError);
+    [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern int NetShareSetInfo(string? server, string netName, int level, ref ShareInfo502 buffer, out uint parameterError);
+    [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern int NetShareDel(string? server, string netName, int reserved);
+    [DllImport("Netapi32.dll")] private static extern int NetApiBufferFree(IntPtr buffer);
+    [DllImport("Advapi32.dll")] private static extern int GetSecurityDescriptorLength(IntPtr securityDescriptor);
     private static PrivilegedOperationResult Fail(PrivilegedProblemCode code, string error) => new(false, 1, Error: error, ProblemCode: code);
 }

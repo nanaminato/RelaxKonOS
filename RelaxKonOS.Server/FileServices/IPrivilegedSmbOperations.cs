@@ -8,6 +8,7 @@ public interface IPrivilegedSmbOperations
     Task<PrivilegedOperationResult> InstallAsync(Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> ServiceAsync(SmbServiceAction action, Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> ReadManagedConfigurationAsync(Guid operationId, CancellationToken ct);
+    Task<PrivilegedOperationResult> ReadUsersAsync(Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> ApplyLinuxConfigurationAsync(IReadOnlyList<SmbManagedShareRequest> shares, Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> ApplyWindowsShareAsync(SmbManagedShareRequest share, string? snapshot, Guid operationId, CancellationToken ct);
     Task<PrivilegedOperationResult> RemoveWindowsShareAsync(string id, string? snapshot, Guid operationId, CancellationToken ct);
@@ -22,6 +23,7 @@ public sealed class PrivilegedSmbOperations(RelaxKonOS.Server.Privileged.IPrivil
     public Task<PrivilegedOperationResult> InstallAsync(Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbPackageInstall, OperationId: id), ct);
     public Task<PrivilegedOperationResult> ServiceAsync(SmbServiceAction action, Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbServiceAction, SmbServiceAction: action, OperationId: id), ct);
     public Task<PrivilegedOperationResult> ReadManagedConfigurationAsync(Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbReadManagedConfiguration, OperationId: id), ct);
+    public Task<PrivilegedOperationResult> ReadUsersAsync(Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbReadUsers, OperationId: id), ct);
     public Task<PrivilegedOperationResult> ApplyLinuxConfigurationAsync(IReadOnlyList<SmbManagedShareRequest> shares, Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbApplyManagedConfiguration, SmbShares: shares, OperationId: id), ct);
     public Task<PrivilegedOperationResult> ApplyWindowsShareAsync(SmbManagedShareRequest share, string? snapshot, Guid id, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbApplyWindowsShare, SmbShare: share, SmbExpectedSnapshot: snapshot, OperationId: id), ct);
     public Task<PrivilegedOperationResult> RemoveWindowsShareAsync(string id, string? snapshot, Guid op, CancellationToken ct) => Run(new(PrivilegedOperationKind.SmbRemoveWindowsShare, SmbUsername: id, SmbExpectedSnapshot: snapshot, OperationId: op), ct);

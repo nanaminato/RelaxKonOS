@@ -47,6 +47,7 @@ public enum PrivilegedOperationKind
     SmbPackageInstall,
     SmbServiceAction,
     SmbReadManagedConfiguration,
+    SmbReadUsers,
     SmbApplyManagedConfiguration,
     SmbApplyWindowsShare,
     SmbRemoveWindowsShare,
