@@ -21,7 +21,7 @@ public sealed class LinuxSambaFileServiceProvider(ISambaPlatformAdapter platform
         var shares = (await ListSharesAsync(ct)).ToList();
         if (shares.Any(s => string.Equals(s.Name, request.Name, StringComparison.OrdinalIgnoreCase))) return new(id, false, FileServiceProblemCodes.ShareConflict);
         shares.Add(ToDto(id.ToString("N"), request));
-        return await platform.ApplySharesAsync(shares, ct);
+        return await platform.ApplySharesAsync(shares, id, ct);
     }
     public async Task<FileServiceOperationResultDto> UpdateShareAsync(string id, UpsertFileShareRequest request, Guid operationId, CancellationToken ct)
     {
@@ -30,13 +30,13 @@ public sealed class LinuxSambaFileServiceProvider(ISambaPlatformAdapter platform
         var index = shares.FindIndex(s => s.Id == id && s.Managed);
         if (index < 0) return new(operationId, false, FileServiceProblemCodes.ConfigurationUnmanaged);
         shares[index] = ToDto(id, request);
-        return await platform.ApplySharesAsync(shares, ct);
+        return await platform.ApplySharesAsync(shares, operationId, ct);
     }
     public async Task<FileServiceOperationResultDto> DeleteShareAsync(string id, Guid operationId, CancellationToken ct)
     {
         var shares = (await ListSharesAsync(ct)).ToList();
         var removed = shares.RemoveAll(s => s.Id == id && s.Managed);
-        return removed == 0 ? new(operationId, false, FileServiceProblemCodes.ConfigurationUnmanaged) : await platform.ApplySharesAsync(shares, ct);
+        return removed == 0 ? new(operationId, false, FileServiceProblemCodes.ConfigurationUnmanaged) : await platform.ApplySharesAsync(shares, operationId, ct);
     }
     public Task<IReadOnlyList<FileServiceUserDto>> ListUsersAsync(CancellationToken ct) => platform.ReadUsersAsync(ct);
     public Task<FileServiceOperationResultDto> SetUserEnabledAsync(string username, bool enabled, Guid id, CancellationToken ct) => !SmbValidators.IsValidUsername(username)

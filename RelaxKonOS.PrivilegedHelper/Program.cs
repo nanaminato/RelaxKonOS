@@ -101,7 +101,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.SmbReadManagedConfiguration => await ReadSmbManagedConfigurationAsync(),
             PrivilegedOperationKind.SmbReadUsers => await ReadSambaUsersAsync(),
             PrivilegedOperationKind.SmbApplyManagedConfiguration => await ApplySmbManagedConfigurationAsync(request.SmbShares),
-            PrivilegedOperationKind.SmbSetUserEnabled => await SetSambaUserEnabledAsync(request.SmbUsername, request.FirewallEnabled),
+            PrivilegedOperationKind.SmbSetUserEnabled => await SetSambaUserEnabledAsync(request.SmbUsername, request.SmbUserEnabled),
             PrivilegedOperationKind.SmbSetUserPassword => await SetSambaUserPasswordAsync(request.SmbUsername, request.SmbPassword),
             // Windows SMB operations are intentionally rejected by this cross-platform executor.
             // The LocalSystem implementation must use compiled Windows APIs, never a command string.
@@ -570,11 +570,15 @@ static async Task<PrivilegedOperationResult> InstallSambaPackageAsync()
     return update.Success ? await RunFixedCommandAsync("/usr/bin/apt-get", ["install", "--yes", "--no-install-recommends", "samba"], TimeSpan.FromMinutes(10), "Samba package install failed") : update;
 }
 
-static Task<PrivilegedOperationResult> ApplySmbServiceActionAsync(SmbServiceAction? action)
+static async Task<PrivilegedOperationResult> ApplySmbServiceActionAsync(SmbServiceAction? action)
 {
-    if (!OperatingSystem.IsLinux() || action is null || !File.Exists("/usr/bin/systemctl")) return Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Samba service operation is unavailable"));
+    if (!OperatingSystem.IsLinux() || action is null || !File.Exists("/usr/bin/systemctl")) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Samba service operation is unavailable");
     var verb = action.Value switch { SmbServiceAction.Start => "start", SmbServiceAction.Stop => "stop", SmbServiceAction.Restart => "restart", SmbServiceAction.Reload => "reload", _ => throw new ArgumentOutOfRangeException(nameof(action)) };
-    return RunFixedCommandAsync("/usr/bin/systemctl", [verb, "smbd.service"], TimeSpan.FromSeconds(30), "Samba service operation failed");
+    var result = await RunFixedCommandAsync("/usr/bin/systemctl", [verb, "smbd.service"], TimeSpan.FromSeconds(30), "Samba service operation failed");
+    if (!result.Success || action == SmbServiceAction.Stop) return result;
+    if (!await IsSmbHealthyAsync())
+        return Fail(1, PrivilegedProblemCode.InternalError, IsTcpPortListening(445) ? "Samba service health check failed" : "Samba port unavailable after service action");
+    return result;
 }
 
 static async Task<PrivilegedOperationResult> ReadSmbManagedConfigurationAsync()
@@ -715,10 +719,11 @@ static IReadOnlyList<FileShareDto> ParseManagedShares(string[] lines)
         var line = raw.Trim(); const string shareMarker = "# relaxkonos-share:"; if (line.StartsWith(shareMarker, StringComparison.Ordinal)) { Commit(); id = line[shareMarker.Length..]; continue; }
         if (id is null) continue;
         if (line.StartsWith('[') && line.EndsWith(']')) { name = line[1..^1]; continue; }
-        var index = line.IndexOf('='); if (index < 1) continue; var key = line[..index].Trim(); var value = line[(index + 1)..].Trim();
+        var index = line.IndexOf('='); if (index < 1) throw new InvalidDataException(); var key = line[..index].Trim(); var value = line[(index + 1)..].Trim();
         switch (key) { case "path": path = value; break; case "comment": description = value; break; case "read only": readOnly = value == "yes"; break; case "available": enabled = value == "yes"; break; case "guest ok": guest = value == "yes"; break;
             case "read list": permissions.AddRange(value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => new FileSharePermissionDto(x, FileShareAccess.Read))); break;
-            case "write list": permissions.AddRange(value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => new FileSharePermissionDto(x, FileShareAccess.ReadWrite))); break; }
+            case "write list": permissions.AddRange(value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => new FileSharePermissionDto(x, FileShareAccess.ReadWrite))); break;
+            default: throw new InvalidDataException(); }
     }
     Commit(); return shares;
 }
@@ -726,14 +731,32 @@ static IReadOnlyList<FileShareDto> ParseManagedShares(string[] lines)
 static bool InvalidSmbShare(SmbManagedShareRequest share) => !IsValidSmbShare(share);
 static bool IsValidSmbShare(SmbManagedShareRequest share) => share.Id.Length is > 0 and <= 64 && System.Text.RegularExpressions.Regex.IsMatch(share.Id, "^[A-Za-z0-9-]+$")
     && System.Text.RegularExpressions.Regex.IsMatch(share.Name, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") && Path.IsPathFullyQualified(share.Path)
-    && Directory.Exists(share.Path) && (string.Equals(share.Path, "/srv/relaxkonos-shares", StringComparison.Ordinal) || share.Path.StartsWith("/srv/relaxkonos-shares/", StringComparison.Ordinal))
+    && Directory.Exists(share.Path) && !HasSmbReparsePoint("/srv/relaxkonos-shares", share.Path) && (string.Equals(share.Path, "/srv/relaxkonos-shares", StringComparison.Ordinal) || share.Path.StartsWith("/srv/relaxkonos-shares/", StringComparison.Ordinal))
     && !HasUnsafeSmbText(share.Name) && !HasUnsafeSmbText(share.Path) && !HasUnsafeSmbText(share.Description)
     && (!share.GuestAllowed || share.ReadOnly)
     && share.Permissions.All(x => System.Text.RegularExpressions.Regex.IsMatch(x.Principal, "^[A-Za-z0-9._@\\\\-]{1,256}$") && x.Access is "Read" or "ReadWrite");
 static bool HasUnsafeSmbText(string? value) => value is not null && (value.Any(char.IsControl) || value.Contains('=') || value.Contains('[') || value.Contains(']') || value.StartsWith('-'));
 static bool IsValidSmbUsername(string? username) => username is not null && System.Text.RegularExpressions.Regex.IsMatch(username, "^[a-z_][a-z0-9_-]{0,63}$");
 static bool UserExists(string username) => File.ReadLines("/etc/passwd").Any(line => line.StartsWith(username + ":", StringComparison.Ordinal));
-static bool IsSupportedDebianFamily() => File.Exists("/etc/os-release") && (File.ReadAllText("/etc/os-release").Contains("ID=debian", StringComparison.OrdinalIgnoreCase) || File.ReadAllText("/etc/os-release").Contains("ID=ubuntu", StringComparison.OrdinalIgnoreCase));
+static bool HasSmbReparsePoint(string root, string path)
+{
+    for (var current = root; ;)
+    {
+        if (Directory.Exists(current) && File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint)) return true;
+        var next = Path.GetRelativePath(current, path).Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (next is null) return false;
+        current = Path.Combine(current, next);
+    }
+}
+static bool IsSupportedDebianFamily()
+{
+    if (!File.Exists("/etc/os-release")) return false;
+    var values = File.ReadLines("/etc/os-release").Select(line => line.Split('=', 2)).Where(parts => parts.Length == 2)
+        .ToDictionary(parts => parts[0], parts => parts[1].Trim().Trim('\"'), StringComparer.OrdinalIgnoreCase);
+    return values.TryGetValue("ID", out var id) && values.TryGetValue("VERSION_ID", out var version)
+        && ((id.Equals("debian", StringComparison.OrdinalIgnoreCase) && version == "12")
+            || (id.Equals("ubuntu", StringComparison.OrdinalIgnoreCase) && version is "22.04" or "24.04"));
+}
 static bool IsTcpPortListening(int port) => System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(endpoint => endpoint.Port == port);
 static string? DecodeUtf8(string? output) { try { return output is null ? null : System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(output)); } catch (FormatException) { return null; } }
 static PrivilegedOperationResult SmbOutput<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value)));

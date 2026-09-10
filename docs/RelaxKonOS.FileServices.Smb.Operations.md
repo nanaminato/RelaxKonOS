@@ -5,6 +5,16 @@
 
 部署、回滚、诊断和卸载步骤见 [SMB 管理员指南](./RelaxKonOS.FileServices.Smb.Administrator.md)。
 
+## 本轮验收记录（2026-09-10）
+
+- Goal 0：已审计 Protocol、Host elevation、Linux one-shot Helper、Windows LocalSystem pipe、HostGlobal ledger、审计、应用注册和本地化；本文件冻结支持矩阵、固定资源、超时与保留期，并记录了威胁处理。
+- Goal 1：SMB-only Client↔Server DTO、路由和 `SmbLifecycleAction` 均在 `RelaxKonOS.Protocol`；Server/Client 只引用该路由常量。`SmbManage` 授权精确绑定 `smb:managed` 与 JWT `jti`，有效期五分钟。
+- Goal 2–5：所有 SMB 特权请求均经封闭的 Helper operation；检测、固定包/服务动作、Linux 受管 include 事务、Windows API/ledger/snapshot、Samba credential 及无秘密审计均已接通。Helper 不提供 shell、PowerShell、通用命令、任意 service/package/path/SID 或通用配置写入。
+- Goal 6：内置 App 使用 typed client；Linux 凭据 UI 仅在 capability 启用时显示，Windows 不暴露密码/账户操作。SFTP、FTP/FTPS、WebDAV、NFS 未注册任何 DTO、Provider 或 UI。
+- 自动化验收：`dotnet build RelaxKonOS.sln -c Debug -m:1 -p:UseSharedCompilation=false` 与 `RelaxKonOS.Server.Tests --file-services-only` 均通过；测试替身覆盖 resolver 的 fail-closed 行为、协议锁派发和 Windows security snapshot/drift。
+
+Goal 7 的真实宿主 mutation / 第三方客户端测试**尚未在此开发机执行**：必须在隔离 Debian/Ubuntu 与 Windows Server 2019+ VM 按下文测试矩阵执行，不能用当前 Windows 开发环境、root 或 LocalSystem 权限替代。这是受控集成验证的部署前置条件，不影响 CI 中不需 root/LocalSystem 的自动化检查。
+
 ## 支持矩阵
 
 | 宿主 | 最低要求 | 固定资源 | 允许共享根 |

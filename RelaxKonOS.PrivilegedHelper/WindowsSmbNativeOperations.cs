@@ -25,7 +25,7 @@ internal static class WindowsSmbNativeOperations
         PrivilegedOperationKind.SmbServiceAction => Lifecycle(request.SmbServiceAction),
         PrivilegedOperationKind.SmbReadManagedConfiguration => Task.FromResult(ListShares()),
         PrivilegedOperationKind.SmbApplyWindowsShare => Task.FromResult(ApplyShare(request.SmbShare, request.SmbExpectedSnapshot)),
-        PrivilegedOperationKind.SmbRemoveWindowsShare => Task.FromResult(RemoveShare(request.SmbUsername, request.SmbExpectedSnapshot)),
+        PrivilegedOperationKind.SmbRemoveWindowsShare => Task.FromResult(RemoveShare(request.SmbShareId, request.SmbExpectedSnapshot)),
         PrivilegedOperationKind.SmbSetWindowsServerSecurity => Task.FromResult(WindowsSmbServerSecurity.ApplyBaseline(request.SmbExpectedSnapshot)),
         _ => Task.FromResult(Fail(PrivilegedProblemCode.UnsupportedOperation, "SMB operation is unavailable on Windows")),
     };
@@ -62,6 +62,8 @@ internal static class WindowsSmbNativeOperations
             using var service = new ServiceController(ServiceName);
             if (action == SmbServiceAction.Stop) { if (service.Status != ServiceControllerStatus.Stopped) service.Stop(); service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30)); }
             else { if (service.Status == ServiceControllerStatus.Running && action == SmbServiceAction.Restart) { service.Stop(); service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30)); } if (service.Status != ServiceControllerStatus.Running) service.Start(); service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30)); }
+            if (action != SmbServiceAction.Stop && (!IsLanmanServerRunning() || !IsTcpPortListening()))
+                return Fail(PrivilegedProblemCode.InternalError, "Windows SMB port unavailable after service action");
             return new(true);
         }
         catch (System.ServiceProcess.TimeoutException) { return Fail(PrivilegedProblemCode.TimedOut, "LanmanServer lifecycle timed out"); }

@@ -172,6 +172,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("smbServiceAction")] SmbServiceAction? SmbServiceAction = null,
     [property: JsonPropertyName("smbUsername")] string? SmbUsername = null,
     [property: JsonPropertyName("smbPassword")] string? SmbPassword = null,
+    [property: JsonPropertyName("smbUserEnabled")] bool? SmbUserEnabled = null,
+    [property: JsonPropertyName("smbShareId")] string? SmbShareId = null,
     [property: JsonPropertyName("smbShares")] IReadOnlyList<SmbManagedShareRequest>? SmbShares = null,
     [property: JsonPropertyName("smbShare")] SmbManagedShareRequest? SmbShare = null,
     [property: JsonPropertyName("smbExpectedSnapshot")] string? SmbExpectedSnapshot = null,

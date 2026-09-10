@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.FileServices;
@@ -15,7 +16,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     [ObservableProperty] private string _statusText = LocalizedText.Get("file_services.status.loading", "Loading SMB status…");
     [ObservableProperty] private string _connectionText = "—";
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(InstallCommand), nameof(StartServiceCommand), nameof(StopCommand), nameof(RestartCommand), nameof(EditShareCommand), nameof(DeleteShareCommand), nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private bool _isBusy;
-    [ObservableProperty] private FileServiceCapabilitiesDto? _capabilities;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(SupportsSambaCredentials))] private FileServiceCapabilitiesDto? _capabilities;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(EditShareCommand), nameof(DeleteShareCommand))] private FileShareDto? _selectedShare;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private FileServiceUserDto? _selectedUser;
     [ObservableProperty] private string _shareName = string.Empty;
@@ -26,6 +27,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     [ObservableProperty] private bool _shareGuestAllowed;
     [ObservableProperty] private string _sharePrincipals = string.Empty;
     public bool CanManage => permissions.IsGranted(AppPermissions.ServerFileServicesManage) && !IsBusy;
+    public bool SupportsSambaCredentials => Capabilities?.SambaCredentialsSupported == true;
     public Func<Task<string?>>? RequestHostAdministratorPasswordAsync { get; set; }
     public Func<bool, Task>? ShowShareEditorAsync { get; set; }
     public Func<Task<string?>>? RequestSambaPasswordAsync { get; set; }
@@ -46,9 +48,9 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         finally { IsBusy = false; }
     }
     [RelayCommand(CanExecute = nameof(CanManage))] private Task InstallAsync() => Apply(() => client.InstallAsync());
-    [RelayCommand(CanExecute = nameof(CanManage))] private Task StartServiceAsync() => Apply(() => client.LifecycleAsync("start"));
-    [RelayCommand(CanExecute = nameof(CanManage))] private Task StopAsync() => Apply(() => client.LifecycleAsync("stop"));
-    [RelayCommand(CanExecute = nameof(CanManage))] private Task RestartAsync() => Apply(() => client.LifecycleAsync("restart"));
+    [RelayCommand(CanExecute = nameof(CanManage))] private Task StartServiceAsync() => Apply(() => client.LifecycleAsync(SmbLifecycleAction.Start));
+    [RelayCommand(CanExecute = nameof(CanManage))] private Task StopAsync() => Apply(() => client.LifecycleAsync(SmbLifecycleAction.Stop));
+    [RelayCommand(CanExecute = nameof(CanManage))] private Task RestartAsync() => Apply(() => client.LifecycleAsync(SmbLifecycleAction.Restart));
     [RelayCommand(CanExecute = nameof(CanManage))] private async Task NewShareAsync() { ClearEditor(); if (ShowShareEditorAsync is not null) await ShowShareEditorAsync(false); }
     [RelayCommand(CanExecute = nameof(CanEditShare))] private async Task EditShareAsync()
     {

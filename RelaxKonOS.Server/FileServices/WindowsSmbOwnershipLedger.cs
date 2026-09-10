@@ -48,10 +48,10 @@ public sealed class WindowsSmbOwnershipLedger : IWindowsSmbOwnershipLedger
     }
     public async Task UpsertAsync(WindowsSmbOwnershipRecord record, CancellationToken ct)
     {
-        if (_memory) { _fallback[record.Id] = record with { Snapshot = SnapshotHash(record.Snapshot) }; return; }
+        if (_memory) { _fallback[record.Id] = record; return; }
         await using var connection = await OpenAsync(ct); await using var command = connection.CreateCommand();
         command.CommandText = "INSERT INTO smb_windows_ownership_ledger(share_id, share_name, path_hash, snapshot_hash, reconciliation_required, updated_at) VALUES($id,$name,$path,$snapshot,$reconcile,$now) ON CONFLICT(share_id) DO UPDATE SET share_name=$name,path_hash=$path,snapshot_hash=$snapshot,reconciliation_required=$reconcile,updated_at=$now;";
-        command.Parameters.AddWithValue("$id", record.Id); command.Parameters.AddWithValue("$name", record.Name); command.Parameters.AddWithValue("$path", record.PathHash); command.Parameters.AddWithValue("$snapshot", SnapshotHash(record.Snapshot)); command.Parameters.AddWithValue("$reconcile", record.ReconciliationRequired); command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O")); await command.ExecuteNonQueryAsync(ct);
+        command.Parameters.AddWithValue("$id", record.Id); command.Parameters.AddWithValue("$name", record.Name); command.Parameters.AddWithValue("$path", record.PathHash); command.Parameters.AddWithValue("$snapshot", record.Snapshot); command.Parameters.AddWithValue("$reconcile", record.ReconciliationRequired); command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O")); await command.ExecuteNonQueryAsync(ct);
     }
     public async Task RemoveAsync(string id, CancellationToken ct) { if (_memory) { _fallback.TryRemove(id, out _); return; } await using var connection = await OpenAsync(ct); await using var command = connection.CreateCommand(); command.CommandText = "DELETE FROM smb_windows_ownership_ledger WHERE share_id=$id;"; command.Parameters.AddWithValue("$id", id); await command.ExecuteNonQueryAsync(ct); }
     public async Task<WindowsSmbServerSecurityRecord?> GetServerSecurityAsync(CancellationToken ct)

@@ -12,7 +12,7 @@ public interface ISambaPlatformAdapter
     Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct);
     Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct);
     Task<IReadOnlyList<FileServiceUserDto>> ReadUsersAsync(CancellationToken ct);
-    Task<FileServiceOperationResultDto> ApplySharesAsync(IReadOnlyList<FileShareDto> current, CancellationToken ct);
+    Task<FileServiceOperationResultDto> ApplySharesAsync(IReadOnlyList<FileShareDto> current, Guid operationId, CancellationToken ct);
     Task<FileServiceOperationResultDto> SetUserAsync(string username, bool enabled, string? password, Guid id, CancellationToken ct);
 }
 
@@ -35,7 +35,7 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
         if (!OperatingSystem.IsLinux()) return Unsupported();
         var result = await helper.DetectAsync(Guid.NewGuid(), ct);
         if (!result.Success) return new(FileServiceProtocol.Smb, result.ProblemCode == PrivilegedProblemCode.HelperUnavailable ? FileServiceRuntimeState.Unavailable : FileServiceRuntimeState.Unsupported,
-            null, false, false, Problem(result));
+            null, false, false, result.ProblemCode == PrivilegedProblemCode.UnsupportedOperation ? FileServiceProblemCodes.UnsupportedPlatform : Problem(result));
         return DecodeStatus(result) ?? new(FileServiceProtocol.Smb, FileServiceRuntimeState.NotInstalled, null, false, false, FileServiceProblemCodes.NotInstalled);
     }
     public async Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => Result(id, await helper.InstallAsync(id, ct));
@@ -51,12 +51,11 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
         var result = await helper.ReadUsersAsync(Guid.NewGuid(), ct);
         return result.Success ? Decode<List<FileServiceUserDto>>(result) ?? [] : [];
     }
-    public async Task<FileServiceOperationResultDto> ApplySharesAsync(IReadOnlyList<FileShareDto> current, CancellationToken ct)
+    public async Task<FileServiceOperationResultDto> ApplySharesAsync(IReadOnlyList<FileShareDto> current, Guid operationId, CancellationToken ct)
     {
-        var id = Guid.NewGuid();
         var shares = current.Select(s => new SmbManagedShareRequest(s.Id, s.Name, s.Path, s.Description, s.ReadOnly, s.Enabled, s.GuestAllowed,
             s.Permissions.Select(p => new SmbSharePermissionRequest(p.Principal, p.Access.ToString())).ToArray())).ToArray();
-        return Result(id, await helper.ApplyLinuxConfigurationAsync(shares, id, ct));
+        return Result(operationId, await helper.ApplyLinuxConfigurationAsync(shares, operationId, ct));
     }
     public async Task<FileServiceOperationResultDto> SetUserAsync(string username, bool enabled, string? password, Guid id, CancellationToken ct) => password is null
         ? Result(id, await helper.SetUserEnabledAsync(username, enabled, id, ct)) : Result(id, await helper.SetUserPasswordAsync(username, password, id, ct));
@@ -72,12 +71,17 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
         if (result.Error?.Contains("validation failed", StringComparison.OrdinalIgnoreCase) == true
             || result.Error?.Contains("configuration invalid", StringComparison.OrdinalIgnoreCase) == true)
             return FileServiceProblemCodes.ConfigurationInvalid;
-        if (result.Error?.Contains("port", StringComparison.OrdinalIgnoreCase) == true)
+        if (result.Error?.Contains("port conflict", StringComparison.OrdinalIgnoreCase) == true)
             return FileServiceProblemCodes.PortInUse;
+        if (result.Error?.Contains("port unavailable", StringComparison.OrdinalIgnoreCase) == true)
+            return FileServiceProblemCodes.PortUnavailable;
+        if (result.Error?.Contains("service health", StringComparison.OrdinalIgnoreCase) == true)
+            return FileServiceProblemCodes.ServiceFailed;
         return result.ProblemCode switch
         {
             PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
             PrivilegedProblemCode.NotFound => FileServiceProblemCodes.NotInstalled,
+            PrivilegedProblemCode.Conflict => FileServiceProblemCodes.ReconciliationRequired,
             _ => FileServiceProblemCodes.ConfigurationInvalid,
         };
     }

@@ -1,6 +1,6 @@
 # RelaxKonOS 文件服务：SMB Goal 执行版
 
-> 状态：待实施<br>
+> 状态：代码与自动化验收完成；Goal 7 受控集成验证待隔离 VM 执行<br>
 > 建立日期：2026-09-10<br>
 > 首轮适用范围：`.NET 10` Server、Avalonia Client、**Linux（Debian/Ubuntu 系 + Samba 4）与 Windows Server 2019+（Windows SMB Server）**<br>
 > 架构依据：[File Services 设计与实现规格](./RelaxKonoS%20File%20Services%20设计与实现规格.md)、[特权操作与 Helper](./platform/RelaxKonOS.PrivilegedOperations.Goal.md)、[安全模型](./platform/RelaxKonOS.Security.md)

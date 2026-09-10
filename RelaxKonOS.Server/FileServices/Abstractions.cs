@@ -18,7 +18,6 @@ public interface IFileServiceProvider
     Task<FileServiceOperationResultDto> SetUserEnabledAsync(string username, bool enabled, Guid operationId, CancellationToken ct);
     Task<FileServiceOperationResultDto> SetUserPasswordAsync(string username, string password, Guid operationId, CancellationToken ct);
 }
-
 public interface IFileServiceProviderResolver { IFileServiceProvider? Resolve(FileServiceProtocol protocol); }
 
 public interface IFileServiceManager
@@ -36,5 +35,3 @@ public interface IFileServiceManager
     Task<FileServiceOperationResultDto> SetUserPasswordAsync(string username, string password, CancellationToken ct);
     FileServiceConnectionInfoDto GetConnectionInfo();
 }
-
-public enum SmbLifecycleAction { Start, Stop, Restart }

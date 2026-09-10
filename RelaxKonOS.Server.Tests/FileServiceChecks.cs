@@ -16,6 +16,10 @@ public static class FileServiceChecks
         Check(unsupportedStatus.State == FileServiceRuntimeState.Unsupported && unsupportedStatus.HealthProblemCode == FileServiceProblemCodes.UnsupportedPlatform, "Missing provider fails closed as unsupported platform");
         var result = await manager.LifecycleAsync(SmbLifecycleAction.Restart, CancellationToken.None);
         Check(result.Succeeded && provider.LifecycleCalls == 1, "Manager dispatches lifecycle through provider abstraction");
+        await Task.WhenAll(
+            manager.LifecycleAsync(SmbLifecycleAction.Start, CancellationToken.None),
+            manager.LifecycleAsync(SmbLifecycleAction.Restart, CancellationToken.None));
+        Check(provider.MaximumConcurrentLifecycleCalls == 1, "Manager serializes concurrent SMB mutations");
         var windows = new FakeWindowsPlatform(); var windowsLedger = new FakeWindowsLedger();
         var windowsProvider = new WindowsSmbFileServiceProvider(windows, windowsLedger);
         var lifecycle = await windowsProvider.LifecycleAsync(SmbLifecycleAction.Start, Guid.NewGuid(), CancellationToken.None);
@@ -34,12 +38,21 @@ public static class FileServiceChecks
     private sealed class FakeProvider : IFileServiceProvider
     {
         public int LifecycleCalls { get; private set; }
+        public int MaximumConcurrentLifecycleCalls { get; private set; }
+        private int _activeLifecycleCalls;
         public FileServiceProtocol Protocol => FileServiceProtocol.Smb;
         public bool IsApplicable => true;
         public Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct) => Task.FromResult(new FileServiceStatusDto(FileServiceProtocol.Smb, FileServiceRuntimeState.Running, "fake", true, true));
         public Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct) => Task.FromResult(new FileServiceCapabilitiesDto(true, false, false, true, false));
         public Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
-        public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) { LifecycleCalls++; return Task.FromResult(new FileServiceOperationResultDto(id, true)); }
+        public async Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct)
+        {
+            LifecycleCalls++;
+            var active = Interlocked.Increment(ref _activeLifecycleCalls);
+            MaximumConcurrentLifecycleCalls = Math.Max(MaximumConcurrentLifecycleCalls, active);
+            try { await Task.Delay(10, ct); return new(id, true); }
+            finally { Interlocked.Decrement(ref _activeLifecycleCalls); }
+        }
         public Task<IReadOnlyList<FileShareDto>> ListSharesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileShareDto>>([]);
         public Task<FileServiceOperationResultDto> CreateShareAsync(UpsertFileShareRequest request, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
         public Task<FileServiceOperationResultDto> UpdateShareAsync(string id, UpsertFileShareRequest request, Guid operationId, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(operationId, true));
