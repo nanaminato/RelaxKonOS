@@ -16,7 +16,7 @@ internal static partial class SmbValidators
         if (!Directory.Exists(full) || IsReparsePath(full)) return FileServiceProblemCodes.ConfigurationInvalid;
         if (windows ? IsUnsafeWindowsPath(full) || !IsWithin(full, @"D:\\RelaxKonOSShares") : IsUnsafeLinuxPath(full) || !IsWithin(full, "/srv/relaxkonos-shares")) return FileServiceProblemCodes.ConfigurationInvalid;
         if (request.GuestAllowed && !request.ReadOnly) return FileServiceProblemCodes.ConfigurationInvalid;
-        if (request.Permissions.Count > 128 || request.Permissions.Any(p => !Principal().IsMatch(p.Principal) || IsInjection(p.Principal))) return FileServiceProblemCodes.ConfigurationInvalid;
+        if (request.Permissions.Count > 128 || request.Permissions.Any(p => !Principal().IsMatch(p.Principal) || IsInjection(p.Principal) || (windows && !IsSid(p.Principal)))) return FileServiceProblemCodes.ConfigurationInvalid;
         return request.Permissions.Any(p => !Enum.IsDefined(p.Access)) ? FileServiceProblemCodes.ConfigurationInvalid : null;
     }
     public static bool IsValidUsername(string? value) => value is { Length: > 0 and <= 64 } && UnixUser().IsMatch(value) && !IsInjection(value);
@@ -42,7 +42,11 @@ internal static partial class SmbValidators
     }
     private static bool IsInjection(string? value) => value is not null && (value.Any(char.IsControl) || value.Contains("[global]", StringComparison.OrdinalIgnoreCase)
         || value.Contains("include", StringComparison.OrdinalIgnoreCase) || value.Contains('=') || value.StartsWith('-'));
+    // The cross-platform Server only performs syntax validation. The LocalSystem Helper parses
+    // the SID through Windows APIs again before any ACL write.
+    private static bool IsSid(string value) => WindowsSid().IsMatch(value);
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")] private static partial Regex ShareName();
     [GeneratedRegex("^[A-Za-z0-9._@\\\\-]{1,256}$")] private static partial Regex Principal();
+    [GeneratedRegex("^S-[0-9]+(-[0-9]+)+$")] private static partial Regex WindowsSid();
     [GeneratedRegex("^[a-z_][a-z0-9_-]{0,63}$")] private static partial Regex UnixUser();
 }

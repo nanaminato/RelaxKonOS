@@ -343,6 +343,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IPrivilegedSmbOpera
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.ISambaPlatformAdapter, RelaxKonOS.Server.FileServices.LinuxSambaPlatformAdapter>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IWindowsSmbPlatformAdapter, RelaxKonOS.Server.FileServices.WindowsSmbPlatformAdapter>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IWindowsSmbOwnershipLedger, RelaxKonOS.Server.FileServices.WindowsSmbOwnershipLedger>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceAudit, RelaxKonOS.Server.FileServices.FileServiceAudit>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceProvider, RelaxKonOS.Server.FileServices.LinuxSambaFileServiceProvider>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceProvider, RelaxKonOS.Server.FileServices.WindowsSmbFileServiceProvider>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceProviderResolver, RelaxKonOS.Server.FileServices.FileServiceProviderResolver>();

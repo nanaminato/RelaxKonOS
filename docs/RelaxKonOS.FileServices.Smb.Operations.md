@@ -12,7 +12,13 @@
 
 Samba 安装只使用发行版的受信任默认仓库和固定的 `samba` 包；不会接受仓库、包名或版本。Linux 健康检查为 `testparm`、`smbd` active 与 TCP 445 listening；Windows 为 API 回读、LanmanServer 状态和 TCP 445。
 
+Windows share 管理通过 LocalSystem Helper 内的 `NetShareEnum`、`NetShareGetInfo`、`NetShareAdd`、`NetShareSetInfo` 和 `NetShareDel` 编译绑定完成。它只接受受管 share 的固定字段与 SID principal，拒绝 `IPC$`、名称以 `$` 结束的默认/管理 share、reparse-point 路径与非 `D:\\RelaxKonOSShares` 根目录；Helper 从 API 读取 security descriptor，生成回读 snapshot，并在 apply/delete 后健康失败时恢复 snapshot。没有 PowerShell、CIM、registry 或任意系统 API/命令输入。
+
 每一个 SMB 写事务最多等待 30 秒，持有 SMB 单协议锁，并保留操作与审计记录 90 天。审计只保存 actor、JWT `jti` 的不可逆引用、操作 ID、受控资源 ID/路径哈希、结果、problem code、时间和 Helper 协议版本；绝不保存密码、原始配置、完整路径或 SID/display name。
+
+实现中的 `smb_audit_entries` 是 HostGlobal 表；Endpoint 在 install、生命周期、share CRUD 和 Samba credential 操作完成后写入该表。密码请求仅被映射到一次 Helper 调用，审计资源为 username 哈希而非密码或 principal。
+
+提交到本地 Helper 的已签名 SMB mutation 不继承 HTTP request 的取消 token；它只受 Helper transport 的固定超时约束。这避免浏览器/Client 取消或连接中断时把正在写入、验证或回滚的事务显示为已取消。
 
 ## 威胁处理
 

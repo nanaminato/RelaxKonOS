@@ -34,14 +34,17 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
         if (process is null) return Complete(request, new(false, 69, Error: "privileged helper could not be started", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
         using (process)
         {
-            await JsonSerializer.SerializeAsync(process.StandardInput.BaseStream, request, cancellationToken: cancellationToken);
+            // Once stdin begins carrying a typed mutation, completion is authoritative. A
+            // disconnected HTTP client must not make the Server report a cancelled operation
+            // while the root-owned Helper is still applying or rolling back a transaction.
+            await JsonSerializer.SerializeAsync(process.StandardInput.BaseStream, request, cancellationToken: CancellationToken.None);
             await process.StandardInput.DisposeAsync();
-            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = process.StandardError.ReadToEndAsync(cancellationToken);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+            var error = process.StandardError.ReadToEndAsync(CancellationToken.None);
+            using var timeout = new CancellationTokenSource();
             timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, options.TimeoutSeconds)));
             try { await process.WaitForExitAsync(timeout.Token); }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 process.Kill(entireProcessTree: true);
                 return Complete(request, new(false, 124, Error: "privileged helper timed out", ProblemCode: PrivilegedProblemCode.TimedOut));

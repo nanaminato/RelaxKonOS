@@ -59,13 +59,25 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
         ? Result(id, await helper.SetUserEnabledAsync(username, enabled, id, ct)) : Result(id, await helper.SetUserPasswordAsync(username, password, id, ct));
     private static FileServiceStatusDto Unsupported() => new(FileServiceProtocol.Smb, FileServiceRuntimeState.Unsupported, null, false, false, FileServiceProblemCodes.UnsupportedPlatform);
     internal static FileServiceOperationResultDto Result(Guid id, PrivilegedOperationResult result) => new(id, result.Success, result.Success ? null : Problem(result));
-    internal static string Problem(PrivilegedOperationResult result) => result.ProblemCode switch
+    internal static string Problem(PrivilegedOperationResult result)
     {
-        PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
-        PrivilegedProblemCode.Conflict => FileServiceProblemCodes.PortInUse,
-        PrivilegedProblemCode.NotFound => FileServiceProblemCodes.NotInstalled,
-        _ => FileServiceProblemCodes.ConfigurationInvalid,
-    };
+        // Helper errors are fixed, non-secret classifications. Preserve the product-level
+        // distinction between a managed-config ownership refusal and a configuration failure.
+        if (result.Error?.Contains("not safely managed", StringComparison.OrdinalIgnoreCase) == true
+            || result.Error?.Contains("externally modified", StringComparison.OrdinalIgnoreCase) == true)
+            return FileServiceProblemCodes.ConfigurationUnmanaged;
+        if (result.Error?.Contains("validation failed", StringComparison.OrdinalIgnoreCase) == true
+            || result.Error?.Contains("configuration invalid", StringComparison.OrdinalIgnoreCase) == true)
+            return FileServiceProblemCodes.ConfigurationInvalid;
+        if (result.Error?.Contains("port", StringComparison.OrdinalIgnoreCase) == true)
+            return FileServiceProblemCodes.PortInUse;
+        return result.ProblemCode switch
+        {
+            PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
+            PrivilegedProblemCode.NotFound => FileServiceProblemCodes.NotInstalled,
+            _ => FileServiceProblemCodes.ConfigurationInvalid,
+        };
+    }
     internal static T? Decode<T>(PrivilegedOperationResult result)
     {
         try { return result.OutputBase64 is null ? default : JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64)); }
