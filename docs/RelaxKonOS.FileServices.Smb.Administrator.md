@@ -52,3 +52,14 @@ Windows principal 必须是现有 SID，且只能用于 share ACL；V1 不管理
 - `file-services.smb.system_account_not_found`：先在宿主操作系统中准备用户；V1 不提供账户创建。
 
 卸载时先删除所有 RelaxKonOS 管理 share；Linux 再删除唯一 marker 与 `/etc/samba/relaxkonos.conf`，但绝不删除 Samba 包、宿主用户、共享目录或管理员 share。Windows 仅删除 ledger 仍拥有且 API snapshot 未 drift 的 share；drift 资源必须由管理员手工处置。SFTP、FTP/FTPS、WebDAV、NFS 和 Windows File Server role 安装均不属于 V1。
+
+
+## Desktop file service pages
+
+The desktop selects controls from the connected server's SMB capabilities, not the desktop operating system. Overview shows the provider, service version, runtime status and selectable connection prefixes. Append the share name to connect. Installation is available only for a server reporting installation support and a not-installed runtime. Start is enabled when stopped; stop/restart when running.
+
+Shares uses localized columns, including permissions, ownership and configuration drift. Only managed shares can be edited or removed. Removing a share requires confirmation and retains directory contents. Use existing directories under `D:\RelaxKonOSShares` with SID principals on Windows, or `/srv/relaxkonos-shares` with system usernames on Linux. Guest access requires read-only mode.
+
+The Samba users page exists only when the server advertises Samba credential support. Select an eligible system account to change credentials. Windows uses its native security principals and has no Samba password page. Mutations remain locked throughout administrator authorization and refresh the server state after completion. Chinese, English and Japanese resources cover columns, runtime states and SMB problem codes.
+
+Run desktop control-plane regression checks with `dotnet run --project Client/RelaxKonOS.FileServices.Tests`.
