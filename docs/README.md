@@ -12,7 +12,7 @@
 > - 安全设计见 [`RelaxKonOS.Security.md`](./platform/RelaxKonOS.Security.md)
 > - 桌面外壳与模态对话框见 [`RelaxKonOS.Desktop.md`](./desktop/RelaxKonOS.Desktop.md)
 > - 文件管理器见 [`RelaxKonOS.Explorer.md`](./applications/RelaxKonOS.Explorer.md)；Windows 11 体验优化进度与后续 API 清单见 [`RelaxKonOS.Explorer.Progress.md`](./applications/RelaxKonOS.Explorer.Progress.md)
-> - File Services 首轮 SMB（Linux Samba）Goal 执行基线见 [`RelaxKonOS.FileServices.Smb.Goal.md`](./RelaxKonOS.FileServices.Smb.Goal.md)；长期设计规格见 [`RelaxKonoS File Services 设计与实现规格.md`](./RelaxKonoS%20File%20Services%20设计与实现规格.md)
+> - File Services 首轮 SMB（Linux Samba + Windows SMB Server）Goal 执行基线见 [`RelaxKonOS.FileServices.Smb.Goal.md`](./RelaxKonOS.FileServices.Smb.Goal.md)；长期设计规格见 [`RelaxKonoS File Services 设计与实现规格.md`](./RelaxKonoS%20File%20Services%20设计与实现规格.md)
 > - 浏览器见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md)
 > - 设置中心见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)
 > - 全局主题与配色系统设计见 [`RelaxKonOS.Theming.md`](./desktop/RelaxKonOS.Theming.md)
