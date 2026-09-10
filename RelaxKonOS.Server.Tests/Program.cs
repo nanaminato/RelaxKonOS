@@ -60,6 +60,7 @@ try
     if (settingsOnly || fileOperationsOnly) return;
     await VerifyPrivilegedOperationProtocolAsync();
     VerifySmbProtocolAndElevationContract();
+    await FileServiceChecks.RunAsync();
     await VerifyCertificateStoreAndSniAsync(root);
     VerifyCertificateApiRoutes();
     await VerifyRenewalRetryAsync(root);

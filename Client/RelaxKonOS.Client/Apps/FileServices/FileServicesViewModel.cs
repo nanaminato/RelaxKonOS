@@ -59,7 +59,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     public async Task<bool> SaveShareAsync(bool editing)
     {
         if (!TryShareRequest(out var request)) return false;
-        await Apply(() => editing && SelectedShare is { } share ? client.UpdateShareAsync(share.Id, request) : client.CreateShareAsync(request)); return !StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase);
+        return await Apply(() => editing && SelectedShare is { } share ? client.UpdateShareAsync(share.Id, request) : client.CreateShareAsync(request));
     }
     [RelayCommand(CanExecute = nameof(CanEditShare))] private Task DeleteShareAsync() => SelectedShare is { Managed: true } share ? Apply(() => client.DeleteShareAsync(share.Id)) : Task.CompletedTask;
     [RelayCommand(CanExecute = nameof(CanUser))] private Task ToggleUserAsync() => SelectedUser is { } user ? Apply(() => client.SetUserEnabledAsync(user.Username, !user.Enabled)) : Task.CompletedTask;
@@ -84,12 +84,22 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         }
         request = new(ShareName.Trim(), SharePath.Trim(), string.IsNullOrWhiteSpace(ShareDescription) ? null : ShareDescription.Trim(), ShareReadOnly, ShareEnabled, ShareGuestAllowed, rules); return true;
     }
-    private async Task Apply(Func<Task<FileServiceOperationResultDto>> action)
+    private async Task<bool> Apply(Func<Task<FileServiceOperationResultDto>> action)
     {
-        if (!await EnsureElevatedAsync()) { StatusText = LocalizedText.Get("file_services.status.manage_required", "SMB host-administrator authorization is required."); return; }
+        if (!await EnsureElevatedAsync())
+        {
+            StatusText = LocalizedText.Get("file_services.status.manage_required", "SMB host-administrator authorization is required.");
+            return false;
+        }
         IsBusy = true;
-        try { var result = await action(); StatusText = result.Succeeded ? LocalizedText.Get("file_services.status.operation_completed", "SMB operation completed.") : result.ProblemCode ?? "SMB operation failed."; await RefreshAsync(); }
-        catch (Exception ex) { StatusText = ex.Message; }
+        try
+        {
+            var result = await action();
+            await RefreshAsync();
+            StatusText = result.Succeeded ? LocalizedText.Get("file_services.status.operation_completed", "SMB operation completed.") : result.ProblemCode ?? "SMB operation failed.";
+            return result.Succeeded;
+        }
+        catch (Exception ex) { StatusText = ex.Message; return false; }
         finally { IsBusy = false; }
     }
     private async Task<bool> EnsureElevatedAsync()

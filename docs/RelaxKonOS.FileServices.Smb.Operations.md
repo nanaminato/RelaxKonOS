@@ -32,4 +32,6 @@ Linux 只在唯一 marker 和受管 include 都可验证时写入；候选配置
 
 CI 的无 root/Linux Samba、无 LocalSystem/Windows Server 环境不执行真实安装、TCP 445、`testparm`、Samba password backend、Windows SMB API/ACL 回滚或第三方 SMB 客户端传输测试。这些项目将在 Goal 7 于隔离 Debian/Ubuntu 与 Windows Server VM 中执行；自动化单元测试覆盖契约、授权、验证、锁、Helper allowlist 与 fake transport 的失败路径。
 
+`RelaxKonOS.Server.Tests/FileServiceChecks.cs` 不要求 Samba、root、LocalSystem 或 TCP 445，验证 SMB-only provider resolver、未注册 provider 的 fail-closed 状态、连接信息以及 Manager→Provider 生命周期派发。
+
 当前开发容器还禁止 Kestrel 绑定测试回环 socket，因此现有 `RelaxKonOS.Server.Tests` 的 HTTP settings smoke test 会在 socket bind 阶段失败；这不是 SMB 服务或协议测试结果。受影响项目的离线编译仍是通过的。
