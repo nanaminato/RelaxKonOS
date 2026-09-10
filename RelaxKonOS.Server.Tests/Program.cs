@@ -55,6 +55,13 @@ try
 {
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
+    var fileServicesOnly = args.Contains("--file-services-only", StringComparer.Ordinal);
+    if (fileServicesOnly)
+    {
+        VerifySmbProtocolAndElevationContract();
+        await FileServiceChecks.RunAsync();
+        return;
+    }
     if (!fileOperationsOnly || settingsOnly) await SettingsSystemVerification.RunAsync(root);
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
     if (settingsOnly || fileOperationsOnly) return;
@@ -218,7 +225,7 @@ static void VerifySmbProtocolAndElevationContract()
 {
     Assert(Enum.GetValues<FileServiceProtocol>().SequenceEqual([FileServiceProtocol.Smb]), "File Services V1 must expose SMB only.");
     Assert(Enum.IsDefined(PrivilegedOperationKind.SmbDetect) && Enum.IsDefined(PrivilegedOperationKind.SmbApplyManagedConfiguration)
-        && Enum.IsDefined(PrivilegedOperationKind.SmbApplyWindowsShare) && Enum.IsDefined(PrivilegedOperationKind.SmbReadUsers)
+        && Enum.IsDefined(PrivilegedOperationKind.SmbApplyWindowsShare) && Enum.IsDefined(PrivilegedOperationKind.SmbSetWindowsServerSecurity) && Enum.IsDefined(PrivilegedOperationKind.SmbReadUsers)
         && Enum.IsDefined(PrivilegedOperationKind.SmbSetUserPassword), "Closed SMB Helper operations are missing.");
     Assert(FileServiceApiRoutes.Status.EndsWith("/file-services/smb/status", StringComparison.Ordinal)
         && FileServiceApiRoutes.ShareById.Contains("{shareId}", StringComparison.Ordinal)

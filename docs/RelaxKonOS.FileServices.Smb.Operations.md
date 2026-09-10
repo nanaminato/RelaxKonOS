@@ -16,6 +16,8 @@ Samba 安装只使用发行版的受信任默认仓库和固定的 `samba` 包�
 
 Windows share 管理通过 LocalSystem Helper 内的 `NetShareEnum`、`NetShareGetInfo`、`NetShareAdd`、`NetShareSetInfo` 和 `NetShareDel` 编译绑定完成。它只接受受管 share 的固定字段与 SID principal，拒绝 `IPC$`、名称以 `$` 结束的默认/管理 share、reparse-point 路径与非 `D:\\RelaxKonOSShares` 根目录；Helper 从 API 读取 security descriptor，生成回读 snapshot，并在 apply/delete 后健康失败时恢复 snapshot。没有 PowerShell、CIM、registry 或任意系统 API/命令输入。
 
+Samba 用户列表、启用/禁用和密码更新路由只在 Linux 进程映射。Windows Server 不映射这些路由，也不显示相关 UI；Windows 只将既有 local/domain SID 用于 share ACL，绝不读取、设置或保存 Windows 帐户密码。
+
 每一个 SMB 写事务最多等待 30 秒，持有 SMB 单协议锁，并保留操作与审计记录 90 天。审计只保存 actor、JWT `jti` 的不可逆引用、操作 ID、受控资源 ID/路径哈希、结果、problem code、时间和 Helper 协议版本；绝不保存密码、原始配置、完整路径或 SID/display name。
 
 实现中的 `smb_audit_entries` 是 HostGlobal 表；Endpoint 在 install、生命周期、share CRUD 和 Samba credential 操作完成后写入该表。密码请求仅被映射到一次 Helper 调用，审计资源为 username 哈希而非密码或 principal。
@@ -33,5 +35,6 @@ Linux 只在唯一 marker 和受管 include 都可验证时写入；候选配置
 CI 的无 root/Linux Samba、无 LocalSystem/Windows Server 环境不执行真实安装、TCP 445、`testparm`、Samba password backend、Windows SMB API/ACL 回滚或第三方 SMB 客户端传输测试。这些项目将在 Goal 7 于隔离 Debian/Ubuntu 与 Windows Server VM 中执行；自动化单元测试覆盖契约、授权、验证、锁、Helper allowlist 与 fake transport 的失败路径。
 
 `RelaxKonOS.Server.Tests/FileServiceChecks.cs` 不要求 Samba、root、LocalSystem 或 TCP 445，验证 SMB-only provider resolver、未注册 provider 的 fail-closed 状态、连接信息以及 Manager→Provider 生命周期派发。
+可单独执行它和 SMB 契约验证：`dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug --no-build --no-restore /p:UsePrebuiltServerAssembly=true -- --file-services-only`。
 
-当前开发容器还禁止 Kestrel 绑定测试回环 socket，因此现有 `RelaxKonOS.Server.Tests` 的 HTTP settings smoke test 会在 socket bind 阶段失败；这不是 SMB 服务或协议测试结果。受影响项目的离线编译仍是通过的。
+当前开发容器还禁止 Kestrel 绑定测试回环 socket，因此现有 `RelaxKonOS.Server.Tests` 的 HTTP settings smoke test 会在 socket bind 阶段失败；这不是 SMB 服务或协议测试结果。上面的 File Services 专用测试可正常编译和执行。该容器的 .NET SDK 10.0.400 还缺少 `Microsoft.NET.SDK.WorkloadAutoImportPropsLocator` / `Microsoft.NET.SDK.WorkloadManifestTargetsLocator` 的 SDK 目录；这会使 Avalonia Client 的 MSBuild 以零诊断失败，需在完整桌面 SDK 环境重新构建 Client。
