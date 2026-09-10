@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.FileServices;
 using RelaxKonOS.PrivilegedHelper;
 
 if (OperatingSystem.IsWindows() && args.Contains("--windows-service", StringComparer.Ordinal))
@@ -62,6 +63,8 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
         return Fail(64, PrivilegedProblemCode.InvalidProtocol, "unsupported protocol version");
     if (request.OperationId is not { } operationId || operationId == Guid.Empty)
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
+    if (OperatingSystem.IsWindows() && request.Operation is >= PrivilegedOperationKind.SmbDetect and <= PrivilegedOperationKind.SmbSetUserPassword)
+        return await WindowsSmbNativeOperations.ExecuteAsync(request);
 
     try
     {
@@ -92,6 +95,17 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.FirewallUfwCreateRule => await CreateFirewallRuleAsync(request),
             PrivilegedOperationKind.FirewallUfwReplaceRule => await ReplaceFirewallRuleAsync(request),
             PrivilegedOperationKind.FirewallUfwDeleteRule => await DeleteFirewallRuleAsync(request.FirewallRuleNumber, request.FirewallCompanionRuleNumber),
+            PrivilegedOperationKind.SmbDetect => await DetectSmbAsync(),
+            PrivilegedOperationKind.SmbPackageInstall => await InstallSambaPackageAsync(),
+            PrivilegedOperationKind.SmbServiceAction => await ApplySmbServiceActionAsync(request.SmbServiceAction),
+            PrivilegedOperationKind.SmbReadManagedConfiguration => await ReadSmbManagedConfigurationAsync(),
+            PrivilegedOperationKind.SmbApplyManagedConfiguration => await ApplySmbManagedConfigurationAsync(request.SmbShares),
+            PrivilegedOperationKind.SmbSetUserEnabled => await SetSambaUserEnabledAsync(request.SmbUsername, request.FirewallEnabled),
+            PrivilegedOperationKind.SmbSetUserPassword => await SetSambaUserPasswordAsync(request.SmbUsername, request.SmbPassword),
+            // Windows SMB operations are intentionally rejected by this cross-platform executor.
+            // The LocalSystem implementation must use compiled Windows APIs, never a command string.
+            PrivilegedOperationKind.SmbApplyWindowsShare or PrivilegedOperationKind.SmbRemoveWindowsShare or PrivilegedOperationKind.SmbSetWindowsServerSecurity
+                => Fail(64, PrivilegedProblemCode.UnsupportedOperation, "windows SMB API operation is unavailable"),
             _ => Fail(64, PrivilegedProblemCode.UnsupportedOperation, "unsupported operation"),
         };
     }
@@ -526,6 +540,189 @@ static string FirewallAction(FirewallRuleAction value) => value.ToString().ToLow
 static string FirewallDirection(FirewallRuleDirection value) => value.ToString().ToLowerInvariant();
 static string FirewallProtocol(FirewallRuleProtocol value) => value.ToString().ToLowerInvariant();
 static string FirewallPolicy(FirewallDefaultPolicy value) => value.ToString().ToLowerInvariant();
+
+// SMB is a deliberately self-contained, fixed-resource Helper surface. None of these methods
+// accepts executable names, service names, package names, config paths, or Samba directives.
+const string SmbMainConfiguration = "/etc/samba/smb.conf";
+const string SmbManagedConfiguration = "/etc/samba/relaxkonos.conf";
+const string SmbMarker = "# RelaxKonOS SMB managed include - do not edit";
+const string SmbInclude = "include = /etc/samba/relaxkonos.conf";
+
+static async Task<PrivilegedOperationResult> DetectSmbAsync()
+{
+    if (!OperatingSystem.IsLinux()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "SMB detection is unavailable on this platform");
+    if (!IsSupportedDebianFamily()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Linux distribution is unsupported");
+    if (!File.Exists("/usr/sbin/smbd")) return SmbOutput(new FileServiceStatusDto(FileServiceProtocol.Smb, FileServiceRuntimeState.NotInstalled, null, false, false, "file-services.smb.not_installed"));
+    var version = await RunFixedCommandWithOutputAsync("/usr/sbin/smbd", ["--version"], "Samba version check failed");
+    var active = await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", "smbd.service"], TimeSpan.FromSeconds(10), "Samba service is inactive");
+    var port = IsTcpPortListening(445);
+    var state = active.Success ? (port ? FileServiceRuntimeState.Running : FileServiceRuntimeState.Failed) : FileServiceRuntimeState.Stopped;
+    return SmbOutput(new FileServiceStatusDto(FileServiceProtocol.Smb, state, DecodeUtf8(version.OutputBase64)?.Trim(), active.Success, port,
+        state == FileServiceRuntimeState.Running ? null : port ? "file-services.smb.service_stopped" : "file-services.smb.port_unavailable"));
+}
+
+static async Task<PrivilegedOperationResult> InstallSambaPackageAsync()
+{
+    if (!OperatingSystem.IsLinux() || !IsSupportedDebianFamily() || !File.Exists("/usr/bin/apt-get"))
+        return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Samba installation is unavailable on this platform");
+    var update = await RunFixedCommandAsync("/usr/bin/apt-get", ["update"], TimeSpan.FromMinutes(10), "Samba package update failed");
+    return update.Success ? await RunFixedCommandAsync("/usr/bin/apt-get", ["install", "--yes", "--no-install-recommends", "samba"], TimeSpan.FromMinutes(10), "Samba package install failed") : update;
+}
+
+static Task<PrivilegedOperationResult> ApplySmbServiceActionAsync(SmbServiceAction? action)
+{
+    if (!OperatingSystem.IsLinux() || action is null || !File.Exists("/usr/bin/systemctl")) return Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Samba service operation is unavailable"));
+    var verb = action.Value switch { SmbServiceAction.Start => "start", SmbServiceAction.Stop => "stop", SmbServiceAction.Restart => "restart", SmbServiceAction.Reload => "reload", _ => throw new ArgumentOutOfRangeException(nameof(action)) };
+    return RunFixedCommandAsync("/usr/bin/systemctl", [verb, "smbd.service"], TimeSpan.FromSeconds(30), "Samba service operation failed");
+}
+
+static async Task<PrivilegedOperationResult> ReadSmbManagedConfigurationAsync()
+{
+    if (!OperatingSystem.IsLinux()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Samba configuration is unavailable");
+    if (!File.Exists(SmbManagedConfiguration)) return SmbOutput<IReadOnlyList<FileShareDto>>([]);
+    try { return SmbOutput<IReadOnlyList<FileShareDto>>(ParseManagedShares(await File.ReadAllLinesAsync(SmbManagedConfiguration))); }
+    catch (InvalidDataException) { return Fail(64, PrivilegedProblemCode.Conflict, "Samba managed configuration is externally modified"); }
+}
+
+static async Task<PrivilegedOperationResult> ApplySmbManagedConfigurationAsync(IReadOnlyList<SmbManagedShareRequest>? requested)
+{
+    if (!OperatingSystem.IsLinux() || !IsSupportedDebianFamily() || !File.Exists("/usr/bin/testparm") || !File.Exists("/usr/bin/systemctl"))
+        return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Samba configuration is unavailable");
+    if (requested is null || requested.Count > 128 || requested.Any(InvalidSmbShare)) return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid Samba share request");
+    if (requested.Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != requested.Count) return Fail(17, PrivilegedProblemCode.Conflict, "duplicate Samba share name");
+    if (!File.Exists(SmbMainConfiguration)) return Fail(2, PrivilegedProblemCode.NotFound, "Samba main configuration is unavailable");
+    var originalMain = await File.ReadAllTextAsync(SmbMainConfiguration);
+    var originalInclude = File.Exists(SmbManagedConfiguration) ? await File.ReadAllBytesAsync(SmbManagedConfiguration) : null;
+    if (!TryEnsureManagedInclude(originalMain, out var candidateMain)) return Fail(64, PrivilegedProblemCode.Conflict, "Samba main configuration is not safely managed");
+    var candidateInclude = SerializeManagedShares(requested);
+    var staging = SmbManagedConfiguration + ".new";
+    try
+    {
+        await File.WriteAllTextAsync(staging, candidateInclude, new System.Text.UTF8Encoding(false));
+        File.Move(staging, SmbManagedConfiguration, overwrite: true);
+        if (!string.Equals(originalMain, candidateMain, StringComparison.Ordinal)) await AtomicWriteTextAsync(SmbMainConfiguration, candidateMain);
+        var tested = await RunFixedCommandAsync("/usr/bin/testparm", ["--suppress-prompt", SmbMainConfiguration], TimeSpan.FromSeconds(30), "Samba configuration validation failed");
+        if (!tested.Success) return await RestoreSmbConfigurationAsync(originalMain, originalInclude, "Samba configuration validation failed");
+        var reload = await ApplySmbServiceActionAsync(SmbServiceAction.Reload);
+        if (!reload.Success || !await IsSmbHealthyAsync()) return await RestoreSmbConfigurationAsync(originalMain, originalInclude, "Samba reload or health check failed");
+        return new(true);
+    }
+    catch (IOException) { return await RestoreSmbConfigurationAsync(originalMain, originalInclude, "Samba configuration apply failed"); }
+    finally { if (File.Exists(staging)) File.Delete(staging); }
+}
+
+static async Task<PrivilegedOperationResult> SetSambaUserEnabledAsync(string? username, bool? enabled)
+{
+    if (!OperatingSystem.IsLinux() || !IsValidSmbUsername(username) || enabled is null || !UserExists(username!)) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Samba system account is invalid");
+    if (!File.Exists("/usr/bin/smbpasswd")) return Fail(2, PrivilegedProblemCode.NotFound, "Samba is not installed");
+    return await RunFixedCommandAsync("/usr/bin/smbpasswd", [enabled.Value ? "-e" : "-d", username!], TimeSpan.FromSeconds(30), "Samba credential update failed");
+}
+
+static async Task<PrivilegedOperationResult> SetSambaUserPasswordAsync(string? username, string? password)
+{
+    if (!OperatingSystem.IsLinux() || !IsValidSmbUsername(username) || !UserExists(username!) || password is not { Length: >= 12 and <= 1024 } || password.Any(char.IsControl)) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Samba credential request is invalid");
+    if (!File.Exists("/usr/bin/smbpasswd")) return Fail(2, PrivilegedProblemCode.NotFound, "Samba is not installed");
+    // smbpasswd's documented noninteractive stdin protocol is fixed here; the secret is not logged or returned.
+    using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo("/usr/bin/smbpasswd") { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true } };
+    process.StartInfo.ArgumentList.Add("-s"); process.StartInfo.ArgumentList.Add(username!);
+    if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "Samba credential helper could not start");
+    await process.StandardInput.WriteLineAsync(password); await process.StandardInput.WriteLineAsync(password); await process.StandardInput.DisposeAsync();
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    try { await process.WaitForExitAsync(timeout.Token); } catch (OperationCanceledException) { return Fail(124, PrivilegedProblemCode.TimedOut, "Samba credential operation timed out"); }
+    return process.ExitCode == 0 ? new(true) : Fail(1, PrivilegedProblemCode.InternalError, "Samba credential update failed");
+}
+
+static async Task<bool> IsSmbHealthyAsync()
+{
+    var active = await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", "smbd.service"], TimeSpan.FromSeconds(10), "Samba service inactive");
+    var test = await RunFixedCommandAsync("/usr/bin/testparm", ["--suppress-prompt", SmbMainConfiguration], TimeSpan.FromSeconds(30), "Samba configuration invalid");
+    return active.Success && test.Success && IsTcpPortListening(445);
+}
+
+static async Task<PrivilegedOperationResult> RestoreSmbConfigurationAsync(string main, byte[]? include, string reason)
+{
+    try
+    {
+        await AtomicWriteTextAsync(SmbMainConfiguration, main);
+        if (include is null) { if (File.Exists(SmbManagedConfiguration)) File.Delete(SmbManagedConfiguration); }
+        else await AtomicWriteBytesAsync(SmbManagedConfiguration, include);
+        var tested = await RunFixedCommandAsync("/usr/bin/testparm", ["--suppress-prompt", SmbMainConfiguration], TimeSpan.FromSeconds(30), "Samba rollback validation failed");
+        var reload = tested.Success ? await ApplySmbServiceActionAsync(SmbServiceAction.Reload) : tested;
+        return reload.Success ? Fail(1, PrivilegedProblemCode.Conflict, reason) : Fail(1, PrivilegedProblemCode.InternalError, "Samba rollback failed");
+    }
+    catch { return Fail(1, PrivilegedProblemCode.InternalError, "Samba rollback failed"); }
+}
+
+static bool TryEnsureManagedInclude(string main, out string candidate)
+{
+    candidate = main;
+    var markerCount = main.Split('\n').Count(line => line.TrimEnd('\r') == SmbMarker);
+    var includeCount = main.Split('\n').Count(line => line.Trim().Equals(SmbInclude, StringComparison.OrdinalIgnoreCase));
+    if (markerCount > 1 || includeCount > 1 || markerCount != includeCount) return false;
+    if (markerCount == 1) return true;
+    var global = main.IndexOf("[global]", StringComparison.OrdinalIgnoreCase);
+    if (global < 0) return false;
+    var end = main.IndexOf('\n', global);
+    if (end < 0) end = main.Length;
+    candidate = main.Insert(end + (end < main.Length ? 1 : 0), SmbMarker + "\n" + SmbInclude + "\n");
+    return true;
+}
+
+static string SerializeManagedShares(IReadOnlyList<SmbManagedShareRequest> shares)
+{
+    var builder = new System.Text.StringBuilder("# RelaxKonOS managed Samba include. Do not edit.\nserver min protocol = SMB2\nclient min protocol = SMB2\nmap to guest = Never\n");
+    foreach (var share in shares.OrderBy(x => x.Id, StringComparer.Ordinal))
+    {
+        builder.Append("\n# relaxkonos-share:").Append(share.Id).Append('\n').Append('[').Append(share.Name).Append("]\npath = ").Append(share.Path).Append('\n')
+            .Append("read only = ").Append(share.ReadOnly ? "yes" : "no").Append('\n').Append("available = ").Append(share.Enabled ? "yes" : "no").Append('\n')
+            .Append("guest ok = ").Append(share.GuestAllowed ? "yes" : "no").Append('\n');
+        if (!string.IsNullOrWhiteSpace(share.Description)) builder.Append("comment = ").Append(share.Description).Append('\n');
+        var read = share.Permissions.Where(x => x.Access == "Read").Select(x => x.Principal).Order().ToArray();
+        var write = share.Permissions.Where(x => x.Access == "ReadWrite").Select(x => x.Principal).Order().ToArray();
+        if (read.Length > 0) builder.Append("read list = ").AppendJoin(' ', read).Append('\n');
+        if (write.Length > 0) builder.Append("write list = ").AppendJoin(' ', write).Append('\n');
+    }
+    return builder.ToString();
+}
+
+static IReadOnlyList<FileShareDto> ParseManagedShares(string[] lines)
+{
+    var shares = new List<FileShareDto>(); string? id = null, name = null, path = null, description = null; bool readOnly = true, enabled = true, guest = false; var permissions = new List<FileSharePermissionDto>();
+    void Commit()
+    {
+        if (id is null && name is null) return;
+        if (id is null || name is null || path is null || !IsValidSmbShare(new(id, name, path, description, readOnly, enabled, guest, permissions.Select(x => new SmbSharePermissionRequest(x.Principal, x.Access.ToString())).ToArray()))) throw new InvalidDataException();
+        shares.Add(new(id, name, path, description, readOnly, enabled, guest, permissions.ToArray(), true)); id = name = path = description = null; readOnly = true; enabled = true; guest = false; permissions.Clear();
+    }
+    foreach (var raw in lines)
+    {
+        var line = raw.Trim(); const string shareMarker = "# relaxkonos-share:"; if (line.StartsWith(shareMarker, StringComparison.Ordinal)) { Commit(); id = line[shareMarker.Length..]; continue; }
+        if (id is null) continue;
+        if (line.StartsWith('[') && line.EndsWith(']')) { name = line[1..^1]; continue; }
+        var index = line.IndexOf('='); if (index < 1) continue; var key = line[..index].Trim(); var value = line[(index + 1)..].Trim();
+        switch (key) { case "path": path = value; break; case "comment": description = value; break; case "read only": readOnly = value == "yes"; break; case "available": enabled = value == "yes"; break; case "guest ok": guest = value == "yes"; break;
+            case "read list": permissions.AddRange(value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => new FileSharePermissionDto(x, FileShareAccess.Read))); break;
+            case "write list": permissions.AddRange(value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => new FileSharePermissionDto(x, FileShareAccess.ReadWrite))); break; }
+    }
+    Commit(); return shares;
+}
+
+static bool InvalidSmbShare(SmbManagedShareRequest share) => !IsValidSmbShare(share);
+static bool IsValidSmbShare(SmbManagedShareRequest share) => share.Id.Length is > 0 and <= 64 && System.Text.RegularExpressions.Regex.IsMatch(share.Id, "^[A-Za-z0-9-]+$")
+    && System.Text.RegularExpressions.Regex.IsMatch(share.Name, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") && Path.IsPathFullyQualified(share.Path)
+    && Directory.Exists(share.Path) && (string.Equals(share.Path, "/srv/relaxkonos-shares", StringComparison.Ordinal) || share.Path.StartsWith("/srv/relaxkonos-shares/", StringComparison.Ordinal))
+    && !HasUnsafeSmbText(share.Name) && !HasUnsafeSmbText(share.Path) && !HasUnsafeSmbText(share.Description)
+    && (!share.GuestAllowed || share.ReadOnly)
+    && share.Permissions.All(x => System.Text.RegularExpressions.Regex.IsMatch(x.Principal, "^[A-Za-z0-9._@\\\\-]{1,256}$") && x.Access is "Read" or "ReadWrite");
+static bool HasUnsafeSmbText(string? value) => value is not null && (value.Any(char.IsControl) || value.Contains('=') || value.Contains('[') || value.Contains(']') || value.StartsWith('-'));
+static bool IsValidSmbUsername(string? username) => username is not null && System.Text.RegularExpressions.Regex.IsMatch(username, "^[a-z_][a-z0-9_-]{0,63}$");
+static bool UserExists(string username) => File.ReadLines("/etc/passwd").Any(line => line.StartsWith(username + ":", StringComparison.Ordinal));
+static bool IsSupportedDebianFamily() => File.Exists("/etc/os-release") && (File.ReadAllText("/etc/os-release").Contains("ID=debian", StringComparison.OrdinalIgnoreCase) || File.ReadAllText("/etc/os-release").Contains("ID=ubuntu", StringComparison.OrdinalIgnoreCase));
+static bool IsTcpPortListening(int port) => System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(endpoint => endpoint.Port == port);
+static string? DecodeUtf8(string? output) { try { return output is null ? null : System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(output)); } catch (FormatException) { return null; } }
+static PrivilegedOperationResult SmbOutput<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value)));
+static async Task AtomicWriteTextAsync(string path, string content) => await AtomicWriteBytesAsync(path, new System.Text.UTF8Encoding(false).GetBytes(content));
+static async Task AtomicWriteBytesAsync(string path, byte[] bytes) { var temp = path + ".relaxkonos-" + Guid.NewGuid().ToString("N"); await File.WriteAllBytesAsync(temp, bytes); File.Move(temp, path, overwrite: true); }
 static Task<PrivilegedOperationResult> RunUfwAsync(IReadOnlyList<string> arguments, string failure) => !OperatingSystem.IsLinux() || !File.Exists("/usr/sbin/ufw")
     ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "ufw is unavailable"))
     : RunFixedCommandAsync("/usr/sbin/ufw", arguments, TimeSpan.FromSeconds(30), failure);

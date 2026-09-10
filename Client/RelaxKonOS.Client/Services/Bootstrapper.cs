@@ -138,6 +138,10 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "webservers"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.FileServices.IRemoteFileServicesClient, RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient>()
+            .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "file-services"))
+            .AddHttpMessageHandler<AcceptLanguageHandler>()
+            .AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.Tunnels.IRemoteTunnelClient, RelaxKonOS.Client.Apps.Tunnels.RemoteTunnelClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "tunnels"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
@@ -230,6 +234,7 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.Firewall.FirewallApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Certificates.CertificateManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.WebServers.WebServerManagerApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.FileServices.FileServicesApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Tunnels.TunnelManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Git.GitClientApp>();

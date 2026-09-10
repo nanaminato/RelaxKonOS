@@ -35,6 +35,7 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
             Define<RelaxKonOS.Client.Apps.Firewall.FirewallApp>("firewall", "relaxkonos.firewall", services),
             Define<RelaxKonOS.Client.Apps.Certificates.CertificateManagerApp>("certificates", "relaxkonos.certificates", services),
             Define<RelaxKonOS.Client.Apps.WebServers.WebServerManagerApp>("webservers", "relaxkonos.webservers", services),
+            Define<RelaxKonOS.Client.Apps.FileServices.FileServicesApp>("file-services", "relaxkonos.file-services", services),
             Define<RelaxKonOS.Client.Apps.Tunnels.TunnelManagerApp>("tunnels", "relaxkonos.tunnels", services),
             Define<RelaxKonOS.Client.Apps.Proxy.ProxyManagerApp>("proxy", "relaxkonos.proxy", services),
             Define<RelaxKonOS.Client.Apps.Git.GitClientApp>("git", "relaxkonos.git", services),

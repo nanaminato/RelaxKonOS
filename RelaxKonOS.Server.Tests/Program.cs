@@ -35,6 +35,7 @@ using RelaxKonOS.Protocol.Registry;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.FileServices;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Platform;
@@ -58,6 +59,7 @@ try
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
     if (settingsOnly || fileOperationsOnly) return;
     await VerifyPrivilegedOperationProtocolAsync();
+    VerifySmbProtocolAndElevationContract();
     await VerifyCertificateStoreAndSniAsync(root);
     VerifyCertificateApiRoutes();
     await VerifyRenewalRetryAsync(root);
@@ -209,6 +211,23 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
     Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.FirewallUfwSetEnabled
         && transport.LastRequest.FirewallEnabled == true,
         "Firewall facade did not preserve its closed enabled-state request.");
+}
+
+static void VerifySmbProtocolAndElevationContract()
+{
+    Assert(Enum.GetValues<FileServiceProtocol>().SequenceEqual([FileServiceProtocol.Smb]), "File Services V1 must expose SMB only.");
+    Assert(Enum.IsDefined(PrivilegedOperationKind.SmbDetect) && Enum.IsDefined(PrivilegedOperationKind.SmbApplyManagedConfiguration)
+        && Enum.IsDefined(PrivilegedOperationKind.SmbSetUserPassword), "Closed SMB Helper operations are missing.");
+    var properties = typeof(FileShareDto).GetProperties().Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    Assert(!properties.Contains("password"), "A share response must never contain a password.");
+    var secretRequest = JsonSerializer.Serialize(new SetSambaPasswordRequest("not-a-real-password"), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+    Assert(secretRequest.Contains("password", StringComparison.Ordinal) && !typeof(FileServiceOperationResultDto).GetProperties().Any(x => x.Name.Contains("password", StringComparison.OrdinalIgnoreCase)),
+        "Samba passwords must be write-only protocol input.");
+    var store = new HostElevationSessionStore(); var first = Principal("smb-jti-one"); var second = Principal("smb-jti-two");
+    store.Grant(first, HostElevationCapability.SmbManage, "smb:managed", false, "test");
+    Assert(store.IsGranted(first, HostElevationCapability.SmbManage, "smb:managed"), "Exact SMB elevation grant was not honored.");
+    Assert(!store.IsGranted(first, HostElevationCapability.SmbManage, "smb:other") && !store.IsGranted(second, HostElevationCapability.SmbManage, "smb:managed"),
+        "SMB elevation grant leaked across target or JWT jti.");
 }
 
 static ClaimsPrincipal Principal(string tokenId) => new(new ClaimsIdentity(
