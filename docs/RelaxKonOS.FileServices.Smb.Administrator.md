@@ -11,7 +11,7 @@ RelaxKonOS 管理 SMB 的控制面，不转发、不代理、不检查 SMB 文�
 
 Server 本身不应以 root、Administrator 或 LocalSystem 运行。Helper 不监听网络端口，不接受 shell、PowerShell、可执行文件、参数、任意 service/package/config path 或 SID 输入。
 
-首次 Linux 安装由 Helper 从受信任默认 APT 源安装固定 `samba` 包；Windows Server 安装由 Helper 通过 Windows servicing API 启用固定 `FS-FileServer` role。该操作不接受 role 名、源、参数或命令文本；客户端 Windows 不支持此安装。防火墙不由本模块更改：TCP 445 冲突和防火墙状态只会显示为诊断。
+首次 Linux 安装由 Helper 从受信任默认 APT 源安装固定 `samba` 包；Windows Server 安装由 Helper 通过 Windows Server Manager WMI 部署 API 启用固定 `FS-FileServer` role。该操作不接受 role 名、源、参数或命令文本；客户端 Windows 不支持此安装。防火墙不由本模块更改：TCP 445 冲突和防火墙状态只会显示为诊断。
 
 ## 所有权与共享根
 

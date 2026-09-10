@@ -32,7 +32,7 @@ RelaxKonOS Client → Server → PrivilegedHelper  # 仅管理和状态控制
 因此 V1 必须具备：
 
 - Samba 或 Windows SMB Server 的可用性、版本、服务状态、管理状态和健康状态的真实检测。
-- 受支持 Linux 发行版上的受控 Samba 安装；安装源、包名和包管理器在 Server 平台适配层固定，Client 不传递包名或命令。Windows Server 使用固定的 File Server role（`FS-FileServer`）和 `LanmanServer`；安装仅由受限 Helper 调用 Windows servicing API 完成，不接受 feature 名、源、参数或命令文本。
+- 受支持 Linux 发行版上的受控 Samba 安装；安装源、包名和包管理器在 Server 平台适配层固定，Client 不传递包名或命令。Windows Server 使用固定的 File Server role（`FS-FileServer`）和 `LanmanServer`；安装仅由受限 Helper 调用 Windows Server Manager WMI 部署 API 完成，不接受 feature 名、源、参数或命令文本。
 - 服务启动、停止、重启；Linux 额外支持安全 reload。所有写操作使用已存在的受限 Helper transport。
 - 只管理 RelaxKonOS 拥有的 Samba 配置片段和共享；读到的系统实际配置是状态真源。
 - 创建、修改、禁用和删除 RelaxKonOS 托管 SMB 共享；支持只读、禁用、描述、guest 开关以及用户/组的 Read 或 ReadWrite 访问规则。
@@ -219,7 +219,7 @@ Windows 事务在同一 SMB lock 内执行：读取并验证实际 share/server 
 
 ### Goal 3：安装与安全服务生命周期
 
-**工作**：Linux 实现固定 Samba 包安装、重新检测、Start/Stop/Restart/Reload 与端口冲突检查；Windows Server 通过受限 servicing API 安装固定 `FS-FileServer` role，并实现 `LanmanServer` Start/Stop/Restart、SMB security preflight 与端口冲突检查。安装与服务动作绑定 `SmbManage` elevation 和 operation ID；所有非幂等执行采用每 SMB protocol lock 串行化。写入真正配置前先建立服务/操作审计基础。
+**工作**：Linux 实现固定 Samba 包安装、重新检测、Start/Stop/Restart/Reload 与端口冲突检查；Windows Server 通过受限 Server Manager WMI 部署 API 安装固定 `FS-FileServer` role，并实现 `LanmanServer` Start/Stop/Restart、SMB security preflight 与端口冲突检查。安装与服务动作绑定 `SmbManage` elevation 和 operation ID；所有非幂等执行采用每 SMB protocol lock 串行化。写入真正配置前先建立服务/操作审计基础。
 
 **验收**：未获 elevation 的管理请求不触及 Helper；Linux 安装输入不能改变包、源或命令；服务动作不会影响非 `smbd` 或 `LanmanServer`；状态和健康分别报告 service stopped、service failed、port unavailable、port conflicted、Windows API unavailable 与 Helper unavailable；重复/并发 start/restart 不产生竞争或错误的成功状态。
 

@@ -1,6 +1,7 @@
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Apps.FileServices;
 using RelaxKonOS.Protocol.FileServices;
+using System.Net;
 
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 var client = new FakeClient();
@@ -35,7 +36,10 @@ Check(client.Writes == 2, "Cancelled delete does not mutate");
 client.State = FileServiceRuntimeState.NotInstalled;
 await vm.RefreshCommand.ExecuteAsync(null);
 Check(vm.InstallCommand.CanExecute(null) && !vm.NewShareCommand.CanExecute(null), "Not installed actions");
-Console.WriteLine("Passed: platform discovery, lifecycle refresh, user eligibility, validation, authorization serialization, delete cancellation, install state.");
+client.InstallProblem = FileServiceProblemCodes.RestartRequired;
+await vm.InstallCommand.ExecuteAsync(null);
+Check(vm.StatusText != FileServiceProblemCodes.RestartRequired, "API problem code localized");
+Console.WriteLine("Passed: platform discovery, lifecycle refresh, user eligibility, validation, authorization serialization, delete cancellation, install state, API problem localization.");
 
 sealed class Permissions : IAppPermissionScope
 {
@@ -47,6 +51,7 @@ sealed class Permissions : IAppPermissionScope
 sealed class FakeClient : IRemoteFileServicesClient
 {
  public bool Linux; public int StatusReads, UserReads, Writes;
+ public string? InstallProblem;
  public FileServiceRuntimeState State = FileServiceRuntimeState.Running;
  public Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct = default) { StatusReads++; return Task.FromResult(new FileServiceStatusDto(FileServiceProtocol.Smb, State, "test", State == FileServiceRuntimeState.Running, true)); }
  public Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceCapabilitiesDto(true, Linux, Linux, true, !Linux));
@@ -54,7 +59,8 @@ sealed class FakeClient : IRemoteFileServicesClient
  public Task<IReadOnlyList<FileServiceUserDto>> ListUsersAsync(CancellationToken ct = default) { UserReads++; return Task.FromResult<IReadOnlyList<FileServiceUserDto>>([]); }
  public Task<FileServiceConnectionInfoDto> GetConnectionAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceConnectionInfoDto("host",445,"\\\\host\\","smb://host/"));
  private Task<FileServiceOperationResultDto> Result() { Writes++; return Task.FromResult(new FileServiceOperationResultDto(Guid.NewGuid(),true)); }
- public Task<FileServiceOperationResultDto> InstallAsync(CancellationToken ct = default) => Result();
+ public Task<FileServiceOperationResultDto> InstallAsync(CancellationToken ct = default) => InstallProblem is { } code
+     ? Task.FromException<FileServiceOperationResultDto>(new HttpRequestException(code, null, HttpStatusCode.BadRequest)) : Result();
  public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, CancellationToken ct = default) { State = action == SmbLifecycleAction.Stop ? FileServiceRuntimeState.Stopped : FileServiceRuntimeState.Running; return Result(); }
  public Task<FileServiceOperationResultDto> CreateShareAsync(UpsertFileShareRequest r,CancellationToken ct = default) => Result();
  public Task<FileServiceOperationResultDto> UpdateShareAsync(string id,UpsertFileShareRequest r,CancellationToken ct = default) => Result();

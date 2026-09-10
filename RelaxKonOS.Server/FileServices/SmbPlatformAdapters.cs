@@ -111,6 +111,7 @@ public sealed class WindowsSmbPlatformAdapter(IPrivilegedSmbOperations helper) :
         {
             PrivilegedProblemCode.UnsupportedOperation => FileServiceProblemCodes.WindowsServerRequired,
             PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
+            PrivilegedProblemCode.RestartRequired => FileServiceProblemCodes.RestartRequired,
             _ => FileServiceProblemCodes.WindowsApiUnavailable,
         });
     }

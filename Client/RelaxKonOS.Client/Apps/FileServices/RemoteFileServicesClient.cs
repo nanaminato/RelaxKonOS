@@ -1,4 +1,6 @@
+using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.FileServices;
@@ -36,7 +38,27 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
         { Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default) };
         using var response = await http.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode) throw await CreateApiExceptionAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, ct) ?? throw new InvalidOperationException("RelaxKonOS returned an empty response.");
     }
+
+    private static async Task<HttpRequestException> CreateApiExceptionAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var payload = await response.Content.ReadAsStringAsync(ct);
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            if (document.RootElement.TryGetProperty("problemCode", out var code)
+                && code.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(code.GetString()))
+                return new FileServiceApiException(code.GetString()!, response.StatusCode);
+        }
+        catch (JsonException) { }
+        return new HttpRequestException($"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}).", null, response.StatusCode);
+    }
+}
+
+internal sealed class FileServiceApiException(string problemCode, HttpStatusCode statusCode) : HttpRequestException(problemCode, null, statusCode)
+{
+    public string ProblemCode { get; } = problemCode;
 }

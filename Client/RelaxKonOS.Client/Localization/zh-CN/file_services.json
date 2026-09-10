@@ -73,6 +73,7 @@
     "file_services.problem.file-services.smb.system_account_not_found": "系统账户不可用或密码无效",
     "file_services.problem.file-services.smb.windows_api_unavailable": "Windows SMB 接口不可用",
     "file_services.problem.file-services.smb.windows_server_required": "需要 Windows Server 才能安装文件服务器角色",
+    "file_services.problem.file-services.smb.restart_required": "文件服务器角色已安装，需要重启 Windows 后才能继续使用 SMB",
     "file_services.problem.file-services.smb.reconciliation_required": "配置偏离，需要协调修复",
     "file_services.problem.file-services.smb.elevation_required": "需要主机管理员授权",
     "file_services.refresh_failed": "操作已返回，但刷新失败。请刷新以确认服务器当前状态。",

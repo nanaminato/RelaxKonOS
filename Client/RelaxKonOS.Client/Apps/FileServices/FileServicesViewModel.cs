@@ -139,6 +139,8 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
             StatusText = result.Succeeded ? LocalizedText.Get("file_services.status.operation_completed", "SMB operation completed.") : result.ProblemCode is { } code ? Problem(code) : T("operation_failed");
             return result.Succeeded;
         }
+        catch (HttpRequestException ex) when (ex.StatusCode is not null && ex.Message.StartsWith("file-services.", StringComparison.Ordinal))
+        { StatusText = Problem(ex.Message); return false; }
         catch (Exception ex) { StatusText = ex.Message; return false; }
         finally { IsBusy = false; NotifyActions(); }
     }

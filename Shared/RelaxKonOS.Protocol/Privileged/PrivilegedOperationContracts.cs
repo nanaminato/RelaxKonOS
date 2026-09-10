@@ -137,6 +137,7 @@ public enum PrivilegedProblemCode
     ContentTooLarge,
     HelperUnavailable,
     TimedOut,
+    RestartRequired,
     InternalError,
 }
 
