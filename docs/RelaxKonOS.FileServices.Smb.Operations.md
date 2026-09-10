@@ -3,6 +3,8 @@
 本文件冻结首轮 SMB 控制面的宿主支持矩阵和安全边界。它不改变
 `RelaxKonOS.FileServices.Smb.Goal.md` 的范围。
 
+部署、回滚、诊断和卸载步骤见 [SMB 管理员指南](./RelaxKonOS.FileServices.Smb.Administrator.md)。
+
 ## 支持矩阵
 
 | 宿主 | 最低要求 | 固定资源 | 允许共享根 |
