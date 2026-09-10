@@ -30,6 +30,7 @@ public static class FileServiceProblemCodes
     public const string ServiceFailed = "file-services.smb.service_failed";
     public const string SystemAccountNotFound = "file-services.smb.system_account_not_found";
     public const string WindowsApiUnavailable = "file-services.smb.windows_api_unavailable";
+    public const string InstallationFailed = "file-services.smb.installation_failed";
     public const string WindowsServerRequired = "file-services.smb.windows_server_required";
     public const string RestartRequired = "file-services.smb.restart_required";
     public const string ReconciliationRequired = "file-services.smb.reconciliation_required";

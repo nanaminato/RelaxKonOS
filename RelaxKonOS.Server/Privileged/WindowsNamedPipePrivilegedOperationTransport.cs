@@ -111,6 +111,9 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
     private PrivilegedOperationResult Complete(PrivilegedOperationRequest request, PrivilegedOperationResult result)
     {
         Audit(request, result);
+        if (request.Operation == PrivilegedOperationKind.SmbPackageInstall && !result.Success)
+            logger.LogWarning("Windows SMB installation failed. OperationId={OperationId} ProblemCode={ProblemCode} Detail={Detail}",
+                request.OperationId, result.ProblemCode, result.Error);
         return result;
     }
 

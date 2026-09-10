@@ -5,6 +5,15 @@ public static class FileServiceChecks
 {
     public static async Task RunAsync()
     {
+        Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(0, false) is null,
+            "Windows installation in progress must keep polling");
+        Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(1, false) is { Success: true },
+            "Windows completed installation succeeds");
+        Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(1, true) is { ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.RestartRequired },
+            "Windows completed installation preserves restart requirement");
+        foreach (var state in new byte[] { 2, 255 })
+            Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(state, false) is { Success: false, ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError },
+                "Windows failed or unknown installation state never succeeds");
         var provider = new FakeProvider();
         var manager = new FileServiceManager(new FileServiceProviderResolver([provider]));
         var status = await manager.GetStatusAsync(CancellationToken.None);

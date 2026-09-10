@@ -16,8 +16,6 @@ internal static class WindowsFileServerFeatureOperations
     private const string DeploymentTasksClass = "MSFT_ServerManagerDeploymentTasks";
     private const string RequestGuidClass = "MSFT_ServerManagerRequestGuid";
     private const string FileServerDescriptorClass = "ServerComponent_FS_FileServer";
-    private const byte Pending = 1;
-    private const byte Complete = 2;
 
     public static PrivilegedOperationResult Install()
     {
@@ -40,6 +38,8 @@ internal static class WindowsFileServerFeatureOperations
             install["Source"] = null;
             using var started = tasks.InvokeMethod("AddServerComponentAsync", install, null);
             if (ReturnCode(started) != 0) return Fail(PrivilegedProblemCode.InternalError, "Windows File Server role installation could not start");
+            if (started?["AlterationState"] is ManagementBaseObject initialState
+                && EvaluateState(initialState) is { } initialResult) return initialResult;
 
             var deadline = DateTime.UtcNow.AddMinutes(10);
             while (DateTime.UtcNow < deadline)
@@ -51,12 +51,7 @@ internal static class WindowsFileServerFeatureOperations
                 using var stateResult = tasks.InvokeMethod("GetAlterationRequestState", stateRequest, null);
                 if (ReturnCode(stateResult) != 0) return Fail(PrivilegedProblemCode.InternalError, "Windows File Server role installation state is unavailable");
                 if (stateResult?["AlterationState"] is not ManagementBaseObject state) return Fail(PrivilegedProblemCode.InternalError, "Windows File Server role installation state is invalid");
-                var requestState = Convert.ToByte(state["RequestState"]);
-                if (requestState == Pending) continue;
-                if (requestState != Complete) return Fail(PrivilegedProblemCode.InternalError, "Windows File Server role installation failed");
-                return state["RestartRequired"] is true
-                    ? Fail(PrivilegedProblemCode.RestartRequired, "Windows File Server role installation requires restart")
-                    : new(true);
+                if (EvaluateState(state) is { } result) return result;
             }
             return Fail(PrivilegedProblemCode.TimedOut, "Windows File Server role installation timed out");
         }
@@ -64,6 +59,11 @@ internal static class WindowsFileServerFeatureOperations
         catch (UnauthorizedAccessException) { return Fail(PrivilegedProblemCode.AccessDenied, "Windows Server Manager access was denied"); }
         catch (InvalidOperationException) { return Fail(PrivilegedProblemCode.UnsupportedOperation, "Windows Server Manager API is unavailable"); }
     }
+
+    private static PrivilegedOperationResult? EvaluateState(ManagementBaseObject state) =>
+        state["RequestState"] is { } value
+            ? WindowsFeatureInstallationState.Evaluate(Convert.ToByte(value), state["RestartRequired"] is true)
+            : Fail(PrivilegedProblemCode.InternalError, "Windows File Server role installation state is invalid");
 
     private static ManagementObject CreateRequestGuid(ManagementScope scope)
     {

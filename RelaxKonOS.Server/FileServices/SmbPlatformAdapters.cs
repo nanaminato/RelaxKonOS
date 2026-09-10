@@ -112,7 +112,7 @@ public sealed class WindowsSmbPlatformAdapter(IPrivilegedSmbOperations helper) :
             PrivilegedProblemCode.UnsupportedOperation => FileServiceProblemCodes.WindowsServerRequired,
             PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
             PrivilegedProblemCode.RestartRequired => FileServiceProblemCodes.RestartRequired,
-            _ => FileServiceProblemCodes.WindowsApiUnavailable,
+            _ => FileServiceProblemCodes.InstallationFailed,
         });
     }
     public async Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => LinuxSambaPlatformAdapter.Result(id,

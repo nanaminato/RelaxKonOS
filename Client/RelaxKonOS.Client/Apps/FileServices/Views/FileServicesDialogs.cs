@@ -9,8 +9,8 @@ namespace RelaxKonOS.Client.Apps.FileServices.Views;
 /// <summary>Opens the AXAML dialogs with their owner, title and size.</summary>
 internal static class FileServicesDialogs
 {
-    public static Task<string?> RequestPasswordAsync(AppContext context, ManagedWindow owner, string title) =>
-        context.ShowDialogAsync<string?>(owner, title, dialog => new FileServicesPasswordDialogView(dialog), new Size(420, 160));
+    public static Task<string?> RequestPasswordAsync(AppContext context, ManagedWindow owner, string title, string? message = null) =>
+        context.ShowDialogAsync<string?>(owner, title, dialog => new FileServicesPasswordDialogView(dialog, message), new Size(460, message is null ? 160 : 230));
 
     public static Task ShowShareEditorAsync(AppContext context, ManagedWindow owner, FileServicesViewModel vm, bool editing) =>
         context.ShowDialogAsync<bool>(owner, LocalizedText.Get(editing ? "file_services.share_edit_title" : "file_services.share_new_title"),
