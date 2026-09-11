@@ -15,6 +15,7 @@
     "file_services.title": "File Services",
     "file_services.login_required": "Sign in to manage SMB file services.",
     "file_services.status.loading": "Loading SMB status…",
+    "file_services.status.installing": "Installing SMB. This may take a few minutes…",
     "file_services.status.ready": "SMB {0}",
     "file_services.status.operation_completed": "SMB operation completed.",
     "file_services.status.manage_required": "SMB host-administrator authorization is required.",

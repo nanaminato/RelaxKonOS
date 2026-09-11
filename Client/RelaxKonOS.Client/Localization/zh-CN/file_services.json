@@ -15,6 +15,7 @@
     "file_services.title": "文件服务",
     "file_services.login_required": "登录后才能管理 SMB 文件服务。",
     "file_services.status.loading": "正在加载 SMB 状态…",
+    "file_services.status.installing": "正在安装 SMB，请稍候…",
     "file_services.status.ready": "SMB {0}",
     "file_services.status.operation_completed": "SMB 操作已完成。",
     "file_services.status.manage_required": "此操作需要服务器管理员授权。",

@@ -15,6 +15,7 @@
     "file_services.title": "ファイルサービス",
     "file_services.login_required": "SMB ファイルサービスを管理するにはサインインしてください。",
     "file_services.status.loading": "SMB の状態を読み込んでいます…",
+    "file_services.status.installing": "SMB をインストールしています。しばらくお待ちください…",
     "file_services.status.ready": "SMB {0}",
     "file_services.status.operation_completed": "SMB 操作が完了しました。",
     "file_services.status.manage_required": "ホスト管理者の認可が必要です。",

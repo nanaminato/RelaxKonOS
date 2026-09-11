@@ -43,6 +43,13 @@ Check(client.Writes == 2, "Cancelled delete does not mutate");
 client.State = FileServiceRuntimeState.NotInstalled;
 await vm.RefreshCommand.ExecuteAsync(null);
 Check(vm.InstallCommand.CanExecute(null) && !vm.NewShareCommand.CanExecute(null), "Not installed actions");
+var pendingInstallation = new TaskCompletionSource<FileServiceOperationResultDto>(TaskCreationOptions.RunContinuationsAsynchronously);
+client.PendingInstallation = pendingInstallation;
+var installation = vm.InstallCommand.ExecuteAsync(null);
+Check(vm.IsBusy && vm.StatusText == "file_services.status.installing", "Installation progress replaces the stale not-installed status");
+pendingInstallation.SetResult(new FileServiceOperationResultDto(Guid.NewGuid(), true));
+await installation;
+client.PendingInstallation = null;
 client.InstallProblem = FileServiceProblemCodes.RestartRequired;
 await vm.InstallCommand.ExecuteAsync(null);
 Check(vm.StatusText != FileServiceProblemCodes.RestartRequired, "API problem code localized");
@@ -81,6 +88,7 @@ sealed class FakeClient : IRemoteFileServicesClient
 {
  public bool Linux; public int StatusReads, UserReads, Writes;
  public string? InstallProblem;
+ public TaskCompletionSource<FileServiceOperationResultDto>? PendingInstallation;
  public FileServiceRuntimeState State = FileServiceRuntimeState.Running;
  public Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct = default) { StatusReads++; return Task.FromResult(new FileServiceStatusDto(FileServiceProtocol.Smb, State, "test", State == FileServiceRuntimeState.Running, true)); }
  public Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceCapabilitiesDto(true, Linux, Linux, true, !Linux));
@@ -89,7 +97,8 @@ sealed class FakeClient : IRemoteFileServicesClient
  public Task<FileServiceConnectionInfoDto> GetConnectionAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceConnectionInfoDto("host",445,"\\\\host\\","smb://host/"));
  private Task<FileServiceOperationResultDto> Result() { Writes++; return Task.FromResult(new FileServiceOperationResultDto(Guid.NewGuid(),true)); }
  public Task<FileServiceOperationResultDto> InstallAsync(CancellationToken ct = default) => InstallProblem is { } code
-     ? Task.FromException<FileServiceOperationResultDto>(new HttpRequestException(code, null, HttpStatusCode.BadRequest)) : Result();
+     ? Task.FromException<FileServiceOperationResultDto>(new HttpRequestException(code, null, HttpStatusCode.BadRequest))
+     : PendingInstallation?.Task ?? Result();
  public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, CancellationToken ct = default) { State = action == SmbLifecycleAction.Stop ? FileServiceRuntimeState.Stopped : FileServiceRuntimeState.Running; return Result(); }
  public Task<FileServiceOperationResultDto> CreateShareAsync(UpsertFileShareRequest r,CancellationToken ct = default) => Result();
  public Task<FileServiceOperationResultDto> UpdateShareAsync(string id,UpsertFileShareRequest r,CancellationToken ct = default) => Result();
