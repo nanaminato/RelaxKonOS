@@ -46,7 +46,7 @@ internal static class WindowsSmbNativeOperations
             var port = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(x => x.Port == 445);
             var state = active ? (port ? FileServiceRuntimeState.Running : FileServiceRuntimeState.Failed) : FileServiceRuntimeState.Stopped;
             var status = new FileServiceStatusDto(FileServiceProtocol.Smb, state, Environment.OSVersion.Version.ToString(), active, port,
-                !securitySnapshot.Compliant ? FileServiceProblemCodes.ConfigurationInvalid
+                !securitySnapshot.Compliant ? FileServiceProblemCodes.WindowsSecurityConfigurationRequired
                     : state == FileServiceRuntimeState.Running ? null : port ? "file-services.smb.service_stopped" : "file-services.smb.port_unavailable");
             return new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(status)));
         }

@@ -66,6 +66,7 @@
     "file_services.problem.file-services.smb.not_installed": "Install SMB first",
     "file_services.problem.file-services.smb.helper_unavailable": "Privileged helper unavailable",
     "file_services.problem.file-services.smb.configuration_invalid": "Invalid share configuration or path",
+    "file_services.problem.file-services.smb.windows_security_configuration_required": "Windows SMB security configuration must be applied; it will be completed when a share is created.",
     "file_services.problem.file-services.smb.configuration_unmanaged": "Share is not managed by RelaxKonOS",
     "file_services.problem.file-services.smb.share_conflict": "Share name already exists",
     "file_services.problem.file-services.smb.port_in_use": "Port 445 is in use",

@@ -66,6 +66,7 @@
     "file_services.problem.file-services.smb.not_installed": "SMB をインストールしてください",
     "file_services.problem.file-services.smb.helper_unavailable": "特権ヘルパーを利用できません",
     "file_services.problem.file-services.smb.configuration_invalid": "共有設定またはパスが無効です",
+    "file_services.problem.file-services.smb.windows_security_configuration_required": "Windows SMB セキュリティ構成を適用する必要があります。共有の作成時に自動で完了します。",
     "file_services.problem.file-services.smb.configuration_unmanaged": "RelaxKonOS の管理対象外です",
     "file_services.problem.file-services.smb.share_conflict": "共有名が既に存在します",
     "file_services.problem.file-services.smb.port_in_use": "ポート445は使用中です",

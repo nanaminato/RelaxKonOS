@@ -22,6 +22,7 @@ public static class FileServiceProblemCodes
     public const string NotInstalled = "file-services.smb.not_installed";
     public const string HelperUnavailable = "file-services.smb.helper_unavailable";
     public const string ConfigurationInvalid = "file-services.smb.configuration_invalid";
+    public const string WindowsSecurityConfigurationRequired = "file-services.smb.windows_security_configuration_required";
     public const string ConfigurationUnmanaged = "file-services.smb.configuration_unmanaged";
     public const string ShareConflict = "file-services.smb.share_conflict";
     public const string PortInUse = "file-services.smb.port_in_use";
