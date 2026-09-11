@@ -135,7 +135,6 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         request = default!;
         if (string.IsNullOrWhiteSpace(ShareName) || string.IsNullOrWhiteSpace(SharePath))
         { StatusText = T("validation"); return false; }
-        if (ShareGuestAllowed && !ShareReadOnly) { StatusText = T("guest_read_only_required"); return false; }
         var rules = new List<FileSharePermissionDto>();
         foreach (var item in SharePermissions)
         {

@@ -1,6 +1,5 @@
 {
     "file_services.windows_sid_required": "Windows 权限需要 SID；请选择下拉框中的组，或填写账户的 SID。",
-    "file_services.guest_read_only_required": "访客访问必须启用“只读”，或取消访客访问。",
   "Culture": "zh-CN",
   "Strings": {
     "file_services.title": "文件服务",
@@ -39,7 +38,7 @@
     "file_services.permission_remove": "移除",
     "file_services.browse": "浏览…",
     "file_services.select_folder": "选择共享文件夹",
-    "file_services.share_read_only": "只读",
+    "file_services.share_read_only": "所有用户只读",
     "file_services.share_enabled": "已启用",
     "file_services.share_guest": "允许访客只读访问",
     "file_services.share_permission_invalid": "每条权限都必须填写用户、组或 Windows SID。",

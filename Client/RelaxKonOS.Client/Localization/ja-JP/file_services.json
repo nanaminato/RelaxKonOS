@@ -1,6 +1,5 @@
 {
     "file_services.windows_sid_required": "グループを選択するか Windows SID を入力してください。",
-    "file_services.guest_read_only_required": "ゲストアクセスには読み取り専用が必要です。",
   "Culture": "ja-JP",
   "Strings": {
     "file_services.title": "ファイルサービス",
@@ -39,7 +38,7 @@
     "file_services.permission_remove": "削除",
     "file_services.browse": "参照…",
     "file_services.select_folder": "共有フォルダーを選択",
-    "file_services.share_read_only": "読み取り専用",
+    "file_services.share_read_only": "すべてのユーザーを読み取り専用にする",
     "file_services.share_enabled": "有効",
     "file_services.share_guest": "ゲストの読み取り専用アクセスを許可",
     "file_services.share_permission_invalid": "各権限にユーザー、グループ、または Windows SID が必要です。",

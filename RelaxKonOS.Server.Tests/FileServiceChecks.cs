@@ -8,15 +8,24 @@ public static class FileServiceChecks
         var directory = Directory.CreateTempSubdirectory("smb-validation-");
         try
         {
-            var request = new UpsertFileShareRequest("normal share", directory.FullName, "SMB share", false, true, false, []);
-            Check(SmbValidators.ValidateShare(request, OperatingSystem.IsWindows()) is null, "Existing directory outside former share root and spaced name accepted");
-            Check(SmbValidators.ValidateShare(request with { GuestAllowed = true }, OperatingSystem.IsWindows()) is not null, "Writable guest rejected");
+            var request = new UpsertFileShareRequest("第一个文件夹共享", directory.FullName, "SMB share", false, true, false, []);
+            Check(SmbValidators.ValidateShare(request, OperatingSystem.IsWindows()) is null, "Existing directory outside former share root and Chinese name accepted");
+            Check(SmbValidators.ValidateShare(request with { GuestAllowed = true }, OperatingSystem.IsWindows()) is null, "Guest read-only access does not force authenticated users read-only");
             Check(SmbValidators.ValidateShare(request with { GuestAllowed = true, ReadOnly = true }, OperatingSystem.IsWindows()) is null, "Read-only guest accepted");
             Check(SmbValidators.ValidateShare(request with { Path = Path.Combine(directory.FullName, "missing") }, OperatingSystem.IsWindows()) is not null, "Missing directory rejected");
             if (OperatingSystem.IsWindows())
                 Check(SmbValidators.ValidateShare(request with { Path = Path.GetPathRoot(directory.FullName)! }, true) is null, "Drive root accepted");
         }
         finally { directory.Delete(); }
+        var mixed = new RelaxKonOS.Protocol.Privileged.SmbManagedShareRequest("test", "中文共享", "/tmp", null, false, true, true,
+            [new("alice", "ReadWrite"), new("bob", "Read")]);
+        var config = RelaxKonOS.PrivilegedHelper.SambaShareConfiguration.Serialize([mixed, mixed with { Id = "second", Name = "另一个共享" }]);
+        Check(config.Contains("read only = yes") && config.Contains("write list = alice") && config.Contains("guest ok = yes"), "Samba guest defaults read-only while alice can write");
+        var parsed = RelaxKonOS.PrivilegedHelper.SambaShareConfiguration.Parse(config.Split('\n'), _ => true);
+        Check(parsed.Count == 2 && !parsed[0].ReadOnly && parsed[0].GuestAllowed && parsed[0].Permissions.Any(p => p.Principal == "alice" && p.Access == FileShareAccess.ReadWrite), "Multiple Samba shares round-trip guest mode and authenticated write permissions");
+        var allReadOnly = RelaxKonOS.PrivilegedHelper.SambaShareConfiguration.Serialize([mixed with { ReadOnly = true }]);
+        Check(allReadOnly.Contains("write list = \n") && !allReadOnly.Contains("write list = alice"), "Samba global read-only has no write-list override");
+        if (OperatingSystem.IsWindows()) CheckWindowsGuestAcl();
         Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(0, false) is null,
             "Windows installation in progress must keep polling");
         Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(1, false) is { Success: true },
@@ -50,6 +59,22 @@ public static class FileServiceChecks
         var drift = await windowsProvider.LifecycleAsync(SmbLifecycleAction.Restart, Guid.NewGuid(), CancellationToken.None);
         Check(!drift.Succeeded && drift.ProblemCode == FileServiceProblemCodes.ReconciliationRequired && (await windowsLedger.GetServerSecurityAsync(CancellationToken.None))?.ReconciliationRequired == true,
             "Windows server-security drift is fail-closed and marked for reconciliation");
+    }
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void CheckWindowsGuestAcl()
+    {
+        var bytes = RelaxKonOS.PrivilegedHelper.WindowsSmbShareSecurity.CreateDescriptor(
+            [new("S-1-5-32-544", "ReadWrite"), new("S-1-1-0", "ReadWrite")], false, true);
+        var acl = new System.Security.AccessControl.RawSecurityDescriptor(bytes, 0).DiscretionaryAcl!;
+        var entries = acl.Cast<System.Security.AccessControl.CommonAce>().ToArray();
+        Check(entries.Any(x => x.SecurityIdentifier.Value == "S-1-5-32-544" && x.AceQualifier == System.Security.AccessControl.AceQualifier.AccessAllowed && (x.AccessMask & 2) != 0), "Windows administrators retain write access with guest enabled");
+        foreach (var sid in new[] { "S-1-5-7", "S-1-5-32-546" })
+        {
+            var deny = entries.Single(x => x.SecurityIdentifier.Value == sid && x.AceQualifier == System.Security.AccessControl.AceQualifier.AccessDenied);
+            Check((deny.AccessMask & 0x000D0156) == 0x000D0156 && (deny.AccessMask & 0x00120089) == 0, "Windows guest denies writes without denying reads even with Everyone write");
+        }
+        var readOnly = new System.Security.AccessControl.RawSecurityDescriptor(RelaxKonOS.PrivilegedHelper.WindowsSmbShareSecurity.CreateDescriptor([new("S-1-5-32-544", "ReadWrite")], true, false), 0);
+        Check(readOnly.DiscretionaryAcl!.Cast<System.Security.AccessControl.CommonAce>().All(x => (x.AccessMask & 2) == 0), "Global read-only also applies to administrators");
     }
     private static void Check(bool condition, string message)
     {

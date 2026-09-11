@@ -1,6 +1,5 @@
 {
     "file_services.windows_sid_required": "Windows permissions require a SID. Select a group or enter the account SID.",
-    "file_services.guest_read_only_required": "Guest access requires read-only mode. Enable read-only or disable guest access.",
   "Culture": "en-US",
   "Strings": {
     "file_services.title": "File Services",
@@ -39,7 +38,7 @@
     "file_services.permission_remove": "Remove",
     "file_services.browse": "Browse…",
     "file_services.select_folder": "Select shared folder",
-    "file_services.share_read_only": "Read only",
+    "file_services.share_read_only": "Read-only for all users",
     "file_services.share_enabled": "Enabled",
     "file_services.share_guest": "Allow guest read-only access",
     "file_services.share_permission_invalid": "Each permission requires a user, group, or Windows SID.",

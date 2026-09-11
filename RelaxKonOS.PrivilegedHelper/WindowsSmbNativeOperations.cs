@@ -106,7 +106,7 @@ internal static class WindowsSmbNativeOperations
         {
             var existing = GetShare(request.Name);
             if (existing is not null && (string.IsNullOrEmpty(expectedSnapshot) || !SnapshotMatches(existing, expectedSnapshot))) return Fail(PrivilegedProblemCode.Conflict, "Windows SMB share changed externally");
-            var descriptor = CreateDescriptor(request.Permissions, request.ReadOnly, request.GuestAllowed);
+            var descriptor = WindowsSmbShareSecurity.CreateDescriptor(request.Permissions, request.ReadOnly, request.GuestAllowed);
             var descriptorMemory = Marshal.AllocHGlobal(descriptor.Length);
             try
             {
@@ -148,7 +148,7 @@ internal static class WindowsSmbNativeOperations
         {
             var request = new SmbManagedShareRequest(snapshot.Id, snapshot.Name, snapshot.Path, snapshot.Description, snapshot.ReadOnly, snapshot.Enabled, snapshot.GuestAllowed,
                 snapshot.Permissions.Select(x => new SmbSharePermissionRequest(x.Principal, x.Access.ToString())).ToArray());
-            var descriptor = CreateDescriptor(request.Permissions, request.ReadOnly, request.GuestAllowed); var memory = Marshal.AllocHGlobal(descriptor.Length);
+            var descriptor = WindowsSmbShareSecurity.CreateDescriptor(request.Permissions, request.ReadOnly, request.GuestAllowed); var memory = Marshal.AllocHGlobal(descriptor.Length);
             try { Marshal.Copy(descriptor, 0, memory, descriptor.Length); var info = new ShareInfo502(request.Name, 0, request.Description, request.Path, null, 0, memory); uint error; return NetShareSetInfo(null, request.Name, 502, ref info, out error) == 0; }
             finally { Marshal.FreeHGlobal(memory); }
         }
@@ -158,7 +158,7 @@ internal static class WindowsSmbNativeOperations
     {
         try
         {
-            var descriptor = CreateDescriptor(snapshot.Permissions.Select(x => new SmbSharePermissionRequest(x.Principal, x.Access.ToString())).ToArray(), snapshot.ReadOnly, snapshot.GuestAllowed); var memory = Marshal.AllocHGlobal(descriptor.Length);
+            var descriptor = WindowsSmbShareSecurity.CreateDescriptor(snapshot.Permissions.Select(x => new SmbSharePermissionRequest(x.Principal, x.Access.ToString())).ToArray(), snapshot.ReadOnly, snapshot.GuestAllowed); var memory = Marshal.AllocHGlobal(descriptor.Length);
             try { Marshal.Copy(descriptor, 0, memory, descriptor.Length); var info = new ShareInfo502(snapshot.Name, 0, snapshot.Description, snapshot.Path, null, 0, memory); uint error; return NetShareAdd(null, 502, ref info, out error) == 0; }
             finally { Marshal.FreeHGlobal(memory); }
         }
@@ -176,8 +176,7 @@ internal static class WindowsSmbNativeOperations
     {
         var permissions = ReadPermissions(info.SecurityDescriptor);
         var guest = permissions.Any(x => x.Principal == "S-1-5-7");
-        var nonAdministrative = permissions.Where(x => x.Principal is not "S-1-5-32-544").ToArray();
-        var readOnly = nonAdministrative.Length > 0 && nonAdministrative.All(x => x.Access == FileShareAccess.Read);
+        var readOnly = permissions.Count > 0 && permissions.All(x => x.Access == FileShareAccess.Read);
         return new(info.Name ?? string.Empty, info.Name ?? string.Empty, info.Path ?? string.Empty, info.Remark, readOnly, true, guest, permissions, false);
     }
     private static IReadOnlyList<FileSharePermissionDto> ReadPermissions(IntPtr pointer)
@@ -192,28 +191,13 @@ internal static class WindowsSmbNativeOperations
                 permissions.Add(new(sid.Value, (allowed.AccessMask & 0x00000002) != 0 || (allowed.AccessMask & 0x001F01FF) == 0x001F01FF ? FileShareAccess.ReadWrite : FileShareAccess.Read));
         return permissions.OrderBy(x => x.Principal, StringComparer.Ordinal).ToArray();
     }
-    private static byte[] CreateDescriptor(IReadOnlyList<SmbSharePermissionRequest> permissions, bool readOnly, bool guest)
-    {
-        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
-        var acl = new DiscretionaryAcl(false, false, permissions.Count + 1);
-        acl.AddAccess(AccessControlType.Allow, administrators, 0x001F01FF, InheritanceFlags.None, PropagationFlags.None);
-        foreach (var permission in permissions)
-        {
-            var sid = new SecurityIdentifier(permission.Principal);
-            var write = permission.Access == "ReadWrite" && !readOnly;
-            acl.AddAccess(AccessControlType.Allow, sid, write ? 0x001F01FF : 0x00120089, InheritanceFlags.None, PropagationFlags.None);
-        }
-        if (guest) acl.AddAccess(AccessControlType.Allow, new SecurityIdentifier(WellKnownSidType.AnonymousSid, null), 0x00120089, InheritanceFlags.None, PropagationFlags.None);
-        var descriptor = new CommonSecurityDescriptor(false, false, ControlFlags.DiscretionaryAclPresent | ControlFlags.SelfRelative, administrators, administrators, null, acl);
-        var bytes = new byte[descriptor.BinaryLength]; descriptor.GetBinaryForm(bytes, 0); return bytes;
-    }
     private static bool SnapshotMatches(FileShareDto actual, string expected) => string.Equals(SnapshotHash(Snapshot(actual)), expected, StringComparison.Ordinal);
     private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.Select(p => p.Principal + ':' + p.Access))}";
     private static string SnapshotHash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static bool IsValid(SmbManagedShareRequest share)
     {
         if (share.Id != share.Name || share.Name.Length is < 1 or > 80 || share.Name.Any(c => char.IsControl(c) || c is '\\' or '/' or '[' or ']' or '=')) return false;
-        if (!Path.IsPathFullyQualified(share.Path) || !Directory.Exists(share.Path) || HasReparsePoint(share.Path) || share.Description?.Any(char.IsControl) == true || (share.GuestAllowed && !share.ReadOnly)) return false;
+        if (!Path.IsPathFullyQualified(share.Path) || !Directory.Exists(share.Path) || HasReparsePoint(share.Path) || share.Description?.Any(char.IsControl) == true) return false;
         try { return share.Permissions.All(p => p.Access is "Read" or "ReadWrite" && new SecurityIdentifier(p.Principal).Value == p.Principal); }
         catch (ArgumentException) { return false; }
     }

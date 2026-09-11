@@ -688,52 +688,15 @@ static bool TryEnsureManagedInclude(string main, out string candidate)
     return true;
 }
 
-static string SerializeManagedShares(IReadOnlyList<SmbManagedShareRequest> shares)
-{
-    var builder = new System.Text.StringBuilder("# RelaxKonOS managed Samba include. Do not edit.\nserver min protocol = SMB2\nclient min protocol = SMB2\nmap to guest = Never\n");
-    foreach (var share in shares.OrderBy(x => x.Id, StringComparer.Ordinal))
-    {
-        builder.Append("\n# relaxkonos-share:").Append(share.Id).Append('\n').Append('[').Append(share.Name).Append("]\npath = ").Append(share.Path).Append('\n')
-            .Append("read only = ").Append(share.ReadOnly ? "yes" : "no").Append('\n').Append("available = ").Append(share.Enabled ? "yes" : "no").Append('\n')
-            .Append("guest ok = ").Append(share.GuestAllowed ? "yes" : "no").Append('\n');
-        if (!string.IsNullOrWhiteSpace(share.Description)) builder.Append("comment = ").Append(share.Description).Append('\n');
-        var read = share.Permissions.Where(x => x.Access == "Read").Select(x => x.Principal).Order().ToArray();
-        var write = share.Permissions.Where(x => x.Access == "ReadWrite").Select(x => x.Principal).Order().ToArray();
-        if (read.Length > 0) builder.Append("read list = ").AppendJoin(' ', read).Append('\n');
-        if (write.Length > 0) builder.Append("write list = ").AppendJoin(' ', write).Append('\n');
-    }
-    return builder.ToString();
-}
-
-static IReadOnlyList<FileShareDto> ParseManagedShares(string[] lines)
-{
-    var shares = new List<FileShareDto>(); string? id = null, name = null, path = null, description = null; bool readOnly = true, enabled = true, guest = false; var permissions = new List<FileSharePermissionDto>();
-    void Commit()
-    {
-        if (id is null && name is null) return;
-        if (id is null || name is null || path is null || !IsValidSmbShare(new(id, name, path, description, readOnly, enabled, guest, permissions.Select(x => new SmbSharePermissionRequest(x.Principal, x.Access.ToString())).ToArray()))) throw new InvalidDataException();
-        shares.Add(new(id, name, path, description, readOnly, enabled, guest, permissions.ToArray(), true)); id = name = path = description = null; readOnly = true; enabled = true; guest = false; permissions.Clear();
-    }
-    foreach (var raw in lines)
-    {
-        var line = raw.Trim(); const string shareMarker = "# relaxkonos-share:"; if (line.StartsWith(shareMarker, StringComparison.Ordinal)) { Commit(); id = line[shareMarker.Length..]; continue; }
-        if (id is null) continue;
-        if (line.StartsWith('[') && line.EndsWith(']')) { name = line[1..^1]; continue; }
-        var index = line.IndexOf('='); if (index < 1) throw new InvalidDataException(); var key = line[..index].Trim(); var value = line[(index + 1)..].Trim();
-        switch (key) { case "path": path = value; break; case "comment": description = value; break; case "read only": readOnly = value == "yes"; break; case "available": enabled = value == "yes"; break; case "guest ok": guest = value == "yes"; break;
-            case "read list": permissions.AddRange(value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => new FileSharePermissionDto(x, FileShareAccess.Read))); break;
-            case "write list": permissions.AddRange(value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => new FileSharePermissionDto(x, FileShareAccess.ReadWrite))); break;
-            default: throw new InvalidDataException(); }
-    }
-    Commit(); return shares;
-}
+static string SerializeManagedShares(IReadOnlyList<SmbManagedShareRequest> shares) => SambaShareConfiguration.Serialize(shares);
+static IReadOnlyList<FileShareDto> ParseManagedShares(string[] lines) => SambaShareConfiguration.Parse(lines, IsValidSmbShare);
 
 static bool InvalidSmbShare(SmbManagedShareRequest share) => !IsValidSmbShare(share);
 static bool IsValidSmbShare(SmbManagedShareRequest share) => share.Id.Length is > 0 and <= 64 && System.Text.RegularExpressions.Regex.IsMatch(share.Id, "^[A-Za-z0-9-]+$")
-    && System.Text.RegularExpressions.Regex.IsMatch(share.Name, "^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$") && Path.IsPathFullyQualified(share.Path)
+    && System.Text.RegularExpressions.Regex.IsMatch(share.Name, "^[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}._ -]{0,79}$") && Path.IsPathFullyQualified(share.Path)
     && Directory.Exists(share.Path) && !HasSmbReparsePoint(share.Path)
     && !HasUnsafeSmbText(share.Name) && !HasUnsafeSmbText(share.Path) && !HasUnsafeSmbText(share.Description)
-    && (!share.GuestAllowed || share.ReadOnly)
+    && (!share.GuestAllowed || share.Permissions.All(x => x.Access != "ReadWrite" || (IsValidSmbUsername(x.Principal) && x.Principal != "nobody")))
     && share.Permissions.All(x => System.Text.RegularExpressions.Regex.IsMatch(x.Principal, "^[A-Za-z0-9._@\\\\-]{1,256}$") && x.Access is "Read" or "ReadWrite");
 static bool HasUnsafeSmbText(string? value) => value is not null && (value.Any(char.IsControl) || value.Contains('=') || value.Contains('[') || value.Contains(']') || value.StartsWith('-'));
 static bool IsValidSmbUsername(string? username) => username is not null && System.Text.RegularExpressions.Regex.IsMatch(username, "^[a-z_][a-z0-9_-]{0,63}$");
