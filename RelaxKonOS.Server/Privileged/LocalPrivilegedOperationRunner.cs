@@ -32,7 +32,8 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
             return Complete(request, new(false, 69, Error: "privileged helper could not be started", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
         }
         if (process is null) return Complete(request, new(false, 69, Error: "privileged helper could not be started", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
-        using (process)
+        var handoffProcessOwnership = false;
+        try
         {
             // Once stdin begins carrying a typed mutation, completion is authoritative. A
             // disconnected HTTP client must not make the Server report a cancelled operation
@@ -42,11 +43,18 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
             var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
             var error = process.StandardError.ReadToEndAsync(CancellationToken.None);
             using var timeout = new CancellationTokenSource();
-            timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, options.TimeoutSeconds)));
+            timeout.CancelAfter(TimeoutFor(request.Operation));
             try { await process.WaitForExitAsync(timeout.Token); }
             catch (OperationCanceledException)
             {
-                process.Kill(entireProcessTree: true);
+                // sudo runs the Helper as root. The Server intentionally does not have permission
+                // to terminate that process tree, and attempting to do so used to turn a timeout
+                // into an unhandled 500. Each expensive Helper operation has its own deadline, so
+                // keep the pipes open while it reaches that bounded outcome and report this request
+                // as timed out without claiming that the root operation was cancelled.
+                handoffProcessOwnership = true;
+                _ = ObserveTimedOutHelperAsync(process, output, error, request);
+                logger.LogWarning("Privileged Helper operation exceeded its Server wait timeout. OperationId={OperationId}; the Helper will continue to its own bounded completion.", request.OperationId);
                 return Complete(request, new(false, 124, Error: "privileged helper timed out", ProblemCode: PrivilegedProblemCode.TimedOut));
             }
 
@@ -67,6 +75,36 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
                 return Complete(request, new(false, 69, Error: "privileged helper failed; check the Server logs and sudoers configuration", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
             }
         }
+        finally
+        {
+            if (!handoffProcessOwnership) process.Dispose();
+        }
+    }
+
+    private TimeSpan TimeoutFor(PrivilegedOperationKind operation)
+    {
+        var seconds = operation is PrivilegedOperationKind.SmbPackageInstall or PrivilegedOperationKind.NginxPackageInstall
+            or PrivilegedOperationKind.NginxPackageUninstall or PrivilegedOperationKind.GitPackageInstall
+            ? Math.Max(options.TimeoutSeconds, options.PackageOperationTimeoutSeconds)
+            : options.TimeoutSeconds;
+        return TimeSpan.FromSeconds(Math.Max(1, seconds));
+    }
+
+    private async Task ObserveTimedOutHelperAsync(Process process, Task<string> output, Task<string> error, PrivilegedOperationRequest request)
+    {
+        try
+        {
+            await process.WaitForExitAsync();
+            var stderr = await error;
+            var response = await output;
+            logger.LogInformation("Timed-out privileged Helper operation finished. OperationId={OperationId}; ExitCode={ExitCode}; ResponseReceived={ResponseReceived}; Stderr={Stderr}",
+                request.OperationId, process.ExitCode, !string.IsNullOrWhiteSpace(response), string.IsNullOrWhiteSpace(stderr) ? "(empty)" : stderr);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could not observe the timed-out privileged Helper operation. OperationId={OperationId}", request.OperationId);
+        }
+        finally { process.Dispose(); }
     }
 
     private PrivilegedOperationResult Complete(PrivilegedOperationRequest request, PrivilegedOperationResult result)

@@ -110,6 +110,9 @@ public static class FileServiceChecks
         Check(LinuxSambaPlatformAdapter.Problem(new(false, 1, Error: "Samba configuration invalid", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError))
                 == FileServiceProblemCodes.ConfigurationInvalid,
             "Non-Windows Helper failures keep their existing classification");
+        var timedOutInstall = await new LinuxSambaPlatformAdapter(new TimedOutSmbOperations()).InstallAsync(Guid.NewGuid(), CancellationToken.None);
+        Check(!timedOutInstall.Succeeded && timedOutInstall.ProblemCode == FileServiceProblemCodes.InstallationFailed,
+            "A timed-out Samba installation returns an installation failure instead of a configuration error");
     }
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void CheckWindowsGuestAcl()
@@ -131,6 +134,22 @@ public static class FileServiceChecks
     {
         if (!condition) throw new InvalidOperationException(message);
         Console.WriteLine("PASS FILE SERVICES: " + message);
+    }
+    private sealed class TimedOutSmbOperations : IPrivilegedSmbOperations
+    {
+        private static Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> TimedOut() => Task.FromResult(
+            new RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult(false, 124, Error: "privileged helper timed out", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.TimedOut));
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> DetectAsync(Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> InstallAsync(Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ServiceAsync(RelaxKonOS.Protocol.Privileged.SmbServiceAction action, Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ReadManagedConfigurationAsync(Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ReadUsersAsync(Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ApplyLinuxConfigurationAsync(IReadOnlyList<RelaxKonOS.Protocol.Privileged.SmbManagedShareRequest> shares, Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ApplyWindowsShareAsync(RelaxKonOS.Protocol.Privileged.SmbManagedShareRequest share, string? snapshot, Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> RemoveWindowsShareAsync(string id, string? snapshot, Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> SetWindowsServerSecurityAsync(string? snapshot, Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> SetUserEnabledAsync(string username, bool enabled, Guid operationId, CancellationToken ct) => TimedOut();
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> SetUserPasswordAsync(string username, string password, Guid operationId, CancellationToken ct) => TimedOut();
     }
     private sealed class FakeProvider : IFileServiceProvider
     {

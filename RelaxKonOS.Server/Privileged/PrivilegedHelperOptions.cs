@@ -6,6 +6,8 @@ public sealed class PrivilegedHelperOptions
     public string HelperPath { get; init; } = string.Empty;
     public string SudoPath { get; init; } = "/usr/bin/sudo";
     public int TimeoutSeconds { get; init; } = 30;
+    /// <summary>Package operations may run apt update and apt install, each with a ten-minute Helper deadline.</summary>
+    public int PackageOperationTimeoutSeconds { get; init; } = 1500;
     /// <summary>Windows-only local pipe. It is never a network endpoint.</summary>
     public string PipeName { get; init; } = "relaxkonos-privileged-helper";
     /// <summary>Installation-generated machine secret, readable only by Server and Helper.</summary>

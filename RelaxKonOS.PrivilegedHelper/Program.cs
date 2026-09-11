@@ -732,13 +732,19 @@ static async Task<PrivilegedOperationResult> RunFixedCommandWithOutputAsync(stri
 
 static async Task<PrivilegedOperationResult> RunFixedCommandAsync(string executable, IReadOnlyList<string> arguments, TimeSpan timeout, string failure)
 {
-    using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true } };
+    // The one-shot Helper reserves its stdout exclusively for the final JSON protocol result.
+    // Package managers emit progress on stdout, so drain child output internally rather than
+    // allowing it to corrupt the parent protocol stream.
+    using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
     process.StartInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
     foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
     if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "host operation could not start");
+    var output = process.StandardOutput.ReadToEndAsync();
+    var error = process.StandardError.ReadToEndAsync();
     using var cancellation = new CancellationTokenSource(timeout);
     try { await process.WaitForExitAsync(cancellation.Token); }
     catch (OperationCanceledException) { return Fail(124, PrivilegedProblemCode.TimedOut, "host operation timed out"); }
+    await Task.WhenAll(output, error);
     return process.ExitCode == 0 ? new(true) : Fail(1, PrivilegedProblemCode.InternalError, failure);
 }
 

@@ -39,7 +39,16 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
             null, false, false, result.ProblemCode == PrivilegedProblemCode.UnsupportedOperation ? FileServiceProblemCodes.UnsupportedPlatform : Problem(result));
         return DecodeStatus(result) ?? new(FileServiceProtocol.Smb, FileServiceRuntimeState.NotInstalled, null, false, false, FileServiceProblemCodes.NotInstalled);
     }
-    public async Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => Result(id, await helper.InstallAsync(id, ct));
+    public async Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct)
+    {
+        var result = await helper.InstallAsync(id, ct);
+        return new(id, result.Success, result.Success ? null : result.ProblemCode switch
+        {
+            PrivilegedProblemCode.UnsupportedOperation => FileServiceProblemCodes.UnsupportedPlatform,
+            PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
+            _ => FileServiceProblemCodes.InstallationFailed,
+        });
+    }
     public async Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => Result(id,
         await helper.ServiceAsync(action switch { SmbLifecycleAction.Start => SmbServiceAction.Start, SmbLifecycleAction.Stop => SmbServiceAction.Stop, _ => SmbServiceAction.Restart }, id, ct));
     public async Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct)
