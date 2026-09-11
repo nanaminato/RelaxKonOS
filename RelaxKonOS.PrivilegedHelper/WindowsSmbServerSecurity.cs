@@ -49,8 +49,8 @@ internal static class WindowsSmbServerSecurity
                 parameters["EnableSMB1Protocol"] = false;
                 parameters["EnableSMB2Protocol"] = true;
                 parameters["EnableAuthenticateUserSharing"] = true;
-                parameters["NullSessionShares"] = string.Empty;
-                parameters["NullSessionPipes"] = string.Empty;
+                parameters["NullSessionShares"] = Array.Empty<string>();
+                parameters["NullSessionPipes"] = Array.Empty<string>();
                 var result = configurationClass.InvokeMethod("SetConfiguration", parameters, null);
                 if (ReturnCode(result) != 0) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB Server security apply failed");
             }
@@ -106,7 +106,13 @@ internal static class WindowsSmbServerSecurity
     }
 
     private static bool ReadBoolean(ManagementBaseObject configuration, string property) => configuration[property] is bool value && value;
-    private static string ReadString(ManagementBaseObject configuration, string property) => configuration[property] as string ?? string.Empty;
+    private static string ReadString(ManagementBaseObject configuration, string property) => configuration[property] switch
+    {
+        string value => value,
+        string[] values => string.Join('\n', values.OrderBy(value => value, StringComparer.Ordinal)),
+        Array values => string.Join('\n', values.Cast<object?>().Select(value => value?.ToString() ?? string.Empty).OrderBy(value => value, StringComparer.Ordinal)),
+        _ => string.Empty
+    };
     private static uint ReturnCode(ManagementBaseObject? result) => result?["ReturnValue"] is null ? 0 : Convert.ToUInt32(result["ReturnValue"]);
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static PrivilegedOperationResult Output(SmbWindowsServerSecuritySnapshot snapshot) => new(true, OutputBase64: Convert.ToBase64String(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(snapshot)));

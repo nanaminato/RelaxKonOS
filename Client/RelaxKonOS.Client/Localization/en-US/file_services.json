@@ -1,12 +1,17 @@
 {
+  "Culture": "en-US",
+  "Strings": {
     "file_services.path_warning_title": "Confirm shared directory",
     "file_services.path_warning_message": "The directory “{0}” is outside the default share directory. Sharing may make its files accessible over the network. Drive roots and system directories may expose sensitive information. Verify the path and permissions. Continue sharing?",
     "file_services.path_warning_continue": "Continue sharing",
     "file_services.share_cancelled": "Cancelled. The share was not saved or enabled.",
-
     "file_services.windows_sid_required": "Windows permissions require a SID. Select a group or enter the account SID.",
-  "Culture": "en-US",
-  "Strings": {
+    "file_services.platform.windows": "Windows SMB",
+    "file_services.platform.linux": "Linux · Samba",
+    "file_services.principal.administrators": "Administrators",
+    "file_services.principal.users": "Users",
+    "file_services.principal.authenticated_users": "Authenticated Users",
+    "file_services.principal.everyone": "Everyone",
     "file_services.title": "File Services",
     "file_services.login_required": "Sign in to manage SMB file services.",
     "file_services.status.loading": "Loading SMB status…",

@@ -1,12 +1,17 @@
 {
+  "Culture": "ja-JP",
+  "Strings": {
     "file_services.path_warning_title": "共有ディレクトリの確認",
     "file_services.path_warning_message": "「{0}」は既定の共有ディレクトリの外にあります。共有するとネットワーク経由でファイルにアクセスできる場合があります。ルートやシステムディレクトリには機密情報が含まれる可能性があります。パスと権限を確認して続行しますか？",
     "file_services.path_warning_continue": "共有を続行",
     "file_services.share_cancelled": "キャンセルしました。共有は保存・有効化されていません。",
-
     "file_services.windows_sid_required": "グループを選択するか Windows SID を入力してください。",
-  "Culture": "ja-JP",
-  "Strings": {
+    "file_services.platform.windows": "Windows SMB",
+    "file_services.platform.linux": "Linux · Samba",
+    "file_services.principal.administrators": "管理者",
+    "file_services.principal.users": "ユーザー",
+    "file_services.principal.authenticated_users": "認証済みユーザー",
+    "file_services.principal.everyone": "すべてのユーザー",
     "file_services.title": "ファイルサービス",
     "file_services.login_required": "SMB ファイルサービスを管理するにはサインインしてください。",
     "file_services.status.loading": "SMB の状態を読み込んでいます…",

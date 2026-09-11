@@ -133,5 +133,5 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         return applied.Operation;
     }
     private static FileShareDto ToDto(string id, UpsertFileShareRequest request) => new(id, request.Name, Path.GetFullPath(request.Path), request.Description, request.ReadOnly, request.Enabled, request.GuestAllowed, request.Permissions, true);
-    private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.Select(p => p.Principal + ':' + p.Access))}";
+    private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.OrderBy(permission => permission.Principal, StringComparer.Ordinal).ThenBy(permission => permission.Access).Select(permission => permission.Principal + ':' + permission.Access))}";
 }

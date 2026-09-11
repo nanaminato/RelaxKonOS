@@ -192,7 +192,7 @@ internal static class WindowsSmbNativeOperations
         return permissions.OrderBy(x => x.Principal, StringComparer.Ordinal).ToArray();
     }
     private static bool SnapshotMatches(FileShareDto actual, string expected) => string.Equals(SnapshotHash(Snapshot(actual)), expected, StringComparison.Ordinal);
-    private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.Select(p => p.Principal + ':' + p.Access))}";
+    private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.OrderBy(permission => permission.Principal, StringComparer.Ordinal).ThenBy(permission => permission.Access).Select(permission => permission.Principal + ':' + permission.Access))}";
     private static string SnapshotHash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static bool IsValid(SmbManagedShareRequest share)
     {
