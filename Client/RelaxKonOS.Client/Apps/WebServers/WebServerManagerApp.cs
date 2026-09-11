@@ -1,9 +1,6 @@
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
 using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Input.Platform;
-using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
@@ -53,13 +50,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
             return await ConfirmAsync("webservers.integration.confirmation.title", "webservers.integration.confirmation.message", "webservers.integration.confirmation.confirm");
         };
         viewModel.RequestManagedInstallConfirmationAsync = () => ConfirmAsync("webservers.managed.install.title", "webservers.managed.install.message", "webservers.managed.install.confirm");
-        viewModel.RequestExistingManagedInstallActionAsync = () => context.ShowDialogAsync<ManagedInstallExistingDirectoryAction?>(window,
-            LocalizedText.Get("webservers.managed.existing.title"), dialog => new ExistingNginxInstallationDialogView
-            {
-                DataContext = new ExistingNginxInstallationDialogViewModel(action => dialog.Close(action)),
-            }, new Size(560, 260));
         viewModel.RequestManagedUninstallConfirmationAsync = () => ConfirmAsync("webservers.managed.uninstall.title", "webservers.managed.uninstall.message", "webservers.managed.uninstall.confirm");
-        viewModel.ShowManagedDownloadUrlAsync = url => ShowDownloadUrlAsync(LocalizedText.Get("webservers.managed.download_title"), url);
         viewModel.OpenFileBrowserAtPathAsync = path =>
         {
             var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));
@@ -88,18 +79,6 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                 viewModel.CloseSiteEditorAsync = null;
                 viewModel.ShowSiteSaveErrorAsync = null;
             }
-        };
-        viewModel.RequestLocalNginxPackageAsync = async () =>
-        {
-            var topLevel = GetTopLevel();
-            if (topLevel is null) return null;
-            var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-            {
-                Title = LocalizedText.Get("webservers.managed.select_package"),
-                AllowMultiple = false,
-                FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("webservers.managed.package_file_type")) { Patterns = ["*.zip"] }],
-            });
-            return selected.FirstOrDefault()?.TryGetLocalPath();
         };
         viewModel.RequestServerCertificateFileAsync = isPrivateKey => explorer is null
             ? Task.FromResult<string?>(null)
@@ -134,19 +113,6 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         }
         _ = viewModel.StartAsync();
 
-        Task ShowDownloadUrlAsync(string title, string url) => context.ShowDialogAsync<bool?>(window, title, dialog => new DownloadUrlDialogView
-        {
-            DataContext = new DownloadUrlDialogViewModel(url, CopyToClipboardAsync, () => dialog.Close(true)),
-        }, new Size(660, 210));
-
-        async Task CopyToClipboardAsync(string value)
-        {
-            var topLevel = GetTopLevel();
-            if (topLevel?.Clipboard is not null) await topLevel.Clipboard.SetTextAsync(value);
-        }
     }
 
-    private static TopLevel? GetTopLevel() => Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
-        ? desktop.MainWindow
-        : null;
 }

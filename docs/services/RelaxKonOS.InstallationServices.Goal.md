@@ -1,12 +1,30 @@
 # RelaxKonOS 受管安装服务 Goal
 
-> 状态：待实施；本文直接取代原 SMB 专用“安装进度与后台任务 Goal”
+> 状态：功能实现中；本文直接取代原 SMB 专用“安装进度与后台任务 Goal”
 >
 > 建立日期：2026-09-11
 >
 > 适用范围：RelaxKonOS Server 管理的宿主级第三方服务、运行时及其安装、升级、修复与卸载任务。
 
 本文定义所有受管安装服务的同一处理模型。它覆盖 SMB（Samba / Windows File Server）、Nginx、FRP Runtime（`frpc` / `frps`）、Mihomo、Docker Engine、Git CLI 及以后经审批加入的宿主级依赖。每个领域仍拥有自己的能力、安装器和安全边界；本 Goal 统一的是任务契约、调度、进度、恢复、授权和用户体验，**不是**把领域实现变成可传任意命令的通用执行器。
+
+## 实现进度（2026-09-11）
+
+- 已完成公共 `Installations` Protocol：冻结 service/kind/state/stage 枚举、`InstallationOperationDto`、统一路由和稳定 problem code；Nginx 请求已移除 `packageId`，公共安装入口不再接收客户端包标识。
+- 已完成宿主级持久账本与协调器：原子写入、秘密/路径/原始输出不落盘、幂等请求、资源锁、启动恢复、取消边界及审计摘要均由 `InstallationOperationStore` / `InstallationCoordinator` 处理。
+- 已完成统一授权 Endpoint 与 Client 轮询/工作区恢复组件；Nginx、Git、SMB、FRP、Mihomo、Docker 均已注册为强类型 `IInstallationService`，完成后会回读各自真实状态。
+- 已迁移 Nginx/Git/SMB/FRP/Mihomo 的 Client 安装入口到统一 operation ID 路径；Nginx 的 Windows 安装由 Server 使用固定官方 ZIP 下载、受限暂存/解压和配置验证完成，已删除客户端 ZIP 上传、版本目录、下载 URL、旧安装/卸载路由及对应 UI。普通 Nginx 生命周期 operation 仍保留在其领域 API 中。
+- 已删除 Git/SMB 的旧安装路由契约，以及 FRP/Mihomo 向 Client 暴露受管运行时下载 URL 的旧 DTO、路由和界面入口；固定发行物只在 Server 领域安装器内使用。
+- Docker Linux 固定安装器已接入统一任务；Windows 仍只返回受支持的人工宿主操作方案，Windows Server 不会自动安装。
+- 已删除 Docker 旧同步“安装计划”入口；Process Guardian 仅保留无副作用的手动部署计划，不再暴露看似可执行安装的 Endpoint。
+
+尚未关闭的功能项：Docker Client 的执行入口按 §8.5 要求，待目标部署环境验证后再开放，现有界面仅提供本地化安装指引。
+
+### 本轮暂缓的验证
+
+以下测试尚未在本轮补写或执行，必须在功能变更冻结前完成：账本序列化/损坏 fail-closed、跨身份可见性、幂等冲突、共享资源锁、启动恢复、取消边界、Helper NDJSON 损坏，以及每个领域的真实健康检测。还需在隔离 Ubuntu 与 Windows Server VM 完成 §8.6 所列网络、APT/dpkg、校验失败、重启和断线恢复场景。
+
+当前环境中 `RelaxKonOS.Server` 可无还原构建；Client 与测试项目因本机缺少 .NET workload SDK 目录而在项目引用解析阶段失败（无编译诊断），故未将该环境问题误记为功能测试通过。
 
 领域设计仍是功能语义的权威来源：[SMB Goal](./file-services/RelaxKonOS.FileServices.Smb.Goal.md)、[File Services 规格](./file-services/RelaxKonOS.FileServices.Specification.md)、[Nginx 设计](../applications/RelaxKonOS.WebServerManager.Design.md)、[FRP Goal](../applications/RelaxKonOS.FRP_Integration.Goal.md)、[代理管理器 Goal](../applications/RelaxKonOS.ProxyManager.Goal.md)和 [Docker 管理器设计](../applications/RelaxKonOS.DockerManager.md)。本文与它们冲突时，安装任务的公共契约、恢复和安全规则以本文为准。
 

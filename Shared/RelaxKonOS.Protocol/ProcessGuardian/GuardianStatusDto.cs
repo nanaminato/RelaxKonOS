@@ -23,7 +23,6 @@ public sealed record GuardianHealthCheckDto(string Type, string? Target = null, 
 public sealed record NativeServiceDto(string Id, string DisplayName, string Status, string StartMode, string Platform);
 public sealed record NativeServiceActionRequest(bool Confirmed);
 public sealed record GuardianInstallationPlanDto(bool CanProceed, string ProblemCode, IReadOnlyList<string> Steps, IReadOnlyList<string> Warnings);
-public sealed record GuardianInstallationExecutionRequest(bool Confirmed);
 public sealed record GuardianOperationResult(bool Success, string ProblemCode);
 
 /// <summary>Versioned, shell-free workload declaration accepted by the Guardian Agent.</summary>

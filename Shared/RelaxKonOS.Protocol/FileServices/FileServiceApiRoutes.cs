@@ -5,7 +5,6 @@ public static class FileServiceApiRoutes
     public const string Smb = $"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/file-services/smb";
     public const string Status = Smb + "/status";
     public const string Capabilities = Smb + "/capabilities";
-    public const string Install = Smb + "/install";
     public const string Start = Smb + "/start";
     public const string Stop = Smb + "/stop";
     public const string Restart = Smb + "/restart";

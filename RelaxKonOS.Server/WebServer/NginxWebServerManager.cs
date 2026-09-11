@@ -127,9 +127,8 @@ internal sealed partial class NginxWebServerManager(
         if (!IsManagedInstallation(layout) && UsesSystemPackageManagedExecutable() && File.Exists(layout.ExecutablePath))
             return "webserver.system_nginx_already_installed";
         if (!OperatingSystem.IsWindows() && !CanUseBuiltInInstaller()) return "webserver.install_unsupported_platform";
-        if (OperatingSystem.IsWindows()) return "webserver.install_manual_host_action_required";
         await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
-        return (await InstallManagedCoreAsync(layout, new(request.Confirmed, request.Version, request.PackageId),
+        return (await InstallManagedCoreAsync(layout, new(request.Confirmed),
             new InstallationStageReporter(progress), CancellationToken.None)).ProblemCode;
     }
 
@@ -151,57 +150,6 @@ internal sealed partial class NginxWebServerManager(
             "validating_configuration" => InstallationStage.HealthChecking,
             _ => InstallationStage.Configuring
         }), ct);
-    }
-
-    public async Task<WebServerInstallPackageDto?> UploadManagedPackageAsync(string fileName, Stream content, CancellationToken cancellationToken)
-    {
-        logger.LogInformation("Received request to upload a Windows Nginx installation package. FileName={FileName}", Path.GetFileName(fileName));
-        var packageId = await packages.SaveAsync(fileName, content, cancellationToken);
-        if (packageId is null)
-            logger.LogWarning("Windows Nginx package upload was rejected. FileName={FileName}", Path.GetFileName(fileName));
-        return packageId is null ? null : new WebServerInstallPackageDto(packageId, Path.GetFileName(fileName));
-    }
-
-    public async Task<WebServerInstallCatalogDto?> GetManagedInstallCatalogAsync(CancellationToken cancellationToken)
-    {
-        if (!OperatingSystem.IsWindows()) return new WebServerInstallCatalogDto(null, null, []);
-        try
-        {
-            logger.LogInformation("Retrieving Windows Nginx version catalog from the official download page.");
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            var page = await client.GetStringAsync("https://nginx.org/en/download.html", cancellationToken);
-            var versions = WindowsDownloadVersionPattern().Matches(page).Select(match => match.Groups["version"].Value)
-                .Distinct(StringComparer.Ordinal).OrderByDescending(version => Version.TryParse(version, out var parsed) ? parsed : new Version(0, 0)).ToArray();
-            logger.LogInformation("Retrieved Windows Nginx version catalog. Versions={VersionCount}", versions.Length);
-            if (versions.Length == 0)
-            {
-                logger.LogWarning("The official Nginx download page did not contain any Windows versions.");
-                return new WebServerInstallCatalogDto(null, null, [], "webserver.version_catalog_unavailable");
-            }
-            return new WebServerInstallCatalogDto(
-                FirstWindowsVersionInSection(page, "Mainline version", "Stable version"),
-                FirstWindowsVersionInSection(page, "Stable version", "Legacy versions"), versions);
-        }
-        catch (HttpRequestException exception)
-        {
-            logger.LogWarning(exception, "Failed to retrieve the Windows Nginx version catalog.");
-            return new WebServerInstallCatalogDto(null, null, [], "webserver.version_catalog_unavailable");
-        }
-        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            logger.LogWarning(exception, "Timed out while retrieving the Windows Nginx version catalog.");
-            return new WebServerInstallCatalogDto(null, null, [], "webserver.version_catalog_unavailable");
-        }
-    }
-
-    public Task<WebServerInstallDownloadDto?> GetManagedInstallDownloadAsync(string? version, CancellationToken cancellationToken)
-    {
-        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(version))
-            return Task.FromResult<WebServerInstallDownloadDto?>(null);
-        var selected = version.Trim();
-        return Task.FromResult<WebServerInstallDownloadDto?>(WindowsVersionPattern().IsMatch(selected)
-            ? new WebServerInstallDownloadDto(selected, $"https://nginx.org/download/nginx-{selected}.zip")
-            : null);
     }
 
     public async Task<WebServerOperationDto?> ApplyLifecycleAsync(string instanceId, WebServerLifecycleAction action, string idempotencyKey, string? actor, CancellationToken cancellationToken)
@@ -813,12 +761,12 @@ internal sealed partial class NginxWebServerManager(
         finally { IntegrationGate.Release(); }
     }
 
-    private async Task<WebServerOperationResult> InstallManagedCoreAsync(ManagedLayout layout, InstallManagedWebServerRequest request, IWebServerOperationProgress progress, CancellationToken cancellationToken)
+    private async Task<WebServerOperationResult> InstallManagedCoreAsync(ManagedLayout layout, NginxManagedInstallRequest request, IWebServerOperationProgress progress, CancellationToken cancellationToken)
     {
         if (OperatingSystem.IsWindows())
             return await InstallWindowsManagedAsync(layout, request, progress, cancellationToken);
         await progress.ReportAsync("installing_package", cancellationToken);
-        var install = await RunInstallerAsync(layout, request.Version, cancellationToken);
+        var install = await RunInstallerAsync(layout, null, cancellationToken);
         if (!install.Success) return new WebServerOperationResult(ToWebServerProblem(install.ProblemCode, "webserver.install_failed"));
         await progress.ReportAsync("verifying_layout", cancellationToken);
         if (!File.Exists(layout.ExecutablePath) || IsSymbolicLink(layout.ExecutablePath) || !Directory.Exists(layout.Root) || IsSymbolicLink(layout.Root))
@@ -840,36 +788,26 @@ internal sealed partial class NginxWebServerManager(
         catch (IOException) { return new WebServerOperationResult("webserver.install_layout_invalid"); }
     }
 
-    private async Task<WebServerOperationResult> InstallWindowsManagedAsync(ManagedLayout layout, InstallManagedWebServerRequest request, IWebServerOperationProgress progress, CancellationToken cancellationToken)
+    private async Task<WebServerOperationResult> InstallWindowsManagedAsync(ManagedLayout layout, NginxManagedInstallRequest request, IWebServerOperationProgress progress, CancellationToken cancellationToken)
     {
         await ManagedInstallGate.WaitAsync(cancellationToken);
         try { return await InstallWindowsManagedCoreAsync(layout, request, progress, cancellationToken); }
         finally { ManagedInstallGate.Release(); }
     }
 
-    private async Task<WebServerOperationResult> InstallWindowsManagedCoreAsync(ManagedLayout layout, InstallManagedWebServerRequest request, IWebServerOperationProgress progress, CancellationToken cancellationToken)
+    private async Task<WebServerOperationResult> InstallWindowsManagedCoreAsync(ManagedLayout layout, NginxManagedInstallRequest request, IWebServerOperationProgress progress, CancellationToken cancellationToken)
     {
-        string? packageId = request.PackageId;
-        var replaceExisting = false;
-        logger.LogInformation("Starting managed Windows Nginx installation. Version={Version}, UsesUploadedPackage={UsesUploadedPackage}", request.Version, !string.IsNullOrWhiteSpace(packageId));
+        string? packageId = null;
+        logger.LogInformation("Starting managed Windows Nginx installation from the fixed official release.");
         try
         {
             if (ManagedRootExists(layout))
             {
-                if (request.ExistingDirectoryAction == ManagedInstallExistingDirectoryAction.Reuse)
-                    return await ValidateAndMarkWindowsManagedInstallationAsync(layout, progress, cancellationToken);
-                if (request.ExistingDirectoryAction != ManagedInstallExistingDirectoryAction.Replace)
-                    return new WebServerOperationResult("webserver.managed_installation_exists");
-                replaceExisting = true;
+                return new WebServerOperationResult("webserver.managed_installation_exists");
             }
             if (string.IsNullOrWhiteSpace(packageId))
             {
-                var version = string.IsNullOrWhiteSpace(request.Version) ? "1.31.3" : request.Version.Trim();
-                if (!WindowsVersionPattern().IsMatch(version))
-                {
-                    logger.LogWarning("Rejected Windows Nginx installation due to an invalid version. Version={Version}", version);
-                    return new WebServerOperationResult("webserver.version_invalid");
-                }
+                const string version = "1.31.3";
                 await progress.ReportAsync("downloading", cancellationToken);
                 logger.LogInformation("Downloading Windows Nginx ZIP from the official source. Version={Version}", version);
                 using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
@@ -893,13 +831,6 @@ internal sealed partial class NginxWebServerManager(
             {
                 logger.LogWarning("Windows Nginx installation package is unavailable. PackageId={PackageId}", packageId);
                 return new WebServerOperationResult("webserver.package_not_found");
-            }
-            if (replaceExisting)
-            {
-                // Download and validate the replacement before deleting a working installation.
-                await progress.ReportAsync("removing_existing_installation", cancellationToken);
-                if (!DeleteReplaceableWindowsInstallation(layout))
-                    return new WebServerOperationResult("webserver.existing_installation_unsafe");
             }
             await progress.ReportAsync("extracting", cancellationToken);
             var extracted = ExtractWindowsPackage(layout, archivePath);
@@ -1029,40 +960,6 @@ internal sealed partial class NginxWebServerManager(
         }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
-    }
-
-    private bool DeleteReplaceableWindowsInstallation(ManagedLayout layout)
-    {
-        if (!IsReusableWindowsInstallation(layout))
-        {
-            logger.LogWarning("Refused to replace an unsafe or incomplete existing Windows Nginx installation. Destination={Destination}", layout.Root);
-            return false;
-        }
-        try
-        {
-            Directory.Delete(layout.Root, recursive: true);
-            logger.LogInformation("Removed existing Windows Nginx installation before replacement. Destination={Destination}", layout.Root);
-            return true;
-        }
-        catch (IOException exception)
-        {
-            logger.LogWarning(exception, "Failed to remove existing Windows Nginx installation. Destination={Destination}", layout.Root);
-            return false;
-        }
-        catch (UnauthorizedAccessException exception)
-        {
-            logger.LogWarning(exception, "Access denied while removing existing Windows Nginx installation. Destination={Destination}", layout.Root);
-            return false;
-        }
-    }
-
-    private static string? FirstWindowsVersionInSection(string page, string startHeading, string endHeading)
-    {
-        var start = page.IndexOf(startHeading, StringComparison.OrdinalIgnoreCase);
-        if (start < 0) return null;
-        var end = page.IndexOf(endHeading, start + startHeading.Length, StringComparison.OrdinalIgnoreCase);
-        var section = page[start..(end < 0 ? page.Length : end)];
-        return WindowsDownloadVersionPattern().Match(section) is { Success: true } match ? match.Groups["version"].Value : null;
     }
 
     private async Task<WebServerOperationResult> ApplyManagedLifecycleCoreAsync(ManagedLayout layout, WebServerLifecycleAction action, CancellationToken cancellationToken)
@@ -1266,6 +1163,7 @@ internal sealed partial class NginxWebServerManager(
         new(Guid.Empty, instanceId, kind, WebServerOperationState.Failed, "validation", problemCode, null, null, DateTimeOffset.UtcNow);
 
     private sealed record ManagedLayout(string Root, string ExecutablePath, string ConfigurationPath, string MarkerPath, string InstanceId);
+    private sealed record NginxManagedInstallRequest(bool Confirmed);
     private sealed record NginxInstallResult(bool Success, PrivilegedProblemCode ProblemCode);
 
     private static string ToWebServerProblem(PrivilegedProblemCode problemCode, string fallback) =>
@@ -1539,10 +1437,6 @@ internal sealed partial class NginxWebServerManager(
     private static partial Regex ConfigurationPathPattern();
     [GeneratedRegex("nginx/(?<version>[^\\s]+)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex VersionPattern();
-    [GeneratedRegex("^1\\.(?:[0-9]{1,3})\\.(?:[0-9]{1,3})$", RegexOptions.CultureInvariant)]
-    private static partial Regex WindowsVersionPattern();
-    [GeneratedRegex("nginx/Windows[- ](?<version>1\\.[0-9]{1,3}\\.[0-9]{1,3})", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
-    private static partial Regex WindowsDownloadVersionPattern();
     [GeneratedRegex("^[0-9][0-9A-Za-z.+:~\\-]{0,127}$", RegexOptions.CultureInvariant)]
     private static partial Regex LinuxPackageVersionPattern();
     [GeneratedRegex("^\\s*include\\s+(?<path>[^;]+\\.conf)\\s*;", RegexOptions.Multiline | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]

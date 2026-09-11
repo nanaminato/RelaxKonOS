@@ -21,7 +21,10 @@ public sealed class InstallationCoordinator(InstallationOperationStore store, IE
         if (!registry.TryGetValue(service, out var domain)) throw new InstallationException(InstallationProblemCodes.NotSupported, 400);
         object request;
         try { request = domain.Validate(kind, options); }
-        catch (JsonException) { throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400); }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or NotSupportedException)
+        {
+            throw new InstallationException(InstallationProblemCodes.InvalidRequest, 400);
+        }
         // Hash the canonical typed request, not property ordering or arbitrary client JSON.
         var fingerprint = InstallationOperationStore.Reference(JsonSerializer.Serialize(request, request.GetType()));
         lock (gate)

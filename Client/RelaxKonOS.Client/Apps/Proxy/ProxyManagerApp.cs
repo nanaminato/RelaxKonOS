@@ -44,21 +44,6 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Mihomo, "relaxkonos.proxy", () => vm.RefreshCommand.ExecuteAsync(null));
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), InstallationPanel.Wrap(new ProxyManagerWorkspace(vm), vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
-        vm.SetServerRuntimePackageRequest(async () =>
-        {
-            if (files is null) return null;
-            return await context.ShowDialogAsync<string?>(window, LocalizedText.Get("proxy.runtime.select_server_package"), dialog =>
-            {
-                var picker = new ExplorerViewModel(files,
-                    new ExplorerPickerOptions(ExplorerPickerMode.OpenFile, Filters: [new ExplorerFileFilter(LocalizedText.Get("proxy.runtime.package_filter"), ["*.zip", "*.gz"])]),
-                    paths => dialog.Close(paths.FirstOrDefault()))
-                {
-                    CancelAction = dialog.Cancel,
-                };
-                _ = picker.LoadRootAsync();
-                return new ExplorerMainView { DataContext = picker };
-            }, new RelaxKonOS.Core.Primitives.Size(720, 520));
-        });
         vm.SetServerGeoDataFileRequest(async () =>
         {
             if (files is null) return null;
@@ -74,7 +59,6 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
                 return new ExplorerMainView { DataContext = picker };
             }, new RelaxKonOS.Core.Primitives.Size(720, 520));
         });
-        vm.ShowRuntimeDownloadUrlAsync = url => ShowDownloadUrlAsync(LocalizedText.Get("proxy.runtime_download_title"), url);
         vm.RequestSystemProxySubscriptionDownloadAsync = async () =>
         {
             var useSystemProxy = false;
@@ -126,17 +110,5 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             return decision == AppPermissionStatus.Granted;
         }
 
-        Task ShowDownloadUrlAsync(string title, string url) => context.ShowDialogAsync<bool?>(window, title, dialog => new DownloadUrlDialogView
-        {
-            DataContext = new DownloadUrlDialogViewModel(url, CopyToClipboardAsync, () => dialog.Close(true)),
-        }, new RelaxKonOS.Core.Primitives.Size(660, 210));
-
-        async Task CopyToClipboardAsync(string value)
-        {
-            var topLevel = Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
-                ? desktop.MainWindow
-                : null;
-            if (topLevel?.Clipboard is not null) await topLevel.Clipboard.SetTextAsync(value);
-        }
     }
 }

@@ -17,8 +17,6 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session) : 
         await SendAsync<IReadOnlyList<TunnelDefinitionDto>>(HttpMethod.Get, TunnelApiRoutes.Tunnels, null, ct) ?? [];
     public async Task<TunnelRuntimeDto> GetRuntimeAsync(CancellationToken ct = default) =>
         await SendAsync<TunnelRuntimeDto>(HttpMethod.Get, TunnelApiRoutes.Runtime, null, ct) ?? throw new HttpRequestException("Tunnel runtime response was empty.");
-    public Task<TunnelRuntimeDownloadDto?> GetManagedRuntimeDownloadAsync(string version, CancellationToken ct = default) =>
-        SendAsync<TunnelRuntimeDownloadDto>(HttpMethod.Get, TunnelApiRoutes.RuntimeDownload + "?version=" + Uri.EscapeDataString(version), null, ct);
     public Task<TunnelServerProfileDto> CreateProfileAsync(UpsertTunnelServerProfileRequest request, CancellationToken ct = default) => SendRequiredAsync<TunnelServerProfileDto>(HttpMethod.Post, TunnelApiRoutes.Profiles, request, ct);
     public Task<TunnelServerProfileDto> UpdateProfileAsync(Guid id, UpsertTunnelServerProfileRequest request, CancellationToken ct = default) => SendRequiredAsync<TunnelServerProfileDto>(HttpMethod.Put, ProfileRoute(id), request, ct);
     public Task DeleteProfileAsync(Guid id, CancellationToken ct = default) => SendNoContentAsync(HttpMethod.Delete, ProfileRoute(id), ct: ct);

@@ -48,14 +48,6 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IHttpClientF
             : new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.NotInstalled, active, null, "tunnel.managed_runtime_missing", null, state.PreviousVersion, false);
     }
 
-    public Task<TunnelRuntimeDownloadDto?> GetManagedFrpcDownloadAsync(string version, CancellationToken ct)
-    {
-        var release = _options.Releases.SingleOrDefault(x => x.Version == version && x.Rid == CurrentRid());
-        return Task.FromResult<TunnelRuntimeDownloadDto?>(IsTrustedRelease(release)
-            ? new TunnelRuntimeDownloadDto(release!.Version, release.Url)
-            : null);
-    }
-
     public Task<TunnelOperationResultDto> InstallManagedFrpcAsync(string version, IInstallationProgress progress, CancellationToken ct) =>
         InstallManagedFrpcCoreAsync(version, progress, ct);
 

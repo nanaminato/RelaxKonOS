@@ -151,19 +151,6 @@ public sealed class MihomoRuntimeManager(
                 await DownloadAndVerifyAsync(release, destination, token);
             }, stageReporter, cancellationToken);
 
-    public Task<ProxyRuntimeDto> InstallManagedFromArchiveAsync(string engineId, string? version, string archivePath, CancellationToken cancellationToken) =>
-        InstallManagedFromArchiveAsync(engineId, version, archivePath, null, cancellationToken);
-
-    public Task<ProxyRuntimeDto> InstallManagedFromArchiveAsync(string engineId, string? version, string archivePath, Func<string, Task>? stageReporter, CancellationToken cancellationToken) =>
-        engineId != MihomoEngine.Id
-            ? Task.FromResult(Unsupported(engineId))
-            : InstallManagedCoreAsync(version, async (release, destination, token) =>
-            {
-                await WriteDiagnosticAsync("info", "Managed Mihomo installation is reading the selected Server archive.", token);
-                await ReportStageAsync(stageReporter, "copying");
-                await CopyAndVerifyArchiveAsync(release, archivePath, destination, token);
-            }, stageReporter, cancellationToken);
-
     private async Task<ProxyRuntimeDto> InstallManagedCoreAsync(string? version, Func<MihomoRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, Func<string, Task>? stageReporter, CancellationToken cancellationToken)
     {
         var release = manifest.Find(version);
@@ -339,32 +326,6 @@ public sealed class MihomoRuntimeManager(
             throw new RuntimeInstallException(ProxyProblemCodes.RuntimeIntegrityFailed);
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
         await CopyAndVerifyArchiveAsync(release, input, destination, cancellationToken);
-    }
-
-    private async Task CopyAndVerifyArchiveAsync(MihomoRuntimeRelease release, string archivePath, string destination, CancellationToken cancellationToken)
-    {
-        if (!TrySafeArchivePath(archivePath, out var path))
-            throw new RuntimeInstallException(ProxyProblemCodes.RuntimeArchiveUnavailable);
-
-        FileInfo source;
-        FileStream input;
-        try
-        {
-            source = new FileInfo(path);
-            if (source.Length > MihomoRuntimeManifest.MaximumArchiveBytes)
-                throw new RuntimeInstallException(ProxyProblemCodes.RuntimeIntegrityFailed);
-            input = new FileStream(source.FullName, FileMode.Open, FileAccess.Read, FileShare.Read);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            throw new RuntimeInstallException(ProxyProblemCodes.RuntimeArchiveUnavailable);
-        }
-        catch (IOException)
-        {
-            throw new RuntimeInstallException(ProxyProblemCodes.RuntimeArchiveUnavailable);
-        }
-        await using (input)
-            await CopyAndVerifyArchiveAsync(release, input, destination, cancellationToken);
     }
 
     private async Task CopyAndVerifyArchiveAsync(MihomoRuntimeRelease release, Stream input, string destination, CancellationToken cancellationToken)
@@ -568,17 +529,6 @@ public sealed class MihomoRuntimeManager(
             if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) return false;
             path = Path.GetFullPath(value);
             return (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0;
-        }
-        catch { return false; }
-    }
-    private static bool TrySafeArchivePath(string value, out string path)
-    {
-        path = "";
-        try
-        {
-            if (string.IsNullOrWhiteSpace(value) || !Path.IsPathFullyQualified(value)) return false;
-            path = Path.GetFullPath(value);
-            return File.Exists(path) && !Directory.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0;
         }
         catch { return false; }
     }

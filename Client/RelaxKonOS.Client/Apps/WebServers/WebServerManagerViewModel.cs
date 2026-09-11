@@ -36,13 +36,11 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
         _certificates = certificates;
         _session = session;
         _permissions = permissions;
-        InstallVersion = string.Empty;
         SelectedSiteCertificateSource = SiteCertificateSources[0];
     }
 
     public ObservableCollection<WebServerDto> Servers { get; } = [];
     public ObservableCollection<WebServerStatusDto> Statuses { get; } = [];
-    public ObservableCollection<string> AvailableWindowsVersions { get; } = [];
     public ObservableCollection<WebServerSiteDto> Sites { get; } = [];
     public ObservableCollection<CertificateDto> Certificates { get; } = [];
     public ObservableCollection<WebServerSiteBindingEditor> SiteBindings { get; } = [];
@@ -68,8 +66,6 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ToggleManagedCommand))]
     [NotifyPropertyChangedFor(nameof(IsManagedServerRunning), nameof(ManagedLifecycleActionText), nameof(ManagedRuntimeStateLabel), nameof(ManagedRuntimeStateDescription))]
     private WebServerRuntimeState _selectedRuntimeState = WebServerRuntimeState.Unknown;
-    [ObservableProperty] private string _installVersion = string.Empty;
-    [ObservableProperty] private string _localPackageName = string.Empty;
     [ObservableProperty] private string _siteName = string.Empty;
     [ObservableProperty] private string _siteBindingsBatch = string.Empty;
     [ObservableProperty] private string _siteUpstream = string.Empty;
@@ -81,17 +77,16 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     [ObservableProperty] private string _siteCertificatePath = string.Empty;
     [ObservableProperty] private string _sitePrivateKeyPath = string.Empty;
     [ObservableProperty] private string _siteStatusText = string.Empty;
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(RefreshWindowsVersionsCommand), nameof(InstallManagedCommand), nameof(ShowManagedDownloadCommand), nameof(SelectLocalPackageCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     private bool _isLoading;
     // Every action uses IsOperationRunning in its CanExecute predicate. Keep the command state
     // in sync before and after polling, otherwise controls can retain a stale disabled state.
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(RefreshWindowsVersionsCommand), nameof(InstallManagedCommand), nameof(ShowManagedDownloadCommand), nameof(SelectLocalPackageCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
     private bool _isOperationRunning;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsManagedInstallAvailable))]
     private bool _hasManagedInstallation;
 
     private Guid? _currentOperationId;
-    private string? _localPackageId;
 
     public bool IsRoot => string.Equals(_session.CurrentUser?.Username, "root", StringComparison.Ordinal);
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
@@ -130,10 +125,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     /// <summary>Supplied by the application shell so the view model never constructs UI directly.</summary>
     public Func<Task<bool>>? RequestIntegrationConfirmationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedInstallConfirmationAsync { get; set; }
-    public Func<Task<ManagedInstallExistingDirectoryAction?>>? RequestExistingManagedInstallActionAsync { get; set; }
     public Func<Task<bool>>? RequestManagedUninstallConfirmationAsync { get; set; }
-    public Func<Task<string?>>? RequestLocalNginxPackageAsync { get; set; }
-    public Func<string, Task>? ShowManagedDownloadUrlAsync { get; set; }
     /// <summary>Routes a known static-site directory into RemoteExplorer.</summary>
     public Func<string, Task>? OpenFileBrowserAtPathAsync { get; set; }
     /// <summary>Opens the RemoteExplorer picker for certificate or key files on the server.</summary>
@@ -149,38 +141,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     {
         await RefreshAsync();
         await LoadCertificatesAsync();
-        if (IsWindowsServer) await LoadWindowsVersionsAsync();
     }
-
-    private async Task LoadWindowsVersionsAsync()
-    {
-        IsLoading = true;
-        try
-        {
-            var catalog = await _client.GetManagedInstallCatalogAsync("nginx");
-            AvailableWindowsVersions.Clear();
-            foreach (var version in catalog?.Versions ?? []) AvailableWindowsVersions.Add(version);
-            if (catalog is null || catalog.Versions.Count == 0 || !string.IsNullOrWhiteSpace(catalog.ProblemCode))
-            {
-                InstallVersion = string.Empty;
-                StatusText = LocalizedText.Get("webservers.version_catalog.unavailable");
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(InstallVersion))
-                InstallVersion = catalog.MainlineVersion ?? catalog.StableVersion ?? string.Empty;
-            StatusText = LocalizedText.Format("webservers.version_catalog.ready", catalog.Versions.Count);
-        }
-        catch (Exception)
-        {
-            AvailableWindowsVersions.Clear();
-            InstallVersion = string.Empty;
-            StatusText = LocalizedText.Get("webservers.version_catalog.unavailable");
-        }
-        finally { IsLoading = false; }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRefreshWindowsVersions))]
-    private Task RefreshWindowsVersionsAsync() => LoadWindowsVersionsAsync();
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
@@ -310,63 +271,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private async Task InstallManagedAsync()
     {
         if (RequestManagedInstallConfirmationAsync is null || !await RequestManagedInstallConfirmationAsync()) return;
-        await Installation.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true,
-            string.IsNullOrWhiteSpace(InstallVersion) ? null : InstallVersion.Trim(), _localPackageId));
-    }
-
-    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
-    private async Task ShowManagedDownloadAsync()
-    {
-        if (string.IsNullOrWhiteSpace(InstallVersion))
-        {
-            StatusText = LocalizedText.Get("webservers.problem.version_required");
-            return;
-        }
-        try
-        {
-            var download = await _client.GetManagedInstallDownloadAsync("nginx", InstallVersion.Trim());
-            if (download is null)
-            {
-                StatusText = LocalizedText.Get("webservers.managed.download_unavailable");
-                return;
-            }
-            await (ShowManagedDownloadUrlAsync?.Invoke(download.Url) ?? Task.CompletedTask);
-        }
-        catch (WebServerApiException exception)
-        {
-            StatusText = ProblemText(exception.ProblemCode);
-            await ShowPrivilegedHelperUnavailableAsyncIfNeeded(exception.ProblemCode);
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
-    private async Task SelectLocalPackageAsync()
-    {
-        if (RequestLocalNginxPackageAsync is null) return;
-        var path = await RequestLocalNginxPackageAsync();
-        if (string.IsNullOrWhiteSpace(path)) return;
-        try
-        {
-            await using var package = File.OpenRead(path);
-            var uploaded = await _client.UploadManagedPackageAsync("nginx", Path.GetFileName(path), package);
-            if (uploaded is null)
-            {
-                StatusText = LocalizedText.Get("webservers.package.invalid");
-                return;
-            }
-            _localPackageId = uploaded.Id;
-            LocalPackageName = uploaded.FileName;
-            StatusText = LocalizedText.Format("webservers.package.ready", uploaded.FileName);
-        }
-        catch (WebServerApiException exception)
-        {
-            StatusText = LocalizedText.Format("webservers.package.failed", ProblemText(exception.ProblemCode));
-            await ShowPrivilegedHelperUnavailableAsyncIfNeeded(exception.ProblemCode);
-        }
-        catch (Exception)
-        {
-            StatusText = LocalizedText.Format("webservers.package.failed", LocalizedText.Get("webservers.error.request_failed"));
-        }
+        await Installation.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true));
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -719,7 +624,6 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private bool HasManagePermission => HasReadPermission && _permissions.IsGranted(AppPermissions.ServerWebServersManage);
     private bool CanRefresh => HasReadPermission && !IsLoading && !IsOperationRunning;
     private bool CanDiscover => HasReadPermission && !IsLoading && !IsOperationRunning;
-    private bool CanRefreshWindowsVersions => IsWindowsServer && HasReadPermission && !IsLoading && !IsOperationRunning;
     // A server from an older deployment can omit the capabilities object. Treat that response as
     // read-only instead of letting command re-evaluation crash while the DataGrid selects it.
     private bool CanRefreshStatus => HasReadPermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanRead == true;

@@ -42,7 +42,7 @@ public sealed record SmbInstallationRequest(bool Confirmed);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record GitInstallationRequest(bool Confirmed);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record NginxInstallationRequest(bool Confirmed, string? Version = null, string? PackageId = null);
+public sealed record NginxInstallationRequest(bool Confirmed);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record FrpInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

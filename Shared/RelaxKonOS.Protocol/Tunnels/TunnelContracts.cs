@@ -64,10 +64,3 @@ public sealed record UpsertTunnelDefinitionRequest(
 
 /// <summary>Explicit external-runtime detection request. It only inspects the specified absolute executable path.</summary>
 public sealed record DetectExternalTunnelRuntimeRequest(string ExecutablePath);
-public sealed record InstallManagedTunnelRuntimeRequest(bool Confirmed, string Version);
-/// <summary>Trusted direct-download location for the selected managed FRP archive.</summary>
-public sealed record TunnelRuntimeDownloadDto(string Version, string Url);
-/// <summary>Installs a pinned runtime from an archive already present on the RelaxKonOS RelaxKonOS.Server.</summary>
-public sealed record InstallManagedTunnelRuntimeFromFileRequest(bool Confirmed, string Version, string ArchivePath);
-/// <summary>Explicit confirmation for removing every RelaxKonOS-managed FRP runtime release on this host.</summary>
-public sealed record UninstallManagedTunnelRuntimeRequest(bool Confirmed);

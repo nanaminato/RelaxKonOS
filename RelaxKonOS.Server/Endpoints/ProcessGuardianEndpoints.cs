@@ -43,7 +43,6 @@ public static class ProcessGuardianEndpoints
             return Results.Ok(await services.ApplyActionAsync(id, action, request, ct));
         });
         group.MapPost("/agent/installation/plan", (RelaxKonOS.Server.ProcessGuardian.IGuardianAgentInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct));
-        group.MapPost("/agent/installation/execute", (GuardianInstallationExecutionRequest request, RelaxKonOS.Server.ProcessGuardian.IGuardianAgentInstaller installer, CancellationToken ct) => installer.ExecuteAsync(request, ct));
         return app;
     }
 }

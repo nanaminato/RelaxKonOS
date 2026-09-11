@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Server.Installations;
@@ -18,7 +19,10 @@ public sealed class InstallationOperationStore
     private readonly string path;
     private Ledger ledger = new([], []);
     private bool unavailable;
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+    };
 
     public InstallationOperationStore(IHostEnvironment environment)
     {
@@ -29,7 +33,7 @@ public sealed class InstallationOperationStore
             {
                 ledger = JsonSerializer.Deserialize<Ledger>(File.ReadAllText(path), Json) ?? throw new JsonException();
                 if (ledger.Entries is null || ledger.Audit is null || ledger.Entries.Select(x => x.Operation.OperationId).Distinct().Count() != ledger.Entries.Length
-                    || ledger.Entries.Any(x => !Valid(x))) throw new JsonException();
+                    || ledger.Entries.Any(x => !Valid(x)) || ledger.Audit.Any(x => !Valid(x, ledger.Entries))) throw new JsonException();
             }
         }
         catch { unavailable = true; }
@@ -119,5 +123,12 @@ public sealed class InstallationOperationStore
         && entry.ActorReference?.Length == 64 && entry.IdempotencyReference?.Length == 64 && entry.RequestReference?.Length == 64
         && entry.Resources is { Length: > 0 } && entry.Resources.All(x => x?.Length == 64)
         && (op.ProblemCode is null || op.ProblemCode.Length <= 120 && op.ProblemCode.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_'));
+    private static bool Valid(InstallationAudit audit, IReadOnlyCollection<InstallationEntry> entries) => audit.OperationId != Guid.Empty
+        && entries.Any(x => x.Operation.OperationId == audit.OperationId)
+        && audit.ActorReference?.Length == 64 && Enum.IsDefined(audit.Service) && Enum.IsDefined(audit.Kind)
+        && Enum.IsDefined(audit.State) && Enum.IsDefined(audit.Stage) && !string.IsNullOrWhiteSpace(audit.Event)
+        && audit.Event.Length <= 80 && audit.Event.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')
+        && (audit.ProblemCode is null || audit.ProblemCode.Length <= 120 && audit.ProblemCode.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_'))
+        && audit.Resources is { Length: > 0 } && audit.Resources.All(x => x?.Length == 64);
     private sealed record Ledger(InstallationEntry[] Entries, InstallationAudit[] Audit);
 }

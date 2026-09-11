@@ -34,8 +34,6 @@ public interface IProxyRuntimeManager
     Task<ProxyRuntimeDto> DetectExternalAsync(string engineId, string executablePath, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> InstallManagedAsync(string engineId, string? version, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> InstallManagedAsync(string engineId, string? version, Func<string, Task>? stageReporter, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDto> InstallManagedFromArchiveAsync(string engineId, string? version, string archivePath, CancellationToken cancellationToken);
-    Task<ProxyRuntimeDto> InstallManagedFromArchiveAsync(string engineId, string? version, string archivePath, Func<string, Task>? stageReporter, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> RollbackManagedAsync(string engineId, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> UninstallManagedAsync(string engineId, CancellationToken cancellationToken);
 }
