@@ -178,7 +178,7 @@ internal static class WindowsSmbNativeOperations
         var guest = permissions.Any(x => x.Principal == "S-1-5-7");
         var nonAdministrative = permissions.Where(x => x.Principal is not "S-1-5-32-544").ToArray();
         var readOnly = nonAdministrative.Length > 0 && nonAdministrative.All(x => x.Access == FileShareAccess.Read);
-        return new(info.Name, info.Name, info.Path, info.Remark, readOnly, true, guest, permissions, false);
+        return new(info.Name ?? string.Empty, info.Name ?? string.Empty, info.Path ?? string.Empty, info.Remark, readOnly, true, guest, permissions, false);
     }
     private static IReadOnlyList<FileSharePermissionDto> ReadPermissions(IntPtr pointer)
     {
@@ -231,8 +231,37 @@ internal static class WindowsSmbNativeOperations
     private static bool IsLanmanServerRunning() { using var service = new ServiceController(ServiceName); return service.Status == ServiceControllerStatus.Running; }
     private static PrivilegedOperationResult Output<T>(T result) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(result)));
     private const int ErrorMoreData = 234, ErrorAlreadyExists = 2118, ErrorAccessDenied = 5, ErrorNotFound = 2310;
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct ShareInfo502(string name, uint type, string? remark, string path, string? password, uint reserved, IntPtr securityDescriptor)
-    { [MarshalAs(UnmanagedType.LPWStr)] public string Name = name; public uint Type = type; [MarshalAs(UnmanagedType.LPWStr)] public string? Remark = remark; [MarshalAs(UnmanagedType.LPWStr)] public string Path = path; [MarshalAs(UnmanagedType.LPWStr)] public string? Password = password; public uint Reserved = reserved; public IntPtr SecurityDescriptor = securityDescriptor; }
+    // Native SHARE_INFO_502 includes three DWORD fields between remark and path. Omitting them
+    // shifts every following pointer during NetShareEnum unmarshalling, which can dereference an
+    // invalid address and terminate the Helper with AccessViolationException.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ShareInfo502
+    {
+        [MarshalAs(UnmanagedType.LPWStr)] public string? Name;
+        public uint Type;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? Remark;
+        public uint Permissions;
+        public uint MaxUses;
+        public uint CurrentUses;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? Path;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? Password;
+        public uint Reserved;
+        public IntPtr SecurityDescriptor;
+
+        public ShareInfo502(string name, uint type, string? remark, string path, string? password, uint reserved, IntPtr securityDescriptor)
+        {
+            Name = name;
+            Type = type;
+            Remark = remark;
+            Permissions = 0;
+            MaxUses = uint.MaxValue;
+            CurrentUses = 0;
+            Path = path;
+            Password = password;
+            Reserved = reserved;
+            SecurityDescriptor = securityDescriptor;
+        }
+    }
     [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern int NetShareEnum(string? server, int level, out IntPtr buffer, uint preferredMaximumLength, out uint entriesRead, out uint totalEntries, ref int resumeHandle);
     [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern int NetShareGetInfo(string? server, string netName, int level, out IntPtr buffer);
     [DllImport("Netapi32.dll", CharSet = CharSet.Unicode)] private static extern int NetShareAdd(string? server, int level, ref ShareInfo502 buffer, out uint parameterError);
