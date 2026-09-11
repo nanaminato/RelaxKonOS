@@ -60,41 +60,9 @@ public static class TunnelEndpoints
         // public, absolute client route here would duplicate the API prefix inside this group.
         // and make the advertised runtime API return 404.
         group.MapGet(TunnelApiRoutes.RuntimePattern, (IRuntimeManager runtime, CancellationToken ct) => runtime.GetManagedFrpcStatusAsync(ct)).RequireAuthorization("TunnelsRead");
-        group.MapGet(TunnelApiRoutes.RuntimeInstallationStatusPattern, (IRuntimeManager runtime) => runtime.GetManagedFrpcInstallationStatus()).RequireAuthorization("TunnelsRead");
         group.MapGet(TunnelApiRoutes.RuntimeDownloadPattern, async (string version, IRuntimeManager runtime, CancellationToken ct) =>
             await runtime.GetManagedFrpcDownloadAsync(version, ct) is { } download ? Results.Ok(download) : Results.NotFound()).RequireAuthorization("TunnelsRead");
         group.MapPost(TunnelApiRoutes.RuntimeDetectExternalPattern, (DetectExternalTunnelRuntimeRequest request, IRuntimeManager runtime, CancellationToken ct) => runtime.DetectExternalFrpcAsync(request.ExecutablePath, ct)).RequireAuthorization("TunnelsManage");
-        group.MapPost(TunnelApiRoutes.RuntimeInstallPattern, async (InstallManagedTunnelRuntimeRequest request, ClaimsPrincipal user, IRuntimeManager runtime, ITunnelAudit audit, CancellationToken ct) =>
-        {
-            if (!request.Confirmed) return Problem("tunnel.runtime_confirmation_required", StatusCodes.Status400BadRequest);
-            var result = await runtime.InstallManagedFrpcAsync(request.Version, ct);
-            await audit.RecordAsync(UserId(user), "runtime.install", null, result.Succeeded ? "succeeded" : "failed", result.ProblemCode, ct);
-            return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
-        }).RequireAuthorization("TunnelsManage");
-        group.MapPost(TunnelApiRoutes.RuntimeInstallFromFilePattern, async (InstallManagedTunnelRuntimeFromFileRequest request, ClaimsPrincipal user, IRuntimeManager runtime, ITunnelAudit audit, CancellationToken ct) =>
-        {
-            if (!request.Confirmed) return Problem("tunnel.runtime_confirmation_required", StatusCodes.Status400BadRequest);
-            var result = await runtime.InstallManagedFrpcFromArchiveAsync(request.Version, request.ArchivePath, ct);
-            await audit.RecordAsync(UserId(user), "runtime.install_from_file", null, result.Succeeded ? "succeeded" : "failed", result.ProblemCode, ct);
-            return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
-        }).RequireAuthorization("TunnelsManage");
-        group.MapDelete(TunnelApiRoutes.RuntimeUninstallPattern, async ([Microsoft.AspNetCore.Mvc.FromBody] UninstallManagedTunnelRuntimeRequest request, ClaimsPrincipal user, IRuntimeManager runtime, ITunnelProvider provider, IManagedFrpsService frps, ITunnelAudit audit, CancellationToken ct) =>
-        {
-            if (!request.Confirmed) return Problem("tunnel.runtime_uninstall_confirmation_required", StatusCodes.Status400BadRequest);
-            // Runtime binaries may be locked on Windows and must never be removed from under
-            // a live tunnel or local frps process.
-            await provider.StopManagedProcessesAsync(ct);
-            await frps.StopAsync(UserId(user), ct);
-            var result = await runtime.UninstallManagedFrpcAsync(ct);
-            await audit.RecordAsync(UserId(user), "runtime.uninstall", null, result.Succeeded ? "succeeded" : "failed", result.ProblemCode, ct);
-            return result.Succeeded ? Results.Ok(result) : Results.Conflict(result);
-        }).RequireAuthorization("TunnelsManage");
-        group.MapPost(TunnelApiRoutes.RuntimeRollbackPattern, async (ClaimsPrincipal user, IRuntimeManager runtime, ITunnelAudit audit, CancellationToken ct) =>
-        {
-            var result = await runtime.RollbackManagedFrpcAsync(ct);
-            await audit.RecordAsync(UserId(user), "runtime.rollback", null, result.Succeeded ? "succeeded" : "failed", result.ProblemCode, ct);
-            return result.Succeeded ? Results.Ok(result) : Results.Conflict(result);
-        }).RequireAuthorization("TunnelsManage");
         return app;
     }
 

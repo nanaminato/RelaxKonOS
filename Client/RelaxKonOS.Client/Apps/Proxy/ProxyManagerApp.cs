@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.Installations;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
@@ -39,7 +41,8 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         // ApplicationManager presents prompts after Activate returns, so this workspace owns
         // the first request and waits for its decision before enabling server actions.
         var vm = new ProxyManagerViewModel(repository, canManage: false, canManageTun: false, systemMonitor);
-        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), new ProxyManagerWorkspace(vm), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Mihomo, "relaxkonos.proxy", () => vm.RefreshCommand.ExecuteAsync(null));
+        var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), InstallationPanel.Wrap(new ProxyManagerWorkspace(vm), vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         vm.SetServerRuntimePackageRequest(async () =>
         {

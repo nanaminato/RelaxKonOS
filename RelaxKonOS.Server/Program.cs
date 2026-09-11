@@ -315,6 +315,16 @@ builder.Services.AddAuthorization(options =>
         context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
 });
 
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationOperationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationCoordinator>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.Installations.InstallationCoordinator>());
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.GitInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SmbInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.FrpInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MihomoInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.DockerInstallationService>();
+
 // 身份认证 Provider（按宿主 OS 平台选择，见 Authentication.md §1.1）
 if (OperatingSystem.IsWindows())
     builder.Services.AddSingleton<IIdentityProvider, WindowsLogonProvider>();
@@ -733,6 +743,7 @@ app.MapWebServerEndpoints();
 app.MapFileServiceEndpoints();
 app.MapCertificateEndpoints();
 app.MapGitEndpoints();
+app.MapInstallationEndpoints();
 app.MapTunnelEndpoints();
 app.MapProxyEndpoints();
 if (OperatingSystem.IsLinux())

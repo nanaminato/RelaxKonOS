@@ -1,3 +1,5 @@
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Server.Installations;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
@@ -112,32 +114,43 @@ internal sealed partial class NginxWebServerManager(
             new WebServerOperationResult((await RunNginxAsync(detected.ExecutablePath, ["-s", "reload"], ct)).Success ? "" : "webserver.reload_failed"), lifetime.ApplicationStopping);
     }
 
-    public async Task<WebServerOperationDto?> InstallManagedAsync(string idempotencyKey, InstallManagedWebServerRequest request, string? actor, CancellationToken cancellationToken)
+    internal async Task<string?> ExecuteInstallationAsync(InstallationOperationKind kind, NginxInstallationRequest request,
+        IInstallationProgress progress, CancellationToken ct)
     {
         var layout = GetManagedLayout();
-        if (!request.Confirmed)
-            return Rejected(layout.InstanceId, "install", "webserver.confirmation_required");
-        if (IsManagedInstallation(layout))
-            return Rejected(layout.InstanceId, "install", "webserver.managed_already_installed");
-        // The built-in Linux installer owns the distribution package it installs.  Do not
-        // turn an existing system Nginx into a managed instance: it may already serve user
-        // traffic and, more importantly, using a second configuration would create two Nginx
-        // processes that compete for the same listeners.
-        if (UsesSystemPackageManagedExecutable() && File.Exists(layout.ExecutablePath))
-            return Rejected(layout.InstanceId, "install", "webserver.system_nginx_already_installed");
-        if (OperatingSystem.IsWindows() && string.IsNullOrWhiteSpace(request.PackageId) && string.IsNullOrWhiteSpace(request.Version))
-            return Rejected(layout.InstanceId, "install", "webserver.version_required");
-        if (OperatingSystem.IsWindows() && ManagedRootExists(layout)
-            && request.ExistingDirectoryAction == ManagedInstallExistingDirectoryAction.Reject)
-            return Rejected(layout.InstanceId, "install", "webserver.managed_installation_exists");
-        if (!OperatingSystem.IsWindows() && !string.IsNullOrWhiteSpace(request.Version) && !LinuxPackageVersionPattern().IsMatch(request.Version.Trim()))
-            return Rejected(layout.InstanceId, "install", "webserver.version_invalid");
-        if (!OperatingSystem.IsWindows() && !CanUseBuiltInInstaller())
-            return Rejected(layout.InstanceId, "install", "webserver.install_unsupported_platform");
-        if (OperatingSystem.IsWindows())
-            return Rejected(layout.InstanceId, "install", "webserver.install_manual_host_action_required");
-        return await operations.StartAsync(idempotencyKey, layout.InstanceId, "install", actor,
-            (progress, ct) => InstallManagedCoreAsync(layout, request, progress, ct), lifetime.ApplicationStopping);
+        if (kind == InstallationOperationKind.Uninstall)
+        {
+            await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
+            return (await UninstallManagedCoreAsync(layout, CancellationToken.None)).ProblemCode;
+        }
+        if (IsManagedInstallation(layout) && kind == InstallationOperationKind.Install) return "webserver.managed_already_installed";
+        if (!IsManagedInstallation(layout) && UsesSystemPackageManagedExecutable() && File.Exists(layout.ExecutablePath))
+            return "webserver.system_nginx_already_installed";
+        if (!OperatingSystem.IsWindows() && !CanUseBuiltInInstaller()) return "webserver.install_unsupported_platform";
+        if (OperatingSystem.IsWindows()) return "webserver.install_manual_host_action_required";
+        await progress.ReportAsync(new(InstallationStage.Installing, Cancellable: false), ct);
+        return (await InstallManagedCoreAsync(layout, new(request.Confirmed, request.Version, request.PackageId),
+            new InstallationStageReporter(progress), CancellationToken.None)).ProblemCode;
+    }
+
+    internal async Task<bool> CheckInstallationAsync(bool absent, CancellationToken ct)
+    {
+        var layout = GetManagedLayout();
+        if (absent) return !IsManagedInstallation(layout) && (!UsesSystemPackageManagedExecutable() || !File.Exists(layout.ExecutablePath));
+        return IsManagedInstallation(layout) && (await RunNginxAsync(layout.ExecutablePath, ManagedArguments(layout, ["-t"]), ct)).Success;
+    }
+
+    private sealed class InstallationStageReporter(IInstallationProgress progress) : IWebServerOperationProgress
+    {
+        public Task ReportAsync(string stage, CancellationToken ct) => progress.ReportAsync(new(stage switch
+        {
+            "installing_package" => InstallationStage.Installing,
+            "downloading" => InstallationStage.Downloading,
+            "extracting" => InstallationStage.Extracting,
+            "verifying_layout" => InstallationStage.Verifying,
+            "validating_configuration" => InstallationStage.HealthChecking,
+            _ => InstallationStage.Configuring
+        }), ct);
     }
 
     public async Task<WebServerInstallPackageDto?> UploadManagedPackageAsync(string fileName, Stream content, CancellationToken cancellationToken)
@@ -229,16 +242,6 @@ internal sealed partial class NginxWebServerManager(
         var layout = GetManagedLayout();
         return await operations.StartAsync(idempotencyKey, instanceId, action.ToString().ToLowerInvariant(), actor,
             ct => ApplyManagedLifecycleCoreAsync(layout, action, ct), lifetime.ApplicationStopping);
-    }
-
-    public async Task<WebServerOperationDto?> UninstallManagedAsync(string instanceId, string idempotencyKey, UninstallManagedWebServerRequest request, string? actor, CancellationToken cancellationToken)
-    {
-        var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
-        if (instance is null) return null;
-        if (!request.Confirmed) return Rejected(instanceId, "uninstall", "webserver.confirmation_required");
-        if (instance.ManagementMode != WebServerManagementMode.Managed) return Rejected(instanceId, "uninstall", "webserver.managed_required");
-        return await operations.StartAsync(idempotencyKey, instanceId, "uninstall", actor,
-            ct => UninstallManagedCoreAsync(GetManagedLayout(), ct), lifetime.ApplicationStopping);
     }
 
     public async Task<IReadOnlyList<WebServerSiteDto>?> ListSitesAsync(string instanceId, CancellationToken cancellationToken)

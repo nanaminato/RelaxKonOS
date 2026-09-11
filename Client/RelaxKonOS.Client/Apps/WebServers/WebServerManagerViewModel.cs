@@ -1,3 +1,5 @@
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.Client.Localization;
@@ -20,6 +22,8 @@ namespace RelaxKonOS.Client.Apps.WebServers;
 /// </summary>
 public sealed partial class WebServerManagerViewModel : ObservableObject
 {
+    public InstallationTaskViewModel Installation { get; set; } = null!;
+
     private readonly IRemoteWebServerClient _client;
     private readonly IRemoteCertificateClient _certificates;
     private readonly IAuthSession _session;
@@ -305,30 +309,9 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanInstallManaged))]
     private async Task InstallManagedAsync()
     {
-        if (IsWindowsServer && string.IsNullOrWhiteSpace(_localPackageId) && string.IsNullOrWhiteSpace(InstallVersion))
-        {
-            StatusText = LocalizedText.Get("webservers.problem.version_required");
-            return;
-        }
         if (RequestManagedInstallConfirmationAsync is null || !await RequestManagedInstallConfirmationAsync()) return;
-        var version = string.IsNullOrWhiteSpace(_localPackageId) ? InstallVersion.Trim() : null;
-        try
-        {
-            await RunOperationAsync("install", ct => _client.InstallManagedAsync("nginx", new InstallManagedWebServerRequest(true,
-                version, _localPackageId), ct), rethrowApiProblemCode: "webserver.managed_installation_exists");
-        }
-        catch (WebServerApiException exception) when (exception.ProblemCode == "webserver.managed_installation_exists")
-        {
-            var action = await (RequestExistingManagedInstallActionAsync?.Invoke() ?? Task.FromResult<ManagedInstallExistingDirectoryAction?>(null));
-            if (action is not (ManagedInstallExistingDirectoryAction.Reuse or ManagedInstallExistingDirectoryAction.Replace))
-            {
-                OperationText = LocalizedText.Get("webservers.managed.existing.cancelled");
-                return;
-            }
-            await RunOperationAsync("install", ct => _client.InstallManagedAsync("nginx", new InstallManagedWebServerRequest(true,
-                version, _localPackageId, action.Value), ct));
-        }
-        await RefreshAsync();
+        await Installation.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true,
+            string.IsNullOrWhiteSpace(InstallVersion) ? null : InstallVersion.Trim(), _localPackageId));
     }
 
     [RelayCommand(CanExecute = nameof(CanInstallManaged))]
@@ -407,7 +390,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private async Task UninstallManagedAsync()
     {
         if (RequestManagedUninstallConfirmationAsync is null || !await RequestManagedUninstallConfirmationAsync()) return;
-        await RunOperationAsync("uninstall", ct => _client.UninstallManagedAsync(SelectedServer!.Id, new UninstallManagedWebServerRequest(true), ct));
+        await Installation.SubmitAsync(InstallationOperationKind.Uninstall, new NginxInstallationRequest(true));
         await RefreshAsync();
     }
 

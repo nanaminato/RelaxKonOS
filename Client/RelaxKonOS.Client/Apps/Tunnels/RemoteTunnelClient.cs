@@ -17,8 +17,6 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session) : 
         await SendAsync<IReadOnlyList<TunnelDefinitionDto>>(HttpMethod.Get, TunnelApiRoutes.Tunnels, null, ct) ?? [];
     public async Task<TunnelRuntimeDto> GetRuntimeAsync(CancellationToken ct = default) =>
         await SendAsync<TunnelRuntimeDto>(HttpMethod.Get, TunnelApiRoutes.Runtime, null, ct) ?? throw new HttpRequestException("Tunnel runtime response was empty.");
-    public async Task<TunnelRuntimeInstallationDto> GetRuntimeInstallationStatusAsync(CancellationToken ct = default) =>
-        await SendAsync<TunnelRuntimeInstallationDto>(HttpMethod.Get, TunnelApiRoutes.RuntimeInstallationStatus, null, ct) ?? throw new HttpRequestException("Tunnel runtime installation status response was empty.");
     public Task<TunnelRuntimeDownloadDto?> GetManagedRuntimeDownloadAsync(string version, CancellationToken ct = default) =>
         SendAsync<TunnelRuntimeDownloadDto>(HttpMethod.Get, TunnelApiRoutes.RuntimeDownload + "?version=" + Uri.EscapeDataString(version), null, ct);
     public Task<TunnelServerProfileDto> CreateProfileAsync(UpsertTunnelServerProfileRequest request, CancellationToken ct = default) => SendRequiredAsync<TunnelServerProfileDto>(HttpMethod.Post, TunnelApiRoutes.Profiles, request, ct);
@@ -32,10 +30,6 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session) : 
     public Task<TunnelOperationResultDto> StopAsync(Guid profileId, CancellationToken ct = default) => SendOperationAsync(HttpMethod.Post, TunnelApiRoutes.StopProfile.Replace("{profileId}", profileId.ToString("D"), StringComparison.Ordinal), null, ct);
     public async Task<IReadOnlyList<TunnelLogEntryDto>> GetLogsAsync(Guid profileId, CancellationToken ct = default) =>
         await SendAsync<IReadOnlyList<TunnelLogEntryDto>>(HttpMethod.Get, TunnelApiRoutes.ProfileLogs.Replace("{profileId}", profileId.ToString("D"), StringComparison.Ordinal), null, ct) ?? [];
-    public Task<TunnelOperationResultDto> InstallManagedRuntimeAsync(string version, CancellationToken ct = default) => SendOperationAsync(HttpMethod.Post, TunnelApiRoutes.RuntimeInstall, new InstallManagedTunnelRuntimeRequest(true, version), ct);
-    public Task<TunnelOperationResultDto> InstallManagedRuntimeFromServerFileAsync(string version, string archivePath, CancellationToken ct = default) => SendOperationAsync(HttpMethod.Post, TunnelApiRoutes.RuntimeInstallFromFile, new InstallManagedTunnelRuntimeFromFileRequest(true, version, archivePath), ct);
-    public Task<TunnelOperationResultDto> UninstallManagedRuntimeAsync(CancellationToken ct = default) => SendOperationAsync(HttpMethod.Delete, TunnelApiRoutes.RuntimeUninstall, new UninstallManagedTunnelRuntimeRequest(true), ct);
-    public Task<TunnelOperationResultDto> RollbackManagedRuntimeAsync(CancellationToken ct = default) => SendOperationAsync(HttpMethod.Post, TunnelApiRoutes.RuntimeRollback, null, ct);
     public Task<TunnelRuntimeDto> DetectExternalRuntimeAsync(string path, CancellationToken ct = default) => SendRequiredAsync<TunnelRuntimeDto>(HttpMethod.Post, TunnelApiRoutes.RuntimeDetectExternal, new DetectExternalTunnelRuntimeRequest(path), ct);
     public async Task<ManagedFrpsConfigurationDto> GetManagedFrpsAsync(CancellationToken ct = default) =>
         await SendAsync<ManagedFrpsConfigurationDto>(HttpMethod.Get, TunnelApiRoutes.ManagedFrps, null, ct) ?? throw new HttpRequestException("Managed frps response was empty.");

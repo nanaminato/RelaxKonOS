@@ -8,7 +8,6 @@ public interface IRemoteFileServicesClient
     Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default);
     Task<IReadOnlyList<FileShareDto>> ListSharesAsync(CancellationToken ct = default);
     Task<FileServiceConnectionInfoDto> GetConnectionAsync(CancellationToken ct = default);
-    Task<FileServiceOperationResultDto> InstallAsync(CancellationToken ct = default);
     Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, CancellationToken ct = default);
     Task<FileServiceOperationResultDto> CreateShareAsync(UpsertFileShareRequest request, CancellationToken ct = default);
     Task<FileServiceOperationResultDto> UpdateShareAsync(string id, UpsertFileShareRequest request, CancellationToken ct = default);

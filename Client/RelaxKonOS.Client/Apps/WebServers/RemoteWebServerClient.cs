@@ -27,9 +27,6 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
     public Task<WebServerConfigTestResultDto?> TestConfigurationAsync(string id, CancellationToken cancellationToken = default)
         => SendAsync<WebServerConfigTestResultDto?>(HttpMethod.Post, WebServerApiRoutes.TestConfiguration.Replace("{id}", WebUtility.UrlEncode(id)), null, null, cancellationToken);
 
-    public Task<WebServerOperationDto?> InstallManagedAsync(string providerId, InstallManagedWebServerRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.ManagedInstall.Replace("{providerId}", WebUtility.UrlEncode(providerId)), request, NewKey(), cancellationToken);
-
     public async Task<WebServerInstallPackageDto?> UploadManagedPackageAsync(string providerId, string fileName, Stream content, CancellationToken cancellationToken = default)
     {
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
@@ -63,9 +60,6 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
 
     public Task<WebServerOperationDto?> ApplyLifecycleAsync(string id, WebServerLifecycleAction action, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.Lifecycle.Replace("{id}", WebUtility.UrlEncode(id)).Replace("{action}", action.ToString().ToLowerInvariant()), null, NewKey(), cancellationToken);
-
-    public Task<WebServerOperationDto?> UninstallManagedAsync(string id, UninstallManagedWebServerRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.ManagedUninstall.Replace("{id}", WebUtility.UrlEncode(id)), request, NewKey(), cancellationToken);
 
     public Task<WebServerOperationDto?> ReloadAsync(string id, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.Reload.Replace("{id}", WebUtility.UrlEncode(id)), null, NewKey(), cancellationToken);

@@ -8,7 +8,6 @@ public interface IRemoteTunnelClient
     Task<TunnelServerProfileDto?> GetProfileAsync(Guid profileId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TunnelDefinitionDto>> ListAsync(CancellationToken cancellationToken = default);
     Task<TunnelRuntimeDto> GetRuntimeAsync(CancellationToken cancellationToken = default);
-    Task<TunnelRuntimeInstallationDto> GetRuntimeInstallationStatusAsync(CancellationToken cancellationToken = default);
     Task<TunnelRuntimeDownloadDto?> GetManagedRuntimeDownloadAsync(string version, CancellationToken cancellationToken = default);
     Task<TunnelServerProfileDto> CreateProfileAsync(UpsertTunnelServerProfileRequest request, CancellationToken cancellationToken = default);
     Task<TunnelServerProfileDto> UpdateProfileAsync(Guid profileId, UpsertTunnelServerProfileRequest request, CancellationToken cancellationToken = default);
@@ -20,10 +19,6 @@ public interface IRemoteTunnelClient
     Task<TunnelOperationResultDto> ApplyAsync(Guid profileId, CancellationToken cancellationToken = default);
     Task<TunnelOperationResultDto> StopAsync(Guid profileId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TunnelLogEntryDto>> GetLogsAsync(Guid profileId, CancellationToken cancellationToken = default);
-    Task<TunnelOperationResultDto> InstallManagedRuntimeAsync(string version, CancellationToken cancellationToken = default);
-    Task<TunnelOperationResultDto> InstallManagedRuntimeFromServerFileAsync(string version, string archivePath, CancellationToken cancellationToken = default);
-    Task<TunnelOperationResultDto> UninstallManagedRuntimeAsync(CancellationToken cancellationToken = default);
-    Task<TunnelOperationResultDto> RollbackManagedRuntimeAsync(CancellationToken cancellationToken = default);
     Task<TunnelRuntimeDto> DetectExternalRuntimeAsync(string executablePath, CancellationToken cancellationToken = default);
     Task<ManagedFrpsConfigurationDto> GetManagedFrpsAsync(CancellationToken cancellationToken = default);
     Task<ManagedFrpsConfigurationDto> GetManagedFrpsForEditingAsync(CancellationToken cancellationToken = default);

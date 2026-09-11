@@ -138,10 +138,9 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "webservers"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
-        // Samba installation may perform both apt update and apt install. Keep the client wait
-        // slightly above the Server's 25-minute package-operation limit so a slow repository does
-        // not look like a failed installation while the privileged Helper is still running.
-        services.AddHttpClient<RelaxKonOS.Client.Apps.FileServices.IRemoteFileServicesClient, RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient>(client => client.Timeout = TimeSpan.FromMinutes(26))
+        services.AddHttpClient<RelaxKonOS.Client.Services.Installation.InstallationClient>()
+            .AddHttpMessageHandler<AcceptLanguageHandler>().AddRelaxKonOSAuthentication();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.FileServices.IRemoteFileServicesClient, RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "file-services"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();

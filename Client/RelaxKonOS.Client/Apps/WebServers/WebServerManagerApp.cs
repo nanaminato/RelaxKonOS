@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.Installations;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
@@ -41,9 +43,10 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
             return;
         }
         var viewModel = new WebServerManagerViewModel(client, certificates, session, context.Permissions);
+        viewModel.Installation = InstallationPanel.Create(context, InstallationServiceId.Nginx, "relaxkonos.webservers", () => viewModel.RefreshCommand.ExecuteAsync(null));
         var view = WebServerManagerWorkspace.Create(viewModel);
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.webservers.display_name"),
-            view, new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
+            InstallationPanel.Wrap(view, viewModel.Installation), new Rect(70, 55, 1080, 680), Manifest.IconGlyph);
         viewModel.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         viewModel.RequestIntegrationConfirmationAsync = async () =>
         {

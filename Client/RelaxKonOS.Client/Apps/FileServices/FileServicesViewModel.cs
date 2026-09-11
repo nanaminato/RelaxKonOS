@@ -1,3 +1,5 @@
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -11,6 +13,8 @@ namespace RelaxKonOS.Client.Apps.FileServices;
 /// <summary>Window-local SMB control-plane state. It never retains Samba passwords or Helper output.</summary>
 public sealed partial class FileServicesViewModel(IRemoteFileServicesClient client, IAppPermissionScope permissions) : ObservableObject
 {
+    public InstallationTaskViewModel Installation { get; set; } = null!;
+
     public ObservableCollection<FileShareDto> Shares { get; } = [];
     public ObservableCollection<FileServiceUserDto> Users { get; } = [];
     [ObservableProperty] private string _statusText = LocalizedText.Get("file_services.status.loading", "Loading SMB status…");
@@ -88,13 +92,8 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         ConnectionText = connection.WindowsUncPrefix + " · " + connection.SmbUriPrefix;
         NotifyActions();
     }
-    [RelayCommand(CanExecute = nameof(CanInstall))] private Task InstallAsync()
-    {
-        // Package installation can take several minutes. Replace the stale NotInstalled status
-        // before the request starts; IsBusy keeps the indeterminate progress bar visible.
-        StatusText = T("status.installing");
-        return Apply(() => client.InstallAsync());
-    }
+    [RelayCommand(CanExecute = nameof(CanInstall))]
+    private Task InstallAsync() => Installation.SubmitAsync(InstallationOperationKind.Install, new SmbInstallationRequest(true));
     [RelayCommand(CanExecute = nameof(CanStart))] private Task StartServiceAsync() => Apply(() => client.LifecycleAsync(SmbLifecycleAction.Start));
     [RelayCommand(CanExecute = nameof(CanStop))] private Task StopAsync() => Apply(() => client.LifecycleAsync(SmbLifecycleAction.Stop));
     [RelayCommand(CanExecute = nameof(CanStop))] private Task RestartAsync() => Apply(() => client.LifecycleAsync(SmbLifecycleAction.Restart));

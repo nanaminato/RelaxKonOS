@@ -18,14 +18,6 @@ public static class GitEndpoints
         group.MapGet("/engine/status", (RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
             service.GetEngineStatusAsync(ct));
 
-        group.MapPost("/engine/install", async (HttpContext http, IHostElevationSessionStore elevations, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
-        {
-            if (!elevations.IsGranted(http.User, HostElevationCapability.GitPackageInstall, "git"))
-                return Results.Problem(statusCode: 403, title: "需要管理员权限", detail: "Git 安装需要当前会话的管理员授权。", type: "https://relaxkonos.app/problems/elevation-required");
-            try { return Results.Ok(await service.InstallEngineAsync(ct)); }
-            catch (InvalidOperationException ex) { return Results.Problem(detail: ex.Message, statusCode: 500, title: "Git install", type: ProblemBase + "install-failed"); }
-        });
-
         // ── Repository registration ──
         group.MapGet("/repositories", (ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
             service.ListRepositoriesAsync(GetUserId(principal), ct));

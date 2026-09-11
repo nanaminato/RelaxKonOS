@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Views;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
@@ -40,6 +42,7 @@ public sealed class GitClientApp : RemoteApplicationBase
         // 复用 Explorer 的 IExplorerClient，用于远程文件夹选择对话框（与 Code Editor 同一模式）
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var vm = new GitClientViewModel(client);
+        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Git, "relaxkonos.git", vm.RefreshInstallationAsync);
         ManagedWindow? window = null;
 
         // Wire dialog callbacks — the VM commands call these and handle the returned request objects.
@@ -85,7 +88,7 @@ public sealed class GitClientApp : RemoteApplicationBase
 
         var view = GitClientWorkspace.Create(vm);
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.git.display_name"),
-            view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+            InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
         _ = vm.StartAsync();
     }

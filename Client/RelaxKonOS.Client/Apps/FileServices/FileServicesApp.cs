@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Apps.FileServices.Views;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
@@ -26,7 +28,8 @@ public sealed class FileServicesApp : RemoteApplicationBase
             return;
         }
         var vm = new FileServicesViewModel(client, context.Permissions);
-        var window = context.ShowWindow(LocalizedText.Get("file_services.title"), new FileServicesWorkspace(vm), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
+        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Smb, "relaxkonos.file-services", () => vm.RefreshCommand.ExecuteAsync(null));
+        var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(new FileServicesWorkspace(vm), vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         vm.RequestHostAdministratorPasswordAsync = () => context.WindowManager.ShowSystemDialogAsync<string?>(
             LocalizedText.Get("file_services.host_password"),

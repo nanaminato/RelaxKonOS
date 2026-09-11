@@ -1,3 +1,5 @@
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
 using Avalonia;
@@ -22,6 +24,8 @@ public sealed record GitLogFilterOption(string Value, string Label);
 /// Each window owns its own ViewModel instance — supports multiple projects open simultaneously (MultiWindow instance policy).</summary>
 public sealed partial class GitClientViewModel(IRemoteGitClient client) : ObservableObject
 {
+    public InstallationTaskViewModel Installation { get; set; } = null!;
+
     public ObservableCollection<GitRepositoryDto> Repositories { get; } = [];
     public ObservableCollection<GitBranchDto> Branches { get; } = [];
     public ObservableCollection<GitCommitDto> Commits { get; } = [];
@@ -355,37 +359,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     private bool CanInstallEngine => !IsInstalling && CanAutoInstall && !IsGitAvailable;
 
     [RelayCommand(CanExecute = nameof(CanInstallEngine))]
-    private async Task InstallEngineAsync()
-    {
-        if (IsInstalling) return;
-        IsInstalling = true;
-        InstallMessage = LocalizedText.Get("git.vm.install_in_progress");
-        try
-        {
-            var result = await client.InstallEngineAsync();
-            InstallMessage = result.Success
-                ? LocalizedText.Get("git.vm.install_verifying")
-                : PrivilegedHelperProblemText.TryFormat(result.ProblemCode, out var helperMessage)
-                    ? helperMessage
-                    : result.Message ?? LocalizedText.Get("git.vm.install_failed");
-            if (!result.Success && PrivilegedHelperProblemText.TryFormat(result.ProblemCode, out _))
-                await (ShowPrivilegedHelperUnavailableAsync?.Invoke(result.ProblemCode) ?? Task.CompletedTask);
-            await RefreshEngineStatusAsync();
-            if (result.Success && IsGitAvailable)
-            {
-                InstallMessage = LocalizedText.Get("git.vm.installed");
-            }
-        }
-        catch (Exception ex)
-        {
-            InstallMessage = LocalizedText.Format("git.vm.install_error_format", ex.Message);
-        }
-        finally
-        {
-            IsInstalling = false;
-            InstallEngineCommand.NotifyCanExecuteChanged();
-        }
-    }
+    private Task InstallEngineAsync() => Installation.SubmitAsync(InstallationOperationKind.Install, new GitInstallationRequest(true));
+    public Task RefreshInstallationAsync() => RefreshEngineStatusAsync();
 
     private static bool IsInstallRequired(bool isAvailable, string problemCode)
     {

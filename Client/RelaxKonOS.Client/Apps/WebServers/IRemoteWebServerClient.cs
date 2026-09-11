@@ -12,13 +12,11 @@ public interface IRemoteWebServerClient
     Task<IReadOnlyList<WebServerDto>> ListAsync(CancellationToken cancellationToken = default);
     Task<WebServerStatusDto?> GetStatusAsync(string id, CancellationToken cancellationToken = default);
     Task<WebServerConfigTestResultDto?> TestConfigurationAsync(string id, CancellationToken cancellationToken = default);
-    Task<WebServerOperationDto?> InstallManagedAsync(string providerId, InstallManagedWebServerRequest request, CancellationToken cancellationToken = default);
     Task<WebServerInstallPackageDto?> UploadManagedPackageAsync(string providerId, string fileName, Stream content, CancellationToken cancellationToken = default);
     Task<WebServerInstallCatalogDto?> GetManagedInstallCatalogAsync(string providerId, CancellationToken cancellationToken = default);
     Task<WebServerInstallDownloadDto?> GetManagedInstallDownloadAsync(string providerId, string version, CancellationToken cancellationToken = default);
     Task<WebServerOperationDto?> IntegrateAsync(string id, IntegrateWebServerRequest request, CancellationToken cancellationToken = default);
     Task<WebServerOperationDto?> ApplyLifecycleAsync(string id, WebServerLifecycleAction action, CancellationToken cancellationToken = default);
-    Task<WebServerOperationDto?> UninstallManagedAsync(string id, UninstallManagedWebServerRequest request, CancellationToken cancellationToken = default);
     Task<WebServerOperationDto?> ReloadAsync(string id, CancellationToken cancellationToken = default);
     Task<WebServerOperationDto?> GetOperationAsync(Guid operationId, CancellationToken cancellationToken = default);
     Task<WebServerOperationDto?> CancelOperationAsync(Guid operationId, CancellationToken cancellationToken = default);

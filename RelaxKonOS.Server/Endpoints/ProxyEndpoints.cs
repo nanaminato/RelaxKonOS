@@ -33,35 +33,6 @@ public static class ProxyEndpoints
             string.IsNullOrWhiteSpace(request.ExternalPath) ? Problem(ProxyProblemCodes.ExternalRuntimeInvalid, StatusCodes.Status400BadRequest) : Results.Ok(await runtime.DetectExternalAsync(request.EngineId, request.ExternalPath, ct)))
             .RequireAuthorization("ProxyManage").WithTags("Proxy");
 
-        app.MapPost(ProxyApiRoutes.RuntimeInstall, (ProxyRuntimeRequest request, HttpContext context, ProxyOperationStore operations, IProxyRuntimeManager runtime, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "runtime.install", async (actor, reportStage, token) =>
-            {
-                var result = await runtime.InstallManagedAsync(request.EngineId, request.Version, stage => reportStage(stage), token);
-                await audit.RecordAsync(actor, "runtime.install", string.IsNullOrEmpty(result.ProblemCode) ? "succeeded" : "failed", result.ProblemCode, token);
-                return result.ProblemCode;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.RuntimeInstallFromFile, (InstallProxyRuntimeFromFileRequest request, HttpContext context, ProxyOperationStore operations, IProxyRuntimeManager runtime, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "runtime.install_from_file", async (actor, reportStage, token) =>
-            {
-                var result = await runtime.InstallManagedFromArchiveAsync(request.EngineId, request.Version, request.ArchivePath, stage => reportStage(stage), token);
-                await audit.RecordAsync(actor, "runtime.install_from_file", string.IsNullOrEmpty(result.ProblemCode) ? "succeeded" : "failed", result.ProblemCode, token);
-                return result.ProblemCode;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.RuntimeRollback, (HttpContext context, ProxyOperationStore operations, IProxyRuntimeManager runtime, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "runtime.rollback", async (actor, token) =>
-            {
-                var result = await runtime.RollbackManagedAsync("mihomo", token);
-                await audit.RecordAsync(actor, "runtime.rollback", string.IsNullOrEmpty(result.ProblemCode) ? "succeeded" : "failed", result.ProblemCode, token);
-                return result.ProblemCode;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapDelete(ProxyApiRoutes.RuntimeUninstall, (HttpContext context, ProxyOperationStore operations, IProxyRuntimeManager runtime, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "runtime.uninstall", async (actor, token) =>
-            {
-                var result = await runtime.UninstallManagedAsync("mihomo", token);
-                await audit.RecordAsync(actor, "runtime.uninstall", string.IsNullOrEmpty(result.ProblemCode) ? "succeeded" : "failed", result.ProblemCode, token);
-                return result.ProblemCode;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-
         app.MapPost(ProxyApiRoutes.Lifecycle, (string action, HttpContext context, ProxyOperationStore operations, IProxyLifecycleService lifecycle, ProxyAuditStore audit, CancellationToken ct) =>
         {
             if (!Enum.TryParse<ProxyLifecycleAction>(action, true, out var parsed)) return Task.FromResult<IResult>(Problem(ProxyProblemCodes.NotSupported, StatusCodes.Status400BadRequest));

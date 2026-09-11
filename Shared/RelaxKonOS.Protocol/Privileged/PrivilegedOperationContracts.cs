@@ -5,7 +5,7 @@ namespace RelaxKonOS.Protocol.Privileged;
 /// <summary>Versioning and size limits for the local Helper protocol.</summary>
 public static class PrivilegedOperationProtocol
 {
-    public const string Version = "1.0";
+    public const string Version = "2.0";
     public const int MaximumRequestBytes = 16 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
 }
@@ -37,6 +37,7 @@ public enum PrivilegedOperationKind
     ProxyMihomoInstallSystemService,
     ProxyMihomoRemoveSystemService,
     GitPackageInstall,
+    DockerEngineInstall,
     FirewallUfwStatus,
     FirewallUfwSetEnabled,
     FirewallUfwSetDefaults,

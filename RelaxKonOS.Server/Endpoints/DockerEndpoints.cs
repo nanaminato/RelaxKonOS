@@ -10,7 +10,6 @@ public static class DockerEndpoints
         var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/docker").RequireAuthorization().WithTags("Docker");
         group.MapGet("/status", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.GetStatusAsync(ct));
         group.MapPost("/installation/plan", (RelaxKonOS.Server.Docker.IDockerRuntimeInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct));
-        group.MapPost("/installation/execute", (DockerInstallationExecutionRequest request, RelaxKonOS.Server.Docker.IDockerRuntimeInstaller installer, CancellationToken ct) => installer.ExecuteAsync(request, ct));
         group.MapGet("/containers", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.ListContainersAsync(ct));
         group.MapGet("/containers/{id}", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await service.GetContainerAsync(id, ct) is { } details ? Results.Ok(details) : Results.NotFound());
         group.MapPost("/containers", (DockerContainerCreateRequest request, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.CreateContainerAsync(request, ct));

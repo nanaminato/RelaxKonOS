@@ -17,13 +17,6 @@ public static class WebServerEndpoints
             await manager.GetStatusAsync(id, ct) is { } status ? Results.Ok(status) : Results.NotFound());
         group.MapPost(WebServerApiRoutes.TestConfigurationPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
             await manager.TestConfigurationAsync(id, ct) is { } result ? Results.Ok(result) : Results.NotFound());
-        group.MapPost(WebServerApiRoutes.ManagedInstallPattern, async (string providerId, InstallManagedWebServerRequest request, HttpContext context,
-            IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
-        {
-            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxInstall, providerId))
-                return ElevationRequired("此 Nginx 安装操作需要当前会话对该提供程序的管理员授权。");
-            return await StartAsync(context.Request, key => manager.InstallManagedAsync(providerId, key, request, Actor(context), ct));
-        });
         group.MapPost(WebServerApiRoutes.ManagedPackagePattern, async (string providerId, HttpRequest request, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
             if (!request.HasFormContentType) return Results.BadRequest(new { problemCode = "webserver.package_multipart_required" });
@@ -57,13 +50,6 @@ public static class WebServerEndpoints
             if (!elevations.IsGranted(context.User, capability, id))
                 return ElevationRequired("此 Nginx 操作需要当前会话对该实例的管理员授权。");
             return await StartAsync(context.Request, key => manager.ApplyLifecycleAsync(id, lifecycle, key, Actor(context), ct));
-        });
-        group.MapPost(WebServerApiRoutes.ManagedUninstallPattern, async (string id, UninstallManagedWebServerRequest request, HttpContext context,
-            IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
-        {
-            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxInstall, id))
-                return ElevationRequired("此 Nginx 卸载操作需要当前会话对该实例的管理员授权。");
-            return await StartAsync(context.Request, key => manager.UninstallManagedAsync(id, key, request, Actor(context), ct));
         });
         group.MapPost(WebServerApiRoutes.ReloadPattern, async (string id, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>

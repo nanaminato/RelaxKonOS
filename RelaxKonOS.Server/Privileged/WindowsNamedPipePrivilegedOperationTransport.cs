@@ -29,17 +29,20 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
             var requestJson = JsonSerializer.SerializeToUtf8Bytes(request);
             var signed = new PipeEnvelope(Convert.ToBase64String(requestJson), Sign(secret, requestJson));
             await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(signed), CancellationToken.None);
-            using var responseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
-            var responseBytes = await ReadFrameAsync(pipe, responseTimeout.Token);
-            var response = JsonSerializer.Deserialize<PipeEnvelope>(responseBytes);
-            if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
+            for (var count = 0; count < PrivilegedOperationFrame.MaximumFrames; count++)
             {
-                logger.LogWarning("Privileged Helper pipe response did not pass authentication.");
-                return Complete(request, Unavailable("privileged helper service authentication failed"));
+                // A submitted LocalSystem operation remains authoritative until its own deadline.
+                var responseBytes = await ReadFrameAsync(pipe, CancellationToken.None);
+                var response = JsonSerializer.Deserialize<PipeEnvelope>(responseBytes);
+                if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
+                    return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
+                var frame = JsonSerializer.Deserialize<PrivilegedOperationFrame>(payload);
+                if (frame is null || !frame.IsValid() || frame.Type == "progress" && payload.Length > PrivilegedOperationFrame.MaximumProgressFrameBytes)
+                    return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
+                if (frame.Result is { } result) return Complete(request, result);
+                await PrivilegedFrameReader.ReportAsync(frame);
             }
-            var result = JsonSerializer.Deserialize<PrivilegedOperationResult>(payload)
-                ?? Unavailable("privileged helper service returned no result");
-            return Complete(request, result);
+            return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
         }
         catch (OperationCanceledException)
         {
@@ -47,7 +50,7 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
-            logger.LogWarning(exception, "Could not communicate with the local privileged Helper service.");
+            logger.LogWarning("Could not communicate with the local privileged Helper service.");
             return Complete(request, Unavailable("privileged helper service is unavailable"));
         }
     }
@@ -111,9 +114,6 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
     private PrivilegedOperationResult Complete(PrivilegedOperationRequest request, PrivilegedOperationResult result)
     {
         Audit(request, result);
-        if (request.Operation == PrivilegedOperationKind.SmbPackageInstall && !result.Success)
-            logger.LogWarning("Windows SMB installation failed. OperationId={OperationId} ProblemCode={ProblemCode} Detail={Detail}",
-                request.OperationId, result.ProblemCode, result.Error);
         return result;
     }
 

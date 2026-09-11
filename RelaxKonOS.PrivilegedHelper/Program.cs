@@ -1,3 +1,4 @@
+using RelaxKonOS.Protocol.Installations;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Privileged;
@@ -22,7 +23,7 @@ return await PrivilegedOperationExecutor.RunOneShotAsync();
 /// Closed-set privileged operations shared by the Linux one-shot worker and both Windows hosts.
 /// Host code owns transport, identity and lifecycle; this type never does.
 /// </summary>
-public static class PrivilegedOperationExecutor
+public static partial class PrivilegedOperationExecutor
 {
 public static async Task<int> RunOneShotAsync()
 {
@@ -52,19 +53,27 @@ public static async Task<int> RunOneShotAsync()
         return 64;
     }
 
-    var result = await ExecuteAsync(request, policy);
+    var result = await ExecuteAsync(request, policy, frame => Console.Out.WriteLineAsync(JsonSerializer.Serialize(frame)));
     await WriteResultAsync(result);
     return result.ExitCode;
 }
 
-public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, PrivilegedOperationPolicy policy)
+private static readonly AsyncLocal<Func<PrivilegedOperationFrame, Task>?> Progress = new();
+public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, PrivilegedOperationPolicy policy,
+    Func<PrivilegedOperationFrame, Task>? progress = null)
 {
+    Progress.Value = progress;
     if (request.Version != PrivilegedOperationProtocol.Version)
         return Fail(64, PrivilegedProblemCode.InvalidProtocol, "unsupported protocol version");
     if (request.OperationId is not { } operationId || operationId == Guid.Empty)
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
     if (OperatingSystem.IsWindows() && request.Operation is >= PrivilegedOperationKind.SmbDetect and <= PrivilegedOperationKind.SmbSetUserPassword)
-        return await WindowsSmbNativeOperations.ExecuteAsync(request);
+    {
+        if (request.Operation == PrivilegedOperationKind.SmbPackageInstall && progress is not null)
+            await progress(PrivilegedOperationFrame.Report(InstallationStage.Installing));
+        var windowsResult = await WindowsSmbNativeOperations.ExecuteAsync(request);
+        return request.Operation == PrivilegedOperationKind.SmbPackageInstall ? windowsResult with { Error = null, OutputBase64 = null } : windowsResult;
+    }
 
     try
     {
@@ -89,6 +98,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.ProxyMihomoInstallSystemService => await InstallProxyMihomoSystemServiceAsync(),
             PrivilegedOperationKind.ProxyMihomoRemoveSystemService => RemoveProxyMihomoSystemService(),
             PrivilegedOperationKind.GitPackageInstall => await InstallGitPackageAsync(),
+            PrivilegedOperationKind.DockerEngineInstall => await InstallDockerEngineAsync(),
             PrivilegedOperationKind.FirewallUfwStatus => await ReadFirewallStatusAsync(request.FirewallNumberedStatus == true),
             PrivilegedOperationKind.FirewallUfwSetEnabled => await SetFirewallEnabledAsync(request.FirewallEnabled),
             PrivilegedOperationKind.FirewallUfwSetDefaults => await SetFirewallDefaultsAsync(request.FirewallIncomingPolicy, request.FirewallOutgoingPolicy),
@@ -387,15 +397,15 @@ static async Task<PrivilegedOperationResult> InstallNginxPackageAsync(string? ve
     if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get")) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx package operation is unavailable");
     if (!string.IsNullOrWhiteSpace(version) && !System.Text.RegularExpressions.Regex.IsMatch(version, "^[0-9][0-9A-Za-z.+:~\\-]{0,127}$"))
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "invalid nginx package version");
-    var update = await RunFixedCommandAsync("/usr/bin/apt-get", ["update"], TimeSpan.FromMinutes(10), "nginx package update failed");
+    var update = await RunAptAsync( ["update"], TimeSpan.FromMinutes(10), "nginx package update failed");
     if (!update.Success) return update;
     var package = string.IsNullOrWhiteSpace(version) ? "nginx" : "nginx=" + version.Trim();
-    return await RunFixedCommandAsync("/usr/bin/apt-get", ["install", "--yes", "--no-install-recommends", package], TimeSpan.FromMinutes(10), "nginx package install failed");
+    return await RunAptAsync( ["install", "--yes", "--no-install-recommends", package], TimeSpan.FromMinutes(10), "nginx package install failed");
 }
 
 static Task<PrivilegedOperationResult> UninstallNginxPackageAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get")
     ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx package operation is unavailable"))
-    : RunFixedCommandAsync("/usr/bin/apt-get", ["purge", "--yes", "--auto-remove", "nginx"], TimeSpan.FromMinutes(10), "nginx package uninstall failed");
+    : RunAptAsync( ["purge", "--yes", "--auto-remove", "nginx"], TimeSpan.FromMinutes(10), "nginx package uninstall failed");
 
 static async Task<PrivilegedOperationResult> WriteNginxManagedFileAsync(string? path, string? contentBase64)
 {
@@ -449,9 +459,9 @@ static string ValidateNginxManagedFile(string? path)
 static async Task<PrivilegedOperationResult> InstallGitPackageAsync()
 {
     if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get")) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "git package operation is unavailable");
-    var update = await RunFixedCommandAsync("/usr/bin/apt-get", ["update"], TimeSpan.FromMinutes(10), "git package update failed");
+    var update = await RunAptAsync( ["update"], TimeSpan.FromMinutes(10), "git package update failed");
     return update.Success
-        ? await RunFixedCommandAsync("/usr/bin/apt-get", ["install", "--yes", "--no-install-recommends", "git"], TimeSpan.FromMinutes(10), "git package install failed")
+        ? await RunAptAsync( ["install", "--yes", "--no-install-recommends", "git"], TimeSpan.FromMinutes(10), "git package install failed")
         : update;
 }
 
@@ -566,8 +576,8 @@ static async Task<PrivilegedOperationResult> InstallSambaPackageAsync()
 {
     if (!OperatingSystem.IsLinux() || !IsSupportedDebianFamily() || !File.Exists("/usr/bin/apt-get"))
         return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Samba installation is unavailable on this platform");
-    var update = await RunFixedCommandAsync("/usr/bin/apt-get", ["update"], TimeSpan.FromMinutes(10), "Samba package update failed");
-    return update.Success ? await RunFixedCommandAsync("/usr/bin/apt-get", ["install", "--yes", "--no-install-recommends", "samba"], TimeSpan.FromMinutes(10), "Samba package install failed") : update;
+    var update = await RunAptAsync( ["update"], TimeSpan.FromMinutes(10), "Samba package update failed");
+    return update.Success ? await RunAptAsync( ["install", "--yes", "--no-install-recommends", "samba"], TimeSpan.FromMinutes(10), "Samba package install failed") : update;
 }
 
 static async Task<PrivilegedOperationResult> ApplySmbServiceActionAsync(SmbServiceAction? action)
@@ -717,6 +727,71 @@ static Task<PrivilegedOperationResult> RunUfwAsync(IReadOnlyList<string> argumen
     ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "ufw is unavailable"))
     : RunFixedCommandAsync("/usr/sbin/ufw", arguments, TimeSpan.FromSeconds(30), failure);
 
+static async Task<PrivilegedOperationResult> RunAptAsync(IReadOnlyList<string> arguments, TimeSpan timeout, string failure)
+{
+    var stage = arguments[0] == "update" ? InstallationStage.UpdatingPackageLists : InstallationStage.Installing;
+    if (Progress.Value is { } initial) await initial(PrivilegedOperationFrame.Report(stage));
+    using var statusPipe = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.In, HandleInheritability.Inheritable);
+    using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo("/usr/bin/apt-get")
+        { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
+    process.StartInfo.ArgumentList.Add("-o");
+    process.StartInfo.ArgumentList.Add("APT::Status-Fd=" + statusPipe.GetClientHandleAsString());
+    process.StartInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
+    foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+    if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "package operation could not start");
+    statusPipe.DisposeLocalCopyOfClientHandle();
+    var output = DrainAsync(process.StandardOutput.BaseStream);
+    var error = DrainAsync(process.StandardError.BaseStream);
+    var status = ReadAptStatusAsync(statusPipe, stage);
+    using var deadline = new CancellationTokenSource(timeout);
+    try { await process.WaitForExitAsync(deadline.Token); }
+    catch (OperationCanceledException)
+    {
+        // The privileged worker owns the child. Reap it before returning a terminal result.
+        try { process.Kill(entireProcessTree: true); } catch { }
+        await process.WaitForExitAsync();
+        await Task.WhenAll(output, error, status);
+        return Fail(124, PrivilegedProblemCode.TimedOut, "package operation timed out");
+    }
+    await Task.WhenAll(output, error, status);
+    return process.ExitCode == 0 ? new(true) : Fail(process.ExitCode, PrivilegedProblemCode.InternalError, "package operation failed");
+}
+
+static async Task DrainAsync(Stream stream)
+{
+    var buffer = new byte[8192];
+    while (await stream.ReadAsync(buffer) > 0) { }
+}
+
+static async Task ReadAptStatusAsync(Stream stream, InstallationStage stage)
+{
+    var buffer = new byte[4096]; var line = new System.Text.StringBuilder(); var oversized = false; int read; int? previous = null;
+    while ((read = await stream.ReadAsync(buffer)) > 0)
+    {
+        for (var i = 0; i < read; i++)
+        {
+            var value = (char)buffer[i];
+            if (value != '\n') { if (line.Length >= 4096) oversized = true; if (!oversized) line.Append(value); continue; }
+            if (!oversized)
+            {
+                var fields = line.ToString().Split(':', 4);
+                if (fields.Length >= 3 && fields[0] is "pmstatus" or "dlstatus"
+                    && double.TryParse(fields[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var percent)
+                    && double.IsFinite(percent) && percent is >= 0 and <= 100)
+                {
+                    var current = (int)percent;
+                    if (current != previous && Progress.Value is { } observer)
+                    {
+                        await observer(PrivilegedOperationFrame.Report(stage, current));
+                        previous = current;
+                    }
+                }
+            }
+            line.Clear(); oversized = false;
+        }
+    }
+}
+
 static async Task<PrivilegedOperationResult> RunFixedCommandWithOutputAsync(string executable, IReadOnlyList<string> arguments, string failure)
 {
     using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true } };
@@ -749,7 +824,7 @@ static async Task<PrivilegedOperationResult> RunFixedCommandAsync(string executa
 }
 
 static PrivilegedOperationResult Fail(int exitCode, PrivilegedProblemCode code, string error) => new(false, exitCode, Error: error, ProblemCode: code);
-static Task WriteResultAsync(PrivilegedOperationResult result) => JsonSerializer.SerializeAsync(Console.OpenStandardOutput(), result);
+static Task WriteResultAsync(PrivilegedOperationResult result) => Console.Out.WriteLineAsync(JsonSerializer.Serialize(PrivilegedOperationFrame.Completed(result)));
 static async Task<PrivilegedOperationRequest?> ReadRequestAsync(Stream input)
 {
     await using var buffer = new MemoryStream();

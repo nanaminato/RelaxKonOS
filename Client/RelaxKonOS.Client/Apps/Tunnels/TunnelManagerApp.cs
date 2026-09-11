@@ -1,3 +1,5 @@
+using RelaxKonOS.Client.Services.Installation;
+using RelaxKonOS.Protocol.Installations;
 using Avalonia.Input.Platform;
 using RelaxKonOS.Client.Apps.Tunnels.Views;
 using RelaxKonOS.Client.Apps.Explorer;
@@ -28,7 +30,8 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
         }
         var canManage = context.Permissions.IsGranted(AppPermissions.ServerTunnelsManage);
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        var vm = new TunnelManagerViewModel(client, canManage); var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), new TunnelManagerView { DataContext = vm }, new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
+        var vm = new TunnelManagerViewModel(client, canManage);
+        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Frp, "relaxkonos.tunnels", vm.RefreshAfterChildAsync); var window = context.ShowWindow(LocalizedText.Get("tunnels.title"), InstallationPanel.Wrap(new TunnelManagerView { DataContext = vm }, vm.Installation), new Rect(90, 65, 1040, 680), Manifest.IconGlyph);
         async Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
         {
             var confirmed = false;

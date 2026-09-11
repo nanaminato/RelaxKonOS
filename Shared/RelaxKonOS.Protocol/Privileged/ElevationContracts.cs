@@ -22,6 +22,10 @@ public enum HostElevationCapability
     FirewallChange,
     GitPackageInstall,
     SmbManage,
+    SmbInstall,
+    FrpInstall,
+    MihomoInstall,
+    DockerInstall,
 }
 
 /// <summary>Authenticated request for one non-file host capability and exact managed resource.</summary>
