@@ -1,4 +1,7 @@
 using RelaxKonOS.Client.Apps.FileServices.Views;
+using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.ViewModels;
+using RelaxKonOS.Client.Apps.Explorer.Views;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
@@ -24,11 +27,33 @@ public sealed class FileServicesApp : RemoteApplicationBase
         }
         var vm = new FileServicesViewModel(client, context.Permissions);
         var window = context.ShowWindow(LocalizedText.Get("file_services.title"), new FileServicesWorkspace(vm), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
+        var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         vm.RequestHostAdministratorPasswordAsync = () => FileServicesDialogs.RequestPasswordAsync(context, window,
             LocalizedText.Get("file_services.host_password"), LocalizedText.Get("file_services.host_password_message"));
         vm.RequestSambaPasswordAsync = () => FileServicesDialogs.RequestPasswordAsync(context, window, LocalizedText.Get("file_services.samba_password"));
         vm.ShowShareEditorAsync = editing => FileServicesDialogs.ShowShareEditorAsync(context, window, vm, editing);
+        vm.ShowSharePathPickerAsync = () => files is null
+            ? Task.FromResult<string?>(null)
+            : context.ShowDialogAsync<string?>(window, LocalizedText.Get("file_services.select_folder"), dialog =>
+            {
+                var picker = new ExplorerViewModel(files, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
+                    paths => dialog.Close(paths[0]))
+                {
+                    CancelAction = dialog.Cancel
+                };
+                _ = picker.LoadRootAsync();
+                return new ExplorerMainView { DataContext = picker };
+            }, PickerBounds(window));
         vm.ConfirmDeleteAsync = name => FileServicesDialogs.ConfirmDeleteAsync(context, window, name);
         _ = vm.StartAsync();
+    }
+
+    private static Rect PickerBounds(RelaxKonOS.WindowManager.ManagedWindow owner)
+    {
+        var bounds = owner.Info.Bounds;
+        var width = Math.Min(820, Math.Max(480, bounds.Width - 40));
+        var height = Math.Min(600, Math.Max(340, bounds.Height - 48));
+        return new Rect(bounds.X + Math.Max(20, (bounds.Width - width) / 2),
+            bounds.Y + Math.Max(24, (bounds.Height - height) / 2), width, height);
     }
 }

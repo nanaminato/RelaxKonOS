@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.Client.Apps.FileServices.Views;
@@ -15,12 +16,27 @@ internal partial class FileServicesWorkspace : UserControl
         _viewModel = viewModel;
         DataContext = viewModel;
         ShowPage("overview", OverviewButton);
+        SizeChanged += (_, _) => ApplyResponsiveLayout();
         AttachedToVisualTree += (_, _) =>
         {
             _viewModel.PropertyChanged += ViewModel_PropertyChanged;
             EnsureAvailablePage();
+            ApplyResponsiveLayout();
         };
         DetachedFromVisualTree += (_, _) => _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        var compact = Bounds.Width < 720;
+        RootGrid.Margin = compact ? new Avalonia.Thickness(12) : new Avalonia.Thickness(20);
+        WorkspaceGrid.ColumnDefinitions = new ColumnDefinitions(compact ? "*" : "190,*");
+        WorkspaceGrid.RowDefinitions = new RowDefinitions(compact ? "Auto,*" : "*");
+        WorkspaceGrid.ColumnSpacing = compact ? 0 : 16;
+        WorkspaceGrid.RowSpacing = compact ? 10 : 0;
+        NavigationPanel.Orientation = compact ? Orientation.Horizontal : Orientation.Vertical;
+        Grid.SetColumn(ContentHost, compact ? 0 : 1);
+        Grid.SetRow(ContentHost, compact ? 1 : 0);
     }
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

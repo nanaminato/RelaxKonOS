@@ -4,18 +4,38 @@
              xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
              xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
              x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesShareDialogView" x:DataType="fs:FileServicesViewModel">
-    <ScrollViewer>
-        <StackPanel Margin="20" Spacing="8">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20" Spacing="10" MaxWidth="760" HorizontalAlignment="Stretch">
             <TextBlock Text="{Binding PlatformHelp}" TextWrapping="Wrap" />
             <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
             <TextBlock Text="{loc:Loc file_services.share_name}" />
             <TextBox Text="{Binding ShareName, Mode=TwoWay}" />
             <TextBlock Text="{loc:Loc file_services.share_path}" />
-            <TextBox Text="{Binding SharePath, Mode=TwoWay}" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Text="{Binding SharePath, Mode=TwoWay}" MinWidth="0" />
+                <Button Grid.Column="1" Content="{loc:Loc file_services.browse}" Click="BrowsePath_Click" />
+            </Grid>
             <TextBlock Text="{loc:Loc file_services.share_description}" />
             <TextBox Text="{Binding ShareDescription, Mode=TwoWay}" />
-            <TextBlock Text="{loc:Loc file_services.share_permissions}" />
-            <TextBox Text="{Binding SharePrincipals, Mode=TwoWay}" />
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{loc:Loc file_services.share_permissions}" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="{loc:Loc file_services.permission_add}" Click="AddPermission_Click" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding SharePermissions}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="fs:FileSharePermissionEditor">
+                        <Grid ColumnDefinitions="*,160,Auto" ColumnSpacing="8" Margin="0,0,0,6">
+                            <TextBox PlaceholderText="{loc:Loc file_services.permission_principal}" Text="{Binding Principal, Mode=TwoWay}" MinWidth="0" />
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding AccessOptions}" SelectedItem="{Binding SelectedAccess, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="fs:FileShareAccessOption"><TextBlock Text="{Binding Label}" /></DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="2" Content="{loc:Loc file_services.permission_remove}" Tag="{Binding}" Click="RemovePermission_Click" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
             <CheckBox Content="{loc:Loc file_services.share_read_only}" IsChecked="{Binding ShareReadOnly, Mode=TwoWay}" />
             <CheckBox Content="{loc:Loc file_services.share_enabled}" IsChecked="{Binding ShareEnabled, Mode=TwoWay}" />
             <CheckBox Content="{loc:Loc file_services.share_guest}" IsChecked="{Binding ShareGuestAllowed, Mode=TwoWay}" />

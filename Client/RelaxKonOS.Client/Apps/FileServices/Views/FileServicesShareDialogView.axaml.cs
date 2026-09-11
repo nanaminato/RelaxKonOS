@@ -18,6 +18,12 @@ internal partial class FileServicesShareDialogView : UserControl
         DataContext = viewModel;
     }
     private void Cancel_Click(object? sender, RoutedEventArgs e) => _dialog.Cancel();
+    private async void BrowsePath_Click(object? sender, RoutedEventArgs e) => await _viewModel.PickSharePathAsync();
+    private void AddPermission_Click(object? sender, RoutedEventArgs e) => _viewModel.SharePermissions.Add(new());
+    private void RemovePermission_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: FileSharePermissionEditor permission }) _viewModel.SharePermissions.Remove(permission);
+    }
     private async void Save_Click(object? sender, RoutedEventArgs e)
     {
         SaveButton.IsEnabled = false;

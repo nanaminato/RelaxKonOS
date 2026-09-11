@@ -14,11 +14,11 @@
                 <Button Content="{loc:Loc file_services.delete}" Command="{Binding DeleteShareCommand}" />
             </WrapPanel>
         </StackPanel>
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Shares}" SelectedItem="{Binding SelectedShare, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" GridLinesVisibility="Horizontal">
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Shares}" SelectedItem="{Binding SelectedShare, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" GridLinesVisibility="Horizontal" CanUserResizeColumns="True" CanUserReorderColumns="False" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MinHeight="160">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="{loc:Loc file_services.column.Name}" Binding="{ReflectionBinding Name}" Width="160" />
                 <DataGridTextColumn Header="{loc:Loc file_services.column.Path}" Binding="{ReflectionBinding Path}" Width="260" />
-                <DataGridTextColumn Header="{loc:Loc file_services.column.Description}" Binding="{ReflectionBinding Description}" Width="160" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Description}" Binding="{ReflectionBinding Description}" Width="*" MinWidth="140" />
                 <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.ReadOnly}" Binding="{ReflectionBinding ReadOnly}" Width="110" />
                 <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Enabled}" Binding="{ReflectionBinding Enabled}" Width="110" />
                 <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.GuestAllowed}" Binding="{ReflectionBinding GuestAllowed}" Width="110" />

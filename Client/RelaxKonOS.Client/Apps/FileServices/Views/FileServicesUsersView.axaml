@@ -12,9 +12,9 @@
                 <Button Content="{loc:Loc file_services.user_password}" Command="{Binding SetSambaPasswordCommand}" />
             </WrapPanel>
         </StackPanel>
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedUser, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" GridLinesVisibility="Horizontal">
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedUser, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" GridLinesVisibility="Horizontal" CanUserResizeColumns="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MinHeight="160">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:Loc file_services.column.Username}" Binding="{ReflectionBinding Username}" Width="160" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Username}" Binding="{ReflectionBinding Username}" Width="*" MinWidth="160" />
                 <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Enabled}" Binding="{ReflectionBinding Enabled}" Width="110" />
                 <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Eligible}" Binding="{ReflectionBinding Eligible}" Width="110" />
             </DataGrid.Columns>
