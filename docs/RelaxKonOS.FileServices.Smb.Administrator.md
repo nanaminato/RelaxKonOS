@@ -15,7 +15,7 @@ Server 本身不应以 root、Administrator 或 LocalSystem 运行。Helper 不�
 
 ## 所有权与共享根
 
-Linux 仅可共享现有的 `/srv/relaxkonos-shares` 及其真实子目录。它只拥有：
+Linux 可共享任意现有的真实目录；共享根目录或系统目录可能暴露敏感信息。它只拥有：
 
 - `/etc/samba/smb.conf` `[global]` 中唯一的 RelaxKonOS include marker；
 - `/etc/samba/relaxkonos.conf` 及其原子暂存/备份文件；
@@ -23,7 +23,7 @@ Linux 仅可共享现有的 `/srv/relaxkonos-shares` 及其真实子目录。它
 
 若 marker 重复、目标 include 被改写、`[global]` 无法安全定位或 `testparm` 失败，操作返回 `file-services.smb.configuration_unmanaged` 或 `file-services.smb.configuration_invalid`；绝不接管、重写或删除管理员的 share/configuration。
 
-Windows 仅可共享既存 `D:\\RelaxKonOSShares` 及其非 reparse-point 子目录。HostGlobal ownership ledger 保存由 RelaxKonOS 创建的 **share name**、路径哈希和实际 API readback snapshot。`ADMIN$`、`C$`、`IPC$` 和任意 `$` share 永远不可管理。资源被重命名、删除、替换、路径或 ACL 改变时标记 drift，返回 `file-services.smb.reconciliation_required`，而不会覆盖外部改动。
+Windows 可共享任意已存在的本地目录，仍拒绝 reparse-point 路径。共享磁盘根目录或系统目录可能暴露敏感信息。HostGlobal ownership ledger 保存由 RelaxKonOS 创建的 **share name**、路径哈希和实际 API readback snapshot。`ADMIN$`、`C$`、`IPC$` 和任意 `$` share 永远不可管理。资源被重命名、删除、替换、路径或 ACL 改变时标记 drift，返回 `file-services.smb.reconciliation_required`，而不会覆盖外部改动。
 
 允许 share ACL 并不等同于 Unix/NTFS 文件系统 ACL 允许。V1 只检测并显示控制面规则，不修改 chown/chmod/Unix ACL/NTFS ACL。
 
@@ -58,7 +58,7 @@ Windows principal 必须是现有 SID，且只能用于 share ACL；V1 不管理
 
 The desktop selects controls from the connected server's SMB capabilities, not the desktop operating system. Overview shows the provider, service version, runtime status and selectable connection prefixes. Append the share name to connect. Installation is available only for a server reporting installation support and a not-installed runtime. Start is enabled when stopped; stop/restart when running.
 
-Shares uses localized columns, including permissions, ownership and configuration drift. Only managed shares can be edited or removed. Removing a share requires confirmation and retains directory contents. Use existing directories under `D:\RelaxKonOSShares` with SID principals on Windows, or `/srv/relaxkonos-shares` with system usernames on Linux. Guest access requires read-only mode.
+Shares uses localized columns, including permissions, ownership and configuration drift. Only managed shares can be edited or removed. Removing a share requires confirmation and retains directory contents. Use any existing directory with SID principals on Windows, or system usernames on Linux. Windows offers common groups in a dropdown and accepts custom SIDs. Sharing drive roots or system directories may expose sensitive data. Symbolic links and reparse points remain rejected. Guest access requires read-only mode.
 
 The Samba users page exists only when the server advertises Samba credential support. Select an eligible system account to change credentials. Windows uses its native security principals and has no Samba password page. Mutations remain locked throughout administrator authorization and refresh the server state after completion. Chinese, English and Japanese resources cover columns, runtime states and SMB problem codes.
 

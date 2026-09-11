@@ -730,23 +730,19 @@ static IReadOnlyList<FileShareDto> ParseManagedShares(string[] lines)
 
 static bool InvalidSmbShare(SmbManagedShareRequest share) => !IsValidSmbShare(share);
 static bool IsValidSmbShare(SmbManagedShareRequest share) => share.Id.Length is > 0 and <= 64 && System.Text.RegularExpressions.Regex.IsMatch(share.Id, "^[A-Za-z0-9-]+$")
-    && System.Text.RegularExpressions.Regex.IsMatch(share.Name, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") && Path.IsPathFullyQualified(share.Path)
-    && Directory.Exists(share.Path) && !HasSmbReparsePoint("/srv/relaxkonos-shares", share.Path) && (string.Equals(share.Path, "/srv/relaxkonos-shares", StringComparison.Ordinal) || share.Path.StartsWith("/srv/relaxkonos-shares/", StringComparison.Ordinal))
+    && System.Text.RegularExpressions.Regex.IsMatch(share.Name, "^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$") && Path.IsPathFullyQualified(share.Path)
+    && Directory.Exists(share.Path) && !HasSmbReparsePoint(share.Path)
     && !HasUnsafeSmbText(share.Name) && !HasUnsafeSmbText(share.Path) && !HasUnsafeSmbText(share.Description)
     && (!share.GuestAllowed || share.ReadOnly)
     && share.Permissions.All(x => System.Text.RegularExpressions.Regex.IsMatch(x.Principal, "^[A-Za-z0-9._@\\\\-]{1,256}$") && x.Access is "Read" or "ReadWrite");
 static bool HasUnsafeSmbText(string? value) => value is not null && (value.Any(char.IsControl) || value.Contains('=') || value.Contains('[') || value.Contains(']') || value.StartsWith('-'));
 static bool IsValidSmbUsername(string? username) => username is not null && System.Text.RegularExpressions.Regex.IsMatch(username, "^[a-z_][a-z0-9_-]{0,63}$");
 static bool UserExists(string username) => File.ReadLines("/etc/passwd").Any(line => line.StartsWith(username + ":", StringComparison.Ordinal));
-static bool HasSmbReparsePoint(string root, string path)
+static bool HasSmbReparsePoint(string path)
 {
-    for (var current = root; ;)
-    {
-        if (Directory.Exists(current) && File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint)) return true;
-        var next = Path.GetRelativePath(current, path).Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        if (next is null) return false;
-        current = Path.Combine(current, next);
-    }
+    for (var directory = new DirectoryInfo(path); directory is not null; directory = directory.Parent)
+        if (directory.Exists && directory.Attributes.HasFlag(FileAttributes.ReparsePoint)) return true;
+    return false;
 }
 static bool IsSupportedDebianFamily()
 {

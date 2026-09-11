@@ -1,4 +1,6 @@
 {
+    "file_services.windows_sid_required": "Windows 权限需要 SID；请选择下拉框中的组，或填写账户的 SID。",
+    "file_services.guest_read_only_required": "访客访问必须启用“只读”，或取消访客访问。",
   "Culture": "zh-CN",
   "Strings": {
     "file_services.title": "文件服务",
@@ -44,11 +46,11 @@
     "file_services.overview": "服务概览",
     "file_services.version": "服务版本",
     "file_services.connection_help": "在以下地址后添加共享名称即可连接。",
-    "file_services.windows_help": "Windows SMB：使用 D:\\RelaxKonOSShares 下已存在的目录，权限主体填写 Windows SID。",
-    "file_services.linux_help": "Linux Samba：使用 /srv/relaxkonos-shares 下已存在的目录，权限主体填写系统用户名。",
+    "file_services.windows_help": "Windows SMB：可选择任意已存在的本地目录。共享磁盘根目录或系统目录可能暴露敏感信息；权限可选择常用组或输入 Windows SID。",
+    "file_services.linux_help": "Linux Samba：可选择任意已存在的目录，权限填写系统用户名。共享根目录或系统目录可能暴露敏感信息。",
     "file_services.shares_help": "选择受管共享进行编辑或删除。列表为空时，请先安装或启动 SMB，再新建共享。",
     "file_services.users_help": "选择符合条件的系统用户。Samba 密码须为 12–1024 个字符且不含控制字符。",
-    "file_services.validation": "共享名称和路径不能为空；访客访问必须启用只读模式。",
+    "file_services.validation": "共享名称和路径不能为空。",
     "file_services.delete_confirm": "删除共享“{0}”？目录中的文件将保留。",
     "file_services.operation_failed": "SMB 操作失败。",
     "file_services.state.Unsupported": "不支持",

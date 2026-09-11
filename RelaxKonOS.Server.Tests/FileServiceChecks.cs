@@ -5,6 +5,18 @@ public static class FileServiceChecks
 {
     public static async Task RunAsync()
     {
+        var directory = Directory.CreateTempSubdirectory("smb-validation-");
+        try
+        {
+            var request = new UpsertFileShareRequest("normal share", directory.FullName, "SMB share", false, true, false, []);
+            Check(SmbValidators.ValidateShare(request, OperatingSystem.IsWindows()) is null, "Existing directory outside former share root and spaced name accepted");
+            Check(SmbValidators.ValidateShare(request with { GuestAllowed = true }, OperatingSystem.IsWindows()) is not null, "Writable guest rejected");
+            Check(SmbValidators.ValidateShare(request with { GuestAllowed = true, ReadOnly = true }, OperatingSystem.IsWindows()) is null, "Read-only guest accepted");
+            Check(SmbValidators.ValidateShare(request with { Path = Path.Combine(directory.FullName, "missing") }, OperatingSystem.IsWindows()) is not null, "Missing directory rejected");
+            if (OperatingSystem.IsWindows())
+                Check(SmbValidators.ValidateShare(request with { Path = Path.GetPathRoot(directory.FullName)! }, true) is null, "Drive root accepted");
+        }
+        finally { directory.Delete(); }
         Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(0, false) is null,
             "Windows installation in progress must keep polling");
         Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(1, false) is { Success: true },

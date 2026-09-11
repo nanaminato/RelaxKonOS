@@ -213,19 +213,16 @@ internal static class WindowsSmbNativeOperations
     private static bool IsValid(SmbManagedShareRequest share)
     {
         if (share.Id != share.Name || share.Name.Length is < 1 or > 80 || share.Name.Any(c => char.IsControl(c) || c is '\\' or '/' or '[' or ']' or '=')) return false;
-        if (!Path.IsPathFullyQualified(share.Path) || !Directory.Exists(share.Path) || HasReparsePoint(@"D:\RelaxKonOSShares", share.Path) || share.Description?.Any(char.IsControl) == true || !(string.Equals(share.Path, @"D:\RelaxKonOSShares", StringComparison.OrdinalIgnoreCase) || share.Path.StartsWith(@"D:\RelaxKonOSShares\", StringComparison.OrdinalIgnoreCase))) return false;
+        if (!Path.IsPathFullyQualified(share.Path) || !Directory.Exists(share.Path) || HasReparsePoint(share.Path) || share.Description?.Any(char.IsControl) == true || (share.GuestAllowed && !share.ReadOnly)) return false;
         try { return share.Permissions.All(p => p.Access is "Read" or "ReadWrite" && new SecurityIdentifier(p.Principal).Value == p.Principal); }
         catch (ArgumentException) { return false; }
     }
     private static bool IsDefaultShare(string? name) => string.IsNullOrWhiteSpace(name) || name.Equals("IPC$", StringComparison.OrdinalIgnoreCase) || name.EndsWith('$');
-    private static bool HasReparsePoint(string root, string path)
+    private static bool HasReparsePoint(string path)
     {
-        for (var current = root; ;)
-        {
-            if (Directory.Exists(current) && File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint)) return true;
-            var segment = Path.GetRelativePath(current, path).Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            if (segment is null) return false; current = Path.Combine(current, segment);
-        }
+        for (var directory = new DirectoryInfo(path); directory is not null; directory = directory.Parent)
+            if (directory.Exists && directory.Attributes.HasFlag(FileAttributes.ReparsePoint)) return true;
+        return false;
     }
     private static bool IsTcpPortListening() => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(x => x.Port == 445);
     private static bool IsLanmanServerRunning() { using var service = new ServiceController(ServiceName); return service.Status == ServiceControllerStatus.Running; }

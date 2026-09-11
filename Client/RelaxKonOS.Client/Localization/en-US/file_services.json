@@ -1,4 +1,6 @@
 {
+    "file_services.windows_sid_required": "Windows permissions require a SID. Select a group or enter the account SID.",
+    "file_services.guest_read_only_required": "Guest access requires read-only mode. Enable read-only or disable guest access.",
   "Culture": "en-US",
   "Strings": {
     "file_services.title": "File Services",
@@ -44,11 +46,11 @@
     "file_services.overview": "Overview",
     "file_services.version": "Service version",
     "file_services.connection_help": "Append a share name to either address to connect.",
-    "file_services.windows_help": "Windows SMB: use an existing directory under D:\\RelaxKonOSShares and Windows SIDs for permissions.",
-    "file_services.linux_help": "Linux Samba: use an existing directory under /srv/relaxkonos-shares and system usernames for permissions.",
+    "file_services.windows_help": "Windows SMB: choose any existing local directory. Sharing drive roots or system directories may expose sensitive data. Select a group or enter a Windows SID.",
+    "file_services.linux_help": "Linux Samba: choose any existing directory and use system usernames. Sharing root or system directories may expose sensitive data.",
     "file_services.shares_help": "Select a managed share to edit or remove it. If the list is empty, create a share after starting or installing SMB.",
     "file_services.users_help": "Select an eligible system user. Samba passwords require 12–1024 characters and no control characters.",
-    "file_services.validation": "Name and path are required. Guest access requires read-only mode.",
+    "file_services.validation": "Name and path are required.",
     "file_services.delete_confirm": "Remove share “{0}”? Files in its directory will remain.",
     "file_services.operation_failed": "SMB operation failed.",
     "file_services.state.Unsupported": "Unsupported",

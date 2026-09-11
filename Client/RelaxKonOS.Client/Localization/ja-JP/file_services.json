@@ -1,4 +1,6 @@
 {
+    "file_services.windows_sid_required": "グループを選択するか Windows SID を入力してください。",
+    "file_services.guest_read_only_required": "ゲストアクセスには読み取り専用が必要です。",
   "Culture": "ja-JP",
   "Strings": {
     "file_services.title": "ファイルサービス",
@@ -44,11 +46,11 @@
     "file_services.overview": "概要",
     "file_services.version": "サービスバージョン",
     "file_services.connection_help": "次のアドレスに共有名を追加して接続します。",
-    "file_services.windows_help": "Windows SMB：D:\\RelaxKonOSShares 配下の既存ディレクトリと Windows SID を使用します。",
-    "file_services.linux_help": "Linux Samba：/srv/relaxkonos-shares 配下の既存ディレクトリとシステムユーザー名を使用します。",
+    "file_services.windows_help": "Windows SMB：既存のローカルディレクトリを選択できます。ルートやシステムディレクトリの共有は機密情報を公開する恐れがあります。グループを選択するか SID を入力してください。",
+    "file_services.linux_help": "Linux Samba：既存のディレクトリとシステムユーザー名を使用します。ルートやシステムディレクトリの共有に注意してください。",
     "file_services.shares_help": "管理対象の共有を選択して編集・削除します。一覧が空の場合は SMB をインストールまたは起動して共有を作成してください。",
     "file_services.users_help": "対象のシステムユーザーを選択します。Samba パスワードは制御文字を含まない12〜1024文字です。",
-    "file_services.validation": "名前とパスは必須です。ゲストアクセスには読み取り専用モードが必要です。",
+    "file_services.validation": "名前とパスは必須です。",
     "file_services.delete_confirm": "共有「{0}」を削除しますか？ディレクトリ内のファイルは保持されます。",
     "file_services.operation_failed": "SMB 操作に失敗しました。",
     "file_services.state.Unsupported": "非対応",

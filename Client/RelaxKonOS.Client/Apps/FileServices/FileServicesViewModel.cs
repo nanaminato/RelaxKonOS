@@ -43,6 +43,8 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         foreach (var command in new IRelayCommand[] { RefreshCommand, InstallCommand, StartServiceCommand, StopCommand, RestartCommand, NewShareCommand, EditShareCommand, DeleteShareCommand, ToggleUserCommand, SetSambaPasswordCommand }) command.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(PlatformText)); OnPropertyChanged(nameof(PlatformHelp)); OnPropertyChanged(nameof(SupportsInstall)); OnPropertyChanged(nameof(VersionText));
     }
+    public bool IsWindowsServer => Capabilities?.WindowsShareSecuritySupported == true;
+    public void AddSharePermission(string principal = "", FileShareAccess access = FileShareAccess.Read) => SharePermissions.Add(new(principal, access, IsWindowsServer));
     public bool SupportsSambaCredentials => Capabilities?.SambaCredentialsSupported == true;
     public Func<Task<string?>>? RequestHostAdministratorPasswordAsync { get; set; }
     public Func<bool, Task>? ShowShareEditorAsync { get; set; }
@@ -87,8 +89,8 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         if (SelectedShare is null || !SelectedShare.Managed) { StatusText = LocalizedText.Get("file_services.status.managed_only", "Only RelaxKonOS-managed shares can be edited."); return; }
         ShareName = SelectedShare.Name; SharePath = SelectedShare.Path; ShareDescription = SelectedShare.Description ?? string.Empty; ShareReadOnly = SelectedShare.ReadOnly; ShareEnabled = SelectedShare.Enabled; ShareGuestAllowed = SelectedShare.GuestAllowed;
         SharePermissions.Clear();
-        foreach (var permission in SelectedShare.Permissions) SharePermissions.Add(new(permission.Principal, permission.Access));
-        if (SharePermissions.Count == 0) SharePermissions.Add(new());
+        foreach (var permission in SelectedShare.Permissions) AddSharePermission(permission.Principal, permission.Access);
+        if (SharePermissions.Count == 0) AddSharePermission();
         if (ShowShareEditorAsync is not null) await ShowShareEditorAsync(true);
     }
     public async Task<bool> SaveShareAsync(bool editing)
@@ -124,19 +126,21 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     {
         ShareName = SharePath = ShareDescription = string.Empty;
         SharePermissions.Clear();
-        SharePermissions.Add(new());
+        AddSharePermission();
         ShareReadOnly = ShareGuestAllowed = false;
         ShareEnabled = true;
     }
     private bool TryShareRequest(out UpsertFileShareRequest request)
     {
         request = default!;
-        if (string.IsNullOrWhiteSpace(ShareName) || string.IsNullOrWhiteSpace(SharePath) || ShareGuestAllowed && !ShareReadOnly)
+        if (string.IsNullOrWhiteSpace(ShareName) || string.IsNullOrWhiteSpace(SharePath))
         { StatusText = T("validation"); return false; }
+        if (ShareGuestAllowed && !ShareReadOnly) { StatusText = T("guest_read_only_required"); return false; }
         var rules = new List<FileSharePermissionDto>();
         foreach (var item in SharePermissions)
         {
             if (string.IsNullOrWhiteSpace(item.Principal)) { StatusText = LocalizedText.Get("file_services.share_permission_invalid", "Each permission requires a principal."); return false; }
+            if (IsWindowsServer && !System.Text.RegularExpressions.Regex.IsMatch(item.Principal.Trim(), @"^S-[0-9]+(-[0-9]+)+$")) { StatusText = T("windows_sid_required"); return false; }
             rules.Add(new(item.Principal.Trim(), item.SelectedAccess.Value));
         }
         request = new(ShareName.Trim(), SharePath.Trim(), string.IsNullOrWhiteSpace(ShareDescription) ? null : ShareDescription.Trim(), ShareReadOnly, ShareEnabled, ShareGuestAllowed, rules); return true;
@@ -171,12 +175,19 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
 
 public sealed partial class FileSharePermissionEditor : ObservableObject
 {
+    public bool IsWindowsServer { get; }
+    public IReadOnlyList<FileSharePrincipalOption> PrincipalOptions { get; } = [
+        new("S-1-5-32-544", "Administrators"), new("S-1-5-32-545", "Users"),
+        new("S-1-5-11", "Authenticated Users"), new("S-1-1-0", "Everyone")];
+    [ObservableProperty] private FileSharePrincipalOption? _selectedPrincipal;
+    partial void OnSelectedPrincipalChanged(FileSharePrincipalOption? value) { if (value is not null) Principal = value.Sid; }
     public IReadOnlyList<FileShareAccessOption> AccessOptions => FileShareAccessOption.All;
     [ObservableProperty] private string _principal;
     [ObservableProperty] private FileShareAccessOption _selectedAccess;
 
-    public FileSharePermissionEditor(string principal = "", FileShareAccess access = FileShareAccess.Read)
+    public FileSharePermissionEditor(string principal = "", FileShareAccess access = FileShareAccess.Read, bool isWindowsServer = false)
     {
+        IsWindowsServer = isWindowsServer;
         _principal = principal;
         _selectedAccess = FileShareAccessOption.All.First(x => x.Value == access);
     }
@@ -189,4 +200,9 @@ public sealed record FileShareAccessOption(FileShareAccess Value, string Label)
         new(FileShareAccess.Read, LocalizedText.Get("file_services.access.Read", "Read")),
         new(FileShareAccess.ReadWrite, LocalizedText.Get("file_services.access.ReadWrite", "Read / write"))
     ];
+}
+
+public sealed record FileSharePrincipalOption(string Sid, string Name)
+{
+    public string Label => $"{Name} ({Sid})";
 }

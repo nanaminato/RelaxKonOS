@@ -25,7 +25,12 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="fs:FileSharePermissionEditor">
                         <Grid ColumnDefinitions="*,160,Auto" ColumnSpacing="8" Margin="0,0,0,6">
+                            <StackPanel Spacing="4">
+                                <ComboBox IsVisible="{Binding IsWindowsServer}" ItemsSource="{Binding PrincipalOptions}" SelectedItem="{Binding SelectedPrincipal, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <ComboBox.ItemTemplate><DataTemplate x:DataType="fs:FileSharePrincipalOption"><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                                </ComboBox>
                             <TextBox PlaceholderText="{loc:Loc file_services.permission_principal}" Text="{Binding Principal, Mode=TwoWay}" MinWidth="0" />
+                            </StackPanel>
                             <ComboBox Grid.Column="1" ItemsSource="{Binding AccessOptions}" SelectedItem="{Binding SelectedAccess, Mode=TwoWay}">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate x:DataType="fs:FileShareAccessOption"><TextBlock Text="{Binding Label}" /></DataTemplate>

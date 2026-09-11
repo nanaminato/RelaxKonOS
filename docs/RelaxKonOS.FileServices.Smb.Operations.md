@@ -19,12 +19,12 @@ Goal 7 的真实宿主 mutation / 第三方客户端测试**尚未在此开发�
 
 | 宿主 | 最低要求 | 固定资源 | 允许共享根 |
 | --- | --- | --- | --- |
-| Debian 12 / Ubuntu 22.04、24.04 | systemd、Samba 4（`smbd`） | `samba` 包、`smbd`、`/etc/samba/smb.conf` 中唯一 RelaxKonOS marker、`/etc/samba/relaxkonos.conf` | `/srv/relaxkonos-shares` |
-| Windows Server 2019+ | LanmanServer、SMB Server API | LanmanServer、由 HostGlobal ledger 标记的 share/ACL/security snapshot | `D:\\RelaxKonOSShares` |
+| Debian 12 / Ubuntu 22.04、24.04 | systemd、Samba 4（`smbd`） | `samba` 包、`smbd`、`/etc/samba/smb.conf` 中唯一 RelaxKonOS marker、`/etc/samba/relaxkonos.conf` | 任意已存在的真实目录 |
+| Windows Server 2019+ | LanmanServer、SMB Server API | LanmanServer、由 HostGlobal ledger 标记的 share/ACL/security snapshot | 任意已存在的本地目录 |
 
 Samba 安装只使用发行版的受信任默认仓库和固定的 `samba` 包；不会接受仓库、包名或版本。Linux 健康检查为 `testparm`、`smbd` active 与 TCP 445 listening；Windows 为 API 回读、LanmanServer 状态和 TCP 445。
 
-Windows share 管理通过 LocalSystem Helper 内的 `NetShareEnum`、`NetShareGetInfo`、`NetShareAdd`、`NetShareSetInfo` 和 `NetShareDel` 编译绑定完成。它只接受受管 share 的固定字段与 SID principal，拒绝 `IPC$`、名称以 `$` 结束的默认/管理 share、reparse-point 路径与非 `D:\\RelaxKonOSShares` 根目录；Helper 从 API 读取 security descriptor，生成回读 snapshot，并在 apply/delete 后健康失败时恢复 snapshot。没有 PowerShell、registry 或任意系统 API/命令输入。
+Windows share 管理通过 LocalSystem Helper 内的 `NetShareEnum`、`NetShareGetInfo`、`NetShareAdd`、`NetShareSetInfo` 和 `NetShareDel` 编译绑定完成。它只接受受管 share 的固定字段与 SID principal，拒绝 `IPC$`、名称以 `$` 结束的默认/管理 share、reparse-point 路径；Helper 从 API 读取 security descriptor，生成回读 snapshot，并在 apply/delete 后健康失败时恢复 snapshot。没有 PowerShell、registry 或任意系统 API/命令输入。
 
 Windows SMB Server 全局安全状态通过 Helper 内固定绑定的 `ROOT\\Microsoft\\Windows\\Smb:MSFT_SmbServerConfiguration` 读取和设置，不提供通用 WMI/CIM 入口。它仅可强制 V1 基线：禁用 SMB1、启用 SMB2、启用 authenticated-user sharing，并清空 null-session share/pipe 列表。原始配置不会离开 LocalSystem Helper；Server 只在 HostGlobal 中保存不可逆 snapshot hash，之后的外部变更会进入 `reconciliation-required`，不会静默覆盖。SMB3 encryption 仅报告为 Windows 后端能力，V1 不宣称已配置全局加密。
 
