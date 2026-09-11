@@ -78,6 +78,12 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
             return FileServiceProblemCodes.PortUnavailable;
         if (result.Error?.Contains("service health", StringComparison.OrdinalIgnoreCase) == true)
             return FileServiceProblemCodes.ServiceFailed;
+        // A Windows share mutation that reaches the host and then fails is an API/host failure, not an
+        // invalid request: the Helper validated the payload first. Without this, every such failure
+        // (apply, post-apply health check, rollback) surfaced as "invalid share configuration or path".
+        if (result.ProblemCode == PrivilegedProblemCode.InternalError
+            && result.Error?.StartsWith("Windows SMB share", StringComparison.OrdinalIgnoreCase) == true)
+            return FileServiceProblemCodes.WindowsApiUnavailable;
         return result.ProblemCode switch
         {
             PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,

@@ -66,6 +66,44 @@ public static class FileServiceChecks
         var drift = await windowsProvider.LifecycleAsync(SmbLifecycleAction.Restart, Guid.NewGuid(), CancellationToken.None);
         Check(!drift.Succeeded && drift.ProblemCode == FileServiceProblemCodes.ReconciliationRequired && (await windowsLedger.GetServerSecurityAsync(CancellationToken.None))?.ReconciliationRequired == true,
             "Windows server-security drift is fail-closed and marked for reconciliation");
+        // Share fingerprint lifecycle: the ledger must hold the digest, and that same digest is what
+        // drift comparison and the Helper's expected-snapshot check consume.
+        var sharePlatform = new FakeWindowsPlatform(); var shareLedger = new FakeWindowsLedger();
+        var shareProvider = new WindowsSmbFileServiceProvider(sharePlatform, shareLedger);
+        var shareDirectory = Directory.CreateTempSubdirectory("smb-ledger-");
+        try
+        {
+            var createRequest = new UpsertFileShareRequest("台账共享", shareDirectory.FullName, null, false, true, false, [new("S-1-5-32-544", FileShareAccess.Read)]);
+            var created = await shareProvider.CreateShareAsync(createRequest, Guid.NewGuid(), CancellationToken.None);
+            var fingerprint = await shareLedger.GetAsync(createRequest.Name, CancellationToken.None);
+            Check(created.Succeeded && fingerprint is not null && fingerprint.SnapshotHash.Length == 64 && !fingerprint.SnapshotHash.Contains('\n'),
+                "Ownership ledger records the SHA-256 share fingerprint instead of the raw snapshot text");
+            var listed = await shareProvider.ListSharesAsync(CancellationToken.None);
+            Check(listed.Count == 1 && listed[0] is { Managed: true, Drifted: false },
+                "A freshly created Windows share is owned and never reported as drifted");
+            var updated = await shareProvider.UpdateShareAsync(createRequest.Name, createRequest with { GuestAllowed = true }, Guid.NewGuid(), CancellationToken.None);
+            Check(updated.Succeeded, "An untouched Windows share updates without a false reconciliation refusal");
+            sharePlatform.Shares[0] = sharePlatform.Shares[0] with { ReadOnly = true };
+            var drifted = (await shareProvider.ListSharesAsync(CancellationToken.None))[0];
+            var refused = await shareProvider.UpdateShareAsync(createRequest.Name, createRequest, Guid.NewGuid(), CancellationToken.None);
+            Check(drifted.Drifted && !refused.Succeeded && refused.ProblemCode == FileServiceProblemCodes.ReconciliationRequired,
+                "An externally modified Windows share is still detected as drifted and refuses overwrite");
+        }
+        finally { shareDirectory.Delete(); }
+        // Host-side share failures must not be reported as an invalid configuration: the Helper has
+        // already validated the payload before it touches the Windows API.
+        Check(LinuxSambaPlatformAdapter.Problem(new(false, 1, Error: "Windows SMB share health check failed", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError))
+                == FileServiceProblemCodes.WindowsApiUnavailable,
+            "A failed Windows share mutation reports an unavailable API instead of an invalid configuration");
+        Check(LinuxSambaPlatformAdapter.Problem(new(false, 1, Error: "Windows SMB share changed externally", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.Conflict))
+                == FileServiceProblemCodes.ReconciliationRequired,
+            "An externally changed Windows share still reports configuration drift");
+        Check(LinuxSambaPlatformAdapter.Problem(new(false, 1, Error: "invalid Windows SMB share request", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InvalidRequest))
+                == FileServiceProblemCodes.ConfigurationInvalid,
+            "A rejected Windows share payload still reports an invalid configuration");
+        Check(LinuxSambaPlatformAdapter.Problem(new(false, 1, Error: "Samba configuration invalid", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError))
+                == FileServiceProblemCodes.ConfigurationInvalid,
+            "Non-Windows Helper failures keep their existing classification");
     }
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void CheckWindowsGuestAcl()
@@ -118,12 +156,21 @@ public static class FileServiceChecks
     {
         public int SecurityCalls { get; private set; }
         public bool FailSecurityWithDrift { get; set; }
+        public List<FileShareDto> Shares { get; } = [];
         public Task<FileServiceStatusDto> DetectAsync(CancellationToken ct) => Task.FromResult(new FileServiceStatusDto(FileServiceProtocol.Smb, FileServiceRuntimeState.Running, "fake", true, true));
         public Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
         public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
-        public Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileShareDto>>([]);
-        public Task<FileServiceOperationResultDto> ApplyShareAsync(FileShareDto share, string? snapshot, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
-        public Task<FileServiceOperationResultDto> RemoveShareAsync(string id, string? snapshot, Guid operationId, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(operationId, true));
+        public Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileShareDto>>(Shares.ToArray());
+        public Task<FileServiceOperationResultDto> ApplyShareAsync(FileShareDto share, string? snapshot, Guid id, CancellationToken ct)
+        {
+            Shares.RemoveAll(item => item.Id == share.Id); Shares.Add(share with { Managed = true });
+            return Task.FromResult(new FileServiceOperationResultDto(id, true));
+        }
+        public Task<FileServiceOperationResultDto> RemoveShareAsync(string id, string? snapshot, Guid operationId, CancellationToken ct)
+        {
+            Shares.RemoveAll(item => item.Id == id);
+            return Task.FromResult(new FileServiceOperationResultDto(operationId, true));
+        }
         public Task<WindowsSmbSecurityOperationResult> ApplyServerSecurityAsync(string? expectedSnapshot, Guid operationId, CancellationToken ct)
         {
             SecurityCalls++;

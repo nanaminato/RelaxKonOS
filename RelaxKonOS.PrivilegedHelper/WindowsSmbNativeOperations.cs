@@ -106,6 +106,7 @@ internal static class WindowsSmbNativeOperations
         {
             var existing = GetShare(request.Name);
             if (existing is not null && (string.IsNullOrEmpty(expectedSnapshot) || !SnapshotMatches(existing, expectedSnapshot))) return Fail(PrivilegedProblemCode.Conflict, "Windows SMB share changed externally");
+            var recreateForPath = existing is not null && RequiresRecreateForPath(existing.Path, request.Path);
             var descriptor = WindowsSmbShareSecurity.CreateDescriptor(request.Permissions, request.ReadOnly, request.GuestAllowed);
             var descriptorMemory = Marshal.AllocHGlobal(descriptor.Length);
             try
@@ -113,14 +114,28 @@ internal static class WindowsSmbNativeOperations
                 Marshal.Copy(descriptor, 0, descriptorMemory, descriptor.Length);
                 var info = new ShareInfo502(request.Name, 0, request.Description, request.Path, null, 0, descriptorMemory);
                 uint parameterError;
-                var status = existing is null ? NetShareAdd(null, 502, ref info, out parameterError) : NetShareSetInfo(null, request.Name, 502, ref info, out parameterError);
+                int status;
+                if (existing is null) status = NetShareAdd(null, 502, ref info, out parameterError);
+                else if (recreateForPath)
+                {
+                    // NetShareSetInfo accepts SHARE_INFO_502 but silently ignores shi502_path: Windows
+                    // reports success while the share keeps serving its original directory. Re-pointing
+                    // a share is therefore a delete + add, restoring the original share if that fails.
+                    status = NetShareDel(null, request.Name, 0);
+                    if (status == 0)
+                    {
+                        status = NetShareAdd(null, 502, ref info, out parameterError);
+                        if (status != 0 && !RestoreDeletedShare(existing)) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share rollback failed");
+                    }
+                }
+                else status = NetShareSetInfo(null, request.Name, 502, ref info, out parameterError);
                 if (status != 0) return Fail(status is ErrorAccessDenied ? PrivilegedProblemCode.AccessDenied : status is ErrorAlreadyExists ? PrivilegedProblemCode.Conflict : PrivilegedProblemCode.InternalError, "Windows SMB share apply failed");
             }
             finally { Marshal.FreeHGlobal(descriptorMemory); }
             var applied = GetShare(request.Name);
             if (applied is null || !string.Equals(applied.Path, request.Path, StringComparison.OrdinalIgnoreCase) || !IsLanmanServerRunning() || !IsTcpPortListening())
             {
-                if (!RestoreShare(existing, request.Name)) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share rollback failed");
+                if (!RestoreShare(existing, request.Name, recreateForPath)) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share rollback failed");
                 return Fail(PrivilegedProblemCode.InternalError, "Windows SMB share health check failed");
             }
             return new(true);
@@ -141,9 +156,16 @@ internal static class WindowsSmbNativeOperations
         }
         return new(true);
     }
-    private static bool RestoreShare(FileShareDto? snapshot, string name)
+    private static bool RestoreShare(FileShareDto? snapshot, string name, bool recreated)
     {
         if (snapshot is null) return NetShareDel(null, name, 0) is 0 or ErrorNotFound;
+        // A share recreated for a new directory already carries the requested state, so putting the
+        // recorded directory back needs the same delete + add: NetShareSetInfo would keep the new path.
+        if (recreated)
+        {
+            var removed = NetShareDel(null, name, 0);
+            return (removed is 0 or ErrorNotFound) && RestoreDeletedShare(snapshot);
+        }
         try
         {
             var request = new SmbManagedShareRequest(snapshot.Id, snapshot.Name, snapshot.Path, snapshot.Description, snapshot.ReadOnly, snapshot.Enabled, snapshot.GuestAllowed,
@@ -191,6 +213,10 @@ internal static class WindowsSmbNativeOperations
                 permissions.Add(new(sid.Value, (allowed.AccessMask & 0x00000002) != 0 || (allowed.AccessMask & 0x001F01FF) == 0x001F01FF ? FileShareAccess.ReadWrite : FileShareAccess.Read));
         return permissions.OrderBy(x => x.Principal, StringComparer.Ordinal).ToArray();
     }
+    // A share's directory is only accepted at creation time, so a requested path change has to be
+    // applied by recreating the share. This is the single decision point for that branch.
+    internal static bool RequiresRecreateForPath(string? existingPath, string requestedPath) =>
+        existingPath is not null && !string.Equals(existingPath, requestedPath, StringComparison.OrdinalIgnoreCase);
     private static bool SnapshotMatches(FileShareDto actual, string expected) => string.Equals(SnapshotHash(Snapshot(actual)), expected, StringComparison.Ordinal);
     private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.OrderBy(permission => permission.Principal, StringComparer.Ordinal).ThenBy(permission => permission.Access).Select(permission => permission.Principal + ':' + permission.Access))}";
     private static string SnapshotHash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));

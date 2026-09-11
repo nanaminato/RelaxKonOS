@@ -71,7 +71,7 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         var owned = await ledger.ListAsync(ct);
         return shares.Select(share => owned.TryGetValue(share.Id, out var snapshot)
             ? share with { Managed = true, Drifted = !string.Equals(snapshot.PathHash, WindowsSmbOwnershipLedger.PathHash(share.Path), StringComparison.Ordinal)
-                || !string.Equals(snapshot.Snapshot, WindowsSmbOwnershipLedger.SnapshotHash(Snapshot(share)), StringComparison.Ordinal) }
+                || !string.Equals(snapshot.SnapshotHash, SnapshotHash(share), StringComparison.Ordinal) }
             : share with { Managed = false }).ToArray();
     }
     public async Task<FileServiceOperationResultDto> CreateShareAsync(UpsertFileShareRequest request, Guid id, CancellationToken ct)
@@ -84,8 +84,8 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         // The ledger may never synthesize a second identifier that cannot be re-read from API state.
         var share = ToDto(request.Name, request);
         var applied = await platform.ApplyShareAsync(share, null, id, ct);
-        if (applied.Succeeded && (await platform.ReadManagedSharesAsync(ct)).FirstOrDefault(item => item.Id == share.Id) is { } actualShare)
-            await ledger.UpsertAsync(new(actualShare.Id, actualShare.Name, WindowsSmbOwnershipLedger.PathHash(actualShare.Path), Snapshot(actualShare), false), ct);
+        if (applied.Succeeded && (await platform.ReadManagedSharesAsync(ct)).FirstOrDefault(item => item.Id == share.Id) is { } createdShare)
+            await ledger.UpsertAsync(new(createdShare.Id, createdShare.Name, WindowsSmbOwnershipLedger.PathHash(createdShare.Path), SnapshotHash(createdShare), false), ct);
         return applied;
     }
     public async Task<FileServiceOperationResultDto> UpdateShareAsync(string id, UpsertFileShareRequest request, Guid operationId, CancellationToken ct)
@@ -94,13 +94,13 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         var record = await ledger.GetAsync(id, ct);
         var actual = (await platform.ReadManagedSharesAsync(ct)).FirstOrDefault(s => s.Id == id);
         if (record is null || actual is null || !string.Equals(record.PathHash, WindowsSmbOwnershipLedger.PathHash(actual.Path), StringComparison.Ordinal)
-            || !string.Equals(record.Snapshot, WindowsSmbOwnershipLedger.SnapshotHash(Snapshot(actual)), StringComparison.Ordinal))
+            || !string.Equals(record.SnapshotHash, SnapshotHash(actual), StringComparison.Ordinal))
             return new(operationId, false, FileServiceProblemCodes.ReconciliationRequired);
         if (await EnsureServerSecurityAsync(operationId, ct) is { } security) return security;
         var replacement = ToDto(id, request);
-        var applied = await platform.ApplyShareAsync(replacement, record.Snapshot, operationId, ct);
-        if (applied.Succeeded && (await platform.ReadManagedSharesAsync(ct)).FirstOrDefault(item => item.Id == replacement.Id) is { } actualShare)
-            await ledger.UpsertAsync(new(actualShare.Id, actualShare.Name, WindowsSmbOwnershipLedger.PathHash(actualShare.Path), Snapshot(actualShare), false), ct);
+        var applied = await platform.ApplyShareAsync(replacement, record.SnapshotHash, operationId, ct);
+        if (applied.Succeeded && (await platform.ReadManagedSharesAsync(ct)).FirstOrDefault(item => item.Id == replacement.Id) is { } updatedShare)
+            await ledger.UpsertAsync(new(updatedShare.Id, updatedShare.Name, WindowsSmbOwnershipLedger.PathHash(updatedShare.Path), SnapshotHash(updatedShare), false), ct);
         return applied;
     }
     public async Task<FileServiceOperationResultDto> DeleteShareAsync(string id, Guid operationId, CancellationToken ct)
@@ -109,9 +109,9 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         if (record is null) return new(operationId, false, FileServiceProblemCodes.ConfigurationUnmanaged);
         var actual = (await platform.ReadManagedSharesAsync(ct)).FirstOrDefault(s => s.Id == id);
         if (actual is null || !string.Equals(record.PathHash, WindowsSmbOwnershipLedger.PathHash(actual.Path), StringComparison.Ordinal)
-            || !string.Equals(record.Snapshot, WindowsSmbOwnershipLedger.SnapshotHash(Snapshot(actual)), StringComparison.Ordinal)) return new(operationId, false, FileServiceProblemCodes.ReconciliationRequired);
+            || !string.Equals(record.SnapshotHash, SnapshotHash(actual), StringComparison.Ordinal)) return new(operationId, false, FileServiceProblemCodes.ReconciliationRequired);
         if (await EnsureServerSecurityAsync(operationId, ct) is { } security) return security;
-        var deleted = await platform.RemoveShareAsync(id, record.Snapshot, operationId, ct);
+        var deleted = await platform.RemoveShareAsync(id, record.SnapshotHash, operationId, ct);
         if (deleted.Succeeded) await ledger.RemoveAsync(id, ct);
         return deleted;
     }
@@ -133,5 +133,8 @@ public sealed class WindowsSmbFileServiceProvider(IWindowsSmbPlatformAdapter pla
         return applied.Operation;
     }
     private static FileShareDto ToDto(string id, UpsertFileShareRequest request) => new(id, request.Name, Path.GetFullPath(request.Path), request.Description, request.ReadOnly, request.Enabled, request.GuestAllowed, request.Permissions, true);
+    // Only the digest is ever persisted or sent to the Helper: the Helper re-reads the live share,
+    // hashes it with the same field order, and compares digests.
+    private static string SnapshotHash(FileShareDto share) => WindowsSmbOwnershipLedger.SnapshotHash(Snapshot(share));
     private static string Snapshot(FileShareDto share) => $"{share.Name}\n{share.Path}\n{share.ReadOnly}\n{share.Enabled}\n{share.GuestAllowed}\n{string.Join(',', share.Permissions.OrderBy(permission => permission.Principal, StringComparer.Ordinal).ThenBy(permission => permission.Access).Select(permission => permission.Principal + ':' + permission.Access))}";
 }
