@@ -3,7 +3,7 @@
 > 状态：代码与自动化验收完成；Goal 7 受控集成验证待隔离 VM 执行<br>
 > 建立日期：2026-09-10<br>
 > 首轮适用范围：`.NET 10` Server、Avalonia Client、**Linux（Debian/Ubuntu 系 + Samba 4）与 Windows Server 2019+（Windows SMB Server）**<br>
-> 架构依据：[File Services 设计与实现规格](./RelaxKonoS%20File%20Services%20设计与实现规格.md)、[特权操作与 Helper](./platform/RelaxKonOS.PrivilegedOperations.Goal.md)、[安全模型](./platform/RelaxKonOS.Security.md)
+> 架构依据：[File Services 设计与实现规格](./RelaxKonOS.FileServices.Specification.md)、[受管安装服务 Goal](../RelaxKonOS.InstallationServices.Goal.md)、[特权操作与 Helper](../../platform/RelaxKonOS.PrivilegedOperations.Goal.md)、[安全模型](../../platform/RelaxKonOS.Security.md)
 
 本文是 File Services 的首个 `/goal` 执行基线。首轮交付 Linux Samba 与 Windows SMB Server 的 SMB 控制面；SFTP、FTP/FTPS、WebDAV、NFS 不是本轮功能，不能以空 Provider、隐藏开关、预留 API 或半成品 UI 的形式进入代码。
 
@@ -284,4 +284,4 @@ SMB V1 稳定后，后续 Goal 按独立设计审查推进：
 
 ## 7. 后续 Goal 模式提示
 
-> 依据 `docs/RelaxKonOS.FileServices.Smb.Goal.md` 与 `docs/RelaxKonoS File Services 设计与实现规格.md` 实现 RelaxKonOS 的首轮 File Services。严格按 Goal 0–7 顺序，实现 Linux（Debian/Ubuntu 系）Samba 与 Windows Server 2019+ Windows SMB Server 的 SMB 控制面；Windows Server 安装仅限固定 `FS-FileServer` role，SFTP、FTP/FTPS、WebDAV 和 NFS 留到后续独立 Goal。RelaxKonOS 不实现或代理 SMB 数据面，所有 Client↔Server 契约置于 Protocol，所有高权限操作经封闭的 `IPrivilegedOperationTransport` / PrivilegedHelper，禁止 shell、PowerShell、任意命令、任意服务/包/路径/SID 或 generic config write。Linux 只管理 RelaxKonOS 拥有的 Samba include/share，先 `testparm` 验证、原子应用、reload 和 health check；Windows 只管理 ownership ledger 标识的 share/ACL/security snapshot，经受限系统 API apply、health check 和失败回滚。不得覆盖管理员配置/share、泄露 Samba 密码或管理宿主账户。每个 Goal 的构建、测试和验收完成后才能进入下一项。
+> 依据 `docs/services/file-services/RelaxKonOS.FileServices.Smb.Goal.md`、`docs/services/file-services/RelaxKonOS.FileServices.Specification.md` 与 `docs/services/RelaxKonOS.InstallationServices.Goal.md` 实现 RelaxKonOS 的首轮 File Services。严格按 Goal 0–7 顺序，实现 Linux（Debian/Ubuntu 系）Samba 与 Windows Server 2019+ Windows SMB Server 的 SMB 控制面；Windows Server 安装仅限固定 `FS-FileServer` role，SFTP、FTP/FTPS、WebDAV 和 NFS 留到后续独立 Goal。RelaxKonOS 不实现或代理 SMB 数据面，所有 Client↔Server 契约置于 Protocol，所有高权限操作经封闭的 `IPrivilegedOperationTransport` / PrivilegedHelper，禁止 shell、PowerShell、任意命令、任意服务/包/路径/SID 或 generic config write。Linux 只管理 RelaxKonOS 拥有的 Samba include/share，先 `testparm` 验证、原子应用、reload 和 health check；Windows 只管理 ownership ledger 标识的 share/ACL/security snapshot，经受限系统 API apply、health check 和失败回滚。不得覆盖管理员配置/share、泄露 Samba 密码或管理宿主账户。每个 Goal 的构建、测试和验收完成后才能进入下一项。

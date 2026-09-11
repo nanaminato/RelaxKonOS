@@ -213,7 +213,7 @@ G1 后可进行 G2；G3 依赖 G1，G4 依赖操作恢复底座；G5/G6 集成�
 - `Shared/RelaxKonOS.Protocol/Privileged/PrivilegedOperationContracts.cs`：实施新增操作时同步修改禁止 environment operation 的注释与相关拒绝测试，保留禁止通用执行字段。
 - `docs/platform/RelaxKonOS.PrivilegedOperations.Operations.md`、`RelaxKonOS.PrivilegedHelper/README.md` 及英文版本：补安装条件、capability、环境隔离、恢复任务与诊断。
 - `docs/architecture/RelaxKonOS.Protocol.md`、`docs/platform/RelaxKonOS.Storage.md`、`docs/development/RelaxKonOS.AppSettings.md`：补新契约、操作日志与真源边界，不把 OS 状态塞进 AppSettings。
-- `docs/platform/RelaxKonOS.Security.md`、`docs/RelaxKonOS 权限模型与项目重构规范.md` 及应用权限文档：同步设置能力、目标绑定和敏感值读取授权；不放宽其他领域边界。
+- `docs/platform/RelaxKonOS.Security.md`、`docs/platform/RelaxKonOS.PermissionModel.Refactor.md` 及应用权限文档：同步设置能力、目标绑定和敏感值读取授权；不放宽其他领域边界。
 - `docs/applications/RelaxKonOS.Terminal.md`、相关工作负载文档、DevCli README、SDK 示例与 manifest：同步环境生效语义及新能力调用方式。
 
 ## 12. 可直接用于 Goal 模式的指令

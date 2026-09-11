@@ -1,7 +1,7 @@
 # RelaxKonOS SMB 运维基线
 
 本文件冻结首轮 SMB 控制面的宿主支持矩阵和安全边界。它不改变
-`RelaxKonOS.FileServices.Smb.Goal.md` 的范围。
+`RelaxKonOS.FileServices.Smb.Goal.md` 的范围，并遵循[受管安装服务 Goal](../RelaxKonOS.InstallationServices.Goal.md)的公共安装任务契约。
 
 部署、回滚、诊断和卸载步骤见 [SMB 管理员指南](./RelaxKonOS.FileServices.Smb.Administrator.md)。
 
