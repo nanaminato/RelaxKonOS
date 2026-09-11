@@ -28,6 +28,7 @@ using RelaxKonOS.Server.Storage.Sqlite;
 using RelaxKonOS.Server.SystemPerformance;
 using RelaxKonOS.Server.Tunnels;
 using RelaxKonOS.Server.Runtimes;
+using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Server.ConfigurationRegistry;
@@ -590,21 +591,6 @@ static async Task VerifyMihomoRuntimeSafetyAsync(string root)
     Assert(delayedInstall.State == ProxyRuntimeState.Running && delayedController.HealthChecks == 3,
         "Managed Mihomo was rolled back before its loopback controller had time to bind.");
 
-    var serverArchivePath = Path.Combine(root, "mihomo-server-package.gz");
-    await File.WriteAllBytesAsync(serverArchivePath, archive);
-    var serverFilePrivileged = new TestProxyPrivilegedOperations();
-    var serverFilePaths = new TestProxyPaths(Path.Combine(root, "mihomo-server-file"));
-    var serverFileDiagnostics = new ProxyDiagnosticLogStore(serverFilePaths);
-    var serverFileManager = new MihomoRuntimeManager(serverFilePaths, new FixtureHttpClientFactory([]),
-        serverFilePrivileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] }, serverFileDiagnostics);
-    var installedFromServerFile = await serverFileManager.InstallManagedFromArchiveAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, serverArchivePath, CancellationToken.None);
-    Assert(installedFromServerFile.State == ProxyRuntimeState.Running && installedFromServerFile.IntegrityVerified && serverFilePrivileged.InstalledService,
-        "A verified Mihomo archive already on the Server did not activate.");
-    var checksumDiagnostic = (await serverFileDiagnostics.ReadAsync(10, CancellationToken.None)).FirstOrDefault(entry => entry.Message.Contains("SHA-256 verification", StringComparison.Ordinal));
-    Assert(checksumDiagnostic is not null && checksumDiagnostic.Message.Contains($"expected={digest}", StringComparison.Ordinal)
-        && checksumDiagnostic.Message.Contains($"actual={digest}", StringComparison.Ordinal),
-        "Mihomo archive checksum diagnostics did not record the expected and actual values.");
-
     var crossFilesystemRoot = Path.Combine("/var/tmp", "relaxkonos-mihomo-runtime-tests-" + Guid.NewGuid().ToString("N"));
     try
     {
@@ -619,9 +605,6 @@ static async Task VerifyMihomoRuntimeSafetyAsync(string root)
     {
         if (Directory.Exists(crossFilesystemRoot)) Directory.Delete(crossFilesystemRoot, recursive: true);
     }
-
-    var invalidServerFile = await serverFileManager.InstallManagedFromArchiveAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, Path.Combine(root, "missing-mihomo-package.gz"), CancellationToken.None);
-    Assert(invalidServerFile.ProblemCode == ProxyProblemCodes.RuntimeArchiveUnavailable, "A missing Server-side Mihomo archive was not reported as unavailable.");
 
     var firstInstallPrivileged = new TestProxyPrivilegedOperations { FailServiceInstallation = true, FailUninstalledServiceRemoval = true };
     var firstInstallManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, "mihomo-first-install-failure")), new FixtureHttpClientFactory(archive),
@@ -721,16 +704,11 @@ static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var runtimeRoot = Path.Combine(root, "frp-runtime"); Directory.CreateDirectory(runtimeRoot);
     var env = new TestHostEnvironment(runtimeRoot);
     var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions { Releases = releases }));
-    var first = await manager.InstallManagedFrpcAsync("v0.71.0", CancellationToken.None);
+    var first = await manager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     Assert(first.Succeeded, "Verified FRP fixture did not install.");
-    Assert(manager.GetManagedFrpcInstallationStatus().State == TunnelRuntimeInstallationState.Succeeded
-        && manager.GetManagedFrpcInstallationStatus().Progress == 100,
-        "Successful runtime installation did not publish completion status.");
     await VerifyFrpApplyLifecycleAsync(root, env, manager);
-    var serverArchive = Path.Combine(root, "frp-server-package.tar.gz");
-    await File.WriteAllBytesAsync(serverArchive, archive);
-    var second = await manager.InstallManagedFrpcFromArchiveAsync("v0.71.1", serverArchive, CancellationToken.None);
-    Assert(second.Succeeded, "Verified FRP fixture selected from the server did not install.");
+    var second = await manager.InstallManagedFrpcAsync("v0.71.1", new SilentInstallationProgress(), CancellationToken.None);
+    Assert(second.Succeeded, "Second verified FRP fixture did not install.");
     var active = await manager.GetManagedFrpcStatusAsync(CancellationToken.None);
     Assert(active.Version == "v0.71.1" && active.PreviousVersion == "v0.71.0" && active.IntegrityVerified, "Runtime activation did not preserve previous version state.");
     var rolledBack = await manager.RollbackManagedFrpcAsync(CancellationToken.None);
@@ -740,7 +718,7 @@ static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
         "Runtime uninstall did not clear the managed runtime state.");
     Assert(!Directory.Exists(Path.Combine(runtimeRoot, "data", "runtimes", "frp")), "Runtime uninstall left managed runtime files behind.");
 
-    var invalidChecksum = await manager.InstallManagedFrpcAsync("v0.99.0", CancellationToken.None);
+    var invalidChecksum = await manager.InstallManagedFrpcAsync("v0.99.0", new SilentInstallationProgress(), CancellationToken.None);
     Assert(!invalidChecksum.Succeeded && invalidChecksum.ProblemCode == "tunnel.runtime_release_not_configured", "Unconfigured runtime version was accepted.");
 
     var badChecksumRoot = Path.Combine(root, "frp-runtime-bad-checksum"); Directory.CreateDirectory(badChecksumRoot);
@@ -748,11 +726,8 @@ static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = new string('0', 64), ArchiveFormat = "tar.gz" }],
     }));
-    var badChecksum = await badChecksumManager.InstallManagedFrpcAsync("v0.71.0", CancellationToken.None);
+    var badChecksum = await badChecksumManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     Assert(!badChecksum.Succeeded && badChecksum.ProblemCode == "tunnel.runtime_checksum_failed", "Wrong checksum was accepted.");
-    Assert(badChecksumManager.GetManagedFrpcInstallationStatus().State == TunnelRuntimeInstallationState.Failed
-        && badChecksumManager.GetManagedFrpcInstallationStatus().ProblemCode == "tunnel.runtime_checksum_failed",
-        "Failed runtime installation did not publish failure status.");
     Assert((await badChecksumManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Checksum failure changed the active runtime.");
 
     var maliciousArchive = CreateMaliciousFrpFixtureArchive();
@@ -762,7 +737,7 @@ static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = maliciousDigest, ArchiveFormat = "tar.gz" }],
     }));
-    var malicious = await maliciousManager.InstallManagedFrpcAsync("v0.71.0", CancellationToken.None);
+    var malicious = await maliciousManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     Assert(!malicious.Succeeded && malicious.ProblemCode == "tunnel.runtime_archive_unexpected_entry", "Unexpected archive content was accepted.");
     Assert((await maliciousManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Rejected archive changed the active runtime.");
 }
@@ -1553,6 +1528,11 @@ sealed class TestHostEnvironment(string contentRoot) : IHostEnvironment
     public string ApplicationName { get; set; } = "RelaxKonOS.Server.Tests";
     public string ContentRootPath { get; set; } = contentRoot;
     public IFileProvider ContentRootFileProvider { get; set; } = new PhysicalFileProvider(contentRoot);
+}
+
+sealed class SilentInstallationProgress : IInstallationProgress
+{
+    public Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
 sealed class FakeWebServerProvider : IWebServerProvider

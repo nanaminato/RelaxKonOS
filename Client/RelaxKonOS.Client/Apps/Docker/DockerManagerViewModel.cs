@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Localization;
+using RelaxKonOS.Client.Services.Installation;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Docker;
@@ -9,6 +10,7 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// <summary>State and safe, typed operations for the server-local Docker Manager.</summary>
 public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) : ObservableObject
 {
+    public InstallationTaskViewModel Installation { get; set; } = null!;
     public ObservableCollection<DockerContainerDto> Containers { get; } = [];
     public ObservableCollection<DockerImageDto> Images { get; } = [];
     public ObservableCollection<DockerNetworkDto> Networks { get; } = [];

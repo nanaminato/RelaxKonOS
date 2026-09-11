@@ -15,8 +15,11 @@
 - 已完成统一授权 Endpoint 与 Client 轮询/工作区恢复组件；Nginx、Git、SMB、FRP、Mihomo、Docker 均已注册为强类型 `IInstallationService`，完成后会回读各自真实状态。
 - 已迁移 Nginx/Git/SMB/FRP/Mihomo 的 Client 安装入口到统一 operation ID 路径；Nginx 的 Windows 安装由 Server 使用固定官方 ZIP 下载、受限暂存/解压和配置验证完成，已删除客户端 ZIP 上传、版本目录、下载 URL、旧安装/卸载路由及对应 UI。普通 Nginx 生命周期 operation 仍保留在其领域 API 中。
 - 已删除 Git/SMB 的旧安装路由契约，以及 FRP/Mihomo 向 Client 暴露受管运行时下载 URL 的旧 DTO、路由和界面入口；固定发行物只在 Server 领域安装器内使用。
+- 已删除 FRP/Mihomo 的“从 Server 文件归档安装”内部接口和文件选择器，避免路径或归档内容跨越统一安装服务边界。
+- 已删除 FRP 旧进程内安装状态 DTO；现有运行时测试改为通过强类型阶段报告器驱动，不再断言另一套安装状态模型。
 - Docker Linux 固定安装器已接入统一任务；Windows 仍只返回受支持的人工宿主操作方案，Windows Server 不会自动安装。
 - 已删除 Docker 旧同步“安装计划”入口；Process Guardian 仅保留无副作用的手动部署计划，不再暴露看似可执行安装的 Endpoint。
+- Docker Client 已接入统一任务的恢复与观察面板；部署环境验证完成前不提供新的自动执行按钮。
 
 尚未关闭的功能项：Docker Client 的执行入口按 §8.5 要求，待目标部署环境验证后再开放，现有界面仅提供本地化安装指引。
 
