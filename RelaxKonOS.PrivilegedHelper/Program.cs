@@ -707,15 +707,7 @@ static bool HasSmbReparsePoint(string path)
         if (directory.Exists && directory.Attributes.HasFlag(FileAttributes.ReparsePoint)) return true;
     return false;
 }
-static bool IsSupportedDebianFamily()
-{
-    if (!File.Exists("/etc/os-release")) return false;
-    var values = File.ReadLines("/etc/os-release").Select(line => line.Split('=', 2)).Where(parts => parts.Length == 2)
-        .ToDictionary(parts => parts[0], parts => parts[1].Trim().Trim('\"'), StringComparer.OrdinalIgnoreCase);
-    return values.TryGetValue("ID", out var id) && values.TryGetValue("VERSION_ID", out var version)
-        && ((id.Equals("debian", StringComparison.OrdinalIgnoreCase) && version == "12")
-            || (id.Equals("ubuntu", StringComparison.OrdinalIgnoreCase) && version is "22.04" or "24.04"));
-}
+static bool IsSupportedDebianFamily() => LinuxDistributionSupport.IsSambaSupported();
 static bool IsTcpPortListening(int port) => System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(endpoint => endpoint.Port == port);
 static string? DecodeUtf8(string? output) { try { return output is null ? null : System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(output)); } catch (FormatException) { return null; } }
 static PrivilegedOperationResult SmbOutput<T>(T value) => new(true, OutputBase64: Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(value)));

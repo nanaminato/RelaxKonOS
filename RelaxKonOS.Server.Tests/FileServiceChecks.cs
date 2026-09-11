@@ -32,6 +32,12 @@ public static class FileServiceChecks
         Check(parsed.Count == 2 && !parsed[0].ReadOnly && parsed[0].GuestAllowed && parsed[0].Permissions.Any(p => p.Principal == "alice" && p.Access == FileShareAccess.ReadWrite), "Multiple Samba shares round-trip guest mode and authenticated write permissions");
         var allReadOnly = RelaxKonOS.PrivilegedHelper.SambaShareConfiguration.Serialize([mixed with { ReadOnly = true }]);
         Check(allReadOnly.Contains("write list = \n") && !allReadOnly.Contains("write list = alice"), "Samba global read-only has no write-list override");
+        Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=ubuntu\nVERSION_ID=24.04\n"),
+            "Ubuntu 24.04 is accepted for Samba management");
+        Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=ubuntu\nVERSION_ID=26.04\n"),
+            "Ubuntu 26.04 is accepted for Samba management");
+        Check(!RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=ubuntu\nVERSION_ID=20.04\n"),
+            "Unsupported Ubuntu releases remain rejected for Samba management");
         if (OperatingSystem.IsWindows()) CheckWindowsGuestAcl();
         Check(RelaxKonOS.PrivilegedHelper.WindowsFeatureInstallationState.Evaluate(0, false) is null,
             "Windows installation in progress must keep polling");

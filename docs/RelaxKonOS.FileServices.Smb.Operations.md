@@ -19,7 +19,7 @@ Goal 7 的真实宿主 mutation / 第三方客户端测试**尚未在此开发�
 
 | 宿主 | 最低要求 | 固定资源 | 允许共享根 |
 | --- | --- | --- | --- |
-| Debian 12 / Ubuntu 22.04、24.04 | systemd、Samba 4（`smbd`） | `samba` 包、`smbd`、`/etc/samba/smb.conf` 中唯一 RelaxKonOS marker、`/etc/samba/relaxkonos.conf` | 任意已存在的真实目录 |
+| Debian 12 / Ubuntu 22.04、24.04、26.04 | systemd、Samba 4（`smbd`） | `samba` 包、`smbd`、`/etc/samba/smb.conf` 中唯一 RelaxKonOS marker、`/etc/samba/relaxkonos.conf` | 任意已存在的真实目录 |
 | Windows Server 2019+ | LanmanServer、SMB Server API | LanmanServer、由 HostGlobal ledger 标记的 share/ACL/security snapshot | 任意已存在的本地目录 |
 
 Samba 安装只使用发行版的受信任默认仓库和固定的 `samba` 包；不会接受仓库、包名或版本。Linux 健康检查为 `testparm`、`smbd` active 与 TCP 445 listening；Windows 为 API 回读、LanmanServer 状态和 TCP 445。

@@ -6,7 +6,7 @@ RelaxKonOS 管理 SMB 的控制面，不转发、不代理、不检查 SMB 文�
 
 | 平台 | 受支持宿主 | 服务账户与 Helper |
 | --- | --- | --- |
-| Linux | Debian 12、Ubuntu 22.04/24.04，systemd，Samba 4 | Server 以普通账户运行；root-owned one-shot Helper 通过最小 sudoers 规则运行。 |
+| Linux | Debian 12、Ubuntu 22.04/24.04/26.04，systemd，Samba 4 | Server 以普通账户运行；root-owned one-shot Helper 通过最小 sudoers 规则运行。 |
 | Windows | Windows Server 2019+，LanmanServer | Server 以普通服务账户运行；只允许该服务 SID 访问的 LocalSystem named-pipe Helper 运行系统 API。 |
 
 Server 本身不应以 root、Administrator 或 LocalSystem 运行。Helper 不监听网络端口，不接受 shell、PowerShell、可执行文件、参数、任意 service/package/config path 或 SID 输入。

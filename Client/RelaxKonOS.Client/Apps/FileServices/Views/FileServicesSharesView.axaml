@@ -16,15 +16,15 @@
         </StackPanel>
         <DataGrid Grid.Row="1" ItemsSource="{Binding Shares}" SelectedItem="{Binding SelectedShare, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" GridLinesVisibility="Horizontal" CanUserResizeColumns="True" CanUserReorderColumns="False" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MinHeight="160">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:Loc file_services.column.Name}" Binding="{ReflectionBinding Name}" Width="160" />
-                <DataGridTextColumn Header="{loc:Loc file_services.column.Path}" Binding="{ReflectionBinding Path}" Width="260" />
-                <DataGridTextColumn Header="{loc:Loc file_services.column.Description}" Binding="{ReflectionBinding Description}" Width="*" MinWidth="140" />
-                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.ReadOnly}" Binding="{ReflectionBinding ReadOnly}" Width="110" />
-                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Enabled}" Binding="{ReflectionBinding Enabled}" Width="110" />
-                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.GuestAllowed}" Binding="{ReflectionBinding GuestAllowed}" Width="110" />
-                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Managed}" Binding="{ReflectionBinding Managed}" Width="110" />
-                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Drifted}" Binding="{ReflectionBinding Drifted}" Width="110" />
-                <DataGridTextColumn Header="{loc:Loc file_services.column.Permissions}" Binding="{ReflectionBinding Permissions, Converter={StaticResource PermissionsConverter}}" Width="240" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Name}" Binding="{ReflectionBinding Name}" Width="160" MinWidth="140" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Path}" Binding="{ReflectionBinding Path}" Width="260" MinWidth="220" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Description}" Binding="{ReflectionBinding Description}" Width="*" MinWidth="180" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.ReadOnly}" Binding="{ReflectionBinding ReadOnly}" Width="110" MinWidth="96" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Enabled}" Binding="{ReflectionBinding Enabled}" Width="110" MinWidth="96" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.GuestAllowed}" Binding="{ReflectionBinding GuestAllowed}" Width="110" MinWidth="96" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Managed}" Binding="{ReflectionBinding Managed}" Width="110" MinWidth="96" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Drifted}" Binding="{ReflectionBinding Drifted}" Width="110" MinWidth="96" />
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Permissions}" Binding="{ReflectionBinding Permissions, Converter={StaticResource PermissionsConverter}}" Width="240" MinWidth="180" />
             </DataGrid.Columns>
         </DataGrid>
     </Grid>
