@@ -8,20 +8,20 @@ namespace RelaxKonOS.PrivilegedHelper;
 
 /// <summary>
 /// Fixed binding to the Windows SMB Server WMI provider. This is deliberately not a general WMI
-/// surface: namespace, class, query, method, and writable properties are all compile-time constants.
+/// surface: namespace, class, methods, and writable properties are all compile-time constants.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static class WindowsSmbServerSecurity
 {
     private const string ScopePath = @"\\.\ROOT\Microsoft\Windows\Smb";
     private const string ClassName = "MSFT_SmbServerConfiguration";
-    private const string Query = "SELECT EnableSMB1Protocol,EnableSMB2Protocol,EnableAuthenticateUserSharing,NullSessionShares,NullSessionPipes FROM MSFT_SmbServerConfiguration";
 
     public static PrivilegedOperationResult Read()
     {
         try
         {
-            using var configuration = OpenConfiguration();
+            using var configurationClass = OpenConfigurationClass();
+            using var configuration = GetConfiguration(configurationClass);
             return Output(Snapshot(configuration));
         }
         catch (ManagementException) { return Fail(PrivilegedProblemCode.NotFound, "Windows SMB Server configuration API is unavailable"); }
@@ -34,14 +34,15 @@ internal static class WindowsSmbServerSecurity
     {
         try
         {
-            using var configuration = OpenConfiguration();
+            using var configurationClass = OpenConfigurationClass();
+            using var configuration = GetConfiguration(configurationClass);
             var before = Snapshot(configuration);
             if (!string.IsNullOrWhiteSpace(expectedSnapshot) && !string.Equals(before.SnapshotHash, expectedSnapshot, StringComparison.Ordinal))
                 return Fail(PrivilegedProblemCode.Conflict, "Windows SMB Server security changed externally");
 
             if (!before.Compliant)
             {
-                using var parameters = configuration.GetMethodParameters("SetConfiguration");
+                using var parameters = configurationClass.GetMethodParameters("SetConfiguration");
                 CopyCurrentMethodValues(configuration, parameters);
                 // These are the only five global SMB server values V1 may mutate. No caller can
                 // supply a WMI class, method, property name, or value.
@@ -50,11 +51,11 @@ internal static class WindowsSmbServerSecurity
                 parameters["EnableAuthenticateUserSharing"] = true;
                 parameters["NullSessionShares"] = string.Empty;
                 parameters["NullSessionPipes"] = string.Empty;
-                var result = configuration.InvokeMethod("SetConfiguration", parameters, null);
+                var result = configurationClass.InvokeMethod("SetConfiguration", parameters, null);
                 if (ReturnCode(result) != 0) return Fail(PrivilegedProblemCode.InternalError, "Windows SMB Server security apply failed");
             }
 
-            using var verified = OpenConfiguration();
+            using var verified = GetConfiguration(configurationClass);
             var after = Snapshot(verified);
             return after.Compliant ? Output(after) : Fail(PrivilegedProblemCode.InternalError, "Windows SMB Server security verification failed");
         }
@@ -63,20 +64,27 @@ internal static class WindowsSmbServerSecurity
         catch (InvalidOperationException) { return Fail(PrivilegedProblemCode.NotFound, "Windows SMB Server configuration API is unavailable"); }
     }
 
-    private static ManagementObject OpenConfiguration()
+    private static ManagementClass OpenConfigurationClass()
     {
         var scope = new ManagementScope(ScopePath);
         scope.Connect();
-        using var searcher = new ManagementObjectSearcher(scope, new ObjectQuery(Query));
-        using var results = searcher.Get();
-        var found = results.Cast<ManagementObject>().SingleOrDefault()
-            ?? throw new InvalidOperationException("SMB server configuration was not found");
-        var configuration = new ManagementObject(scope, found.Path, null);
-        configuration.Get();
+        return new ManagementClass(scope, new ManagementPath(ClassName), null);
+    }
+
+    private static ManagementBaseObject GetConfiguration(ManagementClass configurationClass)
+    {
+        // MSFT_SmbServerConfiguration is a static provider class: it exposes no enumerable
+        // instances. Its sole configuration object is returned from GetConfiguration. Querying
+        // the class (as if it had instances) always yields no rows and falsely reports SMB as
+        // not installed even when the File Server role and LanmanServer are running.
+        using var parameters = configurationClass.GetMethodParameters("GetConfiguration");
+        using var result = configurationClass.InvokeMethod("GetConfiguration", parameters, null);
+        if (ReturnCode(result) != 0 || result?["Output"] is not ManagementBaseObject configuration)
+            throw new InvalidOperationException("SMB server configuration was not found");
         return configuration;
     }
 
-    private static void CopyCurrentMethodValues(ManagementObject configuration, ManagementBaseObject parameters)
+    private static void CopyCurrentMethodValues(ManagementBaseObject configuration, ManagementBaseObject parameters)
     {
         foreach (PropertyData parameter in parameters.Properties)
         {
@@ -85,7 +93,7 @@ internal static class WindowsSmbServerSecurity
         }
     }
 
-    private static SmbWindowsServerSecuritySnapshot Snapshot(ManagementObject configuration)
+    private static SmbWindowsServerSecuritySnapshot Snapshot(ManagementBaseObject configuration)
     {
         var smb1 = ReadBoolean(configuration, "EnableSMB1Protocol");
         var smb2 = ReadBoolean(configuration, "EnableSMB2Protocol");
@@ -97,8 +105,8 @@ internal static class WindowsSmbServerSecurity
         return new(snapshot, smb1, smb2, authenticated, nullSessionsDisabled, !smb1 && smb2 && authenticated && nullSessionsDisabled);
     }
 
-    private static bool ReadBoolean(ManagementObject configuration, string property) => configuration[property] is bool value && value;
-    private static string ReadString(ManagementObject configuration, string property) => configuration[property] as string ?? string.Empty;
+    private static bool ReadBoolean(ManagementBaseObject configuration, string property) => configuration[property] is bool value && value;
+    private static string ReadString(ManagementBaseObject configuration, string property) => configuration[property] as string ?? string.Empty;
     private static uint ReturnCode(ManagementBaseObject? result) => result?["ReturnValue"] is null ? 0 : Convert.ToUInt32(result["ReturnValue"]);
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static PrivilegedOperationResult Output(SmbWindowsServerSecuritySnapshot snapshot) => new(true, OutputBase64: Convert.ToBase64String(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(snapshot)));
