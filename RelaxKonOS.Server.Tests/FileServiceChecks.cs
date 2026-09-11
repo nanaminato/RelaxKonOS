@@ -5,6 +5,13 @@ public static class FileServiceChecks
 {
     public static async Task RunAsync()
     {
+        var replayTransport = new ReplayCheckingSmbTransport();
+        var wireAdapter = new WindowsSmbPlatformAdapter(new PrivilegedSmbOperations(replayTransport));
+        var publicOperation = Guid.NewGuid();
+        var securityStep = await wireAdapter.ApplyServerSecurityAsync(null, publicOperation, CancellationToken.None);
+        var shareStep = await wireAdapter.ApplyShareAsync(new("共享", "共享", @"E:\Test", null, false, true, true, [], true), null, publicOperation, CancellationToken.None);
+        Check(securityStep.Operation.Succeeded && shareStep.Succeeded && replayTransport.RequestIds.Count == 2,
+            "Security check and share creation use distinct Helper request IDs within one public operation");
         var directory = Directory.CreateTempSubdirectory("smb-validation-");
         try
         {
@@ -123,6 +130,18 @@ public static class FileServiceChecks
             return Task.FromResult(FailSecurityWithDrift
                 ? new WindowsSmbSecurityOperationResult(new(operationId, false, FileServiceProblemCodes.ReconciliationRequired), null)
                 : new WindowsSmbSecurityOperationResult(new(operationId, true), "security-snapshot"));
+        }
+    }
+    private sealed class ReplayCheckingSmbTransport : RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport
+    {
+        public HashSet<Guid> RequestIds { get; } = [];
+        public Task<RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult> ExecuteAsync(RelaxKonOS.Protocol.Privileged.PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+        {
+            if (!RequestIds.Add(request.OperationId!.Value))
+                return Task.FromResult(new RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult(false, ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.Conflict));
+            var snapshot = new RelaxKonOS.Protocol.Privileged.SmbWindowsServerSecuritySnapshot("security", false, true, true, true, true);
+            return Task.FromResult(new RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult(true,
+                OutputBase64: Convert.ToBase64String(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(snapshot))));
         }
     }
     private sealed class FakeWindowsLedger : IWindowsSmbOwnershipLedger

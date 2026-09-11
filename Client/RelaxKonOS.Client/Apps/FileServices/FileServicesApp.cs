@@ -28,8 +28,9 @@ public sealed class FileServicesApp : RemoteApplicationBase
         var vm = new FileServicesViewModel(client, context.Permissions);
         var window = context.ShowWindow(LocalizedText.Get("file_services.title"), new FileServicesWorkspace(vm), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        vm.RequestHostAdministratorPasswordAsync = () => FileServicesDialogs.RequestPasswordAsync(context, window,
-            LocalizedText.Get("file_services.host_password"), LocalizedText.Get("file_services.host_password_message"));
+        vm.RequestHostAdministratorPasswordAsync = () => context.WindowManager.ShowSystemDialogAsync<string?>(
+            LocalizedText.Get("file_services.host_password"),
+            dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("file_services.host_password_message")), new Size(460, 230));
         vm.RequestSambaPasswordAsync = () => FileServicesDialogs.RequestPasswordAsync(context, window, LocalizedText.Get("file_services.samba_password"));
         vm.ShowShareEditorAsync = editing => FileServicesDialogs.ShowShareEditorAsync(context, window, vm, editing);
         vm.ShowSharePathPickerAsync = () => files is null

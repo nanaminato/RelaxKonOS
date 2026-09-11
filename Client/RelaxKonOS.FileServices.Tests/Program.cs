@@ -46,6 +46,28 @@ Check(vm.InstallCommand.CanExecute(null) && !vm.NewShareCommand.CanExecute(null)
 client.InstallProblem = FileServiceProblemCodes.RestartRequired;
 await vm.InstallCommand.ExecuteAsync(null);
 Check(vm.StatusText != FileServiceProblemCodes.RestartRequired, "API problem code localized");
+Check(!FileServicesViewModel.RequiresSharePathWarning(@"d:\RelaxKonOSShares\folder", true), "Default Windows subtree needs no warning");
+Check(FileServicesViewModel.RequiresSharePathWarning(@"D:\RelaxKonOSSharesOther", true), "Sibling prefix is outside default root");
+Check(FileServicesViewModel.RequiresSharePathWarning(@"D:\RelaxKonOSShares\..\private", true), "Traversal cannot skip warning");
+Check(!FileServicesViewModel.RequiresSharePathWarning("/srv/relaxkonos-shares/folder", false), "Default Linux subtree needs no warning");
+foreach (var linux in new[] { false, true })
+{
+    var warningClient = new FakeClient { Linux = linux };
+    var warningVm = new FileServicesViewModel(warningClient, new Permissions());
+    await warningVm.StartAsync();
+    warningVm.ShareName = "共享"; warningVm.SharePath = linux ? "/mnt/data" : @"E:\Test";
+    var passwordRequests = 0;
+    warningVm.RequestHostAdministratorPasswordAsync = () => { passwordRequests++; return Task.FromResult<string?>("test"); };
+    var confirmation = new TaskCompletionSource<bool>();
+    warningVm.ConfirmSharePathAsync = _ => confirmation.Task;
+    var pendingSave = warningVm.SaveShareAsync(false);
+    Check(warningVm.IsBusy && passwordRequests == 0 && warningClient.Writes == 0, "Path confirmation precedes password and mutation");
+    Check(!await warningVm.SaveShareAsync(false), "Concurrent save cannot bypass warning");
+    confirmation.SetResult(false);
+    Check(!await pendingSave && warningClient.Writes == 0 && passwordRequests == 0, "Cancel leaves share untouched");
+    warningVm.ConfirmSharePathAsync = _ => Task.FromResult(true);
+    Check(await warningVm.SaveShareAsync(false) && warningClient.Writes == 1 && passwordRequests == 1, "Confirmed non-default path is shared");
+}
 Console.WriteLine("Passed: platform discovery, lifecycle refresh, user eligibility, validation, authorization serialization, delete cancellation, install state, API problem localization.");
 
 sealed class Permissions : IAppPermissionScope

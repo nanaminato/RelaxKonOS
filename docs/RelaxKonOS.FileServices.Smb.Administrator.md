@@ -69,3 +69,9 @@ Run desktop control-plane regression checks with `dotnet run --project Client/Re
 “Allow guest read-only access” is independent of “Read-only for all users”. On Windows, explicit read/write rules remain writable while anonymous and Builtin Guests receive read access and a deny rule for mutation rights, including when Everyone has write access. The global read-only option also applies to Administrators; no implicit administrative write ACE is added.
 
 Samba uses a read-only default plus an explicit write list for authenticated usernames when guests are enabled. The fixed guest account is `nobody`; it cannot be granted write access, and guest-enabled write rules accept individual system usernames. With global read-only enabled the write list is explicitly empty. The managed format stores the requested global read-only setting separately from Samba's effective default so reloading preserves the distinction. Existing host and client authentication policies and filesystem ACLs still determine whether a guest can connect and read files.
+
+### Sharing outside the default directory
+
+Enabling a share outside `D:\RelaxKonOSShares` (Windows) or `/srv/relaxkonos-shares` (Linux) opens a confirmation dialog owned by the share editor. Continue proceeds to administrator authentication; Cancel closes the warning without saving or enabling the share. The server accepts existing directories outside these defaults. Administrator authentication uses a system modal that covers the desktop, including the share editor.
+
+The Helper uses a unique request ID for server-security verification, distinct from the subsequent share or lifecycle mutation ID. Reusing the public operation ID for both requests triggers replay protection and must not be mistaken for actual configuration drift. Real external share/security changes remain protected by snapshot checks.

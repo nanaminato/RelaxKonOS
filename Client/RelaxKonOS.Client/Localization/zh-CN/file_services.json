@@ -1,4 +1,9 @@
 {
+    "file_services.path_warning_title": "确认共享此目录",
+    "file_services.path_warning_message": "目录“{0}”位于默认共享目录之外。开启共享可能使其中的文件通过网络被访问；共享磁盘根目录或系统目录可能暴露敏感信息。请确认路径和访问权限。是否继续开启共享？",
+    "file_services.path_warning_continue": "继续共享",
+    "file_services.share_cancelled": "已取消，未保存或开启共享。",
+
     "file_services.windows_sid_required": "Windows 权限需要 SID；请选择下拉框中的组，或填写账户的 SID。",
   "Culture": "zh-CN",
   "Strings": {

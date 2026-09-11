@@ -1,4 +1,9 @@
 {
+    "file_services.path_warning_title": "Confirm shared directory",
+    "file_services.path_warning_message": "The directory “{0}” is outside the default share directory. Sharing may make its files accessible over the network. Drive roots and system directories may expose sensitive information. Verify the path and permissions. Continue sharing?",
+    "file_services.path_warning_continue": "Continue sharing",
+    "file_services.share_cancelled": "Cancelled. The share was not saved or enabled.",
+
     "file_services.windows_sid_required": "Windows permissions require a SID. Select a group or enter the account SID.",
   "Culture": "en-US",
   "Strings": {

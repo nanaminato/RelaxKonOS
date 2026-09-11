@@ -32,6 +32,15 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     public string PlatformHelp => Capabilities is null ? T("status.loading") : T(Capabilities.WindowsShareSecuritySupported ? "windows_help" : SupportsSambaCredentials ? "linux_help" : "state.Unsupported");
     public bool SupportsInstall => Capabilities is { Supported: true, InstallSupported: true };
     public string VersionText { get; private set; } = "—";
+    public Func<string, Task<bool>>? ConfirmSharePathAsync { get; set; }
+    public static bool RequiresSharePathWarning(string path, bool windows)
+    {
+        var normalized = windows ? path.Replace('/', '\\').TrimEnd('\\') : path.TrimEnd('/');
+        var separator = windows ? '\\' : '/';
+        var root = windows ? @"D:\RelaxKonOSShares" : "/srv/relaxkonos-shares";
+        var comparison = windows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return normalized.Split(separator).Contains("..") || !(normalized.Equals(root, comparison) || normalized.StartsWith(root + separator, comparison));
+    }
     public Func<string, Task<bool>>? ConfirmDeleteAsync { get; set; }
     private bool CanInstall() => !IsBusy && permissions.IsGranted(AppPermissions.ServerFileServicesManage) && SupportsInstall && RuntimeState == FileServiceRuntimeState.NotInstalled;
     private bool CanStart() => CanManage && RuntimeState == FileServiceRuntimeState.Stopped;
@@ -98,7 +107,9 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         if (!CanManage || !TryShareRequest(out var request)) return false;
         var id = SelectedShare?.Id;
         if (editing && (id is null || SelectedShare?.Managed != true)) return false;
-        return await Apply(() => editing ? client.UpdateShareAsync(id!, request) : client.CreateShareAsync(request));
+        return await Apply(() => editing ? client.UpdateShareAsync(id!, request) : client.CreateShareAsync(request),
+            request.Enabled && RequiresSharePathWarning(request.Path, IsWindowsServer)
+                ? () => ConfirmSharePathAsync?.Invoke(request.Path) ?? Task.FromResult(false) : null);
     }
     [RelayCommand(CanExecute = nameof(CanEditShare))] private async Task DeleteShareAsync()
     {
@@ -144,12 +155,13 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         }
         request = new(ShareName.Trim(), SharePath.Trim(), string.IsNullOrWhiteSpace(ShareDescription) ? null : ShareDescription.Trim(), ShareReadOnly, ShareEnabled, ShareGuestAllowed, rules); return true;
     }
-    private async Task<bool> Apply(Func<Task<FileServiceOperationResultDto>> action)
+    private async Task<bool> Apply(Func<Task<FileServiceOperationResultDto>> action, Func<Task<bool>>? confirm = null)
     {
         if (!CanManage && !CanInstall()) return false;
         IsBusy = true;
         try
         {
+            if (confirm is not null && !await confirm()) { StatusText = T("share_cancelled"); return false; }
             if (!await EnsureElevatedAsync())
             { StatusText = T("status.manage_required"); return false; }
             var result = await action();

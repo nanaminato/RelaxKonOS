@@ -129,7 +129,9 @@ public sealed class WindowsSmbPlatformAdapter(IPrivilegedSmbOperations helper) :
         await helper.RemoveWindowsShareAsync(id, expectedSnapshot, operationId, ct));
     public async Task<WindowsSmbSecurityOperationResult> ApplyServerSecurityAsync(string? expectedSnapshot, Guid operationId, CancellationToken ct)
     {
-        var result = await helper.SetWindowsServerSecurityAsync(expectedSnapshot, operationId, ct);
+        // Baseline verification and the following mutation belong to one public operation,
+        // but the Helper replay guard requires a distinct ID for each wire request.
+        var result = await helper.SetWindowsServerSecurityAsync(expectedSnapshot, Guid.NewGuid(), ct);
         if (!result.Success)
         {
             var code = result.ProblemCode switch
