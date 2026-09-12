@@ -34,7 +34,7 @@ public sealed partial class AliasPasswordService
             if (Rune.DecodeFromUtf16(remaining, out _, out var consumed) != System.Buffers.OperationStatus.Done) return false;
             remaining = remaining[consumed..]; count++;
         }
-        return count is >= 15 and <= 128 && password!.EnumerateRunes().Distinct().Count() > 1;
+        return count is >= 8 and <= 128 && password!.EnumerateRunes().Distinct().Count() > 1;
     }
     public string Hash(AliasCredential credential, string password)
     {

@@ -226,7 +226,7 @@ V1 不增加 Pepper：当前没有独立于 DB/应用宿主的专用 pepper 托�
 
 ### 10.2 密码生命周期
 
-- 新 Alias 密码：15–128 个 Unicode scalar，允许空格及 Unicode，UTF-8 不超过 1024 bytes，不 Trim、截断或隐式正规化。提供常见弱密码阻止清单，不强制大小写符号拼接规则；确认密码由 UI 比较。
+- 新 Alias 密码：8–128 个 Unicode scalar，允许空格及 Unicode，UTF-8 不超过 1024 bytes，不 Trim、截断或隐式正规化。提供常见弱密码阻止清单，不强制大小写符号拼接规则；确认密码由 UI 比较。
 - 创建时先验证 OS 密码，再 Hash，新 hash 必须当场验证成功后才提交有效配置。
 - 改密必须验证当前本人凭据，生成新 salt/hash，并在同一事务递增 Revision、SecurityVersion；撤销所有登录方法的旧会话。
 - 忘记 Alias 密码：系统登录仍开时可系统登录并现场复验 OS 密码后重置；系统登录关闭且无可用 Alias 凭据时走 §11.3 控制台恢复，不提供匿名“用 OS 密码绕过关闭策略”的 API。

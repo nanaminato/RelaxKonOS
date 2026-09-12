@@ -6,9 +6,9 @@
         "login.connection_instructions": "接続するリモート コンピューターの名前を入力してください。",
         "login.credentials_instructions": "接続時に以下の資格情報が使用されます。",
         "login.computer": "コンピューター:",
-        "login.username": "ユーザー名:",
+        "login.username": "システムユーザー名またはエイリアス：",
         "login.password": "パスワード:",
-        "login.username_placeholder": "例: alice",
+        "login.username_placeholder": "システムユーザー名、または小文字のエイリアス",
         "login.password_placeholder": "パスワードを入力",
         "login.options.hide": "オプションを非表示",
         "login.options.show": "オプションを表示",
@@ -32,7 +32,5 @@
         "login.error.timeout": "サーバーへの接続がタイムアウトしました。ネットワークまたはサーバー アドレスを確認してください。",
         "login.error.session_expired": "セッションの有効期限が切れました。続行するには再度サインインしてください。",
         "login.error.unable_to_connect": "サーバーに接続できません:"
-    },
-    "login.username": "システムユーザー名またはエイリアス：",
-    "login.username_placeholder": "システムユーザー名、または小文字のエイリアス"
+    }
 }

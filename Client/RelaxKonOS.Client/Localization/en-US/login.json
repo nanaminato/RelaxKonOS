@@ -6,9 +6,9 @@
         "login.connection_instructions": "Enter the name of the remote computer you want to connect to.",
         "login.credentials_instructions": "The credentials below will be used when connecting.",
         "login.computer": "Computer:",
-        "login.username": "Username:",
+        "login.username": "System username or login alias:",
         "login.password": "Password:",
-        "login.username_placeholder": "For example: alice",
+        "login.username_placeholder": "System username, or lowercase alias",
         "login.password_placeholder": "Enter password",
         "login.options.hide": "Hide options",
         "login.options.show": "Show options",
@@ -22,7 +22,7 @@
         "login.password_save.do_not_show_again": "Don't show this again",
         "login.identity_notice": "You will be prompted to verify the identity of the remote computer.",
         "login.connection_settings": "Connection settings",
-        "login.connection_settings_description": "RelaxKonOS will open the workspace using this computer\u0027s name and local display settings.",
+        "login.connection_settings_description": "RelaxKonOS will open the workspace using this computer's name and local display settings.",
         "login.client_name": "RelaxKonOS Remote Desktop Client",
         "login.status.connecting": "Connecting...",
         "login.status.opening_desktop": "Connected. Opening desktop...",
@@ -32,7 +32,5 @@
         "login.error.timeout": "Timed out while connecting to the server. Check the network or server address.",
         "login.error.session_expired": "Your session expired. Sign in again to continue.",
         "login.error.unable_to_connect": "Unable to connect to the server:"
-    },
-    "login.username": "System username or login alias:",
-    "login.username_placeholder": "System username, or lowercase alias"
+    }
 }

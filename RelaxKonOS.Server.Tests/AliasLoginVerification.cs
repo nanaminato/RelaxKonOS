@@ -196,7 +196,8 @@ internal static class AliasLoginVerification
         var service = new AliasPasswordService(); var credential = new AliasCredential();
         Check(AliasPasswordService.ValidAlias("developer") && !AliasPasswordService.ValidAlias("Developer") && !AliasPasswordService.ValidAlias(" developer")
             && !AliasPasswordService.ValidAlias("root") && !AliasPasswordService.ValidAlias("dev@domain"), "strict alias grammar and reserved names");
-        Check(!AliasPasswordService.ValidNewPassword("123456789012345") && AliasPasswordService.ValidNewPassword(" 空格と Unicode password "), "password scalar policy");
+        Check(!AliasPasswordService.ValidNewPassword("1234567") && AliasPasswordService.ValidNewPassword("abcdefgh")
+            && !AliasPasswordService.ValidNewPassword("123456789012345") && AliasPasswordService.ValidNewPassword(" 空格と Unicode password "), "password scalar policy");
         var first = service.Hash(credential, AliasPassword); var second = service.Hash(credential, AliasPassword);
         Check(first != second, "random salt per hash");
         credential.PasswordHash = first;

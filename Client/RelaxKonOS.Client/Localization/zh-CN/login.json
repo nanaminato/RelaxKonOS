@@ -6,9 +6,9 @@
         "login.connection_instructions": "输入要连接的远程计算机名称。",
         "login.credentials_instructions": "连接时将使用以下凭据。",
         "login.computer": "计算机：",
-        "login.username": "用户名：",
+        "login.username": "系统用户名或登录别名：",
         "login.password": "密码：",
-        "login.username_placeholder": "例如：alice",
+        "login.username_placeholder": "系统用户名，或小写登录别名",
         "login.password_placeholder": "输入密码",
         "login.options.hide": "隐藏选项",
         "login.options.show": "显示选项",
@@ -32,7 +32,5 @@
         "login.error.timeout": "连接服务器超时。请检查网络或服务器地址。",
         "login.error.session_expired": "会话已过期，请重新登录后继续操作。",
         "login.error.unable_to_connect": "无法连接到服务器："
-    },
-    "login.username": "系统用户名或登录别名：",
-    "login.username_placeholder": "系统用户名，或小写登录别名"
+    }
 }
