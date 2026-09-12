@@ -36,7 +36,7 @@ public sealed class HostEnvironmentService(IUserRepository users, IHostElevation
             try
             {
                 var mappedSid = (SecurityIdentifier)new NTAccount(user.Username).Translate(typeof(SecurityIdentifier));
-                var storedSid = (SecurityIdentifier)new NTAccount(user.PlatformIdentity).Translate(typeof(SecurityIdentifier));
+                var storedSid = new SecurityIdentifier(user.PlatformIdentity);
                 if (!mappedSid.IsAccountSid() || mappedSid.Value != storedSid.Value)
                     throw new SettingsException(403, "settings.environment.identity_mismatch");
                 platformIdentity = mappedSid.Value;

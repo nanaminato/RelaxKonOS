@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AccountSecurityPageView" x:DataType="vm:AccountSecurityPageViewModel">
+  <StackPanel Spacing="16" Margin="8">
+    <TextBlock Text="{loc:Loc settings.account.title}" FontSize="24" FontWeight="SemiBold" />
+    <TextBlock Text="{loc:Loc settings.account.description}" TextWrapping="Wrap" />
+    <Grid ColumnDefinitions="210,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
+      <TextBlock Text="{loc:Loc settings.account.system}" /><TextBlock Grid.Column="1" Text="{Binding SystemUsername}" />
+      <TextBlock Grid.Row="1" Text="{loc:Loc settings.account.method}" /><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Method}" />
+      <TextBlock Grid.Row="2" Text="{loc:Loc settings.account.alias}" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Alias}" />
+      <TextBlock Grid.Row="3" Text="{loc:Loc settings.account.system_login}" TextWrapping="Wrap" /><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SystemLogin}" />
+    </Grid>
+    <WrapPanel>
+      <Button Margin="0,0,8,8" Content="{loc:Loc settings.account.create}" Command="{Binding OperateCommand}" CommandParameter="create" IsEnabled="{Binding CanCreate}" />
+      <Button Margin="0,0,8,8" Content="{loc:Loc settings.account.rename}" Command="{Binding OperateCommand}" CommandParameter="rename" IsEnabled="{Binding CanManage}" />
+      <Button Margin="0,0,8,8" Content="{loc:Loc settings.account.password}" Command="{Binding OperateCommand}" CommandParameter="password" IsEnabled="{Binding CanManage}" />
+      <Button Margin="0,0,8,8" Content="{loc:Loc settings.account.delete}" Command="{Binding OperateCommand}" CommandParameter="delete" IsEnabled="{Binding CanRestore}" />
+      <Button Margin="0,0,8,8" Content="{loc:Loc settings.account.toggle}" Command="{Binding OperateCommand}" CommandParameter="toggle" IsEnabled="{Binding CanRestore}" />
+    </WrapPanel>
+    <TextBlock Text="{Binding Capability}" TextWrapping="Wrap" />
+    <TextBlock Text="{Binding Status}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+    <Button Content="{loc:Loc settings.account.reload}" Command="{Binding LoadCommand}" />
+  </StackPanel>
+</UserControl>

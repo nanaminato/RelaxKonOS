@@ -17,6 +17,15 @@ public sealed class SqliteUserRepository : IUserRepository
     public User? FindById(Guid id)
         => _db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
 
+    public User? FindByIdentity(string identity, PlatformKind platform)
+        => _db.Users.AsNoTracking().SingleOrDefault(u => u.PlatformIdentity == identity && u.Platform == platform);
+    public void Update(User user)
+    {
+        var tracked = _db.Users.Local.FirstOrDefault(u => u.Id == user.Id);
+        if (tracked is not null) _db.Entry(tracked).State = EntityState.Detached;
+        _db.Users.Update(user);
+        _db.SaveChanges();
+    }
     public User Add(User user)
     {
         _db.Users.Add(user);

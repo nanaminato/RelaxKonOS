@@ -9,6 +9,7 @@ public sealed class RelaxKonOSDbContext : DbContext
 {
     public RelaxKonOSDbContext(DbContextOptions<RelaxKonOSDbContext> options) : base(options) { }
 
+    public DbSet<AliasCredential> LoginCredentials => Set<AliasCredential>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<Device> Devices => Set<Device>();
@@ -28,6 +29,19 @@ public sealed class RelaxKonOSDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        mb.Entity<AliasCredential>(e =>
+        {
+            e.ToTable("user_login_credentials", table => {
+                table.HasCheckConstraint("CK_alias_pair", "(Alias IS NULL AND PasswordHash IS NULL) OR (Alias IS NOT NULL AND PasswordHash IS NOT NULL)");
+                table.HasCheckConstraint("CK_login_method", "SystemLoginEnabled = 1 OR (Alias IS NOT NULL AND PasswordHash IS NOT NULL)");
+                table.HasCheckConstraint("CK_alias_format", "Alias IS NULL OR (length(Alias) BETWEEN 3 AND 32 AND Alias NOT GLOB '*[^a-z0-9._-]*' AND substr(Alias,1,1) GLOB '[a-z]')");
+                table.HasCheckConstraint("CK_alias_revision", "Revision > 0");
+            });
+            e.HasKey(x => x.UserId);
+            e.HasOne<User>().WithOne().HasForeignKey<AliasCredential>(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.Alias).IsUnique();
+            e.Property(x => x.Revision).IsConcurrencyToken();
+        });
         mb.Entity<RegistryEntry>(e =>
         {
             e.ToTable("registry_entries");
@@ -135,7 +149,7 @@ public sealed class RelaxKonOSDbContext : DbContext
             e.Property(u => u.CreatedAt).HasColumnType("TEXT");
             e.Property(u => u.LastLoginAt).HasColumnType("TEXT");
             // 按 (username, platform) 索引——对应 InMemoryUserRepository._byName
-            e.HasIndex(u => new { u.Username, u.Platform }).IsUnique();
+            e.HasIndex(u => new { u.Platform, u.PlatformIdentity }).IsUnique();
         });
 
         // ── workspaces ──

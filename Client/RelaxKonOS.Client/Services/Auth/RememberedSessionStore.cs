@@ -13,6 +13,7 @@ namespace RelaxKonOS.Client.Services.Auth;
 public interface IRememberedSessionStore
 {
     Task<IReadOnlyList<SavedLoginProfile>> LoadAsync(CancellationToken ct = default);
+    Task<RememberedProfileSaveResult> RemoveAsync(string serverUrl, string identifier, CancellationToken ct = default);
     Task<RememberedProfileSaveResult> UpsertAsync(SavedLoginProfile profile, CancellationToken ct = default);
     Task ClearAsync(CancellationToken ct = default);
 }
@@ -41,7 +42,7 @@ public sealed record SavedLoginProfile(string ServerUrl, string Username, string
 
     public static bool SameProfile(string leftServer, string leftUsername, string rightServer, string rightUsername)
         => SameServer(leftServer, rightServer)
-           && string.Equals(leftUsername.Trim(), rightUsername.Trim(), StringComparison.OrdinalIgnoreCase);
+           && string.Equals(leftUsername, rightUsername, StringComparison.Ordinal);
 
     private static string NormalizeServer(string serverUrl)
         => Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri)
@@ -107,7 +108,12 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         ct.ThrowIfCancellationRequested();
         var profiles = (await LoadAsync(ct)).ToList();
         profiles.RemoveAll(item => SavedLoginProfile.SameProfile(item.ServerUrl, item.Username, profile.ServerUrl, profile.Username));
-        profiles.Add(profile with { ServerUrl = profile.ServerUrl.Trim(), Username = profile.Username.Trim() });
+        profiles.Add(profile with { ServerUrl = profile.ServerUrl.Trim(), Username = profile.Username });
+        return await SaveProfilesAsync(profiles, ct);
+    }
+
+    private async Task<RememberedProfileSaveResult> SaveProfilesAsync(List<SavedLoginProfile> profiles, CancellationToken ct)
+    {
         var payload = Serialize(new SavedLoginProfileCollection(
             profiles.OrderByDescending(item => item.LastUsedAt).ToArray()));
 
@@ -143,6 +149,13 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         }
 
         return RememberedProfileSaveResult.CredentialStoreUnavailable;
+    }
+
+    public async Task<RememberedProfileSaveResult> RemoveAsync(string serverUrl, string identifier, CancellationToken ct = default)
+    {
+        var profiles = (await LoadAsync(ct)).ToList();
+        profiles.RemoveAll(item => SavedLoginProfile.SameProfile(item.ServerUrl, item.Username, serverUrl, identifier));
+        return await SaveProfilesAsync(profiles, ct);
     }
 
     public async Task ClearAsync(CancellationToken ct = default)

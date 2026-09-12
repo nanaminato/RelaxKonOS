@@ -35,7 +35,7 @@ public static class AppCapabilityEndpoints
                 return Results.BadRequest();
 
             return Results.Ok(tokens.IssueFileCapability(
-                owner.UserId, owner.WorkspaceId, owner.DeviceId, request.AppId, request.Scopes));
+                owner.UserId, owner.WorkspaceId, owner.DeviceId, request.AppId, request.Scopes, long.Parse(principal.FindFirstValue("security_version")!)));
         })
         .RequireAuthorization()
         .WithTags("Application capabilities");
@@ -61,7 +61,7 @@ public static class AppCapabilityEndpoints
                 var entry = files.GetInfo(request.Path);
                 if (entry is null || entry.Type != FileSystemEntryType.File)
                     return Results.NotFound();
-                var lease = leases.Create(owner.UserId, owner.WorkspaceId, owner.DeviceId, request.AppId, request.Path);
+                var lease = leases.Create(owner.UserId, owner.WorkspaceId, owner.DeviceId, request.AppId, request.Path, long.Parse(principal.FindFirstValue("security_version")!));
                 return Results.Ok(new MediaLeaseDto(lease.Id, lease.ExpiresAt));
             }
             catch (UnauthorizedAccessException) { return Results.Forbid(); }

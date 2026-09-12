@@ -22,27 +22,35 @@ public sealed class LoginProtectionService(
     IAuthenticationProtectionStore store,
     Microsoft.Extensions.Options.IOptions<AuthSecurityOptions> options)
 {
+    private static readonly SemaphoreSlim Mutation = new(1, 1);
+    private static readonly byte[] FingerprintKey = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+    private const int MaximumBuckets = 10000;
     private static readonly ConcurrentDictionary<string, TransientFailureState> IpFailures = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, TransientFailureState> AccountIpFailures = new(StringComparer.Ordinal);
     private readonly AuthSecurityOptions _options = options.Value;
 
-    public async Task<LoginProtectionDecision> CheckAsync(string username, IPAddress? sourceIp, CancellationToken ct)
+    public async Task<LoginProtectionDecision> CheckAsync(string username, IPAddress? sourceIp, CancellationToken ct, Guid? canonicalUserId = null)
     {
+        Cleanup();
         var now = DateTimeOffset.UtcNow;
-        var key = AccountKey(username);
+        var key = canonicalUserId is { } id ? "user:" + id.ToString("D") : AccountKey(username);
         var ipKey = IpKey(sourceIp);
         var account = await store.FindAccountAsync(key, ct);
-        var accountIp = AccountIpFailures.TryGetValue(key + "|" + ipKey, out var pair) ? pair : null;
-        var ip = IpFailures.TryGetValue(ipKey, out var source) ? source : null;
+        var accountIp = AccountIpFailures.TryGetValue(BucketKey(AccountIpFailures, key + "|" + ipKey), out var pair) ? pair : null;
+        var ip = IpFailures.TryGetValue(BucketKey(IpFailures, ipKey), out var source) ? source : null;
         var retryAt = new[] { account?.BlockedUntil, accountIp?.BlockedUntil, ip?.BlockedUntil }
             .Where(value => value.HasValue && value.Value > now).Max();
         return retryAt is null ? LoginProtectionDecision.Allowed : new LoginProtectionDecision(true, retryAt);
     }
 
-    public async Task RecordFailureAsync(string username, IPAddress? sourceIp, CancellationToken ct)
+    public async Task RecordFailureAsync(string username, IPAddress? sourceIp, CancellationToken ct, Guid? canonicalUserId = null)
     {
+        await Mutation.WaitAsync(ct);
+        try
+        {
+        Cleanup();
         var now = DateTimeOffset.UtcNow;
-        var key = AccountKey(username);
+        var key = canonicalUserId is { } id ? "user:" + id.ToString("D") : AccountKey(username);
         var ipKey = IpKey(sourceIp);
         var account = await store.FindAccountAsync(key, ct) ?? new AccountFailureState { AccountKey = key };
         if (account.LastFailureAt < now.AddHours(-_options.AccountFailureRetentionHours))
@@ -53,17 +61,23 @@ public sealed class LoginProtectionService(
         account.BlockedUntil = Max(account.BlockedUntil, now.Add(PenaltyFor(account.FailureCount)));
         await store.SaveAccountAsync(account, ct);
 
-        var pair = AccountIpFailures.GetOrAdd(key + "|" + ipKey, _ => new TransientFailureState(now));
+        var pair = AccountIpFailures.GetOrAdd(BucketKey(AccountIpFailures, key + "|" + ipKey), _ => new TransientFailureState(now));
         pair.Record(now, _options.IpFailureWindowMinutes, PenaltyFor(pair.FailureCount + 1));
-        var ip = IpFailures.GetOrAdd(ipKey, _ => new TransientFailureState(now));
+        var ip = IpFailures.GetOrAdd(BucketKey(IpFailures, ipKey), _ => new TransientFailureState(now));
         ip.Record(now, _options.IpFailureWindowMinutes,
             ip.FailureCount + 1 >= _options.IpFailureLimit ? TimeSpan.FromMinutes(_options.IpBlockMinutes) : TimeSpan.Zero);
         await EventAsync("authentication_failed", key, ipKey, now, ct);
+        }
+        finally { Mutation.Release(); }
     }
 
-    public async Task RecordSuccessAsync(string username, IPAddress? sourceIp, CancellationToken ct)
+    public async Task RecordSuccessAsync(string username, IPAddress? sourceIp, CancellationToken ct, Guid? canonicalUserId = null)
     {
-        var key = AccountKey(username);
+        await Mutation.WaitAsync(ct);
+        try
+        {
+        var key = canonicalUserId is { } id ? "user:" + id.ToString("D") : AccountKey(username);
+        Cleanup();
         var now = DateTimeOffset.UtcNow;
         var account = await store.FindAccountAsync(key, ct);
         if (account is not null)
@@ -76,6 +90,8 @@ public sealed class LoginProtectionService(
         }
         AccountIpFailures.TryRemove(key + "|" + IpKey(sourceIp), out _);
         await EventAsync("authentication_succeeded", key, IpKey(sourceIp), now, ct);
+        }
+        finally { Mutation.Release(); }
     }
 
     public Task RecordBlockedAsync(string username, IPAddress? sourceIp, CancellationToken ct)
@@ -84,10 +100,21 @@ public sealed class LoginProtectionService(
     private Task EventAsync(string type, string account, string ip, DateTimeOffset now, CancellationToken ct) =>
         store.AddEventAsync(new AuthenticationSecurityEvent { Id = Guid.NewGuid(), EventType = type, AccountKey = account, SourceIp = ip, CreatedAt = now }, ct);
 
-    private static string AccountKey(string username)
+    internal static string AccountKey(string identifier)
     {
-        var normalized = (username ?? string.Empty).Trim().ToUpperInvariant();
-        return normalized[..Math.Min(normalized.Length, 128)];
+        return "unknown:" + Convert.ToHexString(System.Security.Cryptography.HMACSHA256.HashData(FingerprintKey,
+            System.Text.Encoding.UTF8.GetBytes(identifier ?? "")));
+    }
+    private static string BucketKey(ConcurrentDictionary<string, TransientFailureState> buckets, string key)
+        => buckets.ContainsKey(key) || buckets.Count < MaximumBuckets ? key : "overflow";
+    private static void Cleanup()
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
+        foreach (var buckets in new[] { IpFailures, AccountIpFailures })
+        {
+            foreach (var entry in buckets)
+                if (entry.Value.WindowStartedAt < cutoff) buckets.TryRemove(entry.Key, out _);
+        }
     }
     private static string IpKey(IPAddress? ip) => ip?.MapToIPv6().ToString() ?? "unknown";
     private static DateTimeOffset? Max(DateTimeOffset? existing, DateTimeOffset candidate) => existing is null || existing < candidate ? candidate : existing;

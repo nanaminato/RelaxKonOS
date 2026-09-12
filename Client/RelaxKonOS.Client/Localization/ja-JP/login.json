@@ -32,5 +32,7 @@
         "login.error.timeout": "サーバーへの接続がタイムアウトしました。ネットワークまたはサーバー アドレスを確認してください。",
         "login.error.session_expired": "セッションの有効期限が切れました。続行するには再度サインインしてください。",
         "login.error.unable_to_connect": "サーバーに接続できません:"
-    }
+    },
+    "login.username": "システムユーザー名またはエイリアス：",
+    "login.username_placeholder": "システムユーザー名、または小文字のエイリアス"
 }

@@ -7,11 +7,14 @@ namespace RelaxKonOS.Server.Domain;
 public sealed class Session
 {
     public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public string AuthenticationMethod { get; set; } = "system";
+    public DateTimeOffset AuthenticatedAt { get; set; }
     public Guid WorkspaceId { get; set; }
     public Guid DeviceId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset LastActiveAt { get; set; }
     public SessionStatus Status { get; set; }
 
-    public SessionDto ToDto() => new(Id, WorkspaceId, DeviceId, CreatedAt, LastActiveAt, Status);
+    public SessionDto ToDto() => new(Id, WorkspaceId, DeviceId, CreatedAt, LastActiveAt, Status, UserId, AuthenticationMethod, AuthenticatedAt);
 }

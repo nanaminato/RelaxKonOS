@@ -32,5 +32,7 @@
         "login.error.timeout": "Timed out while connecting to the server. Check the network or server address.",
         "login.error.session_expired": "Your session expired. Sign in again to continue.",
         "login.error.unable_to_connect": "Unable to connect to the server:"
-    }
+    },
+    "login.username": "System username or login alias:",
+    "login.username_placeholder": "System username, or lowercase alias"
 }

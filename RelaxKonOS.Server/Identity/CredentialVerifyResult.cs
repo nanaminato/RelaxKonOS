@@ -6,10 +6,11 @@ public sealed record CredentialVerifyResult(
     bool Success,
     string Message,
     CredentialError Error,
-    int? Win32ErrorCode)
+    int? Win32ErrorCode,
+    PlatformUserInfo? Identity = null)
 {
-    public static CredentialVerifyResult Ok(string domain, string user)
-        => new(true, $"验证通过：{domain}\\{user}", CredentialError.None, null);
+    public static CredentialVerifyResult Ok(PlatformUserInfo identity)
+        => new(true, "Verified", CredentialError.None, null, identity);
 
     public static CredentialVerifyResult Failed(string msg, CredentialError err, int? win32 = null)
         => new(false, msg, err, win32);

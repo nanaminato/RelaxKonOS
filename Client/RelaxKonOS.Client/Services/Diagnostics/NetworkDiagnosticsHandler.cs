@@ -24,13 +24,13 @@ public sealed class NetworkDiagnosticsHandler(NetworkDiagnosticsService diagnost
             stopwatch.Stop();
             diagnostics.Record(new NetworkDiagnosticEntry(
                 0, startedAt, stopwatch.Elapsed, NetworkDiagnosticKind.Http, source,
-                request.RequestUri?.AbsolutePath ?? request.Method.Method, request.Method.Method,
-                request.RequestUri?.PathAndQuery ?? string.Empty,
+                NetworkDiagnosticsService.SafeUrl(request.RequestUri), request.Method.Method,
+                NetworkDiagnosticsService.SafeUrl(request.RequestUri),
                 response.IsSuccessStatusCode ? NetworkDiagnosticOutcome.Succeeded : NetworkDiagnosticOutcome.Failed,
                 (int)response.StatusCode, contentType, response.Content?.Headers.ContentLength,
                 NetworkDiagnosticsService.IsMediaContent(contentType, request.RequestUri), null,
                 requestHeaders, responseHeaders, requestBody, responseBody,
-                RequestUrl: request.RequestUri?.ToString()));
+                RequestUrl: NetworkDiagnosticsService.SafeUrl(request.RequestUri)));
             return response;
         }
         catch (Exception exception)
@@ -40,10 +40,10 @@ public sealed class NetworkDiagnosticsHandler(NetworkDiagnosticsService diagnost
                 ? NetworkDiagnosticOutcome.Cancelled : NetworkDiagnosticOutcome.TransportError;
             diagnostics.Record(new NetworkDiagnosticEntry(
                 0, startedAt, stopwatch.Elapsed, NetworkDiagnosticKind.Http, source,
-                request.RequestUri?.AbsolutePath ?? request.Method.Method, request.Method.Method,
-                request.RequestUri?.PathAndQuery ?? string.Empty, outcome, null,
+                NetworkDiagnosticsService.SafeUrl(request.RequestUri), request.Method.Method,
+                NetworkDiagnosticsService.SafeUrl(request.RequestUri), outcome, null,
                 null, null, false, NetworkDiagnosticsService.ErrorKind(exception), requestHeaders,
-                RequestBody: requestBody, RequestUrl: request.RequestUri?.ToString()));
+                RequestBody: requestBody, RequestUrl: NetworkDiagnosticsService.SafeUrl(request.RequestUri)));
             throw;
         }
     }

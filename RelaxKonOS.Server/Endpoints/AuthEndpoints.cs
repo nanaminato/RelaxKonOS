@@ -20,10 +20,11 @@ public static class AuthEndpoints
 
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost(AuthApiRoutes.Login, async (
+        var group = app.MapGroup("").AddEndpointFilter<AuthenticationEndpointFilter>();
+        group.MapPost(AuthApiRoutes.Login, async (
                 LoginRequest req,
                 HttpContext http,
-                IIdentityProvider idp,
+                LoginAuthenticationService authentication,
                 IUserRepository users,
                 IWorkspaceRepository wss,
                 IRegistryRepository registry,
@@ -33,41 +34,9 @@ public static class AuthEndpoints
                 LoginProtectionService protection,
                 CancellationToken ct) =>
             {
-                if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
-                    return Problem(http, 400, "invalid-input", "Invalid input", "Username and password are required.");
-
-                var sourceIp = http.Connection.RemoteIpAddress;
-                var decision = await protection.CheckAsync(req.Username, sourceIp, ct);
-                if (decision.IsBlocked)
-                {
-                    await protection.RecordBlockedAsync(req.Username, sourceIp, ct);
-                    return TooManyAttempts(http, decision.RetryAt!.Value);
-                }
-
-                var result = idp.Verify(req.Username, req.Password);
-                if (!result.Success)
-                {
-                    await protection.RecordFailureAsync(req.Username, sourceIp, ct);
-                    // Do not return host-provider details: they can expose account existence or state.
-                    return Problem(http, 401, "invalid-credential", "Invalid credentials", "Login failed. Check your credentials and try again.");
-                }
-
-                await protection.RecordSuccessAsync(req.Username, sourceIp, ct);
-
-                var info = idp.GetUserInfo(req.Username);
-                var platform = req.ClientPlatform;
+                var login = await authentication.AuthenticateAsync(req.Identifier, req.Password, http.Connection.RemoteIpAddress, ct);
+                var user = login.User;
                 var now = DateTimeOffset.UtcNow;
-
-                // 查/建 User（One User，按 username+platform 索引）
-                var user = users.FindByUsername(req.Username, platform)
-                          ?? users.Add(new User
-                          {
-                              Id = Guid.NewGuid(),
-                              Username = req.Username,
-                              Platform = platform,
-                              PlatformIdentity = info.Uid,
-                              CreatedAt = now,
-                          });
 
                 // 查/建 Workspace（One User One Persistent，见 Workspace.md §4）
                 var ws = wss.FindByUserId(user.Id)
@@ -105,6 +74,9 @@ public static class AuthEndpoints
                 var session = sess.Add(new Session
                 {
                     Id = Guid.NewGuid(),
+                    UserId = user.Id,
+                    AuthenticationMethod = login.Method,
+                    AuthenticatedAt = now,
                     WorkspaceId = ws.Id,
                     DeviceId = device.Id,
                     CreatedAt = now,
@@ -122,7 +94,9 @@ public static class AuthEndpoints
                 users.UpdateLastLogin(user.Id, now);
 
                 var role = DeviceRole.Controller;
-                var tokens = jwt.Issue(user, ws, device, role);
+                authentication.RequireCurrent(login);
+                var tokens = jwt.Issue(user, ws, device, role, session.Id, login.Method, now, login.SecurityVersion);
+                await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
 
                 return Results.Ok(new LoginResponse(
                     user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role, CreateServerDescriptor()));
@@ -130,14 +104,16 @@ public static class AuthEndpoints
             .RequireRateLimiting("login")
             .WithTags("Auth");
 
-        app.MapPost(AuthApiRoutes.Refresh, (
+        group.MapPost(AuthApiRoutes.Refresh, (
                 RefreshTokenRequest req,
                 HttpContext http,
                 AuthSessionStore sessions,
                 IUserRepository users,
                 IWorkspaceRepository wss,
                 IDeviceRepository devs,
-                JwtTokenService jwt) =>
+                JwtTokenService jwt,
+                CanonicalUserResolver resolver,
+                SessionValidityService validity) =>
             {
                 if (string.IsNullOrEmpty(req.RefreshToken) || !sessions.TryConsume(req.RefreshToken, out var rec))
                     return Problem(http, 401, "invalid-credential", "Invalid credentials", "The refresh token is invalid, expired, or has already been used.");
@@ -145,16 +121,18 @@ public static class AuthEndpoints
                 var user = users.FindById(rec.UserId);
                 var ws = wss.FindById(rec.WorkspaceId);
                 var device = devs.FindById(rec.DeviceId);
-                if (user is null || ws is null || device is null)
+                if (user is null || ws is null || device is null || !validity.IsValid(rec.UserId, rec.SecurityVersion))
                     return Problem(http, 401, "invalid-credential", "Invalid credentials", "The session context is no longer valid.");
 
                 var role = ws.ControllerDeviceId == device.Id ? DeviceRole.Controller : DeviceRole.Observer;
-                var tokens = jwt.Issue(user, ws, device, role, rec.SessionId, rec.AbsoluteExpiresAt);
+                resolver.RequireBinding(user, rec.AuthenticationMethod == "alias");
+                if (!validity.IsValid(rec.UserId, rec.SecurityVersion)) return Results.Unauthorized();
+                var tokens = jwt.Issue(user, ws, device, role, rec.SessionId, rec.AuthenticationMethod, rec.AuthenticatedAt, rec.SecurityVersion, rec.AbsoluteExpiresAt);
                 return Results.Ok(new RefreshTokenResponse(tokens));
             })
             .WithTags("Auth");
 
-        app.MapPost(AuthApiRoutes.Logout, (LogoutRequest? req, HttpContext http, AuthSessionStore sessions, IHostElevationSessionStore elevations) =>
+        group.MapPost(AuthApiRoutes.Logout, (LogoutRequest? req, HttpContext http, AuthSessionStore sessions, IHostElevationSessionStore elevations) =>
             {
                 if (!string.IsNullOrEmpty(req?.RefreshToken))
                     sessions.Revoke(req.RefreshToken);
@@ -164,7 +142,7 @@ public static class AuthEndpoints
             .RequireAuthorization()
             .WithTags("Auth");
 
-        app.MapGet(AuthApiRoutes.Me, (ClaimsPrincipal principal, IUserRepository users, HttpContext http) =>
+        group.MapGet(AuthApiRoutes.Me, (ClaimsPrincipal principal, IUserRepository users, HttpContext http) =>
             {
                 var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
                           ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -202,26 +180,6 @@ public static class AuthEndpoints
 
         return new ServerDescriptorDto(isWindows ? PlatformKind.Windows : PlatformKind.Linux, capabilities);
     }
-
-    /// <summary>CredentialError → ProblemDetails 映射。type URI 作为错误码，客户端按 type 匹配 UI 文案。</summary>
-    private static IResult MapCredentialErrorToProblem(HttpContext http, CredentialVerifyResult r) => r.Error switch
-    {
-        CredentialError.BadCredentials or CredentialError.NoSuchUser =>
-            Problem(http, 401, "invalid-credential", "Invalid credentials", r.Message),
-        CredentialError.AccountLockedOut =>
-            Problem(http, 423, "account-locked", "Account locked", r.Message),
-        CredentialError.AccountDisabled =>
-            Problem(http, 403, "account-disabled", "Account disabled", r.Message),
-        CredentialError.PasswordExpired =>
-            Problem(http, 403, "password-expired", "Password expired", r.Message),
-        CredentialError.AccountExpired =>
-            Problem(http, 403, "account-expired", "Account expired", r.Message),
-        CredentialError.AccountRestriction =>
-            Problem(http, 403, "account-restriction", "Account restricted", r.Message),
-        CredentialError.InvalidInput =>
-            Problem(http, 400, "invalid-input", "Invalid input", r.Message),
-        _ => Problem(http, 500, "auth-failed", "Authentication failed", r.Message),
-    };
 
     private static IResult Problem(HttpContext http, int status, string typeSuffix, string title, string detail)
         => Results.Problem(detail: detail, statusCode: status,

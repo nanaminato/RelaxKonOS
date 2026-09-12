@@ -67,6 +67,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         Pages = new SettingsPageViewModel[]
         {
             new SystemPageViewModel(settings, session, save),
+            new AccountSecurityPageViewModel(settings, App.Services.GetRequiredService<AccountSecurityClient>(), session,
+                App.Services.GetRequiredService<IRememberedSessionStore>()),
             new EnvironmentPageViewModel(settings, App.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>(), session),
             new PersonalizationPageViewModel(settings, save),
             new TimeLanguagePageViewModel(settings, localization, save,
@@ -109,6 +111,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         if (_initialized) return;
         _initialized = true;
         _ = RefreshCatalogAsync();
+        _ = Pages.OfType<AccountSecurityPageViewModel>().Single().LoadAsync();
 
         if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } ws })
             return;

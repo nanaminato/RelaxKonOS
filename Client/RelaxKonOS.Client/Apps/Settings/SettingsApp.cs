@@ -71,6 +71,21 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             iconGlyph: Manifest.IconGlyph);
         _viewModel = viewModel;
         _window = window;
+        viewModel.Pages.OfType<AccountSecurityPageViewModel>().Single().RequestOperationAsync = async (operation, configuration, cancellationToken) =>
+        {
+            AliasOperationDialogViewModel? editor = null;
+            CancellationTokenRegistration registration = default;
+            try
+            {
+                return await context.ShowDialogAsync<object?>(window, LocalizedText.Get("settings.account.title"), dialog =>
+                {
+                    editor = new AliasOperationDialogViewModel(operation, configuration, dialog.Close);
+                    registration = cancellationToken.Register(() => Dispatcher.UIThread.Post(() => { editor.Clear(); dialog.Close(null); }));
+                    return new AliasOperationDialogView { DataContext = editor };
+                }, new Size(540, 620));
+            }
+            finally { registration.Dispose(); editor?.Clear(); }
+        };
         var hostTimeService = context.Services.GetRequiredService<Services.HostSettings.IHostTimeService>();
         async Task<bool> AuthorizeHostSettingsAsync(Services.HostSettings.HostSettingsConnection connection, string target,
             Func<string?, string?, Task<RelaxKonOS.Protocol.Privileged.HostElevationResult>> authorize)
@@ -306,7 +321,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             return false;
 
         var segments = GetPathSegments(uri);
-        return (segments.Length == 1 && new[] { "system", "environment", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
+        return (segments.Length == 1 && new[] { "system", "account-security", "environment", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                    && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(segments[1]));

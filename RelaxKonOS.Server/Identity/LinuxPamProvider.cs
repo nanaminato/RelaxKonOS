@@ -19,6 +19,8 @@ public sealed class LinuxPamProvider : IIdentityProvider
         if (string.IsNullOrWhiteSpace(username) || username.IndexOfAny(['\0', ':']) >= 0)
             return CredentialVerifyResult.Failed("用户名不能为空或包含非法字符", CredentialError.InvalidInput);
 
+        var before = Lookup(username);
+        if (before.Identity is null) return CredentialVerifyResult.Failed("Identity unavailable", CredentialError.BadCredentials);
         IntPtr pamHandle = IntPtr.Zero;
         var pamStatus = PamResult.Success;
         var conversation = new PamConversation(Conversation);
@@ -34,9 +36,13 @@ public sealed class LinuxPamProvider : IIdentityProvider
             if (pamStatus == PamResult.Success)
                 pamStatus = pam_acct_mgmt(pamHandle, 0);
 
-            return pamStatus == PamResult.Success
-                ? CredentialVerifyResult.Ok(Environment.MachineName, username)
-                : MapFailure(pamStatus, pamHandle);
+            if (pamStatus != PamResult.Success) return MapFailure(pamStatus, pamHandle);
+            if (pam_get_item(pamHandle, 2, out var pamUser) != 0 || Utf8(pamUser) is not { } verifiedName)
+                return CredentialVerifyResult.Failed("Identity unavailable", CredentialError.BadCredentials);
+            var after = Lookup(verifiedName);
+            return after.Identity is { } verified && verified.Uid == before.Identity.Uid
+                ? CredentialVerifyResult.Ok(verified)
+                : CredentialVerifyResult.Failed("Identity mismatch", CredentialError.BadCredentials);
         }
         catch (DllNotFoundException ex)
         {
@@ -80,13 +86,44 @@ public sealed class LinuxPamProvider : IIdentityProvider
             var gecos = Utf8(entry.Gecos);
             var displayName = gecos?.Split(',', 2)[0];
             if (string.IsNullOrWhiteSpace(displayName)) displayName = canonicalName;
-            return new PlatformUserInfo(entry.Uid.ToString(), displayName, Utf8(entry.Directory));
+            return new PlatformUserInfo(entry.Uid.ToString(), canonicalName, RelaxKonOS.Protocol.Common.PlatformKind.Linux, displayName, Utf8(entry.Directory));
         }
         finally
         {
             Marshal.FreeHGlobal(buffer);
         }
     }
+
+    public IdentityLookup Lookup(string identifier)
+    {
+        try { return new(IdentityLookupStatus.Found, GetUserInfo(identifier)); }
+        catch (KeyNotFoundException) { return new(IdentityLookupStatus.NotFound); }
+        catch { return new(IdentityLookupStatus.Unavailable); }
+    }
+
+    public IdentityLookup LookupIdentity(string identity)
+    {
+        if (!uint.TryParse(identity, out var uid)) return new(IdentityLookupStatus.Unavailable);
+        var buffer = Marshal.AllocHGlobal(1_048_576);
+        try
+        {
+            var error = getpwuid_r(uid, out var entry, buffer, 1_048_576, out var found);
+            if (error != 0) return new(IdentityLookupStatus.Unavailable);
+            if (found == IntPtr.Zero) return new(IdentityLookupStatus.NotFound);
+            return Lookup(Utf8(entry.Name)!);
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    // Enabling an unverified PAM stack would bypass account policy. Distribution integration
+    // must explicitly establish account-only semantics before this capability is enabled.
+    public AliasEligibility CheckAliasEligibility(PlatformUserInfo identity)
+        => new(false, "linux-pam-account-check-unverified");
+
+    [DllImport(PamLibrary, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int pam_get_item(IntPtr handle, int item, out IntPtr value);
+    [DllImport(LibC, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int getpwuid_r(uint uid, out Passwd entry, IntPtr buffer, nuint length, out IntPtr result);
 
     private static CredentialVerifyResult MapFailure(PamResult result, IntPtr handle)
     {

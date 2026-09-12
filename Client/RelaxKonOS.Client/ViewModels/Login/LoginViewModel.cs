@@ -47,7 +47,7 @@ public partial class LoginViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
-    private string _username = string.Empty;
+    private string _identifier = string.Empty;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
@@ -96,9 +96,9 @@ public partial class LoginViewModel : ObservableObject
     public string ConnectionInstructions => T("login.connection_instructions", "Enter the name of the remote computer you want to connect to.");
     public string CredentialsInstructions => T("login.credentials_instructions", "The credentials below will be used when connecting.");
     public string ComputerLabel => T("login.computer", "Computer:");
-    public string UsernameLabel => T("login.username", "Username:");
+    public string IdentifierLabel => T("login.username", "Identifier:");
     public string PasswordLabel => T("login.password", "Password:");
-    public string UsernamePlaceholder => T("login.username_placeholder", "For example: alice");
+    public string IdentifierPlaceholder => T("login.username_placeholder", "For example: alice");
     public string PasswordPlaceholder => T("login.password_placeholder", "Enter password");
     public string RememberServerText => T("login.remember_server", "Remember this computer and username");
     public string RememberPasswordText => T("login.remember_password", "Save password securely; selecting this computer next time will sign in automatically");
@@ -113,7 +113,7 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty] private bool _hasError;
 
     partial void OnServerUrlChanged(string value) => ClearError();
-    partial void OnUsernameChanged(string value) => ClearError();
+    partial void OnIdentifierChanged(string value) => ClearError();
     partial void OnPasswordChanged(string value) => ClearError();
     partial void OnSelectedProfileChanged(SavedLoginProfile? value)
     {
@@ -153,7 +153,7 @@ public partial class LoginViewModel : ObservableObject
         try
         {
             var request = new LoginRequest(
-                Username, Password,
+                Identifier, Password,
                 ClientPlatform: DetectClientPlatform(),
                 DeviceName: Environment.MachineName,
                 ClientVersion: Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
@@ -191,7 +191,7 @@ public partial class LoginViewModel : ObservableObject
     private bool CanConnect()
         => !IsConnecting
            && !string.IsNullOrWhiteSpace(ServerUrl)
-           && !string.IsNullOrWhiteSpace(Username)
+           && !string.IsNullOrWhiteSpace(Identifier)
            && !string.IsNullOrWhiteSpace(Password);
 
     public async Task LoadSavedProfilesAsync(CancellationToken ct = default)
@@ -232,7 +232,7 @@ public partial class LoginViewModel : ObservableObject
     private void ApplySelectedProfile(SavedLoginProfile profile)
     {
         ServerUrl = profile.ServerUrl;
-        Username = profile.Username;
+        Identifier = profile.Username;
 #if DEBUG
         // Keep the debug credential authoritative even when a remembered profile has no password.
         Password = _debugPassword ?? profile.Password ?? string.Empty;

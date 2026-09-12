@@ -80,6 +80,8 @@ public static class Bootstrapper
             .AddRelaxKonOSAuthentication();
         services.AddSingleton<IRememberedSessionStore, RememberedSessionStore>();
         services.AddSingleton<IAuthSession, AuthSession>();
+        services.AddHttpClient<AccountSecurityClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddTransient<AuthenticatedHttpHandler>();
         services.AddSingleton<ApplicationCompatibilityService>();
         services.AddSingleton<IApplicationCompatibilityEvaluator>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());

@@ -9,4 +9,7 @@ public sealed record SessionDto(
     [property: JsonPropertyName("deviceId")] Guid DeviceId,
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt,
     [property: JsonPropertyName("lastActiveAt")] DateTimeOffset LastActiveAt,
-    [property: JsonPropertyName("status")] SessionStatus Status);
+    [property: JsonPropertyName("status")] SessionStatus Status,
+    [property: JsonPropertyName("userId")] Guid UserId,
+    [property: JsonPropertyName("authenticationMethod")] string AuthenticationMethod,
+    [property: JsonPropertyName("authenticatedAt")] DateTimeOffset AuthenticatedAt);

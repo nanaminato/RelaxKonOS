@@ -12,16 +12,18 @@ namespace RelaxKonOS.Server.Files;
 public sealed class MediaLeaseStore
 {
     private readonly ConcurrentDictionary<string, MediaLease> _leases = new(StringComparer.Ordinal);
+    private readonly SessionValidityService _validity;
     private readonly TimeSpan _ttl;
     private readonly TimeSpan _maximumLifetime;
 
-    public MediaLeaseStore(IOptions<JwtOptions> options)
+    public MediaLeaseStore(IOptions<JwtOptions> options, SessionValidityService validity)
     {
+        _validity = validity;
         _ttl = options.Value.MediaLeaseTtl;
         _maximumLifetime = options.Value.MediaLeaseMaximumLifetime;
     }
 
-    public MediaLease Create(Guid userId, Guid workspaceId, Guid deviceId, string appId, string path)
+    public MediaLease Create(Guid userId, Guid workspaceId, Guid deviceId, string appId, string path, long securityVersion)
     {
         RemoveExpired();
         var now = DateTimeOffset.UtcNow;
@@ -34,14 +36,14 @@ public sealed class MediaLeaseStore
             path,
             now,
             now.Add(_ttl),
-            now.Add(_maximumLifetime));
+            now.Add(_maximumLifetime), securityVersion);
         _leases[lease.Id] = lease;
         return lease;
     }
 
     public bool TryGetActive(string leaseId, out MediaLease lease)
     {
-        if (_leases.TryGetValue(leaseId, out lease!) && lease.ExpiresAt > DateTimeOffset.UtcNow)
+        if (_leases.TryGetValue(leaseId, out lease!) && lease.ExpiresAt > DateTimeOffset.UtcNow && _validity.IsValid(lease.UserId, lease.SecurityVersion))
             return true;
 
         _leases.TryRemove(leaseId, out _);
@@ -99,4 +101,4 @@ public sealed record MediaLease(
     string Path,
     DateTimeOffset CreatedAt,
     DateTimeOffset ExpiresAt,
-    DateTimeOffset MaximumExpiresAt);
+    DateTimeOffset MaximumExpiresAt, long SecurityVersion);

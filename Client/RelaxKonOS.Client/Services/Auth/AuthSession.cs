@@ -54,7 +54,7 @@ public sealed class AuthSession : IAuthSession
             if (rememberServer)
             {
                 saveResult = await _rememberedSessionStore.UpsertAsync(
-                    new SavedLoginProfile(serverUrl, request.Username, rememberPassword ? request.Password : null, DateTimeOffset.UtcNow), ct);
+                    new SavedLoginProfile(serverUrl, request.Identifier, rememberPassword ? request.Password : null, DateTimeOffset.UtcNow), ct);
             }
 
             State = AuthSessionState.Authenticated;

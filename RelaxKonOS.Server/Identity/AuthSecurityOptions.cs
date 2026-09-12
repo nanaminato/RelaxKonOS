@@ -8,6 +8,8 @@ public sealed class AuthSecurityOptions
     public int IpFailureLimit { get; set; } = 30;
     public int IpFailureWindowMinutes { get; set; } = 5;
     public int IpBlockMinutes { get; set; } = 5;
+    public int SecurityEventRetentionDays { get; set; } = 30;
+    public int MaximumSecurityEvents { get; set; } = 100_000;
     public int AccountFailureRetentionHours { get; set; } = 24;
 
     /// <summary>仅当直连地址属于这些代理时才处理 X-Forwarded-For。空列表表示一律不信任转发头。</summary>

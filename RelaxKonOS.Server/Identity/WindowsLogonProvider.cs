@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
+using System.Security.Principal;
+using RelaxKonOS.Protocol.Common;
 using Microsoft.Win32;
 
 namespace RelaxKonOS.Server.Identity;
@@ -17,7 +19,7 @@ public sealed class WindowsLogonProvider : IIdentityProvider
             return CredentialVerifyResult.Failed("用户名不能为空", CredentialError.InvalidInput);
 
         ParseUserName(userName, out var user, out var domain);
-        domain ??= Environment.MachineName;   // 纯用户名 → 默认验证本机
+        if (!userName.Contains('@')) domain ??= Environment.MachineName;
 
         IntPtr token = IntPtr.Zero;
         try
@@ -29,7 +31,14 @@ public sealed class WindowsLogonProvider : IIdentityProvider
                 out token);
 
             if (ok)
-                return CredentialVerifyResult.Ok(domain, user);
+            {
+                using var identity = new WindowsIdentity(token);
+                var sid = identity.User?.Value;
+                var lookup = Lookup(userName);
+                return lookup.Identity is { } info && info.Uid == sid
+                    ? CredentialVerifyResult.Ok(info)
+                    : CredentialVerifyResult.Failed("Identity mismatch", CredentialError.BadCredentials);
+            }
 
             int err = Marshal.GetLastWin32Error();
             return err switch
@@ -58,13 +67,84 @@ public sealed class WindowsLogonProvider : IIdentityProvider
 
     public PlatformUserInfo GetUserInfo(string userName)
     {
-        ParseUserName(userName, out var user, out var domain);
-        domain ??= Environment.MachineName;
-        var identity = $"{domain}\\{user}";
-        EnsureAccountExists(identity);
-        return new PlatformUserInfo(Uid: identity, DisplayName: identity,
-            HomeDirectory: GetProfileDirectory(identity));
+        var lookup = Lookup(userName);
+        return lookup.Identity ?? throw new InvalidOperationException("Windows identity unavailable.");
     }
+
+    public IdentityLookup Lookup(string identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier) || identifier.Contains('\0')) return new(IdentityLookupStatus.NotFound);
+        var name = identifier.Contains('\\') || identifier.Contains('@') ? identifier : Environment.MachineName + "\\" + identifier;
+        uint sidLength = 0, domainLength = 0;
+        LookupAccountName(null, name, IntPtr.Zero, ref sidLength, null, ref domainLength, out _);
+        var error = Marshal.GetLastWin32Error();
+        if (error == 1332) return new(IdentityLookupStatus.NotFound);
+        if (error != ERROR_INSUFFICIENT_BUFFER || sidLength == 0) return new(IdentityLookupStatus.Unavailable);
+        var buffer = Marshal.AllocHGlobal((int)sidLength);
+        try
+        {
+            var domain = new StringBuilder((int)domainLength);
+            if (!LookupAccountName(null, name, buffer, ref sidLength, domain, ref domainLength, out var use))
+                return new(IdentityLookupStatus.Unavailable);
+            if (use != SidNameUse.User) return new(IdentityLookupStatus.NotFound);
+            var sid = new SecurityIdentifier(buffer);
+            var canonical = ((NTAccount)sid.Translate(typeof(NTAccount))).Value;
+            return new(IdentityLookupStatus.Found, new(sid.Value, canonical, PlatformKind.Windows, canonical, GetProfileDirectory(canonical)));
+        }
+        catch { return new(IdentityLookupStatus.Unavailable); }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    public IdentityLookup LookupIdentity(string identity)
+    {
+        try { return Lookup(((NTAccount)new SecurityIdentifier(identity).Translate(typeof(NTAccount))).Value); }
+        catch (IdentityNotMappedException) { return new(IdentityLookupStatus.NotFound); }
+        catch { return new(IdentityLookupStatus.Unavailable); }
+    }
+
+    public AliasEligibility CheckAliasEligibility(PlatformUserInfo identity)
+    {
+        var parts = identity.Username.Split('\\', 2);
+        if (parts.Length != 2 || !parts[0].Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+            return new(false, "windows-domain-account-check-unverified");
+        var status = NetUserGetInfo(null, parts[1], 4, out var buffer);
+        if (status != 0) return new(false, "account-state-unavailable");
+        try
+        {
+            var info = Marshal.PtrToStructure<UserInfo4>(buffer);
+            if ((info.Flags & (2u | 16u)) != 0 || info.AccountExpires != uint.MaxValue && info.AccountExpires <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                return new(false, "account-ineligible");
+            if (info.UserSid == IntPtr.Zero || new SecurityIdentifier(info.UserSid).Value != identity.Uid)
+                return new(false, "identity-mismatch");
+            return new(true);
+        }
+        finally { NetApiBufferFree(buffer); }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct UserInfo4
+    {
+        public IntPtr Name, Password;
+        public uint PasswordAge, Privilege;
+        public IntPtr HomeDirectory, Comment;
+        public uint Flags;
+        public IntPtr ScriptPath;
+        public uint AuthFlags;
+        public IntPtr FullName, UserComment, Parameters, Workstations;
+        public uint LastLogon, LastLogoff, AccountExpires, MaxStorage, UnitsPerWeek;
+        public IntPtr LogonHours;
+        public uint BadPasswordCount, NumberLogons;
+        public IntPtr LogonServer;
+        public uint CountryCode, CodePage;
+        public IntPtr UserSid;
+        public uint PrimaryGroupId;
+        public IntPtr Profile, HomeDirectoryDrive;
+        public uint PasswordExpired;
+    }
+    [DllImport("netapi32.dll", CharSet = CharSet.Unicode)]
+    private static extern int NetUserGetInfo(string? server, string user, int level, out IntPtr buffer);
+    [DllImport("netapi32.dll")]
+    private static extern int NetApiBufferFree(IntPtr buffer);
 
     private static void EnsureAccountExists(string identity)
     {
@@ -119,8 +199,8 @@ public sealed class WindowsLogonProvider : IIdentityProvider
         // user@domain
         if (raw.IndexOf('@') is int at and >= 0)
         {
-            user = raw[..at];
-            domain = raw[(at + 1)..];
+            user = raw;
+            domain = null;
             return;
         }
 
@@ -156,7 +236,7 @@ public sealed class WindowsLogonProvider : IIdentityProvider
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool LogonUser(
-        string lpszUsername, string lpszDomain, string lpszPassword,
+        string lpszUsername, string? lpszDomain, string lpszPassword,
         int dwLogonType, int dwLogonProvider, out IntPtr phToken);
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

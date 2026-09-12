@@ -17,6 +17,8 @@ using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Storage.Sqlite;
 
+if (args.FirstOrDefault() == "auth") { Environment.ExitCode = await AuthMaintenanceCommand.RunAsync(args); return; }
+
 // `dotnet run` normally treats the project directory as ContentRoot, which would put every
 // ContentRoot-relative runtime artifact under the checkout's data directory. Keep development
 // data beside the compiled executable instead, while installed hosts retain their configured
@@ -207,7 +209,15 @@ if (jwtCfg.AccessTokenTtl <= TimeSpan.Zero || jwtCfg.RefreshTokenTtl <= TimeSpan
 if (jwtCfg.RefreshTokenMaximumLifetime < jwtCfg.AccessTokenTtl)
     throw new InvalidOperationException("Jwt:RefreshTokenMaximumLifetime must not be shorter than Jwt:AccessTokenTtl.");
 
+builder.Services.AddSingleton<AuthenticationGate>();
+builder.Services.AddSingleton<AliasPasswordService>();
+builder.Services.AddSingleton<SessionValidityService>();
+builder.Services.AddSingleton<SessionValidityHubFilter>();
+builder.Services.AddScoped<CanonicalUserResolver>();
+builder.Services.AddScoped<LoginAuthenticationService>();
+builder.Services.AddScoped<AliasCredentialService>();
 builder.Services.AddSingleton<AuthSessionStore>();
+builder.Services.AddHostedService<AuthenticationRetentionService>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
@@ -231,10 +241,13 @@ builder.Services.AddAuthentication(options =>
         };
         // SignalR WebSocket 升级请求无法可靠携带 Authorization 头（.NET 客户端走头，但补齐 query 兜底）。
         // 对终端 Hub 路径，从查询串 access_token 读取令牌注入 JwtBearer，修复 WebSocket 升级 401。
+        opts.MapInboundClaims = false;
         opts.Events = new JwtBearerEvents
         {
             OnTokenValidated = context =>
             {
+                if (!context.HttpContext.RequestServices.GetRequiredService<SessionValidityService>().IsValid(context.Principal))
+                    context.Fail("Session is no longer valid.");
                 if (context.Principal?.HasClaim(RelaxKonOSAuthSchemes.TokenTypeClaim, RelaxKonOSAuthSchemes.FileCapabilityTokenType) == true)
                     context.Fail("File capability tokens cannot be used as user access tokens.");
                 return Task.CompletedTask;
@@ -267,10 +280,13 @@ builder.Services.AddAuthentication(options =>
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtCfg.Secret)),
             ClockSkew = TimeSpan.FromSeconds(30),
         };
+        opts.MapInboundClaims = false;
         opts.Events = new JwtBearerEvents
         {
             OnTokenValidated = context =>
             {
+                if (!context.HttpContext.RequestServices.GetRequiredService<SessionValidityService>().IsValid(context.Principal))
+                    context.Fail("Session is no longer valid.");
                 if (context.Principal?.HasClaim(RelaxKonOSAuthSchemes.TokenTypeClaim, RelaxKonOSAuthSchemes.FileCapabilityTokenType) != true)
                     context.Fail("This endpoint requires a file capability token.");
                 return Task.CompletedTask;
@@ -329,9 +345,9 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileRe
 
 // 身份认证 Provider（按宿主 OS 平台选择，见 Authentication.md §1.1）
 if (OperatingSystem.IsWindows())
-    builder.Services.AddSingleton<IIdentityProvider, WindowsLogonProvider>();
+    builder.Services.AddSingleton<IIdentityProvider>(_ => new BoundedIdentityProvider(new WindowsLogonProvider()));
 else if (OperatingSystem.IsLinux())
-builder.Services.AddSingleton<IIdentityProvider, LinuxPamProvider>();
+builder.Services.AddSingleton<IIdentityProvider>(_ => new BoundedIdentityProvider(new LinuxPamProvider()));
 else
     throw new PlatformNotSupportedException("RelaxKonOS Server identity authentication supports Windows and Linux hosts only.");
 
@@ -457,6 +473,8 @@ builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Sto
 var storageOpts = builder.Configuration.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
 var storageProvider = string.IsNullOrWhiteSpace(storageOpts.Provider) ? "sqlite" : storageOpts.Provider.ToLowerInvariant();
 
+using var identityHostLock = storageProvider == "sqlite"
+    ? AcquireIdentityHostLock(Path.Combine(builder.Environment.ContentRootPath, storageOpts.DatabasePath)) : null;
 if (storageProvider == "sqlite")
 {
     // 数据库文件路径相对 ContentRoot，自动建目录
@@ -469,6 +487,7 @@ if (storageProvider == "sqlite")
     // Scoped，使既有 Scoped 仓储（SqliteUserRepository 等）直接注入不变。
     builder.Services.AddDbContextFactory<RelaxKonOSDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
     // 仓储为 Scoped（依赖 Scoped 的 DbContext）；Minimal API [FromServices] 每请求创建 scope，兼容
+    builder.Services.AddScoped<IAliasCredentialRepository, SqliteAliasCredentialRepository>();
     builder.Services.AddScoped<IUserRepository, SqliteUserRepository>();
     builder.Services.AddScoped<IAuthenticationProtectionStore, SqliteAuthenticationProtectionStore>();
     builder.Services.AddScoped<IWorkspaceRepository, SqliteWorkspaceRepository>();
@@ -494,6 +513,7 @@ if (storageProvider == "sqlite")
 else
 {
     // memory：开发回退（重启丢失）
+    builder.Services.AddSingleton<IAliasCredentialRepository, InMemoryAliasCredentialRepository>();
     builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
     builder.Services.AddSingleton<IAuthenticationProtectionStore, InMemoryAuthenticationProtectionStore>();
     builder.Services.AddSingleton<IWorkspaceRepository, InMemoryWorkspaceRepository>();
@@ -514,7 +534,7 @@ builder.Services.AddSingleton<IPtyFactory, RelaxKonOS.Server.Terminal.PlatformPt
 builder.Services.AddSingleton<RelaxKonOS.Server.Terminal.TerminalSessionManager>();
 // 以 JWT sub claim 作为 Hub UserIdentifier，供 TerminalHub 按用户索引/过滤持久会话。
 builder.Services.AddSingleton<IUserIdProvider, RelaxKonOS.Server.Terminal.TerminalUserIdProvider>();
-builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = null);
+builder.Services.AddSignalR(options => { options.MaximumReceiveMessageSize = null; options.AddFilter<SessionValidityHubFilter>(); });
 builder.Services.AddSingleton<GuardianLogSubscriptionRegistry>();
 builder.Services.AddHostedService<GuardianLogBroadcastService>();
 builder.Services.AddHostedService<PerformanceBroadcastService>();
@@ -550,6 +570,12 @@ if (forwardedHeaders.KnownProxies.Count > 0 || forwardedHeaders.KnownIPNetworks.
 
 app.Use(async (context, next) =>
 {
+    if (context.Request.Path.Value?.Contains("/auth/", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var bodyLimit = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+        if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = 8192;
+    }
     var language = context.Request.GetTypedHeaders().AcceptLanguage?.FirstOrDefault()?.Value.Value;
     if (!string.IsNullOrWhiteSpace(language))
         context.Response.Headers.ContentLanguage = language;
@@ -564,6 +590,9 @@ if (storageProvider == "sqlite")
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
+    var identityPreflight = IdentityMigrationRunner.Preflight(db.Database.GetDbConnection(), scope.ServiceProvider.GetRequiredService<IIdentityProvider>());
+    if (identityPreflight.Any(entry => entry.Problem is not null))
+        throw new InvalidOperationException("Identity preflight failed. Run auth preflight --database <absolute path> and resolve ownership before upgrading.");
     db.Database.EnsureCreated();
 
     // 增量补齐：仅当表不存在时创建（与 EF Core 模型一致，索引/列类型对齐 OnModelCreating）。
@@ -720,6 +749,7 @@ if (storageProvider == "sqlite")
     // is deliberately not an ad-hoc ALTER/CREATE compatibility patch: operations must remain
     // durable and recoverable independently from user/workspace schema evolution.
     await HostGlobalMigrationRunner.MigrateAsync(db.Database.GetDbConnection().ConnectionString, app.Lifetime.ApplicationStopping);
+    IdentityMigrationRunner.Migrate(db, scope.ServiceProvider.GetRequiredService<IIdentityProvider>());
 }
 
 if (app.Environment.IsDevelopment())
@@ -738,6 +768,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.MapHealthEndpoints();
 app.MapAuthEndpoints();
+app.MapAliasEndpoints();
 app.MapFileEndpoints();
 app.MapPrivilegedEndpoints();
 app.MapAppCapabilityEndpoints();
@@ -759,9 +790,15 @@ app.MapTunnelEndpoints();
 app.MapProxyEndpoints();
 if (OperatingSystem.IsLinux())
     app.MapFirewallEndpoints();
-app.MapHub<TerminalHub>("/hubs/terminals");
-app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath);
-app.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath);
+app.MapHub<TerminalHub>("/hubs/terminals", options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath, options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath, options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath, options => options.CloseOnAuthenticationExpiration = true);
 
 app.Run();
+
+static FileStream AcquireIdentityHostLock(string path)
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+    return AuthMaintenanceCommand.AcquireLock(path);
+}

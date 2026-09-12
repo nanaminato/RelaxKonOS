@@ -17,5 +17,9 @@ public static class AuthApiRoutes
     public const string Logout = $"/{V1}/auth/logout";
 
     /// <summary>当前用户信息（GET，需 JWT）。</summary>
+    public const string LoginAlias = $"/{V1}/auth/me/login-alias";
+    public const string AliasPassword = LoginAlias + "/password";
+    public const string DeleteAlias = LoginAlias + "/delete";
+    public const string SystemLogin = $"/{V1}/auth/me/system-login";
     public const string Me = $"/{V1}/auth/me";
 }

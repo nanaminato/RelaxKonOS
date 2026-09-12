@@ -10,9 +10,9 @@ public sealed class AuthSessionStore
 
     /// <summary>注册一个新的刷新令牌。</summary>
     public void Register(Guid sessionId, string refreshToken, Guid userId, Guid workspaceId, Guid deviceId,
-        DateTimeOffset expiresAt, DateTimeOffset absoluteExpiresAt)
+        DateTimeOffset expiresAt, DateTimeOffset absoluteExpiresAt, string authenticationMethod, DateTimeOffset authenticatedAt, long securityVersion)
     {
-        _refresh[refreshToken] = new RefreshRecord(sessionId, userId, workspaceId, deviceId, expiresAt, absoluteExpiresAt);
+        _refresh[refreshToken] = new RefreshRecord(sessionId, userId, workspaceId, deviceId, expiresAt, absoluteExpiresAt, authenticationMethod, authenticatedAt, securityVersion);
     }
 
     /// <summary>
@@ -31,6 +31,13 @@ public sealed class AuthSessionStore
         return false;
     }
 
+    public event Action<Guid>? UserRevoked;
+    public void RevokeUser(Guid userId)
+    {
+        foreach (var entry in _refresh)
+            if (entry.Value.UserId == userId) _refresh.TryRemove(entry.Key, out _);
+        UserRevoked?.Invoke(userId);
+    }
     /// <summary>吊销刷新令牌（登出或刷新后旧 token 作废）。</summary>
     public bool Revoke(string refreshToken)
         => _refresh.TryRemove(refreshToken, out _);
@@ -56,4 +63,5 @@ public sealed record RefreshRecord(
     Guid WorkspaceId,
     Guid DeviceId,
     DateTimeOffset ExpiresAt,
-    DateTimeOffset AbsoluteExpiresAt);
+    DateTimeOffset AbsoluteExpiresAt,
+    string AuthenticationMethod, DateTimeOffset AuthenticatedAt, long SecurityVersion);

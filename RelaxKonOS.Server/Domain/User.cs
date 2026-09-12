@@ -10,6 +10,8 @@ public sealed class User
     public string Username { get; set; } = string.Empty;
     public PlatformKind Platform { get; set; }
     public string PlatformIdentity { get; set; } = string.Empty;
+    public long SecurityVersion { get; set; }
+    public bool IdentityReviewRequired { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
 

@@ -14,6 +14,13 @@ public sealed class AccountFailureState
 public sealed class AuthenticationSecurityEvent
 {
     public Guid Id { get; set; }
+    public Guid? CanonicalUserId { get; set; }
+    public Guid? SessionId { get; set; }
+    public string? AuthenticationMethod { get; set; }
+    public string? ReasonCode { get; set; }
+    public string? CorrelationId { get; set; }
+    public long? Revision { get; set; }
+    public string ActorKind { get; set; } = "User";
     public string EventType { get; set; } = string.Empty;
     public string? AccountKey { get; set; }
     public string SourceIp { get; set; } = string.Empty;

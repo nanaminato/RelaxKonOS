@@ -82,11 +82,11 @@
                     </Grid>
 
                     <Grid ColumnDefinitions="108,*">
-                    <TextBlock Classes="login-label" Text="{Binding UsernameLabel}" />
+                    <TextBlock Classes="login-label" Text="{Binding IdentifierLabel}" />
                     <TextBox Classes="connection-input" Grid.Column="1"
-                             Text="{Binding Username}"
+                             Text="{Binding Identifier}"
                              IsReadOnly="{Binding !ShowOptions}"
-                             PlaceholderText="{Binding UsernamePlaceholder}" />
+                             PlaceholderText="{Binding IdentifierPlaceholder}" />
                     </Grid>
 
                     <Grid IsVisible="{Binding ShowOptions}" ColumnDefinitions="108,*,Auto">

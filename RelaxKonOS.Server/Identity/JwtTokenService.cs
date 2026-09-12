@@ -27,16 +27,20 @@ public sealed class JwtTokenService
 
     /// <summary>签发令牌对。role 决定 JWT 中的 role claim（首个登录设备为 Controller）。</summary>
     public AuthTokens Issue(User user, Workspace workspace, Device device, DeviceRole role,
-        Guid? sessionId = null, DateTimeOffset? absoluteExpiresAt = null)
+        Guid sessionId, string authenticationMethod, DateTimeOffset authenticatedAt, long securityVersion, DateTimeOffset? absoluteExpiresAt = null)
     {
         var now = DateTimeOffset.UtcNow;
         var absoluteExp = absoluteExpiresAt ?? now.Add(_opt.RefreshTokenMaximumLifetime);
         var accessExp = Min(now.Add(_opt.AccessTokenTtl), absoluteExp);
         var refreshExp = Min(now.Add(_opt.RefreshTokenTtl), absoluteExp);
 
-        var currentSessionId = sessionId ?? Guid.NewGuid();
+        var currentSessionId = sessionId;
         var claims = new[]
         {
+            new Claim("sid", sessionId.ToString("D")),
+            new Claim("amr", authenticationMethod),
+            new Claim("auth_time", authenticatedAt.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            new Claim("security_version", securityVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Name, user.Username),
             new Claim("workspace_id", workspace.Id.ToString()),
@@ -58,7 +62,7 @@ public sealed class JwtTokenService
 
         // RefreshToken：随机 32 字节，登记到当前内存会话的吊销簿。
         var refreshToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        _sessions.Register(currentSessionId, refreshToken, user.Id, workspace.Id, device.Id, refreshExp, absoluteExp);
+        _sessions.Register(currentSessionId, refreshToken, user.Id, workspace.Id, device.Id, refreshExp, absoluteExp, authenticationMethod, authenticatedAt, securityVersion);
 
         return new AuthTokens(accessToken, refreshToken, accessExp, refreshExp);
     }
@@ -71,12 +75,13 @@ public sealed class JwtTokenService
         Guid workspaceId,
         Guid deviceId,
         string appId,
-        IReadOnlyCollection<string> scopes)
+        IReadOnlyCollection<string> scopes, long securityVersion)
     {
         var now = DateTimeOffset.UtcNow;
         var expiresAt = now.Add(_opt.FileCapabilityTokenTtl);
         var claims = new List<Claim>
         {
+            new("security_version", securityVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             new(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new("workspace_id", workspaceId.ToString()),
             new("device_id", deviceId.ToString()),

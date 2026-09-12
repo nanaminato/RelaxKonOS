@@ -9,6 +9,8 @@ public interface IUserRepository
 {
     User? FindByUsername(string username, PlatformKind platform);
     User? FindById(Guid id);
+    User? FindByIdentity(string identity, PlatformKind platform);
+    void Update(User user);
     User Add(User user);
     void UpdateLastLogin(Guid id, DateTimeOffset at);
 }
@@ -24,6 +26,8 @@ public sealed class InMemoryUserRepository : IUserRepository
 
     public User? FindById(Guid id) => _byId.TryGetValue(id, out var u) ? u : null;
 
+    public User? FindByIdentity(string identity, PlatformKind platform) => _byId.Values.SingleOrDefault(u => u.PlatformIdentity == identity && u.Platform == platform);
+    public void Update(User user) => _byId[user.Id] = user;
     public User Add(User user)
     {
         _byId[user.Id] = user;

@@ -55,6 +55,8 @@ Directory.CreateDirectory(root);
 try
 {
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
+    if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
+    await AliasLoginVerification.RunAsync(root);
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
     var fileServicesOnly = args.Contains("--file-services-only", StringComparer.Ordinal);
@@ -107,6 +109,7 @@ try
 
 finally
 {
+    Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
     if (Directory.Exists(root))
     {
         if (args.Contains("--git-conflicts-only"))

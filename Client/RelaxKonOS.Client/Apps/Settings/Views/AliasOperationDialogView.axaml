@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.AliasOperationDialogView" x:DataType="vm:AliasOperationDialogViewModel">
+  <ScrollViewer><StackPanel Spacing="12" Margin="20">
+    <TextBlock Text="{Binding Explanation}" TextWrapping="Wrap" />
+    <StackPanel IsVisible="{Binding ShowAlias}" Spacing="6">
+      <TextBlock Text="{loc:Loc settings.account.alias}" />
+      <TextBox Text="{Binding Alias}" MaxLength="32" PlaceholderText="{loc:Loc settings.account.alias_hint}" AutomationProperties.Name="{loc:Loc settings.account.alias}" />
+    </StackPanel>
+    <StackPanel IsVisible="{Binding ShowNewPassword}" Spacing="6">
+      <TextBlock Text="{loc:Loc settings.account.new_password}" />
+      <TextBox Text="{Binding NewPassword}" PasswordChar="●" MaxLength="256" AutomationProperties.Name="{loc:Loc settings.account.new_password}" />
+      <TextBlock Text="{loc:Loc settings.account.confirm_password}" />
+      <TextBox Text="{Binding Confirmation}" PasswordChar="●" MaxLength="256" AutomationProperties.Name="{loc:Loc settings.account.confirm_password}" />
+    </StackPanel>
+    <CheckBox IsVisible="{Binding CanChooseMethod}" IsChecked="{Binding UseSystemPassword}" Content="{loc:Loc settings.account.use_system_password}" />
+    <TextBlock Text="{Binding CurrentPasswordLabel}" />
+    <TextBox Text="{Binding CurrentPassword}" PasswordChar="●" MaxLength="1024" AutomationProperties.Name="{Binding CurrentPasswordLabel}" />
+    <TextBlock Text="{Binding Error}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Content="{loc:Loc common.cancel}" Command="{Binding CancelCommand}" />
+      <Button Content="{loc:Loc common.confirm}" Command="{Binding SubmitCommand}" />
+    </StackPanel>
+  </StackPanel></ScrollViewer>
+</UserControl>

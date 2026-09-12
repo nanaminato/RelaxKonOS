@@ -104,10 +104,20 @@ public sealed class NetworkDiagnosticsService : IDisposable
         }
     }
 
+    internal static string SafeUrl(Uri? uri)
+    {
+        if (uri is null) return "";
+        var path = uri.IsAbsoluteUri ? uri.GetLeftPart(UriPartial.Path) : uri.ToString().Split('?')[0];
+        var media = path.IndexOf("/media/", StringComparison.OrdinalIgnoreCase);
+        if (media >= 0) path = path[..(media + 7)] + "[redacted]";
+        return path;
+    }
+
     internal bool ShouldCapture(Uri? uri)
     {
         if (uri is null || !uri.IsAbsoluteUri)
             return false;
+        if (uri.AbsolutePath.Contains("/auth/", StringComparison.OrdinalIgnoreCase)) return false;
         if (uri.IsLoopback && uri.Port == DeveloperModeService.BridgePort)
             return true;
         var serverUrl = GetSession().ServerUrl;
@@ -119,6 +129,9 @@ public sealed class NetworkDiagnosticsService : IDisposable
 
     internal void Record(NetworkDiagnosticEntry entry)
     {
+        if (entry.PathAndQuery.Contains("/auth/", StringComparison.OrdinalIgnoreCase)) return;
+        entry = entry with { PathAndQuery = SafeUrl(new Uri(entry.PathAndQuery, UriKind.RelativeOrAbsolute)),
+            RequestUrl = entry.RequestUrl is null ? null : SafeUrl(new Uri(entry.RequestUrl, UriKind.RelativeOrAbsolute)) };
         NetworkDiagnosticEntry stored;
         lock (_gate)
         {
@@ -152,7 +165,11 @@ public sealed class NetworkDiagnosticsService : IDisposable
                 continue;
             foreach (var header in collection)
             {
-                var value = string.Join(", ", header.Value);
+                var value = header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+                    || header.Key.Equals("Proxy-Authorization", StringComparison.OrdinalIgnoreCase)
+                    || header.Key.Contains("Cookie", StringComparison.OrdinalIgnoreCase)
+                    || header.Key.Contains("Token", StringComparison.OrdinalIgnoreCase)
+                    ? "[redacted]" : string.Join(", ", header.Value);
                 headers[header.Key] = headers.TryGetValue(header.Key, out var existing)
                     ? $"{existing}, {value}"
                     : value;
