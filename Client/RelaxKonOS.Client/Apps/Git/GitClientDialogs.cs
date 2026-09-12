@@ -281,6 +281,15 @@ internal static class GitClientDialogs
             Height = 100,
             ItemsSource = vm.SelectedFilePaths,
         };
+        fileListBox.SelectionChanged += async (_, _) =>
+        {
+            if (fileListBox.SelectedItem is not string path) return;
+            var file = vm.Changes.FirstOrDefault(change => string.Equals(change.Path, path, StringComparison.Ordinal))?.File;
+            if (file is not null)
+                await vm.ShowWorkingTreeFileDiffAsync(file, dialog.Window);
+            // A file name is an action here, allowing another click to reopen its diff.
+            fileListBox.SelectedItem = null;
+        };
 
         var commitBtn = new Button
         {
@@ -825,6 +834,13 @@ internal static class GitClientDialogs
             LocalizedText.Format("git.dialog.push.title", vm.SelectedRepository?.Name ?? string.Empty),
             dialog => new Views.GitPushDialog(vm, dialog),
             new RelaxKonOS.Core.Primitives.Size(820, 580));
+
+    /// <summary>Shows a native, read-only unified diff for a file selected from workspace, history, or push preview.</summary>
+    public static Task<bool> ShowFileDiffAsync(AppContext context, ManagedWindow owner, GitDiffDto diff)
+        => context.ShowDialogAsync<bool>(owner,
+            LocalizedText.Format("git.dialog.diff.title_format", diff.Path),
+            dialog => new Views.GitDiffDialog(diff, dialog),
+            new RelaxKonOS.Core.Primitives.Size(980, 680));
 
     /// <summary>Prompts for a HTTPS username and personal access token as a child of the push preview dialog.
     /// The dialog returns the secret to the active request only; it is never stored in the client.</summary>

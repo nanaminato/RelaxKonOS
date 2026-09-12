@@ -768,32 +768,57 @@ public sealed partial class LocalGitRepositoryService(
         if (!IsPathSafe(repo.Path, path))
             throw new ArgumentException("Path outside repository.", nameof(path));
 
-        var args = new List<string> { "diff", "--no-color" };
-        if (staged) args.Add("--cached");
-        if (!string.IsNullOrEmpty(@ref)) args.Add(@ref);
-        args.Add("--");
-        args.Add(path);
+        // A commit reference means "show this commit", i.e. its patch against its parent
+        // (and against the empty tree for a root commit), not a comparison to the current worktree.
+        var isCommitDiff = !string.IsNullOrEmpty(@ref);
+        var isUntracked = false;
+        if (!isCommitDiff && !staged)
+        {
+            var untracked = await RunGitAsync(gitPath, repo.Path,
+                ["ls-files", "--others", "--exclude-standard", "--", path], cancellationToken);
+            isUntracked = untracked.Success && untracked.Output
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .Any(candidate => string.Equals(candidate, path, StringComparison.Ordinal));
+        }
+
+        List<string> args;
+        if (isCommitDiff)
+            args = ["show", "--format=", "--no-color", "--find-renames", @ref!, "--", path];
+        else if (isUntracked)
+            // git diff normally excludes untracked files; compare it to an empty file instead.
+            args = ["diff", "--no-index", "--no-color", "--", "/dev/null", path];
+        else
+        {
+            args = ["diff", "--no-color"];
+            if (staged) args.Add("--cached");
+            args.Add("--");
+            args.Add(path);
+        }
 
         var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
         var patch = result.Output;
         var truncated = false;
         if (patch.Length > MaxDiffPatchSize)
         {
-            var statArgs = new List<string> { "diff", "--stat" };
-            if (staged) statArgs.Add("--cached");
-            if (!string.IsNullOrEmpty(@ref)) statArgs.Add(@ref);
-            statArgs.Add("--");
-            statArgs.Add(path);
+            var statArgs = isCommitDiff
+                ? new List<string> { "show", "--format=", "--stat", @ref!, "--", path }
+                : isUntracked
+                    ? new List<string> { "diff", "--no-index", "--stat", "--", "/dev/null", path }
+                    : new List<string> { "diff", "--stat" };
+            if (!isCommitDiff && !isUntracked && staged) statArgs.Add("--cached");
+            if (!isCommitDiff && !isUntracked) { statArgs.Add("--"); statArgs.Add(path); }
             var statResult = await RunGitAsync(gitPath, repo.Path, [.. statArgs], cancellationToken);
             patch = statResult.Output;
             truncated = true;
         }
 
-        var numstatArgs = new List<string> { "diff", "--numstat" };
-        if (staged) numstatArgs.Add("--cached");
-        if (!string.IsNullOrEmpty(@ref)) numstatArgs.Add(@ref);
-        numstatArgs.Add("--");
-        numstatArgs.Add(path);
+        var numstatArgs = isCommitDiff
+            ? new List<string> { "show", "--format=", "--numstat", @ref!, "--", path }
+            : isUntracked
+                ? new List<string> { "diff", "--no-index", "--numstat", "--", "/dev/null", path }
+                : new List<string> { "diff", "--numstat" };
+        if (!isCommitDiff && !isUntracked && staged) numstatArgs.Add("--cached");
+        if (!isCommitDiff && !isUntracked) { numstatArgs.Add("--"); numstatArgs.Add(path); }
         var numstat = await RunGitAsync(gitPath, repo.Path, [.. numstatArgs], cancellationToken);
         var (additions, deletions) = ParseNumstat(numstat.Output);
 

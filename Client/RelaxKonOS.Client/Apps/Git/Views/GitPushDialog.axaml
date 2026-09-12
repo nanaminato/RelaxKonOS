@@ -100,10 +100,12 @@
                                Text="{Binding PushFileCount, Converter={x:Static git:GitPickerConverters.LocalizedFormat}, ConverterParameter='git.dialog.push.n_files_format'}"/>
 
                     <TreeView Grid.Row="1"
+                              x:Name="PushFileTreeView"
                               Background="Transparent"
                               BorderThickness="0"
                               Padding="4"
-                              ItemsSource="{Binding PushFileTree}">
+                              ItemsSource="{Binding PushFileTree}"
+                              SelectionChanged="PushFileTree_SelectionChanged">
                         <TreeView.ItemTemplate>
                             <TreeDataTemplate x:DataType="git:PushFileTreeNode" ItemsSource="{Binding Children}">
                                 <StackPanel Orientation="Horizontal" Spacing="5" Margin="2">

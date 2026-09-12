@@ -449,6 +449,13 @@
         "git.dialog.push.files_changed": "Files changed",
         "git.dialog.push.single_commit_summary": "1 commit, {0} file(s)",
         "git.dialog.push.multi_commit_summary": "{0} commits, {1} files",
+        "git.dialog.diff.title_format": "Changes — {0}",
+        "git.dialog.diff.description": "Unified diff",
+        "git.dialog.diff.binary_description": "Binary file change",
+        "git.dialog.diff.binary_message": "This is a binary file, so its contents cannot be displayed as text.",
+        "git.dialog.diff.empty_message": "No textual differences are available for this file.",
+        "git.dialog.diff.truncated_message": "This diff is large, so only its file statistics are shown.",
+        "git.dialog.diff.close": "Close",
 
         "git.vm.push_dialog_prepare_failed": "Failed to prepare push preview: {0}",
         "git.vm.push_n_commits_ahead_format": "{0} new commit(s) to push"

@@ -449,6 +449,13 @@
         "git.dialog.push.files_changed": "変更ファイル",
         "git.dialog.push.single_commit_summary": "1 コミット、{0} ファイル",
         "git.dialog.push.multi_commit_summary": "{0} コミット、{1} ファイル",
+        "git.dialog.diff.title_format": "変更内容 — {0}",
+        "git.dialog.diff.description": "統合差分ビュー",
+        "git.dialog.diff.binary_description": "バイナリファイルの変更",
+        "git.dialog.diff.binary_message": "これはバイナリファイルのため、内容をテキストとして表示できません。",
+        "git.dialog.diff.empty_message": "このファイルに表示できるテキスト差分はありません。",
+        "git.dialog.diff.truncated_message": "差分が大きいため、ファイル統計のみを表示しています。",
+        "git.dialog.diff.close": "閉じる",
 
         "git.vm.push_dialog_prepare_failed": "プッシュプレビューの準備に失敗しました：{0}",
         "git.vm.push_n_commits_ahead_format": "{0} 個の新しいコミットをプッシュ"

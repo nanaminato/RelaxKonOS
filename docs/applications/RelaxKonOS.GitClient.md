@@ -37,7 +37,7 @@ GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / G
 | Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1.0/git/repositories/{id}/diff` |
 | 冲突解决 | 三栏编辑、逐块选择、逐文件暂存与独立继续/中止 | `POST /api/v1.0/git/repositories/{id}/resolve` |
 
-**非目标（MVP 不含）**：cherry-pick、rebase 交互式编辑、submodule 深度管理、stash、tag 管理、内置 diff/merge 三方编辑器（冲突解决调用宿主 CodeEditor 或外联）、PR 工作流、多远程管理。这些列入 §8 后续演进。
+**非目标（MVP 不含）**：cherry-pick、rebase 交互式编辑、submodule 深度管理、stash、tag 管理、内置 merge 三方编辑器（冲突解决调用宿主 CodeEditor 或外联）、PR 工作流、多远程管理。这些列入 §8 后续演进。
 
 ---
 
@@ -159,7 +159,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | status | `git status --porcelain=v2 --branch` | 解析 `# branch.head` / `# branch.ab` / `1/2 <xy> ... <path>` |
 | 分支列表 | `git for-each-ref --format='%(refname:short)\t%(upstream:short)\t%(upstream:track)' refs/heads refs/remotes` | 按制表符切分 |
 | log | `git log --pretty=format:'%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00' --date=iso-strict -n 200` | 按 NUL 切分 |
-| diff | `git diff --no-color [--cached] [<ref>] -- <path>` | 原始 patch 文本 + `--stat` 计数 |
+| diff | 工作区：`git diff --no-color [--cached] -- <path>`；提交：`git show --format= --no-color <ref> -- <path>`；未跟踪：`git diff --no-index -- /dev/null <path>` | 原始 patch 文本 + `--stat` 计数；`ref` 始终表示该提交相对父提交（根提交相对空树） |
 | 当前分支 | `git rev-parse --abbrev-ref HEAD` / detached 用 `git rev-parse --short HEAD` | |
 | ahead/behind | `git rev-list --left-right --count <upstream>...HEAD` | `left\tRight` |
 
@@ -308,11 +308,11 @@ GitClientViewModel
 - **左侧导航**（190px，`#EEF3FA` 浅色）：概览 / 工作区 / 日志 / 冲突解决 / 远程 五个导航按钮（`NavigationButton_Click` 切换 `ActivePage`，高亮激活页）。
 - **右侧内容区**（`ScrollViewer` + `ContentControl`，按 `ActivePage` 切换子视图）：
   - **概览页**：仓库卡片（名称/路径/当前分支/upstream/远程 URL）+ 状态摘要卡片（已暂存/未暂存/未跟踪/冲突计数 + ahead/behind）+ 快捷操作按钮（拉取/推送/提交/新建分支）。
-  - **工作区页**：双栏文件列表（左：未暂存/未跟踪；右：已暂存），中间「暂存»/«取消暂存」按钮，底部提交消息输入框 + 提交按钮；选中文件显示 diff（只读 patch）。
+  - **工作区页**：变更文件列表和提交消息输入框；点击文件（包括提交确认对话框中的文件）以原生只读统一 diff 打开，带旧/新行号、增删着色和统计。未跟踪文件显示为相对空文件的新增内容。
   - **日志页**（原分支+历史合并，三栏统一视图）：
     - 左栏（220px）：分支/标签树（HEAD、本地分支分组、远程分支分组），支持右键菜单：新建分支、切换、重命名、删除、推送、拉取、更新、设置跟踪分支、显示与工作树差异、复制分支名。
     - 中栏：提交列表（带时间图元、hash、作者、时间、消息、分支标签），支持搜索过滤（文本/哈希、用户、日期、路径），右键菜单：复制修订号（SHA）、创建补丁、签出修订、在修订版中显示仓库、与本地比较、将当前分支重置到此处、还原提交、撤销提交、编辑提交消息、Fixup、压缩到、删除提交、压缩提交、交互式变基、推送此前所有提交、新建分支、新建标记。
-    - 右栏（360px）：上半部分为提交变更文件树（按文件夹分组，显示状态图标），右键菜单：显示差异、在新标签页中显示差异、与本地比较、将之前版本与本地版本进行比较、编辑源、打开仓库版本、还原所选更改、优选所选更改、将所选更改提取到单独的提交、删除所选更改、创建补丁、从修订中获取、迄今为止的历史记录、显示对父项的更改；下半部分为提交详情（SHA、作者、日期、消息正文、所在分支标签）。
+    - 右栏（360px）：上半部分为提交变更文件树（按文件夹分组，显示状态图标）；点击文件打开其相对父提交的原生 diff，右键菜单保留显示差异、与本地比较等动作；下半部分为提交详情（SHA、作者、日期、消息正文、所在分支标签）。推送预览中的文件树同样可点击查看对应提交的 diff。
   - **冲突解决页**（冲突时显示）：冲突文件列表 + 每文件 ours/theirs 选择 + 继续/中止合并按钮。
   - **远程页**：多远程仓库管理（添加、修改、删除 remote，配置 push/pull URL）。
 

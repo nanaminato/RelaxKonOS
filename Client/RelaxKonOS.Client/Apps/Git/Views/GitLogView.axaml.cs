@@ -280,8 +280,13 @@ internal partial class GitLogView : UserControl
 
     private void ChangedFileTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_vm is not null)
-            _vm.SelectedCommitFile = (ChangedFileTree.SelectedItem as CommitFileTreeNode)?.File;
+        if (_vm is null) return;
+        _vm.SelectedCommitFile = (ChangedFileTree.SelectedItem as CommitFileTreeNode)?.File;
+        if (_vm.SelectedCommitFile is not { } file) return;
+        _vm.ShowCommitFileDiffCommand.Execute(file);
+        // Treat this as an action rather than a persistent selection, so one click
+        // on the same file also opens the viewer again after it is closed.
+        ChangedFileTree.SelectedItem = null;
     }
 }
 

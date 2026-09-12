@@ -71,5 +71,13 @@ internal partial class GitPushDialog : UserControl
         }
     }
 
+    private async void PushFileTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (PushFileTreeView.SelectedItem is not PushFileTreeNode { File: { } file } node) return;
+        await _viewModel.ShowPushFileDiffAsync(file, _dialog.Window, node.CommitSha);
+        PushFileTreeView.SelectedItem = null;
+        e.Handled = true;
+    }
+
     private void Cancel_Click(object? sender, RoutedEventArgs e) => _dialog.Cancel();
 }

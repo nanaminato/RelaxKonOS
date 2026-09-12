@@ -151,6 +151,19 @@ public static class GitConflictChecks
         Check(next.Revision != file.Revision, "Next rebase step has a new file revision");
         await service.ConflictOperationAsync(id, user, new("rebase", "abort"));
 
+        // The desktop diff viewer relies on the same endpoint for a committed file
+        // and an untracked file. The latter needs an explicit empty-file comparison.
+        (dir, id) = await Setup("diff-preview");
+        var rootSha = (await Run(dir, "rev-list", "--max-parents=0", "HEAD")).Trim();
+        var rootDiff = await service.GetDiffAsync(id, user, path, @ref: rootSha);
+        Check(rootDiff.Patch.Contains("+base", StringComparison.Ordinal) && rootDiff.Additions == 1,
+            "Root commit diff is compared with the empty tree");
+        const string untrackedPath = "new preview.txt";
+        await File.WriteAllTextAsync(Path.Combine(dir, untrackedPath), "new file\n");
+        var untrackedDiff = await service.GetDiffAsync(id, user, untrackedPath);
+        Check(untrackedDiff.Patch.Contains("+new file", StringComparison.Ordinal) && untrackedDiff.Additions == 1,
+            "Untracked file diff is compared with an empty file");
+
         var blocks = GitConflictBlock.Parse("before\r\n<<<<<<< HEAD\r\nours\r\n||||||| base\r\nbase\r\n=======\r\ntheirs\r\n>>>>>>> topic\r\nafter\r\n");
         Check(blocks.Count == 1 && blocks[0].Ours == "ours\r\n" && blocks[0].Theirs == "theirs\r\n" && blocks[0].Line == 2, "Diff3 block excludes base and preserves CRLF");
         Check(GitConflictBlock.Parse("<<<<<<< HEAD\na\n=======\nb\n").Count == 0, "Incomplete markers not auto-resolved");

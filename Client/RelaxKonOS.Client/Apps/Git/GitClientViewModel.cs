@@ -186,6 +186,9 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     /// Returns true if user confirms push, false if cancelled.</summary>
     public Func<Task<bool>>? ShowPushDialogAsync { get; set; }
 
+    /// <summary>Shows a read-only native diff viewer for a single changed file.</summary>
+    public Func<ManagedWindow?, GitDiffDto, Task>? ShowFileDiffAsync { get; set; }
+
     /// <summary>Shows the remote/branch picker dialog for push target selection.
     /// Input: owner window (for correct Z-order), current remote name (may be null), current branch name.
     /// Returns: (remoteName, branchName) tuple or null on cancel.</summary>
@@ -904,11 +907,17 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     [RelayCommand]
     private async Task ViewDiffAsync(GitFileChangeDto file)
+        => await ShowWorkingTreeFileDiffAsync(file, null);
+
+    /// <summary>Loads a worktree/index diff and opens it relative to the supplied modal owner.</summary>
+    public async Task ShowWorkingTreeFileDiffAsync(GitFileChangeDto file, ManagedWindow? owner)
     {
         if (SelectedRepository is null || file is null) return;
         try
         {
             FileDiff = await client.GetDiffAsync(SelectedRepository.Id, file.Path, file.Staged);
+            if (ShowFileDiffAsync is not null)
+                await ShowFileDiffAsync(owner, FileDiff);
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.diff_failed_format", ex.Message)); }
     }
@@ -1255,6 +1264,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         if (SelectedRepository is null || PushCommits.Count == 0) return;
 
         var allPaths = new HashSet<string>();
+        var fileCommitReferences = new Dictionary<string, string>(StringComparer.Ordinal);
         var firstCommitFiles = new List<GitFileChangeDto>();
 
         foreach (var commit in PushCommits)
@@ -1265,14 +1275,20 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 foreach (var f in detail.ChangedFiles)
                 {
                     if (allPaths.Add(f.Path))
+                    {
                         firstCommitFiles.Add(f);
+                        // In aggregate mode, show the first listed (most recent) commit
+                        // which changed the file instead of comparing an already-committed
+                        // change to the current worktree.
+                        fileCommitReferences[f.Path] = commit.Sha;
+                    }
                 }
             }
             catch { /* skip failed commits */ }
         }
 
         if (selectionVersion != Volatile.Read(ref _pushSelectionVersion)) return;
-        SetPushFilePreview(firstCommitFiles);
+        SetPushFilePreview(firstCommitFiles, fileCommitReferences);
     }
 
     /// <summary>Called when user selects a commit in the push dialog's left panel.</summary>
@@ -1311,7 +1327,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         OnPropertyChanged(nameof(PushFileCount));
     }
 
-    private void SetPushFilePreview(IEnumerable<GitFileChangeDto> files)
+    private void SetPushFilePreview(IEnumerable<GitFileChangeDto> files, IReadOnlyDictionary<string, string>? fileCommitReferences = null)
     {
         PushChangedFiles.Clear();
         foreach (var file in files) PushChangedFiles.Add(file);
@@ -1330,7 +1346,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                     candidate.Name == parts[index] && candidate.IsFile == isFile);
                 if (node is null)
                 {
-                    node = new PushFileTreeNode(parts[index], isFile, isFile ? file.Status : null);
+                    node = new PushFileTreeNode(parts[index], isFile, isFile ? file.Status : null, isFile ? file : null,
+                        isFile && fileCommitReferences?.TryGetValue(file.Path, out var commitSha) == true ? commitSha : null);
                     current.Add(node);
                 }
                 current = node.Children;
@@ -2077,10 +2094,32 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         if (file is null || SelectedRepository is null || SelectedCommit is null) return;
         try
         {
-            // 使用 ref=sha 查询提交版本的 diff
+            // ref=sha returns this commit relative to its parent, including root commits.
             FileDiff = await client.GetDiffAsync(SelectedRepository.Id, file.Path, staged: false, @ref: SelectedCommit.Sha);
+            if (ShowFileDiffAsync is not null)
+                await ShowFileDiffAsync(null, FileDiff);
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.diff_failed_format_v2", ex.Message)); }
+    }
+
+    /// <summary>Opens the selected push commit's file diff, or the originating commit for an aggregate preview entry.</summary>
+    public async Task ShowPushFileDiffAsync(GitFileChangeDto file, ManagedWindow? owner, string? commitSha)
+    {
+        commitSha ??= PushSelectedCommit?.Sha;
+        if (commitSha is null)
+        {
+            await ShowWorkingTreeFileDiffAsync(file, owner);
+            return;
+        }
+
+        if (SelectedRepository is null) return;
+        try
+        {
+            FileDiff = await client.GetDiffAsync(SelectedRepository.Id, file.Path, staged: false, @ref: commitSha);
+            if (ShowFileDiffAsync is not null)
+                await ShowFileDiffAsync(owner, FileDiff);
+        }
+        catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.diff_failed_format", ex.Message)); }
     }
 
     [RelayCommand]

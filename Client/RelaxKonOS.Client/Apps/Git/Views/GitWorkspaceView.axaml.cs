@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Protocol.Git;
@@ -86,5 +87,16 @@ internal partial class GitWorkspaceView : UserControl
     private void ClearSelection_Click(object? sender, RoutedEventArgs e)
     {
         _vm?.ClearSelectionCommand.Execute(null);
+    }
+
+    private void Change_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        // The checkbox remains dedicated to selection; clicking the file name opens its diff.
+        if (e.GetCurrentPoint(sender as Control).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed
+            || sender is not Control { DataContext: GitFileChangeItem item })
+            return;
+
+        _vm?.ViewDiffCommand.Execute(item.File);
+        e.Handled = true;
     }
 }

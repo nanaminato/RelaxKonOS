@@ -449,6 +449,13 @@
         "git.dialog.push.files_changed": "修改的文件",
         "git.dialog.push.single_commit_summary": "1 个提交，{0} 个文件",
         "git.dialog.push.multi_commit_summary": "{0} 个提交，{1} 个文件",
+        "git.dialog.diff.title_format": "文件变更 — {0}",
+        "git.dialog.diff.description": "统一差异视图",
+        "git.dialog.diff.binary_description": "二进制文件变更",
+        "git.dialog.diff.binary_message": "这是二进制文件，无法以文本形式显示其内容。",
+        "git.dialog.diff.empty_message": "此文件没有可显示的文本差异。",
+        "git.dialog.diff.truncated_message": "差异内容较大，仅显示文件统计信息。",
+        "git.dialog.diff.close": "关闭",
 
         "git.vm.push_dialog_prepare_failed": "准备推送预览失败：{0}",
         "git.vm.push_n_commits_ahead_format": "{0} 个新提交待推送"

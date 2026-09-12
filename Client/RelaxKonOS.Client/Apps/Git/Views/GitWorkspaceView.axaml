@@ -59,7 +59,9 @@
                                                    Text="{Binding Path}"
                                                    FontSize="12"
                                                    TextTrimming="CharacterEllipsis"
-                                                   VerticalAlignment="Center"/>
+                                                   VerticalAlignment="Center"
+                                                   Cursor="Hand"
+                                                   PointerPressed="Change_PointerPressed"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -94,7 +96,9 @@
                                                    FontSize="12"
                                                    TextTrimming="CharacterEllipsis"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   Cursor="Hand"
+                                                   PointerPressed="Change_PointerPressed"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
