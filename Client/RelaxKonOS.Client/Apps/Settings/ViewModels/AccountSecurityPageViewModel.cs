@@ -21,14 +21,25 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
     }
     public override string Route => "account-security";
     public override string DisplayNameKey => "settings.account.title";
-    public override string DisplayName => "Account & Security";
+    public override string DisplayName => T("settings.account.title", "Account & Security");
     [ObservableProperty] private AliasConfigurationDto? configuration;
     [ObservableProperty] private string status = "";
     [ObservableProperty] private bool busy;
     public string SystemUsername => Configuration?.SystemUsername ?? session.CurrentUser?.Username ?? "—";
-    public string Alias => Configuration?.Alias ?? T("settings.account.not_set", "Not configured");
-    public string Method => session.CurrentSession?.AuthenticationMethod == "alias" ? T("settings.account.alias", "Login alias") : T("settings.account.system", "System account");
-    public string SystemLogin => T(Configuration?.SystemLoginEnabled == false ? "settings.account.off" : "settings.account.on", Configuration?.SystemLoginEnabled == false ? "Off" : "On");
+    public string Alias => Configuration is null
+        ? T("settings.account.not_loaded", "Not loaded")
+        : (Configuration.Alias ?? T("settings.account.not_configured_loaded", "Loaded, not configured"));
+    public string Method => session.CurrentSession is null
+        ? T("settings.account.method_unknown", "Login method unknown")
+        : session.CurrentSession.AuthenticationMethod == "alias"
+            ? T("settings.account.method_alias", "Login alias")
+            : session.CurrentSession.AuthenticationMethod == "system"
+                ? T("settings.account.method_system", "System account")
+                : T("settings.account.method_unknown", "Login method unknown");
+    public string SystemLogin => Configuration is null
+        ? T("settings.account.value_unknown", "Unknown")
+        : T(Configuration.SystemLoginEnabled ? "settings.account.value_on" : "settings.account.value_off",
+            Configuration.SystemLoginEnabled ? "On" : "Off");
     public bool CanCreate => !Busy && Configuration is { Available: true, Alias: null } && session.CurrentSession?.AuthenticationMethod == "system";
     public bool CanManage => !Busy && Configuration is { Available: true, Alias: not null };
     public bool CanRestore => !Busy && Configuration is { Alias: not null };
@@ -96,6 +107,14 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
     {
         if (disposed) return;
         lifetime.Cancel(); lifetime.Dispose(); lifetime = new(); Configuration = null; Status = ""; Busy = false;
+        OnPropertyChanged(nameof(Method));
+        OnPropertyChanged(nameof(SystemUsername));
+        OnPropertyChanged(nameof(Alias));
+        OnPropertyChanged(nameof(SystemLogin));
+        OnPropertyChanged(nameof(Capability));
+        OnPropertyChanged(nameof(CanCreate));
+        OnPropertyChanged(nameof(CanManage));
+        OnPropertyChanged(nameof(CanRestore));
         if (session.State == AuthSessionState.Authenticated) _ = LoadAsync();
     });
     public void Dispose() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); session.StateChanged -= OnSessionChanged; }

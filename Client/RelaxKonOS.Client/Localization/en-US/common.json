@@ -7,6 +7,7 @@
         "common.maximize": "Maximize",
         "common.restore": "Restore",
         "common.cancel": "Cancel",
+        "common.confirm": "Confirm",
         "common.minimize": "Minimize",
         "common.save": "Save",
         "common.open": "Open",

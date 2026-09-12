@@ -16,7 +16,7 @@ public sealed class SystemPageViewModel : SettingsPageViewModel
 
     public override string Route => "system";
     public override string DisplayNameKey => "settings.page.system";
-    public override string DisplayName => "System";
+    public override string DisplayName => T("settings.page.system", "System");
 
     public string AppVersion => "RelaxKonOS 0.1";
     public string ServerUrl => _session.ServerUrl ?? T("settings.value.not_connected", "Not connected");

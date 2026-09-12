@@ -36,25 +36,13 @@ public sealed class LocExtension : MarkupExtension
         public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             var key = parameter as string ?? string.Empty;
-            // Never expose a resource key to the user. A missing optional translation has a
-            // readable English fallback while CI verifies that all shipped keys are present.
-            return App.Services.GetRequiredService<LocalizationService>().Get(key, ToEnglishFallback(key));
+            // Never expose a resource key to the user. Missing keys surface a "[missing: <key>]"
+            // marker so the gap is visible in screenshots and a future resource-validator test
+            // can collect every gap from a single pass.
+            return App.Services.GetRequiredService<LocalizationService>().Get(key, $"[missing: {key}]");
         }
 
         public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
             => BindingOperations.DoNothing;
-
-        private static string ToEnglishFallback(string key) => key switch
-        {
-            "settings.wallpaper.description" => "Choose a desktop background preset or your own image.",
-            "settings.wallpaper.choose_image" => "Browse for an image",
-            "settings.wallpaper.sync_hint" => "Images are securely stored in this workspace and sync to your other devices.",
-            "settings.theme.description" => "Choose the appearance used throughout RelaxKonOS.",
-            "settings.theme.light" => "Light",
-            "settings.theme.dark" => "Dark",
-            "settings.theme.system" => "Use system setting",
-            _ => string.Join(" ", key.Split('.', StringSplitOptions.RemoveEmptyEntries)
-                .Select(part => char.ToUpperInvariant(part[0]) + part[1..].Replace('_', ' ')))
-        };
     }
 }

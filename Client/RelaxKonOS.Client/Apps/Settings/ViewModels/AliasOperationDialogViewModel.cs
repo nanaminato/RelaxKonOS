@@ -32,7 +32,7 @@ public sealed partial class AliasOperationDialogViewModel(string operation, Alia
             "password" => new ChangeAliasPasswordRequest(NewPassword, proof, configuration.Revision),
             "delete" => new DeleteAliasRequest(CurrentPassword, configuration.Revision),
             "toggle" => new SetSystemLoginRequest(!configuration.SystemLoginEnabled, CurrentPassword, configuration.Revision),
-            _ => throw new InvalidOperationException()
+            _ => throw new InvalidOperationException(LocalizedText.Get("settings.account.unknown_operation", "Unknown operation"))
         };
         Clear(); close(request);
     }
