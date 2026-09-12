@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.HostSettings;
@@ -37,7 +38,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     [ObservableProperty] private IReadOnlyList<EnvironmentVariable> _variables = Array.Empty<EnvironmentVariable>();
     [ObservableProperty] private string _draftText = "";
     [ObservableProperty] private string _previewText = "";
-    [ObservableProperty] private string _statusText = "";
+    [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty] private string _problemCode = "";
     public SettingsScope Scope => MachineScope ? SettingsScope.HostMachine : SettingsScope.HostUser;
     public bool CanEdit => !IsBusy && !_submitted && _snapshot is not null;
@@ -104,7 +105,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
         ct.ThrowIfCancellationRequested(); _plan = plan;
         PreviewText = string.Join(Environment.NewLine, plan.Differences.Select(d => d.SettingId + " · " + d.Before + " → " + d.After))
             + Environment.NewLine + T("settings.environment.effect", "New processes only") + Environment.NewLine + plan.ExpiresAt.ToLocalTime().ToString("g");
-        StatusText = T("settings.host_time.review", "Review the plan");
+        StatusText = Ref("settings.host_time.review", "Review the plan");
     });
     [RelayCommand(CanExecute = nameof(CanApply))]
     private Task ApplyAsync() => RunAsync(async ct =>
@@ -113,7 +114,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
         if (!await Authorize(connection, HostElevationCapability.HostEnvironmentRead, ct)
             || !await Authorize(connection, HostElevationCapability.HostEnvironmentChange, ct)) return;
         if (_plan != plan) throw new InvalidOperationException("settings.connection_changed");
-        _submitted = true; StatusText = T("settings.host_time.outcome_unknown", "Query the operation before retrying");
+        _submitted = true; StatusText = Ref("settings.host_time.outcome_unknown", "Query the operation before retrying");
         var operation = await _service.ApplyAsync(connection, plan.PlanId, ct);
         ct.ThrowIfCancellationRequested(); Show(operation);
     });
@@ -128,7 +129,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
             || !await Authorize(connection, HostElevationCapability.HostEnvironmentChange, ct)) return;
         var revision = _operation!.ObservedRevision!;
         _operation = null; // A lost rollback response must not retain the previous Applied state.
-        StatusText = T("settings.host_time.outcome_unknown", "Query the operation before retrying");
+        StatusText = Ref("settings.host_time.outcome_unknown", "Query the operation before retrying");
         var operation = await _service.RollbackAsync(connection, _plan!.PlanId, revision, ct);
         ct.ThrowIfCancellationRequested(); Show(operation);
     });
@@ -137,14 +138,14 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     private void Show(SettingsOperation operation)
     {
         _operation = operation; _submitted = operation.State != SettingsOperationState.Prepared;
-        StatusText = T("settings.operation." + operation.State.ToString().ToLowerInvariant(), operation.State.ToString());
+        StatusText = Ref("settings.operation." + operation.State.ToString().ToLowerInvariant(), operation.State.ToString());
         ProblemCode = operation.ProblemCode ?? "";
         if (_submitted) { _snapshot = null; _draft.Clear(); RefreshDraft(); VariableValue = ""; Variables = Array.Empty<EnvironmentVariable>(); SelectedVariable = null; }
     }
     private async Task<bool> Authorize(HostSettingsConnection connection, HostElevationCapability capability, CancellationToken ct)
     {
         if (RequestAuthorizationAsync is null || !await RequestAuthorizationAsync(connection, Scope, capability))
-        { StatusText = T("settings.host_time.authorization_cancelled", "Authorization cancelled"); return false; }
+        { StatusText = Ref("settings.host_time.authorization_cancelled", "Authorization cancelled"); return false; }
         ct.ThrowIfCancellationRequested();
         if (!_service.IsCurrent(connection)) throw new InvalidOperationException("settings.connection_changed");
         return true;

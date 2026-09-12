@@ -7,7 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 namespace RelaxKonOS.Client.Apps.PortForwarding.ViewModels;
 
 /// <summary>UI state for the device-local SSH forward manager.</summary>
-public sealed partial class PortForwardingViewModel : ObservableObject, IDisposable
+public sealed partial class PortForwardingViewModel : LocalizedObservableObject, IDisposable
 {
     private readonly IPortForwardingService _service;
 
@@ -33,7 +33,7 @@ public sealed partial class PortForwardingViewModel : ObservableObject, IDisposa
     // Deliberately not part of PortForwardingSettings: passwords are never written to disk.
     [ObservableProperty] private string _sshPassword = string.Empty;
     [ObservableProperty] private PortForwardInfo? _selectedForward;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("port_forwarding.status.ready");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("port_forwarding.status.ready");
     [ObservableProperty] private bool _isBusy;
 
     public bool HasSelectedForward => SelectedForward is not null;
@@ -70,12 +70,12 @@ public sealed partial class PortForwardingViewModel : ObservableObject, IDisposa
     {
         if (!int.TryParse(SshPortText, out var sshPort) || sshPort is < 1 or > 65535)
         {
-            StatusText = LocalizedText.Get("port_forwarding.error.ssh_port_invalid");
+            StatusText = LocalizedText.Ref("port_forwarding.error.ssh_port_invalid");
             return false;
         }
         _service.SaveSettings(new PortForwardingSettings(SshHost, SshUser, sshPort));
         if (reportSuccess)
-            StatusText = LocalizedText.Get("port_forwarding.status.settings_saved");
+            StatusText = LocalizedText.Ref("port_forwarding.status.settings_saved");
         return true;
     }
 
@@ -87,7 +87,7 @@ public sealed partial class PortForwardingViewModel : ObservableObject, IDisposa
         {
             var forward = await _service.StartAsync(ParseRequest(), SshPassword);
             SelectedForward = forward;
-            StatusText = LocalizedText.Format("port_forwarding.status.started", forward.LocalUri);
+            StatusText = LocalizedText.Ref("port_forwarding.status.started", forward.LocalUri);
         });
         if (succeeded)
         {
@@ -106,7 +106,7 @@ public sealed partial class PortForwardingViewModel : ObservableObject, IDisposa
         {
             var forward = await _service.UpdateAsync(SelectedForward.Id, ParseRequest(), SshPassword);
             SelectedForward = forward;
-            StatusText = LocalizedText.Format("port_forwarding.status.updated", forward.LocalUri);
+            StatusText = LocalizedText.Ref("port_forwarding.status.updated", forward.LocalUri);
         });
         if (succeeded)
         {
@@ -125,7 +125,7 @@ public sealed partial class PortForwardingViewModel : ObservableObject, IDisposa
         {
             await _service.RemoveAsync(selected.Id);
             SelectedForward = null;
-            StatusText = LocalizedText.Get("port_forwarding.status.stopped");
+            StatusText = LocalizedText.Ref("port_forwarding.status.stopped");
         });
     }
 
@@ -149,7 +149,7 @@ public sealed partial class PortForwardingViewModel : ObservableObject, IDisposa
                 using var request = new HttpRequestMessage(HttpMethod.Head, forward.LocalUri);
                 using var response = await client.SendAsync(
                     request, HttpCompletionOption.ResponseHeadersRead);
-                StatusText = LocalizedText.Format("port_forwarding.status.test_succeeded", (int)response.StatusCode, response.ReasonPhrase ?? string.Empty);
+                StatusText = LocalizedText.Ref("port_forwarding.status.test_succeeded", (int)response.StatusCode, response.ReasonPhrase ?? string.Empty);
             }
             catch (TaskCanceledException)
             {

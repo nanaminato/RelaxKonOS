@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// One view-model owns exactly one terminal session. Session switching is intentionally absent:
 /// each server PTY is represented by its own desktop window, like Windows Terminal.
 /// </summary>
-public partial class TerminalViewModel : ObservableObject
+public partial class TerminalViewModel : LocalizedObservableObject
 {
     private const int Columns = 80;
     private const int Rows = 24;
@@ -28,7 +28,7 @@ public partial class TerminalViewModel : ObservableObject
     private SignalRTransportFactory? _transportFactory;
     private bool _loadingAppearance;
 
-    [ObservableProperty] private string _status = LocalizedText.Get("terminal.status.ready");
+    [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("terminal.status.ready");
     [ObservableProperty] private bool _hasExited;
     [ObservableProperty] private TerminalSettingsDto _appearance = TerminalSettingsDto.Default;
     [ObservableProperty] private string _fontFamily = TerminalSettingsDto.Default.FontFamily;
@@ -111,7 +111,7 @@ public partial class TerminalViewModel : ObservableObject
 
         if (_session is { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } })
         {
-            Status = LocalizedText.Get("terminal.status.connecting");
+            Status = LocalizedText.Ref("terminal.status.connecting");
             options = new SignalRTransportOptions(
                 hubUrl: url.TrimEnd('/') + "/hubs/terminals",
                 dimensions: dimensions,
@@ -123,7 +123,7 @@ public partial class TerminalViewModel : ObservableObject
         }
         else
         {
-            Status = LocalizedText.Get("terminal.status.local_fallback");
+            Status = LocalizedText.Ref("terminal.status.local_fallback");
             options = new PtyTransportOptions(
                 Command: null,
                 WorkingDirectory: _initialWorkingDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -136,12 +136,12 @@ public partial class TerminalViewModel : ObservableObject
             await _terminal.StartSessionAsync(options, CancellationToken.None);
             if (_transportFactory?.CurrentSessionId is { } id)
                 OpenSessions.TryAdd(id, 0);
-            Status = LocalizedText.Get("terminal.status.connected");
+            Status = LocalizedText.Ref("terminal.status.connected");
         }
         catch (Exception ex)
         {
             HasExited = true;
-            Status = LocalizedText.Format("terminal.status.start_failed", ex.Message);
+            Status = LocalizedText.Ref("terminal.status.start_failed", ex.Message);
         }
     }
 
@@ -208,8 +208,8 @@ public partial class TerminalViewModel : ObservableObject
     {
         HasExited = true;
         Status = exitCode == 0
-            ? LocalizedText.Get("terminal.status.process_exited")
-            : LocalizedText.Format("terminal.status.process_exited_with_code", exitCode);
+            ? LocalizedText.Ref("terminal.status.process_exited")
+            : LocalizedText.Ref("terminal.status.process_exited_with_code", exitCode);
     }
 
     private void OnTitleChanged(object? sender, string title)

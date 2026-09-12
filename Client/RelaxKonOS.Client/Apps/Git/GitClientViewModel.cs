@@ -1,4 +1,4 @@
-using RelaxKonOS.Protocol.Installations;
+﻿using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using System.Threading;
@@ -73,7 +73,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     [ObservableProperty] private GitFileChangeDto? _selectedFile;
     [ObservableProperty] private GitDiffDto? _fileDiff;
     [ObservableProperty] private GitRemoteDto? _selectedRemote;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("git.status.loading");
+    [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(PullCommand), nameof(PushCommand), nameof(FetchCommand), nameof(RefreshCommand), nameof(ApplyLogFiltersCommand))]
     private bool _isBusy;
@@ -211,7 +211,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             if (!IsGitAvailable)
             {
                 IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
-                StatusText = LocalizedText.Get("git.vm.git_unavailable");
+                StatusText = LocalizedText.Ref("git.vm.git_unavailable");
                 if (ShowGitUnavailableAsync is not null)
                     await ShowGitUnavailableAsync();
                 if (!IsGitAvailable) return; // still unavailable after dialog → stop further init
@@ -221,8 +221,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             Log($"项目列表: Repositories.Count={Repositories.Count} IsPickerMode={IsPickerMode}");
             if (RepositoryLoadError is null)
                 StatusText = IsPickerMode
-                ? (Repositories.Count > 0 ? LocalizedText.Get("git.status.select_project") : LocalizedText.Get("git.status.click_open_folder"))
-                : LocalizedText.Get("git.status.ready");
+                ? (Repositories.Count > 0 ? LocalizedText.Ref("git.status.select_project") : LocalizedText.Ref("git.status.click_open_folder"))
+                : LocalizedText.Ref("git.status.ready");
 
             if (!IsPickerMode && IsAutoRefresh)
                 StartStatusTimer();
@@ -266,7 +266,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         catch (Exception ex)
         {
             RepositoryLoadError = LocalizedText.Format("git.vm.load_repositories_failed_format", ex.Message);
-            StatusText = RepositoryLoadError;
+            StatusText = LocalizedText.Ref("git.vm.load_repositories_failed_format", ex.Message);
             Log($"RefreshRepositoriesAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
         finally { IsLoadingRepositories = false; }
@@ -316,11 +316,11 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
             await RefreshConflictStateAsync();
             RebuildChangesList();
-            StatusText = LocalizedText.Format("git.status.ready_branch_format", Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
+            StatusText = LocalizedText.Ref("git.status.ready_branch_format", Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
         }
         catch (Exception ex)
         {
-            StatusText = LocalizedText.Format("git.vm.refresh_failed_format", ex.Message);
+            StatusText = LocalizedText.Ref("git.vm.refresh_failed_format", ex.Message);
             Log($"RefreshAllAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
         finally
@@ -380,7 +380,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             EnginePath = "—";
             CanAutoInstall = false;
             IsGitInstallRequired = false;
-            StatusText = LocalizedText.Format("git.vm.engine_check_failed_format", ex.Message);
+            StatusText = LocalizedText.Ref("git.vm.engine_check_failed_format", ex.Message);
         }
     }
 
@@ -420,7 +420,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         catch (Exception ex)
         {
             if (requestVersion == Volatile.Read(ref _logFilterRequestVersion))
-                StatusText = LocalizedText.Format("git.vm.refresh_failed_format", ex.Message);
+                StatusText = LocalizedText.Ref("git.vm.refresh_failed_format", ex.Message);
         }
     }
 
@@ -533,7 +533,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             IsPickerMode = false;
             SelectedRepository = repo;
             ActivePage = GitClientPage.Overview;
-            StatusText = LocalizedText.Format("git.vm.loading_project_format", repo.Name);
+            StatusText = LocalizedText.Ref("git.vm.loading_project_format", repo.Name);
 
             Log("调用 RefreshAllAsync（并行 status/branches/log）…");
             await RefreshAllAsync();
@@ -547,7 +547,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             Log("调用 RefreshRemotesAsync…");
             await RefreshRemotesAsync();
             Log($"OpenProjectAsync 结束，Remotes={Remotes.Count}，Ready");
-            StatusText = LocalizedText.Format("git.vm.ready_project_branch_format", repo.Name, Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
+            StatusText = LocalizedText.Ref("git.vm.ready_project_branch_format", repo.Name, Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
         }
         catch (Exception ex)
         {
@@ -589,7 +589,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             var dto = await client.RegisterRepositoryAsync(registration);
             if (!Repositories.Contains(dto))
                 Repositories.Add(dto);
-            StatusText = LocalizedText.Format("git.vm.registered_format", dto.Name);
+            StatusText = LocalizedText.Ref("git.vm.registered_format", dto.Name);
             await OpenProjectCommand.ExecuteAsync(dto);
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.register_failed_format", ex.Message)); Log(ex.ToString()); }
@@ -613,7 +613,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 Log($"ShowInitConfirm 返回: {init}");
                 if (!init)
                 {
-                    StatusText = LocalizedText.Get("git.vm.init_cancelled");
+                    StatusText = LocalizedText.Ref("git.vm.init_cancelled");
                     return;
                 }
                 var initResult = await client.InitRepositoryAsync(path);
@@ -623,7 +623,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                     await NotifyAsync(LocalizedText.Format("git.vm.init_failed_format", initResult.Message));
                     return;
                 }
-                StatusText = LocalizedText.Get("git.vm.initialized");
+                StatusText = LocalizedText.Ref("git.vm.initialized");
                 probe = await client.ProbeRepositoryAsync(path);
                 Log($"重探测后: IsRepository={probe.IsRepository} DefaultBranch={probe.DefaultBranch}");
             }
@@ -634,7 +634,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             if (existing is not null)
             {
                 Log($"路径已注册为「{existing.Name}」，直接打开");
-                StatusText = LocalizedText.Format("git.vm.project_exists_format", existing.Name);
+                StatusText = LocalizedText.Ref("git.vm.project_exists_format", existing.Name);
                 await OpenProjectCommand.ExecuteAsync(existing);
                 return;
             }
@@ -646,7 +646,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             var dto = await client.RegisterRepositoryAsync(new GitRepositoryRegistration(name, path));
             if (!Repositories.Contains(dto))
                 Repositories.Add(dto);
-            StatusText = LocalizedText.Format("git.vm.project_registered_format", dto.Name);
+            StatusText = LocalizedText.Ref("git.vm.project_registered_format", dto.Name);
             await OpenProjectCommand.ExecuteAsync(dto);
         }
         catch (Exception ex)
@@ -674,13 +674,13 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     {
         if (SelectedRepository is null || branch is null) return;
         IsBusy = true;
-        StatusText = LocalizedText.Format("git.vm.checkout_progress_format", branch.Name);
+        StatusText = LocalizedText.Ref("git.vm.checkout_progress_format", branch.Name);
         try
         {
             var result = await client.CheckoutAsync(SelectedRepository.Id, new GitCheckoutRequest(branch.Name));
             if (result.Success)
             {
-                StatusText = LocalizedText.Format("git.vm.switched_to_format", branch.Name);
+                StatusText = LocalizedText.Ref("git.vm.switched_to_format", branch.Name);
                 await RefreshAllAsync();
             }
             else
@@ -708,7 +708,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.CreateBranchAsync(SelectedRepository.Id, request);
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.branch_created_format", request.Name);
+                StatusText = LocalizedText.Ref("git.vm.branch_created_format", request.Name);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
             await RefreshAllAsync();
@@ -728,7 +728,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.DeleteBranchAsync(SelectedRepository.Id, branch.Name);
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.branch_deleted_format", branch.Name);
+                StatusText = LocalizedText.Ref("git.vm.branch_deleted_format", branch.Name);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.failed_format", result.Message));
             await RefreshAllAsync();
@@ -760,7 +760,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 var result = await client.CommitAsync(SelectedRepository.Id, request);
                 if (result.Success)
                 {
-                    StatusText = LocalizedText.Get("git.status.committed");
+                    StatusText = LocalizedText.Ref("git.status.committed");
                     CommitMessage = string.Empty;
                     await RefreshAllAsync();
                     await ShowPushDialogAfterCommitAsync();
@@ -804,7 +804,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             var result = await client.CommitAsync(SelectedRepository.Id, request);
             if (result.Success)
             {
-                StatusText = LocalizedText.Get("git.status.committed");
+                StatusText = LocalizedText.Ref("git.status.committed");
                 CommitMessage = string.Empty;
                 await RefreshAllAsync();
                 await ShowPushDialogAfterCommitAsync();
@@ -836,14 +836,14 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             request = await ShowPullDialogAsync();
         if (request is null) return;
         IsBusy = true;
-        StatusText = LocalizedText.Get("git.vm.pull_progress");
+        StatusText = LocalizedText.Ref("git.vm.pull_progress");
         try
         {
             var result = await client.PullAsync(SelectedRepository.Id, request);
             if (result.Conflicts is { Count: > 0 })
             {
                 await RefreshAllAsync();
-                StatusText = LocalizedText.Format("git.vm.merge_conflicts_format", result.Conflicts.Count);
+                StatusText = LocalizedText.Ref("git.vm.merge_conflicts_format", result.Conflicts.Count);
                 await PresentConflictResolutionAsync();
             }
             else if (result.RequiresCredentials)
@@ -851,7 +851,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             else if (result.Success)
             {
                 await RefreshAllAsync();
-                StatusText = LocalizedText.Get("git.vm.pulled");
+                StatusText = LocalizedText.Ref("git.vm.pulled");
             }
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.pull_failed_format", result.Message));
@@ -891,7 +891,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.FetchAsync(SelectedRepository.Id);
             if (result.Success)
-                StatusText = LocalizedText.Get("git.vm.fetched");
+                StatusText = LocalizedText.Ref("git.vm.fetched");
             else if (result.RequiresCredentials)
                 await NotifyAsync(LocalizedText.Get("git.vm.credentials_required_short"));
             else
@@ -924,7 +924,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.RevertAsync(SelectedRepository.Id, new GitRevertRequest(commit.Sha));
             if (result.Success)
-                StatusText = LocalizedText.Get("git.vm.reverted");
+                StatusText = LocalizedText.Ref("git.vm.reverted");
             if (result.Conflicts is not null && result.Conflicts.Count > 0)
             {
                 await RefreshAllAsync();
@@ -947,7 +947,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.StageAsync(SelectedRepository.Id, new GitStageRequest([file.Path]));
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.staged_format", file.Path);
+                StatusText = LocalizedText.Ref("git.vm.staged_format", file.Path);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.stage_failed_format", result.Message));
             await RefreshAllAsync();
@@ -1000,7 +1000,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     private async Task RefreshChangesAsync()
     {
         await RefreshStatusAsync();
-        StatusText = LocalizedText.Format("git.status.refreshed_changes", Changes.Count);
+        StatusText = LocalizedText.Ref("git.status.refreshed_changes", Changes.Count);
     }
 
     /// <summary>Rebuilds the Changes list from UnstagedFiles + UntrackedFiles, preserving selection state.</summary>
@@ -1091,7 +1091,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.AddRemoteAsync(SelectedRepository.Id, request);
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.add_remote_format", request.Name);
+                StatusText = LocalizedText.Ref("git.vm.add_remote_format", request.Name);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.add_remote_failed_format", result.Message));
             await RefreshRemotesAsync();
@@ -1109,7 +1109,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.UpdateRemoteAsync(SelectedRepository.Id, remote.Name, request);
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.update_remote_format", request.Name);
+                StatusText = LocalizedText.Ref("git.vm.update_remote_format", request.Name);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.update_remote_failed_format", result.Message));
             await RefreshRemotesAsync();
@@ -1127,7 +1127,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.RemoveRemoteAsync(SelectedRepository.Id, remote.Name);
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.delete_remote_format", remote.Name);
+                StatusText = LocalizedText.Ref("git.vm.delete_remote_format", remote.Name);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.delete_remote_failed_format", result.Message));
             await RefreshRemotesAsync();
@@ -1155,7 +1155,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         catch (Exception ex)
         {
             // Keep the history list usable if this individual detail request fails.
-            StatusText = LocalizedText.Format("git.vm.load_commit_detail_failed_format", ex.Message);
+            StatusText = LocalizedText.Ref("git.vm.load_commit_detail_failed_format", ex.Message);
         }
     }
 
@@ -1390,7 +1390,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             var result = await client.CommitAsync(SelectedRepository.Id, request);
             if (result.Success)
             {
-                StatusText = LocalizedText.Get("git.status.committed");
+                StatusText = LocalizedText.Ref("git.status.committed");
                 CommitMessage = string.Empty;
                 await RefreshAllAsync();
 
@@ -1425,7 +1425,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     public async Task<bool> ExecutePushFromDialogAsync(ManagedWindow? owner)
     {
         if (SelectedRepository is null) return false;
-        StatusText = LocalizedText.Get("git.vm.push_progress");
+        StatusText = LocalizedText.Ref("git.vm.push_progress");
         PushStatusMessage = LocalizedText.Get("git.dialog.push.pushing");
         try
         {
@@ -1452,7 +1452,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
             if (result.Success)
             {
-                StatusText = LocalizedText.Get("git.vm.pushed");
+                StatusText = LocalizedText.Ref("git.vm.pushed");
                 PushStatusMessage = LocalizedText.Get("git.vm.pushed");
                 await RefreshAllAsync();
                 return true;
@@ -1572,7 +1572,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             var result = await client.CreateBranchAsync(SelectedRepository.Id,
                 request with { StartPoint = startPoint });
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.branch_created_format", request.Name);
+                StatusText = LocalizedText.Ref("git.vm.branch_created_format", request.Name);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.create_failed_format", result.Message));
             await RefreshAllAsync();
@@ -1616,7 +1616,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 new GitBranchRenameRequest(newName));
             if (result.Success)
             {
-                StatusText = LocalizedText.Format("git.vm.renamed_format", branch.Name, newName);
+                StatusText = LocalizedText.Ref("git.vm.renamed_format", branch.Name, newName);
                 await RefreshAllAsync();
             }
             else
@@ -1655,14 +1655,14 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             var result = await client.MergeBranchAsync(SelectedRepository.Id, request);
             if (result.Conflicts is not null && result.Conflicts.Count > 0)
             {
-                StatusText = LocalizedText.Format("git.vm.merge_conflicts_format", result.Conflicts.Count);
+                StatusText = LocalizedText.Ref("git.vm.merge_conflicts_format", result.Conflicts.Count);
                 HasConflicts = true;
                 await RefreshAllAsync();
                 await PresentConflictResolutionAsync();
             }
             else if (result.Success)
             {
-                StatusText = LocalizedText.Format("git.vm.merged_format", request.Source);
+                StatusText = LocalizedText.Ref("git.vm.merged_format", request.Source);
                 await RefreshAllAsync();
             }
             else
@@ -1696,7 +1696,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 LocalizedText.Format("git.vm.branch_comparison_title_format", comparison.Branch),
                 [],
                 comparison.ChangedFiles);
-            StatusText = LocalizedText.Format("git.vm.branch_comparison_loaded_format", comparison.Branch, comparison.ChangedFiles.Count);
+            StatusText = LocalizedText.Ref("git.vm.branch_comparison_loaded_format", comparison.Branch, comparison.ChangedFiles.Count);
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.branch_comparison_failed_format", ex.Message)); }
         finally { IsBusy = false; }
@@ -1752,7 +1752,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 }
                 else if (result.Success)
                 {
-                    StatusText = LocalizedText.Get("git.vm.pulled");
+                    StatusText = LocalizedText.Ref("git.vm.pulled");
                     await RefreshAllAsync();
                 }
                 else
@@ -1784,7 +1784,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 request with { Remote = branch.Name[..slash], Refspec = branch.Name[(slash + 1)..] });
             if (result.Success)
             {
-                StatusText = LocalizedText.Get("git.vm.pulled");
+                StatusText = LocalizedText.Ref("git.vm.pulled");
                 await RefreshAllAsync();
             }
             else if (result.Conflicts is not null && result.Conflicts.Count > 0)
@@ -1865,7 +1865,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 if (topLevel?.Clipboard is not null)
                 {
                     await topLevel.Clipboard.SetTextAsync(commit.Sha);
-                    StatusText = LocalizedText.Format("git.vm.copy_sha_format", commit.ShortSha);
+                    StatusText = LocalizedText.Ref("git.vm.copy_sha_format", commit.ShortSha);
                     return;
                 }
             }
@@ -1875,7 +1875,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 var tl = Avalonia.Controls.TopLevel.GetTopLevel((Avalonia.Visual?)null);
                 if (tl?.Clipboard is not null) await tl.Clipboard.SetTextAsync(commit.Sha);
             });
-            StatusText = LocalizedText.Format("git.vm.sha_no_toplevel_format", commit.ShortSha);
+            StatusText = LocalizedText.Ref("git.vm.sha_no_toplevel_format", commit.ShortSha);
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.copy_failed_format", ex.Message)); }
     }
@@ -1893,11 +1893,11 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 if (topLevel?.Clipboard is not null)
                 {
                     await topLevel.Clipboard.SetTextAsync(commit.ShortSha);
-                    StatusText = LocalizedText.Format("git.vm.copied_short_sha_format", commit.ShortSha);
+                    StatusText = LocalizedText.Ref("git.vm.copied_short_sha_format", commit.ShortSha);
                     return;
                 }
             }
-            StatusText = LocalizedText.Format("git.vm.short_sha_format", commit.ShortSha);
+            StatusText = LocalizedText.Ref("git.vm.short_sha_format", commit.ShortSha);
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.vm.copy_failed_format", ex.Message)); }
     }
@@ -1914,7 +1914,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.CheckoutAsync(SelectedRepository.Id, new GitCheckoutRequest(commit.Sha));
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.checked_out_format", commit.ShortSha);
+                StatusText = LocalizedText.Ref("git.vm.checked_out_format", commit.ShortSha);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.checkout_failed_format", result.Message));
             await RefreshAllAsync();
@@ -1936,7 +1936,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             // Mixed reset retains working-tree content and is the safest useful reset mode for this UI.
             var result = await client.ResetAsync(SelectedRepository.Id, new GitResetRequest(commit.Sha, "mixed"));
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.reset_success_format", commit.ShortSha);
+                StatusText = LocalizedText.Ref("git.vm.reset_success_format", commit.ShortSha);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.reset_failed_format", result.Message));
             await RefreshAllAsync();
@@ -1972,7 +1972,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             // Soft reset removes only HEAD while preserving every file and its staged state.
             var result = await client.ResetAsync(SelectedRepository.Id, new GitResetRequest("HEAD^", "soft"));
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.undo_success_format", commit.ShortSha);
+                StatusText = LocalizedText.Ref("git.vm.undo_success_format", commit.ShortSha);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.undo_failed_format", result.Message));
             await RefreshAllAsync();
@@ -2051,7 +2051,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             var result = await client.CreateBranchAsync(SelectedRepository.Id,
                 request with { StartPoint = startPoint });
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.branch_created_at_format", request.Name, commit.ShortSha);
+                StatusText = LocalizedText.Ref("git.vm.branch_created_at_format", request.Name, commit.ShortSha);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.create_failed_format", result.Message));
             await RefreshAllAsync();
@@ -2104,7 +2104,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.RestoreAsync(SelectedRepository.Id, new GitRestoreRequest([file.Path]));
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.revert_file_success_format", file.Path);
+                StatusText = LocalizedText.Ref("git.vm.revert_file_success_format", file.Path);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.revert_file_failed_format", result.Message));
             await RefreshAllAsync();
@@ -2131,7 +2131,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         {
             var result = await client.UnstageAsync(SelectedRepository.Id, new GitUnstageRequest([file.Path]));
             if (result.Success)
-                StatusText = LocalizedText.Format("git.vm.unstaged_format", file.Path);
+                StatusText = LocalizedText.Ref("git.vm.unstaged_format", file.Path);
             else
                 await NotifyAsync(LocalizedText.Format("git.vm.unstage_failed_format", result.Message));
             await RefreshAllAsync();

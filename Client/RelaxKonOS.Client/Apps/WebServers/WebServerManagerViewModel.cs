@@ -20,7 +20,7 @@ namespace RelaxKonOS.Client.Apps.WebServers;
 /// providers); integrate/reload are explicitly confirmed, marker-owned operations polled to
 /// a terminal state. The server never accepts shell text or elevation credentials over HTTP.
 /// </summary>
-public sealed partial class WebServerManagerViewModel : ObservableObject
+public sealed partial class WebServerManagerViewModel : LocalizedObservableObject
 {
     public InstallationTaskViewModel Installation { get; set; } = null!;
 
@@ -59,11 +59,11 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private WebServerDto? _selectedServer;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(EditSiteCommand))]
     private WebServerSiteDto? _selectedSite;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("webservers.status.loading");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("webservers.status.loading");
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
-    private string _operationText = string.Empty;
-    [ObservableProperty] private string _testResultText = string.Empty;
-    [ObservableProperty] private string _selectedStatusText = string.Empty;
+    private LocalizedStatus _operationText = string.Empty;
+    [ObservableProperty] private LocalizedStatus _testResultText = string.Empty;
+    [ObservableProperty] private LocalizedStatus _selectedStatusText = string.Empty;
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ToggleManagedCommand))]
     [NotifyPropertyChangedFor(nameof(IsManagedServerRunning), nameof(ManagedLifecycleActionText), nameof(ManagedRuntimeStateLabel), nameof(ManagedRuntimeStateDescription))]
@@ -80,7 +80,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private SiteCertificateSourceOption? _selectedSiteCertificateSource;
     [ObservableProperty] private string _siteCertificatePath = string.Empty;
     [ObservableProperty] private string _sitePrivateKeyPath = string.Empty;
-    [ObservableProperty] private string _siteStatusText = string.Empty;
+    [ObservableProperty] private LocalizedStatus _siteStatusText = string.Empty;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     private bool _isLoading;
     // Every action uses IsOperationRunning in its CanExecute predicate. Keep the command state
@@ -160,12 +160,12 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             foreach (var version in catalog?.Versions ?? []) AvailableWindowsVersions.Add(version);
             if (catalog is null || catalog.Versions.Count == 0 || !string.IsNullOrWhiteSpace(catalog.ProblemCode))
             {
-                StatusText = LocalizedText.Get("webservers.version_catalog.unavailable");
+                StatusText = LocalizedText.Ref("webservers.version_catalog.unavailable");
                 return;
             }
             if (string.IsNullOrWhiteSpace(InstallVersion)) InstallVersion = catalog.MainlineVersion ?? catalog.StableVersion ?? string.Empty;
         }
-        catch { StatusText = LocalizedText.Get("webservers.version_catalog.unavailable"); }
+        catch { StatusText = LocalizedText.Ref("webservers.version_catalog.unavailable"); }
     }
     [RelayCommand(CanExecute = nameof(CanInstallManaged))] private Task RefreshWindowsVersionsAsync() => LoadWindowsVersionsAsync();
 
@@ -179,7 +179,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             SelectedServer = null;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
             HasManagedInstallation = false;
-            StatusText = LocalizedText.Get("webservers.permission.read_required");
+            StatusText = LocalizedText.Ref("webservers.permission.read_required");
             return;
         }
 
@@ -194,7 +194,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             SelectedStatusText = string.Empty;
             foreach (var server in servers) Servers.Add(server);
             HasManagedInstallation = servers.Any(server => server.ManagementMode == WebServerManagementMode.Managed);
-            StatusText = LocalizedText.Format("webservers.status.ready", servers.Count);
+            StatusText = LocalizedText.Ref("webservers.status.ready", servers.Count);
         }
         catch (Exception)
         {
@@ -203,7 +203,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             SelectedServer = null;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
             HasManagedInstallation = false;
-            StatusText = LocalizedText.Format("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
+            StatusText = LocalizedText.Ref("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -212,7 +212,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private async Task DiscoverAsync()
     {
         IsLoading = true;
-        StatusText = LocalizedText.Get("webservers.discover.running");
+        StatusText = LocalizedText.Ref("webservers.discover.running");
         try
         {
             var servers = await _client.DiscoverAsync() ?? [];
@@ -221,11 +221,11 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             SelectedServer = null;
             foreach (var server in servers) Servers.Add(server);
             HasManagedInstallation = servers.Any(server => server.ManagementMode == WebServerManagementMode.Managed);
-            StatusText = LocalizedText.Format(servers.Count > 0 ? "webservers.discover.found" : "webservers.discover.empty", servers.Count);
+            StatusText = LocalizedText.Ref(servers.Count > 0 ? "webservers.discover.found" : "webservers.discover.empty", servers.Count);
         }
         catch (Exception)
         {
-            StatusText = LocalizedText.Format("webservers.discover.failed", LocalizedText.Get("webservers.error.request_failed"));
+            StatusText = LocalizedText.Ref("webservers.discover.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -244,17 +244,17 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             if (SelectedServer?.Id != server.Id) return;
             SelectedRuntimeState = status?.RuntimeState ?? WebServerRuntimeState.Unknown;
             SelectedStatusText = status is null
-                ? LocalizedText.Get("webservers.status.unavailable")
+                ? LocalizedText.Ref("webservers.status.unavailable")
                 : string.IsNullOrWhiteSpace(status.ProblemCode)
-                    ? RuntimeStateText(status.RuntimeState)
-                    : LocalizedText.Format("webservers.status.detail", RuntimeStateText(status.RuntimeState), ProblemText(status.ProblemCode));
+                    ? LocalizedStatus.Literal(RuntimeStateText(status.RuntimeState))
+                    : LocalizedText.Ref("webservers.status.detail", RuntimeStateText(status.RuntimeState), ProblemText(status.ProblemCode));
             if (status is not null) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(status.ProblemCode);
         }
         catch (Exception)
         {
             if (SelectedServer?.Id != server.Id) return;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
-            SelectedStatusText = LocalizedText.Format("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
+            SelectedStatusText = LocalizedText.Ref("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -264,20 +264,20 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     {
         if (SelectedServer is null) return;
         IsLoading = true;
-        TestResultText = LocalizedText.Get("webservers.test.running");
+        TestResultText = LocalizedText.Ref("webservers.test.running");
         try
         {
             var result = await _client.TestConfigurationAsync(SelectedServer.Id);
             TestResultText = result is null
-                ? LocalizedText.Get("webservers.test.unavailable")
+                ? LocalizedText.Ref("webservers.test.unavailable")
                 : result.Valid
-                    ? LocalizedText.Get("webservers.test.valid")
-                    : LocalizedText.Format("webservers.test.invalid", ProblemText(result.ProblemCode));
+                    ? LocalizedText.Ref("webservers.test.valid")
+                    : LocalizedText.Ref("webservers.test.invalid", ProblemText(result.ProblemCode));
             if (result is not null && !result.Valid) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
         }
         catch (Exception)
         {
-            TestResultText = LocalizedText.Format("webservers.test.failed", LocalizedText.Get("webservers.error.request_failed"));
+            TestResultText = LocalizedText.Ref("webservers.test.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -304,11 +304,11 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanInstallManaged))]
     private async Task ShowManagedDownloadAsync()
     {
-        if (string.IsNullOrWhiteSpace(InstallVersion)) { StatusText = LocalizedText.Get("webservers.problem.version_required"); return; }
+        if (string.IsNullOrWhiteSpace(InstallVersion)) { StatusText = LocalizedText.Ref("webservers.problem.version_required"); return; }
         try
         {
             var download = await _client.GetManagedInstallDownloadAsync(InstallVersion.Trim());
-            if (download is null) { StatusText = LocalizedText.Get("webservers.managed.download_unavailable"); return; }
+            if (download is null) { StatusText = LocalizedText.Ref("webservers.managed.download_unavailable"); return; }
             await (ShowManagedDownloadUrlAsync?.Invoke(download.Url) ?? Task.CompletedTask);
         }
         catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
@@ -324,7 +324,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
         {
             await using var package = File.OpenRead(path);
             var reference = await _client.UploadManagedPackageAsync(Path.GetFileName(path), package);
-            if (reference is null) { StatusText = LocalizedText.Get("webservers.package.invalid"); return; }
+            if (reference is null) { StatusText = LocalizedText.Ref("webservers.package.invalid"); return; }
             localPackageReference = reference.Id;
             LocalPackageName = reference.FileName;
         }
@@ -361,7 +361,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     {
         ResetSiteEditor();
         await LoadCertificatesAsync();
-        SiteStatusText = LocalizedText.Get("webservers.site.new_status");
+        SiteStatusText = LocalizedText.Ref("webservers.site.new_status");
         if (ShowSiteEditorAsync is not null) await ShowSiteEditorAsync(false);
     }
 
@@ -385,7 +385,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             || (SiteHttpsEnabled && (SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed
                 ? SelectedSiteCertificate is null : string.IsNullOrWhiteSpace(SiteCertificatePath))))
         {
-            await ReportSiteSaveErrorAsync(LocalizedText.Get("webservers.site.validation_required"));
+            await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.validation_required"));
             return;
         }
         try
@@ -396,14 +396,14 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, bindings,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null));
-            if (saved is null) { await ReportSiteSaveErrorAsync(LocalizedText.Get("webservers.site.save_failed")); return; }
+            if (saved is null) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); return; }
             await LoadSitesAsync();
             SelectedSite = Sites.FirstOrDefault(site => site.Id == saved.Id);
-            SiteStatusText = LocalizedText.Get("webservers.site.save_succeeded");
+            SiteStatusText = LocalizedText.Ref("webservers.site.save_succeeded");
             if (CloseSiteEditorAsync is not null) await CloseSiteEditorAsync();
         }
-        catch (WebServerApiException exception) { await ReportSiteSaveErrorAsync(SiteSaveProblemText(exception.ProblemCode)); }
-        catch (Exception) { await ReportSiteSaveErrorAsync(LocalizedText.Get("webservers.site.save_failed")); }
+        catch (WebServerApiException exception) { await ReportSiteSaveErrorAsync(LocalizedStatus.Literal(SiteSaveProblemText(exception.ProblemCode))); }
+        catch (Exception) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); }
     }
 
     [RelayCommand(CanExecute = nameof(CanDeleteSite))]
@@ -415,9 +415,9 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             await _client.DeleteSiteAsync(SelectedServer.Id, SelectedSite.Id);
             ResetSiteEditor();
             await LoadSitesAsync();
-            SiteStatusText = LocalizedText.Get("webservers.site.delete_succeeded");
+            SiteStatusText = LocalizedText.Ref("webservers.site.delete_succeeded");
         }
-        catch (Exception) { SiteStatusText = LocalizedText.Get("webservers.site.delete_failed"); }
+        catch (Exception) { SiteStatusText = LocalizedText.Ref("webservers.site.delete_failed"); }
     }
 
     private void ResetSiteEditor()
@@ -451,7 +451,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
 
     partial void OnSelectedServerChanged(WebServerDto? value)
     {
-        SelectedStatusText = ManagementHint;
+        SelectedStatusText = LocalizedStatus.Literal(ManagementHint);
         SelectedRuntimeState = WebServerRuntimeState.Unknown;
         TestResultText = string.Empty;
         SelectedSite = null;
@@ -531,16 +531,16 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
         {
             foreach (var site in await _client.ListSitesAsync(SelectedServer.Id) ?? []) Sites.Add(site);
             SiteStatusText = Sites.Count == 0
-                ? LocalizedText.Get("webservers.site.list_empty")
-                : LocalizedText.Format("webservers.site.list_ready", Sites.Count);
+                ? LocalizedText.Ref("webservers.site.list_empty")
+                : LocalizedText.Ref("webservers.site.list_ready", Sites.Count);
         }
-        catch (Exception) { SiteStatusText = LocalizedText.Get("webservers.site.list_failed"); }
+        catch (Exception) { SiteStatusText = LocalizedText.Ref("webservers.site.list_failed"); }
     }
 
-    private async Task ReportSiteSaveErrorAsync(string message)
+    private async Task ReportSiteSaveErrorAsync(LocalizedStatus message)
     {
         SiteStatusText = message;
-        if (ShowSiteSaveErrorAsync is not null) await ShowSiteSaveErrorAsync(message);
+        if (ShowSiteSaveErrorAsync is not null) await ShowSiteSaveErrorAsync(message.Resolve());
     }
 
     [RelayCommand]
@@ -599,7 +599,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     {
         if (!HasManagePermission)
         {
-            StatusText = LocalizedText.Get("webservers.permission.manage_required");
+            StatusText = LocalizedText.Ref("webservers.permission.manage_required");
             return;
         }
 
@@ -607,18 +607,18 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
         _operationCts = new CancellationTokenSource();
         var token = _operationCts.Token;
         IsOperationRunning = true;
-        OperationText = LocalizedText.Format("webservers.operation.starting", OperationName(kindKey));
+        OperationText = LocalizedText.Ref("webservers.operation.starting", OperationName(kindKey));
         try
         {
             var operation = await start(token);
             if (operation is null)
             {
-                OperationText = LocalizedText.Get("webservers.operation.not_found");
+                OperationText = LocalizedText.Ref("webservers.operation.not_found");
                 return;
             }
             if (operation.OperationId == Guid.Empty)
             {
-                OperationText = LocalizedText.Format("webservers.operation.rejected", ProblemText(operation.ProblemCode));
+                OperationText = LocalizedText.Ref("webservers.operation.rejected", ProblemText(operation.ProblemCode));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(operation.ProblemCode);
                 return;
             }
@@ -626,20 +626,20 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
             operation = await PollOperationAsync(operation, token);
             if (operation.State == WebServerOperationState.Succeeded)
             {
-                OperationText = LocalizedText.Format("webservers.operation.succeeded", OperationName(kindKey));
+                OperationText = LocalizedText.Ref("webservers.operation.succeeded", OperationName(kindKey));
                 await RefreshStatusAsync();
             }
             else if (operation.State == WebServerOperationState.Cancelled)
-                OperationText = LocalizedText.Get("webservers.operation.cancelled");
+                OperationText = LocalizedText.Ref("webservers.operation.cancelled");
             else
             {
-                OperationText = LocalizedText.Format("webservers.operation.failed", OperationName(kindKey), ProblemText(operation.ProblemCode));
+                OperationText = LocalizedText.Ref("webservers.operation.failed", OperationName(kindKey), ProblemText(operation.ProblemCode));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(operation.ProblemCode);
             }
         }
         catch (OperationCanceledException)
         {
-            OperationText = LocalizedText.Get("webservers.operation.cancelled");
+            OperationText = LocalizedText.Ref("webservers.operation.cancelled");
         }
         catch (WebServerApiException exception) when (exception.ProblemCode == rethrowApiProblemCode)
         {
@@ -647,12 +647,12 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
         }
         catch (WebServerApiException exception)
         {
-            OperationText = LocalizedText.Format("webservers.operation.failed", OperationName(kindKey), ProblemText(exception.ProblemCode));
+            OperationText = LocalizedText.Ref("webservers.operation.failed", OperationName(kindKey), ProblemText(exception.ProblemCode));
             await ShowPrivilegedHelperUnavailableAsyncIfNeeded(exception.ProblemCode);
         }
         catch (Exception)
         {
-            OperationText = LocalizedText.Format("webservers.operation.exception", OperationName(kindKey), LocalizedText.Get("webservers.error.request_failed"));
+            OperationText = LocalizedText.Ref("webservers.operation.exception", OperationName(kindKey), LocalizedText.Get("webservers.error.request_failed"));
         }
         finally
         {
@@ -667,7 +667,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     {
         while (operation.State is WebServerOperationState.Queued or WebServerOperationState.Running)
         {
-            OperationText = LocalizedText.Format("webservers.operation.progress", OperationName(operation.Kind), OperationStage(operation.Kind, operation.Stage));
+            OperationText = LocalizedText.Ref("webservers.operation.progress", OperationName(operation.Kind), OperationStage(operation.Kind, operation.Stage));
             try { await Task.Delay(PollInterval, cancellationToken); }
             catch (OperationCanceledException) { return operation; }
             var updated = await _client.GetOperationAsync(operation.OperationId, cancellationToken);

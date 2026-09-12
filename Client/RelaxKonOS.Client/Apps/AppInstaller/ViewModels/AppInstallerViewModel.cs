@@ -28,7 +28,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     public Func<string, string, Task>? ShowMessageAsync { get; set; }
 
     [ObservableProperty] private AppPackageCandidate? _currentPackage;
-    [ObservableProperty] private string _status = LocalizedText.Get("app_installer.status.choose_package");
+    [ObservableProperty] private LocalizedStatus _status = LocalizedText.Ref("app_installer.status.choose_package");
     [ObservableProperty] private bool _isBusy;
 
     public bool HasPackage => CurrentPackage is not null;
@@ -68,7 +68,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     public async Task QueueServerPackagesAsync(IEnumerable<string> paths)
     {
         IsBusy = true;
-        Status = LocalizedText.Get("app_installer.status.downloading");
+        Status = LocalizedText.Ref("app_installer.status.downloading");
         try
         {
             foreach (var path in paths)
@@ -89,13 +89,13 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
         try
         {
             var installed = await _installer.InstallAsync(CurrentPackage);
-            Status = LocalizedText.Format(CurrentPackage.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
+            Status = LocalizedText.Ref(CurrentPackage.IsUpdate ? "app_installer.status.updated" : "app_installer.status.installed", installed.DisplayName, installed.Version);
             CurrentPackage = null;
             ShowNext();
         }
         catch (Exception exception)
         {
-            Status = LocalizedText.Format("app_installer.status.install_failed", exception.Message);
+            Status = LocalizedText.Ref("app_installer.status.install_failed", exception.Message);
             await ReportAsync(LocalizedText.Get("app_installer.error.install_title"), Status);
         }
         finally { IsBusy = false; }
@@ -106,7 +106,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     {
         if (CurrentPackage is not null) _installer.Discard(CurrentPackage);
         CurrentPackage = null;
-        Status = LocalizedText.Get("app_installer.status.skipped");
+        Status = LocalizedText.Ref("app_installer.status.skipped");
         ShowNext();
     }
 
@@ -134,7 +134,7 @@ public sealed partial class AppInstallerViewModel : ObservableObject, IDisposabl
     {
         if (CurrentPackage is not null || _pending.Count == 0) return;
         CurrentPackage = _pending.Dequeue();
-        Status = CurrentPackage.IsUpdate ? LocalizedText.Get("app_installer.status.confirm_update") : LocalizedText.Get("app_installer.status.confirm_install");
+        Status = CurrentPackage.IsUpdate ? LocalizedText.Ref("app_installer.status.confirm_update") : LocalizedText.Ref("app_installer.status.confirm_install");
         OnPropertyChanged(nameof(PendingCount));
     }
 

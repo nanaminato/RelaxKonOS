@@ -6,7 +6,7 @@ using RelaxKonOS.Protocol.Tunnels;
 
 namespace RelaxKonOS.Client.Apps.Tunnels;
 
-public sealed partial class TunnelProfileEditorViewModel : ObservableObject
+public sealed partial class TunnelProfileEditorViewModel : LocalizedObservableObject
 {
     private readonly IRemoteTunnelClient _client;
     private readonly TunnelServerProfileDto? _original;
@@ -23,7 +23,7 @@ public sealed partial class TunnelProfileEditorViewModel : ObservableObject
     [ObservableProperty] private string _externalPath;
     [ObservableProperty] private string _token = string.Empty;
     [ObservableProperty] private bool _isBusy;
-    [ObservableProperty] private string _statusText = string.Empty;
+    [ObservableProperty] private LocalizedStatus _statusText;
 
     public Func<Task>? CloseAsync { get; set; }
     public Func<Task>? SavedAsync { get; set; }
@@ -53,7 +53,7 @@ public sealed partial class TunnelProfileEditorViewModel : ObservableObject
                 RuntimeMode == TunnelRuntimeMode.External ? ExternalPath : null, _original?.Revision);
             var saved = _original is null ? await _client.CreateProfileAsync(request) : await _client.UpdateProfileAsync(_original.Id, request);
             if (AuthKind == TunnelAuthKind.Token && !string.IsNullOrWhiteSpace(Token)) await _client.SetProfileTokenAsync(saved.Id, Token);
-            Token = string.Empty; StatusText = LocalizedText.Get("tunnels.status.profile_saved");
+            Token = string.Empty; StatusText = LocalizedText.Ref("tunnels.status.profile_saved");
             if (SavedAsync is not null) await SavedAsync();
             if (CloseAsync is not null) await CloseAsync();
         }
@@ -68,7 +68,7 @@ public sealed partial class TunnelProfileEditorViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await _client.DeleteProfileAsync(_original.Id); StatusText = LocalizedText.Get("tunnels.status.profile_deleted");
+            await _client.DeleteProfileAsync(_original.Id); StatusText = LocalizedText.Ref("tunnels.status.profile_deleted");
             if (SavedAsync is not null) await SavedAsync();
             if (CloseAsync is not null) await CloseAsync();
         }
@@ -84,7 +84,7 @@ public sealed partial class TunnelProfileEditorViewModel : ObservableObject
         try
         {
             var probe = await _client.DetectExternalRuntimeAsync(ExternalPath);
-            StatusText = probe.State == TunnelRuntimeState.Available ? LocalizedText.Format("tunnels.status.external_available", probe.Version ?? "—") : TunnelProblemText.Format(probe.ProblemCode);
+            StatusText = probe.State == TunnelRuntimeState.Available ? LocalizedText.Ref("tunnels.status.external_available", probe.Version ?? "—") : TunnelProblemText.Format(probe.ProblemCode);
         }
         catch (Exception ex) { StatusText = TunnelProblemText.Format(ex); }
         finally { IsBusy = false; }
@@ -96,7 +96,7 @@ public sealed partial class TunnelProfileEditorViewModel : ObservableObject
     partial void OnIsBusyChanged(bool value) => DeleteCommand.NotifyCanExecuteChanged();
 }
 
-public sealed partial class TunnelDefinitionEditorViewModel : ObservableObject
+public sealed partial class TunnelDefinitionEditorViewModel : LocalizedObservableObject
 {
     private readonly IRemoteTunnelClient _client;
     private readonly TunnelDefinitionDto? _original;
@@ -114,7 +114,7 @@ public sealed partial class TunnelDefinitionEditorViewModel : ObservableObject
     [ObservableProperty] private bool _encryption;
     [ObservableProperty] private bool _compression;
     [ObservableProperty] private bool _isBusy;
-    [ObservableProperty] private string _statusText = string.Empty;
+    [ObservableProperty] private LocalizedStatus _statusText;
 
     public Func<Task>? CloseAsync { get; set; }
     public Func<Task>? SavedAsync { get; set; }
@@ -137,15 +137,14 @@ public sealed partial class TunnelDefinitionEditorViewModel : ObservableObject
     private async Task SaveAsync()
     {
         if (IsBusy) return;
-        if (Profile is null) { StatusText = TunnelProblemText.Format("tunnel.profile_not_found"); return; }
-        IsBusy = true;
+        if (Profile is null) { StatusText = TunnelProblemText.Format("tunnel.profile_not_found"); return; }        IsBusy = true;
         try
         {
             var request = new UpsertTunnelDefinitionRequest(Profile.Id, Name, Protocol, LocalHost, LocalPort,
                 UsesRemotePort ? RemotePort : null, UsesDomain && !string.IsNullOrWhiteSpace(Domain) ? Domain : null,
                 Enabled, Encryption, Compression, _original?.Revision);
             _ = _original is null ? await _client.CreateTunnelAsync(request) : await _client.UpdateTunnelAsync(_original.Id, request);
-            StatusText = LocalizedText.Get("tunnels.status.tunnel_saved");
+            StatusText = LocalizedText.Ref("tunnels.status.tunnel_saved");
             if (SavedAsync is not null) await SavedAsync();
             if (CloseAsync is not null) await CloseAsync();
         }
@@ -160,7 +159,7 @@ public sealed partial class TunnelDefinitionEditorViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await _client.DeleteTunnelAsync(_original.Id); StatusText = LocalizedText.Get("tunnels.status.tunnel_deleted");
+            await _client.DeleteTunnelAsync(_original.Id); StatusText = LocalizedText.Ref("tunnels.status.tunnel_deleted");
             if (SavedAsync is not null) await SavedAsync();
             if (CloseAsync is not null) await CloseAsync();
         }
@@ -177,11 +176,11 @@ public sealed partial class TunnelDefinitionEditorViewModel : ObservableObject
     }
 }
 
-public sealed partial class TunnelLogViewModel(IRemoteTunnelClient client, TunnelServerProfileDto profile) : ObservableObject, IDisposable
+public sealed partial class TunnelLogViewModel(IRemoteTunnelClient client, TunnelServerProfileDto profile) : LocalizedObservableObject, IDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
     [ObservableProperty] private string _logsText = string.Empty;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("tunnels.status.loading");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("tunnels.status.loading");
     [ObservableProperty] private bool _isBusy;
     public string ProfileName => profile.Name;
 
@@ -202,7 +201,7 @@ public sealed partial class TunnelLogViewModel(IRemoteTunnelClient client, Tunne
         try
         {
             LogsText = string.Join(Environment.NewLine, (await client.GetLogsAsync(profile.Id, _lifetime.Token)).Select(log => $"{log.Timestamp:HH:mm:ss} {log.Level}: {log.Message}"));
-            StatusText = LocalizedText.Get("tunnels.logs_updated");
+            StatusText = LocalizedText.Ref("tunnels.logs_updated");
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { StatusText = TunnelProblemText.Format(ex); }
@@ -213,15 +212,21 @@ public sealed partial class TunnelLogViewModel(IRemoteTunnelClient client, Tunne
 
 internal static class TunnelProblemText
 {
-    public static string Format(Exception exception) => exception is TunnelRequestException request
+    /// <summary>
+    /// Resolves a failure into a <see cref="LocalizedStatus"/> rather than a plain string, so a message
+    /// stored on a view model keeps following the display language instead of freezing at assignment.
+    /// </summary>
+    public static LocalizedStatus Format(Exception exception) => exception is TunnelRequestException request
         ? Format(request.ProblemCode)
-        : LocalizedText.Get("tunnels.status.failed");
+        : LocalizedText.Ref("tunnels.status.failed");
 
-    public static string Format(string? problemCode)
+    public static LocalizedStatus Format(string? problemCode)
     {
-        if (string.IsNullOrWhiteSpace(problemCode)) return LocalizedText.Get("tunnels.status.failed");
+        if (string.IsNullOrWhiteSpace(problemCode)) return LocalizedText.Ref("tunnels.status.failed");
         var key = $"tunnels.problem.{problemCode}";
-        var text = LocalizedText.Get(key);
-        return text == key ? LocalizedText.Get("tunnels.status.failed") : text;
+        // A missing key resolves back to the key itself, which is the marker that no translation exists.
+        return LocalizedText.Get(key) == key
+            ? LocalizedText.Ref("tunnels.status.failed")
+            : LocalizedText.Ref(key);
     }
 }

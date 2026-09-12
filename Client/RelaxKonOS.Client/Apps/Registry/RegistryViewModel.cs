@@ -8,11 +8,11 @@ using RelaxKonOS.Protocol.Registry;
 namespace RelaxKonOS.Client.Apps.Registry;
 
 /// <summary>Windows-style, on-demand registry browser. Values are fetched only for the selected key.</summary>
-public sealed partial class RegistryViewModel(IRegistryClient client) : ObservableObject
+public sealed partial class RegistryViewModel(IRegistryClient client) : LocalizedObservableObject
 {
     public ObservableCollection<RegistryKeyNode> Keys { get; } = [];
     public ObservableCollection<RegistryEntryRow> Entries { get; } = [];
-    [ObservableProperty] private string _statusText = LocalizedText.Get("registry.status.loading", "Loading registry…");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("registry.status.loading", "Loading registry…");
     [ObservableProperty] private string _navigationPathInput = "HKEY_USERS";
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private RegistryKeyNode? _selectedKey;
@@ -67,7 +67,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
                 key.Children.Add(new RegistryKeyNode(LastSegment(child.Path), child.Path, child.Scope, key));
             key.ChildrenLoaded = true;
         }
-        catch (Exception ex) { StatusText = string.Format(LocalizedText.Get("registry.status.unavailable", "Registry unavailable: {0}"), ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("registry.status.unavailable", "Registry unavailable: {0}", ex.Message); }
         finally { key.IsLoadingChildren = false; }
     }
 
@@ -81,9 +81,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
             var saved = await client.SaveAsync(new PutRegistryEntryRequest(Scope, Path, Name, ValueType, document.RootElement.Clone(),
                 baseline is not null && baseline.Scope == Scope && baseline.Path == Path && baseline.Name == Name ? baseline.Revision : 0));
             ApplySaved(saved);
-            StatusText = LocalizedText.Get("registry.status.saved", "Value saved.");
+            StatusText = LocalizedText.Ref("registry.status.saved", "Value saved.");
         }
-        catch (Exception ex) { StatusText = string.Format(LocalizedText.Get("registry.status.save_failed", "Could not save value: {0}"), ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("registry.status.save_failed", "Could not save value: {0}", ex.Message); }
     }
 
     [RelayCommand]
@@ -95,9 +95,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
             await client.DeleteAsync(SelectedEntry.Source.Scope, SelectedEntry.Source.Path, SelectedEntry.Source.Name);
             Entries.Remove(SelectedEntry);
             SelectedEntry = null;
-            StatusText = LocalizedText.Get("registry.status.deleted", "Value deleted.");
+            StatusText = LocalizedText.Ref("registry.status.deleted", "Value deleted.");
         }
-        catch (Exception ex) { StatusText = string.Format(LocalizedText.Get("registry.status.delete_failed", "Could not delete value: {0}"), ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("registry.status.delete_failed", "Could not delete value: {0}", ex.Message); }
     }
 
     [RelayCommand]
@@ -118,9 +118,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
             var parent = key.Parent;
             parent?.Children.Remove(key);
             SelectedKey = parent;
-            StatusText = LocalizedText.Get("registry.status.deleted", "Value deleted.");
+            StatusText = LocalizedText.Ref("registry.status.deleted", "Value deleted.");
         }
-        catch (Exception ex) { StatusText = string.Format(LocalizedText.Get("registry.status.delete_failed", "Could not delete value: {0}"), ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("registry.status.delete_failed", "Could not delete value: {0}", ex.Message); }
     }
 
     [RelayCommand]
@@ -134,7 +134,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
             parent.ChildrenLoaded = true;
             parent.IsExpanded = true;
         }
-        StatusText = LocalizedText.Get("registry.status.saved", "Value saved.");
+        StatusText = LocalizedText.Ref("registry.status.saved", "Value saved.");
     }
 
     public void ApplySaved(RegistryEntryDto entry)
@@ -154,7 +154,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
         if (input.StartsWith("Current User\\", StringComparison.OrdinalIgnoreCase)) input = input["Current User\\".Length..];
         if (input.StartsWith("Other Users", StringComparison.OrdinalIgnoreCase))
         {
-            StatusText = LocalizedText.Get("registry.status.access_denied", "Other users' registry hives cannot be opened.");
+            StatusText = LocalizedText.Ref("registry.status.access_denied", "Other users' registry hives cannot be opened.");
             return;
         }
         if (string.IsNullOrWhiteSpace(input)) { SelectedKey = Keys.SingleOrDefault(); return; }
@@ -165,7 +165,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
             await LoadChildrenAsync(current);
             current = current.Children.FirstOrDefault(x => x.Name.Equals(segment, StringComparison.OrdinalIgnoreCase));
         }
-        if (current is null) StatusText = string.Format(LocalizedText.Get("registry.status.path_not_found", "Registry key not found: {0}"), NavigationPathInput);
+        if (current is null) StatusText = LocalizedText.Ref("registry.status.path_not_found", "Registry key not found: {0}", NavigationPathInput);
         else SelectedKey = current;
     }
 
@@ -175,7 +175,7 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
         SelectedEntry = null;
         if (key is null || !key.IsRegistryKey || key.Scope is not { } scope || key.Path is not { } path)
         {
-            StatusText = LocalizedText.Get("registry.status.empty", "No values in this key.");
+            StatusText = LocalizedText.Ref("registry.status.empty", "No values in this key.");
             return;
         }
         if (IsLoading) return;
@@ -186,9 +186,9 @@ public sealed partial class RegistryViewModel(IRegistryClient client) : Observab
             await LoadChildrenAsync(key);
             var values = await client.ListValuesAsync(scope, path);
             foreach (var entry in values) Entries.Add(RegistryEntryRow.From(entry));
-            StatusText = values.Count == 0 ? LocalizedText.Get("registry.status.empty", "No values in this key.") : string.Format(LocalizedText.Get("registry.status.count", "{0} value(s)."), values.Count);
+            StatusText = values.Count == 0 ? LocalizedText.Ref("registry.status.empty", "No values in this key.") : LocalizedText.Ref("registry.status.count", "{0} value(s).", values.Count);
         }
-        catch (Exception ex) { StatusText = string.Format(LocalizedText.Get("registry.status.unavailable", "Registry unavailable: {0}"), ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("registry.status.unavailable", "Registry unavailable: {0}", ex.Message); }
         finally { IsLoading = false; }
     }
 

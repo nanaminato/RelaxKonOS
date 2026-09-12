@@ -1,4 +1,4 @@
-// 数据流移植自 Jaya ExplorerViewModel / NavigationViewModel / AddressbarViewModel / ToolbarViewModel /
+﻿// 数据流移植自 Jaya ExplorerViewModel / NavigationViewModel / AddressbarViewModel / ToolbarViewModel /
 // StatusbarViewModel（BSD-3），合并为单一 VM 适配 RelaxKonOS DI 约定（去 ServiceLocator/EventAggregator）。
 // Copyright (c) 2020, Rubal Walia. 原始许可见 LICENSE-jaya.txt 与 THIRD_PARTY_NOTICES.md。
 using System.Collections.ObjectModel;
@@ -149,9 +149,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         try
         {
             await SaveViewPreferencesAsync(ViewPreferences);
-            StatusText = LocalizedText.Get("explorer.view_saved");
+            StatusText = LocalizedText.Ref("explorer.view_saved");
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.view_save_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.view_save_failed", ex.Message); }
     }
     public ObservableCollection<ExplorerBreadcrumb> Breadcrumbs { get; } = [];
     public double EntryRowHeight => IsCompactView ? 28 : 36;
@@ -211,7 +211,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         Breadcrumbs.Add(new ExplorerBreadcrumb(LocalizedText.Get("explorer.computer"), null));
         foreach (var crumb in ExplorerBreadcrumb.FromPath(AddressbarPath)) Breadcrumbs.Add(crumb);
     }
-    [ObservableProperty] private string _statusText = LocalizedText.Get("explorer.status.ready");
+    [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private FileSystemEntryDto? _selectedEntry;
     [ObservableProperty] private TreeNodeModel? _selectedNode;
@@ -292,7 +292,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 else sharedClipboard.Set(remaining, RemoteFileClipboardOperation.Cut);
             }
         });
-        StatusText = LocalizedText.Get("explorer.operations.submitted");
+        StatusText = LocalizedText.Ref("explorer.operations.submitted");
     }
 
     /// <summary>使用默认程序打开一个远程文件。</summary>
@@ -360,7 +360,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public async Task LoadRootAsync()
     {
         IsBusy = true;
-        StatusText = LocalizedText.Get("explorer.status.loading_navigation");
+        StatusText = LocalizedText.Ref("explorer.status.loading_navigation");
         try
         {
             // 并发加载特殊位置与盘符列表
@@ -413,9 +413,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
             homeGroup.IsExpanded = true;
             thisPc.IsExpanded = true;
-            StatusText = LocalizedText.Format("explorer.status.root_ready", drives.Count, specials.Count);
+            StatusText = LocalizedText.Ref("explorer.status.root_ready", drives.Count, specials.Count);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.load_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.load_failed", ex.Message); }
         finally { IsBusy = false; }
     }
 
@@ -441,7 +441,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         {
             // 展开操作由 TreeNodeModel 以 fire-and-forget 方式发起，不能让异常丢失，
             // 否则权限、网络或服务端错误都会表现为一个无法展开的空节点。
-            StatusText = LocalizedText.Format("explorer.status.path_load_failed", node.Path, ex.Message);
+            StatusText = LocalizedText.Ref("explorer.status.path_load_failed", node.Path, ex.Message);
         }
         finally { node.IsLoading = false; }
     }
@@ -457,7 +457,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         if (value.IsNetwork)
         {
             // 网络占位：当前不实现浏览，仅状态栏提示，不导航
-            StatusText = LocalizedText.Get("explorer.status.network_not_implemented");
+            StatusText = LocalizedText.Ref("explorer.status.network_not_implemented");
             return;
         }
         _ = value.IsComputer ? NavigateToAsync(null) : NavigateToAsync(value.Path);
@@ -573,7 +573,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            StatusText = LocalizedText.Format("explorer.status.load_failed", ex.Message);
+            StatusText = LocalizedText.Ref("explorer.status.load_failed", ex.Message);
             return false;
         }
         finally
@@ -722,7 +722,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     {
         if (!CanTransferEntriesToDirectory(entries, targetDirectory, copy))
         {
-            StatusText = LocalizedText.Get("explorer.batch.invalid_target");
+            StatusText = LocalizedText.Ref("explorer.batch.invalid_target");
             return null;
         }
         var snapshot = NormalizeBatchSelection(entries);
@@ -807,12 +807,12 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             }
             var result = new ExplorerBatchResult(entries.Count, completed.ToArray(), failures.ToArray(), entries.Count - attempted);
             var refreshed = await NavigateToAsyncCore(AddressbarPath, batchRefresh: true);
-            var refreshError = refreshed ? null : StatusText;
+            string? refreshError = refreshed ? null : StatusText.Resolve();
             LastOperationDetails = string.Join(Environment.NewLine, failures.Select(f => $"{f.Path}: {f.Message}")
                 .Concat(entries.Skip(attempted).Select(entry => $"{entry.Path}: {LocalizedText.Get("explorer.batch.not_started")}")));
             if (refreshError is not null)
                 LastOperationDetails += (HasOperationDetails ? Environment.NewLine : string.Empty) + refreshError;
-            StatusText = LocalizedText.Format("explorer.batch.result", LocalizedText.Get(actionKey),
+            StatusText = LocalizedText.Ref("explorer.batch.result", LocalizedText.Get(actionKey),
                 result.Completed.Count, result.Failures.Count, result.NotStarted);
             return result;
         }
@@ -911,12 +911,12 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         {
             if (string.IsNullOrWhiteSpace(AddressbarPath))
             {
-                StatusText = LocalizedText.Get("explorer.status.enter_target_directory_first");
+                StatusText = LocalizedText.Ref("explorer.status.enter_target_directory_first");
                 return;
             }
             if (!IsValidSaveFileName(PickerEntryName))
             {
-                StatusText = LocalizedText.Get("explorer.status.file_name_invalid");
+                StatusText = LocalizedText.Ref("explorer.status.file_name_invalid");
                 return;
             }
 
@@ -943,14 +943,14 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 var entry = await _client.GetInfoAsync(path);
                 if (entry is null || !IsSelectableFile(entry))
                 {
-                    StatusText = LocalizedText.Get("explorer.status.file_not_selectable");
+                    StatusText = LocalizedText.Ref("explorer.status.file_not_selectable");
                     return;
                 }
                 selected = [entry.Path];
             }
             catch (Exception ex)
             {
-                StatusText = LocalizedText.Format("explorer.status.file_select_failed", ex.Message);
+                StatusText = LocalizedText.Ref("explorer.status.file_select_failed", ex.Message);
                 return;
             }
         }
@@ -1010,10 +1010,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         try
         {
             var properties = await _client.GetPropertiesAsync(entry.Path);
-            if (properties is null) { StatusText = LocalizedText.Get("explorer.status.item_missing"); return; }
+            if (properties is null) { StatusText = LocalizedText.Ref("explorer.status.item_missing"); return; }
             await (ShowPropertiesAsync?.Invoke(properties) ?? Task.CompletedTask);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.properties_read_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.properties_read_failed", ex.Message); }
     }
 
     private async Task OpenEntryAsync(FileSystemEntryDto entry)
@@ -1021,10 +1021,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         try
         {
             if (RequestFileElevationAsync is not null && !await RequestFileElevationAsync(entry.Path, FileElevationCapability.Read)) return;
-            if (OpenFileAsync is null) { StatusText = LocalizedText.Get("explorer.status.no_file_opener"); return; }
+            if (OpenFileAsync is null) { StatusText = LocalizedText.Ref("explorer.status.no_file_opener"); return; }
             await OpenFileAsync(entry);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.file_open_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.file_open_failed", ex.Message); }
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenTerminal))]
@@ -1039,14 +1039,14 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         {
             if (OpenTerminalAtPathAsync is null)
             {
-                StatusText = LocalizedText.Get("explorer.status.terminal_unavailable");
+                StatusText = LocalizedText.Ref("explorer.status.terminal_unavailable");
                 return;
             }
             await OpenTerminalAtPathAsync(workingDirectory);
         }
         catch (Exception ex)
         {
-            StatusText = LocalizedText.Format("explorer.status.terminal_start_failed", ex.Message);
+            StatusText = LocalizedText.Ref("explorer.status.terminal_start_failed", ex.Message);
         }
     }
 
@@ -1057,7 +1057,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrEmpty(AddressbarPath))
         {
-            StatusText = LocalizedText.Get("explorer.status.enter_directory_first");
+            StatusText = LocalizedText.Ref("explorer.status.enter_directory_first");
             return;
         }
         var name = await (RequestTextInputAsync?.Invoke(LocalizedText.Get("explorer.new_folder"), LocalizedText.Get("explorer.new_folder_prompt"), LocalizedText.Get("explorer.new_folder"), LocalizedText.Get("common.create")) ?? Task.FromResult<string?>(null));
@@ -1067,10 +1067,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             var target = CombineRemotePath(AddressbarPath, name);
             if (!await RetryWithOperationElevationAsync(
                     async () => { await _client.CreateDirectoryAsync(target); }, FileElevationCapability.CreateDirectory, AddressbarPath)) return;
-            StatusText = LocalizedText.Format("explorer.status.folder_created", name);
+            StatusText = LocalizedText.Ref("explorer.status.folder_created", name);
             await RefreshAsync();
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.create_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.create_failed", ex.Message); }
     }
 
     public bool CanDeleteSelection => HasSelection && !IsPickerMode
@@ -1103,7 +1103,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             await RunBatchAsync(entries, "common.delete", entry => RetryWithOperationElevationAsync(
                 () => _client.DeleteAsync(entry.Path), FileElevationCapability.Delete, ParentDirectory(entry.Path)));
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.delete_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.delete_failed", ex.Message); }
         finally { IsBusy = false; }
     }
 
@@ -1130,7 +1130,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         var newName = RenameDraft;
         if (string.IsNullOrWhiteSpace(newName) || !ExplorerPath.IsValidName(newName, entry.Path))
         {
-            StatusText = LocalizedText.Get("explorer.input_invalid");
+            StatusText = LocalizedText.Ref("explorer.input_invalid");
             return false;
         }
         if (newName == entry.Name)
@@ -1158,13 +1158,13 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             }
             CancelRename();
             _isRenameCommitInProgress = false;
-            StatusText = LocalizedText.Format("explorer.status.renamed", newName);
+            StatusText = LocalizedText.Ref("explorer.status.renamed", newName);
             await RefreshAsync();
             return true;
         }
         catch (Exception ex)
         {
-            StatusText = LocalizedText.Format("explorer.status.rename_failed", ex.Message);
+            StatusText = LocalizedText.Ref("explorer.status.rename_failed", ex.Message);
             return false;
         }
         finally
@@ -1179,7 +1179,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     {
         _fileClipboard.Set(GetSelectedEntries(), RemoteFileClipboardOperation.Copy);
         PasteCommand.NotifyCanExecuteChanged();
-        StatusText = LocalizedText.Format("explorer.status.copied_to_clipboard", _fileClipboard.Entries.Count);
+        StatusText = LocalizedText.Ref("explorer.status.copied_to_clipboard", _fileClipboard.Entries.Count);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -1187,7 +1187,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     {
         _fileClipboard.Set(GetSelectedEntries(), RemoteFileClipboardOperation.Cut);
         PasteCommand.NotifyCanExecuteChanged();
-        StatusText = LocalizedText.Format("explorer.status.cut_to_clipboard", _fileClipboard.Entries.Count);
+        StatusText = LocalizedText.Ref("explorer.status.cut_to_clipboard", _fileClipboard.Entries.Count);
     }
 
     [RelayCommand(CanExecute = nameof(CanPaste))]
@@ -1195,7 +1195,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(AddressbarPath))
         {
-            StatusText = LocalizedText.Get("explorer.status.enter_target_directory_first");
+            StatusText = LocalizedText.Ref("explorer.status.enter_target_directory_first");
             return;
         }
 
@@ -1233,13 +1233,13 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(AddressbarPath))
         {
-            StatusText = LocalizedText.Get("explorer.status.enter_target_directory_first");
+            StatusText = LocalizedText.Ref("explorer.status.enter_target_directory_first");
             return;
         }
         var sources = await (RequestClipboardUploadSourcesAsync?.Invoke() ?? Task.FromResult<IReadOnlyList<LocalUploadSource>>([]));
         if (sources.Count == 0)
         {
-            StatusText = LocalizedText.Get("explorer.status.clipboard_no_files");
+            StatusText = LocalizedText.Ref("explorer.status.clipboard_no_files");
             return;
         }
         await UploadSourcesAsync(sources, LocalizedText.Get("explorer.status.pasting_host_files"));
@@ -1264,10 +1264,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             if (!await RetryWithOperationElevationAsync(
                     async () => { await _client.MoveAsync(entry.Path, dest, overwrite: false); },
                     FileElevationCapability.Move, ParentDirectory(entry.Path), ParentDirectory(dest))) return;
-            StatusText = LocalizedText.Format("explorer.status.moved_to", dest);
+            StatusText = LocalizedText.Ref("explorer.status.moved_to", dest);
             await RefreshAsync();
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.move_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.move_failed", ex.Message); }
     }
 
     [RelayCommand(CanExecute = nameof(HasSingleFileSelection))]
@@ -1276,7 +1276,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         if (SelectedEntry is not { } entry) return;
         if (entry.Type == FileSystemEntryType.Directory || entry.Type == FileSystemEntryType.Drive)
         {
-            StatusText = LocalizedText.Get("explorer.status.folder_download_unsupported");
+            StatusText = LocalizedText.Ref("explorer.status.folder_download_unsupported");
             return;
         }
         var localPath = await (RequestLocalSaveFileAsync?.Invoke(entry.Name) ?? Task.FromResult<string?>(null));
@@ -1287,15 +1287,15 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             var r = await _client.DownloadAsync(entry.Path);
             if (r is not (var stream, _))
             {
-                StatusText = LocalizedText.Get("explorer.status.download_file_missing");
+                StatusText = LocalizedText.Ref("explorer.status.download_file_missing");
                 return;
             }
             using (stream)
             using (var fs = File.Create(localPath))
                 await stream.CopyToAsync(fs);
-            StatusText = LocalizedText.Format("explorer.status.downloaded", localPath);
+            StatusText = LocalizedText.Ref("explorer.status.downloaded", localPath);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.download_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.download_failed", ex.Message); }
     }
 
     [RelayCommand]
@@ -1316,16 +1316,16 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(AddressbarPath))
         {
-            StatusText = LocalizedText.Get("explorer.status.enter_target_directory_first");
+            StatusText = LocalizedText.Ref("explorer.status.enter_target_directory_first");
             return;
         }
 
         UploadPlan plan;
         try { plan = BuildUploadPlan(sources); }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.upload_failed", ex.Message); return; }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.upload_failed", ex.Message); return; }
         if (plan.Files.Count == 0 && plan.Directories.Count == 0)
         {
-            StatusText = LocalizedText.Get("explorer.status.no_uploadable_files");
+            StatusText = LocalizedText.Ref("explorer.status.no_uploadable_files");
             return;
         }
 
@@ -1371,7 +1371,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                     report(path, bytes, ++count);
                 }
             });
-            StatusText = LocalizedText.Get("explorer.operations.submitted");
+            StatusText = LocalizedText.Ref("explorer.operations.submitted");
             return;
         }
 
@@ -1414,11 +1414,11 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             }
 
             StatusText = plan.Directories.Count > 0
-                ? LocalizedText.Format("explorer.status.upload_completed_with_folders", plan.Files.Count, plan.Directories.Count)
-                : LocalizedText.Format("explorer.status.upload_completed", plan.Files.Count);
+                ? LocalizedText.Ref("explorer.status.upload_completed_with_folders", plan.Files.Count, plan.Directories.Count)
+                : LocalizedText.Ref("explorer.status.upload_completed", plan.Files.Count);
             await RefreshAsync();
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("explorer.status.upload_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.upload_failed", ex.Message); }
         finally
         {
             IsTransferActive = false;
@@ -1467,7 +1467,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             if (directories.Length == 0 || RequestFileOperationElevationAsync is null
                 || !await RequestFileOperationElevationAsync(directories, capability))
             {
-                StatusText = LocalizedText.Get("explorer.status.elevation_required");
+                StatusText = LocalizedText.Ref("explorer.status.elevation_required");
                 return false;
             }
             await operation();

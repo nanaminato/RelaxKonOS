@@ -7,7 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 namespace RelaxKonOS.Client.Apps.ImageViewer.ViewModels;
 
 /// <summary>Loads and displays a remote image using Avalonia's built-in bitmap decoder.</summary>
-public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
+public sealed partial class ImageViewerViewModel : LocalizedObservableObject, IDisposable
 {
     private readonly IExplorerClient? _files;
     private CancellationTokenSource? _loadCts;
@@ -16,7 +16,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private Bitmap? _imageSource;
     [ObservableProperty] private string? _currentPath;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("image_viewer.status.open_hint");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("image_viewer.status.open_hint");
     [ObservableProperty] private int _pixelWidth;
     [ObservableProperty] private int _pixelHeight;
     [ObservableProperty] private int _zoomPercent = 100;
@@ -44,7 +44,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
     {
         if (_files is null)
         {
-            StatusText = LocalizedText.Get("image_viewer.status.connect_before_open");
+            StatusText = LocalizedText.Ref("image_viewer.status.connect_before_open");
             return;
         }
 
@@ -52,7 +52,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
         _loadCts?.Dispose();
         _loadCts = new CancellationTokenSource();
         var ct = _loadCts.Token;
-        StatusText = LocalizedText.Get("image_viewer.status.loading");
+        StatusText = LocalizedText.Ref("image_viewer.status.loading");
 
         try
         {
@@ -60,7 +60,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
             ct.ThrowIfCancellationRequested();
             if (bytes is null)
             {
-                StatusText = LocalizedText.Get("image_viewer.status.file_missing");
+                StatusText = LocalizedText.Ref("image_viewer.status.file_missing");
                 return;
             }
 
@@ -80,7 +80,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
             PixelHeight = bitmap.PixelSize.Height;
             ZoomPercent = 100;
             UpdateDisplaySize();
-            StatusText = LocalizedText.Format("image_viewer.status.opened", Path.GetFileName(path), DimensionsText);
+            StatusText = LocalizedText.Ref("image_viewer.status.opened", Path.GetFileName(path), DimensionsText);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -88,7 +88,7 @@ public sealed partial class ImageViewerViewModel : ObservableObject, IDisposable
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Format("image_viewer.status.open_failed", exception.Message);
+            StatusText = LocalizedText.Ref("image_viewer.status.open_failed", exception.Message);
         }
     }
 

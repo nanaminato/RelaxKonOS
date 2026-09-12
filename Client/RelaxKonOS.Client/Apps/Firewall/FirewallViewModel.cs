@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Net;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
@@ -42,7 +42,7 @@ public sealed partial class FirewallViewModel : ObservableObject
 
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(ShowEditRuleEditorCommand), nameof(DeleteRuleCommand))]
     private FirewallRuleDto? _selectedRule;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("firewall.status.loading");
+    [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(EnableCommand), nameof(DisableCommand), nameof(SaveDefaultsCommand), nameof(ShowAddRuleEditorCommand), nameof(ShowEditRuleEditorCommand), nameof(DeleteRuleCommand), nameof(ClearEditorCommand))]
     private bool _isAvailable;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(EnableCommand), nameof(DisableCommand))]
@@ -77,7 +77,7 @@ public sealed partial class FirewallViewModel : ObservableObject
             SelectedRule = null;
             IsAvailable = false;
             IsEnabled = false;
-            StatusText = LocalizedText.Get("firewall.permission.read_required");
+            StatusText = LocalizedText.Ref("firewall.permission.read_required");
             return;
         }
 
@@ -91,7 +91,7 @@ public sealed partial class FirewallViewModel : ObservableObject
             IsEnabled = status.IsEnabled;
             if (!status.IsAvailable)
             {
-                StatusText = LocalizedText.Format("firewall.status.unavailable", ProblemText(status.ProblemCode));
+                StatusText = LocalizedText.Ref("firewall.status.unavailable", ProblemText(status.ProblemCode));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(status.ProblemCode);
                 return;
             }
@@ -99,7 +99,7 @@ public sealed partial class FirewallViewModel : ObservableObject
             SelectedIncomingPolicy = Find(Policies, status.DefaultIncomingPolicy, "deny");
             SelectedOutgoingPolicy = Find(Policies, status.DefaultOutgoingPolicy, "allow");
             foreach (var rule in await _client.ListRulesAsync()) Rules.Add(rule);
-            StatusText = LocalizedText.Format(status.IsEnabled ? "firewall.status.ready_enabled" : "firewall.status.ready_disabled", status.Backend, status.Version ?? "");
+            StatusText = LocalizedText.Ref(status.IsEnabled ? "firewall.status.ready_enabled" : "firewall.status.ready_disabled", status.Backend, status.Version ?? "");
         }
         catch (Exception exception)
         {
@@ -107,7 +107,7 @@ public sealed partial class FirewallViewModel : ObservableObject
             SelectedRule = null;
             IsAvailable = false;
             IsEnabled = false;
-            StatusText = LocalizedText.Format("firewall.status.failed", exception.Message);
+            StatusText = LocalizedText.Ref("firewall.status.failed", exception.Message);
         }
         finally { IsLoading = false; }
     }
@@ -194,13 +194,13 @@ public sealed partial class FirewallViewModel : ObservableObject
         var port = Port.Trim();
         if (!IsEndpoint(Source) || !IsEndpoint(Destination))
         {
-            StatusText = LocalizedText.Get("firewall.validation.address_invalid");
+            StatusText = LocalizedText.Ref("firewall.validation.address_invalid");
             rule = default!;
             return false;
         }
         if (!string.IsNullOrEmpty(port) && !IsPort(port))
         {
-            StatusText = LocalizedText.Get("firewall.validation.port_invalid");
+            StatusText = LocalizedText.Ref("firewall.validation.port_invalid");
             rule = default!;
             return false;
         }
@@ -216,7 +216,7 @@ public sealed partial class FirewallViewModel : ObservableObject
         // can never turn a read-only firewall grant into a host configuration change.
         if (!HasManagePermission)
         {
-            StatusText = LocalizedText.Get("firewall.permission.manage_required");
+            StatusText = LocalizedText.Ref("firewall.permission.manage_required");
             return false;
         }
 
@@ -233,13 +233,13 @@ public sealed partial class FirewallViewModel : ObservableObject
         try
         {
             var result = await operation(confirmation);
-            StatusText = result.Success ? LocalizedText.Get("firewall.operation.succeeded") : LocalizedText.Format("firewall.operation.failed", ProblemText(result.ProblemCode));
+            StatusText = result.Success ? LocalizedText.Ref("firewall.operation.succeeded") : LocalizedText.Ref("firewall.operation.failed", ProblemText(result.ProblemCode));
             if (!result.Success) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
             success = result.Success;
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Format("firewall.operation.failed", exception.Message);
+            StatusText = LocalizedText.Ref("firewall.operation.failed", exception.Message);
         }
         finally { IsLoading = false; }
         // A successful change is immediately re-read from UFW so button state and

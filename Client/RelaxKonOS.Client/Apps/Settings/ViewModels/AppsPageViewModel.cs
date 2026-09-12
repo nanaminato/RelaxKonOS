@@ -3,6 +3,7 @@ using System.Globalization;
 using Avalonia.Media;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Browser;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.AppPermissions;
 using RelaxKonOS.Client.Services.Developer;
@@ -56,12 +57,12 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
 
     [ObservableProperty] private AppsSubpage _subpage = AppsSubpage.InstalledApps;
     [ObservableProperty] private ApplicationInfo? _selectedApp;
-    [ObservableProperty] private string _actionStatus = string.Empty;
+    [ObservableProperty] private LocalizedStatus _actionStatus;
     [ObservableProperty] private bool _isUninstalling;
     [ObservableProperty] private bool _isClearingData;
     [ObservableProperty] private bool _isBrowserSettingsLoading;
     [ObservableProperty] private bool _isSavingBrowserSettings;
-    [ObservableProperty] private string _browserSettingsStatus = string.Empty;
+    [ObservableProperty] private LocalizedStatus _browserSettingsStatus;
     [ObservableProperty] private BrowserLinkOpenTarget _browserLinkOpenTarget = BrowserLinkOpenTarget.BuiltInBrowser;
 
     public bool IsInstalledApps => Subpage == AppsSubpage.InstalledApps;
@@ -128,8 +129,8 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
     {
         if (SelectedApp is null) return;
         ActionStatus = _apps.Launch(SelectedApp.Id)
-            ? string.Format(CultureInfo.CurrentCulture, T("settings.apps.opened", "Opened {0}."), SelectedApp.DisplayName)
-            : T("settings.apps.not_launchable", "This application is no longer available to launch.");
+            ? Ref("settings.apps.opened", "Opened {0}.", SelectedApp.DisplayName)
+            : Ref("settings.apps.not_launchable", "This application is no longer available to launch.");
     }
 
     [RelayCommand]
@@ -164,14 +165,14 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
             {
                 SelectedApp = null;
                 Subpage = AppsSubpage.InstalledApps;
-                ActionStatus = string.Format(CultureInfo.CurrentCulture, T("settings.apps.uninstalled", "Uninstalled {0}."), displayName);
+                ActionStatus = Ref("settings.apps.uninstalled", "Uninstalled {0}.", displayName);
             }
             else
-                ActionStatus = T("settings.apps.already_uninstalled", "This application has already been uninstalled or does not support uninstallation.");
+                ActionStatus = Ref("settings.apps.already_uninstalled", "This application has already been uninstalled or does not support uninstallation.");
         }
         catch (Exception exception)
         {
-            ActionStatus = string.Format(CultureInfo.CurrentCulture, T("settings.apps.uninstall_failed", "Uninstall failed: {0}"), exception.Message);
+            ActionStatus = Ref("settings.apps.uninstall_failed", "Uninstall failed: {0}", exception.Message);
         }
         finally { IsUninstalling = false; }
     }
@@ -191,15 +192,14 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
             if (result is null)
                 return;
             ActionStatus = result.ServerDataCleared
-                ? T("settings.apps.clear_data.complete_server", "Application data and the selected optional data were cleared.")
+                ? Ref("settings.apps.clear_data.complete_server", "Application data and the selected optional data were cleared.")
                 : result.PermissionDecisionsCleared
-                    ? T("settings.apps.clear_data.complete_permissions", "Application data and selected permission decisions were cleared.")
-                    : T("settings.apps.clear_data.complete_local", "Local application data was cleared.");
+                    ? Ref("settings.apps.clear_data.complete_permissions", "Application data and selected permission decisions were cleared.")
+                    : Ref("settings.apps.clear_data.complete_local", "Local application data was cleared.");
         }
         catch (Exception exception)
         {
-            ActionStatus = string.Format(CultureInfo.CurrentCulture,
-                T("settings.apps.clear_data.failed", "Could not clear application data: {0}"), exception.Message);
+            ActionStatus = Ref("settings.apps.clear_data.failed", "Could not clear application data: {0}", exception.Message);
         }
         finally { IsClearingData = false; }
     }
@@ -211,21 +211,18 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
             return;
 
         IsSavingBrowserSettings = true;
-        BrowserSettingsStatus = string.Empty;
+        BrowserSettingsStatus = default;
         try
         {
             var settings = _browserSettings ?? await _browserClient.GetSettingsAsync();
             var saved = await _browserClient.SaveSettingsAsync(settings with { LinkOpenTarget = BrowserLinkOpenTarget });
             _browserSettings = saved;
             BrowserLinkOpenTarget = saved.LinkOpenTarget;
-            BrowserSettingsStatus = T("settings.apps.browser.link_open_target_saved", "Link opening preference saved.");
+            BrowserSettingsStatus = Ref("settings.apps.browser.link_open_target_saved", "Link opening preference saved.");
         }
         catch (Exception exception)
         {
-            BrowserSettingsStatus = string.Format(
-                CultureInfo.CurrentCulture,
-                T("settings.apps.browser.link_open_target_save_failed", "Could not save the link opening preference: {0}"),
-                exception.Message);
+            BrowserSettingsStatus = Ref("settings.apps.browser.link_open_target_save_failed", "Could not save the link opening preference: {0}", exception.Message);
         }
         finally { IsSavingBrowserSettings = false; }
     }
@@ -233,7 +230,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
     private async Task LoadBrowserSettingsAsync()
     {
         IsBrowserSettingsLoading = true;
-        BrowserSettingsStatus = string.Empty;
+        BrowserSettingsStatus = default;
         try
         {
             var settings = await _browserClient.GetSettingsAsync();
@@ -245,10 +242,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
         catch (Exception exception)
         {
             if (IsBrowserSettingsVisible)
-                BrowserSettingsStatus = string.Format(
-                    CultureInfo.CurrentCulture,
-                    T("settings.apps.browser.link_open_target_load_failed", "Could not load the link opening preference: {0}"),
-                    exception.Message);
+                BrowserSettingsStatus = Ref("settings.apps.browser.link_open_target_load_failed", "Could not load the link opening preference: {0}", exception.Message);
         }
         finally { IsBrowserSettingsLoading = false; }
     }
@@ -280,14 +274,14 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
 
     partial void OnIsClearingDataChanged(bool value) => OnPropertyChanged(nameof(CanUninstallSelectedApp));
 
-    partial void OnActionStatusChanged(string value) => OnPropertyChanged(nameof(HasActionStatus));
+    partial void OnActionStatusChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasActionStatus));
     partial void OnSelectedAppIconImageChanged(IImage? value) => OnPropertyChanged(nameof(HasSelectedAppIconImage));
     partial void OnBrowserLinkOpenTargetChanged(BrowserLinkOpenTarget value)
     {
         OnPropertyChanged(nameof(OpenBrowserLinksInBuiltInBrowser));
         OnPropertyChanged(nameof(OpenBrowserLinksOnHost));
     }
-    partial void OnBrowserSettingsStatusChanged(string value) => OnPropertyChanged(nameof(HasBrowserSettingsStatus));
+    partial void OnBrowserSettingsStatusChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasBrowserSettingsStatus));
 
     private ApplicationInfo Localize(ApplicationInfo app)
     {

@@ -13,7 +13,7 @@ namespace RelaxKonOS.Client.Apps.Certificates;
 /// Window-local certificate manager state. Long-running operations are tracked by id and polled
 /// to a terminal state; private keys and ACME account material never leave the server.
 /// </summary>
-public sealed partial class CertificateManagerViewModel : ObservableObject
+public sealed partial class CertificateManagerViewModel : LocalizedObservableObject
 {
     private readonly IRemoteCertificateClient _client;
     private readonly IAuthSession _session;
@@ -47,9 +47,9 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
 
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(DeployCommand), nameof(RenewCommand), nameof(RevokeCommand), nameof(DeleteCommand))]
     private CertificateDto? _selectedCertificate;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("certificates.status.loading");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("certificates.status.loading");
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasOperationActivity))]
-    private string _operationText = string.Empty;
+    private LocalizedStatus _operationText;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(PreflightCommand), nameof(RequestCommand))]
     private bool _isLoading;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(PreflightCommand), nameof(RequestCommand), nameof(DeployCommand), nameof(RenewCommand), nameof(RevokeCommand), nameof(DeleteCommand), nameof(CancelOperationCommand))]
@@ -63,7 +63,7 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
     [ObservableProperty] private string _selfSignedDomains = string.Empty;
     [ObservableProperty] private int _selfSignedValidityDays = 365;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasPreflightResult))]
-    private string _preflightText = string.Empty;
+    private LocalizedStatus _preflightText;
 
     public bool IsRoot => string.Equals(_session.CurrentUser?.Username, "root", StringComparison.Ordinal);
     public bool HasOperationActivity => !string.IsNullOrWhiteSpace(OperationText);
@@ -78,7 +78,7 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
         {
             Certificates.Clear();
             SelectedCertificate = null;
-            StatusText = LocalizedText.Get("certificates.permission.read_required");
+            StatusText = LocalizedText.Ref("certificates.permission.read_required");
             return;
         }
 
@@ -89,13 +89,13 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
             Certificates.Clear();
             SelectedCertificate = null;
             foreach (var certificate in certificates) Certificates.Add(certificate);
-            StatusText = LocalizedText.Format("certificates.status.ready", certificates.Count);
+            StatusText = LocalizedText.Ref("certificates.status.ready", certificates.Count);
         }
         catch (Exception)
         {
             Certificates.Clear();
             SelectedCertificate = null;
-            StatusText = LocalizedText.Format("certificates.status.failed", LocalizedText.Get("certificates.error.request_failed"));
+            StatusText = LocalizedText.Ref("certificates.status.failed", LocalizedText.Get("certificates.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -106,11 +106,11 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
         if (!TryParseDomains(out var domains)) return;
         if (SelectedChallengeType is not { } challengeType)
         {
-            PreflightText = LocalizedText.Get("certificates.validation.challenge_required");
+            PreflightText = LocalizedText.Ref("certificates.validation.challenge_required");
             return;
         }
         IsLoading = true;
-        PreflightText = LocalizedText.Get("certificates.preflight.running");
+        PreflightText = LocalizedText.Ref("certificates.preflight.running");
         try
         {
             var result = await _client.PreflightAsync(new CertificatePreflightRequest(domains, challengeType.Value));
@@ -118,11 +118,11 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
         }
         catch (CertificateApiException exception)
         {
-            PreflightText = LocalizedText.Format("certificates.preflight.failed", ProblemText(exception.ProblemCode));
+            PreflightText = LocalizedText.Ref("certificates.preflight.failed", ProblemText(exception.ProblemCode));
         }
         catch (Exception)
         {
-            PreflightText = LocalizedText.Format("certificates.preflight.failed", LocalizedText.Get("certificates.error.request_failed"));
+            PreflightText = LocalizedText.Ref("certificates.preflight.failed", LocalizedText.Get("certificates.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -136,22 +136,22 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
         if (!TryParseDomains(out var domains)) return false;
         if (SelectedChallengeType is not { } challengeType)
         {
-            StatusText = LocalizedText.Get("certificates.validation.challenge_required");
+            StatusText = LocalizedText.Ref("certificates.validation.challenge_required");
             return false;
         }
         if (SelectedKeyAlgorithm is not { } keyAlgorithm)
         {
-            StatusText = LocalizedText.Get("certificates.validation.key_algorithm_required");
+            StatusText = LocalizedText.Ref("certificates.validation.key_algorithm_required");
             return false;
         }
         if (!AcceptedTerms)
         {
-            StatusText = LocalizedText.Get("certificates.validation.terms_required");
+            StatusText = LocalizedText.Ref("certificates.validation.terms_required");
             return false;
         }
         if (string.IsNullOrWhiteSpace(ContactEmail))
         {
-            StatusText = LocalizedText.Get("certificates.validation.email_required");
+            StatusText = LocalizedText.Ref("certificates.validation.email_required");
             return false;
         }
 
@@ -176,17 +176,17 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
             .Where(domain => domain.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (parsed.Length == 0)
         {
-            StatusText = LocalizedText.Get("certificates.validation.domains_required");
+            StatusText = LocalizedText.Ref("certificates.validation.domains_required");
             return false;
         }
         if (SelectedKeyAlgorithm is not { } keyAlgorithm)
         {
-            StatusText = LocalizedText.Get("certificates.validation.key_algorithm_required");
+            StatusText = LocalizedText.Ref("certificates.validation.key_algorithm_required");
             return false;
         }
         if (SelfSignedValidityDays is < 1 or > 825)
         {
-            StatusText = LocalizedText.Get("certificates.validation.validity_days_invalid");
+            StatusText = LocalizedText.Ref("certificates.validation.validity_days_invalid");
             return false;
         }
         return await RunOperationAsync(
@@ -244,7 +244,7 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
     {
         if (!HasManagePermission)
         {
-            StatusText = LocalizedText.Get("certificates.permission.manage_required");
+            StatusText = LocalizedText.Ref("certificates.permission.manage_required");
             return false;
         }
 
@@ -252,48 +252,48 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
         _operationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = _operationCts.Token;
         IsOperationRunning = true;
-        OperationText = LocalizedText.Format("certificates.operation.starting", label);
+        OperationText = LocalizedText.Ref("certificates.operation.starting", label);
         try
         {
             var operation = await start(token);
             if (operation is null)
             {
-                OperationText = LocalizedText.Get("certificates.operation.not_found");
+                OperationText = LocalizedText.Ref("certificates.operation.not_found");
                 return false;
             }
             if (operation.OperationId == Guid.Empty)
             {
-                OperationText = LocalizedText.Format("certificates.operation.rejected", ProblemText(operation.ProblemCode));
+                OperationText = LocalizedText.Ref("certificates.operation.rejected", ProblemText(operation.ProblemCode));
                 return false;
             }
             _activeOperationId = operation.OperationId;
             operation = await PollOperationAsync(operation, token);
             if (operation.State == CertificateOperationState.Succeeded)
             {
-                OperationText = LocalizedText.Format("certificates.operation.succeeded", label);
+                OperationText = LocalizedText.Ref("certificates.operation.succeeded", label);
                 if (onSuccess is not null) await onSuccess(operation);
                 await RefreshAsync();
                 return true;
             }
             else if (operation.State == CertificateOperationState.Cancelled)
-                OperationText = LocalizedText.Get("certificates.operation.cancelled");
+                OperationText = LocalizedText.Ref("certificates.operation.cancelled");
             else
-                OperationText = LocalizedText.Format("certificates.operation.failed", label, ProblemText(operation.ProblemCode));
+                OperationText = LocalizedText.Ref("certificates.operation.failed", label, ProblemText(operation.ProblemCode));
             return false;
         }
         catch (OperationCanceledException)
         {
-            OperationText = LocalizedText.Get("certificates.operation.cancelled");
+            OperationText = LocalizedText.Ref("certificates.operation.cancelled");
             return false;
         }
         catch (CertificateApiException exception)
         {
-            OperationText = LocalizedText.Format("certificates.operation.failed", label, ProblemText(exception.ProblemCode));
+            OperationText = LocalizedText.Ref("certificates.operation.failed", label, ProblemText(exception.ProblemCode));
             return false;
         }
         catch (Exception)
         {
-            OperationText = LocalizedText.Format("certificates.operation.exception", label, LocalizedText.Get("certificates.error.request_failed"));
+            OperationText = LocalizedText.Ref("certificates.operation.exception", label, LocalizedText.Get("certificates.error.request_failed"));
             return false;
         }
         finally
@@ -309,7 +309,7 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
     {
         while (operation.State is CertificateOperationState.Queued or CertificateOperationState.Running)
         {
-            OperationText = LocalizedText.Format("certificates.operation.progress", OperationName(operation.Kind), OperationStage(operation.Stage));
+            OperationText = LocalizedText.Ref("certificates.operation.progress", OperationName(operation.Kind), OperationStage(operation.Stage));
             await Task.Delay(PollInterval, cancellationToken);
             var updated = await _client.GetOperationAsync(operation.OperationId, cancellationToken);
             if (updated is null) break;
@@ -338,7 +338,7 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
             .ToArray();
         if (parsed.Length == 0)
         {
-            StatusText = LocalizedText.Get("certificates.validation.domains_required");
+            StatusText = LocalizedText.Ref("certificates.validation.domains_required");
             domains = Array.Empty<string>();
             return false;
         }
@@ -346,23 +346,27 @@ public sealed partial class CertificateManagerViewModel : ObservableObject
         return true;
     }
 
-    private static string FormatPreflight(CertificatePreflightResultDto result)
+    /// <summary>
+    /// Composes the multi-line preflight report as a decomposable value rather than one resolved
+    /// string, so the whole block re-localizes when the display language changes.
+    /// </summary>
+    private static LocalizedStatus FormatPreflight(CertificatePreflightResultDto result)
     {
         if (!result.CanProceed)
-            return LocalizedText.Format("certificates.preflight.cannot_proceed", ProblemText(result.ProblemCode));
-        var lines = new List<string> { LocalizedText.Get("certificates.preflight.can_proceed") };
+            return LocalizedText.Ref("certificates.preflight.cannot_proceed", ProblemText(result.ProblemCode));
+        var lines = new List<LocalizedStatus> { LocalizedText.Ref("certificates.preflight.can_proceed") };
         if (result.Port80Available is { } port80)
-            lines.Add(LocalizedText.Get(port80 ? "certificates.preflight.port80_available" : "certificates.preflight.port80_unavailable"));
+            lines.Add(LocalizedText.Ref(port80 ? "certificates.preflight.port80_available" : "certificates.preflight.port80_unavailable"));
         if (result.RequiresAdministrator)
-            lines.Add(LocalizedText.Get("certificates.preflight.requires_admin"));
+            lines.Add(LocalizedText.Ref("certificates.preflight.requires_admin"));
         foreach (var domain in result.Domains ?? [])
         {
             if (!string.IsNullOrEmpty(domain.ProblemCode))
-                lines.Add(LocalizedText.Format("certificates.preflight.domain_problem", domain.Domain, ProblemText(domain.ProblemCode)));
+                lines.Add(LocalizedText.Ref("certificates.preflight.domain_problem", domain.Domain, ProblemText(domain.ProblemCode)));
         }
         if (result.RequiresPublicReachabilityConfirmation)
-            lines.Add(LocalizedText.Get("certificates.preflight.confirm_reachability"));
-        return string.Join('\n', lines);
+            lines.Add(LocalizedText.Ref("certificates.preflight.confirm_reachability"));
+        return LocalizedStatus.Join("\n", lines);
     }
 
     private bool HasReadPermission => _permissions.IsGranted(AppPermissions.ServerCertificatesRead);

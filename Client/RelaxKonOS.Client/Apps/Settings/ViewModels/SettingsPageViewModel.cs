@@ -1,3 +1,4 @@
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,6 +56,30 @@ public abstract class SettingsPageViewModel : ObservableObject
 
     protected string T(string key, string englishFallback) =>
         App.Services.GetRequiredService<LocalizationService>().Get(key, englishFallback);
+
+    /// <summary>
+    /// Captures a resource key for a field that must follow the display language. Prefer this over
+    /// <see cref="T"/> when the value is stored rather than rendered immediately.
+    /// </summary>
+    protected static LocalizedStatus Ref(string key) => LocalizedText.Ref(key);
+
+    /// <summary>Captures a resource key with an English source fallback and optional format arguments.</summary>
+    protected static LocalizedStatus Ref(string key, string englishFallback, params object?[] arguments) =>
+        LocalizedText.Ref(key, englishFallback, arguments);
+
+    /// <summary>Captures a resource key with a single format argument for a stored value.</summary>
+    protected static LocalizedStatus Ref(string key, object? argument) => LocalizedText.Ref(key, argument);
+
+    /// <summary>Captures a resource key with two format arguments for a stored value.</summary>
+    protected static LocalizedStatus Ref(string key, object? first, object? second) =>
+        LocalizedText.Ref(key, first, second);
+
+    /// <summary>Captures a resource key with three format arguments for a stored value.</summary>
+    protected static LocalizedStatus Ref(string key, object? first, object? second, object? third) =>
+        LocalizedText.Ref(key, first, second, third);
+
+    /// <summary>Captures a resource key with an arbitrary argument list for a stored value.</summary>
+    protected static LocalizedStatus Ref(string key, params object?[] arguments) => LocalizedText.Ref(key, arguments);
 
     /// <summary>触发根 VM 的防抖保存。仅用户编辑路径调用。</summary>
     protected void Save() => _save?.Invoke();

@@ -1,4 +1,4 @@
-using RelaxKonOS.Client.Apps.Explorer;
+﻿using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -25,7 +25,7 @@ public sealed partial class NotepadViewModel : ObservableObject
     [ObservableProperty] private string _defaultEncodingName = "UTF-8";
     [ObservableProperty] private double _fontSize = 14;
     [ObservableProperty] private bool _isDirty;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("notepad.status.ready");
+    [ObservableProperty] private LocalizedStatus _statusText;
 
     public int CharCount => Text.Length;
     public int LineCount => string.IsNullOrEmpty(Text) ? 1 : Enumerable.Count<char>(Text, c => c == '\n') + 1;
@@ -65,7 +65,7 @@ public sealed partial class NotepadViewModel : ObservableObject
         CurrentPath = null;
         EncodingName = DefaultEncodingName;
         IsDirty = false;
-        StatusText = LocalizedText.Get("notepad.status.new_document");
+        StatusText = LocalizedText.Ref("notepad.status.new_document");
         _isLoading = false;
     }
 
@@ -140,34 +140,34 @@ public sealed partial class NotepadViewModel : ObservableObject
 
     public async Task OpenPathAsync(string path, string? requestedEncoding = null)
     {
-        if (_files is null) { StatusText = LocalizedText.Get("notepad.status.connect_before_open"); return; }
+        if (_files is null) { StatusText = LocalizedText.Ref("notepad.status.connect_before_open"); return; }
         try
         {
             var bytes = await _files.ReadFileAsync(path);
-            if (bytes is null) { StatusText = LocalizedText.Get("notepad.status.file_missing"); return; }
+            if (bytes is null) { StatusText = LocalizedText.Ref("notepad.status.file_missing"); return; }
             var encoding = requestedEncoding ?? DefaultEncodingName;
             _isLoading = true;
             Text = TextFileEncodings.Decode(bytes, encoding);
             EncodingName = encoding;
             CurrentPath = path;
             IsDirty = false;
-            StatusText = LocalizedText.Format("notepad.status.opened", Path.GetFileName(path), encoding);
+            StatusText = LocalizedText.Ref("notepad.status.opened", Path.GetFileName(path), encoding);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("notepad.status.open_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("notepad.status.open_failed", ex.Message); }
         finally { _isLoading = false; }
     }
 
     private async Task SaveToPathAsync(string path)
     {
-        if (_files is null) { StatusText = LocalizedText.Get("notepad.status.connect_before_save"); return; }
+        if (_files is null) { StatusText = LocalizedText.Ref("notepad.status.connect_before_save"); return; }
         try
         {
             await _files.WriteFileAsync(path, TextFileEncodings.Encode(Text, EncodingName));
             CurrentPath = path;
             IsDirty = false;
-            StatusText = LocalizedText.Format("notepad.status.saved", Path.GetFileName(path), EncodingName);
+            StatusText = LocalizedText.Ref("notepad.status.saved", Path.GetFileName(path), EncodingName);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("notepad.status.save_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("notepad.status.save_failed", ex.Message); }
     }
 
 }

@@ -11,18 +11,18 @@ using RelaxKonOS.Protocol.ProcessGuardian;
 namespace RelaxKonOS.Client.Apps.ProcessGuardian;
 
 /// <summary>Owns a non-modal, automatically reconnecting live log viewer for one workload.</summary>
-public sealed partial class GuardianLogWindowViewModel(IAuthSession session, GuardianWorkloadDto workload) : ObservableObject, IAsyncDisposable
+public sealed partial class GuardianLogWindowViewModel(IAuthSession session, GuardianWorkloadDto workload) : LocalizedObservableObject, IAsyncDisposable
 {
     private HubConnection? _connection;
     public ObservableCollection<string> Lines { get; } = [];
     public string Title => LocalizedText.Format("guardian.logs.title", workload.Name);
-    [ObservableProperty] private string _statusText = LocalizedText.Get("guardian.logs.connecting");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("guardian.logs.connecting");
 
     public async Task StartAsync()
     {
         if (session.ServerUrl is null || session.Tokens is null)
         {
-            StatusText = LocalizedText.Get("guardian.logs.disconnected");
+            StatusText = LocalizedText.Ref("guardian.logs.disconnected");
             return;
         }
 
@@ -36,8 +36,8 @@ public sealed partial class GuardianLogWindowViewModel(IAuthSession session, Gua
         connection.Closed += error =>
         {
             Dispatcher.UIThread.Post(() => StatusText = error is null
-                ? LocalizedText.Get("guardian.logs.disconnected")
-                : LocalizedText.Format("guardian.logs.failed", error.Message));
+                ? LocalizedText.Ref("guardian.logs.disconnected")
+                : LocalizedText.Ref("guardian.logs.failed", error.Message));
             return Task.CompletedTask;
         };
 
@@ -45,11 +45,11 @@ public sealed partial class GuardianLogWindowViewModel(IAuthSession session, Gua
         {
             await connection.StartAsync();
             await SubscribeAsync(connection);
-            StatusText = LocalizedText.Get("guardian.logs.live");
+            StatusText = LocalizedText.Ref("guardian.logs.live");
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Format("guardian.logs.failed", exception.Message);
+            StatusText = LocalizedText.Ref("guardian.logs.failed", exception.Message);
         }
     }
 

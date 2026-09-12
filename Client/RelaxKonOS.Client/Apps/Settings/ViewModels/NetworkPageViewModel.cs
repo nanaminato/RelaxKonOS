@@ -28,8 +28,6 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         _remote = remote;
         _system = system;
         ServerAddresses = new ObservableCollection<NetworkAddressDto>();
-        LatencyText = T("settings.network.not_tested", "Not tested");
-        ServerAddressesStatus = T("settings.network.not_loaded", "Server addresses have not been loaded.");
     }
 
     public override string Route => "network";
@@ -49,9 +47,40 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
     public bool IsConnected => _session.State == AuthSessionState.Authenticated;
     public ObservableCollection<NetworkAddressDto> ServerAddresses { get; }
 
-    [ObservableProperty] private string _latencyText = string.Empty;
+    /// <summary>Latency measurement state. The displayed text is derived so it re-localizes on a language switch.</summary>
+    private enum LatencyState { NotTested, CannotTest, Testing, Measured, Failed }
+
+    private LatencyState _latencyState = LatencyState.NotTested;
+    private long _latencyMilliseconds;
+    private string? _latencyFailure;
+
+    /// <summary>Server address loading state. The displayed text is derived so it re-localizes on a language switch.</summary>
+    private enum AddressesState { NotLoaded, NotConnected, Loading, Empty, Loaded, Failed }
+
+    private AddressesState _addressesState = AddressesState.NotLoaded;
+    private int _addressCount;
+    private string? _addressesFailure;
+
+    public string LatencyText => _latencyState switch
+    {
+        LatencyState.CannotTest => T("settings.network.cannot_test", "Not connected; unable to test."),
+        LatencyState.Testing => T("settings.network.testing", "Testing…"),
+        LatencyState.Measured => $"{_latencyMilliseconds} ms",
+        LatencyState.Failed => string.Format(T("settings.network.test_failed", "Failed: {0}"), _latencyFailure),
+        _ => T("settings.network.not_tested", "Not tested"),
+    };
+
+    public string ServerAddressesStatus => _addressesState switch
+    {
+        AddressesState.NotConnected => T("settings.network.not_connected", "Not connected to the server."),
+        AddressesState.Loading => T("settings.network.loading_addresses", "Loading server addresses…"),
+        AddressesState.Empty => T("settings.network.no_addresses", "No non-loopback IPv4 or IPv6 addresses were found."),
+        AddressesState.Loaded => string.Format(T("settings.network.addresses_found", "{0} server addresses found."), _addressCount),
+        AddressesState.Failed => string.Format(T("settings.network.addresses_failed", "Unable to get server addresses: {0}"), _addressesFailure),
+        _ => T("settings.network.not_loaded", "Server addresses have not been loaded."),
+    };
+
     [ObservableProperty] private bool _isTesting;
-    [ObservableProperty] private string _serverAddressesStatus = string.Empty;
     [ObservableProperty] private bool _isLoadingServerAddresses;
 
     public async Task LoadServerAddressesAsync()
@@ -59,30 +88,33 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         if (!IsConnected)
         {
             ServerAddresses.Clear();
-            ServerAddressesStatus = T("settings.network.not_connected", "Not connected to the server.");
+            _addressesState = AddressesState.NotConnected;
+            OnPropertyChanged(nameof(ServerAddressesStatus));
             return;
         }
 
         IsLoadingServerAddresses = true;
-        ServerAddressesStatus = T("settings.network.loading_addresses", "Loading server addresses…");
+        _addressesState = AddressesState.Loading;
+        OnPropertyChanged(nameof(ServerAddressesStatus));
         try
         {
             var addresses = await _system.GetNetworkAddressesAsync();
             ServerAddresses.Clear();
             foreach (var address in addresses)
                 ServerAddresses.Add(address);
-            ServerAddressesStatus = addresses.Count == 0
-                ? T("settings.network.no_addresses", "No non-loopback IPv4 or IPv6 addresses were found.")
-                : string.Format(T("settings.network.addresses_found", "{0} server addresses found."), addresses.Count);
+            _addressCount = addresses.Count;
+            _addressesState = addresses.Count == 0 ? AddressesState.Empty : AddressesState.Loaded;
         }
         catch (Exception ex)
         {
             ServerAddresses.Clear();
-            ServerAddressesStatus = string.Format(T("settings.network.addresses_failed", "Unable to get server addresses: {0}"), ex.Message);
+            _addressesFailure = ex.Message;
+            _addressesState = AddressesState.Failed;
         }
         finally
         {
             IsLoadingServerAddresses = false;
+            OnPropertyChanged(nameof(ServerAddressesStatus));
         }
     }
 
@@ -94,26 +126,31 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
     {
         if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens })
         {
-            LatencyText = T("settings.network.cannot_test", "Not connected; unable to test.");
+            _latencyState = LatencyState.CannotTest;
+            OnPropertyChanged(nameof(LatencyText));
             return;
         }
 
         IsTesting = true;
-        LatencyText = T("settings.network.testing", "Testing…");
+        _latencyState = LatencyState.Testing;
+        OnPropertyChanged(nameof(LatencyText));
         try
         {
             var sw = Stopwatch.StartNew();
             await _remote.GetMeAsync(url, tokens.AccessToken);
             sw.Stop();
-            LatencyText = $"{sw.ElapsedMilliseconds} ms";
+            _latencyMilliseconds = sw.ElapsedMilliseconds;
+            _latencyState = LatencyState.Measured;
         }
         catch (Exception ex)
         {
-            LatencyText = string.Format(T("settings.network.test_failed", "Failed: {0}"), ex.Message);
+            _latencyFailure = ex.Message;
+            _latencyState = LatencyState.Failed;
         }
         finally
         {
             IsTesting = false;
+            OnPropertyChanged(nameof(LatencyText));
         }
     }
 

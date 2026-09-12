@@ -9,7 +9,7 @@ using RelaxKonOS.Protocol.ProcessGuardian;
 
 namespace RelaxKonOS.Client.Apps.ProcessGuardian;
 
-public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient client, IAuthSession session) : ObservableObject
+public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient client, IAuthSession session) : LocalizedObservableObject
 {
     // The Guardian Agent accepts one local pipe connection at a time. Keep UI refreshes
     // serialized too, otherwise concurrent status/list requests can time out and replace
@@ -20,7 +20,7 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
     private bool _suppressSelectionDefinitionLoad;
     public ObservableCollection<GuardianWorkloadDto> Workloads { get; } = [];
     [ObservableProperty] private GuardianWorkloadDto? _selectedWorkload;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("guardian.status.loading");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("guardian.status.loading");
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private string _definitionId = string.Empty;
     [ObservableProperty] private string _definitionName = string.Empty;
@@ -51,18 +51,18 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
             var status = await client.GetStatusAsync();
             var workloads = await client.ListWorkloadsAsync();
             StatusText = status.IsInstalled
-                ? LocalizedText.Format("guardian.status.available", status.Version ?? "")
+                ? LocalizedText.Ref("guardian.status.available", status.Version ?? "")
                 : PrivilegedHelperProblemText.TryFormat(status.ProblemCode, out var helperMessage)
                     ? helperMessage
                     : status.ProblemCode is "guardian.agent_not_configured" or "guardian.agent_not_installed"
-                    ? LocalizedText.Get("guardian.status.install_required")
-                    : LocalizedText.Format("guardian.status.unavailable", status.ProblemCode);
+                    ? LocalizedText.Ref("guardian.status.install_required")
+                    : LocalizedText.Ref("guardian.status.unavailable", status.ProblemCode);
             if (!status.IsInstalled) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(status.ProblemCode);
             Workloads.Clear(); foreach (var workload in workloads) Workloads.Add(workload);
         }
         catch (Exception exception)
         {
-            StatusText = LocalizedText.Format("guardian.status.failed", exception.Message);
+            StatusText = LocalizedText.Ref("guardian.status.failed", exception.Message);
         }
         finally
         {
@@ -89,7 +89,7 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
 
         if (!await LoadDefinitionAsync(workload.Id))
         {
-            StatusText = LocalizedText.Get("guardian.definition_load_failed");
+            StatusText = LocalizedText.Ref("guardian.definition_load_failed");
             return;
         }
         await (ShowEditorAsync?.Invoke(true) ?? Task.CompletedTask);
@@ -104,11 +104,11 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
         try
         {
             var result = await client.DeleteAsync(workload.Id);
-            StatusText = result.Success ? LocalizedText.Format("guardian.delete.succeeded", workload.Name) : LocalizedText.Format("guardian.delete.failed", ProblemText(result.ProblemCode));
+            StatusText = result.Success ? LocalizedText.Ref("guardian.delete.succeeded", workload.Name) : LocalizedText.Ref("guardian.delete.failed", ProblemText(result.ProblemCode));
             if (!result.Success) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
             if (result.Success) ClearDefinition();
         }
-        catch (Exception exception) { StatusText = LocalizedText.Format("guardian.delete.failed", exception.Message); }
+        catch (Exception exception) { StatusText = LocalizedText.Ref("guardian.delete.failed", exception.Message); }
         finally { IsLoading = false; }
         await RefreshAsync();
     }
@@ -131,10 +131,10 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
         try
         {
             var result = await client.ApplyActionAsync(workload.Id, action);
-            StatusText = result.Success ? LocalizedText.Format("guardian.action.succeeded", action, workload.Name) : LocalizedText.Format("guardian.action.failed", action, ProblemText(result.ProblemCode));
+            StatusText = result.Success ? LocalizedText.Ref("guardian.action.succeeded", action, workload.Name) : LocalizedText.Ref("guardian.action.failed", action, ProblemText(result.ProblemCode));
             if (!result.Success) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
         }
-        catch (Exception exception) { StatusText = LocalizedText.Format("guardian.action.failed", action, exception.Message); }
+        catch (Exception exception) { StatusText = LocalizedText.Ref("guardian.action.failed", action, exception.Message); }
         finally { IsLoading = false; }
         await RefreshAsync();
     }
@@ -144,7 +144,7 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
     {
         if (string.IsNullOrWhiteSpace(DefinitionName) || string.IsNullOrWhiteSpace(ExecutablePath) || string.IsNullOrWhiteSpace(WorkingDirectory) || string.IsNullOrWhiteSpace(RunAs))
         {
-            StatusText = LocalizedText.Get("guardian.validation.required");
+            StatusText = LocalizedText.Ref("guardian.validation.required");
             return;
         }
         var saved = false;
@@ -160,11 +160,11 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
             var arguments = ArgumentsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var definition = new ProcessDefinitionDto(DefinitionId.Trim(), DefinitionName.Trim(), ExecutablePath.Trim(), arguments, WorkingDirectory.Trim(), EnabledOnBoot, RunAs: RunAs.Trim());
             var result = await client.UpsertAsync(new UpsertGuardianWorkloadRequest(definition, approval));
-            StatusText = result.Success ? LocalizedText.Format("guardian.create.succeeded", DefinitionName) : LocalizedText.Format("guardian.create.failed", ProblemText(result.ProblemCode));
+            StatusText = result.Success ? LocalizedText.Ref("guardian.create.succeeded", DefinitionName) : LocalizedText.Ref("guardian.create.failed", ProblemText(result.ProblemCode));
             if (!result.Success) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
             saved = result.Success;
         }
-        catch (Exception exception) { StatusText = LocalizedText.Format("guardian.create.failed", exception.Message); }
+        catch (Exception exception) { StatusText = LocalizedText.Ref("guardian.create.failed", exception.Message); }
         finally
         {
             IsLoading = false;

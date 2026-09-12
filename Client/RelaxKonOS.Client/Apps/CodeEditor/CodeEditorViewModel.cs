@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.TextEditor;
 using RelaxKonOS.Client.Localization;
@@ -35,7 +35,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
     [ObservableProperty] private double _fontSize = 14;
     [ObservableProperty] private bool _wordWrap;
     [ObservableProperty] private bool _isDirty;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("code_editor.status.ready");
+    [ObservableProperty] private LocalizedStatus _statusText;
     [ObservableProperty] private CodeEditorDocument? _activeDocument;
     [ObservableProperty] private CodeEditorFolderNode? _selectedFolderNode;
     [ObservableProperty] private string _activeSidebar = "explorer";
@@ -143,7 +143,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
             LocalizedText.Format("code_editor.document.untitled_number", ++_untitledSequence));
         OpenDocuments.Add(document);
         ActiveDocument = document;
-        StatusText = LocalizedText.Get("code_editor.status.new_document");
+        StatusText = LocalizedText.Ref("code_editor.status.new_document");
     }
 
     [RelayCommand]
@@ -176,7 +176,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         if (root is null) return;
         WorkspaceRoots.Remove(root);
         if (ReferenceEquals(SelectedFolderNode, node) || ReferenceEquals(root, node)) SelectedFolderNode = null;
-        StatusText = LocalizedText.Format("code_editor.status.folder_removed", root.Name);
+        StatusText = LocalizedText.Ref("code_editor.status.folder_removed", root.Name);
     }
 
     [RelayCommand]
@@ -248,10 +248,10 @@ public sealed partial class CodeEditorViewModel : ObservableObject
 
     public async Task AddWorkspaceRootAsync(string path)
     {
-        if (_files is null) { StatusText = LocalizedText.Get("code_editor.status.connect_before_open"); return; }
+        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_open"); return; }
         if (WorkspaceRoots.Any(root => PathEquals(root.Path, path)))
         {
-            StatusText = LocalizedText.Format("code_editor.status.folder_already_open", path);
+            StatusText = LocalizedText.Ref("code_editor.status.folder_already_open", path);
             return;
         }
         var root = CreateFolderNode(FolderName(path), path, true);
@@ -263,7 +263,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
 
     public async Task OpenPathAsync(string path, bool forceReload = false, bool allowDiscardDirty = false)
     {
-        if (_files is null) { StatusText = LocalizedText.Get("code_editor.status.connect_before_open"); return; }
+        if (_files is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_open"); return; }
         var existing = OpenDocuments.FirstOrDefault(document => !string.IsNullOrWhiteSpace(document.Path) && PathEquals(document.Path, path));
         if (existing is not null && !forceReload)
         {
@@ -272,13 +272,13 @@ public sealed partial class CodeEditorViewModel : ObservableObject
         }
         if (existing is not null && existing.IsDirty && !allowDiscardDirty)
         {
-            StatusText = LocalizedText.Get("code_editor.status.save_or_discard");
+            StatusText = LocalizedText.Ref("code_editor.status.save_or_discard");
             return;
         }
         try
         {
             var bytes = await _files.ReadFileAsync(path);
-            if (bytes is null) { StatusText = LocalizedText.Get("code_editor.status.file_missing"); return; }
+            if (bytes is null) { StatusText = LocalizedText.Ref("code_editor.status.file_missing"); return; }
             var encoding = existing?.EncodingName ?? DefaultEncodingName;
             var text = TextFileEncodings.Decode(bytes, encoding);
             if (existing is null)
@@ -294,9 +294,9 @@ public sealed partial class CodeEditorViewModel : ObservableObject
                 existing.IsDirty = false;
             }
             ActivateDocument(existing);
-            StatusText = LocalizedText.Format("code_editor.status.opened", Path.GetFileName(path), encoding);
+            StatusText = LocalizedText.Ref("code_editor.status.opened", Path.GetFileName(path), encoding);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("code_editor.status.open_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("code_editor.status.open_failed", ex.Message); }
     }
 
     private async Task LoadFolderAsync(CodeEditorFolderNode node, bool force)
@@ -312,11 +312,11 @@ public sealed partial class CodeEditorViewModel : ObservableObject
             foreach (var file in directory.Files)
                 node.Children.Add(new CodeEditorFolderNode(file.Name, file.Path, false));
             node.IsLoaded = true;
-            StatusText = LocalizedText.Format("code_editor.status.folder_loaded", directory.Name);
+            StatusText = LocalizedText.Ref("code_editor.status.folder_loaded", directory.Name);
         }
         catch (Exception ex)
         {
-            StatusText = LocalizedText.Format("code_editor.status.folder_load_failed", node.Path, ex.Message);
+            StatusText = LocalizedText.Ref("code_editor.status.folder_load_failed", node.Path, ex.Message);
         }
         finally { node.IsLoading = false; }
     }
@@ -330,7 +330,7 @@ public sealed partial class CodeEditorViewModel : ObservableObject
 
     private async Task SaveToPathAsync(string path)
     {
-        if (_files is null || ActiveDocument is null) { StatusText = LocalizedText.Get("code_editor.status.connect_before_save"); return; }
+        if (_files is null || ActiveDocument is null) { StatusText = LocalizedText.Ref("code_editor.status.connect_before_save"); return; }
         try
         {
             await _files.WriteFileAsync(path, TextFileEncodings.Encode(Text, EncodingName));
@@ -340,9 +340,9 @@ public sealed partial class CodeEditorViewModel : ObservableObject
             CurrentPath = path;
             IsDirty = false;
             OnPropertyChanged(nameof(DocumentName));
-            StatusText = LocalizedText.Format("code_editor.status.saved", Path.GetFileName(path), EncodingName);
+            StatusText = LocalizedText.Ref("code_editor.status.saved", Path.GetFileName(path), EncodingName);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("code_editor.status.save_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("code_editor.status.save_failed", ex.Message); }
     }
 
     private static bool IsAncestor(CodeEditorFolderNode root, CodeEditorFolderNode node)

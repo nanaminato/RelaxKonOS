@@ -9,7 +9,7 @@ using RelaxKonOS.Protocol.SystemMonitor;
 namespace RelaxKonOS.Client.Apps.TaskManager.ViewModels;
 
 /// <summary>性能数据来自服务端统一采样器；进程列表独立查询。</summary>
-public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class TaskManagerViewModel : LocalizedObservableObject, IAsyncDisposable
 {
     private readonly ITaskManagerClient _client;
     private readonly PerformanceStream _stream;
@@ -41,8 +41,8 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
     [ObservableProperty] private PerformanceResourceItem? _selectedPerformanceItem;
     [ObservableProperty] private bool _isAutoRefresh = true;
     [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private string _statusText = LocalizedText.Get("task_manager.status.collecting");
-    [ObservableProperty] private string _connectionStatus = "正在初始化性能采样…";
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("task_manager.status.collecting");
+    [ObservableProperty] private LocalizedStatus _connectionStatus = LocalizedText.Ref("task_manager.connection.initializing");
     [ObservableProperty] private string _killFeedback = string.Empty;
     [ObservableProperty] private TaskManagerTab _activeTab = TaskManagerTab.Performance;
     [ObservableProperty] private string _processFilter = string.Empty;
@@ -51,11 +51,11 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
     public async Task StartAsync()
     {
         await RefreshPerformanceAsync();
-        try { await _stream.StartAsync(); ConnectionStatus = "实时连接"; }
+        try { await _stream.StartAsync(); ConnectionStatus = LocalizedText.Ref("task_manager.connection.live"); }
         catch (Exception ex)
         {
-            ConnectionStatus = "实时连接不可用，已使用快照";
-            StatusText = LocalizedText.Format("task_manager.status.collect_failed", ex.Message);
+            ConnectionStatus = LocalizedText.Ref("task_manager.connection.snapshot");
+            StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message);
         }
     }
 
@@ -131,15 +131,15 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
             if (history.Count == 0)
             {
                 try { ApplySnapshot(await _client.GetPerformanceSnapshotAsync(), true); }
-                catch { ConnectionStatus = "等待首个有效样本"; }
+                catch { ConnectionStatus = LocalizedText.Ref("task_manager.connection.awaiting_sample"); }
             }
             else ReplaceHistory(history);
-            if (ConnectionStatus != "实时连接") ConnectionStatus = "快照已更新";
+            if (ConnectionStatus != LocalizedText.Ref("task_manager.connection.live")) ConnectionStatus = LocalizedText.Ref("task_manager.connection.snapshot_updated");
         }
         catch (Exception ex)
         {
-            ConnectionStatus = "性能数据不可用";
-            StatusText = LocalizedText.Format("task_manager.status.collect_failed", ex.Message);
+            ConnectionStatus = LocalizedText.Ref("task_manager.connection.unavailable");
+            StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message);
         }
     }
 
@@ -153,15 +153,15 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
             ProcessTotalCount = page.TotalCount;
             _allProcesses = page.Items.ToList();
             RebuildFilteredProcesses(SelectedProcess);
-            StatusText = LocalizedText.Format("task_manager.status.updated", page.SampledAt.LocalDateTime, Snapshot?.Cpu.TotalPercent ?? 0, page.TotalCount);
+            StatusText = LocalizedText.Ref("task_manager.status.updated", page.SampledAt.LocalDateTime, Snapshot?.Cpu.TotalPercent ?? 0, page.TotalCount);
         }
-        catch (Exception ex) { StatusText = LocalizedText.Format("task_manager.status.collect_failed", ex.Message); }
+        catch (Exception ex) { StatusText = LocalizedText.Ref("task_manager.status.collect_failed", ex.Message); }
         finally { IsLoading = false; Interlocked.Exchange(ref _refreshingProcesses, 0); }
     }
 
     private void OnSnapshotReceived(PerformanceRealtimeSnapshotDto snapshot) => Dispatcher.UIThread.Post(() => ApplySnapshot(snapshot, false));
-    private void OnStreamReconnected() => Dispatcher.UIThread.Post(async () => { ConnectionStatus = "已重连，正在补齐历史"; await RefreshPerformanceAsync(); ConnectionStatus = "实时连接"; });
-    private void OnStreamDisconnected() => Dispatcher.UIThread.Post(() => ConnectionStatus = "实时连接已断开，保留最后快照");
+    private void OnStreamReconnected() => Dispatcher.UIThread.Post(async () => { ConnectionStatus = LocalizedText.Ref("task_manager.connection.backfilling"); await RefreshPerformanceAsync(); ConnectionStatus = LocalizedText.Ref("task_manager.connection.live"); });
+    private void OnStreamDisconnected() => Dispatcher.UIThread.Post(() => ConnectionStatus = LocalizedText.Ref("task_manager.connection.disconnected"));
 
     private void BuildPerformanceItems()
     {
@@ -170,10 +170,10 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
             : (SelectedPerformanceItem.Kind, SelectedPerformanceItem.Id);
         PerformanceItems.Clear();
         if (Info is null) return;
-        PerformanceItems.Add(new(PerformanceResourceKind.Cpu, "cpu", "CPU", Info.Cpu.Model ?? "处理器", Color.Parse("#0078D4")));
-        PerformanceItems.Add(new(PerformanceResourceKind.Memory, "memory", "内存", FormatBytes(Info.Memory.TotalBytes), Color.Parse("#8A2BE2")));
-        foreach (var disk in Info.Disks.OrderBy(DiskSortKey, StringComparer.OrdinalIgnoreCase)) PerformanceItems.Add(new(PerformanceResourceKind.Disk, disk.Id, DiskTitle(disk), disk.Model ?? "磁盘 I/O", Color.Parse("#A65E00")));
-        foreach (var network in Info.Networks) PerformanceItems.Add(new(PerformanceResourceKind.Network, network.Id, network.Name, "网络适配器", Color.Parse("#C45A00")));
+        PerformanceItems.Add(new(PerformanceResourceKind.Cpu, "cpu", "CPU", Info.Cpu.Model ?? LocalizedText.Get("task_manager.processor"), Color.Parse("#0078D4")));
+        PerformanceItems.Add(new(PerformanceResourceKind.Memory, "memory", LocalizedText.Get("task_manager.memory"), FormatBytes(Info.Memory.TotalBytes), Color.Parse("#8A2BE2")));
+        foreach (var disk in Info.Disks.OrderBy(DiskSortKey, StringComparer.OrdinalIgnoreCase)) PerformanceItems.Add(new(PerformanceResourceKind.Disk, disk.Id, DiskTitle(disk), disk.Model ?? LocalizedText.Get("task_manager.disk_io"), Color.Parse("#A65E00")));
+        foreach (var network in Info.Networks) PerformanceItems.Add(new(PerformanceResourceKind.Network, network.Id, network.Name, LocalizedText.Get("task_manager.network_adapter"), Color.Parse("#C45A00")));
         SelectedPerformanceItem = selected is null ? PerformanceItems.FirstOrDefault() : PerformanceItems.FirstOrDefault(x => x.Kind == selected.Value.Kind && x.Id == selected.Value.Id) ?? PerformanceItems.FirstOrDefault();
     }
 
@@ -191,7 +191,7 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
         _lastSequence = Math.Max(_lastSequence, snapshot.Sequence);
         Snapshot = snapshot;
         foreach (var item in PerformanceItems) UpdateItem(item, snapshot);
-        StatusText = LocalizedText.Format("task_manager.status.updated", snapshot.Timestamp.LocalDateTime, snapshot.Cpu.TotalPercent, ProcessTotalCount);
+        StatusText = LocalizedText.Ref("task_manager.status.updated", snapshot.Timestamp.LocalDateTime, snapshot.Cpu.TotalPercent, ProcessTotalCount);
     }
 
     private void UpdateItem(PerformanceResourceItem item, PerformanceRealtimeSnapshotDto snapshot)
@@ -201,37 +201,37 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
             case PerformanceResourceKind.Cpu:
                 var cpu = snapshot.Cpu;
                 item.Update(cpu.TotalPercent, 100, $"{cpu.TotalPercent:0}%", $"{cpu.TotalPercent:0}%  {FormatFrequency(cpu.CurrentFrequencyMHz)}",
-                    "利用率", $"{cpu.TotalPercent:0}%", "速度", FormatFrequency(cpu.CurrentFrequencyMHz),
-                    "进程", FormatCount(cpu.ProcessCount), "线程", FormatCount(cpu.ThreadCount));
+                    LocalizedText.Get("task_manager.metric.utilization"), $"{cpu.TotalPercent:0}%", LocalizedText.Get("task_manager.metric.speed"), FormatFrequency(cpu.CurrentFrequencyMHz),
+                    LocalizedText.Get("task_manager.metric.processes"), FormatCount(cpu.ProcessCount), LocalizedText.Get("task_manager.threads"), FormatCount(cpu.ThreadCount));
                 item.SetAdditionalDetails(
-                    ("句柄", FormatCount(cpu.HandleCount)),
-                    ("运行时间", FormatUptime(snapshot.UptimeSeconds)),
-                    ("基准速度", FormatFrequency(Info?.Cpu.BaseFrequencyMHz)),
-                    ("插槽", FormatCount(Info?.Cpu.SocketCount)),
-                    ("内核", FormatCount(Info?.Cpu.PhysicalCoreCount)),
-                    ("逻辑处理器", FormatCount(Info?.Cpu.LogicalProcessorCount)),
-                    ("虚拟化", FormatBoolean(Info?.Cpu.VirtualizationEnabled)),
-                    ("L1 缓存", FormatBytes(Info?.Cpu.L1CacheBytes)),
-                    ("L2 缓存", FormatBytes(Info?.Cpu.L2CacheBytes)),
-                    ("L3 缓存", FormatBytes(Info?.Cpu.L3CacheBytes)));
+                    (LocalizedText.Get("task_manager.metric.handles"), FormatCount(cpu.HandleCount)),
+                    (LocalizedText.Get("task_manager.metric.uptime"), FormatUptime(snapshot.UptimeSeconds)),
+                    (LocalizedText.Get("task_manager.metric.base_speed"), FormatFrequency(Info?.Cpu.BaseFrequencyMHz)),
+                    (LocalizedText.Get("task_manager.metric.sockets"), FormatCount(Info?.Cpu.SocketCount)),
+                    (LocalizedText.Get("task_manager.metric.cores"), FormatCount(Info?.Cpu.PhysicalCoreCount)),
+                    (LocalizedText.Get("task_manager.metric.logical_processors"), FormatCount(Info?.Cpu.LogicalProcessorCount)),
+                    (LocalizedText.Get("task_manager.metric.virtualization"), FormatBoolean(Info?.Cpu.VirtualizationEnabled)),
+                    (LocalizedText.Get("task_manager.metric.l1_cache"), FormatBytes(Info?.Cpu.L1CacheBytes)),
+                    (LocalizedText.Get("task_manager.metric.l2_cache"), FormatBytes(Info?.Cpu.L2CacheBytes)),
+                    (LocalizedText.Get("task_manager.metric.l3_cache"), FormatBytes(Info?.Cpu.L3CacheBytes)));
                 break;
             case PerformanceResourceKind.Memory:
                 var memory = snapshot.Memory;
                 var percent = memory.TotalBytes <= 0 ? 0 : memory.UsedBytes * 100d / memory.TotalBytes;
                 item.Update(percent, 100, $"{FormatBytes(memory.UsedBytes)} / {FormatBytes(memory.TotalBytes)}", $"{percent:0}%",
-                    "使用中", FormatBytes(memory.UsedBytes), "可用", FormatBytes(memory.AvailableBytes),
-                    "已缓存", FormatBytes(memory.CachedBytes), "交换空间", FormatBytes(memory.SwapUsedBytes));
+                    LocalizedText.Get("task_manager.metric.used"), FormatBytes(memory.UsedBytes), LocalizedText.Get("task_manager.metric.available"), FormatBytes(memory.AvailableBytes),
+                    LocalizedText.Get("task_manager.metric.cached"), FormatBytes(memory.CachedBytes), LocalizedText.Get("task_manager.metric.swap_used"), FormatBytes(memory.SwapUsedBytes));
                 item.SetAdditionalDetails(
-                    ("总内存", FormatBytes(memory.TotalBytes)),
-                    ("缓冲区", FormatBytes(memory.BufferedBytes)),
-                    ("交换总量", FormatBytes(memory.SwapTotalBytes)));
+                    (LocalizedText.Get("task_manager.metric.total_memory"), FormatBytes(memory.TotalBytes)),
+                    (LocalizedText.Get("task_manager.metric.buffers"), FormatBytes(memory.BufferedBytes)),
+                    (LocalizedText.Get("task_manager.metric.swap_total"), FormatBytes(memory.SwapTotalBytes)));
                 break;
             case PerformanceResourceKind.Disk:
                 var disk = snapshot.Disks.FirstOrDefault(x => x.Id == item.Id);
                 if (disk is not null)
                 {
                     var rate = disk.ReadBytesPerSecond + disk.WriteBytesPerSecond;
-                    item.Update(rate, Math.Max(1_048_576, rate * 1.25), $"读取 {FormatRate(disk.ReadBytesPerSecond)}", $"写入 {FormatRate(disk.WriteBytesPerSecond)}", "读取速度", FormatRate(disk.ReadBytesPerSecond), "写入速度", FormatRate(disk.WriteBytesPerSecond), "活动时间", FormatPercent(disk.ActivityPercent), "平均响应时间", FormatLatency(disk.LatencyMs));
+                    item.Update(rate, Math.Max(1_048_576, rate * 1.25), LocalizedText.Format("task_manager.metric.read", FormatRate(disk.ReadBytesPerSecond)), LocalizedText.Format("task_manager.metric.write", FormatRate(disk.WriteBytesPerSecond)), LocalizedText.Get("task_manager.metric.read_speed"), FormatRate(disk.ReadBytesPerSecond), LocalizedText.Get("task_manager.metric.write_speed"), FormatRate(disk.WriteBytesPerSecond), LocalizedText.Get("task_manager.metric.active_time"), FormatPercent(disk.ActivityPercent), LocalizedText.Get("task_manager.metric.average_response_time"), FormatLatency(disk.LatencyMs));
                 }
                 break;
             case PerformanceResourceKind.Network:
@@ -239,7 +239,7 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
                 if (network is not null)
                 {
                     var rate = network.ReceiveBytesPerSecond + network.SendBytesPerSecond;
-                    item.Update(rate, Math.Max(1_048_576, rate * 1.25), $"发送 {FormatRate(network.SendBytesPerSecond)}", $"接收 {FormatRate(network.ReceiveBytesPerSecond)}", "发送", FormatRate(network.SendBytesPerSecond), "接收", FormatRate(network.ReceiveBytesPerSecond), "已发送", FormatBytes(network.BytesSent), "已接收", FormatBytes(network.BytesReceived));
+                    item.Update(rate, Math.Max(1_048_576, rate * 1.25), LocalizedText.Format("task_manager.metric.send", FormatRate(network.SendBytesPerSecond)), LocalizedText.Format("task_manager.metric.receive", FormatRate(network.ReceiveBytesPerSecond)), LocalizedText.Get("task_manager.metric.sent"), FormatRate(network.SendBytesPerSecond), LocalizedText.Get("task_manager.metric.received"), FormatRate(network.ReceiveBytesPerSecond), LocalizedText.Get("task_manager.metric.bytes_sent"), FormatBytes(network.BytesSent), LocalizedText.Get("task_manager.metric.bytes_received"), FormatBytes(network.BytesReceived));
                 }
                 break;
         }
@@ -255,7 +255,7 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
     }
 
     private static string FormatBytes(long? bytes) => bytes is null or < 0 ? "—" : Converters.BytesConverter.FormatBytes(bytes.Value);
-    private static string FormatRate(long bytes) => Converters.BytesConverter.FormatBytes(bytes) + "/秒";
+    private static string FormatRate(long bytes) => Converters.BytesConverter.FormatBytes(bytes) + LocalizedText.Get("task_manager.metric.per_second");
     private static string FormatPercent(double? percent) => percent is null ? "—" : $"{percent.Value:0}%";
     private static string FormatLatency(double? milliseconds) => milliseconds is null ? "—" : $"{milliseconds.Value:0.0} ms";
     private string DiskSortKey(DiskInfoDto disk)
@@ -270,7 +270,7 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
     private string DiskTitle(DiskInfoDto disk)
     {
         var title = disk.Id.StartsWith("windows-disk:", StringComparison.Ordinal)
-            ? $"磁盘 {disk.Id["windows-disk:".Length..]}"
+            ? LocalizedText.Format("task_manager.disk_detail", disk.Id["windows-disk:".Length..])
             : disk.Name;
         var mounts = disk.FilesystemIds
             .Select(id => Info?.Filesystems.FirstOrDefault(filesystem => filesystem.Id == id))
@@ -287,14 +287,14 @@ public sealed partial class TaskManagerViewModel : ObservableObject, IAsyncDispo
     }
     private static string FormatFrequency(double? mhz) => mhz is null ? "—" : mhz >= 1000 ? $"{mhz / 1000:0.00} GHz" : $"{mhz:0} MHz";
     private static string FormatCount(long? value) => value is null or < 0 ? "—" : value.Value.ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
-    private static string FormatBoolean(bool? value) => value is null ? "—" : value.Value ? "已启用" : "未启用";
+    private static string FormatBoolean(bool? value) => value is null ? "—" : LocalizedText.Get(value.Value ? "task_manager.boolean.enabled" : "task_manager.boolean.disabled");
     private static string FormatUptime(long seconds) => Converters.UptimeConverter.Instance.Convert(seconds, typeof(string), null, System.Globalization.CultureInfo.CurrentCulture)?.ToString() ?? "—";
 }
 
 public enum TaskManagerTab { Performance, Processes }
 public enum PerformanceResourceKind { Cpu, Memory, Disk, Network }
 
-public sealed partial class PerformanceResourceItem : ObservableObject
+public sealed partial class PerformanceResourceItem : LocalizedObservableObject
 {
     public PerformanceResourceItem(PerformanceResourceKind kind, string id, string title, string subtitle, Color accentColor)
     { Kind = kind; Id = id; Title = title; Subtitle = subtitle; AccentColor = accentColor; History = []; }
@@ -308,36 +308,36 @@ public sealed partial class PerformanceResourceItem : ObservableObject
     public string Subtitle { get; }
     public Color AccentColor { get; }
     public ObservableCollection<double> History { get; }
-    [ObservableProperty] private string _metric = "正在收集…";
+    [ObservableProperty] private LocalizedStatus _metric = LocalizedText.Ref("task_manager.metric.collecting");
     [ObservableProperty] private string _sideDetail = string.Empty;
     [ObservableProperty] private double _chartMaximum = 100;
-    [ObservableProperty] private string _detail1Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail1Label;
     [ObservableProperty] private string _detail1Value = "—";
-    [ObservableProperty] private string _detail2Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail2Label;
     [ObservableProperty] private string _detail2Value = "—";
-    [ObservableProperty] private string _detail3Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail3Label;
     [ObservableProperty] private string _detail3Value = "—";
-    [ObservableProperty] private string _detail4Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail4Label;
     [ObservableProperty] private string _detail4Value = "—";
-    [ObservableProperty] private string _detail5Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail5Label;
     [ObservableProperty] private string _detail5Value = "—";
-    [ObservableProperty] private string _detail6Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail6Label;
     [ObservableProperty] private string _detail6Value = "—";
-    [ObservableProperty] private string _detail7Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail7Label;
     [ObservableProperty] private string _detail7Value = "—";
-    [ObservableProperty] private string _detail8Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail8Label;
     [ObservableProperty] private string _detail8Value = "—";
-    [ObservableProperty] private string _detail9Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail9Label;
     [ObservableProperty] private string _detail9Value = "—";
-    [ObservableProperty] private string _detail10Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail10Label;
     [ObservableProperty] private string _detail10Value = "—";
-    [ObservableProperty] private string _detail11Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail11Label;
     [ObservableProperty] private string _detail11Value = "—";
-    [ObservableProperty] private string _detail12Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail12Label;
     [ObservableProperty] private string _detail12Value = "—";
-    [ObservableProperty] private string _detail13Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail13Label;
     [ObservableProperty] private string _detail13Value = "—";
-    [ObservableProperty] private string _detail14Label = string.Empty;
+    [ObservableProperty] private LocalizedStatus _detail14Label;
     [ObservableProperty] private string _detail14Value = "—";
 
     public void ClearHistory() => History.Clear();

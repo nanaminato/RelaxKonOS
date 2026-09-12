@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -29,14 +30,14 @@ public sealed partial class ImageMirrorsPageViewModel : SettingsPageViewModel
     [ObservableProperty] private string _newName = string.Empty;
     [ObservableProperty] private string _newEndpoint = string.Empty;
     [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private string _statusText = string.Empty;
+    [ObservableProperty] private LocalizedStatus _statusText;
     public bool HasStatus => !string.IsNullOrWhiteSpace(StatusText);
 
     public async Task LoadAsync()
     {
         if (!IsConnected) return;
         IsLoading = true;
-        StatusText = string.Empty;
+        StatusText = default;
         try
         {
             var mirrors = await _client.ListAsync(ImageMirrorTarget.Docker);
@@ -46,7 +47,7 @@ public sealed partial class ImageMirrorsPageViewModel : SettingsPageViewModel
         }
         catch (Exception ex)
         {
-            StatusText = string.Format(T("settings.image_mirrors.load_failed", "Could not load image mirrors: {0}"), ex.Message);
+            StatusText = Ref("settings.image_mirrors.load_failed", "Could not load image mirrors: {0}", ex.Message);
         }
         finally { IsLoading = false; }
     }
@@ -57,7 +58,7 @@ public sealed partial class ImageMirrorsPageViewModel : SettingsPageViewModel
         if (IsLoading) return;
         if (string.IsNullOrWhiteSpace(NewName) || string.IsNullOrWhiteSpace(NewEndpoint))
         {
-            StatusText = T("settings.image_mirrors.required", "Enter a name and registry host.");
+            StatusText = Ref("settings.image_mirrors.required", "Enter a name and registry host.");
             return;
         }
         IsLoading = true;
@@ -65,12 +66,12 @@ public sealed partial class ImageMirrorsPageViewModel : SettingsPageViewModel
         {
             await _client.CreateAsync(ImageMirrorTarget.Docker, new CreateImageMirrorRequest(NewName.Trim(), NewEndpoint.Trim()));
             NewName = NewEndpoint = string.Empty;
-            StatusText = T("settings.image_mirrors.added", "Image mirror added.");
+            StatusText = Ref("settings.image_mirrors.added", "Image mirror added.");
             await ReloadAsync();
         }
         catch (Exception ex)
         {
-            StatusText = string.Format(T("settings.image_mirrors.save_failed", "Could not save image mirror: {0}"), ex.Message);
+            StatusText = Ref("settings.image_mirrors.save_failed", "Could not save image mirror: {0}", ex.Message);
         }
         finally { IsLoading = false; }
     }
@@ -106,16 +107,16 @@ public sealed partial class ImageMirrorsPageViewModel : SettingsPageViewModel
             await _client.DeleteAsync(ImageMirrorTarget.Docker, mirror.Id);
             Mirrors.Remove(mirror);
             if (mirror.IsSelected) SetSelected(Guid.Empty);
-            StatusText = T("settings.image_mirrors.removed", "Image mirror removed.");
+            StatusText = Ref("settings.image_mirrors.removed", "Image mirror removed.");
         }
         catch (Exception ex)
         {
-            StatusText = string.Format(T("settings.image_mirrors.remove_failed", "Could not remove image mirror: {0}"), ex.Message);
+            StatusText = Ref("settings.image_mirrors.remove_failed", "Could not remove image mirror: {0}", ex.Message);
         }
         finally { IsLoading = false; }
     }
 
-    partial void OnStatusTextChanged(string value) => OnPropertyChanged(nameof(HasStatus));
+    partial void OnStatusTextChanged(LocalizedStatus value) => OnPropertyChanged(nameof(HasStatus));
 
     private async Task ReloadAsync()
     {

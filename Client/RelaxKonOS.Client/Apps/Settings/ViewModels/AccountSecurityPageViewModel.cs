@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Identity;
@@ -23,7 +24,7 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
     public override string DisplayNameKey => "settings.account.title";
     public override string DisplayName => T("settings.account.title", "Account & Security");
     [ObservableProperty] private AliasConfigurationDto? configuration;
-    [ObservableProperty] private string status = "";
+    [ObservableProperty] private LocalizedStatus status;
     [ObservableProperty] private bool busy;
     public string SystemUsername => Configuration?.SystemUsername ?? session.CurrentUser?.Username ?? "—";
     public string Alias => Configuration is null
@@ -60,7 +61,7 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
             if (!disposed && current == lifetime && client.IsCurrent(connection)) { Configuration = result; Status = ""; }
         }
         catch (OperationCanceledException) { }
-        catch { if (current == lifetime && !disposed) Status = T("settings.account.load_failed", "Could not read account security. Reconnect or reload."); }
+        catch { if (current == lifetime && !disposed) Status = Ref("settings.account.load_failed", "Could not read account security. Reconnect or reload."); }
     }
 
     [RelayCommand]
@@ -91,7 +92,7 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
                 return;
             }
             Configuration = result;
-            Status = T("settings.account.saved", "Account security updated.");
+            Status = Ref("settings.account.saved", "Account security updated.");
         }
         catch (OperationCanceledException) { if (current == lifetime && client.IsCurrent(connection)) await LoadAsync(); }
         catch (RelaxKonOSAuthException exception)
@@ -100,7 +101,7 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
             await LoadAsync();
             Status = T("settings.account.error." + exception.Type.Split('/').Last(), T("settings.account.failed", "The operation was not confirmed. Review the refreshed configuration before trying again."));
         }
-        catch { if (current == lifetime) { await LoadAsync(); Status = T("settings.account.failed", "The operation was not confirmed. Review the refreshed configuration before trying again."); } }
+        catch { if (current == lifetime) { await LoadAsync(); Status = Ref("settings.account.failed", "The operation was not confirmed. Review the refreshed configuration before trying again."); } }
         finally { if (current == lifetime) Busy = false; }
     }
     private void OnSessionChanged(object? sender, AuthSessionStateChangedEventArgs args) => Dispatcher.UIThread.Post(() =>
