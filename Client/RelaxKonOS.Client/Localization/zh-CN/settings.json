@@ -171,7 +171,6 @@
         "settings.theme_import.failed": "无法导入主题：{0}",
         "settings.theme_export.failed": "无法导出主题：{0}",
         "settings.theme_delete.confirmation": "要删除自定义主题“{0}”吗？此操作无法撤销。",
-        "settings.save.idle": "",
         "settings.save.saving": "保存中…",
         "settings.save.discard": "放弃草稿并重载",
         "settings.save.saved": "已保存",

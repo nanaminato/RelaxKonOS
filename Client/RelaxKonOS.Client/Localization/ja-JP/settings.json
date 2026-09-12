@@ -171,7 +171,6 @@
         "settings.theme_import.failed": "テーマをインポートできません: {0}",
         "settings.theme_export.failed": "テーマをエクスポートできません: {0}",
         "settings.theme_delete.confirmation": "カスタム テーマ「{0}」を削除しますか？この操作は元に戻せません。",
-        "settings.save.idle": "",
         "settings.save.saving": "保存中…",
         "settings.save.discard": "下書きを破棄して再読み込み",
         "settings.save.saved": "保存済み",

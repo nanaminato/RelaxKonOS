@@ -171,7 +171,6 @@
         "settings.theme_import.failed": "Unable to import theme: {0}",
         "settings.theme_export.failed": "Unable to export theme: {0}",
         "settings.theme_delete.confirmation": "Delete the custom theme “{0}”? This cannot be undone.",
-        "settings.save.idle": "",
         "settings.save.saving": "Saving…",
         "settings.save.discard": "Discard draft and reload",
         "settings.save.saved": "Saved",
