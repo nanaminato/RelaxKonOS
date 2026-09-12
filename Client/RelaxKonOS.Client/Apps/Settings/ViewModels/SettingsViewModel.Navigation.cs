@@ -108,6 +108,7 @@ public sealed partial class SettingsViewModel
             ("client.diagnostics", "developer", "settings.network_inspector", SettingsScope.ClientDevice, "diagnostics request network 网络 诊断 診断"),
             ("client.apps", "apps", "settings.app_information", SettingsScope.ClientDevice, "install uninstall apps 安装 卸载 アプリ"),
             ("client.permissions", "apps", "settings.app_permissions", SettingsScope.ClientDevice, "permissions 授权 权限 権限"),
+            ("host.environment", "environment", "settings.environment.title", SettingsScope.HostUser, "PATH environment 环境变量 路径 環境変数 パス"),
             ("host.time.zone", "time-language", "settings.time_zone", SettingsScope.HostMachine, "timezone time zone 时区 タイムゾーン")
         ];
         foreach (var item in items)

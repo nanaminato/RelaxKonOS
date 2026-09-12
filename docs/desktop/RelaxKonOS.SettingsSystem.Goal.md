@@ -374,3 +374,47 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 - 构建：`dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` 与 Helper 同参数构建均通过，0 warning / 0 error；包含新 Protocol 类型。`git diff --check` 通过。
 - **本批未测试**：Helper 字段拒绝/账户 SID/命名互斥锁行为测试、Windows 注册表/ACL/外部修改/中断/读回/广播/多登录会话、Windows 服务启动运行时隔离、真实授权/审计端到端。未提供指定远程主机，未在开发机试验系统配置。
 - **继续必做**：Server 身份解析及环境读/写/敏感揭示授权、持久计划与恢复日志、Linux 文件 provider、Workspace/工作负载构造、环境 UI/SDK/CLI。Linux 分派当前返回明确的实现待接入错误，不能把这一暂态当作平台不支持而通过验收。G3 及总目标保持未完成。
+
+
+### 2026-09-11 / G1/G3 客户端环境领域服务与授权目标发现（阶段未完成）
+
+- 本轮起点 `ec1f92b`，工作区干净。核实代码已包含 `HostEnvironmentService`、`EnvironmentOperationCoordinator`、环境 HTTP 路由和精确资源授权校验，超出上方最后一批记录；它们是本轮开始前的代码，不计作本轮新增，也未据此补报测试通过。
+- 新增客户端 `IHostEnvironmentService`/`HostEnvironmentService`，独立于 Avalonia 窗口：目标发现、默认掩码读取、显式揭示、预览、planId 应用、查询和 revision 回滚。授权限制为环境读取/揭示/修改三种 capability，不缓存授权密码或环境值。
+- 新增共享路由常量与已认证 `GET /host-settings/environment/target?scope=hostUser|hostMachine`，返回服务端当前身份映射的目标并设置 no-store；无 Helper 调用、无环境值、无授权副作用。解决首次读取前精确资源授权需要远程 UID/SID 的发现问题；拒绝 Workspace 等 scope，不引入旧路由别名。
+- 将时区客户端已有连接冻结/令牌获取/HTTP 错误与响应校验提取为共用 `HostSettingsService`，环境与时区均使用禁重定向、无自动认证重放的 typed HttpClient；旧时区调用者继续使用其领域接口，没有兼容适配层。
+- 构建：Client Release `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -p:UsedAvaloniaProducts= -v quiet` 与 Server Debug 同参数（无 Client 专有参数）均成功，0 warning / 0 error。`git diff --check` 通过。只执行编译，没有执行开发机宿主配置修改。
+- **本批跳过测试**：目标发现真实 JWT/身份映射/越权 HTTP 测试；客户端 HttpClient 会话切换、token 刷新、响应取消竞态及授权复用测试；窗口关闭后环境操作、真实 Windows/Ubuntu 环境读写/回滚；UI 布局、三语言、键盘与缩放验收。按用户要求优先实现，复杂测试暂缓；编译不能代替这些行为验收。
+- **继续必做**：环境 UI/CLI/SDK、Linux 文件 provider、Workspace 与非特权工作负载环境构造、宿主通知与 Unknown 恢复协调；G2 首页/账户/辅助功能/草稿确认；主机名、DNS 独立恢复与既有 G4–G6 剩余项。G1/G3 及总 Goal 仍执行中，未标记完成。
+
+
+### 2026-09-11 / G3/G5 DevCli 环境变量操作入口（阶段未完成）
+
+- 保留上批客户端领域服务改动，继续新增 DevCli `environment-target`、`environment`、`preview-environment`、`apply-environment`，复用按计划 ID 查询及 revision 回滚。只支持显式 `hostUser`/`hostMachine`；无交互认证、无写入重试，沿用独立宿主 JWT 和已有精确 capability。
+- 环境变更通过 `--changes <file>` 或 `--changes -` 读取 UTF-8 JSON，支持 BOM，2 MiB 输入上限、16 层 JSON 深度、拒绝未知属性和空/超量批次；远程平台详细语义和 256 KiB 数据上限仍由 Server/Helper 校验，不拿客户端 OS 猜测远程规则。解析失败仅给固定提示，不回显输入秘密。空值与显式 Delete 保持区别。
+- 默认读取掩码，`--reveal` 是独立显式选项且要求现有揭示授权；授权不足直接保留 Server 错误。同步 CLI help、中英文 README 和 Settings 实现说明，给出本地变更文件/预览/应用/查询/回滚用法。
+- DevCli 与 Settings.Tests 首次构建因缺少 project.assets.json 失败，已从 `C:/Users/Administrator/.nuget/packages` 本地缓存 restore。`dotnet build Tools/RelaxKonOS.DevCli/RelaxKonOS.DevCli.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` 通过，0 warning / 0 error。
+- `dotnet run --project Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false` 退出 0：新增实际 CLI 解析器的 BOM/空值/Delete/超限/无效 JSON/秘密不回显/错误参数检查，原环境与搜索检查通过；仅临时文件，无 HTTP 或宿主修改。合成搜索 p95=0.122ms / max=4.786ms 只记录索引性能，不作为 UI 验收。`git diff --check` 通过。
+- **本批跳过测试**：CLI 真实 HTTPS/JWT/grant 到期、标准输入管线端到端、网络中断/幂等/远程读回回滚；Windows 注册表与 Linux provider 实机效果；UI 和 SDK 行为。按用户要求暂缓复杂测试，未使用开发机做宿主配置实验。
+- **继续必做**：环境 UI/SDK/终端、Linux 文件 provider、Workspace/工作负载传播及宿主恢复/通知；G2/G4/G6 既有剩余项均保留。CLI 接入只推进窗口外入口，G3/G5 与总目标未完成。
+
+
+### 2026-09-11 / G2/G3 环境页第一批交互（阶段未完成）
+
+- 新增 `EnvironmentPageViewModel` / `EnvironmentPageView` 并注册导航、单色图标、本地多语言搜索及 `relaxkonos://settings/environment` 激活。页面持有草稿，领域能力继续来自窗口外的 `IHostEnvironmentService`。
+- 接入远程 HostUser/HostMachine 选择、读取授权、默认掩码、显式揭示授权、名称筛选、类型/来源/展开值/警告；新增/编辑/删除通过显式 Set/Delete 暂存批次，空字符串不转换为删除。客户端按远程快照的平台名称语义验证批次，PATH/运行时高影响确认在预览前校验。
+- 预览使用基线 revision 与新幂等键，显示脱敏计划、影响及到期时间；应用仅提交 planId，读取和修改授权分开请求。查询/回滚复用 Server 持久操作，Unknown 保留计划并锁定清除，禁止直接重新读取覆盖未知结果。草稿存在时锁定 scope/读取，明确放弃后可重载；会话切换取消等待、清除旧主机值与草稿。尚无页面离开确认。
+- 将原时区授权对话框封装为 SettingsApp 内共用函数，展示实际资源和能力，用于时区和环境；未新增密码存储或自动重试写请求。同步中英日文环境页文案。
+- `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -p:UsedAvaloniaProducts= -v quiet` 两次通过（后次包含 URI 与详情完善），0 warning / 0 error。`git diff --check` 通过；未执行宿主环境读写。
+- **本批跳过测试**：VM 授权取消/并发/会话切换/未知结果行为，远程 Windows/Ubuntu 读取/揭示/写入/回滚及 JWT 到期；640×480/1024×768/1440×900/200% 缩放、亮暗主题、中英日文、键盘和屏幕阅读器视觉验收。用户要求优先实现，复杂测试暂缓，编译不作为运行证据。
+- **继续必做**：Workspace 分区、PATH 分项编辑/顺序/不存在路径检测、草稿单项撤销与完整差异交互、离开页面确认、系统/开发者/终端关联入口、SDK；Linux provider、工作负载构造、宿主通知/恢复以及原有 G2/G4/G6 剩余项。环境页为可编译的第一批 UI，完整 G3 与总目标仍执行中。
+
+
+### 2026-09-11 / G3 PATH 分项与草稿单项管理（阶段未完成）
+
+- 新增环境 VM 的 PATH 编辑部分：根据远程快照使用平台名称比较和分隔符，追加/替换/删除/上下移动分项；保留空项、重复项和顺序，不做 trim/排序/大小写归一化。索引选择支持独立操作重复项；单项拒绝嵌入分隔符，组装值限制 32767 字符。删除最后分项产生空值，不冒充删除变量；需显式暂存后再预览/应用。
+- 接入共享 PATH 警告与中英日文说明，明确空项当前目录搜索语义和远程存在性未检测。新增暂存变量选择、重编辑、单项移除；修改批次会使旧 plan 失效。
+- 修复重新加载掩码快照后仍残留旧揭示值的选择/编辑框问题。环境回滚发出前清除旧 Applied 结果；丢失回滚响应保持未知，不能依据旧状态继续清除/再次回滚，须查询原计划。
+- Client Release 编译通过，0 warning / 0 error；最后回滚状态调整后复验见下。`git diff --check` 通过。
+- **跳过测试**：PATH VM 重复/空项选中和移动交互、超长输入行为、加载掩码/切换会话/回滚丢失响应竞态、布局/键盘/三语言与缩放截图、真实远程路径存在性及进程生效。按用户要求优先实现；没有对开发机做宿主配置修改。
+- **剩余**：Workspace 环境、远程路径存在性检测、离开页面草稿确认、完整实际差异复核和恢复历史；Linux provider/工作负载传播/宿主通知及 G2/G4/G5/G6 既有剩余项。PATH 编辑实现不等于完整环境纵向切片验收，总目标保持执行中。
+- 收尾复验：包含回滚未知状态修复的 Client Release 构建通过，0 warning / 0 error；diff 检查无空白错误，仅既有 Git LF/CRLF 提示。

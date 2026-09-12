@@ -40,6 +40,7 @@ public static class SettingsApiRoutes
     private const string Root = "/" + RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Catalog = Root + "/settings/catalog";
     public const string Environment = Root + "/host-settings/environment";
+    public const string EnvironmentTarget = Environment + "/target";
     public const string EnvironmentPreview = Environment + "/preview";
     public const string EnvironmentApply = Environment + "/apply";
     public const string Time = Root + "/host-settings/time";

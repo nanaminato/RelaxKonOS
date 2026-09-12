@@ -37,3 +37,27 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 新增目录和时区 GET/preview/apply，以及操作查询与回滚 API。Server 通过原有 Helper 执行 Windows tzutil / Linux timedatectl；预览计划持久加密，应用需要精确 `host/time` 授权，读回成功才报告 Applied。外部版本变化会阻止应用或回滚；丢失结果为 Unknown，不自动重放。客户端 `Services/HostSettings/IHostTimeService` 独立于窗口，冻结 Server URL、用户和会话身份，发送前后检查连接，不自动重定向或重试写请求。时间和语言页现已接入远程快照、目标/身份、远程时区枚举、差异预览、授权并应用、按原 planId 查询及恢复原时区；不再用客户端 `TimeZoneInfo.Local` 冒充宿主值。宿主编辑不触发 Workspace 防抖保存。
 
 授权通过既有 `/privileged/elevation` 和本地渲染的宿主密码对话框；有效的精确资源授权可复用且不延长到期时间。连接切换清除草稿、计划和旧请求结果；窗口关闭不影响 Server 已持久化的操作。三语言按钮与操作状态已接入，但完整错误映射、页面离开确认、恢复记录列表、布局/键盘截图及远程实机验收仍待完成，不能将构建通过视为完整时区交付。
+
+
+## 宿主环境客户端服务（2026-09-11，实现未验收）
+
+`IHostEnvironmentService` 已注册为独立 typed HttpClient，提供目标解析、默认掩码读取、显式揭示、预览、按 planId 应用、操作查询和带 revision 回滚。读取、揭示、修改分别请求 `HostEnvironmentRead`、`HostEnvironmentReveal`、`HostEnvironmentChange` 精确资源授权；调用者按需要依次请求，服务不隐式扩张权限或缓存密码、原始环境值。
+
+新增 `GET /api/v1.0/host-settings/environment/target?scope=hostUser|hostMachine`，只返回当前认证用户经 Server 验证映射的 `SettingsTarget`，不读取环境、不调用 Helper、不授予权限，响应禁止缓存。客户端通过此入口取得授权目标，不从本地设备猜测远程 SID/UID。环境值读取仍必须有读取授权，揭示另需揭示授权。
+
+时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务尚未接入设置编辑 UI、SDK 或终端，不能据此宣称环境变量纵向切片完成。
+
+
+DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；默认掩码，显式揭示仍需额外授权。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI/SDK/终端入口与 Linux provider 仍待实现。
+
+
+## 环境变量页面（2026-09-11，第一批）
+
+环境页已注册到导航、本地搜索及 `relaxkonos://settings/environment`，使用单色图标。当前提供远程当前用户/机器范围切换、授权后掩码读取、额外授权显示原值、按名称筛选、类型/来源/展开预览/警告、Set/Delete 批次草稿、高影响确认、脱敏计划、授权应用、查询和按版本恢复。原始值只在显式揭示后进入列表；掩码不会被当作原值填入编辑器，空字符串和删除保持不同操作。当前范围通过机器复选框选择，未勾选时为认证远程用户。
+
+读取、揭示和修改分开申请环境 capability，复用现有宿主认证对话框。草稿存在时锁定范围与重新读取；明确放弃后才能重新加载。网络未知结果保留计划 ID、锁定编辑和清除，必须查询后处理；切换会话清空旧主机草稿/原值，关闭页面不撤销已提交服务端操作。
+
+本批只通过编译，尚未完成真实授权/读写与视觉验收。Workspace 分区、PATH 分项增删排序、草稿单项撤销、原值差异的更完整交互、离开/关闭页面草稿确认、恢复历史、SDK/终端关联入口仍待实现；Linux provider 也仍待实现，页面可用不代表平台写入已验收。
+
+
+环境页现已支持 PATH 分项追加、替换、删除和上下移动，按远程快照选择 `;`/`:`，保留重复、空项和顺序；删除最后一个分项表示空 PATH，删除整个变量仍使用独立 Delete。编辑先改变原始值，再明确暂存进批次。页面显示当前目录搜索和重复项提示，明确声明尚未检查远程路径存在性。草稿支持选中变量重编辑、从批次单独移除；移除使旧计划失效，需重新预览。重新加载掩码快照会清空原先揭示的选择与输入框。

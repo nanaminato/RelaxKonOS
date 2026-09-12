@@ -67,6 +67,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         Pages = new SettingsPageViewModel[]
         {
             new SystemPageViewModel(settings, session, save),
+            new EnvironmentPageViewModel(settings, App.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>(), session),
             new PersonalizationPageViewModel(settings, save),
             new TimeLanguagePageViewModel(settings, localization, save,
                 new HostTimeEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>(), session, localization)),

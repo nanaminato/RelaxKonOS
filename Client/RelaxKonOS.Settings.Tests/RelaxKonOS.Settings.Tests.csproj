@@ -9,5 +9,6 @@
     <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
     <Compile Include="../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentDocument.cs" Link="LinuxEnvironmentDocument.cs" />
     <Compile Include="../RelaxKonOS.Client/Services/SettingsSearchIndex.cs" Link="SettingsSearchIndex.cs" />
+    <Compile Include="../../Tools/RelaxKonOS.DevCli/SettingsCommands.cs" Link="SettingsCommands.cs" />
   </ItemGroup>
 </Project>

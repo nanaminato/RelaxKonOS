@@ -10,12 +10,17 @@ public static class HostSettingsEndpoints
     public static IEndpointRouteBuilder MapHostSettingsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet(SettingsApiRoutes.Catalog, (HttpContext http, SettingsCatalog catalog) => Results.Ok(catalog.Read(http.User))).RequireAuthorization();
+        app.MapGet(SettingsApiRoutes.EnvironmentTarget, async (string scope, HttpContext http, IHostEnvironmentService environment) =>
+            await ExecuteAsync(() =>
+            {
+                http.Response.Headers.CacheControl = "no-store";
+                return Task.FromResult<IResult>(Results.Ok(environment.ResolveTarget(http.User, ParseEnvironmentScope(scope))));
+            })).RequireAuthorization();
         app.MapGet(SettingsApiRoutes.Environment, async (string scope, bool? reveal, HttpContext http, IHostEnvironmentService environment) =>
             await ExecuteAsync(async () =>
             {
                 http.Response.Headers.CacheControl = "no-store";
-                var targetScope = scope switch { "hostUser" => SettingsScope.HostUser, "hostMachine" => SettingsScope.HostMachine,
-                    _ => throw new SettingsException(400, "settings.environment.invalid_scope") };
+                var targetScope = ParseEnvironmentScope(scope);
                 return Results.Ok(await environment.ReadAsync(http.User, targetScope, reveal == true, http.RequestAborted));
             })).RequireAuthorization();
         app.MapPost(SettingsApiRoutes.EnvironmentPreview, async (EnvironmentPreviewRequest request, HttpContext http, EnvironmentOperationCoordinator coordinator) =>
@@ -39,6 +44,13 @@ public static class HostSettingsEndpoints
                 ?? await coordinator.RollbackAsync(http.User, id, request, http.RequestAborted)))).RequireAuthorization();
         return app;
     }
+
+    private static SettingsScope ParseEnvironmentScope(string scope) => scope switch
+    {
+        "hostUser" => SettingsScope.HostUser,
+        "hostMachine" => SettingsScope.HostMachine,
+        _ => throw new SettingsException(400, "settings.environment.invalid_scope")
+    };
 
     private static async Task<IResult> ExecuteAsync(Func<Task<IResult>> action)
     {

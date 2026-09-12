@@ -9,6 +9,11 @@
              Background="{DynamicResource SurfaceBrush}">
 
     <UserControl.DataTemplates>
+        <DataTemplate DataType="vm:EnvironmentPageViewModel">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="0,0,0,32">
+                <pages:EnvironmentPageView VerticalAlignment="Top" />
+            </ScrollViewer>
+        </DataTemplate>
         <DataTemplate DataType="vm:SystemPageViewModel">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto"

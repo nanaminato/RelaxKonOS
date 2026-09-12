@@ -72,9 +72,10 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         _viewModel = viewModel;
         _window = window;
         var hostTimeService = context.Services.GetRequiredService<Services.HostSettings.IHostTimeService>();
-        viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestAuthorizationAsync = async connection =>
+        async Task<bool> AuthorizeHostSettingsAsync(Services.HostSettings.HostSettingsConnection connection, string target,
+            Func<string?, string?, Task<RelaxKonOS.Protocol.Privileged.HostElevationResult>> authorize)
         {
-            try { return (await hostTimeService.AuthorizeAsync(connection)).Elevated; }
+            try { return (await authorize(null, null)).Elevated; }
             catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
             {
                 var credentials = await context.WindowManager.ShowSystemDialogAsync<(string Password, string? Administrator)?>(
@@ -96,15 +97,24 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                             Margin = new Avalonia.Thickness(20), Spacing = 10,
                             Children =
                             {
-                                new Avalonia.Controls.TextBlock { Text = connection.ServerUrl + " · host/time", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                                new Avalonia.Controls.TextBlock { Text = connection.ServerUrl + " · " + target, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                                 administrator, password,
                                 new Avalonia.Controls.WrapPanel { Children = { cancel, confirm } }
                             }
                         };
                     }, new Size(440, 260));
                 if (credentials is not { } value || !hostTimeService.IsCurrent(connection)) return false;
-                return (await hostTimeService.AuthorizeAsync(connection, value.Password, value.Administrator)).Elevated;
+                return (await authorize(value.Password, value.Administrator)).Elevated;
             }
+        }
+        viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestAuthorizationAsync = connection =>
+            AuthorizeHostSettingsAsync(connection, "host/time", (password, administrator) => hostTimeService.AuthorizeAsync(connection, password, administrator));
+        var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
+        viewModel.Pages.OfType<EnvironmentPageViewModel>().Single().RequestAuthorizationAsync = async (connection, scope, capability) =>
+        {
+            var target = await hostEnvironment.ResolveTargetAsync(connection, scope);
+            return await AuthorizeHostSettingsAsync(connection, target.ResourceId + " · " + capability,
+                (password, administrator) => hostEnvironment.AuthorizeAsync(connection, scope, capability, password, administrator));
         };
         var appsPage = viewModel.Pages.OfType<AppsPageViewModel>().Single();
         var personalizationPage = viewModel.Pages.OfType<PersonalizationPageViewModel>().Single();
@@ -296,7 +306,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             return false;
 
         var segments = GetPathSegments(uri);
-        return (segments.Length == 1 && new[] { "system", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
+        return (segments.Length == 1 && new[] { "system", "environment", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                    && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(segments[1]));
