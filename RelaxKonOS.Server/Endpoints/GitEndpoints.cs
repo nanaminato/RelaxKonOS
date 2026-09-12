@@ -165,6 +165,17 @@ public static class GitEndpoints
             return Results.Ok(await service.RevertAsync(repoId, GetUserId(principal), request, ct));
         });
 
+        group.MapGet("/repositories/{id}/conflicts", async (Guid id, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
+            Results.Ok(await service.GetConflictStateAsync(id, GetUserId(principal), ct)));
+        group.MapGet("/repositories/{id}/conflicts/file", async (Guid id, string path, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await service.GetConflictAsync(id, GetUserId(principal), path, ct)); }
+            catch (ArgumentException ex) { return Results.BadRequest(ex.Message); }
+            catch (InvalidOperationException ex) { return Results.Conflict(ex.Message); }
+        });
+        group.MapPost("/repositories/{id}/conflicts/operation", async (Guid id, GitConflictOperationRequest request, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
+            Results.Ok(await service.ConflictOperationAsync(id, GetUserId(principal), request, ct)));
+
         group.MapPost("/repositories/{id}/resolve", async (string id, GitResolveRequest request, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>
         {
             if (!Guid.TryParse(id, out var repoId)) return Results.BadRequest();

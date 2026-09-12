@@ -23,8 +23,26 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Grid.Column="0" Text="{loc:Loc git.picker.registered_section}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <Button Grid.Column="1" Content="⟳" Command="{Binding RefreshRepositoriesCommand}"
+                                    IsEnabled="{Binding !IsLoadingProjects}" ToolTip.Tip="{loc:Loc git.refresh}"
                                     Background="Transparent" Foreground="{DynamicResource TextSecondaryBrush}" BorderThickness="0" Padding="8,2" />
                         </Grid>
+
+                        <Border IsVisible="{Binding IsLoadingProjects}" Background="{DynamicResource SurfaceSunkenBrush}"
+                                CornerRadius="8" Padding="20" Margin="0,4">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="{loc:Loc git.picker.loading}" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{loc:Loc git.picker.loading_hint}" FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ProgressBar IsIndeterminate="{Binding IsLoadingProjects}" Height="4"
+                                             HorizontalAlignment="Stretch" Foreground="{DynamicResource AccentBrush}"
+                                             AutomationProperties.Name="{loc:Loc git.picker.loading}" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="{Binding RepositoryLoadError}" TextWrapping="Wrap" Margin="4,8"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   IsVisible="{Binding RepositoryLoadError, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
                         <ItemsControl ItemsSource="{Binding Repositories}">
                             <ItemsControl.ItemTemplate>
@@ -45,9 +63,13 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Text="{loc:Loc git.picker.empty_hint}"
+                        <Border IsVisible="{Binding !IsLoadingProjects}">
+                            <Border IsVisible="{Binding HasLoadedRepositories}">
+                                <TextBlock Text="{loc:Loc git.picker.empty_hint}"
                                    FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" Margin="4,8"
                                    IsVisible="{Binding Repositories.Count, Converter={x:Static git:GitPickerConverters.IsZeroToVisible}}" />
+                            </Border>
+                        </Border>
                     </StackPanel>
                 </Border>
 

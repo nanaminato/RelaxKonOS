@@ -113,7 +113,6 @@ internal partial class GitClientWorkspace : UserControl
         "workspace" => new GitWorkspaceView(_viewModel),
         "log" => new GitLogView(_viewModel),
         "remotes" => new GitRemotesView(_viewModel),
-        "conflicts" => new GitConflictResolutionView(_viewModel),
         _ => new GitOverviewView(_viewModel),
     };
 
@@ -122,7 +121,6 @@ internal partial class GitClientWorkspace : UserControl
         GitClientPage.Workspace => "workspace",
         GitClientPage.Log => "log",
         GitClientPage.Remotes => "remotes",
-        GitClientPage.ConflictResolution => "conflicts",
         _ => "overview",
     };
 
@@ -131,7 +129,6 @@ internal partial class GitClientWorkspace : UserControl
         "workspace" => GitClientPage.Workspace,
         "log" => GitClientPage.Log,
         "remotes" => GitClientPage.Remotes,
-        "conflicts" => GitClientPage.ConflictResolution,
         "overview" => GitClientPage.Overview,
         _ => null,
     };

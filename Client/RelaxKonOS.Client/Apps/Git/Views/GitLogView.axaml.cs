@@ -60,14 +60,7 @@ internal partial class GitLogView : UserControl
         }
 
         // 搜索框变化时重建（过滤）分支树；Status 更新时 HEAD 文案可能变
-        _vm.PropertyChanged += (_, args) =>
-        {
-            if (args.PropertyName is nameof(GitClientViewModel.BranchSearchText)
-                or nameof(GitClientViewModel.Status))
-            {
-                RebuildBranchTree();
-            }
-        };
+        _vm.PropertyChanged += ViewModel_PropertyChanged;
 
         // 将 TreeView 绑定到本地树形集合（XAML 默认扁平，这里替换为分组树）
         BranchTree.ItemsSource = BranchTreeRoots;
@@ -79,19 +72,34 @@ internal partial class GitLogView : UserControl
     {
         base.OnUnloaded(e);
         _attached = false;
+        if (_vm is not null) _vm.PropertyChanged -= ViewModel_PropertyChanged;
     }
 
-    /// <summary>Keep the useful filters visible first.  The secondary navigation
-    /// actions are deliberately removed before they can force a horizontal toolbar
-    /// scrollbar in a narrow parent window.</summary>
-    private void LogLayoutRoot_SizeChanged(object? sender, SizeChangedEventArgs e)
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        var width = e.NewSize.Width;
-        CommitToolbarActions.IsVisible = width >= 1320;
-        FileToolbarActions.IsVisible = width >= 1100;
-        LogPathFilter.IsVisible = width >= 1400;
-        LogDateFilter.IsVisible = width >= 1180;
-        LogAuthorFilter.IsVisible = width >= 1050;
+        if (e.PropertyName is nameof(GitClientViewModel.BranchSearchText)
+            or nameof(GitClientViewModel.Status))
+            RebuildBranchTree();
+    }
+
+    private void BranchTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_vm is not null)
+            _vm.SelectedBranch = (BranchTree.SelectedItem as BranchTreeNode)?.Branch;
+    }
+
+    private void BranchNode_DoubleTapped(object? sender, RoutedEventArgs e)
+    {
+        if (_vm is null || sender is not Control
+            { DataContext: BranchTreeNode { IsLocalBranch: true, Branch: { } branch } }) return;
+
+        var option = _vm.LogBranchOptions.FirstOrDefault(option =>
+            string.Equals(option.Value, branch.Name, StringComparison.Ordinal));
+        if (option is null) return;
+
+        // Reuse the dropdown's filter pipeline, including its stale-response guard.
+        _vm.SelectedLogBranch = option;
+        e.Handled = true;
     }
 
     private void RebuildBranchTree()
@@ -364,7 +372,7 @@ public static class GitLogConverters
 {
     public static readonly IValueConverter StatusBgConverter = new FileStatusBgConverter();
     public static readonly IValueConverter StatusLabelConverter = new FileStatusLabelConverter();
-    public static readonly IValueConverter BranchBadgesConverter = new BranchBadgesConverter();
+    public static readonly IValueConverter CommitDateConverter = new CommitDateConverter();
 }
 
 public sealed class FileStatusBgConverter : IValueConverter
@@ -409,32 +417,15 @@ public sealed class FileStatusLabelConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>把 GitStatusDto → 当前选中提交匹配的分支徽章列表（HEAD / 当前分支 / upstream）。
-/// 注意：此处简化输出固定 3 个徽章（与参考截图一致），不依赖实际传入的提交，只看当前工作区状态。</summary>
-public sealed class BranchBadgesConverter : IValueConverter
+/// <summary>Compact ISO commit dates, retaining the original value if parsing fails.</summary>
+public sealed class CommitDateConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is not GitStatusDto st) return Array.Empty<BranchBadge>();
-        var list = new List<BranchBadge>(capacity: 4);
-        if (!string.IsNullOrEmpty(st.Branch))
-            list.Add(new BranchBadge("🟡", st.Branch, ThemeBrushes.Get("WarningMutedBrush"), ThemeBrushes.Get("WarningBrush")));
-        if (!string.IsNullOrEmpty(st.Upstream))
-            list.Add(new BranchBadge("🔷", st.Upstream, ThemeBrushes.Get("AccentMutedBrush"), ThemeBrushes.Get("AccentBrush")));
-        // 如果上游形如 origin/master，则额外显示 master
-        if (!string.IsNullOrEmpty(st.Upstream))
-        {
-            var slash = st.Upstream.IndexOf('/');
-            if (slash > 0)
-            {
-                var localLike = st.Upstream[(slash + 1)..];
-                list.Add(new BranchBadge("🟣", localLike, ThemeBrushes.Get("SuccessMutedBrush"), ThemeBrushes.Get("SuccessBrush")));
-            }
-        }
-        return list;
-    }
+        => value is string text && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var date)
+            ? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : value;
+
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
-
-public sealed record BranchBadge(string Icon, string Label, IBrush Bg, IBrush Fg);

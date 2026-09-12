@@ -114,9 +114,16 @@ public sealed record GitOperationResult(
 /// <summary>Conflict file item.</summary>
 public sealed record GitConflictFileDto(
     [property: JsonPropertyName("path")] string Path,
-    [property: JsonPropertyName("status")] string Status = "conflicted",
-    [property: JsonPropertyName("oursVersion")] string? OursVersion = null,
-    [property: JsonPropertyName("theirsVersion")] string? TheirsVersion = null);
+    [property: JsonPropertyName("revision")] string Revision,
+    [property: JsonPropertyName("baseVersion")] string? BaseVersion,
+    [property: JsonPropertyName("oursVersion")] string? OursVersion,
+    [property: JsonPropertyName("theirsVersion")] string? TheirsVersion,
+    [property: JsonPropertyName("result")] string? Result,
+    [property: JsonPropertyName("canEdit")] bool CanEdit);
+
+public sealed record GitConflictStateDto(
+    [property: JsonPropertyName("operation")] string? Operation,
+    [property: JsonPropertyName("paths")] IReadOnlyList<string> Paths);
 
 /// <summary>Single Git remote entry (origin/upstream/...).</summary>
 public sealed record GitRemoteDto(
@@ -199,8 +206,14 @@ public sealed record GitRevertRequest(
 
 /// <summary>Resolve conflicts request.</summary>
 public sealed record GitResolveRequest(
-    [property: JsonPropertyName("paths")] IReadOnlyList<string> Paths,
-    [property: JsonPropertyName("continueMerge")] bool ContinueMerge = true);
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("revision")] string Revision,
+    [property: JsonPropertyName("choice")] string Choice,
+    [property: JsonPropertyName("content")] string? Content = null);
+
+public sealed record GitConflictOperationRequest(
+    [property: JsonPropertyName("operation")] string Operation,
+    [property: JsonPropertyName("action")] string Action);
 
 /// <summary>Move the current branch and index to a commit. Only <c>soft</c> and <c>mixed</c>
 /// modes are exposed: this API deliberately never performs <c>git reset --hard</c>.</summary>

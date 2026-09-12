@@ -24,6 +24,9 @@ public static class GitApiRoutes
     public const string CommitDetail = $"/{V1}/git/repositories/{{id}}/commits/{{sha}}";
     public const string Diff = $"/{V1}/git/repositories/{{id}}/diff";
     public const string Revert = $"/{V1}/git/repositories/{{id}}/revert";
+    public const string Conflicts = $"/{V1}/git/repositories/{{id}}/conflicts";
+    public const string Conflict = Conflicts + "/file";
+    public const string ConflictOperation = Conflicts + "/operation";
     public const string Resolve = $"/{V1}/git/repositories/{{id}}/resolve";
     public const string Fetch = $"/{V1}/git/repositories/{{id}}/fetch";
     public const string Reset = $"/{V1}/git/repositories/{{id}}/reset";

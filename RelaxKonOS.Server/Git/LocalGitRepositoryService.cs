@@ -16,7 +16,7 @@ namespace RelaxKonOS.Server.Git;
 /// <summary>Singleton service that invokes the host git CLI and manages repository registrations.
 /// Write operations are serialized per-repository via SemaphoreSlim to avoid index.lock conflicts.
 /// Runtime state (status/branches/log/diff) is never persisted—only GitRepository registration records.</summary>
-public sealed class LocalGitRepositoryService(
+public sealed partial class LocalGitRepositoryService(
     IDbContextFactory<RelaxKonOSDbContext> dbFactory,
     IHostGitCli gitCli,
     IDataProtectionProvider dataProtection,
@@ -381,7 +381,7 @@ public sealed class LocalGitRepositoryService(
             var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
             var conflicts = await TryGetConflictPathsAsync(gitPath, repo.Path, cancellationToken);
             // 与 pull/revert 同语义：即使 git exit != 0，只要检测到冲突文件就仍然返回 Success=false 但带 Conflicts 负载
-            return new GitOperationResult(result.Success || conflicts is not null, "merge",
+            return new GitOperationResult(result.Success, "merge",
                 Conflicts: conflicts,
                 Message: result.Success ? null : result.Error);
         });
@@ -414,13 +414,18 @@ public sealed class LocalGitRepositoryService(
                 return await UpdateNonCurrentBranchAsync(gitPath, repo.Path, request, cancellationToken);
 
             var args = new List<string> { "pull" };
-            if (string.Equals(request.Strategy, "rebase", StringComparison.OrdinalIgnoreCase))
-                args.Add("--rebase");
+            switch (request.Strategy.ToLowerInvariant())
+            {
+                case "merge": args.Add("--no-rebase"); break;
+                case "rebase": args.Add("--rebase"); break;
+                case "ff-only": args.Add("--ff-only"); break;
+                default: return new GitOperationResult(false, "pull", Message: "Unknown pull strategy.");
+            }
             if (!string.IsNullOrEmpty(request.Remote)) args.Add(request.Remote);
             if (!string.IsNullOrEmpty(request.Refspec)) args.Add(request.Refspec);
             var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
             var conflicts = await TryGetConflictPathsAsync(gitPath, repo.Path, cancellationToken);
-            return new GitOperationResult(result.Success || conflicts is not null, "pull",
+            return new GitOperationResult(result.Success, "pull",
                 Conflicts: conflicts,
                 RequiresCredentials: !result.Success && IsCredentialError(result.Error),
                 Message: result.Success ? null : result.Error);
@@ -810,47 +815,8 @@ public sealed class LocalGitRepositoryService(
             args.Add(request.Sha);
             var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
             var conflicts = await TryGetConflictPathsAsync(gitPath, repo.Path, cancellationToken);
-            return new GitOperationResult(result.Success || conflicts is not null, "revert",
+            return new GitOperationResult(result.Success, "revert",
                 Conflicts: conflicts, Message: result.Success ? null : result.Error);
-        });
-    }
-
-    public async Task<GitOperationResult> ResolveConflictsAsync(Guid id, Guid userId, GitResolveRequest request, CancellationToken cancellationToken = default)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var repo = await GetRepoOrThrowAsync(db, id, userId, cancellationToken);
-        var gitPath = ResolveGitPathOrThrow();
-        return await WithWriteLockAsync(id, async () =>
-        {
-            foreach (var path in request.Paths)
-                if (!IsPathSafe(repo.Path, path))
-                    return new GitOperationResult(false, "resolve", Message: $"Path outside repository: {path}");
-
-            if (request.Paths.Count > 0)
-            {
-                var addArgs = new List<string> { "add", "--" };
-                addArgs.AddRange(request.Paths);
-                var addResult = await RunGitAsync(gitPath, repo.Path, [.. addArgs], cancellationToken);
-                if (!addResult.Success)
-                    return new GitOperationResult(false, "resolve", Message: addResult.Error);
-            }
-
-            if (request.ContinueMerge)
-            {
-                var mergeHeadExists = File.Exists(Path.Combine(repo.Path, ".git", "MERGE_HEAD"));
-                if (mergeHeadExists)
-                {
-                    var contResult = await RunGitAsync(gitPath, repo.Path, ["merge", "--continue"], cancellationToken);
-                    var conflicts = await TryGetConflictPathsAsync(gitPath, repo.Path, cancellationToken);
-                    return new GitOperationResult(contResult.Success, "resolve",
-                        Conflicts: conflicts, Message: contResult.Success ? null : contResult.Error);
-                }
-                var rebaseResult = await RunGitAsync(gitPath, repo.Path, ["rebase", "--continue"], cancellationToken);
-                var remainingConflicts = await TryGetConflictPathsAsync(gitPath, repo.Path, cancellationToken);
-                return new GitOperationResult(rebaseResult.Success, "resolve",
-                    Conflicts: remainingConflicts, Message: rebaseResult.Success ? null : rebaseResult.Error);
-            }
-            return new GitOperationResult(true, "resolve");
         });
     }
 
@@ -1416,19 +1382,10 @@ public sealed class LocalGitRepositoryService(
 
     private async Task<IReadOnlyList<string>?> TryGetConflictPathsAsync(string gitPath, string repoPath, CancellationToken cancellationToken)
     {
-        var statusResult = await RunGitAsync(gitPath, repoPath, ["status", "--porcelain=v2", "-uall"], cancellationToken);
-        if (!statusResult.Success) return null;
-        var conflicts = new List<string>();
-        foreach (var line in statusResult.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (line.StartsWith("u "))
-            {
-                var parts = line.Split(' ');
-                if (parts.Length >= 11)
-                    conflicts.Add(parts[10]);
-            }
-        }
-        return conflicts.Count > 0 ? conflicts : null;
+        var result = await RunGitAsync(gitPath, repoPath, ["diff", "--name-only", "--diff-filter=U", "-z"], cancellationToken);
+        if (!result.Success) throw new InvalidOperationException(result.Error);
+        var paths = result.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        return paths.Length == 0 ? null : paths;
     }
 
     private async Task<GitOperationResult> WithWriteLockAsync(Guid repoId, Func<Task<GitOperationResult>> operation)
@@ -1458,6 +1415,8 @@ public sealed class LocalGitRepositoryService(
                 {
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8,
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     WorkingDirectory = workingDir
@@ -1467,6 +1426,8 @@ public sealed class LocalGitRepositoryService(
             // Fail promptly when no saved/supplied credential exists; when one is available,
             // Git obtains it from the temporary askpass process below.
             process.StartInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+            process.StartInfo.Environment["GIT_EDITOR"] = "true";
+            process.StartInfo.Environment["GIT_SEQUENCE_EDITOR"] = "true";
             if (askPass is not null)
             {
                 process.StartInfo.Environment["GIT_ASKPASS"] = askPass.Path;

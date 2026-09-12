@@ -35,7 +35,7 @@ GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / G
 | 提交历史 | log 列表（hash/作者/时间/消息）+ 单提交详情 | `GET /api/v1.0/git/repositories/{id}/log` |
 | Revert | 反向提交指定 commit | `POST /api/v1.0/git/repositories/{id}/revert` |
 | Diff | 单文件 diff（工作区/已暂存/某提交） | `GET /api/v1.0/git/repositories/{id}/diff` |
-| 冲突解决 | 标记文件已解决（add）+ 继续 merge/rebase | `POST /api/v1.0/git/repositories/{id}/resolve` |
+| 冲突解决 | 三栏编辑、逐块选择、逐文件暂存与独立继续/中止 | `POST /api/v1.0/git/repositories/{id}/resolve` |
 
 **非目标（MVP 不含）**：cherry-pick、rebase 交互式编辑、submodule 深度管理、stash、tag 管理、内置 diff/merge 三方编辑器（冲突解决调用宿主 CodeEditor 或外联）、PR 工作流、多远程管理。这些列入 §8 后续演进。
 
@@ -61,6 +61,13 @@ GitClientApp (RemoteApplicationBase)
 
 ---
 
+### 日志页交互
+
+- 双击左侧「本地分支」中的分支名称，将日志历史的分支下拉框同步设为该分支，并通过同一筛选流程加载提交。保留搜索、作者、日期与路径条件；不执行 checkout，不修改当前工作区分支。
+- 单击仅选择分支；分组与远程分支双击不触发此本地分支快捷操作。检出仍由分支右键菜单执行。
+- 筛选工具栏随中间面板宽度自动换行，窄窗口中仍能访问所有条件。提交行分两层显示主题与短 SHA、作者、日期，悬停可查看完整主题与时间；无匹配记录时显示提示。
+- 日志页仅展示真实提交信息，不使用固定 HEAD/master/origin/master 徽章标记提交。
+
 ## 3. 协议契约（`Shared/RelaxKonOS.Protocol/Git/`）
 
 沿用 Protocol 约定（`sealed record` + `[property: JsonPropertyName]`，零 PackageReference）。
@@ -82,6 +89,9 @@ Push               = /api/v1.0/git/repositories/{id}/push              (POST)   
 Log                = /api/v1.0/git/repositories/{id}/log              (GET)         # 历史
 Diff               = /api/v1.0/git/repositories/{id}/diff             (GET)         # 文件 diff
 Revert             = /api/v1.0/git/repositories/{id}/revert            (POST)        # 反向提交
+Conflicts          = /api/v1.0/git/repositories/{id}/conflicts         (GET)         # 操作状态和冲突路径
+Conflict           = /api/v1.0/git/repositories/{id}/conflicts/file    (GET)         # ?path= 单文件版本
+ConflictOperation  = /api/v1.0/git/repositories/{id}/conflicts/operation (POST)       # continue / abort
 Resolve            = /api/v1.0/git/repositories/{id}/resolve           (POST)        # 标记冲突已解决
 Fetch              = /api/v1.0/git/repositories/{id}/fetch             (POST)        # 仅抓取
 ```
@@ -193,7 +203,7 @@ builder.Services.AddSingleton<IGitRepositoryService, LocalGitRepositoryService>(
 | GET | `/api/v1.0/git/repositories/{id}/log` | 提交历史（query: limit, skip） |
 | GET | `/api/v1.0/git/repositories/{id}/diff` | 文件 diff（query: path, staged, ref） |
 | POST | `/api/v1.0/git/repositories/{id}/revert` | 反向提交 |
-| POST | `/api/v1.0/git/repositories/{id}/resolve` | 标记冲突已解决 + 继续 |
+| POST | `/api/v1.0/git/repositories/{id}/resolve` | 保存选定版本/编辑结果并暂存 |
 | POST | `/api/v1.0/git/repositories/{id}/stage` | 仅暂存指定文件 |
 | POST | `/api/v1.0/git/repositories/{id}/unstage` | 仅取消暂存指定文件 |
 | POST | `/api/v1.0/git/repositories/{id}/restore` | 从 HEAD（或指定提交）还原指定文件 |
@@ -254,7 +264,7 @@ public sealed class GitClientApp : RemoteApplicationBase
 GitClientViewModel
     ├── Repositories: ObservableCollection<GitRepositoryDto>   # 仓库列表（左上选择器）
     ├── SelectedRepository: GitRepositoryDto?                  # 当前仓库
-    ├── ActivePage: GitClientPage (Overview/Workspace/Log/ConflictResolution/Remotes)
+    ├── ActivePage: GitClientPage (Overview/Workspace/Log/Remotes)
     ├── Status: GitStatusDto?                                  # 工作区状态
     │     ├── StagedFiles / UnstagedFiles / UntrackedFiles / ConflictFiles
     │     └── Branch / Upstream / Ahead / Behind
@@ -285,10 +295,10 @@ GitClientViewModel
 | `RevertCommand` | 二次确认 → `POST revert` → 冲突则进冲突视图 | SelectedCommit != null && !IsBusy |
 | `StageCommand`/`UnstageCommand` | `POST stage` / `POST unstage` 暂存调整 | SelectedFile != null |
 | `ViewDiffCommand` | `GET diff` | SelectedFile != null |
-| `ResolveConflictCommand` | 弹冲突解决对话框 → `POST resolve` | ConflictFiles 非空 |
+| `ResolveConflictCommand` | 采用整个 ours/theirs 或删除文件 → `POST resolve` | 已加载冲突且空闲 |
 | `RegisterRepositoryCommand` | 弹注册对话框 → `POST repositories` | server.git.manage 权限 |
 
-**冲突解决流程**：`pull`/`revert` 返回 `Conflicts` 非空 → `ActivePage` 自动切到「冲突解决」视图，列出冲突文件，每个文件可选「保留 ours/theirs/打开编辑器」→ 标记全部已解决后「继续合并」→ `POST resolve(continue=true)`。
+**冲突解决流程**：`pull`/`merge`/`revert`/checkout 等操作返回 `Conflicts` 非空时刷新并弹出多文件冲突解决窗口。通过 `GET conflicts` 读取真实操作类型和精确路径，`GET conflicts/file?path=…` 读取 base/ours/theirs/工作区结果。三栏编辑器支持逐冲突块采用 ours/theirs/双方、整文件采用、删除以及手动编辑。`POST resolve` 使用 `{ path, revision, choice, content }` 保存并暂存单文件；全部解决后独立调用 `POST conflicts/operation`，请求 `{ operation, action: "continue" }`。中止使用 `action: "abort"` 并要求界面确认。推送若因非快进被拒绝，会先弹出 merge/rebase/cancel 选择；整合同样产生冲突时会打开该窗口。无操作状态（如 squash）时解决后在工作区提交，不执行 rebase。详见 [冲突可视化设计](RelaxKonOS.GitClient.ConflictResolution.md)。
 
 ### 5.4 视图（`GitClientWorkspace.axaml`）
 
@@ -364,10 +374,10 @@ POST /api/v1.0/git/repositories/{id}/pull (JWT)
     ↓
 GitOperationResult
     ├── Success=true                              → StatusText="已拉取"；RefreshAllAsync
-    ├── Success=true && Conflicts 非空            → ActivePage=ConflictResolution
+    ├── Success=false && Conflicts 非空            → 打开多文件冲突解决对话框
     │     ├── 列出冲突文件（每个 ours/theirs）
     │     ├── 用户逐文件选择 → ShowResolveConflictDialogAsync
-    │     └── POST resolve(paths, continue=true)
+    │     └── POST resolve(path, revision, choice, content) → POST conflicts/operation(operation, action)
     │           ├── Success → RefreshAllAsync
     │           └── 仍有冲突 → 继续显示冲突视图
     └── RequiresCredentials=true → StatusText="需在宿主 OS 配置 Git 凭据"
@@ -382,7 +392,7 @@ POST /api/v1.0/git/repositories/{id}/checkout (JWT, branch)
     ↓
 GitOperationResult
     ├── Success=true            → StatusText="已切换到 {branch}"；RefreshAllAsync
-    └── Success=false && Conflicts → 提示「工作区有未提交变更，先提交或丢弃」
+    └── Success=false && Conflicts → 刷新并打开冲突解决对话框
 ```
 
 ### 6.5 Revert 流
@@ -396,7 +406,7 @@ POST /api/v1.0/git/repositories/{id}/revert (JWT, sha)
     ↓
 GitOperationResult
     ├── Success=true                → StatusText="已 Revert"；RefreshAllAsync
-    └── Conflicts 非空              → ActivePage=ConflictResolution（同 §6.3）
+    └── Conflicts 非空              → 打开冲突解决对话框（同 §6.3）
 ```
 
 ---
@@ -408,7 +418,7 @@ GitOperationResult
 3. **porcelain 解析而非人类文案**：所有 `git` 输出用 `--porcelain=v2` / `--pretty=format` / `--for-each-ref --format` 等机器可读格式，按 NUL/制表符切分，不解析人类文案（避免本地化 git 输出导致解析失败）。
 4. **路径越权防护**：所有 `git` 命令的 `cwd` 设为注册时记录的仓库 `Path`；diff/commit 的 `<path>` 参数必须 `Path.IsPathRooted` 后判断是否在仓库根下（`Path.GetRelativePath` 不抛异常即合法），禁止 `../` 越权到仓库外。
 5. **危险操作确认**：删除未合并分支、revert、checkout 覆盖未提交变更、删除仓库注册均需二次确认（`ShowConfirmAsync`）；MVP 不暴露 `git push --force` / `reset --hard`。
-6. **冲突状态机**：`pull`/`revert` 可能进入冲突状态（`git status --porcelain=v2` 含 `u` 行）。冲突时强制切到冲突解决页，未解决完不允许其他写操作（`IsBusy` 或 `HasConflicts` 门禁）。
+6. **冲突状态机**：`pull`/`revert` 可能进入冲突状态（`git status --porcelain=v2` 含 `u` 行）。冲突时弹出冲突解决窗口，未解决完不允许其他写操作（`IsBusy` 或 `HasConflicts` 门禁）。
 7. **DispatcherTimer 生命周期**：View `Unloaded`（窗口关闭/卸载）时必须调 `viewModel.Stop()` 停止定时器（`DispatcherTimer` 不会随视图卸载自动停止）。`RefreshStatusAsync` 用 `Interlocked` 重入保护防止请求堆积。
 8. **Singleton Provider 持信号量**：`IGitRepositoryService` 为 Singleton——持有按 repoId 缓存的 `SemaphoreSlim` 字典，跨请求的写操作串行化靠单例保证。禁止 Scoped/Transient。
 9. **detached HEAD**：`git status --porcelain=v2 --branch` 的 `# branch.head` 为 `(detached)` 时，`IsDetached=true`，客户端禁用分支操作并提示「当前处于 detached HEAD，请先 checkout 分支」。
@@ -426,7 +436,7 @@ GitOperationResult
 ### 8.1 分支树右键菜单（左栏）
 
 - **[右键菜单已占位] 重命名分支**：`git branch -m <old> <new>`。需加 `POST /repositories/{id}/branches/{name}/rename`，校验新分支名不冲突 + 当前分支允许重命名。
-- **[右键菜单已占位] 合并分支**：`git merge <source>`。需加 `POST /repositories/{id}/merge`（源分支名 + fast-forward/--no-ff/--squash 策略）。冲突时沿用 `GitOperationResult.Conflicts` 通道切到冲突解决页（与 pull/revert 同构）。
+- **合并分支**：`git merge <source>`。冲突时沿用 `GitOperationResult.Conflicts` 通道弹出多文件冲突解决窗口（与 pull/revert 同构）。
 - **[右键菜单已占位] 变基分支**：`git rebase <upstream>`。需加 `POST /repositories/{id}/rebase`（交互式/非交互式，abort/continue/skip 子动作）。交互式 rebase 后续补编辑器。
 - **[右键菜单已占位] 设置跟踪分支**：`git branch -u <upstream> <branch>`。需加 `PUT /repositories/{id}/branches/{name}/tracking`，允许解绑（track=null）。
 - **[右键菜单已占位] 显示与工作树差异**：基于现有 diff 接口 `GET /diff?ref=<branch>`，新增「工作树 vs 指定分支」比较，当前仅支持工作区 vs HEAD / staged。
@@ -499,7 +509,7 @@ GitOperationResult
 | 提交 | 输入消息 + 暂存文件 → 提交成功 → 历史出现新提交 |
 | 分支新建/切换/删除 | 新建分支 → 切换 → 历史正确；删除未合并分支有确认；删除当前分支被拒 |
 | 拉取(无冲突) | upstream 落后时 pull → 成功 → ahead/behind 归零 |
-| 拉取(冲突) | 制造冲突 → pull → 进入冲突页 → 选 ours/theirs → 继续 → 成功 |
+| 拉取(冲突) | 制造冲突 → pull → 弹出冲突解决窗口 → 选 ours/theirs → 继续 → 成功 |
 | 推送 | 提交后 push → 成功 → upstream 领先归零；凭据缺失时提示而非崩溃 |
 | 历史 | log 显示 hash/作者/时间/消息；选中提交显示变更文件 |
 | Revert | 选中提交 → 确认 → 成功 → 历史出现反向提交；冲突时进冲突页 |

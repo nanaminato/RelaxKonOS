@@ -11,6 +11,7 @@
     <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxDistributionSupport.cs" Link="LinuxDistributionSupport.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsSmbShareSecurity.cs" Link="WindowsSmbShareSecurity.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFeatureInstallationState.cs" Link="WindowsFeatureInstallationState.cs" />
+    <Compile Include="../Client/RelaxKonOS.Client/Apps/Git/GitConflictBlock.cs" Link="GitConflictBlock.cs" />
     <ProjectReference Include="../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" />
     <ProjectReference Include="../RelaxKonOS.Server/RelaxKonOS.Server.csproj" Condition="'$(UsePrebuiltServerAssembly)' != 'true'" />
     <!-- The local desktop SDK currently lacks workload locator SDKs. This opt-in path permits

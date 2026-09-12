@@ -30,6 +30,9 @@ public interface IRemoteGitClient
     Task<GitCommitDetailDto> GetCommitDetailAsync(string id, string sha, CancellationToken cancellationToken = default);
     Task<GitDiffDto> GetDiffAsync(string id, string path, bool staged = false, string? @ref = null, CancellationToken cancellationToken = default);
     Task<GitOperationResult> RevertAsync(string id, GitRevertRequest request, CancellationToken cancellationToken = default);
+    Task<GitConflictStateDto> GetConflictStateAsync(string id, CancellationToken cancellationToken = default);
+    Task<GitConflictFileDto> GetConflictAsync(string id, string path, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> ConflictOperationAsync(string id, GitConflictOperationRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> ResolveConflictsAsync(string id, GitResolveRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> ResetAsync(string id, GitResetRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> RestoreAsync(string id, GitRestoreRequest request, CancellationToken cancellationToken = default);
