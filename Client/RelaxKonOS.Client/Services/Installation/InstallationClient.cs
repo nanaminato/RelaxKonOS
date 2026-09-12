@@ -40,7 +40,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session)
     {
         if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null) throw new InstallationApiException("installation.signed_out", HttpStatusCode.Unauthorized);
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), cancellationToken: ct));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct));
         if (key is not null) request.Headers.Add("Idempotency-Key", key);
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, ct);
