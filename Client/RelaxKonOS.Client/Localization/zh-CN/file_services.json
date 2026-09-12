@@ -83,6 +83,7 @@
     "file_services.problem.file-services.smb.not_installed": "请先安装 SMB",
     "file_services.problem.file-services.smb.helper_unavailable": "特权助手不可用",
     "file_services.problem.file-services.smb.detection_failed": "无法检测 Samba 状态，暂时无法确认是否已安装；请检查服务器上的特权助手后刷新。",
+    "file_services.problem.file-services.smb.credential_update_failed": "无法创建、启用或更新 Samba 用户账户。请检查服务器日志中的 smbpasswd 诊断。",
     "file_services.problem.file-services.smb.configuration_invalid": "共享配置或路径无效",
     "file_services.problem.file-services.smb.windows_security_configuration_required": "Windows SMB 安全配置需要应用；创建共享时会自动完成。",
     "file_services.problem.file-services.smb.configuration_unmanaged": "该共享不受 RelaxKonOS 管理",

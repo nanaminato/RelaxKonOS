@@ -653,7 +653,7 @@ static async Task<PrivilegedOperationResult> SetSambaUserEnabledAsync(string? us
 {
     if (!OperatingSystem.IsLinux() || !IsValidSmbUsername(username) || enabled is null || !UserExists(username!)) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Samba system account is invalid");
     if (!File.Exists("/usr/bin/smbpasswd")) return Fail(2, PrivilegedProblemCode.NotFound, "Samba is not installed");
-    return await RunFixedCommandAsync("/usr/bin/smbpasswd", [enabled.Value ? "-e" : "-d", username!], TimeSpan.FromSeconds(30), "Samba credential update failed");
+    return await RunFixedCommandAsync("/usr/bin/smbpasswd", [enabled.Value ? "-e" : "-d", username!], TimeSpan.FromSeconds(30), "Samba credential update failed", "smbpasswd-account-state");
 }
 
 static async Task<PrivilegedOperationResult> SetSambaUserPasswordAsync(string? username, string? password)
@@ -661,13 +661,17 @@ static async Task<PrivilegedOperationResult> SetSambaUserPasswordAsync(string? u
     if (!OperatingSystem.IsLinux() || !IsValidSmbUsername(username) || !UserExists(username!) || password is not { Length: >= 12 and <= 1024 } || password.Any(char.IsControl)) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Samba credential request is invalid");
     if (!File.Exists("/usr/bin/smbpasswd")) return Fail(2, PrivilegedProblemCode.NotFound, "Samba is not installed");
     // smbpasswd's documented noninteractive stdin protocol is fixed here; the secret is not logged or returned.
-    using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo("/usr/bin/smbpasswd") { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true } };
-    process.StartInfo.ArgumentList.Add("-s"); process.StartInfo.ArgumentList.Add(username!);
+    using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo("/usr/bin/smbpasswd") { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardError = true, CreateNoWindow = true } };
+    foreach (var argument in SambaCredentialCommand.SetPassword(username!)) process.StartInfo.ArgumentList.Add(argument);
     if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "Samba credential helper could not start");
     await process.StandardInput.WriteLineAsync(password); await process.StandardInput.WriteLineAsync(password); await process.StandardInput.DisposeAsync();
+    var error = process.StandardError.ReadToEndAsync();
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
     try { await process.WaitForExitAsync(timeout.Token); } catch (OperationCanceledException) { return Fail(124, PrivilegedProblemCode.TimedOut, "Samba credential operation timed out"); }
-    return process.ExitCode == 0 ? new(true) : Fail(1, PrivilegedProblemCode.InternalError, "Samba credential update failed");
+    await error;
+    if (process.ExitCode == 0) return new(true);
+    WriteHelperDiagnostic("smbpasswd-password", process.ExitCode);
+    return Fail(1, PrivilegedProblemCode.InternalError, "Samba credential update failed");
 }
 
 static async Task<bool> IsSmbHealthyAsync()
@@ -799,7 +803,7 @@ static async Task<PrivilegedOperationResult> RunFixedCommandWithOutputAsync(stri
     return process.ExitCode == 0 ? new(true, OutputBase64: Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text))) : Fail(1, PrivilegedProblemCode.InternalError, failure);
 }
 
-static async Task<PrivilegedOperationResult> RunFixedCommandAsync(string executable, IReadOnlyList<string> arguments, TimeSpan timeout, string failure)
+static async Task<PrivilegedOperationResult> RunFixedCommandAsync(string executable, IReadOnlyList<string> arguments, TimeSpan timeout, string failure, string? diagnostic = null)
 {
     // The one-shot Helper reserves its stdout exclusively for the final JSON protocol result.
     // Package managers emit progress on stdout, so drain child output internally rather than
@@ -815,8 +819,12 @@ static async Task<PrivilegedOperationResult> RunFixedCommandAsync(string executa
     try { await process.WaitForExitAsync(cancellation.Token); }
     catch (OperationCanceledException) { return Fail(124, PrivilegedProblemCode.TimedOut, "host operation timed out"); }
     await Task.WhenAll(output, error);
-    return process.ExitCode == 0 ? new(true) : Fail(1, PrivilegedProblemCode.InternalError, failure);
+    if (process.ExitCode == 0) return new(true);
+    if (diagnostic is not null) WriteHelperDiagnostic(diagnostic, process.ExitCode);
+    return Fail(1, PrivilegedProblemCode.InternalError, failure);
 }
+
+static void WriteHelperDiagnostic(string eventName, int exitCode) => Console.Error.WriteLine($"relaxkonos-diagnostic:{eventName} exit={exitCode}");
 
 static PrivilegedOperationResult Fail(int exitCode, PrivilegedProblemCode code, string error) => new(false, exitCode, Error: error, ProblemCode: code);
 static Task WriteResultAsync(PrivilegedOperationResult result) => Console.Out.WriteLineAsync(JsonSerializer.Serialize(PrivilegedOperationFrame.Completed(result)));

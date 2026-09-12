@@ -42,6 +42,7 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
             var output = PrivilegedFrameReader.ReadAsync(process.StandardOutput.BaseStream);
             var error = PrivilegedFrameReader.DrainAsync(process.StandardError.BaseStream);
             await Task.WhenAll(output, error, process.WaitForExitAsync(CancellationToken.None));
+            LogHelperDiagnostics(request, await error);
             return Complete(request, await output);
         }
     }
@@ -58,5 +59,19 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
         var resourceHash = resource.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resource)))[..16];
         logger.LogInformation("Privileged Helper operation completed. OperationId={OperationId} Operation={Operation} ResourceHash={ResourceHash} Success={Success} ProblemCode={ProblemCode}",
             request.OperationId, request.Operation, resourceHash, result.Success, result.ProblemCode);
+    }
+    private void LogHelperDiagnostics(PrivilegedOperationRequest request, string stderr)
+    {
+        foreach (var line in stderr.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(SafeDiagnostic).OfType<string>())
+            logger.LogWarning("Privileged Helper diagnostic. OperationId={OperationId} Operation={Operation} Detail={Detail}", request.OperationId, request.Operation, line);
+    }
+    private static string? SafeDiagnostic(string line)
+    {
+        const string prefix = "relaxkonos-diagnostic:";
+        if (!line.StartsWith(prefix, StringComparison.Ordinal)) return null;
+        var parts = line[prefix.Length..].Split(" exit=", StringSplitOptions.None);
+        if (parts.Length != 2 || parts[0] is not ("smbpasswd-password" or "smbpasswd-account-state") || !int.TryParse(parts[1], out var exitCode) || exitCode is < 1 or > 255) return null;
+        return $"{parts[0]} exit={exitCode}";
     }
 }

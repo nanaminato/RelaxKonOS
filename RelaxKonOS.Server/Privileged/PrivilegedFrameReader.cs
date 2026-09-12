@@ -50,9 +50,16 @@ internal static class PrivilegedFrameReader
         if (InstallationExecutionContext.Progress.Value is { } observer && frame.Stage is { } stage)
             await observer.ReportAsync(new(stage, frame.Progress));
     }
-    public static async Task DrainAsync(Stream stream)
+    public static async Task<string> DrainAsync(Stream stream)
     {
-        var buffer = new byte[8192];
-        while (await stream.ReadAsync(buffer) != 0) { }
+        const int maximumDiagnosticBytes = 4096;
+        await using var captured = new MemoryStream();
+        var buffer = new byte[8192]; int read;
+        while ((read = await stream.ReadAsync(buffer)) != 0)
+        {
+            var count = Math.Min(read, maximumDiagnosticBytes - (int)captured.Length);
+            if (count > 0) await captured.WriteAsync(buffer.AsMemory(0, count));
+        }
+        return Encoding.UTF8.GetString(captured.ToArray());
     }
 }

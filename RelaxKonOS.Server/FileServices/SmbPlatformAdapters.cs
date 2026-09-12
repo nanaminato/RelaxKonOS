@@ -66,8 +66,8 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
             s.Permissions.Select(p => new SmbSharePermissionRequest(p.Principal, p.Access.ToString())).ToArray())).ToArray();
         return Result(operationId, await helper.ApplyLinuxConfigurationAsync(shares, operationId, ct));
     }
-    public async Task<FileServiceOperationResultDto> SetUserAsync(string username, bool enabled, string? password, Guid id, CancellationToken ct) => password is null
-        ? Result(id, await helper.SetUserEnabledAsync(username, enabled, id, ct)) : Result(id, await helper.SetUserPasswordAsync(username, password, id, ct));
+    public async Task<FileServiceOperationResultDto> SetUserAsync(string username, bool enabled, string? password, Guid id, CancellationToken ct) => CredentialResult(id, password is null
+        ? await helper.SetUserEnabledAsync(username, enabled, id, ct) : await helper.SetUserPasswordAsync(username, password, id, ct));
     private static FileServiceStatusDto Unsupported() => new(FileServiceProtocol.Smb, FileServiceRuntimeState.Unsupported, null, false, false, FileServiceProblemCodes.UnsupportedPlatform);
     /// <summary>
     /// A failed probe cannot establish either Samba's installation state or that its configuration
@@ -82,6 +82,13 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
         _ => new(FileServiceProtocol.Smb, FileServiceRuntimeState.Unavailable, null, false, false, FileServiceProblemCodes.DetectionFailed),
     };
     internal static FileServiceOperationResultDto Result(Guid id, PrivilegedOperationResult result) => new(id, result.Success, result.Success ? null : Problem(result));
+    internal static FileServiceOperationResultDto CredentialResult(Guid id, PrivilegedOperationResult result) => new(id, result.Success, result.Success ? null : result.ProblemCode switch
+    {
+        PrivilegedProblemCode.InvalidRequest => FileServiceProblemCodes.SystemAccountNotFound,
+        PrivilegedProblemCode.NotFound => FileServiceProblemCodes.NotInstalled,
+        PrivilegedProblemCode.HelperUnavailable => FileServiceProblemCodes.HelperUnavailable,
+        _ => FileServiceProblemCodes.CredentialUpdateFailed,
+    });
     internal static string Problem(PrivilegedOperationResult result)
     {
         // Helper errors are fixed, non-secret classifications. Preserve the product-level

@@ -41,6 +41,8 @@ public static class FileServiceChecks
             "The managed include follows all global options and repairs the legacy placement");
         Check(!RelaxKonOS.PrivilegedHelper.SambaMainConfiguration.TryEnsureManagedInclude("[global]\n" + marker + "\n" + marker, marker, include, out _),
             "Duplicate managed include markers remain unsafe to rewrite");
+        Check(RelaxKonOS.PrivilegedHelper.SambaCredentialCommand.SetPassword("nanami").SequenceEqual(["-a", "-s", "nanami"]),
+            "Setting a Samba password creates and enables the missing Samba account");
         Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=ubuntu\nVERSION_ID=24.04\n"),
             "Ubuntu 24.04 is accepted for Samba management");
         Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=ubuntu\nVERSION_ID=26.04\n"),
@@ -126,6 +128,9 @@ public static class FileServiceChecks
         Check(LinuxSambaPlatformAdapter.Problem(new(false, 1, Error: "Samba configuration invalid", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError))
                 == FileServiceProblemCodes.ConfigurationInvalid,
             "Non-Windows Helper failures keep their existing classification");
+        Check(LinuxSambaPlatformAdapter.CredentialResult(Guid.NewGuid(), new(false, 1, Error: "Samba credential update failed", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError)).ProblemCode
+                == FileServiceProblemCodes.CredentialUpdateFailed,
+            "Samba credential failures are never reported as invalid share configurations");
         var failedProbe = LinuxSambaPlatformAdapter.DetectionFailure(new(false, 1, Error: "helper operation failed", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError));
         Check(failedProbe.State == FileServiceRuntimeState.Unavailable && failedProbe.HealthProblemCode == FileServiceProblemCodes.DetectionFailed,
             "A failed Samba probe reports an unknown state instead of an invalid share configuration");
