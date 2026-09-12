@@ -23,6 +23,17 @@ vm.SharePermissions.Clear();
 client.Linux = true;
 await vm.RefreshCommand.ExecuteAsync(null);
 Check(vm.SupportsSambaCredentials && client.UserReads == 1, "Linux users loaded");
+vm.SelectedUser = vm.Users.Single();
+var sambaPasswordPrompt = new TaskCompletionSource<string?>();
+vm.RequestSambaPasswordAsync = () => sambaPasswordPrompt.Task;
+var writesBeforePasswordPrompt = client.Writes;
+var passwordUpdate = vm.SetSambaPasswordCommand.ExecuteAsync(null);
+Check(vm.IsAwaitingInput && !vm.IsBusy && !vm.ToggleUserCommand.CanExecute(null) && client.Writes == writesBeforePasswordPrompt,
+    "Entering a Samba password is local input and must not show operation progress or submit a request");
+sambaPasswordPrompt.SetResult("a-valid-samba-password");
+await passwordUpdate;
+Check(!vm.IsAwaitingInput && !vm.IsBusy && client.Writes == writesBeforePasswordPrompt + 1,
+    "Samba password update begins only after the local password prompt closes");
 vm.AddSharePermission();
 Check(vm.SharePermissions[^1].HasPrincipalOptions && vm.SharePermissions[^1].PrincipalOptions.Single().Value == "nanami", "Eligible Linux users are available as permission choices");
 vm.SelectedUser = new("system", false, false);

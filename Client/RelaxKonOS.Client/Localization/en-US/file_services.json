@@ -32,6 +32,8 @@
     "file_services.delete": "Delete",
     "file_services.users": "Linux Samba users",
     "file_services.user_toggle": "Enable / disable",
+    "file_services.user_enable": "Enable",
+    "file_services.user_disable": "Disable",
     "file_services.user_password": "Set Samba password",
     "file_services.host_password": "Server administrator password",
     "file_services.host_password_message": "This operation changes the server running RelaxKonOS Server. Enter the password for the account currently signed in to the server; on Windows, it must be an administrator.",

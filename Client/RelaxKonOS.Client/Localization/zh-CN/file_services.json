@@ -32,6 +32,8 @@
     "file_services.delete": "删除",
     "file_services.users": "Linux Samba 用户",
     "file_services.user_toggle": "启用/禁用",
+    "file_services.user_enable": "启用",
+    "file_services.user_disable": "禁用",
     "file_services.user_password": "设置 Samba 密码",
     "file_services.host_password": "服务器管理员密码",
     "file_services.host_password_message": "此操作会更改运行 RelaxKonOS Server 的服务器。请输入当前登录服务器账户的密码；Windows 账户必须具有管理员权限。",

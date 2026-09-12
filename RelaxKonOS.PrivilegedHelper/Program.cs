@@ -613,9 +613,9 @@ static async Task<PrivilegedOperationResult> ReadSambaUsersAsync()
     var enabled = new HashSet<string>(StringComparer.Ordinal);
     if (File.Exists("/usr/bin/pdbedit"))
     {
-        var result = await RunFixedCommandWithOutputAsync("/usr/bin/pdbedit", ["-L"], "Samba user enumeration failed");
+        var result = await RunFixedCommandWithOutputAsync("/usr/bin/pdbedit", ["-L", "-v"], "Samba user enumeration failed");
         if (result.Success && DecodeUtf8(result.OutputBase64) is { } output)
-            foreach (var line in output.Split('\n')) { var name = line.Split(':', 2)[0].Trim(); if (IsValidSmbUsername(name)) enabled.Add(name); }
+            enabled.UnionWith(SambaUserStatus.ParseEnabledUsers(output).Where(IsValidSmbUsername));
     }
     var users = File.ReadLines("/etc/passwd").Select(line => line.Split(':')).Where(parts => parts.Length >= 7 && IsValidSmbUsername(parts[0]) && int.TryParse(parts[2], out var uid) && uid >= 1000 && !parts[6].Contains("nologin", StringComparison.OrdinalIgnoreCase))
         .Select(parts => new FileServiceUserDto(parts[0], enabled.Contains(parts[0]), true)).OrderBy(x => x.Username, StringComparer.Ordinal).ToArray();

@@ -43,6 +43,15 @@ public static class FileServiceChecks
             "Duplicate managed include markers remain unsafe to rewrite");
         Check(RelaxKonOS.PrivilegedHelper.SambaCredentialCommand.SetPassword("nanami").SequenceEqual(["-a", "-s", "nanami"]),
             "Setting a Samba password creates and enables the missing Samba account");
+        var enabledUsers = RelaxKonOS.PrivilegedHelper.SambaUserStatus.ParseEnabledUsers("""
+            Unix username:        enabled-user
+            Account Flags:        [U          ]
+
+            Unix username:        disabled-user
+            Account Flags:        [DU         ]
+            """);
+        Check(enabledUsers.SetEquals(["enabled-user"]),
+            "Disabled Samba accounts must not be reported as enabled merely because pdbedit lists them");
         Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=ubuntu\nVERSION_ID=24.04\n"),
             "Ubuntu 24.04 is accepted for Samba management");
         Check(RelaxKonOS.PrivilegedHelper.LinuxDistributionSupport.IsSambaSupported("ID=ubuntu\nVERSION_ID=26.04\n"),

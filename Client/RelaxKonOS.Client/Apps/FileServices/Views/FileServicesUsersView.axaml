@@ -8,7 +8,7 @@
         <StackPanel Spacing="12">
             <TextBlock Text="{loc:Loc file_services.users_help}" TextWrapping="Wrap" />
             <WrapPanel>
-                <Button Content="{loc:Loc file_services.user_toggle}" Command="{Binding ToggleUserCommand}" />
+                <Button Content="{Binding UserToggleText}" Command="{Binding ToggleUserCommand}" />
                 <Button Content="{loc:Loc file_services.user_password}" Command="{Binding SetSambaPasswordCommand}" />
             </WrapPanel>
         </StackPanel>
