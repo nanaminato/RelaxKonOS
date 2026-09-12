@@ -43,6 +43,10 @@ Check(client.Writes == 2, "Cancelled delete does not mutate");
 client.State = FileServiceRuntimeState.NotInstalled;
 await vm.RefreshCommand.ExecuteAsync(null);
 Check(vm.InstallCommand.CanExecute(null) && !vm.NewShareCommand.CanExecute(null), "Not installed actions");
+client.Supported = false;
+await vm.RefreshCommand.ExecuteAsync(null);
+Check(vm.SupportsInstall && vm.InstallCommand.CanExecute(null), "The explicit install capability remains available when a server reports an unhealthy platform state");
+client.Supported = true;
 var pendingInstallation = new TaskCompletionSource<FileServiceOperationResultDto>(TaskCreationOptions.RunContinuationsAsynchronously);
 client.PendingInstallation = pendingInstallation;
 var installation = vm.InstallCommand.ExecuteAsync(null);
@@ -86,12 +90,12 @@ sealed class Permissions : IAppPermissionScope
 }
 sealed class FakeClient : IRemoteFileServicesClient
 {
- public bool Linux; public int StatusReads, UserReads, Writes;
+ public bool Linux; public bool Supported = true; public int StatusReads, UserReads, Writes;
  public string? InstallProblem;
  public TaskCompletionSource<FileServiceOperationResultDto>? PendingInstallation;
  public FileServiceRuntimeState State = FileServiceRuntimeState.Running;
  public Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct = default) { StatusReads++; return Task.FromResult(new FileServiceStatusDto(FileServiceProtocol.Smb, State, "test", State == FileServiceRuntimeState.Running, true)); }
- public Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceCapabilitiesDto(true, Linux, Linux, true, !Linux));
+ public Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceCapabilitiesDto(Supported, Linux, Linux, true, !Linux));
  public Task<IReadOnlyList<FileShareDto>> ListSharesAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<FileShareDto>>([]);
  public Task<IReadOnlyList<FileServiceUserDto>> ListUsersAsync(CancellationToken ct = default) { UserReads++; return Task.FromResult<IReadOnlyList<FileServiceUserDto>>([]); }
  public Task<FileServiceConnectionInfoDto> GetConnectionAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceConnectionInfoDto("host",445,"\\\\host\\","smb://host/"));

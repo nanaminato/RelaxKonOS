@@ -57,6 +57,13 @@ public static class FileServiceChecks
         var unsupported = new FileServiceManager(new FileServiceProviderResolver([]));
         var unsupportedStatus = await unsupported.GetStatusAsync(CancellationToken.None);
         Check(unsupportedStatus.State == FileServiceRuntimeState.Unsupported && unsupportedStatus.HealthProblemCode == FileServiceProblemCodes.UnsupportedPlatform, "Missing provider fails closed as unsupported platform");
+        var unavailableLinux = new LinuxSambaFileServiceProvider(new FakeLinuxPlatform(new(FileServiceProtocol.Smb, FileServiceRuntimeState.Unavailable, null, false, false, FileServiceProblemCodes.DetectionFailed)));
+        var unavailableLinuxCapabilities = await unavailableLinux.GetCapabilitiesAsync(CancellationToken.None);
+        Check(unavailableLinuxCapabilities is { Supported: true, InstallSupported: true, SambaCredentialsSupported: true },
+            "A failed Linux probe retains the explicit Samba install capability");
+        var unsupportedLinux = new LinuxSambaFileServiceProvider(new FakeLinuxPlatform(new(FileServiceProtocol.Smb, FileServiceRuntimeState.Unsupported, null, false, false, FileServiceProblemCodes.UnsupportedPlatform)));
+        Check(!(await unsupportedLinux.GetCapabilitiesAsync(CancellationToken.None)).Supported,
+            "An unsupported Linux platform still withholds Samba capabilities");
         var result = await manager.LifecycleAsync(SmbLifecycleAction.Restart, CancellationToken.None);
         Check(result.Succeeded && provider.LifecycleCalls == 1, "Manager dispatches lifecycle through provider abstraction");
         await Task.WhenAll(
@@ -110,6 +117,12 @@ public static class FileServiceChecks
         Check(LinuxSambaPlatformAdapter.Problem(new(false, 1, Error: "Samba configuration invalid", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError))
                 == FileServiceProblemCodes.ConfigurationInvalid,
             "Non-Windows Helper failures keep their existing classification");
+        var failedProbe = LinuxSambaPlatformAdapter.DetectionFailure(new(false, 1, Error: "helper operation failed", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.InternalError));
+        Check(failedProbe.State == FileServiceRuntimeState.Unavailable && failedProbe.HealthProblemCode == FileServiceProblemCodes.DetectionFailed,
+            "A failed Samba probe reports an unknown state instead of an invalid share configuration");
+        var unsupportedProbe = LinuxSambaPlatformAdapter.DetectionFailure(new(false, 64, Error: "Linux distribution is unsupported", ProblemCode: RelaxKonOS.Protocol.Privileged.PrivilegedProblemCode.UnsupportedOperation));
+        Check(unsupportedProbe.State == FileServiceRuntimeState.Unsupported && unsupportedProbe.HealthProblemCode == FileServiceProblemCodes.UnsupportedPlatform,
+            "An explicitly unsupported Samba platform remains unsupported");
         var timedOutInstall = await new LinuxSambaPlatformAdapter(new TimedOutSmbOperations()).InstallAsync(Guid.NewGuid(), CancellationToken.None);
         Check(!timedOutInstall.Succeeded && timedOutInstall.ProblemCode == FileServiceProblemCodes.InstallationFailed,
             "A timed-out Samba installation returns an installation failure instead of a configuration error");
@@ -203,6 +216,16 @@ public static class FileServiceChecks
                 ? new WindowsSmbSecurityOperationResult(new(operationId, false, FileServiceProblemCodes.ReconciliationRequired), null)
                 : new WindowsSmbSecurityOperationResult(new(operationId, true), "security-snapshot"));
         }
+    }
+    private sealed class FakeLinuxPlatform(FileServiceStatusDto status) : ISambaPlatformAdapter
+    {
+        public Task<FileServiceStatusDto> DetectAsync(CancellationToken ct) => Task.FromResult(status);
+        public Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
+        public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
+        public Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileShareDto>>([]);
+        public Task<IReadOnlyList<FileServiceUserDto>> ReadUsersAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<FileServiceUserDto>>([]);
+        public Task<FileServiceOperationResultDto> ApplySharesAsync(IReadOnlyList<FileShareDto> current, Guid operationId, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(operationId, true));
+        public Task<FileServiceOperationResultDto> SetUserAsync(string username, bool enabled, string? password, Guid id, CancellationToken ct) => Task.FromResult(new FileServiceOperationResultDto(id, true));
     }
     private sealed class ReplayCheckingSmbTransport : RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport
     {

@@ -82,6 +82,7 @@
     "file_services.problem.file-services.platform_unsupported": "Unsupported server platform",
     "file_services.problem.file-services.smb.not_installed": "Install SMB first",
     "file_services.problem.file-services.smb.helper_unavailable": "Privileged helper unavailable",
+    "file_services.problem.file-services.smb.detection_failed": "Samba status could not be detected, so its installation state is unknown. Check the server's privileged helper and refresh.",
     "file_services.problem.file-services.smb.configuration_invalid": "Invalid share configuration or path",
     "file_services.problem.file-services.smb.windows_security_configuration_required": "Windows SMB security configuration must be applied; it will be completed when a share is created.",
     "file_services.problem.file-services.smb.configuration_unmanaged": "Share is not managed by RelaxKonOS",

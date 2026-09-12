@@ -21,6 +21,7 @@ public static class FileServiceProblemCodes
     public const string UnsupportedPlatform = "file-services.platform_unsupported";
     public const string NotInstalled = "file-services.smb.not_installed";
     public const string HelperUnavailable = "file-services.smb.helper_unavailable";
+    public const string DetectionFailed = "file-services.smb.detection_failed";
     public const string ConfigurationInvalid = "file-services.smb.configuration_invalid";
     public const string WindowsSecurityConfigurationRequired = "file-services.smb.windows_security_configuration_required";
     public const string ConfigurationUnmanaged = "file-services.smb.configuration_unmanaged";

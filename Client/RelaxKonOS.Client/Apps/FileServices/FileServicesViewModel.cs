@@ -34,7 +34,9 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     public FileServiceRuntimeState? RuntimeState { get; private set; }
     public string PlatformText => Capabilities is null ? T("status.loading") : Capabilities.WindowsShareSecuritySupported ? T("platform.windows") : SupportsSambaCredentials ? T("platform.linux") : T("state.Unsupported");
     public string PlatformHelp => Capabilities is null ? T("status.loading") : T(Capabilities.WindowsShareSecuritySupported ? "windows_help" : SupportsSambaCredentials ? "linux_help" : "state.Unsupported");
-    public bool SupportsInstall => Capabilities is { Supported: true, InstallSupported: true };
+    // InstallSupported is the authoritative operation capability. Do not suppress the action
+    // merely because an older or temporarily unhealthy server reports Supported as false.
+    public bool SupportsInstall => Capabilities?.InstallSupported == true;
     public string VersionText { get; private set; } = "—";
     public Func<string, Task<bool>>? ConfirmSharePathAsync { get; set; }
     public static bool RequiresSharePathWarning(string path, bool windows)

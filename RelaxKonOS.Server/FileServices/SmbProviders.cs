@@ -10,7 +10,12 @@ public sealed class LinuxSambaFileServiceProvider(ISambaPlatformAdapter platform
     public async Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct)
     {
         var status = await GetStatusAsync(ct);
-        return new(status.State != FileServiceRuntimeState.Unsupported, true, true, true, false, status.HealthProblemCode);
+        // Availability of a probe is not the same thing as platform support. A transient Helper
+        // failure used to make this false, which hid the install control and misleadingly showed
+        // an invalid Samba configuration. Only an explicit unsupported-platform result removes
+        // Linux Samba capabilities.
+        var supported = status.HealthProblemCode != FileServiceProblemCodes.UnsupportedPlatform;
+        return new(supported, supported, supported, supported, false, status.HealthProblemCode);
     }
     public Task<FileServiceOperationResultDto> InstallAsync(Guid id, CancellationToken ct) => platform.InstallAsync(id, ct);
     public Task<FileServiceOperationResultDto> LifecycleAsync(SmbLifecycleAction action, Guid id, CancellationToken ct) => platform.LifecycleAsync(action, id, ct);

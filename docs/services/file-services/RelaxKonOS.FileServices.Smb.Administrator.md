@@ -46,6 +46,7 @@ Windows principal 必须是现有 SID，且只能用于 share ACL；V1 不管理
 ## 故障诊断与卸载
 
 - `file-services.smb.helper_unavailable`：确认 Helper 已按平台安装、Linux sudoers 规则/Windows service SID 和 pipe shared secret 完整；不要通过放宽 sudoers 或 pipe ACL 解决。
+- `file-services.smb.detection_failed`：检测未能确认 Samba 是否已安装；这不是“共享配置无效”或安装成功的结论。检查 Helper 后刷新；只有状态明确为 `NotInstalled` 时才会启用安装操作。
 - `file-services.smb.port_in_use`：使用现有宿主诊断识别占用 TCP 445 的服务；本模块不终止其他服务。
 - `file-services.smb.configuration_unmanaged`：恢复唯一 include marker 或将管理员配置保持为外部配置；不要手动粘贴 RelaxKonOS fragments 到多个位置。
 - `file-services.smb.reconciliation_required`：检查 Windows share API 实际状态与 ACL，选择保持外部修改或在 UI 中重新确认新的受管资源；不要编辑数据库账本。
