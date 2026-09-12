@@ -31,9 +31,9 @@ public sealed class FileServicesApp : RemoteApplicationBase
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Smb, "relaxkonos.file-services", () => vm.RefreshCommand.ExecuteAsync(null));
         var window = context.ShowWindow(LocalizedText.Get("file_services.title"), InstallationPanel.Wrap(new FileServicesWorkspace(vm), vm.Installation), new Rect(90, 80, 960, 720), Manifest.IconGlyph);
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        vm.RequestHostAdministratorPasswordAsync = () => context.WindowManager.ShowSystemDialogAsync<string?>(
+        vm.RequestHostAdministratorPasswordAsync = error => context.WindowManager.ShowSystemDialogAsync<string?>(
             LocalizedText.Get("file_services.host_password"),
-            dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("file_services.host_password_message")), new Size(460, 230));
+            dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("file_services.host_password_message"), error), new Size(460, 230));
         vm.RequestSambaPasswordAsync = () => FileServicesDialogs.RequestPasswordAsync(context, window, LocalizedText.Get("file_services.samba_password"));
         vm.ShowShareEditorAsync = editing => FileServicesDialogs.ShowShareEditorAsync(context, window, vm, editing);
         vm.ShowSharePathPickerAsync = () => files is null

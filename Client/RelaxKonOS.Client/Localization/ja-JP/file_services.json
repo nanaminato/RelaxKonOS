@@ -37,6 +37,7 @@
     "file_services.user_password": "Samba パスワードを設定",
     "file_services.host_password": "サーバー管理者パスワード",
     "file_services.host_password_message": "この操作は RelaxKonOS Server が動作するサーバーを変更します。現在サーバーにログインしているアカウントのパスワードを入力してください。Windows では管理者権限が必要です。",
+    "file_services.host_password_invalid": "入力した管理者パスワードが正しくありません。もう一度入力してください。",
     "file_services.problem.file-services.smb.installation_failed": "サーバーの SMB インストールに失敗しました。サーバーログを確認してください。",
     "file_services.samba_password": "新しい Samba パスワード",
     "file_services.confirm": "確認",

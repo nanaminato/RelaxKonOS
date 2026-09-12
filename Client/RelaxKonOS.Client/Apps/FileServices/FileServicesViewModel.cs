@@ -66,7 +66,8 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         SupportsSambaCredentials ? Users.Where(user => user.Eligible).Select(user => user.Username) : []));
     public bool SupportsSambaCredentials => Capabilities?.SambaCredentialsSupported == true;
     public string UserToggleText => LocalizedText.Get(SelectedUser?.Enabled == true ? "file_services.user_disable" : "file_services.user_enable");
-    public Func<Task<string?>>? RequestHostAdministratorPasswordAsync { get; set; }
+    /// <summary>Requests a one-time host password. The optional argument explains why a previous entry was rejected.</summary>
+    public Func<string?, Task<string?>>? RequestHostAdministratorPasswordAsync { get; set; }
     public Func<bool, Task>? ShowShareEditorAsync { get; set; }
     public Func<Task<string?>>? ShowSharePathPickerAsync { get; set; }
     public Func<Task<string?>>? RequestSambaPasswordAsync { get; set; }
@@ -199,9 +200,18 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     }
     private async Task<bool> EnsureElevatedAsync()
     {
-        var password = await (RequestHostAdministratorPasswordAsync?.Invoke() ?? Task.FromResult<string?>(null));
-        if (string.IsNullOrEmpty(password)) return false;
-        try { return await client.ElevateAsync(password); } finally { password = null!; }
+        string? error = null;
+        while (true)
+        {
+            var password = await (RequestHostAdministratorPasswordAsync?.Invoke(error) ?? Task.FromResult<string?>(null));
+            if (string.IsNullOrEmpty(password)) return false;
+            try { return await client.ElevateAsync(password); }
+            catch (HttpRequestException ex) when (ex.Message == "elevation-password-invalid")
+            {
+                error = LocalizedText.Get("file_services.host_password_invalid");
+            }
+            finally { password = null!; }
+        }
     }
 }
 

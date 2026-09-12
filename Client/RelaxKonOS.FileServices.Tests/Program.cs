@@ -5,7 +5,7 @@ using System.Net;
 
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 var client = new FakeClient();
-var vm = new FileServicesViewModel(client, new Permissions()) { RequestHostAdministratorPasswordAsync = () => Task.FromResult<string?>("test") };
+var vm = new FileServicesViewModel(client, new Permissions()) { RequestHostAdministratorPasswordAsync = _ => Task.FromResult<string?>("test") };
 Check(!vm.NewShareCommand.CanExecute(null), "No mutations before discovery");
 await vm.StartAsync();
 Check(!vm.SupportsSambaCredentials && !vm.InstallCommand.CanExecute(null) && client.UserReads == 0, "Windows capabilities");
@@ -43,7 +43,7 @@ Check(!await vm.SaveShareAsync(false) && client.Writes == 1, "Empty permission r
 vm.SharePermissions[0].Principal = "user"; vm.ShareGuestAllowed = true;
 vm.SharePermissions[0].SelectedAccess = FileShareAccessOption.All.Single(x => x.Value == FileShareAccess.ReadWrite);
 var authorization = new TaskCompletionSource<string?>();
-vm.RequestHostAdministratorPasswordAsync = () => authorization.Task;
+vm.RequestHostAdministratorPasswordAsync = _ => authorization.Task;
 var save = vm.SaveShareAsync(false);
 Check(vm.IsBusy && !vm.NewShareCommand.CanExecute(null), "Busy during authorization");
 Check(!await vm.SaveShareAsync(false), "Concurrent save blocked");
@@ -81,7 +81,7 @@ foreach (var linux in new[] { false, true })
     await warningVm.StartAsync();
     warningVm.ShareName = "共享"; warningVm.SharePath = linux ? "/mnt/data" : @"E:\Test";
     var passwordRequests = 0;
-    warningVm.RequestHostAdministratorPasswordAsync = () => { passwordRequests++; return Task.FromResult<string?>("test"); };
+    warningVm.RequestHostAdministratorPasswordAsync = _ => { passwordRequests++; return Task.FromResult<string?>("test"); };
     var confirmation = new TaskCompletionSource<bool>();
     warningVm.ConfirmSharePathAsync = _ => confirmation.Task;
     var pendingSave = warningVm.SaveShareAsync(false);
@@ -92,7 +92,20 @@ foreach (var linux in new[] { false, true })
     warningVm.ConfirmSharePathAsync = _ => Task.FromResult(true);
     Check(await warningVm.SaveShareAsync(false) && warningClient.Writes == 1 && passwordRequests == 1, "Confirmed non-default path is shared");
 }
-Console.WriteLine("Passed: platform discovery, lifecycle refresh, user eligibility, validation, authorization serialization, delete cancellation, install state, API problem localization.");
+var retryClient = new FakeClient { InvalidElevationAttempts = 1 };
+var retryVm = new FileServicesViewModel(retryClient, new Permissions());
+await retryVm.StartAsync();
+var promptErrors = new List<string?>();
+retryVm.RequestHostAdministratorPasswordAsync = error =>
+{
+    promptErrors.Add(error);
+    return Task.FromResult<string?>(error is null ? "incorrect" : "correct");
+};
+await retryVm.StopCommand.ExecuteAsync(null);
+Check(promptErrors.Count == 2 && promptErrors[0] is null && !string.IsNullOrWhiteSpace(promptErrors[1])
+    && retryClient.ElevationPasswords.SequenceEqual(["incorrect", "correct"]) && retryClient.Writes == 1,
+    "An invalid host administrator password shows an error and requests a replacement before the operation runs");
+Console.WriteLine("Passed: platform discovery, lifecycle refresh, user eligibility, validation, authorization serialization, password retry, delete cancellation, install state, API problem localization.");
 
 sealed class Permissions : IAppPermissionScope
 {
@@ -103,7 +116,8 @@ sealed class Permissions : IAppPermissionScope
 }
 sealed class FakeClient : IRemoteFileServicesClient
 {
- public bool Linux; public bool Supported = true; public int StatusReads, UserReads, Writes;
+ public bool Linux; public bool Supported = true; public int StatusReads, UserReads, Writes, InvalidElevationAttempts;
+ public List<string> ElevationPasswords { get; } = [];
  public string? InstallProblem;
  public TaskCompletionSource<FileServiceOperationResultDto>? PendingInstallation;
  public FileServiceRuntimeState State = FileServiceRuntimeState.Running;
@@ -122,5 +136,10 @@ sealed class FakeClient : IRemoteFileServicesClient
  public Task<FileServiceOperationResultDto> DeleteShareAsync(string id,CancellationToken ct = default) => Result();
  public Task<FileServiceOperationResultDto> SetUserEnabledAsync(string username,bool enabled,CancellationToken ct = default) => Result();
  public Task<FileServiceOperationResultDto> SetSambaPasswordAsync(string username,SetSambaPasswordRequest r,CancellationToken ct = default) => Result();
- public Task<bool> ElevateAsync(string password,CancellationToken ct = default) => Task.FromResult(true);
+ public Task<bool> ElevateAsync(string password,CancellationToken ct = default)
+ {
+     ElevationPasswords.Add(password);
+     if (InvalidElevationAttempts-- > 0) throw new HttpRequestException("elevation-password-invalid", null, HttpStatusCode.Forbidden);
+     return Task.FromResult(true);
+ }
 }

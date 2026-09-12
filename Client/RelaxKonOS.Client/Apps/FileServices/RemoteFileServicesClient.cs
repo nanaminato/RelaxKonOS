@@ -28,7 +28,7 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.ServerUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
         { Content = JsonContent.Create(new HostElevationRequest(HostElevationCapability.SmbManage, "smb:managed", password), options: RelaxKonOSJsonOptions.Default) };
         using var response = await http.SendAsync(request, ct);
-        if (!response.IsSuccessStatusCode) return false;
+        if (!response.IsSuccessStatusCode) throw await CreateApiExceptionAsync(response, ct);
         return (await response.Content.ReadFromJsonAsync<HostElevationResult>(RelaxKonOSJsonOptions.Default, ct))?.Elevated == true;
     }
     private async Task<T> Send<T>(HttpMethod method, string route, CancellationToken ct, object? body = null)

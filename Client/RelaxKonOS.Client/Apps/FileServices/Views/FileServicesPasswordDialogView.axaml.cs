@@ -7,12 +7,14 @@ namespace RelaxKonOS.Client.Apps.FileServices.Views;
 internal partial class FileServicesPasswordDialogView : UserControl
 {
     private readonly ModalDialog<string?> _dialog;
-    public FileServicesPasswordDialogView(ModalDialog<string?> dialog, string? message)
+    public FileServicesPasswordDialogView(ModalDialog<string?> dialog, string? message, string? errorMessage = null)
     {
         _dialog = dialog;
         InitializeComponent();
         MessageText.Text = message;
         MessageText.IsVisible = !string.IsNullOrEmpty(message);
+        ErrorText.Text = errorMessage;
+        ErrorText.IsVisible = !string.IsNullOrEmpty(errorMessage);
     }
     private void Cancel_Click(object? sender, RoutedEventArgs e) { PasswordBox.Text = null; _dialog.Cancel(); }
     private void Confirm_Click(object? sender, RoutedEventArgs e)
