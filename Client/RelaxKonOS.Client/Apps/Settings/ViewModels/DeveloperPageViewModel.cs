@@ -18,7 +18,7 @@ public sealed class DeveloperPageViewModel : SettingsPageViewModel
         NetworkInspector = new NetworkInspectorLauncherViewModel(developerMode, networkInspector, localization);
     }
 
-    public override string Glyph => "🛠️";
+    public override string Route => "developer";
     public override string DisplayNameKey => "settings.page.developer";
     public override string DisplayName => "Developer";
     public DeveloperModeViewModel DeveloperMode { get; }

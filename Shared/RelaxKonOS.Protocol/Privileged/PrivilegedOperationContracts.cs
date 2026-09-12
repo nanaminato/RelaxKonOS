@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using RelaxKonOS.Protocol.Settings;
 
 namespace RelaxKonOS.Protocol.Privileged;
 
@@ -12,8 +13,8 @@ public static class PrivilegedOperationProtocol
 
 /// <summary>
 /// Closed set of operations understood by the local Helper. Do not add a command, executable,
-/// shell, argument list, working directory, or environment operation to this enum or request.
-/// Those values would turn the Helper into a general elevation API.
+/// shell, argument list, working directory, or privileged process environment fields.
+/// Dedicated structured host configuration operations are permitted; execution environment injection is not.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<PrivilegedOperationKind>))]
 public enum PrivilegedOperationKind
@@ -38,6 +39,10 @@ public enum PrivilegedOperationKind
     ProxyMihomoRemoveSystemService,
     GitPackageInstall,
     DockerEngineInstall,
+    HostTimeRead,
+    HostTimeApply,
+    HostEnvironmentRead,
+    HostEnvironmentApply,
     FirewallUfwStatus,
     FirewallUfwSetEnabled,
     FirewallUfwSetDefaults,
@@ -179,6 +184,10 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("smbShares")] IReadOnlyList<SmbManagedShareRequest>? SmbShares = null,
     [property: JsonPropertyName("smbShare")] SmbManagedShareRequest? SmbShare = null,
     [property: JsonPropertyName("smbExpectedSnapshot")] string? SmbExpectedSnapshot = null,
+    [property: JsonPropertyName("environmentTarget")] SettingsTarget? EnvironmentTarget = null,
+    [property: JsonPropertyName("environmentChange")] EnvironmentChangeSet? EnvironmentChange = null,
+    [property: JsonPropertyName("timeZoneId")] string? TimeZoneId = null,
+    [property: JsonPropertyName("expectedRevision")] string? ExpectedRevision = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
 
@@ -189,4 +198,6 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("outputBase64")] string? OutputBase64 = null,
     [property: JsonPropertyName("error")] string? Error = null,
     [property: JsonPropertyName("problemCode")] PrivilegedProblemCode ProblemCode = PrivilegedProblemCode.None,
+    [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
+    [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);

@@ -4,15 +4,15 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-/// <summary>「时间和语言」页：12/24 小时制、日期格式、时区（只读，宿主 OS 级）、语言、区域。
-/// 时间/日期格式与语言影响任务栏时钟的格式化（见 <c>DesktopShellViewModel.StartClock</c>）。
-/// 注意：宿主 OS 时区切换需 sudo/UAC 提权（硬约束「权限提升委托宿主 OS」），故仅只读展示。</summary>
-public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
+/// <summary>Workspace display formats and a separate, explicitly targeted remote host time editor.</summary>
+public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, IDisposable
 {
     private readonly LocalizationService _localization;
 
-    public TimeLanguagePageViewModel(ShellSettings settings, LocalizationService localization, Action? save) : base(settings, save)
+    public TimeLanguagePageViewModel(ShellSettings settings, LocalizationService localization, Action? save,
+        HostTimeEditorViewModel hostTime) : base(settings, save)
     {
+        HostTime = hostTime;
         _localization = localization;
         Settings.PropertyChanged += (_, e) =>
         {
@@ -25,7 +25,7 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
         };
     }
 
-    public override string Glyph => "🕐";
+    public override string Route => "time-language";
     public override string DisplayNameKey => "settings.page.time_language";
     public override string DisplayName => "Time & language";
 
@@ -77,7 +77,8 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel
         set { Settings.Region = value; Save(); }
     }
 
-    public string TimeZone => TimeZoneInfo.Local.DisplayName;
+    public HostTimeEditorViewModel HostTime { get; }
+    public void Dispose() => HostTime.Dispose();
 
     public string TimeSample => FormatTime(DateTime.Now);
     public string DateSample => FormatDate(DateTime.Now);

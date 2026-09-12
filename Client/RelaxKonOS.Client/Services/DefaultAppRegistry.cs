@@ -13,14 +13,16 @@ public sealed class DefaultAppRegistry : IUriSchemeDefaultResolver
 {
     private readonly ConcurrentDictionary<string, string> _byScheme = new(StringComparer.OrdinalIgnoreCase);
 
+    public event EventHandler? Changed;
+
     /// <summary>用服务端 DTO 覆盖当前映射。</summary>
     public void SetMappings(IEnumerable<DefaultAppMappingDto>? mappings)
     {
         _byScheme.Clear();
-        if (mappings is null) return;
-        foreach (var m in mappings)
+        foreach (var m in mappings ?? [])
             if (!string.IsNullOrWhiteSpace(m.Scheme) && !string.IsNullOrWhiteSpace(m.AppId))
                 _byScheme[m.Scheme.Trim()] = m.AppId.Trim();
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>查询某个 scheme 或扩展名对应的应用 Id；未配置返回 null。</summary>

@@ -68,7 +68,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         {
             new SystemPageViewModel(settings, session, save),
             new PersonalizationPageViewModel(settings, save),
-            new TimeLanguagePageViewModel(settings, localization, save),
+            new TimeLanguagePageViewModel(settings, localization, save,
+                new HostTimeEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>(), session, localization)),
             new NetworkPageViewModel(settings, session, remote!, system!, save),
             new AppsPageViewModel(settings, apps!, packages!, localization, browserClient!),
             new ImageMirrorsPageViewModel(settings, imageMirrors!, session),
@@ -76,7 +77,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
         };
         _selectedPage = Pages[0];
+        InitializeNavigation(localization, App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>());
         Pages.OfType<DefaultAppsPageViewModel>().Single().SetMappings(registry?.Snapshot);
+        if (_registry is not null) _registry.Changed += OnMappingsChanged;
     }
 
     public ShellSettings Settings => _settings;
@@ -84,13 +87,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private SettingsPageViewModel? _selectedPage;
 
-    /// <summary>Host navigation entry point used when an application sends the user to Settings.</summary>
-    public void SelectApplicationsPage() =>
-        SelectedPage = Pages.OfType<AppsPageViewModel>().FirstOrDefault() ?? SelectedPage;
-
-    /// <summary>Host activation entry point for <c>relaxkonos://settings/personalization</c>.</summary>
-    public void SelectPersonalizationPage() =>
-        SelectedPage = Pages.OfType<PersonalizationPageViewModel>().FirstOrDefault() ?? SelectedPage;
+    public void SelectPage(string route)
+    {
+        var page = Pages.FirstOrDefault(page => string.Equals(page.Route, route, StringComparison.OrdinalIgnoreCase));
+        if (page is not null) SelectedPage = page;
+    }
 
     /// <summary>Host activation entry point for a specific application's permission editor.</summary>
     public Task SelectApplicationPermissionsAsync(string appId)
@@ -106,6 +107,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (_initialized) return;
         _initialized = true;
+        _ = RefreshCatalogAsync();
 
         if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } ws })
             return;
@@ -134,12 +136,34 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     public string SaveStatus => RelaxKonOS.Client.Localization.LocalizedText.Get("settings.save." + _editor.State.ToString().ToLowerInvariant());
+    public bool CanDiscard => _editor.HasDraft && _editor.State != PreferencesSaveState.Saving;
     public bool CanRetry => _editor.State == PreferencesSaveState.Failed;
 
     private void OnEditorChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         OnPropertyChanged(nameof(SaveStatus));
         OnPropertyChanged(nameof(CanRetry));
+        OnPropertyChanged(nameof(CanDiscard));
+    }
+
+    private void OnMappingsChanged(object? sender, EventArgs args)
+    {
+        if (!_editor.HasDraft)
+            Pages.OfType<DefaultAppsPageViewModel>().Single().SetMappings(_registry?.Snapshot);
+    }
+
+    [RelayCommand]
+    private async Task DiscardDraftAsync()
+    {
+        var url = _session.ServerUrl;
+        var sessionId = _session.CurrentSession?.Id;
+        var workspaceId = _session.CurrentWorkspace?.Id;
+        var snapshot = await _editor.DiscardAndReloadAsync();
+        if (snapshot is null || _session.ServerUrl != url || _session.CurrentSession?.Id != sessionId
+            || _session.CurrentWorkspace?.Id != workspaceId) return;
+        if (_wallpapers is not null) await _wallpapers.ApplyAsync(snapshot);
+        else _settings.Apply(snapshot);
+        Pages.OfType<DefaultAppsPageViewModel>().Single().SetMappings(snapshot.DefaultApps);
     }
 
     [RelayCommand]
@@ -155,7 +179,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        DisposeNavigation();
         _editor.PropertyChanged -= OnEditorChanged;
+        if (_registry is not null) _registry.Changed -= OnMappingsChanged;
         foreach (var page in Pages.OfType<IDisposable>())
             page.Dispose();
     }

@@ -160,6 +160,10 @@ public static class Bootstrapper
 
         // Settings（设置中心）：typed HttpClient（JWT from IAuthSession，与 Browser/Explorer 同模式）。
         // 偏好持久化到服务端 Workspace（/workspaces/{id}/preferences），多设备共享。
+        // Host writes must not pass through an authentication handler that can replay requests.
+        services.AddHttpClient<HostSettings.IHostTimeService, HostSettings.HostTimeService>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<IWorkspaceSettingsService, WorkspaceSettingsService>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()

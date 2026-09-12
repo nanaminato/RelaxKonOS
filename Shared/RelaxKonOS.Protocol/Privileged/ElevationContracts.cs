@@ -26,6 +26,10 @@ public enum HostElevationCapability
     FrpInstall,
     MihomoInstall,
     DockerInstall,
+    HostTimeChange,
+    HostEnvironmentRead,
+    HostEnvironmentChange,
+    HostEnvironmentReveal,
 }
 
 /// <summary>Authenticated request for one non-file host capability and exact managed resource.</summary>

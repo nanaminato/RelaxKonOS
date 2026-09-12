@@ -13,10 +13,26 @@ public static class PrivilegedEndpoints
     public static IEndpointRouteBuilder MapPrivilegedEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost(PrivilegedApiRoutes.Elevation, (HostElevationRequest request, HttpContext http,
-            IHostAdministratorAuthenticator administrators, IHostElevationSessionStore elevations) =>
+            IHostAdministratorAuthenticator administrators, IHostElevationSessionStore elevations,
+            RelaxKonOS.Server.Settings.IHostEnvironmentService environment) =>
         {
+            if (!Enum.IsDefined(request.Capability)) return Problem(400, "elevation-capability-invalid", "授权能力无效。");
             if (request.Capability is >= HostElevationCapability.FileRead and <= HostElevationCapability.FileUpload)
                 return Problem(400, "file-elevation-capability-invalid", "文件操作必须使用文件授权入口。");
+            if (string.IsNullOrWhiteSpace(request.Target) || request.Target.Length > 256 || request.IncludeDescendants)
+                return Problem(400, "elevation-target-invalid", "目标资源无效。");
+            if (request.Capability is HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentChange or HostElevationCapability.HostEnvironmentReveal)
+            {
+                try
+                {
+                    var scope = request.Target == "host/environment/machine" ? RelaxKonOS.Protocol.Settings.SettingsScope.HostMachine : RelaxKonOS.Protocol.Settings.SettingsScope.HostUser;
+                    if (environment.ResolveTarget(http.User, scope).ResourceId != request.Target)
+                        return Problem(403, "environment-target-denied", "环境目标不属于当前认证身份。");
+                }
+                catch (RelaxKonOS.Server.Settings.SettingsException error) { return Problem(error.StatusCode, error.Code, "环境身份映射失败。"); }
+            }
+            if (elevations.IsGranted(http.User, request.Capability, request.Target))
+                return Results.Ok(new HostElevationResult(true));
             var username = http.User.FindFirstValue(JwtRegisteredClaimNames.Name);
             if (string.IsNullOrWhiteSpace(username)) return Results.Unauthorized();
             var authentication = administrators.Authenticate(username, request.AdministratorUsername, request.Password);

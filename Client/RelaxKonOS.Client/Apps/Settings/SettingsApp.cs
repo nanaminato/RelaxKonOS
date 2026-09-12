@@ -71,6 +71,41 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             iconGlyph: Manifest.IconGlyph);
         _viewModel = viewModel;
         _window = window;
+        var hostTimeService = context.Services.GetRequiredService<Services.HostSettings.IHostTimeService>();
+        viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestAuthorizationAsync = async connection =>
+        {
+            try { return (await hostTimeService.AuthorizeAsync(connection)).Elevated; }
+            catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
+            {
+                var credentials = await context.WindowManager.ShowSystemDialogAsync<(string Password, string? Administrator)?>(
+                    LocalizedText.Get("settings.host_time.authorize"), dialog =>
+                    {
+                        var password = new Avalonia.Controls.TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("settings.host_time.password") };
+                        var administrator = new Avalonia.Controls.TextBox { PlaceholderText = LocalizedText.Get("settings.host_time.administrator") };
+                        var cancel = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.cancel") };
+                        cancel.Click += (_, _) => { password.Text = ""; dialog.Cancel(); };
+                        var confirm = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.ok") };
+                        confirm.Click += (_, _) =>
+                        {
+                            var secret = password.Text ?? "";
+                            password.Text = "";
+                            dialog.Close((secret, string.IsNullOrWhiteSpace(administrator.Text) ? null : administrator.Text));
+                        };
+                        return new Avalonia.Controls.StackPanel
+                        {
+                            Margin = new Avalonia.Thickness(20), Spacing = 10,
+                            Children =
+                            {
+                                new Avalonia.Controls.TextBlock { Text = connection.ServerUrl + " · host/time", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                                administrator, password,
+                                new Avalonia.Controls.WrapPanel { Children = { cancel, confirm } }
+                            }
+                        };
+                    }, new Size(440, 260));
+                if (credentials is not { } value || !hostTimeService.IsCurrent(connection)) return false;
+                return (await hostTimeService.AuthorizeAsync(connection, value.Password, value.Administrator)).Elevated;
+            }
+        };
         var appsPage = viewModel.Pages.OfType<AppsPageViewModel>().Single();
         var personalizationPage = viewModel.Pages.OfType<PersonalizationPageViewModel>().Single();
         personalizationPage.RequestCustomWallpaperAsync = async () =>
@@ -261,8 +296,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             return false;
 
         var segments = GetPathSegments(uri);
-        return (segments.Length == 1 && (segments[0].Equals("personalization", StringComparison.OrdinalIgnoreCase)
-                                       || segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)))
+        return (segments.Length == 1 && new[] { "system", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                    && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(segments[1]));
@@ -273,10 +307,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var viewModel = _viewModel;
         if (viewModel is null) return;
         var segments = GetPathSegments(request.Uri);
-        if (segments.Length == 1 && segments[0].Equals("personalization", StringComparison.OrdinalIgnoreCase))
-            viewModel.SelectPersonalizationPage();
-        else if (segments.Length == 1 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase))
-            viewModel.SelectApplicationsPage();
+        if (segments.Length == 1)
+            viewModel.SelectPage(segments[0]);
         else if (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                  && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase))
             _ = viewModel.SelectApplicationPermissionsAsync(segments[1]);

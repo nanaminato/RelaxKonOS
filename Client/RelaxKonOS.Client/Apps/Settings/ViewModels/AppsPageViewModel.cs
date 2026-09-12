@@ -42,7 +42,7 @@ public sealed partial class AppsPageViewModel : SettingsPageViewModel, IDisposab
         RefreshApplications();
     }
 
-    public override string Glyph => "📱";
+    public override string Route => "apps";
     public override string DisplayNameKey => "settings.page.applications";
     public override string DisplayName => "Applications";
     public ObservableCollection<SettingsAppEntry> RegisteredApps { get; } = new();

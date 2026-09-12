@@ -20,7 +20,7 @@ public sealed partial class ImageMirrorsPageViewModel : SettingsPageViewModel
         _session = session;
     }
 
-    public override string Glyph => "🪞";
+    public override string Route => "image-mirrors";
     public override string DisplayNameKey => "settings.page.image_mirrors";
     public override string DisplayName => "Image mirrors";
     public ObservableCollection<ImageMirrorItemViewModel> Mirrors { get; } = [];

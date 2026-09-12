@@ -7,6 +7,8 @@ public static class RelaxKonOSEndpoints
     public const string ApiVersionPrefix = "api/v1.0";
 
     /// <summary>Workspace SignalR Hub 路径。</summary>
+    public const string SettingsChangesHubPath = "/hubs/settings-changes";
+
     public const string WorkspaceHubPath = "/hubs/workspace";
 
     /// <summary>Guardian 日志 SignalR Hub 路径。</summary>
