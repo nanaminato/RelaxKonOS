@@ -59,7 +59,8 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         OnPropertyChanged(nameof(PlatformText)); OnPropertyChanged(nameof(PlatformHelp)); OnPropertyChanged(nameof(SupportsInstall)); OnPropertyChanged(nameof(VersionText));
     }
     public bool IsWindowsServer => Capabilities?.WindowsShareSecuritySupported == true;
-    public void AddSharePermission(string principal = "", FileShareAccess access = FileShareAccess.Read) => SharePermissions.Add(new(principal, access, IsWindowsServer));
+    public void AddSharePermission(string principal = "", FileShareAccess access = FileShareAccess.Read) => SharePermissions.Add(new(principal, access, IsWindowsServer,
+        SupportsSambaCredentials ? Users.Where(user => user.Eligible).Select(user => user.Username) : []));
     public bool SupportsSambaCredentials => Capabilities?.SambaCredentialsSupported == true;
     public Func<Task<string?>>? RequestHostAdministratorPasswordAsync { get; set; }
     public Func<bool, Task>? ShowShareEditorAsync { get; set; }
@@ -197,21 +198,24 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
 public sealed partial class FileSharePermissionEditor : ObservableObject
 {
     public bool IsWindowsServer { get; }
-    public IReadOnlyList<FileSharePrincipalOption> PrincipalOptions { get; } = [
-        new("S-1-5-32-544", "file_services.principal.administrators"), new("S-1-5-32-545", "file_services.principal.users"),
-        new("S-1-5-11", "file_services.principal.authenticated_users"), new("S-1-1-0", "file_services.principal.everyone")];
+    public IReadOnlyList<FileSharePrincipalOption> PrincipalOptions { get; }
+    public bool HasPrincipalOptions => PrincipalOptions.Count > 0;
     [ObservableProperty] private FileSharePrincipalOption? _selectedPrincipal;
-    partial void OnSelectedPrincipalChanged(FileSharePrincipalOption? value) { if (value is not null) Principal = value.Sid; }
+    partial void OnSelectedPrincipalChanged(FileSharePrincipalOption? value) { if (value is not null) Principal = value.Value; }
     private readonly IReadOnlyList<FileShareAccessOption> _accessOptions = FileShareAccessOption.Create();
     public IReadOnlyList<FileShareAccessOption> AccessOptions => _accessOptions;
     [ObservableProperty] private string _principal;
     [ObservableProperty] private FileShareAccessOption _selectedAccess;
 
-    public FileSharePermissionEditor(string principal = "", FileShareAccess access = FileShareAccess.Read, bool isWindowsServer = false)
+    public FileSharePermissionEditor(string principal = "", FileShareAccess access = FileShareAccess.Read, bool isWindowsServer = false, IEnumerable<string>? linuxUsers = null)
     {
         IsWindowsServer = isWindowsServer;
+        PrincipalOptions = isWindowsServer
+            ? [new("S-1-5-32-544", LocalizedText.Get("file_services.principal.administrators")), new("S-1-5-32-545", LocalizedText.Get("file_services.principal.users")),
+               new("S-1-5-11", LocalizedText.Get("file_services.principal.authenticated_users")), new("S-1-1-0", LocalizedText.Get("file_services.principal.everyone"))]
+            : (linuxUsers ?? []).Distinct(StringComparer.Ordinal).OrderBy(username => username, StringComparer.Ordinal).Select(username => new FileSharePrincipalOption(username, username)).ToArray();
         _principal = principal;
-        _selectedPrincipal = PrincipalOptions.FirstOrDefault(option => string.Equals(option.Sid, principal, StringComparison.OrdinalIgnoreCase));
+        _selectedPrincipal = PrincipalOptions.FirstOrDefault(option => string.Equals(option.Value, principal, StringComparison.OrdinalIgnoreCase));
         _selectedAccess = _accessOptions.First(x => x.Value == access);
     }
 }
@@ -225,7 +229,4 @@ public sealed record FileShareAccessOption(FileShareAccess Value, string Label)
     ];
 }
 
-public sealed record FileSharePrincipalOption(string Sid, string LocalizationKey)
-{
-    public string Label => $"{LocalizedText.Get(LocalizationKey)} ({Sid})";
-}
+public sealed record FileSharePrincipalOption(string Value, string Label);

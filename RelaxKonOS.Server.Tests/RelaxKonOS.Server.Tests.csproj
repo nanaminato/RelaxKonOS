@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../RelaxKonOS.PrivilegedHelper/SambaShareConfiguration.cs" Link="SambaShareConfiguration.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/SambaMainConfiguration.cs" Link="SambaMainConfiguration.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxDistributionSupport.cs" Link="LinuxDistributionSupport.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsSmbShareSecurity.cs" Link="WindowsSmbShareSecurity.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFeatureInstallationState.cs" Link="WindowsFeatureInstallationState.cs" />

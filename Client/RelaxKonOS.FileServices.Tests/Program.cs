@@ -23,6 +23,8 @@ vm.SharePermissions.Clear();
 client.Linux = true;
 await vm.RefreshCommand.ExecuteAsync(null);
 Check(vm.SupportsSambaCredentials && client.UserReads == 1, "Linux users loaded");
+vm.AddSharePermission();
+Check(vm.SharePermissions[^1].HasPrincipalOptions && vm.SharePermissions[^1].PrincipalOptions.Single().Value == "nanami", "Eligible Linux users are available as permission choices");
 vm.SelectedUser = new("system", false, false);
 Check(!vm.ToggleUserCommand.CanExecute(null), "Ineligible user blocked");
 vm.ShareName = "test"; vm.SharePath = "/srv/relaxkonos-shares/test"; vm.SharePermissions.Add(new());
@@ -97,7 +99,7 @@ sealed class FakeClient : IRemoteFileServicesClient
  public Task<FileServiceStatusDto> GetStatusAsync(CancellationToken ct = default) { StatusReads++; return Task.FromResult(new FileServiceStatusDto(FileServiceProtocol.Smb, State, "test", State == FileServiceRuntimeState.Running, true)); }
  public Task<FileServiceCapabilitiesDto> GetCapabilitiesAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceCapabilitiesDto(Supported, Linux, Linux, true, !Linux));
  public Task<IReadOnlyList<FileShareDto>> ListSharesAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<FileShareDto>>([]);
- public Task<IReadOnlyList<FileServiceUserDto>> ListUsersAsync(CancellationToken ct = default) { UserReads++; return Task.FromResult<IReadOnlyList<FileServiceUserDto>>([]); }
+ public Task<IReadOnlyList<FileServiceUserDto>> ListUsersAsync(CancellationToken ct = default) { UserReads++; return Task.FromResult<IReadOnlyList<FileServiceUserDto>>(Linux ? [new("nanami", false, true)] : []); }
  public Task<FileServiceConnectionInfoDto> GetConnectionAsync(CancellationToken ct = default) => Task.FromResult(new FileServiceConnectionInfoDto("host",445,"\\\\host\\","smb://host/"));
  private Task<FileServiceOperationResultDto> Result() { Writes++; return Task.FromResult(new FileServiceOperationResultDto(Guid.NewGuid(),true)); }
  public Task<FileServiceOperationResultDto> InstallAsync(CancellationToken ct = default) => InstallProblem is { } code

@@ -631,7 +631,7 @@ static async Task<PrivilegedOperationResult> ApplySmbManagedConfigurationAsync(I
     if (!File.Exists(SmbMainConfiguration)) return Fail(2, PrivilegedProblemCode.NotFound, "Samba main configuration is unavailable");
     var originalMain = await File.ReadAllTextAsync(SmbMainConfiguration);
     var originalInclude = File.Exists(SmbManagedConfiguration) ? await File.ReadAllBytesAsync(SmbManagedConfiguration) : null;
-    if (!TryEnsureManagedInclude(originalMain, out var candidateMain)) return Fail(64, PrivilegedProblemCode.Conflict, "Samba main configuration is not safely managed");
+    if (!SambaMainConfiguration.TryEnsureManagedInclude(originalMain, SmbMarker, SmbInclude, out var candidateMain)) return Fail(64, PrivilegedProblemCode.Conflict, "Samba main configuration is not safely managed");
     var candidateInclude = SerializeManagedShares(requested);
     var staging = SmbManagedConfiguration + ".new";
     try
@@ -689,21 +689,6 @@ static async Task<PrivilegedOperationResult> RestoreSmbConfigurationAsync(string
         return reload.Success ? Fail(1, PrivilegedProblemCode.Conflict, reason) : Fail(1, PrivilegedProblemCode.InternalError, "Samba rollback failed");
     }
     catch { return Fail(1, PrivilegedProblemCode.InternalError, "Samba rollback failed"); }
-}
-
-static bool TryEnsureManagedInclude(string main, out string candidate)
-{
-    candidate = main;
-    var markerCount = main.Split('\n').Count(line => line.TrimEnd('\r') == SmbMarker);
-    var includeCount = main.Split('\n').Count(line => line.Trim().Equals(SmbInclude, StringComparison.OrdinalIgnoreCase));
-    if (markerCount > 1 || includeCount > 1 || markerCount != includeCount) return false;
-    if (markerCount == 1) return true;
-    var global = main.IndexOf("[global]", StringComparison.OrdinalIgnoreCase);
-    if (global < 0) return false;
-    var end = main.IndexOf('\n', global);
-    if (end < 0) end = main.Length;
-    candidate = main.Insert(end + (end < main.Length ? 1 : 0), SmbMarker + "\n" + SmbInclude + "\n");
-    return true;
 }
 
 static string SerializeManagedShares(IReadOnlyList<SmbManagedShareRequest> shares) => SambaShareConfiguration.Serialize(shares);
