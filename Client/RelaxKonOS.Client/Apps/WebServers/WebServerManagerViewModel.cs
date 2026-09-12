@@ -36,12 +36,14 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
         _certificates = certificates;
         _session = session;
         _permissions = permissions;
+        InstallVersion = string.Empty;
         SelectedSiteCertificateSource = SiteCertificateSources[0];
     }
 
     public ObservableCollection<WebServerDto> Servers { get; } = [];
     public ObservableCollection<WebServerStatusDto> Statuses { get; } = [];
     public ObservableCollection<WebServerSiteDto> Sites { get; } = [];
+    public ObservableCollection<string> AvailableWindowsVersions { get; } = [];
     public ObservableCollection<CertificateDto> Certificates { get; } = [];
     public ObservableCollection<WebServerSiteBindingEditor> SiteBindings { get; } = [];
     public IReadOnlyList<WebServerSiteKind> SiteKinds { get; } = [WebServerSiteKind.ReverseProxy, WebServerSiteKind.Static];
@@ -66,6 +68,8 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ToggleManagedCommand))]
     [NotifyPropertyChangedFor(nameof(IsManagedServerRunning), nameof(ManagedLifecycleActionText), nameof(ManagedRuntimeStateLabel), nameof(ManagedRuntimeStateDescription))]
     private WebServerRuntimeState _selectedRuntimeState = WebServerRuntimeState.Unknown;
+    [ObservableProperty] private string _installVersion = string.Empty;
+    [ObservableProperty] private string _localPackageName = string.Empty;
     [ObservableProperty] private string _siteName = string.Empty;
     [ObservableProperty] private string _siteBindingsBatch = string.Empty;
     [ObservableProperty] private string _siteUpstream = string.Empty;
@@ -87,6 +91,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private bool _hasManagedInstallation;
 
     private Guid? _currentOperationId;
+    private string? localPackageReference;
 
     public bool IsRoot => string.Equals(_session.CurrentUser?.Username, "root", StringComparison.Ordinal);
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
@@ -126,6 +131,8 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     public Func<Task<bool>>? RequestIntegrationConfirmationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedInstallConfirmationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedUninstallConfirmationAsync { get; set; }
+    public Func<Task<string?>>? RequestLocalNginxPackageAsync { get; set; }
+    public Func<string, Task>? ShowManagedDownloadUrlAsync { get; set; }
     /// <summary>Routes a known static-site directory into RemoteExplorer.</summary>
     public Func<string, Task>? OpenFileBrowserAtPathAsync { get; set; }
     /// <summary>Opens the RemoteExplorer picker for certificate or key files on the server.</summary>
@@ -141,7 +148,26 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     {
         await RefreshAsync();
         await LoadCertificatesAsync();
+        if (IsWindowsServer) await LoadWindowsVersionsAsync();
     }
+
+    private async Task LoadWindowsVersionsAsync()
+    {
+        try
+        {
+            var catalog = await _client.GetManagedInstallCatalogAsync();
+            AvailableWindowsVersions.Clear();
+            foreach (var version in catalog?.Versions ?? []) AvailableWindowsVersions.Add(version);
+            if (catalog is null || catalog.Versions.Count == 0 || !string.IsNullOrWhiteSpace(catalog.ProblemCode))
+            {
+                StatusText = LocalizedText.Get("webservers.version_catalog.unavailable");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(InstallVersion)) InstallVersion = catalog.MainlineVersion ?? catalog.StableVersion ?? string.Empty;
+        }
+        catch { StatusText = LocalizedText.Get("webservers.version_catalog.unavailable"); }
+    }
+    [RelayCommand(CanExecute = nameof(CanInstallManaged))] private Task RefreshWindowsVersionsAsync() => LoadWindowsVersionsAsync();
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
@@ -271,7 +297,38 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private async Task InstallManagedAsync()
     {
         if (RequestManagedInstallConfirmationAsync is null || !await RequestManagedInstallConfirmationAsync()) return;
-        await Installation.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true));
+        await Installation.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true,
+            string.IsNullOrWhiteSpace(InstallVersion) ? null : InstallVersion.Trim(), localPackageReference));
+    }
+
+    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
+    private async Task ShowManagedDownloadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(InstallVersion)) { StatusText = LocalizedText.Get("webservers.problem.version_required"); return; }
+        try
+        {
+            var download = await _client.GetManagedInstallDownloadAsync(InstallVersion.Trim());
+            if (download is null) { StatusText = LocalizedText.Get("webservers.managed.download_unavailable"); return; }
+            await (ShowManagedDownloadUrlAsync?.Invoke(download.Url) ?? Task.CompletedTask);
+        }
+        catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
+    private async Task SelectLocalPackageAsync()
+    {
+        if (RequestLocalNginxPackageAsync is not { } select) return;
+        var path = await select();
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            await using var package = File.OpenRead(path);
+            var reference = await _client.UploadManagedPackageAsync(Path.GetFileName(path), package);
+            if (reference is null) { StatusText = LocalizedText.Get("webservers.package.invalid"); return; }
+            localPackageReference = reference.Id;
+            LocalPackageName = reference.FileName;
+        }
+        catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]

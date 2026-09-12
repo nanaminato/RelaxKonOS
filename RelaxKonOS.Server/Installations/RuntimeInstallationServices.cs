@@ -9,14 +9,16 @@ using RelaxKonOS.Server.WebServer;
 
 namespace RelaxKonOS.Server.Installations;
 
-internal sealed class NginxInstallationService(NginxWebServerManager manager) : InstallationService<NginxInstallationRequest>
+internal sealed class NginxInstallationService(NginxWebServerManager manager, InstallationFileReferenceStore references) : InstallationService<NginxInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.Nginx;
     protected override bool Confirmed(NginxInstallationRequest request) => request.Confirmed;
     protected override bool Supports(InstallationOperationKind kind) => Enum.IsDefined(kind);
     protected override async Task ExecuteAsync(InstallationOperationKind kind, NginxInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
-        var problem = await manager.ExecuteInstallationAsync(kind, options, progress, ct);
+        Check(string.IsNullOrWhiteSpace(options.FileReferenceId) || kind == InstallationOperationKind.Install, InstallationProblemCodes.InvalidRequest);
+        using var source = kind == InstallationOperationKind.Install && !string.IsNullOrWhiteSpace(options.FileReferenceId) ? references.Open(Id, actor, options.FileReferenceId) : null;
+        var problem = await manager.ExecuteInstallationAsync(kind, options, source, progress, ct);
         Check(string.IsNullOrEmpty(problem), problem);
         await progress.ReportAsync(new(InstallationStage.HealthChecking));
         Check(await manager.CheckInstallationAsync(kind == InstallationOperationKind.Uninstall, CancellationToken.None), "nginx.install_verification_failed");
@@ -26,7 +28,8 @@ internal sealed class NginxInstallationService(NginxWebServerManager manager) : 
             && await manager.CheckInstallationAsync(operation.Kind == InstallationOperationKind.Uninstall, ct));
 }
 
-public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvider provider, IManagedFrpsService frps)
+public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvider provider, IManagedFrpsService frps,
+    InstallationFileReferenceStore references)
     : InstallationService<FrpInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.Frp;
@@ -36,6 +39,7 @@ public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvi
     protected override async Task ExecuteAsync(InstallationOperationKind kind, FrpInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
         Check(!options.Rollback || kind == InstallationOperationKind.Repair, InstallationProblemCodes.InvalidRequest);
+        Check(string.IsNullOrWhiteSpace(options.FileReferenceId) || kind == InstallationOperationKind.Install && !options.Rollback, InstallationProblemCodes.InvalidRequest);
         if (kind != InstallationOperationKind.Uninstall && !options.Rollback)
             Check(!string.IsNullOrWhiteSpace(options.Version) && options.Version.Length <= 32, "tunnel.runtime_version_invalid");
         TunnelOperationResultDto result;
@@ -47,7 +51,12 @@ public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvi
             result = options.Rollback ? await runtime.RollbackManagedFrpcAsync(CancellationToken.None)
                 : await runtime.UninstallManagedFrpcAsync(CancellationToken.None);
         }
-        else result = await runtime.InstallManagedFrpcAsync(options.Version!, progress, ct);
+        else if (string.IsNullOrWhiteSpace(options.FileReferenceId)) result = await runtime.InstallManagedFrpcAsync(options.Version!, progress, ct);
+        else
+        {
+            using var source = references.Open(Id, actor, options.FileReferenceId);
+            result = await runtime.InstallManagedFrpcFromArchiveAsync(options.Version!, source.Stream, source.Length, progress, ct);
+        }
         Check(result.Succeeded, result.ProblemCode);
         await progress.ReportAsync(new(InstallationStage.HealthChecking));
         Check(await HealthyAsync(kind == InstallationOperationKind.Uninstall, CancellationToken.None), "tunnel.runtime_health_check_failed");
@@ -64,7 +73,8 @@ public sealed class FrpInstallationService(IRuntimeManager runtime, ITunnelProvi
             && await HealthyAsync(operation.Kind == InstallationOperationKind.Uninstall, ct));
 }
 
-public sealed class MihomoInstallationService(IProxyRuntimeManager runtime, IMihomoControllerClient controller)
+public sealed class MihomoInstallationService(IProxyRuntimeManager runtime, IMihomoControllerClient controller,
+    InstallationFileReferenceStore references)
     : InstallationService<MihomoInstallationRequest>
 {
     public override InstallationServiceId Id => InstallationServiceId.Mihomo;
@@ -74,14 +84,22 @@ public sealed class MihomoInstallationService(IProxyRuntimeManager runtime, IMih
     protected override async Task ExecuteAsync(InstallationOperationKind kind, MihomoInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
     {
         Check(!options.Rollback || kind == InstallationOperationKind.Repair, InstallationProblemCodes.InvalidRequest);
+        Check(string.IsNullOrWhiteSpace(options.FileReferenceId) || kind == InstallationOperationKind.Install && !options.Rollback, InstallationProblemCodes.InvalidRequest);
         await progress.ReportAsync(new(options.Rollback ? InstallationStage.RollingBack : InstallationStage.Preparing), ct);
         // The current activation/rollback transaction must run to a safe conclusion once entered.
         var result = kind == InstallationOperationKind.Uninstall ? await runtime.UninstallManagedAsync("mihomo", CancellationToken.None)
             : options.Rollback ? await runtime.RollbackManagedAsync("mihomo", CancellationToken.None)
-            : await runtime.InstallManagedAsync("mihomo", options.Version, stage => progress.ReportAsync(new(Stage(stage))), CancellationToken.None);
+            : string.IsNullOrWhiteSpace(options.FileReferenceId)
+                ? await runtime.InstallManagedAsync("mihomo", options.Version, stage => progress.ReportAsync(new(Stage(stage))), CancellationToken.None)
+                : await InstallFromArchiveAsync(options, actor, progress, ct);
         Check(string.IsNullOrEmpty(result.ProblemCode), result.ProblemCode);
         await progress.ReportAsync(new(InstallationStage.HealthChecking));
         Check(await HealthyAsync(kind == InstallationOperationKind.Uninstall, CancellationToken.None), ProxyProblemCodes.RuntimeHealthCheckFailed);
+    }
+    private async Task<ProxyRuntimeDto> InstallFromArchiveAsync(MihomoInstallationRequest options, string actor, IInstallationProgress progress, CancellationToken ct)
+    {
+        using var source = references.Open(Id, actor, options.FileReferenceId!);
+        return await runtime.InstallManagedFromArchiveAsync("mihomo", options.Version, source.Stream, source.Length, progress, ct);
     }
     private static InstallationStage Stage(string value) => value switch
     {

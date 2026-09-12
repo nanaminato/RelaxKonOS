@@ -13,9 +13,10 @@
 - 已完成公共 `Installations` Protocol：冻结 service/kind/state/stage 枚举、`InstallationOperationDto`、统一路由和稳定 problem code；Nginx 请求已移除 `packageId`，公共安装入口不再接收客户端包标识。
 - 已完成宿主级持久账本与协调器：原子写入、秘密/路径/原始输出不落盘、幂等请求、资源锁、启动恢复、取消边界及审计摘要均由 `InstallationOperationStore` / `InstallationCoordinator` 处理。
 - 已完成统一授权 Endpoint 与 Client 轮询/工作区恢复组件；Nginx、Git、SMB、FRP、Mihomo、Docker 均已注册为强类型 `IInstallationService`，完成后会回读各自真实状态。
-- 已迁移 Nginx/Git/SMB/FRP/Mihomo 的 Client 安装入口到统一 operation ID 路径；Nginx 的 Windows 安装由 Server 使用固定官方 ZIP 下载、受限暂存/解压和配置验证完成，已删除客户端 ZIP 上传、版本目录、下载 URL、旧安装/卸载路由及对应 UI。普通 Nginx 生命周期 operation 仍保留在其领域 API 中。
-- 已删除 Git/SMB 的旧安装路由契约，以及 FRP/Mihomo 向 Client 暴露受管运行时下载 URL 的旧 DTO、路由和界面入口；固定发行物只在 Server 领域安装器内使用。
-- 已删除 FRP/Mihomo 的“从 Server 文件归档安装”内部接口和文件选择器，避免路径或归档内容跨越统一安装服务边界。
+- 已迁移 Nginx/Git/SMB/FRP/Mihomo 的 Client 安装入口到统一 operation ID 路径；普通 Nginx 生命周期 operation 仍保留在其领域 API 中。
+- FRP 与 Mihomo 恢复“从 Server 文件归档安装”，但不恢复旧的路径型安装路由：文件选择后由 Server 创建短期、发起人绑定的文件引用，统一任务只接收该引用。复制、校验、解压、激活和健康检查都在同一 operation 中报告；FRP 复制阶段按已验证字节数报告百分比。
+- Nginx Windows 恢复官方版本目录、官方下载链接和本机 ZIP 选择。ZIP 先上传到受限暂存区，再转换为相同的短期文件引用；安装请求、账本和审计不保存客户端包 ID、文件路径或 URL。
+- FRP、Mihomo 与 Nginx 的官方下载链接是独立的只读信息入口，只返回受信任发行清单或 nginx.org 版本目录中的 URL，不是安装请求的一部分。
 - 已删除 FRP 旧进程内安装状态 DTO；现有运行时测试改为通过强类型阶段报告器驱动，不再断言另一套安装状态模型。
 - Docker Linux 固定安装器已接入统一任务；Windows 仍只返回受支持的人工宿主操作方案，Windows Server 不会自动安装。
 - 已删除 Docker 旧同步“安装计划”入口；Process Guardian 仅保留无副作用的手动部署计划，不再暴露看似可执行安装的 Endpoint。
@@ -33,7 +34,7 @@
 
 ## 1. 成功标准
 
-- 任一受管安装、升级、修复或卸载请求均立即返回 `202 Accepted` 和持久 `InstallationOperationDto`；HTTP 请求、窗口和 Client 断开都不终止已提交任务。
+- 任一受管安装、升级、修复或卸载请求均立即返回 `202 Accepted` 和持久 `InstallationOperationDto`；HTTP 请求、窗口和 Client 断开都不终止已提交任务。即使源归档已在本机，也不得绕过 operation；本地复制后的解压、服务激活和健康检查仍可能耗时或失败。
 - 统一查询与取消路由按 operation ID 返回真实状态；重连后可继续观察同一任务。无可信百分比时 `progress` 为 `null`，UI 只能显示阶段指示，不能用计时器或阶段权重伪造总百分比。
 - 每个安装器只发布来自可信来源的阶段和进度：包管理器状态流、HTTP 已知 Content-Length、已校验文件复制字节数或其自身明确的系统 API 状态。配置、验证、激活、回滚等通常为不确定进度。
 - 任务在 Server 重启后恢复为 `Interrupted` 或由领域恢复器给出明确结论，绝不永久显示 Running；操作、审计、日志和 API 响应均不含命令行、仓库 URL、配置、路径、归档内容、凭据或原始 stderr。
@@ -86,7 +87,7 @@ POST /api/v1.0/installations/{operationId}/cancel   -> 200 InstallationOperation
 GET  /api/v1.0/installations/active?service={id}    -> 200 InstallationOperationDto | 404
 ```
 
-每个 POST 均要求 `Idempotency-Key`，并只接受由该服务专属 DTO 表达的、已确认的选项；公共路由绝不接受 `command`、`arguments`、package/feature ID、仓库 URL、环境变量、路径或 base64 脚本。路由与调用方在一次 breaking change 中迁移；删除原有 Nginx、FRP、SMB 安装状态路由。
+每个安装 POST 均要求 `Idempotency-Key`，并只接受由该服务专属 DTO 表达的、已确认的选项；公共安装路由绝不接受 `command`、`arguments`、package/feature ID、仓库 URL、环境变量、路径或 base64 脚本。服务器文件选择使用独立的 `file-reference` 创建请求：它仅在内存中保存规范化路径、长度、所有者引用和到期时间，返回不透明 ID；安装请求只携带 ID。引用在开始读取时一次性消费，重新检查普通文件、非链接和长度，受限暂存的上传文件在消费或过期时删除。路由与调用方在一次 breaking change 中迁移；删除原有 Nginx、FRP、SMB 安装状态路由。
 
 ## 5. 调度、持久化与恢复
 

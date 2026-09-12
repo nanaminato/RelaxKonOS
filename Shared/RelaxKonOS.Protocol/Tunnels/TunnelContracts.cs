@@ -28,6 +28,7 @@ public sealed record TunnelRuntimeDto(
     string? PreviousVersion = null, bool IntegrityVerified = false);
 
 public sealed record TunnelOperationResultDto(bool Succeeded, TunnelConnectionState State, string ProblemCode = "");
+public sealed record TunnelRuntimeDownloadDto(string Version, string Url);
 public sealed record TunnelLogEntryDto(DateTimeOffset Timestamp, string Level, string Message);
 public sealed record TunnelAuditEntryDto(DateTimeOffset Timestamp, string Action, string Result, string ProblemCode);
 

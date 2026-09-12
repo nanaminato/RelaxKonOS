@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Protocol.WebServers;
 
@@ -39,6 +40,11 @@ public sealed record WebServerConfigTestResultDto(
 
 public sealed record IntegrateWebServerRequest(
     [property: JsonPropertyName("confirmed")] bool Confirmed);
+
+/// <summary>Official Windows Nginx versions discovered by the Server.</summary>
+public sealed record WebServerInstallCatalogDto(string? MainlineVersion, string? StableVersion, IReadOnlyList<string> Versions, string ProblemCode = "");
+/// <summary>Read-only direct download location for an official Windows Nginx release.</summary>
+public sealed record WebServerInstallDownloadDto(string Version, string Url);
 
 /// <summary>Explicit acknowledgement for deleting a RelaxKonOS-owned web-server installation.</summary>
 public sealed record UninstallManagedWebServerRequest(

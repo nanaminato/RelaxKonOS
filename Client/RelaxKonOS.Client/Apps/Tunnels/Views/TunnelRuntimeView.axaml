@@ -21,7 +21,8 @@
         <StackPanel IsVisible="{Binding RuntimeIsNotInstalled}" Spacing="12">
           <TextBlock Text="{Binding RuntimeText}" FontSize="18"/>
           <TextBlock Text="{loc:Loc tunnels.runtime_install_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10"><TextBlock Text="{loc:Loc tunnels.version}" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding RuntimeVersion, Mode=TwoWay}"/><Button Grid.Column="2" Classes="primary" Content="{loc:Loc tunnels.install}" Command="{Binding InstallRuntimeCommand}"/></Grid>
+          <Button Content="{loc:Loc tunnels.runtime_download}" Command="{Binding ShowRuntimeDownloadCommand}" HorizontalAlignment="Left"/>
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10"><TextBlock Text="{loc:Loc tunnels.version}" VerticalAlignment="Center"/><TextBox Grid.Column="1" Text="{Binding RuntimeVersion, Mode=TwoWay}"/><Button Grid.Column="2" Content="{loc:Loc tunnels.runtime.install_from_server_file}" Command="{Binding InstallRuntimeFromServerFileCommand}"/><Button Grid.Column="3" Classes="primary" Content="{loc:Loc tunnels.install}" Command="{Binding InstallRuntimeCommand}"/></Grid>
           <TextBlock Text="{loc:Loc tunnels.runtime_platform_hint}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"/>
         </StackPanel>
       </StackPanel>

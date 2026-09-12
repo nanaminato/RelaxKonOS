@@ -24,6 +24,8 @@ public static class TunnelApiRoutes
     public const string RuntimePattern = "/runtime";
     public const string RuntimeDetectExternal = $"{Runtime}/external/detect";
     public const string RuntimeDetectExternalPattern = "/runtime/external/detect";
+    public const string RuntimeDownload = $"{Runtime}/download";
+    public const string RuntimeDownloadPattern = "/runtime/download";
     public const string ManagedFrps = $"{Tunnels}/frps";
     public const string ManagedFrpsPattern = "/frps";
     public const string ManagedFrpsEditor = $"{ManagedFrps}/editor";

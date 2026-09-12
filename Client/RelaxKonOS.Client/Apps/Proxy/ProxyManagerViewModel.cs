@@ -62,6 +62,8 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     [ObservableProperty] private ProxyNodeItem? _selectedOverviewProxyNode;
     [ObservableProperty] private bool _isTunSettingsSelected;
 
+    public Func<Task<string?>>? RequestServerRuntimePackageAsync { get; set; }
+    public Func<string, Task>? ShowRuntimeDownloadUrlAsync { get; set; }
     public Func<Task<string?>>? RequestServerGeoDataFileAsync { get; set; }
     public Func<Task<bool>>? RequestSystemProxySubscriptionDownloadAsync { get; set; }
     public Action? ShowRuntimeSubscriptionWindow { get; set; }
@@ -73,6 +75,11 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     public Action<string>? NavigateRequested { get; set; }
 
 
+    public void SetServerRuntimePackageRequest(Func<Task<string?>>? request)
+    {
+        RequestServerRuntimePackageAsync = request;
+        InstallRuntimeFromServerFileCommand.NotifyCanExecuteChanged();
+    }
     public void SetServerGeoDataFileRequest(Func<Task<string?>>? request)
     {
         RequestServerGeoDataFileAsync = request;
@@ -251,6 +258,27 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanToggleProxy))]
     private Task ToggleProxyAsync() => LifecycleAsync(ProxyIsRunning ? ProxyLifecycleAction.Stop : ProxyLifecycleAction.Start);
     [RelayCommand(CanExecute = nameof(CanInstallRuntime))] private Task InstallRuntimeAsync() => Installation.SubmitAsync(InstallationOperationKind.Install, new MihomoInstallationRequest(true));
+    [RelayCommand(CanExecute = nameof(CanInstallRuntimeFromServerFile))]
+    private async Task InstallRuntimeFromServerFileAsync()
+    {
+        if (RequestServerRuntimePackageAsync is not { } request) return;
+        var path = await request();
+        if (string.IsNullOrWhiteSpace(path)) return;
+        var reference = await Installation.CreateFileReferenceAsync(path);
+        if (reference is not null)
+            await Installation.SubmitAsync(InstallationOperationKind.Install, new MihomoInstallationRequest(true, FileReferenceId: reference));
+    }
+    [RelayCommand(CanExecute = nameof(CanInstallRuntime))]
+    private async Task ShowRuntimeDownloadAsync()
+    {
+        try
+        {
+            var download = await repository.GetManagedRuntimeDownloadAsync();
+            if (download is null) { StatusText = LocalizedText.Get("proxy.runtime_download_unavailable"); return; }
+            await (ShowRuntimeDownloadUrlAsync?.Invoke(download.Url) ?? Task.CompletedTask);
+        }
+        catch (Exception exception) { SetFailureStatus(exception); }
+    }
     [RelayCommand(CanExecute = nameof(CanInstalledRuntime))] private Task RollbackRuntimeAsync() => Installation.SubmitAsync(InstallationOperationKind.Repair, new MihomoInstallationRequest(true, Rollback: true));
     [RelayCommand(CanExecute = nameof(CanInstalledRuntime))] private Task UninstallRuntimeAsync() => Installation.SubmitAsync(InstallationOperationKind.Uninstall, new MihomoInstallationRequest(true));
     [RelayCommand(CanExecute = nameof(CanEnableTun))]
@@ -551,6 +579,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     private bool CanRefresh => !IsBusy;
     private bool CanManage => HasManagePermission && !IsBusy;
     private bool CanInstallRuntime => CanManage && RuntimeIsNotInstalled;
+    private bool CanInstallRuntimeFromServerFile => CanInstallRuntime && RequestServerRuntimePackageAsync is not null;
     private bool CanInstalledRuntime => CanManage && RuntimeIsInstalled;
     private bool CanStartProxy => CanManage && Runtime?.State == ProxyRuntimeState.Stopped;
     private bool CanStopProxy => CanManage && Runtime?.State == ProxyRuntimeState.Running;
@@ -618,7 +647,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
         OnPropertyChanged(nameof(RuntimeServiceMode));
         StartProxyCommand.NotifyCanExecuteChanged(); StopProxyCommand.NotifyCanExecuteChanged(); RestartProxyCommand.NotifyCanExecuteChanged();
         ToggleProxyCommand.NotifyCanExecuteChanged();
-        InstallRuntimeCommand.NotifyCanExecuteChanged();
+        InstallRuntimeCommand.NotifyCanExecuteChanged(); InstallRuntimeFromServerFileCommand.NotifyCanExecuteChanged(); ShowRuntimeDownloadCommand.NotifyCanExecuteChanged();
         RollbackRuntimeCommand.NotifyCanExecuteChanged(); UninstallRuntimeCommand.NotifyCanExecuteChanged();
     }
     partial void OnGeoDataChanged(ProxyGeoDataDto? value)
@@ -676,7 +705,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     private void NotifyCommands()
     {
         RefreshCommand.NotifyCanExecuteChanged(); StartProxyCommand.NotifyCanExecuteChanged(); StopProxyCommand.NotifyCanExecuteChanged(); RestartProxyCommand.NotifyCanExecuteChanged(); ToggleProxyCommand.NotifyCanExecuteChanged();
-        InstallRuntimeCommand.NotifyCanExecuteChanged(); RollbackRuntimeCommand.NotifyCanExecuteChanged(); UninstallRuntimeCommand.NotifyCanExecuteChanged();
+        InstallRuntimeCommand.NotifyCanExecuteChanged(); InstallRuntimeFromServerFileCommand.NotifyCanExecuteChanged(); ShowRuntimeDownloadCommand.NotifyCanExecuteChanged(); RollbackRuntimeCommand.NotifyCanExecuteChanged(); UninstallRuntimeCommand.NotifyCanExecuteChanged();
         ConfigureGeoDataFromServerFileCommand.NotifyCanExecuteChanged();
         EnableTunCommand.NotifyCanExecuteChanged(); DisableTunCommand.NotifyCanExecuteChanged(); EmergencyDisableCommand.NotifyCanExecuteChanged(); ToggleTunCommand.NotifyCanExecuteChanged();
         ToggleSystemProxyCommand.NotifyCanExecuteChanged();

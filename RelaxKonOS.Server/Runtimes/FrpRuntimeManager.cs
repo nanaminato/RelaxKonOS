@@ -48,10 +48,20 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IHttpClientF
             : new(RuntimeId, TunnelRuntimeMode.Managed, TunnelRuntimeState.NotInstalled, active, null, "tunnel.managed_runtime_missing", null, state.PreviousVersion, false);
     }
 
-    public Task<TunnelOperationResultDto> InstallManagedFrpcAsync(string version, IInstallationProgress progress, CancellationToken ct) =>
-        InstallManagedFrpcCoreAsync(version, progress, ct);
+    public Task<TunnelRuntimeDownloadDto?> GetManagedFrpcDownloadAsync(string version, CancellationToken ct)
+    {
+        var release = _options.Releases.SingleOrDefault(x => x.Version == version && x.Rid == CurrentRid());
+        return Task.FromResult<TunnelRuntimeDownloadDto?>(IsTrustedRelease(release) ? new(release!.Version, release.Url) : null);
+    }
 
-    private async Task<TunnelOperationResultDto> InstallManagedFrpcCoreAsync(string version, IInstallationProgress progress, CancellationToken ct)
+    public Task<TunnelOperationResultDto> InstallManagedFrpcAsync(string version, IInstallationProgress progress, CancellationToken ct) =>
+        InstallManagedFrpcCoreAsync(version, (release, destination, token) => DownloadVerifiedAsync(release, destination, progress, token), progress, ct);
+
+    public Task<TunnelOperationResultDto> InstallManagedFrpcFromArchiveAsync(string version, Stream archive, long length, IInstallationProgress progress, CancellationToken ct) =>
+        InstallManagedFrpcCoreAsync(version, (release, destination, token) => CopyVerifiedArchiveAsync(release, archive, destination, length, progress, token), progress, ct);
+
+    private async Task<TunnelOperationResultDto> InstallManagedFrpcCoreAsync(string version,
+        Func<FrpRuntimeRelease, string, CancellationToken, Task> stageArchiveAsync, IInstallationProgress progress, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(version) || version.Length > 32)
         {
@@ -76,7 +86,7 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IHttpClientF
                 var archive = Path.Combine(_root, ".archive-" + Guid.NewGuid().ToString("N"));
                 try
                 {
-                    await DownloadVerifiedAsync(release, archive, progress, ct);
+                    await stageArchiveAsync(release, archive, ct);
                     await progress.ReportAsync(new(InstallationStage.Extracting, Cancellable: true), ct);
                     await ExtractExpectedExecutablesAsync(release, archive, staging, ct);
                     await progress.ReportAsync(new(InstallationStage.HealthChecking, Cancellable: true), ct);
@@ -149,10 +159,18 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IHttpClientF
         if (response.Content.Headers.ContentLength > _options.MaximumArchiveBytes) throw new RuntimeInstallException("tunnel.runtime_download_too_large");
         await progress.ReportAsync(new(InstallationStage.Downloading, Cancellable: true), ct);
         await using var input = await response.Content.ReadAsStreamAsync(ct);
-        await CopyAndVerifyArchiveAsync(release, input, destination, response.Content.Headers.ContentLength, progress, ct);
+        await CopyAndVerifyArchiveAsync(release, input, destination, response.Content.Headers.ContentLength, InstallationStage.Downloading, progress, ct);
     }
 
-    private async Task CopyAndVerifyArchiveAsync(FrpRuntimeRelease release, Stream input, string destination, long? length, IInstallationProgress progress, CancellationToken ct)
+    private async Task CopyVerifiedArchiveAsync(FrpRuntimeRelease release, Stream input, string destination, long length, IInstallationProgress progress, CancellationToken ct)
+    {
+        if (length < 0 || length > _options.MaximumArchiveBytes) throw new RuntimeInstallException("tunnel.runtime_archive_too_large");
+        await progress.ReportAsync(new(InstallationStage.Copying, 0, Cancellable: true), ct);
+        await CopyAndVerifyArchiveAsync(release, input, destination, length, InstallationStage.Copying, progress, ct);
+    }
+
+    private async Task CopyAndVerifyArchiveAsync(FrpRuntimeRelease release, Stream input, string destination, long? length,
+        InstallationStage transferStage, IInstallationProgress progress, CancellationToken ct)
     {
         await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256); var buffer = new byte[81920]; long total = 0;
@@ -163,7 +181,7 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IHttpClientF
             if (total > _options.MaximumArchiveBytes) throw new RuntimeInstallException("tunnel.runtime_download_too_large");
             hash.AppendData(buffer, 0, count); await output.WriteAsync(buffer.AsMemory(0, count), ct);
             if (length is > 0)
-                await progress.ReportAsync(new(InstallationStage.Downloading, (int)Math.Min(100, total * 100 / length.Value), true), ct);
+                await progress.ReportAsync(new(transferStage, (int)Math.Min(100, total * 100 / length.Value), true), ct);
         }
         if (length is > 0 && total != length) throw new RuntimeInstallException("tunnel.runtime_length_invalid");
         await progress.ReportAsync(new(InstallationStage.Verifying, Cancellable: true), ct);

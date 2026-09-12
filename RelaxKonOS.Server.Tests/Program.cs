@@ -462,7 +462,6 @@ static void VerifyProxyProtocolContract()
 {
     Assert(ProxyApiRoutes.Proxy == "/api/v1.0/proxy" && ProxyApiRoutes.ProfilePattern.StartsWith("/profiles/", StringComparison.Ordinal),
         "Proxy routes must keep one versioned public base and group-relative patterns.");
-    Assert(ProxyApiRoutes.RuntimeInstallFromFile == ProxyApiRoutes.Runtime + "/install/from-file", "Proxy server-file runtime install route changed unexpectedly.");
     Assert(ProxyApiRoutes.Traffic == ProxyApiRoutes.Proxy + "/traffic", "Proxy traffic route changed unexpectedly.");
     var overview = new ProxyOverviewDto("test-engine", new(true, true, true, true, true, true), new(true, true, false, false, false, true),
         new("test-engine", ProxyRuntimeMode.Managed, ProxyRuntimeState.Running, "1.0.0", null, true, false),

@@ -1,6 +1,9 @@
 using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Protocol.Installations;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
+using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
@@ -51,6 +54,25 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         };
         viewModel.RequestManagedInstallConfirmationAsync = () => ConfirmAsync("webservers.managed.install.title", "webservers.managed.install.message", "webservers.managed.install.confirm");
         viewModel.RequestManagedUninstallConfirmationAsync = () => ConfirmAsync("webservers.managed.uninstall.title", "webservers.managed.uninstall.message", "webservers.managed.uninstall.confirm");
+        viewModel.RequestLocalNginxPackageAsync = async () =>
+        {
+            var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
+            if (topLevel is null) return null;
+            var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = LocalizedText.Get("webservers.managed.select_package"), AllowMultiple = false,
+                FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("webservers.managed.package_file_type")) { Patterns = ["*.zip"] }],
+            });
+            return selected.FirstOrDefault()?.TryGetLocalPath();
+        };
+        viewModel.ShowManagedDownloadUrlAsync = url => context.ShowDialogAsync<bool?>(window, LocalizedText.Get("webservers.managed.download_title"), dialog => new DownloadUrlDialogView
+        {
+            DataContext = new DownloadUrlDialogViewModel(url, async value =>
+            {
+                var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
+                if (topLevel?.Clipboard is not null) await topLevel.Clipboard.SetTextAsync(value);
+            }, () => dialog.Close(true)),
+        }, new Size(660, 210));
         viewModel.OpenFileBrowserAtPathAsync = path =>
         {
             var activation = context.Activations.Activate(RelaxKonOSActivationUris.ExplorerPath(path));

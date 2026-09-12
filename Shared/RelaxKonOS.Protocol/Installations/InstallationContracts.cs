@@ -23,6 +23,12 @@ public sealed record InstallationOperationDto(Guid OperationId, InstallationServ
     int? Progress, string? ProblemCode, DateTimeOffset CreatedAt, DateTimeOffset? StartedAt,
     DateTimeOffset? CompletedAt, bool Cancellable);
 
+/// <summary>A short-lived, actor-bound reference to an installation archive. The path used to
+/// create it never becomes part of an installation request or operation record.</summary>
+public sealed record InstallationFileReferenceDto(string Id, string FileName, long Length, DateTimeOffset ExpiresAt);
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record CreateInstallationFileReferenceRequest(string Path);
+
 public static class InstallationApiRoutes
 {
     public const string Root = "/" + RelaxKonOSEndpoints.ApiVersionPrefix + "/installations";
@@ -30,10 +36,12 @@ public static class InstallationApiRoutes
     public const string OperationPattern = "/{operationId:guid}";
     public const string CancelPattern = OperationPattern + "/cancel";
     public const string ActivePattern = "/active";
+    public const string FileReferencePattern = "/{service}/file-reference";
     public static string Start(InstallationServiceId service, InstallationOperationKind kind) => $"{Root}/{service}/{kind}";
     public static string Operation(Guid id) => $"{Root}/{id:D}";
     public static string Cancel(Guid id) => Operation(id) + "/cancel";
     public static string Active(InstallationServiceId service) => $"{Root}/active?service={service}";
+    public static string FileReference(InstallationServiceId service) => $"{Root}/{service}/file-reference";
 }
 
 // Reject unknown properties: none of these contracts can carry shell inputs or server paths.
@@ -42,11 +50,11 @@ public sealed record SmbInstallationRequest(bool Confirmed);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record GitInstallationRequest(bool Confirmed);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record NginxInstallationRequest(bool Confirmed);
+public sealed record NginxInstallationRequest(bool Confirmed, string? Version = null, string? FileReferenceId = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record FrpInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false);
+public sealed record FrpInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false, string? FileReferenceId = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record MihomoInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false);
+public sealed record MihomoInstallationRequest(bool Confirmed, string? Version = null, bool Rollback = false, string? FileReferenceId = null);
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record DockerInstallationRequest(bool Confirmed);
 
@@ -66,4 +74,5 @@ public static class InstallationProblemCodes
     public const string Failed = "installation.failed";
     public const string RecoveryUnknown = "installation.recovery_unknown";
     public const string HealthCheckFailed = "installation.health_check_failed";
+    public const string FileReferenceUnavailable = "installation.file_reference_unavailable";
 }

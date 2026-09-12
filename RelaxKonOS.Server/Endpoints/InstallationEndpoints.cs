@@ -22,6 +22,13 @@ public static class InstallationEndpoints
             var operation = coordinator.Start(id, operationKind, request, Actor(http.User), http.Request.Headers["Idempotency-Key"].ToString());
             return Results.Accepted(InstallationApiRoutes.Operation(operation.OperationId), operation);
         }));
+        group.MapPost(InstallationApiRoutes.FileReferencePattern, (string service, CreateInstallationFileReferenceRequest request,
+            HttpContext http, InstallationFileReferenceStore references) => Handle(() =>
+        {
+            if (!TryEnum(service, out InstallationServiceId id) || !CanInstall(http.User, id))
+                return Problem("installation.permission_denied", 403);
+            return Results.Ok(references.Create(id, Actor(http.User), request.Path));
+        }));
         group.MapGet(InstallationApiRoutes.ActivePattern, (string service, HttpContext http, InstallationCoordinator coordinator) => Handle(() =>
         {
             if (!TryEnum(service, out InstallationServiceId id)) return Problem(InstallationProblemCodes.InvalidRequest, 400);
@@ -49,7 +56,7 @@ public static class InstallationEndpoints
         && (!user.HasClaim(x => x.Type == "installation:install") || user.HasClaim("installation:install", Target(service)));
     private static bool CanObserve(ClaimsPrincipal user, InstallationEntry entry) =>
         entry.ActorReference == InstallationOperationStore.Reference(Actor(user)) || CanInstall(user, entry.Operation.Service);
-    private static string Actor(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
+    public static string Actor(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub") ?? throw new UnauthorizedAccessException();
     private static bool TryEnum<T>(string value, out T result) where T : struct, Enum => Enum.TryParse(value, true, out result)
         && Enum.IsDefined(result) && !int.TryParse(value, out _);
     public static string Target(InstallationServiceId service) => service == InstallationServiceId.Frp ? "frp" : service.ToString().ToLowerInvariant();

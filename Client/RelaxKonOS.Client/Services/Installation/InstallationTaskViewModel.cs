@@ -64,6 +64,20 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         finally { submitGate.Release(); }
     }
 
+    public async Task<string?> CreateFileReferenceAsync(string path)
+    {
+        try
+        {
+            var reference = await client.CreateFileReferenceAsync(service, path, lifetime.Token);
+            ConnectionText = string.Empty;
+            return reference?.Id;
+        }
+        catch (InstallationApiException error) { ConnectionText = LocalizedText.Get("installation.problem." + error.ProblemCode, error.ProblemCode); }
+        catch (OperationCanceledException) { }
+        catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+        return null;
+    }
+
     public async Task RestoreAsync()
     {
         if (observation is { IsCompleted: false }) return;

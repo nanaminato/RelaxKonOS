@@ -60,6 +60,8 @@ public static class TunnelEndpoints
         // public, absolute client route here would duplicate the API prefix inside this group.
         // and make the advertised runtime API return 404.
         group.MapGet(TunnelApiRoutes.RuntimePattern, (IRuntimeManager runtime, CancellationToken ct) => runtime.GetManagedFrpcStatusAsync(ct)).RequireAuthorization("TunnelsRead");
+        group.MapGet(TunnelApiRoutes.RuntimeDownloadPattern, async (string version, IRuntimeManager runtime, CancellationToken ct) =>
+            await runtime.GetManagedFrpcDownloadAsync(version, ct) is { } download ? Results.Ok(download) : Results.NotFound()).RequireAuthorization("TunnelsRead");
         group.MapPost(TunnelApiRoutes.RuntimeDetectExternalPattern, (DetectExternalTunnelRuntimeRequest request, IRuntimeManager runtime, CancellationToken ct) => runtime.DetectExternalFrpcAsync(request.ExecutablePath, ct)).RequireAuthorization("TunnelsManage");
         return app;
     }

@@ -10,6 +10,12 @@ public static class WebServerApiRoutes
     public const string CollectionPattern = "";
     public const string Discover = $"{WebServers}/discover";
     public const string DiscoverPattern = "/discover";
+    public const string ManagedInstallCatalog = $"{WebServers}/managed/catalog";
+    public const string ManagedInstallCatalogPattern = "/managed/catalog";
+    public const string ManagedInstallDownload = $"{WebServers}/managed/download";
+    public const string ManagedInstallDownloadPattern = "/managed/download";
+    public const string ManagedInstallPackage = $"{WebServers}/managed/package";
+    public const string ManagedInstallPackagePattern = "/managed/package";
     public const string ById = $"{WebServers}/{{id}}";
     public const string ByIdPattern = "/{id}";
     public const string Status = $"{WebServers}/{{id}}/status";

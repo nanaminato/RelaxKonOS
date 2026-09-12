@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.Proxy;
+using RelaxKonOS.Server.Installations;
 
 namespace RelaxKonOS.Server.Proxy;
 
@@ -31,9 +32,11 @@ public interface IProxyEngineRegistry
 public interface IProxyRuntimeManager
 {
     Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken cancellationToken);
+    Task<ProxyRuntimeDownloadDto?> GetManagedDownloadAsync(string engineId, string? version, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> DetectExternalAsync(string engineId, string executablePath, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> InstallManagedAsync(string engineId, string? version, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> InstallManagedAsync(string engineId, string? version, Func<string, Task>? stageReporter, CancellationToken cancellationToken);
+    Task<ProxyRuntimeDto> InstallManagedFromArchiveAsync(string engineId, string? version, Stream archive, long length, IInstallationProgress progress, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> RollbackManagedAsync(string engineId, CancellationToken cancellationToken);
     Task<ProxyRuntimeDto> UninstallManagedAsync(string engineId, CancellationToken cancellationToken);
 }

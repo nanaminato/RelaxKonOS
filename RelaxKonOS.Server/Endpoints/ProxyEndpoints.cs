@@ -28,6 +28,9 @@ public static class ProxyEndpoints
         app.MapPost(ProxyApiRoutes.RuntimeExternalDetection, async (ProxyRuntimeRequest request, IProxyRuntimeManager runtime, CancellationToken ct) =>
             string.IsNullOrWhiteSpace(request.ExternalPath) ? Problem(ProxyProblemCodes.ExternalRuntimeInvalid, StatusCodes.Status400BadRequest) : Results.Ok(await runtime.DetectExternalAsync(request.EngineId, request.ExternalPath, ct)))
             .RequireAuthorization("ProxyManage").WithTags("Proxy");
+        app.MapGet(ProxyApiRoutes.RuntimeDownload, async (string? version, IProxyRuntimeManager runtime, CancellationToken ct) =>
+            await runtime.GetManagedDownloadAsync("mihomo", version, ct) is { } download ? Results.Ok(download) : Results.NotFound())
+            .RequireAuthorization("ProxyRead").WithTags("Proxy");
 
         app.MapPost(ProxyApiRoutes.Lifecycle, (string action, HttpContext context, ProxyOperationStore operations, IProxyLifecycleService lifecycle, ProxyAuditStore audit, CancellationToken ct) =>
         {

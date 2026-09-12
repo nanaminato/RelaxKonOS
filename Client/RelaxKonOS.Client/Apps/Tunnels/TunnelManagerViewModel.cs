@@ -49,6 +49,8 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
     public Func<TunnelServerProfileDto?, Task>? OpenProfileEditorAsync { get; set; }
     public Func<TunnelDefinitionDto?, Task>? OpenTunnelEditorAsync { get; set; }
     public Func<TunnelServerProfileDto, Task>? OpenLogsWindowAsync { get; set; }
+    public Func<Task<string?>>? RequestServerRuntimePackageAsync { get; set; }
+    public Func<string, Task>? ShowRuntimeDownloadUrlAsync { get; set; }
     public Func<Task>? ShowManagedFrpsConfigurationAsync { get; set; }
     public Func<Task>? ShowManagedFrpsDiagnosticsAsync { get; set; }
     public Func<string, string, Task<bool>>? RequestConfirmationAsync { get; set; }
@@ -120,6 +122,27 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
     {
         if (!await ConfirmAsync("common.install", "tunnels.runtime.install_confirmation", RuntimeVersion)) return;
         await Installation.SubmitAsync(InstallationOperationKind.Install, new FrpInstallationRequest(true, RuntimeVersion));
+    }
+    [RelayCommand(CanExecute = nameof(CanInstallRuntime))]
+    private async Task InstallRuntimeFromServerFileAsync()
+    {
+        if (RequestServerRuntimePackageAsync is not { } request) return;
+        var path = await request();
+        if (string.IsNullOrWhiteSpace(path) || !await ConfirmAsync("common.install", "tunnels.runtime.install_confirmation", RuntimeVersion)) return;
+        var reference = await Installation.CreateFileReferenceAsync(path);
+        if (reference is not null)
+            await Installation.SubmitAsync(InstallationOperationKind.Install, new FrpInstallationRequest(true, RuntimeVersion, FileReferenceId: reference));
+    }
+    [RelayCommand(CanExecute = nameof(CanInstallRuntime))]
+    private async Task ShowRuntimeDownloadAsync()
+    {
+        try
+        {
+            var download = await client.GetManagedRuntimeDownloadAsync(RuntimeVersion, _lifetime.Token);
+            if (download is null) { StatusText = LocalizedText.Get("tunnels.runtime_download_unavailable"); return; }
+            await (ShowRuntimeDownloadUrlAsync?.Invoke(download.Url) ?? Task.CompletedTask);
+        }
+        catch (Exception exception) { StatusText = ProblemText(exception); }
     }
     [RelayCommand(CanExecute = nameof(CanUninstallRuntime))]
     private async Task UninstallRuntimeAsync()
@@ -202,7 +225,7 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
     partial void OnIsBusyChanged(bool value)
     {
         NotifyProfileCommands(); EditTunnelCommand.NotifyCanExecuteChanged();
-        InstallRuntimeCommand.NotifyCanExecuteChanged(); UninstallRuntimeCommand.NotifyCanExecuteChanged(); RollbackRuntimeCommand.NotifyCanExecuteChanged();
+        InstallRuntimeCommand.NotifyCanExecuteChanged(); InstallRuntimeFromServerFileCommand.NotifyCanExecuteChanged(); ShowRuntimeDownloadCommand.NotifyCanExecuteChanged(); UninstallRuntimeCommand.NotifyCanExecuteChanged(); RollbackRuntimeCommand.NotifyCanExecuteChanged();
         ToggleManagedFrpsCommand.NotifyCanExecuteChanged();
     }
     partial void OnFrpsStateChanged(ManagedFrpsState value)

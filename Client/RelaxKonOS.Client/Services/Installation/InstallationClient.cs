@@ -21,6 +21,8 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session)
         => SendAsync<InstallationOperationDto>(HttpMethod.Post, InstallationApiRoutes.Start(service, kind), options, key, ct);
     public Task<InstallationOperationDto?> GetAsync(Guid id, CancellationToken ct) => SendAsync<InstallationOperationDto>(HttpMethod.Get, InstallationApiRoutes.Operation(id), null, null, ct);
     public Task<InstallationOperationDto?> GetActiveAsync(InstallationServiceId service, CancellationToken ct) => SendAsync<InstallationOperationDto>(HttpMethod.Get, InstallationApiRoutes.Active(service), null, null, ct);
+    public Task<InstallationFileReferenceDto?> CreateFileReferenceAsync(InstallationServiceId service, string path, CancellationToken ct) =>
+        SendAsync<InstallationFileReferenceDto>(HttpMethod.Post, InstallationApiRoutes.FileReference(service), new CreateInstallationFileReferenceRequest(path), Guid.NewGuid().ToString("N"), ct);
     public Task<InstallationOperationDto?> CancelAsync(Guid id, CancellationToken ct) => SendAsync<InstallationOperationDto>(HttpMethod.Post, InstallationApiRoutes.Cancel(id), null, Guid.NewGuid().ToString("N"), ct);
     public async Task<bool> ElevateAsync(InstallationServiceId service, string password, CancellationToken ct)
     {

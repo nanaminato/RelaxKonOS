@@ -45,8 +45,16 @@
                         <TextBlock Text="{loc:Loc webservers.managed.installation}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <StackPanel IsVisible="{Binding IsWindowsServer}" Spacing="6">
                             <TextBlock Text="{loc:Loc webservers.managed.installation_help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding AvailableWindowsVersions}" Text="{Binding InstallVersion, Mode=TwoWay}" IsEditable="True" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="{loc:Loc webservers.managed.refresh_versions}" Command="{Binding RefreshWindowsVersionsCommand}" />
+                                <Button Content="{loc:Loc webservers.managed.download}" Command="{Binding ShowManagedDownloadCommand}" />
+                                <Button Content="{loc:Loc webservers.managed.select_package}" Command="{Binding SelectLocalPackageCommand}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding LocalPackageName}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel IsVisible="{Binding IsLinuxServer}" Spacing="6">
+                            <TextBox PlaceholderText="{loc:Loc webservers.managed.version}" Text="{Binding InstallVersion, Mode=TwoWay}" />
                             <TextBlock Text="{loc:Loc webservers.managed.linux_version_hint}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                         <Button Classes="primary" Content="{loc:Loc webservers.managed.install}" Command="{Binding InstallManagedCommand}" HorizontalAlignment="Left" />

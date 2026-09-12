@@ -324,6 +324,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationServi
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.FrpInstallationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MihomoInstallationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.DockerInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>();
 
 // 身份认证 Provider（按宿主 OS 平台选择，见 Authentication.md §1.1）
 if (OperatingSystem.IsWindows())
