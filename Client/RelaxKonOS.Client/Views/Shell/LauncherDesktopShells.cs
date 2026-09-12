@@ -40,6 +40,12 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     private Window? _topLevel;
     private static readonly object DesktopEntryMarker = new();
 
+    /// <summary>
+    /// Desktop icon names are narrow, so a long name is shortened with a character-based trailing
+    /// ellipsis. The tooltip always carries the untouched name, so nothing is silently lost.
+    /// </summary>
+    private static readonly TextTrimming DesktopNameTrimming = new TextTrailingTrimming("…", isWordBased: false);
+
     protected LauncherDesktopShellBase(ShellDescriptor descriptor) => Descriptor = descriptor;
     public ShellDescriptor Descriptor { get; }
     public Control View => _root;
@@ -252,12 +258,16 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             content.Children.Add(new Image { Source = image, Width = 32, Height = 32, HorizontalAlignment = HorizontalAlignment.Center });
         else
             content.Children.Add(new TextBlock { Text = glyph, FontSize = 30, HorizontalAlignment = HorizontalAlignment.Center });
-        content.Children.Add(new TextBlock
+        var label = new TextBlock
         {
             Text = name, MaxWidth = 108, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
-            TextAlignment = TextAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            TextAlignment = TextAlignment.Center, TextTrimming = DesktopNameTrimming,
             Foreground = ThemeResources.Brush("TextPrimaryBrush"),
-        });
+        };
+        // Desktop icons are narrow, so a long name is shortened to a preview. The untouched name
+        // stays reachable from the tooltip rather than being silently lost to the ellipsis.
+        ToolTip.SetTip(label, name);
+        content.Children.Add(label);
         var button = new Button { Content = content, Width = 116, Height = 84, Margin = new Thickness(3),
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
             Tag = DesktopEntryMarker };
@@ -314,15 +324,16 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         if (!file.IsDirectory)
             items.Add(new MenuItem { Header = LocalizedText.Get("explorer.open_with", "Open with..."), Command = vm.OpenDesktopEntryWithCommand, CommandParameter = file });
         items.Add(new Separator());
+        items.Add(new MenuItem { Header = LocalizedText.Get("common.cut", "Cut"), Command = vm.CutDesktopEntryCommand, CommandParameter = file });
         items.Add(new MenuItem { Header = LocalizedText.Get("common.copy", "Copy"), Command = vm.CopyDesktopEntryCommand, CommandParameter = file });
-        items.Add(new MenuItem { Header = LocalizedText.Get("explorer.cut", "Cut"), Command = vm.CutDesktopEntryCommand, CommandParameter = file });
         if (file.IsDirectory)
             items.Add(new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, CommandParameter = file });
         items.Add(new Separator());
+        items.Add(new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopEntryCommand, CommandParameter = file });
+        items.Add(new MenuItem { Header = LocalizedText.Get("common.rename", "Rename"), Command = vm.RenameDesktopEntryCommand, CommandParameter = file });
+        items.Add(new Separator());
         items.Add(new MenuItem { Header = LocalizedText.Get("shell.desktop.context.show_in_explorer", "Show in File Explorer"), Command = vm.ShowDesktopEntryInExplorerCommand, CommandParameter = file });
         items.Add(new MenuItem { Header = LocalizedText.Get("explorer.properties", "Properties"), Command = vm.ShowDesktopEntryPropertiesCommand, CommandParameter = file });
-        items.Add(new Separator());
-        items.Add(new MenuItem { Header = LocalizedText.Get("common.delete", "Delete"), Command = vm.DeleteDesktopEntryCommand, CommandParameter = file });
         return new ContextMenu { ItemsSource = items };
     }
 

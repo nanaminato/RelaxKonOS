@@ -15,6 +15,7 @@
         "common.ok": "OK",
         "common.create": "Create",
         "common.copy": "Copy",
+        "common.cut": "Cut",
         "common.paste": "Paste",
         "common.move": "Move",
         "common.error.empty_response_title": "Empty response",

@@ -15,6 +15,7 @@
         "common.ok": "确定",
         "common.create": "创建",
         "common.copy": "复制",
+        "common.cut": "剪切",
         "common.paste": "粘贴",
         "common.move": "移动",
         "common.error.empty_response_title": "空响应",

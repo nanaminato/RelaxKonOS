@@ -440,6 +440,8 @@ public sealed class DesktopShellOverlayService : IShellOverlayService
         _vm = vm;
         vm.RequestDesktopConfirmAsync = (title, message, confirm) => Dialog<bool>(vm, title, new Size(460, 220), done => new ConfirmDialogView
         { DataContext = new ConfirmDialogViewModel(message, done, confirm) }).ContinueWith(task => task.Result == true);
+        vm.RequestDesktopTextInputAsync = (title, prompt, defaultValue) => Dialog<string>(vm, title, new Size(460, 220), done => new TextInputDialogView
+        { DataContext = new TextInputDialogViewModel(prompt, defaultValue, done, LocalizedText.Get("common.rename")) });
         vm.RequestDesktopOpenWithAsync = (apps, extension) => Dialog<OpenWithChoice>(vm, LocalizedText.Get("explorer.open_with"), new Size(500, 360), done => new OpenWithDialogView
         { DataContext = new OpenWithDialogViewModel(apps, extension, done) });
         vm.ShowDesktopPropertiesAsync = properties => Dialog<bool>(vm, LocalizedText.Get("explorer.properties"), new Size(720, 620), done => new FilePropertiesDialogView

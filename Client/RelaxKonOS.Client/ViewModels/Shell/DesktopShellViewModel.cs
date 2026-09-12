@@ -163,6 +163,8 @@ public partial class DesktopShellViewModel : ObservableObject
     // The shell supplies these UI callbacks. Keeping prompts and picker controls out of this
     // view-model lets the actual filesystem operations be shared by desktop context-menu items.
     public Func<string, string, string, Task<bool>>? RequestDesktopConfirmAsync { get; set; }
+    /// <summary>Requests a single-line text prompt for desktop renames. Parameters: (title, prompt, defaultValue) → the input, or null when cancelled.</summary>
+    public Func<string, string, string, Task<string?>>? RequestDesktopTextInputAsync { get; set; }
     public Func<IReadOnlyList<ApplicationInfo>, string, Task<OpenWithChoice?>>? RequestDesktopOpenWithAsync { get; set; }
     public Func<FilePropertiesDto, Task>? ShowDesktopPropertiesAsync { get; set; }
 
@@ -551,6 +553,32 @@ public partial class DesktopShellViewModel : ObservableObject
         catch (Exception ex)
         {
             RecordDesktopFileMenuDiagnostic($"delete failed: entry={item.DisplayName}, error={ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task RenameDesktopEntryAsync(DesktopFileEntryViewModel? item)
+    {
+        if (item is null || RequestDesktopTextInputAsync is null) return;
+
+        var newName = await RequestDesktopTextInputAsync(
+            T("common.rename", "Rename"),
+            T("explorer.rename_prompt", "Enter a new name:"),
+            item.Entry.Name);
+        // WebDAV/SMB name rules are enforced by the server; here we only reject a no-op rename so
+        // an unchanged name does not produce a pointless round trip or a misleading error.
+        if (string.IsNullOrWhiteSpace(newName) || string.Equals(newName, item.Entry.Name, StringComparison.Ordinal))
+            return;
+
+        try
+        {
+            await _files.RenameAsync(item.Entry.Path, newName);
+            RefreshDesktop();
+            RecordDesktopFileMenuDiagnostic($"rename completed: entry={item.DisplayName}, newName={newName}.");
+        }
+        catch (Exception ex)
+        {
+            RecordDesktopFileMenuDiagnostic($"rename failed: entry={item.DisplayName}, error={ex.GetType().Name}: {ex.Message}");
         }
     }
 
