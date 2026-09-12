@@ -34,6 +34,9 @@ public interface IGitRepositoryService
     Task<GitCommitDetailDto> GetCommitDetailAsync(Guid id, Guid userId, string sha, CancellationToken cancellationToken = default);
     Task<GitDiffDto> GetDiffAsync(Guid id, Guid userId, string path, bool staged = false, string? @ref = null, CancellationToken cancellationToken = default);
     Task<GitOperationResult> RevertAsync(Guid id, Guid userId, GitRevertRequest request, CancellationToken cancellationToken = default);
+    Task<GitConflictStateDto> GetConflictStateAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<GitConflictFileDto> GetConflictAsync(Guid id, Guid userId, string path, CancellationToken cancellationToken = default);
+    Task<GitOperationResult> ConflictOperationAsync(Guid id, Guid userId, GitConflictOperationRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> ResolveConflictsAsync(Guid id, Guid userId, GitResolveRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> ResetAsync(Guid id, Guid userId, GitResetRequest request, CancellationToken cancellationToken = default);
     Task<GitOperationResult> RestoreAsync(Guid id, Guid userId, GitRestoreRequest request, CancellationToken cancellationToken = default);

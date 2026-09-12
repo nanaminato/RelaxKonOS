@@ -46,6 +46,8 @@ public sealed class GitClientApp : RemoteApplicationBase
         vm.ShowCommitDialogAsync = () => GitClientDialogs.ShowCommitDialogAsync(context, window!, vm);
         vm.ShowCreateBranchDialogAsync = source => GitClientDialogs.ShowCreateBranchDialogAsync(context, window!, vm, source);
         vm.ShowPullDialogAsync = () => GitClientDialogs.ShowPullDialogAsync(context, window!, vm);
+        vm.ShowConflictResolutionDialogAsync = owner => GitClientDialogs.ShowConflictResolutionDialogAsync(context, owner ?? window!, vm);
+        vm.ShowPushRejectedDialogAsync = owner => GitClientDialogs.ShowPushRejectedDialogAsync(context, owner ?? window!);
         vm.ShowRegisterRepositoryDialogAsync = () => GitClientDialogs.ShowRegisterRepositoryDialogAsync(context, window!, vm);
         vm.ShowConfirmAsync = message => GitClientDialogs.ShowConfirmAsync(context, window!, message);
         vm.ShowMessageAsync = message => GitClientDialogs.ShowMessageAsync(context, window!, message);

@@ -13,7 +13,7 @@ using RelaxKonOS.WindowManager;
 
 namespace RelaxKonOS.Client.Apps.Git;
 
-public enum GitClientPage { Overview, Workspace, Log, ConflictResolution, Remotes }
+public enum GitClientPage { Overview, Workspace, Log, Remotes }
 
 /// <summary>A display/value pair used by the compact history filter controls.</summary>
 public sealed record GitLogFilterOption(string Value, string Label);
@@ -113,6 +113,16 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     // ── 项目选择器状态：IsPickerMode=true 时显示项目选择视图而非工作区 ──
     [ObservableProperty] private bool _isPickerMode = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLoadingProjects))]
+    private bool _isStarting = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLoadingProjects))]
+    private bool _isLoadingRepositories;
+    [ObservableProperty] private bool _hasLoadedRepositories;
+    [ObservableProperty] private string? _repositoryLoadError;
+    public bool IsLoadingProjects => IsStarting || IsLoadingRepositories;
+
     [ObservableProperty] private string _probeHint = string.Empty;
     [ObservableProperty] private bool _isProbing;
 
@@ -138,6 +148,10 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     /// title and default name when the action originates from a branch context menu.</summary>
     public Func<GitBranchDto?, Task<GitBranchCreateRequest?>>? ShowCreateBranchDialogAsync { get; set; }
     public Func<Task<GitPullRequest?>>? ShowPullDialogAsync { get; set; }
+    /// <summary>Opens the modal resolver when an operation leaves the repository conflicted.</summary>
+    public Func<ManagedWindow?, Task>? ShowConflictResolutionDialogAsync { get; set; }
+    /// <summary>Offers merge/rebase integration when a push is rejected because the remote advanced.</summary>
+    public Func<ManagedWindow?, Task<GitPullRequest?>>? ShowPushRejectedDialogAsync { get; set; }
     public Func<Task<GitRepositoryRegistration?>>? ShowRegisterRepositoryDialogAsync { get; set; }
     public Func<string, Task<bool>>? ShowConfirmAsync { get; set; }
     /// <summary>Assigned by the app shell so operations can surface an unavailable engine immediately.</summary>
@@ -183,27 +197,33 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     public async Task StartAsync()
     {
-        SelectedLogDate ??= LogDateOptions[0];
-        Log("StartAsync 开始");
-        await RefreshEngineStatusAsync();
-        Log($"引擎状态: IsAvailable={IsGitAvailable} Version={EngineVersion} Problem={ProblemCode}");
-        if (!IsGitAvailable)
+        IsStarting = true;
+        try
         {
-            IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
-            StatusText = LocalizedText.Get("git.vm.git_unavailable");
-            if (ShowGitUnavailableAsync is not null)
-                await ShowGitUnavailableAsync();
-            if (!IsGitAvailable) return; // still unavailable after dialog → stop further init
+            SelectedLogDate ??= LogDateOptions[0];
+            Log("StartAsync 开始");
+            await RefreshEngineStatusAsync();
+            Log($"引擎状态: IsAvailable={IsGitAvailable} Version={EngineVersion} Problem={ProblemCode}");
+            if (!IsGitAvailable)
+            {
+                IsGitInstallRequired = IsInstallRequired(IsGitAvailable, ProblemCode);
+                StatusText = LocalizedText.Get("git.vm.git_unavailable");
+                if (ShowGitUnavailableAsync is not null)
+                    await ShowGitUnavailableAsync();
+                if (!IsGitAvailable) return; // still unavailable after dialog → stop further init
+            }
+
+            await RefreshRepositoriesAsync();
+            Log($"项目列表: Repositories.Count={Repositories.Count} IsPickerMode={IsPickerMode}");
+            if (RepositoryLoadError is null)
+                StatusText = IsPickerMode
+                ? (Repositories.Count > 0 ? LocalizedText.Get("git.status.select_project") : LocalizedText.Get("git.status.click_open_folder"))
+                : LocalizedText.Get("git.status.ready");
+
+            if (!IsPickerMode && IsAutoRefresh)
+                StartStatusTimer();
         }
-
-        await RefreshRepositoriesAsync();
-        Log($"项目列表: Repositories.Count={Repositories.Count} IsPickerMode={IsPickerMode}");
-        StatusText = IsPickerMode
-            ? (Repositories.Count > 0 ? LocalizedText.Get("git.status.select_project") : LocalizedText.Get("git.status.click_open_folder"))
-            : LocalizedText.Get("git.status.ready");
-
-        if (!IsPickerMode && IsAutoRefresh)
-            StartStatusTimer();
+        finally { IsStarting = false; }
     }
 
     public void Stop()
@@ -226,19 +246,26 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
     [RelayCommand]
     public async Task RefreshRepositoriesAsync()
     {
+        if (IsLoadingRepositories) return;
+        IsLoadingRepositories = true;
+        HasLoadedRepositories = false;
+        RepositoryLoadError = null;
         Log("RefreshRepositoriesAsync 开始调用 client.ListRepositoriesAsync …");
         try
         {
             var repos = await client.ListRepositoriesAsync();
             Repositories.Clear();
             foreach (var repo in repos) Repositories.Add(repo);
+            HasLoadedRepositories = true;
             Log($"RefreshRepositoriesAsync 完成，项目数={Repositories.Count}");
         }
         catch (Exception ex)
         {
-            await NotifyAsync(LocalizedText.Format("git.vm.load_repositories_failed_format", ex.Message));
+            RepositoryLoadError = LocalizedText.Format("git.vm.load_repositories_failed_format", ex.Message);
+            StatusText = RepositoryLoadError;
             Log($"RefreshRepositoriesAsync 异常：{ex.GetType().Name} {ex.Message}\n{ex.StackTrace}");
         }
+        finally { IsLoadingRepositories = false; }
     }
 
     private async Task RefreshAllAsync()
@@ -275,7 +302,6 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 foreach (var f in Status.Untracked) UntrackedFiles.Add(f);
                 foreach (var f in Status.Conflicts) ConflictFiles.Add(f);
                 HasConflicts = ConflictFiles.Count > 0;
-                if (HasConflicts) ActivePage = GitClientPage.ConflictResolution;
                 Log($"文件变更计数: Staged={StagedFiles.Count} Unstaged={UnstagedFiles.Count} " +
                     $"Untracked={UntrackedFiles.Count} Conflicts={ConflictFiles.Count}");
             }
@@ -284,6 +310,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 Log("⚠ Status 返回为 null — 工作区变更与分支信息无法呈现");
             }
 
+            await RefreshConflictStateAsync();
             RebuildChangesList();
             StatusText = LocalizedText.Format("git.status.ready_branch_format", Status?.Branch ?? LocalizedText.Get("git.status.unknown_branch"));
         }
@@ -300,7 +327,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
     private async Task RefreshStatusAsync()
     {
-        if (SelectedRepository is null) return;
+        if (SelectedRepository is null || IsBusy) return;
         if (Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0) return;
         try
         {
@@ -317,6 +344,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 foreach (var f in Status.Conflicts) ConflictFiles.Add(f);
                 HasConflicts = ConflictFiles.Count > 0;
             }
+            await RefreshConflictStateAsync();
             RebuildChangesList();
         }
         catch { /* silent — timer tick */ }
@@ -534,6 +562,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
 
             Log("调用 RefreshAllAsync（并行 status/branches/log）…");
             await RefreshAllAsync();
+            await PresentConflictResolutionAsync();
             Log($"RefreshAllAsync 完成。Branches={Branches.Count} Commits={Commits.Count} " +
                 $"Staged={StagedFiles.Count} Unstaged={UnstagedFiles.Count} Untracked={UntrackedFiles.Count}");
 
@@ -683,7 +712,10 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             {
                 await NotifyAsync(LocalizedText.Format("git.vm.checkout_failed_format", result.Message));
                 if (result.Conflicts is not null && result.Conflicts.Count > 0)
-                    ActivePage = GitClientPage.ConflictResolution;
+                {
+                    await RefreshAllAsync();
+                    await PresentConflictResolutionAsync();
+                }
             }
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
@@ -833,19 +865,21 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         try
         {
             var result = await client.PullAsync(SelectedRepository.Id, request);
-            if (result.RequiresCredentials)
+            if (result.Conflicts is { Count: > 0 })
+            {
+                await RefreshAllAsync();
+                StatusText = LocalizedText.Format("git.vm.merge_conflicts_format", result.Conflicts.Count);
+                await PresentConflictResolutionAsync();
+            }
+            else if (result.RequiresCredentials)
                 await NotifyAsync(LocalizedText.Get("git.vm.credentials_required"));
             else if (result.Success)
             {
-                StatusText = LocalizedText.Get("git.vm.pulled");
                 await RefreshAllAsync();
+                StatusText = LocalizedText.Get("git.vm.pulled");
             }
             else
-            {
                 await NotifyAsync(LocalizedText.Format("git.vm.pull_failed_format", result.Message));
-                if (result.Conflicts is not null && result.Conflicts.Count > 0)
-                    ActivePage = GitClientPage.ConflictResolution;
-            }
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
         finally { IsBusy = false; }
@@ -916,10 +950,13 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             var result = await client.RevertAsync(SelectedRepository.Id, new GitRevertRequest(commit.Sha));
             if (result.Success)
                 StatusText = LocalizedText.Get("git.vm.reverted");
-            else
-                await NotifyAsync(LocalizedText.Format("git.vm.revert_failed_format", result.Message));
             if (result.Conflicts is not null && result.Conflicts.Count > 0)
-                ActivePage = GitClientPage.ConflictResolution;
+            {
+                await RefreshAllAsync();
+                await PresentConflictResolutionAsync();
+            }
+            else if (!result.Success)
+                await NotifyAsync(LocalizedText.Format("git.vm.revert_failed_format", result.Message));
             await RefreshAllAsync();
         }
         catch (Exception ex) { await NotifyAsync(LocalizedText.Format("git.status.error_format", ex.Message)); }
@@ -1004,7 +1041,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
         Changes.Clear();
         TrackedChanges.Clear();
         UntrackedChanges.Clear();
-        
+
         // Add unstaged files (tracked files with modifications)
         foreach (var f in UnstagedFiles)
         {
@@ -1013,7 +1050,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             Changes.Add(item);
             TrackedChanges.Add(item);
         }
-        
+
         // Add untracked files (new files not yet in version control)
         foreach (var f in UntrackedFiles)
         {
@@ -1025,7 +1062,7 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 UntrackedChanges.Add(item);
             }
         }
-        
+
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(SelectedFilePaths));
     }
@@ -1446,6 +1483,38 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
                 return true;
             }
 
+            if (IsNonFastForwardPushRejection(result) &&
+                string.Equals(PushLocalBranchName, Status?.Branch, StringComparison.Ordinal))
+            {
+                var integration = ShowPushRejectedDialogAsync is null
+                    ? null
+                    : await ShowPushRejectedDialogAsync(owner);
+                if (integration is not null)
+                {
+                    PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.updating");
+                    var pull = await client.PullAsync(SelectedRepository.Id, integration with
+                    {
+                        Remote = pushRequest.Remote,
+                        Refspec = pushRequest.RemoteBranch,
+                    });
+                    await RefreshAllAsync();
+                    if (pull.Conflicts is { Count: > 0 })
+                    {
+                        PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.resolve_conflicts");
+                        await PresentConflictResolutionAsync(owner);
+                    }
+                    else if (pull.Success)
+                    {
+                        PushStatusMessage = LocalizedText.Get("git.dialog.push_rejected.ready_to_retry");
+                    }
+                    else
+                    {
+                        PushStatusMessage = LocalizedText.Format("git.vm.pull_failed_format", pull.Message);
+                    }
+                    return false;
+                }
+            }
+
             PushStatusMessage = result.RequiresCredentials
                 ? LocalizedText.Get("git.dialog.credentials.failed")
                 : LocalizedText.Format("git.vm.push_failed_format", result.Message);
@@ -1456,6 +1525,15 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             PushStatusMessage = LocalizedText.Format("git.status.error_format", ex.Message);
             return false;
         }
+    }
+
+    private static bool IsNonFastForwardPushRejection(GitOperationResult result)
+    {
+        var message = result.Message ?? string.Empty;
+        return !result.Success && !result.RequiresCredentials &&
+            (message.Contains("non-fast-forward", StringComparison.OrdinalIgnoreCase) ||
+             message.Contains("fetch first", StringComparison.OrdinalIgnoreCase) ||
+             message.Contains("[rejected]", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>获取远程分支名称列表（从已加载的 Branches 中过滤 IsRemote=true）。
@@ -1604,8 +1682,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             {
                 StatusText = LocalizedText.Format("git.vm.merge_conflicts_format", result.Conflicts.Count);
                 HasConflicts = true;
-                ActivePage = GitClientPage.ConflictResolution;
                 await RefreshAllAsync();
+                await PresentConflictResolutionAsync();
             }
             else if (result.Success)
             {
@@ -1692,7 +1770,12 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             try
             {
                 var result = await client.PullAsync(SelectedRepository.Id, branchRequest with { Branch = branch.Name });
-                if (result.Success)
+                if (result.Conflicts is { Count: > 0 })
+                {
+                    await RefreshAllAsync();
+                    await PresentConflictResolutionAsync();
+                }
+                else if (result.Success)
                 {
                     StatusText = LocalizedText.Get("git.vm.pulled");
                     await RefreshAllAsync();
@@ -1732,8 +1815,8 @@ public sealed partial class GitClientViewModel(IRemoteGitClient client) : Observ
             else if (result.Conflicts is not null && result.Conflicts.Count > 0)
             {
                 HasConflicts = true;
-                ActivePage = GitClientPage.ConflictResolution;
                 await RefreshAllAsync();
+                await PresentConflictResolutionAsync();
             }
             else
             {

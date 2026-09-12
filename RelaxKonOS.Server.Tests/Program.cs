@@ -52,6 +52,7 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
     if (!fileOperationsOnly || settingsOnly) await SettingsSystemVerification.RunAsync(root);
@@ -95,7 +96,13 @@ try
 
 finally
 {
-    if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+    if (Directory.Exists(root))
+    {
+        if (args.Contains("--git-conflicts-only"))
+            foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+                File.SetAttributes(file, FileAttributes.Normal);
+        Directory.Delete(root, recursive: true);
+    }
 }
 
 static void VerifyWorkspacePreferencesJsonContract()
