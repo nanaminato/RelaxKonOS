@@ -1,7 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:gitViews="clr-namespace:RelaxKonOS.Client.Apps.Git.Views"
-             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitDiffDialog">
+             x:Class="RelaxKonOS.Client.Apps.Git.Views.GitDiffDialog"
+             x:DataType="gitViews:GitDiffDialogModel">
     <Grid Margin="14" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10" MinWidth="640" MinHeight="400">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
             <StackPanel Spacing="3">

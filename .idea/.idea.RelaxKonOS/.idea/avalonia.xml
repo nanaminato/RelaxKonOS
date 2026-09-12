@@ -20,7 +20,9 @@
         <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerUnavailableDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
         <entry key="Client/RelaxKonOS.Client/Apps/Docker/Views/DockerVolumeDialogView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
         <entry key="Client/RelaxKonOS.Client/Apps/Explorer/Views/ExplorerMainView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Git/Views/GitBranchesView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
         <entry key="Client/RelaxKonOS.Client/Apps/Git/Views/GitClientWorkspace.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
+        <entry key="Client/RelaxKonOS.Client/Apps/Git/Views/GitDiffDialog.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
         <entry key="Client/RelaxKonOS.Client/Apps/Git/Views/GitPushDialog.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
         <entry key="Client/RelaxKonOS.Client/Apps/Git/Views/GitRemoteBranchPickerDialog.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
         <entry key="Client/RelaxKonOS.Client/Apps/ImageViewer/Views/ImageViewerView.axaml" value="Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />

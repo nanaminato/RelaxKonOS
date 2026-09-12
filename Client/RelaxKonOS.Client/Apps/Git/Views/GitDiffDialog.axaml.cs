@@ -24,7 +24,7 @@ internal partial class GitDiffDialog : UserControl
     private void Close_Click(object? sender, RoutedEventArgs e) => _dialog.Close(true);
 }
 
-internal sealed class GitDiffDialogModel
+public sealed class GitDiffDialogModel
 {
     public GitDiffDialogModel(GitDiffDto diff)
     {
