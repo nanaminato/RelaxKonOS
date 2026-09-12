@@ -8,6 +8,7 @@
 > - 用户 Workspace 模型见 [`RelaxKonOS.Workspace.md`](./architecture/RelaxKonOS.Workspace.md)
 > - 注册表与配置同步架构见 [`RelaxKonOS.Registry.md`](./architecture/RelaxKonOS.Registry.md)（设计中）
 > - 登录与身份模型见 [`RelaxKonOS.Authentication.md`](./platform/RelaxKonOS.Authentication.md)
+> - 独立登录别名与关闭系统账号直接登录的 Goal 设计见 [`RelaxKonOS.AliasLogin.Goal.md`](./platform/RelaxKonOS.AliasLogin.Goal.md)（待实施）
 > - 认证限流与登录防护建议见 [`RelaxKonOS.Authentication.Hardening.md`](./platform/RelaxKonOS.Authentication.Hardening.md)
 > - 安全设计见 [`RelaxKonOS.Security.md`](./platform/RelaxKonOS.Security.md)
 > - 权限模型与项目重构规范见 [`RelaxKonOS.PermissionModel.Refactor.md`](./platform/RelaxKonOS.PermissionModel.Refactor.md)
