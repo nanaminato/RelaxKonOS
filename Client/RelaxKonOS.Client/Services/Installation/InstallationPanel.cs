@@ -19,7 +19,11 @@ public static class InstallationPanel
 
     public static Control Wrap(Control content, InstallationTaskViewModel model)
     {
+        // The wrapper is installed around several apps. Hiding only its children still
+        // leaves this StackPanel's text rows and margin in the DockPanel layout, creating
+        // an empty band above the app whenever no installation is in progress.
         var panel = new StackPanel { Spacing = 6, Margin = new Thickness(12, 8), DataContext = model };
+        panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.IsPanelVisible)));
         var stage = new TextBlock(); stage.Bind(TextBlock.TextProperty, new Binding(nameof(model.StageText))); panel.Children.Add(stage);
         var progress = new ProgressBar { Minimum = 0, Maximum = 100, Height = 4 };
         progress.Bind(ProgressBar.ValueProperty, new Binding(nameof(model.Progress)));

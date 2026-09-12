@@ -19,6 +19,8 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     [ObservableProperty] private InstallationOperationDto? operation;
     [ObservableProperty] private string connectionText = "";
     public bool IsActive => Operation?.State is InstallationOperationState.Queued or InstallationOperationState.Running;
+    /// <summary>Keep installation failures visible without reserving layout space while idle.</summary>
+    public bool IsPanelVisible => IsActive || !string.IsNullOrWhiteSpace(ConnectionText);
     public bool IsIndeterminate => IsActive && Operation?.Progress is null;
     public int Progress => Operation?.Progress ?? 0;
     public string StageText => Operation is null ? "" : LocalizedText.Get("installation.stage." + Operation.Stage)
@@ -27,9 +29,10 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     private bool CanCancel => IsActive && Operation?.Cancellable == true;
     partial void OnOperationChanged(InstallationOperationDto? value)
     {
-        OnPropertyChanged(nameof(IsActive)); OnPropertyChanged(nameof(IsIndeterminate)); OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(StageText));
+        OnPropertyChanged(nameof(IsActive)); OnPropertyChanged(nameof(IsPanelVisible)); OnPropertyChanged(nameof(IsIndeterminate)); OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(StageText));
         CancelCommand.NotifyCanExecuteChanged();
     }
+    partial void OnConnectionTextChanged(string value) => OnPropertyChanged(nameof(IsPanelVisible));
 
     public async Task SubmitAsync(InstallationOperationKind kind, object options)
     {
