@@ -14,7 +14,9 @@
         <Style Selector="TextBlock.login-label">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="FontSize" Value="13" />
-            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,7,12,0" />
         </Style>
         <Style Selector="TextBox.connection-input">
             <Setter Property="Height" Value="32" />
@@ -48,10 +50,15 @@
 
         <StackPanel Grid.Row="1">
             <Border Classes="login-divider" />
-            <StackPanel Margin="32,22,32,18" Spacing="0">
+            <Grid Margin="32,22,32,18" IsSharedSizeScope="True">
+                <StackPanel Spacing="0">
                 <TextBlock Text="{Binding ConnectionInstructions}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" />
                 <TextBlock Text="{Binding CredentialsInstructions}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" Margin="0,3,0,12" />
-                <Grid ColumnDefinitions="108,*" Margin="0,0,0,10">
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
                     <TextBlock Classes="login-label" Text="{Binding DisplayLanguageText}" />
                     <ComboBox Grid.Column="1" ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}"
                               MinWidth="440">
@@ -62,58 +69,71 @@
                 </Grid>
 
                 <StackPanel Spacing="12">
-                    <Grid ColumnDefinitions="108,*">
-                    <TextBlock Classes="login-label" Text="{Binding ComputerLabel}" />
-                    <ComboBox Classes="connection-input" Grid.Column="1"
-                              ItemsSource="{Binding SavedProfiles}"
-                              SelectedItem="{Binding SelectedProfile}"
-                              IsEditable="True"
-                              Text="{Binding ServerUrl}"
-                              HorizontalAlignment="Stretch"
-                              MinWidth="440"
-                              PlaceholderText="http://host:port">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding ServerUrl}" MinHeight="32"
-                                           VerticalAlignment="Center" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="login-label" Text="{Binding ComputerLabel}" />
+                        <ComboBox Classes="connection-input" Grid.Column="1"
+                                  ItemsSource="{Binding SavedProfiles}"
+                                  SelectedItem="{Binding SelectedProfile}"
+                                  IsEditable="True"
+                                  Text="{Binding ServerUrl}"
+                                  HorizontalAlignment="Stretch"
+                                  MinWidth="440"
+                                  PlaceholderText="http://host:port">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding ServerUrl}" MinHeight="32"
+                                               VerticalAlignment="Center" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </Grid>
 
-                    <Grid ColumnDefinitions="108,*">
-                    <TextBlock Classes="login-label" Text="{Binding IdentifierLabel}" />
-                    <TextBox Classes="connection-input" Grid.Column="1"
-                             Text="{Binding Identifier}"
-                             IsReadOnly="{Binding !ShowOptions}"
-                             PlaceholderText="{Binding IdentifierPlaceholder}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="login-label" Text="{Binding IdentifierLabel}" />
+                        <TextBox Classes="connection-input" Grid.Column="1"
+                                 Text="{Binding Identifier}"
+                                 IsReadOnly="{Binding !ShowOptions}"
+                                 PlaceholderText="{Binding IdentifierPlaceholder}" />
                     </Grid>
 
-                    <Grid IsVisible="{Binding ShowOptions}" ColumnDefinitions="108,*,Auto">
-                    <TextBlock Classes="login-label" Text="{Binding PasswordLabel}" />
-                    <TextBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding !IsPasswordVisible}"
-                             Text="{Binding Password}"
-                             PasswordChar="●"
-                             PlaceholderText="{Binding PasswordPlaceholder}" />
-                    <TextBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding IsPasswordVisible}"
-                             Text="{Binding Password}"
-                             PlaceholderText="{Binding PasswordPlaceholder}" />
-                    <Button Grid.Column="2" Command="{Binding TogglePasswordVisibilityCommand}"
-                            Content="{Binding PasswordVisibilityText}" Margin="8,0,0,0"
-                            MinWidth="52" Height="32" Padding="8,4" />
+                    <Grid IsVisible="{Binding ShowOptions}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Classes="login-label" Text="{Binding PasswordLabel}" />
+                        <TextBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding !IsPasswordVisible}"
+                                 Text="{Binding Password}"
+                                 PasswordChar="●"
+                                 PlaceholderText="{Binding PasswordPlaceholder}" />
+                        <TextBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding IsPasswordVisible}"
+                                 Text="{Binding Password}"
+                                 PlaceholderText="{Binding PasswordPlaceholder}" />
+                        <Button Grid.Column="2" Command="{Binding TogglePasswordVisibilityCommand}"
+                                Content="{Binding PasswordVisibilityText}" Margin="8,0,0,0"
+                                MinWidth="52" Height="32" Padding="8,4" />
                     </Grid>
                 </StackPanel>
 
                 <Button Command="{Binding ToggleOptionsCommand}"
-                        Content="{Binding OptionsToggleText}" HorizontalAlignment="Left" Margin="108,12,0,0"
+                        Content="{Binding OptionsToggleText}" HorizontalAlignment="Left" Margin="0,12,0,0"
                         Padding="0" Background="Transparent" BorderThickness="0"
                         Foreground="{DynamicResource AccentBrush}" />
 
                 <CheckBox IsVisible="{Binding ShowOptions}" IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
-                          Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="108,12,0,0" />
+                          Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,12,0,0" />
                 <CheckBox IsVisible="{Binding ShowOptions}" IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"
                           Content="{Binding RememberPasswordText}"
-                          Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="108,6,0,0" />
+                          Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,6,0,0" />
 
                 <TextBlock Text="{Binding IdentityNotice}"
                            Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="88,11,0,0" />
@@ -130,7 +150,8 @@
                 <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsConnecting}"
                              Height="3" Margin="0,18,0,0"
                              Foreground="{DynamicResource AccentBrush}" />
-            </StackPanel>
+                </StackPanel>
+            </Grid>
         </StackPanel>
 
         <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0"

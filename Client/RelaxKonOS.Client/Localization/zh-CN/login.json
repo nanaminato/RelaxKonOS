@@ -6,7 +6,7 @@
         "login.connection_instructions": "输入要连接的远程计算机名称。",
         "login.credentials_instructions": "连接时将使用以下凭据。",
         "login.computer": "计算机：",
-        "login.username": "系统用户名或登录别名：",
+        "login.username": "用户名：",
         "login.password": "密码：",
         "login.username_placeholder": "系统用户名，或小写登录别名",
         "login.password_placeholder": "输入密码",

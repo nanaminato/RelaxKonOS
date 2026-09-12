@@ -6,7 +6,7 @@
         "login.connection_instructions": "Enter the name of the remote computer you want to connect to.",
         "login.credentials_instructions": "The credentials below will be used when connecting.",
         "login.computer": "Computer:",
-        "login.username": "System username or login alias:",
+        "login.username": "Username:",
         "login.password": "Password:",
         "login.username_placeholder": "System username, or lowercase alias",
         "login.password_placeholder": "Enter password",
