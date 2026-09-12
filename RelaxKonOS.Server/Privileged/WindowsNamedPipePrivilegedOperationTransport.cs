@@ -18,33 +18,39 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
         request = request with { OperationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid(), Version = PrivilegedOperationProtocol.Version };
         if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(options.PipeName) || !TryGetSecret(out var secret))
             return Complete(request, Unavailable("privileged helper service is not configured"));
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
+        // Cancellation remains meaningful while opening the local pipe. Once the signed frame
+        // is sent, wait for the Helper's authoritative response with its own bounded timeout.
+        using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        connectTimeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(options.TimeoutSeconds, 1, 120)));
         try
         {
             await using var pipe = new NamedPipeClientStream(".", options.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.WriteThrough);
-            await pipe.ConnectAsync(timeout.Token);
+            await pipe.ConnectAsync(connectTimeout.Token);
             var requestJson = JsonSerializer.SerializeToUtf8Bytes(request);
             var signed = new PipeEnvelope(Convert.ToBase64String(requestJson), Sign(secret, requestJson));
-            await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(signed), timeout.Token);
-            var responseBytes = await ReadFrameAsync(pipe, timeout.Token);
-            var response = JsonSerializer.Deserialize<PipeEnvelope>(responseBytes);
-            if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
+            await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(signed), CancellationToken.None);
+            for (var count = 0; count < PrivilegedOperationFrame.MaximumFrames; count++)
             {
-                logger.LogWarning("Privileged Helper pipe response did not pass authentication.");
-                return Complete(request, Unavailable("privileged helper service authentication failed"));
+                // A submitted LocalSystem operation remains authoritative until its own deadline.
+                var responseBytes = await ReadFrameAsync(pipe, CancellationToken.None);
+                var response = JsonSerializer.Deserialize<PipeEnvelope>(responseBytes);
+                if (response is null || !TryDecodeAndVerify(secret, response, out var payload))
+                    return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
+                var frame = JsonSerializer.Deserialize<PrivilegedOperationFrame>(payload);
+                if (frame is null || !frame.IsValid() || frame.Type == "progress" && payload.Length > PrivilegedOperationFrame.MaximumProgressFrameBytes)
+                    return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
+                if (frame.Result is { } result) return Complete(request, result);
+                await PrivilegedFrameReader.ReportAsync(frame);
             }
-            var result = JsonSerializer.Deserialize<PrivilegedOperationResult>(payload)
-                ?? Unavailable("privileged helper service returned no result");
-            return Complete(request, result);
+            return Complete(request, new(false, 65, ProblemCode: PrivilegedProblemCode.InvalidProtocol));
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             return Complete(request, new(false, 124, Error: "privileged helper service timed out", ProblemCode: PrivilegedProblemCode.TimedOut));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
-            logger.LogWarning(exception, "Could not communicate with the local privileged Helper service.");
+            logger.LogWarning("Could not communicate with the local privileged Helper service.");
             return Complete(request, Unavailable("privileged helper service is unavailable"));
         }
     }

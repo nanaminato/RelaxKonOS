@@ -6,7 +6,6 @@ namespace RelaxKonOS.Server.ProcessGuardian;
 public interface IGuardianAgentInstaller
 {
     Task<GuardianInstallationPlanDto> CreatePlanAsync(CancellationToken cancellationToken = default);
-    Task<GuardianOperationResult> ExecuteAsync(GuardianInstallationExecutionRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed class GuardianAgentInstaller : IGuardianAgentInstaller
@@ -19,10 +18,4 @@ public sealed class GuardianAgentInstaller : IGuardianAgentInstaller
             ["RelaxKonOS Server never executes a configured installer command or collects host administrator credentials."]));
     }
 
-    public Task<GuardianOperationResult> ExecuteAsync(GuardianInstallationExecutionRequest request, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(request.Confirmed
-            ? new GuardianOperationResult(false, "guardian.manual_host_action_required")
-            : new GuardianOperationResult(false, "guardian.confirmation_required"));
-    }
 }

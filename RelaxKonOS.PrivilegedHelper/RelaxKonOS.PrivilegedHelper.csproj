@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
+    <PackageReference Include="System.Management" />
   </ItemGroup>
 </Project>

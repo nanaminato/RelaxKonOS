@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+<ItemGroup><PackageReference Include="CommunityToolkit.Mvvm" /><ProjectReference Include="../../Framework/RelaxKonOS.App.SDK/RelaxKonOS.App.SDK.csproj" /><ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
+<Compile Include="../RelaxKonOS.Client/Apps/FileServices/FileServicesViewModel.cs" Link="FileServicesViewModel.cs" /><Compile Include="../RelaxKonOS.Client/Apps/FileServices/IRemoteFileServicesClient.cs" Link="IRemoteFileServicesClient.cs" /></ItemGroup></Project>

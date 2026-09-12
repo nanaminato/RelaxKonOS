@@ -28,6 +28,7 @@ using RelaxKonOS.Server.Storage.Sqlite;
 using RelaxKonOS.Server.SystemPerformance;
 using RelaxKonOS.Server.Tunnels;
 using RelaxKonOS.Server.Runtimes;
+using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.WebServer;
 using RelaxKonOS.Server.ConfigurationRegistry;
@@ -35,6 +36,7 @@ using RelaxKonOS.Protocol.Registry;
 using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.FileServices;
 using RelaxKonOS.Server.Proxy.Mihomo;
 using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Platform;
@@ -55,10 +57,19 @@ try
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
+    var fileServicesOnly = args.Contains("--file-services-only", StringComparer.Ordinal);
+    if (fileServicesOnly)
+    {
+        VerifySmbProtocolAndElevationContract();
+        await FileServiceChecks.RunAsync();
+        return;
+    }
     if (!fileOperationsOnly || settingsOnly) await SettingsSystemVerification.RunAsync(root);
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
     if (settingsOnly || fileOperationsOnly) return;
     await VerifyPrivilegedOperationProtocolAsync();
+    VerifySmbProtocolAndElevationContract();
+    await FileServiceChecks.RunAsync();
     await VerifyCertificateStoreAndSniAsync(root);
     VerifyCertificateApiRoutes();
     await VerifyRenewalRetryAsync(root);
@@ -216,6 +227,30 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
     Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.FirewallUfwSetEnabled
         && transport.LastRequest.FirewallEnabled == true,
         "Firewall facade did not preserve its closed enabled-state request.");
+}
+
+static void VerifySmbProtocolAndElevationContract()
+{
+    Assert(Enum.GetValues<FileServiceProtocol>().SequenceEqual([FileServiceProtocol.Smb]), "File Services V1 must expose SMB only.");
+    Assert(Enum.IsDefined(PrivilegedOperationKind.SmbDetect) && Enum.IsDefined(PrivilegedOperationKind.SmbApplyManagedConfiguration)
+        && Enum.IsDefined(PrivilegedOperationKind.SmbApplyWindowsShare) && Enum.IsDefined(PrivilegedOperationKind.SmbSetWindowsServerSecurity) && Enum.IsDefined(PrivilegedOperationKind.SmbReadUsers)
+        && Enum.IsDefined(PrivilegedOperationKind.SmbSetUserPassword), "Closed SMB Helper operations are missing.");
+    Assert(FileServiceApiRoutes.Status.EndsWith("/file-services/smb/status", StringComparison.Ordinal)
+        && FileServiceApiRoutes.ShareById.Contains("{shareId}", StringComparison.Ordinal)
+        && FileServiceApiRoutes.UserPassword.EndsWith("/password", StringComparison.Ordinal), "SMB API routes changed unexpectedly.");
+    var properties = typeof(FileShareDto).GetProperties().Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    Assert(!properties.Contains("password"), "A share response must never contain a password.");
+    var secretRequest = JsonSerializer.Serialize(new SetSambaPasswordRequest("not-a-real-password"), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+    Assert(secretRequest.Contains("password", StringComparison.Ordinal) && !typeof(FileServiceOperationResultDto).GetProperties().Any(x => x.Name.Contains("password", StringComparison.OrdinalIgnoreCase)),
+        "Samba passwords must be write-only protocol input.");
+    var securitySnapshotProperties = typeof(SmbWindowsServerSecuritySnapshot).GetProperties().Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    Assert(securitySnapshotProperties.SetEquals(["SnapshotHash", "Smb1Enabled", "Smb2Enabled", "AuthenticatedUserSharingEnabled", "NullSessionsDisabled", "Compliant"]),
+        "Windows security snapshots must expose only the non-secret baseline state and hash.");
+    var store = new HostElevationSessionStore(); var first = Principal("smb-jti-one"); var second = Principal("smb-jti-two");
+    store.Grant(first, HostElevationCapability.SmbManage, "smb:managed", false, "test");
+    Assert(store.IsGranted(first, HostElevationCapability.SmbManage, "smb:managed"), "Exact SMB elevation grant was not honored.");
+    Assert(!store.IsGranted(first, HostElevationCapability.SmbManage, "smb:other") && !store.IsGranted(second, HostElevationCapability.SmbManage, "smb:managed"),
+        "SMB elevation grant leaked across target or JWT jti.");
 }
 
 static ClaimsPrincipal Principal(string tokenId) => new(new ClaimsIdentity(
@@ -434,7 +469,6 @@ static void VerifyProxyProtocolContract()
 {
     Assert(ProxyApiRoutes.Proxy == "/api/v1.0/proxy" && ProxyApiRoutes.ProfilePattern.StartsWith("/profiles/", StringComparison.Ordinal),
         "Proxy routes must keep one versioned public base and group-relative patterns.");
-    Assert(ProxyApiRoutes.RuntimeInstallFromFile == ProxyApiRoutes.Runtime + "/install/from-file", "Proxy server-file runtime install route changed unexpectedly.");
     Assert(ProxyApiRoutes.Traffic == ProxyApiRoutes.Proxy + "/traffic", "Proxy traffic route changed unexpectedly.");
     var overview = new ProxyOverviewDto("test-engine", new(true, true, true, true, true, true), new(true, true, false, false, false, true),
         new("test-engine", ProxyRuntimeMode.Managed, ProxyRuntimeState.Running, "1.0.0", null, true, false),
@@ -563,21 +597,6 @@ static async Task VerifyMihomoRuntimeSafetyAsync(string root)
     Assert(delayedInstall.State == ProxyRuntimeState.Running && delayedController.HealthChecks == 3,
         "Managed Mihomo was rolled back before its loopback controller had time to bind.");
 
-    var serverArchivePath = Path.Combine(root, "mihomo-server-package.gz");
-    await File.WriteAllBytesAsync(serverArchivePath, archive);
-    var serverFilePrivileged = new TestProxyPrivilegedOperations();
-    var serverFilePaths = new TestProxyPaths(Path.Combine(root, "mihomo-server-file"));
-    var serverFileDiagnostics = new ProxyDiagnosticLogStore(serverFilePaths);
-    var serverFileManager = new MihomoRuntimeManager(serverFilePaths, new FixtureHttpClientFactory([]),
-        serverFilePrivileged, new TestMihomoRuntimeProbe(), new HealthyMihomoController(), new StaticProxySecretStore(), new MihomoControllerOptions(), new MihomoRuntimeManifest { Releases = [release] }, serverFileDiagnostics);
-    var installedFromServerFile = await serverFileManager.InstallManagedFromArchiveAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, serverArchivePath, CancellationToken.None);
-    Assert(installedFromServerFile.State == ProxyRuntimeState.Running && installedFromServerFile.IntegrityVerified && serverFilePrivileged.InstalledService,
-        "A verified Mihomo archive already on the Server did not activate.");
-    var checksumDiagnostic = (await serverFileDiagnostics.ReadAsync(10, CancellationToken.None)).FirstOrDefault(entry => entry.Message.Contains("SHA-256 verification", StringComparison.Ordinal));
-    Assert(checksumDiagnostic is not null && checksumDiagnostic.Message.Contains($"expected={digest}", StringComparison.Ordinal)
-        && checksumDiagnostic.Message.Contains($"actual={digest}", StringComparison.Ordinal),
-        "Mihomo archive checksum diagnostics did not record the expected and actual values.");
-
     var crossFilesystemRoot = Path.Combine("/var/tmp", "relaxkonos-mihomo-runtime-tests-" + Guid.NewGuid().ToString("N"));
     try
     {
@@ -592,9 +611,6 @@ static async Task VerifyMihomoRuntimeSafetyAsync(string root)
     {
         if (Directory.Exists(crossFilesystemRoot)) Directory.Delete(crossFilesystemRoot, recursive: true);
     }
-
-    var invalidServerFile = await serverFileManager.InstallManagedFromArchiveAsync(MihomoEngine.Id, MihomoRuntimeManifest.SupportedVersion, Path.Combine(root, "missing-mihomo-package.gz"), CancellationToken.None);
-    Assert(invalidServerFile.ProblemCode == ProxyProblemCodes.RuntimeArchiveUnavailable, "A missing Server-side Mihomo archive was not reported as unavailable.");
 
     var firstInstallPrivileged = new TestProxyPrivilegedOperations { FailServiceInstallation = true, FailUninstalledServiceRemoval = true };
     var firstInstallManager = new MihomoRuntimeManager(new TestProxyPaths(Path.Combine(root, "mihomo-first-install-failure")), new FixtureHttpClientFactory(archive),
@@ -694,16 +710,11 @@ static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var runtimeRoot = Path.Combine(root, "frp-runtime"); Directory.CreateDirectory(runtimeRoot);
     var env = new TestHostEnvironment(runtimeRoot);
     var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions { Releases = releases }));
-    var first = await manager.InstallManagedFrpcAsync("v0.71.0", CancellationToken.None);
+    var first = await manager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     Assert(first.Succeeded, "Verified FRP fixture did not install.");
-    Assert(manager.GetManagedFrpcInstallationStatus().State == TunnelRuntimeInstallationState.Succeeded
-        && manager.GetManagedFrpcInstallationStatus().Progress == 100,
-        "Successful runtime installation did not publish completion status.");
     await VerifyFrpApplyLifecycleAsync(root, env, manager);
-    var serverArchive = Path.Combine(root, "frp-server-package.tar.gz");
-    await File.WriteAllBytesAsync(serverArchive, archive);
-    var second = await manager.InstallManagedFrpcFromArchiveAsync("v0.71.1", serverArchive, CancellationToken.None);
-    Assert(second.Succeeded, "Verified FRP fixture selected from the server did not install.");
+    var second = await manager.InstallManagedFrpcAsync("v0.71.1", new SilentInstallationProgress(), CancellationToken.None);
+    Assert(second.Succeeded, "Second verified FRP fixture did not install.");
     var active = await manager.GetManagedFrpcStatusAsync(CancellationToken.None);
     Assert(active.Version == "v0.71.1" && active.PreviousVersion == "v0.71.0" && active.IntegrityVerified, "Runtime activation did not preserve previous version state.");
     var rolledBack = await manager.RollbackManagedFrpcAsync(CancellationToken.None);
@@ -713,7 +724,7 @@ static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
         "Runtime uninstall did not clear the managed runtime state.");
     Assert(!Directory.Exists(Path.Combine(runtimeRoot, "data", "runtimes", "frp")), "Runtime uninstall left managed runtime files behind.");
 
-    var invalidChecksum = await manager.InstallManagedFrpcAsync("v0.99.0", CancellationToken.None);
+    var invalidChecksum = await manager.InstallManagedFrpcAsync("v0.99.0", new SilentInstallationProgress(), CancellationToken.None);
     Assert(!invalidChecksum.Succeeded && invalidChecksum.ProblemCode == "tunnel.runtime_release_not_configured", "Unconfigured runtime version was accepted.");
 
     var badChecksumRoot = Path.Combine(root, "frp-runtime-bad-checksum"); Directory.CreateDirectory(badChecksumRoot);
@@ -721,11 +732,8 @@ static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = new string('0', 64), ArchiveFormat = "tar.gz" }],
     }));
-    var badChecksum = await badChecksumManager.InstallManagedFrpcAsync("v0.71.0", CancellationToken.None);
+    var badChecksum = await badChecksumManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     Assert(!badChecksum.Succeeded && badChecksum.ProblemCode == "tunnel.runtime_checksum_failed", "Wrong checksum was accepted.");
-    Assert(badChecksumManager.GetManagedFrpcInstallationStatus().State == TunnelRuntimeInstallationState.Failed
-        && badChecksumManager.GetManagedFrpcInstallationStatus().ProblemCode == "tunnel.runtime_checksum_failed",
-        "Failed runtime installation did not publish failure status.");
     Assert((await badChecksumManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Checksum failure changed the active runtime.");
 
     var maliciousArchive = CreateMaliciousFrpFixtureArchive();
@@ -735,7 +743,7 @@ static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = maliciousDigest, ArchiveFormat = "tar.gz" }],
     }));
-    var malicious = await maliciousManager.InstallManagedFrpcAsync("v0.71.0", CancellationToken.None);
+    var malicious = await maliciousManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     Assert(!malicious.Succeeded && malicious.ProblemCode == "tunnel.runtime_archive_unexpected_entry", "Unexpected archive content was accepted.");
     Assert((await maliciousManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Rejected archive changed the active runtime.");
 }
@@ -895,9 +903,11 @@ static async Task VerifyHostGlobalMigrationAsync(string root)
     await connection.OpenAsync();
     await using var command = connection.CreateCommand();
     command.CommandText = "SELECT MAX(version) FROM relaxkonos_host_schema_migrations;";
-    Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 10, "HostGlobal migrations did not reach the expected version.");
+    Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 13, "HostGlobal migrations did not reach the expected version.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_profiles');";
     Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy profile metadata table was not migrated.");
+    command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='smb_windows_server_security_ledger');";
+    Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Windows SMB server-security ledger table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_subscriptions');";
     Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy subscription metadata table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('proxy_subscriptions') WHERE name='download_route');";
@@ -1526,6 +1536,11 @@ sealed class TestHostEnvironment(string contentRoot) : IHostEnvironment
     public IFileProvider ContentRootFileProvider { get; set; } = new PhysicalFileProvider(contentRoot);
 }
 
+sealed class SilentInstallationProgress : IInstallationProgress
+{
+    public Task ReportAsync(InstallationProgress progress, CancellationToken cancellationToken = default) => Task.CompletedTask;
+}
+
 sealed class FakeWebServerProvider : IWebServerProvider
 {
     public string ProviderId => "fake";
@@ -1535,10 +1550,6 @@ sealed class FakeWebServerProvider : IWebServerProvider
     public Task<IReadOnlyList<WebServerDto>> DiscoverAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<WebServerDto>>([Instance]);
     public Task<WebServerStatusDto?> GetStatusAsync(string instanceId, CancellationToken cancellationToken) => Task.FromResult<WebServerStatusDto?>(instanceId == Instance.Id ? new WebServerStatusDto(instanceId, WebServerRuntimeState.Running) : null);
     public Task<WebServerConfigTestResultDto?> TestConfigurationAsync(string instanceId, CancellationToken cancellationToken) => Task.FromResult<WebServerConfigTestResultDto?>(null);
-    public Task<WebServerOperationDto?> InstallManagedAsync(string idempotencyKey, InstallManagedWebServerRequest request, string? actor, CancellationToken cancellationToken) => Task.FromResult<WebServerOperationDto?>(null);
-    public Task<WebServerInstallPackageDto?> UploadManagedPackageAsync(string fileName, Stream content, CancellationToken cancellationToken) => Task.FromResult<WebServerInstallPackageDto?>(null);
-    public Task<WebServerInstallCatalogDto?> GetManagedInstallCatalogAsync(CancellationToken cancellationToken) => Task.FromResult<WebServerInstallCatalogDto?>(null);
-    public Task<WebServerInstallDownloadDto?> GetManagedInstallDownloadAsync(string? version, CancellationToken cancellationToken) => Task.FromResult<WebServerInstallDownloadDto?>(null);
     public Task<WebServerOperationDto?> IntegrateAsync(string instanceId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken) => Task.FromResult<WebServerOperationDto?>(null);
     public Task<WebServerOperationDto?> ApplyLifecycleAsync(string instanceId, WebServerLifecycleAction action, string idempotencyKey, string? actor, CancellationToken cancellationToken) => Task.FromResult<WebServerOperationDto?>(null);
     public Task<WebServerOperationDto?> UninstallManagedAsync(string instanceId, string idempotencyKey, UninstallManagedWebServerRequest request, string? actor, CancellationToken cancellationToken) => Task.FromResult<WebServerOperationDto?>(null);

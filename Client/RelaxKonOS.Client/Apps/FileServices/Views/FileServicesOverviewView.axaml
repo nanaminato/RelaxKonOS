@@ -1,0 +1,22 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
+             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesOverviewView" x:DataType="fs:FileServicesViewModel">
+    <ScrollViewer>
+        <StackPanel Spacing="16">
+            <TextBlock Text="{Binding PlatformHelp}" TextWrapping="Wrap" />
+            <TextBlock Text="{loc:Loc file_services.version}" />
+            <TextBlock Text="{Binding VersionText}" />
+            <WrapPanel>
+                <Button Content="{loc:Loc file_services.install}" Command="{Binding InstallCommand}" IsVisible="{Binding SupportsInstall}" />
+                <Button Content="{loc:Loc file_services.start}" Command="{Binding StartServiceCommand}" />
+                <Button Content="{loc:Loc file_services.stop}" Command="{Binding StopCommand}" />
+                <Button Content="{loc:Loc file_services.restart}" Command="{Binding RestartCommand}" />
+            </WrapPanel>
+            <TextBlock Text="{loc:Loc file_services.connection_help}" TextWrapping="Wrap" />
+            <SelectableTextBlock Text="{Binding ConnectionText}" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

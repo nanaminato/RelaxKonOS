@@ -10,8 +10,10 @@
 > - 登录与身份模型见 [`RelaxKonOS.Authentication.md`](./platform/RelaxKonOS.Authentication.md)
 > - 认证限流与登录防护建议见 [`RelaxKonOS.Authentication.Hardening.md`](./platform/RelaxKonOS.Authentication.Hardening.md)
 > - 安全设计见 [`RelaxKonOS.Security.md`](./platform/RelaxKonOS.Security.md)
+> - 权限模型与项目重构规范见 [`RelaxKonOS.PermissionModel.Refactor.md`](./platform/RelaxKonOS.PermissionModel.Refactor.md)
 > - 桌面外壳与模态对话框见 [`RelaxKonOS.Desktop.md`](./desktop/RelaxKonOS.Desktop.md)
 > - 文件管理器见 [`RelaxKonOS.Explorer.md`](./applications/RelaxKonOS.Explorer.md)；Windows 11 体验优化进度与后续 API 清单见 [`RelaxKonOS.Explorer.Progress.md`](./applications/RelaxKonOS.Explorer.Progress.md)
+> - 受管安装服务（SMB、Nginx、FRP、Mihomo、Docker）的统一任务、进度与恢复基线见 [`RelaxKonOS.InstallationServices.Goal.md`](./services/RelaxKonOS.InstallationServices.Goal.md)。File Services 首轮 SMB（Linux Samba + Windows SMB Server）Goal 执行基线见 [`RelaxKonOS.FileServices.Smb.Goal.md`](./services/file-services/RelaxKonOS.FileServices.Smb.Goal.md)；长期设计规格见 [`RelaxKonOS.FileServices.Specification.md`](./services/file-services/RelaxKonOS.FileServices.Specification.md)
 > - 浏览器见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md)
 > - 设置中心见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)
 > - 全局主题与配色系统设计见 [`RelaxKonOS.Theming.md`](./desktop/RelaxKonOS.Theming.md)
@@ -41,6 +43,7 @@
 | [`platform/`](./platform/) | 身份认证、登录、安全与服务端持久化 |
 | [`desktop/`](./desktop/) | 桌面外壳、设置与本地化 |
 | [`applications/`](./applications/) | 各内置应用的设计与实现说明 |
+| [`services/`](./services/) | 受管宿主服务的安装计划与 File Services 文档 |
 | [`development/`](./development/) | 开发调试、开发者模式与应用扩展规范 |
 
 ---

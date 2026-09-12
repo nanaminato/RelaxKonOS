@@ -244,6 +244,51 @@ internal static class HostGlobalMigrationRunner
             await ExecuteAsync(connection, transaction,
                 "INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (10, CURRENT_TIMESTAMP);", cancellationToken);
         }
+        if (!await IsAppliedAsync(connection, transaction, 11, cancellationToken))
+        {
+            await ExecuteAsync(connection, transaction, """
+                CREATE TABLE smb_windows_ownership_ledger (
+                    share_id TEXT NOT NULL PRIMARY KEY,
+                    share_name TEXT NOT NULL,
+                    path_hash TEXT NOT NULL,
+                    snapshot_hash TEXT NOT NULL,
+                    reconciliation_required INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (11, CURRENT_TIMESTAMP);
+                """, cancellationToken);
+        }
+        if (!await IsAppliedAsync(connection, transaction, 12, cancellationToken))
+        {
+            await ExecuteAsync(connection, transaction, """
+                CREATE TABLE smb_audit_entries (
+                    audit_id TEXT NOT NULL PRIMARY KEY,
+                    operation_id TEXT NOT NULL,
+                    actor TEXT NULL,
+                    token_reference TEXT NULL,
+                    action TEXT NOT NULL,
+                    resource_hash TEXT NOT NULL,
+                    succeeded INTEGER NOT NULL,
+                    problem_code TEXT NULL,
+                    helper_protocol_version TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX ix_smb_audit_entries_created_at ON smb_audit_entries(created_at);
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (12, CURRENT_TIMESTAMP);
+                """, cancellationToken);
+        }
+        if (!await IsAppliedAsync(connection, transaction, 13, cancellationToken))
+        {
+            await ExecuteAsync(connection, transaction, """
+                CREATE TABLE smb_windows_server_security_ledger (
+                    ledger_id INTEGER NOT NULL PRIMARY KEY CHECK(ledger_id = 1),
+                    snapshot_hash TEXT NOT NULL,
+                    reconciliation_required INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (13, CURRENT_TIMESTAMP);
+                """, cancellationToken);
+        }
         transaction.Commit();
     }
 

@@ -8,7 +8,6 @@ public enum TunnelTlsMode { Default, Disable, Force }
 public enum TunnelRuntimeMode { Managed, External }
 public enum TunnelConnectionState { SavedNotApplied, Starting, Connected, Disconnected, RuntimeUnavailable, Unknown }
 public enum TunnelRuntimeState { NotInstalled, Available, Running, Stopped, ExternalInvalid, Unknown }
-public enum TunnelRuntimeInstallationState { Idle, Queued, Downloading, Copying, Verifying, Extracting, HealthChecking, Activating, Succeeded, Failed }
 
 /// <summary>Profile projection. Token is populated only by the Controller-authorized profile editing endpoint.</summary>
 public sealed record TunnelServerProfileDto(
@@ -28,12 +27,8 @@ public sealed record TunnelRuntimeDto(
     string? ExecutablePath, string ProblemCode = "", DateTimeOffset? StartedAt = null,
     string? PreviousVersion = null, bool IntegrityVerified = false);
 
-/// <summary>Safe, host-wide progress projection for a managed FRP runtime installation.</summary>
-public sealed record TunnelRuntimeInstallationDto(
-    TunnelRuntimeInstallationState State, string? Version, int Progress,
-    string ProblemCode = "", DateTimeOffset? UpdatedAt = null);
-
 public sealed record TunnelOperationResultDto(bool Succeeded, TunnelConnectionState State, string ProblemCode = "");
+public sealed record TunnelRuntimeDownloadDto(string Version, string Url);
 public sealed record TunnelLogEntryDto(DateTimeOffset Timestamp, string Level, string Message);
 public sealed record TunnelAuditEntryDto(DateTimeOffset Timestamp, string Action, string Result, string ProblemCode);
 
@@ -64,10 +59,3 @@ public sealed record UpsertTunnelDefinitionRequest(
 
 /// <summary>Explicit external-runtime detection request. It only inspects the specified absolute executable path.</summary>
 public sealed record DetectExternalTunnelRuntimeRequest(string ExecutablePath);
-public sealed record InstallManagedTunnelRuntimeRequest(bool Confirmed, string Version);
-/// <summary>Trusted direct-download location for the selected managed FRP archive.</summary>
-public sealed record TunnelRuntimeDownloadDto(string Version, string Url);
-/// <summary>Installs a pinned runtime from an archive already present on the RelaxKonOS RelaxKonOS.Server.</summary>
-public sealed record InstallManagedTunnelRuntimeFromFileRequest(bool Confirmed, string Version, string ArchivePath);
-/// <summary>Explicit confirmation for removing every RelaxKonOS-managed FRP runtime release on this host.</summary>
-public sealed record UninstallManagedTunnelRuntimeRequest(bool Confirmed);

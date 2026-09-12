@@ -11,10 +11,6 @@ public static class ProxyEndpoints
     {
         app.MapGet(ProxyApiRoutes.Overview, (IProxyLifecycleService service, CancellationToken ct) => service.GetOverviewAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Runtime, (IProxyRuntimeManager runtime, CancellationToken ct) => runtime.GetAsync("mihomo", ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
-        app.MapGet(ProxyApiRoutes.RuntimeDownload, (string? version, RelaxKonOS.Server.Proxy.Mihomo.MihomoRuntimeManifest manifest) =>
-            manifest.Find(version) is { } release
-                ? Results.Ok(new ProxyRuntimeDownloadDto(release.Version, release.DownloadUri.AbsoluteUri))
-                : Results.NotFound()).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapGet(ProxyApiRoutes.Settings, (IProxySettingsService settings, CancellationToken ct) => settings.GetAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapPut(ProxyApiRoutes.Settings, async (UpdateProxySettingsRequest request, IProxySettingsService settings, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {
@@ -32,35 +28,9 @@ public static class ProxyEndpoints
         app.MapPost(ProxyApiRoutes.RuntimeExternalDetection, async (ProxyRuntimeRequest request, IProxyRuntimeManager runtime, CancellationToken ct) =>
             string.IsNullOrWhiteSpace(request.ExternalPath) ? Problem(ProxyProblemCodes.ExternalRuntimeInvalid, StatusCodes.Status400BadRequest) : Results.Ok(await runtime.DetectExternalAsync(request.EngineId, request.ExternalPath, ct)))
             .RequireAuthorization("ProxyManage").WithTags("Proxy");
-
-        app.MapPost(ProxyApiRoutes.RuntimeInstall, (ProxyRuntimeRequest request, HttpContext context, ProxyOperationStore operations, IProxyRuntimeManager runtime, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "runtime.install", async (actor, reportStage, token) =>
-            {
-                var result = await runtime.InstallManagedAsync(request.EngineId, request.Version, stage => reportStage(stage), token);
-                await audit.RecordAsync(actor, "runtime.install", string.IsNullOrEmpty(result.ProblemCode) ? "succeeded" : "failed", result.ProblemCode, token);
-                return result.ProblemCode;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.RuntimeInstallFromFile, (InstallProxyRuntimeFromFileRequest request, HttpContext context, ProxyOperationStore operations, IProxyRuntimeManager runtime, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "runtime.install_from_file", async (actor, reportStage, token) =>
-            {
-                var result = await runtime.InstallManagedFromArchiveAsync(request.EngineId, request.Version, request.ArchivePath, stage => reportStage(stage), token);
-                await audit.RecordAsync(actor, "runtime.install_from_file", string.IsNullOrEmpty(result.ProblemCode) ? "succeeded" : "failed", result.ProblemCode, token);
-                return result.ProblemCode;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapPost(ProxyApiRoutes.RuntimeRollback, (HttpContext context, ProxyOperationStore operations, IProxyRuntimeManager runtime, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "runtime.rollback", async (actor, token) =>
-            {
-                var result = await runtime.RollbackManagedAsync("mihomo", token);
-                await audit.RecordAsync(actor, "runtime.rollback", string.IsNullOrEmpty(result.ProblemCode) ? "succeeded" : "failed", result.ProblemCode, token);
-                return result.ProblemCode;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
-        app.MapDelete(ProxyApiRoutes.RuntimeUninstall, (HttpContext context, ProxyOperationStore operations, IProxyRuntimeManager runtime, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "runtime.uninstall", async (actor, token) =>
-            {
-                var result = await runtime.UninstallManagedAsync("mihomo", token);
-                await audit.RecordAsync(actor, "runtime.uninstall", string.IsNullOrEmpty(result.ProblemCode) ? "succeeded" : "failed", result.ProblemCode, token);
-                return result.ProblemCode;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
+        app.MapGet(ProxyApiRoutes.RuntimeDownload, async (string? version, IProxyRuntimeManager runtime, CancellationToken ct) =>
+            await runtime.GetManagedDownloadAsync("mihomo", version, ct) is { } download ? Results.Ok(download) : Results.NotFound())
+            .RequireAuthorization("ProxyRead").WithTags("Proxy");
 
         app.MapPost(ProxyApiRoutes.Lifecycle, (string action, HttpContext context, ProxyOperationStore operations, IProxyLifecycleService lifecycle, ProxyAuditStore audit, CancellationToken ct) =>
         {

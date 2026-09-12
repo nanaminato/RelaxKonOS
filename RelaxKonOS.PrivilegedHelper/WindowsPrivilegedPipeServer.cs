@@ -100,7 +100,8 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
         // The executable was integrity-checked before the production service starts. Keeping
         // the executor in-process also avoids a second, debugger-hostile worker process.
         var result = await PrivilegedOperationExecutor.ExecuteAsync(request,
-            new PrivilegedOperationPolicy(configuration.FileAllowedRoots, configuration.AllowedServiceIds));
+            new PrivilegedOperationPolicy(configuration.FileAllowedRoots, configuration.AllowedServiceIds),
+            progress => WriteProtocolFrameAsync(pipe, secret, progress, CancellationToken.None));
         await WriteResultAsync(pipe, secret, result, cancellationToken);
     }
 
@@ -113,7 +114,12 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
 
     private static async Task WriteResultAsync(Stream pipe, byte[] secret, PrivilegedOperationResult result, CancellationToken cancellationToken)
     {
-        var payload = JsonSerializer.SerializeToUtf8Bytes(result);
+        await WriteProtocolFrameAsync(pipe, secret, PrivilegedOperationFrame.Completed(result), cancellationToken);
+    }
+
+    private static async Task WriteProtocolFrameAsync(Stream pipe, byte[] secret, PrivilegedOperationFrame frame, CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.SerializeToUtf8Bytes(frame);
         await WriteFrameAsync(pipe, JsonSerializer.SerializeToUtf8Bytes(new PipeEnvelope(Convert.ToBase64String(payload), Sign(secret, payload))), cancellationToken);
     }
 

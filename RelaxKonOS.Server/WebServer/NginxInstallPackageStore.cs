@@ -9,7 +9,7 @@ internal sealed class NginxInstallPackageStore(IHostEnvironment environment, ILo
     private const long MaximumPackageBytes = 128L * 1024 * 1024;
     private readonly string _root = Path.Combine(environment.ContentRootPath, "data", "webserver-packages");
 
-    public async Task<string?> SaveAsync(string fileName, Stream content, CancellationToken cancellationToken)
+    public async Task<string?> SaveAsync(string fileName, Stream content, Func<long, Task>? copied = null, CancellationToken cancellationToken = default)
     {
         var safeFileName = Path.GetFileName(fileName);
         if (!OperatingSystem.IsWindows())
@@ -45,6 +45,7 @@ internal sealed class NginxInstallPackageStore(IHostEnvironment environment, ILo
                         return null;
                     }
                     await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                    if (copied is not null) await copied(total);
                 }
             }
             if (!ContainsNginxExecutable(temporary))

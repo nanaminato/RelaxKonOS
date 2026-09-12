@@ -5,6 +5,7 @@ using System.Text.Json;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.WebServers;
+using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Client.Apps.WebServers;
 
@@ -27,45 +28,28 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
     public Task<WebServerConfigTestResultDto?> TestConfigurationAsync(string id, CancellationToken cancellationToken = default)
         => SendAsync<WebServerConfigTestResultDto?>(HttpMethod.Post, WebServerApiRoutes.TestConfiguration.Replace("{id}", WebUtility.UrlEncode(id)), null, null, cancellationToken);
 
-    public Task<WebServerOperationDto?> InstallManagedAsync(string providerId, InstallManagedWebServerRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.ManagedInstall.Replace("{providerId}", WebUtility.UrlEncode(providerId)), request, NewKey(), cancellationToken);
-
-    public async Task<WebServerInstallPackageDto?> UploadManagedPackageAsync(string providerId, string fileName, Stream content, CancellationToken cancellationToken = default)
+    public Task<WebServerInstallCatalogDto?> GetManagedInstallCatalogAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<WebServerInstallCatalogDto?>(HttpMethod.Get, WebServerApiRoutes.ManagedInstallCatalog, null, null, cancellationToken);
+    public Task<WebServerInstallDownloadDto?> GetManagedInstallDownloadAsync(string version, CancellationToken cancellationToken = default) =>
+        SendAsync<WebServerInstallDownloadDto?>(HttpMethod.Get, WebServerApiRoutes.ManagedInstallDownload + "?version=" + Uri.EscapeDataString(version), null, null, cancellationToken);
+    public async Task<InstallationFileReferenceDto?> UploadManagedPackageAsync(string fileName, Stream content, CancellationToken cancellationToken = default)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
-            throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var form = new MultipartFormDataContent();
         using var file = new StreamContent(content);
-        form.Add(file, "package", fileName);
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.ServerUrl), WebServerApiRoutes.ManagedPackage.Replace("{providerId}", WebUtility.UrlEncode(providerId)).TrimStart('/')))
-        {
-            Content = form,
-        };
+        form.Add(file, "package", Path.GetFileName(fileName));
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.ServerUrl), WebServerApiRoutes.ManagedInstallPackage.TrimStart('/'))) { Content = form };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.NotFound) return null;
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new WebServerApiException(await ReadProblemCodeAsync(response, cancellationToken)
-                ?? FallbackProblemCode(response.StatusCode), response.StatusCode);
-        }
-        return await response.Content.ReadFromJsonAsync<WebServerInstallPackageDto>(RelaxKonOSJsonOptions.Default, cancellationToken);
+        if (!response.IsSuccessStatusCode) throw new WebServerApiException(await ReadProblemCodeAsync(response, cancellationToken) ?? FallbackProblemCode(response.StatusCode), response.StatusCode);
+        return await response.Content.ReadFromJsonAsync<InstallationFileReferenceDto>(RelaxKonOSJsonOptions.Default, cancellationToken);
     }
-
-    public Task<WebServerInstallCatalogDto?> GetManagedInstallCatalogAsync(string providerId, CancellationToken cancellationToken = default)
-        => SendAsync<WebServerInstallCatalogDto?>(HttpMethod.Get, WebServerApiRoutes.ManagedVersions.Replace("{providerId}", WebUtility.UrlEncode(providerId)), null, null, cancellationToken);
-
-    public Task<WebServerInstallDownloadDto?> GetManagedInstallDownloadAsync(string providerId, string version, CancellationToken cancellationToken = default)
-        => SendAsync<WebServerInstallDownloadDto?>(HttpMethod.Get, WebServerApiRoutes.ManagedDownload.Replace("{providerId}", WebUtility.UrlEncode(providerId)) + "?version=" + WebUtility.UrlEncode(version), null, null, cancellationToken);
 
     public Task<WebServerOperationDto?> IntegrateAsync(string id, IntegrateWebServerRequest request, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.Integrate.Replace("{id}", WebUtility.UrlEncode(id)), request, NewKey(), cancellationToken);
 
     public Task<WebServerOperationDto?> ApplyLifecycleAsync(string id, WebServerLifecycleAction action, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.Lifecycle.Replace("{id}", WebUtility.UrlEncode(id)).Replace("{action}", action.ToString().ToLowerInvariant()), null, NewKey(), cancellationToken);
-
-    public Task<WebServerOperationDto?> UninstallManagedAsync(string id, UninstallManagedWebServerRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.ManagedUninstall.Replace("{id}", WebUtility.UrlEncode(id)), request, NewKey(), cancellationToken);
 
     public Task<WebServerOperationDto?> ReloadAsync(string id, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.Reload.Replace("{id}", WebUtility.UrlEncode(id)), null, NewKey(), cancellationToken);

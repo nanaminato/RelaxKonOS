@@ -7,6 +7,10 @@
     <PrebuiltServerAssemblyPath Condition="'$(PrebuiltServerAssemblyPath)' == ''">../RelaxKonOS.Server/bin/Debug/net10.0/RelaxKonOS.Server.dll</PrebuiltServerAssemblyPath>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/SambaShareConfiguration.cs" Link="SambaShareConfiguration.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxDistributionSupport.cs" Link="LinuxDistributionSupport.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsSmbShareSecurity.cs" Link="WindowsSmbShareSecurity.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFeatureInstallationState.cs" Link="WindowsFeatureInstallationState.cs" />
     <Compile Include="../Client/RelaxKonOS.Client/Apps/Git/GitConflictBlock.cs" Link="GitConflictBlock.cs" />
     <ProjectReference Include="../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" />
     <ProjectReference Include="../RelaxKonOS.Server/RelaxKonOS.Server.csproj" Condition="'$(UsePrebuiltServerAssembly)' != 'true'" />

@@ -266,9 +266,3 @@ public sealed record GitEngineStatusDto(
     [property: JsonPropertyName("version")] string? Version = null,
     [property: JsonPropertyName("executablePath")] string? ExecutablePath = null,
     [property: JsonPropertyName("canAutoInstall")] bool CanAutoInstall = false);
-
-/// <summary>Auto-install response with operation status and incremental progress.</summary>
-public sealed record GitEngineInstallResult(
-    [property: JsonPropertyName("success")] bool Success,
-    [property: JsonPropertyName("message")] string? Message = null,
-    [property: JsonPropertyName("problemCode")] string ProblemCode = "");

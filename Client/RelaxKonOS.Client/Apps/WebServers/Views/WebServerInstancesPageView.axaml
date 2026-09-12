@@ -54,7 +54,7 @@
                             <TextBlock Text="{Binding LocalPackageName}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel IsVisible="{Binding IsLinuxServer}" Spacing="6">
-                            <TextBox PlaceholderText="{loc:Loc webservers.managed.version}" Text="{Binding InstallVersion}" />
+                            <TextBox PlaceholderText="{loc:Loc webservers.managed.version}" Text="{Binding InstallVersion, Mode=TwoWay}" />
                             <TextBlock Text="{loc:Loc webservers.managed.linux_version_hint}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                         <Button Classes="primary" Content="{loc:Loc webservers.managed.install}" Command="{Binding InstallManagedCommand}" HorizontalAlignment="Left" />

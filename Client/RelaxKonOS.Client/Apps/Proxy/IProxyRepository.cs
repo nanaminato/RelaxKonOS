@@ -28,10 +28,6 @@ public interface IProxyRepository
     Task<ProxyRuntimeDownloadDto?> GetManagedRuntimeDownloadAsync(string? version = null, CancellationToken cancellationToken = default);
     Task<ProxyOperationDto?> GetOperationAsync(Guid operationId, CancellationToken cancellationToken = default);
     Task<ProxyOperationAcceptedDto> LifecycleAsync(ProxyLifecycleAction action, CancellationToken cancellationToken = default);
-    Task<ProxyOperationAcceptedDto> InstallRuntimeAsync(string engineId, string? version = null, CancellationToken cancellationToken = default);
-    Task<ProxyOperationAcceptedDto> InstallRuntimeFromServerFileAsync(string engineId, string archivePath, string? version = null, CancellationToken cancellationToken = default);
-    Task<ProxyOperationAcceptedDto> RollbackRuntimeAsync(CancellationToken cancellationToken = default);
-    Task<ProxyOperationAcceptedDto> UninstallRuntimeAsync(CancellationToken cancellationToken = default);
     Task<ProxyOperationAcceptedDto> EnableTunAsync(Guid profileId, CancellationToken cancellationToken = default);
     Task<ProxyOperationAcceptedDto> DisableTunAsync(CancellationToken cancellationToken = default);
     Task<ProxyOperationAcceptedDto> EmergencyDisableTunAsync(CancellationToken cancellationToken = default);

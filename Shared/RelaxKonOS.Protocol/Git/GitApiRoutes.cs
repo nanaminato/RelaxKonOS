@@ -7,7 +7,6 @@ public static class GitApiRoutes
 {
     private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string EngineStatus = $"/{V1}/git/engine/status";
-    public const string EngineInstall = $"/{V1}/git/engine/install";
     public const string Repositories = $"/{V1}/git/repositories";
     public const string RepositoryById = $"/{V1}/git/repositories/{{id}}";
     public const string Status = $"/{V1}/git/repositories/{{id}}/status";

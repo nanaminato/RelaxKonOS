@@ -10,6 +10,7 @@ language_dir = root / "Localization"
 # Resource segments may use protocol enum names (for example `install_state.Idle`).
 # Keep the namespace segment lowercase while accepting those established enum suffixes.
 valid_key = re.compile(r"[a-z][a-z0-9-]*(?:[._][A-Za-z0-9-]+)*$")
+allowed_document_keys = {"Culture", "DisplayName", "SortOrder", "Strings"}
 errors: list[str] = []
 
 
@@ -28,6 +29,9 @@ def load_language(culture: str) -> dict[str, str]:
 
         if document.get("Culture") != culture:
             errors.append(f"{path.relative_to(language_dir)}: Culture must be {culture}")
+        unexpected = set(document) - allowed_document_keys
+        if unexpected:
+            errors.append(f"{path.relative_to(language_dir)}: unexpected top-level keys {', '.join(sorted(unexpected))}")
         values = document.get("Strings")
         if not isinstance(values, dict):
             errors.append(f"{path.relative_to(language_dir)}: Strings must be an object")

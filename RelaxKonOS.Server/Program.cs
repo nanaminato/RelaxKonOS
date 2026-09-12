@@ -309,7 +309,23 @@ builder.Services.AddAuthorization(options =>
         context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
     options.AddPolicy("ProxyDangerous", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
         context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+    options.AddPolicy("FileServicesRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+        context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
+        || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+    options.AddPolicy("FileServicesManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+        context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
 });
+
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationOperationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationCoordinator>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.Installations.InstallationCoordinator>());
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.GitInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.SmbInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.NginxInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.FrpInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MihomoInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.DockerInstallationService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>();
 
 // 身份认证 Provider（按宿主 OS 平台选择，见 Authentication.md §1.1）
 if (OperatingSystem.IsWindows())
@@ -335,6 +351,15 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IFileElevationSession
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostAdministratorAuthenticator, RelaxKonOS.Server.Privileged.HostAdministratorAuthenticator>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IPrivilegedNativeServiceOperations, RelaxKonOS.Server.ProcessGuardian.PrivilegedNativeServiceOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IPrivilegedNginxOperations, RelaxKonOS.Server.WebServer.PrivilegedNginxOperations>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IPrivilegedSmbOperations, RelaxKonOS.Server.FileServices.PrivilegedSmbOperations>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.ISambaPlatformAdapter, RelaxKonOS.Server.FileServices.LinuxSambaPlatformAdapter>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IWindowsSmbPlatformAdapter, RelaxKonOS.Server.FileServices.WindowsSmbPlatformAdapter>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IWindowsSmbOwnershipLedger, RelaxKonOS.Server.FileServices.WindowsSmbOwnershipLedger>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceAudit, RelaxKonOS.Server.FileServices.FileServiceAudit>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceProvider, RelaxKonOS.Server.FileServices.LinuxSambaFileServiceProvider>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceProvider, RelaxKonOS.Server.FileServices.WindowsSmbFileServiceProvider>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceProviderResolver, RelaxKonOS.Server.FileServices.FileServiceProviderResolver>();
+builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IFileServiceManager, RelaxKonOS.Server.FileServices.FileServiceManager>();
 
 // 任务管理器：系统指标采集 Provider（按宿主 OS 平台选择，与 IIdentityProvider 同模式）。
 // CPU/内存平台特定（Linux 读 /proc；Windows 走 P/Invoke），磁盘/网络/GPU/进程跨平台共享。
@@ -726,8 +751,10 @@ app.MapSystemMonitorEndpoints();
 app.MapDockerEndpoints();
 app.MapProcessGuardianEndpoints();
 app.MapWebServerEndpoints();
+app.MapFileServiceEndpoints();
 app.MapCertificateEndpoints();
 app.MapGitEndpoints();
+app.MapInstallationEndpoints();
 app.MapTunnelEndpoints();
 app.MapProxyEndpoints();
 if (OperatingSystem.IsLinux())

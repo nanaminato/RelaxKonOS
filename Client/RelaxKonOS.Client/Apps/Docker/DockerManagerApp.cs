@@ -1,4 +1,5 @@
 using RelaxKonOS.Client.Apps.Docker.Views;
+using RelaxKonOS.Client.Services.Installation;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -6,6 +7,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
+using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
@@ -29,6 +31,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var vm = new DockerManagerViewModel(client);
+        vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Docker, "relaxkonos.docker", () => vm.RefreshCommand.ExecuteAsync(null));
         ManagedWindow? window = null;
         var view = DockerManagerWorkspace.Create(vm,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
@@ -36,7 +39,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
-        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), view, new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         vm.ShowDockerUnavailableAsync = () => DockerManagerDialogs.ShowDockerUnavailableAsync(context, window, vm);
         vm.ShowEditContainerAsync = () => DockerManagerDialogs.ShowEditContainerAsync(context, window!, vm);
         vm.ShowEditStackAsync = () => DockerManagerDialogs.ShowEditStackAsync(context, window!, vm);

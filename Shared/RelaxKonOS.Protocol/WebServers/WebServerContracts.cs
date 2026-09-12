@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using RelaxKonOS.Protocol.Installations;
 
 namespace RelaxKonOS.Protocol.WebServers;
 
@@ -7,9 +8,6 @@ public enum WebServerManagementMode { External, Integrated, Managed }
 public enum WebServerRuntimeState { Unknown, Running, Stopped }
 public enum WebServerOperationState { Queued, Running, Succeeded, Failed, Cancelled }
 public enum WebServerLifecycleAction { Start, Stop, Restart, Reload, EnableAcmeHttp01 }
-/// <summary>How a Windows managed installation handles a pre-existing RelaxKonOS Nginx directory.</summary>
-public enum ManagedInstallExistingDirectoryAction { Reject, Reuse, Replace }
-
 public sealed record WebServerCapabilities(
     [property: JsonPropertyName("canRead")] bool CanRead,
     [property: JsonPropertyName("canTestConfiguration")] bool CanTestConfiguration,
@@ -43,29 +41,10 @@ public sealed record WebServerConfigTestResultDto(
 public sealed record IntegrateWebServerRequest(
     [property: JsonPropertyName("confirmed")] bool Confirmed);
 
-/// <summary>Explicit acknowledgement for installing the provider's RelaxKonOS-owned instance.</summary>
-public sealed record InstallManagedWebServerRequest(
-    [property: JsonPropertyName("confirmed")] bool Confirmed,
-    [property: JsonPropertyName("version")] string? Version = null,
-    [property: JsonPropertyName("packageId")] string? PackageId = null,
-    [property: JsonPropertyName("existingDirectoryAction")] ManagedInstallExistingDirectoryAction ExistingDirectoryAction = ManagedInstallExistingDirectoryAction.Reject);
-
-/// <summary>A validated local Nginx Windows ZIP staged by the server for one installation.</summary>
-public sealed record WebServerInstallPackageDto(
-    [property: JsonPropertyName("id")] string Id,
-    [property: JsonPropertyName("fileName")] string FileName);
-
-/// <summary>Official Nginx Windows versions discovered by the server from nginx.org.</summary>
-public sealed record WebServerInstallCatalogDto(
-    [property: JsonPropertyName("mainlineVersion")] string? MainlineVersion,
-    [property: JsonPropertyName("stableVersion")] string? StableVersion,
-    [property: JsonPropertyName("versions")] IReadOnlyList<string> Versions,
-    [property: JsonPropertyName("problemCode")] string ProblemCode = "");
-
-/// <summary>Official direct-download location for a validated managed installation package.</summary>
-public sealed record WebServerInstallDownloadDto(
-    [property: JsonPropertyName("version")] string Version,
-    [property: JsonPropertyName("url")] string Url);
+/// <summary>Official Windows Nginx versions discovered by the Server.</summary>
+public sealed record WebServerInstallCatalogDto(string? MainlineVersion, string? StableVersion, IReadOnlyList<string> Versions, string ProblemCode = "");
+/// <summary>Read-only direct download location for an official Windows Nginx release.</summary>
+public sealed record WebServerInstallDownloadDto(string Version, string Url);
 
 /// <summary>Explicit acknowledgement for deleting a RelaxKonOS-owned web-server installation.</summary>
 public sealed record UninstallManagedWebServerRequest(

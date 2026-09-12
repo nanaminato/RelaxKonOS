@@ -1,11 +1,9 @@
 using System.Diagnostics;
-using System.Reflection;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Git;
-using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.Storage.Sqlite;
 using RelaxKonOS.Client.Apps.Git;
 
@@ -18,7 +16,7 @@ public static class GitConflictChecks
         var factory = new Factory(options);
         await using (var db = factory.CreateDbContext()) await db.Database.EnsureCreatedAsync();
         var service = new LocalGitRepositoryService(factory, new HostGitCli(), new EphemeralDataProtectionProvider(),
-            DispatchProxy.Create<IPrivilegedOperationTransport, RejectProxy>(), NullLogger<LocalGitRepositoryService>.Instance);
+            NullLogger<LocalGitRepositoryService>.Instance);
         var user = Guid.NewGuid();
         var count = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); Console.WriteLine($"PASS GIT {++count}: {name}"); }
@@ -160,6 +158,4 @@ public static class GitConflictChecks
     }
     private sealed class Factory(DbContextOptions<RelaxKonOSDbContext> options) : IDbContextFactory<RelaxKonOSDbContext>
     { public RelaxKonOSDbContext CreateDbContext() => new(options); }
-    public class RejectProxy : DispatchProxy
-    { protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) => throw new NotSupportedException(); }
 }

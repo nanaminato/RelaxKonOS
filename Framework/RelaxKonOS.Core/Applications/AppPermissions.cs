@@ -22,6 +22,8 @@ public static class AppPermissions
     public const string ServerCertificatesManage = "server.certificates.manage";
     public const string ServerWebServersRead = "server.webservers.read";
     public const string ServerWebServersManage = "server.webservers.manage";
+    public const string ServerFileServicesRead = "server.file-services.read";
+    public const string ServerFileServicesManage = "server.file-services.manage";
     public const string ServerGitRead = "server.git.read";
     public const string ServerGitManage = "server.git.manage";
     public const string ServerTunnelsRead = "server.tunnels.read";
@@ -65,6 +67,8 @@ public static class AppPermissions
         new(ServerCertificatesManage, "Manage TLS certificates", "Request, renew, deploy, revoke, and delete TLS certificates on the server.", "server_management"),
         new(ServerWebServersRead, "Read web server configuration", "View discovered web servers, their runtime status, and configuration metadata on the server.", "server_management"),
         new(ServerWebServersManage, "Manage web server configuration", "Integrate, reload, and test web server configuration on the server.", "server_management"),
+        new(ServerFileServicesRead, "Read file service status", "View SMB service state, managed shares, and connection information on the server.", "server_files"),
+        new(ServerFileServicesManage, "Manage file services", "Install and control SMB services and change only RelaxKonOS-managed shares.", "server_files"),
         new(ServerGitRead, "Read Git repositories", "View registered Git repositories, their status, branches, history, and diffs on the server.", "server_files"),
         new(ServerGitManage, "Manage Git repositories", "Commit, pull, push, switch, create and delete branches, and revert commits in registered Git repositories on the server.", "server_files"),
         new(ServerTunnelsRead, "Read tunnel configuration", "View safe tunnel, FRP server profile, runtime, and sanitized log state on the server.", "server_network"),

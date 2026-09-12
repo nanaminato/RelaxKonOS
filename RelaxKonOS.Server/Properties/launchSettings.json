@@ -9,7 +9,9 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
-        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only"
+        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
+        "PrivilegedHelper__PipeName": "relaxkonos-privileged-helper-dev",
+        "PrivilegedHelper__SharedSecret": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
       }
     },
     "https": {
@@ -20,7 +22,9 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
-        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only"
+        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
+        "PrivilegedHelper__PipeName": "relaxkonos-privileged-helper-dev",
+        "PrivilegedHelper__SharedSecret": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
       }
     },
     "http-linux-privileged": {

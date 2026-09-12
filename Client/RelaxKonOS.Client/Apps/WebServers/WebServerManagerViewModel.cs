@@ -1,3 +1,5 @@
+using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Client.Services.Installation;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.Client.Localization;
@@ -20,6 +22,8 @@ namespace RelaxKonOS.Client.Apps.WebServers;
 /// </summary>
 public sealed partial class WebServerManagerViewModel : ObservableObject
 {
+    public InstallationTaskViewModel Installation { get; set; } = null!;
+
     private readonly IRemoteWebServerClient _client;
     private readonly IRemoteCertificateClient _certificates;
     private readonly IAuthSession _session;
@@ -38,8 +42,8 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
 
     public ObservableCollection<WebServerDto> Servers { get; } = [];
     public ObservableCollection<WebServerStatusDto> Statuses { get; } = [];
-    public ObservableCollection<string> AvailableWindowsVersions { get; } = [];
     public ObservableCollection<WebServerSiteDto> Sites { get; } = [];
+    public ObservableCollection<string> AvailableWindowsVersions { get; } = [];
     public ObservableCollection<CertificateDto> Certificates { get; } = [];
     public ObservableCollection<WebServerSiteBindingEditor> SiteBindings { get; } = [];
     public IReadOnlyList<WebServerSiteKind> SiteKinds { get; } = [WebServerSiteKind.ReverseProxy, WebServerSiteKind.Static];
@@ -77,17 +81,17 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     [ObservableProperty] private string _siteCertificatePath = string.Empty;
     [ObservableProperty] private string _sitePrivateKeyPath = string.Empty;
     [ObservableProperty] private string _siteStatusText = string.Empty;
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(RefreshWindowsVersionsCommand), nameof(InstallManagedCommand), nameof(ShowManagedDownloadCommand), nameof(SelectLocalPackageCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
     private bool _isLoading;
     // Every action uses IsOperationRunning in its CanExecute predicate. Keep the command state
     // in sync before and after polling, otherwise controls can retain a stale disabled state.
-    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(RefreshWindowsVersionsCommand), nameof(InstallManagedCommand), nameof(ShowManagedDownloadCommand), nameof(SelectLocalPackageCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(DiscoverCommand), nameof(InstallManagedCommand), nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand), nameof(CancelOperationCommand))]
     private bool _isOperationRunning;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsManagedInstallAvailable))]
     private bool _hasManagedInstallation;
 
     private Guid? _currentOperationId;
-    private string? _localPackageId;
+    private string? localPackageReference;
 
     public bool IsRoot => string.Equals(_session.CurrentUser?.Username, "root", StringComparison.Ordinal);
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
@@ -126,7 +130,6 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     /// <summary>Supplied by the application shell so the view model never constructs UI directly.</summary>
     public Func<Task<bool>>? RequestIntegrationConfirmationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedInstallConfirmationAsync { get; set; }
-    public Func<Task<ManagedInstallExistingDirectoryAction?>>? RequestExistingManagedInstallActionAsync { get; set; }
     public Func<Task<bool>>? RequestManagedUninstallConfirmationAsync { get; set; }
     public Func<Task<string?>>? RequestLocalNginxPackageAsync { get; set; }
     public Func<string, Task>? ShowManagedDownloadUrlAsync { get; set; }
@@ -150,33 +153,21 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
 
     private async Task LoadWindowsVersionsAsync()
     {
-        IsLoading = true;
         try
         {
-            var catalog = await _client.GetManagedInstallCatalogAsync("nginx");
+            var catalog = await _client.GetManagedInstallCatalogAsync();
             AvailableWindowsVersions.Clear();
             foreach (var version in catalog?.Versions ?? []) AvailableWindowsVersions.Add(version);
             if (catalog is null || catalog.Versions.Count == 0 || !string.IsNullOrWhiteSpace(catalog.ProblemCode))
             {
-                InstallVersion = string.Empty;
                 StatusText = LocalizedText.Get("webservers.version_catalog.unavailable");
                 return;
             }
-            if (string.IsNullOrWhiteSpace(InstallVersion))
-                InstallVersion = catalog.MainlineVersion ?? catalog.StableVersion ?? string.Empty;
-            StatusText = LocalizedText.Format("webservers.version_catalog.ready", catalog.Versions.Count);
+            if (string.IsNullOrWhiteSpace(InstallVersion)) InstallVersion = catalog.MainlineVersion ?? catalog.StableVersion ?? string.Empty;
         }
-        catch (Exception)
-        {
-            AvailableWindowsVersions.Clear();
-            InstallVersion = string.Empty;
-            StatusText = LocalizedText.Get("webservers.version_catalog.unavailable");
-        }
-        finally { IsLoading = false; }
+        catch { StatusText = LocalizedText.Get("webservers.version_catalog.unavailable"); }
     }
-
-    [RelayCommand(CanExecute = nameof(CanRefreshWindowsVersions))]
-    private Task RefreshWindowsVersionsAsync() => LoadWindowsVersionsAsync();
+    [RelayCommand(CanExecute = nameof(CanInstallManaged))] private Task RefreshWindowsVersionsAsync() => LoadWindowsVersionsAsync();
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
@@ -305,85 +296,39 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanInstallManaged))]
     private async Task InstallManagedAsync()
     {
-        if (IsWindowsServer && string.IsNullOrWhiteSpace(_localPackageId) && string.IsNullOrWhiteSpace(InstallVersion))
-        {
-            StatusText = LocalizedText.Get("webservers.problem.version_required");
-            return;
-        }
         if (RequestManagedInstallConfirmationAsync is null || !await RequestManagedInstallConfirmationAsync()) return;
-        var version = string.IsNullOrWhiteSpace(_localPackageId) ? InstallVersion.Trim() : null;
-        try
-        {
-            await RunOperationAsync("install", ct => _client.InstallManagedAsync("nginx", new InstallManagedWebServerRequest(true,
-                version, _localPackageId), ct), rethrowApiProblemCode: "webserver.managed_installation_exists");
-        }
-        catch (WebServerApiException exception) when (exception.ProblemCode == "webserver.managed_installation_exists")
-        {
-            var action = await (RequestExistingManagedInstallActionAsync?.Invoke() ?? Task.FromResult<ManagedInstallExistingDirectoryAction?>(null));
-            if (action is not (ManagedInstallExistingDirectoryAction.Reuse or ManagedInstallExistingDirectoryAction.Replace))
-            {
-                OperationText = LocalizedText.Get("webservers.managed.existing.cancelled");
-                return;
-            }
-            await RunOperationAsync("install", ct => _client.InstallManagedAsync("nginx", new InstallManagedWebServerRequest(true,
-                version, _localPackageId, action.Value), ct));
-        }
-        await RefreshAsync();
+        await Installation.SubmitAsync(InstallationOperationKind.Install, new NginxInstallationRequest(true,
+            string.IsNullOrWhiteSpace(InstallVersion) ? null : InstallVersion.Trim(), localPackageReference));
     }
 
     [RelayCommand(CanExecute = nameof(CanInstallManaged))]
     private async Task ShowManagedDownloadAsync()
     {
-        if (string.IsNullOrWhiteSpace(InstallVersion))
-        {
-            StatusText = LocalizedText.Get("webservers.problem.version_required");
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(InstallVersion)) { StatusText = LocalizedText.Get("webservers.problem.version_required"); return; }
         try
         {
-            var download = await _client.GetManagedInstallDownloadAsync("nginx", InstallVersion.Trim());
-            if (download is null)
-            {
-                StatusText = LocalizedText.Get("webservers.managed.download_unavailable");
-                return;
-            }
+            var download = await _client.GetManagedInstallDownloadAsync(InstallVersion.Trim());
+            if (download is null) { StatusText = LocalizedText.Get("webservers.managed.download_unavailable"); return; }
             await (ShowManagedDownloadUrlAsync?.Invoke(download.Url) ?? Task.CompletedTask);
         }
-        catch (WebServerApiException exception)
-        {
-            StatusText = ProblemText(exception.ProblemCode);
-            await ShowPrivilegedHelperUnavailableAsyncIfNeeded(exception.ProblemCode);
-        }
+        catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
     }
 
     [RelayCommand(CanExecute = nameof(CanInstallManaged))]
     private async Task SelectLocalPackageAsync()
     {
-        if (RequestLocalNginxPackageAsync is null) return;
-        var path = await RequestLocalNginxPackageAsync();
+        if (RequestLocalNginxPackageAsync is not { } select) return;
+        var path = await select();
         if (string.IsNullOrWhiteSpace(path)) return;
         try
         {
             await using var package = File.OpenRead(path);
-            var uploaded = await _client.UploadManagedPackageAsync("nginx", Path.GetFileName(path), package);
-            if (uploaded is null)
-            {
-                StatusText = LocalizedText.Get("webservers.package.invalid");
-                return;
-            }
-            _localPackageId = uploaded.Id;
-            LocalPackageName = uploaded.FileName;
-            StatusText = LocalizedText.Format("webservers.package.ready", uploaded.FileName);
+            var reference = await _client.UploadManagedPackageAsync(Path.GetFileName(path), package);
+            if (reference is null) { StatusText = LocalizedText.Get("webservers.package.invalid"); return; }
+            localPackageReference = reference.Id;
+            LocalPackageName = reference.FileName;
         }
-        catch (WebServerApiException exception)
-        {
-            StatusText = LocalizedText.Format("webservers.package.failed", ProblemText(exception.ProblemCode));
-            await ShowPrivilegedHelperUnavailableAsyncIfNeeded(exception.ProblemCode);
-        }
-        catch (Exception)
-        {
-            StatusText = LocalizedText.Format("webservers.package.failed", LocalizedText.Get("webservers.error.request_failed"));
-        }
+        catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -407,7 +352,7 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private async Task UninstallManagedAsync()
     {
         if (RequestManagedUninstallConfirmationAsync is null || !await RequestManagedUninstallConfirmationAsync()) return;
-        await RunOperationAsync("uninstall", ct => _client.UninstallManagedAsync(SelectedServer!.Id, new UninstallManagedWebServerRequest(true), ct));
+        await Installation.SubmitAsync(InstallationOperationKind.Uninstall, new NginxInstallationRequest(true));
         await RefreshAsync();
     }
 
@@ -736,7 +681,6 @@ public sealed partial class WebServerManagerViewModel : ObservableObject
     private bool HasManagePermission => HasReadPermission && _permissions.IsGranted(AppPermissions.ServerWebServersManage);
     private bool CanRefresh => HasReadPermission && !IsLoading && !IsOperationRunning;
     private bool CanDiscover => HasReadPermission && !IsLoading && !IsOperationRunning;
-    private bool CanRefreshWindowsVersions => IsWindowsServer && HasReadPermission && !IsLoading && !IsOperationRunning;
     // A server from an older deployment can omit the capabilities object. Treat that response as
     // read-only instead of letting command re-evaluation crash while the DataGrid selects it.
     private bool CanRefreshStatus => HasReadPermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanRead == true;

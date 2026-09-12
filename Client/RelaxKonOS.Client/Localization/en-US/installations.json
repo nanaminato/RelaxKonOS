@@ -1,0 +1,30 @@
+{
+  "Culture": "en-US",
+  "Strings": {
+    "installation.stage.Queued": "Queued",
+    "installation.stage.Preflight": "Checking prerequisites",
+    "installation.stage.Preparing": "Preparing",
+    "installation.stage.UpdatingPackageLists": "Updating package lists",
+    "installation.stage.Downloading": "Downloading",
+    "installation.stage.Copying": "Copying",
+    "installation.stage.Verifying": "Verifying",
+    "installation.stage.Extracting": "Extracting",
+    "installation.stage.Installing": "Installing",
+    "installation.stage.Configuring": "Configuring",
+    "installation.stage.Activating": "Activating",
+    "installation.stage.HealthChecking": "Checking health",
+    "installation.stage.RollingBack": "Rolling back",
+    "installation.stage.Completed": "Completed",
+    "installation.stage.Failed": "Failed",
+    "installation.stage.Cancelled": "Cancelled",
+    "installation.stage.Interrupted": "Interrupted",
+    "installation.cancel": "Cancel installation",
+    "installation.elevation_title": "Host authorization",
+    "installation.elevation_message": "Enter a host administrator password to authorize this installation service.",
+    "installation.connection_unavailable": "Connection unavailable. The server task continues; reconnecting…",
+    "installation.workspace_save_failed": "Could not save workspace state. The server task continues.",
+    "installation.operation_unavailable": "Operation unavailable.",
+    "installation.refresh_failed": "Installation finished; refreshing service status failed.",
+    "installation.cancel_unavailable": "Cancellation could not be accepted."
+  }
+}

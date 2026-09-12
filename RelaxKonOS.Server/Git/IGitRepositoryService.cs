@@ -7,7 +7,6 @@ public interface IGitRepositoryService
 {
     // ── Host Git engine probe & install ──
     Task<GitEngineStatusDto> GetEngineStatusAsync(CancellationToken cancellationToken = default);
-    Task<GitEngineInstallResult> InstallEngineAsync(CancellationToken cancellationToken = default);
 
     // ── Repository registration (persisted in SQLite, isolated by user) ──
     Task<IReadOnlyList<GitRepositoryDto>> ListRepositoriesAsync(Guid userId, CancellationToken cancellationToken = default);

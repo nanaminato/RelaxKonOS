@@ -1,0 +1,12 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesPathWarningDialogView">
+    <StackPanel Margin="20" Spacing="16" MaxWidth="520">
+        <TextBlock x:Name="Message" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="{loc:Loc common.cancel}" Click="Cancel_Click" />
+            <Button Content="{loc:Loc file_services.path_warning_continue}" Click="Continue_Click" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

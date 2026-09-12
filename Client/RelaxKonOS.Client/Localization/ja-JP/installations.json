@@ -1,0 +1,30 @@
+{
+  "Culture": "ja-JP",
+  "Strings": {
+    "installation.stage.Queued": "待機中",
+    "installation.stage.Preflight": "事前確認中",
+    "installation.stage.Preparing": "準備中",
+    "installation.stage.UpdatingPackageLists": "パッケージ一覧を更新中",
+    "installation.stage.Downloading": "ダウンロード中",
+    "installation.stage.Copying": "コピー中",
+    "installation.stage.Verifying": "検証中",
+    "installation.stage.Extracting": "展開中",
+    "installation.stage.Installing": "インストール中",
+    "installation.stage.Configuring": "設定中",
+    "installation.stage.Activating": "有効化中",
+    "installation.stage.HealthChecking": "動作確認中",
+    "installation.stage.RollingBack": "ロールバック中",
+    "installation.stage.Completed": "完了",
+    "installation.stage.Failed": "失敗",
+    "installation.stage.Cancelled": "キャンセル済み",
+    "installation.stage.Interrupted": "中断",
+    "installation.cancel": "インストールをキャンセル",
+    "installation.elevation_title": "ホストの認証",
+    "installation.elevation_message": "このサービスのインストールを許可するホスト管理者パスワードを入力してください。",
+    "installation.connection_unavailable": "接続できません。サーバーのタスクは継続しています。再接続中…",
+    "installation.workspace_save_failed": "ワークスペースの保存に失敗しました。サーバーのタスクは継続しています。",
+    "installation.operation_unavailable": "タスクを取得できません。",
+    "installation.refresh_failed": "タスク完了後の状態更新に失敗しました。",
+    "installation.cancel_unavailable": "キャンセル要求は受け付けられませんでした。"
+  }
+}

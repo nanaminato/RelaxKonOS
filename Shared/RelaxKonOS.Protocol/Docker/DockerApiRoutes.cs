@@ -7,8 +7,6 @@ public static class DockerApiRoutes
 {
     private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Status = $"/{V1}/docker/status";
-    public const string InstallationPlan = $"/{V1}/docker/installation/plan";
-    public const string InstallationExecute = $"/{V1}/docker/installation/execute";
     public const string Containers = $"/{V1}/docker/containers";
     public const string ContainerById = $"/{V1}/docker/containers/{{id}}";
     public const string ContainerAction = $"/{V1}/docker/containers/{{id}}/{{action}}";

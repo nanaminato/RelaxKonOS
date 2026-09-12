@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.WebServers;
+using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
 
@@ -9,6 +10,17 @@ public static class WebServerEndpoints
     public static IEndpointRouteBuilder MapWebServerEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup(WebServerApiRoutes.WebServers).RequireAuthorization().WithTags("WebServers");
+        group.MapGet(WebServerApiRoutes.ManagedInstallCatalogPattern, (RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) => manager.GetManagedInstallCatalogAsync(ct));
+        group.MapGet(WebServerApiRoutes.ManagedInstallDownloadPattern, async (string? version, RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) =>
+            await manager.GetManagedInstallDownloadAsync(version, ct) is { } download ? Results.Ok(download) : Results.NotFound());
+        group.MapPost(WebServerApiRoutes.ManagedInstallPackagePattern, async (IFormFile package, HttpContext context,
+            RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) =>
+        {
+            if (!InstallationEndpoints.CanInstall(context.User, InstallationServiceId.Nginx)) return Results.Forbid();
+            await using var stream = package.OpenReadStream();
+            return await manager.StageManagedPackageAsync(package.FileName, stream, InstallationEndpoints.Actor(context.User), ct) is { } reference
+                ? Results.Ok(reference) : Results.BadRequest(new { problemCode = "webserver.package_invalid" });
+        });
         group.MapPost(WebServerApiRoutes.DiscoverPattern, (RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) => manager.DiscoverAsync(ct));
         group.MapGet(WebServerApiRoutes.CollectionPattern, (RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) => manager.ListAsync(ct));
         group.MapGet(WebServerApiRoutes.ByIdPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
@@ -17,28 +29,6 @@ public static class WebServerEndpoints
             await manager.GetStatusAsync(id, ct) is { } status ? Results.Ok(status) : Results.NotFound());
         group.MapPost(WebServerApiRoutes.TestConfigurationPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
             await manager.TestConfigurationAsync(id, ct) is { } result ? Results.Ok(result) : Results.NotFound());
-        group.MapPost(WebServerApiRoutes.ManagedInstallPattern, async (string providerId, InstallManagedWebServerRequest request, HttpContext context,
-            IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
-        {
-            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxInstall, providerId))
-                return ElevationRequired("此 Nginx 安装操作需要当前会话对该提供程序的管理员授权。");
-            return await StartAsync(context.Request, key => manager.InstallManagedAsync(providerId, key, request, Actor(context), ct));
-        });
-        group.MapPost(WebServerApiRoutes.ManagedPackagePattern, async (string providerId, HttpRequest request, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
-        {
-            if (!request.HasFormContentType) return Results.BadRequest(new { problemCode = "webserver.package_multipart_required" });
-            var form = await request.ReadFormAsync(ct);
-            var package = form.Files.GetFile("package");
-            if (package is null || package.Length == 0) return Results.BadRequest(new { problemCode = "webserver.package_required" });
-            await using var content = package.OpenReadStream();
-            return await manager.UploadManagedPackageAsync(providerId, package.FileName, content, ct) is { } uploaded
-                ? Results.Ok(uploaded)
-                : Results.NotFound();
-        });
-        group.MapGet(WebServerApiRoutes.ManagedVersionsPattern, async (string providerId, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
-            await manager.GetManagedInstallCatalogAsync(providerId, ct) is { } catalog ? Results.Ok(catalog) : Results.NotFound());
-        group.MapGet(WebServerApiRoutes.ManagedDownloadPattern, async (string providerId, string? version, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
-            await manager.GetManagedInstallDownloadAsync(providerId, version, ct) is { } download ? Results.Ok(download) : Results.NotFound());
         group.MapPost(WebServerApiRoutes.IntegratePattern, async (string id, IntegrateWebServerRequest request, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
@@ -57,13 +47,6 @@ public static class WebServerEndpoints
             if (!elevations.IsGranted(context.User, capability, id))
                 return ElevationRequired("此 Nginx 操作需要当前会话对该实例的管理员授权。");
             return await StartAsync(context.Request, key => manager.ApplyLifecycleAsync(id, lifecycle, key, Actor(context), ct));
-        });
-        group.MapPost(WebServerApiRoutes.ManagedUninstallPattern, async (string id, UninstallManagedWebServerRequest request, HttpContext context,
-            IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
-        {
-            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxInstall, id))
-                return ElevationRequired("此 Nginx 卸载操作需要当前会话对该实例的管理员授权。");
-            return await StartAsync(context.Request, key => manager.UninstallManagedAsync(id, key, request, Actor(context), ct));
         });
         group.MapPost(WebServerApiRoutes.ReloadPattern, async (string id, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>

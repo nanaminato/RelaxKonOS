@@ -27,43 +27,22 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
 
         Process? process;
         try { process = Process.Start(start); }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogWarning(ex, "Could not start the privileged helper.");
+            logger.LogWarning("Could not start the privileged helper.");
             return Complete(request, new(false, 69, Error: "privileged helper could not be started", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
         }
         if (process is null) return Complete(request, new(false, 69, Error: "privileged helper could not be started", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
         using (process)
         {
-            await JsonSerializer.SerializeAsync(process.StandardInput.BaseStream, request, cancellationToken: cancellationToken);
+            await JsonSerializer.SerializeAsync(process.StandardInput.BaseStream, request, cancellationToken: CancellationToken.None);
             await process.StandardInput.DisposeAsync();
-            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = process.StandardError.ReadToEndAsync(cancellationToken);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, options.TimeoutSeconds)));
-            try { await process.WaitForExitAsync(timeout.Token); }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                process.Kill(entireProcessTree: true);
-                return Complete(request, new(false, 124, Error: "privileged helper timed out", ProblemCode: PrivilegedProblemCode.TimedOut));
-            }
-
-            var response = await output;
-            var stderr = await error;
-            try
-            {
-                var result = JsonSerializer.Deserialize<PrivilegedOperationResult>(response)
-                    ?? new(false, process.ExitCode, Error: "privileged helper returned no result", ProblemCode: PrivilegedProblemCode.HelperUnavailable);
-                return Complete(request, result);
-            }
-            catch (JsonException)
-            {
-                // A sudo rejection or a damaged apphost writes no protocol JSON. It is a helper
-                // availability problem, not a file I/O failure. Keep stderr out of the HTTP response.
-                logger.LogWarning("Privileged helper returned invalid output. ExitCode={ExitCode}; Stderr={Stderr}",
-                    process.ExitCode, string.IsNullOrWhiteSpace(stderr) ? "(empty)" : stderr);
-                return Complete(request, new(false, 69, Error: "privileged helper failed; check the Server logs and sudoers configuration", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
-            }
+            // Read bounded protocol frames and drain stderr concurrently. Hold installation locks
+            // until the root worker actually exits, including after a Server wait deadline.
+            var output = PrivilegedFrameReader.ReadAsync(process.StandardOutput.BaseStream);
+            var error = PrivilegedFrameReader.DrainAsync(process.StandardError.BaseStream);
+            await Task.WhenAll(output, error, process.WaitForExitAsync(CancellationToken.None));
+            return Complete(request, await output);
         }
     }
 

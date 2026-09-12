@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:fs="clr-namespace:RelaxKonOS.Client.Apps.FileServices"
+             xmlns:views="clr-namespace:RelaxKonOS.Client.Apps.FileServices.Views"
+             x:Class="RelaxKonOS.Client.Apps.FileServices.Views.FileServicesUsersView" x:DataType="fs:FileServicesViewModel">
+    <Grid RowDefinitions="Auto,*" RowSpacing="12">
+        <StackPanel Spacing="12">
+            <TextBlock Text="{loc:Loc file_services.users_help}" TextWrapping="Wrap" />
+            <WrapPanel>
+                <Button Content="{loc:Loc file_services.user_toggle}" Command="{Binding ToggleUserCommand}" />
+                <Button Content="{loc:Loc file_services.user_password}" Command="{Binding SetSambaPasswordCommand}" />
+            </WrapPanel>
+        </StackPanel>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Users}" SelectedItem="{Binding SelectedUser, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" GridLinesVisibility="Horizontal" CanUserResizeColumns="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MinHeight="160">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="{loc:Loc file_services.column.Username}" Binding="{ReflectionBinding Username}" Width="*" MinWidth="160" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Enabled}" Binding="{ReflectionBinding Enabled}" Width="110" MinWidth="96" />
+                <DataGridCheckBoxColumn Header="{loc:Loc file_services.column.Eligible}" Binding="{ReflectionBinding Eligible}" Width="110" MinWidth="96" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

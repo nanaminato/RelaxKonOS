@@ -15,5 +15,4 @@ public static class ProcessGuardianApiRoutes
     public const string Services = $"/{V1}/guardian/services";
     public const string ServiceAction = $"/{V1}/guardian/services/{{id}}/{{action}}";
     public const string InstallationPlan = $"/{V1}/guardian/agent/installation/plan";
-    public const string InstallationExecute = $"/{V1}/guardian/agent/installation/execute";
 }
