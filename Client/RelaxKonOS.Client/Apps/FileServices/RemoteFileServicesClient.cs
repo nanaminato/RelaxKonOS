@@ -51,9 +51,28 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
                 && code.ValueKind == JsonValueKind.String
                 && !string.IsNullOrWhiteSpace(code.GetString()))
                 return new FileServiceApiException(code.GetString()!, response.StatusCode);
+            // ASP.NET Core Problem Details communicates this endpoint's problem code in the
+            // final path segment of `type` (for example, .../elevation-password-invalid).
+            // File Services must retain that code so the UI can distinguish a bad password
+            // from other authorization and transport failures.
+            if (document.RootElement.TryGetProperty("type", out var type)
+                && type.ValueKind == JsonValueKind.String
+                && TryGetProblemCode(type.GetString(), out var problemCode))
+                return new FileServiceApiException(problemCode, response.StatusCode);
         }
         catch (JsonException) { }
         return new HttpRequestException($"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}).", null, response.StatusCode);
+    }
+
+    private static bool TryGetProblemCode(string? type, out string problemCode)
+    {
+        problemCode = string.Empty;
+        if (string.IsNullOrWhiteSpace(type)) return false;
+        var slash = type.LastIndexOf('/');
+        var value = slash >= 0 ? type[(slash + 1)..] : type;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        problemCode = value;
+        return true;
     }
 }
 
