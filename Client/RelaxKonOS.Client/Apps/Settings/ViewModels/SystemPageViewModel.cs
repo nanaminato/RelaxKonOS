@@ -14,7 +14,7 @@ public sealed class SystemPageViewModel : SettingsPageViewModel
     public SystemPageViewModel(ShellSettings settings, IAuthSession session, Action? save)
         : base(settings, save) => _session = session;
 
-    public override string Glyph => "💻";
+    public override string Route => "system";
     public override string DisplayNameKey => "settings.page.system";
     public override string DisplayName => "System";
 

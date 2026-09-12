@@ -245,7 +245,8 @@ builder.Services.AddAuthentication(options =>
                 var path = context.HttpContext.Request.Path;
                 if (!string.IsNullOrEmpty(accessToken) &&
                     (path.StartsWithSegments("/hubs/terminals") || path.StartsWithSegments(RelaxKonOSEndpoints.GuardianLogsHubPath)
-                     || path.StartsWithSegments(RelaxKonOSEndpoints.PerformanceHubPath)))
+                     || path.StartsWithSegments(RelaxKonOSEndpoints.PerformanceHubPath)
+                     || path.StartsWithSegments(RelaxKonOSEndpoints.SettingsChangesHubPath)))
                 {
                     context.Token = accessToken;
                 }
@@ -492,6 +493,8 @@ builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = null)
 builder.Services.AddSingleton<GuardianLogSubscriptionRegistry>();
 builder.Services.AddHostedService<GuardianLogBroadcastService>();
 builder.Services.AddHostedService<PerformanceBroadcastService>();
+builder.Services.AddSingleton<SettingsSubscriptions>();
+builder.Services.AddHostedService<SettingsChangesBroadcastService>();
 
 // 文件管理：以宿主 OS 进程身份执行 IO，复用宿主用户/权限（不另建 ACL——见 project_memory 硬约束）。
 // LocalFileService 移植自 Jaya FileSystemService 的目录枚举逻辑并扩展为完整文件操作；平台感知（Windows 盘符 / Linux "/" 根）。
@@ -500,6 +503,12 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Files.FileOperationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseStore>();
 builder.Services.AddSingleton<WorkspaceWallpaperStore>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.IWorkspaceSettingsService, RelaxKonOS.Server.Settings.WorkspaceSettingsService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Settings.SettingsOperationJournal>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.SettingsCatalog>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.EnvironmentOperationCoordinator>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.IHostEnvironmentService, RelaxKonOS.Server.Settings.HostEnvironmentService>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.IHostTimeService, RelaxKonOS.Server.Settings.HostTimeService>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.SettingsOperationCoordinator>();
 
 // CORS（开发期允许客户端跨域）
 builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>
@@ -711,6 +720,7 @@ app.MapAppSettingsEndpoints();
 app.MapRegistryEndpoints();
 app.MapImageMirrorEndpoints();
 app.MapWorkspaceEndpoints();
+app.MapHostSettingsEndpoints();
 app.MapBrowserEndpoints();
 app.MapSystemMonitorEndpoints();
 app.MapDockerEndpoints();
@@ -725,5 +735,6 @@ if (OperatingSystem.IsLinux())
 app.MapHub<TerminalHub>("/hubs/terminals");
 app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath);
 app.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath);
+app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath, options => options.CloseOnAuthenticationExpiration = true);
 
 app.Run();

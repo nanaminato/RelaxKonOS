@@ -19,11 +19,13 @@ using Microsoft.Extensions.Logging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Registry;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.Hubs;
 
 internal static class SettingsSystemVerification
 {
     public static async Task RunAsync(string root)
     {
+        await SettingsOperationVerification.RunAsync(root);
         await VerifyHttpAsync(root);
         Verify(new InMemoryRegistryRepository());
         var options = new DbContextOptionsBuilder<RelaxKonOSDbContext>()
@@ -38,12 +40,14 @@ internal static class SettingsSystemVerification
         await cache.StartAsync(CancellationToken.None);
         var workspace = Verify(cache);
         var before = new WorkspaceSettingsService(cache).Read(workspace);
+        Check(before.PersistedRevision is null, "Cached acceptance must not claim durable persistence before flush.");
         await cache.StopAsync(CancellationToken.None);
         var restarted = new CachedSqliteRegistryRepository(factory);
         await restarted.StartAsync(CancellationToken.None);
         try
         {
             var restored = new WorkspaceSettingsService(restarted).Read(workspace);
+            Check(restored.PersistedRevision == restored.Revision, "Restarted SQLite snapshot must report the durable revision.");
             Check(restored.Revision == before.Revision && restored.Theme == before.Theme,
                 "Preference value and revision must survive cache flush and restart.");
         }
@@ -61,6 +65,9 @@ internal static class SettingsSystemVerification
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddAuthorization();
+        builder.Services.AddSignalR();
+        builder.Services.AddSingleton<SettingsSubscriptions>();
+        builder.Services.AddHostedService<SettingsChangesBroadcastService>();
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
             foreach (var converter in RelaxKonOSJsonOptions.Default.Converters)
@@ -85,6 +92,7 @@ internal static class SettingsSystemVerification
         app.UseAuthorization();
         app.MapWorkspaceEndpoints();
         app.MapRegistryEndpoints();
+        app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath);
         await app.StartAsync();
         try
         {
@@ -118,6 +126,13 @@ internal static class SettingsSystemVerification
             Check(registryStale.StatusCode == HttpStatusCode.Conflict, "The registry editor must not bypass preference revisions.");
             using var deleted = await http.DeleteAsync(RegistryApiRoutes.Entries + "?scope=Workspace&path=Workspace%5CDesktop&name=%28Default%29");
             Check(deleted.StatusCode == HttpStatusCode.Conflict, "Deleting managed preferences must not reset their revision.");
+            await SettingsNotificationsVerification.RunAsync(address, owner, workspace.Id, async () =>
+            {
+                var current = (await http.GetFromJsonAsync<WorkspacePreferencesDto>(route, RelaxKonOSJsonOptions.Default))!;
+                using var response = await http.PutAsJsonAsync(route, current with { Language = "ja-JP" }, RelaxKonOSJsonOptions.Default);
+                response.EnsureSuccessStatusCode();
+                return (await response.Content.ReadFromJsonAsync<WorkspacePreferencesDto>(RelaxKonOSJsonOptions.Default))!.Revision!.Value;
+            });
             Console.WriteLine("Settings HTTP verification passed: 428, 409, cross-user read/write denial, registry bypass rejection.");
         }
         finally { await app.StopAsync(); }

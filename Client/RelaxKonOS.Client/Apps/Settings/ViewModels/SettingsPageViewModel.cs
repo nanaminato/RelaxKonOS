@@ -28,8 +28,20 @@ public abstract class SettingsPageViewModel : ObservableObject
         App.Services.GetRequiredService<LocalizationService>().LanguageChanged += (_, _) => OnPropertyChanged(string.Empty);
     }
 
-    /// <summary>分类图标（emoji）。</summary>
-    public abstract string Glyph { get; }
+    public abstract string Route { get; }
+
+    // Shared monochrome geometry uses the navigation foreground in every theme.
+    public Avalonia.Media.Geometry Icon => Avalonia.Media.Geometry.Parse(Route switch
+    {
+        "system" => "M2,3 L22,3 22,17 2,17 Z M8,21 L16,21 M12,17 L12,21",
+        "personalization" => "M4,3 L20,3 20,15 4,15 Z M8,15 L8,21 16,21 16,15 M4,8 L20,8",
+        "time-language" => "M12,2 A10,10 0 1 1 11.99,2 M12,5 L12,12 17,15",
+        "network" => "M12,2 A10,10 0 1 1 11.99,2 M2,12 L22,12 M12,2 C5,8 5,16 12,22 C19,16 19,8 12,2",
+        "apps" => "M3,3 L10,3 10,10 3,10 Z M14,3 L21,3 21,10 14,10 Z M3,14 L10,14 10,21 3,21 Z M14,14 L21,14 21,21 14,21 Z",
+        "image-mirrors" => "M3,4 L21,4 21,10 3,10 Z M3,14 L21,14 21,20 3,20 Z M6,7 L8,7 M6,17 L8,17",
+        "default-apps" => "M9,15 L15,9 M7,16 L5,18 A4,4 0 0 1 1,14 L7,8 A4,4 0 0 1 13,8 M11,16 A4,4 0 0 0 17,16 L23,10 A4,4 0 0 0 19,6 L17,8",
+        _ => "M8,5 L2,12 8,19 M16,5 L22,12 16,19 M14,3 L10,21"
+    });
 
     /// <summary>Stable resource key for the category name.</summary>
     public abstract string DisplayNameKey { get; }

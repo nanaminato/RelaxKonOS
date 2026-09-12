@@ -6,7 +6,7 @@ namespace RelaxKonOS.Protocol.Workspace;
 /// <summary>
 /// Workspace 级用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序 / 桌面显示配置）。
 /// 与 <see cref="TerminalSettingsDto"/> / <see cref="RelaxKonOS.Protocol.Browser.BrowserSettingsDto"/> 同模式：
-/// 作为 <c>OwnsOne + ToJson</c> 挂在 Workspace 上，单列 JSON 文本持久化（新增字段无需改 schema）。
+/// 真源为 Workspace Desktop 注册表键；持久化状态来自注册表存储。
 /// 多设备登录同一 Workspace 时共享同一份偏好。
 /// </summary>
 public sealed record WorkspacePreferencesDto
@@ -14,6 +14,10 @@ public sealed record WorkspacePreferencesDto
     /// <summary>Observed registry revision. Required on writes; never synthesize a fresh baseline for an old draft.</summary>
     [JsonPropertyName("revision")]
     public long? Revision { get; set; }
+
+    /// <summary>Server-observed durable revision; null while persistence is pending.</summary>
+    [JsonPropertyName("persistedRevision")]
+    public long? PersistedRevision { get; set; }
 
     [JsonPropertyName("wallpaperKey")]
     public string WallpaperKey { get; set; }

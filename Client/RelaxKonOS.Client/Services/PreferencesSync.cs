@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Services.Auth;
@@ -16,6 +17,9 @@ public sealed class PreferencesSync : IDisposable
     private readonly ShellSettings _settings;
     private readonly DefaultAppRegistry _registry;
     private readonly WallpaperService _wallpapers;
+    private readonly WorkspacePreferencesEditor _editor;
+    private CancellationTokenSource? _streamCancellation;
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly object _loadGate = new();
     private Task _currentLoadTask = Task.CompletedTask;
     private string? _currentLoadScope;
@@ -25,13 +29,15 @@ public sealed class PreferencesSync : IDisposable
         IWorkspaceSettingsService client,
         ShellSettings settings,
         DefaultAppRegistry registry,
-        WallpaperService wallpapers)
+        WallpaperService wallpapers,
+        WorkspacePreferencesEditor editor)
     {
         _session = session;
         _client = client;
         _settings = settings;
         _registry = registry;
         _wallpapers = wallpapers;
+        _editor = editor;
         _session.StateChanged += OnStateChanged;
         // 桌面外壳可能在登录后才构造本服务——若此时已认证，立即加载。
         _ = EnsureCurrentWorkspacePreferencesAsync();
@@ -41,8 +47,14 @@ public sealed class PreferencesSync : IDisposable
     {
         if (e.State == AuthSessionState.Authenticated)
             _ = EnsureCurrentWorkspacePreferencesAsync();
-        else if (e.State == AuthSessionState.Unauthenticated)
+        else
         {
+            lock (_loadGate)
+            {
+                _currentLoadScope = null;
+                _streamCancellation?.Cancel();
+            }
+            if (e.State != AuthSessionState.Unauthenticated) return;
             _settings.Apply(WorkspacePreferencesDto.Default);
             _registry.SetMappings(WorkspacePreferencesDto.Default.DefaultApps);
         }
@@ -64,29 +76,68 @@ public sealed class PreferencesSync : IDisposable
                 return _currentLoadTask;
 
             _currentLoadScope = scope;
-            return _currentLoadTask = LoadAsync(url, tokens.AccessToken, ws.Id);
+            _streamCancellation?.Cancel();
+            _streamCancellation?.Dispose();
+            var cancellation = new CancellationTokenSource();
+            _streamCancellation = cancellation;
+            _ = SettingsChangesStream.RunAsync(url, tokens.AccessToken, ws.Id,
+                async () =>
+                {
+                    if (cancellation.IsCancellationRequested) return;
+                    await _session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: cancellation.Token);
+                    if (cancellation.IsCancellationRequested) return;
+                    if (_session.Tokens?.AccessToken != tokens.AccessToken)
+                    {
+                        await EnsureCurrentWorkspacePreferencesAsync();
+                        return;
+                    }
+                    await LoadAsync(url, tokens.AccessToken, ws.Id, cancellation.Token);
+                }, cancellation.Token);
+            return _currentLoadTask = LoadAsync(url, tokens.AccessToken, ws.Id, cancellation.Token);
         }
     }
 
-    private async Task LoadAsync(string url, string accessToken, Guid workspaceId)
+    private async Task LoadAsync(string url, string accessToken, Guid workspaceId, CancellationToken cancellationToken)
     {
         try
         {
-            var prefs = await _client.GetAsync(url, accessToken, workspaceId);
-            if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } currentUrl, CurrentWorkspace: { } currentWorkspace }
-                || !string.Equals(currentUrl, url, StringComparison.Ordinal)
-                || currentWorkspace.Id != workspaceId)
-                return;
-
-            _settings.Apply(prefs);
-            await _wallpapers.ApplyAsync(prefs);
-            _registry.SetMappings(prefs.DefaultApps);
+            await _refreshGate.WaitAsync(cancellationToken);
+            try
+            {
+                var prefs = await _client.GetAsync(url, accessToken, workspaceId, cancellationToken);
+                await Dispatcher.UIThread.InvokeAsync(async () =>
+                {
+                    if (cancellationToken.IsCancellationRequested || _session.State != AuthSessionState.Authenticated
+                        || _session.ServerUrl != url || _session.CurrentWorkspace?.Id != workspaceId
+                        || _session.Tokens?.AccessToken != accessToken) return;
+                    if (_editor.HasDraft)
+                    {
+                        _editor.ObserveExternalRevision(prefs.Revision);
+                        return;
+                    }
+                    _registry.SetMappings(prefs.DefaultApps);
+                    await _wallpapers.ApplyAsync(prefs, cancellationToken);
+                });
+            }
+            finally { _refreshGate.Release(); }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+
         catch
         {
-            // 服务端无偏好或旧版本：沿用 ShellSettings 默认值。
+            // A failed read must be retryable; do not overwrite runtime preferences.
+            lock (_loadGate)
+            {
+                if (_currentLoadScope == $"{url}\n{workspaceId}\n{accessToken}")
+                    _currentLoadScope = null;
+            }
         }
     }
 
-    public void Dispose() => _session.StateChanged -= OnStateChanged;
+    public void Dispose()
+    {
+        _session.StateChanged -= OnStateChanged;
+        _streamCancellation?.Cancel();
+        _streamCancellation?.Dispose();
+    }
 }

@@ -646,3 +646,11 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revision`；缺失为 428、冲突为 409，不接受无版本覆盖。服务端 `Settings/WorkspaceSettingsService` 使用注册表 CompareExchange，客户端统一使用 `Services/WorkspaceSettings/IWorkspaceSettingsService`。偏好仍存 `Workspace\Desktop`，缓存接收不等同 SQLite 落盘。AppSettings 只负责应用私有数据；宿主真实配置与其操作恢复材料不放入 AppSettings 或 Workspace 偏好。完整执行与待验证项见 [SettingsSystem.Goal](../desktop/RelaxKonOS.SettingsSystem.Goal.md)。
 
 注册表 `PutRegistryEntryRequest.expectedRevision` 必传；创建使用 0，更新使用已读 `RegistryEntryDto.revision`。缺失 428、冲突 409。`Workspace\Desktop` 默认值仍可经注册表编辑，但必须通过偏好校验；不能删除受管偏好或其祖先键来重置版本。需恢复默认值时通过携带当前 revision 的偏好更新实现。
+
+## 设置平台契约（实施中，2026-09-08）
+
+`Protocol/Settings/SettingsContracts.cs` 定义 ClientDevice/Workspace/AppPrivate/HostUser/HostMachine 范围、能力原因、生效时间、目录与时区预览/应用/操作查询契约。路由集中在 `SettingsApiRoutes`：`/settings/catalog`、`/host-settings/time` 的 GET/preview/apply，以及 `/settings/operations/{id}` 与 rollback，均位于 `/api/v1.0` 下。
+
+预览接收 expectedRevision、idempotencyKey、强类型 TimeZoneChange；应用仅接收 planId，不能更换已预览载荷。需要 `HostTimeChange` 的 `host/time` 授权。428 表示 revision/授权/计划期限前置条件不满足；409 表示外部修改或幂等冲突。操作状态未知不代表失败可重试；可查询持久记录，不能自动重放。
+
+设置通知只包含 settingId、scope、Workspace 资源标识和版本，授权订阅后通过 GET 重读；不广播偏好/环境值。当前仅 Workspace 通知已接通，宿主设置通知仍在实施。环境、身份和 DNS DTO/领域接入尚未完成，不能视为已有可用路由。
