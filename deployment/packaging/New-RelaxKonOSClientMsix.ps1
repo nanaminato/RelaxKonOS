@@ -63,6 +63,7 @@ try {
   <Identity Name="$IdentityName" Publisher="$Publisher" Version="$packageVersion" ProcessorArchitecture="$architecture" />
   <Properties><DisplayName>$DisplayName</DisplayName><PublisherDisplayName>RelaxKon</PublisherDisplayName><Logo>Assets\StoreLogo.png</Logo></Properties>
   <Resources><Resource Language="en-us" /></Resources>
+  <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
   <Applications><Application Id="App" Executable="RelaxKonOS.Client.Desktop.exe" EntryPoint="Windows.FullTrustApplication"><uap:VisualElements DisplayName="$DisplayName" Description="Connect to a RelaxKonOS Server" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /></Application></Applications>
   <Capabilities><rescap:Capability Name="runFullTrust" /></Capabilities>
 </Package>
