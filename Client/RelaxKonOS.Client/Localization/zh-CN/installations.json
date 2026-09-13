@@ -25,6 +25,22 @@
     "installation.workspace_save_failed": "工作区状态保存失败，服务器任务仍在继续。",
     "installation.operation_unavailable": "任务不可用。",
     "installation.refresh_failed": "任务已结束，但服务状态刷新失败。",
-    "installation.cancel_unavailable": "取消请求未被接受。"
+    "installation.cancel_unavailable": "取消请求未被接受。",
+    "installation.problem.unknown": "安装任务失败。请查看服务器诊断信息后重试。",
+    "installation.problem.store_unavailable": "安装任务存储暂不可用。请等待服务器恢复后重试。",
+    "installation.problem.invalid_request": "安装请求无效。",
+    "installation.problem.confirmation_required": "请先确认安装，再开始任务。",
+    "installation.problem.idempotency_required": "安装请求缺少操作键。",
+    "installation.problem.idempotency_conflict": "此操作键已关联到另一项安装请求。",
+    "installation.problem.resource_conflict": "已有另一项安装任务正在使用该资源。",
+    "installation.problem.not_cancellable": "该安装任务已无法取消。",
+    "installation.problem.interrupted": "安装任务已中断。",
+    "installation.problem.cancelled": "安装任务已取消。",
+    "installation.problem.helper_protocol": "服务器特权 Helper 拒绝了安装请求。",
+    "installation.problem.not_supported": "不支持此安装操作。",
+    "installation.problem.failed": "安装任务失败。",
+    "installation.problem.recovery_unknown": "服务器无法确认已中断安装任务的最终结果。",
+    "installation.problem.health_check_failed": "安装后的服务未通过健康检查。",
+    "installation.problem.file_reference_unavailable": "所选服务器文件已不可用。请重新选择后重试。"
   }
 }

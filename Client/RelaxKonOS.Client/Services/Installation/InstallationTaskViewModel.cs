@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.AppSettings;
+using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Installations;
 
@@ -23,7 +24,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     public int Progress => Operation?.Progress ?? 0;
     public string StageText => Operation is null ? "" : LocalizedText.Get("installation.stage." + Operation.Stage)
         + (Operation.Progress is { } value ? $" ({value}%)" : "")
-        + (Operation.ProblemCode is { Length: > 0 } code ? " · " + LocalizedText.Get("installation.problem." + code, code) : "");
+        + (Operation.ProblemCode is { Length: > 0 } code ? " · " + FormatProblemCode(code) : "");
     public bool HasMessage => !string.IsNullOrWhiteSpace(StageText) || !string.IsNullOrWhiteSpace(ConnectionText);
     private bool CanCancel => IsActive && Operation?.Cancellable == true;
     partial void OnOperationChanged(InstallationOperationDto? value)
@@ -58,7 +59,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         }
         catch (InstallationApiException error)
         {
-            ConnectionText = LocalizedText.Get("installation.problem." + error.ProblemCode, error.ProblemCode);
+            ConnectionText = FormatProblemCode(error.ProblemCode);
             if (error.Status is HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.Forbidden) pendingKey = null;
         }
         catch (OperationCanceledException) { }
@@ -74,7 +75,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             ConnectionText = string.Empty;
             return reference?.Id;
         }
-        catch (InstallationApiException error) { ConnectionText = LocalizedText.Get("installation.problem." + error.ProblemCode, error.ProblemCode); }
+        catch (InstallationApiException error) { ConnectionText = FormatProblemCode(error.ProblemCode); }
         catch (OperationCanceledException) { }
         catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
         return null;
@@ -142,6 +143,43 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     {
         try { Operation = await client.CancelAsync(Operation!.OperationId, lifetime.Token) ?? Operation; }
         catch { ConnectionText = LocalizedText.Get("installation.cancel_unavailable"); }
+    }
+
+    /// <summary>
+    /// Installation operations retain their domain problem code in the durable task record.
+    /// Resolve it through that domain's resources instead of exposing a transport-facing code
+    /// in the shared installation progress panel.
+    /// </summary>
+    internal static string FormatProblemCode(string? problemCode)
+    {
+        if (PrivilegedHelperProblemText.TryFormat(problemCode, out var helperMessage)) return helperMessage;
+        if (string.IsNullOrWhiteSpace(problemCode)) return LocalizedText.Get("installation.problem.unknown");
+
+        var candidates = new List<string>();
+        if (problemCode.StartsWith("installation.", StringComparison.Ordinal))
+            candidates.Add("installation.problem." + problemCode["installation.".Length..]);
+        else
+        {
+            var separator = problemCode.IndexOf('.');
+            if (separator > 0 && separator < problemCode.Length - 1)
+            {
+                var domain = problemCode[..separator] switch
+                {
+                    "tunnel" => "tunnels",
+                    "nginx" => "webservers",
+                    "smb" => "file_services",
+                    _ => problemCode[..separator],
+                };
+                candidates.Add(domain + ".problem." + problemCode[(separator + 1)..].Replace('.', '_'));
+            }
+        }
+        candidates.Add("installation.problem." + problemCode);
+        foreach (var key in candidates)
+        {
+            var localized = LocalizedText.Get(key);
+            if (!string.Equals(localized, key, StringComparison.Ordinal)) return localized;
+        }
+        return LocalizedText.Get("installation.problem.unknown");
     }
     public void Dispose() => lifetime.Cancel();
 }

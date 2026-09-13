@@ -25,6 +25,22 @@
     "installation.workspace_save_failed": "Could not save workspace state. The server task continues.",
     "installation.operation_unavailable": "Operation unavailable.",
     "installation.refresh_failed": "Installation finished; refreshing service status failed.",
-    "installation.cancel_unavailable": "Cancellation could not be accepted."
+    "installation.cancel_unavailable": "Cancellation could not be accepted.",
+    "installation.problem.unknown": "The installation task failed. Check the server diagnostics and try again.",
+    "installation.problem.store_unavailable": "The installation task store is unavailable. Try again after the server recovers.",
+    "installation.problem.invalid_request": "The installation request is invalid.",
+    "installation.problem.confirmation_required": "Confirm the installation before starting it.",
+    "installation.problem.idempotency_required": "The installation request is missing its operation key.",
+    "installation.problem.idempotency_conflict": "This operation key is already associated with a different installation request.",
+    "installation.problem.resource_conflict": "Another installation task is already using this resource.",
+    "installation.problem.not_cancellable": "This installation task can no longer be cancelled.",
+    "installation.problem.interrupted": "The installation task was interrupted.",
+    "installation.problem.cancelled": "The installation task was cancelled.",
+    "installation.problem.helper_protocol": "The server privileged helper rejected the installation request.",
+    "installation.problem.not_supported": "This installation operation is not supported.",
+    "installation.problem.failed": "The installation task failed.",
+    "installation.problem.recovery_unknown": "The server could not verify the outcome of an interrupted installation task.",
+    "installation.problem.health_check_failed": "The installed service did not pass its health check.",
+    "installation.problem.file_reference_unavailable": "The selected server file is no longer available. Select it again and retry."
   }
 }

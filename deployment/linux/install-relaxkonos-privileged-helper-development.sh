@@ -107,6 +107,15 @@ command -v visudo >/dev/null || { echo "visudo is required for validating the su
 # Install the selected root-owned policy before granting it access to the fixed apphost.
 install_file_root_policy
 
+# Match the production ownership boundary so the development Server can stage the verified
+# runtime, controller configuration, GEO data, state, and diagnostics before it asks the
+# constrained Helper to manage the Mihomo service.
+DEVELOPMENT_GROUP="$(id -gn "$DEVELOPMENT_USER")"
+install -d -o root -g "$DEVELOPMENT_GROUP" -m 0710 /etc/relaxkonos /var/lib/relaxkonos
+install -d -o "$DEVELOPMENT_USER" -g "$DEVELOPMENT_GROUP" -m 0700 /etc/relaxkonos/proxy /var/lib/relaxkonos/proxy
+install -d -o root -g "$DEVELOPMENT_GROUP" -m 0710 /var/log/relaxkonos
+install -d -o "$DEVELOPMENT_USER" -g "$DEVELOPMENT_GROUP" -m 0700 /var/log/relaxkonos/proxy
+
 # Copy the complete .NET output (apphost, runtimeconfig, deps, assemblies and PDB) before
 # granting sudo. The development account cannot modify this target after installation.
 install -d -o root -g root -m 0755 /usr/local/lib/relaxkonos "$INSTALL_DIRECTORY"

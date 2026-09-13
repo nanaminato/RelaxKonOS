@@ -25,6 +25,22 @@
     "installation.workspace_save_failed": "ワークスペースの保存に失敗しました。サーバーのタスクは継続しています。",
     "installation.operation_unavailable": "タスクを取得できません。",
     "installation.refresh_failed": "タスク完了後の状態更新に失敗しました。",
-    "installation.cancel_unavailable": "キャンセル要求は受け付けられませんでした。"
+    "installation.cancel_unavailable": "キャンセル要求は受け付けられませんでした。",
+    "installation.problem.unknown": "インストール タスクに失敗しました。サーバー診断を確認してから再試行してください。",
+    "installation.problem.store_unavailable": "インストール タスク ストアを利用できません。サーバーの回復後に再試行してください。",
+    "installation.problem.invalid_request": "インストール要求が無効です。",
+    "installation.problem.confirmation_required": "開始する前にインストールを確認してください。",
+    "installation.problem.idempotency_required": "インストール要求に操作キーがありません。",
+    "installation.problem.idempotency_conflict": "この操作キーは別のインストール要求にすでに関連付けられています。",
+    "installation.problem.resource_conflict": "別のインストール タスクがすでにこのリソースを使用しています。",
+    "installation.problem.not_cancellable": "このインストール タスクはもうキャンセルできません。",
+    "installation.problem.interrupted": "インストール タスクが中断されました。",
+    "installation.problem.cancelled": "インストール タスクがキャンセルされました。",
+    "installation.problem.helper_protocol": "サーバーの特権ヘルパーがインストール要求を拒否しました。",
+    "installation.problem.not_supported": "このインストール操作はサポートされていません。",
+    "installation.problem.failed": "インストール タスクに失敗しました。",
+    "installation.problem.recovery_unknown": "サーバーは中断されたインストール タスクの結果を確認できませんでした。",
+    "installation.problem.health_check_failed": "インストールされたサービスがヘルスチェックに合格しませんでした。",
+    "installation.problem.file_reference_unavailable": "選択したサーバー ファイルは利用できなくなりました。もう一度選択して再試行してください。"
   }
 }

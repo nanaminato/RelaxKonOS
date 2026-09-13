@@ -80,6 +80,7 @@ if ($FileAccess -eq 'whitelist') {
 $guardianData = Join-Path $env:ProgramData 'RelaxKonOS\guardian'
 $composeData = Join-Path $env:ProgramData 'RelaxKonOS\docker-compose'
 $serverData = Join-Path $env:ProgramData 'RelaxKonOS\server'
+$proxyData = Join-Path $env:ProgramData 'RelaxKonOS\Proxy'
 $guardianConfig = Join-Path $guardianData 'guardian.json'
 $serverHostConfig = Join-Path (Split-Path -Parent $ServerExecutable) 'appsettings.host.json'
 $privilegedData = Join-Path $env:ProgramData 'RelaxKonOS\privileged-helper'
@@ -87,6 +88,7 @@ $privilegedConfig = Join-Path $privilegedData 'helper.json'
 New-Item -ItemType Directory -Force -Path $guardianData | Out-Null
 New-Item -ItemType Directory -Force -Path $composeData | Out-Null
 New-Item -ItemType Directory -Force -Path $serverData | Out-Null
+New-Item -ItemType Directory -Force -Path $proxyData | Out-Null
 New-Item -ItemType Directory -Force -Path $privilegedData | Out-Null
 $secretBytes = New-Object byte[] 48
 [Security.Cryptography.RandomNumberGenerator]::Fill($secretBytes)
@@ -164,6 +166,10 @@ $helperSettings = [ordered]@{
 [IO.File]::WriteAllText($privilegedConfig, ($helperSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 & icacls $serverHostConfig /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' ("*" + $serverServiceSid + ':R') | Out-Null
 & icacls $serverData /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' ("*" + $serverServiceSid + ':(OI)(CI)M') | Out-Null
+# The Server owns the verified Mihomo runtime, controller configuration, GEO data, state, and
+# diagnostics below this fixed root.  The LocalSystem Helper retains service-management rights;
+# the Server service SID needs Modify so first installation does not fail before that boundary.
+& icacls $proxyData /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' ("*" + $serverServiceSid + ':(OI)(CI)M') | Out-Null
 & icacls $privilegedConfig /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
 Install-OrUpdateService $PrivilegedHelperServiceName ('"' + $PrivilegedHelperExecutable + '" --windows-service --config "' + $privilegedConfig + '"')
 

@@ -113,8 +113,16 @@ if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
 
-install -d -m 0700 /etc/relaxkonos /var/lib/relaxkonos/guardian
+# The Server is deliberately unprivileged, but it owns its proxy working set.  Give it
+# traverse-only access to the two root-owned parents, then keep each workload directory
+# private to the service account.  Without these directories a first Mihomo install fails
+# before the constrained Helper can install the systemd unit.
+install -d -o root -g "$SERVICE_GROUP" -m 0710 /etc/relaxkonos /var/lib/relaxkonos
+install -d -m 0700 /var/lib/relaxkonos/guardian
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 /var/lib/relaxkonos/docker-compose
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 /var/lib/relaxkonos/proxy /etc/relaxkonos/proxy
+install -d -o root -g "$SERVICE_GROUP" -m 0710 /var/log/relaxkonos
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 /var/log/relaxkonos/proxy
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$INSTALL_ROOT/data"
 SECRET="$(openssl rand -base64 48)"
 
