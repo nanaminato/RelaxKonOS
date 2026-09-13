@@ -40,6 +40,17 @@ public sealed class ModalDialog<TResult>
         return _manager.ShowDialogAsync(_window, title, contentFactory);
     }
 
+    /// <summary>Opens a sized child modal window whose owner is this dialog window.</summary>
+    public Task<TChild?> ShowDialogAsync<TChild>(
+        string title,
+        Func<ModalDialog<TChild>, Control> contentFactory,
+        Size preferredSize)
+    {
+        if (_window is null)
+            throw new InvalidOperationException("The dialog has not been shown yet.");
+        return _manager.ShowDialogAsync(_window, title, contentFactory, preferredSize);
+    }
+
     internal void Attach(ManagedWindow window) => _window = window;
 }
 

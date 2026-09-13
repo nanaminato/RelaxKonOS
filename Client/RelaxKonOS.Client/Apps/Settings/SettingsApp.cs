@@ -133,11 +133,11 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             EnvironmentPageViewModel? editor = null;
             try
             {
-                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.environment.title"), dialog =>
+                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.environment.title"), environmentDialog =>
                 {
                     editor = new EnvironmentPageViewModel(settings, hostEnvironment, session)
                     {
-                        RequestClose = () => dialog.Close(false),
+                        RequestClose = () => environmentDialog.Close(false),
                         RequestAuthorizationAsync = async (connection, scope, capability) =>
                         {
                             var target = await hostEnvironment.ResolveTargetAsync(connection, scope);
@@ -149,7 +149,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                             WindowsEnvironmentMutation? mutation = null;
                             var title = LocalizedText.Get(scope == SettingsScope.HostMachine
                                 ? "settings.environment.system_variables" : "settings.environment.user_variables");
-                            await context.ShowDialogAsync<bool>(window, title, dialog =>
+                            await environmentDialog.ShowDialogAsync<bool>(title, dialog =>
                             {
                                 var name = new Avalonia.Controls.TextBox
                                 {
@@ -250,7 +250,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                         RequestWindowsDeletionConfirmationAsync = async (scope, variable) =>
                         {
                             var confirmed = false;
-                            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.environment.delete"), dialog => new ConfirmDialogView
+                            await environmentDialog.ShowDialogAsync<bool>(LocalizedText.Get("settings.environment.delete"), dialog => new ConfirmDialogView
                             {
                                 DataContext = new ConfirmDialogViewModel(
                                     LocalizedText.Format("settings.environment.delete_confirm", variable.Name),
