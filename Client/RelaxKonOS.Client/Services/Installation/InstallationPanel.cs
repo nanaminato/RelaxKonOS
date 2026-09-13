@@ -21,12 +21,14 @@ public static class InstallationPanel
     {
         var panel = new StackPanel { Spacing = 6, Margin = new Thickness(12, 8), DataContext = model };
         panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.HasMessage)));
-        var stage = new TextBlock(); stage.Bind(TextBlock.TextProperty, new Binding(nameof(model.StageText))); panel.Children.Add(stage);
+        var stage = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        stage.Bind(TextBlock.TextProperty, new Binding(nameof(model.StageText))); panel.Children.Add(stage);
         var progress = new ProgressBar { Minimum = 0, Maximum = 100, Height = 4 };
         progress.Bind(ProgressBar.ValueProperty, new Binding(nameof(model.Progress)));
         progress.Bind(ProgressBar.IsIndeterminateProperty, new Binding(nameof(model.IsIndeterminate)));
         progress.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.IsActive))); panel.Children.Add(progress);
-        var connection = new TextBlock(); connection.Bind(TextBlock.TextProperty, new Binding(nameof(model.ConnectionText))); panel.Children.Add(connection);
+        var connection = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        connection.Bind(TextBlock.TextProperty, new Binding(nameof(model.ConnectionText))); panel.Children.Add(connection);
         var cancel = new Button { Content = LocalizedText.Get("installation.cancel") };
         cancel.Bind(Button.CommandProperty, new Binding(nameof(model.CancelCommand)));
         cancel.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.IsActive))); panel.Children.Add(cancel);
