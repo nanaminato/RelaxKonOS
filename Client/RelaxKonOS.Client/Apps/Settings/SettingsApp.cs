@@ -152,7 +152,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         systemPage.RequestPerformanceOptionsAsync = () =>
             context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.performance.title"), dialog => new PerformanceOptionsDialogView
             {
-                DataContext = new PerformanceOptionsDialogViewModel(() => dialog.Close(true)),
+                DataContext = new PerformanceOptionsDialogViewModel(settings, viewModel.Save, () => dialog.Close(true)),
             }, new Size(560, 610));
         var appsPage = viewModel.Pages.OfType<AppsPageViewModel>().Single();
         var personalizationPage = viewModel.Pages.OfType<PersonalizationPageViewModel>().Single();

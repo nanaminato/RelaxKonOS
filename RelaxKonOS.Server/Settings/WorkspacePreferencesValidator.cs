@@ -83,6 +83,9 @@ public static class WorkspacePreferencesValidator
             ShowServerDesktopFiles = desktopDisplay.ShowServerDesktopFiles,
             ShowServerDesktopShortcuts = desktopDisplay.ShowServerDesktopShortcuts,
             HasCompletedFirstTimeSetup = desktopDisplay.HasCompletedFirstTimeSetup,
+            ShowWindowShadows = desktopDisplay.ShowWindowShadows,
+            ShowWindowContentsWhileDragging = desktopDisplay.ShowWindowContentsWhileDragging,
+            ShowTaskbarWindowPreviews = desktopDisplay.ShowTaskbarWindowPreviews,
         };
 
         if (!TryNormalizeThemePreferences(request.ThemePreferences, out var themePreferences))

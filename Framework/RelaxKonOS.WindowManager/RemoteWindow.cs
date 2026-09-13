@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -22,14 +23,33 @@ public class RemoteWindow : TemplatedControl
     public static readonly StyledProperty<object?> ContentProperty =
         AvaloniaProperty.Register<RemoteWindow, object?>(nameof(Content));
 
+    public static readonly StyledProperty<bool> ShowShadowProperty =
+        AvaloniaProperty.Register<RemoteWindow, bool>(nameof(ShowShadow), true);
+
+    public static readonly StyledProperty<bool> ShowContentWhileDraggingProperty =
+        AvaloniaProperty.Register<RemoteWindow, bool>(nameof(ShowContentWhileDragging), true);
+
     public object? Content
     {
         get => GetValue(ContentProperty);
         set => SetValue(ContentProperty, value);
     }
 
+    public bool ShowShadow
+    {
+        get => GetValue(ShowShadowProperty);
+        set => SetValue(ShowShadowProperty, value);
+    }
+
+    public bool ShowContentWhileDragging
+    {
+        get => GetValue(ShowContentWhileDraggingProperty);
+        set => SetValue(ShowContentWhileDraggingProperty, value);
+    }
+
     private Border? _titleDrag;
     private Grid? _resizeLayer;
+    private ContentPresenter? _contentHost;
 
     private readonly Dictionary<ResizeEdge, Border> _resizeBorders = new();
 
@@ -62,6 +82,12 @@ public class RemoteWindow : TemplatedControl
     /// <summary>Raised when the current pointer-driven move or resize has ended.</summary>
     public event EventHandler? BoundsInteractionCompleted;
 
+    static RemoteWindow()
+    {
+        ShowShadowProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
+        ShowContentWhileDraggingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
+    }
+
     public RemoteWindow()
     {
         Focusable = true;
@@ -77,6 +103,7 @@ public class RemoteWindow : TemplatedControl
 
         _titleDrag = e.NameScope.Find<Border>("PART_TitleDrag");
         _resizeLayer = e.NameScope.Find<Grid>("PART_ResizeLayer");
+        _contentHost = e.NameScope.Find<ContentPresenter>("PART_ContentHost");
 
         if (_titleDrag != null)
         {
@@ -113,6 +140,7 @@ public class RemoteWindow : TemplatedControl
 
         this.PointerPressed += OnRootPressed;
         UpdateResizeLayer();
+        UpdateVisualEffects();
     }
 
     private void OnRootPressed(object? sender, PointerPressedEventArgs e)
@@ -161,6 +189,7 @@ public class RemoteWindow : TemplatedControl
             return;
 
         _dragging = true;
+        UpdateVisualEffects();
         _dragStart = ToCore(e.GetPosition(null));
         _dragStartBounds = CurrentBounds();
         e.Pointer.Capture(_titleDrag!);
@@ -202,6 +231,7 @@ public class RemoteWindow : TemplatedControl
         FocusRequested?.Invoke(this, EventArgs.Empty);
 
         _resizing = true;
+        UpdateVisualEffects();
         _resizeEdge = edge;
         _resizeStart = ToCore(e.GetPosition(null));
         _resizeStartBounds = CurrentBounds();
@@ -239,6 +269,7 @@ public class RemoteWindow : TemplatedControl
 
         _dragging = false;
         _resizing = false;
+        UpdateVisualEffects();
         BoundsInteractionCompleted?.Invoke(this, EventArgs.Empty);
     }
 
@@ -289,6 +320,13 @@ public class RemoteWindow : TemplatedControl
         var canResize = vm?.CanResize ?? true;
         var normal = vm?.State == WindowState.Normal;
         _resizeLayer.IsVisible = canResize && normal;
+    }
+
+    private void UpdateVisualEffects()
+    {
+        PseudoClasses.Set(":shadow", ShowShadow);
+        if (_contentHost is not null)
+            _contentHost.Opacity = ShowContentWhileDragging || (!_dragging && !_resizing) ? 1 : 0;
     }
 
     protected override void OnDataContextChanged(EventArgs e)

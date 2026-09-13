@@ -34,6 +34,18 @@ public sealed record DesktopDisplaySettingsDto
     [property: JsonPropertyName("hasCompletedFirstTimeSetup")]
     public bool HasCompletedFirstTimeSetup { get; set; } = false;
 
+    /// <summary>Whether managed application windows render drop shadows.</summary>
+    [property: JsonPropertyName("showWindowShadows")]
+    public bool ShowWindowShadows { get; set; } = true;
+
+    /// <summary>Whether window content stays visible while the user moves or resizes a window.</summary>
+    [property: JsonPropertyName("showWindowContentsWhileDragging")]
+    public bool ShowWindowContentsWhileDragging { get; set; } = true;
+
+    /// <summary>Whether multi-window taskbar groups open their window preview strip.</summary>
+    [property: JsonPropertyName("showTaskbarWindowPreviews")]
+    public bool ShowTaskbarWindowPreviews { get; set; } = true;
+
     /// <summary>默认配置（全部内置应用 + 一般文件显示，快捷方式不显示，未完成首次配置）。</summary>
     // Return a fresh object because it is an EF-owned JSON object updated in place.
     public static DesktopDisplaySettingsDto Default => new()
@@ -43,5 +55,8 @@ public sealed record DesktopDisplaySettingsDto
         ShowServerDesktopFiles = true,
         ShowServerDesktopShortcuts = false,
         HasCompletedFirstTimeSetup = false,
+        ShowWindowShadows = true,
+        ShowWindowContentsWhileDragging = true,
+        ShowTaskbarWindowPreviews = true,
     };
 }

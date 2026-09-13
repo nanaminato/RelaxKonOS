@@ -34,6 +34,8 @@ public sealed class WindowManager : IWindowManager
     private int _nextId;
     private int _nextCascadeSlot;
     private ManagedWindow? _active;
+    private bool _showWindowShadows = true;
+    private bool _showWindowContentsWhileDragging = true;
 
     /// <summary>Set by the client shell when a connected workspace can persist window dimensions.</summary>
     public IWindowLayoutStore? LayoutStore { get; set; }
@@ -46,6 +48,18 @@ public sealed class WindowManager : IWindowManager
     public event EventHandler<ManagedWindow>? WindowOpened;
     public event EventHandler<ManagedWindow>? WindowClosed;
     public event EventHandler<ManagedWindow?>? ActiveWindowChanged;
+
+    /// <summary>Applies workspace-owned visual-performance preferences to existing and future windows.</summary>
+    public void SetVisualEffects(bool showWindowShadows, bool showWindowContentsWhileDragging)
+    {
+        _showWindowShadows = showWindowShadows;
+        _showWindowContentsWhileDragging = showWindowContentsWhileDragging;
+        foreach (var window in _windows)
+        {
+            window.View.ShowShadow = showWindowShadows;
+            window.View.ShowContentWhileDragging = showWindowContentsWhileDragging;
+        }
+    }
 
     public void Attach(Canvas host)
     {
@@ -137,7 +151,12 @@ public sealed class WindowManager : IWindowManager
             CanMaximize = options.CanMaximize,
         };
 
-        var view = new RemoteWindow { Content = options.Content };
+        var view = new RemoteWindow
+        {
+            Content = options.Content,
+            ShowShadow = _showWindowShadows,
+            ShowContentWhileDragging = _showWindowContentsWhileDragging,
+        };
         var managed = new ManagedWindow(info, view, options.IsModalDialog);
         view.DataContext = managed;
 

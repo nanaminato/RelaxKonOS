@@ -112,6 +112,8 @@ public partial class DesktopShellViewModel : ObservableObject
             OnPropertyChanged(nameof(ConnectionWorkspace));
         });
         _settings.DesktopDisplayChanged += (_, _) => Dispatcher.UIThread.Post(PopulateDesktop);
+        _settings.VisualEffectsChanged += (_, _) => Dispatcher.UIThread.Post(ApplyVisualEffects);
+        ApplyVisualEffects();
 
         StartClock();
     }
@@ -674,7 +676,10 @@ public partial class DesktopShellViewModel : ObservableObject
 
         if (group.HasMultipleWindows)
         {
-            OpenTaskbarGroup = ReferenceEquals(OpenTaskbarGroup, group) ? null : group;
+            if (_settings.ShowTaskbarWindowPreviews)
+                OpenTaskbarGroup = ReferenceEquals(OpenTaskbarGroup, group) ? null : group;
+            else if ((group.Windows.FirstOrDefault(item => item.IsActive) ?? group.Windows.FirstOrDefault()) is { } selectedWindow)
+                ToggleSingleTaskbarWindow(selectedWindow);
             return;
         }
 
@@ -707,6 +712,13 @@ public partial class DesktopShellViewModel : ObservableObject
         => _windowManager.Close(window);
 
     public bool IsTaskbarPreviewOpen => OpenTaskbarGroup is not null;
+
+    private void ApplyVisualEffects()
+    {
+        _windowManager.SetVisualEffects(_settings.ShowWindowShadows, _settings.ShowWindowContentsWhileDragging);
+        if (!_settings.ShowTaskbarWindowPreviews)
+            OpenTaskbarGroup = null;
+    }
 
     [RelayCommand]
     private void CloseTaskbarPreview() => OpenTaskbarGroup = null;

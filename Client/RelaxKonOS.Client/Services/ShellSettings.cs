@@ -38,6 +38,9 @@ public sealed partial class ShellSettings : ObservableObject
     [ObservableProperty] private bool _showServerDesktopFiles = DesktopDisplaySettingsDto.Default.ShowServerDesktopFiles;
     [ObservableProperty] private bool _showServerDesktopShortcuts = DesktopDisplaySettingsDto.Default.ShowServerDesktopShortcuts;
     [ObservableProperty] private bool _hasCompletedFirstTimeSetup = DesktopDisplaySettingsDto.Default.HasCompletedFirstTimeSetup;
+    [ObservableProperty] private bool _showWindowShadows = DesktopDisplaySettingsDto.Default.ShowWindowShadows;
+    [ObservableProperty] private bool _showWindowContentsWhileDragging = DesktopDisplaySettingsDto.Default.ShowWindowContentsWhileDragging;
+    [ObservableProperty] private bool _showTaskbarWindowPreviews = DesktopDisplaySettingsDto.Default.ShowTaskbarWindowPreviews;
 
     private IBrush _currentWallpaper = Brushes.Transparent;
     private string _currentWallpaperKey = WorkspacePreferencesDto.Default.WallpaperKey;
@@ -94,12 +97,17 @@ public sealed partial class ShellSettings : ObservableObject
     partial void OnShowServerDesktopFilesChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnShowServerDesktopShortcutsChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnVisibleAppIdsChanged(List<string> value) => NotifyDesktopDisplayChanged();
+    partial void OnShowWindowShadowsChanged(bool value) => NotifyVisualEffectsChanged();
+    partial void OnShowWindowContentsWhileDraggingChanged(bool value) => NotifyVisualEffectsChanged();
+    partial void OnShowTaskbarWindowPreviewsChanged(bool value) => NotifyVisualEffectsChanged();
 
     /// <summary>桌面显示配置变更事件，供 DesktopShellViewModel 订阅以刷新图标。</summary>
     public event EventHandler? DesktopDisplayChanged;
+    public event EventHandler? VisualEffectsChanged;
     public event EventHandler<string>? ShellSelectionChanged;
 
     private void NotifyDesktopDisplayChanged() => DesktopDisplayChanged?.Invoke(this, EventArgs.Empty);
+    private void NotifyVisualEffectsChanged() => VisualEffectsChanged?.Invoke(this, EventArgs.Empty);
     partial void OnSelectedShellIdChanged(string value)
     {
         value = ShellApi.ResolveId(value);
@@ -142,6 +150,9 @@ public sealed partial class ShellSettings : ObservableObject
         ShowServerDesktopFiles = dd.ShowServerDesktopFiles;
         ShowServerDesktopShortcuts = dd.ShowServerDesktopShortcuts;
         HasCompletedFirstTimeSetup = dd.HasCompletedFirstTimeSetup;
+        ShowWindowShadows = dd.ShowWindowShadows;
+        ShowWindowContentsWhileDragging = dd.ShowWindowContentsWhileDragging;
+        ShowTaskbarWindowPreviews = dd.ShowTaskbarWindowPreviews;
         var shell = prefs.Shell ?? new ShellSelectionDto(ShellApi.DefaultShellId);
         ShellSelection = new ShellSelectionDto(ShellApi.ResolveId(shell.ShellId), shell.PackageId, shell.PackageVersion);
 
@@ -167,6 +178,9 @@ public sealed partial class ShellSettings : ObservableObject
                 ShowServerDesktopFiles = ShowServerDesktopFiles,
                 ShowServerDesktopShortcuts = ShowServerDesktopShortcuts,
                 HasCompletedFirstTimeSetup = HasCompletedFirstTimeSetup,
+                ShowWindowShadows = ShowWindowShadows,
+                ShowWindowContentsWhileDragging = ShowWindowContentsWhileDragging,
+                ShowTaskbarWindowPreviews = ShowTaskbarWindowPreviews,
             }, ThemePreferences, ShellSelection) { Revision = PreferencesRevision };
 
     public long? PreferencesRevision { get; private set; }

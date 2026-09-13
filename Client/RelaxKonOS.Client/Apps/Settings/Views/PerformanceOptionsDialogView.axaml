@@ -17,9 +17,6 @@
             <RadioButton Content="{loc:Loc settings.performance.custom}" IsChecked="{Binding Custom}" />
             <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="12" Margin="0,2,0,0">
                 <StackPanel Spacing="7" IsEnabled="{Binding IsCustom}">
-                    <CheckBox Content="{loc:Loc settings.performance.animate_controls}" IsChecked="{Binding AnimateControls}" />
-                    <CheckBox Content="{loc:Loc settings.performance.animate_windows}" IsChecked="{Binding AnimateWindows}" />
-                    <CheckBox Content="{loc:Loc settings.performance.font_smoothing}" IsChecked="{Binding SmoothScreenFonts}" />
                     <CheckBox Content="{loc:Loc settings.performance.window_contents}" IsChecked="{Binding ShowWindowContents}" />
                     <CheckBox Content="{loc:Loc settings.performance.thumbnails}" IsChecked="{Binding ShowThumbnails}" />
                     <CheckBox Content="{loc:Loc settings.performance.shadows}" IsChecked="{Binding ShowShadows}" />
@@ -28,7 +25,9 @@
             <TextBlock Text="{loc:Loc settings.performance.host_note}" TextWrapping="Wrap" FontSize="12" Opacity="0.65" />
         </StackPanel>
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-            <Button Content="{loc:Loc common.ok}" Command="{Binding CloseCommand}" Padding="16,6" />
+            <Button Content="{loc:Loc common.cancel}" Command="{Binding CancelCommand}" Padding="16,6" />
+            <Button Content="{loc:Loc settings.performance.apply}" Command="{Binding ApplyCommand}" Padding="16,6" />
+            <Button Classes="primary" Content="{loc:Loc common.ok}" Command="{Binding OkCommand}" Padding="16,6" />
         </StackPanel>
     </Grid>
 </UserControl>

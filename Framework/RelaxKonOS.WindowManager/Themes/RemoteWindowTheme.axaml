@@ -12,8 +12,7 @@
                             Background="{DynamicResource WindowFrameBackgroundBrush}"
                             BorderBrush="{DynamicResource BorderDefaultBrush}"
                             BorderThickness="1"
-                            CornerRadius="{DynamicResource WindowCornerRadius}"
-                            BoxShadow="0 12 28 0 #66000000, 0 2 6 0 #22000000">
+                            CornerRadius="{DynamicResource WindowCornerRadius}">
                         <Grid RowDefinitions="Auto,*">
                             <!-- Title bar -->
                             <Border x:Name="PART_TitleBar"
@@ -100,6 +99,9 @@
     </Style>
     <Style Selector="wm|RemoteWindow:active /template/ Border#PART_Frame">
         <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:shadow /template/ Border#PART_Frame">
+        <Setter Property="BoxShadow" Value="0 12 28 0 #66000000, 0 2 6 0 #22000000" />
     </Style>
     <Style Selector="wm|RemoteWindow:fullscreen /template/ Border#PART_Frame">
         <Setter Property="BorderThickness" Value="0" />
