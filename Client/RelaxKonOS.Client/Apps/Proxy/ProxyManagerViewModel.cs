@@ -18,6 +18,7 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     private readonly IProxyRepository repository;
     private readonly ITaskManagerClient? systemMonitor;
     private bool _updatingOverviewProxySelection;
+    private int? _persistedMixedPort;
     [ObservableProperty] private bool _hasManagePermission;
     [ObservableProperty] private bool _hasTunManagePermission;
 
@@ -66,6 +67,8 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     public Func<string, Task>? ShowRuntimeDownloadUrlAsync { get; set; }
     public Func<Task<string?>>? RequestServerGeoDataFileAsync { get; set; }
     public Func<Task<bool>>? RequestSystemProxySubscriptionDownloadAsync { get; set; }
+    /// <summary>Asks whether a saved listener-port change should restart Mihomo immediately.</summary>
+    public Func<Task<bool>>? RequestPortChangeRestartAsync { get; set; }
     public Action? ShowRuntimeSubscriptionWindow { get; set; }
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
@@ -225,7 +228,9 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
             Replace(Profiles, await profilesTask);
             Replace(Subscriptions, await subscriptionsTask);
             OnPropertyChanged(nameof(VisibleSubscriptions));
-            Settings = await settingsTask;
+            var settings = await settingsTask;
+            Settings = settings;
+            _persistedMixedPort = settings.MixedPort;
             GeoData = await geoDataTask;
             // A stopped/not-yet-installed runtime cannot answer controller requests. The shell
             // must still show its install and profile pages rather than fail the entire refresh.
@@ -292,10 +297,23 @@ public sealed partial class ProxyManagerViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanManage))]
     private async Task SaveSettingsAsync()
     {
+        var requiresRestart = _persistedMixedPort is { } persistedPort && persistedPort != MixedPort;
         try
         {
             IsBusy = true;
             await repository.UpdateSettingsAsync(new UpdateProxySettingsRequest(SystemProxyEnabled, AllowLan, DnsEnabled, Ipv6Enabled, UnifiedDelay, LogLevel, MixedPort, AllowInsecureSubscriptionSources, SystemProxyHost, TunSettings, SystemProxyOptions));
+            _persistedMixedPort = MixedPort;
+            if (requiresRestart)
+            {
+                if (RequestPortChangeRestartAsync is not null && await RequestPortChangeRestartAsync())
+                {
+                    await LifecycleAsync(ProxyLifecycleAction.Restart);
+                    return;
+                }
+
+                StatusText = LocalizedText.Get("proxy.status.port_restart_pending");
+                return;
+            }
             StatusText = LocalizedText.Get("proxy.status.settings_saved");
             await RefreshAsync();
         }

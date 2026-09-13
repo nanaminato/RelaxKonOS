@@ -92,6 +92,19 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
             }, new RelaxKonOS.Core.Primitives.Size(460, 220));
             return useSystemProxy;
         };
+        vm.RequestPortChangeRestartAsync = async () =>
+        {
+            var restartNow = false;
+            await context.ShowDialogAsync<bool?>(window, LocalizedText.Get("proxy.port_restart.title"), dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(
+                    LocalizedText.Get("proxy.port_restart.message"),
+                    result => { restartNow = result; dialog.Close(result); },
+                    LocalizedText.Get("proxy.port_restart.now"),
+                    LocalizedText.Get("proxy.port_restart.later")),
+            }, new RelaxKonOS.Core.Primitives.Size(460, 220));
+            return restartNow;
+        };
         vm.ShowRuntimeSubscriptionWindow = () =>
         {
             _ = context.ShowDialogAsync<bool>(window, LocalizedText.Get("proxy.subscription_content"), dialog =>
