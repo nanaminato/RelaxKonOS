@@ -27,8 +27,20 @@ done
   exit 64
 }
 if [[ $EUID -ne 0 ]]; then
-  echo 'Run this uninstaller with sudo.' >&2
-  exit 77
+  exec sudo -- bash "$0" "$@"
+fi
+
+INSTALL_ROOT="$(realpath -m -- "$INSTALL_ROOT")"
+DATA_ROOT="$(realpath -m -- "$DATA_ROOT")"
+[[ "$INSTALL_ROOT" != "$DATA_ROOT" && "$INSTALL_ROOT" != "$DATA_ROOT"/* && "$DATA_ROOT" != "$INSTALL_ROOT"/* ]] || { echo 'Install and data paths must not overlap.' >&2; exit 64; }
+
+# Validate the opt-in data deletion before changing services or program files. A mismatched
+# state file must never leave the machine only partially uninstalled.
+if [[ "$REMOVE_DATA" == true && -e "$DATA_ROOT" ]]; then
+  state="$DATA_ROOT/install-state.json"
+  [[ -f "$state" ]] || { echo "Refusing to remove data without install-state.json: $DATA_ROOT" >&2; exit 65; }
+  recorded_root="$(sed -nE 's/.*"installRoot"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$state" | head -n1)"
+  [[ -n "$recorded_root" && "$(realpath -m -- "$recorded_root")" == "$INSTALL_ROOT" ]] || { echo "Refusing to remove data recorded for another installation: $DATA_ROOT" >&2; exit 65; }
 fi
 
 if [[ "$NON_INTERACTIVE" == false ]]; then
@@ -53,11 +65,7 @@ rm -f -- /etc/sudoers.d/relaxkonos-helpers
 rm -rf -- /etc/relaxkonos
 
 if [[ "$REMOVE_DATA" == true ]]; then
-  state="$DATA_ROOT/install-state.json"
-  [[ -f "$state" ]] || { echo "Refusing to remove data without install-state.json: $DATA_ROOT" >&2; exit 65; }
-  recorded_root="$(sed -nE 's/.*"installRoot"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$state" | head -n1)"
-  [[ "$recorded_root" == "$INSTALL_ROOT" ]] || { echo "Refusing to remove data recorded for another installation: $DATA_ROOT" >&2; exit 65; }
-  rm -rf -- "$DATA_ROOT"
+  [[ ! -e "$DATA_ROOT" ]] || rm -rf -- "$DATA_ROOT"
   echo 'RelaxKonOS services, program files, and data were removed.'
 else
   echo "RelaxKonOS services and program files were removed. Data was kept at: $DATA_ROOT"

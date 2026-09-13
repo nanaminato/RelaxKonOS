@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ $EUID -ne 0 ]]; then exec sudo -- "$0" "${ORIGINAL_ARGUMENTS[@]}"; fi
+if [[ $EUID -ne 0 ]]; then exec sudo -- bash "$0" "${ORIGINAL_ARGUMENTS[@]}"; fi
 
 if [[ "$LANGUAGE" == auto ]]; then
   case "${LC_ALL:-${LANG:-}}" in ja*) LANGUAGE=ja-JP ;; zh*) LANGUAGE=zh-CN ;; *) LANGUAGE=en-US ;; esac
@@ -80,10 +80,13 @@ if [[ -z "$BUNDLE_PATH" && -z "$RELEASE_URI" ]]; then
   curl --fail --location --silent --show-error "${RELEASE_CATALOG_BASE%/}/$RUNTIME.json" --output "$descriptor"
   RELEASE_URI="$(sed -nE 's/.*"url"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$descriptor" | head -n1)"
   RELEASE_SHA256="$(sed -nE 's/.*"sha256"[[:space:]]*:[[:space:]]*"([A-Fa-f0-9]{64})".*/\1/p' "$descriptor" | head -n1)"
-  grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$descriptor" && grep -Eq "\"runtime\"[[:space:]]*:[[:space:]]*\"$RUNTIME\"" "$descriptor" && [[ "$RELEASE_URI" =~ ^https:// ]] && [[ "$RELEASE_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]] || { echo 'The official release descriptor is invalid.' >&2; exit 65; }
+  grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$descriptor" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$descriptor" && grep -Eq "\"runtime\"[[:space:]]*:[[:space:]]*\"$RUNTIME\"" "$descriptor" && [[ "$RELEASE_URI" =~ ^https:// ]] && [[ "$RELEASE_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]] || { echo 'The official release descriptor is invalid.' >&2; exit 65; }
 fi
 [[ -n "$BUNDLE_PATH" && -z "$RELEASE_URI" || -z "$BUNDLE_PATH" && -n "$RELEASE_URI" ]] || { echo 'Specify exactly one release source.' >&2; exit 64; }
-[[ "$INSTALL_ROOT" == /* && "$DATA_ROOT" == /* ]] || { echo 'Install and data paths must be absolute.' >&2; exit 64; }
+[[ "$INSTALL_ROOT" == /* && "$INSTALL_ROOT" != / && "$DATA_ROOT" == /* && "$DATA_ROOT" != / ]] || { echo 'Install and data paths must be absolute, non-root paths.' >&2; exit 64; }
+INSTALL_ROOT="$(realpath -m -- "$INSTALL_ROOT")"
+DATA_ROOT="$(realpath -m -- "$DATA_ROOT")"
+[[ "$INSTALL_ROOT" != "$DATA_ROOT" && "$INSTALL_ROOT" != "$DATA_ROOT"/* && "$DATA_ROOT" != "$INSTALL_ROOT"/* ]] || { echo 'Install and data paths must not overlap.' >&2; exit 64; }
 [[ "$SERVER_PORT" =~ ^[0-9]+$ ]] && (( SERVER_PORT >= 1 && SERVER_PORT <= 65535 )) || { echo 'Invalid server port.' >&2; exit 64; }
 case "$NETWORK_PROFILE" in local|lan|reverse-proxy) ;; *) usage ;; esac
 case "$FILE_ACCESS" in restricted|full|whitelist) ;; *) usage ;; esac
@@ -113,7 +116,7 @@ GUARDIAN="$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent"
 HELPER="$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"
 ENGINE="$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh"
 [[ -f "$MANIFEST" && -f "$SERVER" && -f "$GUARDIAN" && -f "$HELPER" && -f "$ENGINE" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
-grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*2' "$MANIFEST" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$MANIFEST" || { echo 'Unsupported server release manifest.' >&2; exit 65; }
+grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$MANIFEST" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$MANIFEST" || { echo 'Unsupported server release manifest.' >&2; exit 65; }
 grep -Eq "\"runtime\"[[:space:]]*:[[:space:]]*\"$CURRENT_RUNTIME\"" "$MANIFEST" || { echo "This release package is not compatible with $CURRENT_RUNTIME." >&2; exit 65; }
 command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] || { echo 'RelaxKonOS requires a systemd host.' >&2; exit 69; }
 for tool in sudo visudo openssl; do command -v "$tool" >/dev/null || { echo "Required system tool is missing: $tool" >&2; exit 69; }; done
@@ -150,7 +153,8 @@ chmod 0755 "$SERVER" "$GUARDIAN" "$HELPER"
 engine_arguments=("$INSTALL_ROOT" "$SERVER" "$GUARDIAN" "$HELPER" "$SERVER_PORT" "http://$LISTEN_HOST:$SERVER_PORT" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS")
 if [[ -n "$FILE_ROOTS_FILE" ]]; then engine_arguments+=(--file-roots "$FILE_ROOTS_FILE"); fi
 bash "$ENGINE" "${engine_arguments[@]}"
-printf '{"schemaVersion":1,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"http://%s:%s","fileAccess":"%s"}\n' "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" "$NETWORK_PROFILE" "$LISTEN_HOST" "$SERVER_PORT" "$FILE_ACCESS" > "$DATA_ROOT/install-state.json"
+manifest_version="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$MANIFEST" | head -n1)"
+printf '{"schemaVersion":1,"version":"%s","installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"http://%s:%s","fileAccess":"%s"}\n' "$manifest_version" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" "$NETWORK_PROFILE" "$LISTEN_HOST" "$SERVER_PORT" "$FILE_ACCESS" > "$DATA_ROOT/install-state.json"
 chmod 0600 "$DATA_ROOT/install-state.json"
 if command -v curl >/dev/null && curl --fail --silent --max-time 15 "http://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then echo 'Health check passed.'; else systemctl is-active --quiet relaxkonos-server.service; fi
 echo "$(say done) http://$LISTEN_HOST:$SERVER_PORT"

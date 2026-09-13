@@ -112,7 +112,10 @@ for file in "$SERVER_EXECUTABLE" "$GUARDIAN_EXECUTABLE" "$PRIVILEGED_HELPER_EXEC
 done
 [[ "$SERVER_PORT" =~ ^[0-9]+$ ]] && (( SERVER_PORT >= 1 && SERVER_PORT <= 65535 )) || { echo "Invalid server port." >&2; exit 1; }
 [[ "$SERVER_LISTEN_URL" =~ ^http://[^[:space:]]+$ ]] || { echo "SERVER_LISTEN_URL must be an absolute HTTP URL." >&2; exit 1; }
-[[ "$DATA_ROOT" == /* ]] || { echo "--data-root must be an absolute path." >&2; exit 1; }
+[[ "$INSTALL_ROOT" == /* && "$INSTALL_ROOT" != / && "$DATA_ROOT" == /* && "$DATA_ROOT" != / ]] || { echo "INSTALL_ROOT and --data-root must be absolute, non-root paths." >&2; exit 1; }
+INSTALL_ROOT="$(realpath -m -- "$INSTALL_ROOT")"
+DATA_ROOT="$(realpath -m -- "$DATA_ROOT")"
+[[ "$INSTALL_ROOT" != "$DATA_ROOT" && "$INSTALL_ROOT" != "$DATA_ROOT"/* && "$DATA_ROOT" != "$INSTALL_ROOT"/* ]] || { echo "INSTALL_ROOT and --data-root must not overlap." >&2; exit 1; }
 [[ "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo "Invalid service user." >&2; exit 1; }
 command -v sudo >/dev/null || { echo "sudo is required for the privileged helper." >&2; exit 1; }
 command -v visudo >/dev/null || { echo "visudo is required for validating the privileged-helper sudoers rule." >&2; exit 1; }

@@ -1,17 +1,16 @@
 {
   "schemaVersion": 1,
+  "packageKind": "server",
   "version": "0.1.0",
   "runtime": "win-x64",
   "supportedSystems": ["windows"],
   "payload": {
     "windows": {
-      "client": "payload/windows/client/RelaxKonOS.Client.Desktop.exe",
       "server": "payload/windows/server/RelaxKonOS.Server.exe",
       "guardian": "payload/windows/guardian/RelaxKonOS.Guardian.Agent.exe",
       "privilegedHelper": "payload/windows/privileged-helper/RelaxKonOS.PrivilegedHelper.exe"
     },
     "linux": {
-      "client": "payload/linux/client/RelaxKonOS.Client.Desktop",
       "server": "payload/linux/server/RelaxKonOS.Server",
       "guardian": "payload/linux/guardian/RelaxKonOS.Guardian.Agent",
       "privilegedHelper": "payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"

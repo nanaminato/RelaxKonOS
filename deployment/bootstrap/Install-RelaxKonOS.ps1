@@ -90,7 +90,7 @@ if (-not $BundlePath -and -not $ReleaseUri) {
     $runtime = Get-CurrentRuntime
     $catalogUri = $ReleaseCatalogBaseUri.TrimEnd('/') + "/$runtime.json"
     try { $releaseDescriptor = Invoke-RestMethod -Uri $catalogUri } catch { throw "Could not load the default release descriptor: $catalogUri" }
-    if ($releaseDescriptor.schemaVersion -ne 1 -or $releaseDescriptor.runtime -ne $runtime -or $releaseDescriptor.url -notmatch '^https://' -or $releaseDescriptor.sha256 -notmatch '^[A-Fa-f0-9]{64}$') {
+    if ($releaseDescriptor.schemaVersion -ne 1 -or $releaseDescriptor.packageKind -ne 'server' -or $releaseDescriptor.runtime -ne $runtime -or $releaseDescriptor.url -notmatch '^https://' -or $releaseDescriptor.sha256 -notmatch '^[A-Fa-f0-9]{64}$') {
         throw 'The default release descriptor is invalid.'
     }
     $ReleaseUri = $releaseDescriptor.url
@@ -125,7 +125,7 @@ try {
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'The release bundle must contain manifest.json.' }
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     $runtime = Get-CurrentRuntime
-    if ($manifest.schemaVersion -ne 2 -or $manifest.packageKind -ne 'server' -or $manifest.runtime -ne $runtime -or -not $manifest.payload.windows) {
+    if ($manifest.schemaVersion -ne 1 -or $manifest.packageKind -ne 'server' -or $manifest.runtime -ne $runtime -or -not $manifest.payload.windows) {
         throw "This release package is not compatible with $runtime."
     }
     $server = Resolve-ContainedPath $BundlePath $manifest.payload.windows.server

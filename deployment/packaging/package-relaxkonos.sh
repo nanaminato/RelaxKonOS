@@ -11,30 +11,46 @@ case "$CONFIGURATION" in Release|Debug) ;; *) echo 'Configuration must be Releas
 
 SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIRECTORY/../.." && pwd)"
-BUNDLE_NAME="RelaxKonOS-$VERSION-$RUNTIME"
-BUNDLE="$OUTPUT_DIRECTORY/$BUNDLE_NAME"
-ARCHIVE="$OUTPUT_DIRECTORY/$BUNDLE_NAME.zip"
-mkdir -p "$OUTPUT_DIRECTORY"
-rm -rf -- "$BUNDLE"; rm -f -- "$ARCHIVE" "$ARCHIVE.sha256" "$ARCHIVE.json"
+OUTPUT_DIRECTORY="$(mkdir -p -- "$OUTPUT_DIRECTORY" && cd -- "$OUTPUT_DIRECTORY" && pwd)"
 
-publish() {
-  local project="$1" name="$2" executable="$3" destination="$BUNDLE/payload/linux/$name"
+new_package() {
+  local kind="$1" name
+  name="RelaxKonOS-$VERSION-$RUNTIME-$kind"
+  BUNDLE="$OUTPUT_DIRECTORY/$name"
+  ARCHIVE="$OUTPUT_DIRECTORY/$name.zip"
+  rm -rf -- "$BUNDLE"
+  rm -f -- "$ARCHIVE" "$ARCHIVE.sha256" "$ARCHIVE.json"
+  mkdir -p -- "$BUNDLE"
+}
+
+publish_component() {
+  local project="$1" name="$2" executable="$3" destination
+  destination="$BUNDLE/payload/linux/$name"
   dotnet publish "$PROJECT_ROOT/$project" --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained true --output "$destination"
   [[ -f "$destination/$executable" ]] || { echo "Publish output does not contain $executable." >&2; exit 1; }
 }
-publish 'Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj' client RelaxKonOS.Client.Desktop
-publish 'RelaxKonOS.Server/RelaxKonOS.Server.csproj' server RelaxKonOS.Server
-publish 'RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj' guardian RelaxKonOS.Guardian.Agent
-publish 'RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj' privileged-helper RelaxKonOS.PrivilegedHelper
 
+complete_package() {
+  local kind="$1" payload="$2" hash
+  printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","supportedSystems":["debian-12","ubuntu-22.04","ubuntu-24.04","ubuntu-26.04"],"payload":{"linux":{%s}}}\n' \
+    "$kind" "$VERSION" "$RUNTIME" "$payload" > "$BUNDLE/manifest.json"
+  (cd "$BUNDLE" && zip -qr "$ARCHIVE" .)
+  hash="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
+  printf '%s  %s\n' "$hash" "$(basename -- "$ARCHIVE")" > "$ARCHIVE.sha256"
+  printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","url":"https://downloads.relaxkon.com/relaxkonos/stable/%s/%s/%s/%s","sha256":"%s"}\n' \
+    "$kind" "$VERSION" "$RUNTIME" "$VERSION" "$RUNTIME" "$kind" "$(basename -- "$ARCHIVE")" "$hash" > "$ARCHIVE.json"
+  printf '%s bundle: %s\nSHA-256: %s\n' "$kind" "$ARCHIVE" "$hash"
+}
+
+new_package client
+publish_component 'Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj' client RelaxKonOS.Client.Desktop
+complete_package client '"client":"payload/linux/client/RelaxKonOS.Client.Desktop"'
+
+new_package server
+publish_component 'RelaxKonOS.Server/RelaxKonOS.Server.csproj' server RelaxKonOS.Server
+publish_component 'RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj' guardian RelaxKonOS.Guardian.Agent
+publish_component 'RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj' privileged-helper RelaxKonOS.PrivilegedHelper
 mkdir -p "$BUNDLE/deployment"
 cp -a "$PROJECT_ROOT/deployment/bootstrap" "$BUNDLE/deployment/bootstrap"
 cp -a "$PROJECT_ROOT/deployment/linux" "$BUNDLE/deployment/linux"
-cat >"$BUNDLE/manifest.json" <<EOF
-{"schemaVersion":1,"version":"$VERSION","runtime":"$RUNTIME","supportedSystems":["debian-12","ubuntu-22.04","ubuntu-24.04","ubuntu-26.04"],"payload":{"linux":{"client":"payload/linux/client/RelaxKonOS.Client.Desktop","server":"payload/linux/server/RelaxKonOS.Server","guardian":"payload/linux/guardian/RelaxKonOS.Guardian.Agent","privilegedHelper":"payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"}}}
-EOF
-(cd "$BUNDLE" && zip -qr "$ARCHIVE" .)
-HASH="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
-printf '%s  %s\n' "$HASH" "$(basename -- "$ARCHIVE")" > "$ARCHIVE.sha256"
-printf '{"schemaVersion":1,"version":"%s","runtime":"%s","url":"https://downloads.relaxkon.com/relaxkonos/stable/%s/%s/%s","sha256":"%s"}\n' "$VERSION" "$RUNTIME" "$VERSION" "$RUNTIME" "$(basename -- "$ARCHIVE")" "$HASH" > "$ARCHIVE.json"
-printf 'Bundle: %s\nArchive: %s\nSHA-256: %s\n' "$BUNDLE" "$ARCHIVE" "$HASH"
+complete_package server '"server":"payload/linux/server/RelaxKonOS.Server","guardian":"payload/linux/guardian/RelaxKonOS.Guardian.Agent","privilegedHelper":"payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"'

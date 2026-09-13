@@ -1,6 +1,6 @@
 # RelaxKonOS 一键服务端安装
 
-发布包包含已 `dotnet publish` 的桌面 Client、Server、Guardian Agent、权限助手，以及本目录中的平台部署引擎。引导安装器负责语言、预检、安装来源、监听方式、文件权限范围、服务启动和健康检查；平台部署引擎只负责受控的系统级变更。
+发布制品分为 `client` 与 `server` 两种包。`server` 包包含已 `dotnet publish` 的 Server、Guardian Agent、权限助手和平台部署引擎；`client` 包只包含桌面 Client。引导安装器只接受 `server` 包，并负责语言、预检、安装来源、监听方式、文件权限范围、服务启动和健康检查；平台部署引擎只负责受控的系统级变更。
 
 引导安装器会先把三个组件的完整 publish 输出复制到持久安装目录（Windows 默认 `C:\Program Files\RelaxKonOS`，Linux 默认 `/opt/relaxkonos`）；服务绝不会指向临时下载目录或离线介质。
 
@@ -14,7 +14,7 @@ deployment/windows/Install-RelaxKonOSServices.ps1
 deployment/linux/install-relaxkonos-services.sh
 ```
 
-`manifest.json` 的首个版本使用 `schemaVersion: 1`；示例见 [release-manifest.example.json](./release-manifest.example.json)。线上安装必须由发布页同时提供 ZIP 的 SHA-256，安装器会在解压前验证它。正式发行应在此基础上对 ZIP 使用代码签名或签名的发布清单。
+`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client` 或 `server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。线上安装必须由发布页同时提供 ZIP 的 SHA-256，安装器会在解压前验证它。正式发行应在此基础上对 ZIP 使用代码签名或签名的发布清单。
 
 维护者用下列命令制作一个自包含的单平台发布包（会同时生成 ZIP 与同名 `.sha256` 文件）：
 
@@ -28,7 +28,7 @@ Linux 则运行：
 ./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release
 ```
 
-两者都会发布完整桌面 Client 与服务端组件，并产出 ZIP、`.sha256` 与同名 `.json` 下载描述文件。
+两者都会分别产出 Client 与 Server ZIP、`.sha256` 与同名 `.json` 下载描述文件。服务端安装时请选择 `*-server.zip` 或对应的 Server 发布目录。
 
 ## 官方在线来源
 

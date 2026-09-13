@@ -38,7 +38,7 @@ function Publish-Component([string] $Project, [string] $Destination, [string] $E
 
 function Complete-Package($Package, [hashtable] $Payload) {
     $manifest = [ordered]@{
-        schemaVersion = 2
+        schemaVersion = 1
         packageKind = $Package.Kind
         version = $Version
         runtime = $Runtime
@@ -51,7 +51,7 @@ function Complete-Package($Package, [hashtable] $Payload) {
     $hash = (Get-FileHash -LiteralPath $Package.Archive -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText(($Package.Archive + '.sha256'), "$hash  $([IO.Path]::GetFileName($Package.Archive))`n", [Text.UTF8Encoding]::new($false))
     $descriptor = [ordered]@{
-        schemaVersion = 2
+        schemaVersion = 1
         packageKind = $Package.Kind
         version = $Version
         runtime = $Runtime
