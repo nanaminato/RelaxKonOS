@@ -30,6 +30,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     public override string DisplayName => "Environment variables";
     public Func<HostSettingsConnection, SettingsScope, HostElevationCapability, Task<bool>>? RequestAuthorizationAsync { get; set; }
     public Func<SettingsScope, EnvironmentVariable?, Task<WindowsEnvironmentMutation?>>? RequestWindowsMutationAsync { get; set; }
+    public Func<SettingsScope, EnvironmentVariable, Task<bool>>? RequestWindowsDeletionConfirmationAsync { get; set; }
     public Action? RequestClose { get; set; }
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _machineScope;
@@ -185,6 +186,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     private Task DeleteWindowsVariableAsync(SettingsScope scope, EnvironmentVariable? variable) => RunAsync(async ct =>
     {
         if (!IsWindowsEnvironment || variable is null) return;
+        if (RequestWindowsDeletionConfirmationAsync is null || !await RequestWindowsDeletionConfirmationAsync(scope, variable)) return;
         await ApplyWindowsMutationAsync(scope, new(new(variable.Name, EnvironmentMutationKind.Delete), ConfirmHighImpact: false), ct);
     });
 

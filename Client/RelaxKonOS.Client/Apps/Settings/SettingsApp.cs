@@ -191,11 +191,6 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                     var index = pathList.SelectedIndex; if (index < 0 || index >= pathEntries.Count - 1) return;
                                     (pathEntries[index + 1], pathEntries[index]) = (pathEntries[index], pathEntries[index + 1]); pathList.SelectedIndex = index + 1;
                                 });
-                                var expand = new Avalonia.Controls.CheckBox
-                                {
-                                    Content = LocalizedText.Get("settings.environment.expand"),
-                                    IsChecked = existing?.ValueKind == EnvironmentValueKind.ExpandString,
-                                };
                                 var highImpact = new Avalonia.Controls.CheckBox
                                 {
                                     Content = LocalizedText.Get("settings.environment.high_impact"),
@@ -212,7 +207,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                         return;
                                     mutation = new WindowsEnvironmentMutation(
                                         new EnvironmentMutation(variableName, EnvironmentMutationKind.Set, variableValue,
-                                            expand.IsChecked == true ? EnvironmentValueKind.ExpandString : EnvironmentValueKind.String),
+                                            existing?.ValueKind ?? EnvironmentValueKind.String),
                                         highImpact.IsChecked == true);
                                     dialog.Close(true);
                                 };
@@ -233,16 +228,36 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                     content.Children.Add(pathEntry);
                                 }
                                 else content.Children.Add(value);
-                                content.Children.Add(expand); content.Children.Add(highImpact);
-                                content.Children.Add(new Avalonia.Controls.StackPanel
+                                content.Children.Add(highImpact);
+                                var footer = new Avalonia.Controls.StackPanel
                                 {
                                     Orientation = Avalonia.Layout.Orientation.Horizontal,
                                     HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
                                     Spacing = 8, Children = { cancel, save },
+                                };
+                                var editorLayout = new Avalonia.Controls.Grid { RowDefinitions = new Avalonia.Controls.RowDefinitions("*,Auto") };
+                                editorLayout.Children.Add(new Avalonia.Controls.ScrollViewer
+                                {
+                                    Content = content,
+                                    VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
                                 });
-                                return content;
+                                Avalonia.Controls.Grid.SetRow(footer, 1);
+                                editorLayout.Children.Add(footer);
+                                return editorLayout;
                             }, new Size(560, existing?.Name.Equals("PATH", StringComparison.OrdinalIgnoreCase) == true ? 480 : 330));
                             return mutation;
+                        },
+                        RequestWindowsDeletionConfirmationAsync = async (scope, variable) =>
+                        {
+                            var confirmed = false;
+                            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.environment.delete"), dialog => new ConfirmDialogView
+                            {
+                                DataContext = new ConfirmDialogViewModel(
+                                    LocalizedText.Format("settings.environment.delete_confirm", variable.Name),
+                                    result => { confirmed = result; dialog.Close(result); },
+                                    LocalizedText.Get("common.delete")),
+                            }, new Size(420, 220));
+                            return confirmed;
                         },
                     };
                     return new EnvironmentPageView { DataContext = editor };
