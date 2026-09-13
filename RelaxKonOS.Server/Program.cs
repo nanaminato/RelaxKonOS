@@ -34,6 +34,11 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         ? AppContext.BaseDirectory
         : null,
 });
+// The deployment installer registers this executable with the Windows Service
+// Control Manager. Opt in to its lifetime protocol so SCM receives the start
+// acknowledgement instead of eventually treating a healthy HTTP process as a
+// timed-out service.
+builder.Host.UseWindowsService();
 var kestrelCertificates = new RelaxKonOS.Server.Certificate.KestrelCertificateRegistry();
 builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
     https.ServerCertificateSelector = (_, hostName) => kestrelCertificates.Select(hostName)));

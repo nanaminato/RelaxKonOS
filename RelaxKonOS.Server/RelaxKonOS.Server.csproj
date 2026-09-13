@@ -11,6 +11,7 @@
         <PackageReference Include="Microsoft.AspNetCore.OpenApi"/>
         <PackageReference Include="Microsoft.OpenApi" />
         <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
         <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform"/>
         <!-- EF Core + SQLite 持久化（User/Workspace/Device，含 TerminalSettings JSON 列） -->
         <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite"/>
