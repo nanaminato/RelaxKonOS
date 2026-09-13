@@ -105,7 +105,6 @@
         "settings.system_properties.environment_hint": "ユーザーおよびリモート コンピューターの環境変数。",
         "settings.performance.title": "パフォーマンス オプション",
         "settings.performance.description": "RelaxKonOS でサポートされ、現在のワークスペースに保存されるデスクトップ効果を選択します。",
-        "settings.performance.automatic": "コンピューターにとって最適なものを Windows に選択させる",
         "settings.performance.appearance": "最適な外観に調整する",
         "settings.performance.performance": "最適なパフォーマンスに調整する",
         "settings.performance.custom": "カスタム",

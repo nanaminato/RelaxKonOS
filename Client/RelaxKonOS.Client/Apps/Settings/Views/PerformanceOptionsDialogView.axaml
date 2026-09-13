@@ -11,7 +11,6 @@
             <TextBlock Text="{loc:Loc settings.performance.description}" TextWrapping="Wrap" Opacity="0.72" />
         </StackPanel>
         <StackPanel Grid.Row="1" Spacing="10">
-            <RadioButton Content="{loc:Loc settings.performance.automatic}" IsChecked="{Binding LetWindowsChoose}" />
             <RadioButton Content="{loc:Loc settings.performance.appearance}" IsChecked="{Binding BestAppearance}" />
             <RadioButton Content="{loc:Loc settings.performance.performance}" IsChecked="{Binding BestPerformance}" />
             <RadioButton Content="{loc:Loc settings.performance.custom}" IsChecked="{Binding Custom}" />

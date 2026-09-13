@@ -105,7 +105,6 @@
         "settings.system_properties.environment_hint": "User and remote machine environment variables.",
         "settings.performance.title": "Performance options",
         "settings.performance.description": "Choose desktop effects that are supported by RelaxKonOS and saved to this workspace.",
-        "settings.performance.automatic": "Let Windows choose what is best for my computer",
         "settings.performance.appearance": "Adjust for best appearance",
         "settings.performance.performance": "Adjust for best performance",
         "settings.performance.custom": "Custom",

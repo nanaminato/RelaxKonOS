@@ -30,7 +30,6 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
     [ObservableProperty] private bool _showShadows;
 
     public bool IsCustom => Preset == PerformancePreset.Custom;
-    public bool LetWindowsChoose { get => Preset == PerformancePreset.LetWindowsChoose; set { if (value) Preset = PerformancePreset.LetWindowsChoose; } }
     public bool BestAppearance { get => Preset == PerformancePreset.BestAppearance; set { if (value) Preset = PerformancePreset.BestAppearance; } }
     public bool BestPerformance { get => Preset == PerformancePreset.BestPerformance; set { if (value) Preset = PerformancePreset.BestPerformance; } }
     public bool Custom { get => Preset == PerformancePreset.Custom; set { if (value) Preset = PerformancePreset.Custom; } }
@@ -43,7 +42,7 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
         _applyingPreset = true;
         try
         {
-            if (value is PerformancePreset.LetWindowsChoose or PerformancePreset.BestAppearance)
+            if (value == PerformancePreset.BestAppearance)
             {
                 ShowShadows = true;
                 ShowWindowContents = true;
@@ -74,7 +73,7 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
     }
 
     private PerformancePreset InferPreset() => ShowShadows && ShowWindowContents && ShowThumbnails
-        ? PerformancePreset.LetWindowsChoose
+        ? PerformancePreset.BestAppearance
         : !ShowShadows && !ShowWindowContents && !ShowThumbnails
             ? PerformancePreset.BestPerformance
             : PerformancePreset.Custom;
@@ -82,7 +81,6 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
     private void NotifyPresetState()
     {
         OnPropertyChanged(nameof(IsCustom));
-        OnPropertyChanged(nameof(LetWindowsChoose));
         OnPropertyChanged(nameof(BestAppearance));
         OnPropertyChanged(nameof(BestPerformance));
         OnPropertyChanged(nameof(Custom));
@@ -113,7 +111,6 @@ public sealed partial class PerformanceOptionsDialogViewModel : ObservableObject
 
 public enum PerformancePreset
 {
-    LetWindowsChoose,
     BestAppearance,
     BestPerformance,
     Custom,

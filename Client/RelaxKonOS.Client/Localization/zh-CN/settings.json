@@ -105,7 +105,6 @@
         "settings.system_properties.environment_hint": "用户和远程主机的环境变量。",
         "settings.performance.title": "性能选项",
         "settings.performance.description": "选择 RelaxKonOS 已支持的桌面效果，设置会保存到当前工作区。",
-        "settings.performance.automatic": "让 Windows 选择计算机的最佳设置",
         "settings.performance.appearance": "调整为最佳外观",
         "settings.performance.performance": "调整为最佳性能",
         "settings.performance.custom": "自定义",
