@@ -20,6 +20,7 @@ public static class InstallationPanel
     public static Control Wrap(Control content, InstallationTaskViewModel model)
     {
         var panel = new StackPanel { Spacing = 6, Margin = new Thickness(12, 8), DataContext = model };
+        panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(model.HasMessage)));
         var stage = new TextBlock(); stage.Bind(TextBlock.TextProperty, new Binding(nameof(model.StageText))); panel.Children.Add(stage);
         var progress = new ProgressBar { Minimum = 0, Maximum = 100, Height = 4 };
         progress.Bind(ProgressBar.ValueProperty, new Binding(nameof(model.Progress)));

@@ -24,12 +24,14 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     public string StageText => Operation is null ? "" : LocalizedText.Get("installation.stage." + Operation.Stage)
         + (Operation.Progress is { } value ? $" ({value}%)" : "")
         + (Operation.ProblemCode is { Length: > 0 } code ? " · " + LocalizedText.Get("installation.problem." + code, code) : "");
+    public bool HasMessage => !string.IsNullOrWhiteSpace(StageText) || !string.IsNullOrWhiteSpace(ConnectionText);
     private bool CanCancel => IsActive && Operation?.Cancellable == true;
     partial void OnOperationChanged(InstallationOperationDto? value)
     {
-        OnPropertyChanged(nameof(IsActive)); OnPropertyChanged(nameof(IsIndeterminate)); OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(StageText));
+        OnPropertyChanged(nameof(IsActive)); OnPropertyChanged(nameof(IsIndeterminate)); OnPropertyChanged(nameof(Progress)); OnPropertyChanged(nameof(StageText)); OnPropertyChanged(nameof(HasMessage));
         CancelCommand.NotifyCanExecuteChanged();
     }
+    partial void OnConnectionTextChanged(string value) => OnPropertyChanged(nameof(HasMessage));
 
     public async Task SubmitAsync(InstallationOperationKind kind, object options)
     {
