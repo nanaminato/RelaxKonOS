@@ -28,6 +28,8 @@ Linux 则运行：
 ./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release
 ```
 
+客户端的便携 ZIP、Debian/Ubuntu `.deb` + APT 仓库，以及 Windows MSIX 打包和升级流程见 [ClientDistribution.md](./ClientDistribution.md)。
+
 两者都会分别产出 Client 与 Server ZIP、`.sha256` 与同名 `.json` 下载描述文件。服务端安装时请选择 `*-server.zip` 或对应的 Server 发布目录。
 
 ## 官方在线来源
