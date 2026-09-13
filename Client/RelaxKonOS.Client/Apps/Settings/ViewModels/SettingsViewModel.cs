@@ -70,7 +70,6 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new SystemPageViewModel(settings, session, save),
             new AccountSecurityPageViewModel(settings, App.Services.GetRequiredService<AccountSecurityClient>(), session,
                 App.Services.GetRequiredService<IRememberedSessionStore>()),
-            new EnvironmentPageViewModel(settings, App.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>(), session),
             new PersonalizationPageViewModel(settings, save),
             new TimeLanguagePageViewModel(settings, localization, save,
                 new HostTimeEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>(), session, localization)),

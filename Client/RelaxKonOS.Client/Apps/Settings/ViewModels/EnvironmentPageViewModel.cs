@@ -27,6 +27,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     public override string DisplayNameKey => "settings.environment.title";
     public override string DisplayName => "Environment variables";
     public Func<HostSettingsConnection, SettingsScope, HostElevationCapability, Task<bool>>? RequestAuthorizationAsync { get; set; }
+    public Action? RequestClose { get; set; }
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _machineScope;
     [ObservableProperty] private string _filter = "";
@@ -50,12 +51,15 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     public bool CanRollback => !IsBusy && _operation?.State == SettingsOperationState.Applied;
     public bool CanDiscard => !IsBusy && (!_submitted || _operation?.State is SettingsOperationState.Applied or SettingsOperationState.RolledBack or SettingsOperationState.Failed);
     public string TargetText => _connection is null ? "" : _connection.ServerUrl + " · " + _session.CurrentUser?.Username + " · " + _snapshot?.Target.ResourceId;
+    public string ScopeHeading => MachineScope
+        ? T("settings.environment.system_variables", "System variables")
+        : T("settings.environment.user_variables", "User variables");
     public string SelectedDetails => SelectedVariable is not { } value ? "" : value.ValueKind + " · " + value.Source + Environment.NewLine
         + (value.ExpandedPreview ?? "") + Environment.NewLine + string.Join(Environment.NewLine, value.Warnings);
     public string OperationId => _plan?.PlanId.ToString("D") ?? "";
     partial void OnIsBusyChanged(bool value) => Update();
     partial void OnFilterChanged(string value) => RefreshVariables();
-    partial void OnMachineScopeChanged(bool value) => Clear();
+    partial void OnMachineScopeChanged(bool value) { Clear(); OnPropertyChanged(nameof(ScopeHeading)); }
     partial void OnConfirmHighImpactChanged(bool value) { _plan = null; PreviewText = ""; Update(); }
     partial void OnSelectedVariableChanged(EnvironmentVariable? value)
     {
@@ -135,6 +139,12 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     });
     [RelayCommand(CanExecute = nameof(CanDiscard))]
     private void Discard() => Clear();
+    [RelayCommand]
+    private void Close()
+    {
+        Clear();
+        RequestClose?.Invoke();
+    }
     private void Show(SettingsOperation operation)
     {
         _operation = operation; _submitted = operation.State != SettingsOperationState.Prepared;

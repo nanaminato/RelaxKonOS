@@ -4,11 +4,31 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.SystemPageView"
              x:DataType="vm:SystemPageViewModel">
-    <StackPanel Spacing="16" MaxWidth="640">
+    <StackPanel Spacing="16" MaxWidth="720">
         <StackPanel Spacing="2">
-            <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
-            <TextBlock Text="{loc:Loc settings.system.tagline}" Opacity="0.65" />
+            <TextBlock Text="{loc:Loc settings.system_properties.title}" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Text="{loc:Loc settings.system_properties.description}" Opacity="0.65" TextWrapping="Wrap" />
         </StackPanel>
+
+        <Border Classes="card">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{loc:Loc settings.system_properties.advanced}" Classes="title" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="{loc:Loc settings.performance.title}" FontWeight="SemiBold" />
+                        <TextBlock Text="{loc:Loc settings.system_properties.performance_hint}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{loc:Loc settings.system_properties.open}" Command="{Binding OpenPerformanceOptionsCommand}" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="{loc:Loc settings.environment.title}" FontWeight="SemiBold" />
+                        <TextBlock Text="{loc:Loc settings.system_properties.environment_hint}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{loc:Loc settings.system_properties.open}" Command="{Binding OpenEnvironmentVariablesCommand}" VerticalAlignment="Center" />
+                </Grid>
+            </StackPanel>
+        </Border>
 
         <Border Classes="card">
             <StackPanel Spacing="10">
@@ -23,7 +43,7 @@
                 </Grid>
                 <Grid ColumnDefinitions="140,*">
                     <TextBlock Grid.Column="0" Text="{loc:Loc settings.server}" Opacity="0.7" />
-                    <TextBlock Grid.Column="1" Text="{Binding ServerUrl}" />
+                    <TextBlock Grid.Column="1" Text="{Binding ServerUrl}" TextWrapping="Wrap" />
                 </Grid>
             </StackPanel>
         </Border>
@@ -43,22 +63,7 @@
                     <TextBlock Grid.Column="0" Text="{loc:Loc settings.workspace}" Opacity="0.7" />
                     <TextBlock Grid.Column="1" Text="{Binding WorkspaceName}" />
                 </Grid>
-                <Grid ColumnDefinitions="140,*">
-                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.device}" Opacity="0.7" />
-                    <TextBlock Grid.Column="1" Text="{Binding DeviceName}" />
-                </Grid>
-                <Grid ColumnDefinitions="140,*">
-                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.device_role}" Opacity="0.7" />
-                    <TextBlock Grid.Column="1" Text="{Binding DeviceRole}" />
-                </Grid>
-                <Grid ColumnDefinitions="140,*">
-                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.last_login}" Opacity="0.7" />
-                    <TextBlock Grid.Column="1" Text="{Binding LastLogin}" />
-                </Grid>
             </StackPanel>
         </Border>
-
-        <TextBlock Opacity="0.55" FontSize="12" TextWrapping="Wrap"
-                   Text="{loc:Loc settings.system.description}" />
     </StackPanel>
 </UserControl>

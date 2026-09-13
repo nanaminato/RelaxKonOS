@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.PerformanceOptionsDialogView"
+             x:DataType="vm:PerformanceOptionsDialogViewModel"
+             Background="{DynamicResource SurfaceBrush}" Width="520">
+    <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="16">
+        <StackPanel Spacing="5">
+            <TextBlock Text="{loc:Loc settings.performance.title}" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="{loc:Loc settings.performance.description}" TextWrapping="Wrap" Opacity="0.72" />
+        </StackPanel>
+        <StackPanel Grid.Row="1" Spacing="10">
+            <RadioButton Content="{loc:Loc settings.performance.automatic}" IsChecked="{Binding LetWindowsChoose}" />
+            <RadioButton Content="{loc:Loc settings.performance.appearance}" IsChecked="{Binding BestAppearance}" />
+            <RadioButton Content="{loc:Loc settings.performance.performance}" IsChecked="{Binding BestPerformance}" />
+            <RadioButton Content="{loc:Loc settings.performance.custom}" IsChecked="{Binding Custom}" />
+            <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="12" Margin="0,2,0,0">
+                <StackPanel Spacing="7" IsEnabled="{Binding IsCustom}">
+                    <CheckBox Content="{loc:Loc settings.performance.animate_controls}" IsChecked="{Binding AnimateControls}" />
+                    <CheckBox Content="{loc:Loc settings.performance.animate_windows}" IsChecked="{Binding AnimateWindows}" />
+                    <CheckBox Content="{loc:Loc settings.performance.font_smoothing}" IsChecked="{Binding SmoothScreenFonts}" />
+                    <CheckBox Content="{loc:Loc settings.performance.window_contents}" IsChecked="{Binding ShowWindowContents}" />
+                    <CheckBox Content="{loc:Loc settings.performance.thumbnails}" IsChecked="{Binding ShowThumbnails}" />
+                    <CheckBox Content="{loc:Loc settings.performance.shadows}" IsChecked="{Binding ShowShadows}" />
+                </StackPanel>
+            </Border>
+            <TextBlock Text="{loc:Loc settings.performance.host_note}" TextWrapping="Wrap" FontSize="12" Opacity="0.65" />
+        </StackPanel>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc common.ok}" Command="{Binding CloseCommand}" Padding="16,6" />
+        </StackPanel>
+    </Grid>
+</UserControl>

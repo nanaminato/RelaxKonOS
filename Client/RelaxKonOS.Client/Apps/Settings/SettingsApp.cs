@@ -5,6 +5,7 @@ using Avalonia.Platform.Storage;
 using System.Text.Json;
 using RelaxKonOS.Client.Apps.Settings.ViewModels;
 using RelaxKonOS.Client.Apps.Settings.Views;
+using RelaxKonOS.Client.Apps.Settings.Views.Pages;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
@@ -125,12 +126,34 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestAuthorizationAsync = connection =>
             AuthorizeHostSettingsAsync(connection, "host/time", (password, administrator) => hostTimeService.AuthorizeAsync(connection, password, administrator));
         var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
-        viewModel.Pages.OfType<EnvironmentPageViewModel>().Single().RequestAuthorizationAsync = async (connection, scope, capability) =>
+        var systemPage = viewModel.Pages.OfType<SystemPageViewModel>().Single();
+        systemPage.RequestEnvironmentVariablesAsync = async () =>
         {
-            var target = await hostEnvironment.ResolveTargetAsync(connection, scope);
-            return await AuthorizeHostSettingsAsync(connection, target.ResourceId + " · " + capability,
-                (password, administrator) => hostEnvironment.AuthorizeAsync(connection, scope, capability, password, administrator));
+            EnvironmentPageViewModel? editor = null;
+            try
+            {
+                await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.environment.title"), dialog =>
+                {
+                    editor = new EnvironmentPageViewModel(settings, hostEnvironment, session)
+                    {
+                        RequestClose = () => dialog.Close(false),
+                        RequestAuthorizationAsync = async (connection, scope, capability) =>
+                        {
+                            var target = await hostEnvironment.ResolveTargetAsync(connection, scope);
+                            return await AuthorizeHostSettingsAsync(connection, target.ResourceId + " · " + capability,
+                                (password, administrator) => hostEnvironment.AuthorizeAsync(connection, scope, capability, password, administrator));
+                        },
+                    };
+                    return new EnvironmentPageView { DataContext = editor };
+                }, new Size(820, 760));
+            }
+            finally { editor?.Dispose(); }
         };
+        systemPage.RequestPerformanceOptionsAsync = () =>
+            context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.performance.title"), dialog => new PerformanceOptionsDialogView
+            {
+                DataContext = new PerformanceOptionsDialogViewModel(() => dialog.Close(true)),
+            }, new Size(560, 610));
         var appsPage = viewModel.Pages.OfType<AppsPageViewModel>().Single();
         var personalizationPage = viewModel.Pages.OfType<PersonalizationPageViewModel>().Single();
         personalizationPage.RequestCustomWallpaperAsync = async () =>
@@ -321,7 +344,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             return false;
 
         var segments = GetPathSegments(uri);
-        return (segments.Length == 1 && new[] { "system", "account-security", "environment", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
+        return (segments.Length == 1 && new[] { "system", "account-security", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                    && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(segments[1]));

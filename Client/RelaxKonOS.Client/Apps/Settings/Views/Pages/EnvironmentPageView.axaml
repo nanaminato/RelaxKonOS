@@ -1,61 +1,79 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels" xmlns:protocol="clr-namespace:RelaxKonOS.Protocol.Settings;assembly=RelaxKonOS.Protocol"
- xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.EnvironmentPageView" x:DataType="vm:EnvironmentPageViewModel">
-<StackPanel Spacing="10">
-<TextBlock Text="{loc:Loc settings.environment.title}" FontSize="24" FontWeight="SemiBold" />
-<TextBlock Text="{loc:Loc settings.environment.effect}" TextWrapping="Wrap" />
-<TextBlock Text="{Binding TargetText}" TextWrapping="Wrap" />
-<CheckBox Content="{loc:Loc settings.environment.machine}" IsChecked="{Binding MachineScope}" IsEnabled="{Binding CanChangeScope}" />
-<TextBlock Text="{loc:Loc settings.environment.user_hint}" TextWrapping="Wrap" />
-<WrapPanel>
-<Button Content="{loc:Loc settings.environment.load}" Command="{Binding LoadCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.reveal}" Command="{Binding RevealCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.discard}" Command="{Binding DiscardCommand}" Margin="0,0,8,6" />
-</WrapPanel>
-<TextBox Text="{Binding Filter}" PlaceholderText="{loc:Loc settings.environment.filter}" AutomationProperties.Name="{loc:Loc settings.environment.filter}" />
-<ListBox ItemsSource="{Binding Variables}" SelectedItem="{Binding SelectedVariable}" MaxHeight="210">
-<ListBox.ItemTemplate><DataTemplate x:DataType="protocol:EnvironmentVariable"><StackPanel Spacing="3">
-<TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
-<TextBlock Text="{Binding RawValue}" TextWrapping="Wrap" MaxHeight="64" />
-<TextBlock Text="{loc:Loc settings.environment.masked}" IsVisible="{Binding Masked}" />
-</StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
-<TextBlock Text="{Binding SelectedDetails}" TextWrapping="Wrap" />
-<StackPanel Spacing="8" IsEnabled="{Binding CanEdit}">
-<TextBlock Text="{loc:Loc settings.environment.edit_hint}" TextWrapping="Wrap" />
-<TextBox Text="{Binding VariableName}" MaxLength="255" PlaceholderText="{loc:Loc settings.environment.name}" AutomationProperties.Name="{loc:Loc settings.environment.name}" />
-<TextBox Text="{Binding VariableValue}" MaxLength="32767" AcceptsReturn="True" MinHeight="64" MaxHeight="140" TextWrapping="Wrap" PlaceholderText="{loc:Loc settings.environment.value}" AutomationProperties.Name="{loc:Loc settings.environment.value}" />
-<StackPanel Spacing="6" IsVisible="{Binding IsPath}">
-<TextBlock Text="{loc:Loc settings.environment.path_hint}" TextWrapping="Wrap" />
-<ListBox ItemsSource="{Binding PathEntries}" SelectedIndex="{Binding SelectedPathIndex}" MaxHeight="180" AutomationProperties.Name="{loc:Loc settings.environment.path_entries}" />
-<TextBox Text="{Binding PathEntryValue}" MaxLength="32767" PlaceholderText="{loc:Loc settings.environment.path_entry}" AutomationProperties.Name="{loc:Loc settings.environment.path_entry}" />
-<WrapPanel>
-<Button Content="{loc:Loc settings.environment.path_add}" Command="{Binding AddPathEntryCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.path_replace}" Command="{Binding ReplacePathEntryCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.path_remove}" Command="{Binding RemovePathEntryCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.path_up}" Command="{Binding MovePathUpCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.path_down}" Command="{Binding MovePathDownCommand}" Margin="0,0,8,6" />
-</WrapPanel><TextBlock Text="{Binding PathWarnings}" TextWrapping="Wrap" /></StackPanel>
-<CheckBox Content="{loc:Loc settings.environment.expand}" IsChecked="{Binding ExpandString}" />
-<WrapPanel>
-<Button Content="{loc:Loc settings.environment.set}" Command="{Binding StageSetCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.delete}" Command="{Binding StageDeleteCommand}" Margin="0,0,8,6" />
-</WrapPanel>
-<TextBlock Text="{Binding DraftText}" TextWrapping="Wrap" />
-<ComboBox ItemsSource="{Binding DraftNames}" SelectedItem="{Binding SelectedDraftName}" HorizontalAlignment="Stretch" AutomationProperties.Name="{loc:Loc settings.environment.draft_select}" />
-<WrapPanel>
-<Button Content="{loc:Loc settings.environment.draft_edit}" Command="{Binding EditDraftCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.draft_remove}" Command="{Binding RemoveDraftCommand}" Margin="0,0,8,6" />
-</WrapPanel>
-<CheckBox Content="{loc:Loc settings.environment.high_impact}" IsChecked="{Binding ConfirmHighImpact}" />
-</StackPanel>
-<TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" />
-<WrapPanel>
-<Button Content="{loc:Loc settings.environment.preview}" Command="{Binding PreviewCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.apply}" Command="{Binding ApplyCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.query}" Command="{Binding QueryCommand}" Margin="0,0,8,6" />
-<Button Content="{loc:Loc settings.environment.rollback}" Command="{Binding RollbackCommand}" Margin="0,0,8,6" />
-</WrapPanel>
-<SelectableTextBlock Text="{Binding OperationId}" TextWrapping="Wrap" />
-<TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
-<TextBlock Text="{Binding ProblemCode}" TextWrapping="Wrap" />
-</StackPanel></UserControl>
+ xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization" x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.EnvironmentPageView" x:DataType="vm:EnvironmentPageViewModel"
+ Background="{DynamicResource SurfaceBrush}" Width="760">
+<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+<Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+    <StackPanel Spacing="4">
+        <TextBlock Text="{loc:Loc settings.environment.title}" FontSize="20" FontWeight="SemiBold" />
+        <TextBlock Text="{loc:Loc settings.environment.effect}" TextWrapping="Wrap" Opacity="0.72" />
+    </StackPanel>
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <StackPanel Spacing="3">
+            <TextBlock Text="{Binding ScopeHeading}" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding TargetText}" TextWrapping="Wrap" FontSize="12" Opacity="0.65" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <CheckBox Content="{loc:Loc settings.environment.machine}" IsChecked="{Binding MachineScope}" IsEnabled="{Binding CanChangeScope}" />
+            <Button Content="{loc:Loc settings.environment.load}" Command="{Binding LoadCommand}" />
+            <Button Content="{loc:Loc settings.environment.reveal}" Command="{Binding RevealCommand}" />
+        </StackPanel>
+    </Grid>
+    <Grid Grid.Row="2" RowDefinitions="Auto,*,Auto" RowSpacing="8">
+        <TextBox Text="{Binding Filter}" PlaceholderText="{loc:Loc settings.environment.filter}" AutomationProperties.Name="{loc:Loc settings.environment.filter}" />
+        <Border Grid.Row="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" MinHeight="180">
+            <ListBox ItemsSource="{Binding Variables}" SelectedItem="{Binding SelectedVariable}" BorderThickness="0">
+                <ListBox.ItemTemplate><DataTemplate x:DataType="protocol:EnvironmentVariable"><Grid ColumnDefinitions="210,*" Margin="4,2">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><TextBlock Text="{Binding RawValue}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{loc:Loc settings.environment.masked}" IsVisible="{Binding Masked}" Opacity="0.65" /></StackPanel>
+                </Grid></DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBlock Text="{Binding SelectedDetails}" TextWrapping="Wrap" VerticalAlignment="Center" Opacity="0.7" />
+            <Button Grid.Column="1" Content="{loc:Loc settings.environment.discard}" Command="{Binding DiscardCommand}" />
+        </Grid>
+    </Grid>
+    <StackPanel Grid.Row="3" Spacing="8">
+        <TextBlock Text="{loc:Loc settings.environment.edit_hint}" TextWrapping="Wrap" FontSize="12" Opacity="0.72" />
+        <Grid ColumnDefinitions="210,*" ColumnSpacing="8">
+            <TextBox Text="{Binding VariableName}" MaxLength="255" PlaceholderText="{loc:Loc settings.environment.name}" />
+            <TextBox Grid.Column="1" Text="{Binding VariableValue}" MaxLength="32767" PlaceholderText="{loc:Loc settings.environment.value}" />
+        </Grid>
+        <StackPanel Spacing="6" IsVisible="{Binding IsPath}">
+            <TextBlock Text="{loc:Loc settings.environment.path_hint}" TextWrapping="Wrap" FontSize="12" />
+            <ListBox ItemsSource="{Binding PathEntries}" SelectedIndex="{Binding SelectedPathIndex}" MaxHeight="100" />
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                <TextBox Text="{Binding PathEntryValue}" MaxLength="32767" PlaceholderText="{loc:Loc settings.environment.path_entry}" />
+                <Button Grid.Column="1" Content="{loc:Loc settings.environment.path_add}" Command="{Binding AddPathEntryCommand}" />
+                <Button Grid.Column="2" Content="{loc:Loc settings.environment.path_replace}" Command="{Binding ReplacePathEntryCommand}" />
+                <Button Grid.Column="3" Content="{loc:Loc settings.environment.path_remove}" Command="{Binding RemovePathEntryCommand}" />
+                <Button Grid.Column="4" Content="↑" Command="{Binding MovePathUpCommand}" />
+                <Button Grid.Column="5" Content="↓" Command="{Binding MovePathDownCommand}" />
+            </Grid>
+        </StackPanel>
+        <WrapPanel ItemHeight="32">
+            <CheckBox Content="{loc:Loc settings.environment.expand}" IsChecked="{Binding ExpandString}" Margin="0,0,14,0" />
+            <Button Content="{loc:Loc settings.environment.set}" Command="{Binding StageSetCommand}" Margin="0,0,6,0" />
+            <Button Content="{loc:Loc settings.environment.delete}" Command="{Binding StageDeleteCommand}" />
+        </WrapPanel>
+        <TextBlock Text="{Binding DraftText}" TextWrapping="Wrap" />
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+            <ComboBox ItemsSource="{Binding DraftNames}" SelectedItem="{Binding SelectedDraftName}" PlaceholderText="{loc:Loc settings.environment.draft_select}" />
+            <Button Grid.Column="1" Content="{loc:Loc settings.environment.draft_edit}" Command="{Binding EditDraftCommand}" />
+            <Button Grid.Column="2" Content="{loc:Loc settings.environment.draft_remove}" Command="{Binding RemoveDraftCommand}" />
+        </Grid>
+        <CheckBox Content="{loc:Loc settings.environment.high_impact}" IsChecked="{Binding ConfirmHighImpact}" />
+        <TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" /><TextBlock Text="{Binding ProblemCode}" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc settings.environment.preview}" Command="{Binding PreviewCommand}" />
+            <Button Content="{loc:Loc settings.environment.apply}" Command="{Binding ApplyCommand}" />
+            <Button Content="{loc:Loc settings.environment.query}" Command="{Binding QueryCommand}" />
+            <Button Content="{loc:Loc settings.environment.rollback}" Command="{Binding RollbackCommand}" />
+            <Button Content="{loc:Loc common.cancel}" Command="{Binding CloseCommand}" />
+        </StackPanel>
+    </StackPanel>
+</Grid>
+</ScrollViewer>
+</UserControl>
