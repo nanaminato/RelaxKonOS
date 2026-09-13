@@ -125,7 +125,7 @@ try {
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'The release bundle must contain manifest.json.' }
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     $runtime = Get-CurrentRuntime
-    if ($manifest.schemaVersion -ne 1 -or $manifest.runtime -ne $runtime -or -not $manifest.payload.windows) {
+    if ($manifest.schemaVersion -ne 2 -or $manifest.packageKind -ne 'server' -or $manifest.runtime -ne $runtime -or -not $manifest.payload.windows) {
         throw "This release package is not compatible with $runtime."
     }
     $server = Resolve-ContainedPath $BundlePath $manifest.payload.windows.server

@@ -113,7 +113,7 @@ GUARDIAN="$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent"
 HELPER="$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"
 ENGINE="$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh"
 [[ -f "$MANIFEST" && -f "$SERVER" && -f "$GUARDIAN" && -f "$HELPER" && -f "$ENGINE" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
-grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$MANIFEST" || { echo 'Unsupported release manifest.' >&2; exit 65; }
+grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*2' "$MANIFEST" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$MANIFEST" || { echo 'Unsupported server release manifest.' >&2; exit 65; }
 grep -Eq "\"runtime\"[[:space:]]*:[[:space:]]*\"$CURRENT_RUNTIME\"" "$MANIFEST" || { echo "This release package is not compatible with $CURRENT_RUNTIME." >&2; exit 65; }
 command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] || { echo 'RelaxKonOS requires a systemd host.' >&2; exit 69; }
 for tool in sudo visudo openssl; do command -v "$tool" >/dev/null || { echo "Required system tool is missing: $tool" >&2; exit 69; }; done
