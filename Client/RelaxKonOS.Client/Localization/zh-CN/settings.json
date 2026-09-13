@@ -255,7 +255,7 @@
         "settings.environment.set": "暂存设置",
         "settings.environment.delete": "暂存删除",
         "settings.environment.delete_confirm": "要删除环境变量“{0}”吗？此操作无法撤销。",
-        "settings.environment.high_impact": "我已检查 PATH / 运行时变更并确认其影响",
+        "settings.environment.browse": "浏览…",
         "settings.environment.preview": "预览批次",
         "settings.environment.apply": "授权并应用",
         "settings.environment.query": "查询操作",

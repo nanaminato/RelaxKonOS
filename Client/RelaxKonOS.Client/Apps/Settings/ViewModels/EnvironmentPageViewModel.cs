@@ -38,7 +38,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     [ObservableProperty] private string _variableName = "";
     [ObservableProperty] private string _variableValue = "";
     [ObservableProperty] private bool _expandString;
-    [ObservableProperty] private bool _confirmHighImpact;
+    [ObservableProperty] private bool _confirmHighImpact = true;
     [ObservableProperty] private EnvironmentVariable? _selectedVariable;
     [ObservableProperty] private IReadOnlyList<EnvironmentVariable> _variables = Array.Empty<EnvironmentVariable>();
     [ObservableProperty] private IReadOnlyList<EnvironmentVariable> _userVariables = Array.Empty<EnvironmentVariable>();
@@ -187,7 +187,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     {
         if (!IsWindowsEnvironment || variable is null) return;
         if (RequestWindowsDeletionConfirmationAsync is null || !await RequestWindowsDeletionConfirmationAsync(scope, variable)) return;
-        await ApplyWindowsMutationAsync(scope, new(new(variable.Name, EnvironmentMutationKind.Delete), ConfirmHighImpact: false), ct);
+        await ApplyWindowsMutationAsync(scope, new(new(variable.Name, EnvironmentMutationKind.Delete), ConfirmHighImpact: true), ct);
     });
 
     private async Task ApplyWindowsMutationAsync(SettingsScope scope, WindowsEnvironmentMutation edit, CancellationToken ct)
@@ -310,7 +310,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
         SelectedVariable = null; SelectedUserVariable = null; SelectedSystemVariable = null; VariableName = ""; VariableValue = "";
         _userSnapshot = _machineSnapshot = null;
         DraftNames = Array.Empty<string>(); SelectedDraftName = null;
-        DraftText = ""; PreviewText = ""; StatusText = ""; ProblemCode = ""; ConfirmHighImpact = false; Update();
+        DraftText = ""; PreviewText = ""; StatusText = ""; ProblemCode = ""; ConfirmHighImpact = true; Update();
     }
     private void Update()
     {

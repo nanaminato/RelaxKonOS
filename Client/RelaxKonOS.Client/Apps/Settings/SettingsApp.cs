@@ -7,6 +7,9 @@ using RelaxKonOS.Client.Apps.Settings.ViewModels;
 using RelaxKonOS.Client.Apps.Settings.Views;
 using RelaxKonOS.Client.Apps.Settings.Views.Pages;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Apps.Explorer;
+using RelaxKonOS.Client.Apps.Explorer.ViewModels;
+using RelaxKonOS.Client.Apps.Explorer.Views;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.AppPermissions;
@@ -64,6 +67,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
         var wallpapers = context.Services.GetRequiredService<WallpaperService>();
         var browserClient = context.Services.GetRequiredService<IBrowserClient>();
         var imageMirrors = context.Services.GetRequiredService<IImageMirrorClient>();
+        var explorer = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
 
         var viewModel = new SettingsViewModel(settings, settingsClient, session, context.Services.GetRequiredService<WorkspacePreferencesEditor>(), apps, remote, system, registry, developerMode, packages,
             browserClient, imageMirrors, networkInspector, wallpapers: wallpapers);
@@ -171,7 +175,11 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                 var pathEntry = new Avalonia.Controls.TextBox { MaxLength = EnvironmentValidation.MaximumValueLength };
                                 var pathList = new Avalonia.Controls.ListBox { ItemsSource = pathEntries, MinHeight = 230 };
                                 pathList.SelectionChanged += (_, _) => pathEntry.Text = pathList.SelectedItem as string ?? "";
-                                var pathButtons = new Avalonia.Controls.StackPanel { Spacing = 7 };
+                                var pathButtons = new Avalonia.Controls.StackPanel
+                                {
+                                    Spacing = 7,
+                                    Margin = new Avalonia.Thickness(0, 0, 0, 16),
+                                };
                                 void AddPathButton(string key, Action action)
                                 {
                                     var button = new Avalonia.Controls.Button { Content = LocalizedText.Get(key), MinWidth = 82 };
@@ -191,9 +199,23 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                     var index = pathList.SelectedIndex; if (index < 0 || index >= pathEntries.Count - 1) return;
                                     (pathEntries[index + 1], pathEntries[index]) = (pathEntries[index], pathEntries[index + 1]); pathList.SelectedIndex = index + 1;
                                 });
-                                var highImpact = new Avalonia.Controls.CheckBox
+                                var browse = new Avalonia.Controls.Button { Content = LocalizedText.Get("settings.environment.browse") };
+                                browse.Click += async (_, _) =>
                                 {
-                                    Content = LocalizedText.Get("settings.environment.high_impact"),
+                                    if (explorer is null) return;
+                                    var selected = await dialog.ShowDialogAsync<string?>(LocalizedText.Get("settings.environment.browse"), pickerDialog =>
+                                    {
+                                        var picker = new ExplorerViewModel(explorer, new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder),
+                                            paths => pickerDialog.Close(paths[0]))
+                                        {
+                                            CancelAction = pickerDialog.Cancel,
+                                        };
+                                        _ = picker.LoadRootAsync();
+                                        return new ExplorerMainView { DataContext = picker };
+                                    });
+                                    if (string.IsNullOrWhiteSpace(selected)) return;
+                                    if (isPath) pathEntry.Text = selected;
+                                    else value.Text = selected;
                                 };
                                 var cancel = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.cancel"), MinWidth = 88 };
                                 cancel.Click += (_, _) => dialog.Cancel();
@@ -208,7 +230,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                     mutation = new WindowsEnvironmentMutation(
                                         new EnvironmentMutation(variableName, EnvironmentMutationKind.Set, variableValue,
                                             existing?.ValueKind ?? EnvironmentValueKind.String),
-                                        highImpact.IsChecked == true);
+                                        ConfirmHighImpact: true);
                                     dialog.Close(true);
                                 };
                                 var content = new Avalonia.Controls.StackPanel
@@ -228,7 +250,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                     content.Children.Add(pathEntry);
                                 }
                                 else content.Children.Add(value);
-                                content.Children.Add(highImpact);
+                                content.Children.Add(browse);
                                 var footer = new Avalonia.Controls.StackPanel
                                 {
                                     Orientation = Avalonia.Layout.Orientation.Horizontal,
