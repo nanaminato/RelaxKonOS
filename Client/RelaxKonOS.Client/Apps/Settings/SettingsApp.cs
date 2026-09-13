@@ -21,6 +21,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Settings;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
@@ -142,6 +143,106 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                             var target = await hostEnvironment.ResolveTargetAsync(connection, scope);
                             return await AuthorizeHostSettingsAsync(connection, target.ResourceId + " · " + capability,
                                 (password, administrator) => hostEnvironment.AuthorizeAsync(connection, scope, capability, password, administrator));
+                        },
+                        RequestWindowsMutationAsync = async (scope, existing) =>
+                        {
+                            WindowsEnvironmentMutation? mutation = null;
+                            var title = LocalizedText.Get(scope == SettingsScope.HostMachine
+                                ? "settings.environment.system_variables" : "settings.environment.user_variables");
+                            await context.ShowDialogAsync<bool>(window, title, dialog =>
+                            {
+                                var name = new Avalonia.Controls.TextBox
+                                {
+                                    Text = existing?.Name ?? "",
+                                    MaxLength = EnvironmentValidation.MaximumNameLength,
+                                    IsReadOnly = existing is not null,
+                                };
+                                var isPath = existing?.Name.Equals("PATH", StringComparison.OrdinalIgnoreCase) == true;
+                                var value = new Avalonia.Controls.TextBox
+                                {
+                                    Text = existing?.RawValue ?? "",
+                                    AcceptsReturn = false,
+                                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                                    MaxLength = EnvironmentValidation.MaximumValueLength,
+                                    MinHeight = 32,
+                                };
+                                var pathEntries = new System.Collections.ObjectModel.ObservableCollection<string>(isPath
+                                    ? (existing?.RawValue ?? "").Split(';', StringSplitOptions.None) : Array.Empty<string>());
+                                var pathEntry = new Avalonia.Controls.TextBox { MaxLength = EnvironmentValidation.MaximumValueLength };
+                                var pathList = new Avalonia.Controls.ListBox { ItemsSource = pathEntries, MinHeight = 230 };
+                                pathList.SelectionChanged += (_, _) => pathEntry.Text = pathList.SelectedItem as string ?? "";
+                                var pathButtons = new Avalonia.Controls.StackPanel { Spacing = 7 };
+                                void AddPathButton(string key, Action action)
+                                {
+                                    var button = new Avalonia.Controls.Button { Content = LocalizedText.Get(key), MinWidth = 82 };
+                                    button.Click += (_, _) => action();
+                                    pathButtons.Children.Add(button);
+                                }
+                                AddPathButton("common.new", () => { pathEntries.Add(pathEntry.Text ?? ""); pathList.SelectedIndex = pathEntries.Count - 1; });
+                                AddPathButton("settings.environment.edit", () => { if (pathList.SelectedIndex >= 0) pathEntries[pathList.SelectedIndex] = pathEntry.Text ?? ""; });
+                                AddPathButton("common.delete", () => { if (pathList.SelectedIndex >= 0) pathEntries.RemoveAt(pathList.SelectedIndex); });
+                                AddPathButton("settings.environment.path_up", () =>
+                                {
+                                    var index = pathList.SelectedIndex; if (index <= 0) return;
+                                    (pathEntries[index - 1], pathEntries[index]) = (pathEntries[index], pathEntries[index - 1]); pathList.SelectedIndex = index - 1;
+                                });
+                                AddPathButton("settings.environment.path_down", () =>
+                                {
+                                    var index = pathList.SelectedIndex; if (index < 0 || index >= pathEntries.Count - 1) return;
+                                    (pathEntries[index + 1], pathEntries[index]) = (pathEntries[index], pathEntries[index + 1]); pathList.SelectedIndex = index + 1;
+                                });
+                                var expand = new Avalonia.Controls.CheckBox
+                                {
+                                    Content = LocalizedText.Get("settings.environment.expand"),
+                                    IsChecked = existing?.ValueKind == EnvironmentValueKind.ExpandString,
+                                };
+                                var highImpact = new Avalonia.Controls.CheckBox
+                                {
+                                    Content = LocalizedText.Get("settings.environment.high_impact"),
+                                };
+                                var cancel = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.cancel"), MinWidth = 88 };
+                                cancel.Click += (_, _) => dialog.Cancel();
+                                var save = new Avalonia.Controls.Button { Content = LocalizedText.Get("common.save"), MinWidth = 88 };
+                                save.Click += (_, _) =>
+                                {
+                                    var variableName = name.Text?.Trim() ?? "";
+                                    var variableValue = isPath ? string.Join(';', pathEntries) : value.Text ?? "";
+                                    if (!EnvironmentValidation.IsValidName(variableName, windows: true)
+                                        || variableValue.Length > EnvironmentValidation.MaximumValueLength)
+                                        return;
+                                    mutation = new WindowsEnvironmentMutation(
+                                        new EnvironmentMutation(variableName, EnvironmentMutationKind.Set, variableValue,
+                                            expand.IsChecked == true ? EnvironmentValueKind.ExpandString : EnvironmentValueKind.String),
+                                        highImpact.IsChecked == true);
+                                    dialog.Close(true);
+                                };
+                                var content = new Avalonia.Controls.StackPanel
+                                {
+                                    Margin = new Avalonia.Thickness(20), Spacing = 10,
+                                };
+                                content.Children.Add(new Avalonia.Controls.TextBlock { Text = LocalizedText.Get("settings.environment.name") });
+                                content.Children.Add(name);
+                                content.Children.Add(new Avalonia.Controls.TextBlock { Text = LocalizedText.Get(isPath ? "settings.environment.path_entries" : "settings.environment.value") });
+                                if (isPath)
+                                {
+                                    var pathEditor = new Avalonia.Controls.Grid { ColumnDefinitions = new Avalonia.Controls.ColumnDefinitions("*,Auto"), ColumnSpacing = 10 };
+                                    pathEditor.Children.Add(pathList);
+                                    Avalonia.Controls.Grid.SetColumn(pathButtons, 1);
+                                    pathEditor.Children.Add(pathButtons);
+                                    content.Children.Add(pathEditor);
+                                    content.Children.Add(pathEntry);
+                                }
+                                else content.Children.Add(value);
+                                content.Children.Add(expand); content.Children.Add(highImpact);
+                                content.Children.Add(new Avalonia.Controls.StackPanel
+                                {
+                                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                                    Spacing = 8, Children = { cancel, save },
+                                });
+                                return content;
+                            }, new Size(560, existing?.Name.Equals("PATH", StringComparison.OrdinalIgnoreCase) == true ? 480 : 330));
+                            return mutation;
                         },
                     };
                     return new EnvironmentPageView { DataContext = editor };

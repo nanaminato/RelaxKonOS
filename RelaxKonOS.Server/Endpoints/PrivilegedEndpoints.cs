@@ -21,7 +21,8 @@ public static class PrivilegedEndpoints
                 return Problem(400, "file-elevation-capability-invalid", "文件操作必须使用文件授权入口。");
             if (string.IsNullOrWhiteSpace(request.Target) || request.Target.Length > 256 || request.IncludeDescendants)
                 return Problem(400, "elevation-target-invalid", "目标资源无效。");
-            if (request.Capability is HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentChange or HostElevationCapability.HostEnvironmentReveal)
+            var isEnvironmentCapability = request.Capability is HostElevationCapability.HostEnvironmentRead or HostElevationCapability.HostEnvironmentChange or HostElevationCapability.HostEnvironmentReveal;
+            if (isEnvironmentCapability)
             {
                 try
                 {
@@ -31,7 +32,18 @@ public static class PrivilegedEndpoints
                 }
                 catch (RelaxKonOS.Server.Settings.SettingsException error) { return Problem(error.StatusCode, error.Code, "环境身份映射失败。"); }
             }
-            if (elevations.IsGranted(http.User, request.Capability, request.Target))
+            // An older single-capability environment grant is deliberately upgraded on the
+            // next request; only a complete three-capability grant for both stores can skip
+            // verification.
+            var environmentBundleAlreadyGranted = isEnvironmentCapability
+                && new[] { RelaxKonOS.Protocol.Settings.SettingsScope.HostUser, RelaxKonOS.Protocol.Settings.SettingsScope.HostMachine }
+                    .All(scope => new[]
+                    {
+                        HostElevationCapability.HostEnvironmentRead,
+                        HostElevationCapability.HostEnvironmentReveal,
+                        HostElevationCapability.HostEnvironmentChange,
+                    }.All(capability => elevations.IsGranted(http.User, capability, environment.ResolveTarget(http.User, scope).ResourceId)));
+            if (environmentBundleAlreadyGranted || !isEnvironmentCapability && elevations.IsGranted(http.User, request.Capability, request.Target))
                 return Results.Ok(new HostElevationResult(true));
             var username = http.User.FindFirstValue(JwtRegisteredClaimNames.Name);
             if (string.IsNullOrWhiteSpace(username)) return Results.Unauthorized();
@@ -39,6 +51,30 @@ public static class PrivilegedEndpoints
             if (!authentication.Succeeded) return Problem(403, authentication.ProblemCode, "宿主管理员认证未通过，未执行操作。");
             try
             {
+                // Environment variables are one Windows control-panel action.  A successful
+                // administrator verification grants the read, reveal, and change capabilities
+                // for both stores owned by this authenticated user, rather than prompting once
+                // to open the dialog and again for every edit.  All grants remain token-bound
+                // and expire together after the normal short session lifetime.
+                if (isEnvironmentCapability)
+                {
+                    var targets = new[]
+                    {
+                        environment.ResolveTarget(http.User, RelaxKonOS.Protocol.Settings.SettingsScope.HostUser),
+                        environment.ResolveTarget(http.User, RelaxKonOS.Protocol.Settings.SettingsScope.HostMachine),
+                    };
+                    DateTimeOffset environmentExpires = default;
+                    foreach (var target in targets)
+                    foreach (var capability in new[]
+                    {
+                        HostElevationCapability.HostEnvironmentRead,
+                        HostElevationCapability.HostEnvironmentReveal,
+                        HostElevationCapability.HostEnvironmentChange,
+                    })
+                        environmentExpires = elevations.Grant(http.User, capability, target.ResourceId, includeDescendants: false,
+                            authentication.AuthenticationMethod, http.TraceIdentifier);
+                    return Results.Ok(new HostElevationResult(true, environmentExpires));
+                }
                 var expires = elevations.Grant(http.User, request.Capability, request.Target, request.IncludeDescendants,
                     authentication.AuthenticationMethod, http.TraceIdentifier);
                 return Results.Ok(new HostElevationResult(true, expires));

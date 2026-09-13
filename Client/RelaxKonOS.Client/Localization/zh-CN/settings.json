@@ -238,6 +238,7 @@
         "settings.helper.not_installed": "特权助手未安装",
         "settings.time.platform_unsupported": "此平台不支持时区修改",
         "settings.environment.title": "环境变量",
+        "settings.environment.edit": "编辑",
         "settings.environment.user_variables": "用户变量",
         "settings.environment.system_variables": "系统变量",
         "settings.environment.effect": "保存的更改用于新进程；已运行进程保持原环境。",

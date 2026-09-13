@@ -238,6 +238,7 @@
         "settings.helper.not_installed": "Privileged helper is not installed",
         "settings.time.platform_unsupported": "Time zone changes are not supported on this platform",
         "settings.environment.title": "Environment variables",
+        "settings.environment.edit": "Edit",
         "settings.environment.user_variables": "User variables",
         "settings.environment.system_variables": "System variables",
         "settings.environment.effect": "Saved changes affect new processes. Running processes retain their environment.",

@@ -238,6 +238,7 @@
         "settings.helper.not_installed": "特権ヘルパーが未インストールです",
         "settings.time.platform_unsupported": "このプラットフォームではタイムゾーン変更をサポートしていません",
         "settings.environment.title": "環境変数",
+        "settings.environment.edit": "編集",
         "settings.environment.user_variables": "ユーザー環境変数",
         "settings.environment.system_variables": "システム環境変数",
         "settings.environment.effect": "保存した変更は新しいプロセスに適用されます。実行中の環境は変わりません。",
