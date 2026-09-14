@@ -3,7 +3,7 @@
         xmlns:login="clr-namespace:RelaxKonOS.Client.Views.Login"
         x:Class="RelaxKonOS.Client.Views.Login.LoginWindow"
         Icon="/Assets/RelaxKonOS-client-icon.ico"
-        Title="Remote Desktop Connection"
+        Title="RelaxKonOS"
         Width="680" Height="700"
         WindowStartupLocation="CenterScreen"
         CanResize="True"

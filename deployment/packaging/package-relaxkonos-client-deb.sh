@@ -25,7 +25,7 @@ mkdir -p "$PUBLISH_DIRECTORY" "$PACKAGE_DIRECTORY/DEBIAN" "$PACKAGE_DIRECTORY/us
 
 dotnet publish "$PROJECT_ROOT/Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" \
   --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained true --output "$PUBLISH_DIRECTORY"
-CLIENT_EXECUTABLE="$PUBLISH_DIRECTORY/RelaxKonOS.Client.Desktop"
+CLIENT_EXECUTABLE="$PUBLISH_DIRECTORY/RelaxKonOS"
 [[ -f "$CLIENT_EXECUTABLE" ]] || { echo 'Client publish output is incomplete.' >&2; exit 1; }
 chmod -R go-w "$PUBLISH_DIRECTORY"
 chmod 0755 "$CLIENT_EXECUTABLE"
@@ -44,13 +44,13 @@ Description: RelaxKonOS desktop client
 EOF
 cat >"$PACKAGE_DIRECTORY/usr/bin/relaxkonos-client" <<'EOF'
 #!/usr/bin/env sh
-exec /opt/relaxkonos/client/RelaxKonOS.Client.Desktop "$@"
+exec /opt/relaxkonos/client/RelaxKonOS "$@"
 EOF
 chmod 0755 "$PACKAGE_DIRECTORY/usr/bin/relaxkonos-client"
 cat >"$PACKAGE_DIRECTORY/usr/share/applications/relaxkonos-client.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=RelaxKonOS Client
+Name=RelaxKonOS
 Comment=Connect to a RelaxKonOS Server
 Exec=/usr/bin/relaxkonos-client
 Icon=relaxkonos-client

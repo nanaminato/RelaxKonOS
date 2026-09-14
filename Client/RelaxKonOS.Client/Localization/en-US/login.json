@@ -1,7 +1,7 @@
 {
     "Culture": "en-US",
     "Strings": {
-        "login.title": "Remote Desktop Connection",
+        "login.title": "RelaxKonOS",
         "login.display_language": "Display language:",
         "login.connection_instructions": "Enter the name of the remote computer you want to connect to.",
         "login.credentials_instructions": "The credentials below will be used when connecting.",

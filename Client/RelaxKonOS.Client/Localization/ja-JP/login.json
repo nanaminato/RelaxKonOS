@@ -1,7 +1,7 @@
 {
     "Culture": "ja-JP",
     "Strings": {
-        "login.title": "リモート デスクトップ接続",
+        "login.title": "RelaxKonOS",
         "login.display_language": "表示言語:",
         "login.connection_instructions": "接続するリモート コンピューターの名前を入力してください。",
         "login.credentials_instructions": "接続時に以下の資格情報が使用されます。",

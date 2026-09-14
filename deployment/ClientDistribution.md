@@ -1,4 +1,4 @@
-# RelaxKonOS Client Distribution
+# RelaxKonOS Distribution
 
 The client has three supported distribution forms. The portable ZIP remains available for users who do not want a system installation. The `.deb` package is the supported install-and-upgrade channel for Debian and Ubuntu. Windows uses a signed MSIX package.
 
@@ -8,8 +8,8 @@ Download the client ZIP for the host architecture, verify its published SHA-256 
 
 ```bash
 unzip RelaxKonOS-*-linux-x64-client.zip -d RelaxKonOS-client
-chmod +x RelaxKonOS-client/payload/linux/client/RelaxKonOS.Client.Desktop
-./RelaxKonOS-client/payload/linux/client/RelaxKonOS.Client.Desktop
+chmod +x RelaxKonOS-client/payload/linux/client/RelaxKonOS
+./RelaxKonOS-client/payload/linux/client/RelaxKonOS
 ```
 
 ## Debian and Ubuntu

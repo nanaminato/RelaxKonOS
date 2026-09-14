@@ -4,7 +4,7 @@
         "shell.connection.not_connected": "未接続",
         "shell.connection.unknown_user": "不明なユーザー",
         "shell.connection.default_workspace": "既定のワークスペース",
-        "shell.window_title": "RelaxKonOS リモートデスクトップ",
+        "shell.window_title": "RelaxKonOS",
         "shell.desktop_loading.title": "デスクトップを準備しています",
         "shell.desktop_loading.description": "アプリ、デスクトップ項目、ウィンドウの配置を復元しています…",
         "shell.connection.close": "接続を閉じる",

@@ -9,7 +9,7 @@ param(
     [string] $OutputDirectory = 'artifacts',
     [string] $IdentityName = 'RelaxKon.RelaxKonOS.Client',
     [string] $Publisher = 'CN=RelaxKon',
-    [string] $DisplayName = 'RelaxKonOS Client',
+    [string] $DisplayName = 'RelaxKonOS',
     [string] $CertificatePath,
     [switch] $SkipSigning
 )
@@ -50,7 +50,7 @@ try {
     New-Item -ItemType Directory -Path $output, $publishPath, $stagingPath, (Join-Path $stagingPath 'Assets') -Force | Out-Null
     & dotnet publish (Join-Path $projectRoot 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj') --configuration $Configuration --runtime $Runtime --self-contained true --output $publishPath
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
-    $executable = Join-Path $publishPath 'RelaxKonOS.Client.Desktop.exe'
+    $executable = Join-Path $publishPath 'RelaxKonOS.exe'
     if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Client publish output is incomplete.' }
     Get-ChildItem -LiteralPath $publishPath -Force | Copy-Item -Destination $stagingPath -Recurse -Force
     $icon = Join-Path $projectRoot 'Client\RelaxKonOS.Client\Assets\RelaxKonOS-client-icon.png'
@@ -64,7 +64,7 @@ try {
   <Properties><DisplayName>$DisplayName</DisplayName><PublisherDisplayName>RelaxKon</PublisherDisplayName><Logo>Assets\StoreLogo.png</Logo></Properties>
   <Resources><Resource Language="en-us" /></Resources>
   <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
-  <Applications><Application Id="App" Executable="RelaxKonOS.Client.Desktop.exe" EntryPoint="Windows.FullTrustApplication"><uap:VisualElements DisplayName="$DisplayName" Description="Connect to a RelaxKonOS Server" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /></Application></Applications>
+  <Applications><Application Id="App" Executable="RelaxKonOS.exe" EntryPoint="Windows.FullTrustApplication"><uap:VisualElements DisplayName="$DisplayName" Description="Connect to a RelaxKonOS Server" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /></Application></Applications>
   <Capabilities><rescap:Capability Name="runFullTrust" /></Capabilities>
 </Package>
 "@

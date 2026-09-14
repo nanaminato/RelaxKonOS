@@ -1,7 +1,7 @@
 {
     "Culture": "zh-CN",
     "Strings": {
-        "login.title": "远程桌面连接",
+        "login.title": "RelaxKonOS",
         "login.display_language": "显示语言：",
         "login.connection_instructions": "输入要连接的远程计算机名称。",
         "login.credentials_instructions": "连接时将使用以下凭据。",

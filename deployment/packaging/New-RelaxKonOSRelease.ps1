@@ -65,8 +65,8 @@ function Complete-Package($Package, [hashtable] $Payload) {
 
 $clientPackage = New-PackageDirectory 'client'
 $clientDestination = Join-Path $clientPackage.Directory "payload\$platform\client"
-Publish-Component 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj' $clientDestination "RelaxKonOS.Client.Desktop$extension"
-Complete-Package $clientPackage @{ client = "payload/$platform/client/RelaxKonOS.Client.Desktop$extension" }
+Publish-Component 'Client\RelaxKonOS.Client.Desktop\RelaxKonOS.Client.Desktop.csproj' $clientDestination "RelaxKonOS$extension"
+Complete-Package $clientPackage @{ client = "payload/$platform/client/RelaxKonOS$extension" }
 
 $serverPackage = New-PackageDirectory 'server'
 $serverPayload = @{}

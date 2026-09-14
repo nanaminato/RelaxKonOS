@@ -7,7 +7,7 @@
     <TrayIcon.Icons>
         <TrayIcons>
             <TrayIcon Icon="/Assets/RelaxKonOS-client-icon.ico"
-                      ToolTipText="RelaxKonOS Client"
+                      ToolTipText="RelaxKonOS"
                       IsVisible="True" />
         </TrayIcons>
     </TrayIcon.Icons>

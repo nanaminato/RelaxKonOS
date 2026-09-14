@@ -91,7 +91,7 @@ public partial class LoginViewModel : ObservableObject
 
     public string OptionsToggleText => T(ShowOptions ? "login.options.hide" : "login.options.show", ShowOptions ? "Hide options" : "Show options");
     public string PasswordVisibilityText => T(IsPasswordVisible ? "login.password.hide" : "login.password.show", IsPasswordVisible ? "Hide" : "Show");
-    public string RemoteDesktopConnectionText => T("login.title", "Remote Desktop Connection");
+    public string RemoteDesktopConnectionText => T("login.title", "RelaxKonOS");
     public string DisplayLanguageText => T("login.display_language", "Display language:");
     public string ConnectionInstructions => T("login.connection_instructions", "Enter the name of the remote computer you want to connect to.");
     public string CredentialsInstructions => T("login.credentials_instructions", "The credentials below will be used when connecting.");

@@ -43,8 +43,8 @@ complete_package() {
 }
 
 new_package client
-publish_component 'Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj' client RelaxKonOS.Client.Desktop
-complete_package client '"client":"payload/linux/client/RelaxKonOS.Client.Desktop"'
+publish_component 'Client/RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj' client RelaxKonOS
+complete_package client '"client":"payload/linux/client/RelaxKonOS"'
 
 new_package server
 publish_component 'RelaxKonOS.Server/RelaxKonOS.Server.csproj' server RelaxKonOS.Server
