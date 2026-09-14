@@ -3,6 +3,15 @@
              x:Class="RelaxKonOS.Client.App"
              RequestedThemeVariant="Default">
 
+    <!-- Keep the Windows notification-area icon in sync with the window and executable icon. -->
+    <TrayIcon.Icons>
+        <TrayIcons>
+            <TrayIcon Icon="/Assets/RelaxKonOS-client-icon.ico"
+                      ToolTipText="RelaxKonOS Client"
+                      IsVisible="True" />
+        </TrayIcons>
+    </TrayIcon.Icons>
+
     <Application.Styles>
         <FluentTheme />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
