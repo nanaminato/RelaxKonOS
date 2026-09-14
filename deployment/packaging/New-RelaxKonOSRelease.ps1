@@ -36,6 +36,20 @@ function Publish-Component([string] $Project, [string] $Destination, [string] $E
     if (-not (Test-Path -LiteralPath (Join-Path $Destination $Executable) -PathType Leaf)) { throw "Publish output did not contain $Executable." }
 }
 
+function Convert-LinuxShellScriptsToLf([string] $Root) {
+    # Compress-Archive preserves the source bytes. On a Windows checkout, Git may
+    # materialize shell scripts with CRLF, which makes Bash parse `pipefail\r` and
+    # prevents a Linux release bundle from installing. Normalize only the staged
+    # Linux payload; do not rewrite working-tree source files or Windows bundles.
+    Get-ChildItem -LiteralPath $Root -Recurse -File -Filter '*.sh' | ForEach-Object {
+        $original = [IO.File]::ReadAllText($_.FullName)
+        $normalized = $original.Replace("`r`n", "`n").Replace("`r", "`n")
+        if ($normalized -ne $original) {
+            [IO.File]::WriteAllText($_.FullName, $normalized, [Text.UTF8Encoding]::new($false))
+        }
+    }
+}
+
 function Complete-Package($Package, [hashtable] $Payload) {
     $manifest = [ordered]@{
         schemaVersion = 1
@@ -81,4 +95,5 @@ foreach ($target in @(
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'deployment\bootstrap') -Destination (Join-Path $serverPackage.Directory 'deployment\bootstrap') -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot ("deployment\$platform")) -Destination (Join-Path $serverPackage.Directory ("deployment\$platform")) -Recurse -Force
+if ($platform -eq 'linux') { Convert-LinuxShellScriptsToLf $serverPackage.Directory }
 Complete-Package $serverPackage $serverPayload
