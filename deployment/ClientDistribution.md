@@ -1,6 +1,6 @@
 # RelaxKonOS Client Distribution
 
-The client has three supported distribution forms. The portable ZIP remains available for users who do not want a system installation. The `.deb` package is the supported install-and-upgrade channel for Debian and Ubuntu. Windows uses a signed MSIX package.
+The client has four supported distribution forms. The portable ZIP remains available for users who do not want a system installation. The `.deb` package is the supported install-and-upgrade channel for Debian and Ubuntu. Windows supports either a signed MSIX package or an Inno Setup `.exe` installer.
 
 ## Portable ZIP
 
@@ -54,3 +54,13 @@ $env:RELAXKONOS_MSIX_CERT_PASSWORD = '<certificate password>'
 ```
 
 MSIX upgrades in place only when `IdentityName` and `Publisher` stay unchanged and the package version increases. Do not commit a PFX file or its password; keep both in the release signing system.
+
+## Windows Inno Setup installer
+
+Install [Inno Setup 6](https://jrsoftware.org/isinfo.php) on the Windows release machine, then build an unsigned installer without changing the MSIX workflow:
+
+```powershell
+./deployment/packaging/New-RelaxKonOSClientInnoSetup.ps1 -Version 0.1.0 -Runtime win-x64 -OutputDirectory artifacts
+```
+
+The script first produces a self-contained client publish, then creates `RelaxKonOS.Client_0.1.0.0_x64-setup.exe` and its SHA-256 file. The installer uses a stable application ID so later versions recognize and upgrade the existing installation. A relative `OutputDirectory` is resolved from the `RelaxKonOS` repository root. The installer can be distributed unsigned for private testing, but Windows will warn about an unknown publisher. When a code-signing PFX is available, configure Inno Setup's signing support instead of changing package format.
