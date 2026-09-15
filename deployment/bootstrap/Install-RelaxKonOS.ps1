@@ -12,6 +12,11 @@ param(
     [string] $NetworkProfile = 'local',
     [ValidateRange(1, 65535)]
     [int] $ServerPort = 5000,
+    [ValidateSet('none', 'custom', 'self-signed')]
+    [string] $CertificateMode = 'none',
+    [string] $CertificatePath,
+    [string] $CertificatePassword,
+    [string] $SelfSignedIdentities,
     [ValidateSet('restricted', 'full', 'whitelist')]
     [string] $FileAccess = 'restricted',
     [string] $FileRootsFile,
@@ -59,17 +64,57 @@ function Get-CurrentRuntime {
     if ($architecture -eq [Runtime.InteropServices.Architecture]::X64) { return 'win-x64' }
     throw "Unsupported Windows architecture: $architecture"
 }
+function Test-UsablePfxCertificate([string] $Path, [string] $Password) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    try {
+        $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            [IO.Path]::GetFullPath($Path), $Password,
+            [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+        return $certificate.HasPrivateKey -and $certificate.NotAfter.ToUniversalTime() -gt [DateTime]::UtcNow
+    } catch { return $false }
+}
+function Select-CertificateMode {
+    $prompts = switch ($Language) {
+        'zh-CN' { @{ Mode = '证书模式：1) 不使用证书（默认）  2) 使用自己的 PFX 证书  3) 生成自签名证书'; Path = 'PFX 证书文件路径'; Password = 'PFX 证书密码（如无密码直接回车）'; Invalid = '证书无效、已过期、没有私钥或密码不正确，请重新选择证书文件。'; Names = '自签名证书名称（用逗号分隔，默认 localhost）' } }
+        'ja-JP' { @{ Mode = '証明書: 1) 使用しない（既定） 2) 自分の PFX 証明書 3) 自己署名証明書を生成'; Path = 'PFX 証明書ファイルのパス'; Password = 'PFX パスワード（パスワードなしの場合は Enter）'; Invalid = '証明書が無効、期限切れ、秘密鍵なし、またはパスワードが違います。証明書を選び直してください。'; Names = '自己署名証明書の DNS 名（カンマ区切り、既定: localhost）' } }
+        default { @{ Mode = 'TLS certificate: 1) no certificate (default)  2) use your PFX certificate  3) generate a self-signed certificate'; Path = 'PFX certificate file path'; Password = 'PFX password (press Enter when there is no password)'; Invalid = 'The certificate is invalid, expired, missing its private key, or the password is incorrect. Choose the certificate again.'; Names = 'Self-signed certificate DNS names, comma-separated (default: localhost)' } }
+    }
+    while ($true) {
+        $choice = Read-Host $prompts.Mode
+        if ([string]::IsNullOrWhiteSpace($choice)) { $choice = '1' }
+        if ($choice -eq '1') { $script:CertificateMode = 'none'; return }
+        if ($choice -eq '3') {
+            $script:CertificateMode = 'self-signed'
+            $script:SelfSignedIdentities = Read-Host $prompts.Names
+            if ([string]::IsNullOrWhiteSpace($script:SelfSignedIdentities)) { $script:SelfSignedIdentities = 'localhost' }
+            return
+        }
+        if ($choice -eq '2') {
+            $script:CertificateMode = 'custom'
+            $script:CertificatePath = Read-Required $prompts.Path
+            $securePassword = Read-Host $prompts.Password -AsSecureString
+            $script:CertificatePassword = [Net.NetworkCredential]::new('', $securePassword).Password
+            if (Test-UsablePfxCertificate $script:CertificatePath $script:CertificatePassword) { return }
+            Write-Warning $prompts.Invalid
+            continue
+        }
+        Write-Warning 'Invalid certificate selection.'
+    }
+}
 
 if (-not (Test-Administrator)) {
     Write-Host $M.elevation
     $elevationArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-Argument $PSCommandPath), '-Language', $Language,
         '-InstallRoot', (Quote-Argument $InstallRoot), '-DataRoot', (Quote-Argument $DataRoot), '-NetworkProfile', $NetworkProfile,
-        '-ServerPort', $ServerPort, '-FileAccess', $FileAccess)
+        '-ServerPort', $ServerPort, '-CertificateMode', $CertificateMode, '-FileAccess', $FileAccess)
     if ($BundlePath) { $elevationArguments += @('-BundlePath', (Quote-Argument $BundlePath)) }
     if ($ReleaseUri) { $elevationArguments += @('-ReleaseUri', (Quote-Argument $ReleaseUri)) }
     if ($ReleaseSha256) { $elevationArguments += @('-ReleaseSha256', $ReleaseSha256) }
     if ($ReleaseCatalogBaseUri) { $elevationArguments += @('-ReleaseCatalogBaseUri', (Quote-Argument $ReleaseCatalogBaseUri)) }
     if ($FileRootsFile) { $elevationArguments += @('-FileRootsFile', (Quote-Argument $FileRootsFile)) }
+    if ($CertificatePath) { $elevationArguments += @('-CertificatePath', (Quote-Argument $CertificatePath)) }
+    if ($CertificatePassword) { $elevationArguments += @('-CertificatePassword', (Quote-Argument $CertificatePassword)) }
+    if ($SelfSignedIdentities) { $elevationArguments += @('-SelfSignedIdentities', (Quote-Argument $SelfSignedIdentities)) }
     if ($NonInteractive) { $elevationArguments += '-NonInteractive' }
     $host = Join-Path $PSHOME 'powershell.exe'
     if (-not (Test-Path -LiteralPath $host)) { $host = (Get-Command pwsh -ErrorAction Stop).Source }
@@ -78,6 +123,7 @@ if (-not (Test-Administrator)) {
 }
 
 Write-Host "`n$($M.title)" -ForegroundColor Cyan
+if (-not $NonInteractive) { Select-CertificateMode }
 if (-not $BundlePath -and -not $ReleaseUri -and -not $NonInteractive) {
     $source = Read-Host $M.source
     if ([string]::IsNullOrWhiteSpace($source)) { $source = '1' }
@@ -152,9 +198,14 @@ try {
     }
     if ($FileAccess -eq 'whitelist' -and -not $FileRootsFile) { throw 'FileRootsFile is required for whitelist access.' }
     if ($FileAccess -eq 'full') { Write-Warning 'Full file access permits privileged operations across every local volume.' }
+    if ($CertificateMode -eq 'custom' -and -not (Test-UsablePfxCertificate $CertificatePath $CertificatePassword)) {
+        throw 'The supplied PFX certificate is invalid, expired, missing a private key, or its password is incorrect.'
+    }
+    if ($CertificateMode -eq 'self-signed' -and [string]::IsNullOrWhiteSpace($SelfSignedIdentities)) { $SelfSignedIdentities = 'localhost' }
 
     $listenHost = if ($NetworkProfile -eq 'lan') { '0.0.0.0' } else { '127.0.0.1' }
-    $listenUrl = "http://${listenHost}:$ServerPort"
+    $listenScheme = if ($CertificateMode -eq 'none') { 'http' } else { 'https' }
+    $listenUrl = "${listenScheme}://${listenHost}:$ServerPort"
     if ($NetworkProfile -eq 'lan') { Write-Warning $M.lan }
     if ($NetworkProfile -eq 'reverse-proxy') { Write-Warning $M.proxy }
     $existingPort = Get-NetTCPConnection -LocalPort $ServerPort -ErrorAction SilentlyContinue
@@ -183,14 +234,16 @@ try {
     $helper = Join-Path $InstallRoot 'privileged-helper\RelaxKonOS.PrivilegedHelper.exe'
 
     & $engine -InstallRoot $InstallRoot -ServerExecutable $server -GuardianExecutable $guardian -PrivilegedHelperExecutable $helper `
-        -ServerPort $ServerPort -ServerListenUrl $listenUrl -DataRoot $DataRoot -FileAccess $FileAccess -FileRootsFile $FileRootsFile
+        -ServerPort $ServerPort -ServerListenUrl $listenUrl -DataRoot $DataRoot -CertificateMode $CertificateMode -CertificatePath $CertificatePath `
+        -CertificatePassword $CertificatePassword -SelfSignedIdentities $SelfSignedIdentities -FileAccess $FileAccess -FileRootsFile $FileRootsFile
     if ($LASTEXITCODE -ne 0) { throw "Service installer failed with exit code $LASTEXITCODE." }
 
-    $state = [ordered]@{ schemaVersion = 1; version = $manifest.version; installedAtUtc = [DateTime]::UtcNow.ToString('O'); installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $listenUrl; fileAccess = $FileAccess }
+    $state = [ordered]@{ schemaVersion = 1; version = $manifest.version; installedAtUtc = [DateTime]::UtcNow.ToString('O'); installRoot = $InstallRoot; dataRoot = $DataRoot; networkProfile = $NetworkProfile; listenUrl = $listenUrl; certificateMode = $CertificateMode; fileAccess = $FileAccess }
     New-Item -ItemType Directory -Path $DataRoot -Force | Out-Null
     [IO.File]::WriteAllText((Join-Path $DataRoot 'install-state.json'), ($state | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
     Start-Sleep -Seconds 2
-    $health = Invoke-WebRequest -Uri "http://127.0.0.1:$ServerPort/healthz" -TimeoutSec 15
+    if ($listenScheme -eq 'https') { [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true } }
+    $health = Invoke-WebRequest -Uri "${listenScheme}://127.0.0.1:$ServerPort/healthz" -TimeoutSec 15
     if ($health.StatusCode -ne 200) { throw 'The server did not pass its health check.' }
     Write-Host $M.health -ForegroundColor Green
     Write-Host "$($M.done) $listenUrl" -ForegroundColor Green

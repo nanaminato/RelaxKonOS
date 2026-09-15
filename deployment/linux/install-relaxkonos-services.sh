@@ -9,7 +9,7 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 usage() {
-  echo "usage: install-relaxkonos-services.sh INSTALL_ROOT SERVER_EXECUTABLE GUARDIAN_EXECUTABLE PRIVILEGED_HELPER_EXECUTABLE SERVER_PORT SERVER_LISTEN_URL [SERVICE_USER] [--data-root PATH] [--file-access restricted|full|whitelist] [--file-roots PATH]" >&2
+  echo "usage: install-relaxkonos-services.sh INSTALL_ROOT SERVER_EXECUTABLE GUARDIAN_EXECUTABLE PRIVILEGED_HELPER_EXECUTABLE SERVER_PORT SERVER_LISTEN_URL [SERVICE_USER] [--data-root PATH] [--certificate-mode none|custom|self-signed] [--certificate-path PFX_PATH] [--certificate-password-file PATH] [--self-signed-identities NAMES] [--file-access restricted|full|whitelist] [--file-roots PATH]" >&2
   exit 1
 }
 
@@ -30,6 +30,10 @@ fi
 FILE_ACCESS=restricted
 FILE_ROOTS_FILE=
 DATA_ROOT=/var/lib/relaxkonos
+CERTIFICATE_MODE=none
+CERTIFICATE_PATH=
+CERTIFICATE_PASSWORD_FILE=
+SELF_SIGNED_IDENTITIES=
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --file-access)
@@ -47,6 +51,26 @@ while [[ $# -gt 0 ]]; do
       DATA_ROOT="$2"
       shift 2
       ;;
+    --certificate-mode)
+      [[ $# -ge 2 ]] || usage
+      CERTIFICATE_MODE="$2"
+      shift 2
+      ;;
+    --certificate-path)
+      [[ $# -ge 2 ]] || usage
+      CERTIFICATE_PATH="$2"
+      shift 2
+      ;;
+    --certificate-password-file)
+      [[ $# -ge 2 ]] || usage
+      CERTIFICATE_PASSWORD_FILE="$2"
+      shift 2
+      ;;
+    --self-signed-identities)
+      [[ $# -ge 2 ]] || usage
+      SELF_SIGNED_IDENTITIES="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1" >&2
       usage
@@ -58,6 +82,15 @@ case "$FILE_ACCESS" in
   restricted|full|whitelist) ;;
   *) echo "Invalid --file-access value: $FILE_ACCESS" >&2; usage ;;
 esac
+case "$CERTIFICATE_MODE" in
+  none|custom|self-signed) ;;
+  *) echo "Invalid --certificate-mode value: $CERTIFICATE_MODE" >&2; usage ;;
+esac
+if [[ "$CERTIFICATE_MODE" == custom ]]; then
+  [[ -f "$CERTIFICATE_PATH" && -f "$CERTIFICATE_PASSWORD_FILE" ]] || { echo "Custom certificates require existing --certificate-path and --certificate-password-file files." >&2; exit 1; }
+elif [[ -n "$CERTIFICATE_PATH$CERTIFICATE_PASSWORD_FILE$SELF_SIGNED_IDENTITIES" ]]; then
+  echo "Certificate options do not match --certificate-mode $CERTIFICATE_MODE." >&2; usage
+fi
 if [[ "$FILE_ACCESS" == whitelist ]]; then
   [[ -n "$FILE_ROOTS_FILE" && -f "$FILE_ROOTS_FILE" ]] || { echo "--file-access whitelist requires an existing --file-roots file." >&2; exit 1; }
 elif [[ -n "$FILE_ROOTS_FILE" ]]; then
@@ -131,7 +164,10 @@ for file in "$SERVER_EXECUTABLE" "$GUARDIAN_EXECUTABLE" "$PRIVILEGED_HELPER_EXEC
   [[ -f "$file" ]] || { echo "Missing executable: $file" >&2; exit 1; }
 done
 [[ "$SERVER_PORT" =~ ^[0-9]+$ ]] && (( SERVER_PORT >= 1 && SERVER_PORT <= 65535 )) || { echo "Invalid server port." >&2; exit 1; }
-[[ "$SERVER_LISTEN_URL" =~ ^http://[^[:space:]]+$ ]] || { echo "SERVER_LISTEN_URL must be an absolute HTTP URL." >&2; exit 1; }
+[[ "$SERVER_LISTEN_URL" =~ ^https?://[^[:space:]]+$ ]] || { echo "SERVER_LISTEN_URL must be an absolute HTTP or HTTPS URL." >&2; exit 1; }
+if { [[ "$CERTIFICATE_MODE" == none && "$SERVER_LISTEN_URL" != http://* ]] || [[ "$CERTIFICATE_MODE" != none && "$SERVER_LISTEN_URL" != https://* ]]; }; then
+  echo 'Certificate mode and SERVER_LISTEN_URL scheme must agree: none uses HTTP; custom and self-signed use HTTPS.' >&2; exit 1
+fi
 [[ "$INSTALL_ROOT" == /* && "$INSTALL_ROOT" != / && "$DATA_ROOT" == /* && "$DATA_ROOT" != / ]] || { echo "INSTALL_ROOT and --data-root must be absolute, non-root paths." >&2; exit 1; }
 INSTALL_ROOT="$(realpath -m -- "$INSTALL_ROOT")"
 DATA_ROOT="$(realpath -m -- "$DATA_ROOT")"
@@ -148,9 +184,54 @@ SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
 GUARDIAN_DATA="$DATA_ROOT/guardian"
 COMPOSE_DATA="$DATA_ROOT/docker-compose"
 SERVER_DATA="$DATA_ROOT/server"
+CERTIFICATE_DATA="$SERVER_DATA/certificates"
 install -d -m 0700 /etc/relaxkonos "$GUARDIAN_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$COMPOSE_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$SERVER_DATA"
+
+install_bootstrap_certificate() {
+  local password certificate_path temporary_directory temporary_key temporary_certificate raw identity subject=localhost san=() san_value
+  case "$CERTIFICATE_MODE" in
+    none) return ;;
+    custom)
+      password="$(<"$CERTIFICATE_PASSWORD_FILE")"
+      certificate_path="$CERTIFICATE_PATH"
+      openssl pkcs12 -in "$CERTIFICATE_PATH" -passin "pass:$password" -clcerts -nokeys -out /dev/null 2>/dev/null || { echo 'Custom PFX certificate is invalid.' >&2; exit 65; }
+      openssl pkcs12 -in "$CERTIFICATE_PATH" -passin "pass:$password" -nocerts -nodes 2>/dev/null | openssl pkey -noout >/dev/null 2>&1 || { echo 'Custom PFX certificate has no usable private key.' >&2; exit 65; }
+      openssl pkcs12 -in "$CERTIFICATE_PATH" -passin "pass:$password" -clcerts -nokeys 2>/dev/null | openssl x509 -checkend 0 -noout >/dev/null 2>&1 || { echo 'Custom PFX certificate is expired.' >&2; exit 65; }
+      ;;
+    self-signed)
+      password="$(openssl rand -base64 48)"
+      IFS=',' read -r -a identities <<<"${SELF_SIGNED_IDENTITIES:-localhost,127.0.0.1}"
+      for raw in "${identities[@]}"; do
+        identity="${raw#"${raw%%[![:space:]]*}"}"; identity="${identity%"${identity##*[![:space:]]}"}"
+        [[ -n "$identity" ]] || continue
+        if [[ "$identity" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$identity" == *:* ]]; then
+          san+=("IP:$identity")
+        elif [[ "$identity" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then
+          san+=("DNS:$identity")
+          [[ "$subject" == localhost ]] && subject="$identity"
+        else
+          echo "Invalid self-signed certificate identity: $identity" >&2; exit 64
+        fi
+      done
+      (( ${#san[@]} > 0 )) || { echo 'At least one self-signed certificate identity is required.' >&2; exit 64; }
+      san_value="$(IFS=,; echo "${san[*]}")"
+      temporary_directory="$(mktemp -d)"
+      temporary_key="$temporary_directory/server.key"
+      temporary_certificate="$temporary_directory/server.crt"
+      openssl req -x509 -newkey rsa:3072 -sha256 -days 825 -nodes -keyout "$temporary_key" -out "$temporary_certificate" -subj "/CN=$subject" -addext "subjectAltName=$san_value" >/dev/null 2>&1 || { rm -rf -- "$temporary_directory"; echo 'Could not generate the self-signed certificate.' >&2; exit 65; }
+      certificate_path="$temporary_directory/server.pfx"
+      openssl pkcs12 -export -out "$certificate_path" -inkey "$temporary_key" -in "$temporary_certificate" -passout "pass:$password" >/dev/null 2>&1 || { rm -rf -- "$temporary_directory"; echo 'Could not package the self-signed certificate.' >&2; exit 65; }
+      ;;
+  esac
+  install -d -o root -g "$SERVICE_GROUP" -m 0750 "$CERTIFICATE_DATA"
+  install -o root -g "$SERVICE_GROUP" -m 0640 "$certificate_path" "$CERTIFICATE_DATA/bootstrap.pfx"
+  [[ -z "${temporary_directory:-}" ]] || rm -rf -- "$temporary_directory"
+  BOOTSTRAP_CERTIFICATE_PATH="$CERTIFICATE_DATA/bootstrap.pfx"
+  BOOTSTRAP_CERTIFICATE_PASSWORD="$password"
+}
+install_bootstrap_certificate
 SECRET="$(openssl rand -base64 48)"
 JWT_SECRET=
 if [[ -f /etc/relaxkonos/server.env ]]; then
@@ -163,7 +244,7 @@ RELAXKONOS_GUARDIAN_SHARED_SECRET=$SECRET
 RELAXKONOS_GUARDIAN_PIPE=relaxkonos-guardian
 RELAXKONOS_GUARDIAN_DATA_DIR=$GUARDIAN_DATA
 RELAXKONOS_GUARDIAN_SERVER_SERVICE=relaxkonos-server.service
-RELAXKONOS_GUARDIAN_SERVER_HEALTH_URL=http://127.0.0.1:$SERVER_PORT/healthz
+RELAXKONOS_GUARDIAN_SERVER_HEALTH_URL=${SERVER_LISTEN_URL%%://*}://127.0.0.1:$SERVER_PORT/healthz
 EOF
 cat >/etc/relaxkonos/server.env <<EOF
 Jwt__Secret=$JWT_SECRET
@@ -174,6 +255,12 @@ DockerCompose__DataDirectory=$COMPOSE_DATA
 PrivilegedHelper__HelperPath=$PRIVILEGED_HELPER
 PrivilegedHelper__SudoPath=$(command -v sudo)
 EOF
+if [[ "$CERTIFICATE_MODE" != none ]]; then
+  cat >>/etc/relaxkonos/server.env <<EOF
+Kestrel__Certificates__Default__Path=$BOOTSTRAP_CERTIFICATE_PATH
+Kestrel__Certificates__Default__Password=$BOOTSTRAP_CERTIFICATE_PASSWORD
+EOF
+fi
 chmod 0600 /etc/relaxkonos/guardian.env /etc/relaxkonos/server.env
 
 # This is a Helper policy, not Server configuration. The caller selects the access profile;

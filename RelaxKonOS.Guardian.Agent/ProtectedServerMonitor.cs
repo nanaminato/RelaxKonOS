@@ -21,7 +21,13 @@ internal sealed class ProtectedServerMonitor(GuardianAgentOptions options, ILogg
             return;
         }
 
-        using var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        // Installer health endpoints are restricted to loopback by GuardianAgentOptions. Permit
+        // a self-signed bootstrap certificate here so the watchdog remains useful before a
+        // client trust store has imported it; this handler is never used for remote traffic.
+        using var handler = new HttpClientHandler();
+        if (_options.HealthUrl!.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+        using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         var failures = 0;
         while (!cancellationToken.IsCancellationRequested)
         {

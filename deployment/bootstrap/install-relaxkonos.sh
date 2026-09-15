@@ -12,12 +12,17 @@ NETWORK_PROFILE=local
 SERVER_PORT=5000
 FILE_ACCESS=restricted
 FILE_ROOTS_FILE=
+CERTIFICATE_MODE=none
+CERTIFICATE_PATH=
+CERTIFICATE_PASSWORD="${RELAXKONOS_CERTIFICATE_PASSWORD:-}"
+CERTIFICATE_PASSWORD_FILE=
+SELF_SIGNED_IDENTITIES=
 ALLOW_UNSUPPORTED_SYSTEM=false
 NON_INTERACTIVE=false
 ORIGINAL_ARGUMENTS=("$@")
 
 usage() {
-  echo "usage: install-relaxkonos.sh [--language auto|zh-CN|en-US|ja-JP] [--bundle DIRECTORY_OR_ZIP | --release-uri ZIP_URL --release-sha256 SHA256] [--release-catalog-base URL] [--allow-unsupported-system] [--install-root PATH] [--data-root PATH] [--network local|lan|reverse-proxy] [--server-port PORT] [--file-access restricted|full|whitelist] [--file-roots PATH] [--non-interactive]" >&2
+  echo "usage: install-relaxkonos.sh [--language auto|zh-CN|en-US|ja-JP] [--bundle DIRECTORY_OR_ZIP | --release-uri ZIP_URL --release-sha256 SHA256] [--release-catalog-base URL] [--allow-unsupported-system] [--install-root PATH] [--data-root PATH] [--network local|lan|reverse-proxy] [--server-port PORT] [--certificate-mode none|custom|self-signed] [--certificate-path PFX_PATH] [--certificate-password-file PATH] [--self-signed-identities NAMES] [--file-access restricted|full|whitelist] [--file-roots PATH] [--non-interactive]" >&2
   exit 64
 }
 
@@ -32,6 +37,10 @@ while [[ $# -gt 0 ]]; do
     --data-root) DATA_ROOT="${2:-}"; shift 2 ;;
     --network) NETWORK_PROFILE="${2:-}"; shift 2 ;;
     --server-port) SERVER_PORT="${2:-}"; shift 2 ;;
+    --certificate-mode) CERTIFICATE_MODE="${2:-}"; shift 2 ;;
+    --certificate-path) CERTIFICATE_PATH="${2:-}"; shift 2 ;;
+    --certificate-password-file) CERTIFICATE_PASSWORD_FILE="${2:-}"; shift 2 ;;
+    --self-signed-identities) SELF_SIGNED_IDENTITIES="${2:-}"; shift 2 ;;
     --file-access) FILE_ACCESS="${2:-}"; shift 2 ;;
     --file-roots) FILE_ROOTS_FILE="${2:-}"; shift 2 ;;
     --allow-unsupported-system) ALLOW_UNSUPPORTED_SYSTEM=true; shift ;;
@@ -54,6 +63,11 @@ say() {
     zh-CN:title) echo 'RelaxKonOS 服务端安装器' ;; en-US:title) echo 'RelaxKonOS Server Installer' ;; ja-JP:title) echo 'RelaxKonOS サーバー インストーラー' ;;
     zh-CN:source) echo '选择安装来源：1) 官方稳定版（默认）  2) 本地发布目录  3) 自定义发布 ZIP URL' ;; en-US:source) echo 'Select source: 1) official stable release (default)  2) local release directory  3) custom release ZIP URL' ;; ja-JP:source) echo 'インストール元: 1) 公式安定版（既定） 2) ローカル リリース ディレクトリ 3) カスタム ZIP URL' ;;
     zh-CN:network) echo '网络模式：1) 仅本机（推荐）  2) 局域网 HTTP  3) 反向代理' ;; en-US:network) echo 'Network: 1) local only (recommended)  2) LAN HTTP  3) reverse proxy' ;; ja-JP:network) echo 'ネットワーク: 1) ローカルのみ（推奨） 2) LAN HTTP 3) リバースプロキシ' ;;
+    zh-CN:certificate) echo '证书模式：1) 不使用证书（默认）  2) 使用自己的 PFX 证书  3) 生成自签名证书' ;; en-US:certificate) echo 'TLS certificate: 1) no certificate (default)  2) use your PFX certificate  3) generate a self-signed certificate' ;; ja-JP:certificate) echo '証明書: 1) 使用しない（既定） 2) 自分の PFX 証明書 3) 自己署名証明書を生成' ;;
+    zh-CN:certificate_path) echo 'PFX 证书文件路径' ;; en-US:certificate_path) echo 'PFX certificate file path' ;; ja-JP:certificate_path) echo 'PFX 証明書ファイルのパス' ;;
+    zh-CN:certificate_password) echo 'PFX 证书密码（如无密码直接回车）' ;; en-US:certificate_password) echo 'PFX password (press Enter when there is no password)' ;; ja-JP:certificate_password) echo 'PFX パスワード（パスワードなしの場合は Enter）' ;;
+    zh-CN:certificate_invalid) echo '证书无效、已过期、没有私钥或密码不正确，请重新选择证书文件。' ;; en-US:certificate_invalid) echo 'The certificate is invalid, expired, missing its private key, or the password is incorrect. Choose the certificate again.' ;; ja-JP:certificate_invalid) echo '証明書が無効、期限切れ、秘密鍵なし、またはパスワードが違います。証明書を選び直してください。' ;;
+    zh-CN:self_signed_names) echo '自签名证书名称（用逗号分隔，默认 localhost,127.0.0.1）' ;; en-US:self_signed_names) echo 'Self-signed certificate names, comma-separated (default: localhost,127.0.0.1)' ;; ja-JP:self_signed_names) echo '自己署名証明書名（カンマ区切り、既定: localhost,127.0.0.1）' ;;
     zh-CN:file) echo '权限助手文件范围：1) 仅数据目录（推荐）  2) 白名单  3) 所有本地磁盘' ;; en-US:file) echo 'Privileged file access: 1) data directory only (recommended) 2) whitelist 3) all local disks' ;; ja-JP:file) echo '特権ヘルパーのファイル範囲: 1) データのみ（推奨）2) ホワイトリスト 3) 全ディスク' ;;
     zh-CN:done) echo '安装完成。' ;; en-US:done) echo 'Installation completed.' ;; ja-JP:done) echo 'インストールが完了しました。' ;;
   esac
@@ -62,6 +76,38 @@ say() {
 TEMPORARY_DIRECTORY=
 cleanup() { [[ -z "$TEMPORARY_DIRECTORY" ]] || rm -rf -- "$TEMPORARY_DIRECTORY"; }
 trap cleanup EXIT
+validate_custom_certificate() {
+  [[ -f "$CERTIFICATE_PATH" ]] || return 1
+  openssl pkcs12 -in "$CERTIFICATE_PATH" -passin "pass:$CERTIFICATE_PASSWORD" -clcerts -nokeys -out /dev/null 2>/dev/null || return 1
+  openssl pkcs12 -in "$CERTIFICATE_PATH" -passin "pass:$CERTIFICATE_PASSWORD" -nocerts -nodes 2>/dev/null | openssl pkey -noout >/dev/null 2>&1 || return 1
+  openssl pkcs12 -in "$CERTIFICATE_PATH" -passin "pass:$CERTIFICATE_PASSWORD" -clcerts -nokeys 2>/dev/null | openssl x509 -checkend 0 -noout >/dev/null 2>&1
+}
+select_certificate_mode() {
+  while true; do
+    echo "$(say certificate)"; read -r certificate_choice
+    case "${certificate_choice:-1}" in
+      1) CERTIFICATE_MODE=none; return ;;
+      2)
+        CERTIFICATE_MODE=custom
+        read -r -p "$(say certificate_path): " CERTIFICATE_PATH
+        read -r -s -p "$(say certificate_password): " CERTIFICATE_PASSWORD; echo
+        if validate_custom_certificate; then return; fi
+        echo "$(say certificate_invalid)" >&2
+        ;;
+      3)
+        CERTIFICATE_MODE=self-signed
+        read -r -p "$(say self_signed_names): " SELF_SIGNED_IDENTITIES
+        SELF_SIGNED_IDENTITIES="${SELF_SIGNED_IDENTITIES:-localhost,127.0.0.1}"
+        return
+        ;;
+      *) echo 'Invalid certificate selection.' >&2 ;;
+    esac
+  done
+}
+if [[ "$NON_INTERACTIVE" == false ]]; then
+  command -v openssl >/dev/null || { echo 'openssl is required for certificate validation.' >&2; exit 69; }
+  select_certificate_mode
+fi
 if [[ -z "$BUNDLE_PATH" && -z "$RELEASE_URI" && "$NON_INTERACTIVE" == false ]]; then
   echo "$(say source)"; read -r source
   case "${source:-1}" in
@@ -90,6 +136,17 @@ DATA_ROOT="$(realpath -m -- "$DATA_ROOT")"
 [[ "$SERVER_PORT" =~ ^[0-9]+$ ]] && (( SERVER_PORT >= 1 && SERVER_PORT <= 65535 )) || { echo 'Invalid server port.' >&2; exit 64; }
 case "$NETWORK_PROFILE" in local|lan|reverse-proxy) ;; *) usage ;; esac
 case "$FILE_ACCESS" in restricted|full|whitelist) ;; *) usage ;; esac
+case "$CERTIFICATE_MODE" in none|custom|self-signed) ;; *) usage ;; esac
+if [[ "$CERTIFICATE_MODE" == custom ]]; then
+  [[ -f "$CERTIFICATE_PATH" ]] || { echo '--certificate-path must be an existing PFX file for custom certificates.' >&2; exit 64; }
+  if [[ -n "$CERTIFICATE_PASSWORD_FILE" ]]; then
+    [[ -f "$CERTIFICATE_PASSWORD_FILE" ]] || { echo '--certificate-password-file must exist.' >&2; exit 64; }
+    CERTIFICATE_PASSWORD="$(<"$CERTIFICATE_PASSWORD_FILE")"
+  fi
+elif [[ -n "$CERTIFICATE_PATH$CERTIFICATE_PASSWORD_FILE" ]]; then
+  echo 'Certificate path and password options are valid only with --certificate-mode custom.' >&2; exit 64
+fi
+if [[ "$CERTIFICATE_MODE" == self-signed ]]; then SELF_SIGNED_IDENTITIES="${SELF_SIGNED_IDENTITIES:-localhost,127.0.0.1}"; fi
 [[ "$FILE_ACCESS" != whitelist || -f "$FILE_ROOTS_FILE" ]] || { echo '--file-roots is required for whitelist access.' >&2; exit 64; }
 
 if [[ -n "$RELEASE_URI" ]]; then
@@ -120,6 +177,10 @@ grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$MANIFEST" && grep -Eq '"p
 grep -Eq "\"runtime\"[[:space:]]*:[[:space:]]*\"$CURRENT_RUNTIME\"" "$MANIFEST" || { echo "This release package is not compatible with $CURRENT_RUNTIME." >&2; exit 65; }
 command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] || { echo 'RelaxKonOS requires a systemd host.' >&2; exit 69; }
 for tool in sudo visudo openssl; do command -v "$tool" >/dev/null || { echo "Required system tool is missing: $tool" >&2; exit 69; }; done
+if [[ "$CERTIFICATE_MODE" == custom ]] && ! validate_custom_certificate; then
+  echo 'The supplied PFX certificate is invalid, expired, missing a private key, or its password is incorrect.' >&2
+  exit 65
+fi
 source /etc/os-release 2>/dev/null || { echo 'Cannot identify the Linux distribution.' >&2; exit 69; }
 if ! { [[ "$ID" == debian && "$VERSION_ID" == 12 ]] || [[ "$ID" == ubuntu && ( "$VERSION_ID" == 22.04 || "$VERSION_ID" == 24.04 || "$VERSION_ID" == 26.04 ) ]]; }; then
   [[ "$ALLOW_UNSUPPORTED_SYSTEM" == true ]] || { echo "Unsupported Linux system: ${ID:-unknown} ${VERSION_ID:-unknown}. Use --allow-unsupported-system only after validating host compatibility." >&2; exit 65; }
@@ -136,6 +197,8 @@ fi
 case "$NETWORK_PROFILE" in lan) LISTEN_HOST=0.0.0.0; echo 'LAN mode does not open the firewall automatically.' >&2 ;; *) LISTEN_HOST=127.0.0.1 ;; esac
 [[ "$NETWORK_PROFILE" != reverse-proxy ]] || echo 'Reverse-proxy mode listens locally; configure HTTPS at the proxy.' >&2
 [[ "$FILE_ACCESS" != full ]] || echo 'WARNING: full file access is enabled.' >&2
+LISTEN_SCHEME=http
+[[ "$CERTIFICATE_MODE" == none ]] || LISTEN_SCHEME=https
 
 # A release bundle is an input, not a service directory. The online bundle is temporary and
 # must be removable after setup, so install all publish output under the durable install root.
@@ -150,11 +213,21 @@ SERVER="$INSTALL_ROOT/server/RelaxKonOS.Server"
 GUARDIAN="$INSTALL_ROOT/guardian/RelaxKonOS.Guardian.Agent"
 HELPER="$INSTALL_ROOT/privileged-helper/RelaxKonOS.PrivilegedHelper"
 chmod 0755 "$SERVER" "$GUARDIAN" "$HELPER"
-engine_arguments=("$INSTALL_ROOT" "$SERVER" "$GUARDIAN" "$HELPER" "$SERVER_PORT" "http://$LISTEN_HOST:$SERVER_PORT" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS")
+engine_arguments=("$INSTALL_ROOT" "$SERVER" "$GUARDIAN" "$HELPER" "$SERVER_PORT" "$LISTEN_SCHEME://$LISTEN_HOST:$SERVER_PORT" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --certificate-mode "$CERTIFICATE_MODE")
 if [[ -n "$FILE_ROOTS_FILE" ]]; then engine_arguments+=(--file-roots "$FILE_ROOTS_FILE"); fi
+if [[ "$CERTIFICATE_MODE" == custom ]]; then
+  [[ -n "$TEMPORARY_DIRECTORY" ]] || TEMPORARY_DIRECTORY="$(mktemp -d)"
+  certificate_password_file="$TEMPORARY_DIRECTORY/certificate-password"
+  (umask 077; printf '%s' "$CERTIFICATE_PASSWORD" > "$certificate_password_file")
+  engine_arguments+=(--certificate-path "$CERTIFICATE_PATH" --certificate-password-file "$certificate_password_file")
+elif [[ "$CERTIFICATE_MODE" == self-signed ]]; then
+  engine_arguments+=(--self-signed-identities "$SELF_SIGNED_IDENTITIES")
+fi
 bash "$ENGINE" "${engine_arguments[@]}"
 manifest_version="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$MANIFEST" | head -n1)"
-printf '{"schemaVersion":1,"version":"%s","installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"http://%s:%s","fileAccess":"%s"}\n' "$manifest_version" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" "$NETWORK_PROFILE" "$LISTEN_HOST" "$SERVER_PORT" "$FILE_ACCESS" > "$DATA_ROOT/install-state.json"
+printf '{"schemaVersion":1,"version":"%s","installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s://%s:%s","certificateMode":"%s","fileAccess":"%s"}\n' "$manifest_version" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" "$NETWORK_PROFILE" "$LISTEN_SCHEME" "$LISTEN_HOST" "$SERVER_PORT" "$CERTIFICATE_MODE" "$FILE_ACCESS" > "$DATA_ROOT/install-state.json"
 chmod 0600 "$DATA_ROOT/install-state.json"
-if command -v curl >/dev/null && curl --fail --silent --max-time 15 "http://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then echo 'Health check passed.'; else systemctl is-active --quiet relaxkonos-server.service; fi
-echo "$(say done) http://$LISTEN_HOST:$SERVER_PORT"
+health_curl_arguments=(--fail --silent --max-time 15)
+[[ "$LISTEN_SCHEME" != https ]] || health_curl_arguments+=(--insecure)
+if command -v curl >/dev/null && curl "${health_curl_arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then echo 'Health check passed.'; else systemctl is-active --quiet relaxkonos-server.service; fi
+echo "$(say done) $LISTEN_SCHEME://$LISTEN_HOST:$SERVER_PORT"

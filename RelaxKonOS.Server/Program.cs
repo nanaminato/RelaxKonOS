@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Net;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -18,6 +20,28 @@ using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Storage.Sqlite;
 
 if (args.FirstOrDefault() == "auth") { Environment.ExitCode = await AuthMaintenanceCommand.RunAsync(args); return; }
+
+static X509Certificate2? LoadInstallerCertificate(IConfiguration configuration)
+{
+    var path = configuration["Kestrel:Certificates:Default:Path"];
+    if (string.IsNullOrWhiteSpace(path)) return null;
+
+    if (!Path.IsPathFullyQualified(path) || !File.Exists(path))
+        throw new InvalidOperationException("The installer TLS certificate path is missing or invalid.");
+
+    try
+    {
+        var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, configuration["Kestrel:Certificates:Default:Password"],
+            X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.EphemeralKeySet);
+        if (!certificate.HasPrivateKey || certificate.NotAfter.ToUniversalTime() <= DateTime.UtcNow)
+            throw new InvalidOperationException("The installer TLS certificate has no private key or is expired.");
+        return certificate;
+    }
+    catch (Exception exception) when (exception is CryptographicException or ArgumentException)
+    {
+        throw new InvalidOperationException("The installer TLS certificate could not be loaded.", exception);
+    }
+}
 
 // `dotnet run` normally treats the project directory as ContentRoot, which would put every
 // ContentRoot-relative runtime artifact under the checkout's data directory. Keep development
@@ -39,15 +63,19 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // acknowledgement instead of eventually treating a healthy HTTP process as a
 // timed-out service.
 builder.Host.UseWindowsService();
+// The host installer keeps any bootstrap PFX in its machine-protected configuration. Load it
+// before configuring Kestrel so a fresh HTTPS installation has a certificate even before a
+// certificate is later managed through the product UI.
+builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
+var installerCertificate = LoadInstallerCertificate(builder.Configuration);
 var kestrelCertificates = new RelaxKonOS.Server.Certificate.KestrelCertificateRegistry();
 builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
-    https.ServerCertificateSelector = (_, hostName) => kestrelCertificates.Select(hostName)));
+    https.ServerCertificateSelector = (_, hostName) => kestrelCertificates.Select(hostName) ?? installerCertificate));
 
 // Git HTTPS tokens are protected before they are persisted in application storage.
 builder.Services.AddDataProtection();
 // The signed host installer writes this ACL-protected file. It keeps machine-only
 // Guardian IPC settings out of source-controlled appsettings.json and out of HTTP DTOs.
-builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
 
 // Proxy Goal 2: a Server-only, loopback-only controller adapter. There is deliberately no
 // endpoint mapping or client registration until Goal 6, and no service/process management until Goal 3.

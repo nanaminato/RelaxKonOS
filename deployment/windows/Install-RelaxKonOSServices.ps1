@@ -7,6 +7,11 @@ param(
     [int] $ServerPort = 5000,
     [string] $ServerListenUrl,
     [string] $DataRoot = (Join-Path $env:ProgramData 'RelaxKonOS'),
+    [ValidateSet('none', 'custom', 'self-signed')]
+    [string] $CertificateMode = 'none',
+    [string] $CertificatePath,
+    [string] $CertificatePassword,
+    [string] $SelfSignedIdentities,
     [string] $ServerServiceName = 'RelaxKonOSServer',
     [string] $GuardianServiceName = 'RelaxKonOSGuardian',
     [string] $PrivilegedHelperServiceName = 'RelaxKonOSPrivilegedHelper',
@@ -33,9 +38,18 @@ if (-not (Test-Path -LiteralPath $ServerExecutable -PathType Leaf) -or -not (Tes
 }
 if ($ServerPort -lt 1 -or $ServerPort -gt 65535) { throw 'ServerPort must be between 1 and 65535.' }
 if ([string]::IsNullOrWhiteSpace($ServerListenUrl)) { $ServerListenUrl = "http://127.0.0.1:$ServerPort" }
-try { $serverListenUri = [Uri]$ServerListenUrl } catch { throw 'ServerListenUrl must be an absolute HTTP URL.' }
-if (-not $serverListenUri.IsAbsoluteUri -or $serverListenUri.Scheme -ne 'http' -or $serverListenUri.Port -ne $ServerPort) {
-    throw 'ServerListenUrl must be an absolute HTTP URL using ServerPort.'
+try { $serverListenUri = [Uri]$ServerListenUrl } catch { throw 'ServerListenUrl must be an absolute HTTP or HTTPS URL.' }
+if (-not $serverListenUri.IsAbsoluteUri -or $serverListenUri.Scheme -notin @('http', 'https') -or $serverListenUri.Port -ne $ServerPort) {
+    throw 'ServerListenUrl must be an absolute HTTP or HTTPS URL using ServerPort.'
+}
+if ($CertificateMode -eq 'custom' -and ([string]::IsNullOrWhiteSpace($CertificatePath) -or -not (Test-Path -LiteralPath $CertificatePath -PathType Leaf))) {
+    throw '-CertificateMode custom requires an existing -CertificatePath PFX file.'
+}
+if ($CertificateMode -ne 'custom' -and (-not [string]::IsNullOrWhiteSpace($CertificatePath) -or -not [string]::IsNullOrWhiteSpace($CertificatePassword))) {
+    throw '-CertificatePath and -CertificatePassword are valid only with -CertificateMode custom.'
+}
+if (($CertificateMode -eq 'none' -and $serverListenUri.Scheme -ne 'http') -or ($CertificateMode -ne 'none' -and $serverListenUri.Scheme -ne 'https')) {
+    throw 'Certificate mode and ServerListenUrl scheme must agree: none uses HTTP; custom and self-signed use HTTPS.'
 }
 $DataRoot = [IO.Path]::GetFullPath($DataRoot)
 
@@ -88,6 +102,7 @@ if ($FileAccess -eq 'whitelist') {
 $guardianData = Join-Path $DataRoot 'guardian'
 $composeData = Join-Path $DataRoot 'docker-compose'
 $serverData = Join-Path $DataRoot 'server'
+$certificateData = Join-Path $serverData 'certificates'
 $guardianConfig = Join-Path $guardianData 'guardian.json'
 $serverHostConfig = Join-Path (Split-Path -Parent $ServerExecutable) 'appsettings.host.json'
 $privilegedData = Join-Path $DataRoot 'privileged-helper'
@@ -96,6 +111,43 @@ New-Item -ItemType Directory -Force -Path $guardianData | Out-Null
 New-Item -ItemType Directory -Force -Path $composeData | Out-Null
 New-Item -ItemType Directory -Force -Path $serverData | Out-Null
 New-Item -ItemType Directory -Force -Path $privilegedData | Out-Null
+
+function Install-BootstrapCertificate {
+    if ($CertificateMode -eq 'none') { return $null }
+
+    New-Item -ItemType Directory -Force -Path $certificateData | Out-Null
+    $destination = Join-Path $certificateData 'bootstrap.pfx'
+    if ($CertificateMode -eq 'custom') {
+        try {
+            $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+                [IO.Path]::GetFullPath($CertificatePath), $CertificatePassword,
+                [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+            if (-not $certificate.HasPrivateKey -or $certificate.NotAfter.ToUniversalTime() -le [DateTime]::UtcNow) {
+                throw 'The PFX does not contain a valid private key certificate.'
+            }
+        } catch { throw "The supplied PFX certificate is invalid, expired, missing a private key, or its password is incorrect: $($_.Exception.Message)" }
+        Copy-Item -LiteralPath $CertificatePath -Destination $destination -Force
+        return [ordered]@{ Path = $destination; Password = $CertificatePassword }
+    }
+
+    $identities = @($SelfSignedIdentities -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($identities.Count -eq 0) { $identities = @('localhost') }
+    foreach ($identity in $identities) {
+        if ($identity -notmatch '^[A-Za-z0-9][A-Za-z0-9.-]*$') { throw "Invalid self-signed certificate DNS name: $identity" }
+    }
+    $passwordBytes = New-Object byte[] 48
+    [Security.Cryptography.RandomNumberGenerator]::Fill($passwordBytes)
+    $password = [Convert]::ToBase64String($passwordBytes)
+    $securePassword = ConvertTo-SecureString -String $password -AsPlainText -Force
+    $temporaryCertificate = New-SelfSignedCertificate -DnsName $identities -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -NotAfter ([DateTime]::UtcNow.AddDays(825))
+    try {
+        Export-PfxCertificate -Cert $temporaryCertificate -FilePath $destination -Password $securePassword -Force | Out-Null
+    } finally {
+        Remove-Item -LiteralPath ("Cert:\CurrentUser\My\" + $temporaryCertificate.Thumbprint) -Force -ErrorAction SilentlyContinue
+    }
+    return [ordered]@{ Path = $destination; Password = $password }
+}
+$bootstrapCertificate = Install-BootstrapCertificate
 $secretBytes = New-Object byte[] 48
 [Security.Cryptography.RandomNumberGenerator]::Fill($secretBytes)
 $sharedSecret = [Convert]::ToBase64String($secretBytes)
@@ -125,7 +177,7 @@ $agentSettings = [ordered]@{
     dataDirectory = $guardianData
     protectedServerMonitor = [ordered]@{
         serviceName = $ServerServiceName
-        healthUrl = "http://127.0.0.1:$ServerPort/healthz"
+        healthUrl = ($serverListenUri.Scheme + "://127.0.0.1:$ServerPort/healthz")
         intervalSeconds = 15
         timeoutSeconds = 5
         failureThreshold = 3
@@ -149,6 +201,13 @@ $serverSettings = [ordered]@{
         PipeName = 'relaxkonos-privileged-helper'
         SharedSecret = $helperSecret
         TimeoutSeconds = 30
+    }
+}
+if ($bootstrapCertificate) {
+    $serverSettings.Kestrel = [ordered]@{
+        Certificates = [ordered]@{
+            Default = [ordered]@{ Path = $bootstrapCertificate.Path; Password = $bootstrapCertificate.Password }
+        }
     }
 }
 [IO.File]::WriteAllText($guardianConfig, ($agentSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
@@ -190,6 +249,9 @@ $helperSettings = [ordered]@{
 [IO.File]::WriteAllText($serverHostConfig, ($serverSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText($privilegedConfig, ($helperSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 & icacls $serverHostConfig /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' ("*" + $serverServiceSid + ':R') | Out-Null
+if ($bootstrapCertificate) {
+    & icacls $bootstrapCertificate.Path /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' ("*" + $serverServiceSid + ':R') | Out-Null
+}
 & icacls $serverData /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' ("*" + $serverServiceSid + ':(OI)(CI)M') | Out-Null
 & icacls $privilegedConfig /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
 Install-OrUpdateService $PrivilegedHelperServiceName ('"' + $PrivilegedHelperExecutable + '" --windows-service --config "' + $privilegedConfig + '"')
