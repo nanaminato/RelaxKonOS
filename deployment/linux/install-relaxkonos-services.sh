@@ -86,11 +86,18 @@ case "$CERTIFICATE_MODE" in
   none|custom|self-signed) ;;
   *) echo "Invalid --certificate-mode value: $CERTIFICATE_MODE" >&2; usage ;;
 esac
-if [[ "$CERTIFICATE_MODE" == custom ]]; then
-  [[ -f "$CERTIFICATE_PATH" && -f "$CERTIFICATE_PASSWORD_FILE" ]] || { echo "Custom certificates require existing --certificate-path and --certificate-password-file files." >&2; exit 1; }
-elif [[ -n "$CERTIFICATE_PATH$CERTIFICATE_PASSWORD_FILE$SELF_SIGNED_IDENTITIES" ]]; then
-  echo "Certificate options do not match --certificate-mode $CERTIFICATE_MODE." >&2; usage
-fi
+case "$CERTIFICATE_MODE" in
+  custom)
+    [[ -f "$CERTIFICATE_PATH" && -f "$CERTIFICATE_PASSWORD_FILE" ]] || { echo "Custom certificates require existing --certificate-path and --certificate-password-file files." >&2; exit 1; }
+    [[ -z "$SELF_SIGNED_IDENTITIES" ]] || { echo 'Self-signed identities are valid only with --certificate-mode self-signed.' >&2; usage; }
+    ;;
+  self-signed)
+    [[ -z "$CERTIFICATE_PATH$CERTIFICATE_PASSWORD_FILE" ]] || { echo 'Certificate path and password options are valid only with --certificate-mode custom.' >&2; usage; }
+    ;;
+  none)
+    [[ -z "$CERTIFICATE_PATH$CERTIFICATE_PASSWORD_FILE$SELF_SIGNED_IDENTITIES" ]] || { echo 'Certificate options require --certificate-mode custom or self-signed.' >&2; usage; }
+    ;;
+esac
 if [[ "$FILE_ACCESS" == whitelist ]]; then
   [[ -n "$FILE_ROOTS_FILE" && -f "$FILE_ROOTS_FILE" ]] || { echo "--file-access whitelist requires an existing --file-roots file." >&2; exit 1; }
 elif [[ -n "$FILE_ROOTS_FILE" ]]; then

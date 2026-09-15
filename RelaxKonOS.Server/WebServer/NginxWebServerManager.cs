@@ -85,7 +85,8 @@ internal sealed partial class NginxWebServerManager(
     {
         var discovered = new List<WebServerDto>();
         var managed = GetManagedLayout();
-        if (IsManagedInstallation(managed))
+        var managedInstallation = IsManagedInstallation(managed);
+        if (managedInstallation)
         {
             var instance = await DetectAsync(managed.ExecutablePath, WebServerManagementMode.Managed, cancellationToken);
             if (instance is not null) discovered.Add(instance);
@@ -93,7 +94,11 @@ internal sealed partial class NginxWebServerManager(
 
         foreach (var executable in FindExternalExecutables())
         {
-            if (string.Equals(executable, managed.ExecutablePath, StringComparison.OrdinalIgnoreCase)) continue;
+            // Linux APT installs Nginx at /usr/sbin/nginx, which is also the executable
+            // path a RelaxKonOS-managed system package uses.  Do not suppress that path
+            // unless the managed marker was actually found; otherwise an externally
+            // installed system Nginx would disappear from discovery altogether.
+            if (ShouldSkipExternalExecutable(managedInstallation, executable, managed.ExecutablePath)) continue;
             var instance = await DetectAsync(executable, null, cancellationToken);
             if (instance is not null) discovered.Add(instance);
         }
@@ -1232,6 +1237,9 @@ internal sealed partial class NginxWebServerManager(
             : new[] { "/usr/sbin/nginx", "/usr/bin/nginx", "/usr/local/sbin/nginx", "/usr/local/bin/nginx", "/usr/local/nginx/sbin/nginx", "/usr/local/openresty/nginx/sbin/nginx" };
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase);
     }
+
+    private static bool ShouldSkipExternalExecutable(bool managedInstallation, string executable, string managedExecutable) =>
+        managedInstallation && string.Equals(executable, managedExecutable, StringComparison.OrdinalIgnoreCase);
 
     private static string InstanceId(string executable) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(executable))))[..32].ToLowerInvariant();
 

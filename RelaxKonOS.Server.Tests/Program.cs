@@ -1190,6 +1190,13 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     if (OperatingSystem.IsLinux())
         Assert(managedExecutable == "/usr/sbin/nginx", "Built-in Linux installation must use the package executable instead of creating a second copy.");
 
+    var shouldSkipExternal = typeof(NginxWebServerManager).GetMethod("ShouldSkipExternalExecutable", BindingFlags.Static | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("Nginx external executable de-duplication check was not found.");
+    Assert(!(bool)shouldSkipExternal.Invoke(null, [false, "/usr/sbin/nginx", "/usr/sbin/nginx"])!,
+        "An external system Nginx was incorrectly hidden when no RelaxKonOS-managed marker exists.");
+    Assert((bool)shouldSkipExternal.Invoke(null, [true, "/usr/sbin/nginx", "/usr/sbin/nginx"])!,
+        "A managed Nginx executable was not de-duplicated from external discovery.");
+
     var resolveManagedConfiguration = typeof(NginxWebServerManager).GetMethod("ResolveManagedConfigurationPath", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Managed Nginx configuration resolver was not found.");
     var managedConfigurationPath = (string)resolveManagedConfiguration.Invoke(null, [managedRoot, true])!;
