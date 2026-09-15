@@ -79,6 +79,10 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
         && (request.EnvironmentTarget is not null || request.EnvironmentChange is not null))
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "environment fields require a dedicated operation");
 
+    if (request.Operation != PrivilegedOperationKind.AuthenticateSystemUser
+        && (request.SystemAuthenticationUsername is not null || request.SystemAuthenticationPassword is not null))
+        return Fail(64, PrivilegedProblemCode.InvalidRequest, "system authentication fields require their dedicated operation");
+
     try
     {
         return request.Operation switch
@@ -123,6 +127,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.SmbApplyManagedConfiguration => await ApplySmbManagedConfigurationAsync(request.SmbShares),
             PrivilegedOperationKind.SmbSetUserEnabled => await SetSambaUserEnabledAsync(request.SmbUsername, request.SmbUserEnabled),
             PrivilegedOperationKind.SmbSetUserPassword => await SetSambaUserPasswordAsync(request.SmbUsername, request.SmbPassword),
+            PrivilegedOperationKind.AuthenticateSystemUser => LinuxPamAuthentication.Execute(request),
             // Windows SMB operations are intentionally rejected by this cross-platform executor.
             // The LocalSystem implementation must use compiled Windows APIs, never a command string.
             PrivilegedOperationKind.SmbApplyWindowsShare or PrivilegedOperationKind.SmbRemoveWindowsShare or PrivilegedOperationKind.SmbSetWindowsServerSecurity
@@ -834,16 +839,24 @@ static async Task<PrivilegedOperationRequest?> ReadRequestAsync(Stream input)
 {
     await using var buffer = new MemoryStream();
     var chunk = new byte[16 * 1024];
-    while (true)
+    try
     {
-        var read = await input.ReadAsync(chunk);
-        if (read == 0) break;
-        if (buffer.Length + read > PrivilegedOperationProtocol.MaximumRequestBytes)
-            throw new InvalidDataException("request too large");
-        await buffer.WriteAsync(chunk.AsMemory(0, read));
+        while (true)
+        {
+            var read = await input.ReadAsync(chunk);
+            if (read == 0) break;
+            if (buffer.Length + read > PrivilegedOperationProtocol.MaximumRequestBytes)
+                throw new InvalidDataException("request too large");
+            await buffer.WriteAsync(chunk.AsMemory(0, read));
+        }
+        buffer.Position = 0;
+        return await JsonSerializer.DeserializeAsync<PrivilegedOperationRequest>(buffer);
     }
-    buffer.Position = 0;
-    return await JsonSerializer.DeserializeAsync<PrivilegedOperationRequest>(buffer);
+    finally
+    {
+        System.Security.Cryptography.CryptographicOperations.ZeroMemory(chunk);
+        System.Security.Cryptography.CryptographicOperations.ZeroMemory(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)));
+    }
 }
 static StringComparison GetPathComparison() => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 static StringComparer GetPathComparer() => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

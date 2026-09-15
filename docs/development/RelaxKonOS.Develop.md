@@ -124,6 +124,21 @@ printf '%s' '{"operation":"FirewallUfwStatus","operationId":"11111111-1111-1111-
 不要使用 `sudo dotnet run`，否则构建输出可能被 root 占有。也不要把 sudoers 规则直接指向开发账户
 可写的 `bin/Debug` apphost；那等价于授予该账户 root 能力。
 
+### Linux 系统账户认证手工验证
+
+安装或重新安装后，确认专用 PAM service 而不是 `login` stack 在工作：
+
+```bash
+sudo pamtester relaxkonos nanami authenticate
+sudo systemctl show relaxkonos-server.service -p User -p Group
+sudo -u nobody sudo -n -l /usr/local/lib/relaxkonos/privileged-helper/RelaxKonOS.PrivilegedHelper
+```
+
+第一条应提示 `nanami` 的系统密码并成功；第二条应继续显示 `relaxkonos-server`，而不是 root。第三条会因
+没有 sudoers 授权而失败，验证未授权本地账户不能调用 Helper。随后从 Client 分别验证正确密码、错误密码、
+未知用户和 alias 登录；错误密码应是 `invalid-credential`，Helper/Server 日志不得出现密码。若要检查 PAM
+文件，只读取其受管内容：`sudo sed -n '1,20p' /etc/pam.d/relaxkonos`。
+
 ## 进程守护
 ### 1. 配置 Agent 环境变量
 新建 RelaxKonOS.Guardian.Agent 的 .NET Project 启动配置，在“环境变量”中逐项加入：

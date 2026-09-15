@@ -102,6 +102,26 @@ EOF
   mv -f -- "$temporary_policy" /etc/relaxkonos/privileged-helper-roots
 }
 
+install_pam_service() {
+  local pam_service=/etc/pam.d/relaxkonos temporary_pam
+  # Never replace a configuration owned by an administrator or another package. The marker also
+  # lets uninstall remove only the file created by this installer.
+  if [[ -e "$pam_service" ]] && ! grep -Fqx '# Managed by RelaxKonOS PAM authentication service.' "$pam_service"; then
+    echo "Refusing to replace unmanaged PAM configuration: $pam_service" >&2
+    exit 65
+  fi
+  temporary_pam="$(mktemp /etc/pam.d/.relaxkonos.XXXXXX)"
+  cat >"$temporary_pam" <<'EOF'
+# Managed by RelaxKonOS PAM authentication service.
+# Authentication and account policy only. Deliberately no login/session stack.
+@include common-auth
+@include common-account
+EOF
+  chown root:root "$temporary_pam"
+  chmod 0644 "$temporary_pam"
+  mv -f -- "$temporary_pam" "$pam_service"
+}
+
 PRIVILEGED_HELPER_SOURCE_DIR="$(dirname -- "$PRIVILEGED_HELPER_EXECUTABLE")"
 PRIVILEGED_HELPER_INSTALL_DIR=/usr/local/lib/relaxkonos/privileged-helper
 PRIVILEGED_HELPER="$PRIVILEGED_HELPER_INSTALL_DIR/$(basename -- "$PRIVILEGED_HELPER_EXECUTABLE")"
@@ -159,6 +179,7 @@ chmod 0600 /etc/relaxkonos/guardian.env /etc/relaxkonos/server.env
 # This is a Helper policy, not Server configuration. The caller selects the access profile;
 # restricted remains the secure default and full access is explicitly opt-in.
 install_file_root_policy
+install_pam_service
 cat >/etc/relaxkonos/privileged-services <<EOF
 relaxkonos-server.service
 relaxkonos-guardian.service

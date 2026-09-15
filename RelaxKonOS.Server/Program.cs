@@ -352,7 +352,8 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileRe
 if (OperatingSystem.IsWindows())
     builder.Services.AddSingleton<IIdentityProvider>(_ => new BoundedIdentityProvider(new WindowsLogonProvider()));
 else if (OperatingSystem.IsLinux())
-builder.Services.AddSingleton<IIdentityProvider>(_ => new BoundedIdentityProvider(new LinuxPamProvider()));
+    builder.Services.AddSingleton<IIdentityProvider>(sp => new BoundedIdentityProvider(new LinuxPamProvider(
+        sp.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>())));
 else
     throw new PlatformNotSupportedException("RelaxKonOS Server identity authentication supports Windows and Linux hosts only.");
 

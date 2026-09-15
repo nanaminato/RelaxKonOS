@@ -1,68 +1,51 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Identity;
 
 /// <summary>
-/// Linux identity provider backed by the host's PAM stack and NSS user database.
-/// Passwords are passed directly to PAM and are never retained by RelaxKonOS.
+/// Linux identity provider. NSS lookups remain in the unprivileged Server; password verification
+/// is delegated to the installed root-owned Helper's fixed PAM operation.
 /// </summary>
 [SupportedOSPlatform("linux")]
-public sealed class LinuxPamProvider : IIdentityProvider
+public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = null) : IIdentityProvider
 {
-    private const string PamLibrary = "libpam.so.0";
     private const string LibC = "libc.so.6";
-    private const string PamService = "login";
 
     public CredentialVerifyResult Verify(string username, string password)
     {
         if (string.IsNullOrWhiteSpace(username) || username.IndexOfAny(['\0', ':']) >= 0)
             return CredentialVerifyResult.Failed("用户名不能为空或包含非法字符", CredentialError.InvalidInput);
 
+        // Resolve before and after PAM so a concurrent rename/UID reuse cannot inherit the
+        // prior RelaxKonOS mapping. This data is public NSS metadata, never /etc/shadow.
         var before = Lookup(username);
-        if (before.Identity is null) return CredentialVerifyResult.Failed("Identity unavailable", CredentialError.BadCredentials);
-        IntPtr pamHandle = IntPtr.Zero;
-        var pamStatus = PamResult.Success;
-        var conversation = new PamConversation(Conversation);
-        var credentials = new ConversationCredentials(username, password);
-        var credentialsHandle = GCHandle.Alloc(credentials);
+        if (before.Identity is null)
+            return CredentialVerifyResult.Failed("Identity unavailable", CredentialError.BadCredentials);
+        if (helper is null)
+            return CredentialVerifyResult.Failed("Linux authentication Helper is unavailable", CredentialError.Unknown);
 
+        PrivilegedOperationResult result;
         try
         {
-            var conv = new PamConv(conversation, GCHandle.ToIntPtr(credentialsHandle));
-            pamStatus = pam_start(PamService, username, ref conv, out pamHandle);
-            if (pamStatus == PamResult.Success)
-                pamStatus = pam_authenticate(pamHandle, 0);
-            if (pamStatus == PamResult.Success)
-                pamStatus = pam_acct_mgmt(pamHandle, 0);
+            result = helper.ExecuteAsync(new(PrivilegedOperationKind.AuthenticateSystemUser,
+                SystemAuthenticationUsername: username, SystemAuthenticationPassword: password), CancellationToken.None)
+                .GetAwaiter().GetResult();
+        }
+        catch
+        {
+            return CredentialVerifyResult.Failed("Linux authentication Helper is unavailable", CredentialError.Unknown);
+        }
 
-            if (pamStatus != PamResult.Success) return MapFailure(pamStatus, pamHandle);
-            if (pam_get_item(pamHandle, 2, out var pamUser) != 0 || Utf8(pamUser) is not { } verifiedName)
-                return CredentialVerifyResult.Failed("Identity unavailable", CredentialError.BadCredentials);
-            var after = Lookup(verifiedName);
-            return after.Identity is { } verified && verified.Uid == before.Identity.Uid
-                ? CredentialVerifyResult.Ok(verified)
-                : CredentialVerifyResult.Failed("Identity mismatch", CredentialError.BadCredentials);
-        }
-        catch (DllNotFoundException ex)
-        {
-            return CredentialVerifyResult.FromError("无法加载 Linux PAM", ex.Message);
-        }
-        catch (EntryPointNotFoundException ex)
-        {
-            return CredentialVerifyResult.FromError("Linux PAM ABI 不兼容", ex.Message);
-        }
-        catch (Exception ex)
-        {
-            return CredentialVerifyResult.FromError("调用 Linux PAM 异常", ex.Message);
-        }
-        finally
-        {
-            if (pamHandle != IntPtr.Zero)
-                pam_end(pamHandle, (int)pamStatus);
-            credentialsHandle.Free();
-            GC.KeepAlive(conversation);
-        }
+        if (result.SystemAuthenticationResult != SystemAuthenticationResult.Success || !result.Success)
+            return CredentialVerifyResult.Failed("Linux system authentication failed", MapFailure(result.SystemAuthenticationResult));
+
+        var after = Lookup(username);
+        return after.Identity is { } verified && verified.Uid == before.Identity.Uid
+            ? CredentialVerifyResult.Ok(verified)
+            : CredentialVerifyResult.Failed("Identity mismatch", CredentialError.BadCredentials);
     }
 
     public PlatformUserInfo GetUserInfo(string username)
@@ -115,103 +98,20 @@ public sealed class LinuxPamProvider : IIdentityProvider
         finally { Marshal.FreeHGlobal(buffer); }
     }
 
-    // Enabling an unverified PAM stack would bypass account policy. Distribution integration
-    // must explicitly establish account-only semantics before this capability is enabled.
     public AliasEligibility CheckAliasEligibility(PlatformUserInfo identity)
         => new(false, "linux-pam-account-check-unverified");
 
-    [DllImport(PamLibrary, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int pam_get_item(IntPtr handle, int item, out IntPtr value);
-    [DllImport(LibC, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int getpwuid_r(uint uid, out Passwd entry, IntPtr buffer, nuint length, out IntPtr result);
-
-    private static CredentialVerifyResult MapFailure(PamResult result, IntPtr handle)
+    private static CredentialError MapFailure(SystemAuthenticationResult? result) => result switch
     {
-        var error = result switch
-        {
-            PamResult.AuthError or PamResult.UserUnknown or PamResult.MaxTries => CredentialError.BadCredentials,
-            PamResult.NewAuthTokenRequired => CredentialError.PasswordExpired,
-            PamResult.AccountExpired => CredentialError.AccountExpired,
-            PamResult.PermDenied => CredentialError.AccountRestriction,
-            _ => CredentialError.Unknown,
-        };
-        var messagePtr = pam_strerror(handle, (int)result);
-        var detail = Utf8(messagePtr) ?? $"PAM error {(int)result}";
-        return CredentialVerifyResult.Failed($"Linux 登录失败：{detail}", error, (int)result);
-    }
+        SystemAuthenticationResult.InvalidCredentials => CredentialError.BadCredentials,
+        SystemAuthenticationResult.AccountLocked => CredentialError.AccountLockedOut,
+        SystemAuthenticationResult.PasswordExpired => CredentialError.PasswordExpired,
+        SystemAuthenticationResult.AccountUnavailable => CredentialError.AccountExpired,
+        SystemAuthenticationResult.PermissionDenied => CredentialError.AccountRestriction,
+        _ => CredentialError.Unknown,
+    };
 
-    private static int Conversation(int count, IntPtr messages, out IntPtr responses, IntPtr appData)
-    {
-        responses = IntPtr.Zero;
-        if (count <= 0 || count > 32) return (int)PamResult.ConvError;
-
-        var responseSize = Marshal.SizeOf<PamResponse>();
-        var allocated = Marshal.AllocHGlobal(responseSize * count);
-        for (var i = 0; i < count; i++)
-            Marshal.StructureToPtr(new PamResponse(), allocated + i * responseSize, false);
-
-        try
-        {
-            var credentials = (ConversationCredentials?)GCHandle.FromIntPtr(appData).Target;
-            if (credentials is null) return (int)PamResult.ConvError;
-
-            for (var i = 0; i < count; i++)
-            {
-                var messagePointer = Marshal.ReadIntPtr(messages, i * IntPtr.Size);
-                var message = Marshal.PtrToStructure<PamMessage>(messagePointer);
-                var answer = message.Style switch
-                {
-                    PamMessageStyle.PromptEchoOff => credentials.Password,
-                    PamMessageStyle.PromptEchoOn => credentials.Username,
-                    PamMessageStyle.ErrorMessage or PamMessageStyle.TextInfo => string.Empty,
-                    _ => null,
-                };
-                if (answer is null) return (int)PamResult.ConvError;
-                var response = new PamResponse { Response = Marshal.StringToCoTaskMemUTF8(answer) };
-                Marshal.StructureToPtr(response, allocated + i * responseSize, false);
-            }
-            responses = allocated;
-            return (int)PamResult.Success;
-        }
-        catch
-        {
-            return (int)PamResult.ConvError;
-        }
-        finally
-        {
-            if (responses == IntPtr.Zero)
-            {
-                for (var i = 0; i < count; i++)
-                {
-                    var response = Marshal.PtrToStructure<PamResponse>(allocated + i * responseSize);
-                    if (response.Response != IntPtr.Zero) Marshal.FreeCoTaskMem(response.Response);
-                }
-                Marshal.FreeHGlobal(allocated);
-            }
-        }
-    }
-
-    private static string? Utf8(IntPtr pointer) =>
-        pointer == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(pointer);
-
-    private sealed record ConversationCredentials(string Username, string Password);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate int PamConversation(int count, IntPtr messages, out IntPtr responses, IntPtr appData);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct PamConv
-    {
-        public PamConv(PamConversation callback, IntPtr data) { Callback = callback; AppData = data; }
-        public PamConversation Callback;
-        public IntPtr AppData;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct PamMessage { public PamMessageStyle Style; public IntPtr Message; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct PamResponse { public IntPtr Response; public int ReturnCode; }
+    private static string? Utf8(IntPtr pointer) => pointer == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(pointer);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Passwd
@@ -221,25 +121,9 @@ public sealed class LinuxPamProvider : IIdentityProvider
         public IntPtr Gecos, Directory, Shell;
     }
 
-    private enum PamMessageStyle { PromptEchoOff = 1, PromptEchoOn, ErrorMessage, TextInfo }
-    private enum PamResult
-    {
-        Success = 0, PermDenied = 6, AuthError = 7, ConvError = 19, UserUnknown = 10,
-        MaxTries = 11, NewAuthTokenRequired = 12, AccountExpired = 13,
-    }
-
     private const int SysconfGetPwRSizeMax = 70;
-
-    [DllImport(PamLibrary, CallingConvention = CallingConvention.Cdecl)]
-    private static extern PamResult pam_start(string serviceName, string user, ref PamConv conversation, out IntPtr handle);
-    [DllImport(PamLibrary, CallingConvention = CallingConvention.Cdecl)]
-    private static extern PamResult pam_authenticate(IntPtr handle, int flags);
-    [DllImport(PamLibrary, CallingConvention = CallingConvention.Cdecl)]
-    private static extern PamResult pam_acct_mgmt(IntPtr handle, int flags);
-    [DllImport(PamLibrary, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int pam_end(IntPtr handle, int status);
-    [DllImport(PamLibrary, CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr pam_strerror(IntPtr handle, int status);
+    [DllImport(LibC, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int getpwuid_r(uint uid, out Passwd entry, IntPtr buffer, nuint length, out IntPtr result);
     [DllImport(LibC, CallingConvention = CallingConvention.Cdecl, SetLastError = true)]
     private static extern int getpwnam_r(string name, out Passwd entry, IntPtr buffer, nuint length, out IntPtr result);
     [DllImport(LibC, CallingConvention = CallingConvention.Cdecl)]

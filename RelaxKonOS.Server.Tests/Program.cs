@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Options;
@@ -43,6 +44,7 @@ using RelaxKonOS.Server.Proxy.Platform;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.ProcessGuardian;
 using RelaxKonOS.Server.Firewall;
+using RelaxKonOS.Server.Identity;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using RelaxKonOS.Core.Applications;
@@ -70,6 +72,7 @@ try
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
     if (settingsOnly || fileOperationsOnly) return;
     await VerifyPrivilegedOperationProtocolAsync();
+    VerifyLinuxSystemAuthenticationProvider();
     VerifySmbProtocolAndElevationContract();
     await FileServiceChecks.RunAsync();
     await VerifyCertificateStoreAndSniAsync(root);
@@ -204,6 +207,12 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
         "The privileged protocol must not expose a generic command-execution surface.");
     Assert(Enum.IsDefined(PrivilegedOperationKind.ProxyMihomoInstallSystemService)
         && Enum.IsDefined(PrivilegedOperationKind.NginxPackageInstall), "Dedicated Nginx and Mihomo Helper operations are missing.");
+    Assert(Enum.IsDefined(PrivilegedOperationKind.AuthenticateSystemUser)
+        && Enum.GetValues<SystemAuthenticationResult>().SequenceEqual([
+            SystemAuthenticationResult.Success, SystemAuthenticationResult.InvalidCredentials, SystemAuthenticationResult.AccountLocked,
+            SystemAuthenticationResult.PasswordExpired, SystemAuthenticationResult.AccountUnavailable, SystemAuthenticationResult.PermissionDenied,
+            SystemAuthenticationResult.PamError, SystemAuthenticationResult.InternalError]),
+        "System authentication must use the fixed Helper operation and stable result classification.");
 
     var transport = new CapturingPrivilegedTransport();
     var nginx = new PrivilegedNginxOperations(transport);
@@ -230,6 +239,48 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
     Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.FirewallUfwSetEnabled
         && transport.LastRequest.FirewallEnabled == true,
         "Firewall facade did not preserve its closed enabled-state request.");
+}
+
+static void VerifyLinuxSystemAuthenticationProvider()
+{
+    if (!OperatingSystem.IsLinux()) return;
+    var username = Environment.UserName;
+    var accepted = new SystemAuthenticationTransport(new(true, SystemAuthenticationResult: SystemAuthenticationResult.Success));
+    var provider = new LinuxPamProvider(accepted);
+    var verified = provider.Verify(username, "server-test-password-not-a-secret");
+    Assert(verified.Success && accepted.LastRequest is { Operation: PrivilegedOperationKind.AuthenticateSystemUser,
+            SystemAuthenticationUsername: var sentUser, SystemAuthenticationPassword: "server-test-password-not-a-secret" }
+        && sentUser == username, "Linux Provider did not use the fixed Helper system-authentication request.");
+
+    foreach (var (status, error) in new[]
+    {
+        (SystemAuthenticationResult.InvalidCredentials, CredentialError.BadCredentials),
+        (SystemAuthenticationResult.AccountLocked, CredentialError.AccountLockedOut),
+        (SystemAuthenticationResult.PasswordExpired, CredentialError.PasswordExpired),
+        (SystemAuthenticationResult.AccountUnavailable, CredentialError.AccountExpired),
+        (SystemAuthenticationResult.PermissionDenied, CredentialError.AccountRestriction),
+        (SystemAuthenticationResult.PamError, CredentialError.Unknown),
+        (SystemAuthenticationResult.InternalError, CredentialError.Unknown),
+    })
+    {
+        var result = new LinuxPamProvider(new SystemAuthenticationTransport(new(false, SystemAuthenticationResult: status)))
+            .Verify(username, "server-test-password-not-a-secret");
+        Assert(!result.Success && result.Error == error, $"Linux Provider did not map {status} safely.");
+    }
+
+    var unavailable = new LinuxPamProvider().Verify(username, "server-test-password-not-a-secret");
+    Assert(!unavailable.Success && unavailable.Error == CredentialError.Unknown,
+        "Linux Provider must not fall back to in-process PAM when its Helper transport is unavailable.");
+    var password = "server-test-password-not-a-secret";
+    var log = new CapturingLogger<LocalPrivilegedOperationRunner>();
+    var unavailableTransport = new LocalPrivilegedOperationRunner(new PrivilegedHelperOptions(), log);
+    var unavailableResult = unavailableTransport.ExecuteAsync(new(PrivilegedOperationKind.AuthenticateSystemUser,
+        SystemAuthenticationUsername: username, SystemAuthenticationPassword: password)).GetAwaiter().GetResult();
+    Assert(unavailableResult.ProblemCode == PrivilegedProblemCode.HelperUnavailable && log.Entries.All(entry => !entry.Contains(password, StringComparison.Ordinal)),
+        "Privileged Helper transport logging exposed a system-authentication password.");
+    var responseJson = JsonSerializer.Serialize(new PrivilegedOperationResult(false, SystemAuthenticationResult: SystemAuthenticationResult.InvalidCredentials));
+    Assert(!responseJson.Contains("server-test-password-not-a-secret", StringComparison.Ordinal),
+        "System authentication result serialization exposed a password.");
 }
 
 static void VerifySmbProtocolAndElevationContract()
@@ -1338,6 +1389,25 @@ sealed class CapturingPrivilegedTransport : IPrivilegedOperationTransport
         LastRequest = request;
         return Task.FromResult(new PrivilegedOperationResult(true));
     }
+}
+
+sealed class SystemAuthenticationTransport(PrivilegedOperationResult result) : IPrivilegedOperationTransport
+{
+    public PrivilegedOperationRequest? LastRequest { get; private set; }
+    public Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
+    {
+        LastRequest = request;
+        return Task.FromResult(result);
+    }
+}
+
+sealed class CapturingLogger<T> : ILogger<T>
+{
+    public List<string> Entries { get; } = [];
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel logLevel) => true;
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        => Entries.Add(formatter(state, exception));
 }
 
 sealed class FixtureHttpClientFactory(byte[] payload) : IHttpClientFactory

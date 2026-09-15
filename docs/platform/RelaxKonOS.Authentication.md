@@ -46,7 +46,7 @@ RelaxKonOS Server 支持两种宿主 OS：
 
 | 宿主 OS | 用户体系 | 认证机制 | 权限提升 | Home 目录 |
 |---------|---------|----------|----------|-----------|
-| Ubuntu (Linux) | Linux User | PAM | sudo | `/home/<user>` |
+| Ubuntu (Linux) | Linux User | root Helper → PAM | sudo | `/home/<user>` |
 | Windows Server | Windows Account | LogonUser (Win32) | UAC / RunAs | `C:\Users\<user>` |
 
 设计原则：**RelaxKonOS Server 单一代码库 + OS 抽象层**。平台差异封装在抽象接口之后，上层业务逻辑保持一致。
@@ -124,7 +124,19 @@ Windows 平台使用 Win32 `LogonUser` API 验证账号密码，支持：
 
 ### 3.3 Linux 凭据验证
 
-Linux 平台通过 PAM（Pluggable Authentication Modules）验证账号密码，复用系统标准认证链。
+Linux 平台的 Server 继续以低权限服务账户运行，并只用 NSS 查询用户的 UID、显示名和 Home 目录。
+密码验证通过既有、root-owned 的 `RelaxKonOS.PrivilegedHelper` 执行固定
+`AuthenticateSystemUser` operation；Helper 以 `pam_start("relaxkonos", ...)` 运行 `/etc/pam.d/relaxkonos`
+的 `common-auth` 与 `common-account` stack。该文件不包含 `login` 的 session 行，因此不会受
+`pam_lastlog` 等 login-session 配置影响。
+
+Linux 发布版复用受 sudoers 精确约束的 `Server → sudo -n → Helper` 本地传输；没有新增可匿名访问的
+socket。Helper 只返回认证分类（成功、凭据无效、锁定、密码过期、账户不可用、拒绝、PAM/内部错误），
+不会返回 shadow 内容、hash 或 PAM 对话内容。Server 仍在认证前后核对 NSS UID，随后沿用原有
+User 映射、Workspace、Session 和安全事件流程。Alias 密码认证始终留在 Server 的独立分支，不调用 PAM。
+
+安装器原子安装 root:root、0644 的 `/etc/pam.d/relaxkonos`；升级仅替换带 RelaxKonOS 管理标识的文件，
+卸载也只删除该受管文件。它不会修改 `/etc/pam.d/login`、`/etc/shadow`、`unix_chkpwd` 或服务账户组。
 
 ---
 

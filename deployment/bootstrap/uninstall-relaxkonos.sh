@@ -62,6 +62,13 @@ fi
 
 rm -rf -- /usr/local/lib/relaxkonos
 rm -f -- /etc/sudoers.d/relaxkonos-helpers
+if [[ -f /etc/pam.d/relaxkonos ]]; then
+  if grep -Fqx '# Managed by RelaxKonOS PAM authentication service.' /etc/pam.d/relaxkonos; then
+    rm -f -- /etc/pam.d/relaxkonos
+  else
+    echo 'Preserving unmanaged /etc/pam.d/relaxkonos.' >&2
+  fi
+fi
 rm -rf -- /etc/relaxkonos
 
 if [[ "$REMOVE_DATA" == true ]]; then

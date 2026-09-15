@@ -60,6 +60,25 @@ public enum PrivilegedOperationKind
     SmbSetWindowsServerSecurity,
     SmbSetUserEnabled,
     SmbSetUserPassword,
+    AuthenticateSystemUser,
+}
+
+/// <summary>
+/// Non-secret outcome of the fixed Linux system-account authentication operation. This is
+/// deliberately separate from transport success: callers can distinguish a rejected password
+/// from an unavailable Helper without receiving PAM diagnostics or account secrets.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SystemAuthenticationResult>))]
+public enum SystemAuthenticationResult
+{
+    Success,
+    InvalidCredentials,
+    AccountLocked,
+    PasswordExpired,
+    AccountUnavailable,
+    PermissionDenied,
+    PamError,
+    InternalError,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PrivilegedServiceAction>))]
@@ -184,6 +203,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("smbShares")] IReadOnlyList<SmbManagedShareRequest>? SmbShares = null,
     [property: JsonPropertyName("smbShare")] SmbManagedShareRequest? SmbShare = null,
     [property: JsonPropertyName("smbExpectedSnapshot")] string? SmbExpectedSnapshot = null,
+    [property: JsonPropertyName("systemAuthenticationUsername")] string? SystemAuthenticationUsername = null,
+    [property: JsonPropertyName("systemAuthenticationPassword")] string? SystemAuthenticationPassword = null,
     [property: JsonPropertyName("environmentTarget")] SettingsTarget? EnvironmentTarget = null,
     [property: JsonPropertyName("environmentChange")] EnvironmentChangeSet? EnvironmentChange = null,
     [property: JsonPropertyName("timeZoneId")] string? TimeZoneId = null,
@@ -200,4 +221,5 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("problemCode")] PrivilegedProblemCode ProblemCode = PrivilegedProblemCode.None,
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
+    [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
