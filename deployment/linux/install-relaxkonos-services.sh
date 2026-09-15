@@ -220,7 +220,7 @@ install_bootstrap_certificate() {
       temporary_directory="$(mktemp -d)"
       temporary_key="$temporary_directory/server.key"
       temporary_certificate="$temporary_directory/server.crt"
-      openssl req -x509 -newkey rsa:3072 -sha256 -days 825 -nodes -keyout "$temporary_key" -out "$temporary_certificate" -subj "/CN=$subject" -addext "subjectAltName=$san_value" >/dev/null 2>&1 || { rm -rf -- "$temporary_directory"; echo 'Could not generate the self-signed certificate.' >&2; exit 65; }
+      openssl req -x509 -newkey rsa:3072 -sha256 -days 1825 -nodes -keyout "$temporary_key" -out "$temporary_certificate" -subj "/CN=$subject" -addext "subjectAltName=$san_value" >/dev/null 2>&1 || { rm -rf -- "$temporary_directory"; echo 'Could not generate the self-signed certificate.' >&2; exit 65; }
       certificate_path="$temporary_directory/server.pfx"
       openssl pkcs12 -export -out "$certificate_path" -inkey "$temporary_key" -in "$temporary_certificate" -passout "pass:$password" >/dev/null 2>&1 || { rm -rf -- "$temporary_directory"; echo 'Could not package the self-signed certificate.' >&2; exit 65; }
       ;;

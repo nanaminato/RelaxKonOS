@@ -139,7 +139,7 @@ function Install-BootstrapCertificate {
     [Security.Cryptography.RandomNumberGenerator]::Fill($passwordBytes)
     $password = [Convert]::ToBase64String($passwordBytes)
     $securePassword = ConvertTo-SecureString -String $password -AsPlainText -Force
-    $temporaryCertificate = New-SelfSignedCertificate -DnsName $identities -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -NotAfter ([DateTime]::UtcNow.AddDays(825))
+    $temporaryCertificate = New-SelfSignedCertificate -DnsName $identities -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -NotAfter ([DateTime]::UtcNow.AddYears(5))
     try {
         Export-PfxCertificate -Cert $temporaryCertificate -FilePath $destination -Password $securePassword -Force | Out-Null
     } finally {
