@@ -39,6 +39,18 @@
         "PrivilegedHelper__HelperPath": "/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper",
         "PrivilegedHelper__SudoPath": "/usr/bin/sudo"
       }
+    },
+    "http-linux-pam-debug": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://0.0.0.0:5090",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Identity__AllowDevelopmentInProcessLinuxPam": "true",
+        "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
+        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only"
+      }
     }
   }
 }

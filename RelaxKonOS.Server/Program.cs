@@ -349,11 +349,14 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationServi
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>();
 
 // 身份认证 Provider（按宿主 OS 平台选择，见 Authentication.md §1.1）
+var useDevelopmentInProcessLinuxPam = builder.Environment.IsDevelopment()
+    && builder.Configuration.GetValue<bool>("Identity:AllowDevelopmentInProcessLinuxPam");
 if (OperatingSystem.IsWindows())
     builder.Services.AddSingleton<IIdentityProvider>(_ => new BoundedIdentityProvider(new WindowsLogonProvider()));
 else if (OperatingSystem.IsLinux())
     builder.Services.AddSingleton<IIdentityProvider>(sp => new BoundedIdentityProvider(new LinuxPamProvider(
-        sp.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>())));
+        useDevelopmentInProcessLinuxPam ? null : sp.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
+        useDevelopmentInProcessLinuxPam)));
 else
     throw new PlatformNotSupportedException("RelaxKonOS Server identity authentication supports Windows and Linux hosts only.");
 

@@ -10,7 +10,7 @@ namespace RelaxKonOS.Server.Identity;
 /// is delegated to the installed root-owned Helper's fixed PAM operation.
 /// </summary>
 [SupportedOSPlatform("linux")]
-public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = null) : IIdentityProvider
+public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = null, bool allowDevelopmentInProcessPam = false) : IIdentityProvider
 {
     private const string LibC = "libc.so.6";
 
@@ -24,23 +24,31 @@ public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = nul
         var before = Lookup(username);
         if (before.Identity is null)
             return CredentialVerifyResult.Failed("Identity unavailable", CredentialError.BadCredentials);
-        if (helper is null)
-            return CredentialVerifyResult.Failed("Linux authentication Helper is unavailable", CredentialError.Unknown);
-
-        PrivilegedOperationResult result;
-        try
+        if (allowDevelopmentInProcessPam)
         {
-            result = helper.ExecuteAsync(new(PrivilegedOperationKind.AuthenticateSystemUser,
-                SystemAuthenticationUsername: username, SystemAuthenticationPassword: password), CancellationToken.None)
-                .GetAwaiter().GetResult();
+            var direct = LinuxDevelopmentPamAuthenticator.Authenticate(username, password);
+            if (direct != SystemAuthenticationResult.Success)
+                return CredentialVerifyResult.Failed("Linux development PAM authentication failed", MapFailure(direct));
         }
-        catch
-        {
+        else if (helper is null)
             return CredentialVerifyResult.Failed("Linux authentication Helper is unavailable", CredentialError.Unknown);
-        }
+        else
+        {
+            PrivilegedOperationResult result;
+            try
+            {
+                result = helper.ExecuteAsync(new(PrivilegedOperationKind.AuthenticateSystemUser,
+                    SystemAuthenticationUsername: username, SystemAuthenticationPassword: password), CancellationToken.None)
+                    .GetAwaiter().GetResult();
+            }
+            catch
+            {
+                return CredentialVerifyResult.Failed("Linux authentication Helper is unavailable", CredentialError.Unknown);
+            }
 
-        if (result.SystemAuthenticationResult != SystemAuthenticationResult.Success || !result.Success)
-            return CredentialVerifyResult.Failed("Linux system authentication failed", MapFailure(result.SystemAuthenticationResult));
+            if (result.SystemAuthenticationResult != SystemAuthenticationResult.Success || !result.Success)
+                return CredentialVerifyResult.Failed("Linux system authentication failed", MapFailure(result.SystemAuthenticationResult));
+        }
 
         var after = Lookup(username);
         return after.Identity is { } verified && verified.Uid == before.Identity.Uid

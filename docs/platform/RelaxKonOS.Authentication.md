@@ -135,6 +135,10 @@ socket。Helper 只返回认证分类（成功、凭据无效、锁定、密码�
 不会返回 shadow 内容、hash 或 PAM 对话内容。Server 仍在认证前后核对 NSS UID，随后沿用原有
 User 映射、Workspace、Session 和安全事件流程。Alias 密码认证始终留在 Server 的独立分支，不调用 PAM。
 
+仅为本机调试保留显式 opt-in 的 `Identity:AllowDevelopmentInProcessLinuxPam=true`：它还要求 ASP.NET
+环境为 `Development`，并直接使用历史 `login` PAM service，方便开发账户运行 Server 时快速调试。已安装的
+systemd 服务不会设置该选项，因此不能退回到进程内 PAM。
+
 安装器原子安装 root:root、0644 的 `/etc/pam.d/relaxkonos`；升级仅替换带 RelaxKonOS 管理标识的文件，
 卸载也只删除该受管文件。它不会修改 `/etc/pam.d/login`、`/etc/shadow`、`unix_chkpwd` 或服务账户组。
 
