@@ -376,15 +376,24 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationServi
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.DockerInstallationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>();
 
-// 身份认证 Provider（按宿主 OS 平台选择，见 Authentication.md §1.1）
-var useDevelopmentInProcessLinuxPam = builder.Environment.IsDevelopment()
-    && builder.Configuration.GetValue<bool>("Identity:AllowDevelopmentInProcessLinuxPam");
+// Identity transport is a deployment decision, not a Development-environment shortcut.  A
+// no-sudo User Mode Server authenticates the account that owns the process through the host's
+// already configured PAM "login" service; a managed System Mode Server delegates the same
+// operation to its root-owned, closed Helper.  Debug builds may use either transport, but the
+// environment name must never silently change authentication or privilege behavior.
+var linuxPamTransport = builder.Configuration["Identity:LinuxPamTransport"]?.Trim().ToLowerInvariant() ?? "helper";
+if (linuxPamTransport is not ("helper" or "in-process"))
+    throw new InvalidOperationException("Identity:LinuxPamTransport must be 'helper' or 'in-process'.");
+var useInProcessLinuxPam = linuxPamTransport == "in-process";
+var linuxPamService = builder.Configuration["Identity:LinuxPamService"]?.Trim() ?? "login";
+if (OperatingSystem.IsLinux() && useInProcessLinuxPam && !LinuxPamProvider.IsValidPamServiceName(linuxPamService))
+    throw new InvalidOperationException("Identity:LinuxPamService is invalid.");
 if (OperatingSystem.IsWindows())
     builder.Services.AddSingleton<IIdentityProvider>(_ => new BoundedIdentityProvider(new WindowsLogonProvider()));
 else if (OperatingSystem.IsLinux())
     builder.Services.AddSingleton<IIdentityProvider>(sp => new BoundedIdentityProvider(new LinuxPamProvider(
-        useDevelopmentInProcessLinuxPam ? null : sp.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
-        useDevelopmentInProcessLinuxPam)));
+        useInProcessLinuxPam ? null : sp.GetRequiredService<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(),
+        useInProcessLinuxPam, linuxPamService)));
 else
     throw new PlatformNotSupportedException("RelaxKonOS Server identity authentication supports Windows and Linux hosts only.");
 

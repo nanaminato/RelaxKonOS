@@ -8,6 +8,8 @@
       "applicationUrl": "http://0.0.0.0:5090",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "Identity__LinuxPamTransport": "in-process",
+        "Identity__LinuxPamService": "login",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
         "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
         "PrivilegedHelper__PipeName": "relaxkonos-privileged-helper-dev",
@@ -21,6 +23,8 @@
       "applicationUrl": "https://localhost:7260;http://localhost:5090",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "Identity__LinuxPamTransport": "in-process",
+        "Identity__LinuxPamService": "login",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
         "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
         "PrivilegedHelper__PipeName": "relaxkonos-privileged-helper-dev",
@@ -40,14 +44,15 @@
         "PrivilegedHelper__SudoPath": "/usr/bin/sudo"
       }
     },
-    "http-linux-pam-debug": {
+    "http-linux-user": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
       "applicationUrl": "http://0.0.0.0:5090",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "Identity__AllowDevelopmentInProcessLinuxPam": "true",
+        "Identity__LinuxPamTransport": "in-process",
+        "Identity__LinuxPamService": "login",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
         "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only"
       }
