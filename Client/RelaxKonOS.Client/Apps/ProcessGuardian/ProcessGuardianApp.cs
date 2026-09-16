@@ -21,7 +21,7 @@ namespace RelaxKonOS.Client.Apps.ProcessGuardian;
 /// <summary>Built-in UI for workloads supervised by the separately installed Guardian Agent.</summary>
 public sealed class ProcessGuardianApp : RemoteApplicationBase
 {
-    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.processguardian"), "Process Guardian", "0.1.0", "🛡", "View RelaxKonOS Guardian Agent workloads", [AppPermissions.ServerGuardianRead, AppPermissions.ServerGuardianManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.processguardian"), "Process Guardian", "0.1.0", "🛡", "View RelaxKonOS Guardian Agent workloads", [AppPermissions.ServerGuardianRead, AppPermissions.ServerGuardianManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Guardian]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {

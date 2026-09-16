@@ -2,6 +2,7 @@ using RelaxKonOS.Protocol.FileServices;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.FileServices;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -10,7 +11,7 @@ public static class FileServiceEndpoints
     private const string ElevationTarget = "smb:managed";
     public static IEndpointRouteBuilder MapFileServiceEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup(FileServiceApiRoutes.Smb).RequireAuthorization().WithTags("File Services");
+        var group = app.MapGroup(FileServiceApiRoutes.Smb).RequireAuthorization().WithTags("File Services").RequireHostFeature(ServerHostFeature.FileServices);
         group.MapGet(FileServiceApiRoutes.RelativeToSmb(FileServiceApiRoutes.Status), (IFileServiceManager manager, CancellationToken ct) => manager.GetStatusAsync(ct)).RequireAuthorization("FileServicesRead");
         group.MapGet(FileServiceApiRoutes.RelativeToSmb(FileServiceApiRoutes.Capabilities), (IFileServiceManager manager, CancellationToken ct) => manager.GetCapabilitiesAsync(ct)).RequireAuthorization("FileServicesRead");
         group.MapGet(FileServiceApiRoutes.RelativeToSmb(FileServiceApiRoutes.Shares), (IFileServiceManager manager, CancellationToken ct) => manager.ListSharesAsync(ct)).RequireAuthorization("FileServicesRead");

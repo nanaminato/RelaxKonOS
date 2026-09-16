@@ -3,6 +3,7 @@ using System.Security.Claims;
 using RelaxKonOS.Protocol.ProcessGuardian;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -33,7 +34,8 @@ public static class ProcessGuardianEndpoints
         group.MapPost("/workloads/{id}/{action}", (string id, string action, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ApplyActionAsync(id, action, ct));
         group.MapGet("/workloads/{id}/logs", (string id, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ListLogsAsync(id, ct));
         group.MapGet("/audit", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ListAuditAsync(ct));
-        group.MapGet("/services", (RelaxKonOS.Server.ProcessGuardian.INativeServiceAdapter services, CancellationToken ct) => services.ListAsync(ct));
+        group.MapGet("/services", (RelaxKonOS.Server.ProcessGuardian.INativeServiceAdapter services, CancellationToken ct) => services.ListAsync(ct))
+            .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.NativeServices));
         group.MapPost("/services/{id}/{action}", async (string id, string action, NativeServiceActionRequest request, HttpContext http,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.ProcessGuardian.INativeServiceAdapter services, CancellationToken ct) =>
         {
@@ -41,8 +43,9 @@ public static class ProcessGuardianEndpoints
                 return Results.Problem(statusCode: 403, title: "需要管理员权限", detail: "此服务操作需要当前会话的管理员授权。",
                     type: "https://relaxkonos.app/problems/elevation-required");
             return Results.Ok(await services.ApplyActionAsync(id, action, request, ct));
-        });
-        group.MapPost("/agent/installation/plan", (RelaxKonOS.Server.ProcessGuardian.IGuardianAgentInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct));
+        }).AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.NativeServices));
+        group.MapPost("/agent/installation/plan", (RelaxKonOS.Server.ProcessGuardian.IGuardianAgentInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct))
+            .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.AgentInstallation));
         return app;
     }
 }

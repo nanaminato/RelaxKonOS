@@ -18,6 +18,7 @@ using RelaxKonOS.Server.Hubs;
 using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Storage.Sqlite;
+using RelaxKonOS.Server.HostMode;
 
 if (args.FirstOrDefault() == "auth") { Environment.ExitCode = await AuthMaintenanceCommand.RunAsync(args); return; }
 
@@ -58,6 +59,13 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         ? AppContext.BaseDirectory
         : null,
 });
+// The installer writes this optional host configuration before the mode boundary is evaluated.
+// It must not be possible for a later configuration provider to change an already-validated mode.
+builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
+// Deployment mode is an explicit security contract. In particular, Development must not turn a
+// system installation into User Mode or enable its in-process PAM path.
+var serverModeResolver = new ServerModeResolver(builder.Configuration);
+builder.Services.AddSingleton<IServerModeResolver>(serverModeResolver);
 // The deployment installer registers this executable with the Windows Service
 // Control Manager. Opt in to its lifetime protocol so SCM receives the start
 // acknowledgement instead of eventually treating a healthy HTTP process as a
@@ -66,11 +74,24 @@ builder.Host.UseWindowsService();
 // The host installer keeps any bootstrap PFX in its machine-protected configuration. Load it
 // before configuring Kestrel so a fresh HTTPS installation has a certificate even before a
 // certificate is later managed through the product UI.
-builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
 var installerCertificate = LoadInstallerCertificate(builder.Configuration);
 var kestrelCertificates = new RelaxKonOS.Server.Certificate.KestrelCertificateRegistry();
-builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(https =>
-    https.ServerCertificateSelector = (_, hostName) => kestrelCertificates.Select(hostName) ?? installerCertificate));
+var userModeControlSocket = builder.Configuration["UserMode:ControlSocketPath"]?.Trim();
+if (serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User)
+{
+    if (string.IsNullOrWhiteSpace(userModeControlSocket) || !Path.IsPathFullyQualified(userModeControlSocket))
+        throw new InvalidOperationException("User Mode requires an absolute UserMode:ControlSocketPath.");
+    var parent = Path.GetDirectoryName(userModeControlSocket);
+    if (string.IsNullOrWhiteSpace(parent) || !Directory.Exists(parent))
+        throw new InvalidOperationException("User Mode control socket directory is missing.");
+}
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ConfigureHttpsDefaults(https => https.ServerCertificateSelector = (_, hostName) => kestrelCertificates.Select(hostName) ?? installerCertificate);
+    // This is a private same-UID HTTP control channel. It is not an alternative public listener:
+    // lifecycle status probes /ready through the socket while clients continue using loopback TCP.
+    if (userModeControlSocket is not null) options.ListenUnixSocket(userModeControlSocket);
+});
 
 // Git HTTPS tokens are protected before they are persisted in application storage.
 builder.Services.AddDataProtection();
@@ -404,7 +425,9 @@ var privilegedHelperOptions = builder.Configuration.GetSection("PrivilegedHelper
 builder.Services.AddSingleton(privilegedHelperOptions);
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(sp =>
-    OperatingSystem.IsWindows()
+    serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User
+        ? new RelaxKonOS.Server.Privileged.DisabledPrivilegedOperationTransport()
+        : OperatingSystem.IsWindows()
         ? ActivatorUtilities.CreateInstance<RelaxKonOS.Server.Privileged.WindowsNamedPipePrivilegedOperationTransport>(sp)
         : sp.GetRequiredService<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>());
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedFileService, RelaxKonOS.Server.Privileged.PrivilegedFileService>();
@@ -811,6 +834,7 @@ else
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<UserModeRequestGuardMiddleware>();
 app.UseRateLimiter();
 app.MapHealthEndpoints();
 app.MapAuthEndpoints();

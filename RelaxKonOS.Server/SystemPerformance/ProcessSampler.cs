@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using RelaxKonOS.Protocol.SystemMonitor;
+using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.SystemPerformance;
 
@@ -7,7 +9,9 @@ namespace RelaxKonOS.Server.SystemPerformance;
 /// 独立的低频进程采样器。进程 CPU 差分不再由页面请求触发；PID 与 StartTime 共同作为实例身份，
 /// 避免 PID 重用继承旧进程 CPU 时间。
 /// </summary>
-public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl) : BackgroundService, IProcessService
+public sealed class ProcessSampler(
+    RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl,
+    IServerModeResolver mode) : BackgroundService, IProcessService
 {
     private readonly object _gate = new();
     private Dictionary<ProcessInstanceKey, ProcessSample> _previous = new();
@@ -41,7 +45,9 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
     }
 
     public Task<KillProcessResultDto> KillAsync(int processId, bool force, CancellationToken cancellationToken = default)
-        => legacyControl.KillProcessAsync(processId, force, cancellationToken);
+        => !IsVisibleToCurrentMode(processId)
+            ? Task.FromResult(new KillProcessResultDto(false, false, "user-mode-process-not-owned"))
+            : legacyControl.KillProcessAsync(processId, force, cancellationToken);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -64,6 +70,7 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
             {
                 try
                 {
+                    if (!IsVisibleToCurrentMode(process.Id)) continue;
                     var startTime = TryGetStartTime(process);
                     var key = new ProcessInstanceKey(process.Id, startTime);
                     var cpu = TryGetCpu(process);
@@ -113,6 +120,24 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
             if (string.IsNullOrWhiteSpace(uid)) return null;
             var entry = File.ReadLines("/etc/passwd").FirstOrDefault(x => x.Split(':').ElementAtOrDefault(2) == uid);
             return entry?.Split(':').FirstOrDefault() ?? uid;
+        }
+        catch { return null; }
+    }
+
+    private bool IsVisibleToCurrentMode(int pid)
+    {
+        if (mode.Mode != ServerMode.User) return true;
+        if (!OperatingSystem.IsLinux()) return false;
+        return TryGetUid(pid) == mode.Describe().ExecutionIdentity.Uid;
+    }
+
+    private static int? TryGetUid(int pid)
+    {
+        try
+        {
+            var uidLine = File.ReadLines($"/proc/{pid}/status").FirstOrDefault(x => x.StartsWith("Uid:", StringComparison.Ordinal));
+            var value = uidLine?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
+            return int.TryParse(value, out var uid) ? uid : null;
         }
         catch { return null; }
     }

@@ -5,13 +5,15 @@ using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using Microsoft.AspNetCore.StaticFiles;
 using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Files;
 
 /// <summary>宿主 OS 本地文件系统服务。移植自 Jaya <c>FileSystemService.GetDirectoryAsync</c> 的枚举逻辑，
 /// 扩展 create/delete/rename/move/copy/upload/download 操作。以宿主 OS 进程身份运行，复用宿主用户/权限。
 /// 平台感知：Windows 列盘符；Linux 返回单条 "/" 根。<see cref="UnauthorizedAccessException"/> 在列举时吞并（部分目录不可访问不应导致整列失败）。</summary>
-public sealed class LocalFileService : IFileService
+public sealed class LocalFileService(IServerModeResolver mode) : IFileService
 {
     private static readonly bool IsLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
@@ -23,6 +25,12 @@ public sealed class LocalFileService : IFileService
 
     public IReadOnlyList<DriveDto> GetDrives()
     {
+        if (mode.Mode == ServerMode.User)
+        {
+            var home = UserRoot;
+            var root = new DriveInfo(Path.GetPathRoot(home)!);
+            return [new DriveDto(Path.GetFileName(home), home, root.IsReady ? root.TotalSize : null, root.IsReady)];
+        }
         // DriveInfo.GetDrives() 在 Linux 上会枚举每一个挂载点，其中包含 /dev、
         // /dev/pts、/dev/shm 等嵌套的伪文件系统。把它们全部作为“此电脑”的
         // 直接子项会丢失目录层级，也会让挂载点看起来像并列磁盘。Linux 的
@@ -55,7 +63,7 @@ public sealed class LocalFileService : IFileService
     {
         // The request handler resolves the signed-in user's home directory. Falling back keeps
         // the service usable for callers that do not have an authenticated user context.
-        var home = userHomeDirectory;
+        var home = mode.Mode == ServerMode.User ? UserRoot : userHomeDirectory;
         if (string.IsNullOrWhiteSpace(home))
             home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (string.IsNullOrEmpty(home))
@@ -131,6 +139,8 @@ public sealed class LocalFileService : IFileService
 
     public DirectoryDto GetDirectory(string? path)
     {
+        if (mode.Mode == ServerMode.User && string.IsNullOrWhiteSpace(path)) path = UserRoot;
+        if (!string.IsNullOrWhiteSpace(path)) EnsureUserModePath(path);
         // path 为空：返回盘符根聚合视图
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -257,6 +267,7 @@ public sealed class LocalFileService : IFileService
 
     public FileSystemEntryDto? GetInfo(string path)
     {
+        EnsureUserModePath(path);
         if (Directory.Exists(path))
         {
             var di = new DirectoryInfo(path);
@@ -293,6 +304,7 @@ public sealed class LocalFileService : IFileService
 
     public (Stream Stream, string ContentType, string FileName)? OpenRead(string path)
     {
+        EnsureUserModePath(path);
         if (!File.Exists(path)) return null;
         var fi = new FileInfo(path);
         return (fi.OpenRead(), GuessMimeType(fi), fi.Name);
@@ -300,6 +312,7 @@ public sealed class LocalFileService : IFileService
 
     public async Task<FileEntryDto> WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default)
     {
+        EnsureUserModePath(path);
         var directory = Path.GetDirectoryName(path);
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
             throw new DirectoryNotFoundException($"Target directory does not exist: {directory}");
@@ -309,6 +322,7 @@ public sealed class LocalFileService : IFileService
 
     public FilePropertiesDto? GetProperties(string path)
     {
+        EnsureUserModePath(path);
         if (Directory.Exists(path))
         {
             var directory = new DirectoryInfo(path);
@@ -330,6 +344,7 @@ public sealed class LocalFileService : IFileService
 
     public FilePropertiesDto SetUnixPermissions(string path, int unixMode)
     {
+        EnsureUserModePath(path);
         if (!OperatingSystem.IsLinux())
             throw new PlatformNotSupportedException("Changing POSIX permissions is supported only on Linux hosts.");
         if (unixMode is < 0 or > 0xFFF)
@@ -343,6 +358,7 @@ public sealed class LocalFileService : IFileService
 
     public void CreateDirectory(string path)
     {
+        EnsureUserModePath(path);
         // Directory.CreateDirectory 对已存在目录是 no-op；为产生 409 我们先检查
         if (Directory.Exists(path))
             throw new IOException($"目录已存在: {path}");
@@ -351,6 +367,7 @@ public sealed class LocalFileService : IFileService
 
     public void Delete(string path)
     {
+        EnsureUserModePath(path);
         if (Directory.Exists(path))
             Directory.Delete(path, recursive: true);
         else if (File.Exists(path))
@@ -361,11 +378,13 @@ public sealed class LocalFileService : IFileService
 
     public FileSystemEntryDto Rename(string sourcePath, string newName)
     {
+        EnsureUserModePath(sourcePath);
         var info = GetInfo(sourcePath) ?? throw new FileNotFoundException($"源路径不存在: {sourcePath}", sourcePath);
         var parent = System.IO.Path.GetDirectoryName(sourcePath);
         var dest = string.IsNullOrEmpty(parent)
             ? newName
             : System.IO.Path.Combine(parent, newName);
+        EnsureUserModePath(dest);
 
         if (Directory.Exists(sourcePath))
         {
@@ -381,6 +400,7 @@ public sealed class LocalFileService : IFileService
 
     public FileSystemEntryDto Move(string sourcePath, string destinationPath, bool overwrite)
     {
+        EnsureUserModePath(sourcePath); EnsureUserModePath(destinationPath);
         if (!Exists(sourcePath))
             throw new FileNotFoundException($"源路径不存在: {sourcePath}", sourcePath);
         if (Exists(destinationPath) && !overwrite)
@@ -400,6 +420,7 @@ public sealed class LocalFileService : IFileService
 
     public FileSystemEntryDto Copy(string sourcePath, string destinationPath, bool overwrite)
     {
+        EnsureUserModePath(sourcePath); EnsureUserModePath(destinationPath);
         if (!Exists(sourcePath))
             throw new FileNotFoundException($"源路径不存在: {sourcePath}", sourcePath);
         if (Exists(destinationPath) && !overwrite)
@@ -420,10 +441,45 @@ public sealed class LocalFileService : IFileService
 
     public async Task<FileEntryDto> UploadAsync(string targetDirectoryPath, string fileName, Stream content, CancellationToken cancellationToken = default)
     {
+        EnsureUserModePath(targetDirectoryPath);
         if (!Directory.Exists(targetDirectoryPath))
             throw new DirectoryNotFoundException($"目标目录不存在: {targetDirectoryPath}");
         var dest = System.IO.Path.Combine(targetDirectoryPath, fileName);
         return await WriteAtomicallyAsync(dest, content, cancellationToken);
+    }
+
+    private string UserRoot => Path.TrimEndingDirectorySeparator(Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+
+    private void EnsureUserModePath(string path)
+    {
+        if (mode.Mode != ServerMode.User) return;
+        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
+            throw new UnauthorizedAccessException("User Mode requires an absolute path below the current home directory.");
+        var root = UserRoot;
+        var full = Path.GetFullPath(path);
+        if (!IsDescendantOrSame(root, full) || EscapesThroughExistingLink(root, full))
+            throw new UnauthorizedAccessException("User Mode paths must remain below the current home directory.");
+    }
+
+    private static bool IsDescendantOrSame(string root, string path) => string.Equals(root, path, StringComparison.Ordinal)
+        || path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+
+    private static bool EscapesThroughExistingLink(string root, string path)
+    {
+        var probe = path;
+        while (!File.Exists(probe) && !Directory.Exists(probe))
+        {
+            var parent = Path.GetDirectoryName(probe);
+            if (string.IsNullOrEmpty(parent) || string.Equals(parent, probe, StringComparison.Ordinal)) break;
+            probe = parent;
+        }
+        try
+        {
+            FileSystemInfo entry = Directory.Exists(probe) ? new DirectoryInfo(probe) : new FileInfo(probe);
+            var resolved = entry.ResolveLinkTarget(returnFinalTarget: true)?.FullName;
+            return resolved is not null && !IsDescendantOrSame(root, Path.GetFullPath(resolved));
+        }
+        catch { return true; }
     }
 
     /// <summary>

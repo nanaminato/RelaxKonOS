@@ -1,6 +1,6 @@
 # RelaxKonOS 一键服务端安装
 
-发布制品分为 `client` 与 `server` 两种包。`server` 包包含已 `dotnet publish` 的 Server、Guardian Agent、权限助手和平台部署引擎；`client` 包只包含桌面 Client。引导安装器只接受 `server` 包，并负责语言、预检、安装来源、监听方式、文件权限范围、服务启动和健康检查；平台部署引擎只负责受控的系统级变更。
+发布制品分为 `client`、`server` 与 `user-server` 三种包。`server` 包是 System Mode，包含已 `dotnet publish` 的 Server、Guardian Agent、权限助手和平台部署引擎；`user-server` 是无 sudo 的 Linux User Mode，包含 Server、同 UID Guardian 和用户 launcher，但不包含权限助手、sudoers 或系统服务安装器；`client` 包只包含桌面 Client。
 
 引导安装器会先把三个组件的完整 publish 输出复制到持久安装目录（Windows 默认 `C:\Program Files\RelaxKonOS`，Linux 默认 `/opt/relaxkonos`）；服务绝不会指向临时下载目录或离线介质。
 
@@ -22,7 +22,7 @@ deployment/linux/install-relaxkonos-services.sh
 ./deployment/packaging/New-RelaxKonOSRelease.ps1 -Version 0.1.0 -Runtime win-x64
 ```
 
-Linux 则运行：
+Linux System Mode 则运行：
 
 ```bash
 ./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release
@@ -30,7 +30,13 @@ Linux 则运行：
 
 客户端的便携 ZIP 与 Windows MSIX 打包和升级流程见 [ClientDistribution.md](./ClientDistribution.md)。Linux 客户端通过便携 ZIP 分发；不提供 Debian/Ubuntu APT 仓库或 `.deb` 包。
 
-两者都会分别产出 Client 与 Server ZIP、`.sha256` 与同名 `.json` 下载描述文件。服务端安装时请选择 `*-server.zip` 或对应的 Server 发布目录。
+两者都会分别产出 Client 与 Server ZIP、`.sha256` 与同名 `.json` 下载描述文件。用户态 Linux 包可单独生成：
+
+```bash
+./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release ./artifacts user-server
+```
+
+System Mode 安装时请选择 `*-server.zip` 或对应的 Server 发布目录；User Mode 请选择 `*-user-server.zip` 解压后的发布目录。
 
 ## 官方在线来源
 
@@ -50,8 +56,10 @@ Linux 则运行：
 
 ## Linux
 
+System Mode（需要 root）使用显式模式：
+
 ```bash
-sudo ./deployment/bootstrap/install-relaxkonos.sh --bundle /mnt/RelaxKonOS-release
+sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/RelaxKonOS-release
 ```
 
 直接运行安装器即可获取官方稳定版。也可传入 `--release-uri URL --release-sha256 SHA256` 安装指定 ZIP，或用 `--bundle` 进行离线安装。Linux 权限助手不是常驻服务：Server 账户只能通过固定的 sudo 规则执行 root-owned Helper；Server 和 Guardian 则是 systemd 服务。
@@ -59,3 +67,15 @@ sudo ./deployment/bootstrap/install-relaxkonos.sh --bundle /mnt/RelaxKonOS-relea
 离线介质可直接是发布目录或 ZIP，例如：`sudo ./install-relaxkonos.sh --bundle /media/usb/RelaxKonOS-0.1.0-linux-x64.zip`。安装器会验证包的架构、systemd、`sudo`/`visudo`/`openssl`，并仅默认接受 Debian 12、Ubuntu 22.04/24.04/26.04；其他系统必须明确传入 `--allow-unsupported-system`。
 
 局域网模式仅将 Server 绑定到 `0.0.0.0`，不会自动打开防火墙。公网部署请选择反向代理模式（默认本机监听），并由反向代理终结 HTTPS。
+
+### Linux User Mode（无 sudo）
+
+先解压 `*-user-server.zip`，然后以目标 Linux 账号运行：
+
+```bash
+./deployment/user/install-relaxkonos.sh --mode user --bundle /path/to/RelaxKonOS-0.1.0-linux-x64-user-server
+"${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon" start
+"${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon" status
+```
+
+User Mode 仅写入该账号的 XDG 数据、配置、状态和缓存目录；它只绑定 `127.0.0.1`，不创建 systemd system unit、不修改 PAM、sudoers、防火墙或 `/etc`。远程连接请使用 SSH 本地转发。`relaxkon upgrade`、`stop` 和 `uninstall` 使用相同的用户态目录；没有 user systemd 或 linger 也可以使用这些命令。

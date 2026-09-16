@@ -45,6 +45,19 @@
                     <TextBlock Grid.Column="0" Text="{loc:Loc settings.server}" Opacity="0.7" />
                     <TextBlock Grid.Column="1" Text="{Binding ServerUrl}" TextWrapping="Wrap" />
                 </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.server_mode}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding ServerMode}" TextWrapping="Wrap" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.execution_identity}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding ExecutionIdentity}" TextWrapping="Wrap" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.listener_scope}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding ListenerScope}" TextWrapping="Wrap" />
+                </Grid>
+                <TextBlock Text="{Binding ConnectionGuidance}" Opacity="0.7" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 

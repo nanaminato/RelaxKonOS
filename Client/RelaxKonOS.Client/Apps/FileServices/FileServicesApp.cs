@@ -10,6 +10,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Client.Apps.FileServices;
 
@@ -17,7 +18,7 @@ namespace RelaxKonOS.Client.Apps.FileServices;
 public sealed class FileServicesApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.file-services"), "File Services", "1.0.0", "🗄", "Manage the host SMB control plane",
-        [AppPermissions.ServerFileServicesRead, AppPermissions.ServerFileServicesManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        [AppPermissions.ServerFileServicesRead, AppPermissions.ServerFileServicesManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.FileServices]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;

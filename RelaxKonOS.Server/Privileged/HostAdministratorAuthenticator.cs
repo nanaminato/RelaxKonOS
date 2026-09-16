@@ -2,14 +2,18 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 using RelaxKonOS.Server.Identity;
+using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Server.Privileged;
 
 /// <summary>Platform host-admin verifier. Passwords and Windows tokens exist only for this call.</summary>
-public sealed class HostAdministratorAuthenticator(IIdentityProvider identities) : IHostAdministratorAuthenticator
+public sealed class HostAdministratorAuthenticator(IIdentityProvider identities, IServerModeResolver serverMode) : IHostAdministratorAuthenticator
 {
     public HostAdministratorAuthenticationResult Authenticate(string currentUsername, string? administratorUsername, string? password)
     {
+        if (serverMode.Mode == ServerMode.User)
+            return new(false, "privileged-feature-unavailable", "none");
         if (string.IsNullOrWhiteSpace(password)) return new(false, "elevation-password-required", "none");
         if (OperatingSystem.IsWindows())
             return AuthenticateWindows(administratorUsername ?? currentUsername, password);
