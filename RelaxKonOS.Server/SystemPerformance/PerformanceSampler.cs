@@ -10,9 +10,11 @@ namespace RelaxKonOS.Server.SystemPerformance;
 /// </summary>
 public sealed class PerformanceSampler(
     ISystemPerformanceSource source,
-    PerformanceHistory history) : BackgroundService, IPerformanceSampler
+    PerformanceHistory history,
+    PerformanceSubscriptionRegistry subscriptions) : BackgroundService, IPerformanceSampler
 {
     private readonly object _stateGate = new();
+    private readonly SemaphoreSlim _subscriberSignal = new(0, 1);
     private RawPerformanceSample? _previous;
     private long _sequence;
     private DateTimeOffset? _lastSuccess;
@@ -29,17 +31,36 @@ public sealed class PerformanceSampler(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-        await SampleOnceAsync(stoppingToken);
-        while (await timer.WaitForNextTickAsync(stoppingToken))
-            await SampleOnceAsync(stoppingToken);
+        subscriptions.SubscriberPresenceChanged += OnSubscriberPresenceChanged;
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                if (!subscriptions.HasSubscribers)
+                    await _subscriberSignal.WaitAsync(stoppingToken);
+                if (!subscriptions.HasSubscribers) continue;
+
+                // Rates are meaningful only relative to a sample taken in this subscription period.
+                lock (_stateGate) _previous = null;
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+                await SampleOnceAsync(stoppingToken);
+                while (subscriptions.HasSubscribers && await timer.WaitForNextTickAsync(stoppingToken))
+                    await SampleOnceAsync(stoppingToken);
+            }
+        }
+        finally
+        {
+            subscriptions.SubscriberPresenceChanged -= OnSubscriberPresenceChanged;
+        }
     }
 
     private async Task SampleOnceAsync(CancellationToken cancellationToken)
     {
+        if (!subscriptions.HasSubscribers) return;
         try
         {
             var current = await source.ReadAsync(cancellationToken);
+            if (!subscriptions.HasSubscribers) return;
             RawPerformanceSample? previous;
             lock (_stateGate)
             {
@@ -173,5 +194,17 @@ public sealed class PerformanceSampler(
             try { handler(snapshot); }
             catch { /* 订阅者不能影响采样循环。 */ }
         }
+    }
+
+    private void OnSubscriberPresenceChanged(bool hasSubscribers)
+    {
+        if (!hasSubscribers)
+        {
+            lock (_stateGate) _previous = null;
+            history.Clear();
+            return;
+        }
+        try { _subscriberSignal.Release(); }
+        catch (SemaphoreFullException) { }
     }
 }

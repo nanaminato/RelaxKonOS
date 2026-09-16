@@ -7,7 +7,7 @@
 
 ### 当前实施备注
 
-- 已完成：统一 1 秒 `PerformanceSampler`、60 点内存 RingBuffer、Linux `/proc`/`/sys` 原始采集、Windows CPU/内存/网络与 `IOCTL_DISK_PERFORMANCE` 原始采集、性能 REST API、`/hubs/performance` 推送、客户端重连/历史回补，以及独立的 5 秒进程采样器。
+- 已完成：仅在至少一个订阅者存在时运行的统一 1 秒 `PerformanceSampler`、60 点内存 RingBuffer、Linux `/proc`/`/sys` 原始采集、Windows CPU/内存/网络与 `IOCTL_DISK_PERFORMANCE` 原始采集、性能 REST API、`/hubs/performance` 推送、客户端重连/历史回补，以及查询驱动的 5 秒进程采样缓存。
 - 当前 API：性能页使用 performance API，进程页使用分页查询 API；旧 metrics 和非分页进程列表端点已删除。
 - 降级：Windows 服务账户若无权读取物理磁盘性能，或宿主机未提供该计数器时 `diskIo=false`；UI 不显示伪造 0 值。GPU 与传感器仍为后续可选提供方。
 
@@ -86,12 +86,12 @@ OS 原始计数器（Windows API / Linux /proc、/sys）
 ### 4.1 服务端职责
 
 1. `ISystemPerformanceSource`：读取本机原始累计计数器与静态信息；不保存上次读数，不计算速率。
-2. `PerformanceSampler`：Singleton `BackgroundService`，拥有采样节奏、前后快照、派生速率与单调递增序列号。
+2. `PerformanceSampler`：Singleton `BackgroundService`，在至少一个 Hub 订阅者存在时拥有 1 秒采样节奏、前后快照、派生速率与单调递增序列号；无人订阅时不读取 OS 性能计数器。
 3. `PerformanceHistory`：线程安全环形缓冲，保存最近 60 个已归一化实时快照；服务重启后自然清空。
 4. `PerformanceSubscriptionService` / Hub：向已授权订阅者广播。采样循环绝不能等待客户端网络 I/O。
 5. `IProcessService`：进程查询、结束进程等按需操作，与性能采样器分离。
 
-采样周期固定为 1 秒。第一份原始数据只用于建立基线，不广播含有伪造 0% 速率的“有效样本”；Hub 在首个有效样本后才开始推送。页面暂停应只停止客户端渲染/订阅，不停止全局采样。
+订阅期间采样周期固定为 1 秒。每个新的订阅期第一份原始数据只用于建立基线，不广播含有伪造 0% 速率的“有效样本”；Hub 在首个有效样本后才开始推送。最后一个订阅者离开时采样和内存历史均清空。
 
 ### 4.2 平台实现边界
 

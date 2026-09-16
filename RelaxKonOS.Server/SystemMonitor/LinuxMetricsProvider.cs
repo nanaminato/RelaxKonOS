@@ -9,7 +9,6 @@ public sealed class LinuxMetricsProvider : SystemMetricsProviderBase
 {
     private readonly object _cpuGate = new();
     private Dictionary<string, (long Total, long Idle, DateTime At)> _cpuPrev = new();
-    private Dictionary<uint, string>? _uidMap;
 
     protected override Task<CpuUsageDto> GetCpuUsageAsync(CancellationToken ct)
     {
@@ -92,33 +91,82 @@ public sealed class LinuxMetricsProvider : SystemMetricsProviderBase
     {
         try
         {
-            var uid = ReadUidFromStatus(process.Id);
-            if (uid is null) return null;
-            return ResolveUserName(uid.Value);
+            return LinuxProcessMetadata.GetUserName(process.Id);
         }
         catch { return null; }
     }
 
-    private static uint? ReadUidFromStatus(int pid)
+    private static long ParseKb(string line)
     {
+        var span = line.AsSpan();
+        var colon = span.IndexOf(':');
+        if (colon < 0) return 0;
+        var fields = span[(colon + 1)..].Trim();
+        var separator = fields.IndexOfAny(' ', '\t');
+        var value = separator < 0 ? fields : fields[..separator];
+        return long.TryParse(value, out var kib) ? kib : 0;
+    }
+}
+
+/// <summary>Shared Linux process metadata reader. The passwd map is loaded once, while volatile /proc data stays per-process.</summary>
+internal static class LinuxProcessMetadata
+{
+    private static readonly Lazy<IReadOnlyDictionary<uint, string>> UserNames = new(LoadPasswd, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    public static string? GetUserName(int pid)
+    {
+        try
+        {
+            return ReadDetails(pid).UserName;
+        }
+        catch { return null; }
+    }
+
+    public static int CountThreads(int pid)
+    {
+        try { return ReadStatus(pid).ThreadCount; }
+        catch { return 0; }
+    }
+
+    public static LinuxProcessDetails ReadDetails(int pid)
+    {
+        try
+        {
+            var status = ReadStatus(pid);
+            if (status.Uid is null) return new(null, status.ThreadCount);
+            var userName = UserNames.Value.TryGetValue(status.Uid.Value, out var name) ? name : status.Uid.Value.ToString();
+            return new(userName, status.ThreadCount);
+        }
+        catch { return new(null, 0); }
+    }
+
+    private static LinuxProcessStatus ReadStatus(int pid)
+    {
+        uint? uid = null;
+        var threads = 0;
         foreach (var line in File.ReadLines($"/proc/{pid}/status"))
         {
-            if (!line.StartsWith("Uid:", StringComparison.Ordinal)) continue;
-            // Uid: real effective saved fs
-            var parts = line.AsSpan().Slice(4).ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length > 0 && uint.TryParse(parts[0], out var uid)) return uid;
-            break;
+            if (line.StartsWith("Uid:", StringComparison.Ordinal))
+                uid = ParseFirstUInt(line.AsSpan(4));
+            else if (line.StartsWith("Threads:", StringComparison.Ordinal))
+            {
+                var count = ParseFirstUInt(line.AsSpan(8));
+                threads = count is { } value && value <= (uint)int.MaxValue ? (int)value : 0;
+            }
+            if (uid is not null && threads > 0) break;
         }
-        return null;
+        return new(uid, threads);
     }
 
-    private string ResolveUserName(uint uid)
+    private static uint? ParseFirstUInt(ReadOnlySpan<char> fields)
     {
-        var map = _uidMap ??= LoadPasswd();
-        return map.TryGetValue(uid, out var name) ? name : uid.ToString();
+        fields = fields.Trim();
+        var separator = fields.IndexOfAny(' ', '\t');
+        var value = separator < 0 ? fields : fields[..separator];
+        return uint.TryParse(value, out var parsed) ? parsed : null;
     }
 
-    private static Dictionary<uint, string> LoadPasswd()
+    private static IReadOnlyDictionary<uint, string> LoadPasswd()
     {
         var map = new Dictionary<uint, string>();
         try
@@ -135,15 +183,7 @@ public sealed class LinuxMetricsProvider : SystemMetricsProviderBase
         return map;
     }
 
-    private static long ParseKb(string line)
-    {
-        var span = line.AsSpan();
-        var colon = span.IndexOf(':');
-        if (colon < 0) return 0;
-        var rest = span.Slice(colon + 1).ToString().Trim();
-        // 形如 "16384000 kB"
-        var space = rest.IndexOf(' ');
-        var num = space >= 0 ? rest[..space] : rest;
-        return long.TryParse(num, out var v) ? v : 0;
-    }
+    private readonly record struct LinuxProcessStatus(uint? Uid, int ThreadCount);
 }
+
+internal readonly record struct LinuxProcessDetails(string? UserName, int ThreadCount);
