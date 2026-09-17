@@ -11,6 +11,8 @@
 
 [English](./README.en.md) · [日本語](./README.ja.md)
 
+官网 <https://relaxkon.com> · 文档 <https://relaxkon.com/docs> · 下载 <https://relaxkon.com/downloads> · 仓库 <https://github.com/nanaminato/RelaxKonOS>
+
 </div>
 
 ---
@@ -20,6 +22,24 @@
 **RelaxKonOS** 是一个跨平台的云原生桌面操作系统环境，采用 **状态同步（State-Sync）** 模式而非像素流（Pixel Streaming）模式。客户端在本地渲染 UI，服务端提供云端能力（账户、存储、同步、远程运行时），让用户在任何设备上获得一致的桌面体验。
 
 **RelaxKonOS 不是** 远程桌面工具（RDP/VNC/Screen Streaming）。它传输的是系统状态、应用状态和用户操作意图，而非屏幕像素。
+
+### 核心用途
+
+- **让工作负载活过连接**：终端会话、被守护的进程与远程服务持续运行在服务端，网络瞬断不再等于会话丢失。
+- **让多台设备共享同一个工作区**：工作站、笔记本与服务器控制台看到的是同一份 Workspace，而不是各自独立的本地状态。
+- **把服务器运维收进一个桌面**：Docker、防火墙、证书、Web Server、Git、FRP 隧道与代理管理同处一个 Shell，并且直接复用宿主操作系统的账号与权限。
+- **让应用可以扩展**：实现一个接口即可获得与内置应用相同的窗口管理、生命周期与能力 API。
+
+### 适用人群
+
+| 你是 | 建议的入手方式 |
+| --- | --- |
+| 个人用户 / 自建服务器爱好者 | 用**用户模式**在已有的普通 Linux 账号下装一份服务端（**不需要 sudo**），再在自己的电脑上运行客户端 |
+| 运维 / 系统管理员 | 用**系统模式**把 Server、Guardian Agent 与权限助手注册为系统服务，面向多用户生产环境 |
+| 应用开发者 | 用**开发者模式**与 `DevCli` 把自定义应用打包成 `.roapp` 装进同一个桌面 |
+| 只想先看看 | 从[官网下载页](https://relaxkon.com/downloads)取已发布的客户端与服务端 ZIP，或[从源码运行](#从源码运行开发者) |
+
+> 不确定该选哪种？先读[「选择安装方式」](#选择安装方式)——三种方式互不重叠，普通用户请勿照搬开发者或管理员的步骤。
 
 ### 核心特性
 
@@ -225,20 +245,167 @@ RelaxKonOS/
 
 ## 🚀 快速开始
 
-### 前置要求
+### 选择安装方式
+
+RelaxKonOS 的**服务端**有三种安装方式，用途互不重叠。普通用户请只按「用户模式」操作，不要照搬管理员或开发者的步骤。
+
+| 方式 | 平台 | 权限要求 | 适用场景 | 入口 |
+| --- | --- | --- | --- | --- |
+| **用户模式（User Mode）** | 仅 Linux | **不需要 sudo**，并且拒绝以 root 运行 | 个人在已有的普通账号下自建一份服务端；仅监听 `127.0.0.1` | [`deployment/user/`](./deployment/user/) |
+| 系统模式（System Mode） | Linux（systemd）/ Windows Server | 需要 root 或管理员 | 多用户生产部署：注册系统服务、权限助手与防火墙规则 | [一键服务端安装器](./deployment/README.md) |
+| 开发者模式（Developer Mode） | 全平台 | 需要 .NET 10 SDK | 参与 RelaxKonOS 自身开发，构建与调试应用包 | [从源码运行](#从源码运行开发者) |
+
+**客户端**与服务端是相互独立的压缩包：客户端只需下载 ZIP、解压后直接运行，**不需要**安装到服务器上。
+
+> 官网[下载页](https://relaxkon.com/downloads)给出稳定通道的安装命令、包名与 SHA-256 校验和；离线服务器可直接取其中的服务端 ZIP。
+
+### 用户模式安装（Linux，无 sudo）
+
+用户模式面向「我只想在自己的 Linux 账号下跑一份服务端」的场景。它只用你的 XDG 目录，**不创建 systemd 系统服务、不修改 PAM / sudoers / 防火墙 / `/etc`**，也不需要一个常驻的权限助手。
+
+#### 前置条件
+
+- 一个**普通（非 root）Linux 账号**。安装脚本与生命周期命令都会显式拒绝 root 身份，`sudo` 反而会让它失败。
+- 系统命令：`bash`、`realpath`、`stat`、`find`、`sha256sum`、`flock`。缺少 `flock`（通常在 `util-linux` 中）会直接报错。
+- 若从 HTTPS 发布地址在线安装，还需要 `curl` 与 `unzip`。
+- 一份 **`*-user-server.zip`** 发布包（或 `--release-uri` + `--release-sha256`）。包内 `manifest.json` 必须声明 `packageKind: "user-server"`，客户端包与服务端包都会被拒绝。
+- 不需要 systemd，不需要 sudo，不需要 root。
+
+#### 安装步骤
+
+```bash
+# 1. 以目标账号解压 user-server 发布包（不要用 sudo）
+unzip RelaxKonOS-<version>-linux-x64-user-server.zip -d RelaxKonOS-user-server
+
+# 2. 执行用户模式安装器（--mode user 是必需的）
+./RelaxKonOS-user-server/deployment/user/install-relaxkonos.sh \
+  --mode user \
+  --bundle ./RelaxKonOS-user-server
+```
+
+安装器会依次校验 bundle 完整性、`manifest.json` 的 `packageKind`、全部文件的 SHA-256 与文件清单，然后把版本落到 `bin/relaxkon` 这个稳定命令路径下。它**不会**修改你的 `PATH`。
+
+也可以从官方发布地址在线安装（必须同时给出 SHA-256）：
+
+```bash
+./deployment/user/install-relaxkonos.sh \
+  --mode user \
+  --release-uri https://<host>/relaxkonos/stable/<version>/linux-x64/server/<archive>.zip \
+  --release-sha256 <64-hex-sha256>
+```
+
+#### 安装位置
+
+用户模式只写入当前账号的 XDG 目录，全部权限为 `0700` / `0600`：
+
+| 用途 | 默认路径 |
+| --- | --- |
+| 程序与版本目录 | `${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/`（`server/versions/<version>/`、`server/current` 软链） |
+| 生命周期命令 | `${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon` |
+| 配置与密钥 | `${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos/`（`appsettings.user.json`、`secrets/guardian.secret`） |
+| 运行状态 | `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/`（PID、控制套接字、`install-state.json`、SQLite 数据库） |
+| 日志 | `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/logs/{server,guardian}.log` |
+| 下载缓存 | `${XDG_CACHE_HOME:-$HOME/.cache}/relaxkonos/` |
+
+#### 启动与验证
+
+```bash
+# 把命令路径存成变量，后续命令都基于它
+RELAXKON=""${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon""
+
+"$RELAXKON" start      # 后台启动 Server 与同 UID 的 Guardian，并等待就绪
+"$RELAXKON" status     # 期望输出：RelaxKonOS User Mode is running (pid <n>, loopback 127.0.0.1:5000).
+```
+
+`status` 会通过用户私有的控制套接字（`…/relaxkonos/run/server.sock`，权限 `0600`）探测 `/ready`，因此它比「进程还在不在」更严格：只要套接字没就绪，就会明确报出未就绪而不是假装成功。
+
+其他常用命令：
+
+```bash
+"$RELAXKON" start --foreground   # 前台运行，便于直接观察日志
+"$RELAXKON" stop                 # 停止 Server 与 Guardian
+```
+
+服务端默认监听 `http://127.0.0.1:5000`；端口可用环境变量覆盖：
+
+```bash
+RELAXKONOS_PORT=5100 "$RELAXKON" start
+```
+
+**远程连接**：用户模式只绑定回环地址，所以请用 SSH 本地转发把端口带到你自己的机器上，再把客户端指向本机地址：
+
+```bash
+ssh -L 5000:127.0.0.1:5000 <user>@<server>
+```
+
+#### 升级
+
+```bash
+"$RELAXKON" upgrade --bundle ./RelaxKonOS-<new-version>-linux-x64-user-server
+```
+
+升级会先停止服务、安装新版本、重新启动并等待就绪；如果就绪检查失败，会自动回滚到升级前的版本。
+
+> 同一个版本号不能被重复安装。升级时请使用新的版本号。
+
+#### 卸载
+
+```bash
+"$RELAXKON" uninstall
+```
+
+它会先停止服务，再删除上文表格中的 data / config / state / cache 四个目录。
+
+> ⚠️ `uninstall` 会一并删除数据库、配置、密钥与日志，**不可恢复**。如需保留数据，请先备份 `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/` 与 `${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos/`。
+
+#### 常见问题
+
+| 现象 | 原因与处理 |
+| --- | --- |
+| `User Mode must not be installed as root.` | 用了 `sudo` 或已经切到 root。请换回普通账号重新执行。 |
+| `--mode user or --mode system is required.` | 漏写 `--mode user`（或用了 `--mode system` 却没加 `sudo`）。 |
+| `not a complete user-server bundle` | 解压的不是 `*-user-server` 包，或包不完整（缺少 `manifest.json`、`payload/`、`deployment/user/relaxkon`）。 |
+| `bundle is not a user-server manifest` | 包的 `manifest.json` 不是 `packageKind: "user-server"`。请下载用户态服务端包。 |
+| `bundle file checksum verification failed` | 传输损坏。重新下载并核对官方公布的 SHA-256 后重试。 |
+| `another RelaxKonOS lifecycle operation is already running` | 另一个终端持有生命周期锁（`…/relaxkonos/run/launcher.lock`）。等它结束再执行。 |
+| `flock is required for safe User Mode lifecycle operations` | 系统缺少 `flock`（`util-linux`）。先安装再重试。 |
+| `status` 提示进程在跑但控制套接字未就绪 | 先看 `logs/server.log`；通常是首次启动仍在初始化，或端口被占用。 |
+| `version already installed: <version>` | 该版本已安装。换用新版本号，或先 `uninstall` 再安装。 |
+
+### 系统模式（管理员 / 生产部署）
+
+Linux 需要 root，并用显式模式调用安装器；Windows 需要在管理员 PowerShell 中执行：
+
+```bash
+# Linux System Mode：注册 systemd 服务、权限助手与 sudoers 规则
+sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/RelaxKonOS-release
+```
+
+```powershell
+# Windows Server：注册 Windows 服务与权限助手
+& .\deployment\bootstrap\Install-RelaxKonOS.ps1 -BundlePath 'D:\RelaxKonOS-release'
+```
+
+系统模式会生成并保护 JWT 与组件 IPC 密钥，安装 Server、Guardian Agent 与权限助手，并完成健康检查。完整参数、网络模式（仅本机 / 局域网 / 反向代理）、证书模式与离线安装见[一键服务端安装器](./deployment/README.md)。
+
+> 客户端分发（便携 ZIP 与 Windows MSIX）见 [`deployment/ClientDistribution.md`](./deployment/ClientDistribution.md)。
+
+### 从源码运行（开发者）
+
+#### 前置要求
 
 - **.NET 10.0 SDK** 或更高版本
 - **操作系统**：Windows 10/11、Windows Server 2016+、Ubuntu 20.04+
 - （可选）Visual Studio 2022+ 或 JetBrains Rider
 
-### 1. 克隆仓库
+#### 1. 克隆仓库
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/nanaminato/RelaxKonOS.git
 cd RelaxKonOS
 ```
 
-### 2. 启动服务端
+#### 2. 启动服务端
 
 ```bash
 cd RelaxKonOS.Server
@@ -249,9 +416,7 @@ dotnet run
 
 > ⚠️ **生产环境**：请务必修改 `appsettings.json` 中的 `Jwt:Secret`（至少 32 字符随机字符串）。
 
-生产部署请使用[一键服务端安装器](./deployment/README.md)：它会生成并保护 JWT、组件 IPC 密钥，安装 Server、Guardian Agent 与权限助手，并完成健康检查。
-
-### 3. 启动客户端
+#### 3. 启动客户端
 
 ```bash
 cd Client/RelaxKonOS.Client.Desktop
@@ -259,6 +424,19 @@ dotnet run
 ```
 
 客户端会弹出登录窗口，输入宿主系统的用户名和密码即可登录。
+
+---
+
+## 🔗 官方链接
+
+| 用途 | 地址 |
+| --- | --- |
+| 产品官网 | <https://relaxkon.com> |
+| 文档中心 | <https://relaxkon.com/docs> |
+| 下载页（稳定版安装命令与校验和） | <https://relaxkon.com/downloads> |
+| 发行说明 | <https://relaxkon.com/releases> |
+| 源码仓库 | <https://github.com/nanaminato/RelaxKonOS> |
+| 问题反馈 / Issue | <https://github.com/nanaminato/RelaxKonOS/issues> |
 
 ---
 
@@ -423,7 +601,7 @@ RelaxKonOS 内置三种语言支持：
 
 ## 🤝 贡献
 
-欢迎贡献代码！请：
+源码、Issue 与 Pull Request 都在同一个仓库：<https://github.com/nanaminato/RelaxKonOS>。欢迎贡献代码！请：
 
 1. Fork 本仓库
 2. 创建特性分支 (`git checkout -b feature/amazing-feature`)

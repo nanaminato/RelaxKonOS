@@ -11,6 +11,8 @@
 
 [中文](./README.md) · [日本語](./README.ja.md)
 
+Website <https://relaxkon.com> · Docs <https://relaxkon.com/docs> · Downloads <https://relaxkon.com/downloads> · Repository <https://github.com/nanaminato/RelaxKonOS>
+
 </div>
 
 ---
@@ -20,6 +22,24 @@
 **RelaxKonOS** is a cross-platform, cloud-native desktop operating system environment that uses a **State-Sync** model instead of pixel streaming. The client renders the UI locally while the server provides cloud capabilities (accounts, storage, synchronization, remote runtime), giving users a consistent desktop experience across any device.
 
 **RelaxKonOS is NOT** a remote desktop tool (RDP/VNC/Screen Streaming). It transmits system state, application state, and user interaction intent — not screen pixels.
+
+### What it is for
+
+- **Workloads that outlive a connection** — terminal sessions, guarded processes, and remote services keep running on the server, so a dropped link no longer means a lost session.
+- **One workspace across several devices** — a workstation, a laptop, and a server console all see the same Workspace instead of their own local state.
+- **Server operations inside a single desktop** — Docker, firewall, certificates, web servers, Git, FRP tunnels, and proxy management share one shell, and reuse the host operating system's accounts and permissions.
+- **Applications that can be extended** — implementing a single interface grants the same window management, lifecycle, and capability APIs that the built-in apps use.
+
+### Who this is for
+
+| You are | Recommended starting point |
+| --- | --- |
+| An individual user or self-hosting enthusiast | Install a server with **User Mode** under your existing, unprivileged Linux account (**no sudo required**), then run the client on your own machine |
+| An operator or system administrator | Use **System Mode** to register the Server, Guardian Agent, and privileged helper as system services for a multi-user production host |
+| An application developer | Use **Developer Mode** and the `DevCli` tool to package custom apps as `.roapp` and drop them into the same desktop |
+| Just looking around | Grab the published client and server ZIPs from the [downloads page](https://relaxkon.com/downloads), or [run from source](#run-from-source-developers) |
+
+> Not sure which one applies to you? Start with [Pick an installation method](#pick-an-installation-method) — the three modes do not overlap, and end users should not follow the administrator or developer steps.
 
 ### Key Features
 
@@ -227,20 +247,167 @@ RelaxKonOS/
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### Pick an installation method
+
+The RelaxKonOS **server** has three installation methods that do not overlap. End users should follow **User Mode** only, and should not copy the administrator or developer steps.
+
+| Method | Platform | Privileges | Use it for | Entry point |
+| --- | --- | --- | --- | --- |
+| **User Mode** | Linux only | **No sudo**; refuses to run as root | An individual running a server under their own unprivileged account; binds `127.0.0.1` only | [`deployment/user/`](./deployment/user/) |
+| System Mode | Linux (systemd) / Windows Server | root or administrator | Multi-user production: registers system services, the privileged helper, and firewall rules | [One-command server installer](./deployment/README.md) |
+| Developer Mode | All platforms | .NET 10 SDK | Working on RelaxKonOS itself, building and debugging app packages | [Run from source](#run-from-source-developers) |
+
+The **client** and the server ship as independent archives: the client only needs to be downloaded, extracted, and run — it does **not** have to be installed on the server machine.
+
+> The website [downloads page](https://relaxkon.com/downloads) publishes the stable-channel install commands, file names, and SHA-256 checksums; an offline server can simply take the server ZIP from there.
+
+### User Mode installation (Linux, no sudo)
+
+User Mode is for "I just want a server running under my own Linux account." It only uses your XDG directories: it **creates no systemd system units and does not touch PAM, sudoers, the firewall, or `/etc`**, and it needs no always-on privileged helper.
+
+#### Requirements
+
+- An **unprivileged (non-root) Linux account**. Both the installer and the lifecycle command explicitly reject root, so using `sudo` makes them fail.
+- System commands: `bash`, `realpath`, `stat`, `find`, `sha256sum`, `flock`. A missing `flock` (usually shipped in `util-linux`) fails immediately.
+- For an online install from an HTTPS release URL: `curl` and `unzip`.
+- A **`*-user-server.zip`** release bundle (or `--release-uri` plus `--release-sha256`). Its `manifest.json` must declare `packageKind: "user-server"`; client and system-mode server packages are rejected.
+- No systemd, no sudo, no root.
+
+#### Steps
+
+```bash
+# 1. Extract the user-server release bundle as the target account (do not use sudo)
+unzip RelaxKonOS-<version>-linux-x64-user-server.zip -d RelaxKonOS-user-server
+
+# 2. Run the User Mode installer (--mode user is required)
+./RelaxKonOS-user-server/deployment/user/install-relaxkonos.sh \
+  --mode user \
+  --bundle ./RelaxKonOS-user-server
+```
+
+The installer verifies bundle completeness, the `packageKind` in `manifest.json`, the SHA-256 of every file, and the file inventory, then activates the version behind the stable `bin/relaxkon` command path. It does **not** modify your `PATH`.
+
+You can also install online from the official release URL (a SHA-256 is mandatory):
+
+```bash
+./deployment/user/install-relaxkonos.sh \
+  --mode user \
+  --release-uri https://<host>/relaxkonos/stable/<version>/linux-x64/server/<archive>.zip \
+  --release-sha256 <64-hex-sha256>
+```
+
+#### Where it installs
+
+User Mode writes only inside the current account's XDG directories, all at `0700` / `0600`:
+
+| Purpose | Default path |
+| --- | --- |
+| Programs and version directory | `${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/` (`server/versions/<version>/`, `server/current` symlink) |
+| Lifecycle command | `${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon` |
+| Configuration and secrets | `${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos/` (`appsettings.user.json`, `secrets/guardian.secret`) |
+| Runtime state | `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/` (PID files, control socket, `install-state.json`, SQLite database) |
+| Logs | `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/logs/{server,guardian}.log` |
+| Download cache | `${XDG_CACHE_HOME:-$HOME/.cache}/relaxkonos/` |
+
+#### Start and verify
+
+```bash
+# Keep the command path in a variable and build the rest on it
+RELAXKON=""${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon""
+
+"$RELAXKON" start      # start the Server and the same-UID Guardian, then wait for readiness
+"$RELAXKON" status     # expected: RelaxKonOS User Mode is running (pid <n>, loopback 127.0.0.1:5000).
+```
+
+`status` probes `/ready` over the per-user private control socket (`…/relaxkonos/run/server.sock`, mode `0600`), so it is stricter than "is the process alive": if the socket is not ready it says so instead of reporting success.
+
+Other commands:
+
+```bash
+"$RELAXKON" start --foreground   # run in the foreground to watch the logs directly
+"$RELAXKON" stop                 # stop the Server and the Guardian
+```
+
+The server listens on `http://127.0.0.1:5000`; override the port with an environment variable:
+
+```bash
+RELAXKONOS_PORT=5100 "$RELAXKON" start
+```
+
+**Remote access**: User Mode binds the loopback interface only, so forward the port over SSH to your own machine and point the client at the local address:
+
+```bash
+ssh -L 5000:127.0.0.1:5000 <user>@<server>
+```
+
+#### Upgrade
+
+```bash
+"$RELAXKON" upgrade --bundle ./RelaxKonOS-<new-version>-linux-x64-user-server
+```
+
+An upgrade stops the service, installs the new version, starts it, and waits for readiness; if the readiness check fails it automatically rolls back to the version that was active before.
+
+> The same version number cannot be installed twice. Use a new version number when upgrading.
+
+#### Uninstall
+
+```bash
+"$RELAXKON" uninstall
+```
+
+It stops the service first, then removes the data / config / state / cache directories listed above.
+
+> ⚠️ `uninstall` deletes the database, configuration, secrets, and logs together, and **cannot be undone**. Back up `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/` and `${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos/` first if you need to keep anything.
+
+#### Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `User Mode must not be installed as root.` | You used `sudo` or switched to root. Re-run as an unprivileged account. |
+| `--mode user or --mode system is required.` | `--mode user` is missing (or you passed `--mode system` without `sudo`). |
+| `not a complete user-server bundle` | The extracted package is not a `*-user-server` bundle, or it is incomplete (missing `manifest.json`, `payload/`, or `deployment/user/relaxkon`). |
+| `bundle is not a user-server manifest` | The bundle's `manifest.json` is not `packageKind: "user-server"`. Download the user-mode server package. |
+| `bundle file checksum verification failed` | The transfer is corrupt. Re-download and check the published SHA-256. |
+| `another RelaxKonOS lifecycle operation is already running` | Another terminal holds the lifecycle lock (`…/relaxkonos/run/launcher.lock`). Wait for it to finish. |
+| `flock is required for safe User Mode lifecycle operations` | `flock` (`util-linux`) is missing. Install it and retry. |
+| `status` says the process runs but the control socket is not ready | Read `logs/server.log`; usually the first start is still initialising, or the port is taken. |
+| `version already installed: <version>` | That version is already present. Use a new version number, or `uninstall` first. |
+
+### System Mode (administrator / production)
+
+Linux requires root and an explicit mode; Windows requires an elevated PowerShell session:
+
+```bash
+# Linux System Mode: registers systemd services, the privileged helper, and sudoers rules
+sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/RelaxKonOS-release
+```
+
+```powershell
+# Windows Server: registers Windows services and the privileged helper
+& .\deployment\bootstrap\Install-RelaxKonOS.ps1 -BundlePath 'D:\RelaxKonOS-release'
+```
+
+System Mode generates and protects the JWT and component IPC secrets, installs the Server, the Guardian Agent, and the privileged helper, and runs a health check. For the full argument list, network profiles (local / LAN / reverse proxy), certificate modes, and offline installs, see the [one-command server installer](./deployment/README.md).
+
+> Client distribution (portable ZIP and Windows MSIX) is documented in [`deployment/ClientDistribution.md`](./deployment/ClientDistribution.md).
+
+### Run from source (developers)
+
+#### Prerequisites
 
 - **.NET 10.0 SDK** or later
 - **OS**: Windows 10/11, Windows Server 2016+, Ubuntu 20.04+
 - (Optional) Visual Studio 2022+ or JetBrains Rider
 
-### 1. Clone the Repository
+#### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/nanaminato/RelaxKonOS.git
 cd RelaxKonOS
 ```
 
-### 2. Start the Server
+#### 2. Start the Server
 
 ```bash
 cd RelaxKonOS.Server
@@ -251,9 +418,7 @@ dotnet run
 
 > ⚠️ **Production**: Always change `Jwt:Secret` in `appsettings.json` to at least a 32-character random string.
 
-For production, use the [one-command server installer](./deployment/README.md). It generates and protects JWT and component IPC secrets, installs Server, Guardian Agent, and the privileged helper, then performs a health check.
-
-### 3. Start the Client
+#### 3. Start the Client
 
 ```bash
 cd Client/RelaxKonOS.Client.Desktop
@@ -261,6 +426,19 @@ dotnet run
 ```
 
 The client will open a login dialog. Enter your host system username and password to log in.
+
+---
+
+## 🔗 Official links
+
+| Purpose | Address |
+| --- | --- |
+| Website | <https://relaxkon.com> |
+| Documentation | <https://relaxkon.com/docs> |
+| Downloads (stable installers and checksums) | <https://relaxkon.com/downloads> |
+| Release notes | <https://relaxkon.com/releases> |
+| Source repository | <https://github.com/nanaminato/RelaxKonOS> |
+| Issues and feedback | <https://github.com/nanaminato/RelaxKonOS/issues> |
 
 ---
 
@@ -424,7 +602,7 @@ See the [`LICENSE`](./LICENSE) file for details. Third-party component licenses 
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please:
+Source code, issues, and pull requests all live in the same repository: <https://github.com/nanaminato/RelaxKonOS>. Contributions are welcome! Please:
 
 1. Fork this repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)

@@ -11,6 +11,8 @@
 
 [中文](./README.md) · [English](./README.en.md)
 
+ウェブサイト <https://relaxkon.com> · ドキュメント <https://relaxkon.com/docs> · ダウンロード <https://relaxkon.com/downloads> · リポジトリ <https://github.com/nanaminato/RelaxKonOS>
+
 </div>
 
 ---
@@ -20,6 +22,24 @@
 **RelaxKonOS** はクロスプラットフォームなクラウドネイティブデスクトップOS環境です。ピクセルストリーミングではなく **状態同期（State-Sync）** モデルを採用しています。クライアントはローカルでUIを描画し、サーバーはクラウド機能（アカウント、ストレージ、同期、リモートランタイム）を提供し、どのデバイスでも一貫したデスクトップ体験を実現します。
 
 **RelaxKonOS は** リモートデスクトップツール（RDP/VNC/Screen Streaming）ではありません。システム状態、アプリケーション状態、ユーザー操作意図を伝送し、画面ピクセルは伝送しません。
+
+### 何のためにあるのか
+
+- **接続より長く生きるワークロード** — ターミナルセッション、保護されたプロセス、リモートサービスはサーバー上で動き続けるため、回線が切れてもセッションが失われません。
+- **複数デバイスで1つのワークスペース** — ワークステーション、ノートPC、サーバーコンソールが見るのは、それぞれのローカル状態ではなく同じ Workspace です。
+- **サーバー運用を1つのデスクトップに集約** — Docker、ファイアウォール、証明書、Webサーバー、Git、FRPトンネル、プロキシ管理が同じシェルに入り、ホストOSのアカウントと権限をそのまま使います。
+- **拡張できるアプリケーション** — インターフェースを1つ実装するだけで、内蔵アプリと同じウィンドウ管理・ライフサイクル・ケイパビリティAPIが得られます。
+
+### 対象となるユーザー
+
+| あなたは | 推奨する始め方 |
+| --- | --- |
+| 個人ユーザー / セルフホスト志向の方 | 既存の一般 Linux アカウントで**ユーザーモード**のサーバーを導入（**sudo 不要**）。クライアントは手元の PC で動かします |
+| 運用担当 / システム管理者 | **システムモード**で Server、Guardian Agent、特権ヘルパーをシステムサービスとして登録し、マルチユーザーの本番環境を構築 |
+| アプリケーション開発者 | **開発者モード**と `DevCli` で独自アプリを `.roapp` としてパッケージし、同じデスクトップに組み込みます |
+| まず試したいだけ | [ダウンロードページ](https://relaxkon.com/downloads)から公開済みのクライアント／サーバー ZIP を取得するか、[ソースから実行](#ソースから実行開発者) |
+
+> どれを選ぶか迷ったら、まず[「インストール方法の選択」](#インストール方法の選択)をお読みください。3つの方式は用途が重複しません。一般ユーザーは管理者向け・開発者向けの手順を流用しないでください。
 
 ### 主な特徴
 
@@ -226,20 +246,167 @@ RelaxKonOS/
 
 ## 🚀 クイックスタート
 
-### 前提条件
+### インストール方法の選択
+
+RelaxKonOS の**サーバー**には用途が重複しない3つの導入方式があります。一般ユーザーは**ユーザーモード**のみを実行し、管理者向け・開発者向けの手順を流用しないでください。
+
+| 方式 | プラットフォーム | 権限 | 用途 | 入口 |
+| --- | --- | --- | --- | --- |
+| **ユーザーモード** | Linux のみ | **sudo 不要**、root での実行は拒否 | 個人が既存の一般アカウントでサーバーを動かす。`127.0.0.1` のみ待ち受け | [`deployment/user/`](./deployment/user/) |
+| システムモード | Linux（systemd）/ Windows Server | root または管理者 | マルチユーザー本番環境。システムサービス・特権ヘルパー・ファイアウォール規則を登録 | [ワンコマンド サーバー インストーラー](./deployment/README.md) |
+| 開発者モード | 全プラットフォーム | .NET 10 SDK | RelaxKonOS 自体の開発、アプリパッケージのビルドとデバッグ | [ソースから実行](#ソースから実行開発者) |
+
+**クライアント**とサーバーは独立したアーカイブで配布されます。クライアントは ZIP を展開してそのまま実行すればよく、サーバー機にインストールする必要は**ありません**。
+
+> 公式サイトの[ダウンロードページ](https://relaxkon.com/downloads)に安定版チャネルのインストールコマンド、ファイル名、SHA-256 が掲載されています。オフラインのサーバーでは、そこからサーバー ZIP だけを取得してください。
+
+### ユーザーモードでのインストール（Linux、sudo なし）
+
+ユーザーモードは「自分の Linux アカウントでサーバーを1つ動かしたい」という用途のための方式です。使用するのは自分の XDG ディレクトリだけで、**systemd のシステムユニットを作成せず、PAM / sudoers / ファイアウォール / `/etc` も変更しません**。常駐する特権ヘルパーも不要です。
+
+#### 前提条件
+
+- **一般（非 root）の Linux アカウント**。インストーラーとライフサイクルコマンドはいずれも root を明示的に拒否するため、`sudo` を使うと失敗します。
+- システムコマンド: `bash`、`realpath`、`stat`、`find`、`sha256sum`、`flock`。`flock`（通常は `util-linux` に含まれます）が無い場合は即座にエラーになります。
+- HTTPS のリリース URL からオンラインインストールする場合は `curl` と `unzip` も必要です。
+- **`*-user-server.zip`** リリースバンドル（または `--release-uri` と `--release-sha256`）。バンドル内の `manifest.json` が `packageKind: "user-server"` を宣言している必要があり、クライアントパッケージやシステムモードのサーバーパッケージは拒否されます。
+- systemd、sudo、root はいずれも不要です。
+
+#### 手順
+
+```bash
+# 1. 対象アカウントで user-server リリースバンドルを展開（sudo は使わない）
+unzip RelaxKonOS-<version>-linux-x64-user-server.zip -d RelaxKonOS-user-server
+
+# 2. ユーザーモード インストーラーを実行（--mode user は必須）
+./RelaxKonOS-user-server/deployment/user/install-relaxkonos.sh \
+  --mode user \
+  --bundle ./RelaxKonOS-user-server
+```
+
+インストーラーはバンドルの完全性、`manifest.json` の `packageKind`、全ファイルの SHA-256、ファイル一覧を順に検証し、安定したコマンドパス `bin/relaxkon` の背後にバージョンを配置します。`PATH` は変更し**ません**。
+
+公式リリース URL からのオンラインインストールも可能です（SHA-256 の指定が必須）:
+
+```bash
+./deployment/user/install-relaxkonos.sh \
+  --mode user \
+  --release-uri https://<host>/relaxkonos/stable/<version>/linux-x64/server/<archive>.zip \
+  --release-sha256 <64-hex-sha256>
+```
+
+#### インストール先
+
+ユーザーモードは現在のアカウントの XDG ディレクトリだけに書き込み、権限はすべて `0700` / `0600` です。
+
+| 用途 | 既定のパス |
+| --- | --- |
+| プログラムとバージョンディレクトリ | `${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/`（`server/versions/<version>/`、`server/current` シンボリックリンク） |
+| ライフサイクルコマンド | `${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon` |
+| 設定とシークレット | `${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos/`（`appsettings.user.json`、`secrets/guardian.secret`） |
+| 実行状態 | `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/`（PID、制御ソケット、`install-state.json`、SQLite データベース） |
+| ログ | `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/logs/{server,guardian}.log` |
+| ダウンロードキャッシュ | `${XDG_CACHE_HOME:-$HOME/.cache}/relaxkonos/` |
+
+#### 起動と確認
+
+```bash
+# コマンドパスを変数に入れ、以降はこれを使う
+RELAXKON=""${XDG_DATA_HOME:-$HOME/.local/share}/relaxkonos/bin/relaxkon""
+
+"$RELAXKON" start      # Server と同一 UID の Guardian を起動し、準備完了まで待機
+"$RELAXKON" status     # 期待する出力: RelaxKonOS User Mode is running (pid <n>, loopback 127.0.0.1:5000).
+```
+
+`status` はユーザー専用の制御ソケット（`…/relaxkonos/run/server.sock`、モード `0600`）経由で `/ready` を確認します。したがって「プロセスが生きているか」より厳密で、ソケットが準備できていなければ成功と偽らず、未準備であることを明示します。
+
+その他のコマンド:
+
+```bash
+"$RELAXKON" start --foreground   # フォアグラウンドで実行し、ログを直接確認する
+"$RELAXKON" stop                 # Server と Guardian を停止
+```
+
+サーバーは既定で `http://127.0.0.1:5000` を待ち受けます。ポートは環境変数で変更できます。
+
+```bash
+RELAXKONOS_PORT=5100 "$RELAXKON" start
+```
+
+**リモート接続**: ユーザーモードはループバックにのみバインドするため、SSH のローカル転送でポートを手元のマシンに取り込み、クライアントをローカルアドレスに向けてください。
+
+```bash
+ssh -L 5000:127.0.0.1:5000 <user>@<server>
+```
+
+#### アップグレード
+
+```bash
+"$RELAXKON" upgrade --bundle ./RelaxKonOS-<new-version>-linux-x64-user-server
+```
+
+アップグレードはサービスを停止し、新しいバージョンを導入して再起動し、準備完了を待ちます。準備完了の確認に失敗した場合は、アップグレード前のバージョンへ自動的にロールバックします。
+
+> 同じバージョン番号を重複してインストールすることはできません。アップグレード時は新しいバージョン番号を使用してください。
+
+#### アンインストール
+
+```bash
+"$RELAXKON" uninstall
+```
+
+まずサービスを停止し、そのうえで上表の data / config / state / cache の4ディレクトリを削除します。
+
+> ⚠️ `uninstall` はデータベース、設定、シークレット、ログをまとめて削除し、**復元できません**。残したいものがある場合は、先に `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos/` と `${XDG_CONFIG_HOME:-$HOME/.config}/relaxkonos/` をバックアップしてください。
+
+#### よくある問題
+
+| 症状 | 原因と対処 |
+| --- | --- |
+| `User Mode must not be installed as root.` | `sudo` を使ったか root に切り替えています。一般アカウントで再実行してください。 |
+| `--mode user or --mode system is required.` | `--mode user` が抜けています（または `sudo` なしで `--mode system` を指定しています）。 |
+| `not a complete user-server bundle` | 展開したのが `*-user-server` バンドルではないか、不完全です（`manifest.json`、`payload/`、`deployment/user/relaxkon` の欠落）。 |
+| `bundle is not a user-server manifest` | バンドルの `manifest.json` が `packageKind: "user-server"` ではありません。ユーザーモード用サーバーパッケージを取得してください。 |
+| `bundle file checksum verification failed` | 転送が破損しています。再ダウンロードし、公開されている SHA-256 を確認してください。 |
+| `another RelaxKonOS lifecycle operation is already running` | 別のターミナルがライフサイクルロック（`…/relaxkonos/run/launcher.lock`）を保持しています。終了を待ってください。 |
+| `flock is required for safe User Mode lifecycle operations` | `flock`（`util-linux`）がありません。導入して再試行してください。 |
+| `status` はプロセスが動作中と表示するが制御ソケットが未準備 | `logs/server.log` を確認してください。初回起動の初期化中か、ポートが使用中であることが多いです。 |
+| `version already installed: <version>` | そのバージョンは導入済みです。新しいバージョン番号を使うか、先に `uninstall` してください。 |
+
+### システムモード（管理者 / 本番環境）
+
+Linux では root が必要で、モードを明示してインストーラーを呼び出します。Windows では管理者権限の PowerShell で実行します。
+
+```bash
+# Linux システムモード: systemd サービス、特権ヘルパー、sudoers 規則を登録
+sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/RelaxKonOS-release
+```
+
+```powershell
+# Windows Server: Windows サービスと特権ヘルパーを登録
+& .\deployment\bootstrap\Install-RelaxKonOS.ps1 -BundlePath 'D:\RelaxKonOS-release'
+```
+
+システムモードは JWT とコンポーネント IPC シークレットを生成・保護し、Server、Guardian Agent、特権ヘルパーをインストールしてヘルスチェックまで行います。引数の全体、ネットワークモード（ローカルのみ / LAN / リバースプロキシ）、証明書モード、オフラインインストールについては[ワンコマンド サーバー インストーラー](./deployment/README.md)を参照してください。
+
+> クライアントの配布（ポータブル ZIP と Windows MSIX）は [`deployment/ClientDistribution.md`](./deployment/ClientDistribution.md) に記載しています。
+
+### ソースから実行（開発者）
+
+#### 前提条件
 
 - **.NET 10.0 SDK** 以降
 - **OS**: Windows 10/11、Windows Server 2016+、Ubuntu 20.04+
 - （任意）Visual Studio 2022+ または JetBrains Rider
 
-### 1. リポジトリのクローン
+#### 1. リポジトリのクローン
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/nanaminato/RelaxKonOS.git
 cd RelaxKonOS
 ```
 
-### 2. サーバーの起動
+#### 2. サーバーの起動
 
 ```bash
 cd RelaxKonOS.Server
@@ -250,9 +417,7 @@ dotnet run
 
 > ⚠️ **本番環境**: `appsettings.json` の `Jwt:Secret` を少なくとも32文字のランダム文字列に変更してください。
 
-本番環境では[ワンコマンド サーバー インストーラー](./deployment/README.md)を使用してください。JWT とコンポーネント IPC シークレットを生成・保護し、Server、Guardian Agent、特権ヘルパーのインストールとヘルスチェックを行います。
-
-### 3. クライアントの起動
+#### 3. クライアントの起動
 
 ```bash
 cd Client/RelaxKonOS.Client.Desktop
@@ -260,6 +425,19 @@ dotnet run
 ```
 
 クライアントにログインダイアログが表示されます。ホストシステムのユーザー名とパスワードを入力してログインしてください。
+
+---
+
+## 🔗 公式リンク
+
+| 用途 | アドレス |
+| --- | --- |
+| 製品ウェブサイト | <https://relaxkon.com> |
+| ドキュメント | <https://relaxkon.com/docs> |
+| ダウンロード（安定版インストーラーとチェックサム） | <https://relaxkon.com/downloads> |
+| リリースノート | <https://relaxkon.com/releases> |
+| ソースリポジトリ | <https://github.com/nanaminato/RelaxKonOS> |
+| 不具合報告 / Issue | <https://github.com/nanaminato/RelaxKonOS/issues> |
 
 ---
 
@@ -423,7 +601,7 @@ RelaxKonOSには3つの言語のサポートが内蔵されています：
 
 ## 🤝 コントリビューション
 
-コントリビューションを歓迎します！以下の手順でお願いします：
+ソースコード、Issue、Pull Request はすべて同じリポジトリにあります: <https://github.com/nanaminato/RelaxKonOS>。コントリビューションを歓迎します！以下の手順でお願いします：
 
 1. このリポジトリをフォーク
 2. 機能ブランチを作成（`git checkout -b feature/amazing-feature`）
