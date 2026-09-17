@@ -9,6 +9,7 @@ internal sealed record GuardianAgentOptions(
     string PipeName,
     string SharedSecret,
     string DataDirectory,
+    bool UserMode,
     ProtectedServerMonitorOptions ProtectedServerMonitor)
 {
     public static GuardianAgentOptions Load(string[] args)
@@ -26,7 +27,9 @@ internal sealed record GuardianAgentOptions(
         return new GuardianAgentOptions(
             Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_PIPE") ?? config.PipeName ?? "relaxkonos-guardian",
             Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_SHARED_SECRET") ?? config.SharedSecret ?? string.Empty,
-            dataDirectory, monitor);
+            dataDirectory,
+            string.Equals(Environment.GetEnvironmentVariable("RELAXKONOS_GUARDIAN_MODE") ?? config.Mode, "user", StringComparison.OrdinalIgnoreCase),
+            monitor);
     }
 
     private static GuardianMachineConfiguration LoadMachineConfiguration(string[] args)
@@ -57,6 +60,7 @@ internal sealed record GuardianMachineConfiguration(
     string? PipeName = null,
     string? SharedSecret = null,
     string? DataDirectory = null,
+    string? Mode = null,
     ProtectedServerMonitorOptions? ProtectedServerMonitor = null);
 
 /// <summary>

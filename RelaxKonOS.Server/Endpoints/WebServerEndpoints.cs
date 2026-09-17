@@ -2,6 +2,7 @@ using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -9,7 +10,7 @@ public static class WebServerEndpoints
 {
     public static IEndpointRouteBuilder MapWebServerEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup(WebServerApiRoutes.WebServers).RequireAuthorization().WithTags("WebServers");
+        var group = app.MapGroup(WebServerApiRoutes.WebServers).RequireAuthorization().WithTags("WebServers").RequireHostFeature(ServerHostFeature.WebServer);
         group.MapGet(WebServerApiRoutes.ManagedInstallCatalogPattern, (RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) => manager.GetManagedInstallCatalogAsync(ct));
         group.MapGet(WebServerApiRoutes.ManagedInstallDownloadPattern, async (string? version, RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) =>
             await manager.GetManagedInstallDownloadAsync(version, ct) is { } download ? Results.Ok(download) : Results.NotFound());

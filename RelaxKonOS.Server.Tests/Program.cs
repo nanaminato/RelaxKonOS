@@ -244,6 +244,10 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
 static void VerifyLinuxSystemAuthenticationProvider()
 {
     if (!OperatingSystem.IsLinux()) return;
+    Assert(LinuxPamProvider.IsValidPamServiceName("login") && LinuxPamProvider.IsValidPamServiceName("relaxkonos-user_1.0"),
+        "Valid PAM service names were rejected.");
+    Assert(!LinuxPamProvider.IsValidPamServiceName("../login") && !LinuxPamProvider.IsValidPamServiceName("login/service")
+        && !LinuxPamProvider.IsValidPamServiceName(""), "Unsafe PAM service names were accepted.");
     var username = Environment.UserName;
     var accepted = new SystemAuthenticationTransport(new(true, SystemAuthenticationResult: SystemAuthenticationResult.Success));
     var provider = new LinuxPamProvider(accepted);

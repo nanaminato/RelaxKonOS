@@ -124,20 +124,25 @@ Windows 平台使用 Win32 `LogonUser` API 验证账号密码，支持：
 
 ### 3.3 Linux 凭据验证
 
-Linux 平台的 Server 继续以低权限服务账户运行，并只用 NSS 查询用户的 UID、显示名和 Home 目录。
-密码验证通过既有、root-owned 的 `RelaxKonOS.PrivilegedHelper` 执行固定
+Linux 的 PAM transport 是显式部署配置，不由 `Development` 环境决定。`Identity:LinuxPamTransport=helper`
+（默认，System Mode）通过既有 root-owned `RelaxKonOS.PrivilegedHelper` 执行固定
 `AuthenticateSystemUser` operation；Helper 以 `pam_start("relaxkonos", ...)` 运行 `/etc/pam.d/relaxkonos`
 的 `common-auth` 与 `common-account` stack。该文件不包含 `login` 的 session 行，因此不会受
 `pam_lastlog` 等 login-session 配置影响。
+
+`Identity:LinuxPamTransport=in-process`（User Mode）由以当前 Unix 账号运行的 Server 直接调用
+`Identity:LinuxPamService`（默认 `login`）。它复用管理员已经存在的 PAM 服务来验证该账号密码，
+不需要 Helper、sudo 或任何 PAM 文件变更。service 名称仅允许字母、数字、`.`、`_`、`-`，防止选择
+路径或任意配置。进程内 PAM 已将可登录身份限制为实际 Server eUID。
 
 Linux 发布版复用受 sudoers 精确约束的 `Server → sudo -n → Helper` 本地传输；没有新增可匿名访问的
 socket。Helper 只返回认证分类（成功、凭据无效、锁定、密码过期、账户不可用、拒绝、PAM/内部错误），
 不会返回 shadow 内容、hash 或 PAM 对话内容。Server 仍在认证前后核对 NSS UID，随后沿用原有
 User 映射、Workspace、Session 和安全事件流程。Alias 密码认证始终留在 Server 的独立分支，不调用 PAM。
 
-仅为本机调试保留显式 opt-in 的 `Identity:AllowDevelopmentInProcessLinuxPam=true`：它还要求 ASP.NET
-环境为 `Development`，并直接使用历史 `login` PAM service，方便开发账户运行 Server 时快速调试。已安装的
-systemd 服务不会设置该选项，因此不能退回到进程内 PAM。
+Debug 与 Production 均可选择两种 transport；环境名不能自动改变认证或特权能力。本机开发通常选择
+`in-process`，以当前开发账号登录；若管理员另外安装并授权 Helper，特权操作仍由 Helper 的封闭 operation
+集合完成，二者互不蕴含。
 
 安装器原子安装 root:root、0644 的 `/etc/pam.d/relaxkonos`；升级仅替换带 RelaxKonOS 管理标识的文件，
 卸载也只删除该受管文件。它不会修改 `/etc/pam.d/login`、`/etc/shadow`、`unix_chkpwd` 或服务账户组。

@@ -17,6 +17,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.WebServers;
+using RelaxKonOS.Protocol.Common;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.Client.Apps.WebServers;
@@ -26,7 +27,7 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
         new AppId("relaxkonos.webservers"), "Web Server Manager", "0.1.0", "🌐", "Manage web servers on the RelaxKonOS Server",
-        [AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage],
+        [AppPermissions.ServerWebServersRead, AppPermissions.ServerWebServersManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.WebServer]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)

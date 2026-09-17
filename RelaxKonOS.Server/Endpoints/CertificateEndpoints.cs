@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.Certificates;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -6,7 +7,7 @@ public static class CertificateEndpoints
 {
     public static IEndpointRouteBuilder MapCertificateEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup(CertificateApiRoutes.Certificates).RequireAuthorization().WithTags("Certificates");
+        var group = app.MapGroup(CertificateApiRoutes.Certificates).RequireAuthorization().WithTags("Certificates").RequireHostFeature(ServerHostFeature.Certificates);
         group.MapGet(CertificateApiRoutes.CollectionPattern, (RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) => manager.ListAsync(ct));
         group.MapGet(CertificateApiRoutes.ByIdPattern, async (Guid id, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             await manager.GetAsync(id, ct) is { } certificate ? Results.Ok(certificate) : Results.NotFound());

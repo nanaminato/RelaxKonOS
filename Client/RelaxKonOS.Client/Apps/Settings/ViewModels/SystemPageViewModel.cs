@@ -28,6 +28,19 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
         PlatformKind.Linux => T("settings.platform.linux", "Linux"),
         _ => "—",
     };
+    public string ServerMode => _session.CurrentServer?.Host?.Mode switch
+    {
+        ServerMode.User => T("settings.server_mode.user", "Current Linux user mode"),
+        ServerMode.System => T("settings.server_mode.system", "System mode"),
+        _ => "—",
+    };
+    public string ExecutionIdentity => _session.CurrentServer?.Host is { } host
+        ? $"{host.ExecutionIdentity.Username} (uid {host.ExecutionIdentity.Uid})"
+        : "—";
+    public string ListenerScope => _session.CurrentServer?.Host?.Listener.Scope ?? "—";
+    public string ConnectionGuidance => _session.CurrentServer?.Host?.Mode == ServerMode.User
+        ? T("settings.server_mode.user_hint", "This server is limited to the current Linux account and loopback. Connect remotely through SSH local forwarding.")
+        : "";
     public string WorkspaceName => _session.CurrentWorkspace?.Name ?? "—";
     public string DeviceName => _session.CurrentDevice?.Name ?? "—";
     public string DeviceRole => _session.AssignedRole switch

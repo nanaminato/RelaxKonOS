@@ -4,6 +4,7 @@ using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -11,7 +12,7 @@ public static class InstallationEndpoints
 {
     public static IEndpointRouteBuilder MapInstallationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup(InstallationApiRoutes.Root).RequireAuthorization().WithTags("Installations");
+        var group = app.MapGroup(InstallationApiRoutes.Root).RequireAuthorization().WithTags("Installations").RequireHostFeature(ServerHostFeature.AgentInstallation);
         group.MapPost(InstallationApiRoutes.StartPattern, (string service, string kind, JsonElement request,
             HttpContext http, InstallationCoordinator coordinator, IHostElevationSessionStore elevations) => Handle(() =>
         {

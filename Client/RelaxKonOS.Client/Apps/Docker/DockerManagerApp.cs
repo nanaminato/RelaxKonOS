@@ -8,6 +8,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Installations;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
@@ -16,7 +17,7 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// <summary>Built-in client for the server-local Docker Engine.</summary>
 public sealed class DockerManagerApp : RemoteApplicationBase
 {
-    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.docker"), "Docker Manager", "0.2.0", "🐳", "Manage the local Docker Engine on the RelaxKonOS Server", [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.docker"), "Docker Manager", "0.2.0", "🐳", "Manage the local Docker Engine on the RelaxKonOS Server", [AppPermissions.ServerDockerRead, AppPermissions.ServerDockerManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Docker]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {

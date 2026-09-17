@@ -124,15 +124,15 @@ printf '%s' '{"operation":"FirewallUfwStatus","operationId":"11111111-1111-1111-
 不要使用 `sudo dotnet run`，否则构建输出可能被 root 占有。也不要把 sudoers 规则直接指向开发账户
 可写的 `bin/Debug` apphost；那等价于授予该账户 root 能力。
 
-### Linux 快速 PAM 登录调试（不构建 Helper）
+### Linux 当前账号 PAM 登录（不构建 Helper）
 
-`http-linux-pam-debug` 启动配置只用于本地开发：它同时设置 `ASPNETCORE_ENVIRONMENT=Development` 与
-`Identity__AllowDevelopmentInProcessLinuxPam=true`，使 Server 以当前开发用户身份直接调用历史 `login`
-PAM service。适合以 `nanami` 运行 Server 时快速验证登录，不需要构建或安装 PrivilegedHelper。
+`http-linux-user` 启动配置设置 `Identity__LinuxPamTransport=in-process` 与
+`Identity__LinuxPamService=login`，使以当前开发用户运行的 Server 直接调用宿主已有的 `login` PAM service。
+它与无 sudo User Mode 使用相同的认证 transport，不需要构建或安装 PrivilegedHelper。
 
-这不是生产回退：代码只有在 `Development` 环境**且**该显式配置为 `true` 时才允许直连；systemd 安装服务
-未设置该配置，始终经 root Helper 使用专用 `relaxkonos` PAM service。不要把此变量加入
-`/etc/relaxkonos/server.env`、systemd unit 或生产启动配置。
+这不是由 `Development` 环境隐式放开的回退：`in-process` 与 `helper` 是明确配置。systemd System Mode 服务
+应继续使用默认 `helper` transport 和专用 `relaxkonos` PAM service；User Mode 才设置 `in-process`，且绝不
+把该设置与特权 Helper 或 sudoers 授权混为一体。
 
 ### Linux 系统账户认证手工验证
 

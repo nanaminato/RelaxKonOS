@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using RelaxKonOS.Protocol.SystemMonitor;
+using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.SystemPerformance;
 
@@ -7,7 +9,9 @@ namespace RelaxKonOS.Server.SystemPerformance;
 /// 按需的低频进程采样器。只有进程页查询才会枚举进程；PID 与 StartTime 共同作为实例身份，
 /// 避免 PID 重用继承旧进程 CPU 时间。
 /// </summary>
-public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl) : IProcessService
+public sealed class ProcessSampler(
+    RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl,
+    IServerModeResolver mode) : IProcessService
 {
     private readonly object _gate = new();
     private readonly SemaphoreSlim _collectionGate = new(1, 1);
@@ -43,7 +47,9 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
     }
 
     public Task<KillProcessResultDto> KillAsync(int processId, bool force, CancellationToken cancellationToken = default)
-        => legacyControl.KillProcessAsync(processId, force, cancellationToken);
+        => !IsVisibleToCurrentMode(processId)
+            ? Task.FromResult(new KillProcessResultDto(false, false, "user-mode-process-not-owned"))
+            : legacyControl.KillProcessAsync(processId, force, cancellationToken);
 
     private async Task EnsureFreshAsync(CancellationToken cancellationToken)
     {
@@ -82,6 +88,7 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
             {
                 try
                 {
+                    if (!IsVisibleToCurrentMode(process.Id)) continue;
                     var startTime = TryGetStartTime(process);
                     var key = new ProcessInstanceKey(process.Id, startTime);
                     var linuxDetails = OperatingSystem.IsLinux()
@@ -128,6 +135,24 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
 
     private static int TryGetWindowsThreadCount(Process process) { try { return process.Threads.Count; } catch { return 0; } }
     private static string TryGetName(Process process) { try { return process.ProcessName; } catch { return $"pid:{process.Id}"; } }
+
+    private bool IsVisibleToCurrentMode(int pid)
+    {
+        if (mode.Mode != ServerMode.User) return true;
+        if (!OperatingSystem.IsLinux()) return false;
+        return TryGetUid(pid) == mode.Describe().ExecutionIdentity.Uid;
+    }
+
+    private static int? TryGetUid(int pid)
+    {
+        try
+        {
+            var uidLine = File.ReadLines($"/proc/{pid}/status").FirstOrDefault(x => x.StartsWith("Uid:", StringComparison.Ordinal));
+            var value = uidLine?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
+            return int.TryParse(value, out var uid) ? uid : null;
+        }
+        catch { return null; }
+    }
 
     private readonly record struct ProcessInstanceKey(int Id, DateTimeOffset? StartTime);
     private readonly record struct ProcessSample(TimeSpan Cpu, DateTimeOffset At);

@@ -4,6 +4,7 @@ using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Files;
+using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Endpoints;
@@ -178,6 +179,7 @@ public static class FileEndpoints
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "Invalid path", ex.Message); }
         })
         .RequireAuthorization(FileAuthorizationPolicies.Read)
+        .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.PrivilegedOperations))
         .WithTags("Files");
 
         app.MapGet(FileApiRoutes.Properties, (string path, IFileService fs) =>

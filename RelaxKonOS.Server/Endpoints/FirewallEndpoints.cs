@@ -3,6 +3,7 @@ using System.Security.Claims;
 using RelaxKonOS.Protocol.Firewall;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -10,7 +11,7 @@ public static class FirewallEndpoints
 {
     public static IEndpointRouteBuilder MapFirewallEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/firewall").RequireAuthorization().WithTags("Firewall");
+        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/firewall").RequireAuthorization().WithTags("Firewall").RequireHostFeature(ServerHostFeature.Firewall);
         group.MapGet("/status", (RelaxKonOS.Server.Firewall.IHostFirewallService firewall, CancellationToken ct) => firewall.GetStatusAsync(ct));
         group.MapGet("/rules", (RelaxKonOS.Server.Firewall.IHostFirewallService firewall, CancellationToken ct) => firewall.ListRulesAsync(ct));
         group.MapPut("/enabled", (UpdateFirewallEnabledRequest request, HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.Firewall.IFirewallChangeAuthorizationService authorization, RelaxKonOS.Server.Firewall.IHostFirewallService firewall, ILoggerFactory loggers, CancellationToken ct) =>

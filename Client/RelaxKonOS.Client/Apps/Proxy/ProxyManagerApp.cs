@@ -19,6 +19,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 using Rect = RelaxKonOS.Core.Primitives.Rect;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Client.Apps.Proxy;
 
@@ -26,7 +27,7 @@ namespace RelaxKonOS.Client.Apps.Proxy;
 public sealed class ProxyManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.proxy"), "Proxy Manager", "1.0.0", "⇄", "Manage the host Proxy runtime and recovery state",
-        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyTunManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyTunManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Proxy]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {

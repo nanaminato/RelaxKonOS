@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# RelaxKonOS User Mode lifecycle command. It deliberately has no sudo, su, pkexec, systemctl
+# (system manager), or arbitrary-command option. All persistent state stays below XDG roots.
+set -euo pipefail
+
+command_name=${0##*/}
+data_root=${XDG_DATA_HOME:-"$HOME/.local/share"}/relaxkonos
+config_root=${XDG_CONFIG_HOME:-"$HOME/.config"}/relaxkonos
+state_root=${XDG_STATE_HOME:-"$HOME/.local/state"}/relaxkonos
+cache_root=${XDG_CACHE_HOME:-"$HOME/.cache"}/relaxkonos
+port=${RELAXKONOS_PORT:-5000}
+lifecycle_lock_held=false
+
+fail() { echo "$command_name: $*" >&2; exit 64; }
+[[ $EUID -ne 0 ]] || fail "User Mode must not run as root"
+require_absolute() { [[ $1 == /* && $1 != / ]] || fail "directory overrides must be absolute, non-root paths"; }
+canonical_root() { realpath -m -- "$1"; }
+ensure_private_dir() {
+  local path=$1
+  [[ ! -L $path ]] || fail "refusing symbolic-link directory: $path"
+  if [[ -e $path ]]; then [[ $(stat -c %u -- "$path") == $UID ]] || fail "directory is not owned by the current user: $path"; fi
+  mkdir -p -- "$path"; chmod 700 -- "$path"
+}
+acquire_lifecycle_lock() {
+  [[ $lifecycle_lock_held == true ]] && return
+  ensure_private_dir "$state_root"; ensure_private_dir "$state_root/run"
+  command -v flock >/dev/null || fail "flock is required for safe User Mode lifecycle operations"
+  # Keep FD 9 open through this invocation.  The lock belongs to the current UID and prevents
+  # two terminals from racing an atomic current-version switch or a PID-file update.
+  exec 9>"$state_root/run/launcher.lock"
+  chmod 600 "$state_root/run/launcher.lock"
+  flock -n 9 || fail "another RelaxKonOS lifecycle operation is already running"
+  lifecycle_lock_held=true
+}
+assert_distinct_roots() {
+  local a b
+  for a in "$data_root" "$config_root" "$state_root" "$cache_root"; do
+    for b in "$data_root" "$config_root" "$state_root" "$cache_root"; do
+      [[ $a == "$b" || $a != "$b"/* && $b != "$a"/* ]] || fail "XDG roots must not overlap"
+    done
+  done
+}
+process_start_time() { [[ -r /proc/$1/stat ]] && awk '{print $22}' /proc/$1/stat; }
+read_pid() {
+  local pidfile=$state_root/run/server.pid startfile=$state_root/run/server.starttime pid started
+  [[ -r $pidfile && -r $startfile ]] || return 1
+  pid=$(<"$pidfile"); started=$(<"$startfile")
+  [[ $pid =~ ^[0-9]+$ && $(stat -c %u -- "/proc/$pid" 2>/dev/null || true) == $UID && $(process_start_time "$pid" || true) == "$started" ]] || return 1
+  printf '%s\n' "$pid"
+}
+server_binary() {
+  local current=$data_root/server/current
+  [[ -L $current && ! -L $current/RelaxKonOS.Server ]] || fail "server/current is missing or unsafe"
+  local binary
+  binary=$(realpath -e -- "$current/RelaxKonOS.Server") || fail "server binary is missing"
+  [[ $binary == "$data_root"/server/versions/*/RelaxKonOS.Server ]] || fail "server path escaped installation root"
+  printf '%s\n' "$binary"
+}
+guardian_binary() {
+  local current=$data_root/server/current binary
+  binary=$(realpath -e -- "$current/guardian/RelaxKonOS.Guardian.Agent") || fail "guardian binary is missing"
+  [[ $binary == "$data_root"/server/versions/*/guardian/RelaxKonOS.Guardian.Agent ]] || fail "guardian path escaped installation root"
+  printf '%s\n' "$binary"
+}
+write_config() {
+  ensure_private_dir "$config_root"; ensure_private_dir "$config_root/secrets"
+  umask 077
+  cat > "$config_root/appsettings.user.json" <<EOF
+{"Server":{"Mode":"user"},"Identity":{"LinuxPamTransport":"in-process","LinuxPamService":"login"},"Privileges":{"Backend":"disabled"}}
+EOF
+  chmod 600 "$config_root/appsettings.user.json"
+}
+write_install_state() {
+  local version=$1
+  printf '{"mode":"user","version":"%s","dataRoot":"%s","configRoot":"%s","stateRoot":"%s"}\n' "$version" "$data_root" "$config_root" "$state_root" > "$state_root/install-state.json"
+  chmod 600 "$state_root/install-state.json"
+}
+activate_version() {
+  local version=$1
+  [[ $version =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ && -d $data_root/server/versions/$version ]] || fail "installed version is invalid: $version"
+  ln -sfn -- "versions/$version" "$data_root/server/current.new"
+  mv -Tf -- "$data_root/server/current.new" "$data_root/server/current"
+  # Keep a stable user-owned command path while the versioned payload changes underneath it.
+  # We do not write a system-wide executable or mutate the caller's PATH.
+  ensure_private_dir "$data_root/bin"
+  ln -sfn -- "../server/current/user/relaxkon" "$data_root/bin/relaxkon.new"
+  mv -Tf -- "$data_root/bin/relaxkon.new" "$data_root/bin/relaxkon"
+  write_install_state "$version"
+}
+verify_bundle() {
+  local bundle=$1 manifest=$1/manifest.json
+  [[ -d $bundle && -f $manifest && -f $bundle/manifest.sha256 && -x $bundle/payload/linux/server/RelaxKonOS.Server && -x $bundle/payload/linux/guardian/RelaxKonOS.Guardian.Agent && -x $bundle/deployment/user/relaxkon ]] || fail "not a complete user-server bundle"
+  grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$manifest" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"user-server"' "$manifest" || fail "bundle is not a user-server manifest"
+  grep -Eq '"files"[[:space:]]*:[[:space:]]*\[' "$manifest" || fail "bundle manifest has no file inventory"
+  ! find "$bundle" -type l -print -quit | grep -q . || fail "bundle must not contain symbolic links"
+  (cd "$bundle" && sha256sum --check --status manifest.sha256) || fail "bundle file checksum verification failed"
+  # The checksum file must represent exactly the extracted payload rather than merely a subset.
+  local listed actual
+  listed=$(awk '{ print substr($0, 67) }' "$bundle/manifest.sha256" | LC_ALL=C sort)
+  actual=$(cd "$bundle" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print | LC_ALL=C sort)
+  [[ $listed == "$actual" ]] || fail "bundle file inventory does not match its contents"
+}
+install_bundle() {
+  local bundle=$1 version stage destination
+  verify_bundle "$bundle"
+  version=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$bundle/manifest.json" | head -n1)
+  [[ $version =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || fail "manifest version is invalid"
+  ensure_private_dir "$data_root"; ensure_private_dir "$state_root"; ensure_private_dir "$cache_root"; ensure_private_dir "$data_root/server"; ensure_private_dir "$data_root/server/versions"; ensure_private_dir "$state_root/run"; ensure_private_dir "$state_root/logs"
+  stage=$(mktemp -d "$data_root/server/versions/.staging.XXXXXX")
+  trap 'rm -rf -- "$stage"' RETURN
+  cp -a -- "$bundle/payload/linux/server" "$stage/server"
+  cp -a -- "$bundle/payload/linux/guardian" "$stage/guardian"
+  cp -a -- "$bundle/deployment/user" "$stage/user"
+  chmod -R go-rwx -- "$stage"
+  destination=$data_root/server/versions/$version
+  [[ ! -e $destination ]] || fail "version already installed: $version"
+  mv -- "$stage" "$destination"
+  activate_version "$version"
+  write_config
+  echo "Installed RelaxKonOS User Mode $version. It listens only on 127.0.0.1; connect through SSH local forwarding."
+}
+download_bundle() {
+  local uri=$1 sha=$2 archive=$cache_root/release.zip extracted=$cache_root/extracted
+  [[ $uri =~ ^https:// && $sha =~ ^[A-Fa-f0-9]{64}$ ]] || fail "release URI must be HTTPS and SHA-256 must be supplied"
+  command -v curl >/dev/null || fail "curl is required for HTTPS release install"
+  command -v unzip >/dev/null || fail "unzip is required for HTTPS release install"
+  ensure_private_dir "$cache_root"; rm -rf -- "$extracted"; mkdir "$extracted"
+  curl --fail --location --silent --show-error "$uri" --output "$archive"
+  echo "$sha  $archive" | sha256sum --check --status || fail "release checksum verification failed"
+  unzip -q "$archive" -d "$extracted"; printf '%s\n' "$extracted"
+}
+start() {
+  local foreground=${1:-false} pid binary guardian
+  acquire_lifecycle_lock
+  if pid=$(read_pid); then echo "RelaxKonOS is already running (pid $pid)."; return; fi
+  binary=$(server_binary); guardian=$(guardian_binary); ensure_private_dir "$state_root/run"; ensure_private_dir "$state_root/logs"; ensure_private_dir "$state_root/guardian"; write_config
+  export ASPNETCORE_URLS="http://127.0.0.1:$port"
+  rm -f -- "$state_root/run/server.sock"
+  export Server__Mode=user Identity__LinuxPamTransport=in-process Identity__LinuxPamService=login Privileges__Backend=disabled UserMode__ControlSocketPath="$state_root/run/server.sock"
+  export Storage__DatabasePath="$state_root/server/relaxkonos.db"
+  export RELAXKONOS_GUARDIAN_MODE=user RELAXKONOS_GUARDIAN_DATA_DIR="$state_root/guardian" RELAXKONOS_GUARDIAN_PIPE="relaxkonos-guardian-$UID"
+  export RELAXKONOS_GUARDIAN_SHARED_SECRET="$(<"$config_root/secrets/guardian.secret" 2>/dev/null || true)"
+  if [[ -z ${RELAXKONOS_GUARDIAN_SHARED_SECRET} ]]; then umask 077; head -c 32 /dev/urandom | base64 > "$config_root/secrets/guardian.secret"; export RELAXKONOS_GUARDIAN_SHARED_SECRET=$(<"$config_root/secrets/guardian.secret"); fi
+  export GuardianAgent__PipeName="$RELAXKONOS_GUARDIAN_PIPE" GuardianAgent__SharedSecret="$RELAXKONOS_GUARDIAN_SHARED_SECRET"
+  nohup "$guardian" >> "$state_root/logs/guardian.log" 2>&1 &
+  local guardian_pid=$!
+  printf '%s\n' "$guardian_pid" > "$state_root/run/guardian.pid"; process_start_time "$guardian_pid" > "$state_root/run/guardian.starttime"
+  if [[ $foreground == true ]]; then exec "$binary"; fi
+  nohup "$binary" >> "$state_root/logs/server.log" 2>&1 & pid=$!
+  printf '%s\n' "$pid" > "$state_root/run/server.pid"; process_start_time "$pid" > "$state_root/run/server.starttime"; chmod 600 "$state_root/run/"server.*
+  echo "Started RelaxKonOS User Mode (pid $pid)."
+}
+wait_ready() {
+  command -v curl >/dev/null || return 1
+  local attempt
+  for attempt in $(seq 1 30); do
+    if [[ -S $state_root/run/server.sock ]]; then
+      chmod 600 "$state_root/run/server.sock"
+      curl --unix-socket "$state_root/run/server.sock" --fail --silent --show-error --max-time 2 http://localhost/ready >/dev/null 2>&1 && return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+stop() {
+  local pid guardian_pid
+  pid=$(read_pid) || pid=
+  [[ -z $pid ]] || kill -TERM "$pid"
+  if [[ -r $state_root/run/guardian.pid ]]; then guardian_pid=$(<"$state_root/run/guardian.pid"); [[ $guardian_pid =~ ^[0-9]+$ && $(stat -c %u -- "/proc/$guardian_pid" 2>/dev/null || true) == $UID ]] && kill -TERM "$guardian_pid" || true; fi
+  rm -f -- "$state_root/run/server.pid" "$state_root/run/server.starttime" "$state_root/run/server.sock" "$state_root/run/guardian.pid" "$state_root/run/guardian.starttime"
+  [[ -n $pid ]] && echo "Stopped RelaxKonOS." || echo "RelaxKonOS is not running."
+}
+status() {
+  local pid
+  pid=$(read_pid) || { echo "RelaxKonOS User Mode is stopped."; return; }
+  if [[ -S $state_root/run/server.sock ]] && command -v curl >/dev/null && curl --unix-socket "$state_root/run/server.sock" --fail --silent --show-error --max-time 2 http://localhost/ready >/dev/null 2>&1; then
+    echo "RelaxKonOS User Mode is running (pid $pid, loopback 127.0.0.1:$port)."
+  else
+    echo "RelaxKonOS User Mode process is running but its private control socket is not ready."
+    return 1
+  fi
+}
+
+subcommand=${1:-}; shift || true
+case "$subcommand" in
+  install|upgrade)
+    bundle= uri= sha=
+    while [[ $# -gt 0 ]]; do case "$1" in --bundle) bundle=${2:-}; shift 2;; --release-uri) uri=${2:-}; shift 2;; --release-sha256) sha=${2:-}; shift 2;; --data-root) data_root=${2:-}; shift 2;; --config-root) config_root=${2:-}; shift 2;; --state-root) state_root=${2:-}; shift 2;; --cache-root) cache_root=${2:-}; shift 2;; *) fail "unknown option: $1";; esac; done
+    for root in "$data_root" "$config_root" "$state_root" "$cache_root"; do require_absolute "$root"; done
+    data_root=$(canonical_root "$data_root"); config_root=$(canonical_root "$config_root"); state_root=$(canonical_root "$state_root"); cache_root=$(canonical_root "$cache_root"); assert_distinct_roots
+    [[ -n $bundle && -z $uri || -z $bundle && -n $uri ]] || fail "specify exactly one of --bundle or --release-uri"
+    [[ -n $bundle ]] || bundle=$(download_bundle "$uri" "$sha")
+    acquire_lifecycle_lock
+    previous_version=
+    if [[ $subcommand == upgrade ]]; then
+      [[ -L $data_root/server/current ]] || fail "cannot upgrade without an active User Mode installation"
+      previous_version=$(readlink "$data_root/server/current")
+      previous_version=${previous_version#versions/}
+      [[ $previous_version =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || fail "current version link is invalid"
+      stop
+    fi
+    install_bundle "$bundle"
+    if [[ $subcommand == upgrade ]]; then
+      if start && wait_ready; then
+        echo "Upgrade completed and the new Server is ready."
+      else
+        echo "Upgrade readiness check failed; restoring $previous_version." >&2
+        stop
+        activate_version "$previous_version"
+        start || true
+        wait_ready || true
+        exit 70
+      fi
+    fi
+    ;;
+  start) [[ ${1:-} == --foreground || -z ${1:-} ]] || fail "unknown option: ${1:-}"; start "$([[ ${1:-} == --foreground ]] && echo true || echo false)";;
+  stop) [[ $# == 0 ]] || fail "stop accepts no options"; acquire_lifecycle_lock; stop;;
+  status) [[ $# == 0 ]] || fail "status accepts no options"; status;;
+  uninstall) [[ $# == 0 ]] || fail "uninstall accepts no options"; acquire_lifecycle_lock; stop; [[ -f $state_root/install-state.json ]] || fail "install state is missing"; rm -rf -- "$data_root" "$config_root" "$state_root" "$cache_root"; echo "Uninstalled RelaxKonOS User Mode.";;
+  *) fail "usage: relaxkon {install|start|stop|status|upgrade|uninstall}";;
+esac

@@ -9,6 +9,7 @@ using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.ConfigurationRegistry;
 using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -32,6 +33,7 @@ public static class AuthEndpoints
                 IDeviceRepository devs,
                 JwtTokenService jwt,
                 LoginProtectionService protection,
+                IServerModeResolver serverMode,
                 CancellationToken ct) =>
             {
                 var login = await authentication.AuthenticateAsync(req.Identifier, req.Password, http.Connection.RemoteIpAddress, ct);
@@ -99,7 +101,7 @@ public static class AuthEndpoints
                 await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
 
                 return Results.Ok(new LoginResponse(
-                    user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role, CreateServerDescriptor()));
+                    user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role, CreateServerDescriptor(serverMode)));
             })
             .RequireRateLimiting("login")
             .WithTags("Auth");
@@ -158,10 +160,14 @@ public static class AuthEndpoints
             .RequireAuthorization()
             .WithTags("Auth");
 
+        group.MapGet(ServerApiRoutes.Capabilities, (IServerModeResolver serverMode) => Results.Ok(serverMode.Describe()))
+            .RequireAuthorization()
+            .WithTags("Server");
+
         return app;
     }
 
-    private static ServerDescriptorDto CreateServerDescriptor()
+    private static ServerDescriptorDto CreateServerDescriptor(IServerModeResolver serverMode)
     {
         var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         var capabilities = new List<string>
@@ -172,13 +178,21 @@ public static class AuthEndpoints
             ServerCapabilities.Terminal,
             ServerCapabilities.Git,
         };
-        if (!isWindows)
+        if (!isWindows && serverMode.Supports(ServerHostFeature.Firewall))
         {
             capabilities.Add(ServerCapabilities.PosixPermissions);
             capabilities.Add(ServerCapabilities.Firewall);
         }
 
-        return new ServerDescriptorDto(isWindows ? PlatformKind.Windows : PlatformKind.Linux, capabilities);
+        var host = serverMode.Describe();
+        if (host.Capabilities.Guardian) capabilities.Add(ServerCapabilities.Guardian);
+        if (host.Capabilities.Docker) capabilities.Add(ServerCapabilities.Docker);
+        if (host.Capabilities.FileServices) capabilities.Add(ServerCapabilities.FileServices);
+        if (host.Capabilities.WebServer) capabilities.Add(ServerCapabilities.WebServer);
+        if (host.Capabilities.Certificates) capabilities.Add(ServerCapabilities.Certificates);
+        if (host.Capabilities.Tunnels) capabilities.Add(ServerCapabilities.Tunnels);
+        if (host.Capabilities.Proxy) capabilities.Add(ServerCapabilities.Proxy);
+        return new ServerDescriptorDto(isWindows ? PlatformKind.Windows : PlatformKind.Linux, capabilities, host);
     }
 
     private static IResult Problem(HttpContext http, int status, string typeSuffix, string title, string detail)

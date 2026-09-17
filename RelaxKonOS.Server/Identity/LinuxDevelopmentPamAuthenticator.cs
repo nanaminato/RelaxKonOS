@@ -6,17 +6,15 @@ using RelaxKonOS.Protocol.Privileged;
 namespace RelaxKonOS.Server.Identity;
 
 /// <summary>
-/// Explicit development-only compatibility path for debugging a Server under a developer's
-/// account. Production registration never constructs this path; it must use the root Helper.
+/// In-process PAM transport for a Server that runs as the account it authenticates.  This is
+/// required by no-sudo User Mode and can also be selected for local development.  It does not
+/// grant privilege: its PAM service must already be configured by the host administrator.
 /// </summary>
-internal static class LinuxDevelopmentPamAuthenticator
+internal static class LinuxInProcessPamAuthenticator
 {
     private const string PamLibrary = "libpam.so.0";
-    // Preserve the historical local-debug behavior. Production authentication uses the dedicated
-    // "relaxkonos" service in PrivilegedHelper instead.
-    private const string PamService = "login";
 
-    public static SystemAuthenticationResult Authenticate(string username, string password)
+    public static SystemAuthenticationResult Authenticate(string pamService, string username, string password)
     {
         var passwordBytes = Encoding.UTF8.GetBytes(password);
         IntPtr handle = IntPtr.Zero;
@@ -27,7 +25,7 @@ internal static class LinuxDevelopmentPamAuthenticator
         {
             stateHandle = GCHandle.Alloc(new ConversationState(username, passwordBytes));
             var conv = new PamConv(conversation, GCHandle.ToIntPtr(stateHandle));
-            status = pam_start(PamService, username, ref conv, out handle);
+            status = pam_start(pamService, username, ref conv, out handle);
             if (status == PamResult.Success) status = pam_authenticate(handle, 0);
             if (status == PamResult.Success) status = pam_acct_mgmt(handle, 0);
             return Map(status);
