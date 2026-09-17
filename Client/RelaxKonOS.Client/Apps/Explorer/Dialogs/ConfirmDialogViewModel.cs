@@ -9,15 +9,17 @@ public partial class ConfirmDialogViewModel : ObservableObject
 {
     private readonly Action<bool> _complete;
 
-    public ConfirmDialogViewModel(string message, Action<bool> complete, string? confirmLabel = null)
+    public ConfirmDialogViewModel(string message, Action<bool> complete, string? confirmLabel = null, string? cancelLabel = null)
     {
         _complete = complete;
         Message = message;
         ConfirmLabel = confirmLabel ?? LocalizedText.Get("common.ok");
+        CancelLabel = cancelLabel ?? LocalizedText.Get("common.cancel");
     }
 
     [ObservableProperty] private string _message = string.Empty;
     public string ConfirmLabel { get; }
+    public string CancelLabel { get; }
 
     [RelayCommand]
     private void Yes() => _complete(true);

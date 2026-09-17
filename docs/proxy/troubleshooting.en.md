@@ -1,5 +1,5 @@
 # Proxy troubleshooting
 
-`proxy.privileged_operation_unavailable` means the constrained platform service action was not available; do not work around it with manual command injection through RelaxKonOS. `proxy.recovery_required` means a previous TUN transaction needs recovery before retrying.
+`proxy.privileged_operation_unavailable` means a constrained platform service action was unavailable; do not work around it with manual command injection through RelaxKonOS. For a first Mihomo installation, rerun the supported RelaxKonOS deployment script: it provisions the fixed Proxy working directories for the Server service account, the privileged Helper, and service-control rights. On Linux, check the ownership and permissions of `/var/lib/relaxkonos/proxy`, `/etc/relaxkonos/proxy`, and `/var/log/relaxkonos/proxy`; on Windows, check that `%ProgramData%\RelaxKonOS\Proxy` grants Modify to the RelaxKonOS Server service SID, and check the `RelaxKonOSPrivilegedHelper` service, named-pipe ACL, and shared secret. `proxy.recovery_required` means a previous TUN transaction needs recovery before retrying.
 
 For a failed configuration apply, retain the last working configuration and inspect only sanitized Server diagnostics. For a network issue, use Emergency Disable TUN, then complete the relevant disposable-VM recovery test before retrying.

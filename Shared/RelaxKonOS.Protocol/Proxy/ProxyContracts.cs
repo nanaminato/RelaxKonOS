@@ -30,6 +30,7 @@ public static class ProxyProblemCodes
     public const string ControllerAuthenticationFailed = "proxy.controller_authentication_failed";
     public const string ControllerResponseInvalid = "proxy.controller_response_invalid";
     public const string ControllerTimeout = "proxy.controller_timeout";
+    public const string PortInUse = "proxy.port_in_use";
     public const string ManagementRouteUnsafe = "proxy.management_route_unsafe";
     public const string PlatformCapabilityUnavailable = "proxy.platform_capability_unavailable";
     public const string TunPermissionRequired = "proxy.tun_permission_required";

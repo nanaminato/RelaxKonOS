@@ -12,7 +12,7 @@
             <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" MaxWidth="360" />
         </StackPanel>
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-            <Button Content="{loc:Loc common.cancel}" Command="{Binding NoCommand}" Padding="16,6" />
+            <Button Content="{Binding CancelLabel}" Command="{Binding NoCommand}" Padding="16,6" />
             <Button Classes="primary" Content="{Binding ConfirmLabel}" Command="{Binding YesCommand}" Padding="16,6" />
         </StackPanel>
     </Grid>

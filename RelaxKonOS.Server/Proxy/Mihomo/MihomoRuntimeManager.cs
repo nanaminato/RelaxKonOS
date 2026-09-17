@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Diagnostics;
@@ -27,6 +29,7 @@ public sealed class MihomoRuntimeManager(
 {
     private const string ServiceName = "relaxkonos-mihomo";
     private const string ServiceConfigurationId = "mihomo-default";
+    private const int BootstrapMixedPort = 7890;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public async Task<ProxyRuntimeDto> GetAsync(string engineId, CancellationToken cancellationToken)
@@ -186,6 +189,11 @@ public sealed class MihomoRuntimeManager(
         {
             await ReportStageAsync(stageReporter, "preparing");
             var before = await ReadStateAsync(cancellationToken);
+            if (before?.ActiveVersion is null && !AreBootstrapPortsAvailable())
+            {
+                await WriteDiagnosticAsync("warning", "Managed Mihomo installation was blocked because its controller or mixed proxy port is already in use.", cancellationToken);
+                return Failure(before, ProxyProblemCodes.PortInUse);
+            }
             await WriteDiagnosticAsync("info", before?.ActiveVersion is { Length: > 0 }
                 ? "Managed Mihomo installation is preparing a runtime update."
                 : "Managed Mihomo installation is preparing the first runtime activation.", cancellationToken);
@@ -476,6 +484,26 @@ public sealed class MihomoRuntimeManager(
         catch (ArgumentException) { return new(false, ProxyProblemCodes.ConfigInvalid); }
         catch (IOException) { return new(false, ProxyProblemCodes.PrivilegedOperationUnavailable); }
         catch (UnauthorizedAccessException) { return new(false, ProxyProblemCodes.PrivilegedOperationUnavailable); }
+    }
+
+    private bool AreBootstrapPortsAvailable()
+    {
+        var controllerAddress = IPAddress.TryParse(controllerOptions.Endpoint.Host, out var address)
+            ? address
+            : IPAddress.Loopback;
+        return IsTcpPortAvailable(controllerAddress, controllerOptions.Endpoint.Port)
+            && IsTcpPortAvailable(IPAddress.Loopback, BootstrapMixedPort);
+    }
+
+    private static bool IsTcpPortAvailable(IPAddress address, int port)
+    {
+        try
+        {
+            using var listener = new TcpListener(address, port);
+            listener.Start();
+            return true;
+        }
+        catch (SocketException) { return false; }
     }
 
     /// <summary>

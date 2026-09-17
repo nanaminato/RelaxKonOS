@@ -192,7 +192,8 @@ GUARDIAN_DATA="$DATA_ROOT/guardian"
 COMPOSE_DATA="$DATA_ROOT/docker-compose"
 SERVER_DATA="$DATA_ROOT/server"
 CERTIFICATE_DATA="$SERVER_DATA/certificates"
-install -d -m 0700 /etc/relaxkonos "$GUARDIAN_DATA"
+install -d -o root -g "$SERVICE_GROUP" -m 0710 /etc/relaxkonos "$DATA_ROOT" /var/lib/relaxkonos
+install -d -m 0700 "$GUARDIAN_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$COMPOSE_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$SERVER_DATA"
 
@@ -239,6 +240,12 @@ install_bootstrap_certificate() {
   BOOTSTRAP_CERTIFICATE_PASSWORD="$password"
 }
 install_bootstrap_certificate
+# The Server owns the fixed Mihomo directories.  These paths are part of the platform
+# contract, so they remain stable even if the general data root is customized.
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 /var/lib/relaxkonos/proxy /etc/relaxkonos/proxy
+install -d -o root -g "$SERVICE_GROUP" -m 0710 /var/log/relaxkonos
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 /var/log/relaxkonos/proxy
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$INSTALL_ROOT/data"
 SECRET="$(openssl rand -base64 48)"
 JWT_SECRET=
 if [[ -f /etc/relaxkonos/server.env ]]; then
