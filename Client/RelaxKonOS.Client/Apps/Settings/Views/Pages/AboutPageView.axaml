@@ -35,6 +35,14 @@
                 </Grid>
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                     <StackPanel Spacing="2">
+                        <TextBlock Text="{loc:Loc settings.about_page.all_products}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AllProductsWebsite}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{loc:Loc settings.about_page.copy_link}" Command="{Binding CopyAllProductsWebsiteCommand}" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="{loc:Loc settings.about_page.open_link}" Command="{Binding OpenAllProductsWebsiteCommand}" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
                         <TextBlock Text="{loc:Loc settings.about_page.source}" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding SourceRepository}" Opacity="0.7" TextWrapping="Wrap" />
                     </StackPanel>

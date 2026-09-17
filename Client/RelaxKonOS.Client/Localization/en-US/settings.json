@@ -35,6 +35,7 @@
         "settings.about_page.tagline": "A cross-platform cloud-native desktop operating environment",
         "settings.about_page.links": "Project links",
         "settings.about_page.website": "Official website",
+        "settings.about_page.all_products": "All RelaxKon products",
         "settings.about_page.source": "Source repository",
         "settings.about_page.copy_link": "Copy link",
         "settings.about_page.open_link": "Open in browser",

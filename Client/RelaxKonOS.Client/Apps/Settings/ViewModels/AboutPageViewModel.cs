@@ -9,7 +9,8 @@ namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 /// <summary>关于页：展示可核验的项目链接，并在离线状态下提供随客户端打包的法律文本。</summary>
 public sealed partial class AboutPageViewModel : SettingsPageViewModel
 {
-    private static readonly Uri OfficialWebsiteUri = new("https://relaxkonos.app/");
+    private static readonly Uri OfficialWebsiteUri = new("https://relaxkonos.com/");
+    private static readonly Uri AllProductsWebsiteUri = new("https://relaxkon.com/");
     private static readonly Uri SourceRepositoryUri = new("https://github.com/nanaminato/RelaxKonOS");
 
     public AboutPageViewModel(ShellSettings settings) : base(settings, save: null) { }
@@ -21,6 +22,7 @@ public sealed partial class AboutPageViewModel : SettingsPageViewModel
     public string ProductName => "RelaxKonOS";
     public string AppVersion => "0.1";
     public string OfficialWebsite => OfficialWebsiteUri.AbsoluteUri;
+    public string AllProductsWebsite => AllProductsWebsiteUri.AbsoluteUri;
     public string SourceRepository => SourceRepositoryUri.AbsoluteUri;
     public string LicenseName => "RelaxKonOS Non-Commercial Source-Available License";
     public string Copyright => "Copyright © 2026 RelaxKonOS. All rights reserved.";
@@ -32,8 +34,10 @@ public sealed partial class AboutPageViewModel : SettingsPageViewModel
     public Func<LegalTextDocument, Task>? RequestLegalDocumentAsync { get; set; }
 
     [RelayCommand] private Task OpenOfficialWebsiteAsync() => RequestOpenUriAsync?.Invoke(OfficialWebsiteUri) ?? Task.CompletedTask;
+    [RelayCommand] private Task OpenAllProductsWebsiteAsync() => RequestOpenUriAsync?.Invoke(AllProductsWebsiteUri) ?? Task.CompletedTask;
     [RelayCommand] private Task OpenSourceRepositoryAsync() => RequestOpenUriAsync?.Invoke(SourceRepositoryUri) ?? Task.CompletedTask;
     [RelayCommand] private Task CopyOfficialWebsiteAsync() => RequestCopyTextAsync?.Invoke(OfficialWebsite) ?? Task.CompletedTask;
+    [RelayCommand] private Task CopyAllProductsWebsiteAsync() => RequestCopyTextAsync?.Invoke(AllProductsWebsite) ?? Task.CompletedTask;
     [RelayCommand] private Task CopySourceRepositoryAsync() => RequestCopyTextAsync?.Invoke(SourceRepository) ?? Task.CompletedTask;
     [RelayCommand] private Task ViewProjectLicenseAsync() => RequestLegalDocumentAsync?.Invoke(ProjectLicense) ?? Task.CompletedTask;
     [RelayCommand] private Task ViewThirdPartyNoticesAsync() => RequestLegalDocumentAsync?.Invoke(ThirdPartyNotices) ?? Task.CompletedTask;
