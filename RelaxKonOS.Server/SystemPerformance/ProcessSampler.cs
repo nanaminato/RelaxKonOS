@@ -4,19 +4,21 @@ using RelaxKonOS.Protocol.SystemMonitor;
 namespace RelaxKonOS.Server.SystemPerformance;
 
 /// <summary>
-/// 独立的低频进程采样器。进程 CPU 差分不再由页面请求触发；PID 与 StartTime 共同作为实例身份，
+/// 按需的低频进程采样器。只有进程页查询才会枚举进程；PID 与 StartTime 共同作为实例身份，
 /// 避免 PID 重用继承旧进程 CPU 时间。
 /// </summary>
-public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl) : BackgroundService, IProcessService
+public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider legacyControl) : IProcessService
 {
     private readonly object _gate = new();
+    private readonly SemaphoreSlim _collectionGate = new(1, 1);
+    private static readonly TimeSpan SamplingInterval = TimeSpan.FromSeconds(5);
     private Dictionary<ProcessInstanceKey, ProcessSample> _previous = new();
     private ProcessPageDto _latest = new([], 0, DateTimeOffset.MinValue);
 
     public async Task<ProcessPageDto> QueryAsync(int page, int pageSize, string? filter, string? sort, bool descending,
         CancellationToken cancellationToken = default)
     {
-        if (_latest.SampledAt == DateTimeOffset.MinValue) await CollectAsync(cancellationToken);
+        await EnsureFreshAsync(cancellationToken);
         ProcessPageDto snapshot;
         lock (_gate) snapshot = _latest;
         IEnumerable<ProcessInfoDto> query = snapshot.Items;
@@ -43,11 +45,27 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
     public Task<KillProcessResultDto> KillAsync(int processId, bool force, CancellationToken cancellationToken = default)
         => legacyControl.KillProcessAsync(processId, force, cancellationToken);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private async Task EnsureFreshAsync(CancellationToken cancellationToken)
     {
-        await CollectAsync(stoppingToken);
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
-        while (await timer.WaitForNextTickAsync(stoppingToken)) await CollectAsync(stoppingToken);
+        ProcessPageDto latest;
+        lock (_gate) latest = _latest;
+        if (DateTimeOffset.UtcNow - latest.SampledAt < SamplingInterval) return;
+
+        await _collectionGate.WaitAsync(cancellationToken);
+        try
+        {
+            lock (_gate) latest = _latest;
+            var age = DateTimeOffset.UtcNow - latest.SampledAt;
+            if (age >= SamplingInterval)
+            {
+                // A dormant process page has no useful adjacent baseline. Start a fresh one instead
+                // of reporting a long-term average as if it were the current CPU percentage.
+                if (age > SamplingInterval + SamplingInterval)
+                    lock (_gate) _previous = new();
+                await CollectAsync(cancellationToken);
+            }
+        }
+        finally { _collectionGate.Release(); }
     }
 
     private Task CollectAsync(CancellationToken cancellationToken)
@@ -66,6 +84,9 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
                 {
                     var startTime = TryGetStartTime(process);
                     var key = new ProcessInstanceKey(process.Id, startTime);
+                    var linuxDetails = OperatingSystem.IsLinux()
+                        ? RelaxKonOS.Server.SystemMonitor.LinuxProcessMetadata.ReadDetails(process.Id)
+                        : new RelaxKonOS.Server.SystemMonitor.LinuxProcessDetails(null, 0);
                     var cpu = TryGetCpu(process);
                     next[key] = new ProcessSample(cpu, now);
                     var cpuPercent = 0d;
@@ -76,7 +97,7 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
                             cpuPercent = Math.Clamp((cpu - prior.Cpu).TotalSeconds / (elapsed * Environment.ProcessorCount) * 100, 0, 100);
                     }
                     processes.Add(new ProcessInfoDto(process.Id, TryGetName(process), Math.Round(cpuPercent, 1), TryGetMemory(process),
-                        TryGetUserName(process.Id), startTime, TryGetThreadCount(process)));
+                        linuxDetails.UserName, startTime, TryGetThreadCount(process, linuxDetails)));
                 }
                 catch { /* a terminated/protected single process cannot break the whole snapshot */ }
                 finally { process.Dispose(); }
@@ -100,22 +121,13 @@ public sealed class ProcessSampler(RelaxKonOS.Server.SystemMonitor.ISystemMetric
 
     private static TimeSpan TryGetCpu(Process process) { try { return process.TotalProcessorTime; } catch { return TimeSpan.Zero; } }
     private static long TryGetMemory(Process process) { try { return process.WorkingSet64; } catch { return 0; } }
-    private static int TryGetThreadCount(Process process) { try { return process.Threads.Count; } catch { return 0; } }
-    private static string TryGetName(Process process) { try { return process.ProcessName; } catch { return $"pid:{process.Id}"; } }
+    private static int TryGetThreadCount(Process process, RelaxKonOS.Server.SystemMonitor.LinuxProcessDetails linuxDetails)
+        => OperatingSystem.IsLinux()
+            ? linuxDetails.ThreadCount
+            : TryGetWindowsThreadCount(process);
 
-    private static string? TryGetUserName(int pid)
-    {
-        if (!OperatingSystem.IsLinux()) return null;
-        try
-        {
-            var uidLine = File.ReadLines($"/proc/{pid}/status").FirstOrDefault(x => x.StartsWith("Uid:", StringComparison.Ordinal));
-            var uid = uidLine?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault();
-            if (string.IsNullOrWhiteSpace(uid)) return null;
-            var entry = File.ReadLines("/etc/passwd").FirstOrDefault(x => x.Split(':').ElementAtOrDefault(2) == uid);
-            return entry?.Split(':').FirstOrDefault() ?? uid;
-        }
-        catch { return null; }
-    }
+    private static int TryGetWindowsThreadCount(Process process) { try { return process.Threads.Count; } catch { return 0; } }
+    private static string TryGetName(Process process) { try { return process.ProcessName; } catch { return $"pid:{process.Id}"; } }
 
     private readonly record struct ProcessInstanceKey(int Id, DateTimeOffset? StartTime);
     private readonly record struct ProcessSample(TimeSpan Cpu, DateTimeOffset At);

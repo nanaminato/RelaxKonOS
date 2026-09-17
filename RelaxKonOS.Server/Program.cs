@@ -422,18 +422,18 @@ if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 else
     builder.Services.AddSingleton<RelaxKonOS.Server.SystemMonitor.ISystemMetricsProvider, RelaxKonOS.Server.SystemMonitor.LinuxMetricsProvider>();
 
-// 新任务管理器性能链路：原始 OS 读取、统一 1 秒采样、短期历史和 Hub 广播各自分层。
+// 新任务管理器性能链路：订阅期间统一 1 秒读取原始 OS 数据，短期历史和 Hub 广播各自分层。
 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.ISystemPerformanceSource, RelaxKonOS.Server.SystemPerformance.WindowsPerformanceSource>();
 else
     builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.ISystemPerformanceSource, RelaxKonOS.Server.SystemPerformance.LinuxPerformanceSource>();
 builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.PerformanceHistory>();
+builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.PerformanceSubscriptionRegistry>();
 builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.PerformanceSampler>();
 builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.IPerformanceSampler>(sp => sp.GetRequiredService<RelaxKonOS.Server.SystemPerformance.PerformanceSampler>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.SystemPerformance.PerformanceSampler>());
 builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.ProcessSampler>();
 builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.IProcessService>(sp => sp.GetRequiredService<RelaxKonOS.Server.SystemPerformance.ProcessSampler>());
-builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.SystemPerformance.ProcessSampler>());
 
 // Built-in Docker manager: the provider uses Docker's local CLI transport only; no socket/pipe
 // is ever exposed to clients. Guardian intentionally remains a separate Agent boundary.

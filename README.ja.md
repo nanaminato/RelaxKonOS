@@ -210,7 +210,7 @@ RelaxKonOS/
 | **Explorer** | リモートファイルマネージャ（REST API + ホストOS権限活用） | ✅ 実装済み |
 | **Browser** | 内蔵ブラウザ（ブックマーク/履歴、ホームページ & リンク開く位置の永続化） | ✅ 実装済み |
 | **Port Forwarding** | ローカルSSH loopbackトンネル管理（Clientのみ、Serverと同期しない） | ✅ 実装済み |
-| **Task Manager** | リモートタスクマネージャ（パフォーマンスページ: SignalR 1Hzプッシュ + 60s履歴; プロセスページ: 低頻度サンプリング） | ✅ 実装済み |
+| **Task Manager** | リモートタスクマネージャ（パフォーマンスページ: 購読中のみ SignalR 1Hzプッシュ + 60s履歴; プロセスページ: オンデマンド低頻度サンプリング） | ✅ 実装済み |
 | **Docker Manager** | リモートDocker Engine管理（コンテナ/イメージ/Stack/ネットワーク/ボリューム + Composeオーケストレーション） | ✅ 実装済み |
 | **Process Guardian** | 保護ワークロード、IPC、永続化; SignalR `/hubs/guardian-logs` ログブロードキャスト | 🚧 基本実装 |
 | **Firewall** | Linux Server UFWファイアウォール状態、デフォルトポリシーとルール管理 | ✅ 実装済み |

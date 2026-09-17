@@ -209,7 +209,7 @@ RelaxKonOS/
 | **Explorer** | 远端文件管理器（REST API + 宿主 OS 权限复用） | ✅ 已实现 |
 | **Browser** | 内置浏览器（书签/历史、主页与链接打开位置持久化） | ✅ 已实现 |
 | **Port Forwarding** | 本机 SSH loopback 隧道管理（仅 Client 本地，不参与 Server 同步） | ✅ 已实现 |
-| **Task Manager** | 远端任务管理器（性能页 SignalR 1Hz 推送 + 60s 历史；进程页低频采样） | ✅ 已实现 |
+| **Task Manager** | 远端任务管理器（性能页订阅期间 SignalR 1Hz 推送 + 60s 历史；进程页按需低频采样） | ✅ 已实现 |
 | **Docker Manager** | 远端 Docker Engine 管理（容器/镜像/Stack/网络/卷 + Compose 编排） | ✅ 已实现 |
 | **Process Guardian** | 守护工作负载、IPC、持久化；SignalR `/hubs/guardian-logs` 日志广播 | 🚧 基本实现 |
 | **Firewall** | Linux Server UFW 防火墙状态、默认策略与规则管理 | ✅ 已实现 |

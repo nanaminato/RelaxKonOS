@@ -77,7 +77,7 @@ RelaxKonOS 采用状态同步模式（非像素流）：Client 本地渲染 UI�
 
 内置设置中心已落地（RemoteSettings）：Windows 11 / GNOME 风格，5 个分类页（系统 / 个性化 / 时间和语言 / 网络 / 应用）。用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序）经 Server 端 REST API（`/api/v1.0/workspaces/{id}/preferences`）持久化到 Workspace（`OwnsOne + ToJson` 单列 JSON，多设备共享）；登录时 `PreferencesSync` 自动加载应用到桌面外壳（壁纸 / 任务栏底色 / 时钟格式即时生效），设置应用编辑后防抖 300ms 保存。宿主 OS 级设置（时区 / 网卡）只读展示（硬约束「权限提升委托宿主 OS」）。详见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)。
 
-内置任务管理器正在重写（RemoteTaskManager）：性能页改由 Server 端统一 1 秒采样器、60 秒内存历史与 SignalR（`/hubs/performance`）推送驱动；CPU/内存/文件系统/网络/磁盘 I/O 跨 Windows/Linux 统一建模，宿主机或服务身份不支持的能力会明确降级而非显示伪造数值。进程页使用独立低频采样与分页查询；结束进程仍不自动提权。旧 REST metrics 契约已移除。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](./applications/RelaxKonOS.TaskManager.Rewrite.md)。
+内置任务管理器正在重写（RemoteTaskManager）：性能页改由 Server 端在存在订阅时运行的统一 1 秒采样器、60 秒内存历史与 SignalR（`/hubs/performance`）推送驱动；CPU/内存/文件系统/网络/磁盘 I/O 跨 Windows/Linux 统一建模，宿主机或服务身份不支持的能力会明确降级而非显示伪造数值。进程页使用查询驱动的低频采样缓存与分页查询；结束进程仍不自动提权。旧 REST metrics 契约已移除。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](./applications/RelaxKonOS.TaskManager.Rewrite.md)。
 
 内置 Docker 管理器已部分落地（RemoteDocker）：本机 Docker Engine 检测与状态展示、容器启停重启、Compose 校验/部署/停止；镜像、网络、卷管理功能设计中。Server 端通过 `IDockerEngineService` 调用 `docker` CLI，`IDockerComposeService` 处理 Compose 编排。详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)。
 
@@ -273,7 +273,7 @@ Application Package
 | **Terminal** | 远端终端（RoyalTerminal + SignalR Remote Mode，持久 PTY 会话） | 已实现（Remote Mode + Local 回退 + Attach 缓冲回放） |
 | **Explorer** | 远端文件管理器（Jaya UI 移植 + REST API + 宿主 OS 权限复用） | 已实现（浏览、基本操作、文件打开方式、属性与 Linux 权限编辑） |
 | **Browser** | 内置浏览器（Avalonia.Controls.WebView + 书签/历史持久化到 Server） | 已实现（导航 + 书签 + 历史 + 浏览器偏好） |
-| **TaskManager** | 远端宿主 OS 任务管理器（CPU/内存/文件系统/网络/磁盘 I/O/GPU 占用 + 进程列表，可结束任务） | 已实现（性能页 SignalR 1Hz 推送、60s 历史、跨平台采集；进程页低频采样与分页） |
+| **TaskManager** | 远端宿主 OS 任务管理器（CPU/内存/文件系统/网络/磁盘 I/O/GPU 占用 + 进程列表，可结束任务） | 已实现（性能页订阅期间 SignalR 1Hz 推送、60s 历史、跨平台采集；进程页按需低频采样与分页） |
 | **DockerManager** | 本机 Docker Engine 的检测/安装引导、容器/镜像/Stack/网络/卷管理 | 已实现（状态检测、资源只读列表、容器启停重启/拉取镜像/Compose 校验部署停止/网络与卷管理；详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)） |
 | **ProcessGuardian** | 受守护工作负载、健康检查、自动恢复、日志与原生服务管理 | 已实现（独立 Agent、本机认证 IPC、工作负载声明持久化与启停重启；SignalR `/hubs/guardian-logs` 日志广播；健康/服务适配设计中，详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)） |
 | **Firewall** | Linux Server UFW 防火墙状态、默认策略与规则管理 | 已实现（Linux 专用；root 会话免再次验证，其他用户 PAM 一次性确认） |
