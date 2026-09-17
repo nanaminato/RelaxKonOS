@@ -24,18 +24,19 @@ public static class WebServerEndpoints
         });
         group.MapPost(WebServerApiRoutes.DiscoverPattern, (RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) => manager.DiscoverAsync(ct));
         group.MapGet(WebServerApiRoutes.CollectionPattern, (RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) => manager.ListAsync(ct));
+        group.MapGet(WebServerApiRoutes.IntegrationCandidatesPattern, (RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) => manager.ListIntegrationCandidatesAsync(ct));
         group.MapGet(WebServerApiRoutes.ByIdPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
             (await manager.ListAsync(ct)).FirstOrDefault(server => server.Id == id) is { } item ? Results.Ok(item) : Results.NotFound());
         group.MapGet(WebServerApiRoutes.StatusPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
             await manager.GetStatusAsync(id, ct) is { } status ? Results.Ok(status) : Results.NotFound());
         group.MapPost(WebServerApiRoutes.TestConfigurationPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
             await manager.TestConfigurationAsync(id, ct) is { } result ? Results.Ok(result) : Results.NotFound());
-        group.MapPost(WebServerApiRoutes.IntegratePattern, async (string id, IntegrateWebServerRequest request, HttpContext context,
+        group.MapPost(WebServerApiRoutes.IntegrateCandidatePattern, async (string candidateId, IntegrateWebServerRequest request, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
-            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, id))
+            if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, candidateId))
                 return ElevationRequired("此 Nginx 配置操作需要当前会话对该实例的管理员授权。");
-            return await StartAsync(context.Request, key => manager.IntegrateAsync(id, key, request, Actor(context), ct));
+            return await StartAsync(context.Request, key => manager.IntegrateCandidateAsync(candidateId, key, request, Actor(context), ct));
         });
         group.MapPost(WebServerApiRoutes.LifecyclePattern, async (string id, string action, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>

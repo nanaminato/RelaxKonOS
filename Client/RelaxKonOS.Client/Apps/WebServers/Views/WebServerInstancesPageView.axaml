@@ -40,6 +40,20 @@
                             </ComboBox.ItemTemplate>
                         </ComboBox>
                     </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc webservers.integration.candidates}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <ComboBox ItemsSource="{Binding IntegrationCandidates}" SelectedItem="{Binding SelectedIntegrationCandidate, Mode=TwoWay}" PlaceholderText="{loc:Loc webservers.integration.candidates}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding ExecutablePath}" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+                                        <TextBlock Text="{Binding Version}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Classes="primary" Content="{loc:Loc webservers.action.integrate}" Command="{Binding IntegrateCommand}" HorizontalAlignment="Left" />
+                    </StackPanel>
                     <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
                     <StackPanel IsVisible="{Binding IsManagedInstallAvailable}" Spacing="8">
                         <TextBlock Text="{loc:Loc webservers.managed.installation}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -77,10 +91,6 @@
                         <Button Grid.Column="0" Content="{loc:Loc webservers.action.test_config}" Command="{Binding TestConfigurationCommand}" HorizontalContentAlignment="Center" />
                         <Button Grid.Column="1" Content="{loc:Loc webservers.action.refresh_status}" Command="{Binding RefreshStatusCommand}" HorizontalContentAlignment="Center" />
                     </Grid>
-                    <StackPanel IsVisible="{Binding IsExternalServer}" Spacing="8">
-                        <TextBlock Text="{loc:Loc webservers.external.help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                        <Button Classes="primary" Content="{loc:Loc webservers.action.integrate}" Command="{Binding IntegrateCommand}" HorizontalAlignment="Left" />
-                    </StackPanel>
                     <StackPanel IsVisible="{Binding IsIntegratedServer}" Spacing="8">
                         <TextBlock Text="{loc:Loc webservers.integrated.help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <Button Content="{loc:Loc webservers.action.reload}" Command="{Binding ReloadCommand}" HorizontalAlignment="Left" />

@@ -184,7 +184,7 @@ deployment/windows/
 
 **工作**：移除 `NginxWebServerManager` 对 `IHostPrivilegeService.IsAdministrator` 的行为性依赖。将受保护配置写入、集成、install/uninstall、enable/disable/start/stop/restart/reload 迁入 `webserver.nginx.*` capability；保留发现、只读状态和配置测试的非特权路径。Linux 的 apt/systemd 和 Windows Nginx 文件/进程行为均固定参数、固定路径、固定受管资源。
 
-**验收**：Server 不再必须以 root/Administrator 启动才能安装或启动受管 Nginx；非管理员 JWT 在没有五分钟授权时得到明确提示；认证后仅能影响选定的受管/allowlisted Nginx instance；外部 Nginx 不被接管；安装失败、配置失败和 reload 失败均不留下半应用状态。
+**验收**：Server 不再必须以 root/Administrator 启动才能安装或启动受管 Nginx；非管理员 JWT 在没有五分钟授权时得到明确提示；认证后仅能影响选定的受管/allowlisted Nginx instance；未集成 Nginx 不进入管理范围；安装失败、配置失败和 reload 失败均不留下半应用状态。
 
 ### Goal 5：服务、Proxy、Firewall、Certificate、Docker、Git 等迁移
 

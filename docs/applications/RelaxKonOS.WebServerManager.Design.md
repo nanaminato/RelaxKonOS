@@ -121,52 +121,21 @@ RelaxKonOS.Server
 
 ---
 
-## 4. Web Server 的三种管理模式
+## 4. Web Server 的两种管理模式
 
-建议不要仅使用“已安装 / 未安装”区分状态，而是增加管理模式：
+未受管 Nginx 只作为一次性发现候选项，用于让管理员决定是否创建集成；它不是管理模式、不会作为 Web Server 实例持久化，也不会出现在实例或站点管理中。管理员确认集成后，实例直接进入 `Integrated`。
+
+管理模式只有：
 
 ```csharp
 public enum WebServerManagementMode
 {
-    External,
     Integrated,
     Managed
 }
 ```
 
-### 4.1 External
-
-RelaxKonOS 发现 Web Server，但不修改它。
-
-RelaxKonOS 可以：
-
-- 检测进程。
-- 显示版本。
-- 显示配置路径。
-- 显示运行状态。
-- 读取有限信息。
-
-RelaxKonOS 不可以：
-
-- 修改配置。
-- 升级。
-- 卸载。
-- 自动创建站点。
-- 自动写入 HTTPS 配置。
-
-典型场景：
-
-```text
-/usr/sbin/nginx
-/etc/nginx/nginx.conf
-
-状态：Running
-模式：External
-```
-
----
-
-### 4.2 Integrated
+### 4.1 Integrated
 
 RelaxKonOS 与现有 Web Server 集成，但不拥有它。
 
@@ -201,7 +170,7 @@ RelaxKonOS 只拥有：
 
 ---
 
-### 4.3 Managed
+### 4.2 Managed
 
 Nginx 由 RelaxKonOS 安装并完整管理。
 
@@ -500,12 +469,9 @@ RelaxKonOS 首次发现已有 nginx 时，不应该自动修改配置。
 推荐流程：
 
 ```text
-Detected
+发现到未受管 Nginx
    ↓
-用户选择
-   ├── 忽略
-   ├── 仅监控
-   └── 启用集成
+用户明确确认集成
 ```
 
 只有用户明确同意，才进入：
@@ -529,7 +495,7 @@ Managed
 ```csharp
 public enum ConfigOwnership
 {
-    External,
+    UserOwned,
     Shared,
     RelaxKonOS
 }
@@ -537,7 +503,7 @@ public enum ConfigOwnership
 
 规则：
 
-### External
+### UserOwned
 
 ```text
 只读
@@ -982,7 +948,7 @@ public enum WebServerCapabilities
 例如：
 
 ```text
-External Nginx
+Integrated Nginx
 ──────────────
 Configuration      ✓
 Reload             ✓
@@ -1098,10 +1064,10 @@ Nginx Config = Generated Artifact
 对于用户原有 Nginx 配置：
 
 ```text
-Nginx Config = External Source of Truth
+用户自有 Nginx 配置 = Source of Truth
 ```
 
-RelaxKonOS 只读或有限集成。
+RelaxKonOS 只在显式集成后管理自己的配置片段。
 
 不要把所有 nginx.conf 解析后强行当作 RelaxKonOS 数据库。
 
@@ -1139,9 +1105,7 @@ public enum IntegrationState
 {
     None,
 
-    Detected,
-
-    Monitoring,
+    Candidate,
 
     Integrated,
 
@@ -1155,10 +1119,10 @@ public enum IntegrationState
 
 ```text
 RuntimeState = Running
-IntegrationState = Detected
+IntegrationState = Candidate
 ```
 
-表示 Nginx 正在运行，但 RelaxKonOS 没有接管。
+表示发现到未受管 Nginx；它只可用于发起显式集成，尚未进入产品管理范围。
 
 ```text
 RuntimeState = Running
@@ -1189,10 +1153,16 @@ GET /api/v1.0/webservers
 GET /api/v1.0/webservers/{id}/status
 ```
 
+列出可集成候选项：
+
+```text
+GET /api/v1.0/webservers/integration-candidates
+```
+
 启用集成：
 
 ```text
-POST /api/v1.0/webservers/{id}/integrate
+POST /api/v1.0/webservers/integration-candidates/{candidateId}/integrate
 ```
 
 测试配置：
@@ -1354,7 +1324,7 @@ WebServerCapabilities
 
 - 能发现 Nginx。
 - 能查看状态。
-- 能区分 External / Integrated / Managed。
+- 能区分 Integrated / Managed。
 - 能安全执行 Reload / Test。
 
 ---
@@ -1396,6 +1366,50 @@ IHttp01WebServerIntegrator
 - 证书续期后自动部署到 Nginx。
 - HTTP-01 WebRoot 自动集成。
 - 保持 CertificateManager 与 Nginx 解耦。
+
+### 第三阶段补充：续期后的 Nginx 自动重载设计
+
+当前证书存储会原子替换 Nginx 使用的稳定 PEM 路径，但 Nginx 不会因文件变化自动重新读取证书。因此，首个自动化目标是：**仅对 RelaxKonOS 管理的、引用该证书的 Nginx 站点，在 ACME 续期成功后执行一次安全 reload**；不修改站点配置。发现到未受管 Nginx 时，必须先经显式集成成为 `Integrated`，才可能拥有 RelaxKonOS 管理的站点并成为自动重载目标。
+
+```text
+CertificateOperation(renew) succeeded
+        │
+        ▼
+CertificateRenewalDeploymentCoordinator
+        │  查询 WebServerSiteRecord：CertificateId = 已续期证书
+        ▼
+按 Nginx instanceId 分组并过滤 Integrated / Managed
+        │
+        ▼
+NginxCertificateReloader
+        │  nginx -t → 确认运行状态 → reload
+        ▼
+写入 certificate_deployment_records 与 WebServerOperation
+```
+
+接口边界如下，CertificateManager 只发布“某证书版本已成功续期”的内部事件；协调器负责查找目标，Nginx 实现负责验证和重载：
+
+```csharp
+internal interface ICertificateRenewalDeploymentCoordinator
+{
+    Task DeployRenewedCertificateAsync(
+        Guid certificateId,
+        string certificateVersion,
+        Guid renewalOperationId,
+        CancellationToken cancellationToken);
+}
+```
+
+实现必须遵守这些约束：
+
+1. 以 `certificateId + nginx instanceId + certificateVersion` 作为持久化幂等键。同一版本对同一实例最多成功 reload 一次；服务重启后仍可判断是否已经完成。
+2. 只读取由 RelaxKonOS 保存的站点记录；只允许 `Integrated` 或 `Managed` Nginx。尚未集成的发现候选项、已停止实例、未绑定该证书的站点均跳过并记录明确状态，而不是尝试执行命令。
+3. 自动重载是 Server 的后台维护动作，不经过 HTTP Endpoint，也不要求用户会话的临时管理员授权。同一 Nginx 实例中的多个站点共享一次 reload；进入 reload 前执行 `nginx -t`，随后由 Server 进程使用固定参数调用 Nginx。对于由 systemd 管理的 Nginx，仍通过既有 Helper 传输固定的 `reload` 动作——这是操作系统服务访问路径，而非用户交互式授权；不可拼接 shell 命令。
+4. reload 失败时，新的 PEM 文件保留（它是有效的新版本），旧 Nginx worker 继续提供旧证书；记录 `certificate.nginx_reload_failed`，并由下一次协调重试或管理员手动 reload。不得回滚新证书文件或覆盖站点配置。
+5. 将每个目标的当前证书版本、最近成功版本、时间、问题码和来源续期 OperationId 持久化到 `certificate_deployment_records`；WebServerOperation 使用 `certificate-renew:{certificateId}:{version}` 作为幂等键，并以 `renewal-worker` 标识执行者。
+6. 续期本身不因某个 Nginx reload 失败而标记失败：证书签发与部署结果分别报告。Kestrel 的现有热切换语义保持不变。
+
+落地顺序：先为站点仓储增加“按 CertificateId 查询”的只读接口和 Nginx 部署记录，再实现协调器与单实例 reload，最后补齐重启恢复、失败重试、操作状态展示与两平台集成测试。验收需覆盖同证书多站点只 reload 一次、`nginx -t`/reload 失败、未集成候选项不被触碰、服务重启幂等以及证书签发成功但部署失败可独立观察。
 
 ---
 
@@ -1499,7 +1513,7 @@ Nginx 推荐默认策略：
 ```text
 已有 nginx
     ↓
-Detected
+发现到未受管 Nginx
     ↓
 用户允许
     ↓
@@ -1553,7 +1567,7 @@ webserver.install_elevation_required
 
 ### 30.2 Provider、能力与输入校验
 
-`IWebServerProvider` 仅描述 Provider 能力；实际可用能力由 `WebServerInstance + ManagementMode + 当前权限` 共同决定。`External` 只能检测、读取和（若 Provider 支持）测试，不得宣称具备“管理站点/修改配置/重载”的能力；`Integrated` 仅可修改 RelaxKonOS ownership 的目录；`Managed` 才可提供安装、升级和卸载。
+`IWebServerProvider` 仅描述 Provider 能力；实际可用能力由 `WebServerInstance + ManagementMode + 当前权限` 共同决定。未受管 Nginx 仅作为集成候选项，不构成 `WebServerInstance`，不得宣称具备“管理站点/修改配置/重载”的能力；`Integrated` 仅可修改 RelaxKonOS ownership 的目录；`Managed` 才可提供安装、升级和卸载。
 
 `ReverseProxyTarget.Address` 不是可直接写入 Nginx 的任意 URI。服务端必须拒绝 URI 凭据、控制字符、未知 scheme 和未声明端口，规范化主机名并在解析后再次校验地址，防止 DNS rebinding。V1 仅支持显式确认的 `http`/`https` 上游；对 loopback、私网、链路本地和元数据地址的代理采用管理员可见的策略，不能让站点表单成为 SSRF 或内网扫描接口。
 
@@ -1599,4 +1613,4 @@ WebServerManager 不拥有 Kestrel 的证书或监听配置。证书签发完成
 
 V1 支持目标为 **Ubuntu 24.04 LTS** 与 **Windows Server 2016 及以上**。V1 仅交付 Nginx 的发现/只读状态和经管理员确认的最小集成；Nginx 安装、升级、卸载、IIS、Apache、Caddy 和自动 HTTPS 部署均为后续阶段，除非在两个目标平台完成验证。
 
-UI 必须使用 `webserver.*` 三语言本地化 key，显示管理模式、实际能力、权限不足、外部修改冲突、风险确认、操作进度和可恢复建议。验收至少覆盖：两平台检测；External 不写入；Integrated 的 include 上下文；并发修改锁；`nginx -t` 失败；reload 失败回退；取消/断线重连；管理员/非管理员降级；以及配置、日志和审计的秘密脱敏。
+UI 必须使用 `webserver.*` 三语言本地化 key，显示管理模式、实际能力、权限不足、用户配置变更冲突、风险确认、操作进度和可恢复建议。验收至少覆盖：两平台检测；未集成候选项不写入；Integrated 的 include 上下文；并发修改锁；`nginx -t` 失败；reload 失败回退；取消/断线重连；管理员/非管理员降级；以及配置、日志和审计的秘密脱敏。

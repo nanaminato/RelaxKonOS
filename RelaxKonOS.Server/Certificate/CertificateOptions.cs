@@ -7,6 +7,7 @@ public sealed class CertificateOptions
     public string? ChallengeRoot { get; set; }
     public int RenewalFallbackDays { get; set; } = 30;
     public int RenewalRetryMaxAttempts { get; set; } = 6;
-    public int RenewalRetryBaseDelayMinutes { get; set; } = 1;
+    // The worker scans daily, so retry intervals shorter than a day cannot be observed.
+    public int RenewalRetryBaseDelayMinutes { get; set; } = 24 * 60;
     public int VersionRetentionCount { get; set; } = 3;
 }

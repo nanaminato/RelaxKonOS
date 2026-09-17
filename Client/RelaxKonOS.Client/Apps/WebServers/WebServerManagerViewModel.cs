@@ -41,6 +41,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     }
 
     public ObservableCollection<WebServerDto> Servers { get; } = [];
+    public ObservableCollection<WebServerIntegrationCandidateDto> IntegrationCandidates { get; } = [];
     public ObservableCollection<WebServerStatusDto> Statuses { get; } = [];
     public ObservableCollection<WebServerSiteDto> Sites { get; } = [];
     public ObservableCollection<string> AvailableWindowsVersions { get; } = [];
@@ -54,9 +55,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     ];
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(IntegrateCommand), nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
-    [NotifyPropertyChangedFor(nameof(IsExternalServer), nameof(IsIntegratedServer), nameof(IsManagedServer), nameof(IsIntegratedOrManagedServer), nameof(IsManagedServerRunning), nameof(ManagementHint), nameof(ManagedLifecycleActionText))]
+    [NotifyCanExecuteChangedFor(nameof(EnableAcmeHttp01Command), nameof(StartManagedCommand), nameof(StopCommand), nameof(ToggleManagedCommand), nameof(RestartCommand), nameof(ReloadCommand), nameof(UninstallManagedCommand), nameof(TestConfigurationCommand), nameof(RefreshStatusCommand), nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(NewSiteCommand), nameof(EditSiteCommand))]
+    [NotifyPropertyChangedFor(nameof(IsIntegratedServer), nameof(IsManagedServer), nameof(IsIntegratedOrManagedServer), nameof(IsManagedServerRunning), nameof(ManagementHint), nameof(ManagedLifecycleActionText))]
     private WebServerDto? _selectedServer;
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(IntegrateCommand))]
+    private WebServerIntegrationCandidateDto? _selectedIntegrationCandidate;
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(SaveSiteCommand), nameof(DeleteSiteCommand), nameof(EditSiteCommand))]
     private WebServerSiteDto? _selectedSite;
     [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("webservers.status.loading");
@@ -103,7 +106,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public bool IsStaticSite => SelectedSiteKind == WebServerSiteKind.Static;
     public bool IsManagedCertificateSource => SelectedSiteCertificateSource?.Value != SiteCertificateSource.ServerFiles;
     public bool IsServerFileCertificateSource => SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles;
-    public bool IsExternalServer => SelectedServer?.ManagementMode == WebServerManagementMode.External;
     public bool IsIntegratedServer => SelectedServer?.ManagementMode == WebServerManagementMode.Integrated;
     public bool IsManagedServer => SelectedServer?.ManagementMode == WebServerManagementMode.Managed;
     public bool IsIntegratedOrManagedServer => IsIntegratedServer || IsManagedServer;
@@ -123,7 +125,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     {
         WebServerManagementMode.Integrated => LocalizedText.Get("webservers.management_hint.integrated"),
         WebServerManagementMode.Managed => LocalizedText.Get("webservers.management_hint.managed"),
-        WebServerManagementMode.External => LocalizedText.Get("webservers.management_hint.external"),
         _ => LocalizedText.Get("webservers.management_hint.none"),
     };
 
@@ -175,8 +176,10 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         if (!HasReadPermission)
         {
             Servers.Clear();
+            IntegrationCandidates.Clear();
             Statuses.Clear();
             SelectedServer = null;
+            SelectedIntegrationCandidate = null;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
             HasManagedInstallation = false;
             StatusText = LocalizedText.Ref("webservers.permission.read_required");
@@ -187,20 +190,26 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         try
         {
             var servers = await _client.ListAsync() ?? [];
+            var candidates = await _client.ListIntegrationCandidatesAsync() ?? [];
             Servers.Clear();
+            IntegrationCandidates.Clear();
             Statuses.Clear();
             SelectedServer = null;
+            SelectedIntegrationCandidate = null;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
             SelectedStatusText = string.Empty;
             foreach (var server in servers) Servers.Add(server);
+            foreach (var candidate in candidates) IntegrationCandidates.Add(candidate);
             HasManagedInstallation = servers.Any(server => server.ManagementMode == WebServerManagementMode.Managed);
             StatusText = LocalizedText.Ref("webservers.status.ready", servers.Count);
         }
         catch (Exception)
         {
             Servers.Clear();
+            IntegrationCandidates.Clear();
             Statuses.Clear();
             SelectedServer = null;
+            SelectedIntegrationCandidate = null;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
             HasManagedInstallation = false;
             StatusText = LocalizedText.Ref("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
@@ -216,10 +225,14 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         try
         {
             var servers = await _client.DiscoverAsync() ?? [];
+            var candidates = await _client.ListIntegrationCandidatesAsync() ?? [];
             Servers.Clear();
+            IntegrationCandidates.Clear();
             Statuses.Clear();
             SelectedServer = null;
+            SelectedIntegrationCandidate = null;
             foreach (var server in servers) Servers.Add(server);
+            foreach (var candidate in candidates) IntegrationCandidates.Add(candidate);
             HasManagedInstallation = servers.Any(server => server.ManagementMode == WebServerManagementMode.Managed);
             StatusText = LocalizedText.Ref(servers.Count > 0 ? "webservers.discover.found" : "webservers.discover.empty", servers.Count);
         }
@@ -285,9 +298,10 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [RelayCommand(CanExecute = nameof(CanIntegrate))]
     private async Task IntegrateAsync()
     {
+        var candidate = SelectedIntegrationCandidate;
+        if (candidate is null) return;
         if (RequestIntegrationConfirmationAsync is null || !await RequestIntegrationConfirmationAsync()) return;
-        await RunOperationAsync("integrate", SelectedServer!,
-            (id, ct) => _client.IntegrateAsync(id, new IntegrateWebServerRequest(true), ct));
+        await RunOperationAsync("integrate", ct => _client.IntegrateCandidateAsync(candidate.Id, new IntegrateWebServerRequest(true), ct));
     }
 
     [RelayCommand(CanExecute = nameof(CanEnableAcmeHttp01))]
@@ -627,7 +641,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             if (operation.State == WebServerOperationState.Succeeded)
             {
                 OperationText = LocalizedText.Ref("webservers.operation.succeeded", OperationName(kindKey));
-                await RefreshStatusAsync();
+                if (kindKey == "integrate") await RefreshAsync();
+                else await RefreshStatusAsync();
             }
             else if (operation.State == WebServerOperationState.Cancelled)
                 OperationText = LocalizedText.Ref("webservers.operation.cancelled");
@@ -686,7 +701,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private bool CanRefreshStatus => HasReadPermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanRead == true;
     private bool CanTestConfiguration => HasReadPermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanTestConfiguration == true;
     private bool CanInstallManaged => HasManagePermission && !IsLoading && !IsOperationRunning;
-    private bool CanIntegrate => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanIntegrate == true;
+    private bool CanIntegrate => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedIntegrationCandidate is not null;
     private bool CanEnableAcmeHttp01 => CanSaveSite;
     private bool CanStart => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanStart == true;
     private bool CanStop => HasManagePermission && !IsLoading && !IsOperationRunning && SelectedServer?.Capabilities?.CanStop == true;

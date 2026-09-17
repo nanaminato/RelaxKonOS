@@ -1166,8 +1166,8 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     var configPath = Path.Combine(root, "nginx.conf");
     Directory.CreateDirectory(Path.Combine(root, "conf.d"));
     await File.WriteAllTextAsync(configPath, "events {}\nhttp {\n  include conf.d/*.conf;\n}\n");
-    var instance = new WebServerDto("nginx-test", "nginx", WebServerType.Nginx, WebServerManagementMode.External, "/usr/sbin/nginx", configPath,
-        "test", DateTimeOffset.UtcNow, new WebServerCapabilities(true, true, false, false));
+    var instance = new WebServerDto("nginx-test", "nginx", WebServerType.Nginx, WebServerManagementMode.Integrated, "/usr/sbin/nginx", configPath,
+        "test", DateTimeOffset.UtcNow, new WebServerCapabilities(true, true, true));
     var webServers = new WebServerMetadataRepository(environment, configuration);
     await webServers.UpsertInstanceAsync(instance, CancellationToken.None);
     var snapshot = await webServers.CreateSnapshotAsync(instance, CancellationToken.None) ?? throw new InvalidOperationException("Nginx snapshot was not created.");
@@ -1190,7 +1190,7 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     await File.WriteAllTextAsync(managedConfiguration, "events {}\nhttp { include conf.d/*.conf; }\n");
     var managedInstance = new WebServerDto("managed-test", "nginx", WebServerType.Nginx, WebServerManagementMode.Managed,
         Path.Combine(managedRoot, "sbin", "nginx"), managedConfiguration, "test", DateTimeOffset.UtcNow,
-        new WebServerCapabilities(true, true, false, false));
+        new WebServerCapabilities(true, true, false));
     var ensureAnchor = typeof(NginxWebServerManager).GetMethod("EnsureSiteIncludeAnchorAsync", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Nginx site anchor initializer was not found.");
     var anchorResult = (Task<string?>)ensureAnchor.Invoke(null, [managedInstance, CancellationToken.None])!;
@@ -1203,12 +1203,12 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     if (OperatingSystem.IsLinux())
         Assert(managedExecutable == "/usr/sbin/nginx", "Built-in Linux installation must use the package executable instead of creating a second copy.");
 
-    var shouldSkipExternal = typeof(NginxWebServerManager).GetMethod("ShouldSkipExternalExecutable", BindingFlags.Static | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Nginx external executable de-duplication check was not found.");
-    Assert(!(bool)shouldSkipExternal.Invoke(null, [false, "/usr/sbin/nginx", "/usr/sbin/nginx"])!,
-        "An external system Nginx was incorrectly hidden when no RelaxKonOS-managed marker exists.");
-    Assert((bool)shouldSkipExternal.Invoke(null, [true, "/usr/sbin/nginx", "/usr/sbin/nginx"])!,
-        "A managed Nginx executable was not de-duplicated from external discovery.");
+    var shouldSkipManaged = typeof(NginxWebServerManager).GetMethod("ShouldSkipManagedExecutable", BindingFlags.Static | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("Nginx managed executable de-duplication check was not found.");
+    Assert(!(bool)shouldSkipManaged.Invoke(null, [false, "/usr/sbin/nginx", "/usr/sbin/nginx"])!,
+        "An unmanaged system Nginx was incorrectly hidden from integration candidates.");
+    Assert((bool)shouldSkipManaged.Invoke(null, [true, "/usr/sbin/nginx", "/usr/sbin/nginx"])!,
+        "A managed Nginx executable was not de-duplicated from discovery.");
 
     var resolveManagedConfiguration = typeof(NginxWebServerManager).GetMethod("ResolveManagedConfigurationPath", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Managed Nginx configuration resolver was not found.");
@@ -1352,6 +1352,13 @@ static async Task VerifyWebServerProviderRoutingAsync()
     IWebServerManager manager = new WebServerManager([provider]);
     var discovered = await manager.DiscoverAsync(CancellationToken.None);
     Assert(discovered.Count == 1 && discovered[0].ProviderId == provider.ProviderId, "Web Server Manager did not aggregate provider discovery.");
+    var candidates = await manager.ListIntegrationCandidatesAsync(CancellationToken.None);
+    Assert(candidates.Single().Id == provider.Candidate.Id, "Web Server Manager did not aggregate integration candidates.");
+    var integrated = await manager.IntegrateCandidateAsync(provider.Candidate.Id, "candidate-routing", new IntegrateWebServerRequest(true), "test", CancellationToken.None);
+    Assert(integrated?.State == WebServerOperationState.Succeeded && provider.IntegratedCandidateId == provider.Candidate.Id,
+        "Web Server Manager did not route candidate integration to its provider.");
+    Assert(await manager.IntegrateCandidateAsync("unknown", "candidate-routing-unknown", new IntegrateWebServerRequest(true), "test", CancellationToken.None) is null,
+        "Web Server Manager routed an unknown integration candidate.");
     var status = await manager.GetStatusAsync(provider.Instance.Id, CancellationToken.None);
     Assert(status?.RuntimeState == WebServerRuntimeState.Running, "Web Server Manager did not route the instance to its provider.");
     Assert(await manager.GetStatusAsync("unknown", CancellationToken.None) is null, "Web Server Manager routed an unknown instance.");
@@ -1637,13 +1644,23 @@ sealed class SilentInstallationProgress : IInstallationProgress
 sealed class FakeWebServerProvider : IWebServerProvider
 {
     public string ProviderId => "fake";
-    public WebServerDto Instance { get; } = new("fake-instance", "fake", WebServerType.Nginx, WebServerManagementMode.External,
-        "/fake/nginx", null, "test", DateTimeOffset.UtcNow, new WebServerCapabilities(true, true, false, false));
+    public WebServerDto Instance { get; } = new("fake-instance", "fake", WebServerType.Nginx, WebServerManagementMode.Integrated,
+        "/fake/nginx", null, "test", DateTimeOffset.UtcNow, new WebServerCapabilities(true, true, true));
+    public WebServerIntegrationCandidateDto Candidate { get; } = new("fake-candidate", "fake", WebServerType.Nginx,
+        "/fake/candidate-nginx", "/fake/nginx.conf", "test", DateTimeOffset.UtcNow);
+    public string? IntegratedCandidateId { get; private set; }
 
     public Task<IReadOnlyList<WebServerDto>> DiscoverAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<WebServerDto>>([Instance]);
+    public Task<IReadOnlyList<WebServerIntegrationCandidateDto>> ListIntegrationCandidatesAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<WebServerIntegrationCandidateDto>>([Candidate]);
     public Task<WebServerStatusDto?> GetStatusAsync(string instanceId, CancellationToken cancellationToken) => Task.FromResult<WebServerStatusDto?>(instanceId == Instance.Id ? new WebServerStatusDto(instanceId, WebServerRuntimeState.Running) : null);
     public Task<WebServerConfigTestResultDto?> TestConfigurationAsync(string instanceId, CancellationToken cancellationToken) => Task.FromResult<WebServerConfigTestResultDto?>(null);
-    public Task<WebServerOperationDto?> IntegrateAsync(string instanceId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken) => Task.FromResult<WebServerOperationDto?>(null);
+    public Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)
+    {
+        if (candidateId != Candidate.Id) return Task.FromResult<WebServerOperationDto?>(null);
+        IntegratedCandidateId = candidateId;
+        return Task.FromResult<WebServerOperationDto?>(new(Guid.NewGuid(), candidateId, "integrate", WebServerOperationState.Succeeded,
+            "completed", string.Empty, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+    }
     public Task<WebServerOperationDto?> ApplyLifecycleAsync(string instanceId, WebServerLifecycleAction action, string idempotencyKey, string? actor, CancellationToken cancellationToken) => Task.FromResult<WebServerOperationDto?>(null);
     public Task<WebServerOperationDto?> UninstallManagedAsync(string instanceId, string idempotencyKey, UninstallManagedWebServerRequest request, string? actor, CancellationToken cancellationToken) => Task.FromResult<WebServerOperationDto?>(null);
     public Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken) => Task.FromResult<WebServerOperationDto?>(null);

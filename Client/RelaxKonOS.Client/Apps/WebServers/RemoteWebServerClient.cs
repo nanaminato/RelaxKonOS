@@ -22,6 +22,9 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
     public Task<IReadOnlyList<WebServerDto>> ListAsync(CancellationToken cancellationToken = default)
         => SendAsync<IReadOnlyList<WebServerDto>>(HttpMethod.Get, WebServerApiRoutes.WebServers, null, null, cancellationToken);
 
+    public Task<IReadOnlyList<WebServerIntegrationCandidateDto>> ListIntegrationCandidatesAsync(CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<WebServerIntegrationCandidateDto>>(HttpMethod.Get, WebServerApiRoutes.IntegrationCandidates, null, null, cancellationToken);
+
     public Task<WebServerStatusDto?> GetStatusAsync(string id, CancellationToken cancellationToken = default)
         => SendAsync<WebServerStatusDto?>(HttpMethod.Get, WebServerApiRoutes.Status.Replace("{id}", WebUtility.UrlEncode(id)), null, null, cancellationToken);
 
@@ -45,8 +48,8 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
         return await response.Content.ReadFromJsonAsync<InstallationFileReferenceDto>(RelaxKonOSJsonOptions.Default, cancellationToken);
     }
 
-    public Task<WebServerOperationDto?> IntegrateAsync(string id, IntegrateWebServerRequest request, CancellationToken cancellationToken = default)
-        => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.Integrate.Replace("{id}", WebUtility.UrlEncode(id)), request, NewKey(), cancellationToken);
+    public Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, IntegrateWebServerRequest request, CancellationToken cancellationToken = default)
+        => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.IntegrateCandidate.Replace("{candidateId}", WebUtility.UrlEncode(candidateId)), request, NewKey(), cancellationToken);
 
     public Task<WebServerOperationDto?> ApplyLifecycleAsync(string id, WebServerLifecycleAction action, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.Lifecycle.Replace("{id}", WebUtility.UrlEncode(id)).Replace("{action}", action.ToString().ToLowerInvariant()), null, NewKey(), cancellationToken);
