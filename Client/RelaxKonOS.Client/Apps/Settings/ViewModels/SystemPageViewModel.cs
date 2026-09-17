@@ -30,15 +30,15 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
     };
     public string ServerMode => _session.CurrentServer?.Host?.Mode switch
     {
-        ServerMode.User => T("settings.server_mode.user", "Current Linux user mode"),
-        ServerMode.System => T("settings.server_mode.system", "System mode"),
+        RelaxKonOS.Protocol.Common.ServerMode.User => T("settings.server_mode.user", "Current Linux user mode"),
+        RelaxKonOS.Protocol.Common.ServerMode.System => T("settings.server_mode.system", "System mode"),
         _ => "—",
     };
     public string ExecutionIdentity => _session.CurrentServer?.Host is { } host
         ? $"{host.ExecutionIdentity.Username} (uid {host.ExecutionIdentity.Uid})"
         : "—";
     public string ListenerScope => _session.CurrentServer?.Host?.Listener.Scope ?? "—";
-    public string ConnectionGuidance => _session.CurrentServer?.Host?.Mode == ServerMode.User
+    public string ConnectionGuidance => _session.CurrentServer?.Host?.Mode == RelaxKonOS.Protocol.Common.ServerMode.User
         ? T("settings.server_mode.user_hint", "This server is limited to the current Linux account and loopback. Connect remotely through SSH local forwarding.")
         : "";
     public string WorkspaceName => _session.CurrentWorkspace?.Name ?? "—";
