@@ -81,6 +81,8 @@ internal sealed partial class WorkloadSupervisor
     private async Task<GuardianAgentResponse> UpsertAsync(ProcessDefinitionDto? definition, CancellationToken cancellationToken)
     {
         if (definition is null) return new GuardianAgentResponse(false, "guardian.validation_failed");
+        if (_options.UserMode && !IsCurrentUnixAccount(definition.RunAs))
+            return new GuardianAgentResponse(false, "guardian.cross_user_unavailable");
         if (!TryNormalizeExecutablePath(definition, out var normalizedDefinition, out var problem)
             || !Validate(normalizedDefinition, out problem))
             return new GuardianAgentResponse(false, problem ?? "guardian.validation_failed");
@@ -205,6 +207,10 @@ internal sealed partial class WorkloadSupervisor
         foreach (var argument in definition.Arguments) direct.ArgumentList.Add(argument);
         return direct;
     }
+
+    private static bool IsCurrentUnixAccount(string? runAs) => OperatingSystem.IsLinux()
+        && !string.IsNullOrWhiteSpace(runAs)
+        && string.Equals(runAs.Trim(), Environment.UserName, StringComparison.Ordinal);
 
     private static ProcessStartInfo CreateBaseStartInfo(string fileName, string workingDirectory) => new(fileName)
     {

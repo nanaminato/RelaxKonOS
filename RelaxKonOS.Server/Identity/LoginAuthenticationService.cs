@@ -1,7 +1,9 @@
 using System.Net;
 using Microsoft.AspNetCore.Identity;
 using RelaxKonOS.Server.Domain;
+using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Storage;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Server.Identity;
 
@@ -9,12 +11,14 @@ public sealed record AuthenticatedLogin(User User, string Method, long Revision,
 
 public sealed class LoginAuthenticationService(IIdentityProvider identities, IUserRepository users,
     IAliasCredentialRepository credentials, AliasPasswordService passwords, CanonicalUserResolver resolver,
-    LoginProtectionService protection)
+    LoginProtectionService protection, IServerModeResolver serverMode)
 {
     public async Task<AuthenticatedLogin> AuthenticateAsync(string identifier, string password, IPAddress? ip, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(identifier) || identifier.Length > 256 || identifier.Any(char.IsControl)
             || !AliasPasswordService.ValidInput(password)) throw new AliasAuthenticationException(400, "invalid-input");
+        if (serverMode.Mode == ServerMode.User)
+            return await AuthenticateUserModeAsync(identifier, password, ip, ct);
         await CheckAsync(identifier, ip, ct);
         var alias = credentials.FindAlias(identifier);
         var system = identities.Lookup(identifier);
@@ -55,8 +59,46 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
         var current = users.FindById(login.User.Id);
         var policy = credentials.Find(login.User.Id);
         if (current is null || current.IdentityReviewRequired || current.SecurityVersion != login.SecurityVersion
-            || (policy?.Revision ?? 0) != login.Revision || login.Method == "system" && policy?.SystemLoginEnabled == false)
+            || (policy?.Revision ?? 0) != login.Revision
+            || serverMode.Mode != ServerMode.User && login.Method == "system" && policy?.SystemLoginEnabled == false)
             throw Invalid();
+    }
+
+    /// <summary>User Mode has exactly one login identity: the effective Unix account running
+    /// this Server.  Do not inspect aliases or the per-user system-login toggle here: either
+    /// could make a second local credential authority part of this deployment.</summary>
+    private async Task<AuthenticatedLogin> AuthenticateUserModeAsync(string identifier, string password, IPAddress? ip, CancellationToken ct)
+    {
+        await CheckAsync(identifier, ip, ct);
+        var system = identities.Lookup(identifier);
+        if (system.Status == IdentityLookupStatus.Unavailable)
+            throw new AliasAuthenticationException(503, "authentication-unavailable");
+        if (system.Identity is null)
+        {
+            passwords.Dummy(password);
+            throw Invalid();
+        }
+
+        var existing = users.FindByIdentity(system.Identity.Uid, system.Identity.Platform);
+        var key = existing?.Id.ToString("D") ?? identifier;
+        if (existing is not null) await CheckAsync(key, ip, ct, existing.Id);
+        try
+        {
+            var verified = identities.Verify(identifier, password);
+            if (verified.Error == CredentialError.Unknown)
+                throw new AliasAuthenticationException(503, "authentication-unavailable");
+            if (!verified.Success || verified.Identity is not { } trusted
+                || trusted.Uid != system.Identity.Uid || trusted.Platform != system.Identity.Platform)
+                throw Invalid();
+            var user = resolver.ResolveSystem(trusted);
+            var policy = credentials.Find(user.Id);
+            return new(user, "system", policy?.Revision ?? 0, user.SecurityVersion, user.Id.ToString("D"));
+        }
+        catch (AliasAuthenticationException exception) when (exception.Status == 401)
+        {
+            await protection.RecordFailureAsync(key, ip, ct, existing?.Id);
+            throw;
+        }
     }
 
     private async Task CheckAsync(string key, IPAddress? ip, CancellationToken ct, Guid? canonicalUserId = null)

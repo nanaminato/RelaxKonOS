@@ -8,7 +8,8 @@ namespace RelaxKonOS.Protocol.Common;
 /// </summary>
 public sealed record ServerDescriptorDto(
     [property: JsonPropertyName("platform")] PlatformKind Platform,
-    [property: JsonPropertyName("capabilities")] IReadOnlyList<string> Capabilities);
+    [property: JsonPropertyName("capabilities")] IReadOnlyList<string> Capabilities,
+    [property: JsonPropertyName("host")] ServerCapabilitiesDto? Host = null);
 
 /// <summary>Stable server feature identifiers used by application package requirements.</summary>
 public static class ServerCapabilities
@@ -20,4 +21,11 @@ public static class ServerCapabilities
     public const string PosixPermissions = "server.posix.permissions";
     public const string Firewall = "server.firewall";
     public const string Git = "server.git";
+    public const string Guardian = "server.guardian";
+    public const string Docker = "server.docker";
+    public const string FileServices = "server.file-services";
+    public const string WebServer = "server.web-server";
+    public const string Certificates = "server.certificates";
+    public const string Tunnels = "server.tunnels";
+    public const string Proxy = "server.proxy";
 }

@@ -1,5 +1,6 @@
 using RelaxKonOS.Protocol.Docker;
 using System.Security.Claims;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -7,7 +8,7 @@ public static class DockerEndpoints
 {
     public static IEndpointRouteBuilder MapDockerEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/docker").RequireAuthorization().WithTags("Docker");
+        var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/docker").RequireAuthorization().WithTags("Docker").RequireHostFeature(ServerHostFeature.Docker);
         group.MapGet("/status", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.GetStatusAsync(ct));
         group.MapGet("/containers", (RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => service.ListContainersAsync(ct));
         group.MapGet("/containers/{id}", async (string id, RelaxKonOS.Server.Docker.IDockerEngineService service, CancellationToken ct) => await service.GetContainerAsync(id, ct) is { } details ? Results.Ok(details) : Results.NotFound());

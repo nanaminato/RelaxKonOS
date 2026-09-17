@@ -14,13 +14,14 @@ using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Client.Apps.Tunnels;
 
 /// <summary>FRP administration workspace with separate editors and independently refreshable log windows.</summary>
 public sealed class TunnelManagerApp : RemoteApplicationBase
 {
-    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.tunnels"), "Tunnel Manager", "1.1.0", "↔", "Manage FRP tunnel desired state and runtime status", [AppPermissions.ServerTunnelsRead, AppPermissions.ServerTunnelsManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+    public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.tunnels"), "Tunnel Manager", "1.1.0", "↔", "Manage FRP tunnel desired state and runtime status", [AppPermissions.ServerTunnelsRead, AppPermissions.ServerTunnelsManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Tunnels]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
     public override void Activate(AppContext context)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;

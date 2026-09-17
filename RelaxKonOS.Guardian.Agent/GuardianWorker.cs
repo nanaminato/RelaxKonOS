@@ -5,6 +5,7 @@ namespace RelaxKonOS.Guardian.Agent;
 
 /// <summary>Runs the IPC endpoint and all supervision loops under the OS service lifetime.</summary>
 internal sealed class GuardianWorker(
+    GuardianAgentOptions options,
     WorkloadSupervisor supervisor,
     GuardianPipeServer pipeServer,
     ProtectedServerMonitor protectedServerMonitor,
@@ -18,7 +19,7 @@ internal sealed class GuardianWorker(
             await Task.WhenAll(
                 pipeServer.RunAsync(stoppingToken),
                 supervisor.RunHealthChecksAsync(stoppingToken),
-                protectedServerMonitor.RunAsync(stoppingToken));
+                options.UserMode ? Task.CompletedTask : protectedServerMonitor.RunAsync(stoppingToken));
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

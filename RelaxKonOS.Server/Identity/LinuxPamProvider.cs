@@ -6,11 +6,13 @@ using RelaxKonOS.Server.Privileged;
 namespace RelaxKonOS.Server.Identity;
 
 /// <summary>
-/// Linux identity provider. NSS lookups remain in the unprivileged Server; password verification
-/// is delegated to the installed root-owned Helper's fixed PAM operation.
+/// Linux identity provider. NSS lookups remain in the unprivileged Server. Password verification
+/// uses either the installed root-owned Helper or a host-provided PAM service in the Server
+/// process, according to the explicit deployment configuration.
 /// </summary>
 [SupportedOSPlatform("linux")]
-public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = null, bool allowDevelopmentInProcessPam = false) : IIdentityProvider
+public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = null, bool allowInProcessPam = false,
+    string inProcessPamService = "login") : IIdentityProvider
 {
     private const string LibC = "libc.so.6";
 
@@ -24,11 +26,11 @@ public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = nul
         var before = Lookup(username);
         if (before.Identity is null)
             return CredentialVerifyResult.Failed("Identity unavailable", CredentialError.BadCredentials);
-        if (allowDevelopmentInProcessPam)
+        if (allowInProcessPam)
         {
-            var direct = LinuxDevelopmentPamAuthenticator.Authenticate(username, password);
+            var direct = LinuxInProcessPamAuthenticator.Authenticate(inProcessPamService, username, password);
             if (direct != SystemAuthenticationResult.Success)
-                return CredentialVerifyResult.Failed("Linux development PAM authentication failed", MapFailure(direct));
+                return CredentialVerifyResult.Failed("Linux in-process PAM authentication failed", MapFailure(direct));
         }
         else if (helper is null)
             return CredentialVerifyResult.Failed("Linux authentication Helper is unavailable", CredentialError.Unknown);
@@ -57,6 +59,14 @@ public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = nul
     }
 
     public PlatformUserInfo GetUserInfo(string username)
+    {
+        var identity = GetUserInfoUnchecked(username);
+        if (allowInProcessPam && identity.Uid != geteuid().ToString())
+            throw new KeyNotFoundException($"Linux user '{username}' is not the Server process identity.");
+        return identity;
+    }
+
+    private static PlatformUserInfo GetUserInfoUnchecked(string username)
     {
         if (string.IsNullOrWhiteSpace(username) || username.IndexOfAny(['\0', ':']) >= 0)
             throw new ArgumentException("Invalid Linux user name.", nameof(username));
@@ -109,6 +119,12 @@ public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = nul
     public AliasEligibility CheckAliasEligibility(PlatformUserInfo identity)
         => new(false, "linux-pam-account-check-unverified");
 
+    /// <summary>PAM service names select files under /etc/pam.d; keep the value a single safe
+    /// service token even though it is never passed to a shell.</summary>
+    public static bool IsValidPamServiceName(string? service)
+        => !string.IsNullOrWhiteSpace(service) && service.Length <= 128
+           && service.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-');
+
     private static CredentialError MapFailure(SystemAuthenticationResult? result) => result switch
     {
         SystemAuthenticationResult.InvalidCredentials => CredentialError.BadCredentials,
@@ -136,4 +152,6 @@ public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = nul
     private static extern int getpwnam_r(string name, out Passwd entry, IntPtr buffer, nuint length, out IntPtr result);
     [DllImport(LibC, CallingConvention = CallingConvention.Cdecl)]
     private static extern long sysconf(int name);
+    [DllImport(LibC, CallingConvention = CallingConvention.Cdecl)]
+    private static extern uint geteuid();
 }

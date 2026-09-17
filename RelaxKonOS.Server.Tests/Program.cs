@@ -244,6 +244,10 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
 static void VerifyLinuxSystemAuthenticationProvider()
 {
     if (!OperatingSystem.IsLinux()) return;
+    Assert(LinuxPamProvider.IsValidPamServiceName("login") && LinuxPamProvider.IsValidPamServiceName("relaxkonos-user_1.0"),
+        "Valid PAM service names were rejected.");
+    Assert(!LinuxPamProvider.IsValidPamServiceName("../login") && !LinuxPamProvider.IsValidPamServiceName("login/service")
+        && !LinuxPamProvider.IsValidPamServiceName(""), "Unsafe PAM service names were accepted.");
     var username = Environment.UserName;
     var accepted = new SystemAuthenticationTransport(new(true, SystemAuthenticationResult: SystemAuthenticationResult.Success));
     var provider = new LinuxPamProvider(accepted);
@@ -914,10 +918,14 @@ static async Task VerifyPerformanceSamplerAsync()
 
     var source = new FakePerformanceSource();
     var history = new PerformanceHistory();
-    var sampler = new PerformanceSampler(source, history);
+    var subscriptions = new PerformanceSubscriptionRegistry();
+    var sampler = new PerformanceSampler(source, history, subscriptions);
     await sampler.StartAsync(CancellationToken.None);
     try
     {
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+        Assert(source.SampleCount == 0, "Performance sampler read system data without a subscriber.");
+        subscriptions.Subscribe("test-connection");
         await Task.Delay(TimeSpan.FromMilliseconds(1200));
         var latest = sampler.GetLatest() ?? throw new InvalidOperationException("Performance sampler did not publish its second sample.");
         Assert(latest.Sequence == 1, "Performance sampler did not begin its sequence at the first valid sample.");
@@ -925,6 +933,11 @@ static async Task VerifyPerformanceSamplerAsync()
         Assert(latest.Disks.Single().ReadBytesPerSecond == 5120, "Disk byte rate did not use sector deltas.");
         Assert(latest.Networks.Single().ReceiveBytesPerSecond == 500, "Network rate did not use adjacent counters.");
         Assert(sampler.GetHistory(60).Count == 1, "Performance history did not retain the valid sample.");
+        subscriptions.Unsubscribe("test-connection");
+        var readsBeforeIdle = source.SampleCount;
+        await Task.Delay(TimeSpan.FromMilliseconds(1200));
+        Assert(source.SampleCount == readsBeforeIdle, "Performance sampler continued reading system data without subscribers.");
+        Assert(sampler.GetHistory(60).Count == 0, "Performance history was retained after the last subscriber left.");
     }
     finally
     {
@@ -1642,6 +1655,7 @@ sealed class FakeWebServerProvider : IWebServerProvider
 sealed class FakePerformanceSource : ISystemPerformanceSource
 {
     private int _sample;
+    public int SampleCount => Volatile.Read(ref _sample);
 
     public ValueTask<RelaxKonOS.Protocol.SystemMonitor.PerformanceInfoDto> GetInfoAsync(CancellationToken cancellationToken = default)
         => ValueTask.FromResult(new RelaxKonOS.Protocol.SystemMonitor.PerformanceInfoDto(

@@ -6,6 +6,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.WindowManager;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Client.Apps.Certificates;
 
@@ -14,7 +15,7 @@ public sealed class CertificateManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(
         new AppId("relaxkonos.certificates"), "Certificate Manager", "0.1.0", "🔐", "Manage TLS certificates on the RelaxKonOS Server",
-        [AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage],
+        [AppPermissions.ServerCertificatesRead, AppPermissions.ServerCertificatesManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Certificates]),
         InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)

@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using RelaxKonOS.Protocol.ProcessGuardian;
 using RelaxKonOS.Server.Identity;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.ProcessGuardian;
 
@@ -17,13 +18,19 @@ public interface IRunAsAuthorizationService
 
 public sealed record RunAsAuthorizationResult(bool Success, string ProblemCode, string? RunAs = null);
 
-public sealed class RunAsAuthorizationService(IIdentityProvider identities) : IRunAsAuthorizationService
+public sealed class RunAsAuthorizationService(IIdentityProvider identities, IServerModeResolver mode) : IRunAsAuthorizationService
 {
     public RunAsAuthorizationResult Authorize(string requester, string? requestedRunAs, RunAsAdministratorApproval? approval)
     {
         var target = requestedRunAs?.Trim();
         if (string.IsNullOrWhiteSpace(requester) || string.IsNullOrWhiteSpace(target) || target.IndexOf('\0') >= 0)
             return new RunAsAuthorizationResult(false, "guardian.run_as_invalid_account");
+
+        // A User Mode Agent can only ever execute as its owning Unix account. Do this at the
+        // Server boundary as well as in the Agent so a manually forged IPC request has no path
+        // to runuser/sudo or an administrator-password fallback.
+        if (mode.Mode == RelaxKonOS.Protocol.Common.ServerMode.User && !SameAccount(requester, target))
+            return new RunAsAuthorizationResult(false, "guardian.cross_user_unavailable");
 
         try
         {

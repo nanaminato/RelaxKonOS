@@ -211,7 +211,7 @@ RelaxKonOS/
 | **Explorer** | Remote File Manager (REST API + host OS permission reuse) | ✅ Implemented |
 | **Browser** | Built-in Browser (bookmarks/history, home page & link-open-location persistence) | ✅ Implemented |
 | **Port Forwarding** | Local SSH loopback tunnel management (Client-only, not synced with Server) | ✅ Implemented |
-| **Task Manager** | Remote Task Manager (Performance page: SignalR 1Hz push + 60s history; Processes page: low-frequency sampling) | ✅ Implemented |
+| **Task Manager** | Remote Task Manager (Performance page: SignalR 1Hz push while subscribed + 60s history; Processes page: on-demand low-frequency sampling) | ✅ Implemented |
 | **Docker Manager** | Remote Docker Engine management (container/image/Stack/network/volume + Compose orchestration) | ✅ Implemented |
 | **Process Guardian** | Guarded workloads, IPC, persistence; SignalR `/hubs/guardian-logs` log broadcast | 🚧 Basic Implementation |
 | **Firewall** | Linux Server UFW firewall status, default policies and rule management | ✅ Implemented |

@@ -19,6 +19,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 using Rect = RelaxKonOS.Core.Primitives.Rect;
+using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Client.Apps.Proxy;
 
@@ -26,7 +27,7 @@ namespace RelaxKonOS.Client.Apps.Proxy;
 public sealed class ProxyManagerApp : RemoteApplicationBase
 {
     public override ApplicationManifest Manifest { get; } = new(new AppId("relaxkonos.proxy"), "Proxy Manager", "1.0.0", "⇄", "Manage the host Proxy runtime and recovery state",
-        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyTunManage], InstancePolicy: ApplicationInstancePolicy.SingleWindow);
+        [AppPermissions.ServerProxyRead, AppPermissions.ServerProxyManage, AppPermissions.ServerProxyTunManage], ServerRequirements: new ApplicationServerRequirements(Capabilities: [ServerCapabilities.Proxy]), InstancePolicy: ApplicationInstancePolicy.SingleWindow);
 
     public override void Activate(AppContext context)
     {
@@ -91,6 +92,19 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
                     LocalizedText.Get("proxy.subscription_system_proxy.confirm")),
             }, new RelaxKonOS.Core.Primitives.Size(460, 220));
             return useSystemProxy;
+        };
+        vm.RequestPortChangeRestartAsync = async () =>
+        {
+            var restartNow = false;
+            await context.ShowDialogAsync<bool?>(window, LocalizedText.Get("proxy.port_restart.title"), dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(
+                    LocalizedText.Get("proxy.port_restart.message"),
+                    result => { restartNow = result; dialog.Close(result); },
+                    LocalizedText.Get("proxy.port_restart.now"),
+                    LocalizedText.Get("proxy.port_restart.later")),
+            }, new RelaxKonOS.Core.Primitives.Size(460, 220));
+            return restartNow;
         };
         vm.ShowRuntimeSubscriptionWindow = () =>
         {

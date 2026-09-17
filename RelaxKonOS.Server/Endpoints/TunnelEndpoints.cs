@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Tunnels;
+using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Runtimes;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.Tunnels;
@@ -11,7 +12,7 @@ public static class TunnelEndpoints
 {
     public static IEndpointRouteBuilder MapTunnelEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup(TunnelApiRoutes.Tunnels).RequireAuthorization().WithTags("Tunnels");
+        var group = app.MapGroup(TunnelApiRoutes.Tunnels).RequireAuthorization().WithTags("Tunnels").RequireHostFeature(ServerHostFeature.Tunnels);
         group.MapGet(TunnelApiRoutes.ProfilesPattern, (ClaimsPrincipal user, ITunnelService service, CancellationToken ct) => service.ListProfilesAsync(UserId(user), ct)).RequireAuthorization("TunnelsRead");
         group.MapGet(TunnelApiRoutes.ProfilePattern, async (Guid profileId, ClaimsPrincipal user, ITunnelService service, CancellationToken ct) =>
             await service.GetProfileAsync(profileId, UserId(user), ct) is { } value ? Results.Ok(value) : Results.NotFound()).RequireAuthorization("TunnelsManage");

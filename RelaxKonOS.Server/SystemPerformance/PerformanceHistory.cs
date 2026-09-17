@@ -23,6 +23,11 @@ public sealed class PerformanceHistory
         lock (_gate) return _snapshots.Count == 0 ? null : _snapshots.Last();
     }
 
+    public void Clear()
+    {
+        lock (_gate) _snapshots.Clear();
+    }
+
     public IReadOnlyList<PerformanceRealtimeSnapshotDto> GetRecent(int seconds)
     {
         var boundedSeconds = Math.Clamp(seconds, 1, Capacity);

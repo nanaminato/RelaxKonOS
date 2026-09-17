@@ -20,14 +20,16 @@ SELF_SIGNED_IDENTITIES=
 ALLOW_UNSUPPORTED_SYSTEM=false
 NON_INTERACTIVE=false
 ORIGINAL_ARGUMENTS=("$@")
+MODE=
 
 usage() {
-  echo "usage: install-relaxkonos.sh [--language auto|zh-CN|en-US|ja-JP] [--bundle DIRECTORY_OR_ZIP | --release-uri ZIP_URL --release-sha256 SHA256] [--release-catalog-base URL] [--allow-unsupported-system] [--install-root PATH] [--data-root PATH] [--network local|lan|reverse-proxy] [--server-port PORT] [--certificate-mode none|custom|self-signed] [--certificate-path PFX_PATH] [--certificate-password-file PATH] [--self-signed-identities NAMES] [--file-access restricted|full|whitelist] [--file-roots PATH] [--non-interactive]" >&2
+  echo "usage: install-relaxkonos.sh --mode system [system options] | --mode user [--bundle PATH | --release-uri HTTPS_URL --release-sha256 SHA256]" >&2
   exit 64
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --mode) MODE="${2:-}"; shift 2 ;;
     --language) LANGUAGE="${2:-}"; shift 2 ;;
     --bundle) BUNDLE_PATH="${2:-}"; shift 2 ;;
     --release-uri) RELEASE_URI="${2:-}"; shift 2 ;;
@@ -50,7 +52,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ $EUID -ne 0 ]]; then exec sudo -- bash "$0" "${ORIGINAL_ARGUMENTS[@]}"; fi
+case "$MODE" in
+  user)
+    [[ $EUID -ne 0 ]] || { echo 'User Mode must not be installed as root.' >&2; exit 77; }
+    launcher="$(cd -- "$(dirname -- "$0")/../user" && pwd)/install-relaxkonos-user.sh"
+    [[ -x $launcher ]] || { echo 'This bundle does not contain the User Mode installer.' >&2; exit 65; }
+    user_args=()
+    for arg in "${ORIGINAL_ARGUMENTS[@]}"; do [[ $arg != --mode && $arg != user ]] && user_args+=("$arg"); done
+    exec "$launcher" "${user_args[@]}"
+    ;;
+  system) [[ $EUID -eq 0 ]] || { echo 'System Mode requires a root caller; re-run explicitly with sudo.' >&2; exit 77; } ;;
+  *) echo '--mode user or --mode system is required.' >&2; exit 64 ;;
+esac
 
 if [[ "$LANGUAGE" == auto ]]; then
   case "${LC_ALL:-${LANG:-}}" in ja*) LANGUAGE=ja-JP ;; zh*) LANGUAGE=zh-CN ;; *) LANGUAGE=en-US ;; esac
