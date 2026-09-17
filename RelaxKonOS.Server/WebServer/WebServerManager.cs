@@ -29,14 +29,33 @@ internal sealed class WebServerManager(IEnumerable<IWebServerProvider> providers
     public Task<IReadOnlyList<WebServerDto>> ListAsync(CancellationToken cancellationToken)
         => DiscoverAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<WebServerIntegrationCandidateDto>> ListIntegrationCandidatesAsync(CancellationToken cancellationToken)
+    {
+        var candidates = new List<WebServerIntegrationCandidateDto>();
+        foreach (var provider in _providers)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            candidates.AddRange(await provider.ListIntegrationCandidatesAsync(cancellationToken));
+        }
+        return candidates;
+    }
+
     public async Task<WebServerStatusDto?> GetStatusAsync(string instanceId, CancellationToken cancellationToken)
         => await WithProviderAsync(instanceId, (provider, ct) => provider.GetStatusAsync(instanceId, ct), cancellationToken);
 
     public async Task<WebServerConfigTestResultDto?> TestConfigurationAsync(string instanceId, CancellationToken cancellationToken)
         => await WithProviderAsync(instanceId, (provider, ct) => provider.TestConfigurationAsync(instanceId, ct), cancellationToken);
 
-    public async Task<WebServerOperationDto?> IntegrateAsync(string instanceId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)
-        => await WithProviderAsync(instanceId, (provider, ct) => provider.IntegrateAsync(instanceId, idempotencyKey, request, actor, ct), cancellationToken);
+    public async Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)
+    {
+        foreach (var provider in _providers)
+        {
+            var candidates = await provider.ListIntegrationCandidatesAsync(cancellationToken);
+            if (candidates.Any(candidate => string.Equals(candidate.Id, candidateId, StringComparison.Ordinal)))
+                return await provider.IntegrateCandidateAsync(candidateId, idempotencyKey, request, actor, cancellationToken);
+        }
+        return null;
+    }
 
     public async Task<WebServerOperationDto?> ApplyLifecycleAsync(string instanceId, WebServerLifecycleAction action, string idempotencyKey, string? actor, CancellationToken cancellationToken)
         => await WithProviderAsync(instanceId, (provider, ct) => provider.ApplyLifecycleAsync(instanceId, action, idempotencyKey, actor, ct), cancellationToken);

@@ -92,17 +92,27 @@ internal sealed partial class NginxWebServerManager(
             if (instance is not null) discovered.Add(instance);
         }
 
-        foreach (var executable in FindExternalExecutables())
+        foreach (var executable in FindNginxExecutables())
         {
-            // Linux APT installs Nginx at /usr/sbin/nginx, which is also the executable
-            // path a RelaxKonOS-managed system package uses.  Do not suppress that path
-            // unless the managed marker was actually found; otherwise an externally
-            // installed system Nginx would disappear from discovery altogether.
-            if (ShouldSkipExternalExecutable(managedInstallation, executable, managed.ExecutablePath)) continue;
+            if (ShouldSkipManagedExecutable(managedInstallation, executable, managed.ExecutablePath)) continue;
             var instance = await DetectAsync(executable, null, cancellationToken);
             if (instance is not null) discovered.Add(instance);
         }
         return discovered;
+    }
+
+    public async Task<IReadOnlyList<WebServerIntegrationCandidateDto>> ListIntegrationCandidatesAsync(CancellationToken cancellationToken)
+    {
+        var candidates = new List<WebServerIntegrationCandidateDto>();
+        var managed = GetManagedLayout();
+        var managedInstallation = IsManagedInstallation(managed);
+        foreach (var executable in FindNginxExecutables())
+        {
+            if (ShouldSkipManagedExecutable(managedInstallation, executable, managed.ExecutablePath)) continue;
+            var candidate = await DetectIntegrationCandidateAsync(executable, cancellationToken);
+            if (candidate is not null) candidates.Add(candidate);
+        }
+        return candidates;
     }
 
     public async Task<WebServerStatusDto?> GetStatusAsync(string instanceId, CancellationToken cancellationToken)
@@ -130,15 +140,21 @@ internal sealed partial class NginxWebServerManager(
         return new WebServerConfigTestResultDto(result.Success, result.Success ? "" : "webserver.config_test_failed");
     }
 
-    public async Task<WebServerOperationDto?> IntegrateAsync(string instanceId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)
+    public async Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, string idempotencyKey, IntegrateWebServerRequest request, string? actor, CancellationToken cancellationToken)
     {
-        var detected = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
-        if (detected is null || detected.Id != instanceId) return null;
+        var candidate = (await ListIntegrationCandidatesAsync(cancellationToken)).FirstOrDefault(item => item.Id == candidateId);
+        if (candidate is null) return null;
         if (!request.Confirmed)
-            return new WebServerOperationDto(Guid.Empty, instanceId, "integrate", WebServerOperationState.Failed, "validation", "webserver.confirmation_required", null, null, DateTimeOffset.UtcNow);
+            return new WebServerOperationDto(Guid.Empty, candidateId, "integrate", WebServerOperationState.Failed, "validation", "webserver.confirmation_required", null, null, DateTimeOffset.UtcNow);
         if (!privileges.IsAdministrator)
-            return new WebServerOperationDto(Guid.Empty, instanceId, "integrate", WebServerOperationState.Failed, "authorization", "webserver.configuration_helper_unavailable", null, null, DateTimeOffset.UtcNow);
-        return await operations.StartAsync(idempotencyKey, instanceId, "integrate", actor, ct => IntegrateCoreAsync(detected, ct), lifetime.ApplicationStopping);
+            return new WebServerOperationDto(Guid.Empty, candidateId, "integrate", WebServerOperationState.Failed, "authorization", "webserver.configuration_helper_unavailable", null, null, DateTimeOffset.UtcNow);
+        var instance = ToIntegratedInstance(candidate);
+        return await operations.StartAsync(idempotencyKey, candidateId, "integrate", actor, async ct =>
+        {
+            var result = await IntegrateCoreAsync(instance, ct);
+            if (string.IsNullOrEmpty(result.ProblemCode)) await metadata.UpsertInstanceAsync(instance, ct);
+            return result;
+        }, lifetime.ApplicationStopping);
     }
 
     public async Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
@@ -366,7 +382,7 @@ internal sealed partial class NginxWebServerManager(
         {
             // A managed installation owns the entire generated conf.d layout. Its initial
             // configuration has no site anchor until the first site is saved, so create it
-            // atomically here. External instances must still be explicitly integrated first.
+            // atomically here. An existing Nginx must be explicitly integrated first.
             if (instance.ManagementMode != WebServerManagementMode.Managed) return "integration_anchor_missing";
             var anchorStage = anchor + ".stage";
             await File.WriteAllTextAsync(anchorStage, expected, new UTF8Encoding(false), cancellationToken);
@@ -680,13 +696,13 @@ internal sealed partial class NginxWebServerManager(
         var includeDirectory = configPath is null ? null : FindOwnedIncludeDirectory(configPath);
         var ownedPath = includeDirectory is null ? null : Path.Combine(includeDirectory, OwnedFileName);
         var integrated = ownedPath is not null && IsOwnedFile(ownedPath);
-        var mode = forcedMode ?? (integrated ? WebServerManagementMode.Integrated : WebServerManagementMode.External);
+        if (forcedMode is null && !integrated) return null;
+        var mode = forcedMode ?? WebServerManagementMode.Integrated;
         var isManaged = mode == WebServerManagementMode.Managed;
         var capabilities = new WebServerCapabilities(
             CanRead: true,
             CanTestConfiguration: true,
-            CanIntegrate: !isManaged && !integrated && privileges.IsAdministrator && includeDirectory is not null,
-            CanReload: integrated || isManaged,
+            CanReload: true,
             CanStart: isManaged,
             CanStop: isManaged,
             CanRestart: isManaged,
@@ -695,6 +711,25 @@ internal sealed partial class NginxWebServerManager(
         await metadata.UpsertInstanceAsync(instance, cancellationToken);
         return instance;
     }
+
+    private async Task<WebServerIntegrationCandidateDto?> DetectIntegrationCandidateAsync(string executable, CancellationToken cancellationToken)
+    {
+        var details = await RunNginxAsync(executable, ["-V"], cancellationToken);
+        if (!details.Success && string.IsNullOrWhiteSpace(details.Output)) return null;
+        var configPath = ParseConfigPath(details.Output, executable);
+        var includeDirectory = configPath is null ? null : FindOwnedIncludeDirectory(configPath);
+        if (configPath is null || includeDirectory is null) return null;
+        var ownedPath = Path.Combine(includeDirectory, OwnedFileName);
+        if (IsOwnedFile(ownedPath)) return null;
+        var version = VersionPattern().Match(details.Output) is { Success: true } match ? match.Groups["version"].Value : null;
+        return new WebServerIntegrationCandidateDto(InstanceId(executable), ProviderKey, WebServerType.Nginx,
+            executable, configPath, version, DateTimeOffset.UtcNow);
+    }
+
+    private static WebServerDto ToIntegratedInstance(WebServerIntegrationCandidateDto candidate) => new(
+        candidate.Id, candidate.ProviderId, candidate.Type, WebServerManagementMode.Integrated,
+        candidate.ExecutablePath, candidate.ConfigurationPath, candidate.Version, candidate.DetectedAt,
+        new WebServerCapabilities(true, true, true));
 
     private async Task<WebServerOperationResult> IntegrateCoreAsync(WebServerDto instance, CancellationToken cancellationToken)
     {
@@ -1230,7 +1265,7 @@ internal sealed partial class NginxWebServerManager(
         public string ProblemCode { get; } = problemCode;
     }
 
-    private static IEnumerable<string> FindExternalExecutables()
+    private static IEnumerable<string> FindNginxExecutables()
     {
         var candidates = OperatingSystem.IsWindows()
             ? new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nginx", "nginx.exe"), @"C:\nginx\nginx.exe" }
@@ -1238,7 +1273,7 @@ internal sealed partial class NginxWebServerManager(
         return candidates.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase);
     }
 
-    private static bool ShouldSkipExternalExecutable(bool managedInstallation, string executable, string managedExecutable) =>
+    private static bool ShouldSkipManagedExecutable(bool managedInstallation, string executable, string managedExecutable) =>
         managedInstallation && string.Equals(executable, managedExecutable, StringComparison.OrdinalIgnoreCase);
 
     private static string InstanceId(string executable) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(executable))))[..32].ToLowerInvariant();
@@ -1350,7 +1385,7 @@ internal sealed partial class NginxWebServerManager(
     }
 
     /// <summary>Uses the PID written by the RelaxKonOS-owned configuration instead of a host-wide
-    /// process-name scan. This keeps the managed instance independent from any external Nginx.</summary>
+    /// process-name scan. This keeps the managed instance independent from other host Nginx processes.</summary>
     private static bool IsManagedNginxRunning(ManagedLayout layout)
     {
         var pidPath = Path.Combine(layout.Root, "logs", "nginx.pid");
@@ -1366,7 +1401,7 @@ internal sealed partial class NginxWebServerManager(
             // /proc/<pid>/exe to the RelaxKonOS service. The PID is written to a regular,
             // RelaxKonOS-owned file by this exact configuration, so a live Nginx process at
             // that PID remains a reliable managed-instance signal when image inspection is
-            // unavailable. This is intentionally not used for external instances.
+            // unavailable. This is intentionally not used for non-managed instances.
             return !process.HasExited && IsNginxProcessName(process.ProcessName);
         }
         catch (ArgumentException) { return false; }

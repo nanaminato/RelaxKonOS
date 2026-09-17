@@ -22,8 +22,10 @@ public static class WebServerApiRoutes
     public const string StatusPattern = "/{id}/status";
     public const string TestConfiguration = $"{WebServers}/{{id}}/config/test";
     public const string TestConfigurationPattern = "/{id}/config/test";
-    public const string Integrate = $"{WebServers}/{{id}}/integrate";
-    public const string IntegratePattern = "/{id}/integrate";
+    public const string IntegrationCandidates = $"{WebServers}/integration-candidates";
+    public const string IntegrationCandidatesPattern = "/integration-candidates";
+    public const string IntegrateCandidate = $"{IntegrationCandidates}/{{candidateId}}/integrate";
+    public const string IntegrateCandidatePattern = "/integration-candidates/{candidateId}/integrate";
     public const string Lifecycle = $"{WebServers}/{{id}}/lifecycle/{{action}}";
     public const string LifecyclePattern = "/{id}/lifecycle/{action}";
     public const string Reload = $"{WebServers}/{{id}}/reload";

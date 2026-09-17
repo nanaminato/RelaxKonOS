@@ -4,14 +4,13 @@ using RelaxKonOS.Protocol.Installations;
 namespace RelaxKonOS.Protocol.WebServers;
 
 public enum WebServerType { Nginx }
-public enum WebServerManagementMode { External, Integrated, Managed }
+public enum WebServerManagementMode { Integrated, Managed }
 public enum WebServerRuntimeState { Unknown, Running, Stopped }
 public enum WebServerOperationState { Queued, Running, Succeeded, Failed, Cancelled }
 public enum WebServerLifecycleAction { Start, Stop, Restart, Reload, EnableAcmeHttp01 }
 public sealed record WebServerCapabilities(
     [property: JsonPropertyName("canRead")] bool CanRead,
     [property: JsonPropertyName("canTestConfiguration")] bool CanTestConfiguration,
-    [property: JsonPropertyName("canIntegrate")] bool CanIntegrate,
     [property: JsonPropertyName("canReload")] bool CanReload,
     [property: JsonPropertyName("canStart")] bool CanStart = false,
     [property: JsonPropertyName("canStop")] bool CanStop = false,
@@ -28,6 +27,17 @@ public sealed record WebServerDto(
     [property: JsonPropertyName("version")] string? Version,
     [property: JsonPropertyName("detectedAt")] DateTimeOffset DetectedAt,
     [property: JsonPropertyName("capabilities")] WebServerCapabilities Capabilities);
+
+/// <summary>A discovered host Nginx that has not entered RelaxKonOS management. Candidates are
+/// ephemeral discovery results: only a confirmed integration turns one into an instance.</summary>
+public sealed record WebServerIntegrationCandidateDto(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("providerId")] string ProviderId,
+    [property: JsonPropertyName("type")] WebServerType Type,
+    [property: JsonPropertyName("executablePath")] string ExecutablePath,
+    [property: JsonPropertyName("configurationPath")] string? ConfigurationPath,
+    [property: JsonPropertyName("version")] string? Version,
+    [property: JsonPropertyName("detectedAt")] DateTimeOffset DetectedAt);
 
 public sealed record WebServerStatusDto(
     [property: JsonPropertyName("instanceId")] string InstanceId,
