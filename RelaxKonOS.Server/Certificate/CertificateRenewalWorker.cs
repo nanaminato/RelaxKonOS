@@ -14,9 +14,9 @@ internal sealed class CertificateRenewalWorker(ICertificateStore certificates, I
     {
         // Do not compete with startup migrations, administrator configuration, or a manual first issuance.
         await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-        // A short scheduler interval is needed for bounded retry backoff. ARI is cached per
-        // certificate for six hours, so this does not turn into a high-frequency CA poll.
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        // Renewal is a daily maintenance task. ARI is still cached per certificate for six
+        // hours, which matters when a host is restarted before the next regular scan.
+        using var timer = new PeriodicTimer(TimeSpan.FromDays(1));
         do
         {
             try { await RenewDueCertificatesAsync(stoppingToken); }

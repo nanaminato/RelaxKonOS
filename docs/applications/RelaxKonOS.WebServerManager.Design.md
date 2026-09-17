@@ -1397,6 +1397,50 @@ IHttp01WebServerIntegrator
 - HTTP-01 WebRoot 自动集成。
 - 保持 CertificateManager 与 Nginx 解耦。
 
+### 第三阶段补充：续期后的 Nginx 自动重载设计
+
+当前证书存储会原子替换 Nginx 使用的稳定 PEM 路径，但 Nginx 不会因文件变化自动重新读取证书。因此，首个自动化目标是：**仅对 RelaxKonOS 管理的、引用该证书的 Nginx 站点，在 ACME 续期成功后执行一次安全 reload**；不修改站点配置，也不触碰 External 实例。
+
+```text
+CertificateOperation(renew) succeeded
+        │
+        ▼
+CertificateRenewalDeploymentCoordinator
+        │  查询 WebServerSiteRecord：CertificateId = 已续期证书
+        ▼
+按 Nginx instanceId 分组并过滤 Integrated / Managed
+        │
+        ▼
+NginxCertificateReloader
+        │  nginx -t → 确认运行状态 → reload
+        ▼
+写入 certificate_deployment_records 与 WebServerOperation
+```
+
+接口边界如下，CertificateManager 只发布“某证书版本已成功续期”的内部事件；协调器负责查找目标，Nginx 实现负责验证和重载：
+
+```csharp
+internal interface ICertificateRenewalDeploymentCoordinator
+{
+    Task DeployRenewedCertificateAsync(
+        Guid certificateId,
+        string certificateVersion,
+        Guid renewalOperationId,
+        CancellationToken cancellationToken);
+}
+```
+
+实现必须遵守这些约束：
+
+1. 以 `certificateId + nginx instanceId + certificateVersion` 作为持久化幂等键。同一版本对同一实例最多成功 reload 一次；服务重启后仍可判断是否已经完成。
+2. 只读取由 RelaxKonOS 保存的站点记录；只允许 `Integrated` 或 `Managed` Nginx。External、已停止实例、未绑定该证书的站点均跳过并记录明确状态，而不是尝试执行命令。
+3. 同一 Nginx 实例中的多个站点共享一次 reload。进入 reload 前执行 `nginx -t`，随后复用既有受控 lifecycle/privileged-helper 路径；不可拼接 shell 命令。
+4. reload 失败时，新的 PEM 文件保留（它是有效的新版本），旧 Nginx worker 继续提供旧证书；记录 `certificate.nginx_reload_failed`，并由下一次协调重试或管理员手动 reload。不得回滚新证书文件或覆盖站点配置。
+5. 将每个目标的当前证书版本、最近成功版本、时间、问题码和来源续期 OperationId 持久化到 `certificate_deployment_records`；WebServerOperation 使用 `certificate-renew:{certificateId}:{version}` 作为幂等键，并以 `renewal-worker` 标识执行者。
+6. 续期本身不因某个 Nginx reload 失败而标记失败：证书签发与部署结果分别报告。Kestrel 的现有热切换语义保持不变。
+
+落地顺序：先为站点仓储增加“按 CertificateId 查询”的只读接口和 Nginx 部署记录，再实现协调器与单实例 reload，最后补齐重启恢复、失败重试、操作状态展示与两平台集成测试。验收需覆盖同证书多站点只 reload 一次、`nginx -t`/reload 失败、External 实例不被触碰、服务重启幂等以及证书签发成功但部署失败可独立观察。
+
 ---
 
 ### 第四阶段：跨 Web Server 扩展
