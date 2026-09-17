@@ -94,6 +94,7 @@ public static class RelaxKonOSActivationUris
 {
     public static Uri SettingsPersonalization { get; } = new("relaxkonos://settings/personalization");
     public static Uri SettingsApplications { get; } = new("relaxkonos://settings/apps");
+    public static Uri SettingsAbout { get; } = new("relaxkonos://settings/about");
 
     public static Uri SettingsAppPermissions(AppId appId)
     {

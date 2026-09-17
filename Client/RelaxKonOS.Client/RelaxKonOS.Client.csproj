@@ -9,6 +9,8 @@
 
     <ItemGroup>
         <AvaloniaResource Include="Assets\**"/>
+        <AvaloniaResource Include="..\..\LICENSE" Link="Assets\Legal\LICENSE.txt" />
+        <AvaloniaResource Include="..\..\THIRD_PARTY_NOTICES.md" Link="Assets\Legal\THIRD_PARTY_NOTICES.md" />
         <Content Include="Localization\**\*.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 

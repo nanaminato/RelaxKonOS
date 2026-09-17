@@ -78,6 +78,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new ImageMirrorsPageViewModel(settings, imageMirrors!, session),
             new DefaultAppsPageViewModel(settings, apps!, save),
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
+            new AboutPageViewModel(settings),
         };
         _selectedPage = Pages[0];
         InitializeNavigation(localization, App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>());

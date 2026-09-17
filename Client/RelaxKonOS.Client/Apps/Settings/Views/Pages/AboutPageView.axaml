@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.AboutPageView"
+             x:DataType="vm:AboutPageViewModel">
+    <StackPanel Spacing="16" MaxWidth="760">
+        <StackPanel Spacing="2">
+            <TextBlock Text="{loc:Loc settings.about_page.title}" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Text="{loc:Loc settings.about_page.description}" Opacity="0.65" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{Binding ProductName}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.about_page.tagline}" Opacity="0.7" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="140,*">
+                    <TextBlock Text="{loc:Loc settings.version}" Opacity="0.7" />
+                    <TextBlock Grid.Column="1" Text="{Binding AppVersion}" />
+                </Grid>
+                <TextBlock Text="{Binding Copyright}" Opacity="0.7" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{loc:Loc settings.about_page.links}" Classes="title" />
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{loc:Loc settings.about_page.website}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding OfficialWebsite}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{loc:Loc settings.about_page.copy_link}" Command="{Binding CopyOfficialWebsiteCommand}" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="{loc:Loc settings.about_page.open_link}" Command="{Binding OpenOfficialWebsiteCommand}" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{loc:Loc settings.about_page.source}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding SourceRepository}" Opacity="0.7" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="{loc:Loc settings.about_page.copy_link}" Command="{Binding CopySourceRepositoryCommand}" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="{loc:Loc settings.about_page.open_link}" Command="{Binding OpenSourceRepositoryCommand}" VerticalAlignment="Center" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{loc:Loc settings.about_page.legal}" Classes="title" />
+                <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding LicenseName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock Text="{loc:Loc settings.about_page.license_hint}" Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+                <WrapPanel>
+                    <Button Content="{loc:Loc settings.about_page.view_license}" Command="{Binding ViewProjectLicenseCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.about_page.view_third_party}" Command="{Binding ViewThirdPartyNoticesCommand}" Margin="0,0,8,8" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

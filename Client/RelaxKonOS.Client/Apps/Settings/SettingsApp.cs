@@ -1,9 +1,11 @@
 using RelaxKonOS.Client.Services.WorkspaceSettings;
 using Avalonia.Threading;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Data;
 using Avalonia.Styling;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Text.Json;
 using RelaxKonOS.Client.Apps.Settings.ViewModels;
@@ -191,6 +193,33 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             AuthorizeHostSettingsAsync(connection, "settings.host_time.authorize", (password, administrator) => hostTimeService.AuthorizeAsync(connection, password, administrator));
         var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
         var systemPage = viewModel.Pages.OfType<SystemPageViewModel>().Single();
+        var aboutPage = viewModel.Pages.OfType<AboutPageViewModel>().Single();
+        aboutPage.RequestOpenUriAsync = uri =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            }
+            catch
+            {
+                // A missing host handler must not leave the Settings window in an invalid state.
+            }
+            return Task.CompletedTask;
+        };
+        aboutPage.RequestCopyTextAsync = async value =>
+        {
+            var topLevel = AvaloniaApplication.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+                ? desktop.MainWindow : null;
+            if (topLevel?.Clipboard is not null) await topLevel.Clipboard.SetTextAsync(value);
+        };
+        aboutPage.RequestLegalDocumentAsync = async document =>
+        {
+            var text = await document.LoadAsync();
+            await context.ShowDialogAsync<bool>(window, document.LocalizedTitle, dialog => new LegalTextDialogView
+            {
+                DataContext = new LegalTextDialogViewModel(document.LocalizedTitle, text, () => dialog.Close(true)),
+            }, new Size(760, 620));
+        };
         systemPage.RequestEnvironmentVariablesAsync = async () =>
         {
             EnvironmentPageViewModel? editor = null;
@@ -576,7 +605,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             return false;
 
         var segments = GetPathSegments(uri);
-        return (segments.Length == 1 && new[] { "system", "account-security", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
+        return (segments.Length == 1 && new[] { "system", "account-security", "personalization", "time-language", "network", "apps", "image-mirrors", "default-apps", "developer", "about" }.Contains(segments[0], StringComparer.OrdinalIgnoreCase))
                || (segments.Length == 3 && segments[0].Equals("apps", StringComparison.OrdinalIgnoreCase)
                    && segments[2].Equals("permissions", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(segments[1]));
