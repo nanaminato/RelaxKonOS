@@ -70,6 +70,13 @@
                 <pages:DeveloperPageView VerticalAlignment="Top" />
             </ScrollViewer>
         </DataTemplate>
+        <DataTemplate DataType="vm:AboutPageViewModel">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto"
+                          Padding="0,0,0,32">
+                <pages:AboutPageView VerticalAlignment="Top" />
+            </ScrollViewer>
+        </DataTemplate>
     </UserControl.DataTemplates>
 
     <Grid RowDefinitions="Auto,Auto,*" Margin="12">
