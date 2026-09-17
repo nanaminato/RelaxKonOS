@@ -75,7 +75,7 @@ internal static class SettingsSystemVerification
         });
         builder.Services.AddSingleton<IWorkspaceRepository>(workspaces);
         builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
-        builder.Services.AddScoped<IWorkspaceSettingsService, WorkspaceSettingsService>();
+        builder.Services.AddSingleton<IWorkspaceSettingsService, WorkspaceSettingsService>();
         builder.Services.AddSingleton<WorkspaceWallpaperStore>();
         builder.Services.Configure<StorageOptions>(_ => { });
         await using var app = builder.Build();

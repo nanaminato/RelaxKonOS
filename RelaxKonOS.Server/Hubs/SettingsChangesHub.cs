@@ -5,13 +5,17 @@ using Microsoft.AspNetCore.SignalR;
 using RelaxKonOS.Protocol.Hubs;
 using RelaxKonOS.Server.Settings;
 using RelaxKonOS.Server.Storage;
+using RelaxKonOS.Server.Domain;
 
 namespace RelaxKonOS.Server.Hubs;
 
 public sealed class SettingsSubscriptions
 {
     internal ConcurrentDictionary<string, Subscription> Connections { get; } = new();
-    internal sealed record Subscription(Guid UserId, Guid WorkspaceId);
+    internal sealed record Subscription(Guid UserId, Guid WorkspaceId)
+    {
+        public Workspace ToWorkspace() => new() { Id = WorkspaceId, UserId = UserId };
+    }
 }
 
 [Authorize]
@@ -37,7 +41,7 @@ public sealed class SettingsChangesHub(IWorkspaceRepository workspaces, Settings
 
 /// <summary>Observes all registry writers, including the registry editor, without broadcasting values.</summary>
 public sealed class SettingsChangesBroadcastService(
-    SettingsSubscriptions subscriptions, IServiceScopeFactory scopeFactory,
+    SettingsSubscriptions subscriptions, IWorkspaceSettingsService settings,
     IHubContext<SettingsChangesHub, ISettingsChangesClient> hub, ILogger<SettingsChangesBroadcastService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -52,13 +56,11 @@ public sealed class SettingsChangesBroadcastService(
             {
                 try
                 {
-                    using var scope = scopeFactory.CreateScope();
-                    var workspaces = scope.ServiceProvider.GetRequiredService<IWorkspaceRepository>();
-                    var settings = scope.ServiceProvider.GetRequiredService<IWorkspaceSettingsService>();
-                    var workspace = workspaces.FindById(group.Key.WorkspaceId);
-                    if (workspace is null || workspace.UserId != group.Key.UserId) continue;
-                    var snapshot = settings.Read(workspace);
-                    var change = new WorkspaceSettingsChanged(workspace.Id, snapshot.Revision!.Value, snapshot.PersistedRevision);
+                    // Subscription authorization is performed by Subscribe. The registry is the
+                    // in-memory runtime source, so re-querying the SQLite workspace row every
+                    // second only to reconstruct these two immutable IDs was unnecessary.
+                    var snapshot = settings.Read(group.Key.ToWorkspace());
+                    var change = new WorkspaceSettingsChanged(group.Key.WorkspaceId, snapshot.Revision!.Value, snapshot.PersistedRevision);
                     foreach (var (connectionId, subscription) in group)
                     {
                         if (!subscriptions.Connections.TryGetValue(connectionId, out var current) || current != subscription) continue;

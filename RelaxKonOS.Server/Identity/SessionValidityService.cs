@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
 using RelaxKonOS.Server.Storage;
 
@@ -32,6 +33,12 @@ public sealed class SessionValidityService(IServiceScopeFactory scopes)
 
 public sealed class SessionValidityHubFilter(SessionValidityService validity, AuthSessionStore sessions) : IHubFilter
 {
+    // A valid access token is checked by JwtBearer when the connection is established. Afterwards
+    // revocation is pushed by AuthSessionStore and token expiry is enforced by
+    // CloseOnAuthenticationExpiration. Polling the database here used one users query per hub
+    // connection every two seconds without improving either guarantee.
+    private readonly ConcurrentDictionary<string, Action<Guid>> _revocationHandlers = new();
+
     public async ValueTask<object?> InvokeMethodAsync(HubInvocationContext context, Func<HubInvocationContext, ValueTask<object?>> next)
     {
         if (!validity.IsValid(context.Context.User)) { context.Context.Abort(); throw new HubException("Session expired."); }
@@ -43,19 +50,30 @@ public sealed class SessionValidityHubFilter(SessionValidityService validity, Au
         var userId = Guid.Parse(context.Context.User!.FindFirst("sub")?.Value ?? context.Context.User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
         void Revoke(Guid id) { if (id == userId) context.Context.Abort(); }
         sessions.UserRevoked += Revoke;
-        _ = WatchAsync(context, () => sessions.UserRevoked -= Revoke);
-        try { await next(context); }
-        catch { context.Context.Abort(); throw; }
-    }
-    private async Task WatchAsync(HubLifetimeContext context, Action cleanup)
-    {
-        try
+        if (!_revocationHandlers.TryAdd(context.Context.ConnectionId, Revoke))
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
-            while (await timer.WaitForNextTickAsync(context.Context.ConnectionAborted))
-                if (!validity.IsValid(context.Context.User)) { context.Context.Abort(); return; }
+            sessions.UserRevoked -= Revoke;
+            context.Context.Abort();
+            return;
         }
-        catch (OperationCanceledException) { }
-        finally { cleanup(); }
+        try { await next(context); }
+        catch
+        {
+            RemoveRevocationHandler(context.Context.ConnectionId);
+            context.Context.Abort();
+            throw;
+        }
+    }
+
+    public async Task OnDisconnectedAsync(HubLifetimeContext context, Exception? exception, Func<HubLifetimeContext, Exception?, Task> next)
+    {
+        RemoveRevocationHandler(context.Context.ConnectionId);
+        await next(context, exception);
+    }
+
+    private void RemoveRevocationHandler(string connectionId)
+    {
+        if (_revocationHandlers.TryRemove(connectionId, out var handler))
+            sessions.UserRevoked -= handler;
     }
 }
