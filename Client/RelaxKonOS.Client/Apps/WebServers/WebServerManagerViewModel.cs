@@ -406,7 +406,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [RelayCommand(CanExecute = nameof(CanSaveSite))]
     private async Task SaveSiteAsync()
     {
-        if (SelectedServer is null || !HasManagePermission) return;
+        var server = SelectedServer;
+        if (server is null || !HasManagePermission) return;
         var bindings = SiteBindings
             .Select(binding => new WebServerSiteBindingDto(binding.Domain.Trim(), binding.Port))
             .Where(binding => !string.IsNullOrWhiteSpace(binding.Domain))
@@ -421,34 +422,71 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         try
         {
             var domains = bindings.Select(binding => binding.Domain).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            var saved = await _client.UpsertSiteAsync(SelectedServer.Id, new UpsertWebServerSiteRequest(SelectedSite?.Id, SiteName.Trim(), SelectedSiteKind, domains, bindings[0].Port,
+            var request = new UpsertWebServerSiteRequest(SelectedSite?.Id, SiteName.Trim(), SelectedSiteKind, domains, bindings[0].Port,
                 IsReverseProxySite ? SiteUpstream.Trim() : null, null,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, bindings,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
-                SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null));
+                SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null);
+            var saved = await RetrySiteConfigurationWithElevationAsync(server.Id,
+                () => _client.UpsertSiteAsync(server.Id, request));
             if (saved is null) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); return; }
             await LoadSitesAsync();
             SelectedSite = Sites.FirstOrDefault(site => site.Id == saved.Id);
             SiteStatusText = LocalizedText.Ref("webservers.site.save_succeeded");
             if (CloseSiteEditorAsync is not null) await CloseSiteEditorAsync();
         }
-        catch (WebServerApiException exception) { await ReportSiteSaveErrorAsync(LocalizedStatus.Literal(SiteSaveProblemText(exception.ProblemCode))); }
+        catch (WebServerApiException exception)
+        {
+            var message = IsConfigurationElevationRequired(exception)
+                ? LocalizedText.Get("webservers.problem.site_elevation_required")
+                : SiteSaveProblemText(exception.ProblemCode);
+            await ReportSiteSaveErrorAsync(LocalizedStatus.Literal(message));
+        }
         catch (Exception) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); }
     }
 
     [RelayCommand(CanExecute = nameof(CanDeleteSite))]
     private async Task DeleteSiteAsync()
     {
-        if (SelectedServer is null || SelectedSite is null || !HasManagePermission) return;
+        var server = SelectedServer;
+        var site = SelectedSite;
+        if (server is null || site is null || !HasManagePermission) return;
         try
         {
-            await _client.DeleteSiteAsync(SelectedServer.Id, SelectedSite.Id);
+            await RetrySiteConfigurationWithElevationAsync(server.Id, async () =>
+            {
+                await _client.DeleteSiteAsync(server.Id, site.Id);
+                return true;
+            });
             ResetSiteEditor();
             await LoadSitesAsync();
             SiteStatusText = LocalizedText.Ref("webservers.site.delete_succeeded");
         }
+        catch (WebServerApiException exception) when (IsConfigurationElevationRequired(exception))
+        {
+            SiteStatusText = LocalizedText.Ref("webservers.problem.site_elevation_required");
+        }
         catch (Exception) { SiteStatusText = LocalizedText.Ref("webservers.site.delete_failed"); }
     }
+
+    /// <summary>
+    /// Site mutations are first attempted without prompting. A missing grant is the server's
+    /// authoritative signal that a five-minute, instance-scoped administrator grant expired or
+    /// has not yet been created. After a successful grant, retry exactly once.
+    /// </summary>
+    private async Task<T> RetrySiteConfigurationWithElevationAsync<T>(string instanceId, Func<Task<T>> mutation)
+    {
+        try { return await mutation(); }
+        catch (WebServerApiException exception) when (IsConfigurationElevationRequired(exception))
+        {
+            if (RequestConfigurationElevationAsync is null || !await RequestConfigurationElevationAsync(instanceId)) throw;
+            return await mutation();
+        }
+    }
+
+    private static bool IsConfigurationElevationRequired(WebServerApiException exception) =>
+        exception.StatusCode == System.Net.HttpStatusCode.Forbidden
+        && string.Equals(exception.ProblemCode, "webserver.elevation_required", StringComparison.Ordinal);
 
     private void ResetSiteEditor()
     {
