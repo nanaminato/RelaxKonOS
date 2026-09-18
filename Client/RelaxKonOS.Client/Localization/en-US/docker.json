@@ -30,6 +30,8 @@
     "docker.problem.timeout": "The operation timed out; Docker Engine may still be available. Review the operation log and try again.",
     "docker.problem.failed": "The Docker command failed. Review the operation log for details.",
     "docker.problem.stack_no_services": "This Compose project has no services to manage.",
+    "docker.problem.access_not_configured": "Docker installation requires explicit Docker access for the Server service account at deployment time. Redeploy with --docker-access, then try again.",
+    "docker.problem.access_restart_required": "Docker is installed and the Server service account has Docker access. Restart RelaxKonOS Server, then refresh status.",
     "docker.unavailable_dialog.title": "Docker unavailable",
     "docker.unavailable_dialog.message": "Docker Engine is unavailable, so this operation cannot continue. Start or restore Docker, then refresh the status before trying again.",
     "docker.read_error.title": "Unable to load Docker information",

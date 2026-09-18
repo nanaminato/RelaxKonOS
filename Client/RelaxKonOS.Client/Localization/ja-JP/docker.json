@@ -30,6 +30,8 @@
     "docker.problem.timeout": "操作はタイムアウトしました。Docker Engine が利用不能とは限りません。操作ログを確認して再試行してください。",
     "docker.problem.failed": "Docker コマンドが失敗しました。操作ログを確認してください。",
     "docker.problem.stack_no_services": "この Compose プロジェクトには操作可能なサービスがありません。",
+    "docker.problem.access_not_configured": "Docker のインストールには、デプロイ時に Server サービス アカウントへの Docker アクセスを明示的に許可する必要があります。--docker-access を指定して再デプロイしてから再試行してください。",
+    "docker.problem.access_restart_required": "Docker はインストールされ、Server サービス アカウントに Docker アクセスが付与されました。RelaxKonOS Server を再起動してから状態を更新してください。",
     "docker.unavailable_dialog.title": "Docker を利用できません",
     "docker.unavailable_dialog.message": "Docker Engine を利用できないため、この操作は続行できません。Docker を開始または復旧してから、状態を更新して再試行してください。",
     "docker.read_error.title": "Docker 情報を読み込めません",

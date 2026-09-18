@@ -3,10 +3,14 @@ using RelaxKonOS.Protocol.Privileged;
 
 public static partial class PrivilegedOperationExecutor
 {
+    private const string DockerAccessUserPolicyPath = "/etc/relaxkonos/docker-access-user";
+
     // Fixed Ubuntu provider. No request value can choose a package, source, path or command.
     static async Task<PrivilegedOperationResult> InstallDockerEngineAsync()
     {
         if (!OperatingSystem.IsLinux()) return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
+        var accessUser = ReadDockerAccessUser();
+        if (accessUser is null) return DockerFailure(PrivilegedProblemCode.AccessDenied);
         var release = File.ReadAllLines("/etc/os-release").Where(line => line.Contains('='))
             .Select(line => line.Split('=', 2)).ToDictionary(parts => parts[0], parts => parts[1].Trim('"'));
         if (!release.TryGetValue("ID", out var distro) || distro != "ubuntu"
@@ -57,7 +61,31 @@ public static partial class PrivilegedOperationExecutor
         if (!install.Success) return install;
         var start = await RunFixedCommandAsync("/usr/bin/systemctl", ["enable", "--now", "docker.service"], TimeSpan.FromSeconds(60), "docker service failed");
         if (!start.Success) return start;
-        return await RunFixedCommandAsync("/usr/bin/docker", ["--host", "unix:///var/run/docker.sock", "info", "--format", "{{.ServerVersion}}"], TimeSpan.FromSeconds(30), "docker engine verification failed");
+        var verification = await RunFixedCommandAsync("/usr/bin/docker", ["--host", "unix:///var/run/docker.sock", "info", "--format", "{{.ServerVersion}}"], TimeSpan.FromSeconds(30), "docker engine verification failed");
+        if (!verification.Success) return verification;
+        var grant = await RunFixedCommandAsync("/usr/sbin/usermod", ["--append", "--groups", "docker", accessUser], TimeSpan.FromSeconds(30), "docker access grant failed");
+        if (!grant.Success) return grant;
+        // The Server process has already started without the new supplementary group. Do not
+        // run its direct Docker health check until systemd has started it again with that group.
+        return new(false, ProblemCode: PrivilegedProblemCode.RestartRequired, Error: "restart RelaxKonOS Server to apply Docker access");
     }
+
+    private static string? ReadDockerAccessUser()
+    {
+        try
+        {
+            if (!File.Exists(DockerAccessUserPolicyPath)
+                || (File.GetAttributes(DockerAccessUserPolicyPath) & FileAttributes.ReparsePoint) != 0) return null;
+            var user = File.ReadAllText(DockerAccessUserPolicyPath).Trim();
+            return IsValidLinuxUser(user) ? user : null;
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    private static bool IsValidLinuxUser(string value) => value.Length is >= 1 and <= 32
+        && (char.IsAsciiLetter(value[0]) || value[0] == '_')
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-');
+
     static PrivilegedOperationResult DockerFailure(PrivilegedProblemCode code) => new(false, 1, ProblemCode: code);
 }

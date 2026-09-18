@@ -14,6 +14,8 @@ public sealed class DockerRuntimeInstaller(IDockerEngineService engine, IPrivile
         {
             PrivilegedProblemCode.UnsupportedOperation => "docker.install_not_supported",
             PrivilegedProblemCode.Conflict => "docker.install_conflict",
+            PrivilegedProblemCode.AccessDenied => "docker.access_not_configured",
+            PrivilegedProblemCode.RestartRequired => "docker.access_restart_required",
             PrivilegedProblemCode.InvalidProtocol => "installation.helper_protocol",
             _ => "docker.install_failed"
         });

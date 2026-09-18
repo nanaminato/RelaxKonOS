@@ -30,6 +30,8 @@
     "docker.problem.timeout": "操作超时；Docker Engine 不一定不可用。请查看操作日志后重试。",
     "docker.problem.failed": "Docker 命令执行失败；请查看操作日志。",
     "docker.problem.stack_no_services": "此编排项目没有可操作的服务。",
+    "docker.problem.access_not_configured": "Docker 安装需要部署时显式授予 Server 服务账户 Docker 访问权限。请使用 --docker-access 重新部署后重试。",
+    "docker.problem.access_restart_required": "Docker 已安装，且 Server 服务账户已获 Docker 访问权限。请重启 RelaxKonOS Server 后刷新状态。",
     "docker.unavailable_dialog.title": "Docker 不可用",
     "docker.unavailable_dialog.message": "Docker Engine 当前不可用，因此无法继续此操作。请启动或恢复 Docker，刷新状态后再试。",
     "docker.read_error.title": "无法加载 Docker 信息",

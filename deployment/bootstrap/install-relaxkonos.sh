@@ -17,13 +17,14 @@ CERTIFICATE_PATH=
 CERTIFICATE_PASSWORD="${RELAXKONOS_CERTIFICATE_PASSWORD:-}"
 CERTIFICATE_PASSWORD_FILE=
 SELF_SIGNED_IDENTITIES=
+DOCKER_ACCESS=false
 ALLOW_UNSUPPORTED_SYSTEM=false
 NON_INTERACTIVE=false
 ORIGINAL_ARGUMENTS=("$@")
 MODE=
 
 usage() {
-  echo "usage: install-relaxkonos.sh --mode system [system options] | --mode user [--bundle PATH | --release-uri HTTPS_URL --release-sha256 SHA256]" >&2
+  echo "usage: install-relaxkonos.sh --mode system [--docker-access] [system options] | --mode user [--bundle PATH | --release-uri HTTPS_URL --release-sha256 SHA256]" >&2
   exit 64
 }
 
@@ -45,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     --self-signed-identities) SELF_SIGNED_IDENTITIES="${2:-}"; shift 2 ;;
     --file-access) FILE_ACCESS="${2:-}"; shift 2 ;;
     --file-roots) FILE_ROOTS_FILE="${2:-}"; shift 2 ;;
+    --docker-access) DOCKER_ACCESS=true; shift ;;
     --allow-unsupported-system) ALLOW_UNSUPPORTED_SYSTEM=true; shift ;;
     --non-interactive) NON_INTERACTIVE=true; shift ;;
     -h|--help) usage ;;
@@ -55,6 +57,7 @@ done
 case "$MODE" in
   user)
     [[ $EUID -ne 0 ]] || { echo 'User Mode must not be installed as root.' >&2; exit 77; }
+    [[ "$DOCKER_ACCESS" == false ]] || { echo '--docker-access is available only in System Mode.' >&2; exit 64; }
     launcher="$(cd -- "$(dirname -- "$0")/../user" && pwd)/install-relaxkonos-user.sh"
     [[ -x $launcher ]] || { echo 'This bundle does not contain the User Mode installer.' >&2; exit 65; }
     user_args=()
@@ -227,6 +230,7 @@ GUARDIAN="$INSTALL_ROOT/guardian/RelaxKonOS.Guardian.Agent"
 HELPER="$INSTALL_ROOT/privileged-helper/RelaxKonOS.PrivilegedHelper"
 chmod 0755 "$SERVER" "$GUARDIAN" "$HELPER"
 engine_arguments=("$INSTALL_ROOT" "$SERVER" "$GUARDIAN" "$HELPER" "$SERVER_PORT" "$LISTEN_SCHEME://$LISTEN_HOST:$SERVER_PORT" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --certificate-mode "$CERTIFICATE_MODE")
+if [[ "$DOCKER_ACCESS" == true ]]; then engine_arguments+=(--docker-access); fi
 if [[ -n "$FILE_ROOTS_FILE" ]]; then engine_arguments+=(--file-roots "$FILE_ROOTS_FILE"); fi
 if [[ "$CERTIFICATE_MODE" == custom ]]; then
   [[ -n "$TEMPORARY_DIRECTORY" ]] || TEMPORARY_DIRECTORY="$(mktemp -d)"
@@ -238,7 +242,7 @@ elif [[ "$CERTIFICATE_MODE" == self-signed ]]; then
 fi
 bash "$ENGINE" "${engine_arguments[@]}"
 manifest_version="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$MANIFEST" | head -n1)"
-printf '{"schemaVersion":1,"version":"%s","installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s://%s:%s","certificateMode":"%s","fileAccess":"%s"}\n' "$manifest_version" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" "$NETWORK_PROFILE" "$LISTEN_SCHEME" "$LISTEN_HOST" "$SERVER_PORT" "$CERTIFICATE_MODE" "$FILE_ACCESS" > "$DATA_ROOT/install-state.json"
+printf '{"schemaVersion":1,"version":"%s","installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s://%s:%s","certificateMode":"%s","fileAccess":"%s","dockerAccess":%s}\n' "$manifest_version" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" "$NETWORK_PROFILE" "$LISTEN_SCHEME" "$LISTEN_HOST" "$SERVER_PORT" "$CERTIFICATE_MODE" "$FILE_ACCESS" "$DOCKER_ACCESS" > "$DATA_ROOT/install-state.json"
 chmod 0600 "$DATA_ROOT/install-state.json"
 health_curl_arguments=(--fail --silent --max-time 15)
 [[ "$LISTEN_SCHEME" != https ]] || health_curl_arguments+=(--insecure)

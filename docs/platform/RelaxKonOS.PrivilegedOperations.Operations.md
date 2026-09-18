@@ -14,6 +14,21 @@ LocalSystem 或 Administrator 身份运行；所有成功的宿主特权操作�
   `/etc/relaxkonos/privileged-services`；
 - 仅允许 Server 用户以 `sudo -n` 调用无参数 Helper apphost。
 
+### Docker 访问（显式选择）
+
+Docker Unix socket 的控制权近似 root 权限，因此部署默认**不会**把 Server 服务账户加入
+`docker` 组。若确定要让 Docker Manager 管理本机 Engine，必须在 System Mode 安装时显式传入
+`--docker-access`：
+
+```bash
+sudo deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /path/to/release --docker-access
+```
+
+安装器会将这项选择写入 root-only 策略文件；若 Docker 已安装，会将 `relaxkonos-server` 加入
+`docker` 组并重启 Server。若 Docker 由 RelaxKonOS 之后安装，Helper 在安装后执行同一固定授权，
+并将安装任务标为“需要重启”；重启 `relaxkonos-server` 后再刷新 Docker 状态。未选择该选项时，
+Docker 安装会在修改主机前拒绝执行。
+
 安装后检查：
 
 ```text

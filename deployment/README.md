@@ -68,6 +68,8 @@ sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/Re
 
 局域网模式仅将 Server 绑定到 `0.0.0.0`，不会自动打开防火墙。公网部署请选择反向代理模式（默认本机监听），并由反向代理终结 HTTPS。
 
+Docker 管理默认关闭，因为 Docker socket 等同高权限主机控制。只有需要 Docker Manager 时，才在 System Mode 命令末尾明确追加 `--docker-access`；安装器会授权 Server 服务账户并重启 Server。
+
 ### Linux User Mode（无 sudo）
 
 先解压 `*-user-server.zip`，然后以目标 Linux 账号运行：

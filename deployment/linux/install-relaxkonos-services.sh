@@ -9,7 +9,7 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 usage() {
-  echo "usage: install-relaxkonos-services.sh INSTALL_ROOT SERVER_EXECUTABLE GUARDIAN_EXECUTABLE PRIVILEGED_HELPER_EXECUTABLE SERVER_PORT SERVER_LISTEN_URL [SERVICE_USER] [--data-root PATH] [--certificate-mode none|custom|self-signed] [--certificate-path PFX_PATH] [--certificate-password-file PATH] [--self-signed-identities NAMES] [--file-access restricted|full|whitelist] [--file-roots PATH]" >&2
+  echo "usage: install-relaxkonos-services.sh INSTALL_ROOT SERVER_EXECUTABLE GUARDIAN_EXECUTABLE PRIVILEGED_HELPER_EXECUTABLE SERVER_PORT SERVER_LISTEN_URL [SERVICE_USER] [--data-root PATH] [--certificate-mode none|custom|self-signed] [--certificate-path PFX_PATH] [--certificate-password-file PATH] [--self-signed-identities NAMES] [--file-access restricted|full|whitelist] [--file-roots PATH] [--docker-access]" >&2
   exit 1
 }
 
@@ -34,6 +34,7 @@ CERTIFICATE_MODE=none
 CERTIFICATE_PATH=
 CERTIFICATE_PASSWORD_FILE=
 SELF_SIGNED_IDENTITIES=
+DOCKER_ACCESS=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --file-access)
@@ -70,6 +71,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || usage
       SELF_SIGNED_IDENTITIES="$2"
       shift 2
+      ;;
+    --docker-access)
+      DOCKER_ACCESS=true
+      shift
       ;;
     *)
       echo "Unknown option: $1" >&2
@@ -200,6 +205,26 @@ install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$SERVER_DATA"
 # The Server writes only its Nginx ownership marker here; Nginx itself remains configured by
 # the distribution-owned /etc/nginx/nginx.conf and nginx.service.
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$WEBSERVER_DATA"
+
+install_docker_access_policy() {
+  if [[ "$DOCKER_ACCESS" != true ]]; then
+    # Do not retain a previous deployment's authorization for a later Helper-driven install.
+    rm -f -- /etc/relaxkonos/docker-access-user
+    return
+  fi
+  local temporary_policy
+  temporary_policy="$(mktemp /etc/relaxkonos/docker-access-user.XXXXXX)"
+  printf '%s\n' "$SERVICE_USER" >"$temporary_policy"
+  chown root:root "$temporary_policy"
+  chmod 0600 "$temporary_policy"
+  mv -f -- "$temporary_policy" /etc/relaxkonos/docker-access-user
+  # The group is absent until Docker is installed. Keeping the root-owned policy lets the
+  # dedicated Docker Helper apply this same explicit decision after it installs the engine.
+  if getent group docker >/dev/null; then
+    usermod --append --groups docker "$SERVICE_USER"
+  fi
+}
+install_docker_access_policy
 
 install_bootstrap_certificate() {
   local password certificate_path temporary_directory temporary_key temporary_certificate raw identity subject=localhost san=() san_value
@@ -357,4 +382,9 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now relaxkonos-guardian.service relaxkonos-server.service
+if [[ "$DOCKER_ACCESS" == true ]]; then
+  # Supplementary groups are captured when systemd spawns the process. A restart is required
+  # even when the account was already present in the docker group before this deployment.
+  systemctl restart relaxkonos-server.service
+fi
 echo "Installed RelaxKonOS Server and Guardian services (Server user: $SERVICE_USER; listening on $SERVER_LISTEN_URL)."
