@@ -31,6 +31,7 @@ public enum PrivilegedOperationKind
     NginxSystemServiceAction,
     NginxPackageInstall,
     NginxPackageUninstall,
+    NginxConfigurationTest,
     NginxWriteManagedFile,
     NginxMoveManagedFile,
     NginxDeleteManagedFile,

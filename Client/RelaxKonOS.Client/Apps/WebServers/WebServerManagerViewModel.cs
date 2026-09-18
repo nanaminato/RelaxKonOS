@@ -191,17 +191,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         {
             var servers = await _client.ListAsync() ?? [];
             var candidates = await _client.ListIntegrationCandidatesAsync() ?? [];
-            Servers.Clear();
-            IntegrationCandidates.Clear();
-            Statuses.Clear();
-            SelectedServer = null;
-            SelectedIntegrationCandidate = null;
-            SelectedRuntimeState = WebServerRuntimeState.Unknown;
-            SelectedStatusText = string.Empty;
-            foreach (var server in servers) Servers.Add(server);
-            foreach (var candidate in candidates) IntegrationCandidates.Add(candidate);
-            HasManagedInstallation = servers.Any(server => server.ManagementMode == WebServerManagementMode.Managed);
-            StatusText = LocalizedText.Ref("webservers.status.ready", servers.Count);
+            ApplyDiscoveryResults(servers, candidates);
         }
         catch (Exception)
         {
@@ -226,21 +216,39 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         {
             var servers = await _client.DiscoverAsync() ?? [];
             var candidates = await _client.ListIntegrationCandidatesAsync() ?? [];
-            Servers.Clear();
-            IntegrationCandidates.Clear();
-            Statuses.Clear();
-            SelectedServer = null;
-            SelectedIntegrationCandidate = null;
-            foreach (var server in servers) Servers.Add(server);
-            foreach (var candidate in candidates) IntegrationCandidates.Add(candidate);
-            HasManagedInstallation = servers.Any(server => server.ManagementMode == WebServerManagementMode.Managed);
-            StatusText = LocalizedText.Ref(servers.Count > 0 ? "webservers.discover.found" : "webservers.discover.empty", servers.Count);
+            ApplyDiscoveryResults(servers, candidates);
         }
         catch (Exception)
         {
             StatusText = LocalizedText.Ref("webservers.discover.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
+    }
+
+    private void ApplyDiscoveryResults(
+        IReadOnlyList<WebServerDto> servers,
+        IReadOnlyList<WebServerIntegrationCandidateDto> candidates)
+    {
+        Servers.Clear();
+        IntegrationCandidates.Clear();
+        Statuses.Clear();
+        SelectedServer = null;
+        SelectedIntegrationCandidate = null;
+        SelectedRuntimeState = WebServerRuntimeState.Unknown;
+        SelectedStatusText = string.Empty;
+
+        foreach (var server in servers) Servers.Add(server);
+        foreach (var candidate in candidates) IntegrationCandidates.Add(candidate);
+
+        var managedCount = servers.Count(server => server.ManagementMode == WebServerManagementMode.Managed);
+        var integratedCount = servers.Count(server => server.ManagementMode == WebServerManagementMode.Integrated);
+        HasManagedInstallation = managedCount > 0;
+        StatusText = LocalizedText.Ref(
+            "webservers.discovery.summary",
+            servers.Count + candidates.Count,
+            managedCount,
+            integratedCount,
+            candidates.Count);
     }
 
     [RelayCommand(CanExecute = nameof(CanRefreshStatus))]

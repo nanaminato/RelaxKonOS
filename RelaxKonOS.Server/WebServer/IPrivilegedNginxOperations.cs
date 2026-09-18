@@ -8,6 +8,7 @@ public interface IPrivilegedNginxOperations
     Task<PrivilegedOperationResult> ApplySystemServiceActionAsync(NginxSystemServiceAction action, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> InstallPackageAsync(string? version, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> UninstallPackageAsync(CancellationToken cancellationToken = default);
+    Task<PrivilegedOperationResult> TestConfigurationAsync(CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> WriteManagedFileAsync(string path, byte[] content, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> MoveManagedFileAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> DeleteManagedFileAsync(string path, CancellationToken cancellationToken = default);
@@ -21,6 +22,8 @@ public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPriv
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageInstall, PackageVersion: version), cancellationToken);
     public Task<PrivilegedOperationResult> UninstallPackageAsync(CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxPackageUninstall), cancellationToken);
+    public Task<PrivilegedOperationResult> TestConfigurationAsync(CancellationToken cancellationToken = default) =>
+        ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxConfigurationTest), cancellationToken);
     public Task<PrivilegedOperationResult> WriteManagedFileAsync(string path, byte[] content, CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxWriteManagedFile, Path: path, ContentBase64: Convert.ToBase64String(content)), cancellationToken);
     public Task<PrivilegedOperationResult> MoveManagedFileAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken = default) =>

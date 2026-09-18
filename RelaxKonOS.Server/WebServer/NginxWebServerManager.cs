@@ -131,10 +131,11 @@ internal sealed partial class NginxWebServerManager(
     {
         var detected = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (detected is null || detected.Id != instanceId) return null;
-        var arguments = detected.ManagementMode == WebServerManagementMode.Managed
-            ? ManagedArguments(GetManagedLayout(), ["-t"])
-            : new[] { "-t" };
-        var result = await RunNginxAsync(detected.ExecutablePath, arguments, cancellationToken);
+        var result = detected.ManagementMode == WebServerManagementMode.Managed && UsesSystemPackageManagedService()
+            ? await RunSystemPackageConfigurationTestAsync(cancellationToken)
+            : await RunNginxAsync(detected.ExecutablePath, detected.ManagementMode == WebServerManagementMode.Managed
+                ? ManagedArguments(GetManagedLayout(), ["-t"])
+                : ["-t"], cancellationToken);
         if (!result.Success)
             logger.LogWarning("Nginx configuration test failed. Executable={Executable}, Output={Output}", detected.ExecutablePath, CommandOutputForLog(result.Output));
         return new WebServerConfigTestResultDto(result.Success, result.Success ? "" : "webserver.config_test_failed");
@@ -189,7 +190,7 @@ internal sealed partial class NginxWebServerManager(
     {
         var layout = GetManagedLayout();
         if (absent) return !IsManagedInstallation(layout) && (!UsesSystemPackageManagedExecutable() || !File.Exists(layout.ExecutablePath));
-        return IsManagedInstallation(layout) && (await RunNginxAsync(layout.ExecutablePath, ManagedArguments(layout, ["-t"]), ct)).Success;
+        return IsManagedInstallation(layout) && (await RunManagedConfigurationTestAsync(layout, ct)).Success;
     }
 
     private sealed class InstallationStageReporter(IInstallationProgress progress) : IWebServerOperationProgress
@@ -848,7 +849,7 @@ internal sealed partial class NginxWebServerManager(
         {
             await progress.ReportAsync("validating_configuration", cancellationToken);
             await File.WriteAllTextAsync(layout.MarkerPath, ManagedMarkerContent, new UTF8Encoding(false), cancellationToken);
-            var test = await RunNginxAsync(layout.ExecutablePath, ManagedArguments(layout, ["-t"]), cancellationToken);
+            var test = await RunManagedConfigurationTestAsync(layout, cancellationToken);
             if (test.Success)
             {
                 await progress.ReportAsync("finalizing", cancellationToken);
@@ -1074,6 +1075,16 @@ internal sealed partial class NginxWebServerManager(
         return new WebServerOperationResult(result.Success ? "" : $"webserver.{action.ToString().ToLowerInvariant()}_failed");
     }
 
+    private Task<CommandResult> RunManagedConfigurationTestAsync(ManagedLayout layout, CancellationToken cancellationToken) => UsesSystemPackageManagedService()
+        ? RunSystemPackageConfigurationTestAsync(cancellationToken)
+        : RunNginxAsync(layout.ExecutablePath, ManagedArguments(layout, ["-t"]), cancellationToken);
+
+    private async Task<CommandResult> RunSystemPackageConfigurationTestAsync(CancellationToken cancellationToken)
+    {
+        var result = await privilegedNginx.TestConfigurationAsync(cancellationToken);
+        return new CommandResult(result.Success, "");
+    }
+
     private async Task<WebServerOperationResult> UninstallManagedCoreAsync(ManagedLayout layout, CancellationToken cancellationToken)
     {
         if (!IsManagedInstallation(layout)) return new WebServerOperationResult("webserver.managed_required");
@@ -1196,11 +1207,12 @@ internal sealed partial class NginxWebServerManager(
 
     private ManagedLayout GetManagedLayout()
     {
-        var root = string.IsNullOrWhiteSpace(managedOptions.InstallationRoot)
+        var configuredRoot = managedOptions.InstallationRoot.Trim();
+        var root = string.IsNullOrWhiteSpace(configuredRoot)
             ? OperatingSystem.IsWindows()
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "webserver", "nginx")
                 : "/var/lib/relaxkonos/webserver/nginx"
-            : managedOptions.InstallationRoot;
+            : Environment.ExpandEnvironmentVariables(configuredRoot);
         root = Path.GetFullPath(root);
         // APT owns the Linux executable at /usr/sbin/nginx.  The old implementation copied
         // it into the RelaxKonOS data directory after installing the package, which produced a

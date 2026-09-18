@@ -191,11 +191,15 @@ SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
 GUARDIAN_DATA="$DATA_ROOT/guardian"
 COMPOSE_DATA="$DATA_ROOT/docker-compose"
 SERVER_DATA="$DATA_ROOT/server"
+WEBSERVER_DATA="$DATA_ROOT/webserver/nginx"
 CERTIFICATE_DATA="$SERVER_DATA/certificates"
 install -d -o root -g "$SERVICE_GROUP" -m 0710 /etc/relaxkonos "$DATA_ROOT" /var/lib/relaxkonos
 install -d -m 0700 "$GUARDIAN_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$COMPOSE_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$SERVER_DATA"
+# The Server writes only its Nginx ownership marker here; Nginx itself remains configured by
+# the distribution-owned /etc/nginx/nginx.conf and nginx.service.
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$WEBSERVER_DATA"
 
 install_bootstrap_certificate() {
   local password certificate_path temporary_directory temporary_key temporary_certificate raw identity subject=localhost san=() san_value

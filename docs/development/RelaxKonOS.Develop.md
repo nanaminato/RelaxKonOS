@@ -114,6 +114,10 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 `/usr/bin/sudo`。普通 `http` 配置不包含此路径，因此适合 UI/API 调试；一旦发起真实 UFW 修改，
 它会稳定返回 `firewall.privileged_proxy_required`。
 
+所有 Development 启动配置都会将 `NginxManaged:InstallationRoot` 设为
+`%HOME%/.local/share/RelaxKonOS/debug/webserver/nginx`。它只保存 RelaxKonOS 的 Nginx
+受管标记；Linux 系统包 Nginx 仍由 `nginx.service` 使用 `/etc/nginx/nginx.conf`，不会读取该开发目录作为配置。
+
 若只需给 Helper 的 Dispatcher 设断点，可直接以 root 执行构建产物并传入一条结构化请求：
 
 ```bash

@@ -105,6 +105,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.NginxSystemServiceAction => await ApplyNginxSystemServiceActionAsync(request.NginxServiceAction),
             PrivilegedOperationKind.NginxPackageInstall => await InstallNginxPackageAsync(request.PackageVersion),
             PrivilegedOperationKind.NginxPackageUninstall => await UninstallNginxPackageAsync(),
+            PrivilegedOperationKind.NginxConfigurationTest => await TestNginxConfigurationAsync(),
             PrivilegedOperationKind.NginxWriteManagedFile => await WriteNginxManagedFileAsync(request.Path, request.ContentBase64),
             PrivilegedOperationKind.NginxMoveManagedFile => MoveNginxManagedFile(request.Path, request.DestinationPath, request.Overwrite),
             PrivilegedOperationKind.NginxDeleteManagedFile => DeleteNginxManagedFile(request.Path),
@@ -421,6 +422,10 @@ static async Task<PrivilegedOperationResult> InstallNginxPackageAsync(string? ve
 static Task<PrivilegedOperationResult> UninstallNginxPackageAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/bin/apt-get")
     ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx package operation is unavailable"))
     : RunAptAsync( ["purge", "--yes", "--auto-remove", "nginx"], TimeSpan.FromMinutes(10), "nginx package uninstall failed");
+
+static Task<PrivilegedOperationResult> TestNginxConfigurationAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/sbin/nginx")
+    ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx configuration test is unavailable"))
+    : RunFixedCommandAsync("/usr/sbin/nginx", ["-t"], TimeSpan.FromSeconds(30), "nginx configuration test failed");
 
 static async Task<PrivilegedOperationResult> WriteNginxManagedFileAsync(string? path, string? contentBase64)
 {

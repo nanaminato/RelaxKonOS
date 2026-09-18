@@ -7,7 +7,10 @@ namespace RelaxKonOS.Server.WebServer;
 /// </summary>
 public sealed class NginxManagedOptions
 {
-    /// <summary>Absolute RelaxKonOS-owned root. Empty selects the platform default.</summary>
+    /// <summary>
+    /// Absolute RelaxKonOS-owned marker root. Environment variables such as <c>%HOME%</c>
+    /// are expanded before the path is used. Empty selects the platform default.
+    /// </summary>
     public string InstallationRoot { get; init; } = string.Empty;
 
 }

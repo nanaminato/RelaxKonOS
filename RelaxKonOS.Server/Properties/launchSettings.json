@@ -8,6 +8,7 @@
       "applicationUrl": "http://0.0.0.0:5090",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "NginxManaged__InstallationRoot": "%HOME%/.local/share/RelaxKonOS/debug/webserver/nginx",
         "Identity__LinuxPamTransport": "in-process",
         "Identity__LinuxPamService": "login",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
@@ -23,6 +24,7 @@
       "applicationUrl": "https://localhost:7260;http://localhost:5090",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "NginxManaged__InstallationRoot": "%HOME%/.local/share/RelaxKonOS/debug/webserver/nginx",
         "Identity__LinuxPamTransport": "in-process",
         "Identity__LinuxPamService": "login",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
@@ -38,6 +40,7 @@
       "applicationUrl": "http://0.0.0.0:5090",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "NginxManaged__InstallationRoot": "%HOME%/.local/share/RelaxKonOS/debug/webserver/nginx",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
         "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
         "PrivilegedHelper__HelperPath": "/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper",
@@ -51,6 +54,7 @@
       "applicationUrl": "http://0.0.0.0:5090",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "NginxManaged__InstallationRoot": "%HOME%/.local/share/RelaxKonOS/debug/webserver/nginx",
         "Identity__LinuxPamTransport": "in-process",
         "Identity__LinuxPamService": "login",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
