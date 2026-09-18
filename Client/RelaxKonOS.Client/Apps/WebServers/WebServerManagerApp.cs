@@ -7,6 +7,7 @@ using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
 using RelaxKonOS.Client.Apps.Explorer.Views;
+using RelaxKonOS.Client.Apps.FileServices.Views;
 using RelaxKonOS.Client.Apps.WebServers.Views;
 using RelaxKonOS.Client.Apps.Certificates;
 using RelaxKonOS.Client.Localization;
@@ -52,6 +53,14 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
         viewModel.RequestIntegrationConfirmationAsync = async () =>
         {
             return await ConfirmAsync("webservers.integration.confirmation.title", "webservers.integration.confirmation.message", "webservers.integration.confirmation.confirm");
+        };
+        viewModel.RequestConfigurationElevationAsync = async candidateId =>
+        {
+            var password = await context.WindowManager.ShowSystemDialogAsync<string?>(LocalizedText.Get("installation.elevation_title"),
+                dialog => new FileServicesPasswordDialogView(dialog, LocalizedText.Get("installation.elevation_message")), new Size(460, 230));
+            if (string.IsNullOrWhiteSpace(password)) return false;
+            try { return await client.ElevateConfigurationAsync(candidateId, password); }
+            catch { return false; }
         };
         viewModel.RequestManagedInstallConfirmationAsync = () => ConfirmAsync("webservers.managed.install.title", "webservers.managed.install.message", "webservers.managed.install.confirm");
         viewModel.RequestManagedUninstallConfirmationAsync = () => ConfirmAsync("webservers.managed.uninstall.title", "webservers.managed.uninstall.message", "webservers.managed.uninstall.confirm");

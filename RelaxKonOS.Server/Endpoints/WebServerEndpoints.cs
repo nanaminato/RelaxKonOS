@@ -32,10 +32,13 @@ public static class WebServerEndpoints
         group.MapPost(WebServerApiRoutes.TestConfigurationPattern, async (string id, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
             await manager.TestConfigurationAsync(id, ct) is { } result ? Results.Ok(result) : Results.NotFound());
         group.MapPost(WebServerApiRoutes.IntegrateCandidatePattern, async (string candidateId, IntegrateWebServerRequest request, HttpContext context,
-            IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
+            IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, ILoggerFactory loggers, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, candidateId))
-                return ElevationRequired("此 Nginx 配置操作需要当前会话对该实例的管理员授权。");
+            {
+                loggers.CreateLogger("WebServerAuthorization").LogWarning("Nginx integration request was denied before execution because its elevation grant is missing. CandidateId={CandidateId}, User={User}", candidateId, Actor(context) ?? "<anonymous>");
+                return ElevationRequired("此 Nginx 配置操作需要当前会话对该实例的管理员授权。", "webserver.elevation_required");
+            }
             return await StartAsync(context.Request, key => manager.IntegrateCandidateAsync(candidateId, key, request, Actor(context), ct));
         });
         group.MapPost(WebServerApiRoutes.LifecyclePattern, async (string id, string action, HttpContext context,
@@ -117,6 +120,7 @@ public static class WebServerEndpoints
     private static string? Actor(HttpContext context) => context.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Name)?.Value
         ?? context.User.Identity?.Name;
 
-    private static IResult ElevationRequired(string detail) => Results.Problem(statusCode: StatusCodes.Status403Forbidden,
-        title: "需要管理员权限", detail: detail, type: "https://relaxkonos.app/problems/elevation-required");
+    private static IResult ElevationRequired(string detail, string problemCode = "webserver.elevation_required") => Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+        title: "需要管理员权限", detail: detail, type: "https://relaxkonos.app/problems/elevation-required",
+        extensions: new Dictionary<string, object?> { ["problemCode"] = problemCode });
 }

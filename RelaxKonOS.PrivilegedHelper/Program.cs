@@ -425,7 +425,7 @@ static Task<PrivilegedOperationResult> UninstallNginxPackageAsync() => !Operatin
 
 static Task<PrivilegedOperationResult> TestNginxConfigurationAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/sbin/nginx")
     ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx configuration test is unavailable"))
-    : RunFixedCommandAsync("/usr/sbin/nginx", ["-t"], TimeSpan.FromSeconds(30), "nginx configuration test failed");
+    : RunFixedCommandWithOutputAsync("/usr/sbin/nginx", ["-t"], "nginx configuration test failed");
 
 static async Task<PrivilegedOperationResult> WriteNginxManagedFileAsync(string? path, string? contentBase64)
 {
@@ -803,16 +803,27 @@ static async Task ReadAptStatusAsync(Stream stream, InstallationStage stage)
 
 static async Task<PrivilegedOperationResult> RunFixedCommandWithOutputAsync(string executable, IReadOnlyList<string> arguments, string failure)
 {
-    using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true } };
+    using var process = new System.Diagnostics.Process { StartInfo = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true } };
     TrustedProcessEnvironment.Apply(process.StartInfo);
     foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
     if (!process.Start()) return Fail(69, PrivilegedProblemCode.HelperUnavailable, "host operation could not start");
     using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
     var output = process.StandardOutput.ReadToEndAsync(cancellation.Token);
+    var error = process.StandardError.ReadToEndAsync(cancellation.Token);
     try { await process.WaitForExitAsync(cancellation.Token); }
     catch (OperationCanceledException) { return Fail(124, PrivilegedProblemCode.TimedOut, "host operation timed out"); }
-    var text = await output;
-    return process.ExitCode == 0 ? new(true, OutputBase64: Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text))) : Fail(1, PrivilegedProblemCode.InternalError, failure);
+    var text = (await output) + (await error);
+    var encodedOutput = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(BoundCommandOutput(text)));
+    return process.ExitCode == 0
+        ? new(true, OutputBase64: encodedOutput)
+        : new(false, process.ExitCode, OutputBase64: encodedOutput, Error: failure, ProblemCode: PrivilegedProblemCode.InternalError);
+}
+
+static string BoundCommandOutput(string text)
+{
+    const int maximumLength = 8_192;
+    var trimmed = text.Trim();
+    return trimmed.Length <= maximumLength ? trimmed : trimmed[..maximumLength] + "…";
 }
 
 static async Task<PrivilegedOperationResult> RunFixedCommandAsync(string executable, IReadOnlyList<string> arguments, TimeSpan timeout, string failure, string? diagnostic = null)

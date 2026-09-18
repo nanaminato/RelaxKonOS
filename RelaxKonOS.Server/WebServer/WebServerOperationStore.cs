@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Server.Certificate;
 
@@ -30,10 +31,13 @@ internal sealed class WebServerOperationStore
     private readonly HostOperationJournal _journal;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) } };
 
-    public WebServerOperationStore(IHostEnvironment environment, HostOperationJournal journal)
+    private readonly ILogger<WebServerOperationStore> _logger;
+
+    public WebServerOperationStore(IHostEnvironment environment, HostOperationJournal journal, ILogger<WebServerOperationStore> logger)
     {
         _path = Path.Combine(environment.ContentRootPath, "data", "webserver-operations.json");
         _journal = journal;
+        _logger = logger;
         LoadAndRecover();
     }
 
@@ -57,6 +61,7 @@ internal sealed class WebServerOperationStore
             _operations.Add(operation.OperationId, operation);
             _byIdempotency.Add(key, operation.OperationId);
             await SaveAsync(applicationStopping);
+            _logger.LogInformation("Web-server operation queued. OperationId={OperationId}, Kind={Kind}, InstanceId={InstanceId}, Actor={Actor}", operation.OperationId, kind, instanceId, actor ?? "<anonymous>");
         }
         finally { _gate.Release(); }
 
@@ -101,11 +106,23 @@ internal sealed class WebServerOperationStore
             WebServerOperationResult result;
             try { result = await action(new OperationProgress(this, operationId), linked.Token); }
             finally { instanceGate.Release(); }
+            if (string.IsNullOrEmpty(result.ProblemCode))
+                _logger.LogInformation("Web-server operation completed successfully. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
+            else
+                _logger.LogWarning("Web-server operation completed with a failure. OperationId={OperationId}, InstanceId={InstanceId}, Problem={Problem}, SnapshotId={SnapshotId}", operationId, instanceId, result.ProblemCode, result.SnapshotId);
             await CompleteAsync(operationId, linked.IsCancellationRequested ? WebServerOperationState.Cancelled : string.IsNullOrEmpty(result.ProblemCode) ? WebServerOperationState.Succeeded : WebServerOperationState.Failed,
                 linked.IsCancellationRequested ? "webserver.operation_cancelled" : result.ProblemCode, result.SnapshotId, applicationStopping);
         }
-        catch (OperationCanceledException) { await CompleteAsync(operationId, WebServerOperationState.Cancelled, "webserver.operation_cancelled", null, CancellationToken.None); }
-        catch { await CompleteAsync(operationId, WebServerOperationState.Failed, "webserver.operation_failed", null, CancellationToken.None); }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Web-server operation was cancelled. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
+            await CompleteAsync(operationId, WebServerOperationState.Cancelled, "webserver.operation_cancelled", null, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Web-server operation failed unexpectedly. OperationId={OperationId}, InstanceId={InstanceId}", operationId, instanceId);
+            await CompleteAsync(operationId, WebServerOperationState.Failed, "webserver.operation_failed", null, CancellationToken.None);
+        }
         finally { _cancellations.TryRemove(operationId, out _); }
     }
 
@@ -118,6 +135,7 @@ internal sealed class WebServerOperationStore
             if (operation.State == WebServerOperationState.Cancelled) return false;
             _operations[id] = operation with { State = WebServerOperationState.Running, Stage = "running", StartedAt = DateTimeOffset.UtcNow };
             await SaveAsync(ct);
+            _logger.LogInformation("Web-server operation started. OperationId={OperationId}, Kind={Kind}, InstanceId={InstanceId}", id, operation.Kind, operation.InstanceId);
             return true;
         }
         finally { _gate.Release(); }
@@ -132,6 +150,7 @@ internal sealed class WebServerOperationStore
             if (operation.State == WebServerOperationState.Cancelled && state != WebServerOperationState.Cancelled) return;
             _operations[id] = operation with { State = state, Stage = state.ToString().ToLowerInvariant(), ProblemCode = problemCode, SnapshotId = snapshotId ?? operation.SnapshotId, CompletedAt = DateTimeOffset.UtcNow };
             await SaveAsync(ct);
+            _logger.LogInformation("Web-server operation state persisted. OperationId={OperationId}, State={State}, Problem={Problem}, SnapshotId={SnapshotId}", id, state, problemCode, snapshotId ?? operation.SnapshotId);
         }
         finally { _gate.Release(); }
     }

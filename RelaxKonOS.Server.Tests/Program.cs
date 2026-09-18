@@ -229,6 +229,18 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
         && transport.LastRequest.Path == "/etc/nginx/conf.d/relaxkonos.d/example.conf"
         && !string.IsNullOrWhiteSpace(transport.LastRequest.ContentBase64),
         "Nginx facade did not preserve its closed managed-file write request.");
+    Assert((await nginx.MoveManagedFileAsync("/etc/nginx/conf.d/relaxkonos.stage.conf", "/etc/nginx/conf.d/relaxkonos.conf", overwrite: false)).Success,
+        "Nginx managed-file move was not accepted by the transport facade.");
+    Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.NginxMoveManagedFile
+        && transport.LastRequest.Path == "/etc/nginx/conf.d/relaxkonos.stage.conf"
+        && transport.LastRequest.DestinationPath == "/etc/nginx/conf.d/relaxkonos.conf"
+        && transport.LastRequest.Overwrite == false,
+        "Nginx facade did not preserve its closed managed-file move request.");
+    Assert((await nginx.DeleteManagedFileAsync("/etc/nginx/conf.d/relaxkonos.conf")).Success,
+        "Nginx managed-file deletion was not accepted by the transport facade.");
+    Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.NginxDeleteManagedFile
+        && transport.LastRequest.Path == "/etc/nginx/conf.d/relaxkonos.conf",
+        "Nginx facade did not preserve its closed managed-file deletion request.");
 
     var services = new PrivilegedNativeServiceOperations(transport);
     Assert((await services.ApplyAsync("relaxkonos-server.service", PrivilegedServiceAction.Restart)).Success, "Native service operation was not accepted by the transport facade.");
@@ -1298,7 +1310,7 @@ static async Task VerifyOperationIdempotencyAsync(string root)
     Assert(first.OperationId == duplicate.OperationId, "Certificate idempotency key created duplicate work.");
     Assert((await WaitForCertificateOperationAsync(certificateOperations, first.OperationId)).State == CertificateOperationState.Succeeded, "Certificate operation did not complete.");
 
-    var webOperations = new WebServerOperationStore(environment, journal);
+    var webOperations = new WebServerOperationStore(environment, journal, Microsoft.Extensions.Logging.Abstractions.NullLogger<WebServerOperationStore>.Instance);
     var webFirst = await webOperations.StartAsync("same-key", "nginx-test", "reload", "test", _ => Task.FromResult(WebServerOperationResult.Success), CancellationToken.None);
     var webDuplicate = await webOperations.StartAsync("same-key", "nginx-test", "reload", "test", _ => Task.FromResult(new WebServerOperationResult("webserver.should_not_run")), CancellationToken.None);
     Assert(webFirst.OperationId == webDuplicate.OperationId, "WebServer idempotency key created duplicate work.");

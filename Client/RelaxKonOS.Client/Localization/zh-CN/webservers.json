@@ -43,6 +43,7 @@
     "webservers.operation.stage.validating_configuration": "正在验证 Nginx 配置",
     "webservers.operation.stage.finalizing": "正在完成安装",
     "webservers.problem.install_elevation_required": "安装需要 RelaxKonOS Server 以管理员权限运行。请联系服务器管理员调整服务权限后重试。",
+    "webservers.problem.elevation_required": "集成 Nginx 前需要验证服务器管理员密码。",
     "webservers.problem.config_elevation_required": "此配置操作需要 RelaxKonOS Server 以管理员权限运行。",
     "webservers.problem.lifecycle_elevation_required": "此服务操作需要 RelaxKonOS Server 以管理员权限运行。",
     "webservers.problem.install_not_configured": "服务器管理员尚未配置 Nginx 安装程序。",

@@ -43,6 +43,7 @@
     "webservers.operation.stage.validating_configuration": "Validating the Nginx configuration",
     "webservers.operation.stage.finalizing": "Finalizing the installation",
     "webservers.problem.install_elevation_required": "Installation requires RelaxKonOS Server to run with administrator privileges. Ask the server administrator to adjust the service permissions and try again.",
+    "webservers.problem.elevation_required": "Verify the server administrator password before integrating Nginx.",
     "webservers.problem.config_elevation_required": "This configuration action requires RelaxKonOS Server to run with administrator privileges.",
     "webservers.problem.lifecycle_elevation_required": "This service action requires RelaxKonOS Server to run with administrator privileges.",
     "webservers.problem.install_not_configured": "The server administrator has not configured an Nginx installer.",

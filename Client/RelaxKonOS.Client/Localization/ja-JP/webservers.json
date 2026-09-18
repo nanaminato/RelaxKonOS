@@ -43,6 +43,7 @@
     "webservers.operation.stage.validating_configuration": "Nginx 設定を検証中",
     "webservers.operation.stage.finalizing": "インストールを完了中",
     "webservers.problem.install_elevation_required": "インストールには、管理者権限で実行されている RelaxKonOS Server が必要です。サーバー管理者にサービス権限の調整を依頼してから、もう一度試してください。",
+    "webservers.problem.elevation_required": "Nginx を統合する前にサーバー管理者パスワードを確認してください。",
     "webservers.problem.config_elevation_required": "この設定操作には、管理者権限で実行されている RelaxKonOS Server が必要です。",
     "webservers.problem.lifecycle_elevation_required": "このサービス操作には、管理者権限で実行されている RelaxKonOS Server が必要です。",
     "webservers.problem.install_not_configured": "サーバー管理者が Nginx インストーラーを設定していません。",

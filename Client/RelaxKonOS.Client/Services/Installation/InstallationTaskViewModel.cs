@@ -34,6 +34,17 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     }
     partial void OnConnectionTextChanged(string value) => OnPropertyChanged(nameof(HasMessage));
 
+    /// <summary>
+    /// Removes feedback from a completed installation before the host app starts an unrelated
+    /// operation. An active installation is deliberately never cleared.
+    /// </summary>
+    public void DismissInactiveFeedback()
+    {
+        if (IsActive) return;
+        Operation = null;
+        ConnectionText = string.Empty;
+    }
+
     public async Task SubmitAsync(InstallationOperationKind kind, object options)
     {
         if (!await submitGate.WaitAsync(0)) return;
@@ -86,11 +97,14 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         if (observation is { IsCompleted: false }) return;
         try
         {
+            InstallationOperationDto? remembered = null;
             var saved = await settings.GetAsync(appId, AppSettingsScope.Workspace, "installation", lifetime.Token);
             if (saved?.Value.TryGetProperty("operationId", out var value) == true && value.TryGetGuid(out var id))
-                Operation = await client.GetAsync(id, lifetime.Token);
+                remembered = await client.GetAsync(id, lifetime.Token);
             var active = await client.GetActiveAsync(service, lifetime.Token);
-            Operation = active ?? Operation;
+            // A terminal task may be retained in workspace settings for recovery diagnostics, but
+            // it must not reappear as the current app's installation banner after navigation.
+            Operation = active ?? (remembered?.State is InstallationOperationState.Queued or InstallationOperationState.Running ? remembered : null);
             if (Operation is not null)
             {
                 await RememberAsync(Operation.OperationId);

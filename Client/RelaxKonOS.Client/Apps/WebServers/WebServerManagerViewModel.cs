@@ -130,6 +130,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     /// <summary>Supplied by the application shell so the view model never constructs UI directly.</summary>
     public Func<Task<bool>>? RequestIntegrationConfirmationAsync { get; set; }
+    /// <summary>Obtains a short-lived, instance-scoped host-administrator grant before config is changed.</summary>
+    public Func<string, Task<bool>>? RequestConfigurationElevationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedInstallConfirmationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedUninstallConfirmationAsync { get; set; }
     public Func<Task<string?>>? RequestLocalNginxPackageAsync { get; set; }
@@ -202,7 +204,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             SelectedIntegrationCandidate = null;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
             HasManagedInstallation = false;
-            StatusText = LocalizedText.Ref("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
+            StatusText = LocalizedStatus.Format("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -220,7 +222,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         }
         catch (Exception)
         {
-            StatusText = LocalizedText.Ref("webservers.discover.failed", LocalizedText.Get("webservers.error.request_failed"));
+            StatusText = LocalizedStatus.Format("webservers.discover.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -268,14 +270,14 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
                 ? LocalizedText.Ref("webservers.status.unavailable")
                 : string.IsNullOrWhiteSpace(status.ProblemCode)
                     ? LocalizedStatus.Literal(RuntimeStateText(status.RuntimeState))
-                    : LocalizedText.Ref("webservers.status.detail", RuntimeStateText(status.RuntimeState), ProblemText(status.ProblemCode));
+                    : LocalizedStatus.Format("webservers.status.detail", RuntimeStateText(status.RuntimeState), ProblemText(status.ProblemCode));
             if (status is not null) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(status.ProblemCode);
         }
         catch (Exception)
         {
             if (SelectedServer?.Id != server.Id) return;
             SelectedRuntimeState = WebServerRuntimeState.Unknown;
-            SelectedStatusText = LocalizedText.Ref("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
+            SelectedStatusText = LocalizedStatus.Format("webservers.status.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -293,12 +295,12 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
                 ? LocalizedText.Ref("webservers.test.unavailable")
                 : result.Valid
                     ? LocalizedText.Ref("webservers.test.valid")
-                    : LocalizedText.Ref("webservers.test.invalid", ProblemText(result.ProblemCode));
+                    : LocalizedStatus.Format("webservers.test.invalid", ProblemText(result.ProblemCode));
             if (result is not null && !result.Valid) await ShowPrivilegedHelperUnavailableAsyncIfNeeded(result.ProblemCode);
         }
         catch (Exception)
         {
-            TestResultText = LocalizedText.Ref("webservers.test.failed", LocalizedText.Get("webservers.error.request_failed"));
+            TestResultText = LocalizedStatus.Format("webservers.test.failed", LocalizedText.Get("webservers.error.request_failed"));
         }
         finally { IsLoading = false; }
     }
@@ -309,6 +311,12 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         var candidate = SelectedIntegrationCandidate;
         if (candidate is null) return;
         if (RequestIntegrationConfirmationAsync is null || !await RequestIntegrationConfirmationAsync()) return;
+        if (RequestConfigurationElevationAsync is null || !await RequestConfigurationElevationAsync(candidate.Id))
+        {
+            OperationText = LocalizedText.Ref("webservers.problem.elevation_required");
+            return;
+        }
+        Installation.DismissInactiveFeedback();
         await RunOperationAsync("integrate", ct => _client.IntegrateCandidateAsync(candidate.Id, new IntegrateWebServerRequest(true), ct));
     }
 
@@ -629,7 +637,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         _operationCts = new CancellationTokenSource();
         var token = _operationCts.Token;
         IsOperationRunning = true;
-        OperationText = LocalizedText.Ref("webservers.operation.starting", OperationName(kindKey));
+        OperationText = LocalizedStatus.Format("webservers.operation.starting", OperationName(kindKey));
         try
         {
             var operation = await start(token);
@@ -640,7 +648,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             }
             if (operation.OperationId == Guid.Empty)
             {
-                OperationText = LocalizedText.Ref("webservers.operation.rejected", ProblemText(operation.ProblemCode));
+                OperationText = LocalizedStatus.Format("webservers.operation.rejected", ProblemText(operation.ProblemCode));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(operation.ProblemCode);
                 return;
             }
@@ -648,7 +656,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             operation = await PollOperationAsync(operation, token);
             if (operation.State == WebServerOperationState.Succeeded)
             {
-                OperationText = LocalizedText.Ref("webservers.operation.succeeded", OperationName(kindKey));
+                OperationText = LocalizedStatus.Format("webservers.operation.succeeded", OperationName(kindKey));
                 if (kindKey == "integrate") await RefreshAsync();
                 else await RefreshStatusAsync();
             }
@@ -656,7 +664,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
                 OperationText = LocalizedText.Ref("webservers.operation.cancelled");
             else
             {
-                OperationText = LocalizedText.Ref("webservers.operation.failed", OperationName(kindKey), ProblemText(operation.ProblemCode));
+                OperationText = LocalizedStatus.Format("webservers.operation.failed", OperationName(kindKey), ProblemText(operation.ProblemCode));
                 await ShowPrivilegedHelperUnavailableAsyncIfNeeded(operation.ProblemCode);
             }
         }
@@ -670,12 +678,12 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         }
         catch (WebServerApiException exception)
         {
-            OperationText = LocalizedText.Ref("webservers.operation.failed", OperationName(kindKey), ProblemText(exception.ProblemCode));
+            OperationText = LocalizedStatus.Format("webservers.operation.failed", OperationName(kindKey), ProblemText(exception.ProblemCode));
             await ShowPrivilegedHelperUnavailableAsyncIfNeeded(exception.ProblemCode);
         }
         catch (Exception)
         {
-            OperationText = LocalizedText.Ref("webservers.operation.exception", OperationName(kindKey), LocalizedText.Get("webservers.error.request_failed"));
+            OperationText = LocalizedStatus.Format("webservers.operation.exception", OperationName(kindKey), LocalizedText.Get("webservers.error.request_failed"));
         }
         finally
         {
@@ -690,7 +698,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     {
         while (operation.State is WebServerOperationState.Queued or WebServerOperationState.Running)
         {
-            OperationText = LocalizedText.Ref("webservers.operation.progress", OperationName(operation.Kind), OperationStage(operation.Kind, operation.Stage));
+            OperationText = LocalizedStatus.Format("webservers.operation.progress", OperationName(operation.Kind), OperationStage(operation.Kind, operation.Stage));
             try { await Task.Delay(PollInterval, cancellationToken); }
             catch (OperationCanceledException) { return operation; }
             var updated = await _client.GetOperationAsync(operation.OperationId, cancellationToken);
