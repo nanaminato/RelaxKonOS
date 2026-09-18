@@ -106,6 +106,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.NginxPackageInstall => await InstallNginxPackageAsync(request.PackageVersion),
             PrivilegedOperationKind.NginxPackageUninstall => await UninstallNginxPackageAsync(),
             PrivilegedOperationKind.NginxConfigurationTest => await TestNginxConfigurationAsync(),
+            PrivilegedOperationKind.NginxRuntimeStatus => await GetNginxRuntimeStatusAsync(),
             PrivilegedOperationKind.NginxWriteManagedFile => await WriteNginxManagedFileAsync(request.Path, request.ContentBase64),
             PrivilegedOperationKind.NginxMoveManagedFile => MoveNginxManagedFile(request.Path, request.DestinationPath, request.Overwrite),
             PrivilegedOperationKind.NginxDeleteManagedFile => DeleteNginxManagedFile(request.Path),
@@ -426,6 +427,34 @@ static Task<PrivilegedOperationResult> UninstallNginxPackageAsync() => !Operatin
 static Task<PrivilegedOperationResult> TestNginxConfigurationAsync() => !OperatingSystem.IsLinux() || !File.Exists("/usr/sbin/nginx")
     ? Task.FromResult(Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx configuration test is unavailable"))
     : RunFixedCommandWithOutputAsync("/usr/sbin/nginx", ["-t"], "nginx configuration test failed");
+
+static async Task<PrivilegedOperationResult> GetNginxRuntimeStatusAsync()
+{
+    if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/systemctl"))
+        return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "nginx runtime status is unavailable");
+
+    // A manually started system Nginx may not be known to systemd, while the default PID file
+    // still identifies the running master process. Check both fixed, system-owned sources.
+    var service = await RunFixedCommandAsync("/usr/bin/systemctl", ["is-active", "--quiet", "nginx.service"],
+        TimeSpan.FromSeconds(10), "nginx service is inactive");
+    if (service.Success) return new(true, NginxRunning: true);
+
+    try
+    {
+        const string pidPath = "/run/nginx.pid";
+        if (!File.Exists(pidPath) || !int.TryParse(File.ReadAllText(pidPath).Trim(), out var pid) || pid <= 0)
+            return new(true, NginxRunning: false);
+        using var process = System.Diagnostics.Process.GetProcessById(pid);
+        return new(true, NginxRunning: !process.HasExited
+            && (string.Equals(process.ProcessName, "nginx", StringComparison.OrdinalIgnoreCase)
+                || process.ProcessName.StartsWith("nginx:", StringComparison.OrdinalIgnoreCase)));
+    }
+    catch (ArgumentException) { return new(true, NginxRunning: false); }
+    catch (InvalidOperationException) { return new(true, NginxRunning: false); }
+    catch (System.ComponentModel.Win32Exception) { return new(true, NginxRunning: false); }
+    catch (IOException) { return new(true, NginxRunning: false); }
+    catch (UnauthorizedAccessException) { return new(true, NginxRunning: false); }
+}
 
 static async Task<PrivilegedOperationResult> WriteNginxManagedFileAsync(string? path, string? contentBase64)
 {

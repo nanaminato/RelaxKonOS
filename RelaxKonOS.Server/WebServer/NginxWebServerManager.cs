@@ -120,11 +120,11 @@ internal sealed partial class NginxWebServerManager(
     {
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (instance is null || instance.Id != instanceId) return null;
-        var running = instance.ManagementMode == WebServerManagementMode.Managed
-            ? UsesSystemPackageManagedService()
-                ? await IsSystemdNginxActiveAsync(cancellationToken)
-                : IsManagedNginxRunning(GetManagedLayout())
-            : IsNginxRunning(instance.ExecutablePath);
+        var running = UsesSystemPackageNginx(instance)
+            ? await IsSystemdNginxActiveAsync(cancellationToken)
+            : instance.ManagementMode == WebServerManagementMode.Managed
+                ? IsManagedNginxRunning(GetManagedLayout())
+                : IsNginxRunning(instance.ExecutablePath);
         return new WebServerStatusDto(instanceId, running ? WebServerRuntimeState.Running : WebServerRuntimeState.Stopped);
     }
 
@@ -132,7 +132,7 @@ internal sealed partial class NginxWebServerManager(
     {
         var detected = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (detected is null || detected.Id != instanceId) return null;
-        var result = detected.ManagementMode == WebServerManagementMode.Managed && UsesSystemPackageManagedService()
+        var result = UsesSystemPackageNginx(detected)
             ? await RunSystemPackageConfigurationTestAsync(cancellationToken)
             : await RunNginxAsync(detected.ExecutablePath, detected.ManagementMode == WebServerManagementMode.Managed
                 ? ManagedArguments(GetManagedLayout(), ["-t"])
@@ -179,7 +179,12 @@ internal sealed partial class NginxWebServerManager(
         if (detected.ManagementMode != WebServerManagementMode.Integrated)
             return new WebServerOperationDto(Guid.Empty, instanceId, "reload", WebServerOperationState.Failed, "authorization", "webserver.reload_not_permitted", null, null, DateTimeOffset.UtcNow);
         return await operations.StartAsync(idempotencyKey, instanceId, "reload", actor, async ct =>
-            new WebServerOperationResult((await RunNginxAsync(detected.ExecutablePath, ["-s", "reload"], ct)).Success ? "" : "webserver.reload_failed"), lifetime.ApplicationStopping);
+        {
+            var reload = UsesSystemPackageNginx(detected)
+                ? await RunSystemdNginxOperationAsync("reload", ct)
+                : new PrivilegedOperationResult((await RunNginxAsync(detected.ExecutablePath, ["-s", "reload"], ct)).Success);
+            return new WebServerOperationResult(reload.Success ? "" : ToWebServerProblem(reload.ProblemCode, "webserver.reload_failed"));
+        }, lifetime.ApplicationStopping);
     }
 
     internal async Task<string?> ExecuteInstallationAsync(InstallationOperationKind kind, NginxInstallationRequest request,
@@ -225,16 +230,15 @@ internal sealed partial class NginxWebServerManager(
     {
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (instance is null) return null;
-        // The system-package lifecycle is delegated to IPrivilegedNginxOperations. ACME
-        // integration still writes protected configuration and remains unavailable until its
-        // file operation is migrated to the same Helper boundary.
+        // System-package lifecycle and configuration operations use the closed privileged
+        // Nginx Helper boundary; the Server never invokes the system daemon as its own user.
         if (action == WebServerLifecycleAction.Reload)
         {
             if (instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed))
                 return Rejected(instanceId, "reload", "webserver.reload_not_permitted");
             return await operations.StartAsync(idempotencyKey, instanceId, "reload", actor, async ct =>
             {
-                if (instance.ManagementMode == WebServerManagementMode.Managed && UsesSystemPackageManagedService())
+                if (UsesSystemPackageNginx(instance))
                 {
                     var helper = await RunSystemdNginxOperationAsync("reload", ct);
                     return new WebServerOperationResult(helper.Success ? "" : ToWebServerProblem(helper.ProblemCode, "webserver.reload_failed"));
@@ -606,7 +610,9 @@ internal sealed partial class NginxWebServerManager(
     private async Task<string?> TestConfigurationAsync(WebServerDto instance, CancellationToken cancellationToken)
     {
         var arguments = instance.ManagementMode == WebServerManagementMode.Managed ? ManagedArguments(GetManagedLayout(), ["-t"]) : new[] { "-t" };
-        var result = await RunNginxAsync(instance.ExecutablePath, arguments, cancellationToken);
+        var result = UsesSystemPackageNginx(instance)
+            ? await RunSystemPackageConfigurationTestAsync(cancellationToken)
+            : await RunNginxAsync(instance.ExecutablePath, arguments, cancellationToken);
         if (result.Success) return null;
         logger.LogWarning("Nginx site configuration test failed. InstanceId={InstanceId}, Output={Output}", instance.Id, CommandOutputForLog(result.Output));
         return ConfigurationTestProblem(result.Output);
@@ -621,13 +627,13 @@ internal sealed partial class NginxWebServerManager(
     {
         var testProblem = await TestConfigurationAsync(instance, cancellationToken);
         if (testProblem is not null) return testProblem;
-        var running = instance.ManagementMode == WebServerManagementMode.Managed
-            ? UsesSystemPackageManagedService()
-                ? await IsSystemdNginxActiveAsync(cancellationToken)
-                : IsManagedNginxRunning(GetManagedLayout())
-            : IsNginxRunning(instance.ExecutablePath);
+        var running = UsesSystemPackageNginx(instance)
+            ? await IsSystemdNginxActiveAsync(cancellationToken)
+            : instance.ManagementMode == WebServerManagementMode.Managed
+                ? IsManagedNginxRunning(GetManagedLayout())
+                : IsNginxRunning(instance.ExecutablePath);
         if (!running) return null;
-        if (instance.ManagementMode == WebServerManagementMode.Managed && UsesSystemPackageManagedService())
+        if (UsesSystemPackageNginx(instance))
         {
             var helper = await RunSystemdNginxOperationAsync("reload", cancellationToken);
             if (!helper.Success) return ToWebServerProblem(helper.ProblemCode, "webserver.site_reload_failed");
@@ -1320,10 +1326,13 @@ internal sealed partial class NginxWebServerManager(
         return result;
     }
 
-    private static async Task<bool> IsSystemdNginxActiveAsync(CancellationToken cancellationToken)
+    private async Task<bool> IsSystemdNginxActiveAsync(CancellationToken cancellationToken)
     {
-        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/systemctl")) return false;
-        return await RunProcessAsync("/usr/bin/systemctl", ["is-active", "--quiet", "nginx.service"], cancellationToken);
+        var status = await privilegedNginx.GetRuntimeStatusAsync(cancellationToken);
+        if (!status.Success)
+            logger.LogWarning("Nginx runtime status query failed through the privileged helper. ProblemCode={ProblemCode}, ExitCode={ExitCode}, Error={Error}",
+                status.ProblemCode, status.ExitCode, status.Error);
+        return status.Success && status.NginxRunning == true;
     }
 
     private async Task StopLegacyCustomManagedInstanceAsync(ManagedLayout layout, CancellationToken cancellationToken)
@@ -1370,6 +1379,10 @@ internal sealed partial class NginxWebServerManager(
     private static bool UsesSystemPackageManagedExecutable() => OperatingSystem.IsLinux();
 
     private bool UsesSystemPackageManagedService() => UsesSystemPackageManagedExecutable();
+
+    private bool UsesSystemPackageNginx(WebServerDto instance) => UsesSystemPackageManagedService()
+        && string.Equals(Path.GetFullPath(instance.ExecutablePath), GetManagedLayout().ExecutablePath, StringComparison.Ordinal)
+        && string.Equals(Path.GetFullPath(instance.ConfigurationPath ?? string.Empty), "/etc/nginx/nginx.conf", StringComparison.Ordinal);
 
     private static string ResolveManagedExecutablePath(string root, bool useSystemPackageExecutable) => OperatingSystem.IsWindows()
         ? Path.Combine(root, "nginx.exe")

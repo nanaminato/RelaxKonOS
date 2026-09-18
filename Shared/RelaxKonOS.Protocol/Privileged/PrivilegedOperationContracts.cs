@@ -32,6 +32,7 @@ public enum PrivilegedOperationKind
     NginxPackageInstall,
     NginxPackageUninstall,
     NginxConfigurationTest,
+    NginxRuntimeStatus,
     NginxWriteManagedFile,
     NginxMoveManagedFile,
     NginxDeleteManagedFile,
@@ -223,4 +224,5 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
+    [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);

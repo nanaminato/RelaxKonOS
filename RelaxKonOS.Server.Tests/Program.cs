@@ -207,7 +207,8 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
         "The privileged protocol must not expose a generic command-execution surface.");
     Assert(Enum.IsDefined(PrivilegedOperationKind.ProxyMihomoInstallSystemService)
         && Enum.IsDefined(PrivilegedOperationKind.NginxPackageInstall)
-        && Enum.IsDefined(PrivilegedOperationKind.NginxConfigurationTest), "Dedicated Nginx and Mihomo Helper operations are missing.");
+        && Enum.IsDefined(PrivilegedOperationKind.NginxConfigurationTest)
+        && Enum.IsDefined(PrivilegedOperationKind.NginxRuntimeStatus), "Dedicated Nginx and Mihomo Helper operations are missing.");
     Assert(Enum.IsDefined(PrivilegedOperationKind.AuthenticateSystemUser)
         && Enum.GetValues<SystemAuthenticationResult>().SequenceEqual([
             SystemAuthenticationResult.Success, SystemAuthenticationResult.InvalidCredentials, SystemAuthenticationResult.AccountLocked,
@@ -223,6 +224,8 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
         "Nginx facade did not preserve its closed lifecycle action.");
     Assert((await nginx.TestConfigurationAsync()).Success && transport.LastRequest?.Operation == PrivilegedOperationKind.NginxConfigurationTest,
         "Nginx facade did not preserve its closed configuration-test request.");
+    Assert((await nginx.GetRuntimeStatusAsync()).Success && transport.LastRequest?.Operation == PrivilegedOperationKind.NginxRuntimeStatus,
+        "Nginx facade did not preserve its closed runtime-status request.");
     Assert((await nginx.WriteManagedFileAsync("/etc/nginx/conf.d/relaxkonos.d/example.conf", Encoding.UTF8.GetBytes("server {}\n"))).Success,
         "Nginx managed-file write was not accepted by the transport facade.");
     Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.NginxWriteManagedFile
