@@ -27,7 +27,7 @@
             <Setter Property="CornerRadius" Value="2" />
         </Style>
         <Style Selector="ListBox.performance-nav > ListBoxItem:selected">
-            <Setter Property="Background" Value="#DCECFB" />
+            <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
         </Style>
         <Style Selector="TextBlock.metric-label">
             <Setter Property="FontSize" Value="12" />

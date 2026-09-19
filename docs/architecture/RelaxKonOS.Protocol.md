@@ -51,8 +51,11 @@ Shared/RelaxKonOS.Protocol/
 ├── Common/              # PlatformKind、RelaxKonOSEndpoints（含 Hub 路径）、ProblemDetails、RelaxKonOSJsonOptions、ServerDescriptorDto
 ├── Identity/            # UserDto、AuthTokens、LoginRequest/Response、RefreshToken、Logout、AuthApiRoutes
 ├── Workspace/           # WorkspaceDto、SessionDto、DeviceDto、ControllerLeaseInfo、3 enum
-│                        # WorkspacePreferencesDto（含 desktopDisplay + themePreferences + 文本编码）、DefaultAppMappingDto
-│                        # ThemePreferencesDto / ThemePaletteContract / ThemePaletteDefaults / ThemePaletteImport
+│                        # WorkspacePreferencesDto（含 desktopExperience + desktopDisplay + 文本编码）、DefaultAppMappingDto
+│                        # DesktopExperiencePreferencesDto（appearance + systemStyleId + shell）
+│                        # AppearancePreferencesDto / ThemePaletteContract / ThemePaletteDefaults / ThemePaletteImport
+│                        # SystemStyles/（SystemStyleRecipes / SystemStyleTokenContract / SystemStyleManifestDto
+│                        #               / SystemStyleManifestValidator / BuiltInSystemStyles）
 │                        # DesktopDisplaySettingsDto、WorkspaceWindowLayoutDto、TextEncodingPreferences、TerminalSettingsDto
 │                        # WorkspaceApiRoutes（含 Preferences）、RegisterDeviceRequest / CreateWorkspaceRequest
 │                        # RequestControlRequest、WorkspaceSnapshotDto

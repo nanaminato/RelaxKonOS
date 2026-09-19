@@ -5,7 +5,7 @@
              xmlns:terminal="clr-namespace:RelaxKonOS.Client.Apps.Terminal"
              x:Class="RelaxKonOS.Client.Apps.Terminal.TerminalView"
              x:DataType="terminal:TerminalViewModel"
-             Background="#0C0C0C">
+             Background="{DynamicResource SurfaceBrush}">
     <Grid RowDefinitions="Auto,*">
         <Border Grid.Row="0" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*">

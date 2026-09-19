@@ -1,6 +1,8 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <!-- Brush contract only: ThemePaletteDefaults is the single source for every *Color value. -->
+  <!-- Brush contract only: ThemePaletteDefaults is the single source for every *Color value.
+       Shape, sizing and motion tokens live in SystemStyleTokens.axaml, where the active system
+       style supplies them. -->
   <SolidColorBrush x:Key="AppBackgroundBrush" Color="{DynamicResource AppBackgroundColor}" />
   <SolidColorBrush x:Key="ShellBackgroundBrush" Color="{DynamicResource ShellBackgroundColor}" />
   <SolidColorBrush x:Key="SurfaceBrush" Color="{DynamicResource SurfaceColor}" />
@@ -36,6 +38,7 @@
   <SolidColorBrush x:Key="DesktopIconHoverBrush" Color="{DynamicResource DesktopIconHoverColor}" /><SolidColorBrush x:Key="DesktopIconSelectedBrush" Color="{DynamicResource DesktopIconSelectedColor}" />
   <SolidColorBrush x:Key="ChartGridLineBrush" Color="{DynamicResource ChartGridLineColor}" />
   <SolidColorBrush x:Key="ChartSeries1Brush" Color="{DynamicResource ChartSeries1Color}" /><SolidColorBrush x:Key="ChartSeries2Brush" Color="{DynamicResource ChartSeries2Color}" /><SolidColorBrush x:Key="ChartSeries3Brush" Color="{DynamicResource ChartSeries3Color}" /><SolidColorBrush x:Key="ChartSeries4Brush" Color="{DynamicResource ChartSeries4Color}" />
-  <CornerRadius x:Key="ControlCornerRadius">4</CornerRadius><CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius><CornerRadius x:Key="WindowCornerRadius">8</CornerRadius>
-  <x:Double x:Key="ControlHeight">32</x:Double><Thickness x:Key="ControlPadding">14,6</Thickness><FontFamily x:Key="ContentFont">Segoe UI, Inter, Noto Sans</FontFamily><x:Double x:Key="ContentFontSize">13</x:Double>
+  <!-- Shared density and typography. These stay deliberate cross-style constants so switching a
+       system style cannot change them; everything a style does own lives in SystemStyleTokens.axaml. -->
+  <Thickness x:Key="ControlPadding">14,6</Thickness><FontFamily x:Key="ContentFont">Segoe UI, Inter, Noto Sans</FontFamily><x:Double x:Key="ContentFontSize">13</x:Double>
 </ResourceDictionary>

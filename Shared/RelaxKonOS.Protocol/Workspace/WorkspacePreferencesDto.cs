@@ -4,10 +4,12 @@ using RelaxKonOS.Protocol.Desktop;
 namespace RelaxKonOS.Protocol.Workspace;
 
 /// <summary>
-/// Workspace 级用户偏好（壁纸 / 主题 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序 / 桌面显示配置）。
+/// Workspace 级用户偏好（壁纸 / 桌面体验 / 时间格式 / 日期格式 / 语言 / 区域 / 默认程序 / 桌面显示配置）。
 /// 与 <see cref="TerminalSettingsDto"/> / <see cref="RelaxKonOS.Protocol.Browser.BrowserSettingsDto"/> 同模式：
 /// 真源为 Workspace Desktop 注册表键；持久化状态来自注册表存储。
 /// 多设备登录同一 Workspace 时共享同一份偏好。
+/// 颜色/深浅模式、系统风格与桌面 Shell 三者统一收在 <see cref="DesktopExperience"/> 下，
+/// 不再有并行可读写的旧字段。
 /// </summary>
 public sealed record WorkspacePreferencesDto
 {
@@ -21,9 +23,6 @@ public sealed record WorkspacePreferencesDto
 
     [JsonPropertyName("wallpaperKey")]
     public string WallpaperKey { get; set; }
-
-    [JsonPropertyName("theme")]
-    public ThemeKind Theme { get; set; }
 
     [JsonPropertyName("timeFormat")]
     public string TimeFormat { get; set; }
@@ -51,16 +50,12 @@ public sealed record WorkspacePreferencesDto
     [JsonPropertyName("desktopDisplay")]
     public DesktopDisplaySettingsDto? DesktopDisplay { get; set; }
 
-    [JsonPropertyName("themePreferences")]
-    public ThemePreferencesDto? ThemePreferences { get; set; }
-
-    /// <summary>Versioned shell selection for the current Shell API.</summary>
-    [JsonPropertyName("shell")]
-    public ShellSelectionDto? Shell { get; set; }
+    /// <summary>Colors, system style and shell layout. The only read/write path for any of the three.</summary>
+    [JsonPropertyName("desktopExperience")]
+    public DesktopExperiencePreferencesDto? DesktopExperience { get; set; }
 
     public WorkspacePreferencesDto(
         string WallpaperKey,
-        ThemeKind Theme,
         string TimeFormat,
         string DateFormat,
         string Language,
@@ -69,11 +64,9 @@ public sealed record WorkspacePreferencesDto
         string? NotepadDefaultEncoding = TextEncodingPreferences.Default,
         string? CodeEditorDefaultEncoding = TextEncodingPreferences.Default,
         DesktopDisplaySettingsDto? DesktopDisplay = null,
-        ThemePreferencesDto? ThemePreferences = null,
-        ShellSelectionDto? Shell = null)
+        DesktopExperiencePreferencesDto? DesktopExperience = null)
     {
         this.WallpaperKey = WallpaperKey;
-        this.Theme = Theme;
         this.TimeFormat = TimeFormat;
         this.DateFormat = DateFormat;
         this.Language = Language;
@@ -82,17 +75,16 @@ public sealed record WorkspacePreferencesDto
         this.NotepadDefaultEncoding = NotepadDefaultEncoding;
         this.CodeEditorDefaultEncoding = CodeEditorDefaultEncoding;
         this.DesktopDisplay = DesktopDisplay ?? DesktopDisplaySettingsDto.Default;
-        this.ThemePreferences = ThemePreferences ?? ThemePreferencesDto.Default;
-        this.Shell = Shell ?? new ShellSelectionDto("relaxkonos.windows-like");
+        this.DesktopExperience = DesktopExperience ?? DesktopExperiencePreferencesDto.Default;
     }
 
     // Both EF Core and System.Text.Json must use the parameterless constructor. JSON cannot
     // bind the public constructor's IReadOnlyList parameter to the mutable List property,
     // while property-based deserialization preserves the wire contract for DefaultApps.
     public WorkspacePreferencesDto()
-        : this(string.Empty, default, string.Empty, string.Empty, string.Empty, string.Empty,
+        : this(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty,
             [], TextEncodingPreferences.Default, TextEncodingPreferences.Default,
-            DesktopDisplaySettingsDto.Default, ThemePreferencesDto.Default, new ShellSelectionDto("relaxkonos.windows-like"))
+            DesktopDisplaySettingsDto.Default, DesktopExperiencePreferencesDto.Default)
     {
     }
 
@@ -112,7 +104,6 @@ public sealed record WorkspacePreferencesDto
     // This must be a fresh object: tracked SQLite owned entities are mutated in place.
     public static WorkspacePreferencesDto Default => new(
         WallpaperKey: BuiltInWallpaperPrefix + "bloom",
-        Theme: ThemeKind.Light,
         TimeFormat: TimeFormat24H,
         DateFormat: "yyyy/M/d",
         Language: "en-US",
@@ -121,6 +112,5 @@ public sealed record WorkspacePreferencesDto
         NotepadDefaultEncoding: TextEncodingPreferences.Default,
         CodeEditorDefaultEncoding: TextEncodingPreferences.Default,
         DesktopDisplay: DesktopDisplaySettingsDto.Default,
-        ThemePreferences: ThemePreferencesDto.Default,
-        Shell: new ShellSelectionDto("relaxkonos.windows-like"));
+        DesktopExperience: DesktopExperiencePreferencesDto.Default);
 }

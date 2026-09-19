@@ -471,7 +471,7 @@ User → One Persistent Workspace → Multiple Device Session
 > 落地状态：Workspace 持久化已实现（EF Core + SQLite，User / Workspace(含 TerminalSettings/BrowserSettings/Preferences/WindowLayout) / Device 落库；Session / 刷新令牌 / PTY 进程维持内存，各有语义理由）。
 >
 > **Preferences JSON 已扩字段**（`OwnsOne + ToJson`，新增字段无需改 schema）：
-> - **主题调色板**：`ThemePreferencesDto`（styleId/paletteId/accentOverride/customPalettes[]，每调色板包含 Light/Dark 双色变体，需通过 ThemePaletteValidator 对比度校验）。
+> - **桌面体验**：`DesktopExperiencePreferencesDto`（`appearance`：mode/paletteId/accentOverride/customPalettes[]，每调色板包含 Light/Dark 双色变体，需通过 ThemePaletteValidator 对比度校验；`systemStyleId`：系统风格的用户意图，可用性由设备本地的 SystemStyleRegistry 解析；`shell`：桌面布局选择）。三者独立存储，可自由组合，详见 [`RelaxKonOS.SystemStyle.md`](../desktop/RelaxKonOS.SystemStyle.md)。
 > - **桌面显示**：`DesktopDisplaySettingsDto`（内置应用显隐、可见应用白名单、服务器桌面文件/快捷方式、首次配置完成位）。
 > - **文本编码**：`notepadDefaultEncoding` / `codeEditorDefaultEncoding`，默认 `UTF-8`，由 Notepad/CodeEditor 打开对话框使用（见 `TextEditor/` 共用编码对话框）。
 > - **窗口布局**：`WorkspaceWindowLayoutDto` 作为独立 Workspace 状态（GET/PUT `/workspaces/{id}/window-layout`），保存每个窗口 key 的 (width,height)，登录后恢复尺寸。

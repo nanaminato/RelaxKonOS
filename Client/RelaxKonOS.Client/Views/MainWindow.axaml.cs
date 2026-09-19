@@ -8,6 +8,7 @@ using RelaxKonOS.Client.Services.WindowLayout;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Diagnostics;
+using RelaxKonOS.Client.Services.SystemUi;
 using RelaxKonOS.Client.ViewModels.Shell;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     private double _connectionBarOffset;
     private WindowState _windowStateBeforeFullScreen = WindowState.Maximized;
     private readonly LocalizationService _localization;
+    private SystemUiCoordinator? _systemUi;
     private int _desktopLoadGeneration;
 
     public MainWindow()
@@ -36,6 +38,18 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => ApplyConnectionBarOffset();
         DataContextChanged += async (_, _) => await AttachShellAsync();
         Opened += async (_, _) => await AttachShellAsync();
+        AttachSystemUi();
+    }
+
+    /// <summary>
+    /// Connects the host's system UI layer. The overview view is fed by the coordinator and its
+    /// visibility is mirrored here, so the overlay is only hit-testable while it is actually open.
+    /// </summary>
+    private void AttachSystemUi()
+    {
+        _systemUi = App.Services.GetRequiredService<SystemUiCoordinator>();
+        WindowOverview.DataContext = _systemUi;
+        _systemUi.Changed += (_, _) => WindowOverview.IsVisible = _systemUi.IsOverviewVisible;
     }
 
     private async Task AttachShellAsync()

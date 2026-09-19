@@ -16,14 +16,33 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 ## 当前页面与保存状态
 
-当前保留系统、个性化、时间和语言、网络、应用、镜像源、默认应用、开发者八页及已有壁纸、主题、Shell 和包工具能力。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。逐字段冲突合并体验、首页、账户和辅助功能仍按 Goal 推进，尚未验收。
+当前保留系统、个性化、时间和语言、网络、应用、镜像源、默认应用、开发者八页及已有壁纸、调色板、系统风格和 Shell 布局能力。个性化页已拆为“颜色与模式”“系统风格”“桌面布局”三张卡片（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。逐字段冲突合并体验、首页、账户和辅助功能仍按 Goal 推进，尚未验收。
 
 现有八页使用注册的 Route 导航，共用单色矢量图标；顶部持续显示当前远程连接、用户、Workspace 与分类路径，支持返回历史。小于 760 个逻辑像素时折叠侧栏，使用分类选择框。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。当前结果定位到页面，settingId 控件聚焦与全部详情页仍待完成。页面内容本身的窄布局、200% 缩放及屏幕阅读器体验尚未实测。
+
+## 个性化页：颜色、系统风格与桌面布局（2026-09-19，实现未视觉验收）
+
+个性化页把原先混为一谈的“主题”拆成三张独立卡片，对应 `DesktopExperiencePreferencesDto` 的三个字段：
+
+1. **颜色与模式**：`ThemeKind` 模式、调色板 ID、强调色覆盖与自定义调色板，写 `DesktopExperience.Appearance`。
+2. **系统风格**：风格下拉（`SystemStyleChoices`）、当前风格摘要、不可用提示与“采用此 Shell 推荐的系统风格”按钮，写 `DesktopExperience.SystemStyleId`。
+3. **桌面布局**：Shell 选择，写 `DesktopExperience.Shell`；卡片内明确说明其与系统风格相互独立。
+
+关键约定：
+
+- **颜色与形状互不牵连。** 改调色板不会改变菜单布局或窗口控制按钮位置；改系统风格不会篡改调色板。
+- **可用性是设备本地事实。** 若本机缺少所选风格，`SystemStyleRegistry` 保留该条目与原因，页面显示“此设备未安装”并继续使用最近有效的可渲染风格；**不静默改写用户的偏好**。
+- **推荐映射只是按钮。** “采用此 Shell 推荐的系统风格”由 `SystemStyleIds.RecommendedForShell` 驱动，需用户显式点击，不随 Shell 切换隐式生效。
+- 本地搜索条目由 `workspace.theme` / `workspace.shell` 改为 `workspace.colors` / `workspace.systemStyle` / `workspace.desktopLayout`（含中英日同义词）。
+- 三语言 `settings.json` 已补齐 `settings.colors_and_mode`、`settings.palette_scope_hint`、`settings.system_style.*`、`settings.desktop_layout`、`settings.shell.separate_hint` 与全部 `systemstyle.*` 问题码文案。
+
+系统风格层本身的令牌、recipe、清单校验与运行时链路见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。页面当前只通过编译与契约测试，**尚未做视觉与交互验收**。
+
 
 ## 范围与宿主权限
 
 - ClientDevice：此客户端设备的布局、开发模式和辅助功能。
-- Workspace：当前用户 Workspace 的主题、语言、默认应用及后续环境覆盖。
+- Workspace：当前用户 Workspace 的外观、系统风格、语言、默认应用及后续环境覆盖。
 - AppPrivate：AppSettings 隔离的应用私有配置。
 - HostUser：认证映射的远程 UID/SID，不能使用 Server 服务账户的用户环境。
 - HostMachine：远程机器配置，不归某个 Workspace 所有。

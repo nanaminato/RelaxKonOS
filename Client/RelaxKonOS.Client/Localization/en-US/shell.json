@@ -23,6 +23,11 @@
         "shell.full_screen.enter": "Full screen",
         "shell.full_screen.enter_tooltip": "Enter full screen",
         "shell.full_screen.exit": "Exit full screen",
+        "shell.overview.title": "Window overview",
+        "shell.overview.description": "Pick the window you want to switch to.",
+        "shell.overview.empty": "No windows are open.",
+        "shell.overview.hint": "Arrow keys to choose · Enter to switch · Delete to close · Esc to exit",
+        "shell.overview.close": "Close window",
         "shell.desktop_display.title": "Desktop display settings",
         "shell.desktop_display.welcome_title": "Welcome to the RelaxKonOS desktop",
         "shell.desktop_display.configure_ellipsis": "Configure desktop display...",
@@ -60,6 +65,7 @@
         "shell.launcher.start": "Start",
         "shell.launcher.system_settings": "System Settings",
         "shell.launcher.task_manager": "Task Manager",
+        "shell.launcher.task_view": "Task view",
         "shell.launcher.terminal": "Terminal"
     }
 }

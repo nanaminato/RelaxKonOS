@@ -20,6 +20,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Desktop;
 using RelaxKonOS.Protocol.Workspace;
+using RelaxKonOS.Protocol.Workspace.SystemStyles;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.Tunnels;
 using RelaxKonOS.Server.Certificate;
@@ -126,12 +127,17 @@ static void VerifyWorkspacePreferencesJsonContract()
 {
     var preferences = new WorkspacePreferencesDto(
         WorkspacePreferencesDto.CustomWallpaperPrefix + Guid.NewGuid().ToString("N"),
-        ThemeKind.Dark,
         WorkspacePreferencesDto.TimeFormat12H,
         "M/d/yyyy",
         "en-US",
         "en-US",
-        [new DefaultAppMappingDto("https", "relaxkonos.browser")]);
+        [new DefaultAppMappingDto("https", "relaxkonos.browser")],
+        DesktopExperience: new DesktopExperiencePreferencesDto
+        {
+            Appearance = new AppearancePreferencesDto { Mode = ThemeKind.Dark },
+            SystemStyleId = SystemStyleIds.MacOsLike,
+            Shell = new ShellSelectionDto("relaxkonos.windows-like"),
+        });
 
     var json = JsonSerializer.Serialize(preferences, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     var deserialized = JsonSerializer.Deserialize<WorkspacePreferencesDto>(json, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)
@@ -139,13 +145,23 @@ static void VerifyWorkspacePreferencesJsonContract()
 
     Assert(deserialized.WallpaperKey == preferences.WallpaperKey, "Wallpaper key changed during JSON deserialization.");
     Assert(deserialized.DefaultApps.SequenceEqual(preferences.DefaultApps), "Default app mappings changed during JSON deserialization.");
-    Assert(deserialized.Shell?.ShellId == "relaxkonos.windows-like", "Default Windows shell selection changed during JSON deserialization.");
+    Assert(deserialized.DesktopExperience?.Shell?.ShellId == "relaxkonos.windows-like", "Default Windows shell selection changed during JSON deserialization.");
+    Assert(deserialized.DesktopExperience?.SystemStyleId == SystemStyleIds.MacOsLike, "System style selection changed during JSON deserialization.");
+    Assert(deserialized.DesktopExperience?.Appearance.Mode == ThemeKind.Dark, "Appearance mode changed during JSON deserialization.");
 
-    var external = preferences with { Shell = new ShellSelectionDto("com.example.neon-desktop", "com.example.neon", "1.0.0") };
+    var experience = preferences.DesktopExperience!;
+    var external = preferences with
+    {
+        DesktopExperience = experience with
+        {
+            Shell = new ShellSelectionDto("com.example.neon-desktop", "com.example.neon", "1.0.0"),
+        },
+    };
     var externalRoundTrip = JsonSerializer.Deserialize<WorkspacePreferencesDto>(
         JsonSerializer.Serialize(external, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default)
         ?? throw new InvalidOperationException("Structured shell selection did not deserialize.");
-    Assert(externalRoundTrip.Shell?.PackageId == "com.example.neon" && externalRoundTrip.Shell?.PackageVersion == "1.0.0",
+    Assert(externalRoundTrip.DesktopExperience?.Shell?.PackageId == "com.example.neon"
+           && externalRoundTrip.DesktopExperience?.Shell?.PackageVersion == "1.0.0",
         "Structured shell package identity changed during JSON round-trip.");
 }
 
@@ -441,7 +457,7 @@ static async Task VerifyRegistryRuntimeCacheAsync(string root)
 
 static void VerifyThemePaletteContract()
 {
-    var preferences = new ThemePreferencesDto
+    var preferences = new AppearancePreferencesDto
     {
         PaletteId = "custom:paired",
         CustomPalettes =
@@ -1357,7 +1373,7 @@ static Task VerifyTrackedWorkspaceWallpaperUpdateAsync(string root)
     var workspaceId = Guid.NewGuid();
     var userId = Guid.NewGuid();
     var originalMapping = new DefaultAppMappingDto("https", "relaxkonos.browser");
-    var themePreferences = new ThemePreferencesDto
+    var appearance = new AppearancePreferencesDto
     {
         PaletteId = "custom:test-palette",
         CustomPalettes =
@@ -1385,14 +1401,16 @@ static Task VerifyTrackedWorkspaceWallpaperUpdateAsync(string root)
     WorkspaceConfigurationRegistry.EnsureDefaults(registry, workspace, "test");
     var customWallpaperKey = WorkspacePreferencesDto.CustomWallpaperPrefix + Guid.NewGuid().ToString("N");
     var preferences = new WorkspacePreferencesDto(
-        customWallpaperKey, ThemeKind.Light, WorkspacePreferencesDto.TimeFormat24H, "yyyy/M/d", "en-US", "en-US", [originalMapping],
-        ThemePreferences: themePreferences);
+        customWallpaperKey, WorkspacePreferencesDto.TimeFormat24H, "yyyy/M/d", "en-US", "en-US", [originalMapping],
+        DesktopExperience: new DesktopExperiencePreferencesDto { Appearance = appearance, SystemStyleId = SystemStyleIds.WindowsLike });
     WorkspaceConfigurationRegistry.Write(registry, workspace, WorkspaceConfigurationRegistry.DesktopPath, preferences, "test");
     var stored = WorkspaceConfigurationRegistry.Read(registry, workspace, WorkspaceConfigurationRegistry.DesktopPath, WorkspacePreferencesDto.Default);
     Assert(stored.WallpaperKey == customWallpaperKey, "Wallpaper key was not stored in the registry.");
     Assert(stored.DefaultApps.SequenceEqual([originalMapping]), "Changing the wallpaper modified default-app mappings.");
-    Assert(stored.ThemePreferences?.CustomPalettes.Single().LightColors?["Accent"] == "#0078D4",
+    Assert(stored.DesktopExperience?.Appearance.CustomPalettes.Single().LightColors?["Accent"] == "#0078D4",
         "Custom theme palette colors were not persisted.");
+    Assert(stored.DesktopExperience?.SystemStyleId == SystemStyleIds.WindowsLike,
+        "The selected system style was not persisted.");
     return Task.CompletedTask;
 }
 

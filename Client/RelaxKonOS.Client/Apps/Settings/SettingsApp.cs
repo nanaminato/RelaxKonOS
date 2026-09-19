@@ -114,8 +114,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                         var errorText = new Avalonia.Controls.TextBlock
                         {
                             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                            Foreground = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#C42B1C")),
                         };
+                        RelaxKonOS.UI.Themes.ThemeResources.Bind(errorText, Avalonia.Controls.TextBlock.ForegroundProperty, "DangerBrush");
                         var submitting = false;
                         const double authorizationActionWidth = 80;
                         const double authorizationActionHeight = 40;
@@ -286,8 +286,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                 {
                                     Setters =
                                     {
-                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BackgroundProperty, new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#CFE8FF"))),
-                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BorderBrushProperty, new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#4A90C2"))),
+                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BackgroundProperty, new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension("SelectionBackgroundBrush")),
+                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BorderBrushProperty, new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension("FocusBorderBrush")),
                                         new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BorderThicknessProperty, new Avalonia.Thickness(1)),
                                     },
                                 });

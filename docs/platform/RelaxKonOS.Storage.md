@@ -56,7 +56,7 @@
 | 实体 | 是否持久化 | 理由 |
 |------|-----------|------|
 | **User** | ✅ SQLite | 登录 `FindByUsername` 命中后复用；若不持久化，重启后 User.Id 变化 → `FindByUserId` 找不到旧 Workspace → TerminalSettings 成孤儿丢失。**必须与 Workspace 配套**。 |
-| **Workspace**（含 TerminalSettings / BrowserSettings / Preferences / WindowLayouts / DesktopDisplay / ThemePreferences） | ✅ SQLite | 系统级、Workspace 语义强的配置均以 JSON 列随 Workspace 持久。 |
+| **Workspace**（含 TerminalSettings / BrowserSettings / Preferences / WindowLayouts / DesktopDisplay / DesktopExperience） | ✅ SQLite | 系统级、Workspace 语义强的配置均以 JSON 列随 Workspace 持久。 |
 | **Device** | ✅ SQLite | 设备登记历史，与 User/Workspace 同属「持久实体」，保持一致。 |
 | **AppSettings** | ✅ SQLite | 内置/外置应用的私有版本化 JSON 配置，按 User + scope + AppId + key 隔离；详见 [`RelaxKonOS.AppSettings.md`](../development/RelaxKonOS.AppSettings.md)。 |
 | **ImageMirrors** | ✅ SQLite | 按 User + 目标服务隔离的镜像仓库前缀与当前选择；Docker 拉取时由服务端读取，选择默认不使用镜像源。 |
@@ -441,7 +441,7 @@
 
 [`RelaxKonOS.Server/Storage/Sqlite/`](../../RelaxKonOS.Server/Storage/Sqlite)：
 - [`RelaxKonOSDbContext`](../../RelaxKonOS.Server/Storage/Sqlite/RelaxKonOSDbContext.cs)：`DbSet<User/Workspace/Device/Bookmark/HistoryEntry/AppSetting/ImageMirror/GitRepository/RegistryEntry/TunnelDefinition/TunnelSecret/TunnelServerProfile/TunnelAuditEntry/AccountFailureState/AuthenticationSecurityEvent>` + `OnModelCreating`
-- 各 `Sqlite*Repository`：注入 DbContext，用 EF 查询实现接口。`RelaxKonOSDbContext` 还保存 Workspace 拥有的 `TerminalSettings` / `BrowserSettings` / `Preferences`（含 `ThemePreferences` / `DesktopDisplay` / 文本编码）/ `WindowLayouts`，全部用 `OwnsOne + ToJson` JSON 列。
+- 各 `Sqlite*Repository`：注入 DbContext，用 EF 查询实现接口。`RelaxKonOSDbContext` 还保存 Workspace 拥有的 `TerminalSettings` / `BrowserSettings` / `Preferences`（含 `DesktopExperience` / `DesktopDisplay` / 文本编码）/ `WindowLayouts`，全部用 `OwnsOne + ToJson` JSON 列。`DesktopExperience` 内的 `Appearance`（颜色）与 `SystemStyleId`（形状）由同一次保存写入，但语义上相互独立；详见 [`RelaxKonOS.SystemStyle.md`](../desktop/RelaxKonOS.SystemStyle.md)。
 - HostGlobal 库：由 `HostGlobalMigrationRunner` 在 `Program.cs` 启动时独立执行 Migrations（`MigrateAsync()`），使用 `HostGlobalDbContext`（单独 EF Context，不与业务 `RelaxKonOSDbContext` 混用）。Certificate / WebServer / Operation / 审计 Repository 只操作 HostGlobal 库。
 
 实现要点：

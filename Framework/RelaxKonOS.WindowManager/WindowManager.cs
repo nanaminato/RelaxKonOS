@@ -44,6 +44,7 @@ public sealed class WindowManager : IWindowManager
     public ManagedWindow? ActiveWindow => _active;
     public Rect HostBounds => _hostBounds;
     public Rect FullScreenHostBounds => _fullScreenHostBounds;
+    public bool IsSystemModalOpen => _shellModalSessions.Count > 0;
 
     public event EventHandler<ManagedWindow>? WindowOpened;
     public event EventHandler<ManagedWindow>? WindowClosed;

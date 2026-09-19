@@ -49,7 +49,7 @@ internal static class SettingsSystemVerification
         {
             var restored = new WorkspaceSettingsService(restarted).Read(workspace);
             Check(restored.PersistedRevision == restored.Revision, "Restarted SQLite snapshot must report the durable revision.");
-            Check(restored.Revision == before.Revision && restored.Theme == before.Theme,
+            Check(restored.Revision == before.Revision && ModeOf(restored) == ModeOf(before),
                 "Preference value and revision must survive cache flush and restart.");
         }
         finally { await restarted.StopAsync(CancellationToken.None); }
@@ -104,7 +104,7 @@ internal static class SettingsSystemVerification
             Check(initial?.Revision > 0, "HTTP GET must return a preference revision.");
             using var missing = await http.PutAsJsonAsync(route, initial! with { Revision = null }, RelaxKonOSJsonOptions.Default);
             Check((int)missing.StatusCode == 428, "HTTP PUT without revision must return 428.");
-            using var saved = await http.PutAsJsonAsync(route, initial! with { Theme = ThemeKind.Dark }, RelaxKonOSJsonOptions.Default);
+            using var saved = await http.PutAsJsonAsync(route, WithMode(initial!, ThemeKind.Dark), RelaxKonOSJsonOptions.Default);
             Check(saved.IsSuccessStatusCode, "Versioned HTTP preference write failed.");
             using var stale = await http.PutAsJsonAsync(route, initial!, RelaxKonOSJsonOptions.Default);
             Check(stale.StatusCode == HttpStatusCode.Conflict, "Stale HTTP PUT must return 409.");
@@ -139,19 +139,32 @@ internal static class SettingsSystemVerification
         finally { await app.StopAsync(); }
     }
 
+    /// <summary>Colour mode now lives under DesktopExperience; these helpers keep the checks readable.</summary>
+    private static ThemeKind ModeOf(WorkspacePreferencesDto preferences) =>
+        (preferences.DesktopExperience ?? DesktopExperiencePreferencesDto.Default).Appearance.Mode;
+
+    private static WorkspacePreferencesDto WithMode(WorkspacePreferencesDto preferences, ThemeKind mode)
+    {
+        var experience = preferences.DesktopExperience ?? DesktopExperiencePreferencesDto.Default;
+        return preferences with
+        {
+            DesktopExperience = experience with { Appearance = experience.Appearance with { Mode = mode } },
+        };
+    }
+
     private static Workspace Verify(IRegistryRepository registry, bool concurrent = true)
     {
         var workspace = new Workspace { Id = Guid.NewGuid(), UserId = Guid.NewGuid() };
         var service = new WorkspaceSettingsService(registry);
         var initial = service.Read(workspace);
         Check(initial.Revision > 0, "Reads must supply the observed revision without opening a window.");
-        var changed = service.Save(workspace, initial with { Theme = ThemeKind.Dark }, "test")!;
+        var changed = service.Save(workspace, WithMode(initial, ThemeKind.Dark), "test")!;
         Check(changed.Revision > initial.Revision, "A successful mutation must advance the revision.");
         Check(service.Save(workspace, initial with { Language = "ja-JP" }, "stale") is null,
             "A stale draft must not overwrite another client's theme.");
-        Check(service.Read(workspace).Theme == ThemeKind.Dark, "Conflict handling lost the committed theme.");
+        Check(ModeOf(service.Read(workspace)) == ThemeKind.Dark, "Conflict handling lost the committed theme.");
         var other = new Workspace { Id = workspace.Id, UserId = Guid.NewGuid() };
-        Check(service.Read(other).Theme == ThemeKind.Light, "User keys must isolate the same workspace id.");
+        Check(ModeOf(service.Read(other)) == ThemeKind.Light, "User keys must isolate the same workspace id.");
 
         if (concurrent)
         {

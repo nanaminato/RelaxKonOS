@@ -1,0 +1,63 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+  <!-- Default shape/size/motion tokens. These are only fallbacks: the active system style is
+       applied at runtime by AppearanceService, which installs a complete provider built from
+       SystemStyleManifestDto. Keeping a complete default set here means no component can ever
+       render with a missing token, even before the first style is applied. -->
+  <x:Double x:Key="ControlHeight">32</x:Double>
+  <CornerRadius x:Key="ControlCornerRadius">4</CornerRadius>
+  <Thickness x:Key="ControlBorderThickness">1</Thickness>
+  <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
+  <Thickness x:Key="FocusRingThickness">2</Thickness>
+  <x:Double x:Key="MinimumHitTarget">40</x:Double>
+  <sys:TimeSpan x:Key="TransitionFast">0:0:0.120</sys:TimeSpan>
+  <sys:TimeSpan x:Key="ReducedMotionDuration">0:0:0</sys:TimeSpan>
+
+  <x:Double x:Key="WindowTitleBarHeight">42</x:Double>
+  <Thickness x:Key="WindowFrameThickness">1</Thickness>
+  <CornerRadius x:Key="WindowCornerRadius">8</CornerRadius>
+  <x:Double x:Key="WindowControlWidth">52</x:Double>
+  <x:Double x:Key="WindowInactiveOpacity">0.55</x:Double>
+  <x:Double x:Key="WindowShadowDepth">28</x:Double>
+  <x:Double x:Key="WindowShadowOpacity">0.4</x:Double>
+  <BoxShadows x:Key="WindowShadow">0 12 28 0 #66000000</BoxShadows>
+
+  <CornerRadius x:Key="MenuCornerRadius">6</CornerRadius>
+  <Thickness x:Key="MenuBorderThickness">1</Thickness>
+  <x:Double x:Key="MenuItemHeight">30</x:Double>
+  <Thickness x:Key="MenuPadding">6</Thickness>
+  <sys:TimeSpan x:Key="MenuSubmenuDelay">0:0:0.250</sys:TimeSpan>
+
+  <CornerRadius x:Key="FlyoutCornerRadius">8</CornerRadius>
+  <x:Double x:Key="FlyoutElevation">12</x:Double>
+  <CornerRadius x:Key="DialogCornerRadius">8</CornerRadius>
+  <sys:TimeSpan x:Key="DialogMotionDuration">0:0:0.160</sys:TimeSpan>
+
+  <x:Double x:Key="TaskbarHeight">48</x:Double>
+  <x:Double x:Key="TopBarHeight">30</x:Double>
+  <CornerRadius x:Key="LauncherCornerRadius">12</CornerRadius>
+  <x:Double x:Key="DockMagnification">1.25</x:Double>
+  <x:Double x:Key="TaskbarIconSize">40</x:Double>
+
+  <CornerRadius x:Key="OverviewCardRadius">10</CornerRadius>
+  <Thickness x:Key="OverviewCardBorderThickness">2</Thickness>
+  <x:Double x:Key="OverviewThumbnailScale">1</x:Double>
+  <sys:TimeSpan x:Key="OverviewEnterDuration">0:0:0.180</sys:TimeSpan>
+  <Thickness x:Key="OverviewSelectionRingThickness">3</Thickness>
+
+  <!-- Recipe selectors read by host templates. Presentation-only: they select which
+       review-approved template variant a component uses. -->
+  <x:String x:Key="SystemStyle.WindowChrome">caption-buttons-right</x:String>
+  <x:String x:Key="SystemStyle.ContextMenu">compact-command-menu</x:String>
+  <x:String x:Key="SystemStyle.TaskSwitcher">windows-grid</x:String>
+  <x:String x:Key="SystemStyle.ShellChrome">bottom-taskbar</x:String>
+
+  <!-- Derived composites. AppearanceService recomputes these from the active style; the values
+       here only keep the very first rendered frame complete. See SystemStyleDerivedKeys. -->
+  <CornerRadius x:Key="OverlayTopCornerRadius">8,8,0,0</CornerRadius>
+  <CornerRadius x:Key="OverlayBottomCornerRadius">0,0,8,8</CornerRadius>
+  <BoxShadows x:Key="ElevationShadow">0 5 12 0 #66000000</BoxShadows>
+  <CornerRadius x:Key="WindowCaptionCornerRadius">14</CornerRadius>
+  <Thickness x:Key="HostTitleBarMargin">0,42,0,0</Thickness>
+</ResourceDictionary>

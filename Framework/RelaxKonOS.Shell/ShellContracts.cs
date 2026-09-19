@@ -143,6 +143,12 @@ public interface IShellActions
     void SelectDesktopEntry(string entryId);
     void SetDesktopIconsVisible(bool visible);
     void ShowDesktop();
+    /// <summary>
+    /// Opens the host's window overview (task view). A shell only exposes an entry point for it -
+    /// the host renders the overview and owns its keyboard shortcuts, so no shell can restyle or
+    /// re-route window switching.
+    /// </summary>
+    bool ShowWindowOverview();
     void ToggleWindowGroup(AppId appId);
     void ActivateWindow(WindowId windowId);
     void MinimizeWindow(WindowId windowId);

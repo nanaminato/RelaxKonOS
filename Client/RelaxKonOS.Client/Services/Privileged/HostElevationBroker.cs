@@ -76,7 +76,8 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
         return await windows.ShowSystemDialogAsync<bool>(LocalizedText.Get("installation.elevation_title"), dialog =>
         {
             var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("settings.host_time.password") };
-            var error = new TextBlock { Foreground = new SolidColorBrush(Color.Parse("#C42B1C")), TextWrapping = TextWrapping.Wrap };
+            var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
+            RelaxKonOS.UI.Themes.ThemeResources.Bind(error, TextBlock.ForegroundProperty, "DangerBrush");
             var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
             var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
             cancel.Click += (_, _) => { password.Text = string.Empty; dialog.Cancel(); };

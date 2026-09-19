@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using RelaxKonOS.Core.Input;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Core.Windows;
+using RelaxKonOS.UI.Themes.SystemStyle;
 using Rect = RelaxKonOS.Core.Primitives.Rect;
 using Point = RelaxKonOS.Core.Primitives.Point;
 using WindowState = RelaxKonOS.Core.Windows.WindowState;
@@ -28,6 +29,22 @@ public class RemoteWindow : TemplatedControl
 
     public static readonly StyledProperty<bool> ShowContentWhileDraggingProperty =
         AvaloniaProperty.Register<RemoteWindow, bool>(nameof(ShowContentWhileDragging), true);
+
+    /// <summary>
+    /// The active <c>WindowChromeRecipe</c>, mirrored from the host's style resource so the
+    /// template can pick a chrome variant. This is the only place the window manager reads a
+    /// style decision, and it reads a *recipe selector*, never a colour or a style id: an
+    /// application can never influence where its own controls sit.
+    /// </summary>
+    private static readonly StyledProperty<object?> ChromeRecipeProperty =
+        AvaloniaProperty.Register<RemoteWindow, object?>("ChromeRecipe");
+
+    private static readonly string[] ChromePseudoClasses =
+    [
+        ":chrome-caption-buttons-right",
+        ":chrome-traffic-lights-left",
+        ":chrome-headerbar-right",
+    ];
 
     public object? Content
     {
@@ -86,6 +103,7 @@ public class RemoteWindow : TemplatedControl
     {
         ShowShadowProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
         ShowContentWhileDraggingProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateVisualEffects());
+        ChromeRecipeProperty.Changed.AddClassHandler<RemoteWindow>((window, _) => window.UpdateChromeRecipe());
     }
 
     public RemoteWindow()
@@ -100,6 +118,10 @@ public class RemoteWindow : TemplatedControl
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
+
+        // Live-mirror the host's window-chrome recipe. A resource observable (rather than a one-off
+        // lookup) means windows already on screen re-chrome when the user switches system style.
+        Bind(ChromeRecipeProperty, this.GetResourceObservable(SystemStyleRecipeKeys.WindowChrome));
 
         _titleDrag = e.NameScope.Find<Border>("PART_TitleDrag");
         _resizeLayer = e.NameScope.Find<Grid>("PART_ResizeLayer");
@@ -327,6 +349,20 @@ public class RemoteWindow : TemplatedControl
         PseudoClasses.Set(":shadow", ShowShadow);
         if (_contentHost is not null)
             _contentHost.Opacity = ShowContentWhileDragging || (!_dragging && !_resizing) ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Mirrors the recipe value into a pseudo-class. Unknown or missing values clear every chrome
+    /// variant, which leaves the default (Windows-like) template in place.
+    /// </summary>
+    private void UpdateChromeRecipe()
+    {
+        var recipe = GetValue(ChromeRecipeProperty) as string;
+        foreach (var pseudoClass in ChromePseudoClasses)
+            PseudoClasses.Set(pseudoClass, false);
+
+        if (!string.IsNullOrEmpty(recipe))
+            PseudoClasses.Set(":chrome-" + recipe, true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)

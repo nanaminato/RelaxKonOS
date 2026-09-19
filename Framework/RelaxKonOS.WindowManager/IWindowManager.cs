@@ -18,6 +18,14 @@ public interface IWindowManager
     /// <summary>Desktop area available to windows (excludes taskbar etc.).</summary>
     Rect HostBounds { get; }
 
+    /// <summary>
+    /// True while a shell- or system-owned modal flow blocks the whole desktop. Both kinds of
+    /// shell modal block their own desktop host, so the window overview must not open above them:
+    /// a security prompt outranks the task switcher. Application modals are *not* included, because
+    /// they only block their owner and the overview stays a legitimate way to reach other windows.
+    /// </summary>
+    bool IsSystemModalOpen { get; }
+
     /// <summary>Binds the manager to the canvas that physically hosts window visuals.</summary>
     void Attach(Canvas host);
 

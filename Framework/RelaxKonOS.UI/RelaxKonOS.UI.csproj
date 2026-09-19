@@ -16,6 +16,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\RelaxKonOS.Core\RelaxKonOS.Core.csproj" />
+        <ProjectReference Include="..\..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />
     </ItemGroup>
 
 </Project>

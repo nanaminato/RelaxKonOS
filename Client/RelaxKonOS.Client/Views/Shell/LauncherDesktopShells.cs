@@ -113,6 +113,12 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
 
     protected abstract void BuildLayout(DesktopShellViewModel vm);
 
+    /// <summary>
+    /// Shell-facing host commands, available once the shell has been initialized. A shell may only
+    /// ask the host to act; it can never reach the window manager or the system UI layer directly.
+    /// </summary>
+    protected IShellActions? Actions => _context?.Actions;
+
     protected Control Desktop(DesktopShellViewModel vm)
     {
         var workspace = new Grid { ClipToBounds = true };
@@ -191,20 +197,25 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     {
         var panel = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#E61A2333")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#668BA8C7")),
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
             Padding = new Thickness(10), IsVisible = false, Width = 310, MaxHeight = 460,
         };
+        ThemeResources.BindSurface(panel, "SurfaceRaisedBrush", borderKey: "BorderDefaultBrush",
+            borderThicknessKey: "ControlBorderThickness", cornerRadiusKey: "OverlayCornerRadius");
         panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
         var stack = new StackPanel { Spacing = 6 };
-        stack.Children.Add(new TextBlock { Text = label, FontWeight = FontWeight.SemiBold, FontSize = 15, Foreground = Brushes.White });
+        var title = new TextBlock { Text = label, FontWeight = FontWeight.SemiBold, FontSize = 15 };
+        ThemeResources.Bind(title, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        stack.Children.Add(title);
         var apps = new ItemsControl
         {
-            ItemTemplate = new FuncDataTemplate<AppEntryViewModel>((app, _) => new Button
+            ItemTemplate = new FuncDataTemplate<AppEntryViewModel>((app, _) =>
             {
-                Content = app.DisplayName, Command = app.LaunchCommand, HorizontalContentAlignment = HorizontalAlignment.Left,
-                Foreground = Brushes.White,
+                var button = new Button
+                {
+                    Content = app.DisplayName, Command = app.LaunchCommand, HorizontalContentAlignment = HorizontalAlignment.Left,
+                };
+                ThemeResources.Bind(button, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
+                return button;
             }),
         };
         apps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.StartApps)));
@@ -216,16 +227,15 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     {
         var bar = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#E617202D")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#668BA8C7")), BorderThickness = new Thickness(1),
             Padding = new Thickness(5),
         };
+        ThemeResources.BindSurface(bar, "SurfaceRaisedBrush", borderKey: "BorderDefaultBrush", borderThicknessKey: "ControlBorderThickness");
         var stack = new StackPanel { Orientation = vertical ? Orientation.Vertical : Orientation.Horizontal, Spacing = 4 };
         var launcherButton = new Button
         {
             Content = launcherGlyph, Command = vm.ToggleStartCommand, Width = 38, Height = 34,
-            Foreground = Brushes.White,
         };
+        ThemeResources.Bind(launcherButton, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
         ToolTip.SetTip(launcherButton, LocalizedText.Get("shell.launcher.applications", "Applications"));
         stack.Children.Add(launcherButton);
         var groups = new ItemsControl
@@ -234,7 +244,8 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         };
         groups.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
         stack.Children.Add(groups);
-        var showDesktopButton = new Button { Content = "⌄", Command = vm.ShowDesktopCommand, Width = 34, Height = 34, Foreground = Brushes.White };
+        var showDesktopButton = new Button { Content = "⌄", Command = vm.ShowDesktopCommand, Width = 34, Height = 34 };
+        ThemeResources.Bind(showDesktopButton, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
         ToolTip.SetTip(showDesktopButton, LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"));
         stack.Children.Add(showDesktopButton);
         var clock = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0) };
@@ -361,8 +372,9 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         var button = new Button
         {
             Command = vm.ToggleTaskbarGroupCommand, CommandParameter = group,
-            Width = 38, Height = 34, Padding = new Thickness(2), Foreground = Brushes.White,
+            Width = 38, Height = 34, Padding = new Thickness(2),
         };
+        ThemeResources.Bind(button, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
         ToolTip.SetTip(button, group.DisplayName);
         button.Content = group.IconImage is { } image
             ? new Image { Source = image, Width = 22, Height = 22 }
@@ -380,19 +392,17 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
 
 internal sealed class DesktopSelectionBrushConverter : IValueConverter
 {
-    private static readonly IBrush Selected = new SolidColorBrush(Color.Parse("#5279B8F3"));
     public static readonly DesktopSelectionBrushConverter Instance = new();
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is true ? Selected : Brushes.Transparent;
+        value is true ? ThemeResources.Brush("DesktopIconSelectedBrush") : Brushes.Transparent;
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
 internal sealed class DesktopSelectionBorderBrushConverter : IValueConverter
 {
-    private static readonly IBrush Selected = new SolidColorBrush(Color.Parse("#AAFFFFFF"));
     public static readonly DesktopSelectionBorderBrushConverter Instance = new();
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is true ? Selected : Brushes.Transparent;
+        value is true ? ThemeResources.Brush("DesktopIconSelectedBrush") : Brushes.Transparent;
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
@@ -409,7 +419,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
     protected override void BuildLayout(DesktopShellViewModel vm)
     {
         var layout = new WindowsShellLayoutView();
-        layout.Compose(Desktop(vm), WindowsTaskbar(vm), WindowsLauncher(vm));
+        layout.Compose(Desktop(vm), WindowsTaskbar(vm, Actions), WindowsLauncher(vm));
         _root.Children.Add(layout);
     }
 
@@ -433,18 +443,10 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             MaxHeight = 620,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Bottom,
-            Background = new SolidColorBrush(Color.Parse("#F22B2B2B")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#66787878")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(4, 4, 0, 0),
-            BoxShadow = new BoxShadows(new BoxShadow
-            {
-                OffsetX = 0,
-                OffsetY = 8,
-                Blur = 24,
-                Color = Color.Parse("#66000000"),
-            }),
         };
+        ThemeResources.BindSurface(panel, "StartMenuBackgroundBrush", borderKey: "BorderDefaultBrush",
+            borderThicknessKey: "ControlBorderThickness", cornerRadiusKey: "OverlayTopCornerRadius");
+        ThemeResources.Bind(panel, Border.BoxShadowProperty, "ElevationShadow");
         // Keep clicks inside Start available to its controls; only the transparent surrounding
         // area should dismiss the list.
         panel.PointerPressed += (_, eventArgs) => eventArgs.Handled = true;
@@ -475,10 +477,10 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
     {
         var rail = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#33202020")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#337A7A7A")),
             BorderThickness = new Thickness(0, 0, 1, 0),
         };
+        ThemeResources.Bind(rail, Border.BackgroundProperty, "SurfaceSunkenBrush");
+        ThemeResources.Bind(rail, Border.BorderBrushProperty, "BorderSubtleBrush");
         var actions = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto") };
         var settings = WindowsGlyphButton("⚙", LocalizedText.Get("common.settings", "Settings"), vm.OpenSettingsCommand);
         Grid.SetRow(settings, 1);
@@ -499,9 +501,9 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             Text = app.DisplayName,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = Brushes.White,
             FontSize = 13,
         };
+        ThemeResources.Bind(name, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         Grid.SetColumn(name, 1);
         row.Children.Add(name);
 
@@ -519,28 +521,35 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         };
     }
 
-    private static Control WindowsTaskbar(DesktopShellViewModel vm)
+    private static Control WindowsTaskbar(DesktopShellViewModel vm, IShellActions? actions)
     {
         var bar = new Border
         {
-            Height = 46,
-            Background = new SolidColorBrush(Color.Parse("#E6242424")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#557A7A7A")),
             BorderThickness = new Thickness(0, 1, 0, 0),
-            BoxShadow = new BoxShadows(new BoxShadow
-            {
-                OffsetX = 0,
-                OffsetY = -2,
-                Blur = 10,
-                Color = Color.Parse("#33000000"),
-            }),
         };
-        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("48,*,Auto") };
+        ThemeResources.Bind(bar, Control.HeightProperty, "TaskbarHeight");
+        ThemeResources.Bind(bar, Border.BackgroundProperty, "TaskbarBackgroundBrush");
+        ThemeResources.Bind(bar, Border.BorderBrushProperty, "BorderSubtleBrush");
+        ThemeResources.Bind(bar, Border.BoxShadowProperty, "WindowShadow");
+        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        var startArea = new StackPanel { Orientation = Orientation.Horizontal };
         var start = WindowsGlyphButton("⊞", LocalizedText.Get("shell.launcher.start", "Start"), vm.ToggleStartCommand);
         // The taskbar's click-to-dismiss handler must not turn an open Start list straight back
         // on when the user clicks its own launcher button.
         start.PointerPressed += (_, eventArgs) => eventArgs.Handled = true;
-        layout.Children.Add(start);
+        startArea.Children.Add(start);
+
+        // Task View sits next to Start, exactly where Windows 11 puts it. The button only asks the
+        // host to open the overview: the shell never renders or styles the switcher itself.
+        var taskView = WindowsGlyphButton("⧉", LocalizedText.Get("shell.launcher.task_view", "Task view"), null);
+        taskView.Click += (_, _) =>
+        {
+            vm.CloseStartCommand.Execute(null);
+            actions?.ShowWindowOverview();
+        };
+        startArea.Children.Add(taskView);
+
+        layout.Children.Add(startArea);
         layout.PointerPressed += (_, _) => vm.CloseStartCommand.Execute(null);
 
         // Only live window groups are shown here.  There is deliberately no search or
@@ -567,9 +576,11 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(10, 0, 8, 0),
         };
-        var time = new TextBlock { FontSize = 12, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Right };
+        var time = new TextBlock { FontSize = 12, HorizontalAlignment = HorizontalAlignment.Right };
+        ThemeResources.Bind(time, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         time.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
-        var date = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(Color.Parse("#D9FFFFFF")), HorizontalAlignment = HorizontalAlignment.Right };
+        var date = new TextBlock { FontSize = 11, HorizontalAlignment = HorizontalAlignment.Right };
+        ThemeResources.Bind(date, TextBlock.ForegroundProperty, "TextSecondaryBrush");
         date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
         clock.Children.Add(time);
         clock.Children.Add(date);
@@ -601,10 +612,10 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         {
             Height = 3,
             Width = 22,
-            Background = new SolidColorBrush(Color.Parse("#FF4CC2FF")),
             HorizontalAlignment = HorizontalAlignment.Center,
             IsVisible = group.IsActive,
         };
+        ThemeResources.Bind(activeIndicator, Border.BackgroundProperty, "AccentBrush");
         activeIndicator.Bind(Visual.IsVisibleProperty, new Binding(nameof(group.IsActive)));
         Grid.SetRow(activeIndicator, 1);
         content.Children.Add(activeIndicator);
@@ -613,35 +624,36 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             Content = content,
             Command = vm.ToggleTaskbarGroupCommand,
             CommandParameter = group,
-            Width = 46,
-            Height = 46,
             Padding = new Thickness(2),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
+        ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
+        ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
         ToolTip.SetTip(button, group.DisplayName);
         return button;
     }
 
-    private static Button WindowsGlyphButton(string glyph, string tooltip, System.Windows.Input.ICommand command)
+    private static Button WindowsGlyphButton(string glyph, string tooltip, System.Windows.Input.ICommand? command)
     {
+        var glyphText = new TextBlock
+        {
+            Text = glyph,
+            FontSize = 20,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        ThemeResources.Bind(glyphText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         var button = new Button
         {
-            Content = new TextBlock
-            {
-                Text = glyph,
-                FontSize = 20,
-                Foreground = Brushes.White,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            },
+            Content = glyphText,
             Command = command,
-            Width = 48,
-            Height = 46,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
+        ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
+        ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
         ToolTip.SetTip(button, tooltip);
         return button;
     }
@@ -651,7 +663,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
         // A stroked SVG-style power path avoids font fallback rendering the U+23FB glyph as a box.
         var button = new Button
         {
-            Content = ShellIconFactory.Power(Brushes.White, 20),
+            Content = ShellIconFactory.Power("TextPrimaryBrush", 20),
             Command = command,
             Width = 48,
             Height = 46,
@@ -661,17 +673,29 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
         };
+        ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
+        ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
         ToolTip.SetTip(button, LocalizedText.Get("shell.launcher.power", "Power"));
         return button;
     }
 
-    private static Control AppIcon(AppEntryViewModel app, double size) => app.IconImage is { } image
-        ? new Image { Source = image, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center }
-        : new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 4, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
+    private static Control AppIcon(AppEntryViewModel app, double size)
+    {
+        if (app.IconImage is { } image)
+            return new Image { Source = image, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center };
+        var text = new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 4, VerticalAlignment = VerticalAlignment.Center };
+        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        return text;
+    }
 
-    private static Control AppIcon(TaskbarGroupViewModel group, double size) => group.IconImage is { } image
-        ? new Image { Source = image, Width = size, Height = size }
-        : new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 3, Foreground = Brushes.White };
+    private static Control AppIcon(TaskbarGroupViewModel group, double size)
+    {
+        if (group.IconImage is { } image)
+            return new Image { Source = image, Width = size, Height = size };
+        var text = new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 3 };
+        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        return text;
+    }
 }
 
 public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Macos)
@@ -709,11 +733,14 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     {
         var bar = new Border
         {
+            // TopBarHeight (macOS = 28) is smaller than the 35px menu buttons below; binding it
+            // would overflow/clip the buttons. Height stays hardcoded until a menu-button-height
+            // token exists to keep them in sync.
             Height = 36,
-            Background = new SolidColorBrush(Color.Parse("#D9F7F8FA")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#334D5661")),
             BorderThickness = new Thickness(0, 0, 0, 1),
         };
+        ThemeResources.Bind(bar, Border.BackgroundProperty, "SurfaceBrush");
+        ThemeResources.Bind(bar, Border.BorderBrushProperty, "BorderSubtleBrush");
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var menus = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         menus.Children.Add(MacosMenuButton("●", LocalizedText.Get("shell.launcher.launchpad", "Launchpad"), vm.ToggleStartCommand, bold: true));
@@ -728,9 +755,11 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         status.Children.Add(MacosStatusButton("⌂", LocalizedText.Get("shell.launcher.show_desktop", "Show desktop"), vm.ShowDesktopCommand));
         status.Children.Add(MacosStatusButton("⌕", LocalizedText.Get("shell.launcher.open_launchpad", "Open Launchpad"), vm.ToggleStartCommand));
         status.Children.Add(MacosStatusButton("⚙", LocalizedText.Get("shell.launcher.system_settings", "System Settings"), vm.OpenSettingsCommand));
-        var clock = new TextBlock { FontSize = 14, Foreground = new SolidColorBrush(Color.Parse("#17212B")), FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0) };
+        var clock = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0) };
+        ThemeResources.Bind(clock, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         clock.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
-        var date = new TextBlock { FontSize = 14, Foreground = new SolidColorBrush(Color.Parse("#17212B")), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        var date = new TextBlock { FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        ThemeResources.Bind(date, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
         status.Children.Add(clock);
         status.Children.Add(date);
@@ -745,25 +774,19 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     {
         var dock = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#D9F3F5F8")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#80868E99")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(17),
             Padding = new Thickness(6),
-            BoxShadow = new BoxShadows(new BoxShadow
-            {
-                OffsetX = 0,
-                OffsetY = 5,
-                Blur = 16,
-                Color = Color.Parse("#55000000"),
-            }),
         };
+        ThemeResources.BindSurface(dock, "SurfaceRaisedBrush", borderKey: "BorderDefaultBrush",
+            borderThicknessKey: "ControlBorderThickness", cornerRadiusKey: "LauncherCornerRadius");
+        ThemeResources.Bind(dock, Border.BoxShadowProperty, "ElevationShadow");
         var apps = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
         apps.Children.Add(MacosDockButton("explorer", LocalizedText.Get("shell.launcher.files", "Files"), vm.OpenFileExplorerCommand));
         apps.Children.Add(MacosDockButton("terminal", LocalizedText.Get("shell.launcher.terminal", "Terminal"), vm.OpenTerminalCommand));
         apps.Children.Add(MacosDockButton("taskmanager", LocalizedText.Get("shell.launcher.task_manager", "Task Manager"), vm.OpenTaskManagerCommand));
         apps.Children.Add(MacosDockButton("settings", LocalizedText.Get("shell.launcher.system_settings", "System Settings"), vm.OpenSettingsCommand));
-        apps.Children.Add(new Border { Width = 1, Height = 36, Background = new SolidColorBrush(Color.Parse("#6677818C")), Margin = new Thickness(5, 5) });
+        var dockDivider1 = new Border { Width = 1, Height = 36, Margin = new Thickness(5, 5) };
+        ThemeResources.Bind(dockDivider1, Border.BackgroundProperty, "BorderSubtleBrush");
+        apps.Children.Add(dockDivider1);
         var runningApps = new ItemsControl
         {
             ItemsPanel = new FuncTemplate<Panel?>(() => new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 }),
@@ -771,7 +794,9 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         };
         runningApps.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.TaskbarGroups)));
         apps.Children.Add(runningApps);
-        apps.Children.Add(new Border { Width = 1, Height = 36, Background = new SolidColorBrush(Color.Parse("#6677818C")), Margin = new Thickness(5, 5) });
+        var dockDivider2 = new Border { Width = 1, Height = 36, Margin = new Thickness(5, 5) };
+        ThemeResources.Bind(dockDivider2, Border.BackgroundProperty, "BorderSubtleBrush");
+        apps.Children.Add(dockDivider2);
         apps.Children.Add(MacosDockButton("launchpad", LocalizedText.Get("shell.launcher.launchpad", "Launchpad"), vm.ToggleStartCommand));
         dock.Child = apps;
         return dock;
@@ -782,8 +807,8 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         var overlay = new Border
         {
             IsVisible = false,
-            Background = new SolidColorBrush(Color.Parse("#E8202630")),
         };
+        ThemeResources.Bind(overlay, Border.BackgroundProperty, "OverlayScrimBrush");
         overlay.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
         overlay.PointerPressed += (_, _) => vm.CloseStartCommand.Execute(null);
         var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 26, Margin = new Thickness(80, 58, 80, 78) };
@@ -794,8 +819,8 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             PlaceholderText = LocalizedText.Get("shell.launcher.search_applications", "Search applications"),
             FontSize = 14,
             HorizontalAlignment = HorizontalAlignment.Center,
-            CornerRadius = new CornerRadius(10),
         };
+        ThemeResources.Bind(search, TextBox.CornerRadiusProperty, "OverlayCornerRadius");
         search.Bind(TextBox.TextProperty, new Binding(nameof(vm.StartSearchQuery)) { Mode = BindingMode.TwoWay });
         search.PointerPressed += (_, eventArgs) => eventArgs.Handled = true;
         layout.Children.Add(search);
@@ -828,7 +853,6 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         var name = new TextBlock
         {
             Text = app.DisplayName,
-            Foreground = Brushes.White,
             FontSize = 12,
             MaxLines = 2,
             MaxWidth = 100,
@@ -837,6 +861,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             TextWrapping = TextWrapping.Wrap,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
+        ThemeResources.Bind(name, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         Grid.SetRow(name, 1);
         content.Children.Add(name);
         var button = new Button
@@ -862,7 +887,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
         var icon = MacosIcon(group, 31);
         icon.HorizontalAlignment = HorizontalAlignment.Center;
         icon.VerticalAlignment = VerticalAlignment.Center;
-        var button = MacosInteractiveButton(icon, vm.ToggleTaskbarGroupCommand, group, 44, group.DisplayName);
+        var button = MacosInteractiveButton(icon, vm.ToggleTaskbarGroupCommand, group, group.DisplayName);
         return button;
     }
 
@@ -878,23 +903,23 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Stretch = Stretch.Uniform,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-        }, command, null, 44, tooltip);
+        }, command, null, tooltip);
     }
 
     /// <summary>Creates a static macOS Dock button.</summary>
-    private static Button MacosInteractiveButton(Control content, System.Windows.Input.ICommand command, object? parameter, double size, string tooltip)
+    private static Button MacosInteractiveButton(Control content, System.Windows.Input.ICommand command, object? parameter, string tooltip)
     {
         var button = new Button
         {
             Content = content,
             Command = command,
             CommandParameter = parameter,
-            Width = size,
-            Height = size,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
+        ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
+        ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
         ToolTip.SetTip(button, tooltip);
         return button;
     }
@@ -909,13 +934,13 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Padding = new Thickness(8, 0),
             FontSize = 14,
             FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
-            Foreground = new SolidColorBrush(Color.Parse("#17212B")),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
             VerticalAlignment = VerticalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
             HorizontalContentAlignment = HorizontalAlignment.Center,
         };
+        ThemeResources.Bind(button, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
         ToolTip.SetTip(button, tooltip);
         return button;
     }
@@ -949,12 +974,12 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             Height = 35,
             Padding = new Thickness(0),
             FontSize = 20,
-            Foreground = new SolidColorBrush(Color.Parse("#17212B")),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
             VerticalContentAlignment = VerticalAlignment.Center,
             HorizontalContentAlignment = HorizontalAlignment.Center,
         };
+        ThemeResources.Bind(button, Avalonia.Controls.Documents.TextElement.ForegroundProperty, "TextPrimaryBrush");
         ToolTip.SetTip(button, tooltip);
         return button;
     }
@@ -962,17 +987,27 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
     private static Button MacosPowerButton(System.Windows.Input.ICommand command)
     {
         var button = MacosStatusButton(string.Empty, LocalizedText.Get("shell.launcher.power", "Power"), command);
-        button.Content = ShellIconFactory.Power(new SolidColorBrush(Color.Parse("#17212B")), 20);
+        button.Content = ShellIconFactory.Power("TextPrimaryBrush", 20);
         return button;
     }
 
-    private static Control MacosIcon(AppEntryViewModel app, double size) => app.IconImage is { } image
-        ? new Image { Source = image, Width = size, Height = size }
-        : new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 6, Foreground = Brushes.White };
+    private static Control MacosIcon(AppEntryViewModel app, double size)
+    {
+        if (app.IconImage is { } image)
+            return new Image { Source = image, Width = size, Height = size };
+        var text = new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 6 };
+        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        return text;
+    }
 
-    private static Control MacosIcon(TaskbarGroupViewModel group, double size) => group.IconImage is { } image
-        ? new Image { Source = image, Width = size, Height = size }
-        : new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 4, Foreground = new SolidColorBrush(Color.Parse("#17212B")) };
+    private static Control MacosIcon(TaskbarGroupViewModel group, double size)
+    {
+        if (group.IconImage is { } image)
+            return new Image { Source = image, Width = size, Height = size };
+        var text = new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 4 };
+        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        return text;
+    }
 }
 
 public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInShells.Ubuntu)
@@ -1018,8 +1053,8 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             IsVisible = false,
             // The overview deliberately consumes the desktop work area.  It does not reserve
             // space for workspace thumbnails: this shell exposes an application-only search.
-            Background = new SolidColorBrush(Color.Parse("#F216181B")),
         };
+        ThemeResources.Bind(panel, Border.BackgroundProperty, "SurfaceRaisedBrush");
         panel.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsStartOpen)));
 
         var layout = new Grid
@@ -1061,26 +1096,32 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
     {
         var bar = new Border
         {
+            // TopBarHeight (Ubuntu = 32) is smaller than the 38px top-bar buttons below; binding
+            // it would overflow/clip them. Height stays hardcoded until a matching button-height
+            // token exists.
             Height = 40,
-            Background = new SolidColorBrush(Color.Parse("#F0141517")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#442F3338")),
             BorderThickness = new Thickness(0, 0, 0, 1),
         };
+        ThemeResources.Bind(bar, Border.BackgroundProperty, "SurfaceBrush");
+        ThemeResources.Bind(bar, Border.BorderBrushProperty, "BorderSubtleBrush");
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,*") };
-        layout.Children.Add(new TextBlock
+        var topBarTitle = new TextBlock
         {
             Text = "RelaxKonOS",
             Margin = new Thickness(14, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = Brushes.White,
             FontSize = 14,
             FontWeight = FontWeight.SemiBold,
-        });
+        };
+        ThemeResources.Bind(topBarTitle, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        layout.Children.Add(topBarTitle);
 
         var clock = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        var date = new TextBlock { Foreground = Brushes.White, FontSize = 14 };
+        var date = new TextBlock { FontSize = 14 };
+        ThemeResources.Bind(date, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         date.Bind(TextBlock.TextProperty, new Binding(nameof(vm.DateText)));
-        var time = new TextBlock { Foreground = Brushes.White, FontSize = 14, FontWeight = FontWeight.SemiBold };
+        var time = new TextBlock { FontSize = 14, FontWeight = FontWeight.SemiBold };
+        ThemeResources.Bind(time, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         time.Bind(TextBlock.TextProperty, new Binding(nameof(vm.Clock)));
         clock.Children.Add(date);
         clock.Children.Add(time);
@@ -1111,10 +1152,10 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         var dock = new Border
         {
             Width = 60,
-            Background = new SolidColorBrush(Color.Parse("#EE121416")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#55363A3E")),
             BorderThickness = new Thickness(0, 0, 1, 0),
         };
+        ThemeResources.Bind(dock, Border.BackgroundProperty, "SurfaceSunkenBrush");
+        ThemeResources.Bind(dock, Border.BorderBrushProperty, "BorderSubtleBrush");
         var actions = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,*,Auto") };
         actions.Children.Add(UbuntuDockButton("explorer", LocalizedText.Get("shell.launcher.files", "Files"), vm.OpenFileExplorerCommand));
         var terminal = UbuntuDockButton("terminal", LocalizedText.Get("shell.launcher.terminal", "Terminal"), vm.OpenTerminalCommand);
@@ -1144,7 +1185,6 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
         var name = new TextBlock
         {
             Text = app.DisplayName,
-            Foreground = Brushes.White,
             FontSize = 12,
             MaxLines = 2,
             MaxWidth = 110,
@@ -1153,6 +1193,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             TextWrapping = TextWrapping.Wrap,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
+        ThemeResources.Bind(name, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         Grid.SetRow(name, 1);
         content.Children.Add(name);
         return new Button
@@ -1179,6 +1220,8 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             Content = icon,
             Command = vm.ToggleTaskbarGroupCommand,
             CommandParameter = group,
+            // Sits in the top bar (not the dock); TaskbarIconSize would overflow the bar and is
+            // semantically a dock/taskbar token, so the size stays hardcoded.
             Width = 36,
             Height = 38,
             Padding = new Thickness(0),
@@ -1205,28 +1248,29 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
                 VerticalAlignment = VerticalAlignment.Center,
             },
             Command = command,
-            Width = 60,
-            Height = 52,
             Padding = new Thickness(0),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
         };
+        ThemeResources.Bind(button, Control.WidthProperty, "TaskbarIconSize");
+        ThemeResources.Bind(button, Control.HeightProperty, "TaskbarIconSize");
         ToolTip.SetTip(button, tooltip);
         return button;
     }
 
     private static Button UbuntuTopButton(string glyph, string tooltip, System.Windows.Input.ICommand command)
     {
+        var glyphText = new TextBlock
+        {
+            Text = glyph,
+            FontSize = 18,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        ThemeResources.Bind(glyphText, TextBlock.ForegroundProperty, "TextPrimaryBrush");
         var button = new Button
         {
-            Content = new TextBlock
-            {
-                Text = glyph,
-                FontSize = 18,
-                Foreground = Brushes.White,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            },
+            Content = glyphText,
             Command = command,
             Width = 34,
             Height = 38,
@@ -1241,17 +1285,27 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
     private static Button UbuntuPowerButton(System.Windows.Input.ICommand command)
     {
         var button = UbuntuTopButton(string.Empty, LocalizedText.Get("shell.launcher.power", "Power"), command);
-        button.Content = ShellIconFactory.Power(Brushes.White, 18);
+        button.Content = ShellIconFactory.Power("TextPrimaryBrush", 18);
         return button;
     }
 
-    private static Control UbuntuAppIcon(AppEntryViewModel app, double size) => app.IconImage is { } image
-        ? new Image { Source = image, Width = size, Height = size }
-        : new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 5, Foreground = Brushes.White };
+    private static Control UbuntuAppIcon(AppEntryViewModel app, double size)
+    {
+        if (app.IconImage is { } image)
+            return new Image { Source = image, Width = size, Height = size };
+        var text = new TextBlock { Text = app.IconGlyph ?? "◼", FontSize = size - 5 };
+        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        return text;
+    }
 
-    private static Control UbuntuAppIcon(TaskbarGroupViewModel group, double size) => group.IconImage is { } image
-        ? new Image { Source = image, Width = size, Height = size }
-        : new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 3, Foreground = Brushes.White };
+    private static Control UbuntuAppIcon(TaskbarGroupViewModel group, double size)
+    {
+        if (group.IconImage is { } image)
+            return new Image { Source = image, Width = size, Height = size };
+        var text = new TextBlock { Text = group.IconGlyph ?? "◼", FontSize = size - 3 };
+        ThemeResources.Bind(text, TextBlock.ForegroundProperty, "TextPrimaryBrush");
+        return text;
+    }
 }
 
 public static class BuiltInShells
@@ -1265,15 +1319,15 @@ public static class BuiltInShells
 /// <summary>Shared vector controls for the built-in shell chrome.</summary>
 internal static class ShellIconFactory
 {
-    public static Viewbox Power(IBrush foreground, double size)
+    public static Viewbox Power(string resourceKey, double size)
     {
         var icon = new VectorPath
         {
             Data = StreamGeometry.Parse("M 12,2 L 12,11 M 7.05,5.05 A 7,7 0 1 0 16.95,5.05"),
-            Stroke = foreground,
             StrokeThickness = 2,
             StrokeLineCap = PenLineCap.Round,
         };
+        icon.Bind(VectorPath.StrokeProperty, icon.GetResourceObservable(resourceKey));
         return new Viewbox { Width = size, Height = size, Child = icon };
     }
 }

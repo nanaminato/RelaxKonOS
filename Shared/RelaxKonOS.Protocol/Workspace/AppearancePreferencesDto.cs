@@ -1,18 +1,24 @@
 using System.Text.Json.Serialization;
+using RelaxKonOS.Protocol.Desktop;
 
 namespace RelaxKonOS.Protocol.Workspace;
 
-/// <summary>Workspace-synchronised theme choice. Palettes are data only; no AXAML is accepted.</summary>
-public sealed record ThemePreferencesDto
+/// <summary>
+/// Workspace-synchronised appearance choice: light/dark mode, palette and accent only.
+/// Palettes are data only; no AXAML is accepted. Shape, sizing, motion and control templates are
+/// deliberately absent here and belong to <see cref="SystemStyles.SystemStyleManifestDto"/>, so
+/// choosing a colour can never change a menu layout and choosing a style can never change a colour.
+/// </summary>
+public sealed record AppearancePreferencesDto
 {
     public const string DefaultPaletteId = "builtin:relaxkonos-blue";
 
-    [JsonPropertyName("styleId")] public string StyleId { get; set; } = "relaxkonos";
+    [JsonPropertyName("mode")] public ThemeKind Mode { get; set; } = ThemeKind.Light;
     [JsonPropertyName("paletteId")] public string PaletteId { get; set; } = DefaultPaletteId;
     [JsonPropertyName("accentOverride")] public string? AccentOverride { get; set; }
     [JsonPropertyName("customPalettes")] public List<ThemePaletteDto> CustomPalettes { get; set; } = [];
 
-    public static ThemePreferencesDto Default => new();
+    public static AppearancePreferencesDto Default => new();
 }
 
 /// <summary>Safe, serialisable palette payload. It intentionally contains only named sRGB values.</summary>

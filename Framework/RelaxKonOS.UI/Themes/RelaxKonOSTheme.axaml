@@ -3,6 +3,8 @@
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="avares://RelaxKonOS.UI/Themes/Tokens/TokenContract.axaml" />
+        <ResourceInclude Source="avares://RelaxKonOS.UI/Themes/Tokens/SystemStyleTokens.axaml" />
+        <ResourceInclude Source="avares://RelaxKonOS.UI/Themes/Controls/ControlThemeOverrides.axaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>

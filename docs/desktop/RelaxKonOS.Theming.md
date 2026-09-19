@@ -1,7 +1,9 @@
 # RelaxKonOS 主题与配色系统设计
 
-> **状态：实施前设计 / 后续主题化工作的唯一执行规范。** 本文把现有零散的浅色样式与仅影响 Shell 局部的 `Light / Dark / System` 偏好，升级为可运行时切换、可同步、可扩展的全局主题系统。
+> **状态：实施前设计 / 配色与调色板的执行规范。** 本文把现有零散的浅色样式与仅影响 Shell 局部的 `Light / Dark / System` 偏好，升级为可运行时切换、可同步、可扩展的全局主题系统。
 >
+> - **形状、尺寸与动效不属于本文**，已拆分为独立的系统风格层，见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)（Phase 1 已实施）。本文只负责**颜色**：模式、调色板与强调色。
+> - 运行时服务名为 `AppearanceService`（`ThemeService` 已删除）；偏好字段为 `DesktopExperience.Appearance`（`ThemePreferencesDto` 已删除）。
 > - 设置中心和 Workspace 偏好模型见 [`RelaxKonOS.Settings.md`](./RelaxKonOS.Settings.md)。
 > - 桌面外壳和窗口系统见 [`RelaxKonOS.Desktop.md`](./RelaxKonOS.Desktop.md)。
 > - 当前共享样式入口是 [`Styles.axaml`](../../Framework/RelaxKonOS.UI/Themes/Styles.axaml)，应用入口是 [`App.axaml`](../../Client/RelaxKonOS.Client/App.axaml)。
@@ -17,10 +19,10 @@ RelaxKonOS 需要让用户在不重启应用的情况下改变整个桌面、窗
 | 层 | 决定什么 | v1 决策 |
 |---|---|---|
 | **外观模式**（Appearance mode） | 浅色、深色，或跟随本机系统 | `Light` / `Dark` / `System`，沿用并扩展现有 `ThemeKind` |
-| **视觉样式**（Visual style） | 控件形状、圆角、间距、字体、阴影、控件模板与动画 | v1 固定为 `relaxkonos`；预留 `StyleId`，不在首期实现 Fluent / Compact 等第二套控件模板 |
+| **视觉样式**（Visual style） | 控件形状、圆角、间距、字体、阴影、控件模板与动画 | **已拆分为独立的系统风格层**，由 `SystemStyleManifestDto` + recipe 决定，见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。本文不再承载形状，也不再用 `StyleId` |
 | **调色板**（Palette） | 语义颜色及其派生状态色 | 内置 RelaxKonOS Blue、Nord、Catppuccin；支持用户导入的 JSON 调色板与单独强调色覆盖 |
 
-换言之：**视觉样式决定“长什么样”，调色板决定“用什么颜色”，外观模式决定选取浅色或深色变体。**
+换言之：**视觉样式决定“长什么样”，调色板决定“用什么颜色”，外观模式决定选取浅色或深色变体。** 前两者现在是两个独立字段，可自由组合。
 
 ### 1.1 v1 必须完成
 
@@ -35,7 +37,7 @@ RelaxKonOS 需要让用户在不重启应用的情况下改变整个桌面、窗
 - 不允许主题包提供或动态加载 `.axaml`、C#、程序集、字体或任意资源 URI。
 - 不将终端 ANSI 配色、代码编辑器语法高亮、网页内容配色强行改为桌面调色板；它们是应用特定设置。后续可让它们提供“跟随桌面”的可选模式。
 - `NativeWebView` 内网页及操作系统原生标题栏不保证可主题化；RelaxKonOS 自己绘制的宿主区域必须主题化。
-- 不在首期提供第二个完整的控件形状体系。增加 `StyleId` 只是避免未来破坏存储模型。
+- 不在首期提供第二个完整的控件形状体系；形状已改由独立的系统风格层承载（见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)）。本文只负责颜色，不再保留 `StyleId`。
 
 ---
 
@@ -43,7 +45,7 @@ RelaxKonOS 需要让用户在不重启应用的情况下改变整个桌面、窗
 
 当前项目已具备以下基础：
 
-- `ThemeKind` 已定义 `Light`、`Dark`、`System`，并存储于 `WorkspacePreferencesDto.Theme`。
+- `ThemeKind` 已定义 `Light`、`Dark`、`System`，现存储于 `WorkspacePreferencesDto.DesktopExperience.Appearance.Mode`（顶层 `Theme` 字段已随系统风格拆分删除）。
 - `ShellSettings` 会同步该字段，但现在仅用它计算任务栏和开始菜单的局部颜色；`App.axaml` 仍固定 `RequestedThemeVariant="Light"`。
 - `RelaxKonOS.UI/Themes/Styles.axaml` 已包含一组共享资源，但主要为浅色且用 `StaticResource`；`RemoteWindowTheme.axaml`、Shell 和应用页面仍有大量直接十六进制颜色。
 - 现有 AXAML 中约有 **603** 个十六进制色值（统计命令：`rg -o '#[0-9a-fA-F]{3,8}\\b' --glob '*.axaml'`）。这意味着本工作是全量迁移，不应通过为现有页面再复制一套 `Dark.axaml` 来完成。
@@ -56,13 +58,14 @@ RelaxKonOS 需要让用户在不重启应用的情况下改变整个桌面、窗
 
 ```text
 Settings / PreferencesSync
-            │ ThemePreferences
+            │ DesktopExperience（Appearance + SystemStyleId）
             ▼
-     ThemeService (Client singleton)
+     AppearanceService (Client singleton)
             │  设置 RequestedThemeVariant
-            │  替换运行时 Palette ResourceDictionary
+            │  原子替换 Palette ResourceDictionary（颜色）
+            │             + Style  ResourceDictionary（形状，见 SystemStyle.md）
             ▼
- Application.Resources + ThemeDictionaries
+ Application.Resources.MergedDictionaries
             │
             ▼ DynamicResource
   RelaxKonOS.UI styles / WindowManager / Shell / Apps
@@ -75,9 +78,9 @@ Settings / PreferencesSync
 
 1. 只用 Avalonia 的 `ThemeVariant.Light`、`ThemeVariant.Dark`、`ThemeVariant.Default` 表示模式。`Default` 交给 Avalonia 跟随系统。
 2. 不为每个调色板创建自定义 `ThemeVariant`。调色板不是系统外观变体；把 Nord、Catppuccin 等注册为 ThemeVariant 会使模式、回退与第三方 Fluent 资源的组合复杂化。
-3. 会在运行时改变的颜色、画刷、尺寸、圆角、阴影等，引用一律使用 `{DynamicResource TokenName}`。`StaticResource` 只可用于真正的常量（例如字体列表）或不会随着主题改变的内部引用。
+3. 会在运行时改变的颜色、画刷一律使用 `{DynamicResource TokenName}`。`StaticResource` 只可用于真正的常量（例如字体列表）或不会随着主题改变的内部引用。**尺寸、圆角、阴影与动效不属于本文的颜色契约**，它们由系统风格令牌提供，同样必须动态引用（见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)）。
 4. 控件与业务页面只能引用**语义令牌**，不能引用品牌原色（如 `Blue500`）或 `#0078D4`。页面表达用途而不是调色板的实现细节。
-5. `ThemeService.ApplyAsync` 必须在 Avalonia UI 线程上原子地更新资源，并先验证完整候选调色板。无论失败位置在哪里，都保留上一次有效资源或默认调色板。
+5. `AppearanceService` 必须在 Avalonia UI 线程上原子地更新资源，并先验证完整候选调色板。无论失败位置在哪里，都保留上一次有效资源或默认调色板；形状资源同理保留上一套已验证的风格。
 
 ### 3.2 资源所有权与目录布局
 
@@ -88,11 +91,14 @@ Framework/RelaxKonOS.UI/
 └── Themes/
     ├── RelaxKonOSTheme.axaml              # 汇总入口：基础样式、令牌定义与控件样式
     ├── Tokens/
-    │   ├── TokenContract.axaml          # 令牌键与安全默认值
+    │   ├── TokenContract.axaml          # 颜色无关的常量（ControlPadding / ContentFont / ContentFontSize）
+    │   ├── SystemStyleTokens.axaml      # 形状/尺寸/动效默认值（系统风格层，已实施）
     │   ├── LightDefaults.axaml          # RelaxKonOS Blue 的浅色默认值
     │   └── DarkDefaults.axaml           # RelaxKonOS Blue 的深色默认值
+    ├── SystemStyle/
+    │   └── SystemStyleResourceBuilder.cs # 清单 → Avalonia 资源（已实施）
     ├── Styles/
-    │   ├── Foundations.axaml            # 字体、间距、圆角、阴影、动画
+    │   ├── Foundations.axaml            # 字体、间距与共享基础
     │   ├── Controls.axaml               # Button、TextBox、ListBox、菜单等
     │   └── Helpers.axaml                # card / surface / title 等语义类
     └── Palettes/
@@ -102,17 +108,17 @@ Framework/RelaxKonOS.UI/
 
 Client/RelaxKonOS.Client/
 ├── Services/Theming/
-│   ├── ThemeService.cs
-│   ├── ThemePreferences.cs
+│   ├── AppearanceService.cs            # 颜色 + 形状的原子应用（取代已删除的 ThemeService）
+│   ├── SystemStyleRegistry.cs          # 设备本地解析 SystemStyleId
 │   ├── ThemePalette.cs
 │   ├── ThemePaletteValidator.cs
 │   ├── ThemePaletteRepository.cs
 │   └── AccentColorGenerator.cs
 └── Apps/Settings/Views/Pages/
-    └── PersonalizationPageView.axaml    # 模式、调色板、强调色和导入/导出 UI
+    └── PersonalizationPageView.axaml    # 颜色与模式 / 系统风格 / 桌面布局 三卡片
 ```
 
-`RelaxKonOS.UI` 只拥有资源契约和共享控件样式；它不得依赖 Client 的存储或服务。`RelaxKonOS.WindowManager` 只消费令牌，不自建窗口颜色。`Client` 负责选择、加载、验证、持久化和注入当前调色板。
+`RelaxKonOS.UI` 只拥有资源契约和共享控件样式；它不得依赖 Client 的存储或服务。`RelaxKonOS.WindowManager` 只消费令牌，不自建窗口颜色。`Client` 负责选择、加载、验证、持久化和注入当前调色板与系统风格。
 
 ---
 
@@ -134,7 +140,7 @@ Client/RelaxKonOS.Client/
 | 桌面与窗口 | `TaskbarBackground`、`TaskbarForeground`、`StartMenuBackground`、`WindowFrameBackground`、`WindowTitleBarBackground`、`WindowTitleForeground`、`WindowInactiveTitleForeground` |
 | 透明层 | `OverlayScrim`、`DialogScrim`、`ShadowColor`、`DesktopIconHover`、`DesktopIconSelected` |
 
-还应提供这些非颜色令牌：`ControlCornerRadius`、`OverlayCornerRadius`、`WindowCornerRadius`、`ControlHeight`、`ControlPadding`、`ContentFont`、`ContentFontSize`、`ElevationLow`、`ElevationMedium`、`TransitionFast`。v1 可以让所有调色板共享这些数值，但必须通过动态资源引用，以便未来 `StyleId` 能接管它们。
+还应有这些非颜色令牌：`ControlPadding`、`ContentFont`、`ContentFontSize`（保留在 `TokenContract.axaml`）。原本列在此处的 `ControlCornerRadius`、`OverlayCornerRadius`、`WindowCornerRadius`、`ControlHeight`、`TransitionFast` **已移交系统风格层**，作为 `SystemStyleTokenContract` 的令牌实现；`ElevationLow` / `ElevationMedium` 尚未实现（阴影目前由风格的 `WindowShadowDepth` / `WindowShadowOpacity` 与调色板 `Shadow` 合成）。颜色契约不再定义任何形状数值。
 
 ### 4.2 使用示例
 
@@ -214,19 +220,21 @@ Client/RelaxKonOS.Client/
 
 ### 5.3 存储与协议演进
 
-现有 `WorkspacePreferencesDto.Theme` 继续表示外观模式，避免破坏已有客户端。新增一个可选 `ThemePreferences` 对象，旧服务端或旧 JSON 缺失它时使用默认值：
+**已落地（随系统风格 Phase 1 一并完成）**：顶层 `Theme` 与 `ThemePreferences` 已删除，颜色收敛为 `DesktopExperience.Appearance`，形状收敛为 `DesktopExperience.SystemStyleId`，`ThemePreferencesDto` 亦已删除。按 `AGENTS.md` 的首发前政策，没有保留别名、旧字段或双格式解析。
 
 ```text
 WorkspacePreferencesDto
-├── Theme: ThemeKind                         # 现有：Light / Dark / System
-└── ThemePreferences: ThemePreferencesDto?   # 新增
-    ├── StyleId: "relaxkonos"
-    ├── PaletteId: "builtin:relaxkonos-blue" | "custom:<id>"
-    ├── AccentOverride: "#RRGGBB"?
-    └── CustomPalettes: List<ThemePaletteDto>
+└── DesktopExperience: DesktopExperiencePreferencesDto?
+    ├── Appearance: AppearancePreferencesDto        # 本文负责
+    │   ├── Mode: Light | Dark | System
+    │   ├── PaletteId: "builtin:relaxkonos-blue" | "custom:<id>"
+    │   ├── AccentOverride: "#RRGGBB"?
+    │   └── CustomPalettes: List<ThemePaletteDto>
+    ├── SystemStyleId: "relaxkonos.windows-like"    # 见 RelaxKonOS.SystemStyle.md
+    └── Shell: ShellSelectionDto
 ```
 
-`ThemePreferencesDto`、`ThemePaletteDto` 与 API 端校验放入 `Shared/RelaxKonOS.Protocol` / `RelaxKonOS.Server`，同现有 Workspace Preferences 的 `OwnsOne + ToJson` 模式。迁移时应读取旧偏好并以默认 `ThemePreferences` 补全；写回时保留所有既有偏好字段。主题选择是 Workspace 级数据，和壁纸相同随账号工作区同步。
+`AppearancePreferencesDto`、`ThemePaletteDto` 与 API 端校验位于 `Shared/RelaxKonOS.Protocol` / `RelaxKonOS.Server`，同现有 Workspace Preferences 的 `OwnsOne + ToJson` 模式。**本字段内不含任何形状/圆角/动效值**，因此改配色永远不会改变菜单布局或窗口控制按钮位置。颜色选择是 Workspace 级数据，和壁纸相同随账号工作区同步。
 
 ---
 
@@ -234,16 +242,23 @@ WorkspacePreferencesDto
 
 以下阶段按顺序实施。每一阶段应保持可编译，并在完成后进行本阶段验证；不要先大范围替换颜色而没有运行时资源基础。
 
+> **实施进度（2026-09-19）**：系统风格 Phase 1 已同时落地了本计划的部分前置条件——
+> 资源汇总入口 `RelaxKonOSTheme.axaml`、`AppearanceService`（取代 `ThemeService`）、
+> 可替换的调色板与现代风格 `ResourceDictionary`、`Bootstrapper` 注册、设置页三卡片拆分。
+> **颜色本身的迁移尚未开始**：本文 Phase 2–5 的全部颜色工作仍待执行。
+> 但请注意 Phase 2 中 `RemoteWindowTheme.axaml` 的**形状**维度（标题栏高度、外框厚度、非活动透明度、阴影）
+> 已改由系统风格令牌驱动，颜色维度仍待迁移。
+
 ### Phase 0 — 基线与防护
 
-1. 记录硬编码颜色清单，分别统计 AXAML 与 C#（C# 的 `Color.Parse`、`Brushes.*`、`new SolidColorBrush` 也在范围内）。
+1. 记录硬编码颜色清单，分别统计 AXAML 与 C#（C# 的 `Color.Parse`、`Brushes.*`、`new SolidColorBrush` 也在范围内）。系统风格 Phase 1 已记录一份 2026-09-19 基线，见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md) §2。
 2. 在贡献规范或 CI 中加入检查：除 `Themes/`、测试资源、示例调色板和图片数据外，禁止新出现 `#[0-9A-Fa-f]` 的产品 UI 颜色。
 3. 标出第三方控件和原生控件的不可控区域，避免把它们误报为迁移遗漏。
 
 ### Phase 1 — 契约、默认资源与服务
 
 1. 建立第 3.2 节的资源布局，提供完整浅/深 RelaxKonOS Blue 令牌；将 `App.axaml` 引用切换到新汇总入口。
-2. 实现 `ThemeService`：读取 `ShellSettings`，把 `ThemeKind.Light/Dark/System` 映射到 Avalonia `RequestedThemeVariant`，并将当前调色板的语义令牌写入专用、可替换的 `ResourceDictionary`。
+2. 实现 `AppearanceService`（已落地）：读取 `ShellSettings`，把 `ThemeKind.Light/Dark/System` 映射到 Avalonia `RequestedThemeVariant`，并将当前调色板的语义令牌写入专用、可替换的 `ResourceDictionary`；形状令牌写入另一个独立字典，两者原子交换。
 3. 在 `Bootstrapper` 注册 singleton，并保证 PreferencesSync 在初始偏好加载和后续保存后调用服务。订阅设置变化时防抖持久化，但 UI 立即更新。
 4. 令牌缺失、JSON 解析异常、资源注入异常均回退 `builtin:relaxkonos-blue`；记录可诊断日志，不把用户输入显示为异常堆栈。
 
@@ -294,6 +309,6 @@ WorkspacePreferencesDto
 
 后续使用 Goal 模式实施时，将本文件作为任务规范，并使用以下目标：
 
-> 依据 `docs/desktop/RelaxKonOS.Theming.md` 完成 RelaxKonOS 的全局主题与配色系统。严格按 Phase 0–5 执行：建立 Avalonia 动态语义资源和 ThemeService，迁移所有自有 UI 的硬编码颜色，扩展 Workspace 偏好与个性化设置以支持模式、内置调色板、Accent 覆盖和安全 JSON 自定义调色板；完成构建、扫描与 Light/Dark/System 验证。不要动态加载用户 AXAML，不要改变终端或网页内容的独立配色语义。
+> 依据 `docs/desktop/RelaxKonOS.Theming.md` 完成 RelaxKonOS 的全局**颜色**与配色系统。严格按 Phase 0–5 执行：建立 Avalonia 动态语义**颜色**资源和 `AppearanceService`，迁移所有自有 UI 的硬编码颜色，扩展 Workspace 偏好与个性化设置以支持模式、内置调色板、Accent 覆盖和安全 JSON 自定义调色板；完成构建、扫描与 Light/Dark/System 验证。不要动态加载用户 AXAML，不要改变终端或网页内容的独立配色语义。**形状、尺寸与动效请勿在此实现**——它们属于 `docs/desktop/RelaxKonOS.SystemStyle.md`。
 
 实施前应先重新检查本文所引用文件和硬编码色统计，因为项目可能已发生变化；本文中的路径、令牌契约、边界和验收标准则为约束性要求。

@@ -4,8 +4,8 @@
  Background="{DynamicResource SurfaceBrush}" Width="760">
   <UserControl.Styles>
     <Style Selector="ListBox.windows-environment-list > ListBoxItem:selected">
-      <Setter Property="Background" Value="#CFE8FF" />
-      <Setter Property="BorderBrush" Value="#4A90C2" />
+      <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource FocusBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
   </UserControl.Styles>

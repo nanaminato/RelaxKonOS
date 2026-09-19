@@ -470,7 +470,8 @@ The client will open a login dialog. Enter your host system username and passwor
 |----------|-------------|
 | [RelaxKonOS.Desktop.md](./docs/desktop/RelaxKonOS.Desktop.md) | Desktop shell, window control, modal dialogs, keyboard routing |
 | [RelaxKonOS.Settings.md](./docs/desktop/RelaxKonOS.Settings.md) | Settings center, preference persistence, multi-device sync |
-| [RelaxKonOS.Theming.md](./docs/desktop/RelaxKonOS.Theming.md) | Theme system, palettes, and appearance customization |
+| [RelaxKonOS.Theming.md](./docs/desktop/RelaxKonOS.Theming.md) | Colour contract: mode, palettes, and accent |
+| [RelaxKonOS.SystemStyle.md](./docs/desktop/RelaxKonOS.SystemStyle.md) | System style: shape tokens, recipes, and three built-in profiles |
 | [RelaxKonOS.Localization.md](./docs/desktop/RelaxKonOS.Localization.md) | Multi-language mechanism, language pack structure |
 
 ### Built-in Applications

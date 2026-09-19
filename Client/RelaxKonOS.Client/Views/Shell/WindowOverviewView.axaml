@@ -1,0 +1,183 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:su="clr-namespace:RelaxKonOS.Client.Services.SystemUi"
+             x:Class="RelaxKonOS.Client.Views.Shell.WindowOverviewView"
+             x:DataType="su:SystemUiCoordinator"
+             x:CompileBindings="True"
+             Focusable="True">
+    <!-- Host-reviewed system surface. Every colour comes from the active palette, every shape and
+         motion from the active system style, and the three task-switcher recipes differ only in the
+         `recipe-*` class applied to PART_Root by code-behind. No application participates. -->
+    <UserControl.Styles>
+        <!-- ── Card shell ───────────────────────────────────────────────────────────── -->
+        <Style Selector="Border.overview-card">
+            <Setter Property="Margin" Value="10" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="{DynamicResource OverviewCardBorderThickness}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource OverviewCardRadius}" />
+            <Setter Property="BoxShadow" Value="{DynamicResource ElevationShadow}" />
+        </Style>
+        <!-- The pointer is always over the card's own open-button, and therefore over the card. -->
+        <Style Selector="Border.overview-card:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+        </Style>
+        <!-- Selected outranks hover, so the highlight does not flicker while the pointer moves. -->
+        <Style Selector="Border.overview-card.selected">
+            <Setter Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" />
+            <Setter Property="BorderThickness" Value="{DynamicResource OverviewSelectionRingThickness}" />
+        </Style>
+        <!-- A minimized window is still switchable but is not on screen; the token that fades an
+             unfocused window frame describes exactly this. -->
+        <Style Selector="Border.overview-card.minimized">
+            <Setter Property="Opacity" Value="{DynamicResource WindowInactiveOpacity}" />
+        </Style>
+
+        <Style Selector="Button.overview-card-open">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="{DynamicResource OverviewCardRadius}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.overview-card-open:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="TextBlock.overview-card-title">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.overview-card.active TextBlock.overview-card-title">
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="Button.overview-card-close">
+            <Setter Property="Width" Value="{DynamicResource MinimumHitTarget}" />
+            <Setter Property="Height" Value="{DynamicResource MinimumHitTarget}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="{DynamicResource OverviewCardRadius}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.overview-card-close:pointerover">
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnDangerBrush}" />
+        </Style>
+
+        <!-- ── Recipe: windows-grid ─────────────────────────────────────────────────── -->
+        <!-- Medium cards in a centred wrapping grid, with the heading above them. -->
+        <Style Selector="Border.overview-root.recipe-windows-grid Border.overview-card">
+            <Setter Property="Width" Value="288" />
+            <Setter Property="Height" Value="200" />
+        </Style>
+        <Style Selector="TextBlock.overview-heading.recipe-macos-strip">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+
+        <!-- ── Recipe: macos-strip — fewer, larger cards read as a single row ───────── -->
+        <Style Selector="Border.overview-root.recipe-macos-strip Border.overview-card">
+            <Setter Property="Width" Value="372" />
+            <Setter Property="Height" Value="252" />
+        </Style>
+        <Style Selector="Border.overview-root.recipe-macos-strip">
+            <Setter Property="Background" Value="{DynamicResource DialogScrimBrush}" />
+        </Style>
+
+        <!-- ── Recipe: gnome-overview — a denser grid pinned to the top ─────────────── -->
+        <Style Selector="Border.overview-root.recipe-gnome-overview Border.overview-card">
+            <Setter Property="Width" Value="236" />
+            <Setter Property="Height" Value="172" />
+            <Setter Property="Margin" Value="8" />
+        </Style>
+        <Style Selector="Border.overview-root.recipe-gnome-overview ItemsControl.overview-cards">
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border x:Name="PART_Root" Classes="overview-root"
+            Background="{DynamicResource OverlayScrimBrush}"
+            PointerPressed="Backdrop_OnPointerPressed">
+        <Grid Margin="40,44,40,26" RowDefinitions="Auto,*,Auto" RowSpacing="18">
+            <StackPanel Grid.Row="0" Spacing="6">
+                <TextBlock Classes="overview-heading"
+                           Text="{loc:Loc shell.overview.title}"
+                           FontSize="22" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Classes="overview-heading"
+                           Text="{loc:Loc shell.overview.description}"
+                           FontSize="13" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+
+            <Grid Grid.Row="1">
+                <ItemsControl x:Name="PART_Cards" Classes="overview-cards"
+                              ItemsSource="{Binding Cards}"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Margin="0,4">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="su:WindowOverviewCard">
+                            <Border Classes="overview-card"
+                                    Classes.selected="{Binding IsSelected}"
+                                    Classes.active="{Binding Item.IsActive}"
+                                    Classes.minimized="{Binding Item.IsMinimized}">
+                                <Grid>
+                                    <!-- A real thumbnail is not available in v1, so the card degrades
+                                         to an icon + title, exactly as the design allows. -->
+                                    <Button Classes="overview-card-open"
+                                            AutomationProperties.Name="{Binding Item.Title}"
+                                            Click="CardOpen_OnClick">
+                                        <Grid RowDefinitions="*,Auto">
+                                            <StackPanel Grid.Row="0" Spacing="12"
+                                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Image Width="52" Height="52" Stretch="Uniform"
+                                                       Source="{Binding Item.IconImage}"
+                                                       IsVisible="{Binding Item.HasIconImage}" />
+                                                <TextBlock Text="{Binding Item.IconGlyph}" FontSize="38"
+                                                           HorizontalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           IsVisible="{Binding !Item.HasIconImage}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1" Classes="overview-card-title"
+                                                       Text="{Binding Item.Title}" Margin="14,0,14,14" />
+                                        </Grid>
+                                    </Button>
+                                    <Button Classes="overview-card-close" Content="&#x00D7;"
+                                            AutomationProperties.Name="{loc:Loc shell.overview.close}"
+                                            ToolTip.Tip="{loc:Loc shell.overview.close}"
+                                            Click="CardClose_OnClick" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="{loc:Loc shell.overview.empty}"
+                           IsVisible="{Binding !HasWindows}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontSize="15"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Grid>
+
+            <TextBlock Grid.Row="2" Text="{loc:Loc shell.overview.hint}"
+                       TextAlignment="Center" TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+        </Grid>
+    </Border>
+</UserControl>

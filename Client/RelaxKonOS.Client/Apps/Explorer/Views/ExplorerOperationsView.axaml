@@ -22,7 +22,7 @@
                                 <TextBlock Text="{Binding Locations}" TextTrimming="CharacterEllipsis" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <TextBlock Text="{Binding Snapshot.CurrentPath}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <TextBlock Text="{loc:Loc explorer.operations.current_file}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                <ProgressBar Value="{Binding Progress}" IsIndeterminate="{Binding Indeterminate}" Minimum="0" Maximum="100" Height="18" Foreground="#60B158" />
+                                <ProgressBar Value="{Binding Progress}" IsIndeterminate="{Binding Indeterminate}" Minimum="0" Maximum="100" Height="18" Foreground="{DynamicResource SuccessBrush}" />
                                 <TextBlock Text="{Binding Bytes}" Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <TextBlock Text="{Binding Counts}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <StackPanel IsVisible="{Binding HasIssue}" Spacing="8">
