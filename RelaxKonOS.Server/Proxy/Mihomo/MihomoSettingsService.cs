@@ -113,6 +113,18 @@ public sealed class MihomoSettingsService(
                 await File.WriteAllTextAsync(temporary, updated, cancellationToken);
                 SetPrivateFile(temporary);
                 File.Move(temporary, active, overwrite: true);
+                // A recovery transition can run while Mihomo is intentionally stopped (for
+                // example after the Windows Server process was restarted). Do not send a reload
+                // to a controller that was already unavailable: ReloadAsync correctly gives an
+                // in-flight reload up to 30 seconds to reconnect, but that wait is incorrect
+                // when there was no running controller before the transition began.
+                var controllerAvailable = await controller.IsReachableAsync(cancellationToken);
+                if (!controllerAvailable.Succeeded)
+                {
+                    logger?.LogWarning("Mihomo TUN configuration was persisted but not reloaded because its controller was already unavailable. Enabled={Enabled} ProblemCode={ProblemCode}",
+                        enabled, controllerAvailable.ProblemCode);
+                    return controllerAvailable.ProblemCode;
+                }
                 var reload = await controller.ReloadAsync(cancellationToken);
                 if (string.IsNullOrEmpty(reload))
                 {
