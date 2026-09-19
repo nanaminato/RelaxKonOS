@@ -38,6 +38,9 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 {
     private readonly Dictionary<ManagedWindow, ExplorerViewModel> _windows = [];
+    // Activation is dispatched after Activate creates a multi-window app. Keep the startup
+    // task so an activation path cannot be overtaken by the default "Computer" navigation.
+    private readonly Dictionary<ManagedWindow, Task> _initializations = [];
     public override ApplicationManifest Manifest { get; } = new(
         Id: new AppId("relaxkonos.explorer"),
         DisplayName: "RemoteExplorer",
@@ -61,7 +64,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         // handler. Reuse that window instead of opening a duplicate Explorer instance.
         if (existingWindow is not null && _windows.TryGetValue(existingWindow, out var viewModel))
         {
-            _ = viewModel.NavigateToAsync(path);
+            _ = NavigateAfterInitializationAsync(viewModel, _initializations.GetValueOrDefault(existingWindow), path);
             return;
         }
         OpenExplorer(context, path);
@@ -121,6 +124,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             if (operations is not null) operations.Completed -= RefreshAfterOperation;
             viewModel.Dispose();
             _windows.Remove(window);
+            _initializations.Remove(window);
         };
         context.WindowManager.WindowClosed += closed;
         viewModel.CloseAction = () => Dispatcher.UIThread.Post(() => context.WindowManager.Close(window));
@@ -157,7 +161,14 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 
         // 窗口打开后异步加载根；内部路由指定位置时直接导航到该目录。
         var settings = context.Services.GetService(typeof(IAppSettingsClient)) as IAppSettingsClient;
-        _ = OpenInitialLocationAsync(viewModel, initialPath, settings);
+        _initializations[window] = OpenInitialLocationAsync(viewModel, initialPath, settings);
+    }
+
+    private static async Task NavigateAfterInitializationAsync(ExplorerViewModel viewModel, Task? initialization, string? path)
+    {
+        if (initialization is not null)
+            await initialization;
+        await viewModel.NavigateToAsync(path);
     }
 
     private static async Task<bool> RequestOperationElevationAsync(AppContext context, IExplorerClient client,

@@ -121,7 +121,7 @@ restored.ApplyViewPreferences(new((ExplorerSortField)999));
 Check(restored.SortField == ExplorerSortField.Name, "Unknown persisted sort field falls back to Name");
 vm.SaveViewPreferencesAsync = _ => throw new IOException("Conflict");
 await vm.SaveDefaultViewCommand.ExecuteAsync(null);
-Check(vm.StatusText.Contains("view_save_failed"), "Preference save failure is visible");
+Check(vm.StatusText.ToString().Contains("view_save_failed"), "Preference save failure is visible");
 
 await vm.NavigateToAsync(@"C:\data");
 vm.RequestTextInputAsync = (_, _, _, _) => Task.FromResult<string?>("New folder");

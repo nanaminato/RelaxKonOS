@@ -11,6 +11,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.WebServers;
 
 namespace RelaxKonOS.Client.Apps.WebServers;

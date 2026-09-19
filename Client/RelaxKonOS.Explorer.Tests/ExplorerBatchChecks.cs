@@ -66,7 +66,7 @@ public static class ExplorerBatchChecks
         check(result is { Completed.Count: 2, Failures.Count: 1, NotStarted: 0 }, "Copy batch reports partial failures and continues remaining items");
         check(fake.Calls.All(c => c.Action == nameof(IExplorerClient.CopyAsync) && !c.Overwrite)
             && fake.Calls[2].Destination == "/destination/c.txt", "Batch copy uses Copy API with overwrite disabled");
-        check(vm.LastOperationDetails.Contains(files[1].Path) && vm.StatusText.Contains("batch.result"), "Partial failure details survive directory refresh");
+        check(vm.LastOperationDetails.Contains(files[1].Path) && vm.StatusText.ToString().Contains("batch.result"), "Partial failure details survive directory refresh");
         fake.Reset();
         var gate = new TaskCompletionSource();
         fake.BeforeMutation = _ => gate.Task;
