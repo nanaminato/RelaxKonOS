@@ -67,6 +67,7 @@ try
         return;
     }
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
+    if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     await AliasLoginVerification.RunAsync(root);
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
@@ -82,6 +83,7 @@ try
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
     if (settingsOnly || fileOperationsOnly) return;
     await VerifyPrivilegedOperationProtocolAsync();
+    await DeveloperUserSidAllowListVerification.RunAsync();
     VerifyLinuxSystemAuthenticationProvider();
     VerifySmbProtocolAndElevationContract();
     await FileServiceChecks.RunAsync();

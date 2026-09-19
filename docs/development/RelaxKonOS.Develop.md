@@ -18,11 +18,19 @@
   "sharedSecret": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
-  "allowConsoleDebug": true
+  "allowConsoleDebug": true,
+  "developerUserSids": ["S-1-5-21-1111111111-2222222222-3333333333-1005"]
 }
 ```
 
-示例密钥仅用于展示；请替换为新的、至少 32 字节的随机 Base64 密钥。然后从以管理员身份运行的 PowerShell 或 IDE 启动：
+示例密钥仅用于展示；请替换为新的、至少 32 字节的随机 Base64 密钥。`developerUserSids` 填入
+`whoami /user` 输出的 SID（也接受 `计算机名\账户名`），它列出的身份与"启动 Helper 的账户"一样
+可以连接管道。Helper 必须提权运行，因而常常与 Server 不是同一账户——**只要两者不同就必须显式
+列出 Server 账户**，否则该连接会在认证之前被内核拒绝（EPERM），客户端只会显示"特权助手不可用"，
+与密钥错误、配置缺失无法区分。该项可省略（行为与以前一致）；条目无法解析时 Helper 直接启动失败，
+不会静默丢弃。启动时会打印实际生效的客户端 SID 列表，排障时先与 `whoami /user` 对照。
+
+然后从以管理员身份运行的 PowerShell 或 IDE 启动：
 
 ```powershell
 dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxKonOS-dev\privileged-helper.debug.json

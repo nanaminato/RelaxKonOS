@@ -48,9 +48,16 @@ new random Base64 secret (at least 32 bytes) and only disposable file roots:
   "sharedSecret": "replace-with-a-random-base64-secret-of-at-least-32-bytes",
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
-  "allowConsoleDebug": true
+  "allowConsoleDebug": true,
+  "developerUserSids": ["S-1-5-21-1111111111-2222222222-3333333333-1005"]
 }
 ```
+
+`developerUserSids` lists the identities that may connect to the pipe in addition to the account
+that started the Helper. Entries are the SID reported by `whoami /user` or an account name such as
+`MACHINE\user`, and an unresolvable entry fails startup. It is optional and preserves the previous
+behavior when omitted, but it is required whenever the Server runs under a different account than
+the elevated Helper.
 
 Start it from the IDE or a terminal:
 
@@ -65,11 +72,17 @@ PrivilegedHelper__PipeName=relaxkonos-privileged-helper-dev
 PrivilegedHelper__SharedSecret=<same Base64 secret>
 ```
 
-The console host grants pipe access only to the interactive developer account (plus SYSTEM and
-Administrators), which lets a Server launched by that account use the production IPC path. Run
-the IDE elevated only when testing operations that genuinely require Administrator rights. The
-configuration requires `allowConsoleDebug: true`; the production `helper.json` does not use this
-schema and cannot enable console mode accidentally. Before release, test once through the
+The console host grants pipe access to the account that started it plus every identity named in
+`developerUserSids`, plus SYSTEM and Administrators, which lets a Server launched by that account use
+the production IPC path. Because the Helper must run elevated it often runs as a different account
+than the Server; name the Server's account in `developerUserSids` in that case. Otherwise the kernel
+refuses the connection before any authentication happens (EPERM) and the client only reports an
+unavailable Helper, which looks like a wrong secret. The startup line prints the effective client
+SIDs, so compare it with `whoami /user` first when a connection fails. Run the IDE elevated only when
+testing operations that genuinely require Administrator rights. The configuration requires
+`allowConsoleDebug: true`; the production `helper.json` does not use this schema and cannot enable
+console mode accidentally (conversely, service mode rejects a deployed configuration containing
+`developerUserSids` instead of silently ignoring it). Before release, test once through the
 LocalSystem service to cover Session 0, profile, DPAPI, network-credential and mapped-drive
 differences.
 
