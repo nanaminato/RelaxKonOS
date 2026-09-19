@@ -18,7 +18,9 @@
         "top": 57,
         "right": 128,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/app-file-services.png",
+      "assetName": "app-file-services"
     },
     {
       "id": "r01-c02",
@@ -28,7 +30,9 @@
         "top": 57,
         "right": 234,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-home.png",
+      "assetName": "navigation-home"
     },
     {
       "id": "r01-c03",
@@ -38,7 +42,9 @@
         "top": 57,
         "right": 343,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-desktop.png",
+      "assetName": "navigation-desktop"
     },
     {
       "id": "r01-c04",
@@ -48,7 +54,9 @@
         "top": 57,
         "right": 431,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-computer.png",
+      "assetName": "navigation-computer"
     },
     {
       "id": "r01-c05",
@@ -58,7 +66,9 @@
         "top": 57,
         "right": 549,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-drive.png",
+      "assetName": "navigation-drive"
     },
     {
       "id": "r01-c06",
@@ -68,7 +78,9 @@
         "top": 57,
         "right": 652,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-network.png",
+      "assetName": "navigation-network"
     },
     {
       "id": "r01-c07",
@@ -78,7 +90,9 @@
         "top": 57,
         "right": 759,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-folder.png",
+      "assetName": "file-folder"
     },
     {
       "id": "r01-c08",
@@ -88,7 +102,9 @@
         "top": 57,
         "right": 869,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-new-folder.png",
+      "assetName": "toolbar-new-folder"
     },
     {
       "id": "r01-c09",
@@ -98,7 +114,9 @@
         "top": 57,
         "right": 972,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-documents.png",
+      "assetName": "navigation-documents"
     },
     {
       "id": "r01-c10",
@@ -108,7 +126,9 @@
         "top": 57,
         "right": 1087,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-pictures.png",
+      "assetName": "navigation-pictures"
     },
     {
       "id": "r01-c11",
@@ -118,7 +138,9 @@
         "top": 57,
         "right": 1196,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-music.png",
+      "assetName": "navigation-music"
     },
     {
       "id": "r01-c12",
@@ -128,7 +150,9 @@
         "top": 57,
         "right": 1306,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/navigation-videos.png",
+      "assetName": "navigation-videos"
     },
     {
       "id": "r01-c13",
@@ -138,7 +162,9 @@
         "top": 57,
         "right": 1409,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-generic.png",
+      "assetName": "file-generic"
     },
     {
       "id": "r01-c14",
@@ -148,7 +174,9 @@
         "top": 57,
         "right": 1521,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-text.png",
+      "assetName": "file-text"
     },
     {
       "id": "r01-c15",
@@ -158,7 +186,9 @@
         "top": 57,
         "right": 1625,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-spreadsheet.png",
+      "assetName": "file-spreadsheet"
     },
     {
       "id": "r01-c16",
@@ -168,7 +198,9 @@
         "top": 57,
         "right": 1730,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-presentation.png",
+      "assetName": "file-presentation"
     },
     {
       "id": "r01-c17",
@@ -178,7 +210,9 @@
         "top": 57,
         "right": 1838,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-generic-alt.png",
+      "assetName": "file-generic-alt"
     },
     {
       "id": "r01-c18",
@@ -188,7 +222,9 @@
         "top": 57,
         "right": 1947,
         "bottom": 159
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-presentation-alt.png",
+      "assetName": "file-presentation-alt"
     },
     {
       "id": "r02-c01",
@@ -198,7 +234,9 @@
         "top": 192,
         "right": 115,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-cut.png",
+      "assetName": "toolbar-cut"
     },
     {
       "id": "r02-c02",
@@ -208,7 +246,9 @@
         "top": 192,
         "right": 230,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-copy.png",
+      "assetName": "toolbar-copy"
     },
     {
       "id": "r02-c03",
@@ -218,7 +258,9 @@
         "top": 192,
         "right": 334,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-paste.png",
+      "assetName": "toolbar-paste"
     },
     {
       "id": "r02-c04",
@@ -228,7 +270,9 @@
         "top": 192,
         "right": 440,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-rename.png",
+      "assetName": "toolbar-rename"
     },
     {
       "id": "r02-c05",
@@ -238,7 +282,9 @@
         "top": 192,
         "right": 540,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-delete.png",
+      "assetName": "toolbar-delete"
     },
     {
       "id": "r02-c06",
@@ -248,7 +294,9 @@
         "top": 192,
         "right": 645,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-more.png",
+      "assetName": "toolbar-more"
     },
     {
       "id": "r02-c07",
@@ -258,7 +306,9 @@
         "top": 192,
         "right": 759,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-sort.png",
+      "assetName": "toolbar-sort"
     },
     {
       "id": "r02-c08",
@@ -268,7 +318,9 @@
         "top": 192,
         "right": 862,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-back.png",
+      "assetName": "toolbar-back"
     },
     {
       "id": "r02-c09",
@@ -278,7 +330,9 @@
         "top": 192,
         "right": 973,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-forward.png",
+      "assetName": "toolbar-forward"
     },
     {
       "id": "r02-c10",
@@ -288,7 +342,9 @@
         "top": 192,
         "right": 1075,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-up.png",
+      "assetName": "toolbar-up"
     },
     {
       "id": "r02-c11",
@@ -298,7 +354,9 @@
         "top": 192,
         "right": 1194,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-refresh.png",
+      "assetName": "toolbar-refresh"
     },
     {
       "id": "r02-c12",
@@ -308,7 +366,9 @@
         "top": 192,
         "right": 1306,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-search.png",
+      "assetName": "toolbar-search"
     },
     {
       "id": "r02-c13",
@@ -318,7 +378,9 @@
         "top": 192,
         "right": 1417,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-settings.png",
+      "assetName": "toolbar-settings"
     },
     {
       "id": "r02-c14",
@@ -328,7 +390,9 @@
         "top": 192,
         "right": 1521,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-info.png",
+      "assetName": "toolbar-info"
     },
     {
       "id": "r02-c15",
@@ -338,7 +402,9 @@
         "top": 192,
         "right": 1620,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-grid-view.png",
+      "assetName": "toolbar-grid-view"
     },
     {
       "id": "r02-c16",
@@ -348,7 +414,9 @@
         "top": 192,
         "right": 1724,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-list-view.png",
+      "assetName": "toolbar-list-view"
     },
     {
       "id": "r02-c17",
@@ -358,7 +426,9 @@
         "top": 192,
         "right": 1837,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/toolbar-filter.png",
+      "assetName": "toolbar-filter"
     },
     {
       "id": "r02-c18",
@@ -368,7 +438,9 @@
         "top": 192,
         "right": 1948,
         "bottom": 290
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/app-terminal.png",
+      "assetName": "app-terminal"
     },
     {
       "id": "r03-c01",
@@ -378,7 +450,9 @@
         "top": 328,
         "right": 123,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-archive.png",
+      "assetName": "file-archive"
     },
     {
       "id": "r03-c02",
@@ -388,7 +462,9 @@
         "top": 328,
         "right": 226,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-generic-light.png",
+      "assetName": "file-generic-light"
     },
     {
       "id": "r03-c03",
@@ -398,7 +474,9 @@
         "top": 328,
         "right": 330,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-text-alt.png",
+      "assetName": "file-text-alt"
     },
     {
       "id": "r03-c04",
@@ -408,7 +486,9 @@
         "top": 328,
         "right": 435,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-document.png",
+      "assetName": "file-document"
     },
     {
       "id": "r03-c05",
@@ -418,7 +498,9 @@
         "top": 328,
         "right": 536,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-spreadsheet-alt.png",
+      "assetName": "file-spreadsheet-alt"
     },
     {
       "id": "r03-c06",
@@ -428,7 +510,9 @@
         "top": 328,
         "right": 641,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-presentation-alt-2.png",
+      "assetName": "file-presentation-alt-2"
     },
     {
       "id": "r03-c07",
@@ -438,7 +522,9 @@
         "top": 328,
         "right": 746,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-pdf.png",
+      "assetName": "file-pdf"
     },
     {
       "id": "r03-c08",
@@ -448,7 +534,9 @@
         "top": 328,
         "right": 852,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-image.png",
+      "assetName": "file-image"
     },
     {
       "id": "r03-c09",
@@ -458,7 +546,9 @@
         "top": 328,
         "right": 959,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-audio.png",
+      "assetName": "file-audio"
     },
     {
       "id": "r03-c10",
@@ -468,7 +558,9 @@
         "top": 328,
         "right": 1065,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-video.png",
+      "assetName": "file-video"
     },
     {
       "id": "r03-c11",
@@ -478,7 +570,9 @@
         "top": 328,
         "right": 1178,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-generic-gray.png",
+      "assetName": "file-generic-gray"
     },
     {
       "id": "r03-c12",
@@ -488,7 +582,9 @@
         "top": 328,
         "right": 1288,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-config.png",
+      "assetName": "file-config"
     },
     {
       "id": "r03-c13",
@@ -498,7 +594,9 @@
         "top": 328,
         "right": 1398,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-database.png",
+      "assetName": "file-database"
     },
     {
       "id": "r03-c14",
@@ -508,7 +606,9 @@
         "top": 328,
         "right": 1509,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-application.png",
+      "assetName": "file-application"
     },
     {
       "id": "r03-c15",
@@ -518,7 +618,9 @@
         "top": 328,
         "right": 1622,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-disk-image.png",
+      "assetName": "file-disk-image"
     },
     {
       "id": "r03-c16",
@@ -528,7 +630,9 @@
         "top": 328,
         "right": 1729,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-font.png",
+      "assetName": "file-font"
     },
     {
       "id": "r03-c17",
@@ -538,7 +642,9 @@
         "top": 328,
         "right": 1838,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-code-generic.png",
+      "assetName": "file-code-generic"
     },
     {
       "id": "r03-c18",
@@ -548,7 +654,9 @@
         "top": 328,
         "right": 1946,
         "bottom": 430
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-json.png",
+      "assetName": "file-json"
     },
     {
       "id": "r04-c01",
@@ -558,7 +666,9 @@
         "top": 482,
         "right": 117,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-c.png",
+      "assetName": "file-c"
     },
     {
       "id": "r04-c02",
@@ -568,7 +678,9 @@
         "top": 482,
         "right": 249,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-cpp.png",
+      "assetName": "file-cpp"
     },
     {
       "id": "r04-c03",
@@ -578,7 +690,9 @@
         "top": 482,
         "right": 353,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-csharp.png",
+      "assetName": "file-csharp"
     },
     {
       "id": "r04-c04",
@@ -588,7 +702,9 @@
         "top": 482,
         "right": 463,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-fsharp.png",
+      "assetName": "file-fsharp"
     },
     {
       "id": "r04-c05",
@@ -598,7 +714,9 @@
         "top": 482,
         "right": 582,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-visual-basic.png",
+      "assetName": "file-visual-basic"
     },
     {
       "id": "r04-c06",
@@ -608,7 +726,9 @@
         "top": 482,
         "right": 681,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-java.png",
+      "assetName": "file-java"
     },
     {
       "id": "r04-c07",
@@ -618,7 +738,9 @@
         "top": 482,
         "right": 798,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-kotlin.png",
+      "assetName": "file-kotlin"
     },
     {
       "id": "r04-c08",
@@ -628,7 +750,9 @@
         "top": 482,
         "right": 920,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-go.png",
+      "assetName": "file-go"
     },
     {
       "id": "r04-c09",
@@ -638,7 +762,9 @@
         "top": 482,
         "right": 1045,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-rust.png",
+      "assetName": "file-rust"
     },
     {
       "id": "r04-c10",
@@ -648,7 +774,9 @@
         "top": 482,
         "right": 1167,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-python.png",
+      "assetName": "file-python"
     },
     {
       "id": "r04-c11",
@@ -658,7 +786,9 @@
         "top": 482,
         "right": 1288,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-javascript.png",
+      "assetName": "file-javascript"
     },
     {
       "id": "r04-c12",
@@ -668,7 +798,9 @@
         "top": 482,
         "right": 1407,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-typescript.png",
+      "assetName": "file-typescript"
     },
     {
       "id": "r04-c13",
@@ -678,7 +810,9 @@
         "top": 482,
         "right": 1524,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-react.png",
+      "assetName": "file-react"
     },
     {
       "id": "r04-c14",
@@ -688,7 +822,9 @@
         "top": 482,
         "right": 1623,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-html.png",
+      "assetName": "file-html"
     },
     {
       "id": "r04-c15",
@@ -698,7 +834,9 @@
         "top": 482,
         "right": 1726,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-css.png",
+      "assetName": "file-css"
     },
     {
       "id": "r04-c16",
@@ -708,7 +846,9 @@
         "top": 482,
         "right": 1829,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-css-alt.png",
+      "assetName": "file-css-alt"
     },
     {
       "id": "r04-c17",
@@ -718,7 +858,9 @@
         "top": 482,
         "right": 1942,
         "bottom": 582
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-sass.png",
+      "assetName": "file-sass"
     },
     {
       "id": "r05-c01",
@@ -728,7 +870,9 @@
         "top": 616,
         "right": 135,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-php.png",
+      "assetName": "file-php"
     },
     {
       "id": "r05-c02",
@@ -738,7 +882,9 @@
         "top": 616,
         "right": 228,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-ruby.png",
+      "assetName": "file-ruby"
     },
     {
       "id": "r05-c03",
@@ -748,7 +894,9 @@
         "top": 616,
         "right": 329,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-swift.png",
+      "assetName": "file-swift"
     },
     {
       "id": "r05-c04",
@@ -758,7 +906,9 @@
         "top": 616,
         "right": 430,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-dart.png",
+      "assetName": "file-dart"
     },
     {
       "id": "r05-c05",
@@ -768,7 +918,9 @@
         "top": 616,
         "right": 535,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-shell.png",
+      "assetName": "file-shell"
     },
     {
       "id": "r05-c06",
@@ -778,7 +930,9 @@
         "top": 616,
         "right": 637,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-powershell.png",
+      "assetName": "file-powershell"
     },
     {
       "id": "r05-c07",
@@ -788,7 +942,9 @@
         "top": 616,
         "right": 730,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-sql.png",
+      "assetName": "file-sql"
     },
     {
       "id": "r05-c08",
@@ -798,7 +954,9 @@
         "top": 616,
         "right": 835,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-xml.png",
+      "assetName": "file-xml"
     },
     {
       "id": "r05-c09",
@@ -808,7 +966,9 @@
         "top": 616,
         "right": 927,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-yaml.png",
+      "assetName": "file-yaml"
     },
     {
       "id": "r05-c10",
@@ -818,7 +978,9 @@
         "top": 616,
         "right": 1033,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-toml.png",
+      "assetName": "file-toml"
     },
     {
       "id": "r05-c11",
@@ -828,7 +990,9 @@
         "top": 616,
         "right": 1134,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-env.png",
+      "assetName": "file-env"
     },
     {
       "id": "r05-c12",
@@ -838,7 +1002,9 @@
         "top": 616,
         "right": 1264,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-dockerfile.png",
+      "assetName": "file-dockerfile"
     },
     {
       "id": "r05-c13",
@@ -848,7 +1014,9 @@
         "top": 616,
         "right": 1365,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-makefile.png",
+      "assetName": "file-makefile"
     },
     {
       "id": "r05-c14",
@@ -858,7 +1026,9 @@
         "top": 616,
         "right": 1471,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-cmake.png",
+      "assetName": "file-cmake"
     },
     {
       "id": "r05-c15",
@@ -868,7 +1038,9 @@
         "top": 616,
         "right": 1604,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-dotnet-project.png",
+      "assetName": "file-dotnet-project"
     },
     {
       "id": "r05-c16",
@@ -878,7 +1050,9 @@
         "top": 616,
         "right": 1721,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-package.png",
+      "assetName": "file-package"
     },
     {
       "id": "r05-c17",
@@ -888,7 +1062,9 @@
         "top": 616,
         "right": 1838,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-git-config.png",
+      "assetName": "file-git-config"
     },
     {
       "id": "r05-c18",
@@ -898,7 +1074,10 @@
         "top": 616,
         "right": 1945,
         "bottom": 712
-      }
+      },
+      "assetPath": "Assets/Icons/Explorer/file-config-alt.png",
+      "assetName": "file-config-alt"
     }
-  ]
+  ],
+  "assetDirectory": "Assets/Icons/Explorer"
 }

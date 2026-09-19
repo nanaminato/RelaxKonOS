@@ -20,28 +20,15 @@
         <c:CutEntryOpacityConverter x:Key="CutEntryOpacityConverter" />
     </UserControl.Resources>
 
-    <UserControl.Styles>
-        <!-- Vector icons deliberately use semantic theme brushes, so they remain legible in every system style. -->
-        <Style Selector="controls|ExplorerIcon">
-            <Setter Property="FolderBrush" Value="{DynamicResource WarningBrush}" />
-            <Setter Property="DocumentBrush" Value="{DynamicResource InfoBrush}" />
-            <Setter Property="MediaBrush" Value="{DynamicResource SuccessBrush}" />
-            <Setter Property="CodeBrush" Value="{DynamicResource AccentBrush}" />
-            <Setter Property="ArchiveBrush" Value="{DynamicResource WarningBrush}" />
-            <Setter Property="ApplicationBrush" Value="{DynamicResource DangerBrush}" />
-            <Setter Property="NeutralBrush" Value="{DynamicResource TextSecondaryBrush}" />
-        </Style>
-    </UserControl.Styles>
-
     <DockPanel LastChildFill="True">
         <!-- Navigation stays above the command bar, matching the Explorer workflow. -->
         <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="4">
-                    <Button Classes="icon" Content="←" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}" />
-                    <Button Classes="icon" Content="→" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}" />
-                    <Button Classes="icon" Content="↑" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}" />
-                    <Button Classes="icon" Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}" />
+                    <Button Classes="icon" Command="{Binding GoBackCommand}" ToolTip.Tip="{loc:Loc common.back}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-back.png" Width="18" Height="18" /></Button>
+                    <Button Classes="icon" Command="{Binding GoForwardCommand}" ToolTip.Tip="{loc:Loc common.forward}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-forward.png" Width="18" Height="18" /></Button>
+                    <Button Classes="icon" Command="{Binding GoUpCommand}" ToolTip.Tip="{loc:Loc explorer.up}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-up.png" Width="18" Height="18" /></Button>
+                    <Button Classes="icon" Command="{Binding RefreshCommand}" ToolTip.Tip="{loc:Loc common.refresh}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-refresh.png" Width="18" Height="18" /></Button>
                 </StackPanel>
                 <Grid Grid.Column="1" MinWidth="100">
                     <TextBox x:Name="AddressBox" Text="{Binding AddressInput, Mode=TwoWay}"
@@ -63,7 +50,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
-                            <Button Grid.Column="1" Content="✎" Click="EditAddress_Click" ToolTip.Tip="{loc:Loc explorer.edit_address}" Background="Transparent" BorderThickness="0" />
+                            <Button Grid.Column="1" Click="EditAddress_Click" ToolTip.Tip="{loc:Loc explorer.edit_address}" Background="Transparent" BorderThickness="0"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" Width="16" Height="16" /></Button>
                         </Grid>
                     </Border>
                 </Grid>
@@ -74,13 +61,14 @@
         <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,6">
             <WrapPanel Orientation="Horizontal" IsEnabled="{Binding !IsBusy}">
                 <StackPanel IsVisible="{Binding !IsPickerMode}" Orientation="Horizontal" Spacing="4" Margin="0,0,12,0">
-                    <Button Content="{loc:Loc explorer.new_folder}" Command="{Binding NewFolderCommand}" />
-                    <Button Content="✂" Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}" />
-                    <Button Content="⧉" Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}" />
-                    <Button Content="▣" Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}" />
-                    <Button Content="{loc:Loc common.rename}" Command="{Binding RenameCommand}" />
-                    <Button Content="{loc:Loc common.delete}" Command="{Binding DeleteCommand}" />
-                    <Button Content="•••" ToolTip.Tip="{loc:Loc explorer.more}">
+                    <Button Command="{Binding NewFolderCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-new-folder.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc explorer.new_folder}" /></StackPanel></Button>
+                    <Button Command="{Binding CutCommand}" ToolTip.Tip="{loc:Loc explorer.cut}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-cut.png" Width="18" Height="18" /></Button>
+                    <Button Command="{Binding CopyCommand}" ToolTip.Tip="{loc:Loc explorer.copy}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" Width="18" Height="18" /></Button>
+                    <Button Command="{Binding PasteCommand}" ToolTip.Tip="{loc:Loc explorer.paste}"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-paste.png" Width="18" Height="18" /></Button>
+                    <Button Command="{Binding RenameCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc common.rename}" /></StackPanel></Button>
+                    <Button Command="{Binding DeleteCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-delete.png" Width="18" Height="18" /><TextBlock Text="{loc:Loc common.delete}" /></StackPanel></Button>
+                    <Button ToolTip.Tip="{loc:Loc explorer.more}">
+                        <Button.Content><Image Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-more.png" Width="18" Height="18" /></Button.Content>
                         <Button.Flyout>
                             <MenuFlyout>
                                 <MenuItem Header="{loc:Loc explorer.operations.title}" Command="{Binding ShowOperationsCommand}" />
@@ -189,7 +177,7 @@
                              resized pane width and a star column can visually separate icon/text. -->
                         <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left"
                                     IsVisible="{Binding !IsPlaceholder}">
-                            <controls:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="18" Height="18" />
+                            <controls:ExplorerIcon TreeIconKind="{Binding IconKind}" Width="20" Height="20" />
                             <TextBlock Text="{Binding Label}" MaxWidth="170" MaxLines="1"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
@@ -282,7 +270,7 @@
                                             <Binding Path="#Root.DataContext.CutEntryPaths" />
                                         </MultiBinding>
                                     </Grid.Opacity>
-                                    <controls:ExplorerIcon EntryType="{Binding Type}" FileName="{Binding Name}" Width="18" Height="18" />
+                                    <controls:ExplorerIcon EntryType="{Binding Type}" FileName="{Binding Name}" Width="22" Height="22" />
                                     <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" MaxLines="1" VerticalAlignment="Center">
                                         <TextBlock.IsVisible>
                                             <MultiBinding Converter="{StaticResource EntryIsEditingConverter}" ConverterParameter="inverse">

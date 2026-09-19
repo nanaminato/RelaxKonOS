@@ -20,6 +20,11 @@ public static class ExplorerBatchChecks
             && ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, "backup.zip") == ExplorerFileIconKind.Archive
             && ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, "server.yaml") == ExplorerFileIconKind.Data,
             "Common extension families resolve to distinct Explorer icons");
+        check(ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.File, "server.cs") == "file-csharp"
+            && ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.File, "client.tsx") == "file-react"
+            && ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.File, "Dockerfile") == "file-dockerfile"
+            && ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.File, ".env") == "file-env",
+            "Code and configuration files select their dedicated generated icon assets");
         var files = new[] { FileEntry("/source/a.txt"), FileEntry("/source/b.txt"), FileEntry("/source/c.txt") };
         var client = DispatchProxy.Create<IExplorerClient, BatchClientFake>();
         var fake = (BatchClientFake)(object)client;
