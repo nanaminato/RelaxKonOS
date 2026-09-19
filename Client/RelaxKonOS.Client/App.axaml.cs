@@ -47,13 +47,23 @@ public partial class App : Application
             var session = Services.GetRequiredService<IAuthSession>();
             var notificationPreferences = Services.GetRequiredService<LoginNotificationPreferenceStore>();
             var loginViewModel = Services.GetRequiredService<LoginViewModel>();
-            LoginWindow CreateLoginWindow() => new()
-            {
-                DataContext = loginViewModel,
-            };
-            var loginWindow = CreateLoginWindow();
             MainWindow? mainWindow = null;
             var replacingMainWindow = false;
+            var shutdownRequested = false;
+            LoginWindow CreateLoginWindow()
+            {
+                var window = new LoginWindow { DataContext = loginViewModel };
+                window.Closed += (_, _) =>
+                {
+                    // ShutdownMode is explicit so the login-to-desktop window swap can complete.
+                    // A login window closed by the user must still end the application.
+                    if (mainWindow is not null || shutdownRequested) return;
+                    shutdownRequested = true;
+                    desktop.Shutdown();
+                };
+                return window;
+            }
+            var loginWindow = CreateLoginWindow();
             desktop.MainWindow = loginWindow;
             loginWindow.Show();
 
@@ -62,6 +72,8 @@ public partial class App : Application
                 // 切换到桌面必须在 UI 线程执行。
                 Dispatcher.UIThread.Post(async () =>
                 {
+                    if (shutdownRequested) return;
+
                     if (e.State == AuthSessionState.Unauthenticated
                         && e.EndReason == AuthSessionEndReason.RefreshTokenInvalid
                         && mainWindow is not null)
