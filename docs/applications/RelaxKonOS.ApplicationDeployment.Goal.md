@@ -2,9 +2,9 @@
 
 > 建立日期：2026-09-19
 >
-> 状态：目标与验收基线已建立，功能待实现；本文不表示已具备应用部署能力。
+> 状态：设计完成，M1–M5 代码级实现完成（各工程编译通过）；**T01–T15 全部因无 Docker 环境跳过，尚未验收，本文仍不表示已具备应用部署能力**。
 >
-> 实现、测试执行、阻塞与证据统一记录于 [实施进度](./RelaxKonOS.ApplicationDeployment.Progress.md)。
+> 架构与契约冻结于 [设计](./RelaxKonOS.ApplicationDeployment.Design.md)；实现、测试执行、阻塞与证据统一记录于 [实施进度](./RelaxKonOS.ApplicationDeployment.Progress.md)。
 
 ## 1. 目标与完成条件
 
@@ -21,6 +21,8 @@
 ## 2. 范围
 
 第一阶段只管理 RelaxKonOS.Server 所在主机的单个 Docker Engine，支持 Linux 容器和单服务 Compose 项目。具体 OS、CPU 架构、Engine/Compose 版本以实际测试记录为准，不宣称未验证的平台支持。
+
+> 实现现状差异：单服务 Compose 项目部署**尚未实现**，当前实现只使用容器原语（镜像拉取/构建、容器创建与生命周期），因此“部署一个既有 Compose 项目”不在已交付能力内。见设计文档 §1.3 与进度文档阻塞 B-02；在补做适配或修订本节范围之前，该项不得计为已完成。
 
 输入包括现成镜像引用、可执行 JAR、.NET 发布目录归档和带依赖锁定信息的 Python 项目归档。Python 依赖在镜像构建时安装，启动时不安装依赖。.NET 发布包必须校验部署类型、目标运行时、OS/架构；Java 普通非可执行 JAR、自定义复杂 classpath、传统 WAR 部署不作为默认模板能力。
 

@@ -41,6 +41,7 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
             Define<RelaxKonOS.Client.Apps.Git.GitClientApp>("git", "relaxkonos.git", services),
             Define<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>("appinstaller", "relaxkonos.appinstaller", services),
             Define<RelaxKonOS.Client.Apps.Registry.RegistryApp>("registry", "relaxkonos.registry", services),
+            Define<RelaxKonOS.Client.Apps.ApplicationDeployments.ApplicationDeploymentsApp>("application-deployments", "relaxkonos.application-deployments", services),
         });
     }
 

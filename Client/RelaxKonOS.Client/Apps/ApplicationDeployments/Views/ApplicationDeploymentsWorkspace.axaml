@@ -1,0 +1,272 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:apps="clr-namespace:RelaxKonOS.Client.Apps.ApplicationDeployments"
+             xmlns:viewModels="clr-namespace:RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.ApplicationDeployments.Views.ApplicationDeploymentsWorkspace"
+             x:DataType="apps:ApplicationDeploymentsViewModel"
+             Background="{DynamicResource AppBackgroundBrush}">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <!-- Header. The subtitle states the replacement policy so a stop-and-replace is never a surprise. -->
+        <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="24,16">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Width="44" Height="44" Background="{DynamicResource AccentBrush}" CornerRadius="14">
+                    <TextBlock Text="&#x1F4E6;" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{loc:Loc application_deployments.title}"
+                               FontSize="21" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc application_deployments.subtitle}"
+                               FontSize="12" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextTertiaryBrush}" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding StatusText}"
+                           VerticalAlignment="Center" MaxWidth="320" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextTertiaryBrush}" />
+            </Grid>
+        </Border>
+
+        <!-- Operation banner: the durable record, not an in-flight request, is what is shown here. -->
+        <Border Grid.Row="1" IsVisible="{Binding HasActiveOperation}"
+                Background="{DynamicResource AccentMutedBrush}"
+                BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="0,0,0,1"
+                Padding="18,10">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding OperationText}"
+                               FontWeight="SemiBold" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding ActiveOperation.ProgressText}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="{loc:Loc application_deployments.cancel_operation}"
+                        Command="{Binding CancelOperationCommand}"
+                        IsVisible="{Binding ActiveOperation.CanCancel}"
+                        VerticalAlignment="Center" Padding="12,6" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2" ColumnDefinitions="320,*">
+            <!-- Left: the application list and the actions that do not need a selection. -->
+            <Border Grid.Column="0" Background="{DynamicResource SurfaceSunkenBrush}"
+                    BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,Auto,*">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="14,16,14,8">
+                        <Button Content="{loc:Loc application_deployments.new_deployment}"
+                                Command="{Binding NewDeploymentCommand}"
+                                IsEnabled="{Binding CanManage}"
+                                Padding="12,6" />
+                        <Button Content="{loc:Loc application_deployments.refresh}"
+                                Command="{Binding RefreshCommand}"
+                                IsEnabled="{Binding CanRead}"
+                                Padding="12,6" />
+                    </StackPanel>
+
+                    <Border Grid.Row="1" IsVisible="{Binding HasError}" Margin="14,4,14,4"
+                            Background="{DynamicResource DangerBrush}" CornerRadius="6" Padding="10,8">
+                        <TextBlock Text="{Binding ErrorText}" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{DynamicResource TextOnDangerBrush}" />
+                    </Border>
+
+                    <ListBox Grid.Row="2"
+                             ItemsSource="{Binding Applications}"
+                             SelectedItem="{Binding SelectedApplication}"
+                             Background="Transparent" BorderThickness="0" Margin="6,4,6,10">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="viewModels:ApplicationRowViewModel">
+                                <StackPanel Spacing="2" Margin="4,6">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding ActualText}" FontSize="11"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="{Binding RevisionText}" FontSize="11"
+                                                   Foreground="{DynamicResource TextTertiaryBrush}" />
+                                        <TextBlock Text="{Binding SourceText}" FontSize="11"
+                                                   Foreground="{DynamicResource TextTertiaryBrush}" />
+                                    </StackPanel>
+                                    <!-- Drift is shown on the row so an externally changed instance is visible without opening it. -->
+                                    <TextBlock Text="{Binding DriftText}" FontSize="11" TextWrapping="Wrap"
+                                               IsVisible="{Binding HasDrift}"
+                                               Foreground="{DynamicResource WarningBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- Right: the selected application. -->
+            <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*" IsVisible="{Binding HasSelection}">
+                <StackPanel Grid.Row="0" Spacing="10" Margin="20,16,20,10">
+                    <TextBlock Text="{Binding SelectedApplication.Name}" FontSize="19" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <WrapPanel Orientation="Horizontal" ItemSpacing="16" LineSpacing="6">
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="{loc:Loc application_deployments.field.desired}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="{Binding SelectedApplication.DesiredText}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="{loc:Loc application_deployments.field.actual}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="{Binding SelectedApplication.ActualText}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="{loc:Loc application_deployments.field.revision}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="{Binding CurrentRevisionText}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="{loc:Loc application_deployments.field.endpoint}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="{Binding SelectedApplication.EndpointText}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="{loc:Loc application_deployments.field.domain}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="{Binding DomainText}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="{loc:Loc application_deployments.field.container}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="{Binding ContainerText}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="{loc:Loc application_deployments.field.readiness}" />
+                        <TextBlock FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
+                                   Text="{Binding SelectedApplication.ReadinessText}" />
+                    </WrapPanel>
+                </StackPanel>
+
+                <WrapPanel Grid.Row="1" Orientation="Horizontal" ItemSpacing="8" LineSpacing="6" Margin="20,0,20,10">
+                    <Button Content="{loc:Loc application_deployments.edit_definition}"
+                            Command="{Binding EditDefinitionCommand}" IsEnabled="{Binding CanManage}" Padding="12,5" />
+                    <Button Content="{loc:Loc application_deployments.deploy_revision}"
+                            Command="{Binding DeployRevisionCommand}" IsEnabled="{Binding CanManage}" Padding="12,5" />
+                    <Button Content="{loc:Loc application_deployments.start}"
+                            Command="{Binding StartApplicationCommand}" IsEnabled="{Binding CanControlLifecycle}" Padding="12,5" />
+                    <Button Content="{loc:Loc application_deployments.stop}"
+                            Command="{Binding StopApplicationCommand}" IsEnabled="{Binding CanControlLifecycle}" Padding="12,5" />
+                    <Button Content="{loc:Loc application_deployments.restart}"
+                            Command="{Binding RestartApplicationCommand}" IsEnabled="{Binding CanControlLifecycle}" Padding="12,5" />
+                    <Button Content="{loc:Loc application_deployments.rollback}"
+                            Command="{Binding RollbackCommand}" IsEnabled="{Binding CanRollback}" Padding="12,5" />
+                    <Button Content="{loc:Loc application_deployments.delete}"
+                            Command="{Binding DeleteApplicationCommand}" IsEnabled="{Binding CanManage}" Padding="12,5" />
+                </WrapPanel>
+
+                <TabControl Grid.Row="2" Margin="14,0,14,12">
+                    <TabItem Header="{loc:Loc application_deployments.tab.revisions}">
+                        <Grid RowDefinitions="Auto,*">
+                            <TextBlock Grid.Row="0" Text="{loc:Loc application_deployments.revisions_hint}"
+                                       FontSize="12" TextWrapping="Wrap" Margin="8,4,8,8"
+                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                            <ListBox Grid.Row="1" ItemsSource="{Binding Revisions}"
+                                     SelectedItem="{Binding SelectedRevision}" Background="Transparent" BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="viewModels:RevisionRowViewModel">
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Margin="4,6">
+                                            <TextBlock Grid.Column="0" Text="{Binding NumberText}" FontWeight="SemiBold"
+                                                       VerticalAlignment="Top"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Text="{Binding ImageText}" FontSize="12" TextWrapping="Wrap"
+                                                               ToolTip.Tip="{Binding ImageTooltip}"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{loc:Loc application_deployments.revision_current}"
+                                                               FontSize="11" VerticalAlignment="Center"
+                                                               IsVisible="{Binding IsCurrent}"
+                                                               Foreground="{DynamicResource SuccessBrush}" />
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding TemplateText}" FontSize="11"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}" />
+                                                <TextBlock Text="{Binding EntryText}" FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}" />
+                                                <TextBlock Text="{Binding ConfigurationText}" FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}" />
+                                                <TextBlock Text="{Binding VolumesText}" FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}" />
+                                                <TextBlock Text="{Binding CreatedText}" FontSize="11"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}" />
+                                                <TextBlock Text="{Binding ProblemText}" FontSize="11" TextWrapping="Wrap"
+                                                           IsVisible="{Binding HasProblem}"
+                                                           Foreground="{DynamicResource DangerBrush}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="{loc:Loc application_deployments.tab.operations}">
+                        <ListBox ItemsSource="{Binding Operations}" Background="Transparent" BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="viewModels:OperationRowViewModel">
+                                    <StackPanel Spacing="2" Margin="4,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Text="{Binding KindText}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding StateText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding StageText}"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                            <TextBlock Text="{Binding ProgressText}"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                            <TextBlock Text="{Binding RevisionText}"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Text="{Binding StartedText}" FontSize="11"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                            <TextBlock Text="{Binding FinishedText}" FontSize="11"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                            <TextBlock Text="{Binding IdentifierText}" FontSize="11"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding ProblemText}" FontSize="12" TextWrapping="Wrap"
+                                                   IsVisible="{Binding HasProblem}"
+                                                   Foreground="{DynamicResource DangerBrush}" />
+                                        <!-- A recovery outcome is reported on its own line, next to the original failure. -->
+                                        <TextBlock Text="{Binding RecoveryText}" FontSize="12" TextWrapping="Wrap"
+                                                   IsVisible="{Binding HasRecoveryProblem}"
+                                                   Foreground="{DynamicResource WarningBrush}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </TabItem>
+
+                    <TabItem Header="{loc:Loc application_deployments.tab.logs}">
+                        <Grid RowDefinitions="Auto,Auto,*">
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="8,4,8,8">
+                                <TextBlock Text="{loc:Loc application_deployments.log_tail}"
+                                           VerticalAlignment="Center" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBox Text="{Binding LogTailText}" Width="80" FontSize="12" />
+                                <Button Content="{loc:Loc application_deployments.load_logs}"
+                                        Command="{Binding LoadLogsCommand}" Padding="12,5" />
+                                <TextBlock Text="{loc:Loc application_deployments.log_truncated}"
+                                           IsVisible="{Binding IsLogTruncated}"
+                                           VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{DynamicResource WarningBrush}" />
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Text="{loc:Loc application_deployments.log_empty}"
+                                       IsVisible="{Binding !HasLog}" Margin="8"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                            <TextBox Grid.Row="2" Text="{Binding LogText}" IsReadOnly="True" AcceptsReturn="True"
+                                     TextWrapping="NoWrap" Margin="8,0,8,10"
+                                     FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                        </Grid>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+
+            <TextBlock Grid.Column="1" Text="{loc:Loc application_deployments.no_selection}"
+                       IsVisible="{Binding !HasSelection}"
+                       Margin="24" TextWrapping="Wrap" VerticalAlignment="Top"
+                       Foreground="{DynamicResource TextTertiaryBrush}" />
+        </Grid>
+    </Grid>
+</UserControl>

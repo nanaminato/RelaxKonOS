@@ -27,7 +27,7 @@
 > - FRP 内网穿透的 Goal 执行基线见 [`RelaxKonOS.FRP_Integration.Goal.md`](./applications/RelaxKonOS.FRP_Integration.Goal.md)；架构与安全设计见 [`RelaxKonOS.FRP_Integration.Design.md`](./applications/RelaxKonOS.FRP_Integration.Design.md)，当前实现与运维边界见 [`RelaxKonOS.FRP_Integration.Implementation.md`](./applications/RelaxKonOS.FRP_Integration.Implementation.md)
 > - 代理管理器已完成代码级实现，发布级平台验证仍待完成：当前能力、缺口和下一阶段入口见 [`RelaxKonOS.ProxyManager.Discovery.md`](./applications/RelaxKonOS.ProxyManager.Discovery.md)（[English](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)）；执行基线见 [`RelaxKonOS.ProxyManager.Goal.md`](./applications/RelaxKonOS.ProxyManager.Goal.md)，架构与安全设计见 [`RelaxKonOS.ProxyManager.Design.md`](./applications/RelaxKonOS.ProxyManager.Design.md)，操作员文档见 [`docs/proxy/`](./proxy/)
 > - Docker 管理器见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)
-> - Java/.NET/Python 容器化应用部署改造见 [Goal](./applications/RelaxKonOS.ApplicationDeployment.Goal.md) 与 [实现及测试进度](./applications/RelaxKonOS.ApplicationDeployment.Progress.md)（目标已建立，功能待实现）
+> - Java/.NET/Python 容器化应用部署改造见 [Goal](./applications/RelaxKonOS.ApplicationDeployment.Goal.md)、[设计](./applications/RelaxKonOS.ApplicationDeployment.Design.md) 与 [实现及测试进度](./applications/RelaxKonOS.ApplicationDeployment.Progress.md)（设计完成，M1–M5 代码级实现完成；T01–T15 全部因无 Docker 环境跳过，尚未验收）
 > - 证书管理器见 [`RelaxKonOS.CertificateManager.md`](./applications/RelaxKonOS.CertificateManager.md)
 > - Web Server 管理器 / Nginx 集成设计中，见 [`RelaxKonOS.WebServerManager.Design.md`](./applications/RelaxKonOS.WebServerManager.Design.md)
 > - 进程守护见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)
@@ -278,6 +278,7 @@ Application Package
 | **Browser** | 内置浏览器（Avalonia.Controls.WebView + 书签/历史持久化到 Server） | 已实现（导航 + 书签 + 历史 + 浏览器偏好） |
 | **TaskManager** | 远端宿主 OS 任务管理器（CPU/内存/文件系统/网络/磁盘 I/O/GPU 占用 + 进程列表，可结束任务） | 已实现（性能页订阅期间 SignalR 1Hz 推送、60s 历史、跨平台采集；进程页按需低频采样与分页） |
 | **DockerManager** | 本机 Docker Engine 的检测/安装引导、容器/镜像/Stack/网络/卷管理 | 已实现（状态检测、资源只读列表、容器启停重启/拉取镜像/Compose 校验部署停止/网络与卷管理；详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)） |
+| **ApplicationDeployments** | 镜像/Java/.NET/Python 应用的定义、不可变发布版本、部署/启停/回滚、日志与可选反向代理 | 已实现待验证（与 DockerManager 分离的独立内置应用；协议冻结 + Server 领域层 + 客户端向导与三语文本均已实现，各工程编译通过；**所有运行期行为未在真实 Docker 上验证**，T01–T15 跳过；单服务 Compose 项目部署未实现。详见 [设计](./applications/RelaxKonOS.ApplicationDeployment.Design.md) 与 [进度](./applications/RelaxKonOS.ApplicationDeployment.Progress.md)） |
 | **ProcessGuardian** | 受守护工作负载、健康检查、自动恢复、日志与原生服务管理 | 已实现（独立 Agent、本机认证 IPC、工作负载声明持久化与启停重启；SignalR `/hubs/guardian-logs` 日志广播；健康/服务适配设计中，详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)） |
 | **Firewall** | Linux Server UFW 防火墙状态、默认策略与规则管理 | 已实现（Linux 专用；root 会话免再次验证，其他用户 PAM 一次性确认） |
 | **CertificateManager** | 本机 ACME 证书申请、部署与续期 | 已实现（基础 UI、预检、申请/取消、续期、Kestrel 部署、吊销与删除、自签证书；DNS-01/Wildcard、Nginx/Apache/IIS 部署、部署审计落 HostGlobal，详见 [`RelaxKonOS.CertificateManager.md`](./applications/RelaxKonOS.CertificateManager.md)） |

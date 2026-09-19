@@ -23,6 +23,7 @@ public static class ServerCapabilities
     public const string Git = "server.git";
     public const string Guardian = "server.guardian";
     public const string Docker = "server.docker";
+    public const string ApplicationDeployments = "server.application-deployments";
     public const string FileServices = "server.file-services";
     public const string WebServer = "server.web-server";
     public const string Certificates = "server.certificates";

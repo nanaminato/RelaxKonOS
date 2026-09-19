@@ -113,9 +113,15 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         var ports = request.Ports ?? [];
         var environment = request.Environment ?? [];
         var mounts = request.Mounts ?? [];
+        var labels = request.Labels ?? [];
+        var resources = request.Resources;
+        var logOptions = resources?.LogOptions ?? [];
         if (!IsContainerId(request.Name) || !IsImageReference(request.Image) || request.Arguments.Count > 64 || request.Arguments.Any(argument => !IsOptionValue(argument)) ||
-            ports.Count > 32 || environment.Count > 64 || mounts.Count > 32 ||
+            ports.Count > 32 || environment.Count > 64 || mounts.Count > 32 || labels.Count > 32 ||
             ports.Any(port => !IsOptionValue(port)) || environment.Any(variable => !IsOptionValue(variable)) || mounts.Any(mount => !IsOptionValue(mount)) ||
+            labels.Any(label => !IsLabel(label)) || logOptions.Count > 8 || logOptions.Any(option => !IsLogOption(option)) ||
+            resources is { CpuCores: <= 0 or > 1024 } || resources is { MemoryBytes: <= 0 or > 1L << 42 } || resources is { PidsLimit: <= 0 or > 1048576 } ||
+            resources is { LogDriver: { Length: > 0 } driver } && !AllowedLogDrivers.Contains(driver) ||
             request.Network is { Length: > 0 } network && !IsContainerId(network) ||
             request.RestartPolicy is { Length: > 0 } restartPolicy && !AllowedRestartPolicies.Contains(restartPolicy))
             return new DockerOperationResult(false, "docker.validation_failed");
@@ -124,8 +130,14 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         foreach (var port in ports) { arguments.Add("--publish"); arguments.Add(port); }
         foreach (var variable in environment) { arguments.Add("--env"); arguments.Add(variable); }
         foreach (var mount in mounts) { arguments.Add("--volume"); arguments.Add(mount); }
+        foreach (var label in labels) { arguments.Add("--label"); arguments.Add(label); }
         if (!string.IsNullOrWhiteSpace(request.Network)) { arguments.Add("--network"); arguments.Add(request.Network); }
         if (!string.IsNullOrWhiteSpace(request.RestartPolicy)) { arguments.Add("--restart"); arguments.Add(request.RestartPolicy); }
+        if (resources?.CpuCores is { } cpuCores) { arguments.Add("--cpus"); arguments.Add(cpuCores.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)); }
+        if (resources?.MemoryBytes is { } memoryBytes) { arguments.Add("--memory"); arguments.Add(memoryBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (resources?.PidsLimit is { } pidsLimit) { arguments.Add("--pids-limit"); arguments.Add(pidsLimit.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (resources?.LogDriver is { Length: > 0 } logDriver) { arguments.Add("--log-driver"); arguments.Add(logDriver); }
+        foreach (var logOption in logOptions) { arguments.Add("--log-opt"); arguments.Add(logOption); }
         arguments.Add(request.Image);
         arguments.AddRange(request.Arguments);
         return ToOperationResult(await RunAsync(arguments, cancellationToken));
@@ -272,6 +284,10 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
     {
         "no", "always", "unless-stopped", "on-failure"
     };
+    private static readonly HashSet<string> AllowedLogDrivers = new(StringComparer.Ordinal)
+    {
+        "json-file", "local", "journald", "syslog", "none"
+    };
 
     private async Task<IReadOnlyList<string[]>> RunTableAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
@@ -357,6 +373,11 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
     private static bool IsContainerId(string value) => value.Length is >= 3 and <= 128 && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.');
     private static bool IsImageReference(string value) => value.Length is >= 1 and <= 255 && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or ':' or '.' or '_' or '-');
     private static bool IsOptionValue(string value) => value.Length is >= 1 and <= 4096 && !value.Contains('\0') && !value.Any(char.IsControl);
+    /// <summary>A label is a bounded <c>key=value</c> pair; it is never treated as shell text.</summary>
+    private static bool IsLabel(string value) => value.Length is >= 3 and <= 256 && value.Contains('=')
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.' or '=' or '/' or ':' or ' ' || character is >= '\u0080' and <= '\uffff');
+    private static bool IsLogOption(string value) => value.Length is >= 3 and <= 128 && value.Contains('=')
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.' or '=' or '/');
     private bool IsBuildPathAllowed(string path, out string fullPath)
     {
         fullPath = string.Empty;

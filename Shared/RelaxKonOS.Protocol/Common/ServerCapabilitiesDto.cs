@@ -33,7 +33,10 @@ public sealed record ServerHostCapabilitiesDto(
     bool Certificates,
     bool Tunnels,
     bool Proxy,
-    bool PrivilegedOperations);
+    bool PrivilegedOperations,
+    /// <summary>Containerized application deployment depends on host Docker access, so it follows
+    /// the same boundary instead of introducing a second privileged path.</summary>
+    bool ApplicationDeployments = false);
 
 public static class ServerApiRoutes
 {

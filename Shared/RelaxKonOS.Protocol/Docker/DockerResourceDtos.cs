@@ -36,9 +36,20 @@ public sealed record DockerContainerUpdateRequest(string Name);
 public sealed record DockerOperationResult(bool Success, string ProblemCode, IReadOnlyList<string>? LogLines = null);
 public sealed record DockerImageOperationRequest(string ImageReference, bool Confirmed = false);
 /// <summary>
+/// Bounded runtime constraints for a created container. A null member leaves the Docker default in
+/// place; it is never translated into an "unlimited" flag.
+/// </summary>
+public sealed record DockerContainerResourceOptions(
+    double? CpuCores = null,
+    long? MemoryBytes = null,
+    int? PidsLimit = null,
+    string? LogDriver = null,
+    IReadOnlyList<string>? LogOptions = null);
+
+/// <summary>
 /// Structured container creation input. Options are kept separate from the command arguments so
 /// the server can compose a safe <c>docker create</c> invocation without the client building CLI
-/// strings.
+/// strings. Labels are how a managed resource declares its owner.
 /// </summary>
 public sealed record DockerContainerCreateRequest(
     string Name,
@@ -48,7 +59,9 @@ public sealed record DockerContainerCreateRequest(
     IReadOnlyList<string>? Environment = null,
     IReadOnlyList<string>? Mounts = null,
     string? Network = null,
-    string? RestartPolicy = null);
+    string? RestartPolicy = null,
+    IReadOnlyList<string>? Labels = null,
+    DockerContainerResourceOptions? Resources = null);
 public sealed record DockerNetworkCreateRequest(string Name, string Driver = "bridge", bool Confirmed = false);
 public sealed record DockerVolumeCreateRequest(string Name, string Driver = "local", bool Confirmed = false);
 public sealed record DockerContainerLogsDto(IReadOnlyList<string> Lines, bool Truncated);

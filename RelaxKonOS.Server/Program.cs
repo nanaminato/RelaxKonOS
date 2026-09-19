@@ -384,6 +384,16 @@ builder.Services.AddAuthorization(options =>
         || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
     options.AddPolicy("FileServicesManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
         context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+    // Containerised application deployment follows the same role boundary as the other host-mutating
+    // features: an observer may read, and only a controller may change a running workload.
+    options.AddPolicy(RelaxKonOS.Server.Endpoints.ApplicationDeploymentEndpoints.ReadPolicy, policy =>
+        policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
+            || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")
+            || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+    options.AddPolicy(RelaxKonOS.Server.Endpoints.ApplicationDeploymentEndpoints.ManagePolicy, policy =>
+        policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
 });
 
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationOperationStore>();
@@ -396,6 +406,29 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationServi
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MihomoInstallationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.DockerInstallationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>();
+
+// 容器化应用部署：定义（catalog）、机密、暂存、操作账本均为单例持久状态；部署服务串行化同一应用的
+// 变更，协调器是唯一调用方并把每个长操作变成可恢复的持久记录。
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>().GetSection("ApplicationDeployments")
+        .Get<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions>()
+    ?? new RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions());
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCatalogStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentSecretStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentStagingStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOperationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.IApplicationDeploymentProxyIntegration,
+    RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentProxyIntegration>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentManager>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCoordinator>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCoordinator>());
+// The readiness probe talks to the container's published loopback port, so it needs its own bounded
+// client whose timeout is a readiness timeout rather than a request timeout.
+builder.Services.AddHttpClient(RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime.HealthClientName,
+        client => client.Timeout = TimeSpan.FromSeconds(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
 
 // Identity transport is a deployment decision, not a Development-environment shortcut.  A
 // no-sudo User Mode Server authenticates the account that owns the process through the host's
@@ -860,6 +893,7 @@ app.MapFileServiceEndpoints();
 app.MapCertificateEndpoints();
 app.MapGitEndpoints();
 app.MapInstallationEndpoints();
+app.MapApplicationDeploymentEndpoints();
 app.MapTunnelEndpoints();
 app.MapProxyEndpoints();
 if (OperatingSystem.IsLinux())

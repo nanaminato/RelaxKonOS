@@ -42,6 +42,8 @@
         "application.relaxkonos.registry.display_name": "注册表",
         "application.relaxkonos.registry.description": "浏览受支持的 RelaxKonOS 配置值",
         "application.relaxkonos.proxy.display_name": "代理管理器",
-        "application.relaxkonos.proxy.description": "管理主机代理运行时、流量与网络恢复状态"
+        "application.relaxkonos.proxy.description": "管理主机代理运行时、流量与网络恢复状态",
+        "application.relaxkonos.application-deployments.display_name": "应用部署",
+        "application.relaxkonos.application-deployments.description": "在 RelaxKonOS Server 上部署和管理容器化应用"
     }
 }
