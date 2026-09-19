@@ -587,7 +587,14 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
                 if (operation.State is ProxyOperationState.Failed or ProxyOperationState.Interrupted)
                     _ = ShowPrivilegedHelperUnavailableAsyncIfNeeded(operation.ProblemCode);
                 if (operation.State == ProxyOperationState.Succeeded) await RefreshAsync();
-                else await LoadLogsAsync();
+                else
+                {
+                    // A ToggleSwitch immediately updates its visual state when clicked even
+                    // with a one-way binding. Re-read the authoritative Server snapshot for
+                    // failed operations so every surface is forced back to the real state.
+                    await RefreshAsync();
+                    StatusText = FormatOperation(operation);
+                }
                 return;
             }
             await Task.Delay(TimeSpan.FromSeconds(1));

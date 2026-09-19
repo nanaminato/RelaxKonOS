@@ -212,8 +212,31 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         finally { result.Value?.Dispose(); }
     }
 
-    public async Task<string?> ReloadAsync(CancellationToken cancellationToken) =>
-        (await SendAsync(HttpMethod.Put, "configs?force=true", new StringContent("{}", Encoding.UTF8, "application/json"), cancellationToken)).ProblemCode;
+    public async Task<string?> ReloadAsync(CancellationToken cancellationToken)
+    {
+        // Applying a TUN configuration can replace Mihomo's listener while the HTTP response
+        // is in flight. In that narrow case the reload has succeeded but the response socket is
+        // reset. Confirm the loopback controller before asking the caller to roll back a sound
+        // configuration. HTTP error responses remain failures; only transport interruptions are
+        // eligible for this confirmation.
+        var reload = await SendAsync(HttpMethod.Put, "configs?force=true", new StringContent("{}", Encoding.UTF8, "application/json"), cancellationToken, logTransportFailure: false);
+        if (reload.Succeeded || !reload.TransportInterrupted) return reload.ProblemCode;
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+            var confirmation = await SendAsync(HttpMethod.Get, "version", null, cancellationToken, logTransportFailure: false);
+            if (confirmation.Succeeded)
+            {
+                _logger?.LogInformation("Mihomo controller reconnected after its configuration reload response was interrupted. Endpoint={Endpoint}", _options.Endpoint.Authority);
+                return null;
+            }
+            if (!confirmation.TransportInterrupted) break;
+        }
+
+        LogTransportFailure();
+        return reload.ProblemCode;
+    }
 
     private async Task<string?> SetRoutingModeCoreAsync(string body, CancellationToken cancellationToken) =>
         (await SendAsync(HttpMethod.Put, "configs", new StringContent(body, Encoding.UTF8, "application/json"), cancellationToken)).ProblemCode;
@@ -226,7 +249,7 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         catch (JsonException) { return ControllerResult<JsonDocument>.Failure(ProxyProblemCodes.ControllerResponseInvalid); }
     }
 
-    private async Task<ControllerResponse> SendAsync(HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken)
+    private async Task<ControllerResponse> SendAsync(HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken, bool logTransportFailure = true)
     {
         try
         {
@@ -239,22 +262,22 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
                     : ProxyProblemCodes.ControllerUnavailable);
             return new(await response.Content.ReadAsStringAsync(cancellationToken), "");
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new(null, ProxyProblemCodes.ControllerTimeout); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new(null, ProxyProblemCodes.ControllerTimeout, true); }
         catch (OperationCanceledException) { throw; }
         catch (ProxyControllerSecretException) { return new(null, ProxyProblemCodes.ControllerUnavailable); }
         catch (HttpRequestException exception)
         {
-            if (exception.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionRefused })
-            {
-                _logger?.LogWarning("Mihomo controller at {Endpoint} refused the connection; Mihomo may not be running.",
-                    _options.Endpoint.Authority);
-            }
-            else
-            {
-                _logger?.LogWarning("Mihomo controller at {Endpoint} is unavailable.", _options.Endpoint.Authority);
-            }
-            return new(null, ProxyProblemCodes.ControllerUnavailable);
+            if (logTransportFailure) LogTransportFailure(exception);
+            return new(null, ProxyProblemCodes.ControllerUnavailable, true);
         }
+    }
+
+    private void LogTransportFailure(HttpRequestException? exception = null)
+    {
+        if (exception?.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionRefused })
+            _logger?.LogWarning("Mihomo controller at {Endpoint} refused the connection; Mihomo may not be running.", _options.Endpoint.Authority);
+        else
+            _logger?.LogWarning("Mihomo controller at {Endpoint} is unavailable.", _options.Endpoint.Authority);
     }
 
     private static bool IsName(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 512 && value.All(character => !char.IsControl(character));
@@ -287,5 +310,5 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         return item.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out value);
     }
     private static DateTimeOffset? GetDateTime(JsonElement item, string name) => item.TryGetProperty(name, out var value) && value.TryGetDateTimeOffset(out var result) ? result : null;
-    private sealed record ControllerResponse(string? Content, string ProblemCode) { public bool Succeeded => string.IsNullOrEmpty(ProblemCode); }
+    private sealed record ControllerResponse(string? Content, string ProblemCode, bool TransportInterrupted = false) { public bool Succeeded => string.IsNullOrEmpty(ProblemCode); }
 }

@@ -629,6 +629,17 @@ static async Task VerifyMihomoControllerSafetyAsync()
     var unauthorized = await unauthorizedClient.IsReachableAsync(CancellationToken.None);
     Assert(!unauthorized.Succeeded && unauthorized.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed,
         "A controller 401 was not exposed as an authentication failure.");
+
+    var calls = 0;
+    var interruptedReloadHandler = new DelegateHandler(_ =>
+    {
+        calls++;
+        if (calls == 1) throw new HttpRequestException("The controller restarted during reload.");
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
+    });
+    var interruptedReloadClient = new MihomoControllerClient(new HttpClient(interruptedReloadHandler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
+    Assert(await interruptedReloadClient.ReloadAsync(CancellationToken.None) is null && calls == 2,
+        "A recovered controller connection after reload was incorrectly reported as a TUN configuration failure.");
 }
 
 static async Task VerifyMihomoProxyGroupOrderingAsync(string root)
@@ -1168,7 +1179,11 @@ static async Task VerifyProxyTunSafetyAsync(string root)
     var runtime = new TestProxyTunRuntimeController();
     var service = new ProxyTunSafetyService(new TestProxyPaths(Path.Combine(root, "proxy-tun")), platform, runtime);
     Assert(await service.EnableAsync(Guid.NewGuid(), IPAddress.Parse("203.0.113.4"), CancellationToken.None) is null && runtime.LastSnapshot?.ManagementAddresses.Single() == "203.0.113.4", "TUN safety transaction did not protect the Server-observed management address.");
-    Assert((await service.GetStatusAsync(CancellationToken.None)).HasRecoveryMarker, "TUN marker was not durable before network activation.");
+    var activeStatus = await service.GetStatusAsync(CancellationToken.None);
+    Assert(activeStatus.HasRecoveryMarker && !activeStatus.RecoveryRequired, "A verified TUN session was reported as recovery-required instead of active.");
+    var activeEngine = new MihomoEngine(new HealthyMihomoController(), new UnavailableMihomoConfigurationValidator(), new TestProxyPaths(Path.Combine(root, "proxy-tun")), tunSafety: service);
+    Assert((await activeEngine.GetHealthAsync(CancellationToken.None)).TunState == ProxyTunState.Enabled,
+        "Mihomo health did not report the verified active TUN session.");
     Assert(await service.EmergencyDisableAsync(CancellationToken.None) is null && platform.RestoreCount == 1 && runtime.DisableCount == 1,
         "Emergency TUN disable did not restore the captured management route.");
     platform.SnapshotSafe = false;

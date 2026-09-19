@@ -29,13 +29,18 @@ public sealed class ProxyTunSafetyService(
                 logger?.LogWarning("Refused TUN activation because no safe management route could be captured. ProfileId={ProfileId}", profileId);
                 return ProxyProblemCodes.ManagementRouteUnsafe;
             }
-            var marker = new RecoveryMarker(Guid.NewGuid(), profileId, snapshot, DateTimeOffset.UtcNow);
+            var marker = new RecoveryMarker(Guid.NewGuid(), profileId, snapshot, DateTimeOffset.UtcNow, false);
             await WriteMarkerAsync(marker, cancellationToken);
             logger?.LogInformation("TUN activation marker persisted. OperationId={OperationId} ProfileId={ProfileId} EgressInterface={EgressInterface} ManagementAddressCount={ManagementAddressCount}", marker.OperationId, profileId, snapshot.EgressInterface, snapshot.ManagementAddresses.Count);
             var runtimeProblem = await _runtime.SetEnabledAsync(snapshot, true, cancellationToken);
             if (!string.IsNullOrEmpty(runtimeProblem)) return await RestoreAndReportAsync(marker, cancellationToken, runtimeProblem);
             if (!await platform.ApplyTunAsync(snapshot, cancellationToken)) return await RestoreAndReportAsync(marker, cancellationToken, ProxyProblemCodes.TunActivationFailed);
             if (!await platform.VerifyManagementRouteAsync(snapshot, cancellationToken)) return await RestoreAndReportAsync(marker, cancellationToken, ProxyProblemCodes.ManagementRouteUnsafe);
+            // Before this point the marker means an interrupted transition must be recovered.
+            // Once the management path is verified it instead represents a live TUN session
+            // that must be torn down if the Server restarts.  Keeping those two meanings
+            // distinct lets the overview report the active mode without masking recovery.
+            await WriteMarkerAsync(marker with { ActivationCompleted = true }, cancellationToken);
             logger?.LogInformation("TUN activation completed and the protected management route is reachable. OperationId={OperationId} ProfileId={ProfileId}", marker.OperationId, profileId);
             return null;
         }
@@ -61,7 +66,11 @@ public sealed class ProxyTunSafetyService(
     public async Task<ProxyRecoveryStatusDto> GetStatusAsync(CancellationToken cancellationToken)
     {
         var marker = await ReadMarkerAsync(cancellationToken);
-        return marker is null ? new(false, false, null) : new(true, true, marker.CreatedAt, ProxyProblemCodes.RecoveryRequired);
+        return marker is null
+            ? new(false, false, null)
+            : marker.ActivationCompleted
+                ? new(false, true, marker.CreatedAt)
+                : new(true, true, marker.CreatedAt, ProxyProblemCodes.RecoveryRequired);
     }
     private async Task<string?> RestoreAndReportAsync(RecoveryMarker marker, CancellationToken cancellationToken, string failedCode)
     {
@@ -83,7 +92,7 @@ public sealed class ProxyTunSafetyService(
     {
         var path = MarkerPath(); if (!File.Exists(path)) return null;
         try { await using var input = File.OpenRead(path); return await JsonSerializer.DeserializeAsync<RecoveryMarker>(input, cancellationToken: cancellationToken); }
-        catch (JsonException) { return new RecoveryMarker(Guid.Empty, Guid.Empty, new("corrupt", DateTimeOffset.UtcNow, false, "", "", [], []), DateTimeOffset.UtcNow); }
+        catch (JsonException) { return new RecoveryMarker(Guid.Empty, Guid.Empty, new("corrupt", DateTimeOffset.UtcNow, false, "", "", [], []), DateTimeOffset.UtcNow, false); }
     }
     private async Task WriteMarkerAsync(RecoveryMarker marker, CancellationToken cancellationToken)
     {
@@ -93,5 +102,5 @@ public sealed class ProxyTunSafetyService(
     }
     private void DeleteMarker() { if (File.Exists(MarkerPath())) File.Delete(MarkerPath()); }
     private string MarkerPath() => Path.Combine(paths.GetStateDirectory(), "proxy-tun-recovery.json");
-    private sealed record RecoveryMarker(Guid OperationId, Guid ProfileId, ProxyManagementRouteSnapshot Snapshot, DateTimeOffset CreatedAt);
+    private sealed record RecoveryMarker(Guid OperationId, Guid ProfileId, ProxyManagementRouteSnapshot Snapshot, DateTimeOffset CreatedAt, bool ActivationCompleted);
 }
