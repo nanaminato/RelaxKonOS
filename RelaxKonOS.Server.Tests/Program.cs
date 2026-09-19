@@ -57,6 +57,15 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    if (args.Contains("--proxy-geodata-only"))
+    {
+        await VerifyMihomoGeoDataStagingAsync(root);
+        await VerifyMihomoGeoDataStartupProvisioningAsync();
+        await VerifyProxyConfigurationTransactionAsync(root);
+        await VerifyProxyDiagnosticLogsAsync(root);
+        Console.WriteLine("Proxy GEO data and configuration checks passed.");
+        return;
+    }
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     await AliasLoginVerification.RunAsync(root);
@@ -649,9 +658,13 @@ static async Task VerifyMihomoProxyGroupOrderingAsync(string root)
 
 static async Task VerifyProxyDiagnosticLogsAsync(string root)
 {
-    var diagnostics = new ProxyDiagnosticLogStore(new TestProxyPaths(Path.Combine(root, "proxy-diagnostics")));
+    var logger = new CapturingLogger<ProxyDiagnosticLogStore>();
+    var diagnostics = new ProxyDiagnosticLogStore(new TestProxyPaths(Path.Combine(root, "proxy-diagnostics")), logger);
     await diagnostics.WriteAsync("warning", "Managed Mihomo service start failed: token=private-value", CancellationToken.None);
     var entries = await diagnostics.ReadAsync(10, CancellationToken.None);
+    Assert(logger.Entries.Count == 1 && logger.Entries[0].Contains("[REDACTED]", StringComparison.Ordinal)
+        && !logger.Entries[0].Contains("private-value", StringComparison.Ordinal),
+        "Console diagnostics must receive the sanitized failure, never the original secret.");
     Assert(entries.Count == 1 && entries[0].Level == "warning" && !entries[0].Message.Contains("private-value", StringComparison.Ordinal)
         && entries[0].Message.Contains("[REDACTED]", StringComparison.Ordinal), "Proxy installation diagnostics were not retained and sanitized.");
 
@@ -1128,7 +1141,7 @@ static async Task VerifyProxyConfigurationTransactionAsync(string root)
     var service = new ProxyConfigurationTransactionService(paths, new ProxyEngineRegistry([engine]), profiles, new StaticProxySecretStore(), new MihomoControllerOptions());
     Assert(await service.ApplyAsync(profile.Id, "mode: rule\ngeodata-mode: true\ngeo-auto-update: true\ngeox-url:\n  geoip: https://untrusted.example/geoip.dat\n\"external-controller\": 192.0.2.4:9090\n\"secret\": stale-secret\n", CancellationToken.None) is null,
         "Valid Proxy YAML was not applied.");
-    Assert(engine.LastValidatedConfiguration is { } validated
+    Assert(engine.LastValidatedConfiguration?.Replace("\r\n", "\n", StringComparison.Ordinal) is { } validated
         && validated.Contains("geodata-mode: false\n", StringComparison.Ordinal)
         && validated.Contains("geo-auto-update: false\n", StringComparison.Ordinal)
         && !validated.Contains("untrusted.example", StringComparison.Ordinal),
@@ -1136,7 +1149,8 @@ static async Task VerifyProxyConfigurationTransactionAsync(string root)
     engine.FailNextReload = true;
     Assert(await service.ApplyAsync(profile.Id, "mode: global\n", CancellationToken.None) == ProxyProblemCodes.ConfigApplyFailed,
         "Failed reload did not report a transactional apply failure.");
-    var active = await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"));
+    var active = (await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml")))
+        .Replace("\r\n", "\n", StringComparison.Ordinal);
     Assert(active.Contains("mode: rule\n", StringComparison.Ordinal)
         && active.Contains("external-controller: 127.0.0.1:9090\n", StringComparison.Ordinal)
         && active.Contains("secret: \"controller-secret\"\n", StringComparison.Ordinal)

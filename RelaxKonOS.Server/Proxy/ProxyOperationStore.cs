@@ -32,6 +32,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         }
         finally { _gate.Release(); }
 
+        logger.LogInformation("Proxy operation {OperationId} queued: {OperationKind}.", item.OperationId, kind);
         _ = ExecuteAsync(item.OperationId, operation);
         return item;
     }
@@ -48,7 +49,15 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         try
         {
             await UpdateAsync(id, item => item with { State = ProxyOperationState.Running, Stage = "running", StartedAt = DateTimeOffset.UtcNow });
-            var problem = await operation(stage => UpdateAsync(id, item => item with { Stage = stage }), CancellationToken.None);
+            var problem = await operation(async stage =>
+            {
+                logger.LogDebug("Proxy operation {OperationId} entered stage {Stage}.", id, stage);
+                await UpdateAsync(id, item => item with { Stage = stage });
+            }, CancellationToken.None);
+            if (!string.IsNullOrEmpty(problem))
+                logger.LogWarning("Proxy operation {OperationId} failed with {ProblemCode}.", id, problem);
+            else
+                logger.LogInformation("Proxy operation {OperationId} completed.", id);
             await UpdateAsync(id, item => item with
             {
                 State = string.IsNullOrEmpty(problem) ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,

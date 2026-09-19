@@ -266,7 +266,7 @@
     "proxy.problem.subscription_invalid": "The subscription link or configuration is invalid.",
     "proxy.problem.subscription_fetch_failed": "The subscription content could not be retrieved.",
     "proxy.problem.subscription_system_proxy_unavailable": "The Server system proxy is unavailable or does not apply to this subscription address.",
-    "proxy.problem.geodata_unavailable": "The subscription requires GeoIP data, but the Server could not download it. Check DNS/outbound access or use a subscription without GEOIP rules.",
+    "proxy.problem.geodata_unavailable": "Mihomo could not prepare or load GEO data. Check that the bundled or selected local databases were copied successfully, are valid and readable. See the server proxy logs for details.",
     "proxy.problem.geodata_invalid": "The selected GeoIP database is invalid, too large, or unavailable to the RelaxKonOS Server service account. Select a regular geoip.metadb file accessible on the RelaxKonOS.Server.",
     "proxy.problem.http_401": "Your RelaxKonOS session is no longer authorized. Sign in again.",
     "proxy.problem.response_empty": "The Server returned an empty proxy response.",
