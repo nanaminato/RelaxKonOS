@@ -1,0 +1,904 @@
+{
+  "source": "Codex 图像 2026年9月19日 15_12_16.png",
+  "canvas": {
+    "width": 256,
+    "height": 256
+  },
+  "contentMaxSize": {
+    "width": 192,
+    "height": 192
+  },
+  "count": 89,
+  "icons": [
+    {
+      "id": "r01-c01",
+      "file": "icon-r01-c01.png",
+      "sourceBounds": {
+        "left": 37,
+        "top": 57,
+        "right": 128,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c02",
+      "file": "icon-r01-c02.png",
+      "sourceBounds": {
+        "left": 144,
+        "top": 57,
+        "right": 234,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c03",
+      "file": "icon-r01-c03.png",
+      "sourceBounds": {
+        "left": 250,
+        "top": 57,
+        "right": 343,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c04",
+      "file": "icon-r01-c04.png",
+      "sourceBounds": {
+        "left": 369,
+        "top": 57,
+        "right": 431,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c05",
+      "file": "icon-r01-c05.png",
+      "sourceBounds": {
+        "left": 456,
+        "top": 57,
+        "right": 549,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c06",
+      "file": "icon-r01-c06.png",
+      "sourceBounds": {
+        "left": 566,
+        "top": 57,
+        "right": 652,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c07",
+      "file": "icon-r01-c07.png",
+      "sourceBounds": {
+        "left": 670,
+        "top": 57,
+        "right": 759,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c08",
+      "file": "icon-r01-c08.png",
+      "sourceBounds": {
+        "left": 777,
+        "top": 57,
+        "right": 869,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c09",
+      "file": "icon-r01-c09.png",
+      "sourceBounds": {
+        "left": 889,
+        "top": 57,
+        "right": 972,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c10",
+      "file": "icon-r01-c10.png",
+      "sourceBounds": {
+        "left": 997,
+        "top": 57,
+        "right": 1087,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c11",
+      "file": "icon-r01-c11.png",
+      "sourceBounds": {
+        "left": 1113,
+        "top": 57,
+        "right": 1196,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c12",
+      "file": "icon-r01-c12.png",
+      "sourceBounds": {
+        "left": 1222,
+        "top": 57,
+        "right": 1306,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c13",
+      "file": "icon-r01-c13.png",
+      "sourceBounds": {
+        "left": 1331,
+        "top": 57,
+        "right": 1409,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c14",
+      "file": "icon-r01-c14.png",
+      "sourceBounds": {
+        "left": 1438,
+        "top": 57,
+        "right": 1521,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c15",
+      "file": "icon-r01-c15.png",
+      "sourceBounds": {
+        "left": 1544,
+        "top": 57,
+        "right": 1625,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c16",
+      "file": "icon-r01-c16.png",
+      "sourceBounds": {
+        "left": 1648,
+        "top": 57,
+        "right": 1730,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c17",
+      "file": "icon-r01-c17.png",
+      "sourceBounds": {
+        "left": 1756,
+        "top": 57,
+        "right": 1838,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r01-c18",
+      "file": "icon-r01-c18.png",
+      "sourceBounds": {
+        "left": 1864,
+        "top": 57,
+        "right": 1947,
+        "bottom": 159
+      }
+    },
+    {
+      "id": "r02-c01",
+      "file": "icon-r02-c01.png",
+      "sourceBounds": {
+        "left": 42,
+        "top": 192,
+        "right": 115,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c02",
+      "file": "icon-r02-c02.png",
+      "sourceBounds": {
+        "left": 145,
+        "top": 192,
+        "right": 230,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c03",
+      "file": "icon-r02-c03.png",
+      "sourceBounds": {
+        "left": 255,
+        "top": 192,
+        "right": 334,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c04",
+      "file": "icon-r02-c04.png",
+      "sourceBounds": {
+        "left": 360,
+        "top": 192,
+        "right": 440,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c05",
+      "file": "icon-r02-c05.png",
+      "sourceBounds": {
+        "left": 466,
+        "top": 192,
+        "right": 540,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c06",
+      "file": "icon-r02-c06.png",
+      "sourceBounds": {
+        "left": 572,
+        "top": 192,
+        "right": 645,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c07",
+      "file": "icon-r02-c07.png",
+      "sourceBounds": {
+        "left": 671,
+        "top": 192,
+        "right": 759,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c08",
+      "file": "icon-r02-c08.png",
+      "sourceBounds": {
+        "left": 785,
+        "top": 192,
+        "right": 862,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c09",
+      "file": "icon-r02-c09.png",
+      "sourceBounds": {
+        "left": 894,
+        "top": 192,
+        "right": 973,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c10",
+      "file": "icon-r02-c10.png",
+      "sourceBounds": {
+        "left": 1007,
+        "top": 192,
+        "right": 1075,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c11",
+      "file": "icon-r02-c11.png",
+      "sourceBounds": {
+        "left": 1110,
+        "top": 192,
+        "right": 1194,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c12",
+      "file": "icon-r02-c12.png",
+      "sourceBounds": {
+        "left": 1228,
+        "top": 192,
+        "right": 1306,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c13",
+      "file": "icon-r02-c13.png",
+      "sourceBounds": {
+        "left": 1332,
+        "top": 192,
+        "right": 1417,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c14",
+      "file": "icon-r02-c14.png",
+      "sourceBounds": {
+        "left": 1439,
+        "top": 192,
+        "right": 1521,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c15",
+      "file": "icon-r02-c15.png",
+      "sourceBounds": {
+        "left": 1551,
+        "top": 192,
+        "right": 1620,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c16",
+      "file": "icon-r02-c16.png",
+      "sourceBounds": {
+        "left": 1652,
+        "top": 192,
+        "right": 1724,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c17",
+      "file": "icon-r02-c17.png",
+      "sourceBounds": {
+        "left": 1758,
+        "top": 192,
+        "right": 1837,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r02-c18",
+      "file": "icon-r02-c18.png",
+      "sourceBounds": {
+        "left": 1861,
+        "top": 192,
+        "right": 1948,
+        "bottom": 290
+      }
+    },
+    {
+      "id": "r03-c01",
+      "file": "icon-r03-c01.png",
+      "sourceBounds": {
+        "left": 38,
+        "top": 328,
+        "right": 123,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c02",
+      "file": "icon-r03-c02.png",
+      "sourceBounds": {
+        "left": 146,
+        "top": 328,
+        "right": 226,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c03",
+      "file": "icon-r03-c03.png",
+      "sourceBounds": {
+        "left": 251,
+        "top": 328,
+        "right": 330,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c04",
+      "file": "icon-r03-c04.png",
+      "sourceBounds": {
+        "left": 353,
+        "top": 328,
+        "right": 435,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c05",
+      "file": "icon-r03-c05.png",
+      "sourceBounds": {
+        "left": 456,
+        "top": 328,
+        "right": 536,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c06",
+      "file": "icon-r03-c06.png",
+      "sourceBounds": {
+        "left": 561,
+        "top": 328,
+        "right": 641,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c07",
+      "file": "icon-r03-c07.png",
+      "sourceBounds": {
+        "left": 665,
+        "top": 328,
+        "right": 746,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c08",
+      "file": "icon-r03-c08.png",
+      "sourceBounds": {
+        "left": 768,
+        "top": 328,
+        "right": 852,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c09",
+      "file": "icon-r03-c09.png",
+      "sourceBounds": {
+        "left": 875,
+        "top": 328,
+        "right": 959,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c10",
+      "file": "icon-r03-c10.png",
+      "sourceBounds": {
+        "left": 981,
+        "top": 328,
+        "right": 1065,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c11",
+      "file": "icon-r03-c11.png",
+      "sourceBounds": {
+        "left": 1100,
+        "top": 328,
+        "right": 1178,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c12",
+      "file": "icon-r03-c12.png",
+      "sourceBounds": {
+        "left": 1206,
+        "top": 328,
+        "right": 1288,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c13",
+      "file": "icon-r03-c13.png",
+      "sourceBounds": {
+        "left": 1314,
+        "top": 328,
+        "right": 1398,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c14",
+      "file": "icon-r03-c14.png",
+      "sourceBounds": {
+        "left": 1420,
+        "top": 328,
+        "right": 1509,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c15",
+      "file": "icon-r03-c15.png",
+      "sourceBounds": {
+        "left": 1533,
+        "top": 328,
+        "right": 1622,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c16",
+      "file": "icon-r03-c16.png",
+      "sourceBounds": {
+        "left": 1645,
+        "top": 328,
+        "right": 1729,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c17",
+      "file": "icon-r03-c17.png",
+      "sourceBounds": {
+        "left": 1754,
+        "top": 328,
+        "right": 1838,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r03-c18",
+      "file": "icon-r03-c18.png",
+      "sourceBounds": {
+        "left": 1862,
+        "top": 328,
+        "right": 1946,
+        "bottom": 430
+      }
+    },
+    {
+      "id": "r04-c01",
+      "file": "icon-r04-c01.png",
+      "sourceBounds": {
+        "left": 38,
+        "top": 482,
+        "right": 117,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c02",
+      "file": "icon-r04-c02.png",
+      "sourceBounds": {
+        "left": 148,
+        "top": 482,
+        "right": 249,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c03",
+      "file": "icon-r04-c03.png",
+      "sourceBounds": {
+        "left": 270,
+        "top": 482,
+        "right": 353,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c04",
+      "file": "icon-r04-c04.png",
+      "sourceBounds": {
+        "left": 374,
+        "top": 482,
+        "right": 463,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c05",
+      "file": "icon-r04-c05.png",
+      "sourceBounds": {
+        "left": 482,
+        "top": 482,
+        "right": 582,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c06",
+      "file": "icon-r04-c06.png",
+      "sourceBounds": {
+        "left": 603,
+        "top": 482,
+        "right": 681,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c07",
+      "file": "icon-r04-c07.png",
+      "sourceBounds": {
+        "left": 706,
+        "top": 482,
+        "right": 798,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c08",
+      "file": "icon-r04-c08.png",
+      "sourceBounds": {
+        "left": 803,
+        "top": 482,
+        "right": 920,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c09",
+      "file": "icon-r04-c09.png",
+      "sourceBounds": {
+        "left": 945,
+        "top": 482,
+        "right": 1045,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c10",
+      "file": "icon-r04-c10.png",
+      "sourceBounds": {
+        "left": 1074,
+        "top": 482,
+        "right": 1167,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c11",
+      "file": "icon-r04-c11.png",
+      "sourceBounds": {
+        "left": 1199,
+        "top": 482,
+        "right": 1288,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c12",
+      "file": "icon-r04-c12.png",
+      "sourceBounds": {
+        "left": 1315,
+        "top": 482,
+        "right": 1407,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c13",
+      "file": "icon-r04-c13.png",
+      "sourceBounds": {
+        "left": 1425,
+        "top": 482,
+        "right": 1524,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c14",
+      "file": "icon-r04-c14.png",
+      "sourceBounds": {
+        "left": 1541,
+        "top": 482,
+        "right": 1623,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c15",
+      "file": "icon-r04-c15.png",
+      "sourceBounds": {
+        "left": 1644,
+        "top": 482,
+        "right": 1726,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c16",
+      "file": "icon-r04-c16.png",
+      "sourceBounds": {
+        "left": 1747,
+        "top": 482,
+        "right": 1829,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r04-c17",
+      "file": "icon-r04-c17.png",
+      "sourceBounds": {
+        "left": 1864,
+        "top": 482,
+        "right": 1942,
+        "bottom": 582
+      }
+    },
+    {
+      "id": "r05-c01",
+      "file": "icon-r05-c01.png",
+      "sourceBounds": {
+        "left": 34,
+        "top": 616,
+        "right": 135,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c02",
+      "file": "icon-r05-c02.png",
+      "sourceBounds": {
+        "left": 151,
+        "top": 616,
+        "right": 228,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c03",
+      "file": "icon-r05-c03.png",
+      "sourceBounds": {
+        "left": 246,
+        "top": 616,
+        "right": 329,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c04",
+      "file": "icon-r05-c04.png",
+      "sourceBounds": {
+        "left": 347,
+        "top": 616,
+        "right": 430,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c05",
+      "file": "icon-r05-c05.png",
+      "sourceBounds": {
+        "left": 447,
+        "top": 616,
+        "right": 535,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c06",
+      "file": "icon-r05-c06.png",
+      "sourceBounds": {
+        "left": 549,
+        "top": 616,
+        "right": 637,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c07",
+      "file": "icon-r05-c07.png",
+      "sourceBounds": {
+        "left": 659,
+        "top": 616,
+        "right": 730,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c08",
+      "file": "icon-r05-c08.png",
+      "sourceBounds": {
+        "left": 749,
+        "top": 616,
+        "right": 835,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c09",
+      "file": "icon-r05-c09.png",
+      "sourceBounds": {
+        "left": 855,
+        "top": 616,
+        "right": 927,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c10",
+      "file": "icon-r05-c10.png",
+      "sourceBounds": {
+        "left": 949,
+        "top": 616,
+        "right": 1033,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c11",
+      "file": "icon-r05-c11.png",
+      "sourceBounds": {
+        "left": 1060,
+        "top": 616,
+        "right": 1134,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c12",
+      "file": "icon-r05-c12.png",
+      "sourceBounds": {
+        "left": 1159,
+        "top": 616,
+        "right": 1264,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c13",
+      "file": "icon-r05-c13.png",
+      "sourceBounds": {
+        "left": 1281,
+        "top": 616,
+        "right": 1365,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c14",
+      "file": "icon-r05-c14.png",
+      "sourceBounds": {
+        "left": 1383,
+        "top": 616,
+        "right": 1471,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c15",
+      "file": "icon-r05-c15.png",
+      "sourceBounds": {
+        "left": 1486,
+        "top": 616,
+        "right": 1604,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c16",
+      "file": "icon-r05-c16.png",
+      "sourceBounds": {
+        "left": 1639,
+        "top": 616,
+        "right": 1721,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c17",
+      "file": "icon-r05-c17.png",
+      "sourceBounds": {
+        "left": 1743,
+        "top": 616,
+        "right": 1838,
+        "bottom": 712
+      }
+    },
+    {
+      "id": "r05-c18",
+      "file": "icon-r05-c18.png",
+      "sourceBounds": {
+        "left": 1868,
+        "top": 616,
+        "right": 1945,
+        "bottom": 712
+      }
+    }
+  ]
+}
