@@ -1,8 +1,10 @@
 using RelaxKonOS.Protocol.Installations;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.FileServices;
+using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.PrivilegedHelper;
 
 if (OperatingSystem.IsWindows() && args.Contains("--windows-service", StringComparer.Ordinal))
@@ -94,6 +96,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
                     : Fail(69, PrivilegedProblemCode.UnsupportedOperation, "environment provider is unavailable on this platform"),
             PrivilegedOperationKind.HostTimeRead or PrivilegedOperationKind.HostTimeApply => await RelaxKonOS.PrivilegedHelper.HostTimeOperations.ExecuteAsync(request),
             PrivilegedOperationKind.FileRead => await ReadFileAsync(request.Path, policy.FileAllowedRoots),
+            PrivilegedOperationKind.FileListDirectory => ListDirectory(request.Path, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileWrite => await WriteFileAsync(request.Path, request.ContentBase64, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileDelete => Delete(request.Path, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileRename => Rename(request.Path, request.NewName, policy.FileAllowedRoots),
@@ -462,6 +465,7 @@ static async Task<PrivilegedOperationResult> WriteNginxManagedFileAsync(string? 
     var content = DecodeContent(contentBase64);
     var directory = Path.GetDirectoryName(destination)!;
     Directory.CreateDirectory(directory);
+    EnsureNginxCanTraverseStaticSiteRoot(destination);
     var temporary = Path.Combine(directory, ".relaxkonos-write-" + Guid.NewGuid().ToString("N"));
     try
     {
@@ -470,6 +474,36 @@ static async Task<PrivilegedOperationResult> WriteNginxManagedFileAsync(string? 
         return new(true);
     }
     finally { if (File.Exists(temporary)) File.Delete(temporary); }
+}
+
+static PrivilegedOperationResult ListDirectory(string? path, IReadOnlyList<string> roots)
+{
+    var canonical = ValidatePath(path, roots);
+    var directory = new DirectoryInfo(canonical);
+    if (!directory.Exists) throw new DirectoryNotFoundException(canonical);
+    var directories = directory.EnumerateDirectories().Select(item => new FileSystemEntryDto(
+        item.FullName, item.Name, null, FileSystemEntryType.Directory, item.CreationTimeUtc, item.LastWriteTimeUtc,
+        item.LastAccessTimeUtc, item.Attributes.HasFlag(FileAttributes.Hidden), item.Attributes.HasFlag(FileAttributes.System), "inode/directory")).ToArray();
+    var files = directory.EnumerateFiles().Select(item => new FileEntryDto(
+        item.FullName, item.Name, string.IsNullOrEmpty(item.Extension) ? null : item.Extension[1..].ToLowerInvariant(), item.Length,
+        item.CreationTimeUtc, item.LastWriteTimeUtc, item.LastAccessTimeUtc, item.Attributes.HasFlag(FileAttributes.Hidden),
+        item.Attributes.HasFlag(FileAttributes.System), "application/octet-stream")).ToArray();
+    var result = new DirectoryDto(directory.FullName, directory.Name, FileSystemEntryType.Directory, directories, files,
+        directory.CreationTimeUtc, directory.LastWriteTimeUtc);
+    return new(true, OutputBase64: Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(result))));
+}
+
+static void EnsureNginxCanTraverseStaticSiteRoot(string destination)
+{
+    const string staticSitesRoot = "/var/lib/relaxkonos/webserver/nginx/sites";
+    if (!OperatingSystem.IsLinux() || !IsWithin(destination, staticSitesRoot)) return;
+
+    // Keep the RelaxKonOS data root non-listable, but allow the unprivileged Nginx worker to
+    // traverse it to the public static-site subtree.  Without this bit Nginx reports its
+    // otherwise readable index.html as a 404/permission failure.
+    const string dataRoot = "/var/lib/relaxkonos";
+    var current = File.GetUnixFileMode(dataRoot);
+    File.SetUnixFileMode(dataRoot, current | UnixFileMode.OtherExecute);
 }
 
 static PrivilegedOperationResult MoveNginxManagedFile(string? sourcePath, string? destinationPath, bool overwrite)

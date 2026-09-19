@@ -111,7 +111,8 @@ install_file_root_policy
 # runtime, controller configuration, GEO data, state, and diagnostics before it asks the
 # constrained Helper to manage the Mihomo service.
 DEVELOPMENT_GROUP="$(id -gn "$DEVELOPMENT_USER")"
-install -d -o root -g "$DEVELOPMENT_GROUP" -m 0710 /etc/relaxkonos /var/lib/relaxkonos
+install -d -o root -g "$DEVELOPMENT_GROUP" -m 0710 /etc/relaxkonos
+install -d -o root -g "$DEVELOPMENT_GROUP" -m 0711 /var/lib/relaxkonos
 install -d -o "$DEVELOPMENT_USER" -g "$DEVELOPMENT_GROUP" -m 0700 /etc/relaxkonos/proxy /var/lib/relaxkonos/proxy
 install -d -o root -g "$DEVELOPMENT_GROUP" -m 0710 /var/log/relaxkonos
 install -d -o "$DEVELOPMENT_USER" -g "$DEVELOPMENT_GROUP" -m 0700 /var/log/relaxkonos/proxy

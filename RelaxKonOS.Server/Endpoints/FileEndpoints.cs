@@ -41,11 +41,21 @@ public static class FileEndpoints
            .WithTags("Files");
 
         // GET list?path=
-        app.MapGet(FileApiRoutes.List, (string? path, IFileService fs) =>
+        app.MapGet(FileApiRoutes.List, async (string? path, HttpContext http, IFileService fs, IPrivilegedFileService privileged,
+            IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             try { return Results.Ok(fs.GetDirectory(path)); }
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "路径不存在", ex.Message); }
-            catch (UnauthorizedAccessException ex) { return Problem(403, "access-denied", "访问被拒", ex.Message); }
+            catch (UnauthorizedAccessException ex)
+            {
+                if (string.IsNullOrWhiteSpace(path) || !elevations.IsElevated(http.User, FileElevationCapability.Read, path))
+                    return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
+                try { return Results.Ok(await privileged.ListDirectoryAsync(path, ct)); }
+                catch (DirectoryNotFoundException privilegedEx) { return Problem(404, "not-found", "路径不存在", privilegedEx.Message); }
+                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
+                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
+                catch (IOException helperEx) { return Problem(500, "io-error", "I/O 错误", helperEx.Message); }
+            }
             catch (IOException ex) { return Problem(503, "device-unavailable", "设备不可用", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
@@ -165,9 +175,16 @@ public static class FileEndpoints
                 // probing it with OpenRead.
                 if (request.IncludeDescendants)
                     return GrantElevation(request, http, administrators, elevations);
-                var direct = fs.OpenRead(request.Path);
-                if (direct is null) return Problem(404, "not-found", "Not found", $"Cannot find {request.Path}");
-                using var stream = direct.Value.Stream;
+                var info = fs.GetInfo(request.Path);
+                if (info is null) return Problem(404, "not-found", "Not found", $"Cannot find {request.Path}");
+                if (info.Type == FileSystemEntryType.Directory)
+                    _ = fs.GetDirectory(request.Path);
+                else
+                {
+                    var direct = fs.OpenRead(request.Path);
+                    if (direct is null) return Problem(404, "not-found", "Not found", $"Cannot find {request.Path}");
+                    using var stream = direct.Value.Stream;
+                }
                 return Results.Ok(new FileElevationResult(false, false));
             }
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "Not found", ex.Message); }

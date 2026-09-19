@@ -58,6 +58,19 @@ Check(vm.IsBusy && vm.AddressbarPath == "/d", "Overlapping navigation cannot rep
 fake.Pending.SetResult(ExplorerFake.Directory("/slow"));
 await loading;
 Check(!vm.IsBusy && vm.AddressbarPath == "/slow", "Loading ends after successful commit");
+var elevationRequests = 0;
+fake.ProtectedDirectory = "/protected";
+vm.RequestFileElevationAsync = (path, capability) =>
+{
+    elevationRequests++;
+    fake.ElevatedDirectory = path;
+    return Task.FromResult(capability == FileElevationCapability.Read);
+};
+await vm.NavigateToAsync("/protected");
+Check(elevationRequests == 1 && vm.AddressbarPath == "/protected", "Protected directory navigation prompts once and retries after elevation");
+vm.RequestFileElevationAsync = null;
+fake.ProtectedDirectory = null;
+await vm.NavigateToAsync("/slow");
 vm.SelectedEntry = vm.Entries.First(e => e.Type == FileSystemEntryType.Directory);
 await vm.OpenCommand.ExecuteAsync(null);
 Check(vm.AddressbarPath == "/slow/folder", "Context Open enters directories");
@@ -185,6 +198,8 @@ public class ExplorerFake : DispatchProxy
     public bool RequireElevation { get; set; }
     public string? RenamedSource { get; set; }
     public string? RenamedName { get; set; }
+    public string? ProtectedDirectory { get; set; }
+    public string? ElevatedDirectory { get; set; }
     public TaskCompletionSource<DirectoryDto>? Pending { get; set; }
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
@@ -192,6 +207,9 @@ public class ExplorerFake : DispatchProxy
         {
             var path = (string)args![0]!;
             if (path == "/denied" || path == Denied) return Task.FromException<DirectoryDto>(new IOException("Denied"));
+            if (path == ProtectedDirectory && path != ElevatedDirectory)
+                return Task.FromException<DirectoryDto>(new RelaxKonOS.Client.Services.Auth.RelaxKonOSAuthException(
+                    new RelaxKonOS.Protocol.Common.ProblemDetails("test/elevation-required", "Elevation", 403, "Denied", null)));
             if (path == "/slow" && Pending is not null) return Pending.Task;
             return Task.FromResult(Directory(path));
         }

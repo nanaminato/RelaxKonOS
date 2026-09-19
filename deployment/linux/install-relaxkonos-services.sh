@@ -198,7 +198,10 @@ COMPOSE_DATA="$DATA_ROOT/docker-compose"
 SERVER_DATA="$DATA_ROOT/server"
 WEBSERVER_DATA="$DATA_ROOT/webserver/nginx"
 CERTIFICATE_DATA="$SERVER_DATA/certificates"
-install -d -o root -g "$SERVICE_GROUP" -m 0710 /etc/relaxkonos "$DATA_ROOT" /var/lib/relaxkonos
+install -d -o root -g "$SERVICE_GROUP" -m 0710 /etc/relaxkonos
+# Nginx workers must traverse this parent to reach RelaxKonOS-owned public static sites, but
+# must never be able to enumerate the platform data root.
+install -d -o root -g "$SERVICE_GROUP" -m 0711 "$DATA_ROOT" /var/lib/relaxkonos
 install -d -m 0700 "$GUARDIAN_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$COMPOSE_DATA"
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$SERVER_DATA"

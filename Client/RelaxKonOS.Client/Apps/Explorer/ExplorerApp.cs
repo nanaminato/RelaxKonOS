@@ -411,7 +411,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                         Margin = new Thickness(20), Spacing = 12,
                         Children =
                         {
-                            new TextBlock { Text = "此文件需要管理员权限才能打开。", TextWrapping = TextWrapping.Wrap },
+                            new TextBlock { Text = "此位置需要管理员权限才能访问。", TextWrapping = TextWrapping.Wrap },
                             input,
                             new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
                         },

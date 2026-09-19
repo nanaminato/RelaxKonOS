@@ -515,7 +515,17 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
 
     public async Task NavigateToAsync(string? path)
     {
-        if (!await NavigateToAsyncCore(path)) return;
+        bool navigated;
+        try
+        {
+            navigated = await NavigateToAsyncCore(path);
+        }
+        catch (RelaxKonOSAuthException ex) when (path is not null && ex.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
+        {
+            if (RequestFileElevationAsync is null || !await RequestFileElevationAsync(path, FileElevationCapability.Read)) return;
+            navigated = await NavigateToAsyncCore(path);
+        }
+        if (!navigated) return;
         if (_historyIndex >= 0 && PathEquals(_history[_historyIndex], AddressbarPath)) return;
         if (_historyIndex < _history.Count - 1)
             _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
@@ -570,6 +580,11 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             StatusText = status;
             await SyncTreeSelectionAsync(confirmedPath);
             return true;
+        }
+        catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/elevation-required", StringComparison.Ordinal))
+        {
+            // The public navigation method turns this into a single administrator prompt and retry.
+            throw;
         }
         catch (Exception ex)
         {

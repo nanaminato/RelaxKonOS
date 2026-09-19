@@ -1,10 +1,21 @@
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Common;
+using System.Text.Json;
 
 namespace RelaxKonOS.Server.Privileged;
 
 public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) : IPrivilegedFileService
 {
+    public async Task<DirectoryDto> ListDirectoryAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileListDirectory, Path: path), cancellationToken);
+        if (!result.Success) throw ToException(result, path);
+        var bytes = Convert.FromBase64String(result.OutputBase64 ?? string.Empty);
+        return JsonSerializer.Deserialize<DirectoryDto>(bytes, RelaxKonOSJsonOptions.Default)
+            ?? throw new IOException("Privileged directory listing returned no data.");
+    }
+
     public async Task<(Stream Stream, string FileName)> OpenReadAsync(string path, CancellationToken cancellationToken = default)
     {
         var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileRead, Path: path), cancellationToken);

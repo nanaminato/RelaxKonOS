@@ -12,7 +12,8 @@ namespace RelaxKonOS.Server.Files;
 
 /// <summary>宿主 OS 本地文件系统服务。移植自 Jaya <c>FileSystemService.GetDirectoryAsync</c> 的枚举逻辑，
 /// 扩展 create/delete/rename/move/copy/upload/download 操作。以宿主 OS 进程身份运行，复用宿主用户/权限。
-/// 平台感知：Windows 列盘符；Linux 返回单条 "/" 根。<see cref="UnauthorizedAccessException"/> 在列举时吞并（部分目录不可访问不应导致整列失败）。</summary>
+/// 平台感知：Windows 列盘符；Linux 返回单条 "/" 根。目录本身无法列举时会保留
+/// <see cref="UnauthorizedAccessException"/>，由端点要求短期管理员授权后重试；不能把受保护目录伪装成空目录。</summary>
 public sealed class LocalFileService(IServerModeResolver mode) : IFileService
 {
     private static readonly bool IsLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
@@ -226,34 +227,26 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         var dirs = new List<FileSystemEntryDto>();
         var files = new List<FileEntryDto>();
 
-        // 子目录
-        try
+        // 子目录。这里不要吞掉顶层目录的访问拒绝：Explorer 需要据此请求受控的
+        // 短期管理员授权，而不是向用户呈现一个误导性的空目录。
+        foreach (var di in info.EnumerateDirectories())
         {
-            foreach (var di in info.EnumerateDirectories())
-            {
-                dirs.Add(new FileSystemEntryDto(
-                    Path: di.FullName,
-                    Name: di.Name,
-                    Size: null,
-                    Type: FileSystemEntryType.Directory,
-                    Created: di.CreationTimeUtc,
-                    Modified: di.LastWriteTimeUtc,
-                    Accessed: di.LastAccessTimeUtc,
-                    IsHidden: di.Attributes.HasFlag(FileAttributes.Hidden),
-                    IsSystem: di.Attributes.HasFlag(FileAttributes.System),
-                    MimeType: InodeDirectory));
-            }
+            dirs.Add(new FileSystemEntryDto(
+                Path: di.FullName,
+                Name: di.Name,
+                Size: null,
+                Type: FileSystemEntryType.Directory,
+                Created: di.CreationTimeUtc,
+                Modified: di.LastWriteTimeUtc,
+                Accessed: di.LastAccessTimeUtc,
+                IsHidden: di.Attributes.HasFlag(FileAttributes.Hidden),
+                IsSystem: di.Attributes.HasFlag(FileAttributes.System),
+                MimeType: InodeDirectory));
         }
-        catch (UnauthorizedAccessException) { /* 部分子目录不可访问：跳过 */ }
-        catch (DirectoryNotFoundException) { throw; }
 
         // 文件
-        try
-        {
-            foreach (var fi in info.EnumerateFiles())
-                files.Add(ToFileEntry(fi));
-        }
-        catch (UnauthorizedAccessException) { }
+        foreach (var fi in info.EnumerateFiles())
+            files.Add(ToFileEntry(fi));
 
         return new DirectoryDto(
             Path: info.FullName,
