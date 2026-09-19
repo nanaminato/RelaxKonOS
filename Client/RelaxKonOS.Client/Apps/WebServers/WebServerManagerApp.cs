@@ -120,6 +120,18 @@ public sealed class WebServerManagerApp : RemoteApplicationBase
                     _ = picker.LoadRootAsync();
                     return new ExplorerMainView { DataContext = picker };
                 }, new Size(860, 580));
+        viewModel.RequestSiteRootDirectoryAsync = () => explorer is null
+            ? Task.FromResult<string?>(null)
+            : context.ShowDialogAsync<string?>(window, LocalizedText.Get("webservers.site.dialog.choose_static_root"), dialog =>
+            {
+                var picker = new ExplorerViewModel(explorer,
+                    new ExplorerPickerOptions(ExplorerPickerMode.SelectFolder), paths => dialog.Close(paths[0]))
+                {
+                    CancelAction = dialog.Cancel,
+                };
+                _ = picker.LoadRootAsync();
+                return new ExplorerMainView { DataContext = picker };
+            }, new Size(860, 580));
 
         async Task<bool> ConfirmAsync(string titleKey, string messageKey, string confirmKey)
         {

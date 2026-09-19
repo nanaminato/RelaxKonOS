@@ -142,6 +142,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public Func<string, Task>? OpenFileBrowserAtPathAsync { get; set; }
     /// <summary>Opens the RemoteExplorer picker for certificate or key files on the server.</summary>
     public Func<bool, Task<string?>>? RequestServerCertificateFileAsync { get; set; }
+    /// <summary>Opens the RemoteExplorer folder picker for a static site's server-side root.</summary>
+    public Func<Task<string?>>? RequestSiteRootDirectoryAsync { get; set; }
     /// <summary>Provided by the application shell to keep the editor in a modal dialog.</summary>
     public Func<bool, Task>? ShowSiteEditorAsync { get; set; }
     /// <summary>Set only while the site editor dialog is open.</summary>
@@ -597,6 +599,13 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             SitePrivateKeyPath = path;
             SelectedSiteCertificateSource = SiteCertificateSources[1];
         }
+    }
+
+    [RelayCommand]
+    private async Task ChooseSiteRootDirectoryAsync()
+    {
+        var path = await (RequestSiteRootDirectoryAsync?.Invoke() ?? Task.FromResult<string?>(null));
+        if (!string.IsNullOrWhiteSpace(path)) SiteRootPath = path;
     }
 
     private async Task LoadSitesAsync()

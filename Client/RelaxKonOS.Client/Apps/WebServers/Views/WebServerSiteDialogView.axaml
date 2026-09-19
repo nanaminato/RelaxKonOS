@@ -45,7 +45,10 @@
                 <StackPanel Spacing="6">
                     <TextBlock Text="{loc:Loc webservers.site.dialog.static_root}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{loc:Loc webservers.site.dialog.static_root_help}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <TextBox Text="{Binding SiteRootPath, Mode=TwoWay}" PlaceholderText="/srv/relaxkon/frontend/browser" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBox Text="{Binding SiteRootPath, Mode=TwoWay}" PlaceholderText="/srv/relaxkon/frontend/browser" />
+                        <Button Grid.Column="1" Content="{loc:Loc webservers.site.dialog.choose_path}" Command="{Binding ChooseSiteRootDirectoryCommand}" />
+                    </Grid>
                     <CheckBox Content="{loc:Loc webservers.site.dialog.spa_fallback}" IsChecked="{Binding SiteSpaFallback, Mode=TwoWay}" />
                 </StackPanel>
 
