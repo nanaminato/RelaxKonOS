@@ -209,7 +209,17 @@ public sealed class NativeMihomoPrivilegedOperations(
     private async Task<ProxyPrivilegedResult> WindowsHelperAsync(PrivilegedOperationKind operation, ProxyMihomoServiceAction? action, CancellationToken cancellationToken)
     {
         var result = await transport.ExecuteAsync(new PrivilegedOperationRequest(operation, ProxyMihomoServiceAction: action), cancellationToken);
-        return result.Success ? Success() : Unavailable();
+        if (result.Success) return Success();
+        await WriteDiagnosticAsync("error", $"Windows privileged Helper failed Mihomo operation {operation}. ProblemCode={result.ProblemCode}", cancellationToken);
+        return result.ProblemCode switch
+        {
+            // Only a failed local privilege boundary may surface the helper-unavailable prompt.
+            PrivilegedProblemCode.HelperUnavailable => Unavailable(),
+            // The Helper is reachable, but it cannot find the fixed runtime or active config.
+            PrivilegedProblemCode.NotFound => new(false, ProxyProblemCodes.RuntimeNotInstalled),
+            PrivilegedProblemCode.AccessDenied => new(false, ProxyProblemCodes.PermissionDenied),
+            _ => new(false, ProxyProblemCodes.ServiceUnavailable),
+        };
     }
     private static string BinaryName() => OperatingSystem.IsWindows() ? "mihomo.exe" : "mihomo";
     private async Task<ProxyPrivilegedResult> SystemctlAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)

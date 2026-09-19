@@ -53,8 +53,9 @@ internal static class WindowsMihomoPrivilegedProcessHost
             DisposeExitedProcess();
 
             var executable = ActiveBinaryPath();
+            if (executable is null) return NotFound("managed Mihomo runtime is not installed");
             var configuration = Path.Combine(ProxyRoot(), "config", "active.yaml");
-            if (executable is null || !File.Exists(configuration)) return Unavailable();
+            if (!File.Exists(configuration)) return NotFound("managed Mihomo configuration is not installed");
 
             var process = new Process
             {
@@ -73,7 +74,7 @@ internal static class WindowsMihomoPrivilegedProcessHost
             if (!process.Start())
             {
                 process.Dispose();
-                return Unavailable();
+                return InternalError("managed Mihomo process could not be started");
             }
             _process = process;
             process.Exited += (_, _) => _ = RestartAfterUnexpectedExitAsync(process);
@@ -82,7 +83,7 @@ internal static class WindowsMihomoPrivilegedProcessHost
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            return Unavailable();
+            return InternalError("managed Mihomo process could not be started");
         }
         finally { Gate.Release(); }
     }
@@ -117,7 +118,7 @@ internal static class WindowsMihomoPrivilegedProcessHost
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException or OperationCanceledException)
         {
-            return Unavailable();
+            return InternalError("managed Mihomo process could not be stopped");
         }
         finally { process.Dispose(); }
     }
@@ -172,5 +173,6 @@ internal static class WindowsMihomoPrivilegedProcessHost
     private static string ProxyRoot() => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RelaxKonOS", "Proxy");
     private static PrivilegedOperationResult Success() => new(true);
     private static PrivilegedOperationResult Invalid() => new(false, 64, Error: "invalid proxy service action", ProblemCode: PrivilegedProblemCode.InvalidRequest);
-    private static PrivilegedOperationResult Unavailable() => new(false, 69, Error: "managed mihomo process is unavailable", ProblemCode: PrivilegedProblemCode.HelperUnavailable);
+    private static PrivilegedOperationResult NotFound(string error) => new(false, 2, Error: error, ProblemCode: PrivilegedProblemCode.NotFound);
+    private static PrivilegedOperationResult InternalError(string error) => new(false, 70, Error: error, ProblemCode: PrivilegedProblemCode.InternalError);
 }
