@@ -1,6 +1,5 @@
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Client.Apps.WebServers;
 
@@ -18,7 +17,6 @@ public interface IRemoteWebServerClient
     Task<WebServerInstallCatalogDto?> GetManagedInstallCatalogAsync(CancellationToken cancellationToken = default);
     Task<WebServerInstallDownloadDto?> GetManagedInstallDownloadAsync(string version, CancellationToken cancellationToken = default);
     Task<InstallationFileReferenceDto?> UploadManagedPackageAsync(string fileName, Stream content, CancellationToken cancellationToken = default);
-    Task<bool> ElevateConfigurationAsync(string candidateId, string password, CancellationToken cancellationToken = default);
     Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, IntegrateWebServerRequest request, CancellationToken cancellationToken = default);
     Task<WebServerOperationDto?> ApplyLifecycleAsync(string id, WebServerLifecycleAction action, CancellationToken cancellationToken = default);
     Task<WebServerOperationDto?> ReloadAsync(string id, CancellationToken cancellationToken = default);

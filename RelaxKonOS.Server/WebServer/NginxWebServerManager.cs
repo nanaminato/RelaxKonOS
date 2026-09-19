@@ -22,7 +22,6 @@ namespace RelaxKonOS.Server.WebServer;
 /// an optional host integration.
 /// </summary>
 internal sealed partial class NginxWebServerManager(
-    IHostPrivilegeService privileges,
     IPrivilegedNginxOperations privilegedNginx,
     WebServerOperationStore operations,
     WebServerMetadataRepository metadata,
@@ -250,8 +249,6 @@ internal sealed partial class NginxWebServerManager(
         }
         if (action == WebServerLifecycleAction.EnableAcmeHttp01)
         {
-            if (!privileges.IsAdministrator)
-                return Rejected(instanceId, "enable-acme-http01", "webserver.configuration_helper_unavailable");
             if (instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed))
                 return Rejected(instanceId, "enable-acme-http01", "webserver.acme_integration_required");
             return await operations.StartAsync(idempotencyKey, instanceId, "enable-acme-http01", actor,
@@ -280,8 +277,6 @@ internal sealed partial class NginxWebServerManager(
             logger.LogWarning("Nginx site save rejected because the requested instance was not found. InstanceId={InstanceId}", instanceId);
             return null;
         }
-        if (!privileges.IsAdministrator)
-            throw new WebServerSiteApplyException("webserver.configuration_helper_unavailable");
         if (instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed))
         {
             logger.LogWarning("Nginx site save rejected because the instance is not integrated or managed. InstanceId={InstanceId}, ManagementMode={ManagementMode}, Configuration={Configuration}", instance.Id, instance.ManagementMode, instance.ConfigurationPath);
@@ -309,7 +304,6 @@ internal sealed partial class NginxWebServerManager(
                 logger.LogError("Nginx site save rejected because the RelaxKonOS include anchor cannot be used. InstanceId={InstanceId}, Problem={Problem}, Configuration={Configuration}, SitesDirectory={SitesDirectory}", instance.Id, anchorProblem, instance.ConfigurationPath, directory);
                 return null;
             }
-            Directory.CreateDirectory(directory);
             if (IsSymbolicLink(directory))
             {
                 logger.LogWarning("Nginx site save rejected because the sites directory is a symbolic link. InstanceId={InstanceId}, SitesDirectory={SitesDirectory}", instance.Id, directory);
@@ -334,7 +328,8 @@ internal sealed partial class NginxWebServerManager(
                 logger.LogWarning("Nginx site save failed before metadata was committed. InstanceId={InstanceId}, SiteId={SiteId}, Problem={Problem}, SitesDirectory={SitesDirectory}", instance.Id, site.Id, applyProblem, directory);
                 throw new WebServerSiteApplyException(applyProblem);
             }
-            await WriteSitesAsync(directory, sites, cancellationToken);
+            if (!await WriteSitesAsync(directory, sites, cancellationToken))
+                throw new WebServerSiteApplyException("webserver.site_save_failed");
             logger.LogInformation("Nginx site saved successfully. InstanceId={InstanceId}, SiteId={SiteId}, ListenPort={ListenPort}, SitesDirectory={SitesDirectory}", instance.Id, site.Id, site.ListenPort, directory);
             return site;
         }
@@ -346,7 +341,7 @@ internal sealed partial class NginxWebServerManager(
     public async Task<bool?> DeleteSiteAsync(string instanceId, string siteId, CancellationToken cancellationToken)
     {
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
-        if (instance is null || !privileges.IsAdministrator || instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed) || !SiteIdPattern().IsMatch(siteId)) return null;
+        if (instance is null || instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed) || !SiteIdPattern().IsMatch(siteId)) return null;
         var directory = GetSitesDirectory(instance);
         if (directory is null) return null;
         await IntegrationGate.WaitAsync(cancellationToken);
@@ -357,15 +352,15 @@ internal sealed partial class NginxWebServerManager(
             var config = Path.Combine(directory, $"{siteId}.conf");
             if (!IsRelaxKonOSSiteConfig(config)) return null;
             var backup = config + ".rollback";
-            File.Move(config, backup, false);
+            if (!await MoveNginxFileAsync(config, backup, overwrite: false, cancellationToken)) return null;
             try
             {
-                if (await ReloadAfterTestAsync(instance, cancellationToken) is not null) { File.Move(backup, config, false); _ = await ReloadAfterTestAsync(instance, cancellationToken); return null; }
-                File.Delete(backup);
-                await WriteSitesAsync(directory, sites, cancellationToken);
+                if (await ReloadAfterTestAsync(instance, cancellationToken) is not null) { _ = await MoveNginxFileAsync(backup, config, overwrite: false, cancellationToken); _ = await ReloadAfterTestAsync(instance, cancellationToken); return null; }
+                if (!await DeleteNginxFileAsync(backup, cancellationToken)) return null;
+                if (!await WriteSitesAsync(directory, sites, cancellationToken)) return null;
                 return true;
             }
-            finally { if (File.Exists(backup)) File.Move(backup, config, false); }
+            finally { if (File.Exists(backup) && !File.Exists(config)) _ = await MoveNginxFileAsync(backup, config, overwrite: false, CancellationToken.None); }
         }
         catch (IOException) { return null; }
         catch (UnauthorizedAccessException) { return null; }
@@ -388,7 +383,7 @@ internal sealed partial class NginxWebServerManager(
         catch (UnauthorizedAccessException) { return []; }
     }
 
-    private static async Task<string?> EnsureSiteIncludeAnchorAsync(WebServerDto instance, CancellationToken cancellationToken)
+    private async Task<string?> EnsureSiteIncludeAnchorAsync(WebServerDto instance, CancellationToken cancellationToken)
     {
         if (instance.ConfigurationPath is null) return "configuration_path_missing";
         var include = instance.ManagementMode == WebServerManagementMode.Managed
@@ -404,24 +399,24 @@ internal sealed partial class NginxWebServerManager(
             // atomically here. An existing Nginx must be explicitly integrated first.
             if (instance.ManagementMode != WebServerManagementMode.Managed) return "integration_anchor_missing";
             var anchorStage = anchor + ".stage";
-            await File.WriteAllTextAsync(anchorStage, expected, new UTF8Encoding(false), cancellationToken);
-            File.Move(anchorStage, anchor, false);
+            if (!await WriteNginxFileAsync(anchorStage, expected, cancellationToken)
+                || !await MoveNginxFileAsync(anchorStage, anchor, overwrite: false, cancellationToken)) return "webserver.site_save_failed";
             return null;
         }
         if (!IsOwnedFile(anchor)) return "integration_anchor_not_owned";
         if (File.ReadAllText(anchor) == expected) return null;
         var stage = anchor + ".stage";
-        await File.WriteAllTextAsync(stage, expected, new UTF8Encoding(false), cancellationToken);
-        File.Move(stage, anchor, true);
+        if (!await WriteNginxFileAsync(stage, expected, cancellationToken)
+            || !await MoveNginxFileAsync(stage, anchor, overwrite: true, cancellationToken)) return "webserver.site_save_failed";
         return null;
     }
 
-    private static async Task WriteSitesAsync(string directory, IReadOnlyList<WebServerSiteDto> sites, CancellationToken cancellationToken)
+    private async Task<bool> WriteSitesAsync(string directory, IReadOnlyList<WebServerSiteDto> sites, CancellationToken cancellationToken)
     {
         var path = Path.Combine(directory, "sites.json");
         var stage = path + ".stage";
-        await File.WriteAllTextAsync(stage, JsonSerializer.Serialize(sites.OrderBy(site => site.Name, StringComparer.OrdinalIgnoreCase), SiteJson), new UTF8Encoding(false), cancellationToken);
-        File.Move(stage, path, true);
+        return await WriteNginxFileAsync(stage, JsonSerializer.Serialize(sites.OrderBy(site => site.Name, StringComparer.OrdinalIgnoreCase), SiteJson), cancellationToken)
+            && await MoveNginxFileAsync(stage, path, overwrite: true, cancellationToken);
     }
 
     private bool TryNormalizeSite(WebServerDto instance, UpsertWebServerSiteRequest request, out WebServerSiteDto site, out string problem)
@@ -563,14 +558,14 @@ internal sealed partial class NginxWebServerManager(
         }
         if (site.RootPath is not null)
         {
-            Directory.CreateDirectory(site.RootPath);
             if (IsSymbolicLink(site.RootPath))
             {
                 logger.LogWarning("Nginx site save rejected because the static site root is a symbolic link. InstanceId={InstanceId}, SiteId={SiteId}, RootPath={RootPath}", instance.Id, site.Id, site.RootPath);
                 return "webserver.site_save_failed";
             }
             var index = Path.Combine(site.RootPath, "index.html");
-            if (!File.Exists(index)) await File.WriteAllTextAsync(index, "<h1>Welcome to RelaxKonOS</h1>\n", new UTF8Encoding(false), cancellationToken);
+            if (!File.Exists(index) && !await WriteNginxFileAsync(index, "<h1>Welcome to RelaxKonOS</h1>\n", cancellationToken))
+                return "webserver.site_save_failed";
         }
         var config = Path.Combine(directory, $"{site.Id}.conf");
         if (File.Exists(config) && !IsRelaxKonOSSiteConfig(config))
@@ -581,29 +576,30 @@ internal sealed partial class NginxWebServerManager(
         var stage = Path.Combine(directory, $"relaxkonos.{Guid.NewGuid():N}.conf");
         var backup = config + ".rollback";
         var acmeChallengeRoot = IsAcmeHttp01Enabled(directory) ? webRootChallenges.RootPath : null;
-        await File.WriteAllTextAsync(stage, RenderSiteConfiguration(site, certificatePaths, acmeChallengeRoot), new UTF8Encoding(false), cancellationToken);
+        if (!await WriteNginxFileAsync(stage, RenderSiteConfiguration(site, certificatePaths, acmeChallengeRoot), cancellationToken))
+            return "webserver.site_save_failed";
         var hadExisting = File.Exists(config);
         try
         {
             var testProblem = await TestConfigurationAsync(instance, cancellationToken);
             if (testProblem is not null) return testProblem;
-            if (hadExisting) File.Move(config, backup, false);
-            File.Move(stage, config, false);
+            if (hadExisting && !await MoveNginxFileAsync(config, backup, overwrite: false, cancellationToken)) return "webserver.site_save_failed";
+            if (!await MoveNginxFileAsync(stage, config, overwrite: false, cancellationToken)) return "webserver.site_save_failed";
             var reloadProblem = await ReloadAfterTestAsync(instance, cancellationToken);
             if (reloadProblem is null)
             {
-                if (File.Exists(backup)) File.Delete(backup);
+                if (File.Exists(backup)) _ = await DeleteNginxFileAsync(backup, cancellationToken);
                 return null;
             }
-            File.Delete(config);
-            if (File.Exists(backup)) File.Move(backup, config, false);
+            _ = await DeleteNginxFileAsync(config, cancellationToken);
+            if (File.Exists(backup)) _ = await MoveNginxFileAsync(backup, config, overwrite: false, cancellationToken);
             _ = await ReloadAfterTestAsync(instance, cancellationToken);
             return reloadProblem;
         }
         finally
         {
-            if (File.Exists(stage)) File.Delete(stage);
-            if (File.Exists(backup) && !File.Exists(config)) File.Move(backup, config, false);
+            if (File.Exists(stage)) _ = await DeleteNginxFileAsync(stage, CancellationToken.None);
+            if (File.Exists(backup) && !File.Exists(config)) _ = await MoveNginxFileAsync(backup, config, overwrite: false, CancellationToken.None);
         }
     }
 
@@ -687,10 +683,35 @@ internal sealed partial class NginxWebServerManager(
 
     private string GetStaticSitesRoot(WebServerDto instance)
     {
+        if (OperatingSystem.IsLinux()) return "/var/lib/relaxkonos/webserver/nginx/sites";
         if (instance.ManagementMode == WebServerManagementMode.Managed && UsesSystemPackageManagedService())
             return Path.Combine(GetManagedLayout().Root, "sites");
         var configDirectory = Path.GetDirectoryName(instance.ConfigurationPath!)!;
         return Path.Combine(configDirectory, "relaxkonos-sites");
+    }
+
+    private async Task<bool> WriteNginxFileAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        if (OperatingSystem.IsLinux())
+            return (await privilegedNginx.WriteManagedFileAsync(path, Encoding.UTF8.GetBytes(content), cancellationToken)).Success;
+        await File.WriteAllTextAsync(path, content, new UTF8Encoding(false), cancellationToken);
+        return true;
+    }
+
+    private async Task<bool> MoveNginxFileAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken)
+    {
+        if (OperatingSystem.IsLinux())
+            return (await privilegedNginx.MoveManagedFileAsync(source, destination, overwrite, cancellationToken)).Success;
+        File.Move(source, destination, overwrite);
+        return true;
+    }
+
+    private async Task<bool> DeleteNginxFileAsync(string path, CancellationToken cancellationToken)
+    {
+        if (OperatingSystem.IsLinux())
+            return (await privilegedNginx.DeleteManagedFileAsync(path, cancellationToken)).Success;
+        File.Delete(path);
+        return true;
     }
 
     private static string ToSiteId(string name)

@@ -28,14 +28,17 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private readonly IRemoteCertificateClient _certificates;
     private readonly IAuthSession _session;
     private readonly IAppPermissionScope _permissions;
+    private readonly IHostElevationBroker _elevations;
     private CancellationTokenSource? _operationCts;
 
-    public WebServerManagerViewModel(IRemoteWebServerClient client, IRemoteCertificateClient certificates, IAuthSession session, IAppPermissionScope permissions)
+    public WebServerManagerViewModel(IRemoteWebServerClient client, IRemoteCertificateClient certificates, IAuthSession session,
+        IAppPermissionScope permissions, IHostElevationBroker elevations)
     {
         _client = client;
         _certificates = certificates;
         _session = session;
         _permissions = permissions;
+        _elevations = elevations;
         InstallVersion = string.Empty;
         SelectedSiteCertificateSource = SiteCertificateSources[0];
     }
@@ -130,8 +133,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
 
     /// <summary>Supplied by the application shell so the view model never constructs UI directly.</summary>
     public Func<Task<bool>>? RequestIntegrationConfirmationAsync { get; set; }
-    /// <summary>Obtains a short-lived, instance-scoped host-administrator grant before config is changed.</summary>
-    public Func<string, Task<bool>>? RequestConfigurationElevationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedInstallConfirmationAsync { get; set; }
     public Func<Task<bool>>? RequestManagedUninstallConfirmationAsync { get; set; }
     public Func<Task<string?>>? RequestLocalNginxPackageAsync { get; set; }
@@ -311,17 +312,14 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         var candidate = SelectedIntegrationCandidate;
         if (candidate is null) return;
         if (RequestIntegrationConfirmationAsync is null || !await RequestIntegrationConfirmationAsync()) return;
-        if (RequestConfigurationElevationAsync is null || !await RequestConfigurationElevationAsync(candidate.Id))
-        {
-            OperationText = LocalizedText.Ref("webservers.problem.elevation_required");
-            return;
-        }
         Installation.DismissInactiveFeedback();
-        await RunOperationAsync("integrate", ct => _client.IntegrateCandidateAsync(candidate.Id, new IntegrateWebServerRequest(true), ct));
+        await RunOperationAsync("integrate", ct => _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, candidate.Id,
+            () => _client.IntegrateCandidateAsync(candidate.Id, new IntegrateWebServerRequest(true), ct), ct));
     }
 
     [RelayCommand(CanExecute = nameof(CanEnableAcmeHttp01))]
-    private Task EnableAcmeHttp01Async() => RunOperationAsync("enable-acme-http01", ct => _client.ApplyLifecycleAsync(SelectedServer!.Id, WebServerLifecycleAction.EnableAcmeHttp01, ct));
+    private Task EnableAcmeHttp01Async() => RunElevatedLifecycleAsync("enable-acme-http01", WebServerLifecycleAction.EnableAcmeHttp01,
+        HostElevationCapability.NginxConfigurationWrite);
 
     [RelayCommand(CanExecute = nameof(CanInstallManaged))]
     private async Task InstallManagedAsync()
@@ -362,10 +360,10 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task StartManagedAsync() => RunOperationAsync("start", ct => _client.ApplyLifecycleAsync(SelectedServer!.Id, WebServerLifecycleAction.Start, ct));
+    private Task StartManagedAsync() => RunElevatedLifecycleAsync("start", WebServerLifecycleAction.Start, HostElevationCapability.NginxLifecycle);
 
     [RelayCommand(CanExecute = nameof(CanStop))]
-    private Task StopAsync() => RunOperationAsync("stop", ct => _client.ApplyLifecycleAsync(SelectedServer!.Id, WebServerLifecycleAction.Stop, ct));
+    private Task StopAsync() => RunElevatedLifecycleAsync("stop", WebServerLifecycleAction.Stop, HostElevationCapability.NginxLifecycle);
 
     /// <summary>Uses the observed runtime state so the primary control always performs the
     /// inverse action: start when stopped or unknown, stop when running.</summary>
@@ -373,10 +371,19 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private Task ToggleManagedAsync() => IsManagedServerRunning ? StopAsync() : StartManagedAsync();
 
     [RelayCommand(CanExecute = nameof(CanRestart))]
-    private Task RestartAsync() => RunOperationAsync("restart", ct => _client.ApplyLifecycleAsync(SelectedServer!.Id, WebServerLifecycleAction.Restart, ct));
+    private Task RestartAsync() => RunElevatedLifecycleAsync("restart", WebServerLifecycleAction.Restart, HostElevationCapability.NginxLifecycle);
 
     [RelayCommand(CanExecute = nameof(CanReload))]
-    private Task ReloadAsync() => RunOperationAsync("reload", ct => _client.ApplyLifecycleAsync(SelectedServer!.Id, WebServerLifecycleAction.Reload, ct));
+    private Task ReloadAsync() => RunElevatedLifecycleAsync("reload", WebServerLifecycleAction.Reload, HostElevationCapability.NginxLifecycle);
+
+    private Task RunElevatedLifecycleAsync(string kind, WebServerLifecycleAction action, HostElevationCapability capability)
+    {
+        var server = SelectedServer;
+        return server is null
+            ? Task.CompletedTask
+            : RunOperationAsync(kind, ct => _elevations.ExecuteAsync(capability, server.Id,
+                () => _client.ApplyLifecycleAsync(server.Id, action, ct), ct));
+    }
 
     [RelayCommand(CanExecute = nameof(CanUninstallManaged))]
     private async Task UninstallManagedAsync()
@@ -427,7 +434,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, bindings,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null);
-            var saved = await RetrySiteConfigurationWithElevationAsync(server.Id,
+            var saved = await _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id,
                 () => _client.UpsertSiteAsync(server.Id, request));
             if (saved is null) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); return; }
             await LoadSitesAsync();
@@ -453,7 +460,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         if (server is null || site is null || !HasManagePermission) return;
         try
         {
-            await RetrySiteConfigurationWithElevationAsync(server.Id, async () =>
+            await _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id, async () =>
             {
                 await _client.DeleteSiteAsync(server.Id, site.Id);
                 return true;
@@ -467,21 +474,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             SiteStatusText = LocalizedText.Ref("webservers.problem.site_elevation_required");
         }
         catch (Exception) { SiteStatusText = LocalizedText.Ref("webservers.site.delete_failed"); }
-    }
-
-    /// <summary>
-    /// Site mutations are first attempted without prompting. A missing grant is the server's
-    /// authoritative signal that a five-minute, instance-scoped administrator grant expired or
-    /// has not yet been created. After a successful grant, retry exactly once.
-    /// </summary>
-    private async Task<T> RetrySiteConfigurationWithElevationAsync<T>(string instanceId, Func<Task<T>> mutation)
-    {
-        try { return await mutation(); }
-        catch (WebServerApiException exception) when (IsConfigurationElevationRequired(exception))
-        {
-            if (RequestConfigurationElevationAsync is null || !await RequestConfigurationElevationAsync(instanceId)) throw;
-            return await mutation();
-        }
     }
 
     private static bool IsConfigurationElevationRequired(WebServerApiException exception) =>

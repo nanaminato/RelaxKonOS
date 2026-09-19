@@ -140,6 +140,9 @@ public static class Bootstrapper
         services.AddHttpClient<RelaxKonOS.Client.Apps.WebServers.IRemoteWebServerClient, RelaxKonOS.Client.Apps.WebServers.RemoteWebServerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "webservers"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
+        services.AddHttpClient<RelaxKonOS.Client.Services.Privileged.IHostElevationBroker, RelaxKonOS.Client.Services.Privileged.HostElevationBroker>()
+            .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "host-elevation"))
+            .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<RelaxKonOS.Client.Services.Installation.InstallationClient>()
             .AddHttpMessageHandler<AcceptLanguageHandler>().AddRelaxKonOSAuthentication();
         services.AddHttpClient<RelaxKonOS.Client.Apps.FileServices.IRemoteFileServicesClient, RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient>()

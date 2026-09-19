@@ -6,7 +6,6 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.Installations;
-using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Client.Apps.WebServers;
 
@@ -51,13 +50,6 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
 
     public Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, IntegrateWebServerRequest request, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.IntegrateCandidate.Replace("{candidateId}", WebUtility.UrlEncode(candidateId)), request, NewKey(), cancellationToken);
-
-    public async Task<bool> ElevateConfigurationAsync(string candidateId, string password, CancellationToken cancellationToken = default)
-    {
-        var result = await SendAsync<HostElevationResult>(HttpMethod.Post, PrivilegedApiRoutes.Elevation,
-            new HostElevationRequest(HostElevationCapability.NginxConfigurationWrite, candidateId, password), null, cancellationToken);
-        return result.Elevated;
-    }
 
     public Task<WebServerOperationDto?> ApplyLifecycleAsync(string id, WebServerLifecycleAction action, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.Lifecycle.Replace("{id}", WebUtility.UrlEncode(id)).Replace("{action}", action.ToString().ToLowerInvariant()), null, NewKey(), cancellationToken);

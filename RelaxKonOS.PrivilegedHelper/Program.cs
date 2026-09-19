@@ -496,12 +496,17 @@ static string ValidateNginxManagedFile(string? path)
     var canonical = Path.GetFullPath(path);
     const string includeRoot = "/etc/nginx/conf.d";
     var relaxkonosDirectory = Path.Combine(includeRoot, "relaxkonos.d");
+    const string staticSitesRoot = "/var/lib/relaxkonos/webserver/nginx/sites";
     var allowed = string.Equals(canonical, Path.Combine(includeRoot, "relaxkonos.conf"), StringComparison.Ordinal)
         || IsWithin(canonical, relaxkonosDirectory)
-        || Path.GetFileName(canonical).StartsWith("relaxkonos.", StringComparison.Ordinal) && IsWithin(canonical, includeRoot);
-    if (!allowed || Path.GetExtension(canonical) is not (".conf" or ".json" or ".stage" or ".rollback"))
+        || Path.GetFileName(canonical).StartsWith("relaxkonos.", StringComparison.Ordinal) && IsWithin(canonical, includeRoot)
+        || IsWithin(canonical, staticSitesRoot);
+    var extensionAllowed = IsWithin(canonical, staticSitesRoot)
+        ? Path.GetExtension(canonical) is ".html" or ".stage" or ".rollback"
+        : Path.GetExtension(canonical) is ".conf" or ".json" or ".stage" or ".rollback";
+    if (!allowed || !extensionAllowed)
         throw new UnauthorizedAccessException();
-    EnsureNoReparsePoints(includeRoot, canonical);
+    EnsureNoReparsePoints(IsWithin(canonical, staticSitesRoot) ? staticSitesRoot : includeRoot, canonical);
     return canonical;
 }
 
