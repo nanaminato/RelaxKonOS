@@ -45,6 +45,8 @@ public enum PrivilegedOperationKind
     DockerEngineInstall,
     HostTimeRead,
     HostTimeApply,
+    HostIdentityRead,
+    HostIdentityApply,
     HostEnvironmentRead,
     HostEnvironmentApply,
     FirewallUfwStatus,
@@ -212,6 +214,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("environmentTarget")] SettingsTarget? EnvironmentTarget = null,
     [property: JsonPropertyName("environmentChange")] EnvironmentChangeSet? EnvironmentChange = null,
     [property: JsonPropertyName("timeZoneId")] string? TimeZoneId = null,
+    [property: JsonPropertyName("hostName")] string? HostName = null,
     [property: JsonPropertyName("expectedRevision")] string? ExpectedRevision = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
@@ -225,6 +228,7 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("problemCode")] PrivilegedProblemCode ProblemCode = PrivilegedProblemCode.None,
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
+    [property: JsonPropertyName("hostIdentity")] HostIdentityState? HostIdentity = null,
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
     [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);

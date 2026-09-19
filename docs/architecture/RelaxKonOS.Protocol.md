@@ -650,8 +650,10 @@ Workspace preferences GET 返回 `revision`，PUT 必须携带读取时的 `revi
 
 ## 设置平台契约（实施中，2026-09-08）
 
-`Protocol/Settings/SettingsContracts.cs` 定义 ClientDevice/Workspace/AppPrivate/HostUser/HostMachine 范围、能力原因、生效时间、目录与时区预览/应用/操作查询契约。路由集中在 `SettingsApiRoutes`：`/settings/catalog`、`/host-settings/time` 的 GET/preview/apply，以及 `/settings/operations/{id}` 与 rollback，均位于 `/api/v1.0` 下。
+`Protocol/Settings/SettingsContracts.cs` 定义 ClientDevice/Workspace/AppPrivate/HostUser/HostMachine 范围、能力原因、生效时间、目录与时区预览/应用/操作查询契约。路由集中在 `SettingsApiRoutes`：`/settings/catalog`、`/host-settings/time` 与 `/host-settings/identity` 的 GET/preview/apply，以及 `/settings/operations/{id}` 与 rollback，均位于 `/api/v1.0` 下。
 
 预览接收 expectedRevision、idempotencyKey、强类型 TimeZoneChange；应用仅接收 planId，不能更换已预览载荷。需要 `HostTimeChange` 的 `host/time` 授权。428 表示 revision/授权/计划期限前置条件不满足；409 表示外部修改或幂等冲突。操作状态未知不代表失败可重试；可查询持久记录，不能自动重放。
 
-设置通知只包含 settingId、scope、Workspace 资源标识和版本，授权订阅后通过 GET 重读；不广播偏好/环境值。当前仅 Workspace 通知已接通，宿主设置通知仍在实施。环境、身份和 DNS DTO/领域接入尚未完成，不能视为已有可用路由。
+`Protocol/Settings/HostIdentityContracts.cs` 定义 `HostIdentityState`（生效名称、待生效名称、平台上报的最大长度、内容 revision、观测时间、provider）、`HostIdentitySnapshot`、`HostnameChange` 与 `HostnamePreviewRequest`。`HostIdentityValidation` 校验单一 RFC 952/1123 标签，并按调用方给出的最大长度判定，客户端因此使用远程快照上报的上限而不是本机平台的猜测。宿主主机名路由为 `/host-settings/identity` 的 GET/preview/apply，需要 `HostIdentityChange` 对 `host/identity` 的授权；目标固定为 `hostMachine`，不接受调用方指定目标。操作状态与恢复记录写入 Server 独立加密日志的 `identity_operations` 表。
+
+设置通知只包含 settingId、scope、Workspace 资源标识和版本，授权订阅后通过 GET 重读；不广播偏好/环境值。当前仅 Workspace 通知已接通，宿主设置通知仍在实施。DNS DTO/领域接入尚未完成，不能视为已有可用路由。

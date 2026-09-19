@@ -38,7 +38,12 @@ internal static class SettingsCliChecks
                 new[] { "environment", "--scope", "Workspace" },
                 new[] { "time", "--reveal" },
                 new[] { "environment", "--scope", "hostUser", "--reveal", "--reveal" },
-                new[] { "apply-environment", "--id", Guid.NewGuid().ToString(), "--scope", "hostMachine" }
+                new[] { "apply-environment", "--id", Guid.NewGuid().ToString(), "--scope", "hostMachine" },
+                new[] { "hostname", "--zone", "UTC" },
+                new[] { "hostname", "--hostname", "relaxkon-host" },
+                new[] { "preview-hostname", "--revision", new string('0', 64), "--idempotency-key", "k" },
+                new[] { "apply-hostname" },
+                new[] { "apply-hostname", "--id", Guid.NewGuid().ToString(), "--hostname", "relaxkon-host" }
             })
             {
                 try
@@ -48,7 +53,7 @@ internal static class SettingsCliChecks
                 }
                 catch (ArgumentException) { }
             }
-            Console.WriteLine("Settings CLI: bounded JSON, BOM, empty/delete, secret-safe parse errors and invalid options passed. No HTTP requests or host mutations.");
+            Console.WriteLine("Settings CLI: bounded JSON, BOM, empty/delete, secret-safe parse errors, hostname option ownership and invalid options passed. No HTTP requests or host mutations.");
         }
         finally { File.Delete(path); }
     }

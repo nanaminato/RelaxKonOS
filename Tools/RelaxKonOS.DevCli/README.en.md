@@ -28,7 +28,18 @@ relaxkonos-dev settings --server https://remote.example:5001 operation --id <pla
 relaxkonos-dev settings --server https://remote.example:5001 rollback --id <plan-id> --revision <observed-revision>
 ```
 
-Use a time zone ID enumerated by the remote host. Review the plan's differences, target, impact and expiry before applying its ID. The same host JWT needs an existing short-lived `HostTimeChange` grant for `host/time`; missing authorization returns the Server's structured 428 response without opening a password dialog. Output is Server JSON; HTTP failures exit 1. Transport failures never replay writes: query the original plan ID before deciding on another write. Rollback checks authorization and the observed revision again. Hostname and DNS commands are still pending.
+Use a time zone ID enumerated by the remote host. Review the plan's differences, target, impact and expiry before applying its ID. The same host JWT needs an existing short-lived `HostTimeChange` grant for `host/time`; missing authorization returns the Server's structured 428 response without opening a password dialog. Output is Server JSON; HTTP failures exit 1. Transport failures never replay writes: query the original plan ID before deciding on another write. Rollback checks authorization and the observed revision again. DNS commands are still pending.
+
+
+## Host name
+
+The host name belongs to the remote machine, so the scope is always `hostMachine`. Preview, apply and rollback all require a short-lived `HostIdentityChange` grant for `host/identity`. The new name must be a single label: letters, digits and inner hyphens only, at most the `maximumHostNameLength` the remote snapshot reports (15 on Windows, 63 on Linux). Windows stages the rename until the next restart, so `hostname` reports a different pending name until the host reboots; the CLI never presents a staged name as live. Query the original plan ID when the outcome is unknown instead of replaying the write.
+
+```sh
+relaxkonos-dev settings --server https://remote.example:5001 hostname
+relaxkonos-dev settings --server https://remote.example:5001 preview-hostname --revision <snapshot-revision> --idempotency-key <unique-key> --hostname <new-name>
+relaxkonos-dev settings --server https://remote.example:5001 apply-hostname --id <reviewed-plan-id>
+```
 
 
 ## Environment variables

@@ -32,6 +32,15 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 远程配置 provider 与全部宿主验收尚未完成；必须在明确指定的远程测试主机或隔离 VM 验证，不得在开发机实验后声称远程验收通过。
 
+## 宿主主机名服务（实现，尚未实机验收）
+
+新增 `/host-settings/identity` 的 GET/preview/apply，并复用操作查询与回滚。`HostIdentityState` 同时给出生效名称与待生效名称，以及平台上报的名称长度上限；客户端因此使用远程上限校验草稿，不按本机平台猜测规则。预览计划持久加密并绑定 actor、目标、名称摘要、观测 revision 与五分钟期限；应用需要精确 `host/identity` 的 `HostIdentityChange` 授权，读回确认待生效名称后才报告 Applied。
+
+Windows provider 只读固定 `ComputerName` 注册表位置并用 `SetComputerNameEx` 暂存新名称，重启后才成为系统名称，快照的 `EffectiveState` 为 `HostRestart`；Linux 通过固定 `hostnamectl` 立即生效。系统页据此显示“当前生效名称/待生效名称”，待生效与生效不同时提示重启，并在结果为未知或需要恢复时明确要求管理员在主机上手动设置名称。客户端 `Services/HostSettings/IHostIdentityService` 独立于窗口，沿用相同的连接冻结与不重放写入约定。
+
+三语言文案、目录条目、搜索关键词与 DevCli `hostname` / `preview-hostname` / `apply-hostname` 已接入。真实 Windows 重启后生效、域策略拒绝与 Linux `hostnamectl` 写后读回均未在指定远程测试目标验证；受控 provider 行为测试与编译不构成平台验收。
+
+
 ## 宿主时区服务（实现，尚未实机验收）
 
 新增目录和时区 GET/preview/apply，以及操作查询与回滚 API。Server 通过原有 Helper 执行 Windows tzutil / Linux timedatectl；预览计划持久加密，应用需要精确 `host/time` 授权，读回成功才报告 Applied。外部版本变化会阻止应用或回滚；丢失结果为 Unknown，不自动重放。客户端 `Services/HostSettings/IHostTimeService` 独立于窗口，冻结 Server URL、用户和会话身份，发送前后检查连接，不自动重定向或重试写请求。时间和语言页现已接入远程快照、目标/身份、远程时区枚举、差异预览、授权并应用、按原 planId 查询及恢复原时区；不再用客户端 `TimeZoneInfo.Local` 冒充宿主值。宿主编辑不触发 Workspace 防抖保存。
@@ -48,7 +57,7 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务尚未接入设置编辑 UI、SDK 或终端，不能据此宣称环境变量纵向切片完成。
 
 
-DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；默认掩码，显式揭示仍需额外授权。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI/SDK/终端入口与 Linux provider 仍待实现。
+DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；默认掩码，显式揭示仍需额外授权。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI 已接入（含 PATH 分项编辑），Linux `/etc/environment` provider 已由 Helper 分派并做字节 revision 条件化的原子替换；尚未完成的是 Workspace 环境分区、非特权工作负载的环境构造、宿主设置实时通知，以及 SDK/终端入口。
 
 
 ## 环境变量页面（2026-09-11，第一批）

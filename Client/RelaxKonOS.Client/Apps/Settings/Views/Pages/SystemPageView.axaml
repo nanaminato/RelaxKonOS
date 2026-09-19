@@ -32,6 +32,39 @@
 
         <Border Classes="card">
             <StackPanel Spacing="10">
+                <TextBlock Text="{loc:Loc settings.hostname}" Classes="title" />
+                <TextBlock Text="{loc:Loc settings.hostname.scope}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding HostIdentity.TargetText}" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="180,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.hostname.current}" Opacity="0.7" VerticalAlignment="Center" />
+                    <SelectableTextBlock Grid.Column="1" Text="{Binding HostIdentity.CurrentHostName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                </Grid>
+                <Grid ColumnDefinitions="180,*">
+                    <TextBlock Grid.Column="0" Text="{loc:Loc settings.hostname.pending}" Opacity="0.7" VerticalAlignment="Center" />
+                    <SelectableTextBlock Grid.Column="1" Text="{Binding HostIdentity.PendingHostName}" TextWrapping="Wrap" />
+                </Grid>
+                <TextBox Text="{Binding HostIdentity.DraftName, Mode=TwoWay}" IsEnabled="{Binding HostIdentity.CanEdit}"
+                         PlaceholderText="{loc:Loc settings.hostname.placeholder}"
+                         AutomationProperties.Name="{loc:Loc settings.hostname}" />
+                <TextBlock Text="{Binding HostIdentity.NameProblem}" TextWrapping="Wrap"
+                           Foreground="{DynamicResource DangerBrush}" />
+                <TextBlock Text="{loc:Loc settings.hostname.restart_pending}" TextWrapping="Wrap" IsVisible="{Binding HostIdentity.RestartPending}" />
+                <TextBlock Text="{Binding HostIdentity.PreviewText}" TextWrapping="Wrap" />
+                <WrapPanel Orientation="Horizontal">
+                    <Button Content="{loc:Loc settings.hostname.reload}" Command="{Binding HostIdentity.ReloadCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.hostname.preview}" Command="{Binding HostIdentity.PreviewCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.hostname.apply}" Command="{Binding HostIdentity.ApplyCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.hostname.query}" Command="{Binding HostIdentity.QueryCommand}" Margin="0,0,8,8" />
+                    <Button Content="{loc:Loc settings.hostname.rollback}" Command="{Binding HostIdentity.RollbackCommand}" Margin="0,0,8,8" />
+                </WrapPanel>
+                <TextBlock Text="{Binding HostIdentity.StatusText}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding HostIdentity.ProblemCode}" TextWrapping="Wrap" />
+                <SelectableTextBlock Text="{Binding HostIdentity.OperationId}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
                 <TextBlock Text="{loc:Loc settings.about}" Classes="title" />
                 <Grid ColumnDefinitions="140,*">
                     <TextBlock Grid.Column="0" Text="{loc:Loc settings.version}" Opacity="0.7" />

@@ -26,6 +26,7 @@ internal static class SettingsSystemVerification
     public static async Task RunAsync(string root)
     {
         await SettingsOperationVerification.RunAsync(root);
+        await SettingsIdentityVerification.RunAsync(root);
         await VerifyHttpAsync(root);
         Verify(new InMemoryRegistryRepository());
         var options = new DbContextOptionsBuilder<RelaxKonOSDbContext>()

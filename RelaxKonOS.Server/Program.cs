@@ -624,6 +624,8 @@ builder.Services.AddScoped<RelaxKonOS.Server.Settings.SettingsCatalog>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.EnvironmentOperationCoordinator>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.IHostEnvironmentService, RelaxKonOS.Server.Settings.HostEnvironmentService>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.IHostTimeService, RelaxKonOS.Server.Settings.HostTimeService>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.IHostIdentityService, RelaxKonOS.Server.Settings.HostIdentityService>();
+builder.Services.AddScoped<RelaxKonOS.Server.Settings.HostIdentityOperationCoordinator>();
 builder.Services.AddScoped<RelaxKonOS.Server.Settings.SettingsOperationCoordinator>();
 
 // CORS（开发期允许客户端跨域）

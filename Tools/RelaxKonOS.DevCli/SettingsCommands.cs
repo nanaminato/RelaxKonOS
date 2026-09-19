@@ -13,27 +13,29 @@ internal static class SettingsCommands
         var revision = Option(arguments, "--revision");
         var key = Option(arguments, "--idempotency-key");
         var zone = Option(arguments, "--zone");
+        var hostName = Option(arguments, "--hostname");
         var idText = Option(arguments, "--id");
         var scope = Option(arguments, "--scope");
         var changes = Option(arguments, "--changes");
         var reveal = Flag(arguments, "--reveal");
         if (arguments.Count != 1)
-            throw new ArgumentException("settings requires one command: catalog, time, preview-time, apply-time, environment-target, environment, preview-environment, apply-environment, operation, rollback.");
+            throw new ArgumentException("settings requires one command: catalog, time, preview-time, apply-time, hostname, preview-hostname, apply-hostname, environment-target, environment, preview-environment, apply-environment, operation, rollback.");
         if (!Uri.TryCreate(server, UriKind.Absolute, out var origin)
             || origin.Scheme != Uri.UriSchemeHttps || origin.AbsolutePath != "/"
             || origin.UserInfo.Length != 0 || origin.Query.Length != 0 || origin.Fragment.Length != 0)
             throw new ArgumentException("settings requires --server with an explicit HTTPS server origin (no path, credentials, query or fragment).");
 
         var command = arguments[0];
-        var needsId = command is "apply-time" or "apply-environment" or "operation" or "rollback";
+        var needsId = command is "apply-time" or "apply-hostname" or "apply-environment" or "operation" or "rollback";
         var id = Guid.Empty;
         if (needsId && (!Guid.TryParse(idText, out id) || id == Guid.Empty))
             throw new ArgumentException("This command requires --id <plan-or-operation-guid>.");
         var environmentScope = command is "environment-target" or "environment" or "preview-environment";
         if (!needsId && idText is not null
-            || command is not ("preview-time" or "preview-environment") && key is not null
+            || command is not ("preview-time" or "preview-environment" or "preview-hostname") && key is not null
             || command != "preview-time" && zone is not null
-            || command is not ("preview-time" or "preview-environment" or "rollback") && revision is not null
+            || command != "preview-hostname" && hostName is not null
+            || command is not ("preview-time" or "preview-environment" or "preview-hostname" or "rollback") && revision is not null
             || !environmentScope && scope is not null
             || command != "preview-environment" && changes is not null
             || command != "environment" && reveal)
@@ -46,6 +48,10 @@ internal static class SettingsCommands
             "preview-time" => Post(SettingsApiRoutes.TimePreview, new TimeZonePreviewRequest(
                 Required(revision, "--revision"), Required(key, "--idempotency-key"), new(Required(zone, "--zone")))),
             "apply-time" => Post(SettingsApiRoutes.TimeApply, new SettingsApplyRequest(id)),
+            "hostname" => new HttpRequestMessage(HttpMethod.Get, SettingsApiRoutes.Identity),
+            "preview-hostname" => Post(SettingsApiRoutes.IdentityPreview, new HostnamePreviewRequest(
+                Required(revision, "--revision"), Required(key, "--idempotency-key"), new(Required(hostName, "--hostname")))),
+            "apply-hostname" => Post(SettingsApiRoutes.IdentityApply, new SettingsApplyRequest(id)),
             "environment-target" => new HttpRequestMessage(HttpMethod.Get, SettingsApiRoutes.EnvironmentTarget + "?scope=" + scope),
             "environment" => new HttpRequestMessage(HttpMethod.Get, SettingsApiRoutes.Environment + "?scope=" + scope + "&reveal=" + (reveal ? "true" : "false")),
             "preview-environment" => Post(SettingsApiRoutes.EnvironmentPreview, new EnvironmentPreviewRequest(parsedScope,
