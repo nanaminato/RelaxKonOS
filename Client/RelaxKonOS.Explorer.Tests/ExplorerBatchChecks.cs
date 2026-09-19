@@ -12,6 +12,14 @@ public static class ExplorerBatchChecks
     {
         static FileSystemEntryDto FileEntry(string path, FileSystemEntryType type = FileSystemEntryType.File)
             => new(path, path[(path.LastIndexOf('/') + 1)..], 10, type, null, null, null, false, false, null);
+        check(ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.Directory, "assets") == ExplorerFileIconKind.Folder,
+            "Directories use the dedicated folder icon");
+        check(ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, "release.iso") == ExplorerFileIconKind.DiskImage
+            && ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, "report.xlsx") == ExplorerFileIconKind.Spreadsheet
+            && ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, "setup.msix") == ExplorerFileIconKind.Application
+            && ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, "backup.zip") == ExplorerFileIconKind.Archive
+            && ExplorerFileIconKindResolver.ForEntry(FileSystemEntryType.File, "server.yaml") == ExplorerFileIconKind.Data,
+            "Common extension families resolve to distinct Explorer icons");
         var files = new[] { FileEntry("/source/a.txt"), FileEntry("/source/b.txt"), FileEntry("/source/c.txt") };
         var client = DispatchProxy.Create<IExplorerClient, BatchClientFake>();
         var fake = (BatchClientFake)(object)client;

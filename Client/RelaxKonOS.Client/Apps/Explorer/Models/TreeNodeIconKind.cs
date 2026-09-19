@@ -1,6 +1,6 @@
 namespace RelaxKonOS.Client.Apps.Explorer.Models;
 
-/// <summary>导航树节点图标种类。驱动 <c>TreeNodeIconKindToGlyphConverter</c> 选择对应 emoji。
+/// <summary>导航树节点图标种类。驱动 Explorer 的矢量图标控件选择对应图形。
 /// 与 <c>SpecialFolderKind</c> 一一对应（除 Home 组节点本身用 <see cref="Home"/>，网络占位用 <see cref="Network"/>，
 /// Computer/Drive/Folder 用于此电脑节点与盘符懒加载子目录）。</summary>
 public enum TreeNodeIconKind
