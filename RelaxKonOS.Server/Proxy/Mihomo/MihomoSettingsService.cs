@@ -247,15 +247,26 @@ public sealed class MihomoSettingsService(
 
     private static readonly ProxySettingsDto Defaults = new(false, false, true, true, false, "warning", 7890, false, "127.0.0.1", ProxyTunSettingsDto.Default, ProxySystemProxyOptionsDto.Default);
 
-    private static IReadOnlyList<string> BuildTunRouteExclusions(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot)
+    internal static IReadOnlyList<string> BuildTunRouteExclusions(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot)
     {
         var values = new List<string> { "127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16" };
         if (IPAddress.TryParse(snapshot.DefaultGateway, out var gateway))
-            values.Add(gateway.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? gateway + "/32" : gateway + "/128");
+            values.Add(ToRoutePrefix(gateway));
         foreach (var value in snapshot.ManagementAddresses)
             if (IPAddress.TryParse(value, out var address) && !IPAddress.IsLoopback(address))
-                values.Add(address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? address + "/32" : address + "/128");
+                values.Add(ToRoutePrefix(address));
         return values;
+    }
+
+    private static string ToRoutePrefix(IPAddress address)
+    {
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) return address + "/32";
+
+        // Windows represents a link-local IPv6 address as e.g. fe80::1%11. The
+        // scope identifies a local interface, but it is not part of an IP prefix
+        // and Mihomo correctly rejects fe80::1%11/128 as invalid CIDR syntax.
+        var unscoped = address.ScopeId == 0 ? address : new IPAddress(address.GetAddressBytes());
+        return unscoped + "/128";
     }
 
     private static void SetPrivateFile(string path)

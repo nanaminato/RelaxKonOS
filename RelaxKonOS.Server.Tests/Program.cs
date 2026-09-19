@@ -645,6 +645,14 @@ static async Task VerifyMihomoControllerSafetyAsync()
     var interruptedReloadClient = new MihomoControllerClient(new HttpClient(interruptedReloadHandler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
     Assert(await interruptedReloadClient.ReloadAsync(CancellationToken.None) is null && calls == 2 && reloadPayload == "{\"path\":\"\",\"payload\":\"\"}",
         "A recovered controller connection after reload was incorrectly reported as a TUN configuration failure.");
+
+    var rejectedReloadHandler = new DelegateHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+    {
+        Content = new StringContent("{\"message\":\"invalid TUN configuration\"}"),
+    }));
+    var rejectedReloadClient = new MihomoControllerClient(new HttpClient(rejectedReloadHandler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
+    Assert(await rejectedReloadClient.ReloadAsync(CancellationToken.None) == ProxyProblemCodes.ConfigApplyFailed,
+        "An HTTP configuration rejection was misclassified as an unavailable controller.");
 }
 
 static async Task VerifyMihomoProxyGroupOrderingAsync(string root)
@@ -1180,6 +1188,11 @@ static async Task VerifyProxyConfigurationTransactionAsync(string root)
 
 static async Task VerifyProxyTunSafetyAsync(string root)
 {
+    var scopedIpv6Snapshot = new ProxyManagementRouteSnapshot("scoped-ipv6", DateTimeOffset.UtcNow, true, "Ethernet 2", "fe80::1%11", [], []);
+    var exclusions = MihomoSettingsService.BuildTunRouteExclusions(scopedIpv6Snapshot);
+    Assert(exclusions.Contains("fe80::1/128") && exclusions.All(value => !value.Contains('%')),
+        "A Windows scoped IPv6 gateway was serialized into an invalid Mihomo CIDR.");
+
     var platform = new TestProxyNetworkSafetyPlatform { SnapshotSafe = true };
     var runtime = new TestProxyTunRuntimeController();
     var service = new ProxyTunSafetyService(new TestProxyPaths(Path.Combine(root, "proxy-tun")), platform, runtime);

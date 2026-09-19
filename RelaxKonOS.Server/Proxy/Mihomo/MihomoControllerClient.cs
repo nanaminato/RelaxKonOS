@@ -228,7 +228,17 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         var reload = await SendAsync(HttpMethod.Put, "configs?force=true",
             new StringContent("{\"path\":\"\",\"payload\":\"\"}", Encoding.UTF8, "application/json"),
             cancellationToken, logTransportFailure: false);
-        if (reload.Succeeded || !reload.TransportInterrupted) return reload.ProblemCode;
+        if (reload.Succeeded) return null;
+        if (!reload.TransportInterrupted)
+        {
+            // An HTTP response proves that the controller is available. Surface its safe error
+            // detail as a configuration failure rather than incorrectly asking the operator to
+            // wait for a controller that already rejected the new YAML.
+            LogReloadRejection(reload);
+            return reload.ProblemCode == ProxyProblemCodes.ControllerAuthenticationFailed
+                ? reload.ProblemCode
+                : ProxyProblemCodes.ConfigApplyFailed;
+        }
 
         var deadline = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * ReloadConfirmationTimeout.TotalSeconds);
         while (Stopwatch.GetTimestamp() < deadline)
@@ -282,9 +292,12 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await _secrets.GetOrCreateAsync(cancellationToken));
             using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
             if (!response.IsSuccessStatusCode)
+            {
+                var detail = ProxyLogSanitizer.Sanitize(await response.Content.ReadAsStringAsync(cancellationToken), 512);
                 return new(null, response.StatusCode == HttpStatusCode.Unauthorized
                     ? ProxyProblemCodes.ControllerAuthenticationFailed
-                    : ProxyProblemCodes.ControllerUnavailable);
+                    : ProxyProblemCodes.ControllerUnavailable, false, (int)response.StatusCode, detail);
+            }
             return new(await response.Content.ReadAsStringAsync(cancellationToken), "");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new(null, ProxyProblemCodes.ControllerTimeout, true); }
@@ -304,6 +317,10 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         else
             _logger?.LogWarning("Mihomo controller at {Endpoint} is unavailable.", _options.Endpoint.Authority);
     }
+
+    private void LogReloadRejection(ControllerResponse response) =>
+        _logger?.LogWarning("Mihomo controller rejected the configuration reload. StatusCode={StatusCode} Detail={Detail}",
+            response.StatusCode, string.IsNullOrWhiteSpace(response.Detail) ? "(no detail)" : response.Detail);
 
     private static bool IsName(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 512 && value.All(character => !char.IsControl(character));
     private static bool IsProbeUrl(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
@@ -335,5 +352,6 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         return item.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out value);
     }
     private static DateTimeOffset? GetDateTime(JsonElement item, string name) => item.TryGetProperty(name, out var value) && value.TryGetDateTimeOffset(out var result) ? result : null;
-    private sealed record ControllerResponse(string? Content, string ProblemCode, bool TransportInterrupted = false) { public bool Succeeded => string.IsNullOrEmpty(ProblemCode); }
+    private sealed record ControllerResponse(string? Content, string ProblemCode, bool TransportInterrupted = false,
+        int? StatusCode = null, string? Detail = null) { public bool Succeeded => string.IsNullOrEmpty(ProblemCode); }
 }
