@@ -120,7 +120,9 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         catch (Exception exception) when (IsExpected(exception))
         {
             ErrorText = Describe(exception);
-            StatusText = LocalizedStatus.Key(DeploymentText.Prefix + ".status.failed");
+            StatusText = exception is ApplicationDeploymentClientException { StatusCode: 404 }
+                ? LocalizedStatus.Key(DeploymentText.Prefix + ".status.endpoint_unavailable")
+                : LocalizedStatus.Key(DeploymentText.Prefix + ".status.failed");
         }
         finally
         {

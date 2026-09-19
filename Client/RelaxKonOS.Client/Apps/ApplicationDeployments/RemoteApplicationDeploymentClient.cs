@@ -124,8 +124,17 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     {
         if (response.IsSuccessStatusCode) return;
         var code = await ReadProblemCodeAsync(response, cancellationToken);
+        // List endpoints use 404 to mean that an older Server has no application-deployment API.
+        // Preserve protocol problem codes for actual missing application resources, but never show a
+        // generic HTTP title or an internal fallback code to the operator.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound &&
+            !IsApplicationDeploymentProblemCode(code))
+            code = "application-deployment.http_404";
         throw new ApplicationDeploymentClientException(code ?? $"application-deployment.http_{(int)response.StatusCode}", (int)response.StatusCode);
     }
+
+    private static bool IsApplicationDeploymentProblemCode(string? code) =>
+        code?.StartsWith("application-deployment.", StringComparison.Ordinal) == true;
 
     private static async Task<string?> ReadProblemCodeAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
