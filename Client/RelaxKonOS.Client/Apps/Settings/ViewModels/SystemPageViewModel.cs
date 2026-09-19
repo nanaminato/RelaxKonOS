@@ -7,13 +7,18 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
-/// <summary>「系统」页：只读展示连接与账户信息（版本 / Server URL / 用户 / Workspace / 设备 / 连接状态）。</summary>
-public sealed partial class SystemPageViewModel : SettingsPageViewModel
+/// <summary>「系统」页：连接与账户信息（版本 / Server URL / 用户 / Workspace / 设备 / 连接状态），
+/// 以及归属远程机器的真实主机名编辑入口。</summary>
+public sealed partial class SystemPageViewModel : SettingsPageViewModel, IDisposable
 {
     private readonly IAuthSession _session;
 
-    public SystemPageViewModel(ShellSettings settings, IAuthSession session, Action? save)
-        : base(settings, save) => _session = session;
+    public SystemPageViewModel(ShellSettings settings, IAuthSession session, Action? save, HostIdentityEditorViewModel hostIdentity)
+        : base(settings, save)
+    {
+        _session = session;
+        HostIdentity = hostIdentity;
+    }
 
     public override string Route => "system";
     public override string DisplayNameKey => "settings.page.system";
@@ -60,6 +65,11 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel
     /// <summary>Provided by SettingsApp so system-property actions always open in a child window.</summary>
     public Func<Task>? RequestEnvironmentVariablesAsync { get; set; }
     public Func<Task>? RequestPerformanceOptionsAsync { get; set; }
+
+    /// <summary>The remote machine's host name; it is never the client device's own name.</summary>
+    public HostIdentityEditorViewModel HostIdentity { get; }
+
+    public void Dispose() => HostIdentity.Dispose();
 
     [RelayCommand]
     private Task OpenEnvironmentVariablesAsync() => RequestEnvironmentVariablesAsync?.Invoke() ?? Task.CompletedTask;

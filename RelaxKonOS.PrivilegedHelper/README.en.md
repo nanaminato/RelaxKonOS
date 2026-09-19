@@ -97,6 +97,18 @@ Linux Helper launch and privileged child launches clear inherited environment va
 
 Real Windows/Ubuntu timezone changes, external changes, policy rejection and recovery remain unverified on designated test hosts.
 
+### Settings host name operations (integrated; target-host validation pending)
+
+The closed `HostIdentityRead` / `HostIdentityApply` operations accept only `hostName` and `ExpectedRevision`; file, service, timezone and environment fields are rejected, and every other operation rejects a `hostName`. The name rules are shared with the Server and re-checked by the Helper: a single RFC 952/1123 label, no control characters, a leading and trailing letter or digit, never all digits, and no longer than the platform maximum (15 on Windows, 63 on Linux).
+
+Windows reads only the fixed registry locations `...\Control\ComputerName\ActiveComputerName` and `...\ComputerName\ComputerName` (the effective and the pending name) and exposes no caller-supplied registry path. The write uses the fixed `SetComputerNameEx(ComputerNamePhysicalDnsHostname)` system API under a named mutex. That API only stages the name until the next restart, so the readback confirms the *pending* name and neither the Helper nor the Server ever presents a staged rename as live. A domain membership or security policy rejection returns the deterministic `ResourceNotAllowed` instead of an unknown outcome.
+
+Linux reads the fixed `/etc/hostname` and writes with the fixed `/usr/bin/hostnamectl set-hostname`; if either is missing the operation fails explicitly as unsupported. It never appends to `.bashrc`/`.profile` and never overwrites a managed file directly. Linux has no staging step, so the pending name equals the effective name.
+
+The Server uses the new short-lived `HostIdentityChange` grant with the exact target `host/identity`. Preview, idempotency, operation and recovery records live in the Server's separate encrypted SQLite journal; the Helper does not own HTTP idempotency.
+
+Real Windows registry/restart behavior, domain-policy rejection and Linux `hostnamectl` write-then-readback remain unverified on a designated remote test target; the current evidence is controlled-provider behaviour tests and compilation only. When an operation ends Unknown or RecoveryRequired the administrator must set the host name on the host manually, which is the manual recovery path this operation declares.
+
 ### Settings environment operations (integrated; target-host validation pending)
 
 Closed `HostEnvironmentRead` / `HostEnvironmentApply` operations accept only structured `environmentTarget` / `environmentChange` fields. They reject mixed file, service or time fields; other operations reject environment payloads. Windows uses fixed machine storage or `HKEY_USERS/<SID>/Environment`, never the Helper's HKCU. A canonical, resolvable account SID and a loaded user hive are required. The Server must map the authenticated user to the SID; clients must not choose arbitrary accounts.

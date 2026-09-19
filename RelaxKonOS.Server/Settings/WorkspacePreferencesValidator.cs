@@ -8,7 +8,8 @@ public static class WorkspacePreferencesValidator
 {
     /// <summary>校验并归一化用户偏好。字段长度封顶防止滥用；枚举/格式白名单校验。
     /// DefaultApps 去重（按 scheme，后者覆盖前者）并剔除空值。
-    /// DesktopDisplay 字段归一化校验 VisibleAppIds 列表。</summary>
+    /// DesktopDisplay 字段归一化校验 VisibleAppIds 列表。
+    /// DesktopExperience 是颜色/系统风格/桌面 Shell 的唯一来源：三者互相独立，缺一不可。</summary>
     public static bool TryNormalize(WorkspacePreferencesDto request, out WorkspacePreferencesDto preferences)
     {
         preferences = WorkspacePreferencesDto.Default;
@@ -18,8 +19,6 @@ public static class WorkspacePreferencesValidator
             return false;
         if (!wallpaperKey.StartsWith(WorkspacePreferencesDto.BuiltInWallpaperPrefix, StringComparison.OrdinalIgnoreCase)
             && !TryGetCustomWallpaperId(wallpaperKey, out _))
-            return false;
-        if (!Enum.IsDefined(request.Theme))
             return false;
         var timeFormat = request.TimeFormat?.Trim();
         if (timeFormat != WorkspacePreferencesDto.TimeFormat24H
@@ -88,9 +87,38 @@ public static class WorkspacePreferencesValidator
             ShowTaskbarWindowPreviews = desktopDisplay.ShowTaskbarWindowPreviews,
         };
 
-        if (!TryNormalizeThemePreferences(request.ThemePreferences, out var themePreferences))
+        if (!TryNormalizeDesktopExperience(request.DesktopExperience, out var desktopExperience))
             return false;
-        var requestedShell = request.Shell ?? new ShellSelectionDto("relaxkonos.windows-like");
+
+        preferences = new WorkspacePreferencesDto(
+            wallpaperKey, timeFormat!, dateFormat!,
+            string.IsNullOrEmpty(language) ? WorkspacePreferencesDto.Default.Language : language,
+            string.IsNullOrEmpty(region) ? WorkspacePreferencesDto.Default.Region : region,
+            deduped.Values.ToList(), notepadEncoding, codeEditorEncoding,
+            normalizedDesktopDisplay, desktopExperience);
+        return true;
+    }
+
+    /// <summary>
+    /// The server validates <em>shape</em>, not availability: a style id is an intent that is
+    /// resolved on the device that renders it, so an unknown-but-well-formed id is accepted and
+    /// stored rather than silently replaced.
+    /// </summary>
+    private static bool TryNormalizeDesktopExperience(
+        DesktopExperiencePreferencesDto? request,
+        out DesktopExperiencePreferencesDto experience)
+    {
+        experience = DesktopExperiencePreferencesDto.Default;
+        var source = request ?? DesktopExperiencePreferencesDto.Default;
+
+        if (!TryNormalizeAppearance(source.Appearance, out var appearance))
+            return false;
+
+        var systemStyleId = source.SystemStyleId?.Trim();
+        if (string.IsNullOrEmpty(systemStyleId) || !IsValidStyleId(systemStyleId))
+            return false;
+
+        var requestedShell = source.Shell ?? new ShellSelectionDto("relaxkonos.windows-like");
         var shellId = NormalizeShellId(requestedShell.ShellId);
         if (!IsValidShellId(shellId))
             return false;
@@ -100,13 +128,12 @@ public static class WorkspacePreferencesValidator
         if (shellId.StartsWith("relaxkonos.", StringComparison.Ordinal) &&
             (!string.IsNullOrEmpty(packageId) || !string.IsNullOrEmpty(packageVersion))) return false;
 
-        preferences = new WorkspacePreferencesDto(
-            wallpaperKey, request.Theme, timeFormat!, dateFormat!,
-            string.IsNullOrEmpty(language) ? WorkspacePreferencesDto.Default.Language : language,
-            string.IsNullOrEmpty(region) ? WorkspacePreferencesDto.Default.Region : region,
-            deduped.Values.ToList(), notepadEncoding, codeEditorEncoding,
-            normalizedDesktopDisplay, themePreferences,
-            new ShellSelectionDto(shellId, packageId, packageVersion));
+        experience = new DesktopExperiencePreferencesDto
+        {
+            Appearance = appearance,
+            SystemStyleId = systemStyleId,
+            Shell = new ShellSelectionDto(shellId, packageId, packageVersion),
+        };
         return true;
     }
 
@@ -123,6 +150,9 @@ public static class WorkspacePreferencesValidator
         or "relaxkonos.macos-like" or "relaxkonos.ubuntu-like"
         || Regex.IsMatch(id, "^[a-z0-9][a-z0-9.-]{2,127}$");
 
+    /// <summary>Same identifier grammar as a style manifest, so an id can never name an arbitrary object.</summary>
+    private static bool IsValidStyleId(string id) => Regex.IsMatch(id, "^[a-z0-9][a-z0-9.-]{2,127}$");
+
     public static bool TryGetCustomWallpaperId(string? key, out string id)
     {
         id = string.Empty;
@@ -135,12 +165,13 @@ public static class WorkspacePreferencesValidator
         return true;
     }
 
-    private static bool TryNormalizeThemePreferences(ThemePreferencesDto? request, out ThemePreferencesDto preferences)
+    private static bool TryNormalizeAppearance(AppearancePreferencesDto? request, out AppearancePreferencesDto appearance)
     {
-        var source = request ?? ThemePreferencesDto.Default;
-        preferences = ThemePreferencesDto.Default;
-        if (!string.Equals(source.StyleId?.Trim(), "relaxkonos", StringComparison.Ordinal)
-            || string.IsNullOrWhiteSpace(source.PaletteId) || source.PaletteId.Length > 72)
+        var source = request ?? AppearancePreferencesDto.Default;
+        appearance = AppearancePreferencesDto.Default;
+        if (!Enum.IsDefined(source.Mode))
+            return false;
+        if (string.IsNullOrWhiteSpace(source.PaletteId) || source.PaletteId.Length > 72)
             return false;
         var paletteId = source.PaletteId.Trim();
         if (paletteId is not "builtin:relaxkonos-blue" and not "builtin:nord" and not "builtin:catppuccin"
@@ -161,9 +192,14 @@ public static class WorkspacePreferencesValidator
             normalized.Add(new ThemePaletteDto { FormatVersion = 2, Id = palette.Id, Name = palette.Name.Trim(), LightColors = light, DarkColors = dark });
         }
         if (paletteId.StartsWith("custom:", StringComparison.Ordinal) && !ids.Contains(paletteId[7..])) return false;
-        preferences = new ThemePreferencesDto { StyleId = "relaxkonos", PaletteId = paletteId,
-            AccentOverride = source.AccentOverride?.ToUpperInvariant(), CustomPalettes = normalized };
-        return HasValidResolvedTheme(preferences);
+        appearance = new AppearancePreferencesDto
+        {
+            Mode = source.Mode,
+            PaletteId = paletteId,
+            AccentOverride = source.AccentOverride?.ToUpperInvariant(),
+            CustomPalettes = normalized,
+        };
+        return HasValidResolvedAppearance(appearance);
     }
 
     private static bool TryNormalizeThemeColors(Dictionary<string, string>? source, out Dictionary<string, string> colors)
@@ -178,13 +214,14 @@ public static class WorkspacePreferencesValidator
         return true;
     }
 
-    private static bool HasValidResolvedTheme(ThemePreferencesDto preferences)
+    private static bool HasValidResolvedAppearance(AppearancePreferencesDto preferences)
     {
         if (!IsAccessible(preferences)) return false;
         foreach (var palette in preferences.CustomPalettes)
         {
-            var candidate = new ThemePreferencesDto
+            var candidate = new AppearancePreferencesDto
             {
+                Mode = preferences.Mode,
                 PaletteId = "custom:" + palette.Id,
                 AccentOverride = preferences.AccentOverride,
                 CustomPalettes = preferences.CustomPalettes,
@@ -194,7 +231,7 @@ public static class WorkspacePreferencesValidator
         return true;
     }
 
-    private static bool IsAccessible(ThemePreferencesDto preferences) =>
+    private static bool IsAccessible(AppearancePreferencesDto preferences) =>
         ThemePaletteValidator.TryValidate(ThemePaletteDefaults.Resolve(preferences, dark: false), out _)
         && ThemePaletteValidator.TryValidate(ThemePaletteDefaults.Resolve(preferences, dark: true), out _);
 

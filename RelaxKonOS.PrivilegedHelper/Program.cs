@@ -81,6 +81,10 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
         && (request.EnvironmentTarget is not null || request.EnvironmentChange is not null))
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "environment fields require a dedicated operation");
 
+    if (request.Operation is not (PrivilegedOperationKind.HostIdentityRead or PrivilegedOperationKind.HostIdentityApply)
+        && request.HostName is not null)
+        return Fail(64, PrivilegedProblemCode.InvalidRequest, "host name requires a dedicated operation");
+
     if (request.Operation != PrivilegedOperationKind.AuthenticateSystemUser
         && (request.SystemAuthenticationUsername is not null || request.SystemAuthenticationPassword is not null))
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "system authentication fields require their dedicated operation");
@@ -95,6 +99,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
                     ? RelaxKonOS.PrivilegedHelper.LinuxEnvironmentOperations.Execute(request)
                     : Fail(69, PrivilegedProblemCode.UnsupportedOperation, "environment provider is unavailable on this platform"),
             PrivilegedOperationKind.HostTimeRead or PrivilegedOperationKind.HostTimeApply => await RelaxKonOS.PrivilegedHelper.HostTimeOperations.ExecuteAsync(request),
+            PrivilegedOperationKind.HostIdentityRead or PrivilegedOperationKind.HostIdentityApply => await RelaxKonOS.PrivilegedHelper.HostIdentityOperations.ExecuteAsync(request),
             PrivilegedOperationKind.FileRead => await ReadFileAsync(request.Path, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileListDirectory => ListDirectory(request.Path, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileWrite => await WriteFileAsync(request.Path, request.ContentBase64, policy.FileAllowedRoots),

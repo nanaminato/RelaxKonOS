@@ -35,26 +35,6 @@ public sealed class CutEntryOpacityConverter : IMultiValueConverter
     }
 }
 
-/// <summary>条目类型 → 图标可见性转换器。ConverterParameter 指定期望的类别：
-/// "drive" 仅 Drive 为 true；"dir" 仅 Directory 为 true；"file" 仅 File 为 true。</summary>
-public sealed class EntryTypeToGlyphConverter : IValueConverter
-{
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is not FileSystemEntryType t || parameter is not string p) return false;
-        return p switch
-        {
-            "drive" => t == FileSystemEntryType.Drive,
-            "dir" => t == FileSystemEntryType.Directory,
-            "file" => t == FileSystemEntryType.File,
-            _ => false
-        };
-    }
-
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => throw new NotSupportedException();
-}
-
 /// <summary>条目类型 → 中文类型名（用于"类型"列）。</summary>
 public sealed class EntryTypeToStringConverter : IValueConverter
 {
@@ -115,32 +95,6 @@ public sealed class EntrySizeToStringConverter : IValueConverter
         }
         return $"{adjusted:n2} {Suffixes[mag]}";
     }
-
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => throw new NotSupportedException();
-}
-
-/// <summary>导航树节点图标种类 → emoji 字符串。参考 Windows File Explorer Navigation Pane 视觉惯例。
-/// 用 emoji 与现有条目网格图标风格一致；统一矢量图标库（Material.Icons.Avalonia）列入后续 §7 与 Ribbon 一起做。</summary>
-public sealed class TreeNodeIconKindToGlyphConverter : IValueConverter
-{
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => value is TreeNodeIconKind kind ? kind switch
-        {
-            TreeNodeIconKind.Placeholder => string.Empty,
-            TreeNodeIconKind.Computer    => "💻",
-            TreeNodeIconKind.Drive       => "💽",
-            TreeNodeIconKind.Folder      => "📁",
-            TreeNodeIconKind.Home        => "🏠",
-            TreeNodeIconKind.Desktop     => "🖥️",
-            TreeNodeIconKind.Documents   => "📄",
-            TreeNodeIconKind.Downloads   => "📥",
-            TreeNodeIconKind.Pictures    => "🖼️",
-            TreeNodeIconKind.Music       => "🎵",
-            TreeNodeIconKind.Videos      => "🎬",
-            TreeNodeIconKind.Network     => "🌐",
-            _ => "📁"
-        } : "📁";
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();

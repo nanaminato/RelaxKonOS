@@ -16,14 +16,33 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 
 ## 当前页面与保存状态
 
-当前保留系统、个性化、时间和语言、网络、应用、镜像源、默认应用、开发者八页及已有壁纸、主题、Shell 和包工具能力。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。逐字段冲突合并体验、首页、账户和辅助功能仍按 Goal 推进，尚未验收。
+当前保留系统、个性化、时间和语言、网络、应用、镜像源、默认应用、开发者八页及已有壁纸、调色板、系统风格和 Shell 布局能力。个性化页已拆为“颜色与模式”“系统风格”“桌面布局”三张卡片（见下节）。保存状态支持中文、英文、日文；失败保留草稿并可重试，冲突保留草稿，提供明确的“放弃草稿并重载”操作；重载失败仍保留草稿。逐字段冲突合并体验、首页、账户和辅助功能仍按 Goal 推进，尚未验收。
 
 现有八页使用注册的 Route 导航，共用单色矢量图标；顶部持续显示当前远程连接、用户、Workspace 与分类路径，支持返回历史。小于 760 个逻辑像素时折叠侧栏，使用分类选择框。搜索先查询本地不可变索引，再异步合并远程目录；包括标题、关键词和同义词，显示分类、范围及服务端能力原因，连接切换清除旧目录。Ctrl+F 聚焦搜索、方向键浏览、Enter 或双击打开、Escape 退出搜索。当前结果定位到页面，settingId 控件聚焦与全部详情页仍待完成。页面内容本身的窄布局、200% 缩放及屏幕阅读器体验尚未实测。
+
+## 个性化页：颜色、系统风格与桌面布局（2026-09-19，实现未视觉验收）
+
+个性化页把原先混为一谈的“主题”拆成三张独立卡片，对应 `DesktopExperiencePreferencesDto` 的三个字段：
+
+1. **颜色与模式**：`ThemeKind` 模式、调色板 ID、强调色覆盖与自定义调色板，写 `DesktopExperience.Appearance`。
+2. **系统风格**：风格下拉（`SystemStyleChoices`）、当前风格摘要、不可用提示与“采用此 Shell 推荐的系统风格”按钮，写 `DesktopExperience.SystemStyleId`。
+3. **桌面布局**：Shell 选择，写 `DesktopExperience.Shell`；卡片内明确说明其与系统风格相互独立。
+
+关键约定：
+
+- **颜色与形状互不牵连。** 改调色板不会改变菜单布局或窗口控制按钮位置；改系统风格不会篡改调色板。
+- **可用性是设备本地事实。** 若本机缺少所选风格，`SystemStyleRegistry` 保留该条目与原因，页面显示“此设备未安装”并继续使用最近有效的可渲染风格；**不静默改写用户的偏好**。
+- **推荐映射只是按钮。** “采用此 Shell 推荐的系统风格”由 `SystemStyleIds.RecommendedForShell` 驱动，需用户显式点击，不随 Shell 切换隐式生效。
+- 本地搜索条目由 `workspace.theme` / `workspace.shell` 改为 `workspace.colors` / `workspace.systemStyle` / `workspace.desktopLayout`（含中英日同义词）。
+- 三语言 `settings.json` 已补齐 `settings.colors_and_mode`、`settings.palette_scope_hint`、`settings.system_style.*`、`settings.desktop_layout`、`settings.shell.separate_hint` 与全部 `systemstyle.*` 问题码文案。
+
+系统风格层本身的令牌、recipe、清单校验与运行时链路见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。页面当前只通过编译与契约测试，**尚未做视觉与交互验收**。
+
 
 ## 范围与宿主权限
 
 - ClientDevice：此客户端设备的布局、开发模式和辅助功能。
-- Workspace：当前用户 Workspace 的主题、语言、默认应用及后续环境覆盖。
+- Workspace：当前用户 Workspace 的外观、系统风格、语言、默认应用及后续环境覆盖。
 - AppPrivate：AppSettings 隔离的应用私有配置。
 - HostUser：认证映射的远程 UID/SID，不能使用 Server 服务账户的用户环境。
 - HostMachine：远程机器配置，不归某个 Workspace 所有。
@@ -31,6 +50,15 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 允许设置远程环境变量、时区、主机名和受支持 DNS；旧“Settings 不触及宿主配置”“环境变量操作一律禁止”限制已废止。Server 保持非特权，通过现有 Helper 封闭操作、身份绑定、授权、审计、读回及恢复实现。环境配置数据不得注入 Helper 或特权子进程启动环境。DNS 写入前必须具备不依赖 Client/Server 存活的宿主恢复任务。
 
 远程配置 provider 与全部宿主验收尚未完成；必须在明确指定的远程测试主机或隔离 VM 验证，不得在开发机实验后声称远程验收通过。
+
+## 宿主主机名服务（实现，尚未实机验收）
+
+新增 `/host-settings/identity` 的 GET/preview/apply，并复用操作查询与回滚。`HostIdentityState` 同时给出生效名称与待生效名称，以及平台上报的名称长度上限；客户端因此使用远程上限校验草稿，不按本机平台猜测规则。预览计划持久加密并绑定 actor、目标、名称摘要、观测 revision 与五分钟期限；应用需要精确 `host/identity` 的 `HostIdentityChange` 授权，读回确认待生效名称后才报告 Applied。
+
+Windows provider 只读固定 `ComputerName` 注册表位置并用 `SetComputerNameEx` 暂存新名称，重启后才成为系统名称，快照的 `EffectiveState` 为 `HostRestart`；Linux 通过固定 `hostnamectl` 立即生效。系统页据此显示“当前生效名称/待生效名称”，待生效与生效不同时提示重启，并在结果为未知或需要恢复时明确要求管理员在主机上手动设置名称。客户端 `Services/HostSettings/IHostIdentityService` 独立于窗口，沿用相同的连接冻结与不重放写入约定。
+
+三语言文案、目录条目、搜索关键词与 DevCli `hostname` / `preview-hostname` / `apply-hostname` 已接入。真实 Windows 重启后生效、域策略拒绝与 Linux `hostnamectl` 写后读回均未在指定远程测试目标验证；受控 provider 行为测试与编译不构成平台验收。
+
 
 ## 宿主时区服务（实现，尚未实机验收）
 
@@ -48,7 +76,7 @@ Server `Settings/IWorkspaceSettingsService` 管理偏好验证和版本比较。
 时区和环境服务共用 `HostSettingsService` 的连接冻结与 HTTP 流程：取得 token 前后及响应解析后校验 Server/用户/会话，禁用重定向和写请求重试，不经过可重放的认证 handler。环境服务尚未接入设置编辑 UI、SDK 或终端，不能据此宣称环境变量纵向切片完成。
 
 
-DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；默认掩码，显式揭示仍需额外授权。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI/SDK/终端入口与 Linux provider 仍待实现。
+DevCli 现已接入 `environment-target`、`environment`、`preview-environment`、`apply-environment`，并复用 `operation`、`rollback`。变更读取 UTF-8 JSON 文件或标准输入，不接受变量值命令行参数；默认掩码，显式揭示仍需额外授权。它依赖已有宿主 JWT 的短期授权，缺少时返回结构化错误，不打开密码窗口。完整命令和格式见 `Tools/RelaxKonOS.DevCli/README.md`。环境编辑 UI 已接入（含 PATH 分项编辑），Linux `/etc/environment` provider 已由 Helper 分派并做字节 revision 条件化的原子替换；尚未完成的是 Workspace 环境分区、非特权工作负载的环境构造、宿主设置实时通知，以及 SDK/终端入口。
 
 
 ## 环境变量页面（2026-09-11，第一批）

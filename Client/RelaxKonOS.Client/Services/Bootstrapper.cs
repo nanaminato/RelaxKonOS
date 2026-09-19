@@ -19,6 +19,7 @@ using RelaxKonOS.Client.Services.WindowLayout;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using VirtualSystemDriveService = RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive;
 using RelaxKonOS.Client.Services.Theming;
+using RelaxKonOS.Client.Services.SystemUi;
 using RelaxKonOS.Client.ViewModels.Login;
 using RelaxKonOS.Client.ViewModels.Shell;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,16 +39,24 @@ public static class Bootstrapper
     {
         var services = new ServiceCollection();
 
-        // ThemeService applies resources to the live Avalonia application instance.
-        // Register the startup instance explicitly because it is not created by DI.
+        // AppearanceService applies both the palette and the system-style resources to the live
+        // Avalonia application instance. Register the startup instance explicitly because it is
+        // not created by DI.
         services.AddSingleton<Application>(app);
         var windowManager = new WindowManagerService();
         services.AddSingleton(windowManager);
         services.AddSingleton<IWindowManager>(windowManager);
+        // The window overview reads the window manager and owns no window state of its own; the
+        // system UI coordinator is the only host object allowed to open it or route its shortcuts.
+        services.AddSingleton<WindowOverviewController>();
+        services.AddSingleton<IWindowOverviewController>(sp => sp.GetRequiredService<WindowOverviewController>());
+        services.AddSingleton<SystemUiCoordinator>();
         services.AddSingleton<LocalLanguageStore>();
         services.AddSingleton<LoginNotificationPreferenceStore>();
         services.AddSingleton<DesktopWelcomePreferenceStore>();
-        services.AddSingleton<ThemeService>();
+        services.AddSingleton<SystemStyleRegistry>();
+        services.AddSingleton<ISystemStyleRegistry>(sp => sp.GetRequiredService<SystemStyleRegistry>());
+        services.AddSingleton<AppearanceService>();
         services.AddSingleton<ShellSettings>();
         services.AddSingleton<ShellPreferenceStore>();
         services.AddSingleton<ShellCatalog>();
@@ -170,6 +179,9 @@ public static class Bootstrapper
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<HostSettings.IHostEnvironmentService, HostSettings.HostEnvironmentService>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .AddHttpMessageHandler<AcceptLanguageHandler>();
+        services.AddHttpClient<HostSettings.IHostIdentityService, HostSettings.HostIdentityService>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<IWorkspaceSettingsService, WorkspaceSettingsService>()

@@ -9,7 +9,7 @@ namespace RelaxKonOS.Shell;
 /// <summary>Versioned, deliberately small contract shared by the client and desktop-shell packages.</summary>
 public static class ShellApi
 {
-    public const string Version = "1.0";
+    public const string Version = "1.1";
     public const string DefaultShellId = "relaxkonos.windows-like";
 
     /// <summary>Returns an explicit shell identifier, using the current built-in default only when no selection exists.</summary>
@@ -107,7 +107,17 @@ public sealed record ShellDesktopState(
     IBrush? DesktopItemLabelForeground = null);
 
 /// <summary>A launchable application in an external shell's Start menu or application list.</summary>
-public sealed record ShellApplicationEntry(AppId Id, string DisplayName, string? IconGlyph, string? Description);
+public sealed record ShellApplicationEntry(
+    AppId Id,
+    string DisplayName,
+    string? IconGlyph,
+    string? Description,
+    /// <summary>Host-loaded application artwork. Use this in preference to <see cref="IconGlyph"/>.</summary>
+    IImage? IconImage = null)
+{
+    /// <summary>Whether application artwork is available instead of a glyph fallback.</summary>
+    public bool HasIconImage => IconImage is not null;
+}
 
 public enum ShellDesktopEntryKind { Application, File, Folder, Shortcut }
 
@@ -143,6 +153,12 @@ public interface IShellActions
     void SelectDesktopEntry(string entryId);
     void SetDesktopIconsVisible(bool visible);
     void ShowDesktop();
+    /// <summary>
+    /// Opens the host's window overview (task view). A shell only exposes an entry point for it -
+    /// the host renders the overview and owns its keyboard shortcuts, so no shell can restyle or
+    /// re-route window switching.
+    /// </summary>
+    bool ShowWindowOverview();
     void ToggleWindowGroup(AppId appId);
     void ActivateWindow(WindowId windowId);
     void MinimizeWindow(WindowId windowId);

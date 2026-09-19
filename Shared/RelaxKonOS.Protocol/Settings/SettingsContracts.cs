@@ -46,6 +46,9 @@ public static class SettingsApiRoutes
     public const string Time = Root + "/host-settings/time";
     public const string TimePreview = Time + "/preview";
     public const string TimeApply = Time + "/apply";
+    public const string Identity = Root + "/host-settings/identity";
+    public const string IdentityPreview = Identity + "/preview";
+    public const string IdentityApply = Identity + "/apply";
     public const string Operation = Root + "/settings/operations/{id}";
     public const string Rollback = Operation + "/rollback";
 }

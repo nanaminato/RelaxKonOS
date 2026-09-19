@@ -1,0 +1,67 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    Fluent theme-key bridge.
+
+    The Fluent theme already resolves every command-menu, tooltip and flyout surface through
+    named dynamic resources. Rather than replacing those templates - which would risk silently
+    breaking submenu, keyboard navigation and light-dismiss behaviour - the host re-points the
+    keys at the RelaxKonOS semantic palette. Menus, popovers and tooltips therefore follow the
+    active palette with no code in any application or shell.
+
+    Only the *brush* keys live here: a brush can carry a `Color="{DynamicResource ...}"`, so it
+    follows the palette live. Thickness keys cannot express a dynamic sub-value, so the shape keys
+    in the second half of this file are static Windows-like fallbacks and are replaced at runtime
+    by SystemStyleResourceBuilder.BuildCommandSurfaceThicknessKeys, which derives them from the
+    active style's menu tokens (see SystemStyleCommandSurfaceKeys).
+  -->
+
+  <!-- ── Fallbacks for the code-derived thickness keys (overwritten on the first style apply) ── -->
+  <Thickness x:Key="MenuFlyoutPresenterBorderThemeThickness">1</Thickness>
+  <Thickness x:Key="MenuFlyoutPresenterThemePadding">6</Thickness>
+  <Thickness x:Key="MenuFlyoutScrollerMargin">0</Thickness>
+  <Thickness x:Key="MenuFlyoutItemThemePaddingNarrow">12,0</Thickness>
+  <x:Double x:Key="MenuFlyoutSeparatorThemeHeight">1</x:Double>
+  <Thickness x:Key="MenuFlyoutSeparatorThemePadding">0,3,0,3</Thickness>
+  <Thickness x:Key="ToolTipBorderThemeThickness">1</Thickness>
+  <Thickness x:Key="ToolTipBorderThemePadding">12,6</Thickness>
+  <Thickness x:Key="FlyoutBorderThemeThickness">1</Thickness>
+  <Thickness x:Key="FlyoutBorderThemePadding">10</Thickness>
+  <Thickness x:Key="FlyoutContentThemePadding">10</Thickness>
+
+  <!-- ── Command menu surface (ContextMenu / MenuFlyout / MenuItem) ── -->
+  <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="{DynamicResource SurfaceRaisedColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="{DynamicResource BorderDefaultColor}" />
+
+  <SolidColorBrush x:Key="MenuFlyoutItemBackground" Color="Transparent" />
+  <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPointerOver" Color="{DynamicResource SurfaceHoverColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutItemBackgroundPressed" Color="{DynamicResource SurfacePressedColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutItemBackgroundDisabled" Color="Transparent" />
+
+  <SolidColorBrush x:Key="MenuFlyoutItemForeground" Color="{DynamicResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutItemForegroundPointerOver" Color="{DynamicResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutItemForegroundPressed" Color="{DynamicResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutItemForegroundDisabled" Color="{DynamicResource TextDisabledColor}" />
+
+  <!-- Shortcut column reads as supporting information, never as a second command label. -->
+  <SolidColorBrush x:Key="MenuFlyoutItemKeyboardAcceleratorTextForeground" Color="{DynamicResource TextSecondaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutItemKeyboardAcceleratorTextForegroundPointerOver" Color="{DynamicResource TextSecondaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutItemKeyboardAcceleratorTextForegroundPressed" Color="{DynamicResource TextSecondaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutItemKeyboardAcceleratorTextForegroundDisabled" Color="{DynamicResource TextDisabledColor}" />
+
+  <!-- Submenu chevron. -->
+  <SolidColorBrush x:Key="MenuFlyoutSubItemChevron" Color="{DynamicResource TextSecondaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutSubItemChevronPointerOver" Color="{DynamicResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutSubItemChevronPressed" Color="{DynamicResource TextPrimaryColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutSubItemChevronDisabled" Color="{DynamicResource TextDisabledColor}" />
+  <SolidColorBrush x:Key="MenuFlyoutSubItemChevronSubMenuOpened" Color="{DynamicResource TextPrimaryColor}" />
+
+  <!-- ── Tooltips ── -->
+  <SolidColorBrush x:Key="ToolTipBackground" Color="{DynamicResource SurfaceRaisedColor}" />
+  <SolidColorBrush x:Key="ToolTipBorderBrush" Color="{DynamicResource BorderDefaultColor}" />
+  <SolidColorBrush x:Key="ToolTipForeground" Color="{DynamicResource TextPrimaryColor}" />
+
+  <!-- ── Generic flyouts (flyout, quick settings, dialog surface) ── -->
+  <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="{DynamicResource SurfaceRaisedColor}" />
+  <SolidColorBrush x:Key="FlyoutBorderThemeBrush" Color="{DynamicResource BorderDefaultColor}" />
+</ResourceDictionary>

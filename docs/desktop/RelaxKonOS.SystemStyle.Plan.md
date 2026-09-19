@@ -1,10 +1,13 @@
 # RelaxKonOS 系统级桌面风格扩展计划
 
-> **状态：规划，尚未实施。**
+> **状态：Phase 0–5 的功能性交付物均已实施（2026-09-19）；视觉回归尚未执行。**
 >
-> 本文把当前的“桌面样式”从仅决定 Launcher / 任务栏 / Dock 布局的能力，扩展为一个可运行时切换、覆盖桌面与受管应用的**系统级风格（System Style）**能力。本文不授权实现；后续工作应以本文为实施基线，并在开始前复核当前代码。
+> 本文把当前的“桌面样式”从仅决定 Launcher / 任务栏 / Dock 布局的能力，扩展为一个可运行时切换、覆盖桌面与受管应用的**系统级风格（System Style）**能力。§1–§8 的契约与阶段目标均已落地；**剩余工作是验收性的（视觉回归、平台入口），不是功能性的**。
 >
-> 相关现有文档：[`RelaxKonOS.Desktop.md`](./RelaxKonOS.Desktop.md)、[`RelaxKonOS.Theming.md`](./RelaxKonOS.Theming.md)、[`RelaxKonOS.ExternalShellPackages.md`](./RelaxKonOS.ExternalShellPackages.md)。
+> - 已实施部分的规范与现状记录：[`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)；
+>   未验证项与待执行的视觉回归矩阵见其 §11.2 / §11.3。
+> - 本文 §12 记录本次执行的实际落点、设计决定与未验证项（§12.1–§12.5 为 Phase 1，§12.6 为 Phase 2–5）。
+> - 相关现有文档：[`RelaxKonOS.Desktop.md`](./RelaxKonOS.Desktop.md)、[`RelaxKonOS.Theming.md`](./RelaxKonOS.Theming.md)、[`RelaxKonOS.ExternalShellPackages.md`](./RelaxKonOS.ExternalShellPackages.md)。
 
 ## 1. 目标与范围
 
@@ -28,6 +31,10 @@
 - 本计划不实现虚拟桌面、窗口平铺/吸附、跨设备窗口迁移或真实系统通知服务；设计接口时为它们保留位置即可。
 
 ## 2. 现状调研
+
+> 本节记录的是**实施前**的现状与动机。Phase 1 实施后，`ThemeService` 已由 `AppearanceService` 取代，
+> `ThemePreferencesDto.StyleId` 与顶层 `Theme` / `Shell` 已删除，改为 `DesktopExperience` 唯一模型；
+> §2.2 描述的“未兑现的预留字段”已不复存在。当前状态见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md)。
 
 ### 2.1 当前“桌面样式”是 Shell 替换，而非系统风格
 
@@ -332,3 +339,135 @@ MainWindow
 ## 11. 结论
 
 应把现有 Shell 选择保留为“桌面布局扩展点”，同时引入受信任、数据驱动、全局生效的 `SystemStyle` 层。以统一 token、受限 recipe、共享菜单/窗口模板和 host 控制的系统操作层为核心，才能让 Windows-like、macOS-like、Ubuntu-like 及 Windows 11-like 的差异穿透到右键菜单、窗口外壳、全屏与任务切换，而不让每个应用或外置 Shell 各自复制一套不可维护的样式代码。
+
+---
+
+## 12. 执行记录
+
+### 12.1 本次执行（2026-09-19，Phase 1）
+
+- **分支**：`feature_desktop`；**起点 commit**：`8cd4147f`（推进了主机名纵向切片）。
+- **范围**：Phase 0（基线审计）与 Phase 1（协议契约 + 三套内置 profile + UI 令牌字典与资源构建器 +
+  `AppearanceService` / `SystemStyleRegistry` + 设置页三项拆分 + 服务端校验器迁移 + 测试 + 文档）。
+- **不在范围**：Phase 2–5（通用组件模板、桌面/应用覆盖、系统操作层、外部扩展与发布门槛）。
+
+### 12.2 关键设计决定
+
+1. **颜色与形状物理隔离。** `AppearancePreferencesDto` 无 `StyleId`；`SystemStyleManifestDto` 无任何颜色字段。
+   窗口阴影是唯一需要两者协作的资源：**颜色**取自调色板 `Shadow`，**深浅**取自风格的
+   `WindowShadowDepth` / `WindowShadowOpacity`，由 `SystemStyleResourceBuilder` 合成。
+2. **闭集优先于自由配置。** 令牌是显式区间内的有限词表，recipe 是有限字符串常量；
+   清单无法夹带 AXAML、类型名、资源 URI 或事件处理器。`WindowControlOrder` / `TaskbarAlignment`
+   等“看似合理但布局不可实现”的档位**故意不进入**令牌契约，改由 recipe 决定。
+3. **失败即整体拒绝 + 原子交换。** 校验在令牌进入实时资源图之前完成；`AppearanceService`
+   先 `Add` 新字典再 `Remove` 旧字典，中间无空窗；样式不可解析时保留上一套已验证形状资源并只暴露问题码。
+4. **可用性是设备本地事实，不是偏好。** 服务端只校验 `systemStyleId` 的**格式**，不校验可用性；
+   本设备缺失时 `SystemStyleRegistry` 保留条目与原因（`UnavailableReason`），设置页显示“此设备未安装”，
+   **不改写用户的偏好**。
+5. **无兼容层。** 按 `AGENTS.md` 删除顶层 `Theme` / `Shell`、`ThemePreferencesDto` 与 `ThemeService`，
+   不做别名、双读双写或旧 JSON 回退；同一次变更更新了全部调用方、测试与文档。
+6. **推荐映射只是按钮。** `RecommendedForShell` 只驱动设置页的“采用此 Shell 推荐的系统风格”操作，
+   不隐式修改用户选择，从而允许“Ubuntu 布局 + Windows-like 窗口与菜单”。
+
+### 12.3 变更落点
+
+完整文件表见 [`RelaxKonOS.SystemStyle.md`](./RelaxKonOS.SystemStyle.md) §10。要点：
+
+- 新增协议目录 `Shared/RelaxKonOS.Protocol/Workspace/SystemStyles/`（5 个文件）与
+  `AppearancePreferencesDto.cs` / `DesktopExperiencePreferencesDto.cs`；删除 `ThemePreferencesDto.cs`。
+- 新增 `Framework/RelaxKonOS.UI/Themes/SystemStyle/SystemStyleResourceBuilder.cs` 与
+  `Themes/Tokens/SystemStyleTokens.axaml`；`TokenContract.axaml` 只保留颜色无关项。
+- 新增 `Client/.../Services/Theming/AppearanceService.cs` / `SystemStyleRegistry.cs`；删除 `ThemeService.cs`。
+- 设置页拆为三卡片；三语言 `settings.json` 与本地搜索条目同步；服务端校验器迁移。
+
+### 12.4 验证命令与结果
+
+| 命令 | 结果 |
+|---|---|
+| `dotnet build Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj` | 通过，0 error |
+| `dotnet build Framework/RelaxKonOS.UI/RelaxKonOS.UI.csproj` | 通过 |
+| `dotnet build Framework/RelaxKonOS.WindowManager/RelaxKonOS.WindowManager.csproj` | 通过 |
+| `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj -c Release` | 通过，0 warning / 0 error |
+| `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -t:Rebuild` | 通过，0 error；**2 个 CA1416 警告**（`Program.cs:413` `WindowsLogonProvider` / `Program.cs:415` `LinuxPamProvider`，起点既有，非本次引入） |
+| `dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj` | 通过，0 warning / 0 error |
+| `dotnet build Tools/RelaxKonOS.DevCli/RelaxKonOS.DevCli.csproj` | 通过，0 warning / 0 error |
+| `dotnet run --project Client/RelaxKonOS.Settings.Tests/... -c Release` | 全通过，含新增 `SystemStyleChecks` |
+| `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only` | 全通过 |
+| `git diff --check` | clean |
+
+### 12.5 未验证项与阻塞
+
+- **无视觉验收**：三套风格 × 浅/深 × 各内置应用的实际观感、焦点可见性与对比度未截图核对。
+- **Phase 2 未开始**，因此当前切换系统风格**尚不改变**应用内右键菜单与宿主标题栏
+  （`ContextMenu` / `MenuItem` / Flyout / Dialog 的统一模板属于 Phase 2）。
+- **Phase 3 未开始**：内置 Shell 未接入 `ShellChromeRecipe`；154 处硬编码色按基线保留（见设施文档 §2）。
+- **Phase 4 未开始**：窗口概览/任务切换器与 `SystemUiCoordinator` 未实现；概览类令牌暂无消费者。
+- **Phase 5 未开始**：外置 manifest 签名/来源策略与三平台视觉回归未落地。
+- `ReducedMotion` 目前是显式开关，未接入平台“减少动态效果”设置。
+- 跨平台宿主配置与远程实机验收未执行；编译通过与受控契约测试不构成平台/视觉验收。
+
+---
+
+### 12.6 后续执行（2026-09-19，Phase 2–5）
+
+- **分支**：`feature_desktop`；**起点 commit**：`8cd4147f`（与 §12.1 同一起点，Phase 1 之后连续推进）。
+- **范围**：Phase 2（通用系统组件）、Phase 3（桌面与应用覆盖）、Phase 4（系统操作层）、
+  Phase 5（质量、外部扩展与发布门槛）的功能性交付物。
+
+#### 12.6.1 Phase 2–5 的关键设计决定
+
+1. **桥接 Fluent 键，而不是替换模板。** 菜单/子菜单/ToolTip/Flyout 在 Fluent 中通过具名
+   `DynamicResource` 取色，因此把这批键重指向语义调色板，既让全局风格生效，又保留下拉子菜单、
+   键盘导航与点击外部关闭。颜色类键放在 AXAML 桥接字典；厚度类键无法表达动态子值，
+   改由 `SystemStyleResourceBuilder` 从令牌 + `contextMenu` recipe 在代码中物化。
+2. **代码构造的 UI 只允许 `ThemeResources.Bind`。** `GetResourceObservable` 是 `{DynamicResource}` 的 C# 等价物；
+   `Brush()`/`Color()` 降级为「调用时刻快照」，仅用于必须把画刷交给无法接受绑定的 API 的场合。
+3. **recipe 是选择器，不是样式注入。** 四个槽位各有唯一消费点（设施文档 §4.1），
+   并由 `VerifyRecipeCoverage` 逐值核对「允许值 ↔ 实现痕迹」，避免清单选了变体而宿主悄悄回退。
+   两个如实边界：`contextMenu` 只能改密度/内缩/边框权重（圆角来自共享 overlay 键，换圆角必须换模板）；
+   `shellChrome` 是结构性槽位，布局由 Shell 包自己拥有。
+4. **概览是宿主级系统表面，不是 Shell 功能。** 只读投影 `WindowOverviewItem` 不含 `ManagedWindow`，
+   概览无法改 z 序或访问应用；`SystemUiCoordinator` 是可见性与全局快捷键的唯一权威，
+   宿主 `MainWindow` 在应用未处理后捕获 `Win+Tab`/`Alt+Tab`/`Esc`。概览自身充当 `InputBackdrop`，
+   因此内置与外置 Shell 一视同仁。
+5. **安全系统模态高于概览。** `IWindowManager.IsSystemModalOpen`（任意 `_shellModalSessions` 非空）为真时
+   概览拒绝打开；应用模态只阻塞其 owner，概览仍可打开，`Focus` 会把激活重定向到模态链顶端。
+6. **外置包门禁先于包加载器。** `TryValidateExternal` 要求外部来源 + 包归属；
+   `SystemStyleRegistry.Register(..., isBuiltIn: false)` 已走该路径，但**本构建不接包加载器**——
+   按 Phase 5 第 3 条，第三方 manifest 在有完整视觉回归前保持关闭。
+7. **把审查结论固化为可执行规则。** `VerifyNoHardcodedColours` 用豁免表（逐条说明为何不是主题颜色）
+   把「禁止产品 UI 新增十六进制颜色」变成会失败的校验；数字只能减少不能增加。
+
+#### 12.6.2 验证命令与结果（Phase 2–5）
+
+| 命令 | 结果 |
+|---|---|
+| `dotnet build RelaxKonOS.sln -c Debug -m:1` | 通过，0 warning / 0 error |
+| `dotnet build Framework/RelaxKonOS.WindowManager/... -c Debug` | 通过，0 warning / 0 error |
+| `dotnet build Client/RelaxKonOS.Client/... -c Debug` | 通过，含新视图的**编译绑定校验**（`x:CompileBindings="True"`），0 error |
+| `dotnet run --project Client/RelaxKonOS.Settings.Tests/... -c Debug --no-build` | 全通过；新增输出：`… external-package gate, recipe coverage, no hardcoded colours in product UI.` |
+| 产品 UI 十六进制颜色复扫（§10.2 口径） | **46** 处，全部在豁免表内（Phase 0 基线 154） |
+| `dotnet build RelaxKonOS.Server/... -t:Rebuild` | 通过，0 error；2 个 CA1416 警告（起点既有） |
+| `dotnet run --project RelaxKonOS.Server.Tests -c Debug` | **未通过，但为起点既有失败**：停在 `VerifyMihomoGeoDataStagingAsync` 的 `Bundled GEO data could not be staged.`。已用 `git worktree add ... 8cd4147f` 做干净检出复现，**同一条断言、同一调用路径**同样失败，故与本次改动无关（本阶段对该文件只改了 Workspace 偏好 / Appearance / SystemStyle 契约部分） |
+| `git diff --check` | 干净（修正 `docs/desktop/RelaxKonOS.SystemStyle.Plan.md` 文末多余空行后） |
+
+> 结论口径：上表「通过」仅表示**编译与受控契约校验**通过。`Server.Tests` 的失败项与 System Style 无关，
+> 但**未修复、也未规避**——不把它计作本阶段通过项。
+
+#### 12.6.3 未验证项与遗留（Phase 2–5）
+
+- **未做任何视觉验收**：没有启动客户端截图核对浅/深/System × 三风格 × 三 Shell × 各组件。
+  待执行矩阵见设施文档 §11.3。**「已实施」不等于「已验收」。**
+- **快捷键的可达性未在真实平台验证**：Windows 上 `Win+Tab` 优先被 OS 任务视图捕获；
+  可靠入口是任务栏「任务视图」按钮与 `IShellActions.ShowWindowOverview()`。
+- **`Alt+Tab` 无「按住预览、松开激活」的会话语义**，当前为逐次即时切换。
+- **macOS-like / Ubuntu-like 无可视化切换入口**（仅键盘），且 F3/Super 未接线。
+- **概览卡片始终是图标 + 标题降级形态**：`IsThumbnailAvailable` 恒为 `false`，未实现任何缩略图。
+- **高 DPI / 窄窗口 / 触摸 / 低性能 / 三平台回归未执行**。
+- 外置 style manifest 生产路径未接通（门禁已实现并测试）。
+- `RelaxKonOS.Server.Tests` 有起点既有的失败（`Bundled GEO data could not be staged.`，HEAD `8cd4147f` 可复现）。
+  该失败会中断进程，**其后的用例根本没跑**，因此本阶段新增的 Workspace 偏好 / Appearance / SystemStyle
+  服务端契约断言**未取得运行时证据**——只证明了可编译、且与既有失败无因果关系。修复该系统级失败前，
+  不应把 `Server.Tests` 当作 System Style 的验证依据。
+- `Client/RelaxKonOS.Settings.Tests` 不在 `RelaxKonOS.sln` 中，且仓库无 `.github/` 工作流，
+  因此新增的 CI 规则需要流水线显式调用该命令才会执行。

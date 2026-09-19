@@ -5,6 +5,7 @@ using System.ComponentModel;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
+using RelaxKonOS.Client.Services.SystemUi;
 using RelaxKonOS.Client.ViewModels.Shell;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Core.Applications;
@@ -30,6 +31,7 @@ public sealed class ShellRuntime
     private readonly ShellSettings _settings;
     private readonly ShellPreferenceStore _preferences;
     private readonly DesktopShellOverlayService _overlays;
+    private readonly SystemUiCoordinator _systemUi;
     private readonly SemaphoreSlim _switchGate = new(1, 1);
     private readonly ShellStateStore _state = new();
     private ContentControl? _host;
@@ -40,9 +42,9 @@ public sealed class ShellRuntime
     private long _switchIntentVersion;
 
     public ShellRuntime(ShellCatalog catalog, IWindowManager windows, ShellSettings settings, ShellPreferenceStore preferences,
-        DesktopShellOverlayService overlays)
+        DesktopShellOverlayService overlays, SystemUiCoordinator systemUi)
     {
-        _catalog = catalog; _windows = windows; _settings = settings; _preferences = preferences; _overlays = overlays;
+        _catalog = catalog; _windows = windows; _settings = settings; _preferences = preferences; _overlays = overlays; _systemUi = systemUi;
         _settings.ShellSelectionChanged += (_, id) => QueueSelectedShellSwitch(id);
         _catalog.Changed += (_, _) =>
         {
@@ -103,7 +105,7 @@ public sealed class ShellRuntime
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(8));
-                var actions = new DesktopShellActions(_state, _windows, SelectDesktopStyleAsync);
+                var actions = new DesktopShellActions(_state, _windows, SelectDesktopStyleAsync, () => _systemUi.ShowOverview());
                 var context = new ShellPresentationContext(_state, actions, _overlays, registry, new LocalizationSnapshot());
                 await candidate.InitializeAsync(context, timeout.Token);
                 if (!registry.IsComplete) throw new InvalidOperationException("Shell did not register a complete surface set.");
@@ -243,10 +245,11 @@ public sealed class ShellRuntime
 }
 
 internal sealed class DesktopShellActions(ShellStateStore state, IWindowManager windows,
-    Func<string, Task<bool>> activateDesktopStyle) : IShellActions
+    Func<string, Task<bool>> activateDesktopStyle, Func<bool> showWindowOverview) : IShellActions
 {
     private DesktopShellViewModel Vm => state.Snapshot as DesktopShellViewModel ?? throw new InvalidOperationException("Desktop state unavailable.");
     public Task LaunchAsync(AppId appId, CancellationToken cancellationToken = default) { Vm.LaunchCommand.Execute(appId); return Task.CompletedTask; }
+    public bool ShowWindowOverview() => showWindowOverview();
     public async Task ActivateDesktopStyleAsync(string shellId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -405,7 +408,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     private ShellDesktopState CreateSnapshot()
     {
         var applications = _workspace.StartApps
-            .Select(app => new ShellApplicationEntry(app.Id, app.DisplayName, app.IconGlyph, app.Description))
+            .Select(app => new ShellApplicationEntry(app.Id, app.DisplayName, app.IconGlyph, app.Description, app.IconImage))
             .ToArray();
         var entries = _workspace.DesktopItems.Select(ToEntry).Where(entry => entry is not null).Cast<ShellDesktopEntry>().ToArray();
         var desktopStyles = _catalog.Available
@@ -421,7 +424,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         AppEntryViewModel app => new ShellDesktopEntry("app:" + app.Id.Value, app.DisplayName,
             ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected, app.IconImage),
         DesktopFileEntryViewModel file => new ShellDesktopEntry("file:" + EntryHash(file.Entry.Path), file.DisplayName,
-            file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph, null, file.IsDesktopSelected),
+            file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph, null, file.IsDesktopSelected, file.IconImage),
         ShortcutEntryViewModel shortcut => new ShellDesktopEntry("shortcut:" + shortcut.DisplayName, shortcut.DisplayName,
             ShellDesktopEntryKind.Shortcut, shortcut.IconGlyph, null, shortcut.IsDesktopSelected),
         _ => null,

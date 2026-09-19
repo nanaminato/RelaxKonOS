@@ -46,8 +46,8 @@
                         <Button Content="{loc:Loc git.conflicts.block_both}" Command="{Binding ApplyConflictBlockCommand}" CommandParameter="both" />
                     </WrapPanel>
                     <Grid ColumnDefinitions="*,*" MaxHeight="120">
-                        <TextBox Text="{Binding SelectedConflictBlock.Ours}" IsReadOnly="True" AcceptsReturn="True" Background="#20309060" FontFamily="monospace" />
-                        <TextBox Grid.Column="1" Text="{Binding SelectedConflictBlock.Theirs}" IsReadOnly="True" AcceptsReturn="True" Background="#203060C0" FontFamily="monospace" />
+                        <TextBox Text="{Binding SelectedConflictBlock.Ours}" IsReadOnly="True" AcceptsReturn="True" Background="{DynamicResource SuccessMutedBrush}" FontFamily="monospace" />
+                        <TextBox Grid.Column="1" Text="{Binding SelectedConflictBlock.Theirs}" IsReadOnly="True" AcceptsReturn="True" Background="{DynamicResource AccentMutedBrush}" FontFamily="monospace" />
                     </Grid>
                 </StackPanel>
                 <Expander Grid.Row="3" Header="{loc:Loc git.conflicts.base}">

@@ -28,6 +28,19 @@ public sealed class SettingsCatalog(PrivilegedHelperOptions helper, IHostElevati
         items.Add(new("host.time.zone", "time-language", "settings.time_zone", "settings.host_time.scope",
             "relaxkonos://settings/time-language", SettingsScope.HostMachine, "timeZoneId", capability,
             SettingsEffectiveState.Immediate, ["timezone", "time zone", "时区", "タイムゾーン"]));
+        // The platform decides the effective state and the name limit; discovery only reports what the
+        // caller can already reach, so it never probes the Helper on a catalog request.
+        var identityCapability = !OperatingSystem.IsLinux() && !OperatingSystem.IsWindows()
+            ? new SettingsCapability(SettingsCapabilityState.PlatformUnsupported, "settings.identity.platform_unsupported")
+            : OperatingSystem.IsLinux() && (string.IsNullOrWhiteSpace(helper.HelperPath) || !File.Exists(helper.HelperPath))
+                ? new(SettingsCapabilityState.HelperUnavailable, "settings.helper.not_installed")
+                : !grants.IsGranted(principal, HostElevationCapability.HostIdentityChange, HostIdentityOperationCoordinator.IdentityResource)
+                    ? new(SettingsCapabilityState.ElevationRequired, "settings.elevation_required")
+                    : new(SettingsCapabilityState.Available);
+        items.Add(new("host.identity.hostname", "system", "settings.hostname", "settings.hostname.scope",
+            "relaxkonos://settings/system", SettingsScope.HostMachine, "hostName", identityCapability,
+            OperatingSystem.IsWindows() ? SettingsEffectiveState.HostRestart : SettingsEffectiveState.Immediate,
+            ["hostname", "computer name", "主机名", "计算机名", "ホスト名", "コンピューター名"]));
         return new(items, DateTimeOffset.UtcNow);
     }
 

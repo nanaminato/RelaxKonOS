@@ -27,6 +27,7 @@ public enum HostElevationCapability
     MihomoInstall,
     DockerInstall,
     HostTimeChange,
+    HostIdentityChange,
     HostEnvironmentRead,
     HostEnvironmentChange,
     HostEnvironmentReveal,

@@ -4,12 +4,13 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Protocol.Desktop;
 using RelaxKonOS.Protocol.Workspace;
+using RelaxKonOS.Protocol.Workspace.SystemStyles;
 using RelaxKonOS.Shell;
 using RelaxKonOS.Client.Services.Theming;
 
 namespace RelaxKonOS.Client.Services;
 
-/// <summary>Holds user-facing shell appearance + locale state (wallpaper / theme / time / language / region / desktop display).
+/// <summary>Holds user-facing shell appearance + locale state (wallpaper / appearance / system style / time / language / region / desktop display).
 /// 单例，作为桌面外壳的实时 UI 绑定源（<c>DesktopShellView</c> 绑 <c>Settings.CurrentWallpaper</c> 等）。
 /// 数据真源在服务端 <see cref="WorkspacePreferencesDto"/>（Workspace 级，多设备同步）；
 /// 本类是其在客户端的活副本——登录时由 <c>PreferencesSync</c> 从服务端加载并 <see cref="Apply"/>，
@@ -19,8 +20,8 @@ public sealed partial class ShellSettings : ObservableObject
     public IReadOnlyList<WallpaperOption> Wallpapers { get; }
 
     [ObservableProperty] private int _wallpaperIndex;
-    [ObservableProperty] private ThemeKind _theme = ThemeKind.Light;
-    [ObservableProperty] private ThemePreferencesDto _themePreferences = ThemePreferencesDto.Default;
+    [ObservableProperty] private AppearancePreferencesDto _appearance = AppearancePreferencesDto.Default;
+    [ObservableProperty] private string _systemStyleId = SystemStyleIds.WindowsLike;
     [ObservableProperty] private string _timeFormat = WorkspacePreferencesDto.TimeFormat24H;
     [ObservableProperty] private string _dateFormat = "yyyy/M/d";
     [ObservableProperty] private string _language;
@@ -53,13 +54,13 @@ public sealed partial class ShellSettings : ObservableObject
 
     public bool IsCustomWallpaper => _customWallpaper is not null;
 
-    public bool IsDarkTheme => Theme == ThemeKind.Dark;
+    public bool IsDarkTheme => Appearance.Mode == ThemeKind.Dark;
 
-    private readonly ThemeService _themeService;
+    private readonly AppearanceService _appearanceService;
 
-    public ShellSettings(ThemeService themeService)
+    public ShellSettings(AppearanceService appearanceService)
     {
-        _themeService = themeService;
+        _appearanceService = appearanceService;
         _language = WorkspacePreferencesDto.Default.Language;
         Wallpapers =
         [
@@ -85,13 +86,27 @@ public sealed partial class ShellSettings : ObservableObject
             SetBuiltInWallpaper(value);
     }
 
-    partial void OnThemeChanged(ThemeKind value)
+    /// <summary>Colours, system style and shell layout are one user-facing choice; both halves are
+    /// re-applied together so the palette and the shape set can never drift apart.</summary>
+    partial void OnAppearanceChanged(AppearancePreferencesDto value)
     {
         OnPropertyChanged(nameof(IsDarkTheme));
-        _themeService.Apply(value, ThemePreferences);
+        _appearanceService.Apply(value.Mode, value, SystemStyleId);
     }
 
-    partial void OnThemePreferencesChanged(ThemePreferencesDto value) => _themeService.Apply(Theme, value);
+    partial void OnSystemStyleIdChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasUnavailableSystemStyle));
+        _appearanceService.Apply(Appearance.Mode, Appearance, value);
+        OnPropertyChanged(nameof(AppliedSystemStyleId));
+    }
+
+    /// <summary>True when the workspace asked for a style this device cannot resolve.</summary>
+    public bool HasUnavailableSystemStyle =>
+        !string.Equals(AppliedSystemStyleId, SystemStyleId, StringComparison.Ordinal);
+
+    /// <summary>The style actually rendering; falls back to the shipped default profile.</summary>
+    public string AppliedSystemStyleId => _appearanceService.AppliedStyleId;
 
     partial void OnShowBuiltInAppsChanged(bool value) => NotifyDesktopDisplayChanged();
     partial void OnShowServerDesktopFilesChanged(bool value) => NotifyDesktopDisplayChanged();
@@ -132,8 +147,10 @@ public sealed partial class ShellSettings : ObservableObject
     public void Apply(WorkspacePreferencesDto prefs)
     {
         PreferencesRevision = prefs.Revision;
-        Theme = prefs.Theme;
-        ThemePreferences = prefs.ThemePreferences ?? ThemePreferencesDto.Default;
+        var experience = prefs.DesktopExperience ?? DesktopExperiencePreferencesDto.Default;
+        Appearance = experience.Appearance ?? AppearancePreferencesDto.Default;
+        SystemStyleId = string.IsNullOrWhiteSpace(experience.SystemStyleId)
+            ? SystemStyleIds.WindowsLike : experience.SystemStyleId;
         TimeFormat = prefs.TimeFormat;
         DateFormat = prefs.DateFormat;
         Language = prefs.Language;
@@ -153,7 +170,7 @@ public sealed partial class ShellSettings : ObservableObject
         ShowWindowShadows = dd.ShowWindowShadows;
         ShowWindowContentsWhileDragging = dd.ShowWindowContentsWhileDragging;
         ShowTaskbarWindowPreviews = dd.ShowTaskbarWindowPreviews;
-        var shell = prefs.Shell ?? new ShellSelectionDto(ShellApi.DefaultShellId);
+        var shell = experience.Shell ?? new ShellSelectionDto(ShellApi.DefaultShellId);
         ShellSelection = new ShellSelectionDto(ShellApi.ResolveId(shell.ShellId), shell.PackageId, shell.PackageVersion);
 
         if (TryIndexForKey(prefs.WallpaperKey, out var index))
@@ -169,7 +186,7 @@ public sealed partial class ShellSettings : ObservableObject
 
     /// <summary>导出当前活状态为服务端 DTO（保存时用）。</summary>
     public WorkspacePreferencesDto ToPreferences(IReadOnlyList<DefaultAppMappingDto>? defaultApps = null)
-        => new(CurrentWallpaperKey, Theme, TimeFormat, DateFormat, Language, Region,
+        => new(CurrentWallpaperKey, TimeFormat, DateFormat, Language, Region,
             defaultApps ?? Array.Empty<DefaultAppMappingDto>(), NotepadDefaultEncoding, CodeEditorDefaultEncoding,
             new DesktopDisplaySettingsDto
             {
@@ -181,7 +198,13 @@ public sealed partial class ShellSettings : ObservableObject
                 ShowWindowShadows = ShowWindowShadows,
                 ShowWindowContentsWhileDragging = ShowWindowContentsWhileDragging,
                 ShowTaskbarWindowPreviews = ShowTaskbarWindowPreviews,
-            }, ThemePreferences, ShellSelection) { Revision = PreferencesRevision };
+            },
+            new DesktopExperiencePreferencesDto
+            {
+                Appearance = Appearance,
+                SystemStyleId = SystemStyleId,
+                Shell = ShellSelection,
+            }) { Revision = PreferencesRevision };
 
     public long? PreferencesRevision { get; private set; }
 

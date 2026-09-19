@@ -93,9 +93,10 @@ public sealed partial class SettingsViewModel
     {
         (string Id, string Page, string Title, SettingsScope Scope, string Keywords)[] items =
         [
-            ("workspace.theme", "personalization", "settings.theme", SettingsScope.Workspace, "theme light dark 主题 外观 テーマ"),
+            ("workspace.colors", "personalization", "settings.colors_and_mode", SettingsScope.Workspace, "colors mode theme light dark palette 颜色 模式 主题 外观 配色 色 テーマ ライト ダーク"),
+            ("workspace.systemStyle", "personalization", "settings.system_style", SettingsScope.Workspace, "system style window menu overview chrome corners 系统风格 窗口 菜单 任务概览 圆角 システム スタイル ウィンドウ メニュー 角"),
+            ("workspace.desktopLayout", "personalization", "settings.desktop_layout", SettingsScope.Workspace, "desktop layout shell taskbar dock launcher 桌面布局 桌面样式 任务栏 启动器 デスクトップ レイアウト タスクバー"),
             ("workspace.wallpaper", "personalization", "settings.wallpaper", SettingsScope.Workspace, "wallpaper background 壁纸 背景 壁紙"),
-            ("workspace.shell", "personalization", "settings.shell", SettingsScope.Workspace, "desktop shell 桌面 デスクトップ"),
             ("workspace.palette", "personalization", "settings.palette", SettingsScope.Workspace, "palette color 颜色 配色 色"),
             ("workspace.accent", "personalization", "settings.accent", SettingsScope.Workspace, "accent colour 强调色 アクセント"),
             ("workspace.customTheme", "personalization", "settings.custom_theme", SettingsScope.Workspace, "import export theme 导入 导出 インポート"),
@@ -111,6 +112,7 @@ public sealed partial class SettingsViewModel
             ("account.alias", "account-security", "settings.account.title", SettingsScope.HostUser, "account security alias login 账号 安全 登录别名 アカウント セキュリティ ログイン エイリアス"),
             ("host.environment", "environment", "settings.environment.title", SettingsScope.HostUser, "PATH environment 环境变量 路径 環境変数 パス"),
             ("host.time.zone", "time-language", "settings.time_zone", SettingsScope.HostMachine, "timezone time zone 时区 タイムゾーン"),
+            ("host.identity.hostname", "system", "settings.hostname", SettingsScope.HostMachine, "hostname computer name 主机名 计算机名 ホスト名 コンピューター名"),
             ("relaxkonos.about", "about", "settings.about_page.title", SettingsScope.ClientDevice, "about website source repository license legal 开源 官网 许可证 法律情報")
         ];
         foreach (var item in items)

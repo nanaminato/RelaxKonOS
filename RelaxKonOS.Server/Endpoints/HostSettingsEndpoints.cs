@@ -36,11 +36,23 @@ public static class HostSettingsEndpoints
             await ExecuteAsync(async () => Results.Ok(await coordinator.PreviewTimeAsync(http.User, request, http.RequestAborted)))).RequireAuthorization();
         app.MapPost(SettingsApiRoutes.TimeApply, async (SettingsApplyRequest request, HttpContext http, SettingsOperationCoordinator coordinator) =>
             await ExecuteAsync(async () => Results.Ok(await coordinator.ApplyTimeAsync(http.User, request.PlanId, http.RequestAborted)))).RequireAuthorization();
-        app.MapGet(SettingsApiRoutes.Operation, async (Guid id, HttpContext http, SettingsOperationCoordinator coordinator, EnvironmentOperationCoordinator environment) =>
+        app.MapGet(SettingsApiRoutes.Identity, async (HttpContext http, IHostIdentityService identity, IHostElevationSessionStore grants) =>
+            await ExecuteAsync(async () => Results.Ok(new HostIdentitySnapshot(await identity.ReadAsync(http.RequestAborted),
+                new(HostIdentityOperationCoordinator.IdentityResource, SettingsScope.HostMachine),
+                new(grants.IsGranted(http.User, HostElevationCapability.HostIdentityChange, HostIdentityOperationCoordinator.IdentityResource)
+                    ? SettingsCapabilityState.Available : SettingsCapabilityState.ElevationRequired),
+                OperatingSystem.IsWindows() ? SettingsEffectiveState.HostRestart : SettingsEffectiveState.Immediate)))).RequireAuthorization();
+        app.MapPost(SettingsApiRoutes.IdentityPreview, async (HostnamePreviewRequest request, HttpContext http, HostIdentityOperationCoordinator coordinator) =>
+            await ExecuteAsync(async () => Results.Ok(await coordinator.PreviewAsync(http.User, request, http.RequestAborted)))).RequireAuthorization();
+        app.MapPost(SettingsApiRoutes.IdentityApply, async (SettingsApplyRequest request, HttpContext http, HostIdentityOperationCoordinator coordinator) =>
+            await ExecuteAsync(async () => Results.Ok(await coordinator.ApplyAsync(http.User, request.PlanId, http.RequestAborted)))).RequireAuthorization();
+        app.MapGet(SettingsApiRoutes.Operation, async (Guid id, HttpContext http, SettingsOperationCoordinator coordinator, EnvironmentOperationCoordinator environment, HostIdentityOperationCoordinator identity) =>
             await ExecuteAsync(async () => Results.Ok(await environment.GetIfExistsAsync(http.User, id, http.RequestAborted)
+                ?? await identity.GetIfExistsAsync(http.User, id, http.RequestAborted)
                 ?? await coordinator.GetAsync(http.User, id, http.RequestAborted)))).RequireAuthorization();
-        app.MapPost(SettingsApiRoutes.Rollback, async (Guid id, SettingsRollbackRequest request, HttpContext http, SettingsOperationCoordinator coordinator, EnvironmentOperationCoordinator environment) =>
+        app.MapPost(SettingsApiRoutes.Rollback, async (Guid id, SettingsRollbackRequest request, HttpContext http, SettingsOperationCoordinator coordinator, EnvironmentOperationCoordinator environment, HostIdentityOperationCoordinator identity) =>
             await ExecuteAsync(async () => Results.Ok(await environment.RollbackIfExistsAsync(http.User, id, request, http.RequestAborted)
+                ?? await identity.RollbackIfExistsAsync(http.User, id, request, http.RequestAborted)
                 ?? await coordinator.RollbackAsync(http.User, id, request, http.RequestAborted)))).RequireAuthorization();
         return app;
     }

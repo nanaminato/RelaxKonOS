@@ -469,7 +469,8 @@ dotnet run
 |-------------|------|
 | [RelaxKonOS.Desktop.md](./docs/desktop/RelaxKonOS.Desktop.md) | デスクトップシェル、ウィンドウ制御、モーダルダイアログ、キーボードルーティング |
 | [RelaxKonOS.Settings.md](./docs/desktop/RelaxKonOS.Settings.md) | 設定センター、設定永続化、マルチデバイス同期 |
-| [RelaxKonOS.Theming.md](./docs/desktop/RelaxKonOS.Theming.md) | テーマシステム、パレット、外観カスタマイズ |
+| [RelaxKonOS.Theming.md](./docs/desktop/RelaxKonOS.Theming.md) | カラー契約：モード、パレット、アクセント |
+| [RelaxKonOS.SystemStyle.md](./docs/desktop/RelaxKonOS.SystemStyle.md) | システムスタイル：形状トークン、レシピ、3 つの組み込みプロファイル |
 | [RelaxKonOS.Localization.md](./docs/desktop/RelaxKonOS.Localization.md) | 多言語メカニズム、言語パック構造 |
 
 ### 内蔵アプリケーション

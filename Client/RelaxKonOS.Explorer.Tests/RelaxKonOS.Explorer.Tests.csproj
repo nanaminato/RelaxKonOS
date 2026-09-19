@@ -12,6 +12,7 @@
     <ProjectReference Include="../../Shared/RelaxKonOS.Protocol/RelaxKonOS.Protocol.csproj" />
     <Compile Include="../RelaxKonOS.Client/Apps/Explorer/ViewModels/ExplorerViewModel.cs" Link="ExplorerViewModel.cs" />
     <Compile Include="../RelaxKonOS.Client/Apps/Explorer/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../RelaxKonOS.Client/Apps/Explorer/Controls/ExplorerIcon.cs" Link="Controls/ExplorerIcon.cs" />
     <Compile Include="../RelaxKonOS.Client/Apps/Explorer/IExplorerClient.cs" Link="IExplorerClient.cs" />
     <Compile Include="../RelaxKonOS.Client/Apps/Explorer/RemoteFileClipboard.cs" Link="RemoteFileClipboard.cs" />
     <Compile Include="../RelaxKonOS.Client/Apps/Explorer/ExplorerPickerOptions.cs" Link="ExplorerPickerOptions.cs" />

@@ -28,7 +28,7 @@ public sealed class SettingsOperationJournal
         _protector = protection.CreateProtector("RelaxKonOS.Settings.Operations.v1");
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "CREATE TABLE IF NOT EXISTS operations (id TEXT PRIMARY KEY, document BLOB NOT NULL); CREATE TABLE IF NOT EXISTS environment_operations (id TEXT PRIMARY KEY, document BLOB NOT NULL)";
+        command.CommandText = "CREATE TABLE IF NOT EXISTS operations (id TEXT PRIMARY KEY, document BLOB NOT NULL); CREATE TABLE IF NOT EXISTS environment_operations (id TEXT PRIMARY KEY, document BLOB NOT NULL); CREATE TABLE IF NOT EXISTS identity_operations (id TEXT PRIMARY KEY, document BLOB NOT NULL)";
         command.ExecuteNonQuery();
     }
 
@@ -89,8 +89,29 @@ public sealed class SettingsOperationJournal
         command.ExecuteNonQuery();
     }
 
-    private SqliteConnection Open()
+    public StoredIdentityOperation? ReadIdentity(Guid id)
     {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT document FROM identity_operations WHERE id = $id";
+        command.Parameters.AddWithValue("$id", id.ToString("D"));
+        return command.ExecuteScalar() is byte[] bytes
+            ? JsonSerializer.Deserialize<StoredIdentityOperation>(_protector.Unprotect(bytes), RelaxKonOSJsonOptions.Default)
+                ?? throw new InvalidDataException("settings.operation.invalid_record") : null;
+    }
+
+    public void Save(StoredIdentityOperation operation)
+    {
+        var bytes = _protector.Protect(JsonSerializer.SerializeToUtf8Bytes(operation, RelaxKonOSJsonOptions.Default));
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO identity_operations(id, document) VALUES ($id, $document) ON CONFLICT(id) DO UPDATE SET document = excluded.document";
+        command.Parameters.AddWithValue("$id", operation.Plan.PlanId.ToString("D"));
+        command.Parameters.AddWithValue("$document", bytes);
+        command.ExecuteNonQuery();
+    }
+
+    private SqliteConnection Open()    {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         using var command = connection.CreateCommand();
@@ -105,3 +126,10 @@ public sealed record StoredTimeOperation(string Actor, string RequestHash, TimeZ
 
 public sealed record StoredEnvironmentOperation(string Actor, string RequestHash, EnvironmentChangeSet Change,
     EnvironmentChangeSet Restore, SettingsPlan Plan, SettingsOperation Operation, bool RollingBack = false);
+
+/// <summary>
+/// <see cref="OriginalHostName"/> is the pending name observed at preview time, because that is the
+/// value an apply replaced. On Windows a rollback is therefore also staged until the next restart.
+/// </summary>
+public sealed record StoredIdentityOperation(string Actor, string RequestHash, HostnameChange Change,
+    string OriginalHostName, SettingsPlan Plan, SettingsOperation Operation, bool RollingBack = false);

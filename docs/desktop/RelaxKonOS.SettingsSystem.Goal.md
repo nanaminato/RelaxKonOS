@@ -254,7 +254,7 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 | --- | --- | --- |
 | Windows 环境 | Helper 固定 HKLM 环境键 / 目标 SID 下 Environment；保留 REG_SZ/REG_EXPAND_SZ、读回及广播 | 待实现，待指定远程 Windows 测试目标 |
 | Ubuntu 环境 | 固定 `/etc/environment` PAM 登录环境；受限保真解析、条件原子替换与读回；Linux HostUser 显式不支持 | Helper/Server/UI/行为测试已实现；待指定 Ubuntu VM 实机 PAM 登录、外部改写与回滚验收 |
-| 时区 / 主机名 | 平台枚举合法时区 ID；固定 OS API/绝对程序；主机名校验、策略与待重启结果 | 待实现及远程测试 |
+| 时区 / 主机名 | 平台枚举合法时区 ID；固定 OS API/绝对程序；主机名校验、策略与待重启结果 | 两者均已实现：时区见 2026-09-08 记录，主机名见 2026-09-19 记录；远程实机与策略验收仍待指定测试目标 |
 | DNS | 探测 Windows 网卡 / Ubuntu 实际网络 owner；固定动作 OS 持久恢复任务先落盘，再写 DNS | 待实现；不能因尚未实现就声明平台不支持 |
 | 错误 | 428 缺少 revision/授权前置；409 外部修改或幂等载荷冲突；能力原因独立区分离线、权限、Helper、平台、策略 | Workspace revision 已落地；宿主能力待实现 |
 
@@ -418,3 +418,28 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 - **跳过测试**：PATH VM 重复/空项选中和移动交互、超长输入行为、加载掩码/切换会话/回滚丢失响应竞态、布局/键盘/三语言与缩放截图、真实远程路径存在性及进程生效。按用户要求优先实现；没有对开发机做宿主配置修改。
 - **剩余**：Workspace 环境、远程路径存在性检测、离开页面草稿确认、完整实际差异复核和恢复历史；Linux provider/工作负载传播/宿主通知及 G2/G4/G5/G6 既有剩余项。PATH 编辑实现不等于完整环境纵向切片验收，总目标保持执行中。
 - 收尾复验：包含回滚未知状态修复的 Client Release 构建通过，0 warning / 0 error；diff 检查无空白错误，仅既有 Git LF/CRLF 提示。
+
+### 2026-09-19 / G4 主机名纵向切片（阶段未完成）
+
+- 本轮起点 commit `438312e5`，工作区干净。核实仓库现状已超出文档最后记录：Linux `/etc/environment` provider 已接入 Helper 分派并做真实原子替换，环境 HTTP 路由、授权目标发现、DevCli 环境命令与设置页 PATH 编辑均已存在；这些是起点前代码，不计作本轮新增。
+- 主机名此前完全缺失（全仓库仅有证书/端口转发等无关的同名变量）。本轮补齐 Protocol→Helper→Server→Client→DevCli→文档的完整纵向切片，签名与既有宿主能力一致。
+- Protocol：新增 `Settings/HostIdentityContracts.cs`（`HostIdentityState` 含生效名称、待生效名称、平台上报上限、内容 revision；`HostIdentitySnapshot`、`HostnameChange`、`HostnamePreviewRequest`）与 `HostIdentityValidation`，标签规则与平台上限校验分离，客户端使用远程上报上限校验草稿；`SettingsApiRoutes` 增加 `/host-settings/identity` 的 GET/preview/apply；`HostElevationCapability` 增加 `HostIdentityChange`；Helper 契约增加 `HostIdentityRead`/`HostIdentityApply`、`hostName` 请求字段与 `hostIdentity` 结果字段，没有旧别名。
+- Helper：新增 `HostIdentityOperations.cs`。Windows 只读固定 `ActiveComputerName`/`ComputerName` 注册表位置，写入固定 `SetComputerNameEx(ComputerNamePhysicalDnsHostname)`，命名互斥锁串行化，读回确认待生效名称；Linux 读固定 `/etc/hostname`、写固定 `/usr/bin/hostnamectl`，缺一即明确不支持。域策略拒绝返回确定性的 `ResourceNotAllowed`，不伪装成未知结果。分派器同时拒绝非主机名操作携带 `hostName`。
+- Server：新增 `IHostIdentityService`/`HostIdentityService` 与 `HostIdentityOperationCoordinator`；日志新增 `identity_operations` 表与 `StoredIdentityOperation`（记录被替换前的待生效名称）；目录新增 `host.identity.hostname`（系统页、`HostMachine`、按平台给出 `HostRestart`/`Immediate` 生效方式）；`/settings/operations/{id}` 与 rollback 现在按环境→主机名→时区依次查找。
+- Client：新增 `IHostIdentityService`/`HostIdentityService`（禁重定向、不重试写请求、连接冻结）与 `HostIdentityEditorViewModel`；系统页新增主机名卡片，显示当前/待生效名称、重启提示与手动恢复路径；三语言新增 33 个键；搜索目录与本地描述符同步；设置应用的授权对话框改为复用同一个回调。
+- DevCli：新增 `hostname`、`preview-hostname`、`apply-hostname` 与 `--hostname` 选项，选项归属校验同步；中英文 README 去掉“尚未接入主机名”，补授权、生效与长度语义。
+- 顺带修复阻塞验证的既有缺陷：Server 测试的 `AliasLoginVerification` 自建宿主未注册 `IServerModeResolver`，导致 `MapAuthEndpoints` 参数推断失败、`--settings-only` 在基线即崩溃。该缺陷在本轮起点 commit 上可复现，与本轮改动无关；已按仓库策略补齐注册。
+
+| 本批验证 | 结果 / 证据边界 |
+| --- | --- |
+| `dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 通过，0 warning / 0 error |
+| `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 通过，0 error；2 个 CA1416 警告来自起始 commit 已有的 `WindowsLogonProvider`/`LinuxPamProvider` 注册，仅在 Windows 宿主上构建时出现，与本批无关 |
+| `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -p:UsedAvaloniaProducts= -v quiet` | 通过，0 warning / 0 error |
+| `dotnet build Tools/RelaxKonOS.DevCli/RelaxKonOS.DevCli.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 通过，0 warning / 0 error |
+| `dotnet run --project Client/RelaxKonOS.Settings.Tests --no-restore -c Release -p:UseSharedCompilation=false` | 退出 0；新增主机名标签/平台上限/远程上限检查与 CLI `hostname` 选项归属检查通过，原搜索、环境、Linux provider、CLI 检查全部通过。合成搜索 p95=0.066ms / max=0.769ms 只记录索引本身 |
+| `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only` | 退出 0；新增 `Settings identity passed`（名称规则、幂等 planId、revision 冲突、授权前置、暂存读回、`HostRestart` 生效方式、外部编辑阻止回滚、Unknown 不重放、确定性拒绝为 Failed），原时区协调器、通知、HTTP 428/409/越权、存储并发与 SQLite 重启用例全部通过 |
+| Windows/Ubuntu 真实主机名读写、重启后生效、域策略拒绝、`hostnamectl` 写后读回 | **未测试**；未提供指定远程测试目标，未在开发机执行系统配置修改 |
+| 三语言/亮暗主题/640×480、1024×768、1440×900/200% 缩放与键盘截图 | **未测试**；本批只做到 C#/XAML 可编译 |
+
+- **未测试/未完成**：主机名清单元数据之外的目录扩充；DNS 领域与不依赖 Client/Server 存活的宿主恢复任务；Workspace 环境分区、工作负载环境构造、宿主设置实时通知；G2 首页/账户与权限/辅助功能页、离开页面草稿确认、`settingId` 精确定位；G5 SDK 与终端环境入口；G6 全量与跨平台验收。G0–G6 与总目标均未标记完成。
+- 全量 `RelaxKonOS.Server.Tests`（不带参数）在 80 项通过后停在 `Bundled GEO data could not be staged`（`VerifyMihomoGeoDataStagingAsync`）。该检查属代理/Mihomo 数据落盘路径，与本批改动无交集，且需要可写的受保护数据目录；已如实记录为未解决的环境相关阻塞，未计入本批结论。

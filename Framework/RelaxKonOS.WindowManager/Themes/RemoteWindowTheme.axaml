@@ -11,22 +11,22 @@
                     <Border x:Name="PART_Frame"
                             Background="{DynamicResource WindowFrameBackgroundBrush}"
                             BorderBrush="{DynamicResource BorderDefaultBrush}"
-                            BorderThickness="1"
+                            BorderThickness="{DynamicResource WindowFrameThickness}"
                             CornerRadius="{DynamicResource WindowCornerRadius}">
                         <Grid RowDefinitions="Auto,*">
                             <!-- Title bar -->
                             <Border x:Name="PART_TitleBar"
                                     Grid.Row="0"
-                                    Height="42"
+                                    Height="{DynamicResource WindowTitleBarHeight}"
                                     Background="{DynamicResource WindowTitleBarBackgroundBrush}"
                                     CornerRadius="{DynamicResource WindowCornerRadius}"
                                     IsVisible="{Binding !IsFullScreen}">
                                 <Grid ColumnDefinitions="Auto,*,Auto">
                                     <Border x:Name="PART_TitleDrag" Grid.Column="0" Grid.ColumnSpan="2" Background="Transparent" />
-                                    <Grid Grid.Column="0" Width="18" Height="18" Margin="12,0,0,0"
+                                    <Grid x:Name="PART_WindowIcon" Grid.Column="0" Width="22" Height="22" Margin="12,0,0,0"
                                           VerticalAlignment="Center">
                                         <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
-                                        <TextBlock FontSize="13" Foreground="{DynamicResource WindowInactiveTitleForegroundBrush}"
+                                        <TextBlock FontSize="16" Foreground="{DynamicResource WindowInactiveTitleForegroundBrush}"
                                                    Text="{Binding IconGlyph}" IsVisible="{Binding !HasIconImage}" />
                                     </Grid>
                                     <TextBlock x:Name="PART_TitleText"
@@ -36,13 +36,18 @@
                                                FontSize="13"
                                                Foreground="{DynamicResource WindowTitleForegroundBrush}"
                                                Text="{Binding Title}" />
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                    <!-- The chrome recipe redeploys this grid: applications never choose
+                                         where their own window controls sit. -->
+                                    <Grid x:Name="PART_WindowControls" Grid.Column="2" ColumnDefinitions="Auto,Auto,Auto"
+                                          VerticalAlignment="Stretch">
                                         <Button x:Name="PART_Minimize"
+                                                Grid.Column="0"
                                                 Classes="caption"
                                                 Content="{x:Static wm:ManagedWindow.MinimizeGlyph}"
                                                 Command="{Binding MinimizeCommand}"
                                                 IsVisible="{Binding CanMinimize}" />
                                         <Button x:Name="PART_Maximize"
+                                                Grid.Column="1"
                                                 Classes="caption"
                                                 Command="{Binding ToggleMaximizeCommand}"
                                                 IsVisible="{Binding CanMaximize}">
@@ -51,10 +56,11 @@
                                             <TextBlock Text="{Binding MaximizeGlyph}" FontSize="11" />
                                         </Button>
                                         <Button x:Name="PART_Close"
+                                                Grid.Column="2"
                                                 Classes="caption close"
                                                 Content="{x:Static wm:ManagedWindow.CloseGlyph}"
                                                 Command="{Binding CloseCommand}" />
-                                    </StackPanel>
+                                    </Grid>
                                 </Grid>
                             </Border>
 
@@ -87,9 +93,9 @@
         </Setter>
     </Style>
 
-    <!-- Inactive window dims the title text. -->
+    <!-- Inactive window dims the title text. The degree is a system-style token. -->
     <Style Selector="wm|RemoteWindow /template/ TextBlock#PART_TitleText">
-        <Setter Property="Opacity" Value="0.55" />
+        <Setter Property="Opacity" Value="{DynamicResource WindowInactiveOpacity}" />
     </Style>
     <Style Selector="wm|RemoteWindow:active /template/ TextBlock#PART_TitleText">
         <Setter Property="Opacity" Value="1" />
@@ -101,11 +107,70 @@
         <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
     </Style>
     <Style Selector="wm|RemoteWindow:shadow /template/ Border#PART_Frame">
-        <Setter Property="BoxShadow" Value="0 12 28 0 #66000000, 0 2 6 0 #22000000" />
+        <Setter Property="BoxShadow" Value="{DynamicResource WindowShadow}" />
     </Style>
     <Style Selector="wm|RemoteWindow:fullscreen /template/ Border#PART_Frame">
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="0" />
+    </Style>
+
+    <!-- ══ Window chrome recipe variants ══
+         The template above is the single host-reviewed structure. A recipe only redeploys its
+         parts; it cannot add markup, change the glyph set or move a control out of the frame that
+         WindowManager owns. `RemoteWindow` mirrors the active `SystemStyle.WindowChrome` resource
+         into the `:chrome-*` pseudo-class. -->
+
+    <!-- caption-buttons-right (the default): the application icon leads, the title follows it and
+         the three caption buttons close the bar on the trailing edge. This variant is what the
+         template lays out naturally, and it is stated explicitly anyway so that every recipe value
+         the contract admits has a rendering rule of its own - which is what lets the coverage check
+         prove that no style can select a variant nobody implemented. -->
+    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ Grid#PART_WindowIcon">
+        <Setter Property="Grid.Column" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Margin" Value="12,0,0,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ TextBlock#PART_TitleText">
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Margin" Value="10,0,0,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-caption-buttons-right /template/ Grid#PART_WindowControls">
+        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Margin" Value="0" />
+    </Style>
+
+    <!-- traffic-lights-left: caption buttons lead the title bar, the application icon moves to the
+         trailing edge and the title becomes optically centred. -->
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Grid#PART_WindowControls">
+        <Setter Property="Grid.Column" Value="0" />
+        <Setter Property="Margin" Value="10,0,0,0" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Grid#PART_WindowIcon">
+        <Setter Property="Grid.Column" Value="2" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+        <Setter Property="Margin" Value="0,0,12,0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ TextBlock#PART_TitleText">
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-traffic-lights-left /template/ Button.caption">
+        <Setter Property="CornerRadius" Value="{DynamicResource WindowCaptionCornerRadius}" />
+        <Setter Property="Margin" Value="3,0" />
+    </Style>
+
+    <!-- headerbar-right: no application icon, a left-aligned emphasised title and a flatter bar,
+         so the title bar reads as part of the application rather than as a separate strip. -->
+    <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ Grid#PART_WindowIcon">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="wm|RemoteWindow:chrome-headerbar-right /template/ TextBlock#PART_TitleText">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Margin" Value="12,0,0,0" />
     </Style>
 
 </Styles>

@@ -469,7 +469,8 @@ dotnet run
 |------|------|
 | [RelaxKonOS.Desktop.md](./docs/desktop/RelaxKonOS.Desktop.md) | 桌面外壳、窗口控制、模态对话框、键盘路由 |
 | [RelaxKonOS.Settings.md](./docs/desktop/RelaxKonOS.Settings.md) | 设置中心、偏好持久化、多设备同步 |
-| [RelaxKonOS.Theming.md](./docs/desktop/RelaxKonOS.Theming.md) | 主题系统、调色板与外观定制 |
+| [RelaxKonOS.Theming.md](./docs/desktop/RelaxKonOS.Theming.md) | 颜色契约：模式、调色板与强调色 |
+| [RelaxKonOS.SystemStyle.md](./docs/desktop/RelaxKonOS.SystemStyle.md) | 系统风格：形状令牌、recipe 与三套内置 profile |
 | [RelaxKonOS.Localization.md](./docs/desktop/RelaxKonOS.Localization.md) | 多语言机制、语言包结构 |
 
 ### 内置应用

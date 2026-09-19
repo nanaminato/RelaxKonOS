@@ -22,35 +22,37 @@
         <Style Selector="Border.connection-bar">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="0,0,7,7" />
+            <Setter Property="BorderThickness" Value="{DynamicResource ControlBorderThickness}" />
+            <!-- The connection bar hangs below the host title bar, so only its lower corners round. -->
+            <Setter Property="CornerRadius" Value="{DynamicResource OverlayBottomCornerRadius}" />
         </Style>
         <Style Selector="Button.connection-action">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="Padding" Value="13,0" />
+            <Setter Property="Padding" Value="{DynamicResource ControlPadding}" />
             <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Height" Value="34" />
+            <Setter Property="MinHeight" Value="{DynamicResource WindowTitleBarHeight}" />
+            <Setter Property="Height" Value="{DynamicResource WindowTitleBarHeight}" />
             <Setter Property="CornerRadius" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style Selector="Button.connection-action:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
         </Style>
         <Style Selector="Button.disconnect-action:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnDangerBrush}" />
         </Style>
         <Style Selector="Border.window-titlebar">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
         </Style>
         <Style Selector="Button.window-control">
-            <Setter Property="Width" Value="46" />
-            <Setter Property="Height" Value="34" />
+            <Setter Property="Width" Value="{DynamicResource WindowControlWidth}" />
+            <Setter Property="Height" Value="{DynamicResource WindowTitleBarHeight}" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="CornerRadius" Value="0" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="FontFamily" Value="Inter, Segoe UI, Noto Sans" />
+            <Setter Property="FontFamily" Value="{DynamicResource ContentFont}" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
@@ -60,10 +62,11 @@
             <Setter Property="FontSize" Value="11" />
         </Style>
         <Style Selector="Button.window-control:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
         </Style>
         <Style Selector="Button.window-close:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnDangerBrush}" />
         </Style>
     </Window.Styles>
 
@@ -71,29 +74,36 @@
         <!-- Reserve the host window's caption area outside full screen.  The margin is
              removed when entering full screen so the desktop fills the top edge behind
              the connection bar. -->
-        <Grid x:Name="Root" Margin="0,34,0,0" PointerMoved="Root_OnPointerMoved">
+        <Grid x:Name="Root" Margin="{DynamicResource HostTitleBarMargin}" PointerMoved="Root_OnPointerMoved">
             <ContentControl x:Name="ShellHost" />
             <!-- Covers the hand-off from the login window until the selected desktop has
-                 registered its window hosts and restored its desktop state. -->
-            <Border x:Name="DesktopLoadingOverlay" Background="#F0144F85" ZIndex="50">
-                <StackPanel Width="280" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Border Width="56" Height="56" CornerRadius="14" Background="#32FFFFFF" BorderBrush="#55FFFFFF" BorderThickness="1">
-                        <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
-                            <Border Background="White" Margin="2" /><Border Background="White" Margin="2" />
-                        </UniformGrid>
-                    </Border>
-                    <TextBlock Text="{loc:Loc shell.desktop_loading.title}" Foreground="White" FontSize="18"
-                               FontWeight="SemiBold" TextAlignment="Center" />
-                    <TextBlock Text="{loc:Loc shell.desktop_loading.description}" Foreground="#D9FFFFFF" FontSize="12"
-                               TextAlignment="Center" TextWrapping="Wrap" />
-                    <ProgressBar IsIndeterminate="True" Height="4" Foreground="White" Background="#44FFFFFF" />
-                </StackPanel>
+                 registered its window hosts and restored its desktop state. The scrim is the
+                 palette's own overlay role; the message sits on a raised card so it stays legible
+                 in both colour modes instead of relying on white-on-brand-blue. -->
+            <Border x:Name="DesktopLoadingOverlay" Background="{DynamicResource OverlayScrimBrush}" ZIndex="50">
+                <Border Classes="card" Width="280" Padding="24" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel Spacing="14">
+                        <Border Width="56" Height="56" CornerRadius="{DynamicResource OverlayCornerRadius}"
+                                Background="{DynamicResource AccentMutedBrush}"
+                                BorderBrush="{DynamicResource BorderDefaultBrush}"
+                                BorderThickness="{DynamicResource ControlBorderThickness}">
+                            <UniformGrid Columns="2" Rows="2" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border Background="{DynamicResource AccentBrush}" Margin="2" /><Border Background="{DynamicResource AccentBrush}" Margin="2" />
+                                <Border Background="{DynamicResource AccentBrush}" Margin="2" /><Border Background="{DynamicResource AccentBrush}" Margin="2" />
+                            </UniformGrid>
+                        </Border>
+                        <TextBlock Text="{loc:Loc shell.desktop_loading.title}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="18"
+                                   FontWeight="SemiBold" TextAlignment="Center" />
+                        <TextBlock Text="{loc:Loc shell.desktop_loading.description}" Classes="subtle" FontSize="12"
+                                   TextAlignment="Center" TextWrapping="Wrap" />
+                        <ProgressBar IsIndeterminate="True" Height="4" />
+                    </StackPanel>
+                </Border>
             </Border>
         </Grid>
 
         <!-- The title bar and mstsc connection bar deliberately share the same top layer. -->
-        <Border x:Name="WindowTitleBar" Classes="window-titlebar" Height="34"
+        <Border x:Name="WindowTitleBar" Classes="window-titlebar" Height="{DynamicResource WindowTitleBarHeight}"
                 VerticalAlignment="Top" ZIndex="10" PointerPressed="TitleBar_OnPointerPressed">
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <Image Width="26" Height="26" Margin="8,0,6,0" VerticalAlignment="Center"
@@ -112,7 +122,7 @@
 
         <!-- mstsc-style connection bar. Its centre exposes connection context and a drag handle. -->
         <Border x:Name="ConnectionBar" Classes="connection-bar"
-                HorizontalAlignment="Center" VerticalAlignment="Top" Width="520" Height="34"
+                HorizontalAlignment="Center" VerticalAlignment="Top" Width="520" Height="{DynamicResource WindowTitleBarHeight}"
                 ZIndex="20"
                 PointerEntered="ConnectionBar_OnPointerEntered"
                 PointerExited="ConnectionBar_OnPointerExited">
@@ -127,7 +137,7 @@
                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <Border Grid.Column="1" Width="1" Background="{DynamicResource SurfaceBrush}" Margin="0,7" />
+                <Border Grid.Column="1" Width="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,7" />
                 <Button Grid.Column="2" x:Name="PinButton" Classes="connection-action" Click="Pin_OnClick"
                         Content="○" ToolTip.Tip="{loc:Loc shell.connection_bar.pin_tooltip}" />
                 <Border Grid.Column="3" x:Name="ConnectionDragHandle" Cursor="SizeWestEast"
@@ -147,7 +157,7 @@
                 </Border>
                 <Button Grid.Column="4" x:Name="FullScreenButton" Classes="connection-action"
                         Click="FullScreen_OnClick" Content="↗" ToolTip.Tip="{loc:Loc shell.full_screen.enter_tooltip}" />
-                <Border Grid.Column="5" Width="1" Background="{DynamicResource SurfaceBrush}" Margin="0,7" />
+                <Border Grid.Column="5" Width="1" Background="{DynamicResource BorderSubtleBrush}" Margin="0,7" />
                 <Button Grid.Column="6" Classes="connection-action disconnect-action" Click="Disconnect_OnClick"
                         Content="×" ToolTip.Tip="{loc:Loc shell.connection.close_tooltip}" />
             </Grid>
@@ -156,7 +166,7 @@
         <Border x:Name="ConnectionInfo" IsVisible="False"
                 HorizontalAlignment="Center" VerticalAlignment="Top" Width="360" Margin="0,42,0,0"
                 ZIndex="30"
-                Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="4"
+                Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="{DynamicResource ControlBorderThickness}" CornerRadius="{DynamicResource OverlayCornerRadius}"
                 Padding="16">
             <StackPanel Spacing="8">
                 <TextBlock Text="{loc:Loc shell.connection.info}" FontWeight="SemiBold" FontSize="14" />
@@ -170,6 +180,11 @@
                 </Grid>
             </StackPanel>
         </Border>
+
+        <!-- Host-owned system layer. It sits above every shell surface - including the full-screen
+             window host and the connection bar - and is its own input backdrop: while it is
+             visible nothing below can be clicked, so the overview needs no second shield. -->
+        <shell:WindowOverviewView x:Name="WindowOverview" ZIndex="100" IsVisible="False" />
 
         <!-- Transparent hit targets keep every edge and corner resizable. -->
         <Border HorizontalAlignment="Left" Width="8" Background="Transparent" Cursor="SizeWestEast"

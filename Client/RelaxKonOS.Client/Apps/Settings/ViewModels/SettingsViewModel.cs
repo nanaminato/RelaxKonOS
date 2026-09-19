@@ -67,7 +67,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         var save = (Action)Save;
         Pages = new SettingsPageViewModel[]
         {
-            new SystemPageViewModel(settings, session, save),
+            new SystemPageViewModel(settings, session, save,
+                new HostIdentityEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>(), session, localization)),
             new AccountSecurityPageViewModel(settings, App.Services.GetRequiredService<AccountSecurityClient>(), session,
                 App.Services.GetRequiredService<IRememberedSessionStore>()),
             new PersonalizationPageViewModel(settings, save),

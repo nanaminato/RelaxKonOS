@@ -38,10 +38,10 @@ public static class ThemePaletteDefaults
     private static readonly IReadOnlyDictionary<string, string> CatppuccinDark = new Dictionary<string, string>(StringComparer.Ordinal)
     { ["AppBackground"]="#1E1E2E", ["ShellBackground"]="#1E1E2E", ["Surface"]="#313244", ["SurfaceRaised"]="#45475A", ["SurfaceSunken"]="#181825", ["TextPrimary"]="#CDD6F4", ["TextSecondary"]="#BAC2DE", ["TextTertiary"]="#A6ADC8", ["BorderDefault"]="#585B70", ["Accent"]="#89B4FA", ["Info"]="#89DCEB", ["Success"]="#A6E3A1", ["Warning"]="#F9E2AF", ["Danger"]="#F38BA8" };
 
-    public static Dictionary<string, string> Resolve(ThemePreferencesDto? preferences, bool dark)
+    public static Dictionary<string, string> Resolve(AppearancePreferencesDto? preferences, bool dark)
     {
         var result = new Dictionary<string, string>(dark ? DarkBase : LightBase, StringComparer.Ordinal);
-        var source = preferences ?? ThemePreferencesDto.Default;
+        var source = preferences ?? AppearancePreferencesDto.Default;
         var palette = source.PaletteId switch
         {
             "builtin:nord" => dark ? NordDark : NordLight,
@@ -65,7 +65,7 @@ public static class ThemePaletteDefaults
     public static bool IsColor(string? value) => value is { Length: 7 or 9 } && value[0] == '#' && value[1..].All(Uri.IsHexDigit);
     public static string Normalize(string value) => value.ToUpperInvariant();
 
-    private static IReadOnlyDictionary<string, string>? ResolveCustom(ThemePreferencesDto preferences, bool dark)
+    private static IReadOnlyDictionary<string, string>? ResolveCustom(AppearancePreferencesDto preferences, bool dark)
     {
         var id = preferences.PaletteId["custom:".Length..];
         var palette = preferences.CustomPalettes?.FirstOrDefault(x => x.Id == id);

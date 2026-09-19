@@ -73,6 +73,18 @@ Linux Helper 启动及 Helper 管理子进程现在显式清空继承环境，�
 
 真实 Windows/Ubuntu 写入、策略锁定、外部时区编辑与回滚尚未在指定测试主机验证。详见 SettingsSystem.Goal 执行记录。
 
+### 设置系统主机名操作（已接入，尚未实机验收）
+
+封闭操作 `HostIdentityRead` / `HostIdentityApply` 只接受 `hostName` 与 `ExpectedRevision`，不混合文件、服务、时区或环境字段；其他操作携带 `hostName` 一律拒绝。名称规则与 Server 共用并在 Helper 再校验一次：单一 RFC 952/1123 标签、无控制字符、首尾必须是字母或数字、不得全为数字，长度不超过平台上限（Windows 15，Linux 63）。
+
+Windows 只读取固定注册表位置 `...\Control\ComputerName\ActiveComputerName` 与 `...\ComputerName\ComputerName`（分别为生效与待生效名称），不提供任意注册表路径；写入使用固定 `SetComputerNameEx(ComputerNamePhysicalDnsHostname)` 系统 API，并在改动前后用命名互斥锁串行化。该 API 只暂存新名称，重启后才生效，因此读回确认的是“待生效名称”，Helper 与 Server 都不会把暂存报告为已生效。域加入或安全策略拒绝时返回确定性的 `ResourceNotAllowed`，而不是未知结果。
+
+Linux 读取固定 `/etc/hostname`，写入使用固定 `/usr/bin/hostnamectl set-hostname`，两者缺一即明确返回不支持，不写 `.bashrc`/`.profile`，也不直接覆盖被托管文件。Linux 没有暂存语义，待生效名称与生效名称相同。
+
+Server 使用新增 `HostIdentityChange` 短期授权，精确目标 `host/identity`；预览、幂等、操作与恢复记录存于 Server 独立加密 SQLite 日志，Helper 不处理 HTTP 幂等。
+
+真实 Windows 注册表/重启后生效、域策略拒绝与 Linux `hostnamectl` 写后读回尚未在指定远程测试目标验证；当前证据只是受控 provider 行为测试与编译。若操作结果为未知或需要恢复，管理员必须在主机上手动设置主机名——这是本操作明确声明的手动恢复路径。
+
 ### 设置系统环境操作（已接入，尚未实机验收）
 
 封闭操作 `HostEnvironmentRead` / `HostEnvironmentApply` 使用结构化 `environmentTarget` / `environmentChange`；不能混合通用文件、服务或时区字段。其他操作也拒绝环境载荷。Windows 实现固定机器环境键及 `HKEY_USERS/<SID>/Environment`，禁止使用 Helper 的 HKCU；SID 必须是可解析的规范账户 SID，配置单元未加载则返回 NotFound，不创建或挂载任意配置单元。Server 必须先从认证用户映射 SID，客户端不能选择任意 SID。

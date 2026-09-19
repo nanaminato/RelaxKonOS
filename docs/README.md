@@ -19,6 +19,7 @@
 > - 浏览器见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md)
 > - 设置中心见 [`RelaxKonOS.Settings.md`](./desktop/RelaxKonOS.Settings.md)
 > - 全局主题与配色系统设计见 [`RelaxKonOS.Theming.md`](./desktop/RelaxKonOS.Theming.md)
+> - 系统风格（形状/尺寸/动效、recipe 与三套内置 profile）见 [`RelaxKonOS.SystemStyle.md`](./desktop/RelaxKonOS.SystemStyle.md)；规划基线见 [`RelaxKonOS.SystemStyle.Plan.md`](./desktop/RelaxKonOS.SystemStyle.Plan.md)
 > - 应用私有配置存储见 [`RelaxKonOS.AppSettings.md`](./development/RelaxKonOS.AppSettings.md)
 > - 网络检查器设计见 [`RelaxKonOS.NetworkInspector.md`](./applications/RelaxKonOS.NetworkInspector.md)
 > - 任务管理器见 [`RelaxKonOS.TaskManager.md`](./applications/RelaxKonOS.TaskManager.md)
@@ -438,6 +439,9 @@ RelaxKonOS.Server     = Cloud Backend
 | 文档 | 用途 |
 |------|------|
 | [`Desktop`](./desktop/RelaxKonOS.Desktop.md) | 桌面外壳、宿主窗口控制、模态对话框与键盘路由 |
+| [`Theming`](./desktop/RelaxKonOS.Theming.md) | 颜色契约：模式、调色板与强调色（不含形状） |
+| [`SystemStyle`](./desktop/RelaxKonOS.SystemStyle.md) | 系统风格：形状令牌、recipe 闭集、三套内置 profile 与运行时链路 |
+| [`SystemStyle Plan`](./desktop/RelaxKonOS.SystemStyle.Plan.md) | 系统风格扩展的分阶段规划与执行记录 |
 | [`Settings`](./desktop/RelaxKonOS.Settings.md) | 设置中心、偏好持久化与多设备同步 |
 | [`Localization`](./desktop/RelaxKonOS.Localization.md) | 多语言机制、语言包结构与 i18n 约束 |
 

@@ -28,7 +28,7 @@ public static class ThemePaletteImport
             LightColors = NormalizeColors(source.LightColors!),
             DarkColors = NormalizeColors(source.DarkColors!),
         };
-        var preferences = new ThemePreferencesDto
+        var preferences = new AppearancePreferencesDto
         {
             PaletteId = "custom:" + palette.Id,
             AccentOverride = accentOverride,

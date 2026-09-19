@@ -10,15 +10,15 @@
                            Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
             </StackPanel>
-            <Border Grid.Column="1" Background="#2416A34A" CornerRadius="4" Padding="7,3">
+            <Border Grid.Column="1" Background="{DynamicResource SuccessMutedBrush}" CornerRadius="4" Padding="7,3">
                 <TextBlock Text="{Binding AdditionsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
             </Border>
-            <Border Grid.Column="2" Background="#24DC2626" CornerRadius="4" Padding="7,3">
+            <Border Grid.Column="2" Background="{DynamicResource DangerMutedBrush}" CornerRadius="4" Padding="7,3">
                 <TextBlock Text="{Binding DeletionsText}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
             </Border>
         </Grid>
 
-        <Border Grid.Row="1" IsVisible="{Binding IsTruncated}" Background="#2CF59E0B" CornerRadius="4" Padding="8,5">
+        <Border Grid.Row="1" IsVisible="{Binding IsTruncated}" Background="{DynamicResource WarningMutedBrush}" CornerRadius="4" Padding="8,5">
             <TextBlock Text="{Binding TruncatedMessage}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
         </Border>
 

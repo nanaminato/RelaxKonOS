@@ -37,8 +37,8 @@ public partial class App : Application
             startupDesktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         Services = await Bootstrapper.BuildAsync(this);
-        // Install the sole palette source before the first (login) window is created.
-        _ = Services.GetRequiredService<RelaxKonOS.Client.Services.Theming.ThemeService>();
+        // Install the sole palette + system-style source before the first (login) window is created.
+        _ = Services.GetRequiredService<RelaxKonOS.Client.Services.Theming.AppearanceService>();
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

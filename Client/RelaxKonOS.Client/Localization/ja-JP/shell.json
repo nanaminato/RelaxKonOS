@@ -23,6 +23,11 @@
         "shell.full_screen.enter": "全画面表示",
         "shell.full_screen.enter_tooltip": "全画面表示に切り替える",
         "shell.full_screen.exit": "全画面表示を終了",
+        "shell.overview.title": "ウィンドウの概要",
+        "shell.overview.description": "切り替えるウィンドウを選択してください。",
+        "shell.overview.empty": "開いているウィンドウはありません。",
+        "shell.overview.hint": "方向キーで選択 · Enter で切り替え · Delete で閉じる · Esc で終了",
+        "shell.overview.close": "ウィンドウを閉じる",
         "shell.desktop_display.title": "デスクトップ表示の設定",
         "shell.desktop_display.welcome_title": "RelaxKonOS デスクトップへようこそ",
         "shell.desktop_display.configure_ellipsis": "デスクトップ表示を設定...",
@@ -60,6 +65,7 @@
         "shell.launcher.start": "スタート",
         "shell.launcher.system_settings": "システム設定",
         "shell.launcher.task_manager": "タスク マネージャー",
+        "shell.launcher.task_view": "タスク ビュー",
         "shell.launcher.terminal": "ターミナル"
     }
 }

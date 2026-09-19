@@ -98,7 +98,10 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             finally { registration.Dispose(); editor?.Clear(); }
         };
         var hostTimeService = context.Services.GetRequiredService<Services.HostSettings.IHostTimeService>();
-        async Task<bool> AuthorizeHostSettingsAsync(Services.HostSettings.HostSettingsConnection connection, string titleKey,
+        // The elevation dialog only needs the shared connection check, so every host-settings domain
+        // reuses one prompt implementation instead of growing its own copy.
+        async Task<bool> AuthorizeHostSettingsAsync(Func<Services.HostSettings.HostSettingsConnection, bool> isCurrent,
+            Services.HostSettings.HostSettingsConnection connection, string titleKey,
             Func<string?, string?, Task<RelaxKonOS.Protocol.Privileged.HostElevationResult>> authorize)
         {
             try { return (await authorize(null, null)).Elevated; }
@@ -111,8 +114,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                         var errorText = new Avalonia.Controls.TextBlock
                         {
                             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-                            Foreground = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#C42B1C")),
                         };
+                        RelaxKonOS.UI.Themes.ThemeResources.Bind(errorText, Avalonia.Controls.TextBlock.ForegroundProperty, "DangerBrush");
                         var submitting = false;
                         const double authorizationActionWidth = 80;
                         const double authorizationActionHeight = 40;
@@ -146,7 +149,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                             try
                             {
                                 var result = await authorize(secret, null);
-                                if (!hostTimeService.IsCurrent(connection)) { dialog.Cancel(); return; }
+                                if (!isCurrent(connection)) { dialog.Cancel(); return; }
                                 if (result.Elevated) { dialog.Close(true); return; }
                                 errorText.Text = LocalizedText.Get("settings.host_time.password_invalid");
                             }
@@ -186,13 +189,16 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                             }
                         };
                     }, new Size(420, 210));
-                return authorized && hostTimeService.IsCurrent(connection);
+                return authorized && isCurrent(connection);
             }
         }
         viewModel.Pages.OfType<TimeLanguagePageViewModel>().Single().HostTime.RequestAuthorizationAsync = connection =>
-            AuthorizeHostSettingsAsync(connection, "settings.host_time.authorize", (password, administrator) => hostTimeService.AuthorizeAsync(connection, password, administrator));
+            AuthorizeHostSettingsAsync(hostTimeService.IsCurrent, connection, "settings.host_time.authorize", (password, administrator) => hostTimeService.AuthorizeAsync(connection, password, administrator));
+        var hostIdentityService = context.Services.GetRequiredService<Services.HostSettings.IHostIdentityService>();
         var hostEnvironment = context.Services.GetRequiredService<Services.HostSettings.IHostEnvironmentService>();
         var systemPage = viewModel.Pages.OfType<SystemPageViewModel>().Single();
+        systemPage.HostIdentity.RequestAuthorizationAsync = connection =>
+            AuthorizeHostSettingsAsync(hostIdentityService.IsCurrent, connection, "settings.hostname.authorize", (password, administrator) => hostIdentityService.AuthorizeAsync(connection, password, administrator));
         var aboutPage = viewModel.Pages.OfType<AboutPageViewModel>().Single();
         aboutPage.RequestOpenUriAsync = uri =>
         {
@@ -231,7 +237,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                 {
                     RequestAuthorizationAsync = async (connection, scope, capability) =>
                     {
-                        return await AuthorizeHostSettingsAsync(connection, "settings.environment.authorize",
+                        return await AuthorizeHostSettingsAsync(hostEnvironment.IsCurrent, connection, "settings.environment.authorize",
                             (password, administrator) => hostEnvironment.AuthorizeAsync(connection, scope, capability, password, administrator));
                     },
                 };
@@ -280,8 +286,8 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                 {
                                     Setters =
                                     {
-                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BackgroundProperty, new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#CFE8FF"))),
-                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BorderBrushProperty, new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#4A90C2"))),
+                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BackgroundProperty, new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension("SelectionBackgroundBrush")),
+                                        new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BorderBrushProperty, new Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension("FocusBorderBrush")),
                                         new Avalonia.Styling.Setter(Avalonia.Controls.ListBoxItem.BorderThicknessProperty, new Avalonia.Thickness(1)),
                                     },
                                 });
