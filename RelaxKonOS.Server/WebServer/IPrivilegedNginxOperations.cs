@@ -13,6 +13,7 @@ public interface IPrivilegedNginxOperations
     Task<PrivilegedOperationResult> WriteManagedFileAsync(string path, byte[] content, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> MoveManagedFileAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken = default);
     Task<PrivilegedOperationResult> DeleteManagedFileAsync(string path, CancellationToken cancellationToken = default);
+    Task<PrivilegedOperationResult> GrantStaticSiteReadAccessAsync(string path, CancellationToken cancellationToken = default);
 }
 
 public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport transport) : IPrivilegedNginxOperations
@@ -33,6 +34,8 @@ public sealed class PrivilegedNginxOperations(RelaxKonOS.Server.Privileged.IPriv
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxMoveManagedFile, Path: sourcePath, DestinationPath: destinationPath, Overwrite: overwrite), cancellationToken);
     public Task<PrivilegedOperationResult> DeleteManagedFileAsync(string path, CancellationToken cancellationToken = default) =>
         ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxDeleteManagedFile, Path: path), cancellationToken);
+    public Task<PrivilegedOperationResult> GrantStaticSiteReadAccessAsync(string path, CancellationToken cancellationToken = default) =>
+        ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.NginxGrantStaticSiteReadAccess, Path: path), cancellationToken);
 
     private Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken) =>
         transport.ExecuteAsync(request, cancellationToken);

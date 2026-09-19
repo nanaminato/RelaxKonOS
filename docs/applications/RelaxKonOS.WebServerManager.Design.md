@@ -916,6 +916,8 @@ public sealed record WebSiteProxyRoute
 
 站点还可选择为每个监听端口写入 IPv6 listener；启用 HTTPS 后可将 HTTP 请求重定向到 TLS listener。这样同一张 SAN 或通配符证书会绑定到该站点的所有域名。
 
+在 Linux 上，选择静态目录后可显式授予 Nginx worker 读取权限。该操作使用 POSIX ACL：只给该 worker 读取内容、穿越父目录的权限，不修改所有者，也不授予写入权限；`/etc`、`/proc`、`/sys`、`/dev`、`/run` 与 `/root` 不可作为此操作目标。
+
 未来 IISProvider 可以将同一模型转换为 IIS Binding / Rewrite 配置。
 
 ---

@@ -244,6 +244,11 @@ static async Task VerifyPrivilegedOperationProtocolAsync()
     Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.NginxDeleteManagedFile
         && transport.LastRequest.Path == "/etc/nginx/conf.d/relaxkonos.conf",
         "Nginx facade did not preserve its closed managed-file deletion request.");
+    Assert((await nginx.GrantStaticSiteReadAccessAsync("/srv/relaxkon/frontend/browser")).Success,
+        "Nginx static-site access grant was not accepted by the transport facade.");
+    Assert(transport.LastRequest?.Operation == PrivilegedOperationKind.NginxGrantStaticSiteReadAccess
+        && transport.LastRequest.Path == "/srv/relaxkon/frontend/browser",
+        "Nginx facade did not preserve its closed static-site access grant request.");
 
     var services = new PrivilegedNativeServiceOperations(transport);
     Assert((await services.ApplyAsync("relaxkonos-server.service", PrivilegedServiceAction.Restart)).Success, "Native service operation was not accepted by the transport facade.");

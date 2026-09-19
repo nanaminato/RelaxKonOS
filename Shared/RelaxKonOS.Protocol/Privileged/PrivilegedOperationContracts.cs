@@ -37,6 +37,7 @@ public enum PrivilegedOperationKind
     NginxWriteManagedFile,
     NginxMoveManagedFile,
     NginxDeleteManagedFile,
+    NginxGrantStaticSiteReadAccess,
     ProxyMihomoServiceAction,
     ProxyMihomoInstallSystemService,
     ProxyMihomoRemoveSystemService,

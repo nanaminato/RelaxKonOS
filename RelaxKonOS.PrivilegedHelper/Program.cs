@@ -113,6 +113,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.NginxWriteManagedFile => await WriteNginxManagedFileAsync(request.Path, request.ContentBase64),
             PrivilegedOperationKind.NginxMoveManagedFile => MoveNginxManagedFile(request.Path, request.DestinationPath, request.Overwrite),
             PrivilegedOperationKind.NginxDeleteManagedFile => DeleteNginxManagedFile(request.Path),
+            PrivilegedOperationKind.NginxGrantStaticSiteReadAccess => await GrantNginxStaticSiteReadAccessAsync(request.Path),
             PrivilegedOperationKind.ProxyMihomoServiceAction => await ApplyProxyMihomoServiceActionAsync(request.ProxyMihomoServiceAction),
             PrivilegedOperationKind.ProxyMihomoInstallSystemService => await InstallProxyMihomoSystemServiceAsync(),
             PrivilegedOperationKind.ProxyMihomoRemoveSystemService => RemoveProxyMihomoSystemService(),
@@ -521,6 +522,69 @@ static PrivilegedOperationResult DeleteNginxManagedFile(string? path)
     if (!File.Exists(canonical)) throw new FileNotFoundException();
     File.Delete(canonical);
     return new(true);
+}
+
+/// <summary>Grants only the configured Nginx worker account enough ACL access to serve an
+/// explicitly selected public directory. It never changes ownership or grants write access.</summary>
+static async Task<PrivilegedOperationResult> GrantNginxStaticSiteReadAccessAsync(string? path)
+{
+    if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/setfacl"))
+        return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Nginx static-site ACL support is unavailable");
+    var directory = ValidateNginxStaticSiteDirectory(path);
+    var worker = ResolveNginxWorkerUser();
+    if (worker is null) return Fail(64, PrivilegedProblemCode.InvalidRequest, "Nginx worker account could not be determined");
+
+    // An execute-only ACL on ancestors permits traversal without making their contents listable.
+    var ancestor = Directory.GetParent(directory)?.FullName;
+    while (!string.IsNullOrEmpty(ancestor) && ancestor != "/")
+    {
+        var traversable = await RunFixedCommandAsync("/usr/bin/setfacl", ["-m", $"u:{worker}:--x", ancestor],
+            TimeSpan.FromSeconds(30), "could not grant Nginx directory traversal");
+        if (!traversable.Success) return traversable;
+        ancestor = Directory.GetParent(ancestor)?.FullName;
+    }
+
+    // X grants execute to directories, and only to regular files that were already executable.
+    // Default ACLs keep new content readable without widening it to all local accounts.
+    var readable = await RunFixedCommandAsync("/usr/bin/setfacl", ["-P", "-R", "-m", $"u:{worker}:rX", directory],
+        TimeSpan.FromMinutes(2), "could not grant Nginx read access");
+    if (!readable.Success) return readable;
+    var directories = new[] { directory }.Concat(Directory.EnumerateDirectories(directory, "*", new EnumerationOptions
+    {
+        RecurseSubdirectories = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+    })).Take(10_001).ToArray();
+    if (directories.Length > 10_000) return Fail(64, PrivilegedProblemCode.ResourceNotAllowed, "static-site directory tree is too large for ACL grant");
+    foreach (var childDirectory in directories)
+    {
+        var defaults = await RunFixedCommandAsync("/usr/bin/setfacl", ["-m", $"d:u:{worker}:rx", childDirectory],
+            TimeSpan.FromSeconds(30), "could not set default Nginx read access");
+        if (!defaults.Success) return defaults;
+    }
+    return new(true);
+}
+
+static string ValidateNginxStaticSiteDirectory(string? path)
+{
+    if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)) throw new UnauthorizedAccessException();
+    var canonical = Path.GetFullPath(path);
+    if (canonical == "/" || IsWithin(canonical, "/etc") || IsWithin(canonical, "/proc") || IsWithin(canonical, "/sys")
+        || IsWithin(canonical, "/dev") || IsWithin(canonical, "/run") || IsWithin(canonical, "/root")
+        || !Directory.Exists(canonical)) throw new UnauthorizedAccessException();
+    EnsureNoReparsePoints("/", canonical);
+    return canonical;
+}
+
+static string? ResolveNginxWorkerUser()
+{
+    const string configuration = "/etc/nginx/nginx.conf";
+    if (!File.Exists(configuration)) return null;
+    var match = System.Text.RegularExpressions.Regex.Match(File.ReadAllText(configuration),
+        @"^\s*user\s+(?<user>[a-z_][a-z0-9_-]{0,31})(?:\s+[a-z_][a-z0-9_-]{0,31})?\s*;",
+        System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    if (!match.Success) return null;
+    var user = match.Groups["user"].Value;
+    return File.ReadLines("/etc/passwd").Any(line => line.StartsWith(user + ":", StringComparison.Ordinal)) ? user : null;
 }
 
 static string ValidateNginxManagedFile(string? path)

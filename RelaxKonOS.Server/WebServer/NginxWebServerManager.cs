@@ -321,6 +321,9 @@ internal sealed partial class NginxWebServerManager(
                 logger.LogInformation("Nginx site save rejected because a domain and port are already assigned. InstanceId={InstanceId}, SiteId={SiteId}, ConflictingSiteId={ConflictingSiteId}, Domain={Domain}, Port={Port}", instance.Id, site.Id, conflict.SiteId, conflict.Domain, conflict.Port);
                 throw new WebServerSiteConflictException("webserver.site_binding_conflict");
             }
+            if (request.GrantNginxReadAccess && site.RootPath is not null
+                && !(await privilegedNginx.GrantStaticSiteReadAccessAsync(site.RootPath, cancellationToken)).Success)
+                throw new WebServerSiteApplyException("webserver.site_permission_grant_failed");
             if (index >= 0) sites[index] = site; else sites.Add(site);
             var applyProblem = await WriteSiteConfigurationAsync(instance, site, cancellationToken);
             if (applyProblem is not null)

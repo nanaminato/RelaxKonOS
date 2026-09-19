@@ -49,6 +49,7 @@
                         <TextBox Text="{Binding SiteRootPath, Mode=TwoWay}" PlaceholderText="/srv/relaxkon/frontend/browser" />
                         <Button Grid.Column="1" Content="{loc:Loc webservers.site.dialog.choose_path}" Command="{Binding ChooseSiteRootDirectoryCommand}" />
                     </Grid>
+                    <CheckBox Content="{loc:Loc webservers.site.dialog.grant_nginx_read_access}" IsChecked="{Binding SiteGrantNginxReadAccess, Mode=TwoWay}" IsVisible="{Binding IsLinuxServer}" />
                     <CheckBox Content="{loc:Loc webservers.site.dialog.spa_fallback}" IsChecked="{Binding SiteSpaFallback, Mode=TwoWay}" />
                 </StackPanel>
 

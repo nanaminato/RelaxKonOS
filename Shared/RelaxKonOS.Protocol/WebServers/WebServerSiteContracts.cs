@@ -49,6 +49,7 @@ public sealed record UpsertWebServerSiteRequest(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("bindings")] IReadOnlyList<WebServerSiteBindingDto> Bindings,
     [property: JsonPropertyName("rootPath")] string? RootPath = null,
+    [property: JsonPropertyName("grantNginxReadAccess")] bool GrantNginxReadAccess = false,
     [property: JsonPropertyName("spaFallback")] bool SpaFallback = false,
     [property: JsonPropertyName("routes")] IReadOnlyList<WebServerProxyRouteDto>? Routes = null,
     [property: JsonPropertyName("certificateId")] Guid? CertificateId = null,

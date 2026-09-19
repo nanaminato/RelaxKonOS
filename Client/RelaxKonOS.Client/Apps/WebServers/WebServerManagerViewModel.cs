@@ -80,6 +80,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [ObservableProperty] private string _siteName = string.Empty;
     [ObservableProperty] private string _siteBindingsBatch = string.Empty;
     [ObservableProperty] private string _siteRootPath = string.Empty;
+    [ObservableProperty] private bool _siteGrantNginxReadAccess;
     [ObservableProperty] private bool _siteSpaFallback = true;
     [ObservableProperty] private bool _siteHttpsEnabled;
     [ObservableProperty] private bool _siteRedirectHttpToHttps = true;
@@ -436,7 +437,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         try
         {
             var request = new UpsertWebServerSiteRequest(SelectedSite?.Id, SiteName.Trim(), bindings,
-                string.IsNullOrWhiteSpace(SiteRootPath) ? null : SiteRootPath.Trim(), SiteSpaFallback, routes,
+                string.IsNullOrWhiteSpace(SiteRootPath) ? null : SiteRootPath.Trim(), SiteGrantNginxReadAccess, SiteSpaFallback, routes,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, SiteRedirectHttpToHttps, SiteIpv6Enabled,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null);
@@ -494,6 +495,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         SiteBindings.Clear();
         SiteBindings.Add(new WebServerSiteBindingEditor());
         SiteRootPath = string.Empty;
+        SiteGrantNginxReadAccess = false;
         SiteSpaFallback = true;
         SiteRoutes.Clear();
         SiteRoutes.Add(new WebServerProxyRouteEditor());
@@ -542,6 +544,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         foreach (var binding in value.Bindings)
             SiteBindings.Add(new WebServerSiteBindingEditor(binding.Domain, binding.Port));
         SiteRootPath = value.RootPath ?? string.Empty;
+        SiteGrantNginxReadAccess = false;
         SiteSpaFallback = value.SpaFallback;
         SiteRoutes.Clear();
         foreach (var route in value.Routes)
@@ -605,7 +608,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private async Task ChooseSiteRootDirectoryAsync()
     {
         var path = await (RequestSiteRootDirectoryAsync?.Invoke() ?? Task.FromResult<string?>(null));
-        if (!string.IsNullOrWhiteSpace(path)) SiteRootPath = path;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            SiteRootPath = path;
+            SiteGrantNginxReadAccess = IsLinuxServer;
+        }
     }
 
     private async Task LoadSitesAsync()
