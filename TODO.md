@@ -1,5 +1,7 @@
 # TODO
 
+- 容器化应用部署（镜像、Java/.NET/Python 程序包）：[Goal](docs/applications/RelaxKonOS.ApplicationDeployment.Goal.md)；[实现及测试进度](docs/applications/RelaxKonOS.ApplicationDeployment.Progress.md)。
+
 - 文件浏览器 Windows 11 体验优化：[进度与后续任务](docs/applications/RelaxKonOS.Explorer.Progress.md)。
 
 - Add a trusted app-catalog/install flow for missing third-party URI handlers. For `help://` links,

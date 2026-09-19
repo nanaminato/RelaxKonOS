@@ -27,6 +27,7 @@
 > - FRP 内网穿透的 Goal 执行基线见 [`RelaxKonOS.FRP_Integration.Goal.md`](./applications/RelaxKonOS.FRP_Integration.Goal.md)；架构与安全设计见 [`RelaxKonOS.FRP_Integration.Design.md`](./applications/RelaxKonOS.FRP_Integration.Design.md)，当前实现与运维边界见 [`RelaxKonOS.FRP_Integration.Implementation.md`](./applications/RelaxKonOS.FRP_Integration.Implementation.md)
 > - 代理管理器已完成代码级实现，发布级平台验证仍待完成：当前能力、缺口和下一阶段入口见 [`RelaxKonOS.ProxyManager.Discovery.md`](./applications/RelaxKonOS.ProxyManager.Discovery.md)（[English](./applications/RelaxKonOS.ProxyManager.Discovery.en.md)）；执行基线见 [`RelaxKonOS.ProxyManager.Goal.md`](./applications/RelaxKonOS.ProxyManager.Goal.md)，架构与安全设计见 [`RelaxKonOS.ProxyManager.Design.md`](./applications/RelaxKonOS.ProxyManager.Design.md)，操作员文档见 [`docs/proxy/`](./proxy/)
 > - Docker 管理器见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)
+> - Java/.NET/Python 容器化应用部署改造见 [Goal](./applications/RelaxKonOS.ApplicationDeployment.Goal.md) 与 [实现及测试进度](./applications/RelaxKonOS.ApplicationDeployment.Progress.md)（目标已建立，功能待实现）
 > - 证书管理器见 [`RelaxKonOS.CertificateManager.md`](./applications/RelaxKonOS.CertificateManager.md)
 > - Web Server 管理器 / Nginx 集成设计中，见 [`RelaxKonOS.WebServerManager.Design.md`](./applications/RelaxKonOS.WebServerManager.Design.md)
 > - 进程守护见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)
