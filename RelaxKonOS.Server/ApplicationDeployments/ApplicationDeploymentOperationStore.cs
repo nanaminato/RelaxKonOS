@@ -85,6 +85,24 @@ internal sealed class ApplicationDeploymentOperationStore
         .OrderByDescending(x => x.Operation.CreatedAt)
         .FirstOrDefault();
 
+    /// <summary>Looks up a replay before admission control. A retry must return its original
+    /// operation even when the global worker limit is currently saturated.</summary>
+    public DeploymentEntry? FindIdempotent(Guid applicationId, DeploymentOperationKind kind, string actor, string key, string requestReference)
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            var actorReference = Reference(actor);
+            var keyReference = Reference(actorReference + "\n" + key);
+            var existing = ledger.Entries.FirstOrDefault(x => x.IdempotencyReference == keyReference);
+            if (existing is null) return null;
+            if (existing.Operation.ApplicationId != applicationId || existing.Operation.Kind != kind
+                || existing.RequestReference != requestReference)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.IdempotencyConflict);
+            return existing;
+        }
+    }
+
     /// <summary>
     /// Creates the operation record or returns the one already bound to this idempotency key.
     /// The same key with a different request, or any active change to the same application,

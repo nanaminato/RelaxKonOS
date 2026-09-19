@@ -102,6 +102,9 @@ internal sealed record RevisionRecord(
     string? ImageId,
     string? Platform,
     string? BaseImage,
+    ApplicationWorkloadKind WorkloadKind,
+    ApplicationReadinessLevel ReadinessLevel,
+    string? HealthCheckPath,
     string EntryPoint,
     string[] Arguments,
     int ContainerPort,
@@ -110,6 +113,7 @@ internal sealed record RevisionRecord(
     ApplicationResourceLimitsDto Limits,
     ApplicationVolumeRecord[] Volumes,
     ApplicationConfigRecord[] Configuration,
+    string? SiteId,
     string CreatedByReference,
     DateTimeOffset CreatedAt);
 

@@ -23,11 +23,11 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     public Task<ApplicationDeploymentSnapshotDto?> GetSnapshotAsync(Guid applicationId, CancellationToken cancellationToken = default) =>
         TrySendAsync<ApplicationDeploymentSnapshotDto>(ApplicationDeploymentApiRoutes.Application(applicationId), cancellationToken);
 
-    public Task<ApplicationDto> CreateApplicationAsync(CreateApplicationRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<ApplicationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Applications, request, null, cancellationToken);
+    public Task<ApplicationDto> CreateApplicationAsync(CreateApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAsync<ApplicationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Applications, request, idempotencyKey, cancellationToken);
 
-    public Task<ApplicationDto> UpdateApplicationAsync(Guid applicationId, UpdateApplicationRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<ApplicationDto>(HttpMethod.Put, ApplicationDeploymentApiRoutes.Application(applicationId), request, null, cancellationToken);
+    public Task<ApplicationDto> UpdateApplicationAsync(Guid applicationId, UpdateApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAsync<ApplicationDto>(HttpMethod.Put, ApplicationDeploymentApiRoutes.Application(applicationId), request, idempotencyKey, cancellationToken);
 
     public Task<IReadOnlyList<ApplicationRevisionDto>> ListRevisionsAsync(Guid applicationId, CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<ApplicationRevisionDto>>(ApplicationDeploymentApiRoutes.Revisions(applicationId), cancellationToken);

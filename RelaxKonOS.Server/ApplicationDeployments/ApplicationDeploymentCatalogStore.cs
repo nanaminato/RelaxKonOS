@@ -235,6 +235,8 @@ internal sealed class ApplicationDeploymentCatalogStore
         && (revision.ImageId is null || ApplicationDeploymentValidation.IsValidImageReference(revision.ImageId))
         && (revision.Platform is null || revision.Platform.Length <= 64 && !revision.Platform.Any(char.IsControl))
         && (revision.BaseImage is null || ApplicationDeploymentValidation.IsValidImageReference(revision.BaseImage))
+        && Enum.IsDefined(revision.WorkloadKind) && Enum.IsDefined(revision.ReadinessLevel)
+        && ApplicationDeploymentValidation.IsValidHealthPath(revision.HealthCheckPath)
         && revision.EntryPoint.Length is >= 1 and <= 256
         && revision.Arguments.Length <= 64 && revision.Arguments.All(x => x.Length is >= 0 and <= 4096 && !x.Any(char.IsControl))
         && ApplicationDeploymentValidation.IsValidPort(revision.ContainerPort)
@@ -243,6 +245,7 @@ internal sealed class ApplicationDeploymentCatalogStore
         && ApplicationDeploymentValidation.IsValidLimits(revision.Limits)
         && ApplicationDeploymentValidation.IsValidVolumes(revision.Volumes)
         && ApplicationDeploymentValidation.IsValidConfiguration(revision.Configuration)
+        && (revision.SiteId is null || revision.SiteId.Length <= 128 && revision.SiteId.All(char.IsAsciiLetterOrDigit))
         && ApplicationDeploymentValidation.IsValidReference(revision.CreatedByReference, 64)
         && revision.CreatedAt != default;
 

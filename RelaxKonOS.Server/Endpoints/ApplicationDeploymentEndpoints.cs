@@ -34,8 +34,10 @@ public static class ApplicationDeploymentEndpoints
             .RequireAuthorization(ReadPolicy);
 
         group.MapPost(ApplicationDeploymentApiRoutes.CreateApplication,
-            (CreateApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager, CancellationToken ct) =>
-                HandleAsync(async () => Results.Ok(await manager.CreateAsync(request, Actor(http.User), ct))))
+            (CreateApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager,
+                ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
+                HandleAsync(async () => Results.Ok(await mutations.ExecuteAsync(Actor(http.User), Key(http), "create",
+                    RequestReference(request), () => manager.CreateAsync(request, Actor(http.User), ct)))))
             .RequireAuthorization(ManagePolicy);
 
         group.MapGet(ApplicationDeploymentApiRoutes.ApplicationPattern,
@@ -44,8 +46,10 @@ public static class ApplicationDeploymentEndpoints
             .RequireAuthorization(ReadPolicy);
 
         group.MapPut(ApplicationDeploymentApiRoutes.ApplicationPattern,
-            (Guid applicationId, UpdateApplicationRequest request, ApplicationDeploymentManager manager, CancellationToken ct) =>
-                HandleAsync(async () => Results.Ok(await manager.UpdateAsync(applicationId, request, ct))))
+            (Guid applicationId, UpdateApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager,
+                ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
+                HandleAsync(async () => Results.Ok(await mutations.ExecuteAsync(Actor(http.User), Key(http), "update",
+                    RequestReference((applicationId, request)), () => manager.UpdateAsync(applicationId, request, ct)))))
             .RequireAuthorization(ManagePolicy);
 
         group.MapGet(ApplicationDeploymentApiRoutes.RevisionsPattern,
@@ -123,8 +127,7 @@ public static class ApplicationDeploymentEndpoints
             {
                 // A cancel is itself retryable, so it carries the same key requirement as the action
                 // it is trying to stop.
-                _ = Key(http);
-                return Results.Ok(coordinator.Cancel(operationId));
+                return Results.Ok(coordinator.Cancel(operationId, Key(http)));
             }))
             .RequireAuthorization(ManagePolicy);
 
@@ -178,6 +181,9 @@ public static class ApplicationDeploymentEndpoints
 
     /// <summary>An idempotency key is mandatory for every action that can create a resource.</summary>
     private static string Key(HttpContext http) => http.Request.Headers["Idempotency-Key"].ToString();
+
+    private static string RequestReference<T>(T request) => ApplicationDeploymentValidation.Reference(
+        System.Text.Json.JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default));
 
     /// <summary>The actor is a stable identifier, never a display name, and is only ever stored hashed.</summary>
     private static string Actor(ClaimsPrincipal user) =>

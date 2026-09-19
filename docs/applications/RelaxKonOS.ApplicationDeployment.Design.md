@@ -243,9 +243,10 @@ interface IApplicationTemplate
   → 启动候选
   → 有界就绪检查（HTTP 或进程级）
   ── 临界区开始（此后不再提供取消）──
-  → 删除上一容器
-  → 候选容器改名为规范名称
   → 可选：应用反向代理路由（先验证配置，失败则回滚站点）
+  → 上一容器改名为恢复保留名
+  → 候选容器改名为规范名称
+  → 删除已保留的上一容器
   → 账本切换当前修订 + 记录运行时绑定（running）
   → 释放退役修订的机密物化文件
 ```
@@ -326,7 +327,7 @@ interface IApplicationTemplate
 
 ### 9.1 标签
 
-每个受管容器都带：
+每个受管容器与受管命名卷都带：
 
 ```
 relaxkonos.managed=true
@@ -340,6 +341,7 @@ relaxkonos.role={workload|candidate}
 ```
 
 `IsManaged(labels)` 是所有权判定的唯一依据：`managed == true` **且** `owner == application-deployment`。
+在执行删除、启停或卷清理前，还必须验证 `relaxkonos.application-id` 等于目标应用 ID；确定性资源名仅用于发现，不能作为归属证明。
 
 ### 9.2 漂移
 

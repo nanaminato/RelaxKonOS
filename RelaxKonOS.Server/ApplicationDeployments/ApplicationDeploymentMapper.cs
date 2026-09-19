@@ -57,6 +57,9 @@ internal static class ApplicationDeploymentMapper
         revision.ImageId,
         revision.Platform,
         revision.BaseImage,
+        revision.WorkloadKind,
+        revision.ReadinessLevel,
+        revision.HealthCheckPath,
         revision.EntryPoint,
         revision.Arguments,
         revision.ContainerPort,
@@ -65,6 +68,7 @@ internal static class ApplicationDeploymentMapper
         revision.Limits,
         [.. revision.Volumes.Select(Volume)],
         [.. revision.Configuration.Select(Config)],
+        revision.SiteId,
         revision.Id == currentRevisionId,
         revision.CreatedByReference,
         revision.CreatedAt);

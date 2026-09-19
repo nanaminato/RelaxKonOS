@@ -130,6 +130,10 @@ internal sealed class ApplicationDeploymentManager(
     public async Task<ApplicationDto> UpdateAsync(Guid applicationId, UpdateApplicationRequest request, CancellationToken cancellationToken)
     {
         Require(applicationId);
+        // Definition fields become a revision snapshot during deployment. Letting an update race the
+        // worker would make the operator's stored intent and the candidate's snapshot ambiguous.
+        if (operations.GetActive(applicationId) is not null)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ResourceConflict);
         var volumes = Volumes(request.Volumes);
         var configuration = Configuration(applicationId, request.Configuration, allowExistingVersions: true);
         var definition = Validate(applicationId, request.Name, request.WorkloadKind, request.ReadinessLevel, request.HealthCheckPath,
@@ -175,7 +179,7 @@ internal sealed class ApplicationDeploymentManager(
         try
         {
             var details = await runtime.InspectAsync(container.Id, cancellationToken);
-            return new(container, true, details is not null && ApplicationDeploymentValidation.IsManaged(details.Labels));
+            return new(container, true, details is not null && ApplicationDeploymentValidation.IsOwnedBy(details.Labels, application.Id));
         }
         catch (ApplicationDeploymentException) { return new(container, true, true); }
     }

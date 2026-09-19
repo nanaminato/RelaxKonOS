@@ -71,24 +71,36 @@ internal sealed class ApplicationDeploymentRuntime(
         }
     }
 
-    /// <summary>Finds a container by its deterministic managed name without inspecting every container.</summary>
-    public async Task<DockerContainerDto?> FindContainerAsync(string name, CancellationToken cancellationToken)
+    /// <summary>Finds a container by its deterministic name and proves it belongs to this application
+    /// before handing it to a mutating workflow. A matching name alone is never ownership.</summary>
+    public async Task<DockerContainerDto?> FindOwnedContainerAsync(Guid applicationId, string name, CancellationToken cancellationToken)
     {
         var containers = await ListContainersAsync(cancellationToken);
-        return containers.FirstOrDefault(container => ContainerMatches(container, name));
+        var candidate = containers.FirstOrDefault(container => ContainerMatches(container, name));
+        if (candidate is null) return null;
+        var details = await engine.GetContainerAsync(candidate.Id, cancellationToken);
+        return details is not null && ApplicationDeploymentValidation.IsOwnedBy(details.Labels, applicationId) ? candidate : null;
     }
 
     public async Task<DockerContainerDetailsDto?> InspectAsync(string containerId, CancellationToken cancellationToken)
         => await engine.GetContainerAsync(containerId, cancellationToken);
 
-    /// <summary>Lists the containers this application owns, including an interrupted candidate.</summary>
+    /// <summary>Lists only containers whose ownership labels identify this application, including an
+    /// interrupted candidate. Name-prefix matches are merely candidates for inspection.</summary>
     public async Task<IReadOnlyList<DockerContainerDto>> FindApplicationContainersAsync(Guid applicationId, CancellationToken cancellationToken)
     {
         var stem = ApplicationDeploymentValidation.ContainerName(applicationId);
         var containers = await ListContainersAsync(cancellationToken);
-        return [.. containers.Where(container => container.Names.Split(',')
+        var matches = containers.Where(container => container.Names.Split(',')
             .Any(name => name.Trim().Equals(stem, StringComparison.Ordinal)
-                || name.Trim().StartsWith(stem + "-", StringComparison.Ordinal)))];
+                || name.Trim().StartsWith(stem + "-", StringComparison.Ordinal)));
+        var owned = new List<DockerContainerDto>();
+        foreach (var container in matches)
+        {
+            var details = await engine.GetContainerAsync(container.Id, cancellationToken);
+            if (details is not null && ApplicationDeploymentValidation.IsOwnedBy(details.Labels, applicationId)) owned.Add(container);
+        }
+        return owned;
     }
 
     public async Task<DockerOperationResult> PullAsync(string imageReference, string? resolvedImageReference, CancellationToken cancellationToken)
@@ -118,20 +130,27 @@ internal sealed class ApplicationDeploymentRuntime(
         catch (Exception exception) when (exception is IOException or InvalidOperationException) { return false; }
     }
 
-    public async Task EnsureVolumeAsync(Guid applicationId, string volumeName, CancellationToken cancellationToken)
+    public async Task EnsureVolumeAsync(ApplicationRecord application, RevisionRecord revision, Guid operationId, string volumeName, CancellationToken cancellationToken)
     {
-        var name = ApplicationDeploymentValidation.VolumeName(applicationId, volumeName);
+        var name = ApplicationDeploymentValidation.VolumeName(application.Id, volumeName);
         var existing = await engine.ListVolumesAsync(cancellationToken);
-        if (existing.Any(volume => string.Equals(volume.Name, name, StringComparison.Ordinal))) return;
-        var result = await engine.CreateVolumeAsync(new DockerVolumeCreateRequest(name), cancellationToken);
+        if (existing.Any(volume => string.Equals(volume.Name, name, StringComparison.Ordinal)))
+        {
+            var details = await engine.GetVolumeAsync(name, cancellationToken);
+            if (details is not null && ApplicationDeploymentValidation.IsOwnedBy(details.Labels, application.Id)) return;
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DriftUnownedResource, 409);
+        }
+        var labels = ApplicationDeploymentValidation.Labels(application.Id, application.Name, revision.Id, revision.Number,
+            operationId, ApplicationDeploymentValidation.RoleVolume);
+        var result = await engine.CreateVolumeAsync(new DockerVolumeCreateRequest(name, Labels: labels), cancellationToken);
         if (!result.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.VolumeCreateFailed, 409);
     }
 
     public async Task<bool> VolumeExistsAsync(Guid applicationId, string volumeName, CancellationToken cancellationToken)
     {
         var name = ApplicationDeploymentValidation.VolumeName(applicationId, volumeName);
-        var volumes = await engine.ListVolumesAsync(cancellationToken);
-        return volumes.Any(volume => string.Equals(volume.Name, name, StringComparison.Ordinal));
+        var details = await engine.GetVolumeAsync(name, cancellationToken);
+        return details is not null && ApplicationDeploymentValidation.IsOwnedBy(details.Labels, applicationId);
     }
 
     /// <summary>Creates the container for one published revision. It is always created stopped, then

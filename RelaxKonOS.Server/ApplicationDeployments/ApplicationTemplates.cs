@@ -137,6 +137,16 @@ internal sealed class ImageTemplate : ApplicationTemplateBase
     public override string TemplateVersion => "1.0";
     protected override string DisplayName => "Image";
     protected override bool RequiresImage => true;
+
+    public override DeploymentPlan Validate(DeploymentSourceInputDto source, ApplicationRecord definition, ApplicationDeploymentOptions options, string inputReference)
+    {
+        // The image template deliberately keeps the image's own entry point. It accepts command
+        // arguments, but no unrelated runtime/base-image fields that would otherwise be silently ignored.
+        if (!string.IsNullOrWhiteSpace(source.BaseImage) || !string.IsNullOrWhiteSpace(source.RuntimeVersion)
+            || !string.IsNullOrWhiteSpace(source.ProgramEntry))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
+        return base.Validate(source, definition, options, inputReference);
+    }
 }
 
 internal static class ContainerImageFacts
@@ -179,7 +189,15 @@ internal sealed class JavaJarTemplate : ApplicationTemplateBase
         if (!string.IsNullOrWhiteSpace(source.ProgramEntry))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.EntryPointInvalid, 400);
         var plan = base.Validate(source, definition, options, inputReference);
-        return plan with { BaseImage = ApplicationTemplateCatalog.BaseImage(source.BaseImage, options.JavaBaseImage) };
+        if (!string.IsNullOrWhiteSpace(plan.RuntimeVersion) && !IsRuntimeLine(plan.RuntimeVersion))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
+        var fallback = string.IsNullOrWhiteSpace(plan.RuntimeVersion)
+            ? options.JavaBaseImage
+            : $"eclipse-temurin:{plan.RuntimeVersion}-jre";
+        var baseImage = ApplicationTemplateCatalog.BaseImage(source.BaseImage, fallback);
+        if (!string.IsNullOrWhiteSpace(plan.RuntimeVersion) && !baseImage.Contains($":{plan.RuntimeVersion}", StringComparison.Ordinal))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
+        return plan with { BaseImage = baseImage };
     }
 
     public override async Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
@@ -231,6 +249,9 @@ internal sealed class JavaJarTemplate : ApplicationTemplateBase
         catch (InvalidDataException) { return false; }
         catch (IOException) { return false; }
     }
+
+    private static bool IsRuntimeLine(string value) => value.Length is >= 1 and <= 16
+        && value.Split('.').All(part => part.Length > 0 && part.All(char.IsAsciiDigit));
 }
 
 /// <summary>
@@ -262,19 +283,23 @@ internal sealed class DotNetPublishTemplate : ApplicationTemplateBase
 
         var runtimeConfig = await ReadJsonAsync(runtimeConfigurations[0], cancellationToken)
             ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
+        if (!runtimeConfig.TryGetProperty("runtimeOptions", out var runtimeOptions) || runtimeOptions.ValueKind != JsonValueKind.Object)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
 
         // 1. Target framework must be one the selected base image can serve.
-        var targetFramework = ReadString(runtimeConfig, "tfm");
+        var targetFramework = ReadString(runtimeOptions, "tfm");
         var imageVersion = BaseImageVersion(targetFramework)
             ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
+        if (!string.IsNullOrWhiteSpace(plan.RuntimeVersion) && !string.Equals(plan.RuntimeVersion, imageVersion, StringComparison.Ordinal))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
 
         // 2. Framework-dependent and self-contained publishes use different base images.
-        var includedFrameworks = runtimeConfig.TryGetProperty("includedFrameworks", out var included) && included.ValueKind == JsonValueKind.Array;
+        var includedFrameworks = runtimeOptions.TryGetProperty("includedFrameworks", out var included) && included.ValueKind == JsonValueKind.Array;
         if (plan.SelfContained != includedFrameworks)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
 
         // 3. The Web/Worker role must match the actual publish, and it selects the base image.
-        var isWeb = runtimeConfig.TryGetProperty("frameworks", out var frameworks) && frameworks.ValueKind == JsonValueKind.Array
+        var isWeb = runtimeOptions.TryGetProperty("frameworks", out var frameworks) && frameworks.ValueKind == JsonValueKind.Array
             && frameworks.EnumerateArray().Any(framework => ReadString(framework, "name") == "Microsoft.AspNetCore.App");
         if (isWeb != (definition.WorkloadKind == ApplicationWorkloadKind.Web))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
@@ -384,14 +409,26 @@ internal sealed class PythonProjectTemplate : ApplicationTemplateBase
     {
         if (string.IsNullOrWhiteSpace(source.ProgramEntry) || !IsValidModule(source.ProgramEntry))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.EntryPointInvalid, 400);
-        return base.Validate(source, definition, options, inputReference);
+        var plan = base.Validate(source, definition, options, inputReference);
+        if (!string.IsNullOrWhiteSpace(plan.RuntimeVersion) && !IsRuntimeLine(plan.RuntimeVersion))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
+        var fallback = string.IsNullOrWhiteSpace(plan.RuntimeVersion)
+            ? options.PythonBaseImage
+            : $"python:{plan.RuntimeVersion}-slim";
+        var baseImage = ApplicationTemplateCatalog.BaseImage(source.BaseImage, fallback);
+        if (!string.IsNullOrWhiteSpace(plan.RuntimeVersion) && !baseImage.Contains($":{plan.RuntimeVersion}", StringComparison.Ordinal))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RuntimeMismatch, 400);
+        return plan with { BaseImage = baseImage };
     }
 
     public override async Task<(string EntryPoint, string[] Arguments)> PrepareBuildContextAsync(
         DeploymentPlan plan, string contextDirectory, ApplicationRecord definition, ApplicationDeploymentOptions options, CancellationToken cancellationToken)
     {
         var root = ApplicationTemplateCatalog.PublishRoot(contextDirectory);
-        if (!File.Exists(Path.Combine(root, RequirementsFileName)))
+        var requirements = Path.Combine(root, RequirementsFileName);
+        if (!File.Exists(requirements))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
+        if (!await HasLockedRequirementsAsync(requirements, cancellationToken))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveContentInvalid, 400);
 
         var module = plan.ProgramEntry!;
@@ -420,4 +457,25 @@ internal sealed class PythonProjectTemplate : ApplicationTemplateBase
         && value.Split('.').All(segment => segment.Length >= 1
             && (char.IsAsciiLetter(segment[0]) || segment[0] == '_')
             && segment.All(character => char.IsAsciiLetterOrDigit(character) || character == '_'));
+
+    private static bool IsRuntimeLine(string value) => value.Length is >= 1 and <= 16
+        && value.Split('.').All(part => part.Length > 0 && part.All(char.IsAsciiDigit));
+
+    /// <summary>The first-stage Python input is deliberately reproducible: every dependency must
+    /// identify an exact distribution version, or a direct artifact with an integrity fragment.</summary>
+    private static async Task<bool> HasLockedRequirementsAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var lines = await File.ReadAllLinesAsync(path, cancellationToken);
+            return lines.All(line =>
+            {
+                var value = line.Trim();
+                return value.Length == 0 || value.StartsWith('#')
+                    || value.Contains("==", StringComparison.Ordinal)
+                    || value.Contains(" @ ", StringComparison.Ordinal) && value.Contains("#sha256=", StringComparison.OrdinalIgnoreCase);
+            });
+        }
+        catch (IOException) { return false; }
+    }
 }

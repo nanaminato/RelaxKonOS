@@ -12,8 +12,8 @@ public interface IRemoteApplicationDeploymentClient
     Task<IReadOnlyList<ApplicationDeploymentTemplateDto>> ListTemplatesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationDto>> ListApplicationsAsync(CancellationToken cancellationToken = default);
     Task<ApplicationDeploymentSnapshotDto?> GetSnapshotAsync(Guid applicationId, CancellationToken cancellationToken = default);
-    Task<ApplicationDto> CreateApplicationAsync(CreateApplicationRequest request, CancellationToken cancellationToken = default);
-    Task<ApplicationDto> UpdateApplicationAsync(Guid applicationId, UpdateApplicationRequest request, CancellationToken cancellationToken = default);
+    Task<ApplicationDto> CreateApplicationAsync(CreateApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task<ApplicationDto> UpdateApplicationAsync(Guid applicationId, UpdateApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationRevisionDto>> ListRevisionsAsync(Guid applicationId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DeploymentOperationDto>> ListOperationsAsync(Guid applicationId, int limit = 50, CancellationToken cancellationToken = default);
     Task<DeploymentLogDto> GetLogsAsync(Guid applicationId, int tail = 200, CancellationToken cancellationToken = default);

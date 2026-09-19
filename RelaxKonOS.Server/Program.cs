@@ -417,6 +417,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.Applicati
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentSecretStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentStagingStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOperationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentDefinitionMutationStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.IApplicationDeploymentProxyIntegration,
     RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentProxyIntegration>();

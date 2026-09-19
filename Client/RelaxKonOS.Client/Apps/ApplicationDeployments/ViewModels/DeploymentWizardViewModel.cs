@@ -51,6 +51,8 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     private readonly IRemoteApplicationDeploymentClient client;
     private readonly Guid? applicationId;
     private readonly ApplicationDto? existing;
+    private readonly string definitionIdempotencyKey = Guid.NewGuid().ToString("N");
+    private readonly string deploymentIdempotencyKey = Guid.NewGuid().ToString("N");
     private CancellationTokenSource? polling;
 
     public DeploymentWizardViewModel(
@@ -349,12 +351,12 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             var targetId = applicationId;
             if (Intent == DeploymentWizardIntent.Create)
             {
-                var created = await client.CreateApplicationAsync(BuildCreateRequest());
+                var created = await client.CreateApplicationAsync(BuildCreateRequest(), definitionIdempotencyKey);
                 targetId = created.Id;
             }
             else if (Intent == DeploymentWizardIntent.EditDefinition)
             {
-                await client.UpdateApplicationAsync(applicationId!.Value, BuildUpdateRequest());
+                await client.UpdateApplicationAsync(applicationId!.Value, BuildUpdateRequest(), definitionIdempotencyKey);
             }
 
             StepIndex = (int)DeploymentWizardStep.Progress;
@@ -370,7 +372,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
             OperationText = LocalizedStatus.Key(DeploymentText.Prefix + ".queuing");
             var operation = await client.DeployAsync(targetId!.Value,
-                new DeployApplicationRequest(BuildSource(), Confirmed: true), Guid.NewGuid().ToString("N"));
+                new DeployApplicationRequest(BuildSource(), Confirmed: true), deploymentIdempotencyKey);
             Submitted = true;
             await PollAsync(operation);
         }

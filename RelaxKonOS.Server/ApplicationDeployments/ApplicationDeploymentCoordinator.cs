@@ -27,8 +27,7 @@ internal sealed class ApplicationDeploymentCoordinator(
     /// </summary>
     public DeploymentOperationDto Start(DeploymentRequest request, string actor, string key)
     {
-        if (string.IsNullOrWhiteSpace(key) || key.Length > 128 || key.Any(character => character < 33 || character > 126))
-            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.IdempotencyRequired, 400);
+        ValidateKey(key);
 
         var application = catalog.Find(request.ApplicationId)
             ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
@@ -38,6 +37,8 @@ internal sealed class ApplicationDeploymentCoordinator(
         {
             if (!ready || lifetime.ApplicationStopping.IsCancellationRequested)
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.StoreUnavailable, 503);
+            var replay = operations.FindIdempotent(application.Id, request.Kind, actor, key, fingerprint);
+            if (replay is not null) return replay.Operation;
             // The concurrency ceiling is decided before the record is written, so a rejected request
             // never leaves a queued operation behind that nothing will ever run.
             if (running.Count >= Math.Max(1, options.MaximumConcurrentOperations))
@@ -61,8 +62,9 @@ internal sealed class ApplicationDeploymentCoordinator(
     public DeploymentOperationDto? GetActive(Guid applicationId) => operations.GetActive(applicationId)?.Operation;
 
     /// <summary>Requests cancellation. Only the worker acknowledges it and releases its resources.</summary>
-    public DeploymentOperationDto Cancel(Guid operationId)
+    public DeploymentOperationDto Cancel(Guid operationId, string key)
     {
+        ValidateKey(key);
         lock (gate)
         {
             var entry = operations.Get(operationId)
@@ -146,6 +148,12 @@ internal sealed class ApplicationDeploymentCoordinator(
             // The store has failed closed. The durable Running record is what the next startup
             // reconciles, so the operation is not lost by failing to write its outcome now.
         }
+    }
+
+    private static void ValidateKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key) || key.Length > 128 || key.Any(character => character < 33 || character > 126))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.IdempotencyRequired, 400);
     }
 
     /// <summary>

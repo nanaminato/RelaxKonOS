@@ -63,7 +63,13 @@ public sealed record DockerContainerCreateRequest(
     IReadOnlyList<string>? Labels = null,
     DockerContainerResourceOptions? Resources = null);
 public sealed record DockerNetworkCreateRequest(string Name, string Driver = "bridge", bool Confirmed = false);
-public sealed record DockerVolumeCreateRequest(string Name, string Driver = "local", bool Confirmed = false);
+/// <summary>Structured named-volume creation. Labels let higher-level domains prove ownership before
+/// changing or deleting a volume.</summary>
+public sealed record DockerVolumeCreateRequest(
+    string Name,
+    string Driver = "local",
+    bool Confirmed = false,
+    IReadOnlyList<string>? Labels = null);
 public sealed record DockerContainerLogsDto(IReadOnlyList<string> Lines, bool Truncated);
 public sealed record DockerContainerStatsDto(string ContainerId, string CpuPercent, string MemoryUsage, string NetworkIo, string BlockIo);
 public sealed record DockerBuildRequest(string ContextDirectory, string ImageReference, string? Dockerfile = null);

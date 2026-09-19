@@ -92,7 +92,8 @@ internal sealed class ApplicationDeploymentService(
 
         try
         {
-            var candidate = await runtime.FindContainerAsync(ApplicationDeploymentValidation.CandidateContainerName(application.Id), cancellationToken);
+            var candidate = await runtime.FindOwnedContainerAsync(application.Id,
+                ApplicationDeploymentValidation.CandidateContainerName(application.Id), cancellationToken);
             if (candidate is not null)
             {
                 await runtime.StopAsync(candidate.Id, force: true, cancellationToken);
@@ -102,9 +103,26 @@ internal sealed class ApplicationDeploymentService(
             if (application.CurrentRevisionId is { } interruptedRevision)
                 secrets.ReleaseMaterialized(application.Id, interruptedRevision);
 
-            var canonical = await runtime.FindContainerAsync(ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken);
+            var canonical = await runtime.FindOwnedContainerAsync(application.Id,
+                ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken);
             if (canonical is null)
             {
+                var previous = await runtime.FindOwnedContainerAsync(application.Id,
+                    ApplicationDeploymentValidation.PreviousContainerName(application.Id), cancellationToken);
+                if (previous is not null)
+                {
+                    var restoredName = await runtime.RenameAsync(previous.Id, ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken);
+                    if (!restoredName.Success)
+                        return new(DeploymentOperationState.Failed, ApplicationDeploymentProblemCodes.Interrupted, ApplicationDeploymentProblemCodes.RecoveryFailed);
+                    if (application.DesiredState == ApplicationDesiredState.Running)
+                    {
+                        var started = await runtime.StartAsync(previous.Id, cancellationToken);
+                        if (!started.Success)
+                            return new(DeploymentOperationState.Failed, ApplicationDeploymentProblemCodes.Interrupted, ApplicationDeploymentProblemCodes.RecoveryFailed);
+                    }
+                    catalog.BindRuntime(application.Id, ApplicationDeploymentValidation.ContainerName(application.Id), previous.Id, null);
+                    return new(DeploymentOperationState.Interrupted, ApplicationDeploymentProblemCodes.Interrupted, ApplicationDeploymentProblemCodes.PreviousInstanceRestored);
+                }
                 catalog.BindRuntime(application.Id, null, null, ApplicationDesiredState.Stopped);
                 return new(DeploymentOperationState.Interrupted, ApplicationDeploymentProblemCodes.Interrupted, ApplicationDeploymentProblemCodes.OrphanedResources);
             }
@@ -162,8 +180,10 @@ internal sealed class ApplicationDeploymentService(
         var revision = catalog.AddRevision(new RevisionRecord(
             Guid.NewGuid(), application.Id, 0, application.SourceKind, template.TemplateVersion,
             inputReference, identity.Reference ?? plan.ImageReference, identity.ImageId, platform,
-            plan.BaseImage, entryPoint, arguments, application.ContainerPort, application.HostPort, application.BindAddress,
+            plan.BaseImage, application.WorkloadKind, application.ReadinessLevel, application.HealthCheckPath,
+            entryPoint, arguments, application.ContainerPort, application.HostPort, application.BindAddress,
             application.Limits, application.Volumes, application.Configuration,
+            application.SiteId,
             ApplicationDeploymentValidation.Reference(actor), DateTimeOffset.UtcNow), out _);
 
         await ActivateRevisionAsync(application, operationId, revision, progress, cancellationToken, rollback: false);
@@ -174,14 +194,14 @@ internal sealed class ApplicationDeploymentService(
     {
         await progress.ReportAsync(new(DeploymentStage.Preflight, null, true), cancellationToken);
         await runtime.PreflightEngineAsync(cancellationToken);
-        EnsureExecutableDefinition(application);
-
         if (request.RevisionId is not { } revisionId)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RevisionNotFound, 404);
         var revision = catalog.ReadRevisions(application.Id).FirstOrDefault(x => x.Id == revisionId)
             ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.RevisionNotFound, 404);
         if (revision.Id == application.CurrentRevisionId)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.AlreadyActive, 409);
+        var definition = EffectiveDefinition(application, revision);
+        EnsureExecutableDefinition(definition);
 
         // The old image, its start definition, and its secret versions must all still exist.
         if (revision.ImageId is { Length: > 0 } imageId && !await runtime.ImageExistsAsync(imageId, cancellationToken))
@@ -189,9 +209,9 @@ internal sealed class ApplicationDeploymentService(
         foreach (var entry in revision.Configuration.Where(entry => entry.IsSecret))
             if (!secrets.Has(application.Id, entry.Name, entry.SecretVersion))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.SecretVersionMissing, 409);
-        if (runtime.ProbeBindAddress(application.BindAddress, application.HostPort) is { } conflict) throw conflict;
+        if (runtime.ProbeBindAddress(definition.BindAddress, definition.HostPort) is { } conflict) throw conflict;
 
-        await progress.ReportAsync(new(DeploymentStage.Preparing, null, false), cancellationToken);
+        await progress.ReportAsync(new(DeploymentStage.Preparing, null, true), cancellationToken);
         await ActivateRevisionAsync(application, operationId, revision, progress, cancellationToken, rollback: true);
     }
 
@@ -202,26 +222,33 @@ internal sealed class ApplicationDeploymentService(
     private async Task ActivateRevisionAsync(ApplicationRecord application, Guid operationId, RevisionRecord revision,
         IApplicationDeploymentProgress progress, CancellationToken cancellationToken, bool rollback)
     {
-        var previous = await runtime.FindContainerAsync(ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken);
+        var definition = EffectiveDefinition(application, revision);
+        var previous = await runtime.FindOwnedContainerAsync(application.Id,
+            ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken);
         var previousWasRunning = previous is not null && previous.State.Equals("running", StringComparison.OrdinalIgnoreCase);
         string? candidateId = null;
+        var previousRenamed = false;
+        ApplicationDeploymentProxyResult? proxyApplied = null;
 
         try
         {
             foreach (var volume in revision.Volumes)
-                await runtime.EnsureVolumeAsync(application.Id, volume.Name, cancellationToken);
+                await runtime.EnsureVolumeAsync(definition, revision, operationId, volume.Name, cancellationToken);
 
-            await progress.ReportAsync(new(DeploymentStage.Creating, null, false), cancellationToken);
+            // Candidate creation, start, and readiness all have a safe cleanup path. Cancellation is
+            // withheld only once activation begins to alter the canonical instance and proxy route.
+            await progress.ReportAsync(new(DeploymentStage.Creating, null, true), cancellationToken);
             var secretsDirectory = secrets.Materialize(application.Id, revision.Id, revision.Configuration);
             if (previousWasRunning) await StopOrThrowAsync(previous!.Id, cancellationToken);
 
-            var created = await runtime.CreateContainerAsync(application, revision,
+            var created = await runtime.CreateContainerAsync(definition, revision,
                 ApplicationDeploymentValidation.CandidateContainerName(application.Id),
-                BuildEnvironment(application, revision), operationId, ApplicationDeploymentValidation.RoleCandidate,
+                BuildEnvironment(definition, revision), operationId, ApplicationDeploymentValidation.RoleCandidate,
                 secretsDirectory, cancellationToken);
             if (!created.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerCreateFailed, 409);
 
-            var candidate = await runtime.FindContainerAsync(ApplicationDeploymentValidation.CandidateContainerName(application.Id), cancellationToken)
+            var candidate = await runtime.FindOwnedContainerAsync(application.Id,
+                ApplicationDeploymentValidation.CandidateContainerName(application.Id), cancellationToken)
                 ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerCreateFailed, 409);
             candidateId = candidate.Id;
             catalog.BindRuntime(application.Id, candidate.Names, candidate.Id, null);
@@ -229,32 +256,43 @@ internal sealed class ApplicationDeploymentService(
             var started = await runtime.StartAsync(candidate.Id, cancellationToken);
             if (!started.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerStartFailed, 409);
 
-            await progress.ReportAsync(new(DeploymentStage.HealthChecking, null, false), cancellationToken);
-            if (!await WaitForReadyAsync(application, candidate.Id, cancellationToken))
+            await progress.ReportAsync(new(DeploymentStage.HealthChecking, null, true), cancellationToken);
+            if (!await WaitForReadyAsync(definition, candidate.Id, cancellationToken))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.HealthCheckTimeout, 409);
 
             // Activation is the critical section: cancellation is no longer offered from here on.
             await progress.ReportAsync(new(DeploymentStage.Activating, null, false), cancellationToken);
+            if (definition.SiteId is { Length: > 0 } && definition.HostPort is { } hostPort)
+            {
+                proxyApplied = await proxy.ApplyAsync(definition, hostPort, cancellationToken);
+                if (!proxyApplied.Success)
+                {
+                    var reverted = await proxy.RevertAsync(definition, proxyApplied, cancellationToken);
+                    throw new ProxyFailure(proxyApplied.ProblemCode ?? ApplicationDeploymentProblemCodes.ActivationFailed, reverted.ProblemCode);
+                }
+            }
+
+            var canonicalName = ApplicationDeploymentValidation.ContainerName(application.Id);
+            // Keep the stopped previous instance recoverable until the candidate is live through the
+            // proxy and has acquired the canonical name. Deleting it first makes recovery impossible.
+            if (previous is not null)
+            {
+                var renamedPrevious = await runtime.RenameAsync(previous.Id,
+                    ApplicationDeploymentValidation.PreviousContainerName(application.Id), cancellationToken);
+                if (!renamedPrevious.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ActivationFailed, 409);
+                previousRenamed = true;
+            }
+            var renamed = await runtime.RenameAsync(candidate.Id, canonicalName, cancellationToken);
+            if (!renamed.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerCreateFailed, 409);
+
             if (previous is not null)
             {
                 var removed = await runtime.RemoveAsync(previous.Id, cancellationToken);
                 if (!removed.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerRemoveFailed, 409);
             }
 
-            var canonicalName = ApplicationDeploymentValidation.ContainerName(application.Id);
-            var renamed = await runtime.RenameAsync(candidate.Id, canonicalName, cancellationToken);
-            if (!renamed.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerCreateFailed, 409);
-
-            if (application.SiteId is { Length: > 0 } && application.HostPort is { } hostPort)
-            {
-                var applied = await proxy.ApplyAsync(application, hostPort, cancellationToken);
-                if (!applied.Success)
-                {
-                    var reverted = await proxy.RevertAsync(application, applied, cancellationToken);
-                    throw new ProxyFailure(applied.ProblemCode ?? ApplicationDeploymentProblemCodes.ActivationFailed, reverted.ProblemCode);
-                }
-                catalog.BindSite(application.Id, applied.SiteInstanceId, applied.SiteId, applied.Domain);
-            }
+            if (proxyApplied is { Success: true })
+                catalog.BindSite(application.Id, proxyApplied.SiteInstanceId, proxyApplied.SiteId, proxyApplied.Domain);
 
             var retired = application.CurrentRevisionId;
             catalog.Activate(application.Id, revision.Id, DateTimeOffset.UtcNow);
@@ -266,6 +304,15 @@ internal sealed class ApplicationDeploymentService(
                 ("Application", application.Name), ("Revision", revision.Number.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             await progress.ReportAsync(new(DeploymentStage.Completed, null, false), cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller requested cancellation before activation's critical section. Cleanup must
+            // not inherit that cancelled token or it would leave the candidate and a stopped old
+            // instance behind.
+            await RestorePreviousAsync(application, definition, previous, previousWasRunning, candidateId, previousRenamed,
+                proxyApplied, revision, CancellationToken.None);
+            throw;
+        }
         catch (Exception exception) when (IsExpected(exception))
         {
             var problem = exception switch
@@ -274,7 +321,8 @@ internal sealed class ApplicationDeploymentService(
                 ApplicationDeploymentException domainFailure => domainFailure.ProblemCode,
                 _ => ApplicationDeploymentProblemCodes.Failed,
             };
-            var recovery = await RestorePreviousAsync(application, previous, previousWasRunning, candidateId, revision, cancellationToken);
+            var recovery = await RestorePreviousAsync(application, definition, previous, previousWasRunning, candidateId, previousRenamed,
+                proxyApplied, revision, cancellationToken);
             logger.LogWarning("Deployment activation failed. ApplicationId={ApplicationId}, ProblemCode={ProblemCode}, Recovery={Recovery}",
                 application.Id, problem, recovery.ProblemCode ?? "<none>");
             throw recovery.ProblemCode is { Length: > 0 }
@@ -288,8 +336,8 @@ internal sealed class ApplicationDeploymentService(
     /// original error is never replaced and a partial success is never presented as a success.
     /// </summary>
     private async Task<ApplicationDeploymentProxyResult> RestorePreviousAsync(
-        ApplicationRecord application, DockerContainerDto? previous, bool previousWasRunning, string? candidateId,
-        RevisionRecord candidateRevision, CancellationToken cancellationToken)
+        ApplicationRecord application, ApplicationRecord definition, DockerContainerDto? previous, bool previousWasRunning, string? candidateId,
+        bool previousRenamed, ApplicationDeploymentProxyResult? proxyApplied, RevisionRecord candidateRevision, CancellationToken cancellationToken)
     {
         try
         {
@@ -300,10 +348,22 @@ internal sealed class ApplicationDeploymentService(
             }
             secrets.ReleaseMaterialized(application.Id, candidateRevision.Id);
 
+            if (proxyApplied is { PreviousDefinition: not null })
+            {
+                var reverted = await proxy.RevertAsync(definition, proxyApplied, cancellationToken);
+                if (!reverted.Success) return new(false, ApplicationDeploymentProblemCodes.RecoveryFailed, null, null, null, null);
+            }
+
             if (previous is null)
             {
                 catalog.BindRuntime(application.Id, null, null, ApplicationDesiredState.Stopped);
                 return new(true, ApplicationDeploymentProblemCodes.PreviousInstanceRestored, null, null, null, null);
+            }
+
+            if (previousRenamed)
+            {
+                var restoredName = await runtime.RenameAsync(previous.Id, ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken);
+                if (!restoredName.Success) return new(false, ApplicationDeploymentProblemCodes.RecoveryFailed, null, null, null, null);
             }
 
             if (previousWasRunning)
@@ -326,8 +386,11 @@ internal sealed class ApplicationDeploymentService(
     {
         await progress.ReportAsync(new(DeploymentStage.Preflight, null, true), cancellationToken);
         await runtime.PreflightEngineAsync(cancellationToken);
-        var container = await runtime.FindContainerAsync(ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken)
+        var container = await runtime.FindOwnedContainerAsync(application.Id,
+            ApplicationDeploymentValidation.ContainerName(application.Id), cancellationToken)
             ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.DriftContainerMissing, 409);
+        var current = application.CurrentRevisionId is { } currentRevisionId ? catalog.FindRevision(currentRevisionId) : null;
+        var definition = current is null ? application : EffectiveDefinition(application, current);
 
         if (request.Kind == DeploymentOperationKind.Stop)
         {
@@ -349,7 +412,7 @@ internal sealed class ApplicationDeploymentService(
         if (!started.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerStartFailed, 409);
 
         await progress.ReportAsync(new(DeploymentStage.HealthChecking, null, false), cancellationToken);
-        if (!await WaitForReadyAsync(application, container.Id, cancellationToken))
+        if (!await WaitForReadyAsync(definition, container.Id, cancellationToken))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.HealthCheckTimeout, 409);
 
         catalog.BindRuntime(application.Id, container.Names, container.Id, ApplicationDesiredState.Running);
@@ -376,10 +439,15 @@ internal sealed class ApplicationDeploymentService(
         await progress.ReportAsync(new(DeploymentStage.CleaningUp, null, false), cancellationToken);
         if (deleteVolumes)
         {
-            foreach (var volume in application.Volumes)
+            var volumeNames = catalog.ReadRevisions(application.Id)
+                .SelectMany(revision => revision.Volumes)
+                .Select(volume => volume.Name)
+                .Concat(application.Volumes.Select(volume => volume.Name))
+                .Distinct(StringComparer.Ordinal);
+            foreach (var volumeName in volumeNames)
             {
-                if (!await runtime.VolumeExistsAsync(application.Id, volume.Name, cancellationToken)) continue;
-                var removed = await runtime.RemoveVolumeAsync(application.Id, volume.Name, cancellationToken);
+                if (!await runtime.VolumeExistsAsync(application.Id, volumeName, cancellationToken)) continue;
+                var removed = await runtime.RemoveVolumeAsync(application.Id, volumeName, cancellationToken);
                 if (!removed.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.VolumeRemoveFailed, 409);
             }
         }
@@ -476,6 +544,22 @@ internal sealed class ApplicationDeploymentService(
 
     private static bool IsExpected(Exception exception) => exception
         is ApplicationDeploymentException or ProxyFailure or DeploymentFailure or IOException or InvalidOperationException or UnauthorizedAccessException;
+
+    /// <summary>Execution uses the immutable revision snapshot. The mutable application record remains
+    /// operator intent for the next release and must not leak into a rollback of an older revision.</summary>
+    private static ApplicationRecord EffectiveDefinition(ApplicationRecord application, RevisionRecord revision) => application with
+    {
+        WorkloadKind = revision.WorkloadKind,
+        ReadinessLevel = revision.ReadinessLevel,
+        HealthCheckPath = revision.HealthCheckPath,
+        ContainerPort = revision.ContainerPort,
+        HostPort = revision.HostPort,
+        BindAddress = revision.BindAddress,
+        Limits = revision.Limits,
+        Volumes = revision.Volumes,
+        Configuration = revision.Configuration,
+        SiteId = revision.SiteId,
+    };
 
     private string DeploymentRoot => Path.Combine(environment.ContentRootPath, options.RootDirectory);
     private string BuildRoot => Path.Combine(DeploymentRoot, "build");

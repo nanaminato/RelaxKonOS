@@ -23,6 +23,7 @@ internal static class ApplicationDeploymentValidation
     public const string RoleLabel = "relaxkonos.role";
     public const string RoleWorkload = "workload";
     public const string RoleCandidate = "candidate";
+    public const string RoleVolume = "volume";
 
     public static readonly IReadOnlyList<string> SupportedBindAddresses = ["127.0.0.1", "0.0.0.0", "::1"];
     public static readonly IReadOnlyList<string> SupportedPlatforms = ["linux/amd64", "linux/arm64", "linux/arm"];
@@ -85,6 +86,10 @@ internal static class ApplicationDeploymentValidation
 
     public static string CandidateContainerName(Guid applicationId) => ContainerName(applicationId) + "-cand";
 
+    /// <summary>Temporary name for the stopped previous instance while the candidate takes over.
+    /// It is intentionally stable so startup recovery can locate it after a process interruption.</summary>
+    public static string PreviousContainerName(Guid applicationId) => ContainerName(applicationId) + "-prev";
+
     public static string VolumeName(Guid applicationId, string volumeName) => $"{ContainerName(applicationId)}-{volumeName}";
 
     /// <summary>
@@ -123,4 +128,9 @@ internal static class ApplicationDeploymentValidation
 
     public static bool IsManaged(IReadOnlyDictionary<string, string>? labels) =>
         Label(labels, ManagedLabel) == "true" && Label(labels, OwnerLabel) == OwnerValue;
+
+    /// <summary>A domain-owned resource must identify this exact application, not merely any
+    /// application-deployment resource. Names are discovery hints only and never proof of ownership.</summary>
+    public static bool IsOwnedBy(IReadOnlyDictionary<string, string>? labels, Guid applicationId) =>
+        IsManaged(labels) && string.Equals(Label(labels, ApplicationIdLabel), applicationId.ToString("D"), StringComparison.Ordinal);
 }

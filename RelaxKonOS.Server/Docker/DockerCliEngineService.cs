@@ -192,8 +192,13 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
 
     public async Task<DockerOperationResult> CreateVolumeAsync(DockerVolumeCreateRequest request, CancellationToken cancellationToken = default)
     {
-        if (!IsContainerId(request.Name) || !IsContainerId(request.Driver)) return new DockerOperationResult(false, "docker.validation_failed");
-        return ToOperationResult(await RunAsync(["volume", "create", "--driver", request.Driver, request.Name], cancellationToken));
+        var labels = request.Labels ?? [];
+        if (!IsContainerId(request.Name) || !IsContainerId(request.Driver) || labels.Count > 32 || labels.Any(label => !IsLabel(label)))
+            return new DockerOperationResult(false, "docker.validation_failed");
+        var arguments = new List<string> { "volume", "create", "--driver", request.Driver };
+        foreach (var label in labels) { arguments.Add("--label"); arguments.Add(label); }
+        arguments.Add(request.Name);
+        return ToOperationResult(await RunAsync(arguments, cancellationToken));
     }
 
     public async Task<DockerOperationResult> DeleteNetworkAsync(string id, bool confirmed, CancellationToken cancellationToken = default)
