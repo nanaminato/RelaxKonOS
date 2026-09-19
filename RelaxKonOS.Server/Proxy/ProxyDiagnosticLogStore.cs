@@ -31,6 +31,7 @@ public sealed class ProxyDiagnosticLogStore(IProxyPlatformPaths paths) : IProxyD
             {
                 var directory = paths.GetSanitizedLogDirectory();
                 Directory.CreateDirectory(directory);
+                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 var path = LogPath();
                 await File.AppendAllTextAsync(path, JsonSerializer.Serialize(entry) + Environment.NewLine, cancellationToken);
                 if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);

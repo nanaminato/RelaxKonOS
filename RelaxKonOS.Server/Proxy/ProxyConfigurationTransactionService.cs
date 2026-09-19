@@ -19,7 +19,8 @@ public sealed class ProxyConfigurationTransactionService(
     IProxyControllerSecretStore controllerSecrets,
     MihomoControllerOptions controllerOptions,
     IProxyGeoDataService? geoData = null,
-    IProxySettingsService? settingsService = null) : IProxyConfigurationTransactionService
+    IProxySettingsService? settingsService = null,
+    ILogger<ProxyConfigurationTransactionService>? logger = null) : IProxyConfigurationTransactionService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     public async Task<string?> ApplyAsync(Guid profileId, string yaml, CancellationToken cancellationToken)
@@ -56,8 +57,13 @@ public sealed class ProxyConfigurationTransactionService(
                     : yaml;
                 await File.WriteAllTextAsync(temporary, validationYaml, cancellationToken); SetPrivateFile(temporary);
                 var validation = await engine.ValidateConfigurationAsync(temporary, cancellationToken);
-                if (!string.IsNullOrEmpty(validation)) { File.Delete(temporary); return validation; }
+                if (!string.IsNullOrEmpty(validation))
+                {
+                    logger?.LogWarning("Proxy profile storage was rejected by configuration validation. ProfileId={ProfileId} EngineId={EngineId} ProblemCode={ProblemCode}", profileId, engine.EngineId, validation);
+                    File.Delete(temporary); return validation;
+                }
                 File.Move(temporary, ProfilePath(profileId), overwrite: true); SetPrivateFile(ProfilePath(profileId));
+                logger?.LogInformation("Proxy profile configuration stored. ProfileId={ProfileId} EngineId={EngineId} Characters={Characters}", profileId, engine.EngineId, yaml.Length);
                 return null;
             }
             catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
@@ -106,18 +112,28 @@ public sealed class ProxyConfigurationTransactionService(
             {
                 await File.WriteAllTextAsync(temporary, managedYaml, cancellationToken); SetPrivateFile(temporary);
                 var validation = await engine.ValidateConfigurationAsync(temporary, cancellationToken);
-                if (!string.IsNullOrEmpty(validation)) return validation;
+                if (!string.IsNullOrEmpty(validation))
+                {
+                    logger?.LogWarning("Proxy configuration activation was rejected by validation. ProfileId={ProfileId} EngineId={EngineId} ProblemCode={ProblemCode}", profileId, engine.EngineId, validation);
+                    return validation;
+                }
                 if (File.Exists(active)) File.Copy(active, backup, overwrite: false);
                 File.Move(temporary, active, overwrite: true); SetPrivateFile(active);
                 var reload = await engine.ReloadAsync(cancellationToken);
                 var health = string.IsNullOrEmpty(reload) ? await engine.GetHealthAsync(cancellationToken) : null;
-                if (string.IsNullOrEmpty(reload) && health?.State == ProxyHealthState.Healthy) return null;
+                if (string.IsNullOrEmpty(reload) && health?.State == ProxyHealthState.Healthy)
+                {
+                    logger?.LogInformation("Proxy configuration activated. ProfileId={ProfileId} EngineId={EngineId} BackupCreated={BackupCreated}", profileId, engine.EngineId, File.Exists(backup));
+                    return null;
+                }
                 if (File.Exists(backup))
                 {
                     File.Copy(backup, active, overwrite: true); SetPrivateFile(active);
                     var rollback = await engine.ReloadAsync(cancellationToken);
                     var rollbackHealth = string.IsNullOrEmpty(rollback) ? await engine.GetHealthAsync(cancellationToken) : null;
-                    return rollbackHealth?.State == ProxyHealthState.Healthy ? ProxyProblemCodes.ConfigApplyFailed : ProxyProblemCodes.RecoveryRequired;
+                    var outcome = rollbackHealth?.State == ProxyHealthState.Healthy ? ProxyProblemCodes.ConfigApplyFailed : ProxyProblemCodes.RecoveryRequired;
+                    logger?.LogWarning("Proxy configuration activation failed and rollback was attempted. ProfileId={ProfileId} EngineId={EngineId} Outcome={Outcome}", profileId, engine.EngineId, outcome);
+                    return outcome;
                 }
                 return ProxyProblemCodes.ConfigApplyFailed;
             }

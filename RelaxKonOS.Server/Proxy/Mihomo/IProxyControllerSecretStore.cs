@@ -30,20 +30,32 @@ public sealed class DataProtectionProxyControllerSecretStore : IProxyControllerS
         {
             if (File.Exists(_path))
             {
-                try { return _protector.Unprotect(await File.ReadAllTextAsync(_path, cancellationToken)); }
+                try
+                {
+                    SetPrivateFile(_path);
+                    return _protector.Unprotect(await File.ReadAllTextAsync(_path, cancellationToken));
+                }
                 catch { throw new ProxyControllerSecretException(); }
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+            var directory = Path.GetDirectoryName(_path)!;
+            Directory.CreateDirectory(directory);
             var bytes = RandomNumberGenerator.GetBytes(32);
             var secret = Convert.ToBase64String(bytes);
             CryptographicOperations.ZeroMemory(bytes);
             var staging = _path + ".new";
             await File.WriteAllTextAsync(staging, _protector.Protect(secret), Encoding.UTF8, cancellationToken);
+            SetPrivateFile(staging);
             File.Move(staging, _path, overwrite: false);
+            SetPrivateFile(_path);
             return secret;
         }
         finally { _gate.Release(); }
+    }
+
+    private static void SetPrivateFile(string path)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 }
 

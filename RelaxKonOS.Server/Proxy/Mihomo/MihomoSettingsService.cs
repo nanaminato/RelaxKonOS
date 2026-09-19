@@ -12,7 +12,8 @@ public sealed class MihomoSettingsService(
     IProxyPlatformPaths paths,
     IMihomoControllerClient controller,
     IProxyControllerSecretStore controllerSecrets,
-    MihomoControllerOptions controllerOptions) : IProxySettingsService
+    MihomoControllerOptions controllerOptions,
+    ILogger<MihomoSettingsService>? logger = null) : IProxySettingsService, IProxyTunRuntimeController
 {
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -72,19 +73,71 @@ public sealed class MihomoSettingsService(
                     await controller.ReloadAsync(cancellationToken);
                     return ProxyProblemCodes.ConfigApplyFailed;
                 }
-                if (!ApplyWindowsSystemProxy(settings.SystemProxyEnabled, settings.SystemProxyHost, settings.MixedPort, settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default))
+                // Updating unrelated Mihomo settings must not require a per-user Windows proxy
+                // writer.  A transition that enables or disables the system proxy does.
+                if ((settings.SystemProxyEnabled || previous.SystemProxyEnabled)
+                    && !ApplyWindowsSystemProxy(settings.SystemProxyEnabled, settings.SystemProxyHost, settings.MixedPort, settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default))
                 {
+                    logger?.LogWarning("Proxy settings update could not apply the Windows system proxy. Enabled={Enabled} Port={Port}", settings.SystemProxyEnabled, settings.MixedPort);
                     await File.WriteAllTextAsync(active, original, cancellationToken);
                     if (controllerAvailable) await controller.ReloadAsync(cancellationToken);
                     return ProxyProblemCodes.PrivilegedOperationUnavailable;
                 }
                 await WriteAsync(settings, cancellationToken);
+                logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort}",
+                    settings.SystemProxyEnabled, settings.AllowLan, settings.DnsEnabled, settings.MixedPort);
                 return null;
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
         catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
         catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
+            if (!File.Exists(active)) return ProxyProblemCodes.RuntimeNotInstalled;
+            var settings = await ReadAsync(cancellationToken) ?? Defaults;
+            var original = await File.ReadAllTextAsync(active, cancellationToken);
+            var exclusions = enabled ? BuildTunRouteExclusions(snapshot) : [];
+            var updated = MihomoManagedConfiguration.WithManagedTunSettings(original, settings, enabled, exclusions);
+            var temporary = active + ".tun-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                await File.WriteAllTextAsync(temporary, updated, cancellationToken);
+                SetPrivateFile(temporary);
+                File.Move(temporary, active, overwrite: true);
+                var reload = await controller.ReloadAsync(cancellationToken);
+                if (string.IsNullOrEmpty(reload))
+                {
+                    logger?.LogInformation("Mihomo TUN configuration transition completed. Enabled={Enabled} EgressInterface={EgressInterface} ExclusionCount={ExclusionCount}",
+                        enabled, snapshot.EgressInterface, exclusions.Count);
+                    return null;
+                }
+
+                await File.WriteAllTextAsync(active, original, cancellationToken);
+                SetPrivateFile(active);
+                await controller.ReloadAsync(CancellationToken.None);
+                logger?.LogWarning("Mihomo TUN configuration transition was rolled back after controller reload failed. Enabled={Enabled} ProblemCode={ProblemCode}", enabled, reload);
+                return reload;
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+        catch (IOException exception)
+        {
+            logger?.LogWarning(exception, "Mihomo TUN configuration transition failed because its protected configuration could not be written.");
+            return ProxyProblemCodes.ConfigApplyFailed;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            logger?.LogWarning(exception, "Mihomo TUN configuration transition was denied access to its protected configuration.");
+            return ProxyProblemCodes.PrivilegedOperationUnavailable;
+        }
         finally { _gate.Release(); }
     }
 
@@ -107,7 +160,7 @@ public sealed class MihomoSettingsService(
 
     private async Task WriteAsync(ProxySettingsDto settings, CancellationToken cancellationToken)
     {
-        var directory = paths.GetStateDirectory(); Directory.CreateDirectory(directory);
+        var directory = paths.GetStateDirectory(); Directory.CreateDirectory(directory); SetPrivateDirectory(directory);
         var path = Path.Combine(directory, "mihomo-settings.json");
         var temporary = path + ".new";
         await using (var output = File.Create(temporary)) await JsonSerializer.SerializeAsync(output, settings, cancellationToken: cancellationToken);
@@ -117,6 +170,10 @@ public sealed class MihomoSettingsService(
     internal static bool ApplyWindowsSystemProxy(bool enabled, string host, int port, ProxySystemProxyOptionsDto options)
     {
         if (!OperatingSystem.IsWindows()) return !enabled;
+        // HKCU belongs to the Server service account in System Mode, not the signed-in desktop
+        // user.  Silently changing it is both ineffective and surprising.  A future per-user
+        // companion must apply this setting in that user's session.
+        if (!Environment.UserInteractive) return false;
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", writable: true);
@@ -189,4 +246,25 @@ public sealed class MihomoSettingsService(
     }
 
     private static readonly ProxySettingsDto Defaults = new(false, false, true, true, false, "warning", 7890, false, "127.0.0.1", ProxyTunSettingsDto.Default, ProxySystemProxyOptionsDto.Default);
+
+    private static IReadOnlyList<string> BuildTunRouteExclusions(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot)
+    {
+        var values = new List<string> { "127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16" };
+        if (IPAddress.TryParse(snapshot.DefaultGateway, out var gateway))
+            values.Add(gateway.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? gateway + "/32" : gateway + "/128");
+        foreach (var value in snapshot.ManagementAddresses)
+            if (IPAddress.TryParse(value, out var address) && !IPAddress.IsLoopback(address))
+                values.Add(address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? address + "/32" : address + "/128");
+        return values;
+    }
+
+    private static void SetPrivateFile(string path)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    private static void SetPrivateDirectory(string path)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
 }

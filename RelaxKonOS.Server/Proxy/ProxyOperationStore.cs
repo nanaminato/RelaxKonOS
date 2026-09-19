@@ -99,7 +99,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
 
     private async Task SaveAsync(CancellationToken cancellationToken)
     {
-        var dir = paths.GetStateDirectory(); Directory.CreateDirectory(dir);
+        var dir = paths.GetStateDirectory(); Directory.CreateDirectory(dir); SetPrivateDirectory(dir);
         var path = Path.Combine(dir, "proxy-operations.json"); var temporary = path + ".new";
         await using (var stream = File.Create(temporary))
             await JsonSerializer.SerializeAsync(stream, _byKey.Select(pair => new Entry(pair.Key, pair.Value)).ToArray(), cancellationToken: cancellationToken);
@@ -108,6 +108,11 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
     }
 
     private sealed record Entry(string IdempotencyKey, ProxyOperationDto Operation);
+
+    private static void SetPrivateDirectory(string path)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
 }
 
 public sealed class ProxyOperationValidationException(string problemCode) : Exception(problemCode)

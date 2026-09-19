@@ -1070,12 +1070,8 @@ static async Task VerifyProxySubscriptionRepositoryAsync(string root)
         && converted.Content.Contains("cipher: \"aes-256-gcm\"", StringComparison.Ordinal) && converted.Content.Contains("password: \"password\"", StringComparison.Ordinal),
         "Base64 Shadowsocks subscription was not converted to Mihomo YAML.");
 
-    var debugPaths = new TestProxyPaths(Path.Combine(root, "proxy-subscription-debug"));
-    var debugDownloader = new ProxySubscriptionDownloader(new FixtureHttpClientFactory(Encoding.UTF8.GetBytes("proxies: []\n")), new StaticProxySettingsService(),
-        new TestHostEnvironment(root) { EnvironmentName = Environments.Development }, debugPaths);
-    await debugDownloader.DownloadAsync("https://1.1.1.1/subscription", ProxySubscriptionDownloadRoute.Direct, CancellationToken.None);
-    var capture = Directory.GetFiles(debugPaths.GetSanitizedLogDirectory(), "subscription-download-*.txt").Single();
-    Assert(await File.ReadAllTextAsync(capture) == "proxies: []\n", "Development subscription downloads were not captured verbatim in the protected log directory.");
+    // Subscription payloads can contain credentials.  They are deliberately never written to
+    // diagnostics, including development diagnostics; only bounded metadata is logged.
 }
 
 static async Task VerifyMihomoGeoDataStagingAsync(string root)
@@ -1155,26 +1151,27 @@ static async Task VerifyProxyConfigurationTransactionAsync(string root)
 static async Task VerifyProxyTunSafetyAsync(string root)
 {
     var platform = new TestProxyNetworkSafetyPlatform { SnapshotSafe = true };
-    var service = new ProxyTunSafetyService(new TestProxyPaths(Path.Combine(root, "proxy-tun")), platform);
-    Assert(await service.EnableAsync(Guid.NewGuid(), CancellationToken.None) is null, "TUN safety transaction rejected a safe management route.");
+    var runtime = new TestProxyTunRuntimeController();
+    var service = new ProxyTunSafetyService(new TestProxyPaths(Path.Combine(root, "proxy-tun")), platform, runtime);
+    Assert(await service.EnableAsync(Guid.NewGuid(), IPAddress.Parse("203.0.113.4"), CancellationToken.None) is null && runtime.LastSnapshot?.ManagementAddresses.Single() == "203.0.113.4", "TUN safety transaction did not protect the Server-observed management address.");
     Assert((await service.GetStatusAsync(CancellationToken.None)).HasRecoveryMarker, "TUN marker was not durable before network activation.");
-    Assert(await service.EmergencyDisableAsync(CancellationToken.None) is null && platform.RestoreCount == 1,
+    Assert(await service.EmergencyDisableAsync(CancellationToken.None) is null && platform.RestoreCount == 1 && runtime.DisableCount == 1,
         "Emergency TUN disable did not restore the captured management route.");
     platform.SnapshotSafe = false;
-    Assert(await service.EnableAsync(Guid.NewGuid(), CancellationToken.None) == ProxyProblemCodes.ManagementRouteUnsafe && platform.ApplyCount == 1,
+    Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) == ProxyProblemCodes.ManagementRouteUnsafe && platform.ApplyCount == 1,
         "An unsafe management route was allowed to change the network.");
     platform.SnapshotSafe = true; platform.ApplySucceeds = false;
-    Assert(await service.EnableAsync(Guid.NewGuid(), CancellationToken.None) == ProxyProblemCodes.TunActivationFailed && !(await service.GetStatusAsync(CancellationToken.None)).HasRecoveryMarker,
+    Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) == ProxyProblemCodes.TunActivationFailed && !(await service.GetStatusAsync(CancellationToken.None)).HasRecoveryMarker,
         "Failed TUN activation did not rollback and clear its marker.");
     platform.ApplySucceeds = true; platform.ManagementRouteVerifies = false;
-    Assert(await service.EnableAsync(Guid.NewGuid(), CancellationToken.None) == ProxyProblemCodes.ManagementRouteUnsafe && platform.RestoreCount == 3,
+    Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) == ProxyProblemCodes.ManagementRouteUnsafe && platform.RestoreCount == 3,
         "TUN activation that cut the management path was not rolled back.");
 }
 
 static async Task VerifyHostNetworkSafetyDiscoveryAsync()
 {
     if (!OperatingSystem.IsLinux()) return;
-    var snapshot = await new HostProxyNetworkSafetyPlatform().CaptureManagementRouteAsync(CancellationToken.None);
+    var snapshot = await new HostProxyNetworkSafetyPlatform().CaptureManagementRouteAsync(null, CancellationToken.None);
     if (snapshot is null) return; // Minimal containers may have no usable host route; that is fail-closed.
     Assert(snapshot.ManagementPathSafe && !string.IsNullOrWhiteSpace(snapshot.EgressInterface)
         && snapshot.SystemBypass.Contains("loopback") && snapshot.SystemBypass.Contains("relaxkonos-listeners")
@@ -1685,10 +1682,23 @@ sealed class TestProxyNetworkSafetyPlatform : IProxyNetworkSafetyPlatform
     public bool ManagementRouteVerifies { get; set; } = true;
     public int ApplyCount { get; private set; }
     public int RestoreCount { get; private set; }
-    public Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(CancellationToken cancellationToken) => Task.FromResult<ProxyManagementRouteSnapshot?>(new("test", DateTimeOffset.UtcNow, SnapshotSafe, "eth0", "192.0.2.1", ["loopback", "relaxkonos-listeners"]));
+    public Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(IPAddress? managementAddress, CancellationToken cancellationToken) => Task.FromResult<ProxyManagementRouteSnapshot?>(new("test", DateTimeOffset.UtcNow, SnapshotSafe, "eth0", "192.0.2.1", ["loopback", "relaxkonos-listeners"], managementAddress is null ? [] : [managementAddress.ToString()]));
     public Task<bool> ApplyTunAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { ApplyCount++; return Task.FromResult(ApplySucceeds); }
     public Task<bool> VerifyManagementRouteAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) => Task.FromResult(ManagementRouteVerifies);
     public Task<bool> RestoreAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { RestoreCount++; return Task.FromResult(true); }
+}
+
+sealed class TestProxyTunRuntimeController : IProxyTunRuntimeController
+{
+    public int EnableCount { get; private set; }
+    public int DisableCount { get; private set; }
+    public ProxyManagementRouteSnapshot? LastSnapshot { get; private set; }
+    public Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+    {
+        LastSnapshot = snapshot;
+        if (enabled) EnableCount++; else DisableCount++;
+        return Task.FromResult<string?>(null);
+    }
 }
 
 sealed class DelegateHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler

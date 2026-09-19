@@ -58,14 +58,15 @@ internal static class MihomoManagedConfiguration
 
     /// <summary>Replaces profile-provided TUN options with the bounded Server-owned subset.
     /// TUN is deliberately kept disabled here; the transaction service remains its only activation path.</summary>
-    public static string WithManagedTunSettings(string yaml, ProxySettingsDto settings)
+    public static string WithManagedTunSettings(string yaml, ProxySettingsDto settings, bool enabled = false,
+        IReadOnlyList<string>? routeExclusions = null)
     {
         var tun = settings.Tun ?? ProxyTunSettingsDto.Default;
         var content = RemoveTopLevelKeys(yaml, TunSettingsKeys);
         var builder = new StringBuilder(content.TrimEnd('\r', '\n'));
         if (builder.Length > 0) builder.Append('\n');
         builder.Append("tun:\n");
-        builder.Append("  enable: false\n");
+        builder.Append("  enable: ").Append(enabled ? "true" : "false").Append('\n');
         builder.Append("  stack: ").Append(tun.Stack).Append('\n');
         builder.Append("  device: \"").Append(EscapeYamlDoubleQuotedScalar(tun.DeviceName)).Append("\"\n");
         builder.Append("  auto-route: ").Append(tun.AutoRoute ? "true" : "false").Append('\n');
@@ -74,6 +75,14 @@ internal static class MihomoManagedConfiguration
         builder.Append("  dns-hijack:\n");
         builder.Append("    - \"").Append(EscapeYamlDoubleQuotedScalar(tun.DnsHijack)).Append("\"\n");
         builder.Append("  mtu: ").Append(tun.Mtu.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append('\n');
+        // These are an invariant safety boundary rather than profile preferences.  Mihomo owns
+        // the route installation, while these exclusions keep the management network outside it.
+        if (enabled && routeExclusions is { Count: > 0 })
+        {
+            builder.Append("  route-exclude-address:\n");
+            foreach (var route in routeExclusions.Distinct(StringComparer.Ordinal))
+                builder.Append("    - \"").Append(EscapeYamlDoubleQuotedScalar(route)).Append("\"\n");
+        }
         return builder.ToString();
     }
 

@@ -129,6 +129,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyGeoDataService, Rela
 // import subscriptions. The transaction service repeats this as an idempotent safety net.
 builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoGeoDataHostedService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsService, RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController>(sp => (RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService)sp.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySettingsService>());
 builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.SystemProxyGuardHostedService>();
 builder.Services.AddHttpClient("MihomoRuntime", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient("ProxySubscriptionDirect", client => client.Timeout = TimeSpan.FromSeconds(30))
