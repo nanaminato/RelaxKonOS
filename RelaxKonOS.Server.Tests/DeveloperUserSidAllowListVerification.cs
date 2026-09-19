@@ -97,6 +97,7 @@ internal static class DeveloperUserSidAllowListVerification
         Check(unlisted == elevated, "An identity absent from the DACL must be refused unless local Administrators grants it access.");
     }
 
+    [SupportedOSPlatform("windows")]
     private static bool HasFullControl(PipeAccessRule rule)
         => (rule.PipeAccessRights & PipeAccessRights.FullControl) == PipeAccessRights.FullControl;
 
