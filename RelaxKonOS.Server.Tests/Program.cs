@@ -1251,6 +1251,8 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
         ?? throw new InvalidOperationException("Nginx server-name validator was not found.");
     Assert((bool)validServerName.Invoke(null, ["192.0.2.10"])!, "IPv4 addresses were rejected as Nginx server names.");
     Assert((bool)validServerName.Invoke(null, ["2001:db8::10"])!, "IPv6 addresses were rejected as Nginx server names.");
+    Assert((bool)validServerName.Invoke(null, ["localhost"])!, "The explicit localhost development binding was rejected.");
+    Assert(!(bool)validServerName.Invoke(null, ["internal-service"])!, "An arbitrary single-label host name was accepted.");
     Assert(!(bool)validServerName.Invoke(null, ["example.com; return 200"])!, "Unsafe Nginx server name was accepted.");
 
     var isNginxProcessName = typeof(NginxWebServerManager).GetMethod("IsNginxProcessName", BindingFlags.Static | BindingFlags.NonPublic)

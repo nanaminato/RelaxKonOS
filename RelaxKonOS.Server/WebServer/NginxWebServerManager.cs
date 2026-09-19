@@ -1591,11 +1591,14 @@ internal sealed partial class NginxWebServerManager(
 
     private static string NginxConfigPath(string path) => Path.GetFullPath(path).Replace('\\', '/');
 
-    /// <summary>Allows a normal DNS name or a literal IP address for LAN and pre-DNS use.
+    /// <summary>Allows a normal DNS name, the explicit local-development name <c>localhost</c>,
+    /// or a literal IP address for LAN and pre-DNS use.
     /// The value is later emitted into Nginx's server_name directive, so never accept an
     /// arbitrary host string here.</summary>
     private static bool IsValidServerName(string value) => value.Length <= 253 &&
-        (IPAddress.TryParse(value, out _) || Uri.CheckHostName(value) == UriHostNameType.Dns && DomainPattern().IsMatch(value));
+        (value.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || IPAddress.TryParse(value, out _)
+            || Uri.CheckHostName(value) == UriHostNameType.Dns && DomainPattern().IsMatch(value));
 
     /// <summary>Checks the process image for the selected instance instead of treating any
     /// Nginx process on the host as this instance. Linux Nginx changes the master and worker

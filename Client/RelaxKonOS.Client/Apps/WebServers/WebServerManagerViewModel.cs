@@ -549,7 +549,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         SiteRoutes.Clear();
         foreach (var route in value.Routes)
             SiteRoutes.Add(new WebServerProxyRouteEditor(route.Path, route.Upstream, route.DisableBuffering));
-        if (SiteRoutes.Count == 0) SiteRoutes.Add(new WebServerProxyRouteEditor());
         SiteHttpsEnabled = value.HttpsEnabled;
         SiteRedirectHttpToHttps = value.RedirectHttpToHttps;
         SiteIpv6Enabled = value.Ipv6Enabled;
