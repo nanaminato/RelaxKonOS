@@ -112,9 +112,6 @@ builder.Services.AddHttpClient<RelaxKonOS.Server.Proxy.Mihomo.IMihomoControllerC
     .RemoveAllLoggers();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyEngine, RelaxKonOS.Server.Proxy.Mihomo.MihomoEngine>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyEngineRegistry, RelaxKonOS.Server.Proxy.ProxyEngineRegistry>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.WindowsMihomoProcessHost>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Mihomo.IWindowsMihomoProcessHost>(sp => sp.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.WindowsMihomoProcessHost>());
-builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.Proxy.Mihomo.WindowsMihomoProcessHost>());
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.Platform.IProxyPrivilegedOperations, RelaxKonOS.Server.Proxy.Platform.NativeMihomoPrivilegedOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformPaths, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformPaths>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyPlatformService, RelaxKonOS.Server.Proxy.Platform.ProxyPlatformService>();

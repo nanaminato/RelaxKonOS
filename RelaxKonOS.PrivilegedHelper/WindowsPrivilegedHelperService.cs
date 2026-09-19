@@ -44,6 +44,7 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 
     protected override void OnStop()
     {
+        WindowsMihomoPrivilegedProcessHost.StopForHelperShutdownAsync().GetAwaiter().GetResult();
         if (_pipeServer is not null) _pipeServer.StopAsync().GetAwaiter().GetResult();
     }
 

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using RelaxKonOS.Protocol.Proxy;
@@ -115,6 +116,19 @@ public sealed class MihomoSettingsService(
                 var reload = await controller.ReloadAsync(cancellationToken);
                 if (string.IsNullOrEmpty(reload))
                 {
+                    // Mihomo's reload endpoint acknowledges the configuration before the TUN
+                    // adapter is necessarily created.  On Windows, accepting that acknowledgement
+                    // alone used to report a successful activation even after Wintun logged
+                    // "Access is denied".  Require the configured adapter to become active.
+                    var tunDeviceName = (settings.Tun ?? ProxyTunSettingsDto.Default).DeviceName;
+                    if (enabled && !await WaitForWindowsTunDeviceAsync(tunDeviceName, cancellationToken))
+                    {
+                        await File.WriteAllTextAsync(active, original, cancellationToken);
+                        SetPrivateFile(active);
+                        await controller.ReloadAsync(CancellationToken.None);
+                        logger?.LogWarning("Mihomo TUN configuration transition was rolled back because the Windows TUN adapter did not become active. DeviceName={DeviceName}", tunDeviceName);
+                        return ProxyProblemCodes.TunActivationFailed;
+                    }
                     logger?.LogInformation("Mihomo TUN configuration transition completed. Enabled={Enabled} EgressInterface={EgressInterface} ExclusionCount={ExclusionCount}",
                         enabled, snapshot.EgressInterface, exclusions.Count);
                     return null;
@@ -277,5 +291,24 @@ public sealed class MihomoSettingsService(
     private static void SetPrivateDirectory(string path)
     {
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    private static async Task<bool> WaitForWindowsTunDeviceAsync(string deviceName, CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows()) return true;
+        var deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            try
+            {
+                if (NetworkInterface.GetAllNetworkInterfaces().Any(network =>
+                    string.Equals(network.Name, deviceName, StringComparison.OrdinalIgnoreCase)
+                    && network.OperationalStatus == OperationalStatus.Up))
+                    return true;
+            }
+            catch (NetworkInformationException) { return false; }
+            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+        }
+        return false;
     }
 }
