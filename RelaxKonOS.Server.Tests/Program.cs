@@ -631,14 +631,19 @@ static async Task VerifyMihomoControllerSafetyAsync()
         "A controller 401 was not exposed as an authentication failure.");
 
     var calls = 0;
-    var interruptedReloadHandler = new DelegateHandler(_ =>
+    string? reloadPayload = null;
+    var interruptedReloadHandler = new DelegateHandler(async request =>
     {
         calls++;
-        if (calls == 1) throw new HttpRequestException("The controller restarted during reload.");
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
+        if (calls == 1)
+        {
+            reloadPayload = await request.Content!.ReadAsStringAsync();
+            throw new HttpRequestException("The controller restarted during reload.");
+        }
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
     });
     var interruptedReloadClient = new MihomoControllerClient(new HttpClient(interruptedReloadHandler), new StaticProxySecretStore(), new MihomoControllerOptions { Endpoint = new Uri("http://127.0.0.1:9090/") });
-    Assert(await interruptedReloadClient.ReloadAsync(CancellationToken.None) is null && calls == 2,
+    Assert(await interruptedReloadClient.ReloadAsync(CancellationToken.None) is null && calls == 2 && reloadPayload == "{\"path\":\"\",\"payload\":\"\"}",
         "A recovered controller connection after reload was incorrectly reported as a TUN configuration failure.");
 }
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -34,6 +35,8 @@ public sealed record ControllerResult<T>(T? Value, string ProblemCode)
 /// <summary>Bounded REST-only Mihomo adapter; it accepts only a loopback URI and hides all controller JSON.</summary>
 public sealed class MihomoControllerClient : IMihomoControllerClient
 {
+    private static readonly TimeSpan ReloadConfirmationTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ReloadConfirmationInterval = TimeSpan.FromMilliseconds(200);
     private readonly HttpClient _httpClient;
     private readonly IProxyControllerSecretStore _secrets;
     private readonly MihomoControllerOptions _options;
@@ -219,13 +222,35 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
         // reset. Confirm the loopback controller before asking the caller to roll back a sound
         // configuration. HTTP error responses remain failures; only transport interruptions are
         // eligible for this confirmation.
-        var reload = await SendAsync(HttpMethod.Put, "configs?force=true", new StringContent("{}", Encoding.UTF8, "application/json"), cancellationToken, logTransportFailure: false);
+        // Mihomo requires both fields even when reloading the configuration it already owns.
+        // An empty object is rejected immediately, which previously bypassed the reconnect wait
+        // and was misleadingly surfaced as controller_unavailable.
+        var reload = await SendAsync(HttpMethod.Put, "configs?force=true",
+            new StringContent("{\"path\":\"\",\"payload\":\"\"}", Encoding.UTF8, "application/json"),
+            cancellationToken, logTransportFailure: false);
         if (reload.Succeeded || !reload.TransportInterrupted) return reload.ProblemCode;
 
-        for (var attempt = 0; attempt < 5; attempt++)
+        var deadline = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * ReloadConfirmationTimeout.TotalSeconds);
+        while (Stopwatch.GetTimestamp() < deadline)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
-            var confirmation = await SendAsync(HttpMethod.Get, "version", null, cancellationToken, logTransportFailure: false);
+            var remaining = TimeSpan.FromSeconds((deadline - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency);
+            if (remaining <= TimeSpan.Zero) break;
+            await Task.Delay(remaining < ReloadConfirmationInterval ? remaining : ReloadConfirmationInterval, cancellationToken);
+            if (Stopwatch.GetTimestamp() >= deadline) break;
+
+            using var confirmationCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            remaining = TimeSpan.FromSeconds((deadline - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency);
+            if (remaining <= TimeSpan.Zero) break;
+            confirmationCancellation.CancelAfter(remaining);
+            ControllerResponse confirmation;
+            try
+            {
+                confirmation = await SendAsync(HttpMethod.Get, "version", null, confirmationCancellation.Token, logTransportFailure: false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
             if (confirmation.Succeeded)
             {
                 _logger?.LogInformation("Mihomo controller reconnected after its configuration reload response was interrupted. Endpoint={Endpoint}", _options.Endpoint.Authority);

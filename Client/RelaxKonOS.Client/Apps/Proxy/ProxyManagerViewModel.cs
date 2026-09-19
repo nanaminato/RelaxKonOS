@@ -802,7 +802,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
                 _ => "proxy.operation.completed.generic",
             });
         if (operation.State is ProxyOperationState.Failed or ProxyOperationState.Interrupted)
-            return LocalizedText.Ref("proxy.status.failed", FormatProblemCode(operation.ProblemCode));
+            return LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(operation.ProblemCode));
         if (operation.State == ProxyOperationState.Cancelled)
             return LocalizedText.Ref("proxy.operation.cancelled");
         var key = "proxy.operation." + operation.Stage;
@@ -812,7 +812,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     private void SetFailureStatus(Exception exception)
     {
         var problemCode = exception is ProxyRequestException request ? request.ProblemCode : exception.Message;
-        StatusText = LocalizedText.Ref("proxy.status.failed", FormatProblemCode(problemCode));
+        StatusText = LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(problemCode));
         _ = ShowPrivilegedHelperUnavailableAsyncIfNeeded(problemCode);
     }
     private static string FormatProblemCode(string? problemCode)
