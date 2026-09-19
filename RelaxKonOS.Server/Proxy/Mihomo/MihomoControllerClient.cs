@@ -22,6 +22,7 @@ public interface IMihomoControllerClient
     Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken);
     Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken);
     Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken);
+    Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken);
     Task<string?> ReloadAsync(CancellationToken cancellationToken);
 }
 
@@ -211,6 +212,23 @@ public sealed class MihomoControllerClient : IMihomoControllerClient
             return dns.ValueKind == JsonValueKind.Object
                 ? new(GetBool(dns, "enable"), GetBool(dns, "enhanced-mode"), GetString(dns, "enhanced-mode"))
                 : new(false, false, null);
+        }
+        finally { result.Value?.Dispose(); }
+    }
+
+    /// <summary>Reads the live <c>tun.enable</c> flag. This is the only trustworthy source for
+    /// "is TUN active"; the Server's own recovery marker records that a session was once
+    /// verified, which is not the same statement.</summary>
+    public async Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken)
+    {
+        var result = await GetJsonAsync("configs", cancellationToken);
+        if (!result.Succeeded) return ControllerResult<bool>.Failure(result.ProblemCode);
+        try
+        {
+            // Mihomo omits the block when TUN was never configured, and reporting that as an
+            // unreadable response would turn a disabled TUN into a controller failure.
+            var tun = result.Value!.RootElement.TryGetProperty("tun", out var value) ? value : default;
+            return ControllerResult<bool>.Success(tun.ValueKind == JsonValueKind.Object && GetBool(tun, "enable"));
         }
         finally { result.Value?.Dispose(); }
     }

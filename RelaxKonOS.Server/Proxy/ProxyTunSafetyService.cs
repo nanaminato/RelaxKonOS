@@ -18,7 +18,8 @@ public sealed class ProxyTunSafetyService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (await ReadMarkerAsync(cancellationToken) is not null)
+            var existing = await ReadMarkerAsync(cancellationToken);
+            if (existing is not null && !await DiscardStaleSessionMarkerAsync(existing, cancellationToken))
             {
                 logger?.LogWarning("Refused TUN activation because a previous recovery marker is still present. ProfileId={ProfileId}", profileId);
                 return ProxyProblemCodes.RecoveryRequired;
@@ -71,6 +72,24 @@ public sealed class ProxyTunSafetyService(
             : marker.ActivationCompleted
                 ? new(false, true, marker.CreatedAt)
                 : new(true, true, marker.CreatedAt, ProxyProblemCodes.RecoveryRequired);
+    }
+    /// <summary>
+    /// A completed marker asserts that a TUN session is live.  When the engine itself reports TUN
+    /// as off, that assertion is stale: the runtime was reconfigured outside this transaction, and
+    /// honouring the marker would refuse every later activation forever.  An unfinished marker is
+    /// never stale - it still describes an interrupted transition that must be recovered.
+    /// </summary>
+    private async Task<bool> DiscardStaleSessionMarkerAsync(RecoveryMarker marker, CancellationToken cancellationToken)
+    {
+        if (!marker.ActivationCompleted) return false;
+        var observation = await _runtime.IsEnabledAsync(cancellationToken);
+        // Unobserved is not the same as disabled: only a definite negative answer may clear state.
+        if (!observation.Succeeded || observation.Enabled) return false;
+        logger?.LogWarning("A completed TUN session marker contradicts the engine, which reports TUN as disabled. Discarding it. OperationId={OperationId} ProfileId={ProfileId}",
+            marker.OperationId, marker.ProfileId);
+        // Reuse the ordinary teardown so the platform can still confirm that the captured
+        // management path won before another activation is allowed to change the network.
+        return await RestoreAndReportAsync(marker, cancellationToken, ProxyProblemCodes.RecoveryFailed) is null;
     }
     private async Task<string?> RestoreAndReportAsync(RecoveryMarker marker, CancellationToken cancellationToken, string failedCode)
     {

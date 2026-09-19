@@ -49,13 +49,18 @@ public sealed class MihomoSettingsService(
                 return null;
             }
             var original = await File.ReadAllTextAsync(active, cancellationToken);
+            // A settings write is not a TUN transition.  Carry the live activation forward;
+            // letting the managed TUN block fall back to "disabled" tore the adapter down and
+            // left the durable marker still reporting an active session.
+            var tunActivation = MihomoManagedConfiguration.ReadTunActivation(original);
             string updated;
             try
             {
                 updated = MihomoManagedConfiguration.WithServerControllerSettings(
                     MihomoManagedConfiguration.WithServerGeoDataSettings(
                         MihomoManagedConfiguration.WithRuntimeSettings(
-                            MihomoManagedConfiguration.WithManagedTunSettings(original, settings), settings)), controllerOptions,
+                            MihomoManagedConfiguration.WithManagedTunSettings(original, settings,
+                                tunActivation.Enabled, tunActivation.RouteExclusions), settings)), controllerOptions,
                     await controllerSecrets.GetOrCreateAsync(cancellationToken));
             }
             catch (ProxyControllerSecretException) { return ProxyProblemCodes.ConfigApplyFailed; }
@@ -85,8 +90,8 @@ public sealed class MihomoSettingsService(
                     return ProxyProblemCodes.PrivilegedOperationUnavailable;
                 }
                 await WriteAsync(settings, cancellationToken);
-                logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort}",
-                    settings.SystemProxyEnabled, settings.AllowLan, settings.DnsEnabled, settings.MixedPort);
+                logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort} TunEnabled={TunEnabled}",
+                    settings.SystemProxyEnabled, settings.AllowLan, settings.DnsEnabled, settings.MixedPort, tunActivation.Enabled);
                 return null;
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -165,6 +170,17 @@ public sealed class MihomoSettingsService(
             return ProxyProblemCodes.PrivilegedOperationUnavailable;
         }
         finally { _gate.Release(); }
+    }
+
+    /// <summary>Reports the engine's own view of its TUN flag.  A controller that cannot answer
+    /// yields an unobserved result rather than a false "disabled", because callers use a negative
+    /// answer to discard durable state.</summary>
+    public async Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken)
+    {
+        var observation = await controller.GetTunEnabledAsync(cancellationToken);
+        return observation.Succeeded
+            ? new ProxyTunRuntimeObservation(true, observation.Value!)
+            : new ProxyTunRuntimeObservation(false, false, observation.ProblemCode);
     }
 
     private async Task<ProxySettingsDto?> ReadAsync(CancellationToken cancellationToken)

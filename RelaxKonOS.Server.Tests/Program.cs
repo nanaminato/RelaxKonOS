@@ -66,6 +66,18 @@ try
         Console.WriteLine("Proxy GEO data and configuration checks passed.");
         return;
     }
+    if (args.Contains("--proxy-tun-only"))
+    {
+        await VerifyProxyConfigurationTransactionAsync(root);
+        await VerifyProxyTunSafetyAsync(root);
+        await VerifyMihomoTunActivationPreservationAsync(root);
+        await VerifyMihomoControllerSafetyAsync();
+        await VerifyMihomoProxyGroupOrderingAsync(root);
+        await VerifyProxyDiagnosticLogsAsync(root);
+        await VerifyMihomoRuntimeSafetyAsync(root);
+        Console.WriteLine("Proxy TUN activation checks passed.");
+        return;
+    }
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
@@ -97,6 +109,7 @@ try
     await VerifyMihomoGeoDataStartupProvisioningAsync();
     await VerifyProxyConfigurationTransactionAsync(root);
     await VerifyProxyTunSafetyAsync(root);
+    await VerifyMihomoTunActivationPreservationAsync(root);
     await VerifyHostNetworkSafetyDiscoveryAsync();
     await VerifyDeploymentAndNginxSnapshotsAsync(root);
     await VerifyWebServerProviderRoutingAsync();
@@ -1204,6 +1217,11 @@ static async Task VerifyProxyTunSafetyAsync(string root)
     var activeEngine = new MihomoEngine(new HealthyMihomoController(), new UnavailableMihomoConfigurationValidator(), new TestProxyPaths(Path.Combine(root, "proxy-tun")), tunSafety: service);
     Assert((await activeEngine.GetHealthAsync(CancellationToken.None)).TunState == ProxyTunState.Enabled,
         "Mihomo health did not report the verified active TUN session.");
+    // The marker records that a session was once verified; only the engine can say it is live now.
+    var observedOffEngine = new MihomoEngine(new HealthyMihomoController(tunEnabled: false), new UnavailableMihomoConfigurationValidator(),
+        new TestProxyPaths(Path.Combine(root, "proxy-tun")), tunSafety: service);
+    Assert((await observedOffEngine.GetHealthAsync(CancellationToken.None)).TunState == ProxyTunState.Disabled,
+        "Mihomo health trusted the recovery marker instead of the engine's own TUN flag.");
     Assert(await service.EmergencyDisableAsync(CancellationToken.None) is null && platform.RestoreCount == 1 && runtime.DisableCount == 1,
         "Emergency TUN disable did not restore the captured management route.");
     platform.SnapshotSafe = false;
@@ -1215,6 +1233,74 @@ static async Task VerifyProxyTunSafetyAsync(string root)
     platform.ApplySucceeds = true; platform.ManagementRouteVerifies = false;
     Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) == ProxyProblemCodes.ManagementRouteUnsafe && platform.RestoreCount == 3,
         "TUN activation that cut the management path was not rolled back.");
+}
+
+static async Task VerifyMihomoTunActivationPreservationAsync(string root)
+{
+    var settings = new ProxySettingsDto(false, false, true, true, false, "warning", 7890, false, "127.0.0.1", ProxyTunSettingsDto.Default);
+    var live = string.Join('\n',
+    [
+        "mode: rule",
+        "mixed-port: 7890",
+        "tun:",
+        "  enable: true",
+        "  stack: mixed",
+        "  device: \"Mihomo\"",
+        "  auto-route: true",
+        "  dns-hijack:",
+        "    - \"any:53\"",
+        "  mtu: 1500",
+        "  route-exclude-address:",
+        "    - \"127.0.0.0/8\"",
+        "    - \"::1/128\"",
+        "    - \"192.168.0.0/16\"",
+        "",
+    ]);
+    var activation = MihomoManagedConfiguration.ReadTunActivation(live);
+    Assert(activation.Enabled && activation.RouteExclusions.SequenceEqual(["127.0.0.0/8", "::1/128", "192.168.0.0/16"]),
+        "The live TUN activation was not read back from a managed configuration.");
+
+    // A settings write is not a TUN transition: it must carry the live activation across, because
+    // the marker is only bookkeeping and the adapter disappears as soon as the flag is dropped.
+    var rewritten = MihomoManagedConfiguration.WithManagedTunSettings(live, settings, activation.Enabled, activation.RouteExclusions);
+    var rewrittenActivation = MihomoManagedConfiguration.ReadTunActivation(rewritten);
+    Assert(rewrittenActivation.Enabled && rewrittenActivation.RouteExclusions.SequenceEqual(activation.RouteExclusions),
+        "A settings rewrite silently disabled TUN or dropped its route-exclusion boundary.");
+    Assert(rewritten.Split('\n').Count(line => line.TrimEnd('\r') == "tun:") == 1,
+        "A settings rewrite duplicated or dropped the managed TUN block.");
+    Assert(!MihomoManagedConfiguration.ReadTunActivation("mode: rule\ntun:\n  enable: false\n").Enabled,
+        "A disabled TUN was read back as enabled.");
+    Assert(MihomoManagedConfiguration.ReadTunActivation("tun:\n  enable: true\n  route-exclude-address: [\"192.168.0.0/16\"]\n")
+            .RouteExclusions.Single() == "192.168.0.0/16",
+        "An inline route-exclude-address sequence was silently lost.");
+
+    // The runtime was reconfigured outside the transaction, so the completed marker now contradicts
+    // the engine. Honouring it would refuse every later activation.
+    var platform = new TestProxyNetworkSafetyPlatform { SnapshotSafe = true };
+    var runtime = new TestProxyTunRuntimeController();
+    var service = new ProxyTunSafetyService(new TestProxyPaths(Path.Combine(root, "proxy-tun-stale")), platform, runtime);
+    Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) is null, "TUN activation failed before the stale-marker check.");
+    runtime.EngineReportsEnabled = false;
+    Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) is null,
+        "A completed TUN marker that the engine contradicts still blocked a later activation.");
+    Assert((await service.GetStatusAsync(CancellationToken.None)).HasRecoveryMarker,
+        "The replacement TUN session did not record its own marker.");
+    // An engine that cannot answer may not be used to invalidate durable state.
+    runtime.ObservationFails = true;
+    Assert(await service.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) == ProxyProblemCodes.RecoveryRequired,
+        "An unobserved engine was allowed to invalidate a completed TUN marker.");
+    runtime.ObservationFails = false;
+
+    // An unfinished marker describes an interrupted transition and is never stale.
+    var unfinishedPaths = new TestProxyPaths(Path.Combine(root, "proxy-tun-unfinished"));
+    Directory.CreateDirectory(unfinishedPaths.GetStateDirectory());
+    var snapshot = new ProxyManagementRouteSnapshot("test", DateTimeOffset.UtcNow, true, "eth0", "192.0.2.1", ["loopback"], []);
+    await File.WriteAllTextAsync(Path.Combine(unfinishedPaths.GetStateDirectory(), "proxy-tun-recovery.json"),
+        JsonSerializer.Serialize(new { OperationId = Guid.NewGuid(), ProfileId = Guid.NewGuid(), Snapshot = snapshot, CreatedAt = DateTimeOffset.UtcNow, ActivationCompleted = false }));
+    var unfinishedService = new ProxyTunSafetyService(unfinishedPaths,
+        new TestProxyNetworkSafetyPlatform { SnapshotSafe = true }, new TestProxyTunRuntimeController());
+    Assert(await unfinishedService.EnableAsync(Guid.NewGuid(), null, CancellationToken.None) == ProxyProblemCodes.RecoveryRequired,
+        "An unfinished TUN marker was treated as stale instead of requiring recovery.");
 }
 
 static async Task VerifyHostNetworkSafetyDiscoveryAsync()
@@ -1599,7 +1685,7 @@ sealed class TestMihomoRuntimeProbe : IMihomoRuntimeProbe
     public Task<string?> GetVersionAsync(string executablePath, CancellationToken cancellationToken) => Task.FromResult(File.Exists(executablePath) ? "Mihomo v1.19.30" : null);
 }
 
-sealed class HealthyMihomoController : IMihomoControllerClient
+sealed class HealthyMihomoController(bool tunEnabled = true) : IMihomoControllerClient
 {
     public Task<ControllerResult<bool>> IsReachableAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(true));
     public Task<ControllerResult<IReadOnlyList<ProxyGroupDto>>> GetGroupsAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyGroupDto>>.Success([]));
@@ -1612,6 +1698,7 @@ sealed class HealthyMihomoController : IMihomoControllerClient
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success([]));
     public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyDnsStatusDto(false, false, null));
+    public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(tunEnabled));
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
@@ -1628,6 +1715,7 @@ sealed class StaticGroupMihomoController(IReadOnlyList<ProxyGroupDto> groups) : 
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success([]));
     public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyDnsStatusDto(false, false, null));
+    public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(false));
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
@@ -1654,6 +1742,7 @@ sealed class DelayedHealthyMihomoController(int unavailableResponses) : IMihomoC
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => _healthy.CloseConnectionAsync(connectionId, cancellationToken);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => _healthy.GetLogsAsync(limit, cancellationToken);
     public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => _healthy.GetDnsStatusAsync(cancellationToken);
+    public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => _healthy.GetTunEnabledAsync(cancellationToken);
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => _healthy.ReloadAsync(cancellationToken);
 }
 
@@ -1742,12 +1831,21 @@ sealed class TestProxyTunRuntimeController : IProxyTunRuntimeController
     public int EnableCount { get; private set; }
     public int DisableCount { get; private set; }
     public ProxyManagementRouteSnapshot? LastSnapshot { get; private set; }
+    /// <summary>Models the engine's own <c>tun.enable</c> flag.  A transition keeps it consistent;
+    /// a test sets it directly to model a runtime reconfigured outside the transaction.</summary>
+    public bool EngineReportsEnabled { get; set; }
+    public bool ObservationFails { get; set; }
     public Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
     {
         LastSnapshot = snapshot;
         if (enabled) EnableCount++; else DisableCount++;
+        EngineReportsEnabled = enabled;
         return Task.FromResult<string?>(null);
     }
+    public Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(
+        ObservationFails
+            ? new ProxyTunRuntimeObservation(false, false, ProxyProblemCodes.ControllerUnavailable)
+            : new ProxyTunRuntimeObservation(true, EngineReportsEnabled));
 }
 
 sealed class DelegateHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler

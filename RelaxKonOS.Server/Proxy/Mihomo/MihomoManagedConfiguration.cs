@@ -57,8 +57,11 @@ internal static class MihomoManagedConfiguration
     }
 
     /// <summary>Replaces profile-provided TUN options with the bounded Server-owned subset.
-    /// TUN is deliberately kept disabled here; the transaction service remains its only activation path.</summary>
-    public static string WithManagedTunSettings(string yaml, ProxySettingsDto settings, bool enabled = false,
+    /// The activation flag is required on purpose: defaulting it to "disabled" turned every
+    /// unrelated settings write into a silent TUN teardown while the durable marker kept claiming
+    /// a live session.  A rewrite that is not itself a TUN transition must pass the already-live
+    /// activation read by <see cref="ReadTunActivation"/>.</summary>
+    public static string WithManagedTunSettings(string yaml, ProxySettingsDto settings, bool enabled,
         IReadOnlyList<string>? routeExclusions = null)
     {
         var tun = settings.Tun ?? ProxyTunSettingsDto.Default;
@@ -84,6 +87,61 @@ internal static class MihomoManagedConfiguration
                 builder.Append("    - \"").Append(EscapeYamlDoubleQuotedScalar(route)).Append("\"\n");
         }
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Reads the live TUN activation out of a managed configuration.  Activation belongs to the
+    /// safety transaction rather than to the Manager settings written next to it, so any rewrite
+    /// that is not itself a transition has to carry these two values forward.  The route
+    /// exclusions are an invariant boundary, not a preference: keeping <c>enable: true</c> while
+    /// dropping them would let auto-route swallow the management network.
+    /// </summary>
+    public static MihomoTunActivation ReadTunActivation(string yaml)
+    {
+        ArgumentNullException.ThrowIfNull(yaml);
+        var enabled = false;
+        var routeExclusions = new List<string>();
+        var inTun = false;
+        var inRouteExclusions = false;
+        using var reader = new StringReader(yaml);
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            if (TryGetTopLevelKey(line, out var key))
+            {
+                inTun = key.Equals("tun", StringComparison.OrdinalIgnoreCase);
+                inRouteExclusions = false;
+                continue;
+            }
+            if (!inTun || line.Length == 0 || line[0] == '#') continue;
+            // Any non-indented line that is not a key ends the block rather than belonging to it.
+            if (!char.IsWhiteSpace(line[0])) { inTun = false; continue; }
+            var trimmed = line.TrimStart();
+            if (trimmed.Length == 0 || trimmed[0] == '#') continue;
+            if (trimmed[0] == '-')
+            {
+                if (inRouteExclusions && Unquote(trimmed[1..].Trim()) is { Length: > 0 } route) routeExclusions.Add(route);
+                continue;
+            }
+            var separator = trimmed.IndexOf(':');
+            if (separator <= 0) continue;
+            var name = Unquote(trimmed[..separator].Trim());
+            var value = trimmed[(separator + 1)..].Trim();
+            inRouteExclusions = false;
+            if (name.Equals("enable", StringComparison.OrdinalIgnoreCase))
+            {
+                enabled = Unquote(value).Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+            else if (name.Equals("route-exclude-address", StringComparison.OrdinalIgnoreCase))
+            {
+                if (value.Length == 0) { inRouteExclusions = true; continue; }
+                // Tolerate the inline form so a hand-edited file cannot silently lose the
+                // boundary that the block form encodes.
+                foreach (var item in value.Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    if (Unquote(item.Trim()) is { Length: > 0 } route) routeExclusions.Add(route);
+            }
+        }
+        return new MihomoTunActivation(enabled, routeExclusions);
     }
 
     /// <summary>
@@ -184,4 +242,11 @@ internal static class MihomoManagedConfiguration
     private static string EscapeYamlDoubleQuotedScalar(string value) => value
         .Replace("\\", "\\\\", StringComparison.Ordinal)
         .Replace("\"", "\\\"", StringComparison.Ordinal);
+
+    private static string Unquote(string value) => value.Length >= 2 && value[0] == value[^1] && value[0] is '\'' or '"'
+        ? value[1..^1]
+        : value;
 }
+
+/// <summary>The TUN activation a managed configuration carries: the flag plus its safety boundary.</summary>
+internal sealed record MihomoTunActivation(bool Enabled, IReadOnlyList<string> RouteExclusions);

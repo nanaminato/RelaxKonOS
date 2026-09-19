@@ -95,6 +95,13 @@ public sealed class ProxyConfigurationTransactionService(
         {
             var yaml = await File.ReadAllTextAsync(storedPath, cancellationToken);
             var directory = paths.GetProtectedConfigurationDirectory(); Directory.CreateDirectory(directory); SetPrivateDirectory(directory);
+            var active = Path.Combine(directory, "active.yaml");
+            // Activating a profile rewrites the whole file, but TUN activation is session state
+            // owned by the safety transaction rather than by the profile.  Carry the live
+            // activation and its route-exclusion boundary across, exactly as a settings write does.
+            var tunActivation = File.Exists(active)
+                ? MihomoManagedConfiguration.ReadTunActivation(await File.ReadAllTextAsync(active, cancellationToken))
+                : new MihomoTunActivation(false, []);
             var secret = await controllerSecrets.GetOrCreateAsync(cancellationToken);
             var settings = settingsService is null
                 ? new ProxySettingsDto(false, false, true, true, false, "warning", 7890, false, "127.0.0.1", ProxyTunSettingsDto.Default)
@@ -103,9 +110,9 @@ public sealed class ProxyConfigurationTransactionService(
                 ? MihomoManagedConfiguration.WithServerControllerSettings(
                     MihomoManagedConfiguration.WithRuntimeSettings(
                         MihomoManagedConfiguration.WithManagedTunSettings(
-                            MihomoManagedConfiguration.WithServerGeoDataSettings(yaml), settings), settings), controllerOptions, secret)
+                            MihomoManagedConfiguration.WithServerGeoDataSettings(yaml), settings,
+                            tunActivation.Enabled, tunActivation.RouteExclusions), settings), controllerOptions, secret)
                 : yaml;
-            var active = Path.Combine(directory, "active.yaml");
             var temporary = Path.Combine(directory, ".apply-" + Guid.NewGuid().ToString("N"));
             var backup = Path.Combine(directory, "backup-" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture) + ".yaml");
             try
