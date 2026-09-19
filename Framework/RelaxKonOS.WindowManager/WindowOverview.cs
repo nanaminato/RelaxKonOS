@@ -136,8 +136,11 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
 
         _isVisible = true;
         // Selection starts on the window after the active one, so a single confirm switches away
-        // instead of being a no-op - the behaviour every desktop task switcher has.
-        _selectedIndex = _items.Count > 1 ? 1 : 0;
+        // instead of being a no-op - the behaviour every desktop task switcher has. A modal may
+        // currently own focus but be excluded from this system surface; in that case start at the
+        // most-recent regular window instead of skipping it.
+        var active = IndexOfActive();
+        _selectedIndex = active < 0 ? 0 : _items.Count > 1 ? (active + 1) % _items.Count : active;
         Raise();
         return true;
     }
@@ -204,7 +207,9 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
 
         var step = direction > 0 ? 1 : -1;
         var current = IndexOfActive();
-        var start = current < 0 ? 0 : current;
+        // A modal can currently be active while the overview intentionally excludes it. In that
+        // case no regular window is active, so forward cycling begins with the MRU item.
+        var start = current < 0 ? -1 : current;
         var next = (start + step + _items.Count) % _items.Count;
         var target = FindManaged(_items[next].WindowId);
 
@@ -237,10 +242,11 @@ public sealed class WindowOverviewController : IWindowOverviewController, IDispo
     {
         var previous = SelectedWindowId;
 
-        // Windows are kept bottom-to-top; the overview wants the active window first.
+        // The collection preserves creation order; focus instead raises a window's ZIndex. Sort
+        // by that authoritative activation order so task view and Alt+Tab are genuinely MRU.
         var ordered = _manager.Windows
             .Where(window => !window.IsModalDialog)
-            .Reverse()
+            .OrderByDescending(window => window.View.ZIndex)
             .ToList();
 
         _items.Clear();

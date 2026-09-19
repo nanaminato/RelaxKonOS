@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Services.Auth;
@@ -38,6 +39,11 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => ApplyConnectionBarOffset();
         DataContextChanged += async (_, _) => await AttachShellAsync();
         Opened += async (_, _) => await AttachShellAsync();
+        // System shortcuts must run before a managed application's own key handler.  They own
+        // desktop-wide navigation, whereas application shortcuts are only meaningful inside the
+        // active window.  The existing XAML KeyDown hook remains the bubbling fallback for the
+        // host-only keys below.
+        Root.AddHandler(InputElement.KeyDownEvent, Root_OnKeyDown, RoutingStrategies.Tunnel);
         AttachSystemUi();
     }
 
@@ -182,6 +188,12 @@ public partial class MainWindow : Window
     {
         if (e.Handled)
             return;
+
+        if (_systemUi?.HandleKey(e.Key, e.KeyModifiers) == true)
+        {
+            e.Handled = true;
+            return;
+        }
 
         // This is the final host-level fallback in the routed keyboard chain. A managed
         // application window gets the same key first and can consume it to leave only its

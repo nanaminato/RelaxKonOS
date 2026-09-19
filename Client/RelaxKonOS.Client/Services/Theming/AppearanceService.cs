@@ -20,8 +20,8 @@ namespace RelaxKonOS.Client.Services.Theming;
 /// * the style dictionary owns every shape/size/motion token and comes from a validated
 ///   <see cref="SystemStyleManifestDto"/> alone.
 ///
-/// A candidate style that cannot be resolved leaves the previous, already-verified pair in place,
-/// so a bad style can never produce a half-styled or transparent UI.
+/// A candidate style that cannot be resolved is replaced atomically by the complete shipped
+/// default profile, so a bad style can never produce a half-styled or transparent UI.
 /// </summary>
 public sealed class AppearanceService : IDisposable
 {
@@ -32,7 +32,8 @@ public sealed class AppearanceService : IDisposable
     private ResourceDictionary _styleResources = new();
     private AppearancePreferencesDto _appearance = AppearancePreferencesDto.Default;
     private ThemeKind _mode = ThemeKind.Light;
-    private string _styleId = SystemStyleIds.WindowsLike;
+    private string _requestedStyleId = SystemStyleIds.WindowsLike;
+    private string _appliedStyleId = SystemStyleIds.WindowsLike;
     private string? _styleProblem;
 
     public AppearanceService(Application application, ISystemStyleRegistry styles)
@@ -46,7 +47,7 @@ public sealed class AppearanceService : IDisposable
     }
 
     /// <summary>The style actually rendering right now. May differ from the requested id when that id is unavailable.</summary>
-    public string AppliedStyleId => _styleId;
+    public string AppliedStyleId => _appliedStyleId;
 
     /// <summary>Problem code for the requested style, or null when it resolved.</summary>
     public string? StyleProblem => _styleProblem;
@@ -65,7 +66,7 @@ public sealed class AppearanceService : IDisposable
     {
         _mode = mode;
         _appearance = appearance ?? AppearancePreferencesDto.Default;
-        _styleId = string.IsNullOrWhiteSpace(systemStyleId) ? SystemStyleIds.WindowsLike : systemStyleId!;
+        _requestedStyleId = string.IsNullOrWhiteSpace(systemStyleId) ? SystemStyleIds.WindowsLike : systemStyleId!;
         if (Dispatcher.UIThread.CheckAccess()) ApplyCore();
         else Dispatcher.UIThread.Post(ApplyCore);
     }
@@ -97,10 +98,12 @@ public sealed class AppearanceService : IDisposable
         foreach (var (name, value) in colors)
             palette[name + "Color"] = Color.Parse(value);
 
-        // A style that fails to resolve keeps the last good style on screen; the problem code is
-        // surfaced through StyleProblem instead of degrading the UI.
-        var resolved = _styles.TryGetManifest(_styleId, out var manifest, out var problem);
+        // An unavailable style renders the complete shipped default profile. Keep the requested
+        // id and the actually-rendering id distinct so callers never report an unavailable style
+        // as applied.
+        var resolved = _styles.TryGetManifest(_requestedStyleId, out var manifest, out var problem);
         _styleProblem = resolved ? null : problem;
+        _appliedStyleId = resolved ? manifest.Id : SystemStyleIds.WindowsLike;
 
         var style = BuildStyleResources(colors, dark, resolved ? manifest : null);
         Swap(palette, style);

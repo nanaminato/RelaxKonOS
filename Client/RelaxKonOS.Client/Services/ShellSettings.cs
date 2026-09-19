@@ -103,8 +103,7 @@ public sealed partial class ShellSettings : ObservableObject
 
     /// <summary>True when the workspace asked for a style this device cannot resolve.</summary>
     public bool HasUnavailableSystemStyle =>
-        !SystemStyleIds.All.Contains(SystemStyleId, StringComparer.Ordinal)
-        || !string.Equals(AppliedSystemStyleId, SystemStyleId, StringComparison.Ordinal);
+        !string.Equals(AppliedSystemStyleId, SystemStyleId, StringComparison.Ordinal);
 
     /// <summary>The style actually rendering; falls back to the shipped default profile.</summary>
     public string AppliedSystemStyleId => _appearanceService.AppliedStyleId;
