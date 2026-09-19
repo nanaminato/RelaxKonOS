@@ -51,7 +51,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public ObservableCollection<string> AvailableWindowsVersions { get; } = [];
     public ObservableCollection<CertificateDto> Certificates { get; } = [];
     public ObservableCollection<WebServerSiteBindingEditor> SiteBindings { get; } = [];
-    public IReadOnlyList<WebServerSiteKind> SiteKinds { get; } = [WebServerSiteKind.ReverseProxy, WebServerSiteKind.Static];
+    public ObservableCollection<WebServerProxyRouteEditor> SiteRoutes { get; } = [];
     public IReadOnlyList<SiteCertificateSourceOption> SiteCertificateSources { get; } =
     [
         new(SiteCertificateSource.Managed, LocalizedText.Get("webservers.site.certificate_source.managed")),
@@ -79,9 +79,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     [ObservableProperty] private string _localPackageName = string.Empty;
     [ObservableProperty] private string _siteName = string.Empty;
     [ObservableProperty] private string _siteBindingsBatch = string.Empty;
-    [ObservableProperty] private string _siteUpstream = string.Empty;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsReverseProxySite), nameof(IsStaticSite))] private WebServerSiteKind _selectedSiteKind = WebServerSiteKind.ReverseProxy;
+    [ObservableProperty] private string _siteRootPath = string.Empty;
+    [ObservableProperty] private bool _siteSpaFallback = true;
     [ObservableProperty] private bool _siteHttpsEnabled;
+    [ObservableProperty] private bool _siteRedirectHttpToHttps = true;
+    [ObservableProperty] private bool _siteIpv6Enabled;
     [ObservableProperty] private CertificateDto? _selectedSiteCertificate;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsManagedCertificateSource), nameof(IsServerFileCertificateSource))]
     private SiteCertificateSourceOption? _selectedSiteCertificateSource;
@@ -106,8 +108,6 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public bool IsWindowsServer => _session.CurrentServer?.Platform == PlatformKind.Windows;
     public bool IsLinuxServer => _session.CurrentServer?.Platform == PlatformKind.Linux;
     public bool HasOperationActivity => !string.IsNullOrWhiteSpace(OperationText);
-    public bool IsReverseProxySite => SelectedSiteKind == WebServerSiteKind.ReverseProxy;
-    public bool IsStaticSite => SelectedSiteKind == WebServerSiteKind.Static;
     public bool IsManagedCertificateSource => SelectedSiteCertificateSource?.Value != SiteCertificateSource.ServerFiles;
     public bool IsServerFileCertificateSource => SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles;
     public bool IsIntegratedServer => SelectedServer?.ManagementMode == WebServerManagementMode.Integrated;
@@ -420,7 +420,11 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             .Select(binding => new WebServerSiteBindingDto(binding.Domain.Trim(), binding.Port))
             .Where(binding => !string.IsNullOrWhiteSpace(binding.Domain))
             .ToArray();
-        if (bindings.Length == 0 || string.IsNullOrWhiteSpace(SiteName) || (IsReverseProxySite && string.IsNullOrWhiteSpace(SiteUpstream))
+        var routes = SiteRoutes
+            .Where(route => !string.IsNullOrWhiteSpace(route.Path) || !string.IsNullOrWhiteSpace(route.Upstream))
+            .Select(route => new WebServerProxyRouteDto(route.Path.Trim(), route.Upstream.Trim(), route.DisableBuffering))
+            .ToArray();
+        if (bindings.Length == 0 || string.IsNullOrWhiteSpace(SiteName) || (string.IsNullOrWhiteSpace(SiteRootPath) && routes.Length == 0)
             || (SiteHttpsEnabled && (SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed
                 ? SelectedSiteCertificate is null : string.IsNullOrWhiteSpace(SiteCertificatePath))))
         {
@@ -429,10 +433,9 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         }
         try
         {
-            var domains = bindings.Select(binding => binding.Domain).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            var request = new UpsertWebServerSiteRequest(SelectedSite?.Id, SiteName.Trim(), SelectedSiteKind, domains, bindings[0].Port,
-                IsReverseProxySite ? SiteUpstream.Trim() : null, null,
-                SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, bindings,
+            var request = new UpsertWebServerSiteRequest(SelectedSite?.Id, SiteName.Trim(), bindings,
+                string.IsNullOrWhiteSpace(SiteRootPath) ? null : SiteRootPath.Trim(), SiteSpaFallback, routes,
+                SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, SiteRedirectHttpToHttps, SiteIpv6Enabled,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null);
             var saved = await _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id,
@@ -488,9 +491,13 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         SiteBindingsBatch = string.Empty;
         SiteBindings.Clear();
         SiteBindings.Add(new WebServerSiteBindingEditor());
-        SiteUpstream = string.Empty;
-        SelectedSiteKind = WebServerSiteKind.ReverseProxy;
+        SiteRootPath = string.Empty;
+        SiteSpaFallback = true;
+        SiteRoutes.Clear();
+        SiteRoutes.Add(new WebServerProxyRouteEditor());
         SiteHttpsEnabled = false;
+        SiteRedirectHttpToHttps = false;
+        SiteIpv6Enabled = false;
         SelectedSiteCertificate = null;
         SelectedSiteCertificateSource = SiteCertificateSources[0];
         SiteCertificatePath = string.Empty;
@@ -530,11 +537,17 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         SiteName = value.Name;
         SiteBindingsBatch = string.Empty;
         SiteBindings.Clear();
-        foreach (var binding in value.EffectiveBindings)
+        foreach (var binding in value.Bindings)
             SiteBindings.Add(new WebServerSiteBindingEditor(binding.Domain, binding.Port));
-        SiteUpstream = value.Upstream ?? string.Empty;
-        SelectedSiteKind = value.Kind;
+        SiteRootPath = value.RootPath ?? string.Empty;
+        SiteSpaFallback = value.SpaFallback;
+        SiteRoutes.Clear();
+        foreach (var route in value.Routes)
+            SiteRoutes.Add(new WebServerProxyRouteEditor(route.Path, route.Upstream, route.DisableBuffering));
+        if (SiteRoutes.Count == 0) SiteRoutes.Add(new WebServerProxyRouteEditor());
         SiteHttpsEnabled = value.HttpsEnabled;
+        SiteRedirectHttpToHttps = value.RedirectHttpToHttps;
+        SiteIpv6Enabled = value.Ipv6Enabled;
         SelectedSiteCertificate = Certificates.FirstOrDefault(certificate => certificate.Id == value.CertificateId);
         SiteCertificatePath = value.CertificatePath ?? string.Empty;
         SitePrivateKeyPath = value.PrivateKeyPath ?? string.Empty;
@@ -546,6 +559,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         if (value is not null)
             SelectedSiteCertificateSource = SiteCertificateSources[0];
     }
+
+    partial void OnSiteHttpsEnabledChanged(bool value) => SiteRedirectHttpToHttps = value;
 
     private async Task LoadCertificatesAsync()
     {
@@ -611,6 +626,15 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     private void RemoveSiteBinding(WebServerSiteBindingEditor? binding)
     {
         if (binding is not null && SiteBindings.Count > 1) SiteBindings.Remove(binding);
+    }
+
+    [RelayCommand]
+    private void AddSiteRoute() => SiteRoutes.Add(new WebServerProxyRouteEditor());
+
+    [RelayCommand]
+    private void RemoveSiteRoute(WebServerProxyRouteEditor? route)
+    {
+        if (route is not null) SiteRoutes.Remove(route);
     }
 
     /// <summary>Converts pasted <c>domain:port</c> rows into independently editable binding pairs.</summary>
@@ -827,6 +851,21 @@ public sealed partial class WebServerSiteBindingEditor : ObservableObject
 
     [ObservableProperty] private string _domain = string.Empty;
     [ObservableProperty] private int _port = 80;
+}
+
+/// <summary>Editable, UI-local representation of a path prefix forwarded to one upstream.</summary>
+public sealed partial class WebServerProxyRouteEditor : ObservableObject
+{
+    public WebServerProxyRouteEditor(string path = "/", string upstream = "", bool disableBuffering = false)
+    {
+        Path = path;
+        Upstream = upstream;
+        DisableBuffering = disableBuffering;
+    }
+
+    [ObservableProperty] private string _path = "/";
+    [ObservableProperty] private string _upstream = string.Empty;
+    [ObservableProperty] private bool _disableBuffering;
 }
 
 /// <summary>Explicitly selects one HTTPS material source, so managed certificates and raw host

@@ -17,11 +17,6 @@
                 </StackPanel>
 
                 <StackPanel Spacing="4">
-                    <TextBlock Text="{loc:Loc webservers.site.dialog.kind}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <ComboBox ItemsSource="{Binding SiteKinds}" SelectedItem="{Binding SelectedSiteKind, Mode=TwoWay}" />
-                </StackPanel>
-
-                <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc webservers.site.dialog.bindings_batch}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{loc:Loc webservers.site.dialog.bindings_batch_help}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
@@ -47,18 +42,35 @@
                     <Button Content="{loc:Loc webservers.site.dialog.add_binding}" Command="{Binding AddSiteBindingCommand}" HorizontalAlignment="Left" />
                 </StackPanel>
 
-                <StackPanel Spacing="4" IsVisible="{Binding IsReverseProxySite}">
-                    <TextBlock Text="{loc:Loc webservers.site.dialog.upstream}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <TextBox Text="{Binding SiteUpstream, Mode=TwoWay}" PlaceholderText="http://127.0.0.1:3000" />
-                </StackPanel>
-
-                <StackPanel Spacing="4" IsVisible="{Binding IsStaticSite}">
+                <StackPanel Spacing="6">
                     <TextBlock Text="{loc:Loc webservers.site.dialog.static_root}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{loc:Loc webservers.site.dialog.static_root_help}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Text="{Binding SiteRootPath, Mode=TwoWay}" PlaceholderText="/srv/relaxkon/frontend/browser" />
+                    <CheckBox Content="{loc:Loc webservers.site.dialog.spa_fallback}" IsChecked="{Binding SiteSpaFallback, Mode=TwoWay}" />
                 </StackPanel>
 
                 <StackPanel Spacing="6">
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.routes}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{loc:Loc webservers.site.dialog.routes_help}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <ItemsControl ItemsSource="{Binding SiteRoutes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="webservers:WebServerProxyRouteEditor">
+                                <Grid ColumnDefinitions="130,*,Auto,Auto" ColumnSpacing="8" Margin="0,0,0,4">
+                                    <TextBox Text="{Binding Path, Mode=TwoWay}" PlaceholderText="/api/" />
+                                    <TextBox Grid.Column="1" Text="{Binding Upstream, Mode=TwoWay}" PlaceholderText="http://127.0.0.1:5062" />
+                                    <CheckBox Grid.Column="2" Content="{loc:Loc webservers.site.dialog.disable_buffering}" IsChecked="{Binding DisableBuffering, Mode=TwoWay}" VerticalAlignment="Center" />
+                                    <Button Grid.Column="3" Content="{loc:Loc webservers.site.dialog.remove_route}" Tag="{Binding}" Click="RemoveRoute_Click" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="{loc:Loc webservers.site.dialog.add_route}" Command="{Binding AddSiteRouteCommand}" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <CheckBox Content="{loc:Loc webservers.site.dialog.enable_ipv6}" IsChecked="{Binding SiteIpv6Enabled, Mode=TwoWay}" />
                     <CheckBox Content="{loc:Loc webservers.site.dialog.enable_https}" IsChecked="{Binding SiteHttpsEnabled, Mode=TwoWay}" />
+                    <CheckBox Content="{loc:Loc webservers.site.dialog.redirect_http_to_https}" IsChecked="{Binding SiteRedirectHttpToHttps, Mode=TwoWay}" IsEnabled="{Binding SiteHttpsEnabled}" />
                     <ComboBox ItemsSource="{Binding SiteCertificateSources}" SelectedItem="{Binding SelectedSiteCertificateSource, Mode=TwoWay}"
                               DisplayMemberBinding="{ReflectionBinding Label}" IsEnabled="{Binding SiteHttpsEnabled}" />
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding IsManagedCertificateSource}">

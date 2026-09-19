@@ -1255,20 +1255,47 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     Assert((bool)isNginxProcessName.Invoke(null, ["nginx: worker process"])!, "The Linux Nginx worker-process name was rejected.");
     Assert(!(bool)isNginxProcessName.Invoke(null, ["nginx-helper"])!, "An unrelated process name was accepted as Nginx.");
 
-    var multiPortSite = new WebServerSiteDto("multi-port", "nginx-test", "multi-port", WebServerSiteKind.Static,
-        ["app.example.test", "admin.example.test"], 5000, null, "/srv/relaxkonos-sites/multi-port", null, false, DateTimeOffset.UtcNow,
-        [new WebServerSiteBindingDto("app.example.test", 5000), new WebServerSiteBindingDto("admin.example.test", 6000)]);
+    var multiPortSite = new WebServerSiteDto("multi-port", "nginx-test", "multi-port",
+        [new WebServerSiteBindingDto("app.example.test", 5000), new WebServerSiteBindingDto("admin.example.test", 6000)],
+        "/srv/relaxkonos-sites/multi-port", true, [new WebServerProxyRouteDto("/api/", "http://127.0.0.1:5090")], null, false, false, false, DateTimeOffset.UtcNow);
     Assert(multiPortSite.DomainsDisplay == "app.example.test:5000, admin.example.test:6000", "Multi-port bindings were not formatted for the site table.");
     var renderSite = typeof(NginxWebServerManager).GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
         .Single(method => method.Name == "RenderSiteConfiguration" && method.GetParameters().Length == 2);
     var rendered = (string)renderSite.Invoke(null, [multiPortSite, null])!;
     Assert(rendered.Split("server {", StringSplitOptions.None).Length == 2 && rendered.Contains("listen 5000;") && rendered.Contains("listen 6000;")
         && rendered.Contains("server_name app.example.test admin.example.test;"), "A multi-port site was not rendered as one Nginx server with all listeners and names.");
-    var proxySite = multiPortSite with { Id = "proxy-site", Kind = WebServerSiteKind.ReverseProxy, RootPath = null, Upstream = "http://127.0.0.1:5090" };
+    var proxySite = multiPortSite with { Id = "proxy-site", RootPath = null, Routes = [new WebServerProxyRouteDto("/", "http://127.0.0.1:5090")] };
     var renderedProxy = (string)renderSite.Invoke(null, [proxySite, null])!;
     Assert(renderedProxy.Contains("proxy_http_version 1.1;")
         && renderedProxy.Contains("proxy_set_header Upgrade $http_upgrade;")
         && renderedProxy.Contains("proxy_set_header Connection \"upgrade\";"), "A reverse-proxy site did not preserve WebSocket upgrades for SignalR.");
+    var integratedSite = multiPortSite with
+    {
+        Id = "relaxkon",
+        Bindings = [new WebServerSiteBindingDto("relaxkon.com", 80), new WebServerSiteBindingDto("www.relaxkon.com", 80), new WebServerSiteBindingDto("downloads.relaxkon.com", 80)],
+        RootPath = "/srv/relaxkon/frontend/browser",
+        SpaFallback = true,
+        Routes = [
+            new WebServerProxyRouteDto("/api/", "http://127.0.0.1:5062"),
+            new WebServerProxyRouteDto("/relaxkonos/", "http://127.0.0.1:5062", true),
+            new WebServerProxyRouteDto("/apt/", "http://127.0.0.1:5062", true),
+        ],
+        HttpsEnabled = true,
+        RedirectHttpToHttps = true,
+        Ipv6Enabled = true,
+    };
+    (string FullChainPath, string PrivateKeyPath)? integrationCertificate = ("/etc/letsencrypt/live/relaxkon.com/fullchain.pem", "/etc/letsencrypt/live/relaxkon.com/privkey.pem");
+    var renderedIntegrated = (string)renderSite.Invoke(null, [integratedSite, integrationCertificate])!;
+    Assert(renderedIntegrated.Contains("return 301 https://$host$request_uri;")
+        && renderedIntegrated.Contains("listen [::]:80;")
+        && renderedIntegrated.Contains("listen 443 ssl http2;")
+        && renderedIntegrated.Contains("listen [::]:443 ssl http2;")
+        && renderedIntegrated.Contains("root /srv/relaxkon/frontend/browser;")
+        && renderedIntegrated.Contains("try_files $uri $uri/ /index.html;")
+        && renderedIntegrated.Contains("location ^~ /api/")
+        && renderedIntegrated.Contains("location ^~ /relaxkonos/")
+        && renderedIntegrated.Contains("proxy_request_buffering off;")
+        && renderedIntegrated.Contains("proxy_buffering off;"), "A combined static-and-proxy site did not render its HTTPS, SPA, routing, and download settings.");
     var configurationTestProblem = typeof(NginxWebServerManager).GetMethod("ConfigurationTestProblem", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Nginx configuration-test problem classifier was not found.");
     Assert((string)configurationTestProblem.Invoke(null, ["[emerg] host not found in upstream \"locahost\""])! == "webserver.site_upstream_unresolvable",
@@ -1284,12 +1311,10 @@ static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
 
     var findRoutingConflict = typeof(NginxWebServerManager).GetMethod("FindRoutingConflict", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Nginx site conflict detector was not found.");
-    var existingSite = new WebServerSiteDto("existing", "nginx-test", "existing", WebServerSiteKind.Static,
-        ["app.example.test"], 5000, null, "/srv/relaxkonos-sites/existing", null, false, DateTimeOffset.UtcNow,
-        [new WebServerSiteBindingDto("app.example.test", 5000)]);
-    var conflictingSite = new WebServerSiteDto("new-site", "nginx-test", "new-site", WebServerSiteKind.Static,
-        ["app.example.test"], 5000, null, "/srv/relaxkonos-sites/new-site", null, false, DateTimeOffset.UtcNow,
-        [new WebServerSiteBindingDto("app.example.test", 5000)]);
+    var existingSite = new WebServerSiteDto("existing", "nginx-test", "existing",
+        [new WebServerSiteBindingDto("app.example.test", 5000)], "/srv/relaxkonos-sites/existing", false, [], null, false, false, false, DateTimeOffset.UtcNow);
+    var conflictingSite = new WebServerSiteDto("new-site", "nginx-test", "new-site",
+        [new WebServerSiteBindingDto("app.example.test", 5000)], "/srv/relaxkonos-sites/new-site", false, [], null, false, false, false, DateTimeOffset.UtcNow);
     Assert(findRoutingConflict.Invoke(null, [new[] { existingSite }, conflictingSite]) is not null, "Duplicate domain and port bindings were not rejected.");
     var tlsSite = existingSite with { Id = "tls-site", HttpsEnabled = true };
     var port443Site = conflictingSite with { Id = "port-443-site", Bindings = [new WebServerSiteBindingDto("app.example.test", 443)] };

@@ -34,7 +34,7 @@
                           VerticalScrollBarVisibility="Auto" MinWidth="0" MinHeight="0" VerticalAlignment="Stretch">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc webservers.site.column.name}" Binding="{ReflectionBinding Name}" Width="150" />
-                        <DataGridTextColumn Header="{loc:Loc webservers.site.column.kind}" Binding="{ReflectionBinding Kind, Converter={x:Static webservers:WebServerEnumTextConverter.Instance}, ConverterParameter=site_kind}" Width="110" />
+                        <DataGridTextColumn Header="{loc:Loc webservers.site.column.routing}" Binding="{ReflectionBinding RoutingDisplay}" Width="140" />
                         <DataGridTextColumn Header="{loc:Loc webservers.site.column.domain}" Binding="{ReflectionBinding DomainsDisplay}" Width="*" />
                         <DataGridTemplateColumn Header="{loc:Loc webservers.site.column.service_address}" Width="300">
                             <DataGridTemplateColumn.CellTemplate>

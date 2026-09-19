@@ -23,4 +23,11 @@ internal partial class WebServerSiteDialogView : UserControl
             && DataContext is WebServerManagerViewModel viewModel)
             viewModel.RemoveSiteBindingCommand.Execute(binding);
     }
+
+    private void RemoveRoute_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { Tag: WebServerProxyRouteEditor route }
+            && DataContext is WebServerManagerViewModel viewModel)
+            viewModel.RemoveSiteRouteCommand.Execute(route);
+    }
 }

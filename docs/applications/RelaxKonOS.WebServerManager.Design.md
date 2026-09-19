@@ -1,6 +1,6 @@
 # RelaxKonOS WebServerManager / Nginx 集成设计
 
-> 状态：**Nginx Provider V2 已实现**。除发现、配置测试、集成、受管安装和生命周期管理外，已支持 RelaxKonOS 自有的反向代理与静态站点：创建、修改、删除都会先执行 `nginx -t`，再重载或回滚。站点可绑定证书管理器中已有的证书；私钥仍只保留在服务器本地。证书的签发与自动续期后触发重载仍可在后续阶段进一步自动化。
+> 状态：**Nginx Provider V3 已实现**。除发现、配置测试、集成、受管安装和生命周期管理外，一个 RelaxKonOS 站点现在可同时服务静态目录、SPA 回退和多个路径前缀的反向代理；创建、修改、删除都会先执行 `nginx -t`，再重载或回滚。站点可绑定证书管理器中已有的证书；私钥仍只保留在服务器本地。证书的签发与自动续期后触发重载仍可在后续阶段进一步自动化。
 
 ## 1. 设计背景
 
@@ -889,24 +889,32 @@ public sealed record WebSiteDefinition
 
     public required IReadOnlyList<WebSiteBinding> Bindings { get; init; }
 
-    public WebSiteTarget? Target { get; init; }
+    public string? StaticRootPath { get; init; }
+
+    public bool SpaFallback { get; init; }
+
+    public required IReadOnlyList<WebSiteProxyRoute> Routes { get; init; }
 
     public Guid? CertificateId { get; init; }
 }
 ```
 
-反向代理：
+每个代理路由：
 
 ```csharp
-public sealed record ReverseProxyTarget
+public sealed record WebSiteProxyRoute
 {
-    public required Uri Address { get; init; }
+    public required string PathPrefix { get; init; }
 
-    public bool WebSocket { get; init; }
+    public required Uri Upstream { get; init; }
+
+    public bool DisableBuffering { get; init; }
 }
 ```
 
-NginxProvider 负责把通用模型 Render 为 nginx 配置。
+静态根目录与路由不再是互斥的“站点类型”。静态站点只填写 `StaticRootPath`，纯代理站点只填写 `Routes`（用 `/` 覆盖整个站点），整合站点可以同时填写两者。NginxProvider 负责把通用模型 Render 为 nginx 配置。
+
+站点还可选择为每个监听端口写入 IPv6 listener；启用 HTTPS 后可将 HTTP 请求重定向到 TLS listener。这样同一张 SAN 或通配符证书会绑定到该站点的所有域名。
 
 未来 IISProvider 可以将同一模型转换为 IIS Binding / Rewrite 配置。
 
@@ -1188,14 +1196,16 @@ DELETE /api/v1.0/webservers/{id}/sites/{siteId}
 
 ---
 
-## 24. 创建反向代理站点流程
+## 24. 创建可组合站点流程
 
 例如：
 
 ```text
-remote.example.com
-        ↓
-http://127.0.0.1:8000
+relaxkon.com
+ ├── /             → /srv/relaxkon/frontend/browser（SPA）
+ ├── /api/         → http://127.0.0.1:5062
+ ├── /relaxkonos/  → http://127.0.0.1:5062（无缓冲）
+ └── /apt/         → http://127.0.0.1:5062（无缓冲）
 ```
 
 流程：
@@ -1210,7 +1220,7 @@ Website API
 WebSiteManager
    │
    ├── 检查域名
-   ├── 检查端口冲突
+   ├── 检查端口、路径和路由冲突
    ├── 保存 WebSiteDefinition
    │
    ▼
@@ -1343,7 +1353,7 @@ WebSiteDefinition
 
 目标：
 
-- 创建反向代理站点。
+- 创建可组合的静态、代理或整合站点。
 - 自动生成 RelaxKonOS-owned 配置。
 - 支持 nginx -t。
 - 支持自动回滚。
@@ -1569,7 +1579,7 @@ webserver.install_elevation_required
 
 `IWebServerProvider` 仅描述 Provider 能力；实际可用能力由 `WebServerInstance + ManagementMode + 当前权限` 共同决定。未受管 Nginx 仅作为集成候选项，不构成 `WebServerInstance`，不得宣称具备“管理站点/修改配置/重载”的能力；`Integrated` 仅可修改 RelaxKonOS ownership 的目录；`Managed` 才可提供安装、升级和卸载。
 
-`ReverseProxyTarget.Address` 不是可直接写入 Nginx 的任意 URI。服务端必须拒绝 URI 凭据、控制字符、未知 scheme 和未声明端口，规范化主机名并在解析后再次校验地址，防止 DNS rebinding。V1 仅支持显式确认的 `http`/`https` 上游；对 loopback、私网、链路本地和元数据地址的代理采用管理员可见的策略，不能让站点表单成为 SSRF 或内网扫描接口。
+`WebSiteProxyRoute.Upstream` 不是可直接写入 Nginx 的任意 URI。服务端必须拒绝 URI 凭据、控制字符、未知 scheme 和未声明端口，规范化主机名并在解析后再次校验地址，防止 DNS rebinding。当前版本仅支持显式确认的 `http`/`https` 上游；对 loopback、私网、链路本地和元数据地址的代理采用管理员可见的策略，不能让站点表单成为 SSRF 或内网扫描接口。路径前缀必须是以 `/` 开头的受限路径，静态根目录必须是服务器上存在、非符号链接的绝对目录。
 
 ### 30.3 可验证的配置事务
 

@@ -293,8 +293,8 @@ internal sealed partial class NginxWebServerManager(
             logger.LogError("Nginx site save rejected because the RelaxKonOS site directory could not be resolved. InstanceId={InstanceId}, Configuration={Configuration}, ManagementMode={ManagementMode}", instance.Id, instance.ConfigurationPath, instance.ManagementMode);
             return null;
         }
-        logger.LogInformation("Saving Nginx site. InstanceId={InstanceId}, SiteId={SiteId}, Name={Name}, Kind={Kind}, ListenPort={ListenPort}, HttpsEnabled={HttpsEnabled}, SitesDirectory={SitesDirectory}",
-            instance.Id, site.Id, site.Name, site.Kind, site.ListenPort, site.HttpsEnabled, directory);
+        logger.LogInformation("Saving Nginx site. InstanceId={InstanceId}, SiteId={SiteId}, Name={Name}, ListenPort={ListenPort}, RootPath={RootPath}, RouteCount={RouteCount}, HttpsEnabled={HttpsEnabled}, SitesDirectory={SitesDirectory}",
+            instance.Id, site.Id, site.Name, site.Bindings[0].Port, site.RootPath, site.Routes.Count, site.HttpsEnabled, directory);
         await IntegrationGate.WaitAsync(cancellationToken);
         try
         {
@@ -330,7 +330,7 @@ internal sealed partial class NginxWebServerManager(
             }
             if (!await WriteSitesAsync(directory, sites, cancellationToken))
                 throw new WebServerSiteApplyException("webserver.site_save_failed");
-            logger.LogInformation("Nginx site saved successfully. InstanceId={InstanceId}, SiteId={SiteId}, ListenPort={ListenPort}, SitesDirectory={SitesDirectory}", instance.Id, site.Id, site.ListenPort, directory);
+            logger.LogInformation("Nginx site saved successfully. InstanceId={InstanceId}, SiteId={SiteId}, ListenPort={ListenPort}, SitesDirectory={SitesDirectory}", instance.Id, site.Id, site.Bindings[0].Port, directory);
             return site;
         }
         catch (IOException exception) { logger.LogError(exception, "I/O failure while saving Nginx site. InstanceId={InstanceId}, SiteId={SiteId}, SitesDirectory={SitesDirectory}", instance.Id, site.Id, directory); return null; }
@@ -424,15 +424,10 @@ internal sealed partial class NginxWebServerManager(
         site = default!;
         problem = "webserver.site_name_invalid";
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 80) return false;
-        problem = "webserver.site_kind_invalid";
-        if (!Enum.IsDefined(request.Kind)) return false;
         var id = string.IsNullOrWhiteSpace(request.Id) ? ToSiteId(request.Name) : request.Id.Trim().ToLowerInvariant();
         problem = "webserver.site_name_invalid";
         if (!SiteIdPattern().IsMatch(id)) return false;
-        var requestedBindings = request.Bindings is { Count: > 0 }
-            ? request.Bindings
-            : (request.Domains ?? []).Select(domain => new WebServerSiteBindingDto(domain, request.ListenPort)).ToArray();
-        var bindings = requestedBindings
+        var bindings = (request.Bindings ?? [])
             .Select(binding => new WebServerSiteBindingDto(binding.Domain.Trim().TrimEnd('.').ToLowerInvariant(), binding.Port))
             .Where(binding => binding.Domain.Length > 0)
             .DistinctBy(binding => (binding.Domain, binding.Port))
@@ -454,19 +449,53 @@ internal sealed partial class NginxWebServerManager(
             || !TryNormalizeCertificateFile(request.PrivateKeyPath, CertificateFileKind.PrivateKey, required: false, out privateKeyPath))) return false;
         if (hasLocalCertificate && privateKeyPath is null) privateKeyPath = certificatePath;
         if (hasManagedCertificate && hasLocalCertificate) return false;
-        string? upstream = null;
-        if (request.Kind == WebServerSiteKind.ReverseProxy)
+        problem = "webserver.site_root_invalid";
+        if (!TryNormalizeRootPath(request.RootPath, out var root)) return false;
+        var routes = new List<WebServerProxyRouteDto>();
+        foreach (var route in request.Routes ?? [])
         {
+            problem = "webserver.site_route_path_invalid";
+            var path = route.Path?.Trim() ?? string.Empty;
+            if (!IsValidRoutePath(path) || routes.Any(existing => string.Equals(existing.Path, path, StringComparison.Ordinal))) return false;
             problem = "webserver.site_upstream_invalid";
-            if (!Uri.TryCreate(request.Upstream?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment)) return false;
-            upstream = uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.PathAndQuery, UriFormat.UriEscaped).TrimEnd('/');
+            if (!TryNormalizeUpstream(route.Upstream, out var upstream)) return false;
+            routes.Add(new WebServerProxyRouteDto(path, upstream, route.DisableBuffering));
         }
-        var root = request.Kind == WebServerSiteKind.Static ? Path.Combine(GetStaticSitesRoot(instance), id) : null;
-        var domains = bindings.Select(binding => binding.Domain).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        site = new WebServerSiteDto(id, instance.Id, request.Name.Trim(), request.Kind, domains, bindings[0].Port, upstream, root, request.CertificateId, request.HttpsEnabled, DateTimeOffset.UtcNow, bindings,
+        problem = "webserver.site_content_required";
+        if (root is null && routes.Count == 0) return false;
+        problem = "webserver.site_https_redirect_invalid";
+        if (request.RedirectHttpToHttps && !request.HttpsEnabled) return false;
+        site = new WebServerSiteDto(id, instance.Id, request.Name.Trim(), bindings, root, request.SpaFallback, routes, request.CertificateId, request.HttpsEnabled, request.RedirectHttpToHttps, request.Ipv6Enabled, DateTimeOffset.UtcNow,
             hasLocalCertificate ? certificatePath : null, hasLocalCertificate ? privateKeyPath : null);
         return true;
     }
+
+    private static bool TryNormalizeRootPath(string? supplied, out string? root)
+    {
+        root = null;
+        if (string.IsNullOrWhiteSpace(supplied)) return true;
+        try
+        {
+            if (!Path.IsPathFullyQualified(supplied.Trim())) return false;
+            var fullPath = Path.GetFullPath(supplied.Trim());
+            if (!Directory.Exists(fullPath) || IsSymbolicLink(fullPath) || fullPath.Any(char.IsControl)
+                || fullPath.IndexOfAny([' ', '\t', '"', '\'', ';', '#', '{', '}', '$']) >= 0) return false;
+            root = fullPath;
+            return true;
+        }
+        catch (Exception) when (supplied is not null) { return false; }
+    }
+
+    private static bool TryNormalizeUpstream(string? supplied, out string upstream)
+    {
+        upstream = string.Empty;
+        if (!Uri.TryCreate(supplied?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")
+            || !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment)) return false;
+        upstream = uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.PathAndQuery, UriFormat.UriEscaped).TrimEnd('/');
+        return true;
+    }
+
+    private static bool IsValidRoutePath(string value) => RoutePathPattern().IsMatch(value);
 
     /// <summary>
     /// Nginx accepts duplicate server names on a listener with only a warning, then silently
@@ -491,11 +520,11 @@ internal sealed partial class NginxWebServerManager(
     /// <summary>Includes the implicit TLS listener emitted for every HTTPS-enabled site.</summary>
     private static IEnumerable<SiteRoutingBinding> GetRoutingBindings(WebServerSiteDto site)
     {
-        var domains = site.EffectiveBindings
+        var domains = site.Bindings
             .Select(binding => binding.Domain.Trim().TrimEnd('.').ToLowerInvariant())
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        var ports = site.EffectiveBindings.Select(binding => binding.Port).Distinct().ToArray();
+        var ports = site.Bindings.Select(binding => binding.Port).Distinct().ToArray();
         foreach (var domain in domains)
         foreach (var port in ports)
             yield return new SiteRoutingBinding(domain, port);
@@ -556,17 +585,8 @@ internal sealed partial class NginxWebServerManager(
                 return "webserver.site_certificate_required";
             }
         }
-        if (site.RootPath is not null)
-        {
-            if (IsSymbolicLink(site.RootPath))
-            {
-                logger.LogWarning("Nginx site save rejected because the static site root is a symbolic link. InstanceId={InstanceId}, SiteId={SiteId}, RootPath={RootPath}", instance.Id, site.Id, site.RootPath);
-                return "webserver.site_save_failed";
-            }
-            var index = Path.Combine(site.RootPath, "index.html");
-            if (!File.Exists(index) && !await WriteNginxFileAsync(index, "<h1>Welcome to RelaxKonOS</h1>\n", cancellationToken))
-                return "webserver.site_save_failed";
-        }
+        if (site.RootPath is not null && (!Directory.Exists(site.RootPath) || IsSymbolicLink(site.RootPath)))
+            return "webserver.site_root_invalid";
         var config = Path.Combine(directory, $"{site.Id}.conf");
         if (File.Exists(config) && !IsRelaxKonOSSiteConfig(config))
         {
@@ -647,21 +667,41 @@ internal sealed partial class NginxWebServerManager(
 
     private static string RenderSiteConfiguration(WebServerSiteDto site, (string FullChainPath, string PrivateKeyPath)? certificatePaths, string? acmeChallengeRoot)
     {
-        var body = site.Kind == WebServerSiteKind.ReverseProxy
-            ? $"location / {{\n        proxy_pass {site.Upstream};\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection \"upgrade\";\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }}"
-            : $"root {NginxConfigPath(site.RootPath!)};\n    index index.html;\n    location / {{ try_files $uri $uri/ =404; }}";
-        var bindings = site.EffectiveBindings;
+        var bindings = site.Bindings;
         var serverNames = string.Join(' ', bindings.Select(binding => binding.Domain).Distinct(StringComparer.OrdinalIgnoreCase));
-        var listens = bindings.Select(binding => binding.Port).Distinct()
-            .Where(port => certificatePaths is null || port != 443)
-            .Select(port => $"listen {port};")
-            .ToList();
-        if (certificatePaths is not null)
-        {
-            listens.Add($"listen 443 ssl;\n    ssl_certificate {NginxConfigPath(certificatePaths.Value.FullChainPath)};\n    ssl_certificate_key {NginxConfigPath(certificatePaths.Value.PrivateKeyPath)};");
-        }
         var acmeLocation = string.IsNullOrWhiteSpace(acmeChallengeRoot) ? "" : $"\n    location ^~ /.well-known/acme-challenge/ {{\n        alias {NginxConfigPath(acmeChallengeRoot)}/;\n        default_type text/plain;\n    }}";
-        return $"# Managed by RelaxKonOS. Site: {site.Id}\nserver {{\n    {string.Join("\n    ", listens)}\n    server_name {serverNames};{acmeLocation}\n    {body}\n}}\n";
+        var httpListens = bindings.Select(binding => binding.Port).Distinct()
+            .Where(port => certificatePaths is null || port != 443)
+            .SelectMany(port => RenderListeners(port, "", site.Ipv6Enabled)).ToList();
+        var tlsListener = certificatePaths is null ? "" : $"{string.Join("\n    ", RenderListeners(443, "ssl http2", site.Ipv6Enabled))}\n    ssl_certificate {NginxConfigPath(certificatePaths.Value.FullChainPath)};\n    ssl_certificate_key {NginxConfigPath(certificatePaths.Value.PrivateKeyPath)};";
+        if (site.RedirectHttpToHttps)
+        {
+            var redirect = httpListens.Count == 0 ? "" : $"server {{\n    {string.Join("\n    ", httpListens)}\n    server_name {serverNames};{acmeLocation}\n    location / {{ return 301 https://$host$request_uri; }}\n}}\n\n";
+            return $"# Managed by RelaxKonOS. Site: {site.Id}\n{redirect}server {{\n    {tlsListener}\n    server_name {serverNames};\n    {RenderSiteBody(site)}\n}}\n";
+        }
+        var listens = httpListens;
+        if (!string.IsNullOrWhiteSpace(tlsListener)) listens.Add(tlsListener);
+        return $"# Managed by RelaxKonOS. Site: {site.Id}\nserver {{\n    {string.Join("\n    ", listens)}\n    server_name {serverNames};{acmeLocation}\n    {RenderSiteBody(site)}\n}}\n";
+    }
+
+    private static string RenderSiteBody(WebServerSiteDto site)
+    {
+        var routes = site.Routes.Select(route =>
+        {
+            var buffering = route.DisableBuffering ? "\n        proxy_request_buffering off;\n        proxy_buffering off;" : "";
+            return $"location ^~ {route.Path} {{\n        proxy_pass {route.Upstream};\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection \"upgrade\";\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;{buffering}\n    }}";
+        });
+        var fallback = site.RootPath is not null
+            ? $"root {NginxConfigPath(site.RootPath)};\n    index index.html;\n    location / {{ try_files $uri $uri/ {(site.SpaFallback ? "/index.html" : "=404")}; }}"
+            : site.Routes.Any(route => route.Path == "/") ? "" : "location / { return 404; }";
+        return string.Join("\n    ", routes.Append(fallback).Where(part => !string.IsNullOrEmpty(part)));
+    }
+
+    private static IEnumerable<string> RenderListeners(int port, string parameters, bool ipv6Enabled)
+    {
+        var suffix = string.IsNullOrEmpty(parameters) ? ";" : $" {parameters};";
+        yield return $"listen {port}{suffix}";
+        if (ipv6Enabled) yield return $"listen [::]:{port}{suffix}";
     }
 
     private static string? GetSitesDirectory(WebServerDto instance)
@@ -679,15 +719,6 @@ internal sealed partial class NginxWebServerManager(
         try { return File.Exists(marker) && !IsSymbolicLink(marker) && File.ReadAllText(marker) == OwnershipMarker + "\nACME HTTP-01 enabled.\n"; }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
-    }
-
-    private string GetStaticSitesRoot(WebServerDto instance)
-    {
-        if (OperatingSystem.IsLinux()) return "/var/lib/relaxkonos/webserver/nginx/sites";
-        if (instance.ManagementMode == WebServerManagementMode.Managed && UsesSystemPackageManagedService())
-            return Path.Combine(GetManagedLayout().Root, "sites");
-        var configDirectory = Path.GetDirectoryName(instance.ConfigurationPath!)!;
-        return Path.Combine(configDirectory, "relaxkonos-sites");
     }
 
     private async Task<bool> WriteNginxFileAsync(string path, string content, CancellationToken cancellationToken)
@@ -1754,6 +1785,8 @@ internal sealed partial class NginxWebServerManager(
     private static partial Regex HttpBlockPattern();
     [GeneratedRegex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", RegexOptions.CultureInvariant)]
     private static partial Regex SiteIdPattern();
+    [GeneratedRegex("^/(?:[A-Za-z0-9._~-]+/)*$", RegexOptions.CultureInvariant)]
+    private static partial Regex RoutePathPattern();
     [GeneratedRegex("^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex DomainPattern();
 
