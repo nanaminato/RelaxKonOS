@@ -1,4 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Avalonia.Media;
+using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.ViewModels.Shell;
@@ -10,11 +12,15 @@ public sealed partial class DesktopFileEntryViewModel : ObservableObject
     {
         Entry = entry;
         IconGlyph = GetIcon(entry);
+        IconImage = ExplorerIconAssetLoader.LoadEntry(entry.Type, entry.Name);
     }
 
     public FileSystemEntryDto Entry { get; }
     public string DisplayName => Entry.Name;
     public string IconGlyph { get; }
+    /// <summary>Explorer's extension-aware artwork, reused by desktop file and folder entries.</summary>
+    public IImage? IconImage { get; }
+    public bool HasIconImage => IconImage is not null;
     public bool IsDirectory => Entry.Type is FileSystemEntryType.Directory or FileSystemEntryType.Drive;
     [ObservableProperty] private bool _isDesktopSelected;
 

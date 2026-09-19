@@ -260,15 +260,15 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         var (name, glyph, image) = item switch
         {
             AppEntryViewModel app => (app.DisplayName, app.IconGlyph ?? "◼", app.IconImage),
-            DesktopFileEntryViewModel file => (file.DisplayName, file.IconGlyph, null),
+            DesktopFileEntryViewModel file => (file.DisplayName, file.IconGlyph, file.IconImage),
             ShortcutEntryViewModel shortcut => (shortcut.DisplayName, shortcut.IconGlyph ?? "↗", null),
             _ => (item.ToString() ?? string.Empty, "◼", null),
         };
         var content = new StackPanel { Spacing = 3, HorizontalAlignment = HorizontalAlignment.Center };
         if (image is not null)
-            content.Children.Add(new Image { Source = image, Width = 32, Height = 32, HorizontalAlignment = HorizontalAlignment.Center });
+            content.Children.Add(new Image { Source = image, Width = 48, Height = 48, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center });
         else
-            content.Children.Add(new TextBlock { Text = glyph, FontSize = 30, HorizontalAlignment = HorizontalAlignment.Center });
+            content.Children.Add(new TextBlock { Text = glyph, FontSize = 42, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center });
         var label = new TextBlock
         {
             Text = name, MaxWidth = 108, MaxLines = 2, TextWrapping = TextWrapping.Wrap,
@@ -279,7 +279,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
         // stays reachable from the tooltip rather than being silently lost to the ellipsis.
         ToolTip.SetTip(label, name);
         content.Children.Add(label);
-        var button = new Button { Content = content, Width = 116, Height = 84, Margin = new Thickness(3),
+        var button = new Button { Content = content, Width = 116, Height = 108, Margin = new Thickness(3),
             HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
             Tag = DesktopEntryMarker };
         button.Bind(Button.BackgroundProperty, new Binding("IsDesktopSelected") { Converter = DesktopSelectionBrushConverter.Instance });
@@ -494,8 +494,8 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
 
     private static Button WindowsStartAppButton(DesktopShellViewModel vm, AppEntryViewModel app)
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("40,*"), Height = 46 };
-        row.Children.Add(AppIcon(app, 28));
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("48,*"), Height = 52 };
+        row.Children.Add(AppIcon(app, 32));
         var name = new TextBlock
         {
             Text = app.DisplayName,
@@ -512,7 +512,7 @@ public sealed class WindowsLikeDesktopShell() : LauncherDesktopShellBase(BuiltIn
             Content = row,
             Command = vm.LaunchCommand,
             CommandParameter = app.Id,
-            Height = 46,
+            Height = 52,
             Padding = new Thickness(8, 0),
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,

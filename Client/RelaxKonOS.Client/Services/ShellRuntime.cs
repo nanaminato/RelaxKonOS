@@ -408,7 +408,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
     private ShellDesktopState CreateSnapshot()
     {
         var applications = _workspace.StartApps
-            .Select(app => new ShellApplicationEntry(app.Id, app.DisplayName, app.IconGlyph, app.Description))
+            .Select(app => new ShellApplicationEntry(app.Id, app.DisplayName, app.IconGlyph, app.Description, app.IconImage))
             .ToArray();
         var entries = _workspace.DesktopItems.Select(ToEntry).Where(entry => entry is not null).Cast<ShellDesktopEntry>().ToArray();
         var desktopStyles = _catalog.Available
@@ -424,7 +424,7 @@ internal sealed class DesktopShellStateAdapter : IDisposable
         AppEntryViewModel app => new ShellDesktopEntry("app:" + app.Id.Value, app.DisplayName,
             ShellDesktopEntryKind.Application, app.IconGlyph, app.Id, app.IsDesktopSelected, app.IconImage),
         DesktopFileEntryViewModel file => new ShellDesktopEntry("file:" + EntryHash(file.Entry.Path), file.DisplayName,
-            file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph, null, file.IsDesktopSelected),
+            file.IsDirectory ? ShellDesktopEntryKind.Folder : ShellDesktopEntryKind.File, file.IconGlyph, null, file.IsDesktopSelected, file.IconImage),
         ShortcutEntryViewModel shortcut => new ShellDesktopEntry("shortcut:" + shortcut.DisplayName, shortcut.DisplayName,
             ShellDesktopEntryKind.Shortcut, shortcut.IconGlyph, null, shortcut.IsDesktopSelected),
         _ => null,

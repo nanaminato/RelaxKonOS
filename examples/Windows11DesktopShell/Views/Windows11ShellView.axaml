@@ -170,10 +170,14 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Button Classes="start-tile" Width="142" Height="88"
-                                            Command="{Binding $parent[UserControl].DataContext.OpenApplicationCommand}"
-                                            CommandParameter="{Binding}">
+                                        Command="{Binding $parent[UserControl].DataContext.OpenApplicationCommand}"
+                                        CommandParameter="{Binding}">
                                         <StackPanel Spacing="6">
-                                            <TextBlock Text="{Binding IconGlyph}" FontSize="26" Height="34" TextAlignment="Center" />
+                                            <Grid Width="38" Height="38" HorizontalAlignment="Center">
+                                                <Image Source="{Binding IconImage}" IsVisible="{Binding HasIconImage}" Stretch="Uniform" />
+                                                <TextBlock Text="{Binding IconGlyph}" FontSize="32" TextAlignment="Center"
+                                                           IsVisible="{Binding !HasIconImage}" />
+                                            </Grid>
                                             <TextBlock Classes="primary" Text="{Binding DisplayName}" FontSize="12" MaxLines="2"
                                                        TextAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" />
                                         </StackPanel>
