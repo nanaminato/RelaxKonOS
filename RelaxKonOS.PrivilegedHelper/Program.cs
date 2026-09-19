@@ -15,8 +15,16 @@ if (OperatingSystem.IsWindows() && args.Contains("--windows-service", StringComp
 
 if (OperatingSystem.IsWindows() && args.Contains("--console", StringComparer.Ordinal))
 {
-    await WindowsPrivilegedHelperConsoleHost.RunAsync(args);
-    return 0;
+    try
+    {
+        await WindowsPrivilegedHelperConsoleHost.RunAsync(args);
+        return 0;
+    }
+    catch (Exception exception) when (exception is UnauthorizedAccessException or IOException or InvalidOperationException or ArgumentException or JsonException or FormatException)
+    {
+        Console.Error.WriteLine($"Privileged Helper startup failed: {exception.Message}");
+        return exception is UnauthorizedAccessException ? 77 : 1;
+    }
 }
 
 return await PrivilegedOperationExecutor.RunOneShotAsync();

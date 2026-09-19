@@ -13,6 +13,10 @@ public static class WindowsPrivilegedHelperConsoleHost
 {
     public static async Task RunAsync(string[] args)
     {
+        using var identity = WindowsIdentity.GetCurrent();
+        if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+            throw new UnauthorizedAccessException("Administrator privileges are required. Open PowerShell or Windows Terminal with 'Run as administrator', then run the Helper command again.");
+
         var configPath = FindConfigPath(args);
         var configJson = File.ReadAllText(configPath);
         using var document = JsonDocument.Parse(configJson);
@@ -25,7 +29,7 @@ public static class WindowsPrivilegedHelperConsoleHost
             ?? throw new InvalidOperationException("Windows Helper console configuration is invalid.");
         configuration.Validate();
 
-        var userSid = WindowsIdentity.GetCurrent().User?.Value
+        var userSid = identity.User?.Value
             ?? throw new InvalidOperationException("The current Windows identity has no SID.");
         await using var pipeServer = new WindowsPrivilegedPipeServer(configuration.ToPipeConfiguration(userSid), exception =>
             Console.Error.WriteLine($"Privileged Helper pipe request failed: {exception.GetType().Name}"));

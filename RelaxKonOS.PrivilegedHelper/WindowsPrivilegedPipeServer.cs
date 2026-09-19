@@ -22,7 +22,14 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _recentOperationIds = new();
     private Task? _listener;
 
-    public void Start() => _listener = Task.Run(ListenAsync);
+    public void Start()
+    {
+        if (_listener is not null) throw new InvalidOperationException("The Helper pipe server has already started.");
+        // Fail startup synchronously if the pipe cannot be created. Hosts must not report
+        // readiness while a background listener is repeatedly failing to bind.
+        var firstPipe = CreatePipe();
+        _listener = Task.Run(() => ListenAsync(firstPipe));
+    }
 
     public async Task StopAsync()
     {
@@ -38,20 +45,21 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
         _stopping.Dispose();
     }
 
-    private async Task ListenAsync()
+    private async Task ListenAsync(NamedPipeServerStream? firstPipe)
     {
         var secret = Convert.FromBase64String(configuration.SharedSecret);
-        while (!_stopping.IsCancellationRequested)
+        do
         {
             try
             {
-                await using var pipe = CreatePipe();
+                await using var pipe = firstPipe ?? CreatePipe();
+                firstPipe = null;
                 await pipe.WaitForConnectionAsync(_stopping.Token);
                 await HandleAsync(pipe, secret, _stopping.Token);
             }
             catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { }
             catch (Exception exception) { reportFailure(exception); }
-        }
+        } while (!_stopping.IsCancellationRequested);
     }
 
     private NamedPipeServerStream CreatePipe()
