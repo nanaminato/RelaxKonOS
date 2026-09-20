@@ -155,14 +155,31 @@ public static class ApplicationDeploymentEndpoints
 
         // --- Staging input -------------------------------------------------------------------
         group.MapPost(ApplicationDeploymentApiRoutes.UploadPattern,
-            async (HttpContext http, ApplicationDeploymentStagingStore staging) => await HandleAsync(async () =>
+            async (HttpContext http, ApplicationDeploymentStagingStore staging, ILoggerFactory loggerFactory) => await HandleAsync(async () =>
             {
-                if (!http.Request.HasFormContentType) return Problem(ApplicationDeploymentProblemCodes.InvalidRequest, 415);
+                var logger = loggerFactory.CreateLogger("ApplicationDeploymentUpload");
+                logger.LogInformation("Application deployment archive upload received. ContentType={ContentType}, ContentLength={ContentLength}",
+                    http.Request.ContentType, http.Request.ContentLength);
+                if (!http.Request.HasFormContentType)
+                {
+                    logger.LogWarning("Application deployment archive upload rejected because the request is not multipart form data. ContentType={ContentType}",
+                        http.Request.ContentType);
+                    return Problem(ApplicationDeploymentProblemCodes.InvalidRequest, 415);
+                }
                 var form = await http.Request.ReadFormAsync(http.RequestAborted);
                 var file = form.Files.FirstOrDefault();
-                if (file is null || file.Length == 0) return Problem(ApplicationDeploymentProblemCodes.ArchiveUnavailable, 400);
+                if (file is null || file.Length == 0)
+                {
+                    logger.LogWarning("Application deployment archive upload rejected because no non-empty file part was supplied. FileCount={FileCount}",
+                        form.Files.Count);
+                    return Problem(ApplicationDeploymentProblemCodes.ArchiveUnavailable, 400);
+                }
+                logger.LogInformation("Application deployment archive upload form parsed. FileName={FileName}, DeclaredBytes={DeclaredBytes}",
+                    Path.GetFileName(file.FileName), file.Length);
                 await using var stream = file.OpenReadStream();
                 var staged = await staging.StageAsync(file.FileName, stream, Actor(http.User), http.RequestAborted);
+                logger.LogInformation("Application deployment archive upload staged. ReferenceId={ReferenceId}, FileName={FileName}, Bytes={Bytes}",
+                    staged.ReferenceId, staged.FileName, staged.Length);
                 return Results.Ok(staged);
             }))
             .RequireAuthorization(ManagePolicy)

@@ -14,10 +14,13 @@ internal sealed class ApplicationDeploymentStagingStore
     private readonly ConcurrentDictionary<string, Entry> entries = new(StringComparer.Ordinal);
     private readonly string root;
     private readonly ApplicationDeploymentOptions options;
+    private readonly ILogger<ApplicationDeploymentStagingStore> logger;
 
-    public ApplicationDeploymentStagingStore(IHostEnvironment environment, ApplicationDeploymentOptions options)
+    public ApplicationDeploymentStagingStore(IHostEnvironment environment, ApplicationDeploymentOptions options,
+        ILogger<ApplicationDeploymentStagingStore> logger)
     {
         this.options = options;
+        this.logger = logger;
         root = Path.Combine(environment.ContentRootPath, options.RootDirectory, "staging");
     }
 
@@ -31,6 +34,8 @@ internal sealed class ApplicationDeploymentStagingStore
         var temporary = Path.Combine(root, id + ".uploading");
         var destination = Path.Combine(root, id + ".archive");
         long length = 0;
+        logger.LogInformation("Application deployment archive staging started. FileName={FileName}, MaximumBytes={MaximumBytes}",
+            safeName, options.MaximumArchiveBytes);
         try
         {
             await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
@@ -41,16 +46,26 @@ internal sealed class ApplicationDeploymentStagingStore
                 {
                     length += read;
                     if (length > options.MaximumArchiveBytes)
+                    {
+                        logger.LogWarning("Application deployment archive staging rejected an oversized upload. FileName={FileName}, ReceivedBytes={ReceivedBytes}, MaximumBytes={MaximumBytes}",
+                            safeName, length, options.MaximumArchiveBytes);
                         throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveTooLarge, 400);
+                    }
                     await stream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                 }
                 await stream.FlushAsync(cancellationToken);
             }
-            if (length == 0) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveUnavailable, 400);
+            if (length == 0)
+            {
+                logger.LogWarning("Application deployment archive staging rejected an empty upload. FileName={FileName}", safeName);
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ArchiveUnavailable, 400);
+            }
             File.Move(temporary, destination);
         }
-        catch
+        catch (Exception exception)
         {
+            logger.LogWarning(exception, "Application deployment archive staging failed. FileName={FileName}, ReceivedBytes={ReceivedBytes}",
+                safeName, length);
             if (File.Exists(temporary)) File.Delete(temporary);
             if (File.Exists(destination)) File.Delete(destination);
             throw;
@@ -58,6 +73,8 @@ internal sealed class ApplicationDeploymentStagingStore
 
         var expiresAt = Expiry();
         entries[id] = new Entry(ApplicationDeploymentValidation.Reference(actor), safeName, destination, length, expiresAt);
+        logger.LogInformation("Application deployment archive staging completed. ReferenceId={ReferenceId}, FileName={FileName}, Bytes={Bytes}, ExpiresAt={ExpiresAt}",
+            id, safeName, length, expiresAt);
         return new(id, safeName, length, expiresAt);
     }
 

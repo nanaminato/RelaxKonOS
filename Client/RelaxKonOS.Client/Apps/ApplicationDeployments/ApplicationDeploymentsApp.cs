@@ -98,7 +98,8 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
                 AllowMultiple = false,
                 FileTypeFilter = [new FilePickerFileType(LocalizedText.Get("application_deployments.wizard.archive_file_type")) { Patterns = ["*.zip", "*.jar", "*.tar", "*.gz", "*.tgz"] }],
             });
-            return selected.FirstOrDefault()?.TryGetLocalPath();
+            var file = selected.FirstOrDefault();
+            return file is null ? null : new LocalDeploymentArchive(file.Name, file.OpenReadAsync);
         };
 
         viewModel.PickServerArchiveAsync = () => explorer is null

@@ -57,7 +57,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     /// <summary>Assigned by the app shell to pick a server-side archive path for the wizard.</summary>
     public Func<Task<string?>>? PickServerArchiveAsync { get; set; }
     /// <summary>Assigned by the app shell to pick a local archive path for upload.</summary>
-    public Func<Task<string?>>? PickLocalArchiveAsync { get; set; }
+    public Func<Task<LocalDeploymentArchive?>>? PickLocalArchiveAsync { get; set; }
     /// <summary>Assigned by the app shell to put the access address on the system clipboard.</summary>
     public Func<string, Task>? CopyToClipboardAsync { get; set; }
     /// <summary>Assigned by the app shell to hand a URL to the default browser.</summary>

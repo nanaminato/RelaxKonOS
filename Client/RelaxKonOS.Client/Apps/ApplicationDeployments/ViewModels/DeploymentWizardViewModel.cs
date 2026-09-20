@@ -25,6 +25,12 @@ public enum DeploymentWizardIntent
 /// </summary>
 public sealed record DeploymentOption<TValue>(TValue Value, string Label) where TValue : struct;
 
+/// <summary>
+/// A locally selected deployment archive. The picker owns the storage handle, so upload reads its
+/// stream directly instead of requiring an optional local filesystem path.
+/// </summary>
+public sealed record LocalDeploymentArchive(string FileName, Func<Task<Stream>> OpenReadAsync);
+
 /// <summary>The ordered wizard steps, matching the order the design fixes for the deployment flow.</summary>
 public enum DeploymentWizardStep
 {
@@ -129,8 +135,8 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         [.. Enum.GetValues<ApplicationReadinessLevel>().Select(level =>
             new DeploymentOption<ApplicationReadinessLevel>(level, LocalizedText.Get(DeploymentText.Enum(DeploymentText.ReadinessPrefix, level))))];
 
-    /// <summary>Assigned by the app shell to pick a local archive and return its path for upload.</summary>
-    public Func<Task<string?>>? PickLocalArchiveAsync { get; set; }
+    /// <summary>Assigned by the app shell to pick a local archive and return a readable stream for upload.</summary>
+    public Func<Task<LocalDeploymentArchive?>>? PickLocalArchiveAsync { get; set; }
     /// <summary>Assigned by the app shell to pick an archive that already lives on the server.</summary>
     public Func<Task<string?>>? PickServerArchiveAsync { get; set; }
     /// <summary>Assigned by the app shell so the wizard can ask to be closed.</summary>
@@ -308,14 +314,14 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     private async Task ChooseLocalArchiveAsync()
     {
         if (PickLocalArchiveAsync is null) return;
-        var path = await PickLocalArchiveAsync();
-        if (string.IsNullOrWhiteSpace(path)) return;
-        await StageAsync(() =>
+        var archive = await PickLocalArchiveAsync();
+        if (archive is null) return;
+        await StageAsync(async () =>
         {
-            // The local file is read here and streamed to the server's staging area. Only the returned
-            // reference id travels with the deployment request, never the host path.
-            using var stream = File.OpenRead(path);
-            return client.UploadArchiveAsync(Path.GetFileName(path), stream);
+            // The local file is streamed directly from the storage-provider handle. Only the returned
+            // reference id travels with the deployment request, never a host path.
+            await using var stream = await archive.OpenReadAsync();
+            return await client.UploadArchiveAsync(archive.FileName, stream);
         });
     }
 
