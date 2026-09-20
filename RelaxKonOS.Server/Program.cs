@@ -313,6 +313,7 @@ builder.Services.AddAuthentication(options =>
                 if (!string.IsNullOrEmpty(accessToken) &&
                     (path.StartsWithSegments("/hubs/terminals") || path.StartsWithSegments(RelaxKonOSEndpoints.GuardianLogsHubPath)
                      || path.StartsWithSegments(RelaxKonOSEndpoints.PerformanceHubPath)
+                     || path.StartsWithSegments(RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath)
                      || path.StartsWithSegments(RelaxKonOSEndpoints.SettingsChangesHubPath)))
                 {
                     context.Token = accessToken;
@@ -424,6 +425,9 @@ builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.IApplicat
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentManager>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCoordinator>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLiveLogs>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogSubscriptions>();
+builder.Services.AddHostedService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogBroadcastService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCoordinator>());
 // The readiness probe talks to the container's published loopback port, so it needs its own bounded
 // client whose timeout is a readiness timeout rather than a request timeout.
@@ -914,6 +918,8 @@ if (OperatingSystem.IsLinux())
     app.MapFirewallEndpoints();
 app.MapHub<TerminalHub>("/hubs/terminals", options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath, options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogsHub>(RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath,
+    options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath, options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath, options => options.CloseOnAuthenticationExpiration = true);
 

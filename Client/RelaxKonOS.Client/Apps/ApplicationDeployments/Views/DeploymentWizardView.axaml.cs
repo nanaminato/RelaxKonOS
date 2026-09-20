@@ -19,9 +19,15 @@ internal partial class DeploymentWizardView : UserControl
     {
         InitializeComponent();
         DataContext = viewModel;
+        // Follow new output unless the operator is focusing the pane to inspect/copy a line.
+        LiveLogBox.TextChanged += (_, _) =>
+        {
+            if (!LiveLogBox.IsFocused) LiveLogBox.CaretIndex = LiveLogBox.Text?.Length ?? 0;
+        };
         viewModel.CloseRequested = () => dialog.Close(true);
         WizardScrollViewer.SizeChanged += (_, _) => UpdateWizardContentWidth();
         AttachedToVisualTree += (_, _) => UpdateWizardContentWidth();
+        DetachedFromVisualTree += (_, _) => viewModel.StopObserving();
     }
 
     private void UpdateWizardContentWidth()

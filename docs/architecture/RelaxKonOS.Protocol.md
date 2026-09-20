@@ -519,6 +519,15 @@ Hub 路径 `/hubs/workspace`。Server 端实现 `WorkspaceHub : Hub<IWorkspaceHu
 
 > **连接语义**：客户端首次建立 Performance Hub 连接后立即订阅广播；订阅会启动采样，首个有效样本约在一个采样间隔后可用。重连时先调 REST `performance/history?seconds=60` 拉取仍在同一订阅期内的历史，再从 Hub 实时衔接；无人订阅期间 snapshot 返回 503。
 
+### ApplicationDeploymentLogs Hub（`/hubs/application-deployment-logs`）
+
+应用部署实时日志，路径常量 `RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath`。要求 JWT、`ApplicationDeploymentsRead` 策略及应用部署宿主能力，与 REST 操作诊断的读取范围一致。
+
+- Client → Server：`ApplicationDeploymentLogsHubMethods.Subscribe(Guid operationId)`，每连接观察一个操作，返回 `DeploymentLiveLogSnapshot`；不存在的操作拒绝订阅。
+- Server → Client：`IApplicationDeploymentLogsClient.OnDeploymentLogs(DeploymentLiveLogSnapshot)`，快照包含 `OperationId`、递增 `Version`、`Lines` 和 `Truncated`。每行含 UTC 时间、脱敏消息、可选 `DeploymentStage`。
+- 最近 300 行有界快照，最多每秒推送两次有变化的尾部；客户端以版本去重，重连时重新 Subscribe 补回内存尾部。尾部不跨服务端重启保存；REST 持久操作记录仍是状态真相源，终态诊断通过原有操作日志端点读取。
+- 断开连接移除订阅，不取消部署；token 到期关闭连接，客户端刷新 token 后重连。此 Hub 不承载归档数据，归档仍走 HTTP 流式 multipart 上传。
+
 ### GuardianLogs Hub（`/hubs/guardian-logs`）
 
 Process Guardian 守护日志的实时广播。客户端通过 `Subscribe/Unsubscribe` 按工作负载 ID 或全部订阅；服务端 `GuardianLogBroadcastService` + `GuardianLogSubscriptionRegistry`（Singleton）维护订阅列表。详见 [`RelaxKonOS.ProcessGuardian.md`](../applications/RelaxKonOS.ProcessGuardian.md)。

@@ -79,10 +79,19 @@
                              server file is only referenced by path. Neither sends a host path onward. -->
                         <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6">
                             <Button Content="{loc:Loc application_deployments.wizard.choose_local_archive}"
+                                    IsEnabled="{Binding !IsBusy}"
                                     Command="{Binding ChooseLocalArchiveCommand}" Padding="12,5" />
                             <Button Content="{loc:Loc application_deployments.wizard.choose_server_archive}"
+                                    IsEnabled="{Binding !IsBusy}"
                                     Command="{Binding ChooseServerArchiveCommand}" Padding="12,5" />
                         </WrapPanel>
+                        <StackPanel Spacing="6" IsVisible="{Binding HasUploadProgress}">
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding UploadPercent}"
+                                         IsIndeterminate="{Binding UploadIndeterminate}" Height="6" />
+                            <TextBlock Text="{Binding UploadProgressText}" TextWrapping="Wrap" FontSize="12" />
+                            <Button Content="{loc:Loc common.cancel}" Command="{Binding CancelUploadCommand}"
+                                    IsVisible="{Binding IsUploading}" />
+                        </StackPanel>
                         <TextBlock Text="{Binding ArchiveFileName}" FontSize="12" TextWrapping="Wrap"
                                    IsVisible="{Binding HasArchive}"
                                    Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -252,6 +261,14 @@
                                Foreground="{DynamicResource TextPrimaryBrush}" />
                     <TextBlock Text="{Binding ProgressText}" FontSize="12"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding LiveLogStatus}" FontSize="12" TextWrapping="Wrap" />
+                    <TextBox x:Name="LiveLogBox" Text="{Binding LiveLogText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True"
+                             TextWrapping="NoWrap" Height="300"
+                             FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                    <TextBlock Text="{loc:Loc application_deployments.log_truncated}" IsVisible="{Binding IsLiveLogTruncated}"
+                               FontSize="11" Foreground="{DynamicResource WarningBrush}" />
                     <!-- Why the step failed, in the command's own words. It appears only once a failed
                          operation has actually produced output, so the pane is never shown empty. -->
                     <StackPanel Spacing="6" IsVisible="{Binding HasDiagnostics}">

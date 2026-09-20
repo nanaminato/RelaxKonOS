@@ -71,10 +71,13 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     public Task<DeploymentOperationDto> CancelOperationAsync(Guid operationId, string idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAsync<DeploymentOperationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Cancel(operationId), null, idempotencyKey, cancellationToken);
 
-    public async Task<DeploymentStagedFileDto> UploadArchiveAsync(string fileName, Stream content, CancellationToken cancellationToken = default)
+    public IAsyncDisposable WatchLogs(Guid operationId, Action<RelaxKonOS.Protocol.Hubs.DeploymentLiveLogSnapshot> receive, Action<bool> connectionChanged)
+        => new DeploymentLogStream(session, operationId, receive, connectionChanged);
+
+    public async Task<DeploymentStagedFileDto> UploadArchiveAsync(string fileName, Stream content, IProgress<DeploymentUploadProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         using var form = new MultipartFormDataContent();
-        var file = new StreamContent(content);
+        var file = new DeploymentUploadContent(content, progress);
         file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         form.Add(file, "file", fileName);
         return await SendAsync<DeploymentStagedFileDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Uploads, form, null, cancellationToken);
@@ -89,6 +92,9 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
 
     private async Task<T?> TrySendAsync<T>(string route, CancellationToken cancellationToken) where T : class
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        cancellationToken = deadline.Token;
         using var request = CreateRequest(HttpMethod.Get, route);
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
@@ -98,8 +104,17 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
 
     private async Task<T> SendAsync<T>(HttpMethod method, string route, HttpContent? body, string? idempotencyKey, CancellationToken cancellationToken)
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(body is MultipartFormDataContent ? TimeSpan.FromHours(1) : TimeSpan.FromSeconds(30));
+        cancellationToken = deadline.Token;
         using var request = CreateRequest(method, route, idempotencyKey);
         if (body is not null) request.Content = body;
+        if (body is MultipartFormDataContent)
+        {
+            // Let authentication and size checks reject the request before streaming a large body.
+            request.Headers.ExpectContinue = true;
+            request.Options.Set(RelaxKonOS.Client.Services.Diagnostics.NetworkDiagnosticsHandler.SkipRequestBodyCapture, true);
+        }
         using var response = await http.SendAsync(request, cancellationToken);
         await ThrowIfProblemAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)

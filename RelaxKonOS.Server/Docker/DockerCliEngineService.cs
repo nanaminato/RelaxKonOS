@@ -97,11 +97,11 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         return ToOperationResult(await RunAsync(arguments, cancellationToken));
     }
 
-    public async Task<DockerOperationResult> PullImageAsync(DockerImageOperationRequest request, string? resolvedImageReference = null, CancellationToken cancellationToken = default)
+    public async Task<DockerOperationResult> PullImageAsync(DockerImageOperationRequest request, string? resolvedImageReference = null, CancellationToken cancellationToken = default, Action<string>? onOutput = null)
     {
         var imageReference = resolvedImageReference ?? request.ImageReference;
         if (!IsImageReference(request.ImageReference) || !IsImageReference(imageReference)) return new DockerOperationResult(false, "docker.validation_failed");
-        return ToOperationResult(await RunAsync(["pull", imageReference], cancellationToken, CommandTimeout.LongRunning));
+        return ToOperationResult(await RunAsync(["pull", imageReference], cancellationToken, CommandTimeout.LongRunning, onOutput));
     }
 
     public async Task<DockerOperationResult> DeleteImageAsync(string imageId, DockerImageOperationRequest request, CancellationToken cancellationToken = default)
@@ -235,11 +235,12 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         return row is null ? null : new DockerContainerStatsDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4));
     }
 
-    public async Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, bool includeBuildOutput = false, CancellationToken cancellationToken = default)
+    public async Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, bool includeBuildOutput = false, CancellationToken cancellationToken = default, Action<string>? onOutput = null)
     {
         if (!IsImageReference(request.ImageReference) || !IsBuildPathAllowed(request.ContextDirectory, out var contextDirectory))
             return new DockerOperationResult(false, "docker.validation_failed");
         var arguments = new List<string> { "build", "--tag", request.ImageReference };
+        if (onOutput is not null) arguments.Add("--progress=plain");
         if (!string.IsNullOrWhiteSpace(request.Dockerfile))
         {
             var dockerfile = Path.GetFullPath(request.Dockerfile);
@@ -252,7 +253,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         // server-generated context from a template-authored Dockerfile and cannot explain a failure
         // without the command's own text; the general Docker Manager endpoint keeps the default and
         // still exposes nothing. Either way the full output stays in the protected server log.
-        return ToOperationResult(await RunAsync(arguments, cancellationToken, CommandTimeout.LongRunning), includeBuildOutput);
+        return ToOperationResult(await RunAsync(arguments, cancellationToken, CommandTimeout.LongRunning, onOutput), includeBuildOutput);
     }
 
     public async Task<DockerImageArchiveDto?> ExportImageAsync(string imageId, CancellationToken cancellationToken = default)
@@ -308,7 +309,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
             .Select(line => line.Split('\t')).ToArray();
     }
 
-    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, CommandTimeout commandTimeout = CommandTimeout.Standard)
+    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, CommandTimeout commandTimeout = CommandTimeout.Standard, Action<string>? onOutput = null)
     {
         var commandName = CommandName(arguments);
         logger.LogInformation("Docker command {DockerCommand} started.", commandName);
@@ -324,8 +325,10 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
                 CommandTimeout.LongRunning => TimeSpan.FromSeconds(options.LongRunningCommandTimeoutSeconds),
                 _ => TimeSpan.FromSeconds(options.CommandTimeoutSeconds)
             });
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
+            var outputTask = onOutput is null ? process.StandardOutput.ReadToEndAsync()
+                : DockerLiveOutput.ReadAsync(process.StandardOutput, onOutput);
+            var errorTask = onOutput is null ? process.StandardError.ReadToEndAsync()
+                : DockerLiveOutput.ReadAsync(process.StandardError, onOutput);
             try
             {
                 await process.WaitForExitAsync(timeout.Token);

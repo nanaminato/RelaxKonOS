@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.ApplicationDeployments;
 /// durable record, not a real-time event, is the authoritative source for state.
 /// </summary>
 /// <param name="Progress">Verified in-stage bytes or work units. Null means no reliable denominator
-/// exists yet, and the UI must present unknown progress rather than a fabricated percentage.</param>
+/// exists yet; the UI shows live deployment output rather than a fabricated percentage.</param>
 /// <param name="RecoveryProblemCode">Set only when a failure left resources that need operator
 /// attention. It never replaces the original <paramref name="ProblemCode"/>.</param>
 public sealed record DeploymentOperationDto(

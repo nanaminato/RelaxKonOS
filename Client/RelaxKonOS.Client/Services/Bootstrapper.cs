@@ -174,7 +174,7 @@ public static class Bootstrapper
 
         // ApplicationDeployments（容器化应用部署）：typed HttpClient（JWT from IAuthSession，与 Certificates 同模式）。
         // 每次变更调用携带 Idempotency-Key，长操作返回持久化 operation 后由客户端轮询；归档以引用传递、密钥以值传递一次。
-        services.AddHttpClient<RelaxKonOS.Client.Apps.ApplicationDeployments.IRemoteApplicationDeploymentClient, RelaxKonOS.Client.Apps.ApplicationDeployments.RemoteApplicationDeploymentClient>()
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ApplicationDeployments.IRemoteApplicationDeploymentClient, RelaxKonOS.Client.Apps.ApplicationDeployments.RemoteApplicationDeploymentClient>(http => http.Timeout = Timeout.InfiniteTimeSpan)
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "application-deployments"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
 

@@ -12,7 +12,7 @@ public interface IDockerEngineService
     Task<IReadOnlyList<DockerVolumeDto>> ListVolumesAsync(CancellationToken cancellationToken = default);
     Task<DockerContainerDetailsDto?> GetContainerAsync(string id, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> ApplyContainerActionAsync(string containerId, string action, DockerContainerActionRequest request, CancellationToken cancellationToken = default);
-    Task<DockerOperationResult> PullImageAsync(DockerImageOperationRequest request, string? resolvedImageReference = null, CancellationToken cancellationToken = default);
+    Task<DockerOperationResult> PullImageAsync(DockerImageOperationRequest request, string? resolvedImageReference = null, CancellationToken cancellationToken = default, Action<string>? onOutput = null);
     Task<DockerOperationResult> DeleteImageAsync(string imageId, DockerImageOperationRequest request, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> CreateContainerAsync(DockerContainerCreateRequest request, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> UpdateContainerAsync(string id, DockerContainerUpdateRequest request, CancellationToken cancellationToken = default);
@@ -27,7 +27,7 @@ public interface IDockerEngineService
     /// <param name="includeBuildOutput">Returns the build's own stdout/stderr to the caller. It defaults
     /// to false because build output can echo Dockerfile content and build arguments, so only a caller
     /// that owns the context being built may ask for it.</param>
-    Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, bool includeBuildOutput = false, CancellationToken cancellationToken = default);
+    Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, bool includeBuildOutput = false, CancellationToken cancellationToken = default, Action<string>? onOutput = null);
     Task<DockerImageArchiveDto?> ExportImageAsync(string imageId, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> ImportImageAsync(DockerImageArchiveDto archive, CancellationToken cancellationToken = default);
 }

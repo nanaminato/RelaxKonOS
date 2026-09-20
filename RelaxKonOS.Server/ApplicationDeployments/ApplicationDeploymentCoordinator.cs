@@ -14,6 +14,7 @@ internal sealed class ApplicationDeploymentCoordinator(
     ApplicationDeploymentCatalogStore catalog,
     ApplicationDeploymentService service,
     ApplicationDeploymentOptions options,
+    ApplicationDeploymentLiveLogs logs,
     IHostApplicationLifetime lifetime) : IHostedService
 {
     private readonly object gate = new();
@@ -92,7 +93,7 @@ internal sealed class ApplicationDeploymentCoordinator(
                 StartedAt = DateTimeOffset.UtcNow,
             }, "started");
 
-            await service.StartAsync(id, request, actor, new Reporter(operations, gate, id, cancellation.Token), cancellation.Token);
+            await service.StartAsync(id, request, actor, new Reporter(operations, logs, gate, id, cancellation.Token), cancellation.Token);
             Complete(id, DeploymentOperationState.Succeeded, null, null);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -131,6 +132,18 @@ internal sealed class ApplicationDeploymentCoordinator(
     {
         try
         {
+            var stage = state switch
+            {
+                DeploymentOperationState.Succeeded => DeploymentStage.Completed,
+                DeploymentOperationState.Cancelled => DeploymentStage.Cancelled,
+                DeploymentOperationState.Interrupted => DeploymentStage.Interrupted,
+                _ => DeploymentStage.Failed,
+            };
+            logs.Append(id, problem ?? recovery ?? string.Empty, stage);
+            logs.Complete(id);
+            var tail = logs.Snapshot(id);
+            diagnostics ??= tail.Lines.Select(x => x.Stage is { } s ? $"[{s}] {x.Message}" : x.Message).ToArray();
+            diagnosticsTruncated |= tail.Truncated;
             operations.Update(id, operation => operation with
             {
                 State = state,
@@ -213,6 +226,7 @@ internal sealed class ApplicationDeploymentCoordinator(
     /// </summary>
     private sealed class Reporter(
         ApplicationDeploymentOperationStore operations,
+        ApplicationDeploymentLiveLogs logs,
         object gate,
         Guid id,
         CancellationToken workerToken) : IApplicationDeploymentProgress
@@ -229,6 +243,7 @@ internal sealed class ApplicationDeploymentCoordinator(
                     Progress = progress.Progress,
                     Cancellable = progress.Cancellable,
                 }, "stage");
+                logs.Append(id, string.Empty, progress.Stage);
             }
             return Task.CompletedTask;
         }

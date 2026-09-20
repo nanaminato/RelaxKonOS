@@ -57,6 +57,12 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    if (args.Contains("--deployment-progress-only"))
+    {
+        ApplicationDeploymentDiagnosticsVerification.Run(root);
+        await ApplicationDeploymentProgressVerification.RunAsync(root);
+        return;
+    }
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     await AliasLoginVerification.RunAsync(root);
@@ -91,6 +97,7 @@ try
     await VerifyWebServerProviderRoutingAsync();
     await VerifyOperationIdempotencyAsync(root);
     ApplicationDeploymentDiagnosticsVerification.Run(root);
+    await ApplicationDeploymentProgressVerification.RunAsync(root);
     VerifyTunnelProtocolContract();
     VerifyProxyProtocolContract();
     await VerifyMihomoControllerSafetyAsync();

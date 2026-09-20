@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Avalonia.Threading;
+using RelaxKonOS.Protocol.Hubs;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
@@ -60,6 +62,8 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     private readonly string definitionIdempotencyKey = Guid.NewGuid().ToString("N");
     private readonly string deploymentIdempotencyKey = Guid.NewGuid().ToString("N");
     private CancellationTokenSource? polling;
+    private CancellationTokenSource? upload;
+    private long liveVersion = -1;
 
     public DeploymentWizardViewModel(
         IRemoteApplicationDeploymentClient client,
@@ -195,6 +199,15 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     [ObservableProperty] private LocalizedStatus _previewText;
     [ObservableProperty] private LocalizedStatus _operationText;
     [ObservableProperty] private string _progressText = string.Empty;
+    [ObservableProperty] private string _liveLogText = string.Empty;
+    [ObservableProperty] private LocalizedStatus _liveLogStatus;
+    [ObservableProperty] private bool _isLiveLogTruncated;
+    [ObservableProperty] private bool _isUploading;
+    [ObservableProperty] private double _uploadPercent;
+    [ObservableProperty] private bool _uploadIndeterminate;
+    [ObservableProperty] private string _uploadProgressText = string.Empty;
+    public bool HasUploadProgress => UploadProgressText.Length > 0;
+    partial void OnUploadProgressTextChanged(string value) => OnPropertyChanged(nameof(HasUploadProgress));
     /// <summary>What the step that failed actually printed. It is the difference between "构建镜像失败。"
     /// and an operator knowing which layer, which file, or which registry refused.</summary>
     [ObservableProperty] private string _diagnosticsText = string.Empty;
@@ -313,22 +326,55 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     [RelayCommand]
     private async Task ChooseLocalArchiveAsync()
     {
-        if (PickLocalArchiveAsync is null) return;
+        if (IsBusy || PickLocalArchiveAsync is null) return;
         var archive = await PickLocalArchiveAsync();
         if (archive is null) return;
-        await StageAsync(async () =>
+        using var cancellation = new CancellationTokenSource();
+        upload = cancellation;
+        IsUploading = true;
+        UploadPercent = 0;
+        UploadIndeterminate = true;
+        UploadProgressText = LocalizedText.Get(DeploymentText.Prefix + ".upload_starting");
+        try
         {
-            // The local file is streamed directly from the storage-provider handle. Only the returned
-            // reference id travels with the deployment request, never a host path.
-            await using var stream = await archive.OpenReadAsync();
-            return await client.UploadArchiveAsync(archive.FileName, stream);
-        });
+            await StageAsync(async () =>
+            {
+                await using var stream = await archive.OpenReadAsync();
+                return await client.UploadArchiveAsync(archive.FileName, stream,
+                    new Progress<DeploymentUploadProgress>(ReportUpload), cancellation.Token);
+            });
+        }
+        finally { IsUploading = false; upload = null; }
+    }
+
+    private void ReportUpload(DeploymentUploadProgress progress)
+    {
+        if (!IsUploading) return;
+        UploadIndeterminate = progress.TotalBytes is not > 0;
+        UploadPercent = progress.TotalBytes is > 0 ? Math.Clamp(100d * progress.Bytes / progress.TotalBytes.Value, 0, 100) : 0;
+        var speed = progress.Bytes / Math.Max(0.001, progress.Elapsed.TotalSeconds);
+        UploadProgressText = progress.TotalBytes is > 0 && progress.Bytes >= progress.TotalBytes.Value
+            ? LocalizedText.Get(DeploymentText.Prefix + ".upload_staging")
+            : progress.TotalBytes is null ? LocalizedText.Format(DeploymentText.Prefix + ".upload_progress_bytes", FormatBytes(progress.Bytes), FormatBytes(speed))
+            : LocalizedText.Format(DeploymentText.Prefix + ".upload_progress", FormatBytes(progress.Bytes),
+                progress.TotalBytes is { } total ? FormatBytes(total) : "—", UploadPercent.ToString("F1", CultureInfo.CurrentCulture), FormatBytes(speed));
+    }
+
+    private static string FormatBytes(double bytes) => bytes >= 1024 * 1024
+        ? $"{bytes / (1024 * 1024):F1} MiB" : $"{bytes / 1024:F1} KiB";
+
+    [RelayCommand] private void CancelUpload() => upload?.Cancel();
+
+    public void StopObserving()
+    {
+        upload?.Cancel();
+        polling?.Cancel();
     }
 
     [RelayCommand]
     private async Task ChooseServerArchiveAsync()
     {
-        if (PickServerArchiveAsync is null) return;
+        if (IsBusy || PickServerArchiveAsync is null) return;
         var path = await PickServerArchiveAsync();
         if (string.IsNullOrWhiteSpace(path)) return;
         await StageAsync(() => client.CreateFileReferenceAsync(path));
@@ -407,7 +453,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     [RelayCommand]
     private void Close()
     {
-        polling?.Cancel();
+        StopObserving();
         CloseRequested?.Invoke();
     }
 
@@ -422,6 +468,20 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         polling = new CancellationTokenSource();
         var token = polling.Token;
         var current = operation;
+        liveVersion = -1;
+        LiveLogStatus = LocalizedStatus.Key(DeploymentText.Prefix + ".logs_connecting");
+        await using var live = client.WatchLogs(operation.OperationId,
+            snapshot => Dispatcher.UIThread.Post(() =>
+            {
+                if (snapshot.OperationId != operation.OperationId || snapshot.Version <= liveVersion) return;
+                liveVersion = snapshot.Version;
+                LiveLogText = string.Join(Environment.NewLine, snapshot.Lines.Select(line =>
+                    $"{line.Timestamp.LocalDateTime:HH:mm:ss} {(line.Stage is { } stage ? LocalizedText.Get(DeploymentText.Enum(DeploymentText.StagePrefix, stage)) + " " : string.Empty)}{line.Message}"));
+                IsLiveLogTruncated = snapshot.Truncated;
+            }), connected => Dispatcher.UIThread.Post(() =>
+            {
+                if (!IsFinished) LiveLogStatus = LocalizedStatus.Key(DeploymentText.Prefix + (connected ? ".logs_live" : ".logs_connecting"));
+            }));
         while (current.State is DeploymentOperationState.Queued or DeploymentOperationState.Running)
         {
             ReportStage(current);
@@ -432,11 +492,21 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
                 var refreshed = await client.GetOperationAsync(current.OperationId, token);
                 if (refreshed is null) break;
                 current = refreshed;
+                ErrorText = LocalizedStatus.Literal(string.Empty);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+            catch (Exception exception) when (exception is HttpRequestException or IOException or OperationCanceledException)
+            {
+                // Keep the SignalR observer alive during transient REST failures too. The durable
+                // operation continues on the server; only a new read can establish its outcome.
+                ErrorText = Describe(exception);
+                ProgressText = LocalizedText.Get(DeploymentText.Prefix + ".progress_unavailable");
+                Operation = current;
+                continue;
             }
             catch (Exception exception) when (IsExpected(exception))
             {
-                // A dropped connection is not a failed deployment: keep the last known state visible
-                // and stop polling rather than reporting an outcome the server never produced.
+                // Non-transient permission/protocol errors need operator attention.
                 ErrorText = Describe(exception);
                 ProgressText = LocalizedText.Get(DeploymentText.Prefix + ".progress_unavailable");
                 Operation = current;
@@ -446,6 +516,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
         Operation = current;
         IsFinished = true;
+        LiveLogStatus = LocalizedStatus.Key(DeploymentText.Prefix + ".logs_finished");
         ReportStage(current);
         if (current.ProblemCode is { Length: > 0 } problem)
         {
@@ -482,7 +553,7 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     {
         ProgressText = operation.Progress is { } percent
             ? percent.ToString(CultureInfo.CurrentCulture) + "%"
-            : LocalizedText.Get(DeploymentText.Prefix + ".progress_unknown");
+            : string.Empty;
         if (operation.State is DeploymentOperationState.Queued or DeploymentOperationState.Running)
             OperationText = LocalizedStatus.Key(DeploymentText.Enum(DeploymentText.StagePrefix, operation.Stage));
         else
@@ -499,15 +570,23 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             ArchiveReferenceId = staged.ReferenceId;
             ArchiveFileName = staged.FileName;
             StatusText = LocalizedStatus.Format(DeploymentText.Prefix + ".archive_staged", staged.FileName);
+            if (IsUploading) UploadProgressText = LocalizedText.Format(DeploymentText.Prefix + ".archive_staged", staged.FileName);
+            ValidateCurrentStep();
+        }
+        catch (OperationCanceledException) when (upload?.IsCancellationRequested == true)
+        {
+            ErrorText = LocalizedStatus.Literal(string.Empty);
+            UploadProgressText = LocalizedText.Get(DeploymentText.Prefix + ".upload_cancelled");
         }
         catch (Exception exception) when (IsExpected(exception))
         {
             ErrorText = Describe(exception);
+            if (IsUploading) UploadProgressText = ErrorText.ToString();
         }
         finally
         {
             IsBusy = false;
-            ValidateCurrentStep();
+            UploadIndeterminate = false;
         }
     }
 

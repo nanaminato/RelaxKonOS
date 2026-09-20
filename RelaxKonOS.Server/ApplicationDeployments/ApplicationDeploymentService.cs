@@ -27,6 +27,7 @@ internal sealed class ApplicationDeploymentService(
     IApplicationDeploymentProxyIntegration proxy,
     ApplicationDeploymentOptions options,
     IHostEnvironment environment,
+    ApplicationDeploymentLiveLogs liveLogs,
     ILogger<ApplicationDeploymentService> logger)
 {
     /// <summary>Read-only secret delivery path inside the workload container.</summary>
@@ -170,7 +171,7 @@ internal sealed class ApplicationDeploymentService(
         }
 
         await progress.ReportAsync(new(template is ImageTemplate ? DeploymentStage.Pulling : DeploymentStage.Building, null, true), cancellationToken);
-        await ProduceImageAsync(template, plan, contextDirectory, cancellationToken);
+        await ProduceImageAsync(template, plan, contextDirectory, operationId, cancellationToken);
 
         var identity = await runtime.ResolveImageIdentityAsync(plan.ImageReference, cancellationToken);
         if (identity.ImageId is null)
@@ -466,11 +467,11 @@ internal sealed class ApplicationDeploymentService(
         await progress.ReportAsync(new(DeploymentStage.Completed, null, false), cancellationToken);
     }
 
-    private async Task ProduceImageAsync(IApplicationTemplate template, DeploymentPlan plan, string contextDirectory, CancellationToken cancellationToken)
+    private async Task ProduceImageAsync(IApplicationTemplate template, DeploymentPlan plan, string contextDirectory, Guid operationId, CancellationToken cancellationToken)
     {
         if (template is ImageTemplate)
         {
-            var pull = await runtime.PullAsync(plan.ImageReference, null, cancellationToken);
+            var pull = await runtime.PullAsync(plan.ImageReference, null, cancellationToken, line => liveLogs.Append(operationId, line));
             if (pull.Success) return;
             throw new ApplicationDeploymentException(pull.ProblemCode switch
             {
@@ -482,7 +483,7 @@ internal sealed class ApplicationDeploymentService(
             }, 409, pull.LogLines, pull.LogTruncated);
         }
 
-        var build = await runtime.BuildAsync(contextDirectory, plan.ImageReference, cancellationToken);
+        var build = await runtime.BuildAsync(contextDirectory, plan.ImageReference, cancellationToken, line => liveLogs.Append(operationId, line));
         if (!build.Success)
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.BuildFailed, 409, build.LogLines, build.LogTruncated);
     }

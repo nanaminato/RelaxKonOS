@@ -103,16 +103,16 @@ internal sealed class ApplicationDeploymentRuntime(
         return owned;
     }
 
-    public async Task<DockerOperationResult> PullAsync(string imageReference, string? resolvedImageReference, CancellationToken cancellationToken)
-        => await engine.PullImageAsync(new DockerImageOperationRequest(imageReference), resolvedImageReference, cancellationToken);
+    public async Task<DockerOperationResult> PullAsync(string imageReference, string? resolvedImageReference, CancellationToken cancellationToken, Action<string> onOutput)
+        => await engine.PullImageAsync(new DockerImageOperationRequest(imageReference), resolvedImageReference, cancellationToken, onOutput);
 
     /// <summary>
     /// Builds the server-generated context for a revision. The build output is requested because a
     /// failed build has no other channel: without it the operator is left with a problem code and no
     /// way to see why the image did not build.
     /// </summary>
-    public async Task<DockerOperationResult> BuildAsync(string contextDirectory, string imageReference, CancellationToken cancellationToken)
-        => await engine.BuildImageAsync(new DockerBuildRequest(contextDirectory, imageReference), includeBuildOutput: true, cancellationToken);
+    public async Task<DockerOperationResult> BuildAsync(string contextDirectory, string imageReference, CancellationToken cancellationToken, Action<string> onOutput)
+        => await engine.BuildImageAsync(new DockerBuildRequest(contextDirectory, imageReference), includeBuildOutput: true, cancellationToken, onOutput);
 
     /// <summary>Resolves the observed identity of an image. Tags are display only; this is the binding.</summary>
     public async Task<(string? ImageId, string? Reference)> ResolveImageIdentityAsync(string imageReference, CancellationToken cancellationToken)

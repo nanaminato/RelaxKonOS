@@ -164,7 +164,11 @@ programEntry, arguments[], selfContained
 
 ### 4.3 进度语义
 
-`DeploymentOperationDto.Progress` 只报告**阶段内已验证的字节数或工作量**。**无可靠分母时为 `null`**，UI 必须呈现「未知进度」而非伪造的累计百分比。当前实现的所有阶段上报均为 `null`；账本加载时校验 `Progress` 与阶段的配对（仅 `Pulling`/`Building`/`Preparing`/`HealthChecking` 允许非空）。
+`DeploymentOperationDto.Progress` 只报告**阶段内已验证的字节数或工作量**。**无可靠分母时为 `null`**，UI 显示实时部署日志而非伪造累计百分比。当前实现的所有阶段上报均为 `null`；账本加载时校验 `Progress` 与阶段的配对（仅 `Pulling`/`Building`/`Preparing`/`HealthChecking` 允许非空）。
+
+向导通过 SignalR `/hubs/application-deployment-logs` 订阅 operation ID，显示阶段、Docker 镜像层状态及 `build --progress=plain` 的实时输出。stdout/stderr 在命令结束前逐行读取，兼容回车进度行；每条消息经脱敏，最近 300 行有界保留，最多每秒推送两次有变化的快照。客户端按版本去重，连接失败自动重试，重新订阅补回服务端当前内存尾部；关闭向导只停止观察，不取消后台部署。内存日志不跨 Server 重启保留，操作终态的有界诊断尾部继续写入账本。镜像拉取显示 Docker 实际提供的各层状态，不声称具有全局下载百分比。
+
+本地归档上传独立显示已发送字节/总字节、百分比、平均速率和取消按钮；不可读取长度的流仅显示已发送字节，不伪造分母。100% 表示请求正文已写出，仍需等待服务器暂存确认。网络诊断不预读取此二进制正文；上传超时为 1 小时，普通部署 API 为 30 秒。
 
 ### 4.4 确认语义
 
@@ -218,6 +222,7 @@ interface IApplicationTemplate
 ### 6.1 上传与文件引用
 
 - `POST /uploads`：multipart 流式写入暂存区，**边写边校验** `MaximumArchiveBytes`（默认 512 MiB），超限即 `archive_too_large`，并删除半成品。
+- 上传请求只含一个名为 `file` 的首段，由 `MultipartReader` 直接写入暂存，不使用 `ReadFormAsync` 的额外整包缓冲。此端点的请求上限为归档配置上限加 64 KiB multipart 开销；生产环境反向代理/IIS 的请求大小及超时限制仍需同步配置。
 - `POST /file-references`：登记服务器上已存在的文件（例如远程资源管理器中选中的），要求绝对路径、存在、常规文件、非重解析点、大小在限内。
 - 暂存条目绑定**操作者引用**（`Reference(actor)`）：只有登记它的操作者能打开；过期或被替换即 `file_reference_unavailable`，同时清理文件。
 - **宿主路径永不进入部署请求或操作记录**：请求只携带引用 ID。

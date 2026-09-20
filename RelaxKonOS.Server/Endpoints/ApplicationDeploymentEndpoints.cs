@@ -1,4 +1,7 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Net.Http.Headers;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.HostMode;
@@ -155,7 +158,7 @@ public static class ApplicationDeploymentEndpoints
 
         // --- Staging input -------------------------------------------------------------------
         group.MapPost(ApplicationDeploymentApiRoutes.UploadPattern,
-            async (HttpContext http, ApplicationDeploymentStagingStore staging, ILoggerFactory loggerFactory) => await HandleAsync(async () =>
+            async (HttpContext http, ApplicationDeploymentStagingStore staging, ApplicationDeploymentOptions options, ILoggerFactory loggerFactory) => await HandleAsync(async () =>
             {
                 var logger = loggerFactory.CreateLogger("ApplicationDeploymentUpload");
                 logger.LogInformation("Application deployment archive upload received. ContentType={ContentType}, ContentLength={ContentLength}",
@@ -166,21 +169,44 @@ public static class ApplicationDeploymentEndpoints
                         http.Request.ContentType);
                     return Problem(ApplicationDeploymentProblemCodes.InvalidRequest, 415);
                 }
-                var form = await http.Request.ReadFormAsync(http.RequestAborted);
-                var file = form.Files.FirstOrDefault();
-                if (file is null || file.Length == 0)
+                // Stream directly to staging: ReadFormAsync first buffers the entire archive into
+                // a separate temp file and imposes unrelated form/Kestrel default size limits.
+                var maximumRequestBytes = checked(options.MaximumArchiveBytes + 65536);
+                if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+                    limit.MaxRequestBodySize = maximumRequestBytes;
+                if (http.Request.ContentLength > maximumRequestBytes)
+                    return Problem(ApplicationDeploymentProblemCodes.ArchiveTooLarge, 413);
+                if (!MediaTypeHeaderValue.TryParse(http.Request.ContentType, out var mediaType))
+                    return Problem(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
+                var boundary = HeaderUtilities.RemoveQuotes(mediaType.Boundary).Value;
+                if (string.IsNullOrEmpty(boundary) || boundary.Length > 128)
+                    return Problem(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
+                var reader = new MultipartReader(boundary, http.Request.Body);
+                try
                 {
-                    logger.LogWarning("Application deployment archive upload rejected because no non-empty file part was supplied. FileCount={FileCount}",
-                        form.Files.Count);
-                    return Problem(ApplicationDeploymentProblemCodes.ArchiveUnavailable, 400);
+                    var section = await reader.ReadNextSectionAsync(http.RequestAborted);
+                    if (section is null || !ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition)
+                        || HeaderUtilities.RemoveQuotes(disposition.Name).Value != "file")
+                        return Problem(ApplicationDeploymentProblemCodes.ArchiveUnavailable, 400);
+                    var fileName = HeaderUtilities.RemoveQuotes(disposition.FileNameStar.HasValue
+                        ? disposition.FileNameStar : disposition.FileName).Value;
+                    if (string.IsNullOrWhiteSpace(fileName)) return Problem(ApplicationDeploymentProblemCodes.ArchiveUnavailable, 400);
+                    var staged = await staging.StageAsync(fileName, section.Body, Actor(http.User), http.RequestAborted);
+                    logger.LogInformation("Application deployment archive upload staged. ReferenceId={ReferenceId}, Bytes={Bytes}",
+                        staged.ReferenceId, staged.Length);
+                    return Results.Ok(staged);
                 }
-                logger.LogInformation("Application deployment archive upload form parsed. FileName={FileName}, DeclaredBytes={DeclaredBytes}",
-                    Path.GetFileName(file.FileName), file.Length);
-                await using var stream = file.OpenReadStream();
-                var staged = await staging.StageAsync(file.FileName, stream, Actor(http.User), http.RequestAborted);
-                logger.LogInformation("Application deployment archive upload staged. ReferenceId={ReferenceId}, FileName={FileName}, Bytes={Bytes}",
-                    staged.ReferenceId, staged.FileName, staged.Length);
-                return Results.Ok(staged);
+                catch (InvalidDataException)
+                {
+                    logger.LogWarning("Application deployment upload rejected: malformed multipart body.");
+                    return Problem(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
+                }
+                catch (BadHttpRequestException error)
+                {
+                    logger.LogWarning("Application deployment upload body rejected. Status={Status}", error.StatusCode);
+                    return Problem(error.StatusCode == 413 ? ApplicationDeploymentProblemCodes.ArchiveTooLarge
+                        : ApplicationDeploymentProblemCodes.InvalidRequest, error.StatusCode);
+                }
             }))
             .RequireAuthorization(ManagePolicy)
             .DisableAntiforgery();
