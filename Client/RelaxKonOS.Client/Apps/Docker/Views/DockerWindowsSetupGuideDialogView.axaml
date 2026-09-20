@@ -1,0 +1,37 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerWindowsSetupGuideDialogView"
+             x:DataType="docker:DockerManagerViewModel">
+    <Grid Margin="22" RowDefinitions="*,Auto" RowSpacing="18">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="14">
+                <TextBlock Text="{loc:Loc docker.setup_guide.intro}" TextWrapping="Wrap" />
+                <StackPanel Spacing="5">
+                    <TextBlock Text="{loc:Loc docker.setup_guide.step1.title}" FontWeight="SemiBold" />
+                    <TextBlock Text="{loc:Loc docker.setup_guide.step1.body}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+                <StackPanel Spacing="5">
+                    <TextBlock Text="{loc:Loc docker.setup_guide.step2.title}" FontWeight="SemiBold" />
+                    <TextBlock Text="{loc:Loc docker.setup_guide.step2.body}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+                <StackPanel Spacing="5">
+                    <TextBlock Text="{loc:Loc docker.setup_guide.step3.title}" FontWeight="SemiBold" />
+                    <TextBlock Text="{loc:Loc docker.setup_guide.step3.body}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+                <StackPanel Spacing="5">
+                    <TextBlock Text="{loc:Loc docker.setup_guide.step4.title}" FontWeight="SemiBold" />
+                    <TextBlock Text="{loc:Loc docker.setup_guide.step4.body}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+                <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                    <TextBlock Text="{loc:Loc docker.setup_guide.production_note}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc common.refresh}" Click="Refresh_Click" HorizontalContentAlignment="Center" />
+            <Button Classes="primary" Content="{loc:Loc common.ok}" Click="Confirm_Click" HorizontalContentAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

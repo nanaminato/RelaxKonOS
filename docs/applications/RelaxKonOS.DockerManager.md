@@ -79,10 +79,12 @@
 | 平台 | v1 管理方式 | 安装策略 | 备注 |
 |---|---|---|---|
 | Ubuntu 22.04/24.04 LTS | 本机 Unix socket `/var/run/docker.sock` | 官方 APT 仓库安装 `docker-ce`、CLI、`containerd.io`、Buildx、Compose 插件 | 先检查冲突包、防火墙和现有数据；Docker 文档特别指出 Docker 发布端口会绕过部分 UFW/firewalld 规则，必须在向导中警告。 |
-| Windows 10/11 | 本机 named pipe `npipe://./pipe/docker_engine`，以探测到的 Linux 或 Windows 容器模式工作 | 仅引导安装已获许可的 Docker Desktop + WSL 2/Hyper-V；安装程序由用户选择并以管理员权限运行 | Docker Desktop 的 WSL 2/Hyper-V 选择和许可由用户负责。 |
+| Windows 10/11 | 本机 named pipe `npipe://./pipe/docker_engine`；应用部署器只接受 Linux 容器模式 | 内置引导要求用户从官方渠道安装已获许可的 Docker Desktop，并选用 WSL 2 后端 | 不建议在任意 WSL 发行版中手工安装 Docker Engine；Docker Desktop 的许可和 WSL 2 启用由用户负责。 |
 | Windows Server | 管理已安装且经能力探测合格的本机 Engine-compatible runtime | **不自动安装**；运行时供应商、容器模式与许可由管理员明确选择后再增加专用安装提供方 | 防止将桌面安装器误作为生产服务器自动部署方案。 |
 
 Ubuntu 方案以 Docker 官方安装文档为唯一命令来源；该文档要求先移除冲突包，推荐官方 APT 仓库，并以 `hello-world` 验证。[Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/) Windows 端 Docker Desktop 的安装需要选择 WSL 2 或 Hyper-V 后端。[Docker Desktop on Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
+
+Windows 10/11 的 Docker 不可用时，Docker Manager 的状态按钮会直接打开内置引导：检查 WSL 2/虚拟化，安装并启动 Docker Desktop，选择 WSL 2 backend，确认 Linux containers 模式，然后刷新 Engine 状态。该引导不自动安装 Docker Desktop、启用 WSL、接受第三方许可或配置 Windows Server。Windows Docker Desktop 路径用于开发、个人自托管和验证；无人值守或生产部署优先使用独立 Linux 主机或 VM。
 
 ---
 
