@@ -1,0 +1,339 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:viewModels="clr-namespace:RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels"
+             x:Class="RelaxKonOS.Client.Apps.ApplicationDeployments.Views.DeploymentWizardView"
+             x:DataType="viewModels:DeploymentWizardViewModel"
+             Background="{DynamicResource AppBackgroundBrush}">
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+        <!-- Header: which step of how many, so a long form is never open-ended. -->
+        <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="22,14">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.title}"
+                               FontSize="19" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.subtitle}"
+                               FontSize="12" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextTertiaryBrush}" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding StepCounterText}"
+                           VerticalAlignment="Center" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Grid>
+        </Border>
+
+        <ScrollViewer x:Name="WizardScrollViewer" Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <!-- ScrollViewer measures vertical content at infinite width. Keep this finite so the
+                 star-sized form columns, including their ComboBoxes, share the dialog width. -->
+            <Border x:Name="WizardContent">
+                <Grid Margin="22,18">
+                <!-- Step 1: what this application is. -->
+                <StackPanel Spacing="14" IsVisible="{Binding ShowSourceStep}">
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.step_source}"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc application_deployments.field.name}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding Name, Mode=TwoWay}"
+                                 PlaceholderText="{loc:Loc application_deployments.wizard.name_hint}" />
+                        <TextBlock Text="{loc:Loc application_deployments.wizard.name_rule}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextTertiaryBrush}" />
+                    </StackPanel>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.source}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding SourceKinds}"
+                                      DisplayMemberBinding="{ReflectionBinding Label}"
+                                      SelectedItem="{Binding SelectedSourceKind, Mode=TwoWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.workload}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding WorkloadKinds}"
+                                      DisplayMemberBinding="{ReflectionBinding Label}"
+                                      SelectedItem="{Binding SelectedWorkloadKind, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Step 2: where the code or image comes from. -->
+                <StackPanel Spacing="14" IsVisible="{Binding ShowEntryStep}">
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.step_entry}"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                    <StackPanel Spacing="4" IsVisible="{Binding RequiresImageReference}">
+                        <TextBlock Text="{loc:Loc application_deployments.field.image}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding ImageReference, Mode=TwoWay}"
+                                 PlaceholderText="{loc:Loc application_deployments.wizard.image_hint}" />
+                        <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6">
+                            <Button Content="{loc:Loc application_deployments.wizard.load_image_tags}"
+                                    Command="{Binding LoadImageTagsCommand}"
+                                    IsEnabled="{Binding !IsImageTagLookupRunning}" Padding="12,5" />
+                            <TextBlock Text="{Binding ImageTagLookupText}" IsVisible="{Binding HasImageTagLookupText}"
+                                       VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </WrapPanel>
+                        <ComboBox ItemsSource="{Binding ImageTags}" DisplayMemberBinding="{ReflectionBinding Tag}"
+                                  SelectedItem="{Binding SelectedImageTag, Mode=TwoWay}"
+                                  IsVisible="{Binding HasImageTags}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="8" IsVisible="{Binding RequiresArchive}">
+                        <TextBlock Text="{loc:Loc application_deployments.field.archive}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <!-- Two ways in: a local file is uploaded to the server staging area, an existing
+                             server file is only referenced by path. Neither sends a host path onward. -->
+                        <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6">
+                            <Button Content="{loc:Loc application_deployments.wizard.choose_local_archive}"
+                                    IsEnabled="{Binding !IsBusy}"
+                                    Command="{Binding ChooseLocalArchiveCommand}" Padding="12,5" />
+                            <Button Content="{loc:Loc application_deployments.wizard.choose_server_archive}"
+                                    IsEnabled="{Binding !IsBusy}"
+                                    Command="{Binding ChooseServerArchiveCommand}" Padding="12,5" />
+                        </WrapPanel>
+                        <StackPanel Spacing="6" IsVisible="{Binding HasUploadProgress}">
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding UploadPercent}"
+                                         IsIndeterminate="{Binding UploadIndeterminate}" Height="6" />
+                            <TextBlock Text="{Binding UploadProgressText}" TextWrapping="Wrap" FontSize="12" />
+                            <Button Content="{loc:Loc common.cancel}" Command="{Binding CancelUploadCommand}"
+                                    IsVisible="{Binding IsUploading}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding ArchiveFileName}" FontSize="12" TextWrapping="Wrap"
+                                   IsVisible="{Binding HasArchive}"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{loc:Loc application_deployments.wizard.archive_none}" FontSize="11"
+                                   IsVisible="{Binding !HasArchive}"
+                                   Foreground="{DynamicResource TextTertiaryBrush}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding RequiresArchive}">
+                        <TextBlock Text="{loc:Loc application_deployments.field.base_image}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding BaseImage, Mode=TwoWay}"
+                                 PlaceholderText="{loc:Loc application_deployments.wizard.base_image_hint}" />
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.runtime_version}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Text="{Binding RuntimeVersion, Mode=TwoWay}"
+                                     PlaceholderText="{loc:Loc application_deployments.wizard.runtime_hint}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="4" IsVisible="{Binding RequiresArchive}">
+                            <TextBlock Text="{loc:Loc application_deployments.field.entry_point}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Text="{Binding ProgramEntry, Mode=TwoWay}"
+                                     PlaceholderText="{loc:Loc application_deployments.wizard.entry_hint}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding RequiresArchive}">
+                        <TextBlock Text="{loc:Loc application_deployments.field.arguments}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding ArgumentsText, Mode=TwoWay}" AcceptsReturn="True" Height="64"
+                                 TextWrapping="NoWrap"
+                                 PlaceholderText="{loc:Loc application_deployments.wizard.arguments_hint}" />
+                    </StackPanel>
+
+                    <CheckBox Content="{loc:Loc application_deployments.field.self_contained}"
+                              IsChecked="{Binding SelfContained, Mode=TwoWay}"
+                              IsVisible="{Binding SupportsSelfContained}" />
+                </StackPanel>
+
+                <!-- Step 3: how it is reached and how readiness is decided. -->
+                <StackPanel Spacing="14" IsVisible="{Binding ShowRuntimeStep}">
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.step_runtime}"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.container_port}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Text="{Binding ContainerPort, Mode=TwoWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.host_port}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Text="{Binding HostPort, Mode=TwoWay}"
+                                     PlaceholderText="{loc:Loc application_deployments.wizard.host_port_hint}" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.bind_address}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Text="{Binding BindAddress, Mode=TwoWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.readiness}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding ReadinessLevels}"
+                                      DisplayMemberBinding="{ReflectionBinding Label}"
+                                      SelectedItem="{Binding SelectedReadinessLevel, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel Spacing="4" IsVisible="{Binding IsReadinessHttp}">
+                        <TextBlock Text="{loc:Loc application_deployments.field.health_path}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding HealthCheckPath, Mode=TwoWay}" />
+                    </StackPanel>
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.host_port_note}" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextTertiaryBrush}" />
+                </StackPanel>
+
+                <!-- Step 4: environment, secret names, volumes, and ceilings. -->
+                <StackPanel Spacing="14" IsVisible="{Binding ShowConfigurationStep}">
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.step_configuration}"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc application_deployments.field.configuration}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding ConfigText, Mode=TwoWay}" AcceptsReturn="True" Height="80"
+                                 TextWrapping="NoWrap"
+                                 PlaceholderText="{loc:Loc application_deployments.wizard.configuration_hint}" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc application_deployments.field.secrets}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SecretConfigText, Mode=TwoWay}" AcceptsReturn="True" Height="64"
+                                 TextWrapping="NoWrap"
+                                 PlaceholderText="{loc:Loc application_deployments.wizard.secrets_hint}" />
+                        <!-- A secret without a value keeps the stored version, so editing a definition
+                             never forces a credential to be retyped. -->
+                        <TextBlock Text="{loc:Loc application_deployments.wizard.secrets_note}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextTertiaryBrush}" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc application_deployments.field.volumes}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding VolumesText, Mode=TwoWay}" AcceptsReturn="True" Height="64"
+                                 TextWrapping="NoWrap"
+                                 PlaceholderText="{loc:Loc application_deployments.wizard.volumes_hint}" />
+                    </StackPanel>
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.cpu}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Text="{Binding CpuCores, Mode=TwoWay}"
+                                     PlaceholderText="{loc:Loc application_deployments.wizard.cpu_hint}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.memory}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Text="{Binding MemoryMegabytes, Mode=TwoWay}"
+                                     PlaceholderText="{loc:Loc application_deployments.wizard.memory_hint}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Spacing="4">
+                            <TextBlock Text="{loc:Loc application_deployments.field.pids}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Text="{Binding PidsLimit, Mode=TwoWay}"
+                                     PlaceholderText="{loc:Loc application_deployments.wizard.pids_hint}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Step 5: optional reverse-proxy site. Empty means no proxy integration. -->
+                <StackPanel Spacing="14" IsVisible="{Binding ShowProxyStep}">
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.step_proxy}"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc application_deployments.field.site}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Text="{Binding SiteId, Mode=TwoWay}"
+                                 PlaceholderText="{loc:Loc application_deployments.wizard.site_hint}" />
+                        <TextBlock Text="{loc:Loc application_deployments.wizard.site_note}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextTertiaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Step 6: what will actually be queued. -->
+                <StackPanel Spacing="14" IsVisible="{Binding ShowPreviewStep}">
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.step_preview}"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <Border Background="{DynamicResource SurfaceSunkenBrush}" CornerRadius="8" Padding="14">
+                        <TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                    </Border>
+                    <CheckBox Content="{loc:Loc application_deployments.wizard.deploy_now}"
+                              IsChecked="{Binding DeployNow, Mode=TwoWay}"
+                              IsVisible="{Binding !IsEditingDefinition}" />
+                </StackPanel>
+
+                <!-- Step 7: the durable operation, observed to a terminal state. -->
+                <StackPanel Spacing="14" IsVisible="{Binding ShowProgressStep}">
+                    <TextBlock Text="{loc:Loc application_deployments.wizard.step_progress}"
+                               FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding OperationText}" TextWrapping="Wrap" FontSize="14"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding ProgressText}" FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding LiveLogStatus}" FontSize="12" TextWrapping="Wrap" />
+                    <TextBox x:Name="LiveLogBox" Text="{Binding LiveLogText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True"
+                             TextWrapping="NoWrap" Height="300"
+                             FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                    <TextBlock Text="{loc:Loc application_deployments.log_truncated}" IsVisible="{Binding IsLiveLogTruncated}"
+                               FontSize="11" Foreground="{DynamicResource WarningBrush}" />
+                    <!-- Why the step failed, in the command's own words. It appears only once a failed
+                         operation has actually produced output, so the pane is never shown empty. -->
+                    <StackPanel Spacing="6" IsVisible="{Binding HasDiagnostics}">
+                        <TextBlock Text="{loc:Loc application_deployments.diagnostics_header}"
+                                   FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBox Text="{Binding DiagnosticsText}" IsReadOnly="True" AcceptsReturn="True"
+                                 TextWrapping="NoWrap" Height="220"
+                                 FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                        <TextBlock Text="{loc:Loc application_deployments.log_truncated}"
+                                   IsVisible="{Binding IsDiagnosticsTruncated}" FontSize="11"
+                                   Foreground="{DynamicResource WarningBrush}" />
+                    </StackPanel>
+                </StackPanel>
+                </Grid>
+            </Border>
+        </ScrollViewer>
+
+        <!-- Status and error. A submission error stays visible after the wizard closes it. -->
+        <StackPanel Grid.Row="2" Margin="22,0,22,8" Spacing="6">
+            <Border Background="{DynamicResource DangerBrush}" CornerRadius="6" Padding="10,8"
+                    IsVisible="{Binding HasError}">
+                <TextBlock Text="{Binding ErrorText}" TextWrapping="Wrap" FontSize="12"
+                           Foreground="{DynamicResource TextOnDangerBrush}" />
+            </Border>
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="12"
+                       IsVisible="{Binding HasStatus}"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+        </StackPanel>
+
+        <Border Grid.Row="3" Background="{DynamicResource SurfaceSunkenBrush}"
+                BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="22,12">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" Content="{loc:Loc application_deployments.wizard.back}"
+                        Command="{Binding BackCommand}"
+                        IsVisible="{Binding CanGoBack}"
+                        IsEnabled="{Binding !IsBusy}" Padding="16,6" />
+                <WrapPanel Grid.Column="2" Orientation="Horizontal" ItemSpacing="8">
+                    <Button Content="{loc:Loc application_deployments.wizard.next}"
+                            Command="{Binding NextCommand}"
+                            IsVisible="{Binding CanGoForward}"
+                            IsEnabled="{Binding !IsBusy}" Padding="16,6" />
+                    <!-- Submitting is what leaves the preview: it queues one durable operation. -->
+                    <Button Content="{loc:Loc application_deployments.wizard.submit}"
+                            Command="{Binding SubmitCommand}"
+                            IsVisible="{Binding IsPreviewStep}"
+                            IsEnabled="{Binding !IsBusy}" Padding="16,6" />
+                    <Button Content="{loc:Loc common.close}"
+                            Command="{Binding CloseCommand}"
+                            IsVisible="{Binding IsProgressStep}"
+                            IsEnabled="{Binding !IsBusy}" Padding="16,6" />
+                </WrapPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

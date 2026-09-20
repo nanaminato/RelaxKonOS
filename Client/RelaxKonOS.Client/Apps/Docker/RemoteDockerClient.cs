@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
@@ -39,6 +40,49 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
     public Task<DockerOperationResult> DeleteVolumeAsync(string name, bool confirmed, CancellationToken cancellationToken = default) => SendAsync<DockerOperationResult>(HttpMethod.Delete, $"{DockerApiRoutes.VolumeByName.Replace("{name}", Uri.EscapeDataString(name))}?confirmed={confirmed.ToString().ToLowerInvariant()}", null, cancellationToken);
     public async Task<DockerContainerLogsDto?> GetContainerLogsAsync(string id, int tail = 200, CancellationToken cancellationToken = default) => await TrySendAsync<DockerContainerLogsDto>($"{DockerApiRoutes.ContainerLogs.Replace("{id}", Uri.EscapeDataString(id))}?tail={tail}", cancellationToken);
     public async Task<DockerContainerStatsDto?> GetContainerStatsAsync(string id, CancellationToken cancellationToken = default) => await TrySendAsync<DockerContainerStatsDto>(DockerApiRoutes.ContainerStats.Replace("{id}", Uri.EscapeDataString(id)), cancellationToken);
+    public Task<DockerEngineControlResult> ApplyEngineActionAsync(DockerEngineAction action, bool confirmed, CancellationToken cancellationToken = default) =>
+        SendAsync<DockerEngineControlResult>(HttpMethod.Post,
+            DockerApiRoutes.EngineAction.Replace("{action}", DockerEngineActionRoutes.Segment(action)),
+            new DockerEngineActionRequest(confirmed), cancellationToken);
+    public Task<DockerProxyStatusDto> GetProxyStatusAsync(CancellationToken cancellationToken = default) => SendAsync<DockerProxyStatusDto>(DockerProxyApiRoutes.Proxy, cancellationToken);
+    public Task<DockerProxyStatusDto> SaveProxyAsync(SaveDockerProxySettingsRequest request, CancellationToken cancellationToken = default) => SendProxyAsync(HttpMethod.Put, request, cancellationToken);
+    public Task<DockerProxyStatusDto> ClearProxyAsync(CancellationToken cancellationToken = default) => SendProxyAsync(HttpMethod.Delete, null, cancellationToken);
+
+    /// <summary>
+    /// A proxy write answers with the full status on success and with a problem document on
+    /// rejection. The status also has to survive a refusal, so the response is inspected before
+    /// <c>EnsureSuccessStatusCode</c> would collapse it into a generic transport error.
+    /// </summary>
+    private async Task<DockerProxyStatusDto> SendProxyAsync(HttpMethod method, object? body, CancellationToken cancellationToken)
+    {
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+            throw new InvalidOperationException(LocalizedText.Get("docker.error.not_signed_in"));
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), DockerProxyApiRoutes.Proxy.TrimStart('/')));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
+        if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
+        using var response = await http.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode) throw new DockerProxyRequestException(await ReadProblemCodeAsync(response, cancellationToken));
+        return await response.Content.ReadFromJsonAsync<DockerProxyStatusDto>(RelaxKonOSJsonOptions.Default, cancellationToken)
+            ?? throw new InvalidOperationException(LocalizedText.Get("docker.error.empty_response"));
+    }
+
+    private static async Task<string> ReadProblemCodeAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        const string fallback = "docker.proxy.problem.request_failed";
+        try
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var root = document.RootElement;
+            // The server sends the code both as the problem title and as an extension member, so
+            // either is accepted; a body that is not a problem document carries no code at all.
+            if (root.TryGetProperty("problemCode", out var code) && code.GetString() is { Length: > 0 } extension)
+                return extension;
+            if (root.TryGetProperty("title", out var title) && title.GetString() is { Length: > 0 } fromTitle && fromTitle.StartsWith("docker.", StringComparison.Ordinal))
+                return fromTitle;
+        }
+        catch (JsonException) { /* A non-JSON body cannot carry a problem code. */ }
+        return fallback;
+    }
 
     private Task<T> SendAsync<T>(string route, CancellationToken cancellationToken) => SendAsync<T>(HttpMethod.Get, route, null, cancellationToken);
     private async Task<T?> TrySendAsync<T>(string route, CancellationToken cancellationToken) where T : class

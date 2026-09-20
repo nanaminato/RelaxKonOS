@@ -2,11 +2,55 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.Apps.Settings.ViewModels"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
              xmlns:dto="clr-namespace:RelaxKonOS.Protocol.SystemMonitor;assembly=RelaxKonOS.Protocol"
              x:Class="RelaxKonOS.Client.Apps.Settings.Views.Pages.NetworkPageView"
              x:DataType="vm:NetworkPageViewModel">
     <StackPanel Spacing="16" MaxWidth="640">
             <TextBlock Text="{Binding LocalizedDisplayName}" FontSize="24" FontWeight="SemiBold" />
+
+        <Border Classes="card" DataContext="{Binding OutboundProxy}">
+            <StackPanel Spacing="12" x:DataType="docker:DockerProxyViewModel">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="{loc:Loc settings.outbound_proxy.title}" Classes="title" />
+                    <TextBlock Text="{loc:Loc settings.outbound_proxy.description}" FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
+                </StackPanel>
+                <CheckBox Content="{loc:Loc settings.outbound_proxy.enable}" IsChecked="{Binding IsEnabled}" />
+                <StackPanel Spacing="10" IsEnabled="{Binding IsEnabled}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc settings.outbound_proxy.source}" FontSize="12" Opacity="0.7" />
+                        <RadioButton GroupName="OutboundProxySource" Content="{loc:Loc settings.outbound_proxy.source.manual}" IsChecked="{Binding UseCustomProxy}" />
+                        <RadioButton GroupName="OutboundProxySource" Content="{loc:Loc settings.outbound_proxy.source.mihomo}" IsChecked="{Binding UseManagedProxy}" />
+                    </StackPanel>
+                    <StackPanel Spacing="4" IsVisible="{Binding UseCustomProxy}">
+                        <TextBlock Text="{loc:Loc settings.outbound_proxy.address}" FontSize="12" Opacity="0.7" />
+                        <TextBox Text="{Binding HttpProxy}" PlaceholderText="http://127.0.0.1:7890" />
+                        <TextBlock Text="{loc:Loc settings.outbound_proxy.https_hint}" FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+                        <TextBox Text="{Binding HttpsProxy}" PlaceholderText="{loc:Loc settings.outbound_proxy.https_placeholder}" />
+                    </StackPanel>
+                    <StackPanel Spacing="4" IsVisible="{Binding UseManagedProxy}">
+                        <TextBlock Text="{Binding ManagedProxyEndpoint}" />
+                        <TextBlock Text="{loc:Loc settings.outbound_proxy.mihomo_unavailable}" Foreground="{DynamicResource DangerBrush}" FontSize="11" IsVisible="{Binding !IsManagedProxyAvailable}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc settings.outbound_proxy.bypass}" FontSize="12" Opacity="0.7" />
+                        <TextBox Text="{Binding NoProxy}" PlaceholderText="localhost;127.0.0.1;*.local" />
+                    </StackPanel>
+                    <TextBlock Text="{loc:Loc settings.outbound_proxy.apply_to}" FontSize="12" Opacity="0.7" />
+                    <CheckBox Content="{loc:Loc settings.outbound_proxy.docker_engine}" IsChecked="{Binding ApplyToEngine}" />
+                    <CheckBox Content="{loc:Loc settings.outbound_proxy.docker_builds}" IsChecked="{Binding ApplyToBuild}" />
+                    <CheckBox Content="{loc:Loc settings.outbound_proxy.image_tags}" IsChecked="{Binding ApplyToImageTags}" />
+                    <CheckBox Content="{loc:Loc settings.outbound_proxy.runtime_downloads}" IsChecked="{Binding ApplyToRuntimeDownloads}" />
+                </StackPanel>
+                <TextBlock Text="{loc:Loc settings.outbound_proxy.docker_restart}" Foreground="{DynamicResource WarningBrush}" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding RestartsDocker}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="{loc:Loc common.save}" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsSaving}" />
+                    <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsLoading}" />
+                </StackPanel>
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Opacity="0.75" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding ProblemText}" FontSize="12" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
 
         <Border Classes="card">
             <StackPanel Spacing="12">

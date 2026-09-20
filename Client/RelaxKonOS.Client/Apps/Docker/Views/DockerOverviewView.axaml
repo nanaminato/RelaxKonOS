@@ -23,6 +23,21 @@
         </Grid>
         <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
             <StackPanel Spacing="12">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc docker.engine.control}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc docker.engine.control.hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button Content="{loc:Loc docker.engine.start}" Command="{Binding StartEngineCommand}" />
+                    <Button Content="{loc:Loc docker.engine.stop}" Command="{Binding StopEngineCommand}" />
+                    <Button Content="{loc:Loc docker.engine.restart}" Command="{Binding RestartEngineCommand}" />
+                </StackPanel>
+                <TextBlock Text="{loc:Loc docker.engine.control.warning}" Foreground="{DynamicResource WarningBrush}" FontSize="11" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding EngineActionText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+            <StackPanel Spacing="12">
                 <TextBlock Text="{loc:Loc docker.overview}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <TextBlock Text="{loc:Loc docker.overview_hint}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
                 <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="10">

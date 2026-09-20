@@ -33,12 +33,25 @@ public sealed record DockerContainerUpdateRequest(string Name);
 /// command progress for operations whose output is safe to show in the Docker Manager; detailed
 /// daemon diagnostics remain in the server logs.
 /// </summary>
-public sealed record DockerOperationResult(bool Success, string ProblemCode, IReadOnlyList<string>? LogLines = null);
+/// <param name="LogTruncated">True when the head of <see cref="LogLines"/> was dropped, so a reader
+/// never mistakes a tail for the complete command output.</param>
+public sealed record DockerOperationResult(bool Success, string ProblemCode, IReadOnlyList<string>? LogLines = null, bool LogTruncated = false);
 public sealed record DockerImageOperationRequest(string ImageReference, bool Confirmed = false);
+/// <summary>
+/// Bounded runtime constraints for a created container. A null member leaves the Docker default in
+/// place; it is never translated into an "unlimited" flag.
+/// </summary>
+public sealed record DockerContainerResourceOptions(
+    double? CpuCores = null,
+    long? MemoryBytes = null,
+    int? PidsLimit = null,
+    string? LogDriver = null,
+    IReadOnlyList<string>? LogOptions = null);
+
 /// <summary>
 /// Structured container creation input. Options are kept separate from the command arguments so
 /// the server can compose a safe <c>docker create</c> invocation without the client building CLI
-/// strings.
+/// strings. Labels are how a managed resource declares its owner.
 /// </summary>
 public sealed record DockerContainerCreateRequest(
     string Name,
@@ -48,9 +61,17 @@ public sealed record DockerContainerCreateRequest(
     IReadOnlyList<string>? Environment = null,
     IReadOnlyList<string>? Mounts = null,
     string? Network = null,
-    string? RestartPolicy = null);
+    string? RestartPolicy = null,
+    IReadOnlyList<string>? Labels = null,
+    DockerContainerResourceOptions? Resources = null);
 public sealed record DockerNetworkCreateRequest(string Name, string Driver = "bridge", bool Confirmed = false);
-public sealed record DockerVolumeCreateRequest(string Name, string Driver = "local", bool Confirmed = false);
+/// <summary>Structured named-volume creation. Labels let higher-level domains prove ownership before
+/// changing or deleting a volume.</summary>
+public sealed record DockerVolumeCreateRequest(
+    string Name,
+    string Driver = "local",
+    bool Confirmed = false,
+    IReadOnlyList<string>? Labels = null);
 public sealed record DockerContainerLogsDto(IReadOnlyList<string> Lines, bool Truncated);
 public sealed record DockerContainerStatsDto(string ContainerId, string CpuPercent, string MemoryUsage, string NetworkIo, string BlockIo);
 public sealed record DockerBuildRequest(string ContextDirectory, string ImageReference, string? Dockerfile = null);

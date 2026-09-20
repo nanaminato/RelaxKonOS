@@ -5,6 +5,7 @@ using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Client.Apps.Browser;
+using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Apps.TaskManager;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -45,7 +46,6 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         DeveloperModeService? developerMode,
         DeveloperPackageManager? packages,
         IBrowserClient? browserClient,
-        IImageMirrorClient? imageMirrors,
         NetworkInspectorWindowService? networkInspector = null,
         LocalizationService? localization = null,
         WallpaperService? wallpapers = null)
@@ -74,9 +74,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new PersonalizationPageViewModel(settings, save),
             new TimeLanguagePageViewModel(settings, localization, save,
                 new HostTimeEditorViewModel(App.Services.GetRequiredService<Services.HostSettings.IHostTimeService>(), session, localization)),
-            new NetworkPageViewModel(settings, session, remote!, system!, save),
+            new NetworkPageViewModel(settings, session, remote!, system!, App.Services.GetRequiredService<IRemoteDockerClient>(), save),
             new AppsPageViewModel(settings, apps!, packages!, localization, browserClient!),
-            new ImageMirrorsPageViewModel(settings, imageMirrors!, session),
             new DefaultAppsPageViewModel(settings, apps!, save),
             new DeveloperPageViewModel(settings, developerMode!, networkInspector!, localization, save),
             new AboutPageViewModel(settings),
@@ -119,10 +118,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             return;
 
         if (Pages.OfType<NetworkPageViewModel>().FirstOrDefault() is { } networkPage)
+        {
             await networkPage.LoadServerAddressesAsync();
-        if (Pages.OfType<ImageMirrorsPageViewModel>().FirstOrDefault() is { } imageMirrorsPage)
-            await imageMirrorsPage.LoadAsync();
-
+            await networkPage.LoadOutboundProxyAsync();
+        }
         try
         {
             if (_editor.HasDraft) return;

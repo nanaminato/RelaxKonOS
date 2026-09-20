@@ -208,11 +208,18 @@ public sealed class DockerComposeService : IDockerComposeService
         throw new PlatformNotSupportedException("RelaxKonOS Docker Compose storage supports Windows and Linux hosts only.");
     }
 
-    private static async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         try
         {
             using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
+            // The build layer is deliberately NOT applied on this path. A stack is started with
+            // `compose up`, which accepts no --build-arg at all (only `compose build` does, and this
+            // service never runs it), and Compose does not forward the client environment into the
+            // build it triggers for a service with a `build:` section. Such a service therefore has
+            // to be built through the Manager's image build first, or declare its own build.args in
+            // the Compose file.
+            // See docs/applications/RelaxKonOS.DockerManager.md §3.5.
             foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return new CommandResult(false, string.Empty, "start_failed");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(TimeSpan.FromMinutes(2));

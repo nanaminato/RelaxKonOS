@@ -67,6 +67,10 @@ public enum PrivilegedOperationKind
     SmbSetUserEnabled,
     SmbSetUserPassword,
     AuthenticateSystemUser,
+    /// <summary>Writes the fixed Linux docker.service proxy drop-in and restarts the daemon.</summary>
+    DockerEngineConfigureProxy,
+    /// <summary>Starts, stops, or restarts the fixed Linux <c>docker.service</c> unit.</summary>
+    DockerEngineServiceAction,
 }
 
 /// <summary>
@@ -139,6 +143,13 @@ public sealed record SmbManagedShareRequest(string Id, string Name, string Path,
 public sealed record SmbWindowsServerSecuritySnapshot(string SnapshotHash, bool Smb1Enabled, bool Smb2Enabled,
     bool AuthenticatedUserSharingEnabled, bool NullSessionsDisabled, bool Compliant);
 
+/// <summary>
+/// Structured Linux Docker daemon proxy. The Helper validates every value again and can only write
+/// it into its own fixed <c>docker.service</c> drop-in; no path, unit name, or command is accepted.
+/// Proxy URLs may embed credentials, so the Helper never echoes them back.
+/// </summary>
+public sealed record DockerProxyConfiguration(string HttpProxy, string HttpsProxy, string NoProxy, bool Enabled = true);
+
 /// <summary>Closed UFW rule verbs. Endpoint values are validated again by the Helper.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<FirewallRuleAction>))]
 public enum FirewallRuleAction { Allow, Deny, Reject, Limit }
@@ -201,6 +212,10 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("firewallPort")] string? FirewallPort = null,
     [property: JsonPropertyName("firewallRuleNumber")] int? FirewallRuleNumber = null,
     [property: JsonPropertyName("firewallCompanionRuleNumber")] int? FirewallCompanionRuleNumber = null,
+    [property: JsonPropertyName("dockerProxy")] DockerProxyConfiguration? DockerProxy = null,
+    /// <summary>Lifecycle action for the fixed Docker daemon unit. The unit name is a Helper
+    /// constant, so a caller cannot aim this at another service.</summary>
+    [property: JsonPropertyName("dockerServiceAction")] PrivilegedServiceAction? DockerServiceAction = null,
     [property: JsonPropertyName("smbServiceAction")] SmbServiceAction? SmbServiceAction = null,
     [property: JsonPropertyName("smbUsername")] string? SmbUsername = null,
     [property: JsonPropertyName("smbPassword")] string? SmbPassword = null,

@@ -192,6 +192,7 @@ public static class AuthEndpoints
         if (host.Capabilities.Certificates) capabilities.Add(ServerCapabilities.Certificates);
         if (host.Capabilities.Tunnels) capabilities.Add(ServerCapabilities.Tunnels);
         if (host.Capabilities.Proxy) capabilities.Add(ServerCapabilities.Proxy);
+        if (host.Capabilities.ApplicationDeployments) capabilities.Add(ServerCapabilities.ApplicationDeployments);
         return new ServerDescriptorDto(isWindows ? PlatformKind.Windows : PlatformKind.Linux, capabilities, host);
     }
 

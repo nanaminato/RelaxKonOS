@@ -42,6 +42,8 @@
         "application.relaxkonos.registry.display_name": "Registry",
         "application.relaxkonos.registry.description": "Browse supported RelaxKonOS configuration values",
         "application.relaxkonos.proxy.display_name": "Proxy Manager",
-        "application.relaxkonos.proxy.description": "Manage the host proxy runtime, traffic, and network recovery state"
+        "application.relaxkonos.proxy.description": "Manage the host proxy runtime, traffic, and network recovery state",
+        "application.relaxkonos.application-deployments.display_name": "Application Deployments",
+        "application.relaxkonos.application-deployments.description": "Deploy and manage containerized applications on the RelaxKonOS Server"
     }
 }

@@ -14,7 +14,7 @@ public interface IServerModeResolver
 public enum ServerHostFeature
 {
     Docker, Firewall, FileServices, WebServer, Certificates, Tunnels, Proxy, NativeServices, AgentInstallation,
-    PrivilegedOperations
+    PrivilegedOperations, ApplicationDeployments
 }
 
 /// <summary>
@@ -60,10 +60,12 @@ public sealed class ServerModeResolver : IServerModeResolver
 
     public bool Supports(ServerHostFeature feature) => Mode != ServerMode.User || feature switch
     {
-        ServerHostFeature.Docker or ServerHostFeature.Firewall or ServerHostFeature.FileServices or
-        ServerHostFeature.WebServer or ServerHostFeature.Certificates or ServerHostFeature.Tunnels or
-        ServerHostFeature.Proxy or ServerHostFeature.NativeServices or ServerHostFeature.AgentInstallation or
-        ServerHostFeature.PrivilegedOperations => false,
+        // Containerised deployment composes the Docker engine, so it inherits the Docker boundary:
+        // a no-sudo User Mode host cannot reach the engine and must not be offered the feature.
+        ServerHostFeature.Docker or ServerHostFeature.ApplicationDeployments or ServerHostFeature.Firewall or
+        ServerHostFeature.FileServices or ServerHostFeature.WebServer or ServerHostFeature.Certificates or
+        ServerHostFeature.Tunnels or ServerHostFeature.Proxy or ServerHostFeature.NativeServices or
+        ServerHostFeature.AgentInstallation or ServerHostFeature.PrivilegedOperations => false,
         _ => true,
     };
 
@@ -73,7 +75,7 @@ public sealed class ServerModeResolver : IServerModeResolver
         var capabilities = new ServerHostCapabilitiesDto(
             Files: true, Terminal: true, Git: true, Metrics: true, Processes: true, Guardian: true,
             Docker: !user, Firewall: !user, FileServices: !user, WebServer: !user, Certificates: !user,
-            Tunnels: !user, Proxy: !user, PrivilegedOperations: !user);
+            Tunnels: !user, Proxy: !user, PrivilegedOperations: !user, ApplicationDeployments: !user);
         var limitations = user
             ? new[] { "user-mode-loopback-required", "privileged-feature-unavailable", "root-equivalent-docker-access", "guardian.cross_user_unavailable" }
             : Array.Empty<string>();

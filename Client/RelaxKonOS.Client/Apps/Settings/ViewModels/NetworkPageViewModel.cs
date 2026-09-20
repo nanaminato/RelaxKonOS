@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using RelaxKonOS.Client.Apps.TaskManager;
+using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -21,12 +22,14 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         IAuthSession session,
         IRelaxKonOSClient remote,
         ITaskManagerClient system,
+        IRemoteDockerClient docker,
         Action? save)
         : base(settings, save)
     {
         _session = session;
         _remote = remote;
         _system = system;
+        OutboundProxy = new DockerProxyViewModel(docker);
         ServerAddresses = new ObservableCollection<NetworkAddressDto>();
     }
 
@@ -46,6 +49,10 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
     public string WorkspaceName => _session.CurrentWorkspace?.Name ?? "—";
     public bool IsConnected => _session.State == AuthSessionState.Authenticated;
     public ObservableCollection<NetworkAddressDto> ServerAddresses { get; }
+    /// <summary>One host-wide outbound proxy preference shared by the built-in download features.</summary>
+    public DockerProxyViewModel OutboundProxy { get; }
+
+    public Task LoadOutboundProxyAsync() => OutboundProxy.LoadAsync();
 
     /// <summary>Latency measurement state. The displayed text is derived so it re-localizes on a language switch.</summary>
     private enum LatencyState { NotTested, CannotTest, Testing, Measured, Failed }

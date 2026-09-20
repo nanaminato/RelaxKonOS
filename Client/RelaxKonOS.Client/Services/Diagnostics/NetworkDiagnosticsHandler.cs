@@ -6,6 +6,7 @@ namespace RelaxKonOS.Client.Services.Diagnostics;
 /// <summary>Records completed HTTP traffic, including headers and buffered payloads.</summary>
 public sealed class NetworkDiagnosticsHandler(NetworkDiagnosticsService diagnostics, string source) : DelegatingHandler
 {
+    public static readonly HttpRequestOptionsKey<bool> SkipRequestBodyCapture = new("SkipRequestBodyCapture");
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         if (!diagnostics.IsRecording || !diagnostics.ShouldCapture(request.RequestUri))
@@ -14,7 +15,8 @@ public sealed class NetworkDiagnosticsHandler(NetworkDiagnosticsService diagnost
         var startedAt = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
         var requestHeaders = NetworkDiagnosticsService.CaptureHeaders(request.Headers, request.Content?.Headers);
-        var requestBody = await NetworkDiagnosticsService.CapturePayloadAsync(request.Content).ConfigureAwait(false);
+        var requestBody = request.Options.TryGetValue(SkipRequestBodyCapture, out var skip) && skip
+            ? null : await NetworkDiagnosticsService.CapturePayloadAsync(request.Content).ConfigureAwait(false);
         try
         {
             var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);

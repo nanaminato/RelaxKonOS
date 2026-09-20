@@ -10,9 +10,12 @@ namespace RelaxKonOS.Server.Docker;
 /// socket, keeping all transport details out of endpoints and clients. It deliberately uses
 /// fixed argument lists (never user-provided shell strings).
 /// </summary>
-public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogger<DockerCliEngineService> logger) : IDockerEngineService
+public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDockerProxyResolver proxyResolver, ILogger<DockerCliEngineService> logger) : IDockerEngineService
 {
     private const int MaxArchiveBytes = 64 * 1024 * 1024;
+    /// <summary>Command output is kept as a bounded tail: enough to explain a failure, never a stream.</summary>
+    private const int MaximumLogLines = 100;
+    private const int MaximumLogLineLength = 512;
 
     public async Task<DockerStatusDto> GetStatusAsync(CancellationToken cancellationToken = default)
     {
@@ -30,6 +33,19 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         {
             return new DockerStatusDto(false, "docker.api_incompatible", null, null, null);
         }
+    }
+
+    public async Task<DockerEngineProxyState?> GetProxyStateAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["info", "--format", "{{json .}}"], cancellationToken);
+        if (!result.Success) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(result.Output);
+            var root = document.RootElement;
+            return new DockerEngineProxyState(Read(root, "HttpProxy"), Read(root, "HttpsProxy"), Read(root, "NoProxy"));
+        }
+        catch (JsonException) { return null; }
     }
 
     public async Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken = default)
@@ -94,11 +110,11 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         return ToOperationResult(await RunAsync(arguments, cancellationToken));
     }
 
-    public async Task<DockerOperationResult> PullImageAsync(DockerImageOperationRequest request, string? resolvedImageReference = null, CancellationToken cancellationToken = default)
+    public async Task<DockerOperationResult> PullImageAsync(DockerImageOperationRequest request, string? resolvedImageReference = null, CancellationToken cancellationToken = default, Action<string>? onOutput = null)
     {
         var imageReference = resolvedImageReference ?? request.ImageReference;
         if (!IsImageReference(request.ImageReference) || !IsImageReference(imageReference)) return new DockerOperationResult(false, "docker.validation_failed");
-        return ToOperationResult(await RunAsync(["pull", imageReference], cancellationToken, CommandTimeout.LongRunning));
+        return ToOperationResult(await RunAsync(["pull", imageReference], cancellationToken, CommandTimeout.LongRunning, onOutput));
     }
 
     public async Task<DockerOperationResult> DeleteImageAsync(string imageId, DockerImageOperationRequest request, CancellationToken cancellationToken = default)
@@ -113,9 +129,15 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         var ports = request.Ports ?? [];
         var environment = request.Environment ?? [];
         var mounts = request.Mounts ?? [];
+        var labels = request.Labels ?? [];
+        var resources = request.Resources;
+        var logOptions = resources?.LogOptions ?? [];
         if (!IsContainerId(request.Name) || !IsImageReference(request.Image) || request.Arguments.Count > 64 || request.Arguments.Any(argument => !IsOptionValue(argument)) ||
-            ports.Count > 32 || environment.Count > 64 || mounts.Count > 32 ||
+            ports.Count > 32 || environment.Count > 64 || mounts.Count > 32 || labels.Count > 32 ||
             ports.Any(port => !IsOptionValue(port)) || environment.Any(variable => !IsOptionValue(variable)) || mounts.Any(mount => !IsOptionValue(mount)) ||
+            labels.Any(label => !IsLabel(label)) || logOptions.Count > 8 || logOptions.Any(option => !IsLogOption(option)) ||
+            resources is { CpuCores: <= 0 or > 1024 } || resources is { MemoryBytes: <= 0 or > 1L << 42 } || resources is { PidsLimit: <= 0 or > 1048576 } ||
+            resources is { LogDriver: { Length: > 0 } driver } && !AllowedLogDrivers.Contains(driver) ||
             request.Network is { Length: > 0 } network && !IsContainerId(network) ||
             request.RestartPolicy is { Length: > 0 } restartPolicy && !AllowedRestartPolicies.Contains(restartPolicy))
             return new DockerOperationResult(false, "docker.validation_failed");
@@ -124,8 +146,14 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         foreach (var port in ports) { arguments.Add("--publish"); arguments.Add(port); }
         foreach (var variable in environment) { arguments.Add("--env"); arguments.Add(variable); }
         foreach (var mount in mounts) { arguments.Add("--volume"); arguments.Add(mount); }
+        foreach (var label in labels) { arguments.Add("--label"); arguments.Add(label); }
         if (!string.IsNullOrWhiteSpace(request.Network)) { arguments.Add("--network"); arguments.Add(request.Network); }
         if (!string.IsNullOrWhiteSpace(request.RestartPolicy)) { arguments.Add("--restart"); arguments.Add(request.RestartPolicy); }
+        if (resources?.CpuCores is { } cpuCores) { arguments.Add("--cpus"); arguments.Add(cpuCores.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)); }
+        if (resources?.MemoryBytes is { } memoryBytes) { arguments.Add("--memory"); arguments.Add(memoryBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (resources?.PidsLimit is { } pidsLimit) { arguments.Add("--pids-limit"); arguments.Add(pidsLimit.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+        if (resources?.LogDriver is { Length: > 0 } logDriver) { arguments.Add("--log-driver"); arguments.Add(logDriver); }
+        foreach (var logOption in logOptions) { arguments.Add("--log-opt"); arguments.Add(logOption); }
         arguments.Add(request.Image);
         arguments.AddRange(request.Arguments);
         return ToOperationResult(await RunAsync(arguments, cancellationToken));
@@ -180,8 +208,13 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
 
     public async Task<DockerOperationResult> CreateVolumeAsync(DockerVolumeCreateRequest request, CancellationToken cancellationToken = default)
     {
-        if (!IsContainerId(request.Name) || !IsContainerId(request.Driver)) return new DockerOperationResult(false, "docker.validation_failed");
-        return ToOperationResult(await RunAsync(["volume", "create", "--driver", request.Driver, request.Name], cancellationToken));
+        var labels = request.Labels ?? [];
+        if (!IsContainerId(request.Name) || !IsContainerId(request.Driver) || labels.Count > 32 || labels.Any(label => !IsLabel(label)))
+            return new DockerOperationResult(false, "docker.validation_failed");
+        var arguments = new List<string> { "volume", "create", "--driver", request.Driver };
+        foreach (var label in labels) { arguments.Add("--label"); arguments.Add(label); }
+        arguments.Add(request.Name);
+        return ToOperationResult(await RunAsync(arguments, cancellationToken));
     }
 
     public async Task<DockerOperationResult> DeleteNetworkAsync(string id, bool confirmed, CancellationToken cancellationToken = default)
@@ -215,11 +248,12 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         return row is null ? null : new DockerContainerStatsDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4));
     }
 
-    public async Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, CancellationToken cancellationToken = default)
+    public async Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, bool includeBuildOutput = false, CancellationToken cancellationToken = default, Action<string>? onOutput = null)
     {
         if (!IsImageReference(request.ImageReference) || !IsBuildPathAllowed(request.ContextDirectory, out var contextDirectory))
             return new DockerOperationResult(false, "docker.validation_failed");
         var arguments = new List<string> { "build", "--tag", request.ImageReference };
+        if (onOutput is not null) arguments.Add("--progress=plain");
         if (!string.IsNullOrWhiteSpace(request.Dockerfile))
         {
             var dockerfile = Path.GetFullPath(request.Dockerfile);
@@ -227,9 +261,12 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
             arguments.Add("--file"); arguments.Add(dockerfile);
         }
         arguments.Add(contextDirectory);
-        // Build output can echo Dockerfile content and build arguments, so it is retained only
-        // in protected server diagnostics rather than returned to a client.
-        return ToOperationResult(await RunAsync(arguments, cancellationToken, CommandTimeout.LongRunning), includeLogLines: false);
+        // Build output can echo Dockerfile content and build arguments, so it is only returned to a
+        // caller that already owns what is being built. The application-deployment path builds a
+        // server-generated context from a template-authored Dockerfile and cannot explain a failure
+        // without the command's own text; the general Docker Manager endpoint keeps the default and
+        // still exposes nothing. Either way the full output stays in the protected server log.
+        return ToOperationResult(await RunAsync(arguments, cancellationToken, CommandTimeout.LongRunning, onOutput, carriesBuildProxy: true), includeBuildOutput);
     }
 
     public async Task<DockerImageArchiveDto?> ExportImageAsync(string imageId, CancellationToken cancellationToken = default)
@@ -272,6 +309,10 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
     {
         "no", "always", "unless-stopped", "on-failure"
     };
+    private static readonly HashSet<string> AllowedLogDrivers = new(StringComparer.Ordinal)
+    {
+        "json-file", "local", "journald", "syslog", "none"
+    };
 
     private async Task<IReadOnlyList<string[]>> RunTableAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
@@ -281,14 +322,21 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
             .Select(line => line.Split('\t')).ToArray();
     }
 
-    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, CommandTimeout commandTimeout = CommandTimeout.Standard)
+    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, CommandTimeout commandTimeout = CommandTimeout.Standard, Action<string>? onOutput = null, bool carriesBuildProxy = false)
     {
         var commandName = CommandName(arguments);
         logger.LogInformation("Docker command {DockerCommand} started.", commandName);
         try
         {
             using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
-            foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+            // Only a build consumes the proxy, so the preference is read for a build command alone;
+            // every other command keeps running with the environment it inherited.
+            var proxy = carriesBuildProxy ? await proxyResolver.ResolveAsync(cancellationToken) : null;
+            if (proxy is not null) DockerBuildProxy.ApplyToEnvironment(process.StartInfo, proxy);
+            var effectiveArguments = proxy is null
+                ? arguments
+                : [.. arguments.Take(1), .. DockerBuildProxy.ArgumentNames(proxy), .. arguments.Skip(1)];
+            foreach (var argument in effectiveArguments) process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return Complete(new CommandResult(false, "", "start_failed"), commandName);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(commandTimeout switch
@@ -297,8 +345,10 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
                 CommandTimeout.LongRunning => TimeSpan.FromSeconds(options.LongRunningCommandTimeoutSeconds),
                 _ => TimeSpan.FromSeconds(options.CommandTimeoutSeconds)
             });
-            var outputTask = process.StandardOutput.ReadToEndAsync();
-            var errorTask = process.StandardError.ReadToEndAsync();
+            var outputTask = onOutput is null ? process.StandardOutput.ReadToEndAsync()
+                : DockerLiveOutput.ReadAsync(process.StandardOutput, onOutput);
+            var errorTask = onOutput is null ? process.StandardError.ReadToEndAsync()
+                : DockerLiveOutput.ReadAsync(process.StandardError, onOutput);
             try
             {
                 await process.WaitForExitAsync(timeout.Token);
@@ -327,13 +377,17 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
         catch (InvalidOperationException) { /* The process exited between the checks. */ }
     }
-    private static DockerOperationResult ToOperationResult(CommandResult result, bool includeLogLines = true) =>
-        new(result.Success, result.Success ? string.Empty : ToProblemCode(result), includeLogLines ? ToLogLines(result) : []);
-    private static IReadOnlyList<string> ToLogLines(CommandResult result) =>
+    private static DockerOperationResult ToOperationResult(CommandResult result, bool includeLogLines = true)
+    {
+        var problem = result.Success ? string.Empty : ToProblemCode(result);
+        if (!includeLogLines) return new(result.Success, problem);
+        var lines = AllLogLines(result);
+        return new(result.Success, problem, [.. lines.TakeLast(MaximumLogLines)], lines.Count > MaximumLogLines);
+    }
+    private static IReadOnlyList<string> AllLogLines(CommandResult result) =>
         string.Concat(result.Output, string.IsNullOrWhiteSpace(result.Output) || string.IsNullOrWhiteSpace(result.Error) ? string.Empty : Environment.NewLine, result.Error)
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => line.Length <= 512 ? line : $"{line[..509]}...")
-            .TakeLast(100)
+            .Select(line => line.Length <= MaximumLogLineLength ? line : $"{line[..(MaximumLogLineLength - 3)]}...")
             .ToArray();
     private static string CommandName(IReadOnlyList<string> arguments) => string.Join(' ', arguments.Take(2));
     private static string Diagnostic(string value) => value.Length <= 4096 ? value : $"{value[..4093]}...";
@@ -357,6 +411,11 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
     private static bool IsContainerId(string value) => value.Length is >= 3 and <= 128 && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.');
     private static bool IsImageReference(string value) => value.Length is >= 1 and <= 255 && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or ':' or '.' or '_' or '-');
     private static bool IsOptionValue(string value) => value.Length is >= 1 and <= 4096 && !value.Contains('\0') && !value.Any(char.IsControl);
+    /// <summary>A label is a bounded <c>key=value</c> pair; it is never treated as shell text.</summary>
+    private static bool IsLabel(string value) => value.Length is >= 3 and <= 256 && value.Contains('=')
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.' or '=' or '/' or ':' or ' ' || character is >= '\u0080' and <= '\uffff');
+    private static bool IsLogOption(string value) => value.Length is >= 3 and <= 128 && value.Contains('=')
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.' or '=' or '/');
     private bool IsBuildPathAllowed(string path, out string fullPath)
     {
         fullPath = string.Empty;
@@ -387,7 +446,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
 }
 
 /// <summary>Host-admin approved source roots for Docker builds; an API caller cannot read arbitrary paths.</summary>
-public sealed class DockerCliEngineOptions
+public sealed record DockerCliEngineOptions
 {
     public IReadOnlyList<string> BuildRoots { get; init; } = [];
     /// <summary>Maximum duration for fast availability checks.</summary>

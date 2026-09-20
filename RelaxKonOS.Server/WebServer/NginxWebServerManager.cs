@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using RelaxKonOS.Protocol.WebServers;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Certificate;
+using RelaxKonOS.Server.Docker;
 
 namespace RelaxKonOS.Server.WebServer;
 
@@ -31,6 +32,7 @@ internal sealed partial class NginxWebServerManager(
     InstallationFileReferenceStore fileReferences,
     ICertificateStore certificates,
     FileHttp01ChallengeStore webRootChallenges,
+    IOutboundProxyHttpClientFactory outboundProxyClients,
     ILogger<NginxWebServerManager> logger) : IWebServerProvider
 {
     private const string ProviderKey = "nginx";
@@ -62,7 +64,7 @@ internal sealed partial class NginxWebServerManager(
         if (!OperatingSystem.IsWindows()) return new(null, null, []);
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            using var client = await outboundProxyClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromSeconds(15), cancellationToken);
             var page = await client.GetStringAsync("https://nginx.org/en/download.html", cancellationToken);
             var versions = WindowsDownloadVersionPattern().Matches(page).Select(match => match.Groups["version"].Value)
                 .Distinct(StringComparer.Ordinal).OrderByDescending(version => Version.TryParse(version, out var parsed) ? parsed : new Version(0, 0)).ToArray();
@@ -1063,7 +1065,7 @@ internal sealed partial class NginxWebServerManager(
                 if (!WindowsVersionPattern().IsMatch(version)) return new WebServerOperationResult("webserver.version_invalid");
                 await progress.ReportAsync("downloading", cancellationToken);
                 logger.LogInformation("Downloading Windows Nginx ZIP from the official source. Version={Version}", version);
-                using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+                using var client = await outboundProxyClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromMinutes(10), cancellationToken);
                 using var response = await client.GetAsync($"https://nginx.org/download/nginx-{version}.zip", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {

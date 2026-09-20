@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:docker="clr-namespace:RelaxKonOS.Client.Apps.Docker"
+             x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerProxyView"
+             x:DataType="docker:DockerProxyViewModel">
+    <StackPanel Spacing="18">
+        <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="14" Padding="18" IsVisible="{Binding IsReadOnly}">
+            <StackPanel Spacing="6">
+                <TextBlock Text="{loc:Loc docker.proxy.title}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{loc:Loc docker.proxy.settings_managed_by_settings}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20" IsVisible="{Binding !IsReadOnly}">
+            <StackPanel Spacing="14">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc docker.proxy.title}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc docker.proxy.subtitle}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <CheckBox IsChecked="{Binding IsEnabled}" Content="{loc:Loc docker.proxy.enable}" />
+
+                <StackPanel Spacing="10" IsEnabled="{Binding IsEnabled}">
+                    <TextBlock Text="{loc:Loc docker.proxy.source}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                    <RadioButton GroupName="ProxySource" IsChecked="{Binding UseCustomProxy}" Content="{loc:Loc docker.proxy.source.custom}" />
+                    <RadioButton GroupName="ProxySource" IsChecked="{Binding UseManagedProxy}" Content="{loc:Loc docker.proxy.source.managed}" />
+
+                    <StackPanel Spacing="10" IsVisible="{Binding UseCustomProxy}">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{loc:Loc docker.proxy.http.label}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                            <TextBox Text="{Binding HttpProxy}" PlaceholderText="{loc:Loc docker.proxy.http.placeholder}" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{loc:Loc docker.proxy.https.label}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                            <TextBox Text="{Binding HttpsProxy}" PlaceholderText="{loc:Loc docker.proxy.https.placeholder}" />
+                            <TextBlock Text="{loc:Loc docker.proxy.https.hint}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding UseManagedProxy}">
+                        <TextBlock Text="{loc:Loc docker.proxy.managed.endpoint_label}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                        <TextBlock Text="{Binding ManagedProxyEndpoint}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{loc:Loc docker.proxy.managed.available}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" IsVisible="{Binding IsManagedProxyAvailable}" />
+                        <TextBlock Text="{loc:Loc docker.proxy.managed.unavailable}" Foreground="{DynamicResource DangerBrush}" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding !IsManagedProxyAvailable}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{loc:Loc docker.proxy.noproxy.label}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                        <TextBox Text="{Binding NoProxy}" PlaceholderText="{loc:Loc docker.proxy.noproxy.placeholder}" />
+                    </StackPanel>
+
+                    <TextBlock Text="{loc:Loc docker.proxy.scope}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,6,0,0" />
+                    <StackPanel Spacing="3">
+                        <CheckBox IsChecked="{Binding ApplyToEngine}" Content="{loc:Loc docker.proxy.scope.engine}" />
+                        <TextBlock Text="{loc:Loc docker.proxy.scope.engine.hint}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0" />
+                    </StackPanel>
+                    <StackPanel Spacing="3">
+                        <CheckBox IsChecked="{Binding ApplyToBuild}" Content="{loc:Loc docker.proxy.scope.build}" />
+                        <TextBlock Text="{loc:Loc docker.proxy.scope.build.hint}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0" />
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Text="{loc:Loc docker.proxy.restart_warning}" Foreground="{DynamicResource WarningBrush}" FontSize="11" TextWrapping="Wrap"
+                           IsVisible="{Binding RestartsDocker}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
+                    <Button Content="{loc:Loc docker.proxy.save}" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsSaving}" />
+                    <Button Content="{loc:Loc docker.proxy.clear}" Command="{Binding ClearCommand}" IsEnabled="{Binding !IsSaving}" />
+                    <Button Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsLoading}" />
+                </StackPanel>
+
+                <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding ProblemText}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{loc:Loc docker.proxy.layers}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="8">
+                    <TextBlock Text="{loc:Loc docker.proxy.layer.engine}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding EngineLayerText}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Text="{loc:Loc docker.proxy.layer.build}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BuildLayerText}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Text="{loc:Loc docker.proxy.effective}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding EffectiveText}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20" IsVisible="{Binding HasDesktopProxy}">
+            <StackPanel Spacing="12">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.subtitle}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="8">
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.mode}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding DesktopProxyModeText}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Row="1" Text="{loc:Loc docker.proxy.http.label}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DesktopProxyHttp}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Text="{loc:Loc docker.proxy.https.label}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DesktopProxyHttps}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Text="{loc:Loc docker.proxy.desktop.settings_path}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DesktopSettingsPath}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" TextWrapping="Wrap" />
+                </Grid>
+                <Button Content="{loc:Loc docker.proxy.desktop.import}" Command="{Binding ImportDesktopProxyCommand}" HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+
+    </StackPanel>
+</UserControl>

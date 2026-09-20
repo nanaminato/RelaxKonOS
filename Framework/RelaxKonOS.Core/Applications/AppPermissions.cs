@@ -14,6 +14,8 @@ public static class AppPermissions
     public const string ServerPowerManage = "server.power.manage";
     public const string ServerDockerRead = "server.docker.read";
     public const string ServerDockerManage = "server.docker.manage";
+    public const string ServerApplicationDeploymentsRead = "server.application-deployments.read";
+    public const string ServerApplicationDeploymentsManage = "server.application-deployments.manage";
     public const string ServerGuardianRead = "server.guardian.read";
     public const string ServerGuardianManage = "server.guardian.manage";
     public const string ServerFirewallRead = "server.firewall.read";
@@ -59,6 +61,8 @@ public static class AppPermissions
         new(ServerMetricsRead, "Read server performance metrics", "Read aggregate CPU, memory, disk, network, and GPU metrics from the server.", "server_monitoring"),
         new(ServerDockerRead, "Read Docker resources", "View the server's local Docker status, containers, images, networks, volumes, and safe diagnostics.", "server_management"),
         new(ServerDockerManage, "Manage Docker resources", "Create and change local Docker containers, images, and Compose stacks on the server.", "server_management"),
+        new(ServerApplicationDeploymentsRead, "Read deployed applications", "View deployed applications, their revisions, operation history, and bounded logs.", "server_management"),
+        new(ServerApplicationDeploymentsManage, "Manage deployed applications", "Create, deploy, start, stop, roll back, and delete containerized applications on the server.", "server_management"),
         new(ServerGuardianRead, "Read guardian workloads", "View the Guardian Agent, its workloads, states, and sanitized logs.", "server_management"),
         new(ServerGuardianManage, "Manage guardian workloads", "Create and control workloads supervised by the Guardian Agent.", "server_management"),
         new(ServerFirewallRead, "Read firewall configuration", "View the Linux server firewall status, defaults, and rules.", "server_network"),

@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             x:Class="RelaxKonOS.Client.Apps.ApplicationDeployments.Views.ApplicationDeploymentsLoginRequiredView"
+             Background="{DynamicResource AppBackgroundBrush}">
+    <StackPanel Margin="24" Spacing="10" VerticalAlignment="Center">
+        <TextBlock Text="&#x1F4E6;" FontSize="34" HorizontalAlignment="Center" />
+        <TextBlock Text="{loc:Loc application_deployments.login_required}"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center"
+                   Foreground="{DynamicResource TextSecondaryBrush}" />
+    </StackPanel>
+</UserControl>

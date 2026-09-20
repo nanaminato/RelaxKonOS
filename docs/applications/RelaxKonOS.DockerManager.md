@@ -35,6 +35,8 @@
 - 不自动删除容器、镜像、卷、网络或 Docker 数据目录；“清理”一律先生成影响预览。
 - 不承诺 Docker Desktop 的安装许可、Windows Server 的容器运行时选择，或任意第三方脚本的安全性。
 
+> **部署警告（当前授权模型）**：Docker Manager 设计为独立、由管理员使用的单实例管理工具。当前 Docker API 以已登录用户为边界，并未为多人共享部署提供服务端的 Docker 读写角色隔离；不要向非管理员、观察者或不受信任用户分发该实例的登录凭据，也不要将它作为多租户 Docker 控制面暴露。
+
 ---
 
 ## 2. 体验与信息架构
@@ -44,11 +46,13 @@
 ```text
 概览
 ├─ 运行时与安装
+├─ 引擎控制          启动 / 停止 / 重启整机 Docker 引擎（需确认）
 ├─ Containers       列表 / 详情 / 创建
 ├─ Stacks           Compose / 模板 / 部署历史
 ├─ Images           本地镜像 / 拉取 / 构建
 ├─ Networks
 ├─ Volumes
+├─ 网络代理          守护进程层与构建层的 HTTP/HTTPS 代理
 ├─ Registries       仅保存连接元数据；凭据引用安全存储
 ├─ Events & Audit
 └─ Settings         显示、刷新、日志与危险操作偏好
@@ -79,10 +83,12 @@
 | 平台 | v1 管理方式 | 安装策略 | 备注 |
 |---|---|---|---|
 | Ubuntu 22.04/24.04 LTS | 本机 Unix socket `/var/run/docker.sock` | 官方 APT 仓库安装 `docker-ce`、CLI、`containerd.io`、Buildx、Compose 插件 | 先检查冲突包、防火墙和现有数据；Docker 文档特别指出 Docker 发布端口会绕过部分 UFW/firewalld 规则，必须在向导中警告。 |
-| Windows 10/11 | 本机 named pipe `npipe://./pipe/docker_engine`，以探测到的 Linux 或 Windows 容器模式工作 | 仅引导安装已获许可的 Docker Desktop + WSL 2/Hyper-V；安装程序由用户选择并以管理员权限运行 | Docker Desktop 的 WSL 2/Hyper-V 选择和许可由用户负责。 |
+| Windows 10/11 | 本机 named pipe `npipe://./pipe/docker_engine`；应用部署器只接受 Linux 容器模式 | 内置引导要求用户从官方渠道安装已获许可的 Docker Desktop，并选用 WSL 2 后端 | 不建议在任意 WSL 发行版中手工安装 Docker Engine；Docker Desktop 的许可和 WSL 2 启用由用户负责。 |
 | Windows Server | 管理已安装且经能力探测合格的本机 Engine-compatible runtime | **不自动安装**；运行时供应商、容器模式与许可由管理员明确选择后再增加专用安装提供方 | 防止将桌面安装器误作为生产服务器自动部署方案。 |
 
 Ubuntu 方案以 Docker 官方安装文档为唯一命令来源；该文档要求先移除冲突包，推荐官方 APT 仓库，并以 `hello-world` 验证。[Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/) Windows 端 Docker Desktop 的安装需要选择 WSL 2 或 Hyper-V 后端。[Docker Desktop on Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
+
+Windows 10/11 的 Docker 不可用时，Docker Manager 的状态按钮会直接打开内置引导：检查 WSL 2/虚拟化，安装并启动 Docker Desktop，选择 WSL 2 backend，确认 Linux containers 模式，然后刷新 Engine 状态。该引导不自动安装 Docker Desktop、启用 WSL、接受第三方许可或配置 Windows Server。Windows Docker Desktop 路径用于开发、个人自托管和验证；无人值守或生产部署优先使用独立 Linux 主机或 VM。
 
 ---
 
@@ -125,6 +131,8 @@ IDockerEngineService ── IDockerRuntimeInstaller ── IDockerComposeService
 | GET/POST | `/api/v1.0/docker/stacks` | read/manage | Compose 项目列表、定义校验与部署；可读取项目服务并执行启动/停止/重启 |
 | GET/POST/DELETE | `/api/v1.0/docker/images|networks|volumes` | read/manage | 资源管理，删除前依赖检查 |
 | GET | `/api/v1.0/docker/events` | `server.docker.read` | 过滤后的事件和审计只读流 |
+| GET/PUT/DELETE | `/api/v1.0/docker/proxy` | read/manage | 读取、写入、移除守护进程层与构建层代理；写操作返回完整状态，被拒绝时返回稳定问题码 |
+| POST | `/api/v1.0/docker/engine/{action}` | `server.docker.manage` | 启动/停止/重启整机 Docker 引擎；`stop`/`restart` 必须带 `confirmed`，返回操作后的引擎状态 |
 
 长任务（拉取、构建、部署、导入导出、安装）返回 `OperationId`，以通用 SignalR 任务通道推送阶段、百分比、可本地化消息键和终态。日志与终端必须设置最大帧、速率限制、取消和断连清理；浏览器/客户端不保留 raw Docker stream。
 
@@ -135,17 +143,94 @@ Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；Rel
 - Stack 草稿、已部署 Compose 内容的加密版本快照、来源和部署结果；
 - Registry 配置元数据及对 OS 安全存储中机密项的引用；
 - 用户偏好、可恢复任务摘要和审计记录；
+- `docker_proxy_settings`（宿主全局单行表，`CHECK(settings_id = 1)`）中的 Docker 代理偏好；代理 URL 可能内嵌 `user:pass@`，故经 DataProtection（purpose `RelaxKonOS.Docker.ProxySettings.v1`）加密后落库，`no_proxy` 与各开关明文保存。见 §3.5；
 - 管理器不保存 Docker socket、daemon TLS 私钥、Docker Desktop 账户令牌或明文 `.env` 秘密。
 
 ### 3.4 Docker Hub 镜像源
 
-镜像源在内置“设置 → 镜像源”中按 RelaxKonOS 账户配置，而不是写入宿主机的全局 `daemon.json`。用户可维护多个 HTTPS、Docker Hub 兼容的 registry host，并选择其中一个或“默认”。
+镜像源在 Docker 管理器的“镜像源”页面按 RelaxKonOS 账户配置，而不是写入宿主机的全局 `daemon.json`。用户可维护多个 HTTPS、Docker Hub 兼容的 registry host，并选择其中一个或“默认”。
 
 - 默认：原样执行 `docker pull mysql:8.4`，由 Docker 使用默认 registry。
 - 选中镜像源：服务端从数据库读取当前用户的选择，将 Docker Hub 引用转换为 `{mirror}/library/mysql:8.4` 后再调用 Docker CLI。
 - 显式 registry（例如 `ghcr.io/owner/image`）不转换，避免把第三方镜像错误发送至 Docker Hub 镜像源。
 
 镜像地址不会由 Docker Manager 客户端随拉取请求发送，因此客户端不能替换其他用户的服务端选择；未来可通过 `ImageMirrorTarget` 扩展到其他镜像类服务。
+
+### 3.5 网络代理
+
+在只能经代理出网的环境中，Docker 需要两处独立的代理配置，二者使用完全不同的宿主机制，因此状态按层分别报告，而不是合并成一个“代理已启用”布尔值：
+
+| 层 | 作用 | Linux | Windows（Docker Desktop） |
+|---|---|---|---|
+| `Engine`（守护进程层） | 镜像拉取等守护进程自身的出网 | 写 `/etc/systemd/system/docker.service.d/http-proxy.conf` drop-in，再 `systemctl daemon-reload` + `try-restart docker.service` | Docker Desktop 忽略 `daemon.json`，改为编辑 `%APPDATA%\Docker\settings-store.json`（键 `ProxyHTTPMode`/`OverrideProxyHTTP`/`OverrideProxyHTTPS`/`OverrideProxyExclude`），前后 `docker desktop stop`/`start`，写后回读该文件校验取值确实落盘 |
+| `Build`（构建层） | `docker build` 的构建期出网 | Server 在 `docker build` 上追加**无值** `--build-arg`（`HTTP_PROXY`/`http_proxy`/`HTTPS_PROXY`/`https_proxy`/`NO_PROXY`/`no_proxy`），代理值放在该子进程的环境变量里；不写宿主文件、不进镜像 `Config.Env`、不出现在命令行 | 同左（`docker build` 的机制与平台无关） |
+
+- **代理来源**：`Custom`（运维填写 URL）或 `ManagedProxy`（复用内置代理运行时，即 mihomo 的 mixed-port 监听）。内置来源不落库任何 URL，避免切回自定义时复活过期值；解析时对 `127.0.0.1:{MixedPort}` 做 TCP 监听探测，不可达则判定失败关闭（`docker.proxy.problem.managed_proxy_unavailable`），不会把守护进程指向无人监听的端口。
+- **单一解析器**：`IDockerProxyResolver` 是两层唯一的取值来源（带 5 秒缓存 + 保存后 `Invalidate`），因此同一次保存不可能只作用于其中一层。
+- **构建层无须宿主操作**：`DockerCliEngineService` 在 `docker build` 上追加**无值** `--build-arg HTTP_PROXY`（六种拼写），代理值由同一次解析写入该子进程的环境变量。两半必须成对使用（`DockerBuildProxy` 是唯一实现），无值写法让 `docker` 自己从环境变量取值，因此凭据不会出现在命令行（`ps`、任务管理器、shell 历史都看不到），也不会像 `--build-arg NAME=value` 那样被带进进程列表。该层不写宿主文件，也不写入镜像的 `Config.Env`。只有 build 命令会读代理配置，其余 docker 命令保持继承环境不变。`docker compose` 栈路径**不在覆盖范围内**，原因见本节末。
+- **凭据处理**：代理 URL 可能内嵌 `user:pass@`。服务端加密存储；**返回界面时不做掩码** —— 已保存的偏好与守护进程自报的有效值都原样返回，只在日志、审计、问题码与层诊断中经 `DockerProxyValidation.MaskProxy` 去掉 userinfo。掩码只面向“非操作者”的读者：若把掩码值回填进表单，下一次保存就会把真实凭据改写成 `***`，等于损坏配置。特权 Helper 也从不回显收到的值（读回校验用文件内容比对而非 `systemctl show`，后者会打印环境变量）。
+- **宿主全局**：Docker daemon 是机器资源而非租户资源，故配置为单行表、以最后一位获授权写入者为准，不采用镜像源的每用户模型；`updated_by` 仅用于可追溯。
+- **确认语义**：安装/替换守护进程层会重启 Docker 并中断运行中的容器，因此 `SaveDockerProxySettingsRequest.Confirmed` 缺失时该层只返回 `docker.proxy.problem.confirmation_required` 而不写宿主；客户端在提交前用确认对话框取回该确认。移除时仅当本机确曾由 RelaxKonOS 写入过（`engine_applied`）才触碰宿主，避免为一次空操作重启 Docker。
+- **读取 Docker Desktop 自身的配置**：Docker Desktop 始终让守护进程连到它自己的内部代理（`docker info` 报 `http.docker.internal:3128`），并把该内部代理的上游动态指向运维填写的地址。因此守护进程的自报值在该平台**永远看不到真实上游**。`IDockerDesktopProxyReader` 直接读取 `settings-store.json` 的 `ProxyHTTPMode` 与 override 键，页面单独展示“Docker Desktop 正在使用的代理”，并提供一键导入表单。
+- **“已写入”不等于“已生效”**：守护进程层写入成功后状态先为 `RestartRequired`，再由回读判定。判定依据按平台区分：
+  - **Docker Desktop**：以 `settings-store.json` 中实际保存的上游是否等于解析值判定（比较前归一化首尾空白、末尾 `/` 与大小写）。相等 → `Applied`；manual 模式但上游不同 → `RestartRequired` + `docker.proxy.detail.desktop_upstream_differs`；仍是 `system` 模式 → `RestartRequired` + `docker.proxy.detail.desktop_restart_pending`。这样不会因为“守护进程报了个非空代理”（那个代理其实是 Docker Desktop 的内部中转）而误判为已生效。该判定不依赖守护进程是否在运行。
+  - **原生 Linux**：只有 `docker info` 回报非空 `HttpProxy`/`HttpsProxy` 才升级为 `Applied`，否则 `RestartRequired`。
+- **为什么 Docker Desktop 改代理不需要重启引擎**：Docker Desktop 的 vpnkit 内部代理会在上游变更时**动态重配**，而守护进程指向的地址（内部代理）始终不变，所以引擎进程不需要重启（Docker 官方《How Docker Desktop Networking Works Under the Hood》即此结论）。相对地，原生 Linux 守护进程是从 systemd 单元的启动环境读取 `HTTP_PROXY`，属于启动期配置，必须重启 `docker.service` 才生效。本功能在 Windows 上因此只需重启 Docker Desktop 应用本身；这一步不可省略的原因不是引擎，而是**该应用在退出时会用内存中的设置覆盖 `settings-store.json`**，所以必须先停它再写、写完再启动。若 Server 无法驱动 Docker Desktop，写入仍然落盘，状态提示交由运维手动重启。
+- **平台限制**：Linux 经特权 Helper 写入（路径、单元名与命令行均为常量，不接受任意路径/命令，不构成通用提权面）；Windows 走 Docker Desktop 自己的设置文件。其余平台报 `Unsupported`。Windows Server 上的 Docker Desktop 不属于受支持路径，见 §2.2。
+
+#### 构建层：为什么用无值 `--build-arg`（2026-09-20 实测）
+
+实测环境：Windows + Docker Desktop，docker client/server 29.8.0、buildx 0.37.0、Compose v5.5.1。验证方式是把 `env | grep -i proxy` 写进 Dockerfile 的 `RUN` 步骤，逐个机制实测。
+
+| 目标 | Docker Desktop 自身设置 | 客户端进程环境变量 | `--build-arg NAME=value` | 无值 `--build-arg NAME` | `~/.docker/config.json` 的 `proxies` |
+|---|---|---|---|---|---|
+| 守护进程拉镜像 | ✅ 该设置本身就是这一层 | — | — | — | — |
+| `docker build`（BuildKit） | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `docker build`（经典构建器，`DOCKER_BUILDKIT=0`） | ❌ | ❌ | ✅ | ✅（该模式已弃用：构建时会打印 legacy builder 将被移除的警告） | ✅ |
+| `docker compose build` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `docker compose up` 自动构建 | ❌ | ❌ | 无此参数 | 无此参数 | ✅ |
+| `docker run` 容器内环境变量 | ❌ | ❌ | — | — | ✅（副作用） |
+| 凭据去向 | Docker Desktop 设置文件 | 仅进程内存 | **命令行可见**（`ps`、任务管理器、shell 历史） | 仅进程内存 | **宿主文件明文** |
+
+选定的是“客户端环境变量 + 无值 `--build-arg`”这一组合：
+
+- 客户端环境变量本身**不生效**（上表那一列的 ❌ 就是它的全部作用面），但它是无值 `--build-arg` 的取值来源：`docker` 解析无值参数时从自己的环境读取，因此值不会出现在命令行上。两半由 `DockerBuildProxy` 一起产生，禁止分开使用。
+- 不选 `--build-arg NAME=value`：功能相同，但会把带凭据的 URL 写进命令行，本机任何用户可见。
+- 不选 `config.json` 的 `proxies`：它一处覆盖构建、compose、自动构建与容器运行时，但 ① 代理以明文写进宿主文件（而 Docker Desktop 自己也会重写该文件）；② 它同时把代理注入**之后创建的每个容器**的环境变量（实测 `docker run` 容器会多出六个变量），本产品要承载用户容器，等于顺手改了别人的运行期网络。
+- **`docker compose up` 的自动构建覆盖不到**：`up` 不接受任何 build 参数（`--build-arg` 只在 `compose build` 上，而本服务只跑 `up`），Compose 也不会把客户端环境变量转给构建。栈里带 `build:` 的服务需先在 Manager 里构建镜像，或在 Compose 文件里自行声明 `build.args`。`DockerComposeService` 因此不做任何注入：保留一个已被实测否定的空操作，只会假装覆盖了这条路径。
+- `docker info` 在 Docker Desktop 上恒报 `http.docker.internal:3128`（no_proxy 为 `hubproxy.docker.internal`），**不含真实上游**，不能用作生效判据——这也是引入 `IDockerDesktopProxyReader` 的原因。
+- **代理地址必须能被构建容器访问**：构建步骤运行在容器里，`127.0.0.1`/`localhost`/`::1` 指向容器自身。实测该平台上，构建沙箱里既连不上宿主 `127.0.0.1`，也连不上 `host.docker.internal`（该别名在此环境只解析出 IPv6 `fdc4:f303:9324::254`，而构建沙箱没有 IPv6 路由，只有回环；同一别名在普通容器里可以连通）。因此内置代理（地址即 `127.0.0.1:{MixedPort}` 的监听端口）**用在构建层不会生效**：该层仍报 `Applied`（构建参数确实已传入），但附带 `docker.proxy.detail.build_loopback_unreachable` 警告，提示改用构建容器能访问的地址（例如宿主机的局域网地址）。
+
+```text
+客户端「网络代理」页 ──HTTPS+JWT──► /api/v1.0/docker/proxy
+                                        │
+                             IDockerProxyService
+                          │            │            │
+        IDockerProxyResolver   IDockerEngineProxyConfigurator   IDockerDesktopProxyReader
+           （两层唯一取值）        （唯一的平台分支点）              （只读 Docker Desktop 上游）
+                                        │
+                       Linux: PrivilegedHelper → systemd drop-in
+                       Windows: Docker Desktop settings-store.json
+                       Build 层: DockerBuildProxy → docker build --build-arg（值走子进程环境，不落命令行）
+```
+
+### 3.6 引擎生命周期控制
+
+Docker 引擎是整机资源，控制它中断的是**本机所有容器**，因此与按容器的 `/containers/{id}/{action}` 分开，独立为 `/docker/engine/{action}`，并要求 `server.docker.manage`：
+
+| 动作 | Linux（原生守护进程） | Windows（Docker Desktop） |
+|---|---|---|
+| `start` | 特权 Helper 执行 `systemctl start docker.service` | `docker desktop start` |
+| `stop` | `systemctl stop docker.service` | `docker desktop stop` |
+| `restart` | `systemctl restart docker.service` | `docker desktop restart` |
+
+- **只传动作，不传目标**：请求体只有 `confirmed`；单元名 `docker.service` 是 Helper 常量，平台标识与命令由 `IDockerEngineHostController` 自行决定，端点与客户端都不分支操作系统。因此该能力不会被用来操作任意服务或执行任意命令。
+- **不改变开机策略**：这些动作不会 `enable`/`disable` 单元，也不会改动宿主上的任何配置文件，仅改变当前运行状态。
+- **确认语义**：`stop` 与 `restart` 必须带 `Confirmed`，否则返回 `docker.engine.problem.confirmation_required` 且不触碰宿主；`start` 不需要确认（它不中断任何东西）。客户端在点击后先弹确认对话框。
+- **返回操作后状态**：响应同时携带动作后的 `DockerStatusDto`，客户端不必轮询即可知道引擎是否恢复；`stop` 之后守护进程不可达属于预期结果，由状态表达，不计作动作失败。
+- **与安装流程的区别**：`DockerEngineInstall` 只负责首次安装与权限授予，安装后需要重启的是 RelaxKonOS Server 自身（见 `docker.access_restart_required`），不是引擎；本节的三个动作不涉及安装。
+
+客户端结果约定沿用 Docker Manager 既有的“HTTP 200 + 结果 DTO”风格：状态对象同时携带两层结果、守护进程自报的有效值与问题码；仅当偏好本身不合法（`DockerProxyValidationException`）时返回 `400` 与 ProblemDetails，客户端读取其中的 `problemCode` 并本地化，未映射的码原样显示而不是被吞掉。
 
 ---
 
@@ -156,11 +241,11 @@ Docker daemon 的控制权相当于宿主机高权限。故默认原则是“只
 | 权限 | 允许内容 |
 |---|---|
 | `server.docker.read` | 状态、资源元数据、脱敏配置、日志与事件读取 |
-| `server.docker.manage` | 创建和改变容器/Stack/镜像/网络/卷、终端与导入导出 |
+| `server.docker.manage` | 创建和改变容器/Stack/镜像/网络/卷、终端与导入导出、整机引擎启停与重启 |
 | `server.docker.install` | 生成并执行 Docker 运行时安装、启动、升级计划 |
 
 - `manage` 不蕴含 `install`；任何删除、强制停止、主机网络/特权容器、Docker socket 挂载、host PID/IPC、`--privileged` 或高危端口发布均须二次确认并说明风险。
-- 表单里的 `password`、token、secret 和整个敏感环境变量值默认掩码；日志、审计和异常不得回显它们。
+- 表单里的 `password`、token、secret 和整个敏感环境变量值默认掩码；日志、审计和异常不得回显它们。代理 URL 的 userinfo（`user:pass@`）按同一规则处理，但**面向操作者的界面是例外**：该值必须原样返回，否则表单回填后再保存会把真实凭据改写成掩码。因此掩码只作用于日志、审计、问题码与诊断信息，见 §3.5。
 - 应用只接受 local transport。若将来增加远程 Engine，必须使用 TLS、证书轮换、允许列表、显式环境配置及单独权限，不能复用本机默认。
 - 审计事件最少记录操作者、时间、目标、动作、确认方式、结果和关联 `OperationId`；记录命令模板/结构化差异，不记录秘密。
 
@@ -174,4 +259,4 @@ Docker daemon 的控制权相当于宿主机高权限。故默认原则是“只
 4. 增加 Compose 校验、Stack 部署与任务流；先支持本地文本/上传，再支持经过凭据引用的 Git 来源。
 5. 最后增加 Ubuntu 安装器和 Windows 引导安装器；安装、升级和回滚均须在干净 VM 中验证。
 
-验收至少覆盖 Ubuntu 22.04/24.04 与 Windows 的可用 Engine：无 Engine、权限不足、API 不兼容、拉取失败、断流重连、Compose 失败回滚、运行中资源删除冲突、机密脱敏和审计完整性。任何平台仅在“安装 + hello-world + 管理 CRUD + 重启后恢复 + 卸载/故障路径”通过后才标记为支持。
+验收至少覆盖 Ubuntu 22.04/24.04 与 Windows 的可用 Engine：无 Engine、权限不足、API 不兼容、拉取失败、断流重连、Compose 失败回滚、运行中资源删除冲突、机密脱敏和审计完整性。代理功能另需覆盖：内置来源不可达时失败关闭、无确认时不下发守护进程层、写入后待重启与重启后生效两种状态、以及凭据在界面/日志/审计中的脱敏。任何平台仅在“安装 + hello-world + 管理 CRUD + 重启后恢复 + 卸载/故障路径”通过后才标记为支持。

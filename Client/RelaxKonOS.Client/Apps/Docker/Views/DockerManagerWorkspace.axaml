@@ -70,6 +70,8 @@
                     <Button Classes="workspace-nav" Tag="containers" Click="NavigationButton_Click" Content="{loc:Loc docker.containers}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="stacks" Click="NavigationButton_Click" Content="{loc:Loc docker.orchestration}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="images" Click="NavigationButton_Click" Content="{loc:Loc docker.images}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="mirrors" Click="NavigationButton_Click" Content="{loc:Loc docker.mirrors.title}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="proxy" Click="NavigationButton_Click" Content="{loc:Loc docker.proxy.title}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="networks" Click="NavigationButton_Click" Content="{loc:Loc docker.networks}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="volumes" Click="NavigationButton_Click" Content="{loc:Loc docker.volumes}" HorizontalContentAlignment="Left" Padding="10,8" />
                 </StackPanel>

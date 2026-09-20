@@ -70,6 +70,136 @@ public static partial class PrivilegedOperationExecutor
         return new(false, ProblemCode: PrivilegedProblemCode.RestartRequired, Error: "restart RelaxKonOS Server to apply Docker access");
     }
 
+    // The daemon unit is a Helper constant. A request selects only the action, so engine control
+    // cannot be redirected at another unit the way a caller-supplied service id could.
+    private const string DockerServiceUnit = "docker.service";
+
+    static async Task<PrivilegedOperationResult> ApplyDockerEngineServiceActionAsync(PrivilegedServiceAction? action)
+    {
+        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/systemctl"))
+            return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
+        if (action is not (PrivilegedServiceAction.Start or PrivilegedServiceAction.Stop or PrivilegedServiceAction.Restart))
+            return DockerFailure(PrivilegedProblemCode.InvalidRequest);
+        var command = action switch
+        {
+            PrivilegedServiceAction.Start => "start",
+            PrivilegedServiceAction.Stop => "stop",
+            _ => "restart",
+        };
+        // Unlike the proxy drop-in this changes no unit file, so it never enables or disables the
+        // daemon: the host's boot policy stays exactly as the administrator left it.
+        return await RunFixedCommandAsync("/usr/bin/systemctl", [command, DockerServiceUnit], TimeSpan.FromSeconds(120), "docker service action failed");
+    }
+
+    // Docker Desktop ignores daemon.json proxies, but a native Linux daemon reads its proxy from
+    // the unit's start-up environment. This drop-in is therefore the only supported Linux
+    // mechanism, and both its path and its contents are owned by the Helper.
+    private const string DockerProxyDropInDirectory = "/etc/systemd/system/docker.service.d";
+    private const string DockerProxyDropInPath = DockerProxyDropInDirectory + "/http-proxy.conf";
+    private const int MaximumProxyValueLength = 512;
+    private const int MaximumProxyBypassLength = 1024;
+
+    static async Task<PrivilegedOperationResult> ConfigureDockerEngineProxyAsync(DockerProxyConfiguration? configuration)
+    {
+        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/systemctl"))
+            return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
+        if (configuration is null || !TryResolveDockerProxyValues(configuration, out var httpProxy, out var httpsProxy, out var noProxy))
+            return DockerFailure(PrivilegedProblemCode.InvalidRequest);
+        if (!IsManageableProxyTarget()) return DockerFailure(PrivilegedProblemCode.ResourceNotAllowed);
+
+        try
+        {
+            if (configuration.Enabled)
+            {
+                var content = SerializeDockerProxyDropIn(httpProxy, httpsProxy, noProxy);
+                Directory.CreateDirectory(DockerProxyDropInDirectory);
+                File.SetUnixFileMode(DockerProxyDropInDirectory,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                    | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+                    | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                await AtomicWriteTextAsync(DockerProxyDropInPath, content);
+                File.SetUnixFileMode(DockerProxyDropInPath,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+                // Read the drop-in back rather than probing the unit environment: systemctl would
+                // echo the value, and a proxy URL may embed a credential.
+                if (await File.ReadAllTextAsync(DockerProxyDropInPath) != content)
+                    return DockerFailure(PrivilegedProblemCode.InternalError);
+            }
+            else if (File.Exists(DockerProxyDropInPath))
+            {
+                File.Delete(DockerProxyDropInPath);
+            }
+
+            var reload = await RunFixedCommandAsync("/usr/bin/systemctl", ["daemon-reload"], TimeSpan.FromSeconds(60), "docker proxy daemon reload failed");
+            if (!reload.Success) return reload;
+            // try-restart is a no-op for a stopped daemon, which picks the drop-in up on its next
+            // start; restarting a daemon nobody asked to run would be a surprise host change.
+            return await RunFixedCommandAsync("/usr/bin/systemctl", ["try-restart", "docker.service"], TimeSpan.FromSeconds(120), "docker service restart failed");
+        }
+        catch (UnauthorizedAccessException) { return DockerFailure(PrivilegedProblemCode.AccessDenied); }
+        catch (IOException) { return DockerFailure(PrivilegedProblemCode.InternalError); }
+    }
+
+    /// <summary>Re-validates every value. The Server sends trimmed values, but the Helper never trusts that.</summary>
+    private static bool TryResolveDockerProxyValues(DockerProxyConfiguration configuration, out string httpProxy, out string httpsProxy, out string noProxy)
+    {
+        httpProxy = configuration.HttpProxy?.Trim() ?? string.Empty;
+        httpsProxy = configuration.HttpsProxy?.Trim() ?? string.Empty;
+        noProxy = configuration.NoProxy?.Trim() ?? string.Empty;
+        if (!configuration.Enabled) return httpProxy.Length == 0 && httpsProxy.Length == 0 && noProxy.Length == 0;
+        if (!IsValidProxyUrl(httpProxy) || httpsProxy.Length > 0 && !IsValidProxyUrl(httpsProxy)) return false;
+        if (httpsProxy.Length == 0) httpsProxy = httpProxy;
+        return IsValidProxyBypassList(noProxy);
+    }
+
+    private static bool IsValidProxyUrl(string value) => value.Length is > 0 and <= MaximumProxyValueLength
+        && value.All(IsSafeUnitValueCharacter)
+        && Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.Scheme is "http" or "https"
+        && !string.IsNullOrWhiteSpace(uri.Host)
+        && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment);
+
+    /// <summary>A bypass list is a comma-separated set of host, domain, or CIDR tokens.</summary>
+    private static bool IsValidProxyBypassList(string value)
+    {
+        if (value.Length > MaximumProxyBypassLength) return false;
+        if (value.Length == 0) return true;
+        return value.Split(',').All(token => token.Length is > 0 and <= 255
+            && token.All(character => char.IsAsciiLetterOrDigit(character)
+                || character is '.' or '-' or '_' or ':' or '*' or '/' or '[' or ']'));
+    }
+
+    /// <summary>Rejects quotes, backslashes, control characters, and non-ASCII, so a value cannot
+    /// terminate the systemd unit line or inject a second directive.</summary>
+    private static bool IsSafeUnitValueCharacter(char character) => character is >= '!' and <= '~' && character is not ('"' or '\\');
+
+    private static string SerializeDockerProxyDropIn(string httpProxy, string httpsProxy, string noProxy)
+    {
+        var builder = new System.Text.StringBuilder();
+        builder.Append("# RelaxKonOS managed Docker daemon proxy - do not edit\n");
+        builder.Append("[Service]\n");
+        builder.Append("Environment=\"HTTP_PROXY=").Append(EscapeUnitValue(httpProxy)).Append("\"\n");
+        builder.Append("Environment=\"HTTPS_PROXY=").Append(EscapeUnitValue(httpsProxy)).Append("\"\n");
+        if (noProxy.Length > 0) builder.Append("Environment=\"NO_PROXY=").Append(EscapeUnitValue(noProxy)).Append("\"\n");
+        return builder.ToString();
+    }
+
+    /// <summary>systemd treats '%' as a specifier introducer, so a literal percent must be doubled.</summary>
+    private static string EscapeUnitValue(string value) => value.Replace("%", "%%", StringComparison.Ordinal);
+
+    private static bool IsManageableProxyTarget()
+    {
+        try
+        {
+            return !HasReparsePoint(DockerProxyDropInDirectory) && !HasReparsePoint(DockerProxyDropInPath);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool HasReparsePoint(string path) => (File.Exists(path) || Directory.Exists(path))
+        && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+
     private static string? ReadDockerAccessUser()
     {
         try

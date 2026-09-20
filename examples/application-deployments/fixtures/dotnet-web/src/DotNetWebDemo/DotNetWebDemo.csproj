@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- The assembly name is also the published file name prefix: the DotNetPublish template reads
+         the single top-level *.runtimeconfig.json and derives the entry point from it. -->
+    <AssemblyName>DotNetWebDemo</AssemblyName>
+    <RootNamespace>DotNetWebDemo</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- No ICU dependency, so the workload starts identically on both the aspnet and runtime images. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- A framework-dependent publish is started as `dotnet DotNetWebDemo.dll`, so the per-platform
+         apphost executable would only add a native binary the container never runs. -->
+    <UseAppHost>false</UseAppHost>
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
+  </PropertyGroup>
+
+</Project>

@@ -10,6 +10,7 @@ using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
+using Microsoft.Extensions.DependencyInjection;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.Client.Apps.Docker;
@@ -32,15 +33,28 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var vm = new DockerManagerViewModel(client);
+        var proxyViewModel = new DockerProxyViewModel(client, readOnly: true);
+        var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Docker, "relaxkonos.docker", () => vm.RefreshCommand.ExecuteAsync(null));
         ManagedWindow? window = null;
-        var view = DockerManagerWorkspace.Create(vm,
+        var view = DockerManagerWorkspace.Create(vm, proxyViewModel, imageMirrorsViewModel,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowDeployStackAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        // Stopping or restarting the engine terminates every running container on the host, so it
+        // gets its own confirmation wording instead of the deletion dialog's.
+        vm.RequestEngineConfirmationAsync = async message =>
+        {
+            var confirmed = false;
+            await context.ShowDialogAsync<bool>(window!, LocalizedText.Get("docker.engine.control"), dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(message, result => { confirmed = result; dialog.Close(result); }, LocalizedText.Get("docker.engine.confirm_continue")),
+            });
+            return confirmed;
+        };
         vm.ShowDockerUnavailableAsync = () => DockerManagerDialogs.ShowDockerUnavailableAsync(context, window, vm);
         vm.ShowEditContainerAsync = () => DockerManagerDialogs.ShowEditContainerAsync(context, window!, vm);
         vm.ShowEditStackAsync = () => DockerManagerDialogs.ShowEditStackAsync(context, window!, vm);
@@ -63,19 +77,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
                 vm.StatusText = LocalizedText.Get("docker.stack.explorer_unavailable");
             return Task.CompletedTask;
         };
-        vm.OpenDockerInstallGuideAsync = () =>
-        {
-            var language = (context.Services.GetService(typeof(ISystemLanguage)) as ISystemLanguage)?.CurrentLanguage ?? "en-US";
-            var uri = new Uri($"help://guide/docker/install?lang={Uri.EscapeDataString(language)}");
-            (context.Services.GetService(typeof(IAppActivationDiagnostics)) as IAppActivationDiagnostics)
-                ?.Record($"Docker Manager requested installation guide: uri={uri.Scheme}://{uri.Host}{uri.AbsolutePath}, language={language}.");
-            var activation = context.Activations.Activate(uri);
-            (context.Services.GetService(typeof(IAppActivationDiagnostics)) as IAppActivationDiagnostics)
-                ?.Record($"Docker Manager installation guide activation result: status={activation.Status}, target={activation.TargetAppId?.Value ?? "<none>"}.");
-            if (!activation.Succeeded && !activation.IsPendingUserChoice)
-                vm.StatusText = LocalizedText.Get("docker.status.install_guide_unavailable");
-            return Task.CompletedTask;
-        };
+        vm.OpenDockerInstallGuideAsync = () => DockerManagerDialogs.ShowWindowsSetupGuideAsync(context, window!, vm);
         _ = vm.StartAsync();
     }
 }

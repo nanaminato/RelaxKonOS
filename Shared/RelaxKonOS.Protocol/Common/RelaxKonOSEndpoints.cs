@@ -13,6 +13,7 @@ public static class RelaxKonOSEndpoints
 
     /// <summary>Guardian 日志 SignalR Hub 路径。</summary>
     public const string GuardianLogsHubPath = "/hubs/guardian-logs";
+    public const string ApplicationDeploymentLogsHubPath = "/hubs/application-deployment-logs";
 
     /// <summary>系统性能实时推送 SignalR Hub 路径。</summary>
     public const string PerformanceHubPath = "/hubs/performance";

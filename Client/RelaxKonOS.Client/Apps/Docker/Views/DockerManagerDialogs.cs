@@ -39,4 +39,7 @@ internal static class DockerManagerDialogs
 
     public static Task ShowDockerUnavailableAsync(AppContext context, ManagedWindow owner, DockerManagerViewModel vm) =>
         context.ShowDialogAsync<bool>(owner, RelaxKonOS.Client.Localization.LocalizedText.Get("docker.unavailable_dialog.title"), dialog => new DockerUnavailableDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(460, 220));
+
+    public static Task ShowWindowsSetupGuideAsync(AppContext context, ManagedWindow owner, DockerManagerViewModel vm) =>
+        context.ShowDialogAsync<bool>(owner, RelaxKonOS.Client.Localization.LocalizedText.Get("docker.setup_guide.title"), dialog => new DockerWindowsSetupGuideDialogView(vm, dialog), new RelaxKonOS.Core.Primitives.Size(640, 590));
 }

@@ -128,7 +128,6 @@ builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoGeoDataHo
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsService, RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyTunRuntimeController>(sp => (RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService)sp.GetRequiredService<RelaxKonOS.Server.Proxy.IProxySettingsService>());
 builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.SystemProxyGuardHostedService>();
-builder.Services.AddHttpClient("MihomoRuntime", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient("ProxySubscriptionDirect", client => client.Timeout = TimeSpan.FromSeconds(30))
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
@@ -311,6 +310,7 @@ builder.Services.AddAuthentication(options =>
                 if (!string.IsNullOrEmpty(accessToken) &&
                     (path.StartsWithSegments("/hubs/terminals") || path.StartsWithSegments(RelaxKonOSEndpoints.GuardianLogsHubPath)
                      || path.StartsWithSegments(RelaxKonOSEndpoints.PerformanceHubPath)
+                     || path.StartsWithSegments(RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath)
                      || path.StartsWithSegments(RelaxKonOSEndpoints.SettingsChangesHubPath)))
                 {
                     context.Token = accessToken;
@@ -382,6 +382,16 @@ builder.Services.AddAuthorization(options =>
         || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
     options.AddPolicy("FileServicesManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
         context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+    // Containerised application deployment follows the same role boundary as the other host-mutating
+    // features: an observer may read, and only a controller may change a running workload.
+    options.AddPolicy(RelaxKonOS.Server.Endpoints.ApplicationDeploymentEndpoints.ReadPolicy, policy =>
+        policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
+            || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")
+            || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+    options.AddPolicy(RelaxKonOS.Server.Endpoints.ApplicationDeploymentEndpoints.ManagePolicy, policy =>
+        policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
 });
 
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationOperationStore>();
@@ -394,6 +404,34 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationServi
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.MihomoInstallationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.IInstallationService, RelaxKonOS.Server.Installations.DockerInstallationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Installations.InstallationFileReferenceStore>();
+
+// 容器化应用部署：定义（catalog）、机密、暂存、操作账本均为单例持久状态；部署服务串行化同一应用的
+// 变更，协调器是唯一调用方并把每个长操作变成可恢复的持久记录。
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>().GetSection("ApplicationDeployments")
+        .Get<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions>()
+    ?? new RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions());
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCatalogStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentSecretStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentStagingStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOperationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentDefinitionMutationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentImageTagCatalog>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.IApplicationDeploymentProxyIntegration,
+    RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentProxyIntegration>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentManager>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCoordinator>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLiveLogs>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogSubscriptions>();
+builder.Services.AddHostedService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogBroadcastService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCoordinator>());
+// The readiness probe talks to the container's published loopback port, so it needs its own bounded
+// client whose timeout is a readiness timeout rather than a request timeout.
+builder.Services.AddHttpClient(RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime.HealthClientName,
+        client => client.Timeout = TimeSpan.FromSeconds(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
 
 // Identity transport is a deployment decision, not a Development-environment shortcut.  A
 // no-sudo User Mode Server authenticates the account that owns the process through the host's
@@ -467,12 +505,44 @@ builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.IProcessServic
 
 // Built-in Docker manager: the provider uses Docker's local CLI transport only; no socket/pipe
 // is ever exposed to clients. Guardian intentionally remains a separate Agent boundary.
-builder.Services.AddSingleton(builder.Configuration.GetSection("DockerEngine").Get<RelaxKonOS.Server.Docker.DockerCliEngineOptions>() ?? new RelaxKonOS.Server.Docker.DockerCliEngineOptions());
+// The application-deployment domain generates its build contexts under its own root, so that root
+// is approved here too. Without it every archive-source build is rejected before the Docker CLI is
+// ever invoked, and the failure only surfaces later as a build problem. Deriving the path from the
+// deployment options keeps a single source of truth for where build contexts live.
+builder.Services.AddSingleton(sp =>
+{
+    var configured = sp.GetRequiredService<IConfiguration>().GetSection("DockerEngine")
+        .Get<RelaxKonOS.Server.Docker.DockerCliEngineOptions>() ?? new RelaxKonOS.Server.Docker.DockerCliEngineOptions();
+    var deploymentBuildRoot = Path.Combine(
+        builder.Environment.ContentRootPath,
+        sp.GetRequiredService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions>().RootDirectory,
+        "build");
+    return configured with { BuildRoots = [.. configured.BuildRoots, deploymentBuildRoot] };
+});
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineService, RelaxKonOS.Server.Docker.DockerCliEngineService>();
 builder.Services.AddScoped<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorResolver, RelaxKonOS.Server.ImageMirrors.DockerImageMirrorResolver>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerRuntimeInstaller, RelaxKonOS.Server.Docker.DockerRuntimeInstaller>();
 builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(builder.Configuration.GetSection("DockerCompose"));
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerComposeService, RelaxKonOS.Server.Docker.DockerComposeService>();
+// Docker proxy: one resolver feeds both the docker child-process environment and the daemon
+// configurator, so the two layers can never disagree about the saved preference. The configurator
+// owns the platform difference internally (systemd drop-in on Linux, Docker Desktop settings on
+// Windows) and reports Unsupported elsewhere.
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineProxyConfigurator, RelaxKonOS.Server.Docker.DockerEngineProxyConfigurator>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyResolver, RelaxKonOS.Server.Docker.DockerProxyResolver>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IOutboundProxyHttpClientFactory, RelaxKonOS.Server.Docker.OutboundProxyHttpClientFactory>();
+// Docker Desktop is the only host that hides the real upstream behind an internal relay, so the
+// reader that knows its settings file is selected here instead of probing for a file that cannot
+// exist on the other platforms.
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerDesktopProxyReader>(_ =>
+    OperatingSystem.IsWindows()
+        ? new RelaxKonOS.Server.Docker.WindowsDockerDesktopProxyReader()
+        : new RelaxKonOS.Server.Docker.UnsupportedDockerDesktopProxyReader());
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyService, RelaxKonOS.Server.Docker.DockerProxyService>();
+// Engine lifecycle control reuses the same platform split as the proxy configurator: a systemd
+// unit driven through the privileged Helper, or the Docker Desktop CLI.
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineHostController, RelaxKonOS.Server.Docker.DockerEngineHostController>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineControlService, RelaxKonOS.Server.Docker.DockerEngineControlService>();
 var guardianOptions = builder.Configuration.GetSection("GuardianAgent").Get<RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions>() ?? new RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions();
 builder.Services.AddSingleton(guardianOptions);
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService, RelaxKonOS.Server.ProcessGuardian.NamedPipeProcessGuardianService>();
@@ -513,7 +583,6 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Runtimes.IRuntimeManager, RelaxK
 builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.ITunnelProvider, RelaxKonOS.Server.Tunnels.FrpTunnelProvider>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.IManagedFrpsService, RelaxKonOS.Server.Tunnels.ManagedFrpsService>();
 builder.Services.Configure<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>(builder.Configuration.GetSection("FrpRuntime"));
-builder.Services.AddHttpClient("FrpRuntime", client => client.Timeout = TimeSpan.FromMinutes(2));
 
 // Certificate management is host-global. PEM/account keys remain behind the server-side
 // store; the API exposes metadata and operation IDs only.
@@ -576,6 +645,9 @@ if (storageProvider == "sqlite")
     builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxySubscriptionService, RelaxKonOS.Server.Proxy.ProxySubscriptionService>();
     builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxyConfigurationTransactionService, RelaxKonOS.Server.Proxy.ProxyConfigurationTransactionService>();
     builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxyConfigurationService, RelaxKonOS.Server.Proxy.ProxyConfigurationService>();
+    // The Docker proxy preference opens its own connection per operation, so it is a Singleton
+    // like the proxy subscription repository rather than bound to a request scope.
+    builder.Services.AddSingleton<IDockerProxySettingsRepository, RelaxKonOS.Server.Storage.Sqlite.SqliteDockerProxySettingsRepository>();
 }
 else
 {
@@ -590,6 +662,7 @@ else
     builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
     builder.Services.AddSingleton<IImageMirrorRepository, InMemoryImageMirrorRepository>();
     builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.ITunnelAudit, RelaxKonOS.Server.Tunnels.InMemoryTunnelAudit>();
+    builder.Services.AddSingleton<IDockerProxySettingsRepository, InMemoryDockerProxySettingsRepository>();
 }
 // Session 始终内存（连接关系，不持久化）
 builder.Services.AddSingleton<ISessionRepository, InMemorySessionRepository>();
@@ -852,18 +925,22 @@ app.MapHostSettingsEndpoints();
 app.MapBrowserEndpoints();
 app.MapSystemMonitorEndpoints();
 app.MapDockerEndpoints();
+app.MapDockerProxyEndpoints();
 app.MapProcessGuardianEndpoints();
 app.MapWebServerEndpoints();
 app.MapFileServiceEndpoints();
 app.MapCertificateEndpoints();
 app.MapGitEndpoints();
 app.MapInstallationEndpoints();
+app.MapApplicationDeploymentEndpoints();
 app.MapTunnelEndpoints();
 app.MapProxyEndpoints();
 if (OperatingSystem.IsLinux())
     app.MapFirewallEndpoints();
 app.MapHub<TerminalHub>("/hubs/terminals", options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<GuardianLogsHub>(RelaxKonOSEndpoints.GuardianLogsHubPath, options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogsHub>(RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath,
+    options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath, options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath, options => options.CloseOnAuthenticationExpiration = true);
 

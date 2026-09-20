@@ -42,6 +42,8 @@
         "application.relaxkonos.registry.display_name": "レジストリ",
         "application.relaxkonos.registry.description": "サポートされる RelaxKonOS 構成値を参照します",
         "application.relaxkonos.proxy.display_name": "プロキシ マネージャー",
-        "application.relaxkonos.proxy.description": "ホストのプロキシ ランタイム、トラフィック、ネットワーク回復状態を管理します"
+        "application.relaxkonos.proxy.description": "ホストのプロキシ ランタイム、トラフィック、ネットワーク回復状態を管理します",
+        "application.relaxkonos.application-deployments.display_name": "アプリケーション配置",
+        "application.relaxkonos.application-deployments.description": "RelaxKonOS Server 上でコンテナ化アプリケーションを配置・管理します"
     }
 }

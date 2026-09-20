@@ -28,4 +28,19 @@ public interface IRemoteDockerClient
     Task<DockerOperationResult> DeleteVolumeAsync(string name, bool confirmed, CancellationToken cancellationToken = default);
     Task<DockerContainerLogsDto?> GetContainerLogsAsync(string id, int tail = 200, CancellationToken cancellationToken = default);
     Task<DockerContainerStatsDto?> GetContainerStatsAsync(string id, CancellationToken cancellationToken = default);
+    Task<DockerProxyStatusDto> GetProxyStatusAsync(CancellationToken cancellationToken = default);
+    Task<DockerProxyStatusDto> SaveProxyAsync(SaveDockerProxySettingsRequest request, CancellationToken cancellationToken = default);
+    Task<DockerProxyStatusDto> ClearProxyAsync(CancellationToken cancellationToken = default);
+    /// <summary>Starts, stops, or restarts the machine's whole Docker engine.</summary>
+    Task<DockerEngineControlResult> ApplyEngineActionAsync(DockerEngineAction action, bool confirmed, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A proxy write the server refused, carrying its stable problem code. The server rejects a
+/// preference with <c>400</c> and leaves the previous one untouched, so the caller needs the code
+/// to explain what was wrong instead of showing a transport error.
+/// </summary>
+public sealed class DockerProxyRequestException(string problemCode) : Exception(problemCode)
+{
+    public string ProblemCode { get; } = problemCode;
 }

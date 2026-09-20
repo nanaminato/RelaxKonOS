@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using RelaxKonOS.Client.Apps;
 using RelaxKonOS.Client.Apps.CodeEditor;
+using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Apps.ImageViewer;
 using RelaxKonOS.Client.Apps.Notepad;
 using RelaxKonOS.Client.Apps.Settings;
@@ -172,6 +173,12 @@ public static class Bootstrapper
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
 
+        // ApplicationDeployments（容器化应用部署）：typed HttpClient（JWT from IAuthSession，与 Certificates 同模式）。
+        // 每次变更调用携带 Idempotency-Key，长操作返回持久化 operation 后由客户端轮询；归档以引用传递、密钥以值传递一次。
+        services.AddHttpClient<RelaxKonOS.Client.Apps.ApplicationDeployments.IRemoteApplicationDeploymentClient, RelaxKonOS.Client.Apps.ApplicationDeployments.RemoteApplicationDeploymentClient>(http => http.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "application-deployments"))
+            .AddHttpMessageHandler<AcceptLanguageHandler>();
+
         // Settings（设置中心）：typed HttpClient（JWT from IAuthSession，与 Browser/Explorer 同模式）。
         // 偏好持久化到服务端 Workspace（/workspaces/{id}/preferences），多设备共享。
         // Host writes must not pass through an authentication handler that can replay requests.
@@ -188,7 +195,7 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
-        services.AddHttpClient<IImageMirrorClient, ImageMirrorClient>()
+        services.AddHttpClient<IDockerImageMirrorClient, DockerImageMirrorClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "image-mirrors"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
@@ -266,6 +273,7 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.Git.GitClientApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Registry.RegistryApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ApplicationDeployments.ApplicationDeploymentsApp>();
 
         services.AddSingleton<DesktopShellViewModel>(sp =>
         {

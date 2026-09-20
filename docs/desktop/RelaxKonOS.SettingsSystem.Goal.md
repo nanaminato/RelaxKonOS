@@ -17,7 +17,7 @@
 
 | 代码/文档 | 当前状态 | 本 Goal 的改动 |
 | --- | --- | --- |
-| `Client/RelaxKonOS.Client/Apps/Settings/ViewModels/SettingsViewModel.cs` | 实际有系统、个性化、时间语言、网络、应用、镜像源、默认应用、开发者八页；整体偏好防抖保存，保存失败被吞掉 | 注册式导航、领域服务、明确保存状态、冲突处理 |
+| `Client/RelaxKonOS.Client/Apps/Settings/ViewModels/SettingsViewModel.cs` | 实际有系统、个性化、时间语言、网络、应用、默认应用、开发者、关于九页；镜像源已迁至 Docker 管理器；整体偏好防抖保存，保存失败被吞掉 | 注册式导航、领域服务、明确保存状态、冲突处理 |
 | `Client/RelaxKonOS.Client/Apps/Settings/Views/SettingsView.axaml` | 固定 220px 导航与页面模板，无统一搜索和面包屑 | 响应式导航、搜索、详情页及一致卡片 |
 | `Client/RelaxKonOS.Client/Services/SettingsNavigationService.cs` | SDK 入口仅提供打开应用页；Settings VM 另有个性化与应用权限定位 | 统一类型化路由与参数校验 |
 | `ShellSettings`、Workspace preferences | 桌面运行态与跨设备偏好 | 保留职责，由独立设置服务驱动，消除 Settings 窗口生命周期依赖 |
@@ -51,7 +51,7 @@ HostMachine 不归某个 Workspace 所有；读写权限由宿主策略和认证
 | 系统 | 关于、主机名、环境变量、存储概览、服务与恢复入口 | 环境、主机名可写；存储复用既有读取能力 |
 | 网络与 Internet | 网卡详情、地址、DNS、连接诊断、代理、防火墙 | DNS 可写；代理与防火墙复用现有领域服务 |
 | 个性化 | 主题、壁纸、Shell、桌面表现 | 保留已有完整功能并统一布局 |
-| 应用 | 已安装应用、权限、默认应用、镜像源、应用设置入口 | 保留能力，避免全部堆在一个长页面 |
+| 应用 | 已安装应用、权限、默认应用、应用设置入口 | 保留能力，避免全部堆在一个长页面 |
 | 账户与权限 | 当前宿主身份、会话、应用授权、特权助手状态 | 复用认证；不另造账号或密码库 |
 | 时间和语言 | 显示格式、语言、区域、远程时区、时间同步状态 | 时区可写；手动改系统时钟不是本轮要求 |
 | 辅助功能 | 客户端字号、动画、对比度、键盘可达性 | 有真实绑定效果；不假装控制服务器显示器 |

@@ -1,0 +1,6 @@
+# Intentionally dependency-free.
+#
+# The template accepts a comment-only requirement file because every non-comment line would
+# otherwise have to pin an exact version. Combined with the stdlib-only worker.py next to it, this
+# archive makes the image build contact no package index at all, which is what the offline case of
+# test T07 needs. See fixtures/python-web for the pinned-dependency case.
