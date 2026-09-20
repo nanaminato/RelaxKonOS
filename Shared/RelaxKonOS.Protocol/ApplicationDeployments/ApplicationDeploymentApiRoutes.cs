@@ -16,6 +16,10 @@ public static class ApplicationDeploymentApiRoutes
     public const string TemplatesPattern = "/templates";
 
     public const string Applications = Root + "/applications";
+    /// <summary>Relative pattern for the same collection. A route group already carries <see cref="Root"/>,
+    /// so the server must map this constant: mapping the absolute <see cref="Applications"/> inside the group
+    /// yields a doubled prefix (see RelaxKonOS.Protocol.md §5).</summary>
+    public const string ApplicationsPattern = "/applications";
     public const string ApplicationPattern = "/applications/{applicationId:guid}";
     /// <summary>Creates an application record. Deploying is a separate, idempotent operation.</summary>
     public const string CreateApplication = Applications;

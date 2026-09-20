@@ -28,12 +28,12 @@ public static class ApplicationDeploymentEndpoints
             (ApplicationDeploymentManager manager) => Handle(() => Results.Ok(manager.Templates())))
             .RequireAuthorization(ReadPolicy);
 
-        group.MapGet(ApplicationDeploymentApiRoutes.Applications,
+        group.MapGet(ApplicationDeploymentApiRoutes.ApplicationsPattern,
             (ApplicationDeploymentManager manager, CancellationToken ct) =>
                 HandleAsync(async () => Results.Ok(await manager.ListAsync(ct))))
             .RequireAuthorization(ReadPolicy);
 
-        group.MapPost(ApplicationDeploymentApiRoutes.CreateApplication,
+        group.MapPost(ApplicationDeploymentApiRoutes.ApplicationsPattern,
             (CreateApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager,
                 ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
                 HandleAsync(async () => Results.Ok(await mutations.ExecuteAsync(Actor(http.User), Key(http), "create",

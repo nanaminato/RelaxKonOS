@@ -104,6 +104,8 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 
 删除用 `ApplicationPattern`：`DELETE` 请求不会把复杂参数推断为请求体，故显式标注 `[FromBody]`。它与其他破坏性动作一样是**长操作**，返回 `202` 与 operationId。
 
+表中所有路由都是**组内相对模式**（`*Pattern` 常量）。服务端一律用 `ApplicationsPattern` 等相对常量注册，客户端才用绝对常量（`Applications = Root + "/applications"`）拼接 URL：`MapGroup` 只做字符串拼接，组内传入绝对常量会得到前缀重复的路径并让客户端收到 404。详见 [`RelaxKonOS.Protocol.md`](../architecture/RelaxKonOS.Protocol.md) §5。
+
 ### 3.2 权限
 
 | 权限 ID | 含义 |
