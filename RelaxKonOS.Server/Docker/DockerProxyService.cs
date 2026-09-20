@@ -229,8 +229,8 @@ public sealed class DockerProxyService(
     {
         _ = DockerProxyValidation.TryNormalize(request.HttpProxy, out var httpProxy);
         _ = DockerProxyValidation.TryNormalize(request.HttpsProxy, out var httpsProxy);
-        _ = DockerProxyValidation.TryNormalize(request.NoProxy, out var noProxy);
-        if (!DockerProxyValidation.IsValidBypassList(noProxy))
+        if (!DockerProxyValidation.TryNormalizeBypassList(request.NoProxy, out var noProxy)
+            || !DockerProxyValidation.IsValidBypassList(noProxy))
             throw new DockerProxyValidationException(DockerProxyProblem.ConfigurationInvalid);
         if (request.Enabled && request.Source == DockerProxySource.Custom)
         {

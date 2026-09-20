@@ -232,8 +232,6 @@
     "docker.proxy.desktop.settings_path": "設定ファイル",
     "docker.proxy.desktop.import": "上のフォームに取り込む",
     "docker.proxy.desktop.imported": "Docker Desktop のプロキシ値をフォームに取り込みました。保存すると反映されます。",
-    "docker.proxy.notes": "補足",
-    "docker.proxy.notes.body": "プロキシ値にはユーザー名とパスワードが含まれる場合があります。サーバーは暗号化して保存し、認可された管理画面にはそのまま返すため、実値を目にするのは操作者本人だけです。ログ・監査・エラー情報では常にマスクされます。Docker Desktop は daemon.json のプロキシ設定を無視するため、Windows では Docker Desktop 自身の設定ファイルに、Linux では docker.service の systemd drop-in に書き込みます。Docker Desktop はアプリの再起動のみ、ネイティブな Linux デーモンは docker サービスの再起動が必要です。",
     "docker.proxy.confirm_continue": "続行",
     "docker.proxy.confirm.restart": "保存すると Docker デーモンが再起動され、実行中のコンテナは中断され、しばらくコンテナサービスにアクセスできなくなります。続行しますか？",
     "docker.proxy.confirm.clear": "プロキシ設定を解除すると、ホストの Docker プロキシ設定も削除され、Docker が再起動されて実行中のコンテナは中断されます。続行しますか？",

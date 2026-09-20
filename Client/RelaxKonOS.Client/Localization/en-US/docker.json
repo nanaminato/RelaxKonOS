@@ -232,8 +232,6 @@
     "docker.proxy.desktop.settings_path": "Settings file",
     "docker.proxy.desktop.import": "Import into the form above",
     "docker.proxy.desktop.imported": "Docker Desktop's proxy values were copied into the form; save to apply.",
-    "docker.proxy.notes": "Notes",
-    "docker.proxy.notes.body": "Proxy values may embed a user name and password. The server stores them encrypted and returns them unchanged to the authorized manager, so the operator sees the real value; logs, audits, and error messages always mask it. Docker Desktop ignores proxies configured in daemon.json, so on Windows the value is written to Docker Desktop's own settings file and on Linux to a docker.service systemd drop-in. Docker Desktop only needs its own application restarted, while a native Linux daemon needs the docker service restarted.",
     "docker.proxy.confirm_continue": "Continue",
     "docker.proxy.confirm.restart": "Saving restarts the Docker daemon: running containers will be interrupted and container services will be briefly unavailable. Continue?",
     "docker.proxy.confirm.clear": "Removing the proxy configuration also clears the host's Docker proxy settings and restarts Docker, interrupting running containers. Continue?",

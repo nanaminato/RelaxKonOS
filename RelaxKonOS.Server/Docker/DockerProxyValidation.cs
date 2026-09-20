@@ -38,14 +38,31 @@ internal static class DockerProxyValidation
             || IPAddress.TryParse(host, out var address) && IPAddress.IsLoopback(address);
     }
 
-    /// <summary>A bypass list is a comma-separated set of host, domain, or CIDR tokens.</summary>
+    /// <summary>A bypass list is a comma- or semicolon-separated set of host, domain, or CIDR tokens.</summary>
     internal static bool IsValidBypassList(string value)
     {
-        if (value.Length > MaximumBypassLength) return false;
-        if (value.Length == 0) return true;
-        return value.Split(',').All(token => token.Length is > 0 and <= 255
+        return TryNormalizeBypassList(value, out var normalized)
+            && normalized.Split(',', StringSplitOptions.RemoveEmptyEntries).All(token => token.Length is > 0 and <= 255
             && token.All(character => char.IsAsciiLetterOrDigit(character)
                 || character is '.' or '-' or '_' or ':' or '*' or '/' or '[' or ']'));
+    }
+
+    /// <summary>
+    /// Accepts the Windows-style semicolon separator as input, but persists the Docker-compatible
+    /// comma-separated form used by <c>NO_PROXY</c>.
+    /// </summary>
+    internal static bool TryNormalizeBypassList(string? raw, out string value)
+    {
+        var trimmed = raw?.Trim() ?? string.Empty;
+        value = trimmed;
+        if (trimmed.Length > MaximumBypassLength) return false;
+        if (trimmed.Length == 0) return true;
+
+        var tokens = trimmed.Split([';', ','], StringSplitOptions.TrimEntries);
+        if (tokens.Any(string.IsNullOrEmpty)) return false;
+
+        value = string.Join(',', tokens);
+        return value.Length <= MaximumBypassLength;
     }
 
     /// <summary>

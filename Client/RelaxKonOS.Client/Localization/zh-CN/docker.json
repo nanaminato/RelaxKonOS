@@ -232,8 +232,6 @@
     "docker.proxy.desktop.settings_path": "设置文件",
     "docker.proxy.desktop.import": "导入到上面的表单",
     "docker.proxy.desktop.imported": "已把 Docker Desktop 的代理值填入表单，保存后生效。",
-    "docker.proxy.notes": "说明",
-    "docker.proxy.notes.body": "代理值可能包含用户名和密码：服务端加密保存，并原样返回给已授权的管理器界面，只有操作者本人能看到真实值；日志、审计与错误信息中一律掩码。Docker Desktop 会忽略 daemon.json 中的代理设置，因此 Windows 上写入 Docker Desktop 自身的设置文件，Linux 上写入 docker.service 的 systemd drop-in。Docker Desktop 只需重启它自己的应用，原生 Linux 守护进程需要重启 docker 服务。",
     "docker.proxy.confirm_continue": "继续",
     "docker.proxy.confirm.restart": "保存后将重启 Docker 守护进程，正在运行的容器会被中断，短时间内无法访问容器服务。确定继续吗？",
     "docker.proxy.confirm.clear": "移除代理配置会同时清除宿主机上的 Docker 代理设置，并重启 Docker，正在运行的容器会被中断。确定继续吗？",

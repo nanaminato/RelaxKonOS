@@ -88,7 +88,8 @@ public sealed class DockerProxyResolver(IDockerProxySettingsRepository settings,
         if (saved is null || !saved.Enabled)
             return DockerProxyResolution.Disabled() with { ManagedProxyEndpoint = managedEndpoint, ManagedProxyAvailable = managedAvailable };
 
-        var noProxy = saved.NoProxy?.Trim() ?? string.Empty;
+        var bypassListIsValid = DockerProxyValidation.TryNormalizeBypassList(saved.NoProxy, out var noProxy)
+            && DockerProxyValidation.IsValidBypassList(noProxy);
         string httpProxy, httpsProxy;
         if (saved.Source == DockerProxySource.ManagedProxy)
         {
@@ -110,7 +111,7 @@ public sealed class DockerProxyResolver(IDockerProxySettingsRepository settings,
         }
 
         if (!DockerProxyValidation.IsValidProxyUrl(httpProxy) || !DockerProxyValidation.IsValidProxyUrl(httpsProxy)
-            || !DockerProxyValidation.IsValidBypassList(noProxy))
+            || !bypassListIsValid)
             return DockerProxyResolution.Disabled(DockerProxyProblem.ConfigurationInvalid) with
             {
                 Enabled = true, Source = saved.Source, ApplyToBuild = saved.ApplyToBuild, ApplyToEngine = saved.ApplyToEngine,

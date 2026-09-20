@@ -109,12 +109,5 @@
             </StackPanel>
         </Border>
 
-        <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
-            <StackPanel Spacing="6">
-                <TextBlock Text="{loc:Loc docker.proxy.notes}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" />
-                <TextBlock Text="{loc:Loc docker.proxy.notes.body}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                <TextBlock Text="{Binding Platform}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" />
-            </StackPanel>
-        </Border>
     </StackPanel>
 </UserControl>

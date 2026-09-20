@@ -15,9 +15,13 @@ internal static async Task VerifyDockerProxyAsync(string root)
         && !DockerProxyValidation.IsValidProxyUrl("http://host\necho injected"),
         "A malformed or directive-injecting proxy URL was accepted.");
     TestAssert.Assert(DockerProxyValidation.IsValidBypassList("localhost,127.0.0.1,::1,.internal")
+        && DockerProxyValidation.IsValidBypassList("localhost;127.0.0.1;::1;.internal")
         && DockerProxyValidation.IsValidBypassList(string.Empty)
         && !DockerProxyValidation.IsValidBypassList("localhost, bad host"),
         "Bypass list validation did not separate a host list from a value with a space.");
+    TestAssert.Assert(DockerProxyValidation.TryNormalizeBypassList("localhost; 127.0.0.1, ::1", out var normalizedBypass)
+        && normalizedBypass == "localhost,127.0.0.1,::1",
+        "Bypass-list separators were not normalized to Docker's comma-separated form.");
     // The userinfo is removed once, and an '@' inside a path is not mistaken for one.
     TestAssert.Assert(DockerProxyValidation.MaskProxy("http://user:secret@proxy.example:8080") == "http://***@proxy.example:8080"
         && DockerProxyValidation.MaskProxy("http://proxy.example:8080") == "http://proxy.example:8080"
@@ -167,6 +171,12 @@ internal static async Task VerifyDockerProxyAsync(string root)
     TestAssert.Assert(rejected.ProblemCode == DockerProxyProblem.ConfigurationInvalid,
         "A rejected proxy preference did not report the configuration problem code.");
     TestAssert.Assert(await serviceSettings.GetAsync() is null, "A rejected proxy preference was still persisted.");
+
+    var normalizedSave = await fixture.Service.SaveAsync(
+        new SaveDockerProxySettingsRequest(true, DockerProxySource.Custom, secret, null, "localhost;127.0.0.1,::1", false, false), actor);
+    TestAssert.Assert(normalizedSave.Settings.NoProxy == "localhost,127.0.0.1,::1"
+        && (await serviceSettings.GetAsync())?.NoProxy == "localhost,127.0.0.1,::1",
+        "A Windows-style bypass list was not persisted in Docker's comma-separated form.");
 
     // Without confirmation the daemon layer is not written, but the build layer still reports.
     var unconfirmed = await fixture.Service.SaveAsync(
