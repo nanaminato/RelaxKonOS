@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Apps.ApplicationDeployments.ViewModels;
 using RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
@@ -68,6 +70,23 @@ public sealed class ApplicationDeploymentsApp : RemoteApplicationBase
         viewModel.ShowWizardAsync = wizard => context.ShowDialogAsync<bool>(window!,
             LocalizedText.Get("application_deployments.wizard.title"),
             dialog => new DeploymentWizardView(wizard, dialog), new Size(780, 740));
+
+        // The access address is the one field an operator routinely needs outside this window, so the
+        // shell supplies both ways out of it: the system clipboard, and the default browser.
+        // The type is spelled out because this class has its own TopLevel() helper.
+        viewModel.CopyToClipboardAsync = async address =>
+        {
+            var clipboard = Avalonia.Controls.TopLevel.GetTopLevel(view)?.Clipboard;
+            if (clipboard is not null) await clipboard.SetTextAsync(address);
+        };
+
+        // The launch is deliberately not swallowed here: a host with no registered browser handler
+        // throws, and the view model reports that instead of the click doing nothing.
+        viewModel.OpenInBrowserAsync = address =>
+        {
+            Process.Start(new ProcessStartInfo(address) { UseShellExecute = true });
+            return Task.CompletedTask;
+        };
 
         viewModel.PickLocalArchiveAsync = async () =>
         {

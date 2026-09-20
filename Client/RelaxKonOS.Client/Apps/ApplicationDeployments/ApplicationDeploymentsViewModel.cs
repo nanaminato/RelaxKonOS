@@ -58,6 +58,10 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     public Func<Task<string?>>? PickServerArchiveAsync { get; set; }
     /// <summary>Assigned by the app shell to pick a local archive path for upload.</summary>
     public Func<Task<string?>>? PickLocalArchiveAsync { get; set; }
+    /// <summary>Assigned by the app shell to put the access address on the system clipboard.</summary>
+    public Func<string, Task>? CopyToClipboardAsync { get; set; }
+    /// <summary>Assigned by the app shell to hand a URL to the default browser.</summary>
+    public Func<string, Task>? OpenInBrowserAsync { get; set; }
 
     public bool CanRead => permissions.IsGranted(AppPermissions.ServerApplicationDeploymentsRead);
     public bool CanManage => permissions.IsGranted(AppPermissions.ServerApplicationDeploymentsManage);
@@ -77,7 +81,110 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         : LocalizedText.Get(DeploymentText.Prefix + ".never_deployed");
 
     public string ContainerText => SelectedApplication?.Model.ContainerName ?? "—";
-    public string DomainText => string.IsNullOrWhiteSpace(SelectedApplication?.Model.Domain) ? "—" : SelectedApplication!.Model.Domain;
+    public string DomainText => string.IsNullOrWhiteSpace(SelectedApplication?.Model.Domain)
+        ? LocalizedText.Get(DeploymentText.Prefix + ".not_configured")
+        : SelectedApplication!.Model.Domain;
+
+    /// <summary>
+    /// The line under the title. It answers "which build is this?" without opening the revisions tab,
+    /// and it names the artifact kind because that decides what every other field below it means.
+    /// </summary>
+    public string HeaderMetaText => SelectedApplication is { } row
+        ? $"{row.SourceText} · {LocalizedText.Get(DeploymentText.Prefix + ".field.revision")} {row.RevisionText}"
+        : string.Empty;
+
+    /// <summary>
+    /// The observed state itself rather than a word for it, so the badge derives its colour and glyph
+    /// from the same table the list dot uses and the two can never disagree.
+    /// </summary>
+    public ApplicationActualState? SelectedActualState => SelectedApplication?.Model.ActualState;
+
+    /// <summary>True while the instance is starting or stopping, which is what the spinning glyph marks.</summary>
+    public bool IsTransitioning => SelectedApplication?.IsTransitioning is true;
+
+    public bool HasSelectedDrift => SelectedApplication?.HasDrift is true;
+
+    public LocalizedStatus SelectedDriftText =>
+        SelectedApplication?.DriftText ?? LocalizedStatus.Literal(string.Empty);
+
+    /// <summary>
+    /// The readiness verdict. "Ready" means the observed state is running, which is the only claim
+    /// reconciliation can support — the configured probe depth is an intention, not a result.
+    /// </summary>
+    public bool IsReadinessHealthy =>
+        SelectedApplication?.Model.ActualState is ApplicationActualState.Running;
+
+    /// <summary>The probe that will be run, upgraded to a verdict once the instance is actually up.</summary>
+    public string ReadinessText
+    {
+        get
+        {
+            var key = SelectedApplication?.Model.ReadinessLevel switch
+            {
+                ApplicationReadinessLevel.Process => IsReadinessHealthy ? ".readiness.healthy_process" : ".readiness.process",
+                _ => IsReadinessHealthy ? ".readiness.healthy_http" : ".readiness.http",
+            };
+            return LocalizedText.Get(DeploymentText.Prefix + key);
+        }
+    }
+
+    /// <summary>
+    /// The address an operator can actually dial, or null when the workload publishes no host port.
+    /// A wildcard bind is reported on the loopback address, because "0.0.0.0" is not something anyone
+    /// can paste into a browser.
+    /// </summary>
+    public string? EndpointAddress
+    {
+        get
+        {
+            if (SelectedApplication?.Model.Endpoint is not { HostPort: { } port } endpoint) return null;
+            return $"{DialableHost(endpoint.BindAddress)}:{port.ToString(System.Globalization.CultureInfo.CurrentCulture)}";
+        }
+    }
+
+    public bool HasEndpointAddress => EndpointAddress is not null;
+
+    /// <summary>
+    /// The address as a URL, or null when there is nothing to open. Only an HTTP-probed workload
+    /// qualifies: the server's own readiness choice is the statement that this instance serves HTTP,
+    /// which is a stronger signal than the workload kind.
+    /// </summary>
+    public string? EndpointUri => HasEndpointAddress
+        && SelectedApplication?.Model.ReadinessLevel is ApplicationReadinessLevel.Http
+            ? "http://" + EndpointAddress
+            : null;
+
+    public bool CanOpenEndpoint => EndpointUri is not null;
+
+    public string ContainerPortText =>
+        SelectedApplication?.Model.ContainerPort.ToString(System.Globalization.CultureInfo.CurrentCulture) ?? "—";
+
+    /// <summary>
+    /// A lifecycle action is meaningless before the first revision is published.
+    /// </summary>
+    private bool HasPublishedRevision => SelectedApplication?.Model.CurrentRevisionId is not null;
+
+    /// <summary>The instance is up, or on its way up.</summary>
+    private bool IsUpOrStarting => SelectedApplication?.Model.ActualState
+        is ApplicationActualState.Running or ApplicationActualState.Starting;
+
+    /// <summary>
+    /// Which lifecycle buttons apply is decided here rather than left to the operator to work out.
+    /// Start is offered whenever the instance is not up, so an externally stopped container can be
+    /// brought back without reasoning about intent versus observation; stop and restart are offered
+    /// while the instance is up. A missing permission still leaves the button in place but disabled,
+    /// so it reads as "not allowed" rather than "missing".
+    /// </summary>
+    public bool ShowStartAction => HasPublishedRevision && !IsUpOrStarting;
+    public bool ShowStopAction => HasPublishedRevision && IsUpOrStarting;
+    public bool ShowRestartAction => HasPublishedRevision && IsUpOrStarting;
+
+    /// <summary>
+    /// 0.0.0.0 and :: mean "every interface", which is not an address anyone can dial, so the
+    /// loopback address stands in — it is where the published port is reachable from this machine.
+    /// </summary>
+    private static string DialableHost(string bindAddress) =>
+        bindAddress is "0.0.0.0" or "::" or "[::]" or "" ? "127.0.0.1" : bindAddress;
 
     /// <summary>
     /// The log pane is a single read-only text surface, so the lines are joined here. The server
@@ -333,6 +440,39 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
     private OperationRowViewModel Row(DeploymentOperationDto operation) =>
         new(operation, client.GetOperationDiagnosticsAsync);
 
+    /// <summary>
+    /// The address is the one field an operator routinely needs elsewhere (a browser, a curl, a log
+    /// line), so copying it is a first-class action rather than a text selection exercise.
+    /// </summary>
+    [RelayCommand]
+    private async Task CopyEndpointAsync()
+    {
+        if (EndpointAddress is not { } address || CopyToClipboardAsync is null) return;
+        try
+        {
+            await CopyToClipboardAsync(address);
+            StatusText = LocalizedStatus.Key(DeploymentText.Prefix + ".status.address_copied");
+        }
+        catch (Exception exception) when (IsExpected(exception))
+        {
+            ErrorText = Describe(exception);
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenEndpointAsync()
+    {
+        if (EndpointUri is not { } uri || OpenInBrowserAsync is null) return;
+        try
+        {
+            await OpenInBrowserAsync(uri);
+        }
+        catch (Exception exception) when (IsExpected(exception))
+        {
+            ErrorText = Describe(exception);
+        }
+    }
+
     [RelayCommand]
     private async Task LoadLogsAsync()
     {
@@ -418,15 +558,38 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         OnPropertyChanged(nameof(DomainText));
         OnPropertyChanged(nameof(HasLog));
         OnPropertyChanged(nameof(LogText));
+        OnPropertyChanged(nameof(HeaderMetaText));
+        OnPropertyChanged(nameof(SelectedActualState));
+        OnPropertyChanged(nameof(IsTransitioning));
+        OnPropertyChanged(nameof(HasSelectedDrift));
+        OnPropertyChanged(nameof(SelectedDriftText));
+        OnPropertyChanged(nameof(IsReadinessHealthy));
+        OnPropertyChanged(nameof(ReadinessText));
+        OnPropertyChanged(nameof(EndpointAddress));
+        OnPropertyChanged(nameof(HasEndpointAddress));
+        OnPropertyChanged(nameof(EndpointUri));
+        OnPropertyChanged(nameof(CanOpenEndpoint));
+        OnPropertyChanged(nameof(ContainerPortText));
+        OnPropertyChanged(nameof(ShowStartAction));
+        OnPropertyChanged(nameof(ShowStopAction));
+        OnPropertyChanged(nameof(ShowRestartAction));
     }
 
     private static bool IsExpected(Exception exception) => exception
         is ApplicationDeploymentClientException or HttpRequestException or InvalidOperationException
-        or IOException or UnauthorizedAccessException or TaskCanceledException;
+        or IOException or UnauthorizedAccessException or TaskCanceledException
+        // Launching the default browser is the one place this view model starts a process, and a
+        // machine with no registered handler fails the shell call rather than the HTTP call.
+        or System.ComponentModel.Win32Exception;
 
     private static LocalizedStatus Describe(Exception exception) => exception switch
     {
         ApplicationDeploymentClientException failure => DeploymentText.Problem(failure.ProblemCode),
+        // Handing the address to the default browser is the one action here that leaves the client
+        // entirely, so a failure is the host having no registered browser rather than a lost
+        // connection, and it must not be reported as one.
+        System.ComponentModel.Win32Exception =>
+            LocalizedStatus.Key(DeploymentText.Prefix + ".error.open_address_failed"),
         _ => LocalizedStatus.Key(DeploymentText.Prefix + ".error.transport"),
     };
 }
