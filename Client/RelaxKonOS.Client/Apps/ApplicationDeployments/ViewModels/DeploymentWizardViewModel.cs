@@ -643,8 +643,15 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
     private string? ValidateConfiguration()
     {
-        if (BuildVolumes() is null) return DeploymentText.Prefix + ".error.volume_invalid";
-        if (BuildConfiguration() is null) return DeploymentText.Prefix + ".error.configuration_invalid";
+        // Volumes and configuration are optional. Their builders use null to express an omitted
+        // optional value, so only ask them to validate after the operator has supplied a line.
+        // Without this guard, opening this step with its placeholder-only editors reports the
+        // example format as invalid even though nothing will be sent to the server.
+        if (SplitLines(VolumesText).Length > 0 && BuildVolumes() is null)
+            return DeploymentText.Prefix + ".error.volume_invalid";
+        if ((SplitLines(ConfigText).Length > 0 || SplitLines(SecretConfigText).Length > 0)
+            && BuildConfiguration() is null)
+            return DeploymentText.Prefix + ".error.configuration_invalid";
         if (SplitLines(ArgumentsText).Any(argument => argument.Length > 4096))
             return DeploymentText.Prefix + ".error.argument_invalid";
         if (!string.IsNullOrWhiteSpace(CpuCores) && ParseDouble(CpuCores) is not (> 0 and <= 64))

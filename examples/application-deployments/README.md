@@ -17,6 +17,7 @@
 ```
 examples/application-deployments/
 ├── README.md                                 本文件
+├── DEPLOYMENT-STEPS.md                       六个正向用例的逐格操作步骤（向导七步 + 验证 + 排查）
 ├── .gitignore                                忽略构建脚本的临时目录（dist/ 刻意不忽略）
 ├── fixtures/
 │   ├── java-http/                            可执行 JAR（Java 21 字节码 + Main-Class）
@@ -78,6 +79,10 @@ examples/application-deployments/
 ### 方式一：客户端向导
 
 按上一节的表逐项填写。向导只提交**定义**，部署是随后的独立动作，所以「创建成功」不代表已发布。
+
+**六个用例各自的逐格照抄版**（七步界面原文、要改的那几格、预期预览、验证方法与日志原文、
+每个用例特有的坑）见 [DEPLOYMENT-STEPS.md](./DEPLOYMENT-STEPS.md)。那份文档还记录了各来源在
+第 2 步的**字段可见性**——例如镜像来源根本不显示「参数」格，Java 来源的「程序入口」则必须留空。
 
 ### 方式二：脚本驱动（可留证据）
 
