@@ -195,6 +195,7 @@
     "docker.table.scope": "范围",
     "docker.table.mount_point": "挂载点",
     "docker.proxy.title": "网络代理",
+    "docker.proxy.settings_managed_by_settings": "代理配置请在“设置 > 网络”中管理。此页保留 Docker 守护进程、构建层和 Docker Desktop 的实际状态信息。",
     "docker.proxy.subtitle": "为 Docker 守护进程（镜像拉取）与构建过程配置 HTTP/HTTPS 代理。此项配置对整台服务器生效，不属于单个用户。",
     "docker.proxy.enable": "启用代理",
     "docker.proxy.source": "代理来源",

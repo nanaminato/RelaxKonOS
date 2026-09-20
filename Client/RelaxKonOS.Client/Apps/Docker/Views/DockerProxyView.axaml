@@ -5,7 +5,14 @@
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerProxyView"
              x:DataType="docker:DockerProxyViewModel">
     <StackPanel Spacing="18">
-        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
+        <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="14" Padding="18" IsVisible="{Binding IsReadOnly}">
+            <StackPanel Spacing="6">
+                <TextBlock Text="{loc:Loc docker.proxy.title}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{loc:Loc docker.proxy.settings_managed_by_settings}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20" IsVisible="{Binding !IsReadOnly}">
             <StackPanel Spacing="14">
                 <StackPanel Spacing="4">
                     <TextBlock Text="{loc:Loc docker.proxy.title}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />

@@ -195,6 +195,7 @@
     "docker.table.scope": "スコープ",
     "docker.table.mount_point": "マウントポイント",
     "docker.proxy.title": "ネットワークプロキシ",
+    "docker.proxy.settings_managed_by_settings": "プロキシ設定は「設定 > ネットワーク」で管理します。このページでは Docker デーモン、ビルド層、Docker Desktop の実効状態を確認できます。",
     "docker.proxy.subtitle": "Docker デーモン（イメージ取得）とビルドに HTTP/HTTPS プロキシを設定します。この設定はサーバー全体に適用され、特定のユーザーには属しません。",
     "docker.proxy.enable": "プロキシを有効にする",
     "docker.proxy.source": "プロキシの取得元",

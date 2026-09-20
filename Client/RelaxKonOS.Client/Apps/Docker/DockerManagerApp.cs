@@ -33,7 +33,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var vm = new DockerManagerViewModel(client);
-        var proxyViewModel = new DockerProxyViewModel(client, dockerOnly: true);
+        var proxyViewModel = new DockerProxyViewModel(client, readOnly: true);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Docker, "relaxkonos.docker", () => vm.RefreshCommand.ExecuteAsync(null));
         ManagedWindow? window = null;
@@ -44,15 +44,6 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
-        proxyViewModel.RequestConfirmationAsync = async message =>
-        {
-            var confirmed = false;
-            await context.ShowDialogAsync<bool>(window!, LocalizedText.Get("docker.proxy.title"), dialog => new ConfirmDialogView
-            {
-                DataContext = new ConfirmDialogViewModel(message, result => { confirmed = result; dialog.Close(result); }, LocalizedText.Get("docker.proxy.confirm_continue")),
-            });
-            return confirmed;
-        };
         // Stopping or restarting the engine terminates every running container on the host, so it
         // gets its own confirmation wording instead of the deletion dialog's.
         vm.RequestEngineConfirmationAsync = async message =>

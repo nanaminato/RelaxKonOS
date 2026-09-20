@@ -195,6 +195,7 @@
     "docker.table.scope": "Scope",
     "docker.table.mount_point": "Mount point",
     "docker.proxy.title": "Network proxy",
+    "docker.proxy.settings_managed_by_settings": "Manage proxy configuration in Settings > Network. This page retains the effective Docker daemon, build-layer, and Docker Desktop status.",
     "docker.proxy.subtitle": "Configure an HTTP/HTTPS proxy for the Docker daemon (image pulls) and for builds. This applies to the whole server, not to a single user.",
     "docker.proxy.enable": "Enable proxy",
     "docker.proxy.source": "Proxy source",

@@ -10,9 +10,9 @@ namespace RelaxKonOS.Client.Apps.Docker;
 /// machine's Docker daemon and the Server's own docker child processes, so it is not tied to the
 /// signed-in user. Both layers are reported separately because they use unrelated host mechanisms.
 /// </summary>
-public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, bool dockerOnly = false) : ObservableObject
+public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, bool readOnly = false) : ObservableObject
 {
-    private readonly bool _dockerOnly = dockerOnly;
+    public bool IsReadOnly { get; } = readOnly;
     /// <summary>
     /// Asked before a change that restarts the Docker daemon, which interrupts running containers.
     /// The page has no window of its own, so the host supplies the dialog.
@@ -96,20 +96,13 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, boo
         StatusText = LocalizedText.Ref("docker.proxy.status.saving");
         try
         {
-            // Docker Manager edits only its own two targets. It shares the endpoint and bypass
-            // list with Settings, but must not disable a proxy still used for tag lookups or
-            // managed-runtime downloads.
-            var dockerTargetsEnabled = IsEnabled;
             var request = new SaveDockerProxySettingsRequest(
-                _dockerOnly ? dockerTargetsEnabled || ApplyToImageTags || ApplyToRuntimeDownloads : IsEnabled,
+                IsEnabled,
                 UseManagedProxy ? DockerProxySource.ManagedProxy : DockerProxySource.Custom,
                 HttpProxy,
                 HttpsProxy,
                 NoProxy,
-                dockerTargetsEnabled && ApplyToEngine,
-                dockerTargetsEnabled && ApplyToBuild,
-                ApplyToImageTags,
-                ApplyToRuntimeDownloads,
+                ApplyToEngine, ApplyToBuild, ApplyToImageTags, ApplyToRuntimeDownloads,
                 Confirmed: true);
             Apply(await client.SaveProxyAsync(request));
             StatusText = LocalizedText.Ref("docker.proxy.status.saved");
@@ -135,17 +128,6 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client, boo
     {
         if (IsSaving) return;
         ProblemText = default;
-
-        if (_dockerOnly)
-        {
-            // "Clear" in Docker must detach only Docker. The shared proxy can still be used by
-            // other enabled built-in download groups configured in Settings.
-            IsEnabled = false;
-            ApplyToEngine = false;
-            ApplyToBuild = false;
-            await SaveAsync();
-            return;
-        }
 
         if (IsEngineLayerInstalled && !await RequestConfirmationAsync(LocalizedText.Get("docker.proxy.confirm.clear")))
         {
