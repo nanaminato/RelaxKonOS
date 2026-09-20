@@ -11,12 +11,10 @@ public sealed class DockerComposeService : IDockerComposeService
 {
     private const int MaximumComposeBytes = 1024 * 1024;
     private readonly string _dataDirectory;
-    private readonly IDockerProxyResolver _proxyResolver;
 
-    public DockerComposeService(IHostEnvironment environment, IOptions<DockerComposeOptions> options, IDockerProxyResolver proxyResolver)
+    public DockerComposeService(IHostEnvironment environment, IOptions<DockerComposeOptions> options)
     {
         _dataDirectory = ResolveDataDirectory(environment, options.Value.DataDirectory);
-        _proxyResolver = proxyResolver;
     }
 
     public Task<DockerStackOperationResult> ValidateAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default)
@@ -215,25 +213,13 @@ public sealed class DockerComposeService : IDockerComposeService
         try
         {
             using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
-            // Same build-layer attempt as `docker build`: the proxy variables are placed on the
-            // client process only. Measured on Windows with Docker Desktop, compose does not forward
-            // them to the build container either (it honours config-file `proxies` or --build-arg
-            // on `compose build`, but `up` accepts no build argument at all). Left in place because
-            // it is harmless and still covers any client that does read its own environment.
+            // The build layer is deliberately NOT applied on this path. A stack is started with
+            // `compose up`, which accepts no --build-arg at all (only `compose build` does, and this
+            // service never runs it), and Compose does not forward the client environment into the
+            // build it triggers for a service with a `build:` section. Such a service therefore has
+            // to be built through the Manager's image build first, or declare its own build.args in
+            // the Compose file.
             // See docs/applications/RelaxKonOS.DockerManager.md §3.5.
-            var resolution = await _proxyResolver.ResolveAsync(cancellationToken);
-            if (resolution.BuildLayerActive)
-            {
-                process.StartInfo.Environment["HTTP_PROXY"] = resolution.HttpProxy;
-                process.StartInfo.Environment["HTTPS_PROXY"] = resolution.HttpsProxy;
-                process.StartInfo.Environment["http_proxy"] = resolution.HttpProxy;
-                process.StartInfo.Environment["https_proxy"] = resolution.HttpsProxy;
-                if (resolution.NoProxy.Length > 0)
-                {
-                    process.StartInfo.Environment["NO_PROXY"] = resolution.NoProxy;
-                    process.StartInfo.Environment["no_proxy"] = resolution.NoProxy;
-                }
-            }
             foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return new CommandResult(false, string.Empty, "start_failed");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(TimeSpan.FromMinutes(2));

@@ -146,9 +146,15 @@ public sealed class DockerProxyService(
         if (!resolution.Enabled) return new(DockerProxyTarget.Build, DockerProxyLayerState.Disabled, string.Empty, string.Empty);
         if (resolution.ProblemCode.Length > 0) return new(DockerProxyTarget.Build, DockerProxyLayerState.Failed, resolution.ProblemCode, string.Empty);
         if (!resolution.ApplyToBuild) return new(DockerProxyTarget.Build, DockerProxyLayerState.Disabled, string.Empty, string.Empty);
-        // The Server injects the value into its own docker child processes, so this layer has no
-        // host-side step and cannot be left pending.
-        return new(DockerProxyTarget.Build, DockerProxyLayerState.Applied, string.Empty, DockerProxyDetail.BuildOnly);
+        // The Server owns its own docker child processes, so this layer has no host-side step and
+        // cannot be left pending. What it cannot do is make an unreachable address work: a build runs
+        // inside a container, where the local machine's own address is the container itself. That
+        // case reports Applied together with an explicit warning instead of a detail-free success,
+        // because the build argument really is in place and only the address is unusable.
+        var unreachable = DockerProxyValidation.IsLoopbackUrl(resolution.HttpProxy)
+            || DockerProxyValidation.IsLoopbackUrl(resolution.HttpsProxy);
+        return new(DockerProxyTarget.Build, DockerProxyLayerState.Applied, string.Empty,
+            unreachable ? DockerProxyDetail.BuildLoopbackUnreachable : DockerProxyDetail.BuildOnly);
     }
 
     private DockerProxyLayerDto EngineLayer(DockerProxyResolution resolution, DockerProxySetting? saved, DockerEngineProxyState? engineState, DockerDesktopProxyDto? desktop)

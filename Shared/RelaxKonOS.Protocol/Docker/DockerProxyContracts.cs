@@ -19,7 +19,11 @@ public enum DockerProxyTarget
 {
     /// <summary>Daemon-side egress (image pulls). Needs host configuration and normally a daemon restart.</summary>
     Engine,
-    /// <summary>Build-time and CLI egress. Applied to the Server's own <c>docker</c> child processes.</summary>
+    /// <summary>
+    /// Build-time egress. Passed as a value-less build argument on the Server's own
+    /// <c>docker build</c> command, with the value carried by that child process environment, so
+    /// nothing is written to the host and no credential reaches a command line.
+    /// </summary>
     Build,
 }
 

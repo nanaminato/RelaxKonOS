@@ -266,7 +266,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         // server-generated context from a template-authored Dockerfile and cannot explain a failure
         // without the command's own text; the general Docker Manager endpoint keeps the default and
         // still exposes nothing. Either way the full output stays in the protected server log.
-        return ToOperationResult(await RunAsync(arguments, cancellationToken, CommandTimeout.LongRunning, onOutput), includeBuildOutput);
+        return ToOperationResult(await RunAsync(arguments, cancellationToken, CommandTimeout.LongRunning, onOutput, carriesBuildProxy: true), includeBuildOutput);
     }
 
     public async Task<DockerImageArchiveDto?> ExportImageAsync(string imageId, CancellationToken cancellationToken = default)
@@ -322,15 +322,21 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
             .Select(line => line.Split('\t')).ToArray();
     }
 
-    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, CommandTimeout commandTimeout = CommandTimeout.Standard, Action<string>? onOutput = null)
+    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, CommandTimeout commandTimeout = CommandTimeout.Standard, Action<string>? onOutput = null, bool carriesBuildProxy = false)
     {
         var commandName = CommandName(arguments);
         logger.LogInformation("Docker command {DockerCommand} started.", commandName);
         try
         {
             using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
-            await ApplyProxyEnvironmentAsync(process.StartInfo, cancellationToken);
-            foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+            // Only a build consumes the proxy, so the preference is read for a build command alone;
+            // every other command keeps running with the environment it inherited.
+            var proxy = carriesBuildProxy ? await proxyResolver.ResolveAsync(cancellationToken) : null;
+            if (proxy is not null) DockerBuildProxy.ApplyToEnvironment(process.StartInfo, proxy);
+            var effectiveArguments = proxy is null
+                ? arguments
+                : [.. arguments.Take(1), .. DockerBuildProxy.ArgumentNames(proxy), .. arguments.Skip(1)];
+            foreach (var argument in effectiveArguments) process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return Complete(new CommandResult(false, "", "start_failed"), commandName);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(commandTimeout switch
@@ -356,34 +362,6 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
             }
         }
         catch (Exception exception) when (exception is Win32Exception or FileNotFoundException) { return Complete(new CommandResult(false, "", "not_found"), commandName); }
-    }
-
-    /// <summary>
-    /// Sets the build-layer proxy variables on a docker child process. This is what the build layer
-    /// is designed around, and it deliberately writes nothing to the host.
-    /// Measured on Windows with Docker Desktop (docker 29.8, buildx 0.37): these variables do NOT
-    /// reach a build container — neither BuildKit nor the classic builder forwards a client
-    /// environment variable into the build. Only an explicit <c>--build-arg HTTP_PROXY=...</c> or a
-    /// <c>proxies</c> section in the docker CLI config file does. The comment here used to claim the
-    /// opposite; keep this note until the layer is reworked, and do not read the reported
-    /// <c>Applied</c> state as proof that builds actually go through the proxy.
-    /// See docs/applications/RelaxKonOS.DockerManager.md §3.5.
-    /// </summary>
-    private async Task ApplyProxyEnvironmentAsync(ProcessStartInfo startInfo, CancellationToken cancellationToken)
-    {
-        var resolution = await proxyResolver.ResolveAsync(cancellationToken);
-        if (!resolution.BuildLayerActive) return;
-        startInfo.Environment["HTTP_PROXY"] = resolution.HttpProxy;
-        startInfo.Environment["HTTPS_PROXY"] = resolution.HttpsProxy;
-        // BuildKit looks for both spellings, and a client that only honours the lower-case form
-        // would otherwise silently bypass the proxy.
-        startInfo.Environment["http_proxy"] = resolution.HttpProxy;
-        startInfo.Environment["https_proxy"] = resolution.HttpsProxy;
-        if (resolution.NoProxy.Length > 0)
-        {
-            startInfo.Environment["NO_PROXY"] = resolution.NoProxy;
-            startInfo.Environment["no_proxy"] = resolution.NoProxy;
-        }
     }
 
     private CommandResult Complete(CommandResult result, string commandName)

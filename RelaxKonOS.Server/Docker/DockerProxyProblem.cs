@@ -50,6 +50,11 @@ public static class DockerProxyDetail
     public const string DesktopRestartPending = "docker.proxy.detail.desktop_restart_pending";
     /// <summary>Docker Desktop is running, but it forwards to a different upstream than the saved one.</summary>
     public const string DesktopUpstreamDiffers = "docker.proxy.detail.desktop_upstream_differs";
-    /// <summary>The client already passes the proxy to builds, so no host change was needed.</summary>
+    /// <summary>The build command carries the proxy as a build argument, so no host change was needed.</summary>
     public const string BuildOnly = "docker.proxy.detail.build_only";
+    /// <summary>
+    /// The build layer is installed, but the address it names is the local machine, which a build
+    /// container cannot reach: inside the container that address is the container itself.
+    /// </summary>
+    public const string BuildLoopbackUnreachable = "docker.proxy.detail.build_loopback_unreachable";
 }

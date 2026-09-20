@@ -161,11 +161,11 @@ Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；Rel
 | 层 | 作用 | Linux | Windows（Docker Desktop） |
 |---|---|---|---|
 | `Engine`（守护进程层） | 镜像拉取等守护进程自身的出网 | 写 `/etc/systemd/system/docker.service.d/http-proxy.conf` drop-in，再 `systemctl daemon-reload` + `try-restart docker.service` | Docker Desktop 忽略 `daemon.json`，改为编辑 `%APPDATA%\Docker\settings-store.json`（键 `ProxyHTTPMode`/`OverrideProxyHTTP`/`OverrideProxyHTTPS`/`OverrideProxyExclude`），前后 `docker desktop stop`/`start`，写后回读该文件校验取值确实落盘 |
-| `Build`（构建层） | `docker build` 与 `docker compose` 的镜像构建出网 | 由 Server 在 `docker` 子进程上注入环境变量，不写宿主文件（**实测不生效，见下方“构建层的实测限制”**） | 同左 |
+| `Build`（构建层） | `docker build` 的构建期出网 | Server 在 `docker build` 上追加**无值** `--build-arg`（`HTTP_PROXY`/`http_proxy`/`HTTPS_PROXY`/`https_proxy`/`NO_PROXY`/`no_proxy`），代理值放在该子进程的环境变量里；不写宿主文件、不进镜像 `Config.Env`、不出现在命令行 | 同左（`docker build` 的机制与平台无关） |
 
 - **代理来源**：`Custom`（运维填写 URL）或 `ManagedProxy`（复用内置代理运行时，即 mihomo 的 mixed-port 监听）。内置来源不落库任何 URL，避免切回自定义时复活过期值；解析时对 `127.0.0.1:{MixedPort}` 做 TCP 监听探测，不可达则判定失败关闭（`docker.proxy.problem.managed_proxy_unavailable`），不会把守护进程指向无人监听的端口。
 - **单一解析器**：`IDockerProxyResolver` 是两层唯一的取值来源（带 5 秒缓存 + 保存后 `Invalidate`），因此同一次保存不可能只作用于其中一层。
-- **构建层无须宿主操作（但当前实现不生效，见下方限制说明）**：`DockerCliEngineService` 与 `DockerComposeService` 在启动 `docker` 子进程前注入 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 大小写各一份；禁用时清除继承的同名变量，避免上层环境残留导致“已关闭却仍在走代理”。这套做法不写任何宿主文件，实测**不足以**让构建容器拿到代理。
+- **构建层无须宿主操作**：`DockerCliEngineService` 在 `docker build` 上追加**无值** `--build-arg HTTP_PROXY`（六种拼写），代理值由同一次解析写入该子进程的环境变量。两半必须成对使用（`DockerBuildProxy` 是唯一实现），无值写法让 `docker` 自己从环境变量取值，因此凭据不会出现在命令行（`ps`、任务管理器、shell 历史都看不到），也不会像 `--build-arg NAME=value` 那样被带进进程列表。该层不写宿主文件，也不写入镜像的 `Config.Env`。只有 build 命令会读代理配置，其余 docker 命令保持继承环境不变。`docker compose` 栈路径**不在覆盖范围内**，原因见本节末。
 - **凭据处理**：代理 URL 可能内嵌 `user:pass@`。服务端加密存储；**返回界面时不做掩码** —— 已保存的偏好与守护进程自报的有效值都原样返回，只在日志、审计、问题码与层诊断中经 `DockerProxyValidation.MaskProxy` 去掉 userinfo。掩码只面向“非操作者”的读者：若把掩码值回填进表单，下一次保存就会把真实凭据改写成 `***`，等于损坏配置。特权 Helper 也从不回显收到的值（读回校验用文件内容比对而非 `systemctl show`，后者会打印环境变量）。
 - **宿主全局**：Docker daemon 是机器资源而非租户资源，故配置为单行表、以最后一位获授权写入者为准，不采用镜像源的每用户模型；`updated_by` 仅用于可追溯。
 - **确认语义**：安装/替换守护进程层会重启 Docker 并中断运行中的容器，因此 `SaveDockerProxySettingsRequest.Confirmed` 缺失时该层只返回 `docker.proxy.problem.confirmation_required` 而不写宿主；客户端在提交前用确认对话框取回该确认。移除时仅当本机确曾由 RelaxKonOS 写入过（`engine_applied`）才触碰宿主，避免为一次空操作重启 Docker。
@@ -176,28 +176,28 @@ Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；Rel
 - **为什么 Docker Desktop 改代理不需要重启引擎**：Docker Desktop 的 vpnkit 内部代理会在上游变更时**动态重配**，而守护进程指向的地址（内部代理）始终不变，所以引擎进程不需要重启（Docker 官方《How Docker Desktop Networking Works Under the Hood》即此结论）。相对地，原生 Linux 守护进程是从 systemd 单元的启动环境读取 `HTTP_PROXY`，属于启动期配置，必须重启 `docker.service` 才生效。本功能在 Windows 上因此只需重启 Docker Desktop 应用本身；这一步不可省略的原因不是引擎，而是**该应用在退出时会用内存中的设置覆盖 `settings-store.json`**，所以必须先停它再写、写完再启动。若 Server 无法驱动 Docker Desktop，写入仍然落盘，状态提示交由运维手动重启。
 - **平台限制**：Linux 经特权 Helper 写入（路径、单元名与命令行均为常量，不接受任意路径/命令，不构成通用提权面）；Windows 走 Docker Desktop 自己的设置文件。其余平台报 `Unsupported`。Windows Server 上的 Docker Desktop 不属于受支持路径，见 §2.2。
 
-#### 构建层的实测限制（2026-09-20 实测，尚未修复）
+#### 构建层：为什么用无值 `--build-arg`（2026-09-20 实测）
 
-构建层当前实现是“在 `docker` / `docker compose` 子进程上设置 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`”。**实测证明这一做法不生效**：BuildKit、经典构建器（`DOCKER_BUILDKIT=0`）与 Compose 都不会把客户端进程的环境变量转成构建容器的代理。验证方式是把 `env | grep -i proxy` 写进 Dockerfile 的 `RUN` 步骤，逐个变量组合实测。
+实测环境：Windows + Docker Desktop，docker client/server 29.8.0、buildx 0.37.0、Compose v5.5.1。验证方式是把 `env | grep -i proxy` 写进 Dockerfile 的 `RUN` 步骤，逐个机制实测。
 
-实测环境：Windows + Docker Desktop，docker client/server 29.8.0，buildx 0.37.0。
+| 目标 | Docker Desktop 自身设置 | 客户端进程环境变量 | `--build-arg NAME=value` | 无值 `--build-arg NAME` | `~/.docker/config.json` 的 `proxies` |
+|---|---|---|---|---|---|
+| 守护进程拉镜像 | ✅ 该设置本身就是这一层 | — | — | — | — |
+| `docker build`（BuildKit） | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `docker build`（经典构建器，`DOCKER_BUILDKIT=0`） | ❌ | ❌ | ✅ | ✅（该模式已弃用：构建时会打印 legacy builder 将被移除的警告） | ✅ |
+| `docker compose build` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| `docker compose up` 自动构建 | ❌ | ❌ | 无此参数 | 无此参数 | ✅ |
+| `docker run` 容器内环境变量 | ❌ | ❌ | — | — | ✅（副作用） |
+| 凭据去向 | Docker Desktop 设置文件 | 仅进程内存 | **命令行可见**（`ps`、任务管理器、shell 历史） | 仅进程内存 | **宿主文件明文** |
 
-| 目标 | Docker Desktop 自身设置 | 客户端进程环境变量（当前实现） | `--build-arg HTTP_PROXY=` | `~/.docker/config.json` 的 `proxies` |
-|---|---|---|---|---|
-| 守护进程拉镜像 | ✅ 该设置本身就是这一层 | — | — | — |
-| `docker build`（BuildKit） | ❌ | ❌ | ✅ | ✅ |
-| `docker build`（经典构建器） | ❌ | ❌ | ✅ | ✅ |
-| `docker compose build` | ❌ | ❌ | ✅ | ✅ |
-| `docker compose up` 自动构建 | ❌ | ❌ | 无此参数 | ✅ |
-| `docker run` 容器内环境变量 | ❌ | ❌ | — | ✅ |
+选定的是“客户端环境变量 + 无值 `--build-arg`”这一组合：
 
-由此得到几条必须记住的结论：
-
-- 在 Docker Desktop 上，用户在它自己的界面里配代理**只覆盖守护进程层（拉镜像）**，构建与容器运行时都要另配。也就是说“有了 Docker Desktop 那处设置就不用再配代理”只对拉镜像成立。
-- 构建容器的代理只有两条来源：`--build-arg`（只影响 `RUN` 环境，实测**不会**写进镜像的 `Config.Env`，因此不会把凭据固化进镜像）或客户端配置文件 `proxies`。
+- 客户端环境变量本身**不生效**（上表那一列的 ❌ 就是它的全部作用面），但它是无值 `--build-arg` 的取值来源：`docker` 解析无值参数时从自己的环境读取，因此值不会出现在命令行上。两半由 `DockerBuildProxy` 一起产生，禁止分开使用。
+- 不选 `--build-arg NAME=value`：功能相同，但会把带凭据的 URL 写进命令行，本机任何用户可见。
+- 不选 `config.json` 的 `proxies`：它一处覆盖构建、compose、自动构建与容器运行时，但 ① 代理以明文写进宿主文件（而 Docker Desktop 自己也会重写该文件）；② 它同时把代理注入**之后创建的每个容器**的环境变量（实测 `docker run` 容器会多出六个变量），本产品要承载用户容器，等于顺手改了别人的运行期网络。
+- **`docker compose up` 的自动构建覆盖不到**：`up` 不接受任何 build 参数（`--build-arg` 只在 `compose build` 上，而本服务只跑 `up`），Compose 也不会把客户端环境变量转给构建。栈里带 `build:` 的服务需先在 Manager 里构建镜像，或在 Compose 文件里自行声明 `build.args`。`DockerComposeService` 因此不做任何注入：保留一个已被实测否定的空操作，只会假装覆盖了这条路径。
 - `docker info` 在 Docker Desktop 上恒报 `http.docker.internal:3128`（no_proxy 为 `hubproxy.docker.internal`），**不含真实上游**，不能用作生效判据——这也是引入 `IDockerDesktopProxyReader` 的原因。
-- 两条可行修法，均**尚未实施**：① 给 `docker build` / `docker compose build` 传显式 `--build-arg`（精确、不写宿主文件，但 `up` 的自动构建与容器运行时覆盖不到）；② 写 `~/.docker/config.json` 的 `proxies` 段（一处覆盖构建、compose、自动构建与容器运行时，代价是代理明文落盘，且开启后每个容器都会带上代理环境变量、`docker inspect` 可见）。
-- 因此**当前构建层状态会报 `Applied` 属乐观误报**，它反映的是“已按设计注入”，而不是“构建真的走了代理”。修复前不要把该状态当作构建可用的保证。
+- **代理地址必须能被构建容器访问**：构建步骤运行在容器里，`127.0.0.1`/`localhost`/`::1` 指向容器自身。实测该平台上，构建沙箱里既连不上宿主 `127.0.0.1`，也连不上 `host.docker.internal`（该别名在此环境只解析出 IPv6 `fdc4:f303:9324::254`，而构建沙箱没有 IPv6 路由，只有回环；同一别名在普通容器里可以连通）。因此内置代理（地址即 `127.0.0.1:{MixedPort}` 的监听端口）**用在构建层不会生效**：该层仍报 `Applied`（构建参数确实已传入），但附带 `docker.proxy.detail.build_loopback_unreachable` 警告，提示改用构建容器能访问的地址（例如宿主机的局域网地址）。
 
 ```text
 客户端「网络代理」页 ──HTTPS+JWT──► /api/v1.0/docker/proxy
@@ -209,6 +209,7 @@ Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；Rel
                                         │
                        Linux: PrivilegedHelper → systemd drop-in
                        Windows: Docker Desktop settings-store.json
+                       Build 层: DockerBuildProxy → docker build --build-arg（值走子进程环境，不落命令行）
 ```
 
 ### 3.6 引擎生命周期控制

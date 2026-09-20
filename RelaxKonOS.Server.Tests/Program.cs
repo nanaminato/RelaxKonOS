@@ -1122,6 +1122,49 @@ static async Task VerifyDockerProxyAsync(string root)
         && DockerProxyValidation.MaskProxy("http://proxy.example:8080/pa@th") == "http://proxy.example:8080/pa@th",
         "Proxy credentials were not masked, or an '@' in the path was mangled.");
 
+    // A build runs inside a container, where the local machine's own address is that container, so
+    // this case has to be recognised before the build layer can call itself usable.
+    Assert(DockerProxyValidation.IsLoopbackUrl("http://127.0.0.1:3128")
+        && DockerProxyValidation.IsLoopbackUrl("http://localhost:3128")
+        && DockerProxyValidation.IsLoopbackUrl("http://[::1]:3128")
+        && !DockerProxyValidation.IsLoopbackUrl("http://proxy.example:8080")
+        && !DockerProxyValidation.IsLoopbackUrl("not-a-url"),
+        "Loopback detection did not separate a local address from a reachable one.");
+
+    // --- Build layer: a value-less build argument carries the proxy -------------------------
+    var buildResolution = new DockerProxyResolution(true, DockerProxySource.Custom,
+        "http://operator:s3cr3t@proxy.example:8080", "http://operator:s3cr3t@proxy.example:8080", "localhost",
+        true, true, string.Empty, true, string.Empty);
+    var buildArguments = DockerBuildProxy.ArgumentNames(buildResolution);
+    Assert(buildArguments.Count == 12 && buildArguments[0] == "--build-arg"
+        && buildArguments.Where((_, index) => index % 2 == 1)
+            .SequenceEqual(["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy"]),
+        "The build layer did not request every spelling of the proxy build argument.");
+    // The value-less form is the whole point: nothing that reaches a command line may carry a value,
+    // because that is where a credential becomes readable to every local user.
+    Assert(buildArguments.All(argument => !argument.Contains('=', StringComparison.Ordinal)),
+        "A build argument carried its value, which would expose the proxy credential on a command line.");
+    Assert(DockerBuildProxy.ArgumentNames(buildResolution with { NoProxy = string.Empty }).Count == 8,
+        "An empty bypass list still requested a NO_PROXY build argument.");
+    Assert(DockerBuildProxy.ArgumentNames(buildResolution with { Enabled = false }).Count == 0,
+        "A disabled preference still requested build arguments.");
+
+    // The environment half: it is the value source for the arguments above, and nothing on its own.
+    var buildStartInfo = new System.Diagnostics.ProcessStartInfo("docker");
+    DockerBuildProxy.ApplyToEnvironment(buildStartInfo, buildResolution);
+    Assert(buildStartInfo.Environment["HTTP_PROXY"] == buildResolution.HttpProxy
+        && buildStartInfo.Environment["http_proxy"] == buildResolution.HttpProxy
+        && buildStartInfo.Environment["HTTPS_PROXY"] == buildResolution.HttpsProxy
+        && buildStartInfo.Environment["https_proxy"] == buildResolution.HttpsProxy
+        && buildStartInfo.Environment["NO_PROXY"] == "localhost"
+        && buildStartInfo.Environment["no_proxy"] == "localhost",
+        "The build layer did not place the resolved proxy on the docker child process.");
+    var disabledStartInfo = new System.Diagnostics.ProcessStartInfo("docker");
+    _ = disabledStartInfo.Environment.Remove("HTTP_PROXY");
+    DockerBuildProxy.ApplyToEnvironment(disabledStartInfo, buildResolution with { Enabled = false });
+    Assert(!disabledStartInfo.Environment.ContainsKey("HTTP_PROXY"),
+        "A disabled preference still placed a proxy on the docker child process.");
+
     // --- Resolver: custom source and the HTTPS-reuses-HTTP fallback -------------------------
     var settings = new InMemoryDockerProxySettingsRepository();
     await settings.SaveAsync(new DockerProxySetting
@@ -1332,8 +1375,23 @@ static async Task VerifyDockerProxyAsync(string root)
     Assert(brokenStatus.ManagedProxyEndpoint == $"http://127.0.0.1:{brokenPort}",
         "The unusable managed proxy endpoint was not advertised so the operator can find it.");
 
-    Console.WriteLine("PASS DOCKER PROXY: value rules, credential visibility, Docker Desktop upstream read, "
-        + "per-layer reporting, protected storage, and fail-closed behaviour verified.");
+    // --- Build layer: a local address is applied, but reported with the warning it deserves ----
+    using var buildListener = new TcpListener(IPAddress.Loopback, 0);
+    buildListener.Start();
+    var buildSettings = new InMemoryDockerProxySettingsRepository();
+    var buildFixture = CreateDockerProxyService(buildSettings,
+        new DockerProxyResolver(buildSettings, new TestProxySettingsService(((IPEndPoint)buildListener.LocalEndpoint).Port)),
+        DispatchProxy.Create<IDockerEngineService, StubDockerEngine>());
+    var loopbackBuild = await buildFixture.Service.SaveAsync(
+        new SaveDockerProxySettingsRequest(true, DockerProxySource.ManagedProxy, null, null, "localhost",
+            ApplyToEngine: false, ApplyToBuild: true, Confirmed: true), actor);
+    Assert(loopbackBuild.Layers.Single(layer => layer.Target == DockerProxyTarget.Build) is
+            { State: DockerProxyLayerState.Applied, Detail: DockerProxyDetail.BuildLoopbackUnreachable },
+        "A build proxy on the local machine was reported as a plain success instead of warning that a build container cannot reach it.");
+    buildListener.Stop();
+
+    Console.WriteLine("PASS DOCKER PROXY: value rules, credential visibility, build-argument delivery, "
+        + "Docker Desktop upstream read, per-layer reporting, protected storage, and fail-closed behaviour verified.");
 }
 
 /// <summary>A port that was allocated and released, so nothing is listening on it right now.</summary>
