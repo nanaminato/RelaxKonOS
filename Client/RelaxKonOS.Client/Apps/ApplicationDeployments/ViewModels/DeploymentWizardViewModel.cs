@@ -169,6 +169,13 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
     // --- Source -------------------------------------------------------------------------------
     [ObservableProperty] private string _imageReference = string.Empty;
+    public ObservableCollection<ApplicationImageTagDto> ImageTags { get; } = [];
+    [ObservableProperty] private ApplicationImageTagDto? _selectedImageTag;
+    [ObservableProperty] private bool _isImageTagLookupRunning;
+    [ObservableProperty] private string _imageTagLookupText = string.Empty;
+    public bool HasImageTags => ImageTags.Count > 0;
+    public bool HasImageTagLookupText => ImageTagLookupText.Length > 0;
+    private bool applyingImageTag;
     [ObservableProperty] private string _baseImage = string.Empty;
     [ObservableProperty] private string _runtimeVersion = string.Empty;
     [ObservableProperty] private string _programEntry = string.Empty;
@@ -319,6 +326,55 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
             StatusText = LocalizedStatus.Literal(string.Empty);
         }
         ValidateCurrentStep();
+    }
+
+    partial void OnImageReferenceChanged(string value)
+    {
+        if (!applyingImageTag)
+        {
+            ImageTags.Clear();
+            SelectedImageTag = null;
+            ImageTagLookupText = string.Empty;
+            OnPropertyChanged(nameof(HasImageTags));
+        }
+        ValidateCurrentStep();
+    }
+
+    partial void OnSelectedImageTagChanged(ApplicationImageTagDto? value)
+    {
+        if (value is null) return;
+        applyingImageTag = true;
+        try { ImageReference = value.ImageReference; }
+        finally { applyingImageTag = false; }
+    }
+
+    partial void OnImageTagLookupTextChanged(string value) => OnPropertyChanged(nameof(HasImageTagLookupText));
+
+    [RelayCommand]
+    private async Task LoadImageTagsAsync()
+    {
+        if (IsImageTagLookupRunning || !RequiresImageReference || string.IsNullOrWhiteSpace(ImageReference)) return;
+        IsImageTagLookupRunning = true;
+        ImageTagLookupText = LocalizedText.Get(DeploymentText.Prefix + ".image_tags_loading");
+        try
+        {
+            var result = await client.ListImageTagsAsync(ImageReference.Trim());
+            ImageTags.Clear();
+            foreach (var tag in result.Tags) ImageTags.Add(tag);
+            OnPropertyChanged(nameof(HasImageTags));
+            ImageTagLookupText = result.Available
+                ? result.Tags.Count > 0
+                    ? LocalizedText.Format(DeploymentText.Prefix + ".image_tags_found", result.Tags.Count)
+                    : LocalizedText.Get(DeploymentText.Prefix + ".image_tags_empty")
+                : LocalizedText.Get(DeploymentText.Prefix + ".image_tags_unavailable");
+        }
+        catch (Exception exception) when (IsExpected(exception))
+        {
+            ImageTags.Clear();
+            OnPropertyChanged(nameof(HasImageTags));
+            ImageTagLookupText = LocalizedText.Get(DeploymentText.Prefix + ".image_tags_unavailable");
+        }
+        finally { IsImageTagLookupRunning = false; }
     }
 
     partial void OnArchiveFileNameChanged(string value) => OnPropertyChanged(nameof(HasArchive));
@@ -743,7 +799,11 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     {
         if (Intent == DeploymentWizardIntent.EditDefinition) return null;
         if (RequiresImageReference)
-            return string.IsNullOrWhiteSpace(ImageReference) ? DeploymentText.Prefix + ".error.image_required" : null;
+        {
+            if (string.IsNullOrWhiteSpace(ImageReference)) return DeploymentText.Prefix + ".error.image_required";
+            if (!HasExplicitImageVersion(ImageReference)) return DeploymentText.Prefix + ".error.image_version_required";
+            return null;
+        }
         if (string.IsNullOrWhiteSpace(ArchiveReferenceId)) return DeploymentText.Prefix + ".error.archive_required";
         if (SourceKind == ApplicationSourceKind.PythonProject && string.IsNullOrWhiteSpace(ProgramEntry))
             return DeploymentText.Prefix + ".error.entry_required";
@@ -862,6 +922,15 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         && parsed is >= 1 and <= 65535 ? parsed : null;
 
     private static int? ParseOptionalPort(string value) => string.IsNullOrWhiteSpace(value) ? null : ParsePort(value);
+
+    /// <summary>Matches the deployment contract: Docker's implicit and explicit latest are both floating.</summary>
+    private static bool HasExplicitImageVersion(string value)
+    {
+        var reference = value.Trim();
+        var separator = reference.LastIndexOf(':');
+        return separator > reference.LastIndexOf('/') && separator < reference.Length - 1
+            && !reference[(separator + 1)..].Equals("latest", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static double? ParseDouble(string value) => double.TryParse(value?.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out var parsed) ? parsed : null;
 

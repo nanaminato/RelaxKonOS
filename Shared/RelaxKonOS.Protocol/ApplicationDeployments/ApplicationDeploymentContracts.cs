@@ -52,6 +52,21 @@ public sealed record ApplicationDeploymentTemplateDto(
     [property: JsonPropertyName("supportsSelfContained")] bool SupportsSelfContained,
     [property: JsonPropertyName("defaultContainerPort")] int DefaultContainerPort);
 
+/// <summary>A concrete, non-floating image reference offered by the deployment wizard.</summary>
+public sealed record ApplicationImageTagDto(
+    [property: JsonPropertyName("tag")] string Tag,
+    [property: JsonPropertyName("imageReference")] string ImageReference);
+
+/// <summary>
+/// Recent tags exposed by a registry. <see cref="Available"/> is false when the repository is not
+/// supported by the built-in public-registry lookup or could not be reached; manual entry remains
+/// available in either case.
+/// </summary>
+public sealed record ApplicationImageTagsDto(
+    [property: JsonPropertyName("repository")] string Repository,
+    [property: JsonPropertyName("tags")] IReadOnlyList<ApplicationImageTagDto> Tags,
+    [property: JsonPropertyName("available")] bool Available);
+
 /// <summary>
 /// A deployed application. The definition is the operator's intent; runtime facts such as
 /// <see cref="ActualState"/> are reconciled against real Docker resources.

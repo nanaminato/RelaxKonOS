@@ -419,6 +419,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.Applicati
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentStagingStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOperationStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentDefinitionMutationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentImageTagCatalog>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.IApplicationDeploymentProxyIntegration,
     RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentProxyIntegration>();
@@ -434,6 +435,13 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.
 builder.Services.AddHttpClient(RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime.HealthClientName,
         client => client.Timeout = TimeSpan.FromSeconds(10))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
+builder.Services.AddHttpClient(RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentImageTagCatalog.HttpClientName,
+        client =>
+        {
+            client.BaseAddress = new Uri("https://hub.docker.com/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        })
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseProxy = true, AllowAutoRedirect = false });
 
 // Identity transport is a deployment decision, not a Development-environment shortcut.  A
 // no-sudo User Mode Server authenticates the account that owns the process through the host's

@@ -102,9 +102,18 @@ internal static class ApplicationDeploymentValidation
     public static bool IsValidImageReference(string? value) => value is { Length: >= 1 and <= 255 }
         && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or ':' or '.' or '_' or '-');
 
-    /// <summary>Rejects any image reference that resolves to a floating tag rather than a version line.</summary>
+    /// <summary>
+    /// Requires an explicit, non-<c>latest</c> tag. Docker treats a reference without a tag as
+    /// <c>latest</c>, including references whose registry host itself contains a port, so the last
+    /// colon is meaningful only when it occurs after the last slash.
+    /// </summary>
     public static bool IsPinnedImageReference(string? value)
-        => value is not null && !value.EndsWith(":latest", StringComparison.Ordinal) && !value.Contains(":latest@", StringComparison.Ordinal);
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var separator = value.LastIndexOf(':');
+        if (separator <= value.LastIndexOf('/') || separator == value.Length - 1) return false;
+        return !string.Equals(value[(separator + 1)..], "latest", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static string[] Labels(Guid applicationId, string applicationName, Guid? revisionId, int? revisionNumber, Guid? operationId, string role)
     {

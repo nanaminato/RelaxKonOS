@@ -16,6 +16,13 @@ internal static class ApplicationDeploymentDiagnosticsVerification
 
     public static void Run(string root)
     {
+        Check(!ApplicationDeploymentValidation.IsPinnedImageReference("nginx")
+            && !ApplicationDeploymentValidation.IsPinnedImageReference("registry.example:5000/team/app")
+            && !ApplicationDeploymentValidation.IsPinnedImageReference("nginx:latest")
+            && ApplicationDeploymentValidation.IsPinnedImageReference("nginx:1.27")
+            && ApplicationDeploymentValidation.IsPinnedImageReference("registry.example:5000/team/app:2.4"),
+            "An image deployment must require an explicit, non-latest tag even when the registry has a port.");
+
         // The host environment exposes its content root through a physical file provider, so the
         // directory has to exist before the environment is constructed. The store only creates its own
         // ledger subdirectory, which is why this is the verification's responsibility.

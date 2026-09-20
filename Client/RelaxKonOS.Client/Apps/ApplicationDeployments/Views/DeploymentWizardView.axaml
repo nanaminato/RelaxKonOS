@@ -70,6 +70,16 @@
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBox Text="{Binding ImageReference, Mode=TwoWay}"
                                  PlaceholderText="{loc:Loc application_deployments.wizard.image_hint}" />
+                        <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6">
+                            <Button Content="{loc:Loc application_deployments.wizard.load_image_tags}"
+                                    Command="{Binding LoadImageTagsCommand}"
+                                    IsEnabled="{Binding !IsImageTagLookupRunning}" Padding="12,5" />
+                            <TextBlock Text="{Binding ImageTagLookupText}" IsVisible="{Binding HasImageTagLookupText}"
+                                       VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </WrapPanel>
+                        <ComboBox ItemsSource="{Binding ImageTags}" DisplayMemberBinding="{ReflectionBinding Tag}"
+                                  SelectedItem="{Binding SelectedImageTag, Mode=TwoWay}"
+                                  IsVisible="{Binding HasImageTags}" />
                     </StackPanel>
 
                     <StackPanel Spacing="8" IsVisible="{Binding RequiresArchive}">

@@ -15,6 +15,10 @@ public static class ApplicationDeploymentApiRoutes
     public const string Templates = Root + "/templates";
     public const string TemplatesPattern = "/templates";
 
+    /// <summary>Recent selectable tags for a public image repository.</summary>
+    public const string ImageTags = Root + "/image-tags";
+    public const string ImageTagsPattern = "/image-tags";
+
     public const string Applications = Root + "/applications";
     /// <summary>Relative pattern for the same collection. A route group already carries <see cref="Root"/>,
     /// so the server must map this constant: mapping the absolute <see cref="Applications"/> inside the group

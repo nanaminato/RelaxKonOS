@@ -31,6 +31,11 @@ public static class ApplicationDeploymentEndpoints
             (ApplicationDeploymentManager manager) => Handle(() => Results.Ok(manager.Templates())))
             .RequireAuthorization(ReadPolicy);
 
+        group.MapGet(ApplicationDeploymentApiRoutes.ImageTagsPattern,
+            (string repository, ApplicationDeploymentManager manager, CancellationToken ct) =>
+                HandleAsync(async () => Results.Ok(await manager.ImageTagsAsync(repository, ct))))
+            .RequireAuthorization(ReadPolicy);
+
         group.MapGet(ApplicationDeploymentApiRoutes.ApplicationsPattern,
             (ApplicationDeploymentManager manager, CancellationToken ct) =>
                 HandleAsync(async () => Results.Ok(await manager.ListAsync(ct))))

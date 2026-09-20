@@ -14,9 +14,14 @@ internal sealed class ApplicationDeploymentManager(
     ApplicationDeploymentSecretStore secrets,
     ApplicationDeploymentOperationStore operations,
     ApplicationDeploymentRuntime runtime,
-    ApplicationDeploymentOptions options)
+    ApplicationDeploymentOptions options,
+    ApplicationDeploymentImageTagCatalog imageTags)
 {
     public ApplicationDeploymentTemplateDto[] Templates() => ApplicationTemplateCatalog.DescribeAll(options);
+
+    /// <summary>Returns recent public tags without ever sending credentials to a registry.</summary>
+    public Task<ApplicationImageTagsDto> ImageTagsAsync(string repository, CancellationToken cancellationToken) =>
+        imageTags.ListAsync(repository, cancellationToken);
 
     /// <summary>
     /// One engine listing serves the whole page, so a list of applications costs one Docker call

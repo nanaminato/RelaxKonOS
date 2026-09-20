@@ -17,6 +17,9 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     public Task<IReadOnlyList<ApplicationDeploymentTemplateDto>> ListTemplatesAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<ApplicationDeploymentTemplateDto>>(ApplicationDeploymentApiRoutes.Templates, cancellationToken);
 
+    public Task<ApplicationImageTagsDto> ListImageTagsAsync(string repository, CancellationToken cancellationToken = default) =>
+        SendAsync<ApplicationImageTagsDto>($"{ApplicationDeploymentApiRoutes.ImageTags}?repository={Uri.EscapeDataString(repository)}", cancellationToken);
+
     public Task<IReadOnlyList<ApplicationDto>> ListApplicationsAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<ApplicationDto>>(ApplicationDeploymentApiRoutes.Applications, cancellationToken);
 

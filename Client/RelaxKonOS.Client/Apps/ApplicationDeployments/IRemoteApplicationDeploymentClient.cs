@@ -10,6 +10,7 @@ namespace RelaxKonOS.Client.Apps.ApplicationDeployments;
 public interface IRemoteApplicationDeploymentClient
 {
     Task<IReadOnlyList<ApplicationDeploymentTemplateDto>> ListTemplatesAsync(CancellationToken cancellationToken = default);
+    Task<ApplicationImageTagsDto> ListImageTagsAsync(string repository, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationDto>> ListApplicationsAsync(CancellationToken cancellationToken = default);
     Task<ApplicationDeploymentSnapshotDto?> GetSnapshotAsync(Guid applicationId, CancellationToken cancellationToken = default);
     Task<ApplicationDto> CreateApplicationAsync(CreateApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
