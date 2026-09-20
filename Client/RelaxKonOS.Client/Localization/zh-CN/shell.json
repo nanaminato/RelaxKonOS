@@ -9,6 +9,8 @@
         "shell.desktop_loading.description": "正在恢复应用、桌面项目和窗口布局…",
         "shell.connection.close": "关闭连接",
         "shell.connection.close_tooltip": "断开连接并退出",
+        "shell.connection.disconnecting.title": "正在关闭连接",
+        "shell.connection.disconnecting.description": "正在保存桌面状态并安全退出…",
         "shell.connection.info": "连接信息",
         "shell.connection.info_tooltip": "查看连接信息",
         "shell.connection.server": "服务器",

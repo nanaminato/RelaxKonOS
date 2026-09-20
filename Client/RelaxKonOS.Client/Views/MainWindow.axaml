@@ -186,6 +186,22 @@
              visible nothing below can be clicked, so the overview needs no second shield. -->
         <shell:WindowOverviewView x:Name="WindowOverview" ZIndex="100" IsVisible="False" />
 
+        <!-- Closing a connection can briefly wait for the final workspace-layout save and server
+             sign-out.  Give that wait an immediate, animated acknowledgement instead of leaving
+             the desktop apparently frozen. -->
+        <Border x:Name="DisconnectingOverlay" IsVisible="False" Opacity="0" ZIndex="200"
+                Background="{DynamicResource OverlayScrimBrush}">
+            <Border Classes="card" Width="280" Padding="24" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="{loc:Loc shell.connection.disconnecting.title}" Foreground="{DynamicResource TextPrimaryBrush}"
+                               FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
+                    <TextBlock Text="{loc:Loc shell.connection.disconnecting.description}" Classes="subtle" FontSize="12"
+                               TextAlignment="Center" TextWrapping="Wrap" />
+                    <ProgressBar IsIndeterminate="True" Height="4" />
+                </StackPanel>
+            </Border>
+        </Border>
+
         <!-- Transparent hit targets keep every edge and corner resizable. -->
         <Border HorizontalAlignment="Left" Width="8" Background="Transparent" Cursor="SizeWestEast"
                 PointerPressed="Resize_OnPointerPressed" Tag="West" />
