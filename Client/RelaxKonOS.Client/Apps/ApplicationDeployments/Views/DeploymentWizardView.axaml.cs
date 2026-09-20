@@ -11,10 +11,22 @@ namespace RelaxKonOS.Client.Apps.ApplicationDeployments.Views;
 /// </summary>
 internal partial class DeploymentWizardView : UserControl
 {
+    // Leave space for the vertical scrollbar and a small visual gutter. A ScrollViewer otherwise
+    // measures its vertical content at infinite width, which turns star columns into Auto columns.
+    private const double WizardRightInset = 28;
+
     public DeploymentWizardView(DeploymentWizardViewModel viewModel, ModalDialog<bool> dialog)
     {
         InitializeComponent();
         DataContext = viewModel;
         viewModel.CloseRequested = () => dialog.Close(true);
+        WizardScrollViewer.SizeChanged += (_, _) => UpdateWizardContentWidth();
+        AttachedToVisualTree += (_, _) => UpdateWizardContentWidth();
+    }
+
+    private void UpdateWizardContentWidth()
+    {
+        var width = WizardScrollViewer.Bounds.Width - WizardRightInset;
+        WizardContent.Width = width > 0 ? width : double.NaN;
     }
 }

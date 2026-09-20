@@ -23,8 +23,13 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <Grid Margin="22,18">
+        <ScrollViewer x:Name="WizardScrollViewer" Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <!-- ScrollViewer measures vertical content at infinite width. Keep this finite so the
+                 star-sized form columns, including their ComboBoxes, share the dialog width. -->
+            <Border x:Name="WizardContent">
+                <Grid Margin="22,18">
                 <!-- Step 1: what this application is. -->
                 <StackPanel Spacing="14" IsVisible="{Binding ShowSourceStep}">
                     <TextBlock Text="{loc:Loc application_deployments.wizard.step_source}"
@@ -50,7 +55,7 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                             <ComboBox ItemsSource="{Binding WorkloadKinds}"
                                       DisplayMemberBinding="{ReflectionBinding Label}"
-                                      SelectedItem="{Binding WorkloadKind, Mode=TwoWay}" />
+                                      SelectedItem="{Binding SelectedWorkloadKind, Mode=TwoWay}" />
                         </StackPanel>
                     </Grid>
                 </StackPanel>
@@ -248,7 +253,8 @@
                     <TextBlock Text="{Binding ProgressText}" FontSize="12"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
-            </Grid>
+                </Grid>
+            </Border>
         </ScrollViewer>
 
         <!-- Status and error. A submission error stays visible after the wizard closes it. -->
