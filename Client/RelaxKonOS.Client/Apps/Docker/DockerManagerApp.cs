@@ -32,15 +32,27 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var vm = new DockerManagerViewModel(client);
+        var proxyViewModel = new DockerProxyViewModel(client);
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Docker, "relaxkonos.docker", () => vm.RefreshCommand.ExecuteAsync(null));
         ManagedWindow? window = null;
-        var view = DockerManagerWorkspace.Create(vm,
+        var view = DockerManagerWorkspace.Create(vm, proxyViewModel,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowDeployStackAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
+        // A daemon-layer change restarts Docker and interrupts running containers, so it is always
+        // confirmed interactively rather than being an effect of pressing Save.
+        proxyViewModel.RequestConfirmationAsync = async message =>
+        {
+            var confirmed = false;
+            await context.ShowDialogAsync<bool>(window!, LocalizedText.Get("docker.proxy.title"), dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(message, result => { confirmed = result; dialog.Close(result); }, LocalizedText.Get("docker.proxy.confirm_continue")),
+            });
+            return confirmed;
+        };
         vm.ShowDockerUnavailableAsync = () => DockerManagerDialogs.ShowDockerUnavailableAsync(context, window, vm);
         vm.ShowEditContainerAsync = () => DockerManagerDialogs.ShowEditContainerAsync(context, window!, vm);
         vm.ShowEditStackAsync = () => DockerManagerDialogs.ShowEditStackAsync(context, window!, vm);

@@ -6,6 +6,7 @@ using System.Text;
 using System.IO.Compression;
 using System.Formats.Tar;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
@@ -17,6 +18,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
+using RelaxKonOS.Protocol.Docker;
 using RelaxKonOS.Protocol.Certificates;
 using RelaxKonOS.Protocol.Desktop;
 using RelaxKonOS.Protocol.Workspace;
@@ -44,6 +46,7 @@ using RelaxKonOS.Server.Proxy;
 using RelaxKonOS.Server.Proxy.Platform;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.ProcessGuardian;
+using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Firewall;
 using RelaxKonOS.Server.Identity;
 using System.Security.Claims;
@@ -88,6 +91,7 @@ try
     await VerifyHostGlobalMigrationAsync(root);
     await VerifyProxyHostProfileRepositoryAsync(root);
     await VerifyProxySubscriptionRepositoryAsync(root);
+    await VerifyDockerProxyAsync(root);
     await VerifyMihomoGeoDataStagingAsync(root);
     await VerifyMihomoGeoDataStartupProvisioningAsync();
     await VerifyProxyConfigurationTransactionAsync(root);
@@ -1017,7 +1021,9 @@ static async Task VerifyHostGlobalMigrationAsync(string root)
     await connection.OpenAsync();
     await using var command = connection.CreateCommand();
     command.CommandText = "SELECT MAX(version) FROM relaxkonos_host_schema_migrations;";
-    Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 13, "HostGlobal migrations did not reach the expected version.");
+    Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 14, "HostGlobal migrations did not reach the expected version.");
+    command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='docker_proxy_settings');";
+    Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Docker proxy settings table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_profiles');";
     Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy profile metadata table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='smb_windows_server_security_ledger');";
@@ -1085,6 +1091,229 @@ static async Task VerifyProxySubscriptionRepositoryAsync(string root)
     var capture = Directory.GetFiles(debugPaths.GetSanitizedLogDirectory(), "subscription-download-*.txt").Single();
     Assert(await File.ReadAllTextAsync(capture) == "proxies: []\n", "Development subscription downloads were not captured verbatim in the protected log directory.");
 }
+
+/// <summary>
+/// Docker daemon/build proxy: value rules, credential masking, the two independent layers,
+/// storage protection, and the failure-closed paths. Nothing here needs a real Docker daemon, so
+/// the engine and the daemon-side writer are both stubs.
+/// </summary>
+static async Task VerifyDockerProxyAsync(string root)
+{
+    Assert(DockerProxyApiRoutes.Proxy == "/api/v1.0/docker/proxy", "The Docker proxy route moved away from the versioned public base.");
+
+    // --- Value rules and credential masking -------------------------------------------------
+    Assert(DockerProxyValidation.IsValidProxyUrl("http://127.0.0.1:7890")
+        && DockerProxyValidation.IsValidProxyUrl("https://user:pass@proxy.example:8443"),
+        "A valid proxy URL was rejected.");
+    Assert(!DockerProxyValidation.IsValidProxyUrl("127.0.0.1:7890")
+        && !DockerProxyValidation.IsValidProxyUrl("socks5://127.0.0.1:1080")
+        && !DockerProxyValidation.IsValidProxyUrl("http://127.0.0.1:7890/?q=1")
+        && !DockerProxyValidation.IsValidProxyUrl("http://127.0.0.1:7890/#fragment")
+        && !DockerProxyValidation.IsValidProxyUrl("http://host\necho injected"),
+        "A malformed or directive-injecting proxy URL was accepted.");
+    Assert(DockerProxyValidation.IsValidBypassList("localhost,127.0.0.1,::1,.internal")
+        && DockerProxyValidation.IsValidBypassList(string.Empty)
+        && !DockerProxyValidation.IsValidBypassList("localhost, bad host"),
+        "Bypass list validation did not separate a host list from a value with a space.");
+    // The userinfo is removed once, and an '@' inside a path is not mistaken for one.
+    Assert(DockerProxyValidation.MaskProxy("http://user:secret@proxy.example:8080") == "http://***@proxy.example:8080"
+        && DockerProxyValidation.MaskProxy("http://proxy.example:8080") == "http://proxy.example:8080"
+        && DockerProxyValidation.MaskProxy("http://proxy.example:8080/pa@th") == "http://proxy.example:8080/pa@th",
+        "Proxy credentials were not masked, or an '@' in the path was mangled.");
+
+    // --- Resolver: custom source and the HTTPS-reuses-HTTP fallback -------------------------
+    var settings = new InMemoryDockerProxySettingsRepository();
+    await settings.SaveAsync(new DockerProxySetting
+    {
+        Enabled = true, Source = DockerProxySource.Custom, HttpProxy = "http://127.0.0.1:3128", HttpsProxy = string.Empty,
+        ApplyToBuild = true, ApplyToEngine = true,
+    });
+    var resolver = new DockerProxyResolver(settings, new StaticProxySettingsService());
+    var custom = await resolver.ResolveAsync();
+    Assert(custom.IsUsable && custom.HttpProxy == "http://127.0.0.1:3128" && custom.HttpsProxy == "http://127.0.0.1:3128"
+        && custom.BuildLayerActive && custom.EngineLayerRequested,
+        "A custom proxy did not resolve, or an empty HTTPS value was not replaced by the HTTP one.");
+    Assert(custom.ManagedProxyEndpoint == "http://127.0.0.1:7890",
+        "The managed proxy endpoint was not advertised for one-click selection.");
+
+    await settings.SaveAsync(new DockerProxySetting
+    {
+        Enabled = true, Source = DockerProxySource.Custom, HttpProxy = "not-a-url", HttpsProxy = string.Empty,
+        ApplyToBuild = true, ApplyToEngine = true,
+    });
+    resolver.Invalidate();
+    var invalidStored = await resolver.ResolveAsync();
+    Assert(!invalidStored.IsUsable && !invalidStored.BuildLayerActive && invalidStored.ProblemCode == DockerProxyProblem.ConfigurationInvalid,
+        "An invalid stored proxy was not reported as a configuration problem.");
+
+    // --- Resolver: managed source probes the runtime listener --------------------------------
+    using var listener = new TcpListener(IPAddress.Loopback, 0);
+    listener.Start();
+    var managedPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+    var managedSettings = new InMemoryDockerProxySettingsRepository();
+    await managedSettings.SaveAsync(new DockerProxySetting
+    {
+        Enabled = true, Source = DockerProxySource.ManagedProxy, ApplyToBuild = true, ApplyToEngine = true,
+    });
+    var managed = await new DockerProxyResolver(managedSettings, new TestProxySettingsService(managedPort)).ResolveAsync();
+    Assert(managed.IsUsable && managed.ManagedProxyAvailable && managed.HttpProxy == $"http://127.0.0.1:{managedPort}"
+        && managed.HttpsProxy == managed.HttpProxy,
+        "The managed proxy source did not resolve to the runtime's listener.");
+    listener.Stop();
+
+    var unavailable = await new DockerProxyResolver(managedSettings, new TestProxySettingsService(ReserveUnusedPort())).ResolveAsync();
+    Assert(!unavailable.IsUsable && !unavailable.BuildLayerActive && !unavailable.EngineLayerRequested
+        && unavailable.ProblemCode == DockerProxyProblem.ManagedProxyUnavailable,
+        "A managed proxy with no listener was treated as usable instead of failing closed.");
+
+    // --- Storage: protected at rest, exactly one row -----------------------------------------
+    var databasePath = Path.Combine(root, "docker-proxy.db");
+    await HostGlobalMigrationRunner.MigrateAsync($"Data Source={databasePath}", CancellationToken.None);
+    var repository = new SqliteDockerProxySettingsRepository(new TestHostEnvironment(root),
+        Options.Create(new StorageOptions { DatabasePath = databasePath }),
+        DataProtectionProvider.Create(Path.Combine(root, "docker-proxy-keys")));
+    const string secret = "http://operator:s3cr3t@proxy.example:8080";
+    await repository.SaveAsync(new DockerProxySetting
+    {
+        Enabled = true, Source = DockerProxySource.Custom, HttpProxy = secret, HttpsProxy = secret, NoProxy = "localhost",
+        ApplyToEngine = true, ApplyToBuild = true, EngineApplied = true,
+        UpdatedAt = DateTimeOffset.UtcNow, UpdatedBy = Guid.NewGuid().ToString("D"),
+    });
+    var reloaded = await repository.GetAsync();
+    Assert(reloaded?.HttpProxy == secret && reloaded.EngineApplied && reloaded.NoProxy == "localhost",
+        "The Docker proxy preference was not persisted, or its protected URL could not be recovered.");
+    await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath}"))
+    {
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT http_proxy FROM docker_proxy_settings WHERE settings_id=1;";
+        var atRest = (string?)await command.ExecuteScalarAsync();
+        Assert(atRest is not null && !atRest.Contains("s3cr3t", StringComparison.Ordinal),
+            "The Docker proxy credential was stored in plaintext.");
+    }
+    await repository.SaveAsync(new DockerProxySetting
+    {
+        Enabled = false, Source = DockerProxySource.Custom, HttpProxy = string.Empty, HttpsProxy = string.Empty,
+        NoProxy = string.Empty, UpdatedAt = DateTimeOffset.UtcNow, UpdatedBy = "test",
+    });
+    await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath}"))
+    {
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM docker_proxy_settings;";
+        Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1,
+            "Saving the Docker proxy preference twice created a second row.");
+    }
+
+    // --- Service: rejection, confirmation, layer reporting, masked diagnostics ---------------
+    var serviceSettings = new InMemoryDockerProxySettingsRepository();
+    var serviceResolver = new DockerProxyResolver(serviceSettings, new StaticProxySettingsService());
+    var daemon = DispatchProxy.Create<IDockerEngineService, StubDockerEngine>();
+    var stubbedDaemon = (StubDockerEngine)(object)daemon;
+    stubbedDaemon.State = null;
+    var fixture = CreateDockerProxyService(serviceSettings, serviceResolver, daemon);
+    var actor = Guid.NewGuid();
+
+    var rejected = await CaptureAsync<DockerProxyValidationException>(() =>
+        fixture.Service.SaveAsync(new SaveDockerProxySettingsRequest(true, DockerProxySource.Custom, "nope", null, null, true, true, true), actor),
+        "An invalid proxy URL was accepted instead of being rejected.");
+    Assert(rejected.ProblemCode == DockerProxyProblem.ConfigurationInvalid,
+        "A rejected proxy preference did not report the configuration problem code.");
+    Assert(await serviceSettings.GetAsync() is null, "A rejected proxy preference was still persisted.");
+
+    // Without confirmation the daemon layer is not written, but the build layer still reports.
+    var unconfirmed = await fixture.Service.SaveAsync(
+        new SaveDockerProxySettingsRequest(true, DockerProxySource.Custom, secret, null, "localhost", true, true, Confirmed: false), actor);
+    Assert(unconfirmed.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine) is
+            { State: DockerProxyLayerState.Failed, ProblemCode: DockerProxyProblem.ConfirmationRequired }
+        && unconfirmed.Layers.Single(layer => layer.Target == DockerProxyTarget.Build) is
+            { State: DockerProxyLayerState.Applied, Detail: DockerProxyDetail.BuildOnly }
+        && fixture.Configurator.Requests.Count == 0,
+        "Saving without confirmation wrote the daemon layer, or the build layer was misreported.");
+
+    // Written but not yet live: the daemon still reports no proxy.
+    stubbedDaemon.State = new DockerEngineProxyState(string.Empty, string.Empty, string.Empty);
+    var written = await fixture.Service.SaveAsync(
+        new SaveDockerProxySettingsRequest(true, DockerProxySource.Custom, secret, null, "localhost", true, true, Confirmed: true), actor);
+    Assert(fixture.Configurator.Requests.Count == 1 && fixture.Configurator.Requests[0]
+        && written.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine) is
+            { State: DockerProxyLayerState.RestartRequired, Detail: DockerProxyDetail.RestartPending },
+        "A confirmed save did not install the daemon layer, or did not report it as awaiting a restart.");
+
+    // Live: the daemon now reports the proxy, and every diagnostic surface masks the credential.
+    stubbedDaemon.State = new DockerEngineProxyState(secret, secret, "localhost");
+    var applied = await fixture.Service.SaveAsync(
+        new SaveDockerProxySettingsRequest(true, DockerProxySource.Custom, secret, null, "localhost", true, true, Confirmed: true), actor);
+    Assert(applied.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine).State == DockerProxyLayerState.Applied,
+        "A daemon that reports a proxy was not recognised as the layer being live.");
+    Assert(applied.Settings.HttpProxy == secret, "The saved preference is no longer returned to its owner for the form to round-trip.");
+    Assert(applied.EffectiveHttpProxy == "http://***@proxy.example:8080"
+        && !applied.EffectiveHttpsProxy.Contains("s3cr3t", StringComparison.Ordinal),
+        "The daemon-reported proxy echoed a credential back to the caller.");
+    Assert(!applied.Layers.Any(layer => layer.Detail.Contains("s3cr3t", StringComparison.Ordinal)
+        || layer.ProblemCode.Contains("s3cr3t", StringComparison.Ordinal)),
+        "A layer diagnostic contained the proxy credential.");
+
+    // Platform without a daemon mechanism: reported, never written.
+    var unsupported = CreateDockerProxyService(serviceSettings, serviceResolver, daemon, supported: false);
+    var unsupportedStatus = await unsupported.Service.GetStatusAsync();
+    Assert(unsupportedStatus.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine).State == DockerProxyLayerState.Unsupported
+        && unsupportedStatus.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine).ProblemCode == DockerProxyProblem.PlatformUnsupported,
+        "A host with no daemon mechanism did not report the engine layer as unsupported.");
+
+    // --- Service: clearing retires the daemon layer, and only if we installed one -------------
+    var cleared = await fixture.Service.ClearAsync(actor);
+    Assert(await serviceSettings.GetAsync() is null && fixture.Configurator.Requests.Count == 3 && !fixture.Configurator.Requests[^1]
+        && cleared.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine).State == DockerProxyLayerState.RestartRequired,
+        "Clearing did not retire the daemon layer that RelaxKonOS had installed.");
+
+    var freshSettings = new InMemoryDockerProxySettingsRepository();
+    var untouched = CreateDockerProxyService(freshSettings, new DockerProxyResolver(freshSettings, new StaticProxySettingsService()),
+        DispatchProxy.Create<IDockerEngineService, StubDockerEngine>());
+    await untouched.Service.ClearAsync(actor);
+    Assert(untouched.Configurator.Requests.Count == 0,
+        "Clearing a preference that was never installed on the host restarted Docker for nothing.");
+
+    // --- An unusable preference is reported, and the host is left exactly as it was ----------
+    var brokenSettings = new InMemoryDockerProxySettingsRepository();
+    var brokenPort = ReserveUnusedPort();
+    var broken = CreateDockerProxyService(brokenSettings, new DockerProxyResolver(brokenSettings, new TestProxySettingsService(brokenPort)),
+        DispatchProxy.Create<IDockerEngineService, StubDockerEngine>());
+    var brokenStatus = await broken.Service.SaveAsync(
+        new SaveDockerProxySettingsRequest(true, DockerProxySource.ManagedProxy, null, null, null, true, true, Confirmed: true), actor);
+    Assert(brokenStatus.Layers.Single(layer => layer.Target == DockerProxyTarget.Build).ProblemCode == DockerProxyProblem.ManagedProxyUnavailable
+        && brokenStatus.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine) is
+            { State: DockerProxyLayerState.Failed, ProblemCode: DockerProxyProblem.ManagedProxyUnavailable }
+        && broken.Configurator.Requests.Count == 0,
+        "A managed proxy with no listener was written to the daemon instead of failing closed.");
+    Assert(brokenStatus.ManagedProxyEndpoint == $"http://127.0.0.1:{brokenPort}",
+        "The unusable managed proxy endpoint was not advertised so the operator can find it.");
+}
+
+/// <summary>A port that was allocated and released, so nothing is listening on it right now.</summary>
+static int ReserveUnusedPort()
+{
+    var probe = new TcpListener(IPAddress.Loopback, 0);
+    probe.Start();
+    var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+    probe.Stop();
+    return port;
+}
+
+static async Task<T> CaptureAsync<T>(Func<Task> action, string message) where T : Exception
+{
+    try { await action(); }
+    catch (T exception) { return exception; }
+    throw new InvalidOperationException(message);
+}
+
+/// <summary>
+/// Builds a proxy service around a recording configurator, so a test can prove that the host was
+/// not touched without needing a real daemon-side mechanism.
+/// </summary>
+static DockerProxyServiceFixture CreateDockerProxyService(IDockerProxySettingsRepository settings, IDockerProxyResolver resolver,
+    IDockerEngineService engine, bool supported = true) =>
+    new(settings, resolver, engine, supported);
 
 static async Task VerifyMihomoGeoDataStagingAsync(string root)
 {
@@ -1542,6 +1771,15 @@ sealed class StaticProxySettingsService : IProxySettingsService
     public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
+/// <summary>Proxy settings whose mixed port is chosen by the test, so listener probing is deterministic.</summary>
+sealed class TestProxySettingsService(int mixedPort) : IProxySettingsService
+{
+    public Task<ProxySettingsDto> GetAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new ProxySettingsDto(false, false, true, true, false, "warning", mixedPort));
+
+    public Task<string?> UpdateAsync(UpdateProxySettingsRequest request, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+}
+
 sealed class StaticProxySecretStore : IProxyControllerSecretStore
 {
     public Task<string> GetOrCreateAsync(CancellationToken cancellationToken) => Task.FromResult("controller-secret");
@@ -1780,4 +2018,54 @@ sealed class TestPolicyProvider : IAppPolicyProvider
     public PermissionDecision GetDefaultDecision(AppIdentity identity, string capability, PermissionScope scope) =>
         identity.TrustLevel == AppTrustLevel.BuiltIn && capability == AppPermissions.ServerFilesRead && scope == PermissionScope.None
             ? PermissionDecision.Allow : PermissionDecision.Prompt;
+}
+
+/// <summary>
+/// Pairs a proxy service with the recording configurator it was built around, so a test can prove
+/// that the host was not touched without needing a real daemon-side mechanism.
+/// </summary>
+sealed class DockerProxyServiceFixture
+{
+    public DockerProxyServiceFixture(IDockerProxySettingsRepository settings, IDockerProxyResolver resolver,
+        IDockerEngineService engine, bool supported)
+    {
+        Configurator = new RecordingDockerEngineProxyConfigurator { IsSupported = supported };
+        Service = new DockerProxyService(settings, resolver, Configurator, engine, NullLogger<DockerProxyService>.Instance);
+    }
+
+    public DockerProxyService Service { get; }
+    public RecordingDockerEngineProxyConfigurator Configurator { get; }
+}
+
+/// <summary>Stand-in for the daemon-side writer: records which host changes were requested.</summary>
+sealed class RecordingDockerEngineProxyConfigurator : IDockerEngineProxyConfigurator
+{
+    public List<bool> Requests { get; } = [];
+
+    public string Platform => "test-mechanism";
+    public bool IsSupported { get; set; } = true;
+    public bool Succeed { get; set; } = true;
+
+    public Task<DockerEngineProxyApplyResult> ApplyAsync(bool enabled, DockerProxyResolution resolution, CancellationToken cancellationToken = default)
+    {
+        Requests.Add(enabled);
+        return Task.FromResult(Succeed
+            ? new DockerEngineProxyApplyResult(true, string.Empty, DockerProxyDetail.RestartPending)
+            : new DockerEngineProxyApplyResult(false, DockerProxyProblem.EngineApplyFailed));
+    }
+}
+
+/// <summary>
+/// Docker engine stub. Only <c>GetProxyStateAsync</c> is exercised by the proxy service; every
+/// other member throws, so a future call through this stub fails loudly rather than silently.
+/// </summary>
+class StubDockerEngine : DispatchProxy
+{
+    public DockerEngineProxyState? State { get; set; }
+
+    protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) => targetMethod?.Name switch
+    {
+        nameof(IDockerEngineService.GetProxyStateAsync) => Task.FromResult(State),
+        _ => throw new NotSupportedException(targetMethod?.Name),
+    };
 }

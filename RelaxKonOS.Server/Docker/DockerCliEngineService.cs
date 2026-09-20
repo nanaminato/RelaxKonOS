@@ -10,7 +10,7 @@ namespace RelaxKonOS.Server.Docker;
 /// socket, keeping all transport details out of endpoints and clients. It deliberately uses
 /// fixed argument lists (never user-provided shell strings).
 /// </summary>
-public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogger<DockerCliEngineService> logger) : IDockerEngineService
+public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDockerProxyResolver proxyResolver, ILogger<DockerCliEngineService> logger) : IDockerEngineService
 {
     private const int MaxArchiveBytes = 64 * 1024 * 1024;
     /// <summary>Command output is kept as a bounded tail: enough to explain a failure, never a stream.</summary>
@@ -33,6 +33,19 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         {
             return new DockerStatusDto(false, "docker.api_incompatible", null, null, null);
         }
+    }
+
+    public async Task<DockerEngineProxyState?> GetProxyStateAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["info", "--format", "{{json .}}"], cancellationToken);
+        if (!result.Success) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(result.Output);
+            var root = document.RootElement;
+            return new DockerEngineProxyState(Read(root, "HttpProxy"), Read(root, "HttpsProxy"), Read(root, "NoProxy"));
+        }
+        catch (JsonException) { return null; }
     }
 
     public async Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken = default)
@@ -316,6 +329,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         try
         {
             using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
+            await ApplyProxyEnvironmentAsync(process.StartInfo, cancellationToken);
             foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return Complete(new CommandResult(false, "", "start_failed"), commandName);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -342,6 +356,29 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
             }
         }
         catch (Exception exception) when (exception is Win32Exception or FileNotFoundException) { return Complete(new CommandResult(false, "", "not_found"), commandName); }
+    }
+
+    /// <summary>
+    /// Applies the build-layer proxy to a docker child process. BuildKit takes its own proxy
+    /// configuration from the client environment and forwards it into the build as a predefined
+    /// build argument, so this is what lets a Dockerfile's package installs work behind a proxy
+    /// without writing a proxy into the daemon's global configuration.
+    /// </summary>
+    private async Task ApplyProxyEnvironmentAsync(ProcessStartInfo startInfo, CancellationToken cancellationToken)
+    {
+        var resolution = await proxyResolver.ResolveAsync(cancellationToken);
+        if (!resolution.BuildLayerActive) return;
+        startInfo.Environment["HTTP_PROXY"] = resolution.HttpProxy;
+        startInfo.Environment["HTTPS_PROXY"] = resolution.HttpsProxy;
+        // BuildKit looks for both spellings, and a client that only honours the lower-case form
+        // would otherwise silently bypass the proxy.
+        startInfo.Environment["http_proxy"] = resolution.HttpProxy;
+        startInfo.Environment["https_proxy"] = resolution.HttpsProxy;
+        if (resolution.NoProxy.Length > 0)
+        {
+            startInfo.Environment["NO_PROXY"] = resolution.NoProxy;
+            startInfo.Environment["no_proxy"] = resolution.NoProxy;
+        }
     }
 
     private CommandResult Complete(CommandResult result, string commandName)

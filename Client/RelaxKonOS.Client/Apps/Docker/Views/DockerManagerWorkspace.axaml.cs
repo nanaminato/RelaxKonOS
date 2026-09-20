@@ -7,6 +7,7 @@ namespace RelaxKonOS.Client.Apps.Docker.Views;
 internal partial class DockerManagerWorkspace : UserControl
 {
     private readonly DockerManagerViewModel _viewModel;
+    private readonly DockerProxyViewModel _proxyViewModel;
     private readonly Func<Task> _showCreateContainer;
     private readonly Func<Task> _showDeployStack;
     private readonly Func<Task> _showPullImage;
@@ -14,9 +15,10 @@ internal partial class DockerManagerWorkspace : UserControl
     private readonly Func<Task> _showCreateVolume;
     private Button? _selectedButton;
 
-    private DockerManagerWorkspace(DockerManagerViewModel viewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume)
+    private DockerManagerWorkspace(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume)
     {
         _viewModel = viewModel;
+        _proxyViewModel = proxyViewModel;
         _showCreateContainer = showCreateContainer;
         _showDeployStack = showDeployStack;
         _showPullImage = showPullImage;
@@ -27,8 +29,8 @@ internal partial class DockerManagerWorkspace : UserControl
         ShowPage("overview", OverviewButton);
     }
 
-    public static Control Create(DockerManagerViewModel viewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume) =>
-        new DockerManagerWorkspace(viewModel, showCreateContainer, showDeployStack, showPullImage, showCreateNetwork, showCreateVolume);
+    public static Control Create(DockerManagerViewModel viewModel, DockerProxyViewModel proxyViewModel, Func<Task> showCreateContainer, Func<Task> showDeployStack, Func<Task> showPullImage, Func<Task> showCreateNetwork, Func<Task> showCreateVolume) =>
+        new DockerManagerWorkspace(viewModel, proxyViewModel, showCreateContainer, showDeployStack, showPullImage, showCreateNetwork, showCreateVolume);
 
     private void NavigationButton_Click(object? sender, RoutedEventArgs e)
     {
@@ -45,6 +47,9 @@ internal partial class DockerManagerWorkspace : UserControl
 
         _selectedButton = button;
         button.Classes.Add("nav-selected");
+        // The proxy page reads the host preference on every visit: it is host-global state that
+        // another operator or an out-of-band host change can alter while this window is open.
+        if (section == "proxy") _ = _proxyViewModel.LoadAsync();
         ContentHost.Content = section switch
         {
             "containers" => new DockerContainersView(_showCreateContainer),
@@ -52,6 +57,7 @@ internal partial class DockerManagerWorkspace : UserControl
             "images" => new DockerImagesView(_showPullImage),
             "networks" => new DockerNetworksView(_showCreateNetwork),
             "volumes" => new DockerVolumesView(_showCreateVolume),
+            "proxy" => new DockerProxyView(_proxyViewModel),
             _ => new DockerOverviewView()
         };
     }

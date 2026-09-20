@@ -2,10 +2,19 @@ using RelaxKonOS.Protocol.Docker;
 
 namespace RelaxKonOS.Server.Docker;
 
+/// <summary>
+/// Proxy values the Docker daemon reports for itself. This is the only trustworthy read-back:
+/// Docker Desktop ignores proxies configured in <c>daemon.json</c>, so the saved preference alone
+/// proves nothing about what the daemon actually uses.
+/// </summary>
+public sealed record DockerEngineProxyState(string HttpProxy, string HttpsProxy, string NoProxy);
+
 /// <summary>The only server boundary allowed to invoke the host's local Docker CLI/transport.</summary>
 public interface IDockerEngineService
 {
     Task<DockerStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
+    /// <summary>Returns null when the daemon is unreachable or does not report proxy information.</summary>
+    Task<DockerEngineProxyState?> GetProxyStateAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerImageDto>> ListImagesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerNetworkDto>> ListNetworksAsync(CancellationToken cancellationToken = default);

@@ -72,6 +72,7 @@
                     <Button Classes="workspace-nav" Tag="images" Click="NavigationButton_Click" Content="{loc:Loc docker.images}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="networks" Click="NavigationButton_Click" Content="{loc:Loc docker.networks}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="volumes" Click="NavigationButton_Click" Content="{loc:Loc docker.volumes}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="proxy" Click="NavigationButton_Click" Content="{loc:Loc docker.proxy.title}" HorizontalContentAlignment="Left" Padding="10,8" />
                 </StackPanel>
             </Border>
             <!-- Pages with DataGrid columns must be measured against the workspace width.  An

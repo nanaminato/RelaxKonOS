@@ -526,6 +526,13 @@ builder.Services.AddScoped<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorReso
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerRuntimeInstaller, RelaxKonOS.Server.Docker.DockerRuntimeInstaller>();
 builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(builder.Configuration.GetSection("DockerCompose"));
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerComposeService, RelaxKonOS.Server.Docker.DockerComposeService>();
+// Docker proxy: one resolver feeds both the docker child-process environment and the daemon
+// configurator, so the two layers can never disagree about the saved preference. The configurator
+// owns the platform difference internally (systemd drop-in on Linux, Docker Desktop settings on
+// Windows) and reports Unsupported elsewhere.
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineProxyConfigurator, RelaxKonOS.Server.Docker.DockerEngineProxyConfigurator>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyResolver, RelaxKonOS.Server.Docker.DockerProxyResolver>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyService, RelaxKonOS.Server.Docker.DockerProxyService>();
 var guardianOptions = builder.Configuration.GetSection("GuardianAgent").Get<RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions>() ?? new RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions();
 builder.Services.AddSingleton(guardianOptions);
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService, RelaxKonOS.Server.ProcessGuardian.NamedPipeProcessGuardianService>();
@@ -629,6 +636,9 @@ if (storageProvider == "sqlite")
     builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxySubscriptionService, RelaxKonOS.Server.Proxy.ProxySubscriptionService>();
     builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxyConfigurationTransactionService, RelaxKonOS.Server.Proxy.ProxyConfigurationTransactionService>();
     builder.Services.AddScoped<RelaxKonOS.Server.Proxy.IProxyConfigurationService, RelaxKonOS.Server.Proxy.ProxyConfigurationService>();
+    // The Docker proxy preference opens its own connection per operation, so it is a Singleton
+    // like the proxy subscription repository rather than bound to a request scope.
+    builder.Services.AddSingleton<IDockerProxySettingsRepository, RelaxKonOS.Server.Storage.Sqlite.SqliteDockerProxySettingsRepository>();
 }
 else
 {
@@ -643,6 +653,7 @@ else
     builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
     builder.Services.AddSingleton<IImageMirrorRepository, InMemoryImageMirrorRepository>();
     builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.ITunnelAudit, RelaxKonOS.Server.Tunnels.InMemoryTunnelAudit>();
+    builder.Services.AddSingleton<IDockerProxySettingsRepository, InMemoryDockerProxySettingsRepository>();
 }
 // Session 始终内存（连接关系，不持久化）
 builder.Services.AddSingleton<ISessionRepository, InMemorySessionRepository>();
@@ -905,6 +916,7 @@ app.MapHostSettingsEndpoints();
 app.MapBrowserEndpoints();
 app.MapSystemMonitorEndpoints();
 app.MapDockerEndpoints();
+app.MapDockerProxyEndpoints();
 app.MapProcessGuardianEndpoints();
 app.MapWebServerEndpoints();
 app.MapFileServiceEndpoints();

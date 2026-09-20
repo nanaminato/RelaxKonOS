@@ -89,6 +89,9 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
         && (request.SystemAuthenticationUsername is not null || request.SystemAuthenticationPassword is not null))
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "system authentication fields require their dedicated operation");
 
+    if (request.Operation != PrivilegedOperationKind.DockerEngineConfigureProxy && request.DockerProxy is not null)
+        return Fail(64, PrivilegedProblemCode.InvalidRequest, "docker proxy fields require their dedicated operation");
+
     try
     {
         return request.Operation switch
@@ -124,6 +127,7 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.ProxyMihomoRemoveSystemService => RemoveProxyMihomoSystemService(),
             PrivilegedOperationKind.GitPackageInstall => await InstallGitPackageAsync(),
             PrivilegedOperationKind.DockerEngineInstall => await InstallDockerEngineAsync(),
+            PrivilegedOperationKind.DockerEngineConfigureProxy => await ConfigureDockerEngineProxyAsync(request.DockerProxy),
             PrivilegedOperationKind.FirewallUfwStatus => await ReadFirewallStatusAsync(request.FirewallNumberedStatus == true),
             PrivilegedOperationKind.FirewallUfwSetEnabled => await SetFirewallEnabledAsync(request.FirewallEnabled),
             PrivilegedOperationKind.FirewallUfwSetDefaults => await SetFirewallDefaultsAsync(request.FirewallIncomingPolicy, request.FirewallOutgoingPolicy),

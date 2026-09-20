@@ -11,10 +11,12 @@ public sealed class DockerComposeService : IDockerComposeService
 {
     private const int MaximumComposeBytes = 1024 * 1024;
     private readonly string _dataDirectory;
+    private readonly IDockerProxyResolver _proxyResolver;
 
-    public DockerComposeService(IHostEnvironment environment, IOptions<DockerComposeOptions> options)
+    public DockerComposeService(IHostEnvironment environment, IOptions<DockerComposeOptions> options, IDockerProxyResolver proxyResolver)
     {
         _dataDirectory = ResolveDataDirectory(environment, options.Value.DataDirectory);
+        _proxyResolver = proxyResolver;
     }
 
     public Task<DockerStackOperationResult> ValidateAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default)
@@ -208,11 +210,26 @@ public sealed class DockerComposeService : IDockerComposeService
         throw new PlatformNotSupportedException("RelaxKonOS Docker Compose storage supports Windows and Linux hosts only.");
     }
 
-    private static async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
         try
         {
             using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
+            // Compose pulls and builds images through the same client environment as `docker build`,
+            // so an unproxied compose command would fail exactly where a proxied one succeeds.
+            var resolution = await _proxyResolver.ResolveAsync(cancellationToken);
+            if (resolution.BuildLayerActive)
+            {
+                process.StartInfo.Environment["HTTP_PROXY"] = resolution.HttpProxy;
+                process.StartInfo.Environment["HTTPS_PROXY"] = resolution.HttpsProxy;
+                process.StartInfo.Environment["http_proxy"] = resolution.HttpProxy;
+                process.StartInfo.Environment["https_proxy"] = resolution.HttpsProxy;
+                if (resolution.NoProxy.Length > 0)
+                {
+                    process.StartInfo.Environment["NO_PROXY"] = resolution.NoProxy;
+                    process.StartInfo.Environment["no_proxy"] = resolution.NoProxy;
+                }
+            }
             foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
             if (!process.Start()) return new CommandResult(false, string.Empty, "start_failed");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(TimeSpan.FromMinutes(2));
