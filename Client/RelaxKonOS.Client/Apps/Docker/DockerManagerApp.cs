@@ -33,9 +33,10 @@ public sealed class DockerManagerApp : RemoteApplicationBase
 
         var vm = new DockerManagerViewModel(client);
         var proxyViewModel = new DockerProxyViewModel(client);
+        var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Docker, "relaxkonos.docker", () => vm.RefreshCommand.ExecuteAsync(null));
         ManagedWindow? window = null;
-        var view = DockerManagerWorkspace.Create(vm, proxyViewModel,
+        var view = DockerManagerWorkspace.Create(vm, proxyViewModel, imageMirrorsViewModel,
             () => DockerManagerDialogs.ShowCreateContainerAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowDeployStackAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowPullImageAsync(context, window!, vm),

@@ -148,7 +148,7 @@ Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；Rel
 
 ### 3.4 Docker Hub 镜像源
 
-镜像源在内置“设置 → 镜像源”中按 RelaxKonOS 账户配置，而不是写入宿主机的全局 `daemon.json`。用户可维护多个 HTTPS、Docker Hub 兼容的 registry host，并选择其中一个或“默认”。
+镜像源在 Docker 管理器的“镜像源”页面按 RelaxKonOS 账户配置，而不是写入宿主机的全局 `daemon.json`。用户可维护多个 HTTPS、Docker Hub 兼容的 registry host，并选择其中一个或“默认”。
 
 - 默认：原样执行 `docker pull mysql:8.4`，由 Docker 使用默认 registry。
 - 选中镜像源：服务端从数据库读取当前用户的选择，将 Docker Hub 引用转换为 `{mirror}/library/mysql:8.4` 后再调用 Docker CLI。

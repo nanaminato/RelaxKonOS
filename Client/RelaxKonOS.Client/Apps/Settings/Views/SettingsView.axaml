@@ -49,13 +49,6 @@
                 <pages:AppsPageView VerticalAlignment="Top" />
             </ScrollViewer>
         </DataTemplate>
-        <DataTemplate DataType="vm:ImageMirrorsPageViewModel">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          Padding="0,0,0,32">
-                <pages:ImageMirrorsPageView VerticalAlignment="Top" />
-            </ScrollViewer>
-        </DataTemplate>
         <DataTemplate DataType="vm:DefaultAppsPageViewModel">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto"

@@ -272,12 +272,12 @@ Application Package
 | **Notepad** | 远端文本文件编辑（编码打开与保存） | 已实现 |
 | **Code Editor** | 远端代码文件编辑（语法高亮、多文件夹工作区与多标签编辑） | 设计中（单文件编辑已实现） |
 | **Image Viewer** | 常见远端图片文件浏览（缩放与滚动） | 已实现 |
-| **Settings** | 系统设置中心（5+ 分类页，偏好持久化到 Workspace：壁纸/主题调色板/时间格式/语言/区域/默认程序/桌面显示配置/镜像源/开发者/应用权限） | 已实现（壁纸/主题/调色板/时间格式/语言/区域/默认程序/桌面图标/首次配置 + 服务端同步；应用能力/AppSettings/镜像源页面对接完成） |
+| **Settings** | 系统设置中心（5+ 分类页，偏好持久化到 Workspace：壁纸/主题调色板/时间格式/语言/区域/默认程序/桌面显示配置/开发者/应用权限） | 已实现（壁纸/主题/调色板/时间格式/语言/区域/默认程序/桌面图标/首次配置 + 服务端同步；应用能力/AppSettings 页面已对接） |
 | **Terminal** | 远端终端（RoyalTerminal + SignalR Remote Mode，持久 PTY 会话） | 已实现（Remote Mode + Local 回退 + Attach 缓冲回放） |
 | **Explorer** | 远端文件管理器（Jaya UI 移植 + REST API + 宿主 OS 权限复用） | 已实现（浏览、基本操作、文件打开方式、属性与 Linux 权限编辑） |
 | **Browser** | 内置浏览器（Avalonia.Controls.WebView + 书签/历史持久化到 Server） | 已实现（导航 + 书签 + 历史 + 浏览器偏好） |
 | **TaskManager** | 远端宿主 OS 任务管理器（CPU/内存/文件系统/网络/磁盘 I/O/GPU 占用 + 进程列表，可结束任务） | 已实现（性能页订阅期间 SignalR 1Hz 推送、60s 历史、跨平台采集；进程页按需低频采样与分页） |
-| **DockerManager** | 本机 Docker Engine 的检测/安装引导、容器/镜像/Stack/网络/卷管理 | 已实现（状态检测、资源只读列表、容器启停重启/拉取镜像/Compose 校验部署停止/网络与卷管理；详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)） |
+| **DockerManager** | 本机 Docker Engine 的检测/安装引导、容器/镜像/镜像源/Stack/网络/卷管理 | 已实现（状态检测、资源只读列表、容器启停重启/拉取镜像/镜像源选择/Compose 校验部署停止/网络与卷管理；详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)） |
 | **ApplicationDeployments** | 镜像/Java/.NET/Python 应用的定义、不可变发布版本、部署/启停/回滚、日志与可选反向代理 | 已实现待验证（与 DockerManager 分离的独立内置应用；协议冻结 + Server 领域层 + 客户端向导与三语文本均已实现，各工程编译通过；**所有运行期行为未在真实 Docker 上验证**，T01–T15 跳过；单服务 Compose 项目部署未实现。详见 [设计](./applications/RelaxKonOS.ApplicationDeployment.Design.md) 与 [进度](./applications/RelaxKonOS.ApplicationDeployment.Progress.md)） |
 | **ProcessGuardian** | 受守护工作负载、健康检查、自动恢复、日志与原生服务管理 | 已实现（独立 Agent、本机认证 IPC、工作负载声明持久化与启停重启；SignalR `/hubs/guardian-logs` 日志广播；健康/服务适配设计中，详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)） |
 | **Firewall** | Linux Server UFW 防火墙状态、默认策略与规则管理 | 已实现（Linux 专用；root 会话免再次验证，其他用户 PAM 一次性确认） |

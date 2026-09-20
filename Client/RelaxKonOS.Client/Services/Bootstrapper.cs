@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using RelaxKonOS.Client.Apps;
 using RelaxKonOS.Client.Apps.CodeEditor;
+using RelaxKonOS.Client.Apps.Docker;
 using RelaxKonOS.Client.Apps.ImageViewer;
 using RelaxKonOS.Client.Apps.Notepad;
 using RelaxKonOS.Client.Apps.Settings;
@@ -194,7 +195,7 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
-        services.AddHttpClient<IImageMirrorClient, ImageMirrorClient>()
+        services.AddHttpClient<IDockerImageMirrorClient, DockerImageMirrorClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "image-mirrors"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
