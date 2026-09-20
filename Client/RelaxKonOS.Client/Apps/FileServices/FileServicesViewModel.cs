@@ -17,7 +17,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
 
     public ObservableCollection<FileShareDto> Shares { get; } = [];
     public ObservableCollection<FileServiceUserDto> Users { get; } = [];
-    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.Ref("file_services.status.loading", "Loading SMB status…");
+    [ObservableProperty] private LocalizedStatus _statusText = LocalizedText.RefWithFallback("file_services.status.loading", "Loading SMB status…");
     [ObservableProperty] private string _connectionText = "—";
     [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(NewShareCommand), nameof(RefreshCommand), nameof(InstallCommand), nameof(StartServiceCommand), nameof(StopCommand), nameof(RestartCommand), nameof(EditShareCommand), nameof(DeleteShareCommand), nameof(ToggleUserCommand), nameof(SetSambaPasswordCommand))] private bool _isBusy;
     // A modal confirmation or elevation prompt is local UI, not a submitted host operation.
@@ -75,7 +75,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     public async Task StartAsync() => await RefreshAsync();
     [RelayCommand(CanExecute = nameof(CanRead))] private async Task RefreshAsync()
     {
-        if (!CanRead()) { StatusText = LocalizedText.Ref("file_services.status.read_required", "File Services read permission is required."); return; }
+        if (!CanRead()) { StatusText = LocalizedText.RefWithFallback("file_services.status.read_required", "File Services read permission is required."); return; }
         IsBusy = true;
         try
         {
@@ -109,7 +109,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
     [RelayCommand(CanExecute = nameof(CanManage))] private async Task NewShareAsync() { ClearEditor(); if (ShowShareEditorAsync is not null) await ShowShareEditorAsync(false); }
     [RelayCommand(CanExecute = nameof(CanEditShare))] private async Task EditShareAsync()
     {
-        if (SelectedShare is null || !SelectedShare.Managed) { StatusText = LocalizedText.Ref("file_services.status.managed_only", "Only RelaxKonOS-managed shares can be edited."); return; }
+        if (SelectedShare is null || !SelectedShare.Managed) { StatusText = LocalizedText.RefWithFallback("file_services.status.managed_only", "Only RelaxKonOS-managed shares can be edited."); return; }
         ShareName = SelectedShare.Name; SharePath = SelectedShare.Path; ShareDescription = SelectedShare.Description ?? string.Empty; ShareReadOnly = SelectedShare.ReadOnly; ShareEnabled = SelectedShare.Enabled; ShareGuestAllowed = SelectedShare.GuestAllowed;
         SharePermissions.Clear();
         foreach (var permission in SelectedShare.Permissions.Where(permission => !IsGeneratedWindowsGuestPermission(permission)))
@@ -170,7 +170,7 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
         var rules = new List<FileSharePermissionDto>();
         foreach (var item in SharePermissions)
         {
-            if (string.IsNullOrWhiteSpace(item.Principal)) { StatusText = LocalizedText.Ref("file_services.share_permission_invalid", "Each permission requires a principal."); return false; }
+            if (string.IsNullOrWhiteSpace(item.Principal)) { StatusText = LocalizedText.RefWithFallback("file_services.share_permission_invalid", "Each permission requires a principal."); return false; }
             if (IsWindowsServer && !System.Text.RegularExpressions.Regex.IsMatch(item.Principal.Trim(), @"^S-[0-9]+(-[0-9]+)+$")) { StatusText = Ref("windows_sid_required"); return false; }
             rules.Add(new(item.Principal.Trim(), item.SelectedAccess.Value));
         }
@@ -190,8 +190,8 @@ public sealed partial class FileServicesViewModel(IRemoteFileServicesClient clie
             var result = await action();
             try { await LoadAsync(); }
             catch (Exception ex)
-            { StatusText = LocalizedText.Ref("file_services.refresh_failed", "Could not refresh SMB status. {0}", ex.Message); return result.Succeeded; }
-            StatusText = result.Succeeded ? LocalizedText.Ref("file_services.status.operation_completed", "SMB operation completed.") : result.ProblemCode is { } code ? Problem(code) : Ref("operation_failed");
+            { StatusText = LocalizedText.RefWithFallback("file_services.refresh_failed", "Could not refresh SMB status. {0}", ex.Message); return result.Succeeded; }
+            StatusText = result.Succeeded ? LocalizedText.RefWithFallback("file_services.status.operation_completed", "SMB operation completed.") : result.ProblemCode is { } code ? Problem(code) : Ref("operation_failed");
             return result.Succeeded;
         }
         catch (HttpRequestException ex) when (ex.StatusCode is not null && ex.Message.StartsWith("file-services.", StringComparison.Ordinal))

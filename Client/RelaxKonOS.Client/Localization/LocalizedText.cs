@@ -24,11 +24,12 @@ public static class LocalizedText
 
     /// <summary>Captures a resource key with an English source fallback and optional format arguments.</summary>
     /// <remarks>
-    /// This overload deliberately takes <see cref="object"/> rather than <c>params object?[]</c> for its
-    /// first argument. Two <c>params</c> overloads of the same shape would otherwise be ambiguous, and
-    /// <c>Ref(key, "text")</c> would silently bind the fallback to the argument list.
+    /// This intentionally has a distinct name. An overload of <see cref="Ref(string, object?)"/> whose
+    /// second argument is <see cref="string"/> wins overload resolution for ordinary status arguments,
+    /// leaving format placeholders unexpanded (for example, Docker version text). Callers that really
+    /// need a source fallback must opt in explicitly.
     /// </remarks>
-    public static LocalizedStatus Ref(string key, string englishFallback, params object?[] arguments) =>
+    public static LocalizedStatus RefWithFallback(string key, string englishFallback, params object?[] arguments) =>
         LocalizedStatus.Key(key, englishFallback, arguments);
 
     /// <summary>Captures a resource key with a single format argument for later resolution.</summary>
