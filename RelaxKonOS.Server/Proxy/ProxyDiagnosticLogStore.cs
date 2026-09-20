@@ -14,7 +14,7 @@ public interface IProxyDiagnosticLogStore
     Task<IReadOnlyList<ProxyLogEntryDto>> ReadAsync(int limit, CancellationToken cancellationToken);
 }
 
-public sealed class ProxyDiagnosticLogStore(IProxyPlatformPaths paths) : IProxyDiagnosticLogStore
+public sealed class ProxyDiagnosticLogStore(IProxyPlatformPaths paths, ILogger<ProxyDiagnosticLogStore>? logger = null) : IProxyDiagnosticLogStore
 {
     private const int MaximumEntries = 500;
     private const int MaximumMessageLength = 1_000;
@@ -24,6 +24,8 @@ public sealed class ProxyDiagnosticLogStore(IProxyPlatformPaths paths) : IProxyD
     {
         var entry = new ProxyLogEntryDto(DateTimeOffset.UtcNow, NormalizeLevel(level),
             ProxyLogSanitizer.Sanitize(message, MaximumMessageLength));
+        logger?.Log(entry.Level == "error" ? LogLevel.Error : entry.Level == "warning" ? LogLevel.Warning : LogLevel.Information,
+            "Proxy diagnostic: {Message}", entry.Message);
         try
         {
             await _gate.WaitAsync(cancellationToken);
@@ -31,6 +33,7 @@ public sealed class ProxyDiagnosticLogStore(IProxyPlatformPaths paths) : IProxyD
             {
                 var directory = paths.GetSanitizedLogDirectory();
                 Directory.CreateDirectory(directory);
+                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 var path = LogPath();
                 await File.AppendAllTextAsync(path, JsonSerializer.Serialize(entry) + Environment.NewLine, cancellationToken);
                 if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);

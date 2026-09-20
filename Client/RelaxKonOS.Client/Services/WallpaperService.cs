@@ -23,6 +23,9 @@ public sealed class WallpaperService(IAuthSession session, IWallpaperClient clie
         ct.ThrowIfCancellationRequested();
         settings.Apply(preferences);
         if (!TryGetBlobId(preferences.WallpaperKey, out var blobId)) return;
+        // Wallpaper blobs are immutable. A live image for this key remains valid across
+        // settings-stream refreshes, so avoid both a redundant download and a visual reset.
+        if (settings.HasLoadedCustomWallpaper(preferences.WallpaperKey)) return;
         if (session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
         try

@@ -8,9 +8,7 @@
   <Grid RowDefinitions="Auto,Auto,*">
     <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="28,18">
       <Grid ColumnDefinitions="Auto,*,Auto">
-        <Border Width="46" Height="46" Background="{DynamicResource AccentBrush}" CornerRadius="14">
-          <TextBlock Text="⇄" FontSize="27" HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </Border>
+        <Image Width="46" Height="46" Source="avares://RelaxKonOS.Client/Assets/AppIcons/proxy.png" Stretch="Uniform" />
         <StackPanel Grid.Column="1" Spacing="2" Margin="14,0,0,0" VerticalAlignment="Center">
           <TextBlock Text="{loc:Loc proxy.title}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
           <TextBlock Text="{loc:Loc proxy.subtitle}" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />

@@ -44,7 +44,7 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session)
         if (key is not null) request.Headers.Add("Idempotency-Key", key);
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, ct);
-        if (response.StatusCode == HttpStatusCode.NotFound) return default;
+        if (response.StatusCode == HttpStatusCode.NotFound && method == HttpMethod.Get) return default;
         if (!response.IsSuccessStatusCode)
         {
             var code = "installation.connection_unavailable";

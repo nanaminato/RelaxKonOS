@@ -27,7 +27,18 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
         var pathIndex = Array.FindIndex(args, argument => string.Equals(argument, "--config", StringComparison.Ordinal));
         if (pathIndex < 0 || pathIndex + 1 >= args.Length) throw new InvalidOperationException("--config is required for the Windows Helper service.");
         var path = Path.GetFullPath(args[pathIndex + 1]);
-        var configuration = JsonSerializer.Deserialize<WindowsHelperServiceConfiguration>(File.ReadAllText(path),
+        var json = File.ReadAllText(path);
+        // Mirror of the console host's guard. developerUserSids only authorizes clients for the
+        // console host; the deployed service authorizes the installed Server service SID. Rejecting
+        // the field here keeps it from being silently ignored in a helper.json that someone
+        // extended by hand.
+        using (var document = JsonDocument.Parse(json))
+        {
+            if (document.RootElement.EnumerateObject().Any(property =>
+                    property.Name.Equals("developerUserSids", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("developerUserSids is a console debugging option and cannot be configured for the deployed Helper service.");
+        }
+        var configuration = JsonSerializer.Deserialize<WindowsHelperServiceConfiguration>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidOperationException("Windows Helper configuration is invalid.");
         configuration.Validate();
@@ -44,6 +55,7 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 
     protected override void OnStop()
     {
+        WindowsMihomoPrivilegedProcessHost.StopForHelperShutdownAsync().GetAwaiter().GetResult();
         if (_pipeServer is not null) _pipeServer.StopAsync().GetAwaiter().GetResult();
     }
 

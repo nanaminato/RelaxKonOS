@@ -18,11 +18,19 @@
   "sharedSecret": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
-  "allowConsoleDebug": true
+  "allowConsoleDebug": true,
+  "developerUserSids": ["S-1-5-21-1111111111-2222222222-3333333333-1005"]
 }
 ```
 
-示例密钥仅用于展示；请替换为新的、至少 32 字节的随机 Base64 密钥。然后直接从 IDE 启动：
+示例密钥仅用于展示；请替换为新的、至少 32 字节的随机 Base64 密钥。`developerUserSids` 填入
+`whoami /user` 输出的 SID（也接受 `计算机名\账户名`），它列出的身份与"启动 Helper 的账户"一样
+可以连接管道。Helper 必须提权运行，因而常常与 Server 不是同一账户——**只要两者不同就必须显式
+列出 Server 账户**，否则该连接会在认证之前被内核拒绝（EPERM），客户端只会显示"特权助手不可用"，
+与密钥错误、配置缺失无法区分。该项可省略（行为与以前一致）；条目无法解析时 Helper 直接启动失败，
+不会静默丢弃。启动时会打印实际生效的客户端 SID 列表，排障时先与 `whoami /user` 对照。
+
+然后从以管理员身份运行的 PowerShell 或 IDE 启动：
 
 ```powershell
 dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxKonOS-dev\privileged-helper.debug.json
@@ -32,7 +40,9 @@ dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxK
 `pipeName`、随机 Base64 `sharedSecret`、`fileAllowedRoots` 与 `allowedServiceIds`。Server 启动
 配置中分别设置 `PrivilegedHelper__PipeName` 和 `PrivilegedHelper__SharedSecret`。这样 Server
 仍通过正式的命名管道、HMAC、重放保护和固定请求协议调用 Helper，断点则直接命中同一进程中的
-执行器。只有需要验证真实管理员行为时才以管理员身份启动 IDE。
+执行器。Helper 控制台模式必须具有管理员权限；普通终端启动会明确报错并以退出码 77 退出，
+不会自动触发 UAC 提权。Server 和客户端仍可使用普通权限运行。只有管道创建成功后才会输出
+`is listening`；配置或管道创建失败会报错退出。
 
 `--console` 不能读取并启用生产 `helper.json`：它使用独立配置结构，并要求显式开发开关。发布前
 仍必须在隔离 Windows VM 以 LocalSystem 服务模式至少验证一次，以覆盖 Session 0、HKCU、用户

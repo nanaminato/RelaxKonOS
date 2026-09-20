@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using RelaxKonOS.Protocol.Proxy;
@@ -12,7 +13,8 @@ public sealed class MihomoSettingsService(
     IProxyPlatformPaths paths,
     IMihomoControllerClient controller,
     IProxyControllerSecretStore controllerSecrets,
-    MihomoControllerOptions controllerOptions) : IProxySettingsService
+    MihomoControllerOptions controllerOptions,
+    ILogger<MihomoSettingsService>? logger = null) : IProxySettingsService, IProxyTunRuntimeController
 {
     private static readonly HashSet<string> LogLevels = new(StringComparer.OrdinalIgnoreCase) { "silent", "error", "warning", "info", "debug" };
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -47,13 +49,18 @@ public sealed class MihomoSettingsService(
                 return null;
             }
             var original = await File.ReadAllTextAsync(active, cancellationToken);
+            // A settings write is not a TUN transition.  Carry the live activation forward;
+            // letting the managed TUN block fall back to "disabled" tore the adapter down and
+            // left the durable marker still reporting an active session.
+            var tunActivation = MihomoManagedConfiguration.ReadTunActivation(original);
             string updated;
             try
             {
                 updated = MihomoManagedConfiguration.WithServerControllerSettings(
                     MihomoManagedConfiguration.WithServerGeoDataSettings(
                         MihomoManagedConfiguration.WithRuntimeSettings(
-                            MihomoManagedConfiguration.WithManagedTunSettings(original, settings), settings)), controllerOptions,
+                            MihomoManagedConfiguration.WithManagedTunSettings(original, settings,
+                                tunActivation.Enabled, tunActivation.RouteExclusions), settings)), controllerOptions,
                     await controllerSecrets.GetOrCreateAsync(cancellationToken));
             }
             catch (ProxyControllerSecretException) { return ProxyProblemCodes.ConfigApplyFailed; }
@@ -72,13 +79,19 @@ public sealed class MihomoSettingsService(
                     await controller.ReloadAsync(cancellationToken);
                     return ProxyProblemCodes.ConfigApplyFailed;
                 }
-                if (!ApplyWindowsSystemProxy(settings.SystemProxyEnabled, settings.SystemProxyHost, settings.MixedPort, settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default))
+                // Updating unrelated Mihomo settings must not require a per-user Windows proxy
+                // writer.  A transition that enables or disables the system proxy does.
+                if ((settings.SystemProxyEnabled || previous.SystemProxyEnabled)
+                    && !ApplyWindowsSystemProxy(settings.SystemProxyEnabled, settings.SystemProxyHost, settings.MixedPort, settings.SystemProxy ?? ProxySystemProxyOptionsDto.Default))
                 {
+                    logger?.LogWarning("Proxy settings update could not apply the Windows system proxy. Enabled={Enabled} Port={Port}", settings.SystemProxyEnabled, settings.MixedPort);
                     await File.WriteAllTextAsync(active, original, cancellationToken);
                     if (controllerAvailable) await controller.ReloadAsync(cancellationToken);
                     return ProxyProblemCodes.PrivilegedOperationUnavailable;
                 }
                 await WriteAsync(settings, cancellationToken);
+                logger?.LogInformation("Proxy settings updated. SystemProxyEnabled={SystemProxyEnabled} AllowLan={AllowLan} DnsEnabled={DnsEnabled} MixedPort={MixedPort} TunEnabled={TunEnabled}",
+                    settings.SystemProxyEnabled, settings.AllowLan, settings.DnsEnabled, settings.MixedPort, tunActivation.Enabled);
                 return null;
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
@@ -86,6 +99,88 @@ public sealed class MihomoSettingsService(
         catch (IOException) { return ProxyProblemCodes.ConfigApplyFailed; }
         catch (UnauthorizedAccessException) { return ProxyProblemCodes.PrivilegedOperationUnavailable; }
         finally { _gate.Release(); }
+    }
+
+    public async Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var active = Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml");
+            if (!File.Exists(active)) return ProxyProblemCodes.RuntimeNotInstalled;
+            var settings = await ReadAsync(cancellationToken) ?? Defaults;
+            var original = await File.ReadAllTextAsync(active, cancellationToken);
+            var exclusions = enabled ? BuildTunRouteExclusions(snapshot) : [];
+            var updated = MihomoManagedConfiguration.WithManagedTunSettings(original, settings, enabled, exclusions);
+            var temporary = active + ".tun-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                await File.WriteAllTextAsync(temporary, updated, cancellationToken);
+                SetPrivateFile(temporary);
+                File.Move(temporary, active, overwrite: true);
+                // A recovery transition can run while Mihomo is intentionally stopped (for
+                // example after the Windows Server process was restarted). Do not send a reload
+                // to a controller that was already unavailable: ReloadAsync correctly gives an
+                // in-flight reload up to 30 seconds to reconnect, but that wait is incorrect
+                // when there was no running controller before the transition began.
+                var controllerAvailable = await controller.IsReachableAsync(cancellationToken);
+                if (!controllerAvailable.Succeeded)
+                {
+                    logger?.LogWarning("Mihomo TUN configuration was persisted but not reloaded because its controller was already unavailable. Enabled={Enabled} ProblemCode={ProblemCode}",
+                        enabled, controllerAvailable.ProblemCode);
+                    return controllerAvailable.ProblemCode;
+                }
+                var reload = await controller.ReloadAsync(cancellationToken);
+                if (string.IsNullOrEmpty(reload))
+                {
+                    // Mihomo's reload endpoint acknowledges the configuration before the TUN
+                    // adapter is necessarily created.  On Windows, accepting that acknowledgement
+                    // alone used to report a successful activation even after Wintun logged
+                    // "Access is denied".  Require the configured adapter to become active.
+                    var tunDeviceName = (settings.Tun ?? ProxyTunSettingsDto.Default).DeviceName;
+                    if (enabled && !await WaitForWindowsTunDeviceAsync(tunDeviceName, cancellationToken))
+                    {
+                        await File.WriteAllTextAsync(active, original, cancellationToken);
+                        SetPrivateFile(active);
+                        await controller.ReloadAsync(CancellationToken.None);
+                        logger?.LogWarning("Mihomo TUN configuration transition was rolled back because the Windows TUN adapter did not become active. DeviceName={DeviceName}", tunDeviceName);
+                        return ProxyProblemCodes.TunActivationFailed;
+                    }
+                    logger?.LogInformation("Mihomo TUN configuration transition completed. Enabled={Enabled} EgressInterface={EgressInterface} ExclusionCount={ExclusionCount}",
+                        enabled, snapshot.EgressInterface, exclusions.Count);
+                    return null;
+                }
+
+                await File.WriteAllTextAsync(active, original, cancellationToken);
+                SetPrivateFile(active);
+                await controller.ReloadAsync(CancellationToken.None);
+                logger?.LogWarning("Mihomo TUN configuration transition was rolled back after controller reload failed. Enabled={Enabled} ProblemCode={ProblemCode}", enabled, reload);
+                return reload;
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+        catch (IOException exception)
+        {
+            logger?.LogWarning(exception, "Mihomo TUN configuration transition failed because its protected configuration could not be written.");
+            return ProxyProblemCodes.ConfigApplyFailed;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            logger?.LogWarning(exception, "Mihomo TUN configuration transition was denied access to its protected configuration.");
+            return ProxyProblemCodes.PrivilegedOperationUnavailable;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Reports the engine's own view of its TUN flag.  A controller that cannot answer
+    /// yields an unobserved result rather than a false "disabled", because callers use a negative
+    /// answer to discard durable state.</summary>
+    public async Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken)
+    {
+        var observation = await controller.GetTunEnabledAsync(cancellationToken);
+        return observation.Succeeded
+            ? new ProxyTunRuntimeObservation(true, observation.Value!)
+            : new ProxyTunRuntimeObservation(false, false, observation.ProblemCode);
     }
 
     private async Task<ProxySettingsDto?> ReadAsync(CancellationToken cancellationToken)
@@ -107,7 +202,7 @@ public sealed class MihomoSettingsService(
 
     private async Task WriteAsync(ProxySettingsDto settings, CancellationToken cancellationToken)
     {
-        var directory = paths.GetStateDirectory(); Directory.CreateDirectory(directory);
+        var directory = paths.GetStateDirectory(); Directory.CreateDirectory(directory); SetPrivateDirectory(directory);
         var path = Path.Combine(directory, "mihomo-settings.json");
         var temporary = path + ".new";
         await using (var output = File.Create(temporary)) await JsonSerializer.SerializeAsync(output, settings, cancellationToken: cancellationToken);
@@ -117,6 +212,10 @@ public sealed class MihomoSettingsService(
     internal static bool ApplyWindowsSystemProxy(bool enabled, string host, int port, ProxySystemProxyOptionsDto options)
     {
         if (!OperatingSystem.IsWindows()) return !enabled;
+        // HKCU belongs to the Server service account in System Mode, not the signed-in desktop
+        // user.  Silently changing it is both ineffective and surprising.  A future per-user
+        // companion must apply this setting in that user's session.
+        if (!Environment.UserInteractive) return false;
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", writable: true);
@@ -189,4 +288,55 @@ public sealed class MihomoSettingsService(
     }
 
     private static readonly ProxySettingsDto Defaults = new(false, false, true, true, false, "warning", 7890, false, "127.0.0.1", ProxyTunSettingsDto.Default, ProxySystemProxyOptionsDto.Default);
+
+    internal static IReadOnlyList<string> BuildTunRouteExclusions(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot)
+    {
+        var values = new List<string> { "127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16" };
+        if (IPAddress.TryParse(snapshot.DefaultGateway, out var gateway))
+            values.Add(ToRoutePrefix(gateway));
+        foreach (var value in snapshot.ManagementAddresses)
+            if (IPAddress.TryParse(value, out var address) && !IPAddress.IsLoopback(address))
+                values.Add(ToRoutePrefix(address));
+        return values;
+    }
+
+    private static string ToRoutePrefix(IPAddress address)
+    {
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) return address + "/32";
+
+        // Windows represents a link-local IPv6 address as e.g. fe80::1%11. The
+        // scope identifies a local interface, but it is not part of an IP prefix
+        // and Mihomo correctly rejects fe80::1%11/128 as invalid CIDR syntax.
+        var unscoped = address.ScopeId == 0 ? address : new IPAddress(address.GetAddressBytes());
+        return unscoped + "/128";
+    }
+
+    private static void SetPrivateFile(string path)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    private static void SetPrivateDirectory(string path)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    private static async Task<bool> WaitForWindowsTunDeviceAsync(string deviceName, CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows()) return true;
+        var deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 10;
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            try
+            {
+                if (NetworkInterface.GetAllNetworkInterfaces().Any(network =>
+                    string.Equals(network.Name, deviceName, StringComparison.OrdinalIgnoreCase)
+                    && network.OperationalStatus == OperationalStatus.Up))
+                    return true;
+            }
+            catch (NetworkInformationException) { return false; }
+            await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+        }
+        return false;
+    }
 }

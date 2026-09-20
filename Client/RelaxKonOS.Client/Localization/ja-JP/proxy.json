@@ -1,7 +1,7 @@
 {
   "Culture": "ja-JP",
   "Strings": {
-    "proxy.problem.geodata_unavailable": "サブスクリプションには GeoIP データが必要ですが、Server がデータベースをダウンロードできません。DNS と外向きネットワークを確認するか、GEOIP ルールを含まないサブスクリプションを使用してください。",
+    "proxy.problem.geodata_unavailable": "Mihomo が GEO データを準備または読み込めませんでした。同梱または選択したローカルデータベースのコピー、ファイルの有効性と読み取り権限を確認してください。詳細はサーバーのプロキシログを参照してください。",
     "proxy.problem.port_in_use": "Mihomo に必要なローカルポートはすでに使用されています。残っている管理対象サービスを停止するか、コントローラーと混合プロキシのポートを解放してから再試行してください。",
     "proxy.problem.geodata_invalid": "選択した GeoIP データベースが無効、大きすぎる、または RelaxKonOS Server のサービス アカウントから読み取れません。Server 上でアクセス可能な通常の geoip.metadb ファイルを選択してください。",
     "proxy.geodata": "GeoIP データベース",

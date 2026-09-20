@@ -56,9 +56,10 @@ public sealed class MihomoGeoDataService(
         try
         {
             var sourceDirectory = bundledDataDirectory ?? Path.Combine(AppContext.BaseDirectory, "Assets", "Mihomo", "GeoData");
-            if (!BundledFileNames.All(name => IsSafeBundledFile(Path.Combine(sourceDirectory, name))))
+            var invalidFiles = BundledFileNames.Where(name => !IsSafeBundledFile(Path.Combine(sourceDirectory, name))).ToArray();
+            if (invalidFiles.Length > 0)
             {
-                await WriteDiagnosticAsync("warning", "The packaged Mihomo GEO data is missing, invalid, or exceeds its size limit.", cancellationToken);
+                await WriteDiagnosticAsync("warning", "Packaged Mihomo GEO data failed existence, size, or SHA-256 verification: " + string.Join(", ", invalidFiles), cancellationToken);
                 return ProxyProblemCodes.GeodataUnavailable;
             }
 
@@ -83,7 +84,12 @@ public sealed class MihomoGeoDataService(
         }
         catch (GeoDataStagingException exception)
         {
-            await WriteDiagnosticAsync("warning", "Bundled GEO data could not be staged for managed Mihomo: " + exception.FileName + " (" + exception.InnerException!.GetType().Name + ").", cancellationToken);
+            await WriteDiagnosticAsync("warning", $"Bundled GEO data copy failed: {exception.FileName} ({exception.InnerException!.GetType().Name}, HRESULT 0x{exception.InnerException.HResult:X8}).", cancellationToken);
+            return ProxyProblemCodes.GeodataUnavailable;
+        }
+        catch (IOException exception)
+        {
+            await WriteDiagnosticAsync("warning", $"Bundled GEO data staging failed ({exception.GetType().Name}, HRESULT 0x{exception.HResult:X8}).", cancellationToken);
             return ProxyProblemCodes.GeodataUnavailable;
         }
         catch (UnauthorizedAccessException)
@@ -108,9 +114,11 @@ public sealed class MihomoGeoDataService(
             {
                 await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
                 if (input.Length is <= 0 or > MaximumBytes) return ProxyProblemCodes.GeodataInvalid;
-                await using var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-                await CopyLimitedAsync(input, output, cancellationToken);
-                await output.FlushAsync(cancellationToken);
+                await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+                {
+                    await CopyLimitedAsync(input, output, cancellationToken);
+                    await output.FlushAsync(cancellationToken);
+                }
                 MakePrivateFile(temporary);
                 File.Move(temporary, ManagedFilePath(PrimaryFileName), overwrite: true);
                 MakePrivateFile(ManagedFilePath(PrimaryFileName));
@@ -122,9 +130,9 @@ public sealed class MihomoGeoDataService(
                 if (File.Exists(temporary)) File.Delete(temporary);
             }
         }
-        catch (IOException)
+        catch (IOException exception)
         {
-            await WriteDiagnosticAsync("warning", "The selected Server-local GeoIP database could not be staged.", cancellationToken);
+            await WriteDiagnosticAsync("warning", $"The selected Server-local GeoIP database could not be staged ({exception.GetType().Name}, HRESULT 0x{exception.HResult:X8}).", cancellationToken);
             return ProxyProblemCodes.GeodataInvalid;
         }
         catch (UnauthorizedAccessException)
@@ -170,9 +178,11 @@ public sealed class MihomoGeoDataService(
             try
             {
                 await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
-                await using var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-                await CopyLimitedAsync(input, output, cancellationToken);
-                await output.FlushAsync(cancellationToken);
+                await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+                {
+                    await CopyLimitedAsync(input, output, cancellationToken);
+                    await output.FlushAsync(cancellationToken);
+                }
                 MakePrivateFile(temporary);
                 File.Move(temporary, destination, overwrite: true);
                 MakePrivateFile(destination);

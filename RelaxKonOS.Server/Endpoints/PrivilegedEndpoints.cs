@@ -86,5 +86,6 @@ public static class PrivilegedEndpoints
     }
 
     private static IResult Problem(int status, string code, string detail) => Results.Problem(detail: detail, statusCode: status,
-        title: "需要管理员权限", type: ProblemBase + code);
+        title: "需要管理员权限", type: ProblemBase + code,
+        extensions: new Dictionary<string, object?> { ["problemCode"] = code });
 }

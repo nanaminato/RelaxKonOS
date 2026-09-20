@@ -325,21 +325,22 @@ if (OperatingSystem.IsLinux())
 
 # 7. Mihomo 运行时生命周期
 
-Windows 由长期运行的 `RelaxKonOS.Server` 直接托管 Mihomo；不再额外注册
-`relaxkonos-mihomo` SCM 服务：
+Windows 由长期运行的 LocalSystem 权限助手托管 Mihomo；不再额外注册
+`relaxkonos-mihomo` SCM 服务。`RelaxKonOS.Server` 保持 LocalService 身份，只能通过受
+认证的本机命名管道请求固定生命周期动作：
 
 ```text
 Windows SCM（如 RelaxKonOS.Server 作为 Windows Service）
     ↓
-RelaxKonOS.Server / WindowsMihomoProcessHost
+RelaxKonOSPrivilegedHelper (LocalSystem) / WindowsMihomoPrivilegedProcessHost
     ↓
 mihomo.exe
 ```
 
-进程宿主只从受保护的活动版本和配置启动 Mihomo，持有唯一 `Process`，捕获标准
-输出/错误、异常退出后延迟重启，并在 Server 停止、卸载或更新时以完整进程树终止。
-因此 Mihomo 的 Windows 生命周期与 Server 绑定；系统重启后由 Server 的既有启动
-策略恢复。
+进程宿主只从受保护的活动版本和配置启动 Mihomo，持有唯一 `Process`，并在权限助手
+停止、卸载或更新时以完整进程树终止。LocalSystem 是创建 Wintun 适配器所需的唯一额外
+权限；Server 不会获得通用提权或进程执行能力。系统重启后由权限助手与 Server 的既有
+启动策略恢复。
 
 Linux 保持独立 systemd 服务：
 
@@ -2909,6 +2910,8 @@ Recover
 ```
 
 不要直接再次启用。
+
+"TUN expected enabled" 必须由引擎自述（控制器读取的 `tun.enable`）决定，不能由恢复标记推导：标记只表达事务是否完成。未完成的标记一律要求恢复；已完成的标记若与引擎自述矛盾，视为运行时被事务之外的方式重配过，此时先执行完整恢复流程（关闭运行时 TUN 并确认受保护的管理路由），成功后才允许丢弃该标记并重新启用，失败则继续拒绝。
 
 ---
 

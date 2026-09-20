@@ -54,6 +54,11 @@ public sealed partial class ShellSettings : ObservableObject
 
     public bool IsCustomWallpaper => _customWallpaper is not null;
 
+    /// <summary>Returns whether the specified custom wallpaper is already decoded and rendering.</summary>
+    public bool HasLoadedCustomWallpaper(string? key) =>
+        _customWallpaper is not null
+        && string.Equals(_currentWallpaperKey, key, StringComparison.OrdinalIgnoreCase);
+
     public bool IsDarkTheme => Appearance.Mode == ThemeKind.Dark;
 
     private readonly AppearanceService _appearanceService;
@@ -180,7 +185,9 @@ public sealed partial class ShellSettings : ObservableObject
             // an already-loaded custom image when the server selected the default preset.
             SetBuiltInWallpaper(index);
         }
-        else
+        // Preference refreshes are frequent. Do not replace an already-rendering custom image
+        // with the Bloom fallback while its identical key is fetched again.
+        else if (!HasLoadedCustomWallpaper(prefs.WallpaperKey))
             SetUnloadedCustomWallpaper(prefs.WallpaperKey);
     }
 

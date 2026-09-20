@@ -15,8 +15,16 @@ if (OperatingSystem.IsWindows() && args.Contains("--windows-service", StringComp
 
 if (OperatingSystem.IsWindows() && args.Contains("--console", StringComparer.Ordinal))
 {
-    await WindowsPrivilegedHelperConsoleHost.RunAsync(args);
-    return 0;
+    try
+    {
+        await WindowsPrivilegedHelperConsoleHost.RunAsync(args);
+        return 0;
+    }
+    catch (Exception exception) when (exception is UnauthorizedAccessException or IOException or InvalidOperationException or ArgumentException or JsonException or FormatException)
+    {
+        Console.Error.WriteLine($"Privileged Helper startup failed: {exception.Message}");
+        return exception is UnauthorizedAccessException ? 77 : 1;
+    }
 }
 
 return await PrivilegedOperationExecutor.RunOneShotAsync();
@@ -374,6 +382,7 @@ static async Task<PrivilegedOperationResult> ApplyNginxSystemServiceActionAsync(
 
 static async Task<PrivilegedOperationResult> ApplyProxyMihomoServiceActionAsync(ProxyMihomoServiceAction? action)
 {
+    if (OperatingSystem.IsWindows()) return await WindowsMihomoPrivilegedProcessHost.ApplyAsync(action);
     if (!OperatingSystem.IsLinux() || action is null) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "proxy system service operation is unavailable");
     var arguments = action.Value switch
     {
@@ -391,6 +400,7 @@ static async Task<PrivilegedOperationResult> ApplyProxyMihomoServiceActionAsync(
 
 static async Task<PrivilegedOperationResult> InstallProxyMihomoSystemServiceAsync()
 {
+    if (OperatingSystem.IsWindows()) return await WindowsMihomoPrivilegedProcessHost.InstallAsync();
     if (!OperatingSystem.IsLinux()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "proxy system service operation is unavailable");
     const string unitPath = "/etc/systemd/system/relaxkonos-mihomo.service";
     const string unit = "[Unit]\nDescription=RelaxKonOS managed Mihomo\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStart=/var/lib/relaxkonos/proxy/engines/mihomo/versions/current/mihomo -d /var/lib/relaxkonos/proxy/engines/mihomo/data -f /etc/relaxkonos/proxy/active.yaml\nRestart=on-failure\nRestartSec=3\nNoNewPrivileges=true\nPrivateTmp=true\n\n[Install]\nWantedBy=multi-user.target\n";
@@ -407,6 +417,7 @@ static async Task<PrivilegedOperationResult> InstallProxyMihomoSystemServiceAsyn
 
 static PrivilegedOperationResult RemoveProxyMihomoSystemService()
 {
+    if (OperatingSystem.IsWindows()) return WindowsMihomoPrivilegedProcessHost.RemoveAsync().GetAwaiter().GetResult();
     if (!OperatingSystem.IsLinux()) return Fail(64, PrivilegedProblemCode.UnsupportedOperation, "proxy system service operation is unavailable");
     try
     {
