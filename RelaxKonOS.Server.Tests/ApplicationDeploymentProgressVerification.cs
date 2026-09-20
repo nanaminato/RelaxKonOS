@@ -85,6 +85,11 @@ internal static class ApplicationDeploymentProgressVerification
             archive.Stream.Position = bytes.Length - 1;
             Check(archive.Stream.ReadByte() == bytes[^1], "Last uploaded byte was lost.");
         }
+        var existingArchivePath = Path.Combine(directory, "operator-owned.zip");
+        await File.WriteAllBytesAsync(existingArchivePath, [0x50, 0x4b]);
+        var registered = staging.Register(existingArchivePath, "progress-test");
+        staging.Discard(registered.ReferenceId, "progress-test");
+        Check(File.Exists(existingArchivePath), "Discarding a server-file reference must not delete the operator-owned archive.");
         using var tooLarge = new MultipartFormDataContent();
         tooLarge.Add(new ByteArrayContent(new byte[41 * 1024 * 1024]), "file", "too-large.zip");
         using var oversized = await http.PostAsync(ApplicationDeploymentApiRoutes.Uploads, tooLarge);

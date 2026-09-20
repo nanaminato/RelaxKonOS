@@ -72,7 +72,8 @@ internal sealed class ApplicationDeploymentStagingStore
         }
 
         var expiresAt = Expiry();
-        entries[id] = new Entry(ApplicationDeploymentValidation.Reference(actor), safeName, destination, length, expiresAt);
+        entries[id] = new Entry(ApplicationDeploymentValidation.Reference(actor), safeName, destination, length, expiresAt,
+            DeleteOnRemoval: true);
         logger.LogInformation("Application deployment archive staging completed. ReferenceId={ReferenceId}, FileName={FileName}, Bytes={Bytes}, ExpiresAt={ExpiresAt}",
             id, safeName, length, expiresAt);
         return new(id, safeName, length, expiresAt);
@@ -89,7 +90,10 @@ internal sealed class ApplicationDeploymentStagingStore
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.FileReferenceUnavailable, 400);
         var id = Guid.NewGuid().ToString("N");
         var expiresAt = Expiry();
-        entries[id] = new Entry(ApplicationDeploymentValidation.Reference(actor), info.Name, fullPath, info.Length, expiresAt);
+        // A registered file belongs to the operator's existing server storage, not this staging
+        // area. Expiring its reference must never remove the source archive.
+        entries[id] = new Entry(ApplicationDeploymentValidation.Reference(actor), info.Name, fullPath, info.Length, expiresAt,
+            DeleteOnRemoval: false);
         return new(id, info.Name, info.Length, expiresAt);
     }
 
@@ -103,7 +107,7 @@ internal sealed class ApplicationDeploymentStagingStore
         if (entry.ActorReference != ApplicationDeploymentValidation.Reference(actor) || entry.ExpiresAt <= DateTimeOffset.UtcNow
             || !TryInspect(entry.Path, out var path, out var info) || info.Length != entry.Length)
         {
-            if (entries.TryRemove(referenceId, out var removed)) RemoveFile(removed.Path);
+            if (entries.TryRemove(referenceId, out var removed)) RemoveOwnedFile(removed);
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.FileReferenceUnavailable, 409);
         }
         try
@@ -117,19 +121,19 @@ internal sealed class ApplicationDeploymentStagingStore
         }
     }
 
-    /// <summary>Drops one staged archive. It only ever removes this store's own staging file.</summary>
+    /// <summary>Drops one staged archive. It only ever removes a file created by this store.</summary>
     public void Discard(string referenceId, string actor)
     {
         if (string.IsNullOrWhiteSpace(referenceId) || !entries.TryGetValue(referenceId, out var entry)) return;
         if (entry.ActorReference != ApplicationDeploymentValidation.Reference(actor)) return;
-        if (entries.TryRemove(referenceId, out var removed)) RemoveFile(removed.Path);
+        if (entries.TryRemove(referenceId, out var removed)) RemoveOwnedFile(removed);
     }
 
     private void PurgeExpired()
     {
         var now = DateTimeOffset.UtcNow;
         foreach (var pair in entries.Where(pair => pair.Value.ExpiresAt <= now))
-            if (entries.TryRemove(pair.Key, out var entry)) RemoveFile(entry.Path);
+            if (entries.TryRemove(pair.Key, out var entry)) RemoveOwnedFile(entry);
     }
 
     private DateTimeOffset Expiry() => DateTimeOffset.UtcNow.AddMinutes(Math.Clamp(options.StagingLifetimeMinutes, 5, 240));
@@ -139,6 +143,11 @@ internal sealed class ApplicationDeploymentStagingStore
         try { if (File.Exists(path)) File.Delete(path); }
         catch (IOException) { /* A later purge retries; a failed cleanup never fails the operation. */ }
         catch (UnauthorizedAccessException) { }
+    }
+
+    private static void RemoveOwnedFile(Entry entry)
+    {
+        if (entry.DeleteOnRemoval) RemoveFile(entry.Path);
     }
 
     private static string SanitizeFileName(string fileName)
@@ -163,7 +172,8 @@ internal sealed class ApplicationDeploymentStagingStore
         catch { return false; }
     }
 
-    private sealed record Entry(string ActorReference, string FileName, string Path, long Length, DateTimeOffset ExpiresAt);
+    private sealed record Entry(string ActorReference, string FileName, string Path, long Length, DateTimeOffset ExpiresAt,
+        bool DeleteOnRemoval);
 }
 
 /// <summary>A staged archive stream. Its text is never surfaced to a client.</summary>

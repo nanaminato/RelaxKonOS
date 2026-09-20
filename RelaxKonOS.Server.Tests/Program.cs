@@ -1300,6 +1300,14 @@ static async Task VerifyDockerProxyAsync(string root)
         || layer.ProblemCode.Contains("s3cr3t", StringComparison.Ordinal)),
         "A layer diagnostic contained the proxy credential.");
 
+    // Replacing an already-installed proxy without confirmation must leave enough state for Clear
+    // to retire the old daemon setting. Otherwise the old proxy remains active indefinitely.
+    var replacementUnconfirmed = await fixture.Service.SaveAsync(
+        new SaveDockerProxySettingsRequest(true, DockerProxySource.Custom, "http://replacement:8080", null, "localhost", true, true, Confirmed: false), actor);
+    Assert(replacementUnconfirmed.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine).ProblemCode == DockerProxyProblem.ConfirmationRequired
+        && fixture.Configurator.Requests.Count == 2,
+        "An unconfirmed replacement changed the daemon layer instead of preserving it for explicit removal.");
+
     // --- Docker Desktop: the stored upstream decides the layer, not the internal relay ---------
     var desktopPath = Path.Combine(root, "settings-store.json");
     await File.WriteAllTextAsync(desktopPath,

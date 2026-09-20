@@ -18,6 +18,7 @@ internal sealed class ApplicationDeploymentSecretStore
     private readonly string path;
     private readonly string root;
     private readonly IDataProtector protector;
+    private readonly ApplicationDeploymentCatalogStore catalog;
     private Ledger ledger = new([]);
     private bool unavailable;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -25,8 +26,10 @@ internal sealed class ApplicationDeploymentSecretStore
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
-    public ApplicationDeploymentSecretStore(IHostEnvironment environment, ApplicationDeploymentOptions options, IDataProtectionProvider protection)
+    public ApplicationDeploymentSecretStore(IHostEnvironment environment, ApplicationDeploymentOptions options, IDataProtectionProvider protection,
+        ApplicationDeploymentCatalogStore catalog)
     {
+        this.catalog = catalog;
         root = Path.Combine(environment.ContentRootPath, options.RootDirectory);
         path = Path.Combine(root, "secrets.json");
         protector = protection.CreateProtector("RelaxKonOS.ApplicationDeployments.Secrets.v1");
@@ -53,10 +56,16 @@ internal sealed class ApplicationDeploymentSecretStore
             var protectedValue = protector.Protect(value);
             var retained = ledger.Entries.Where(x => x.ApplicationId != applicationId || x.Name != name).ToList();
             retained.Add(new SecretEntry(applicationId, name, version, protectedValue));
-            // Keep only the newest three versions so a failed rotation can still be diagnosed.
+            // A revision names the exact secret version it needs. Retaining merely the newest
+            // versions breaks a catalogued rollback after several rotations, so every version
+            // referenced by a retained revision (or the current definition) is protected. Three
+            // newest unreferenced values remain for a just-failed rotation to be retried.
+            var required = RequiredVersions(applicationId, name);
             var trimmed = retained
                 .GroupBy(x => (x.ApplicationId, x.Name))
-                .SelectMany(group => group.OrderByDescending(x => x.Version).Take(3))
+                .SelectMany(group => group.Where(entry => required.Contains(entry.Version))
+                    .Concat(group.OrderByDescending(entry => entry.Version).Take(3))
+                    .DistinctBy(entry => entry.Version))
                 .ToArray();
             Commit(new(trimmed));
             return version;
@@ -146,6 +155,19 @@ internal sealed class ApplicationDeploymentSecretStore
     }
 
     private static string Entry(SecretEntry entry) => $"{entry.ApplicationId:D}\n{entry.Name}\n{entry.Version}";
+
+    private HashSet<int> RequiredVersions(Guid applicationId, string name)
+    {
+        var required = catalog.ReadRevisions(applicationId)
+            .SelectMany(revision => revision.Configuration)
+            .Where(entry => entry.IsSecret && string.Equals(entry.Name, name, StringComparison.Ordinal))
+            .Select(entry => entry.SecretVersion)
+            .ToHashSet();
+        var current = catalog.Find(applicationId)?.Configuration
+            .FirstOrDefault(entry => entry.IsSecret && string.Equals(entry.Name, name, StringComparison.Ordinal));
+        if (current is { } entry) required.Add(entry.SecretVersion);
+        return required;
+    }
 
     private void Commit(Ledger next)
     {

@@ -46,7 +46,14 @@ public sealed class DockerProxyService(
     public async Task<DockerProxyStatusDto> SaveAsync(SaveDockerProxySettingsRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
     {
         var previous = await ReadSavedAsync(cancellationToken);
-        await settings.SaveAsync(Normalize(request, actorUserId), cancellationToken);
+        // Saving an unconfirmed replacement must not forget that the old daemon setting is still
+        // installed. That marker is what lets a later Clear remove the old setting safely.
+        var normalized = Normalize(request, actorUserId);
+        normalized.EngineApplied = previous?.EngineApplied == true;
+        normalized.EngineProblemCode = previous?.EngineApplied == true && request.Enabled && request.ApplyToEngine && !request.Confirmed
+            ? DockerProxyProblem.ConfirmationRequired
+            : string.Empty;
+        await settings.SaveAsync(normalized, cancellationToken);
         resolver.Invalidate();
 
         var resolution = await resolver.ResolveAsync(cancellationToken);
@@ -105,8 +112,9 @@ public sealed class DockerProxyService(
 
     private async Task<DockerProxyLayerDto> InstallEngineLayerAsync(DockerProxyResolution resolution, CancellationToken cancellationToken)
     {
+        var wasApplied = (await ReadSavedAsync(cancellationToken))?.EngineApplied == true;
         var result = await configurator.ApplyAsync(true, resolution, cancellationToken);
-        await RecordEngineOutcomeAsync(result.Success, result.ProblemCode, cancellationToken);
+        await RecordEngineOutcomeAsync(result.Success || wasApplied, result.Success ? string.Empty : result.ProblemCode, cancellationToken);
         return new DockerProxyLayerDto(DockerProxyTarget.Engine,
             result.Success ? DockerProxyLayerState.RestartRequired : DockerProxyLayerState.Failed,
             result.Success ? string.Empty : result.ProblemCode, result.Detail);
@@ -124,20 +132,20 @@ public sealed class DockerProxyService(
             return new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.Unsupported, DockerProxyProblem.PlatformUnsupported, string.Empty);
 
         var result = await configurator.ApplyAsync(false, resolution, cancellationToken);
-        await RecordEngineOutcomeAsync(result.Success, result.ProblemCode, cancellationToken);
+        await RecordEngineOutcomeAsync(!result.Success && previous.EngineApplied, result.Success ? string.Empty : result.ProblemCode, cancellationToken);
         logger.LogInformation("Docker daemon proxy removal completed. Success={Success}", result.Success);
         return new DockerProxyLayerDto(DockerProxyTarget.Engine,
             result.Success ? DockerProxyLayerState.RestartRequired : DockerProxyLayerState.Failed,
             result.Success ? string.Empty : result.ProblemCode, result.Detail);
     }
 
-    /// <summary>Persists the host-side outcome so a later status read can distinguish not-yet-restarted from never-written.</summary>
-    private async Task RecordEngineOutcomeAsync(bool success, string problemCode, CancellationToken cancellationToken)
+    /// <summary>Persists whether a RelaxKonOS-managed daemon setting still exists and its latest outcome.</summary>
+    private async Task RecordEngineOutcomeAsync(bool engineApplied, string problemCode, CancellationToken cancellationToken)
     {
         var saved = await ReadSavedAsync(cancellationToken);
         if (saved is null) return;
-        saved.EngineApplied = success;
-        saved.EngineProblemCode = success ? string.Empty : problemCode;
+        saved.EngineApplied = engineApplied;
+        saved.EngineProblemCode = problemCode;
         await settings.SaveAsync(saved, cancellationToken);
     }
 
@@ -168,6 +176,8 @@ public sealed class DockerProxyService(
         if (saved is null || !saved.EngineApplied)
             return new(DockerProxyTarget.Engine, DockerProxyLayerState.Failed,
                 saved is { EngineProblemCode.Length: > 0 } ? saved.EngineProblemCode : DockerProxyProblem.EngineNotApplied, string.Empty);
+        if (saved.EngineProblemCode.Length > 0)
+            return new(DockerProxyTarget.Engine, DockerProxyLayerState.Failed, saved.EngineProblemCode, string.Empty);
 
         // Docker Desktop always routes the daemon through its internal relay and re-points that relay
         // at the operator's upstream without restarting the engine, so the daemon reporting a proxy
