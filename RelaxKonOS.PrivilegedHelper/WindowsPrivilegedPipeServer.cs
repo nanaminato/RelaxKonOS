@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Pipes;
-using System.Security.AccessControl;
 using System.Security.Cryptography;
-using System.Security.Principal;
 using System.Text.Json;
 using System.Runtime.Versioning;
 using RelaxKonOS.Protocol.Privileged;
@@ -22,7 +20,14 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _recentOperationIds = new();
     private Task? _listener;
 
-    public void Start() => _listener = Task.Run(ListenAsync);
+    public void Start()
+    {
+        if (_listener is not null) throw new InvalidOperationException("The Helper pipe server has already started.");
+        // Fail startup synchronously if the pipe cannot be created. Hosts must not report
+        // readiness while a background listener is repeatedly failing to bind.
+        var firstPipe = CreatePipe();
+        _listener = Task.Run(() => ListenAsync(firstPipe));
+    }
 
     public async Task StopAsync()
     {
@@ -38,36 +43,28 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
         _stopping.Dispose();
     }
 
-    private async Task ListenAsync()
+    private async Task ListenAsync(NamedPipeServerStream? firstPipe)
     {
         var secret = Convert.FromBase64String(configuration.SharedSecret);
-        while (!_stopping.IsCancellationRequested)
+        do
         {
             try
             {
-                await using var pipe = CreatePipe();
+                await using var pipe = firstPipe ?? CreatePipe();
+                firstPipe = null;
                 await pipe.WaitForConnectionAsync(_stopping.Token);
                 await HandleAsync(pipe, secret, _stopping.Token);
             }
             catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { }
             catch (Exception exception) { reportFailure(exception); }
-        }
+        } while (!_stopping.IsCancellationRequested);
     }
 
     private NamedPipeServerStream CreatePipe()
-    {
-        var security = new PipeSecurity();
-        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-        security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), PipeAccessRights.FullControl, AccessControlType.Allow));
-        security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), PipeAccessRights.FullControl, AccessControlType.Allow));
-        if (!string.IsNullOrWhiteSpace(configuration.ServerServiceSid))
-            security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(configuration.ServerServiceSid), PipeAccessRights.ReadWrite, AccessControlType.Allow));
-        if (!string.IsNullOrWhiteSpace(configuration.DeveloperUserSid))
-            security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(configuration.DeveloperUserSid), PipeAccessRights.ReadWrite, AccessControlType.Allow));
-        return NamedPipeServerStreamAcl.Create(configuration.PipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+        => NamedPipeServerStreamAcl.Create(configuration.PipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.WriteThrough, PrivilegedOperationProtocol.MaximumRequestBytes,
-            PrivilegedOperationProtocol.MaximumRequestBytes, security);
-    }
+            PrivilegedOperationProtocol.MaximumRequestBytes,
+            WindowsPrivilegedPipeSecurity.Build(configuration.ServerServiceSid, configuration.DeveloperUserSids));
 
     private async Task HandleAsync(Stream pipe, byte[] secret, CancellationToken cancellationToken)
     {
@@ -167,6 +164,12 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
     private sealed record PipeEnvelope(string PayloadBase64, string SignatureBase64);
 }
 
+/// <summary>
+/// <paramref name="ServerServiceSid"/> is the production caller (the installed Server service).
+/// <paramref name="DeveloperUserSids"/> is the console host's caller list. A deployed configuration
+/// sets the former, a debug configuration sets the latter, and both are empty for the one-shot
+/// Linux worker, which has no pipe.
+/// </summary>
 internal sealed record WindowsHelperPipeConfiguration(string PipeName, string SharedSecret,
     IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds,
-    string? ServerServiceSid = null, string? DeveloperUserSid = null);
+    string? ServerServiceSid = null, IReadOnlyList<string>? DeveloperUserSids = null);

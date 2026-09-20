@@ -581,7 +581,7 @@ public sealed class MihomoRuntimeManager(
             : timedOut ? ProxyProblemCodes.RuntimeHealthCheckFailed : ProxyProblemCodes.ConfigInvalid;
     }
     private static string ConfigurationValidationDiagnostic(string problemCode, bool timedOut) => problemCode == ProxyProblemCodes.GeodataUnavailable
-        ? "Mihomo configuration validation requires GeoIP data, but the Server could not download it. Check DNS/outbound network access or remove GEOIP rules from the subscription."
+        ? "Mihomo could not initialize GEO data. Check bundled/local database staging, integrity and read permissions in the managed data directory; this code does not establish a download failure."
         : timedOut
             ? "Mihomo configuration validation exceeded its 10-second limit."
             : "Mihomo rejected the downloaded subscription configuration.";

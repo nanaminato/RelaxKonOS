@@ -587,7 +587,14 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
                 if (operation.State is ProxyOperationState.Failed or ProxyOperationState.Interrupted)
                     _ = ShowPrivilegedHelperUnavailableAsyncIfNeeded(operation.ProblemCode);
                 if (operation.State == ProxyOperationState.Succeeded) await RefreshAsync();
-                else await LoadLogsAsync();
+                else
+                {
+                    // A ToggleSwitch immediately updates its visual state when clicked even
+                    // with a one-way binding. Re-read the authoritative Server snapshot for
+                    // failed operations so every surface is forced back to the real state.
+                    await RefreshAsync();
+                    StatusText = FormatOperation(operation);
+                }
                 return;
             }
             await Task.Delay(TimeSpan.FromSeconds(1));
@@ -795,7 +802,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
                 _ => "proxy.operation.completed.generic",
             });
         if (operation.State is ProxyOperationState.Failed or ProxyOperationState.Interrupted)
-            return LocalizedText.Ref("proxy.status.failed", FormatProblemCode(operation.ProblemCode));
+            return LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(operation.ProblemCode));
         if (operation.State == ProxyOperationState.Cancelled)
             return LocalizedText.Ref("proxy.operation.cancelled");
         var key = "proxy.operation." + operation.Stage;
@@ -805,7 +812,7 @@ public sealed partial class ProxyManagerViewModel : LocalizedObservableObject
     private void SetFailureStatus(Exception exception)
     {
         var problemCode = exception is ProxyRequestException request ? request.ProblemCode : exception.Message;
-        StatusText = LocalizedText.Ref("proxy.status.failed", FormatProblemCode(problemCode));
+        StatusText = LocalizedText.Ref("proxy.status.failed", (object?)FormatProblemCode(problemCode));
         _ = ShowPrivilegedHelperUnavailableAsyncIfNeeded(problemCode);
     }
     private static string FormatProblemCode(string? problemCode)

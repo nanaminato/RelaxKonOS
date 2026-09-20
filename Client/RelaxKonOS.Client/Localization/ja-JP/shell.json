@@ -9,6 +9,8 @@
         "shell.desktop_loading.description": "アプリ、デスクトップ項目、ウィンドウの配置を復元しています…",
         "shell.connection.close": "接続を閉じる",
         "shell.connection.close_tooltip": "接続を切断して終了",
+        "shell.connection.disconnecting.title": "接続を閉じています",
+        "shell.connection.disconnecting.description": "デスクトップの状態を保存して安全にサインアウトしています…",
         "shell.connection.info": "接続情報",
         "shell.connection.info_tooltip": "接続情報を表示",
         "shell.connection.server": "サーバー",

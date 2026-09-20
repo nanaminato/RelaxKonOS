@@ -17,6 +17,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
     private readonly SemaphoreSlim submitGate = new(1, 1);
     private Task? observation;
     private string? pendingKey;
+    public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
     [ObservableProperty] private InstallationOperationDto? operation;
     [ObservableProperty] private string connectionText = "";
     public bool IsActive => Operation?.State is InstallationOperationState.Queued or InstallationOperationState.Running;
@@ -72,6 +73,7 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         {
             ConnectionText = FormatProblemCode(error.ProblemCode);
             if (error.Status is HttpStatusCode.BadRequest or HttpStatusCode.Conflict or HttpStatusCode.Forbidden) pendingKey = null;
+            await ShowHelperFailureAsync(error.ProblemCode);
         }
         catch (OperationCanceledException) { }
         catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
@@ -86,7 +88,11 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
             ConnectionText = string.Empty;
             return reference?.Id;
         }
-        catch (InstallationApiException error) { ConnectionText = FormatProblemCode(error.ProblemCode); }
+        catch (InstallationApiException error)
+        {
+            ConnectionText = FormatProblemCode(error.ProblemCode);
+            await ShowHelperFailureAsync(error.ProblemCode);
+        }
         catch (OperationCanceledException) { }
         catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
         return null;
@@ -146,7 +152,12 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
                 catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
             }
-            if (!lifetime.IsCancellationRequested) await refresh();
+            if (!lifetime.IsCancellationRequested)
+            {
+                if (Operation?.State is InstallationOperationState.Failed or InstallationOperationState.Interrupted)
+                    await ShowHelperFailureAsync(Operation.ProblemCode);
+                await refresh();
+            }
         }
         catch (OperationCanceledException) { }
         catch { ConnectionText = LocalizedText.Get("installation.refresh_failed"); }
@@ -158,6 +169,11 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         try { Operation = await client.CancelAsync(Operation!.OperationId, lifetime.Token) ?? Operation; }
         catch { ConnectionText = LocalizedText.Get("installation.cancel_unavailable"); }
     }
+
+    private Task ShowHelperFailureAsync(string? problemCode) =>
+        PrivilegedHelperProblemText.TryFormat(problemCode, out _)
+            ? ShowPrivilegedHelperUnavailableAsync?.Invoke(problemCode) ?? Task.CompletedTask
+            : Task.CompletedTask;
 
     /// <summary>
     /// Installation operations retain their domain problem code in the durable task record.

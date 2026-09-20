@@ -12,11 +12,16 @@ public sealed class ProxyAuditStore(IProxyPlatformPaths paths)
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            var directory = paths.GetStateDirectory(); Directory.CreateDirectory(directory);
+            var directory = paths.GetStateDirectory(); Directory.CreateDirectory(directory); SetPrivateDirectory(directory);
             var path = Path.Combine(directory, "proxy-audit.jsonl");
             await File.AppendAllTextAsync(path, JsonSerializer.Serialize(entry) + Environment.NewLine, cancellationToken);
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
         finally { _gate.Release(); }
+    }
+
+    private static void SetPrivateDirectory(string path)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 }

@@ -75,10 +75,37 @@ public interface IProxyRecoveryService
 /// <summary>Server-only during Goal 5. No Endpoint or Client may invoke this boundary yet.</summary>
 public interface IProxyTunSafetyService : IProxyRecoveryService
 {
-    Task<string?> EnableAsync(Guid profileId, CancellationToken cancellationToken);
+    Task<string?> EnableAsync(Guid profileId, System.Net.IPAddress? managementAddress, CancellationToken cancellationToken);
     Task<string?> DisableAsync(CancellationToken cancellationToken);
     Task<string?> EmergencyDisableAsync(CancellationToken cancellationToken);
     Task<string?> EvaluateRecoveryAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Owns the one permitted live TUN configuration transition.  The caller supplies only the
+/// already-captured management-route snapshot; profile YAML can never choose routes or bypasses.
+/// </summary>
+public interface IProxyTunRuntimeController
+{
+    Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken);
+
+    /// <summary>Asks the engine whether TUN is actually enabled.  Callers use it to keep reported
+    /// state and durable markers honest; a failure means "unobserved", never "disabled".</summary>
+    Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>An observation of the live TUN runtime. Mihomo never reports a disabled TUN as a
+/// failure, so callers must distinguish a negative answer from no answer.</summary>
+public sealed record ProxyTunRuntimeObservation(bool Succeeded, bool Enabled, string ProblemCode = "");
+
+/// <summary>Safe fallback for hosts where no local Mihomo configuration controller is installed.</summary>
+public sealed class UnavailableProxyTunRuntimeController : IProxyTunRuntimeController
+{
+    public Task<string?> SetEnabledAsync(RelaxKonOS.Server.Proxy.Platform.ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+        => Task.FromResult<string?>(ProxyProblemCodes.RuntimeNotInstalled);
+
+    public Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken)
+        => Task.FromResult(new ProxyTunRuntimeObservation(false, false, ProxyProblemCodes.RuntimeNotInstalled));
 }
 
 /// <summary>Platform boundary only; it does not expose commands, passwords, or arbitrary paths.</summary>

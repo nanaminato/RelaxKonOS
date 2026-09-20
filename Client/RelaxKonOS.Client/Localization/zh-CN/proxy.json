@@ -266,7 +266,7 @@
     "proxy.problem.subscription_invalid": "订阅链接或订阅配置无效。",
     "proxy.problem.subscription_fetch_failed": "无法获取订阅内容。",
     "proxy.problem.subscription_system_proxy_unavailable": "服务器系统代理不可用，或不适用于该订阅地址。",
-    "proxy.problem.geodata_unavailable": "订阅需要 GeoIP 数据，但 Server 无法下载该数据库。请检查 DNS/出站网络，或使用不含 GEOIP 规则的订阅。",
+    "proxy.problem.geodata_unavailable": "Mihomo 无法准备或加载 GEO 数据。请检查内置或所选本地数据库是否已成功复制、文件是否有效及是否有读取权限；具体原因见服务器代理日志。",
     "proxy.problem.geodata_invalid": "所选 GeoIP 数据库无效、过大，或 RelaxKonOS Server 服务账户无法读取。请选择服务器上可访问的普通 geoip.metadb 文件。",
     "proxy.problem.http_401": "当前 RelaxKonOS 会话已失去授权，请重新登录。",
     "proxy.problem.response_empty": "服务器返回了空的代理响应。",

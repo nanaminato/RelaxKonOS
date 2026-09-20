@@ -15,6 +15,8 @@
     <Compile Include="../RelaxKonOS.PrivilegedHelper/SambaUserStatus.cs" Link="SambaUserStatus.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxDistributionSupport.cs" Link="LinuxDistributionSupport.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsSmbShareSecurity.cs" Link="WindowsSmbShareSecurity.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/DeveloperUserSidAllowList.cs" Link="DeveloperUserSidAllowList.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsPrivilegedPipeSecurity.cs" Link="WindowsPrivilegedPipeSecurity.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFeatureInstallationState.cs" Link="WindowsFeatureInstallationState.cs" />
     <Compile Include="../Client/RelaxKonOS.Client/Apps/Git/GitConflictBlock.cs" Link="GitConflictBlock.cs" />
     <ProjectReference Include="../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" />

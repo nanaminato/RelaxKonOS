@@ -32,6 +32,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         }
         finally { _gate.Release(); }
 
+        logger.LogInformation("Proxy operation {OperationId} queued: {OperationKind}.", item.OperationId, kind);
         _ = ExecuteAsync(item.OperationId, operation);
         return item;
     }
@@ -48,7 +49,15 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
         try
         {
             await UpdateAsync(id, item => item with { State = ProxyOperationState.Running, Stage = "running", StartedAt = DateTimeOffset.UtcNow });
-            var problem = await operation(stage => UpdateAsync(id, item => item with { Stage = stage }), CancellationToken.None);
+            var problem = await operation(async stage =>
+            {
+                logger.LogDebug("Proxy operation {OperationId} entered stage {Stage}.", id, stage);
+                await UpdateAsync(id, item => item with { Stage = stage });
+            }, CancellationToken.None);
+            if (!string.IsNullOrEmpty(problem))
+                logger.LogWarning("Proxy operation {OperationId} failed with {ProblemCode}.", id, problem);
+            else
+                logger.LogInformation("Proxy operation {OperationId} completed.", id);
             await UpdateAsync(id, item => item with
             {
                 State = string.IsNullOrEmpty(problem) ? ProxyOperationState.Succeeded : ProxyOperationState.Failed,
@@ -99,7 +108,7 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
 
     private async Task SaveAsync(CancellationToken cancellationToken)
     {
-        var dir = paths.GetStateDirectory(); Directory.CreateDirectory(dir);
+        var dir = paths.GetStateDirectory(); Directory.CreateDirectory(dir); SetPrivateDirectory(dir);
         var path = Path.Combine(dir, "proxy-operations.json"); var temporary = path + ".new";
         await using (var stream = File.Create(temporary))
             await JsonSerializer.SerializeAsync(stream, _byKey.Select(pair => new Entry(pair.Key, pair.Value)).ToArray(), cancellationToken: cancellationToken);
@@ -108,6 +117,11 @@ public sealed class ProxyOperationStore(IProxyPlatformPaths paths, ILogger<Proxy
     }
 
     private sealed record Entry(string IdempotencyKey, ProxyOperationDto Operation);
+
+    private static void SetPrivateDirectory(string path)
+    {
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
 }
 
 public sealed class ProxyOperationValidationException(string problemCode) : Exception(problemCode)

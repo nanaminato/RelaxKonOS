@@ -9,6 +9,8 @@
         "shell.desktop_loading.description": "Restoring applications, desktop items, and window layout…",
         "shell.connection.close": "Close connection",
         "shell.connection.close_tooltip": "Disconnect and exit",
+        "shell.connection.disconnecting.title": "Closing connection",
+        "shell.connection.disconnecting.description": "Saving your desktop state and signing out safely…",
         "shell.connection.info": "Connection information",
         "shell.connection.info_tooltip": "View connection information",
         "shell.connection.server": "Server",

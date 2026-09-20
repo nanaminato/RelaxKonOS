@@ -16,8 +16,16 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
     public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
     {
         request = request with { OperationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid(), Version = PrivilegedOperationProtocol.Version };
-        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(options.PipeName) || !TryGetSecret(out var secret))
+        if (!OperatingSystem.IsWindows())
+            return Complete(request, Unavailable("the Windows privileged helper transport is unavailable on this platform"));
+        if (string.IsNullOrWhiteSpace(options.PipeName) || !TryGetSecret(out var secret))
+        {
+            // The pipe name is not a credential and is vital when a developer console Helper is
+            // running. Never log the HMAC secret itself.
+            logger.LogWarning("Windows privileged Helper configuration is incomplete. PipeName={PipeName} HasSharedSecret={HasSharedSecret}",
+                options.PipeName, !string.IsNullOrWhiteSpace(options.SharedSecret));
             return Complete(request, Unavailable("privileged helper service is not configured"));
+        }
         // Cancellation remains meaningful while opening the local pipe. Once the signed frame
         // is sent, wait for the Helper's authoritative response with its own bounded timeout.
         using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -50,7 +58,10 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
-            logger.LogWarning("Could not communicate with the local privileged Helper service.");
+            // In a Windows development session the most common cause is that the Server's
+            // launch profile did not supply the console Helper's pipe name and HMAC secret.
+            // Keep the secret out of logs, but make the selected pipe and failure class visible.
+            logger.LogWarning(exception, "Could not communicate with the local privileged Helper service. PipeName={PipeName}", options.PipeName);
             return Complete(request, Unavailable("privileged helper service is unavailable"));
         }
     }

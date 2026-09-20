@@ -104,6 +104,7 @@ sealed class HealthyMihomoController : IMihomoControllerClient
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success([]));
     public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyDnsStatusDto(false, false, null));
+    public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(false));
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
@@ -120,6 +121,7 @@ sealed class StaticGroupMihomoController(IReadOnlyList<ProxyGroupDto> groups) : 
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => Task.FromResult(ControllerResult<IReadOnlyList<ProxyLogEntryDto>>.Success([]));
     public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyDnsStatusDto(false, false, null));
+    public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(ControllerResult<bool>.Success(false));
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 }
 
@@ -146,6 +148,7 @@ sealed class DelayedHealthyMihomoController(int unavailableResponses) : IMihomoC
     public Task<string?> CloseConnectionAsync(string connectionId, CancellationToken cancellationToken) => _healthy.CloseConnectionAsync(connectionId, cancellationToken);
     public Task<ControllerResult<IReadOnlyList<ProxyLogEntryDto>>> GetLogsAsync(int limit, CancellationToken cancellationToken) => _healthy.GetLogsAsync(limit, cancellationToken);
     public Task<ProxyDnsStatusDto> GetDnsStatusAsync(CancellationToken cancellationToken) => _healthy.GetDnsStatusAsync(cancellationToken);
+    public Task<ControllerResult<bool>> GetTunEnabledAsync(CancellationToken cancellationToken) => _healthy.GetTunEnabledAsync(cancellationToken);
     public Task<string?> ReloadAsync(CancellationToken cancellationToken) => _healthy.ReloadAsync(cancellationToken);
 }
 
@@ -192,11 +195,13 @@ sealed class TransactionTestEngine : IProxyEngine
     public string EngineId => MihomoEngine.Id;
     public bool FailNextReload { get; set; }
     public string? LastValidatedConfiguration { get; private set; }
+    public List<string> ValidatedConfigurations { get; } = [];
     public Task<ProxyEngineCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyEngineCapabilities(true, true, false, false, false, false));
     public Task<ProxyHealthDto> GetHealthAsync(CancellationToken cancellationToken) => Task.FromResult(new ProxyHealthDto(ProxyRuntimeState.Running, ProxyTunState.Disabled, ProxyHealthState.Healthy, true, true, true));
     public async Task<string?> ValidateConfigurationAsync(string configurationPath, CancellationToken cancellationToken)
     {
         LastValidatedConfiguration = await File.ReadAllTextAsync(configurationPath, cancellationToken);
+        ValidatedConfigurations.Add(LastValidatedConfiguration);
         return null;
     }
     public Task<string?> ReloadAsync(CancellationToken cancellationToken)
@@ -223,10 +228,32 @@ sealed class TestProxyNetworkSafetyPlatform : IProxyNetworkSafetyPlatform
     public bool ManagementRouteVerifies { get; set; } = true;
     public int ApplyCount { get; private set; }
     public int RestoreCount { get; private set; }
-    public Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(CancellationToken cancellationToken) => Task.FromResult<ProxyManagementRouteSnapshot?>(new("test", DateTimeOffset.UtcNow, SnapshotSafe, "eth0", "192.0.2.1", ["loopback", "relaxkonos-listeners"]));
+    public Task<ProxyManagementRouteSnapshot?> CaptureManagementRouteAsync(IPAddress? managementAddress, CancellationToken cancellationToken) => Task.FromResult<ProxyManagementRouteSnapshot?>(new("test", DateTimeOffset.UtcNow, SnapshotSafe, "eth0", "192.0.2.1", ["loopback", "relaxkonos-listeners"], managementAddress is null ? [] : [managementAddress.ToString()]));
     public Task<bool> ApplyTunAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { ApplyCount++; return Task.FromResult(ApplySucceeds); }
     public Task<bool> VerifyManagementRouteAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) => Task.FromResult(ManagementRouteVerifies);
     public Task<bool> RestoreAsync(ProxyManagementRouteSnapshot snapshot, CancellationToken cancellationToken) { RestoreCount++; return Task.FromResult(true); }
+}
+
+sealed class TestProxyTunRuntimeController : IProxyTunRuntimeController
+{
+    public int EnableCount { get; private set; }
+    public int DisableCount { get; private set; }
+    public ProxyManagementRouteSnapshot? LastSnapshot { get; private set; }
+    public bool EngineReportsEnabled { get; set; }
+    public bool ObservationFails { get; set; }
+
+    public Task<string?> SetEnabledAsync(ProxyManagementRouteSnapshot snapshot, bool enabled, CancellationToken cancellationToken)
+    {
+        LastSnapshot = snapshot;
+        if (enabled) EnableCount++; else DisableCount++;
+        EngineReportsEnabled = enabled;
+        return Task.FromResult<string?>(null);
+    }
+
+    public Task<ProxyTunRuntimeObservation> IsEnabledAsync(CancellationToken cancellationToken) => Task.FromResult(
+        ObservationFails
+            ? new ProxyTunRuntimeObservation(false, false, ProxyProblemCodes.ControllerUnavailable)
+            : new ProxyTunRuntimeObservation(true, EngineReportsEnabled));
 }
 
 sealed class DelegateHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler

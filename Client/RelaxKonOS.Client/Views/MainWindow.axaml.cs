@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -27,6 +28,8 @@ public partial class MainWindow : Window
     private readonly LocalizationService _localization;
     private SystemUiCoordinator? _systemUi;
     private int _desktopLoadGeneration;
+    private bool _isDisconnecting;
+    private readonly DoubleTransition _disconnectOverlayFade = new() { Property = OpacityProperty };
 
     public MainWindow()
     {
@@ -34,6 +37,7 @@ public partial class MainWindow : Window
         _localization = App.Services.GetRequiredService<LocalizationService>();
         _localization.LanguageChanged += (_, _) => RefreshLocalizedText();
         RefreshLocalizedText();
+        DisconnectingOverlay.Transitions = new Transitions { _disconnectOverlayFade };
         _hideBarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _hideBarTimer.Tick += (_, _) => HideConnectionBar();
         SizeChanged += (_, _) => ApplyConnectionBarOffset();
@@ -137,7 +141,12 @@ public partial class MainWindow : Window
 
     private async Task DisconnectAsync()
     {
+        if (_isDisconnecting)
+            return;
+
+        _isDisconnecting = true;
         ConnectionInfo.IsVisible = false;
+        ShowDisconnectingOverlay();
         try
         {
             await App.Services.GetRequiredService<WindowLayoutStore>().FlushAsync();
@@ -147,6 +156,24 @@ public partial class MainWindow : Window
         {
             Close();
         }
+    }
+
+    /// <summary>
+    /// Shows feedback before the final layout sync and sign-out request yield control.  Without this,
+    /// a slow network makes the desktop look unresponsive until the window disappears.
+    /// </summary>
+    private void ShowDisconnectingOverlay()
+    {
+        _disconnectOverlayFade.Duration = this.TryFindResource("TransitionFast", out var value) && value is TimeSpan span
+            ? span
+            : TimeSpan.FromMilliseconds(120);
+        DisconnectingOverlay.Opacity = 0;
+        DisconnectingOverlay.IsVisible = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_isDisconnecting)
+                DisconnectingOverlay.Opacity = 1;
+        }, DispatcherPriority.Render);
     }
 
     private void Minimize_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -188,6 +215,12 @@ public partial class MainWindow : Window
     {
         if (e.Handled)
             return;
+
+        if (_isDisconnecting)
+        {
+            e.Handled = true;
+            return;
+        }
 
         if (_systemUi?.HandleKey(e.Key, e.KeyModifiers) == true)
         {

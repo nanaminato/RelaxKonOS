@@ -46,6 +46,7 @@ public sealed class ProxyManagerApp : RemoteApplicationBase
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Mihomo, "relaxkonos.proxy", () => vm.RefreshCommand.ExecuteAsync(null));
         var window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.proxy.display_name"), InstallationPanel.Wrap(new ProxyManagerWorkspace(vm), vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
         vm.ShowPrivilegedHelperUnavailableAsync = problemCode => PrivilegedHelperUnavailableDialog.ShowAsync(context, window, problemCode);
+        vm.Installation.ShowPrivilegedHelperUnavailableAsync = vm.ShowPrivilegedHelperUnavailableAsync;
         vm.SetServerRuntimePackageRequest(async () =>
         {
             if (files is null) return null;

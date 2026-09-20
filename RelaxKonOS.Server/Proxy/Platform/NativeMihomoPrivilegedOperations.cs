@@ -13,7 +13,6 @@ namespace RelaxKonOS.Server.Proxy.Platform;
 public sealed class NativeMihomoPrivilegedOperations(
     IProxyPlatformPaths paths,
     RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport transport,
-    IWindowsMihomoProcessHost? windowsProcessHost = null,
     IProxyDiagnosticLogStore? diagnostics = null) : IProxyPrivilegedOperations
 {
     private const string Engine = Mihomo.MihomoEngine.Id;
@@ -24,7 +23,7 @@ public sealed class NativeMihomoPrivilegedOperations(
     // Retains the focused runtime-path unit test constructor. Production DI always supplies the
     // platform transport; service actions fail closed if this compatibility constructor is used.
     public NativeMihomoPrivilegedOperations(IProxyPlatformPaths paths)
-        : this(paths, new UnavailablePrivilegedTransport(), null, null) { }
+        : this(paths, new UnavailablePrivilegedTransport(), null) { }
 
     public async Task<ProxyPrivilegedResult> InstallRuntimeAsync(InstallProxyRuntimeOperation request, CancellationToken cancellationToken) =>
         await ActivateRuntimeAsync(request.EngineId, request.Version, request.ReleaseDirectoryId, cancellationToken);
@@ -68,9 +67,9 @@ public sealed class NativeMihomoPrivilegedOperations(
         }
         if (OperatingSystem.IsWindows())
         {
-            // Windows deliberately has no second SCM service: RelaxKonOS.Server owns the child
-            // process and its IHostedService shutdown path. The first start happens below.
-            return windowsProcessHost is null ? Unavailable() : Success();
+            // TUN adapter creation requires LocalSystem rights. The constrained LocalSystem
+            // Helper owns the fixed Mihomo child rather than the LocalService Server process.
+            return await WindowsHelperAsync(PrivilegedOperationKind.ProxyMihomoInstallSystemService, cancellationToken);
         }
         return Unsupported();
     }
@@ -86,7 +85,7 @@ public sealed class NativeMihomoPrivilegedOperations(
             var reload = await SystemctlAsync(["daemon-reload"], cancellationToken);
             return disable.Succeeded || reload.Succeeded ? Success() : disable;
         }
-        if (OperatingSystem.IsWindows()) return windowsProcessHost is null ? Unavailable() : await windowsProcessHost.StopAsync(cancellationToken);
+        if (OperatingSystem.IsWindows()) return await WindowsHelperAsync(PrivilegedOperationKind.ProxyMihomoRemoveSystemService, cancellationToken);
         return Unsupported();
     }
 
@@ -94,7 +93,8 @@ public sealed class NativeMihomoPrivilegedOperations(
     {
         if (!IsServiceRequest(request.EngineId, request.ServiceName)) return Task.FromResult(Invalid());
         if (OperatingSystem.IsLinux()) return SystemctlAsync([request.Enabled ? "enable" : "disable", Service], cancellationToken);
-        if (OperatingSystem.IsWindows()) return Task.FromResult(windowsProcessHost is null ? Unavailable() : Success());
+        if (OperatingSystem.IsWindows()) return WindowsHelperAsync(PrivilegedOperationKind.ProxyMihomoServiceAction,
+            request.Enabled ? ProxyMihomoServiceAction.Enable : ProxyMihomoServiceAction.Disable, cancellationToken);
         return Task.FromResult(Unsupported());
     }
     public Task<ProxyPrivilegedResult> StartServiceAsync(ProxyServiceOperation request, CancellationToken cancellationToken) => ServiceActionAsync(request, "start", cancellationToken);
@@ -153,7 +153,14 @@ public sealed class NativeMihomoPrivilegedOperations(
     {
         if (!IsServiceRequest(request.EngineId, request.ServiceName)) return Task.FromResult(Invalid());
         if (OperatingSystem.IsLinux()) return SystemctlAsync([action, Service], cancellationToken);
-        if (OperatingSystem.IsWindows()) return WindowsProcessActionAsync(action, cancellationToken);
+        if (OperatingSystem.IsWindows()) return WindowsHelperAsync(PrivilegedOperationKind.ProxyMihomoServiceAction, action switch
+        {
+            "start" => ProxyMihomoServiceAction.Start,
+            "stop" => ProxyMihomoServiceAction.Stop,
+            "restart" => ProxyMihomoServiceAction.Restart,
+            "try-restart" => ProxyMihomoServiceAction.TryRestart,
+            _ => throw new InvalidOperationException("Unsupported fixed Windows Mihomo action."),
+        }, cancellationToken);
         return Task.FromResult(Unsupported());
     }
     private static bool IsServiceRequest(string engineId, string serviceName) => engineId == Engine && serviceName == Service;
@@ -197,15 +204,21 @@ public sealed class NativeMihomoPrivilegedOperations(
     }
 
     private string ActivePath() => Path.Combine(paths.GetEngineVersionsDirectory(Engine), ActiveLink);
-    private Task<ProxyPrivilegedResult> WindowsProcessActionAsync(string action, CancellationToken cancellationToken)
+    private async Task<ProxyPrivilegedResult> WindowsHelperAsync(PrivilegedOperationKind operation, CancellationToken cancellationToken) =>
+        await WindowsHelperAsync(operation, null, cancellationToken);
+    private async Task<ProxyPrivilegedResult> WindowsHelperAsync(PrivilegedOperationKind operation, ProxyMihomoServiceAction? action, CancellationToken cancellationToken)
     {
-        if (windowsProcessHost is null) return Task.FromResult(Unavailable());
-        return action switch
+        var result = await transport.ExecuteAsync(new PrivilegedOperationRequest(operation, ProxyMihomoServiceAction: action), cancellationToken);
+        if (result.Success) return Success();
+        await WriteDiagnosticAsync("error", $"Windows privileged Helper failed Mihomo operation {operation}. ProblemCode={result.ProblemCode}", cancellationToken);
+        return result.ProblemCode switch
         {
-            "start" => windowsProcessHost.StartAsync(cancellationToken),
-            "stop" => windowsProcessHost.StopAsync(cancellationToken),
-            "restart" or "try-restart" => windowsProcessHost.RestartAsync(cancellationToken),
-            _ => Task.FromResult(Invalid()),
+            // Only a failed local privilege boundary may surface the helper-unavailable prompt.
+            PrivilegedProblemCode.HelperUnavailable => Unavailable(),
+            // The Helper is reachable, but it cannot find the fixed runtime or active config.
+            PrivilegedProblemCode.NotFound => new(false, ProxyProblemCodes.RuntimeNotInstalled),
+            PrivilegedProblemCode.AccessDenied => new(false, ProxyProblemCodes.PermissionDenied),
+            _ => new(false, ProxyProblemCodes.ServiceUnavailable),
         };
     }
     private static string BinaryName() => OperatingSystem.IsWindows() ? "mihomo.exe" : "mihomo";

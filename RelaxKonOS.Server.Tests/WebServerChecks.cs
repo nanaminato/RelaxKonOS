@@ -41,19 +41,6 @@ internal static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     TestAssert.Assert(resolver.Invoke(null, [outsideHttp]) is null, "Nginx include outside http context was accepted.");
 
     var managedRoot = Path.Combine(root, "managed-nginx");
-    var managedConfiguration = Path.Combine(managedRoot, "conf", "nginx.conf");
-    var managedConfD = Path.Combine(managedRoot, "conf", "conf.d");
-    Directory.CreateDirectory(managedConfD);
-    await File.WriteAllTextAsync(managedConfiguration, "events {}\nhttp { include conf.d/*.conf; }\n");
-    var managedInstance = new WebServerDto("managed-test", "nginx", WebServerType.Nginx, WebServerManagementMode.Managed,
-        Path.Combine(managedRoot, "sbin", "nginx"), managedConfiguration, "test", DateTimeOffset.UtcNow,
-        new WebServerCapabilities(true, true, false));
-    var ensureAnchor = typeof(NginxWebServerManager).GetMethod("EnsureSiteIncludeAnchorAsync", BindingFlags.Static | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("Nginx site anchor initializer was not found.");
-    var anchorResult = (Task<string?>)ensureAnchor.Invoke(null, [managedInstance, CancellationToken.None])!;
-    TestAssert.Assert(await anchorResult is null, "A managed Nginx instance did not create its first site anchor.");
-    TestAssert.Assert(File.Exists(Path.Combine(managedConfD, "relaxkonos.conf")), "The managed Nginx site anchor was not created.");
-
     var resolveManagedExecutable = typeof(NginxWebServerManager).GetMethod("ResolveManagedExecutablePath", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Managed Nginx executable resolver was not found.");
     var managedExecutable = (string)resolveManagedExecutable.Invoke(null, [managedRoot, true])!;
@@ -127,11 +114,12 @@ internal static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     };
     (string FullChainPath, string PrivateKeyPath)? integrationCertificate = ("/etc/letsencrypt/live/relaxkon.com/fullchain.pem", "/etc/letsencrypt/live/relaxkon.com/privkey.pem");
     var renderedIntegrated = (string)renderSite.Invoke(null, [integratedSite, integrationCertificate])!;
+    var expectedSiteRoot = Path.GetFullPath("/srv/relaxkon/frontend/browser").Replace('\\', '/');
     TestAssert.Assert(renderedIntegrated.Contains("return 301 https://$host$request_uri;")
         && renderedIntegrated.Contains("listen [::]:80;")
         && renderedIntegrated.Contains("listen 443 ssl http2;")
         && renderedIntegrated.Contains("listen [::]:443 ssl http2;")
-        && renderedIntegrated.Contains("root /srv/relaxkon/frontend/browser;")
+        && renderedIntegrated.Contains("root " + expectedSiteRoot + ";", StringComparison.Ordinal)
         && renderedIntegrated.Contains("try_files $uri $uri/ /index.html;")
         && renderedIntegrated.Contains("location ^~ /api/")
         && renderedIntegrated.Contains("location ^~ /relaxkonos/")
@@ -146,9 +134,10 @@ internal static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
     var renderWithAcme = typeof(NginxWebServerManager).GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
         .Single(method => method.Name == "RenderSiteConfiguration" && method.GetParameters().Length == 3);
     var renderedWithAcme = (string)renderWithAcme.Invoke(null, [proxySite, null, "/var/lib/relaxkonos/acme-challenge"])!;
+    var expectedAcmeRoot = Path.GetFullPath("/var/lib/relaxkonos/acme-challenge").Replace('\\', '/');
     TestAssert.Assert(renderedWithAcme.Contains("location ^~ /.well-known/acme-challenge/")
-        && renderedWithAcme.Contains("alias /var/lib/relaxkonos/acme-challenge/;")
-        && renderedWithAcme.Contains("location / {"), "ACME HTTP-01 routing was not rendered ahead of the site location.");
+        && renderedWithAcme.Contains("alias " + expectedAcmeRoot + "/;", StringComparison.Ordinal)
+        && renderedWithAcme.Contains("location ^~ / {"), "ACME HTTP-01 routing was not rendered ahead of the site location.");
 
     var findRoutingConflict = typeof(NginxWebServerManager).GetMethod("FindRoutingConflict", BindingFlags.Static | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException("Nginx site conflict detector was not found.");

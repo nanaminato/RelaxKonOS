@@ -4,6 +4,27 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    if (args.Contains("--proxy-geodata-only"))
+    {
+        await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
+        await ProxyConfigurationChecks.VerifyMihomoGeoDataStartupProvisioningAsync();
+        await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
+        await NetworkProxyTunnelChecks.VerifyProxyDiagnosticLogsAsync(root);
+        Console.WriteLine("Proxy GEO data and configuration checks passed.");
+        return;
+    }
+    if (args.Contains("--proxy-tun-only"))
+    {
+        await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
+        await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
+        await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
+        await NetworkProxyTunnelChecks.VerifyMihomoControllerSafetyAsync();
+        await NetworkProxyTunnelChecks.VerifyMihomoProxyGroupOrderingAsync(root);
+        await NetworkProxyTunnelChecks.VerifyProxyDiagnosticLogsAsync(root);
+        await NetworkProxyTunnelChecks.VerifyMihomoRuntimeSafetyAsync(root);
+        Console.WriteLine("Proxy TUN activation checks passed.");
+        return;
+    }
     if (args.Contains("--deployment-progress-only"))
     {
         ApplicationDeploymentDiagnosticsVerification.Run(root);
@@ -11,6 +32,7 @@ try
         return;
     }
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
+    if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     await AliasLoginVerification.RunAsync(root);
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
@@ -26,6 +48,7 @@ try
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
     if (settingsOnly || fileOperationsOnly) return;
     await ServerCoreChecks.VerifyPrivilegedOperationProtocolAsync();
+    await DeveloperUserSidAllowListVerification.RunAsync();
     ServerCoreChecks.VerifyLinuxSystemAuthenticationProvider();
     ServerCoreChecks.VerifySmbProtocolAndElevationContract();
     await FileServiceChecks.RunAsync();
@@ -41,8 +64,10 @@ try
     await ProxyConfigurationChecks.VerifyMihomoGeoDataStartupProvisioningAsync();
     await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
+    await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();
     await WebServerChecks.VerifyDeploymentAndNginxSnapshotsAsync(root);
+    await WebServerChecks.VerifyWebServerProviderRoutingAsync();
     await WebServerChecks.VerifyOperationIdempotencyAsync(root);
     ApplicationDeploymentDiagnosticsVerification.Run(root);
     await ApplicationDeploymentProgressVerification.RunAsync(root);

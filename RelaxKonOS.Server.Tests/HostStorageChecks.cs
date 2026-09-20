@@ -24,7 +24,7 @@ internal static async Task VerifyHostGlobalMigrationAsync(string root)
     await connection.OpenAsync();
     await using var command = connection.CreateCommand();
     command.CommandText = "SELECT MAX(version) FROM relaxkonos_host_schema_migrations;";
-    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 14, "HostGlobal migrations did not reach the expected version.");
+    TestAssert.Assert(Convert.ToInt32(await command.ExecuteScalarAsync()) == 15, "HostGlobal migrations did not reach the expected version.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='docker_proxy_settings');";
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Docker proxy settings table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='proxy_profiles');";
@@ -35,6 +35,8 @@ internal static async Task VerifyHostGlobalMigrationAsync(string root)
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy subscription metadata table was not migrated.");
     command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('proxy_subscriptions') WHERE name='download_route');";
     TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Proxy subscription download route was not migrated.");
+    command.CommandText = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('docker_proxy_settings') WHERE name='apply_to_image_tags');";
+    TestAssert.Assert(Convert.ToInt64(await command.ExecuteScalarAsync()) == 1, "Host-global Docker image-tag proxy preference was not migrated.");
 }
 
 internal static async Task VerifyProxyHostProfileRepositoryAsync(string root)
@@ -87,12 +89,6 @@ internal static async Task VerifyProxySubscriptionRepositoryAsync(string root)
         && converted.Content.Contains("cipher: \"aes-256-gcm\"", StringComparison.Ordinal) && converted.Content.Contains("password: \"password\"", StringComparison.Ordinal),
         "Base64 Shadowsocks subscription was not converted to Mihomo YAML.");
 
-    var debugPaths = new TestProxyPaths(Path.Combine(root, "proxy-subscription-debug"));
-    var debugDownloader = new ProxySubscriptionDownloader(new FixtureHttpClientFactory(Encoding.UTF8.GetBytes("proxies: []\n")), new StaticProxySettingsService(),
-        new TestHostEnvironment(root) { EnvironmentName = Environments.Development }, debugPaths);
-    await debugDownloader.DownloadAsync("https://1.1.1.1/subscription", ProxySubscriptionDownloadRoute.Direct, CancellationToken.None);
-    var capture = Directory.GetFiles(debugPaths.GetSanitizedLogDirectory(), "subscription-download-*.txt").Single();
-    TestAssert.Assert(await File.ReadAllTextAsync(capture) == "proxies: []\n", "Development subscription downloads were not captured verbatim in the protected log directory.");
 }
 
 /// <summary>

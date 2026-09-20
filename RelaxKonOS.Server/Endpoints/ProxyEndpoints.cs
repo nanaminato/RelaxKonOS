@@ -46,12 +46,17 @@ public static class ProxyEndpoints
 
         app.MapGet(ProxyApiRoutes.Tun, (IProxyTunSafetyService tun, CancellationToken ct) => tun.GetStatusAsync(ct)).RequireAuthorization("ProxyRead").WithTags("Proxy");
         app.MapPost(ProxyApiRoutes.TunEnable, (ProxyTunRequest request, HttpContext context, ProxyOperationStore operations, IProxyTunSafetyService tun, ProxyAuditStore audit, CancellationToken ct) =>
-            QueueAsync(context, operations, "tun.enable", async (actor, token) =>
+        {
+            // The queued operation may outlive this HTTP request. Capture the Server-observed
+            // remote address now; never trust a client-supplied management-route value.
+            var managementAddress = context.Connection.RemoteIpAddress;
+            return QueueAsync(context, operations, "tun.enable", async (actor, token) =>
             {
-                var problem = await tun.EnableAsync(request.ProfileId, token);
+                var problem = await tun.EnableAsync(request.ProfileId, managementAddress, token);
                 await audit.RecordAsync(actor, "tun.enable", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, token);
                 return problem;
-            }, ct)).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
+            }, ct);
+        }).RequireAuthorization("ProxyDangerous").WithTags("Proxy");
         app.MapPost(ProxyApiRoutes.TunDisable, (HttpContext context, ProxyOperationStore operations, IProxyTunSafetyService tun, ProxyAuditStore audit, CancellationToken ct) =>
             QueueAsync(context, operations, "tun.disable", async (actor, token) =>
             {
