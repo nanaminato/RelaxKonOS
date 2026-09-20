@@ -30,7 +30,10 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     [ObservableProperty] private bool _isOperationRunning;
     [ObservableProperty] private string _operationTitle = string.Empty;
     [ObservableProperty] private string _operationLog = string.Empty;
-    [ObservableProperty] private bool _isDockerAvailable;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StopEngineCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RestartEngineCommand))]
+    private bool _isDockerAvailable;
     [ObservableProperty] private bool _isDockerInstallRequired;
     [ObservableProperty] private string _engineVersion = "—";
     [ObservableProperty] private string _enginePlatform = "—";
@@ -131,6 +134,59 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> values)
     {
         target.Clear(); foreach (var value in values) target.Add(value);
+    }
+
+    /// <summary>
+    /// Asked before a stop or restart, which terminates every running container on the host. The
+    /// manager has no window of its own, so the shell supplies the dialog.
+    /// </summary>
+    public Func<string, Task<bool>>? RequestEngineConfirmationAsync { get; set; }
+
+    [ObservableProperty] private bool _isEngineActionRunning;
+    [ObservableProperty] private LocalizedStatus _engineActionText;
+
+    /// <summary>A stopped engine can be started; only a reachable one can be stopped or restarted.</summary>
+    private bool CanStartEngine => !IsEngineActionRunning;
+    private bool CanStopEngine => !IsEngineActionRunning && IsDockerAvailable;
+
+    [RelayCommand(CanExecute = nameof(CanStartEngine))] private Task StartEngineAsync() => ApplyEngineActionAsync(DockerEngineAction.Start);
+    [RelayCommand(CanExecute = nameof(CanStopEngine))] private Task StopEngineAsync() => ApplyEngineActionAsync(DockerEngineAction.Stop);
+    [RelayCommand(CanExecute = nameof(CanStopEngine))] private Task RestartEngineAsync() => ApplyEngineActionAsync(DockerEngineAction.Restart);
+
+    /// <summary>
+    /// Engine control is host-wide and interrupts every running container, so stop and restart are
+    /// confirmed first and the whole manager is re-read afterwards: the point of the action is the
+    /// engine's resulting state rather than the command's exit code.
+    /// </summary>
+    private async Task ApplyEngineActionAsync(DockerEngineAction action)
+    {
+        if (IsEngineActionRunning) return;
+        var segment = DockerEngineActionRoutes.Segment(action);
+        if (action != DockerEngineAction.Start && RequestEngineConfirmationAsync is not null
+            && !await RequestEngineConfirmationAsync(LocalizedText.Get($"docker.engine.confirm.{segment}")))
+        {
+            EngineActionText = LocalizedText.Ref("docker.engine.status.cancelled");
+            return;
+        }
+
+        IsEngineActionRunning = true;
+        EngineActionText = LocalizedText.Ref($"docker.engine.status.{segment}");
+        try
+        {
+            var result = await client.ApplyEngineActionAsync(action, confirmed: true);
+            EngineActionText = result.Success
+                ? LocalizedText.Ref("docker.engine.status.completed")
+                : LocalizedText.Ref(result.ProblemCode);
+        }
+        catch (Exception exception)
+        {
+            EngineActionText = LocalizedText.Ref("docker.engine.status.failed", exception.Message);
+        }
+        finally
+        {
+            IsEngineActionRunning = false;
+            await RefreshAsync();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedContainer))] private Task StartContainerAsync() => ApplyContainerActionAsync("start");

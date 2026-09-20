@@ -42,11 +42,11 @@ public enum DockerProxyLayerState
 public sealed record DockerProxyLayerDto(DockerProxyTarget Target, DockerProxyLayerState State, string ProblemCode, string Detail);
 
 /// <summary>
-/// Saved proxy preference. Proxy URLs may embed credentials. <see cref="HttpProxy"/> and
-/// <see cref="HttpsProxy"/> are the operator's own values and are returned verbatim to the
-/// authorized caller so the form round-trips without the credential being lost; every other
-/// surface — the daemon's reported values, problem details, layer diagnostics, logs, and audits —
-/// masks the user information instead. The values are protected at rest.
+/// Saved proxy preference. Proxy URLs may embed credentials. Every value in this record is the
+/// operator's own input and is returned verbatim, because a masked echo would make the form
+/// unusable: saving it back would replace the real credential with the mask. Credentials are
+/// therefore kept out of logs, audits, problem details, and layer diagnostics instead of being
+/// hidden from the authorized operator who typed them. The values are protected at rest.
 /// </summary>
 public sealed record DockerProxySettingsDto(
     bool Enabled,
@@ -73,9 +73,31 @@ public sealed record SaveDockerProxySettingsRequest(
     bool Confirmed = false);
 
 /// <summary>
+/// What Docker Desktop itself has stored in its own settings file. Docker Desktop ignores
+/// <c>daemon.json</c> for proxies and always points its daemon at an internal relay
+/// (<c>http.docker.internal:3128</c>), so the daemon's reported proxy is the relay address rather
+/// than the upstream the operator chose. This record is the only way to show that upstream, and it
+/// is also what makes "is our setting actually in effect" answerable on that platform.
+/// </summary>
+/// <param name="Mode">Docker Desktop's proxy mode, e.g. <c>manual</c> or <c>system</c>; empty when it is not set.</param>
+/// <param name="SettingsPath">The file the values were read from, so the operator can inspect it.</param>
+public sealed record DockerDesktopProxyDto(
+    string Mode,
+    string HttpProxy,
+    string HttpsProxy,
+    string NoProxy,
+    string SettingsPath)
+{
+    /// <summary>True when Docker Desktop routes image pulls through an upstream we can compare against.</summary>
+    public bool IsManual => string.Equals(Mode, "manual", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
 /// Full proxy picture: the saved preference, the per-layer outcome, and the values the Docker
 /// daemon actually reports. <c>Effective*</c> is read from the daemon, not from the saved file, so
 /// an out-of-band host change is visible instead of being masked by the preference.
+/// <see cref="DesktopProxy"/> carries the Docker Desktop upstream on hosts where that application
+/// owns the daemon, and is null everywhere else.
 /// </summary>
 public sealed record DockerProxyStatusDto(
     DockerProxySettingsDto Settings,
@@ -85,7 +107,8 @@ public sealed record DockerProxyStatusDto(
     string EffectiveNoProxy,
     string ManagedProxyEndpoint,
     bool ManagedProxyAvailable,
-    string Platform);
+    string Platform,
+    DockerDesktopProxyDto? DesktopProxy = null);
 
 public static class DockerProxyApiRoutes
 {

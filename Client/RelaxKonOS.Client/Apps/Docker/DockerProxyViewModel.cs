@@ -150,7 +150,31 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client) : O
         }
     }
 
-    /// <summary>Copies a server status into the form. The values are already masked of credentials.</summary>
+    [ObservableProperty] private bool _hasDesktopProxy;
+    [ObservableProperty] private bool _isDesktopProxyManual;
+    [ObservableProperty] private string _desktopProxyHttp = string.Empty;
+    [ObservableProperty] private string _desktopProxyHttps = string.Empty;
+    [ObservableProperty] private string _desktopProxyNoProxy = string.Empty;
+    [ObservableProperty] private string _desktopSettingsPath = string.Empty;
+    [ObservableProperty] private LocalizedStatus _desktopProxyModeText;
+
+    /// <summary>
+    /// Copies the upstream Docker Desktop itself is forwarding to into the form. This is the only
+    /// place that value is visible: the daemon's own report always names Docker Desktop's internal
+    /// relay, so it cannot show which proxy image pulls actually leave through.
+    /// </summary>
+    [RelayCommand]
+    private void ImportDesktopProxy()
+    {
+        UseManagedProxy = false;
+        IsEnabled = true;
+        HttpProxy = DesktopProxyHttp;
+        HttpsProxy = DesktopProxyHttps;
+        if (DesktopProxyNoProxy.Length > 0) NoProxy = DesktopProxyNoProxy;
+        StatusText = LocalizedText.Ref("docker.proxy.desktop.imported");
+    }
+
+    /// <summary>Copies a server status into the form. Credentials are shown, because this form is the operator's own.</summary>
     private void Apply(DockerProxyStatusDto status)
     {
         IsEnabled = status.Settings.Enabled;
@@ -168,6 +192,18 @@ public sealed partial class DockerProxyViewModel(IRemoteDockerClient client) : O
         ManagedProxyEndpoint = status.ManagedProxyEndpoint;
         IsManagedProxyAvailable = status.ManagedProxyAvailable;
         Platform = status.Platform;
+
+        // Docker Desktop stores the upstream itself, and the daemon can only ever report its internal
+        // relay, so these two views answer different questions and are both shown.
+        HasDesktopProxy = status.DesktopProxy is not null;
+        IsDesktopProxyManual = status.DesktopProxy?.IsManual ?? false;
+        DesktopProxyHttp = status.DesktopProxy?.HttpProxy ?? string.Empty;
+        DesktopProxyHttps = status.DesktopProxy?.HttpsProxy ?? string.Empty;
+        DesktopProxyNoProxy = status.DesktopProxy?.NoProxy ?? string.Empty;
+        DesktopSettingsPath = status.DesktopProxy?.SettingsPath ?? string.Empty;
+        DesktopProxyModeText = HasDesktopProxy
+            ? LocalizedText.Ref(IsDesktopProxyManual ? "docker.proxy.desktop.mode.manual" : "docker.proxy.desktop.mode.system")
+            : default;
 
         _engineLayerState = status.Layers.FirstOrDefault(layer => layer.Target == DockerProxyTarget.Engine)?.State
             ?? DockerProxyLayerState.Disabled;

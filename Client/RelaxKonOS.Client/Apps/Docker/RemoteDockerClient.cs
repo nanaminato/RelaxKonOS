@@ -40,6 +40,10 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
     public Task<DockerOperationResult> DeleteVolumeAsync(string name, bool confirmed, CancellationToken cancellationToken = default) => SendAsync<DockerOperationResult>(HttpMethod.Delete, $"{DockerApiRoutes.VolumeByName.Replace("{name}", Uri.EscapeDataString(name))}?confirmed={confirmed.ToString().ToLowerInvariant()}", null, cancellationToken);
     public async Task<DockerContainerLogsDto?> GetContainerLogsAsync(string id, int tail = 200, CancellationToken cancellationToken = default) => await TrySendAsync<DockerContainerLogsDto>($"{DockerApiRoutes.ContainerLogs.Replace("{id}", Uri.EscapeDataString(id))}?tail={tail}", cancellationToken);
     public async Task<DockerContainerStatsDto?> GetContainerStatsAsync(string id, CancellationToken cancellationToken = default) => await TrySendAsync<DockerContainerStatsDto>(DockerApiRoutes.ContainerStats.Replace("{id}", Uri.EscapeDataString(id)), cancellationToken);
+    public Task<DockerEngineControlResult> ApplyEngineActionAsync(DockerEngineAction action, bool confirmed, CancellationToken cancellationToken = default) =>
+        SendAsync<DockerEngineControlResult>(HttpMethod.Post,
+            DockerApiRoutes.EngineAction.Replace("{action}", DockerEngineActionRoutes.Segment(action)),
+            new DockerEngineActionRequest(confirmed), cancellationToken);
     public Task<DockerProxyStatusDto> GetProxyStatusAsync(CancellationToken cancellationToken = default) => SendAsync<DockerProxyStatusDto>(DockerProxyApiRoutes.Proxy, cancellationToken);
     public Task<DockerProxyStatusDto> SaveProxyAsync(SaveDockerProxySettingsRequest request, CancellationToken cancellationToken = default) => SendProxyAsync(HttpMethod.Put, request, cancellationToken);
     public Task<DockerProxyStatusDto> ClearProxyAsync(CancellationToken cancellationToken = default) => SendProxyAsync(HttpMethod.Delete, null, cancellationToken);

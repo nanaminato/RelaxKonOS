@@ -92,6 +92,9 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
     if (request.Operation != PrivilegedOperationKind.DockerEngineConfigureProxy && request.DockerProxy is not null)
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "docker proxy fields require their dedicated operation");
 
+    if (request.Operation != PrivilegedOperationKind.DockerEngineServiceAction && request.DockerServiceAction is not null)
+        return Fail(64, PrivilegedProblemCode.InvalidRequest, "docker service action fields require their dedicated operation");
+
     try
     {
         return request.Operation switch

@@ -69,6 +69,8 @@ public enum PrivilegedOperationKind
     AuthenticateSystemUser,
     /// <summary>Writes the fixed Linux docker.service proxy drop-in and restarts the daemon.</summary>
     DockerEngineConfigureProxy,
+    /// <summary>Starts, stops, or restarts the fixed Linux <c>docker.service</c> unit.</summary>
+    DockerEngineServiceAction,
 }
 
 /// <summary>
@@ -211,6 +213,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("firewallRuleNumber")] int? FirewallRuleNumber = null,
     [property: JsonPropertyName("firewallCompanionRuleNumber")] int? FirewallCompanionRuleNumber = null,
     [property: JsonPropertyName("dockerProxy")] DockerProxyConfiguration? DockerProxy = null,
+    /// <summary>Lifecycle action for the fixed Docker daemon unit. The unit name is a Helper
+    /// constant, so a caller cannot aim this at another service.</summary>
+    [property: JsonPropertyName("dockerServiceAction")] PrivilegedServiceAction? DockerServiceAction = null,
     [property: JsonPropertyName("smbServiceAction")] SmbServiceAction? SmbServiceAction = null,
     [property: JsonPropertyName("smbUsername")] string? SmbUsername = null,
     [property: JsonPropertyName("smbPassword")] string? SmbPassword = null,

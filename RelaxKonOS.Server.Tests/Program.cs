@@ -92,6 +92,7 @@ try
     await VerifyProxyHostProfileRepositoryAsync(root);
     await VerifyProxySubscriptionRepositoryAsync(root);
     await VerifyDockerProxyAsync(root);
+    await VerifyDockerEngineControlAsync(root);
     await VerifyMihomoGeoDataStagingAsync(root);
     await VerifyMihomoGeoDataStartupProvisioningAsync();
     await VerifyProxyConfigurationTransactionAsync(root);
@@ -1240,19 +1241,61 @@ static async Task VerifyDockerProxyAsync(string root)
             { State: DockerProxyLayerState.RestartRequired, Detail: DockerProxyDetail.RestartPending },
         "A confirmed save did not install the daemon layer, or did not report it as awaiting a restart.");
 
-    // Live: the daemon now reports the proxy, and every diagnostic surface masks the credential.
+    // Live: the daemon now reports the proxy. The operator reads every reported value verbatim,
+    // because a masked echo would be written back as the mask on the next save; keeping the
+    // credential away from the wider audience of a log or an audit record stays MaskProxy's job.
     stubbedDaemon.State = new DockerEngineProxyState(secret, secret, "localhost");
     var applied = await fixture.Service.SaveAsync(
         new SaveDockerProxySettingsRequest(true, DockerProxySource.Custom, secret, null, "localhost", true, true, Confirmed: true), actor);
     Assert(applied.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine).State == DockerProxyLayerState.Applied,
         "A daemon that reports a proxy was not recognised as the layer being live.");
     Assert(applied.Settings.HttpProxy == secret, "The saved preference is no longer returned to its owner for the form to round-trip.");
-    Assert(applied.EffectiveHttpProxy == "http://***@proxy.example:8080"
-        && !applied.EffectiveHttpsProxy.Contains("s3cr3t", StringComparison.Ordinal),
-        "The daemon-reported proxy echoed a credential back to the caller.");
+    Assert(applied.EffectiveHttpProxy == secret && applied.EffectiveHttpsProxy == secret && applied.EffectiveNoProxy == "localhost",
+        "The daemon-reported proxy was not returned verbatim to the operator who owns the setting.");
+    Assert(applied.DesktopProxy is null, "A host without Docker Desktop reported a Docker Desktop proxy.");
     Assert(!applied.Layers.Any(layer => layer.Detail.Contains("s3cr3t", StringComparison.Ordinal)
         || layer.ProblemCode.Contains("s3cr3t", StringComparison.Ordinal)),
         "A layer diagnostic contained the proxy credential.");
+
+    // --- Docker Desktop: the stored upstream decides the layer, not the internal relay ---------
+    var desktopPath = Path.Combine(root, "settings-store.json");
+    await File.WriteAllTextAsync(desktopPath,
+        """{ "ProxyHTTPMode": "manual", "OverrideProxyHTTP": "http://desktop:8080", "OverrideProxyHTTPS": "http://desktop:8080", "OverrideProxyExclude": "internal", "Unrelated": 7 }""");
+    var desktopRead = DockerDesktopProxySettings.TryRead(desktopPath);
+    Assert(desktopRead is { IsManual: true } && desktopRead.HttpProxy == "http://desktop:8080"
+        && desktopRead.NoProxy == "internal" && desktopRead.SettingsPath == desktopPath,
+        "The Docker Desktop settings file was not read back into its proxy values.");
+    Assert(DockerDesktopProxySettings.TryRead(Path.Combine(root, "absent-settings.json")) is null,
+        "A missing Docker Desktop settings file was reported as a configured proxy.");
+
+    // Docker Desktop always reports its own internal relay, so a non-empty daemon proxy proves only
+    // that the relay exists. The stored upstream is the only value that can confirm this layer.
+    var desktopDaemon = DispatchProxy.Create<IDockerEngineService, StubDockerEngine>();
+    ((StubDockerEngine)(object)desktopDaemon).State =
+        new DockerEngineProxyState("http://http.docker.internal:3128", "http://http.docker.internal:3128", "hubproxy.docker.internal");
+    var desktopSettings = new InMemoryDockerProxySettingsRepository();
+    var desktopReader = new StaticDockerDesktopProxyReader(new DockerDesktopProxyDto("manual", "http://other:9999", "http://other:9999", string.Empty, desktopPath));
+    var desktopFixture = CreateDockerProxyService(desktopSettings, new DockerProxyResolver(desktopSettings, new StaticProxySettingsService()),
+        desktopDaemon, desktopProxy: desktopReader);
+
+    await desktopFixture.Service.SaveAsync(
+        new SaveDockerProxySettingsRequest(true, DockerProxySource.Custom, "http://desktop:8080", null, "internal", true, true, Confirmed: true), actor);
+    var drifted = await desktopFixture.Service.GetStatusAsync();
+    Assert(drifted.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine) is
+            { State: DockerProxyLayerState.RestartRequired, Detail: DockerProxyDetail.DesktopUpstreamDiffers },
+        "A Docker Desktop host forwarding to another upstream was reported as applied.");
+
+    desktopReader.Snapshot = new DockerDesktopProxyDto("manual", "http://desktop:8080", "http://desktop:8080", "internal", desktopPath);
+    var converged = await desktopFixture.Service.GetStatusAsync();
+    Assert(converged.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine).State == DockerProxyLayerState.Applied
+        && converged.DesktopProxy is { IsManual: true, HttpProxy: "http://desktop:8080" },
+        "A Docker Desktop host whose stored upstream matches the preference was not reported as applied.");
+
+    desktopReader.Snapshot = new DockerDesktopProxyDto("system", string.Empty, string.Empty, string.Empty, desktopPath);
+    var systemMode = await desktopFixture.Service.GetStatusAsync();
+    Assert(systemMode.Layers.Single(layer => layer.Target == DockerProxyTarget.Engine) is
+            { State: DockerProxyLayerState.RestartRequired, Detail: DockerProxyDetail.DesktopRestartPending },
+        "A Docker Desktop host still in system proxy mode was reported as applied.");
 
     // Platform without a daemon mechanism: reported, never written.
     var unsupported = CreateDockerProxyService(serviceSettings, serviceResolver, daemon, supported: false);
@@ -1288,6 +1331,9 @@ static async Task VerifyDockerProxyAsync(string root)
         "A managed proxy with no listener was written to the daemon instead of failing closed.");
     Assert(brokenStatus.ManagedProxyEndpoint == $"http://127.0.0.1:{brokenPort}",
         "The unusable managed proxy endpoint was not advertised so the operator can find it.");
+
+    Console.WriteLine("PASS DOCKER PROXY: value rules, credential visibility, Docker Desktop upstream read, "
+        + "per-layer reporting, protected storage, and fail-closed behaviour verified.");
 }
 
 /// <summary>A port that was allocated and released, so nothing is listening on it right now.</summary>
@@ -1312,8 +1358,58 @@ static async Task<T> CaptureAsync<T>(Func<Task> action, string message) where T 
 /// not touched without needing a real daemon-side mechanism.
 /// </summary>
 static DockerProxyServiceFixture CreateDockerProxyService(IDockerProxySettingsRepository settings, IDockerProxyResolver resolver,
-    IDockerEngineService engine, bool supported = true) =>
-    new(settings, resolver, engine, supported);
+    IDockerEngineService engine, bool supported = true, IDockerDesktopProxyReader? desktopProxy = null) =>
+    new(settings, resolver, engine, supported, desktopProxy);
+
+static async Task VerifyDockerEngineControlAsync(string root)
+{
+    Assert(DockerApiRoutes.EngineAction == "/api/v1.0/docker/engine/{action}",
+        "The Docker engine action route moved away from the versioned public base.");
+    Assert(DockerEngineActionRoutes.Segment(DockerEngineAction.Restart) == "restart"
+        && DockerEngineActionRoutes.TryParse("stop", out var parsedStop) && parsedStop == DockerEngineAction.Stop
+        && !DockerEngineActionRoutes.TryParse("delete", out _),
+        "The engine action segment table no longer maps exactly the supported lifecycle actions.");
+
+    var daemon = DispatchProxy.Create<IDockerEngineService, StubDockerEngine>();
+    var controller = new RecordingDockerEngineHostController();
+    var service = new DockerEngineControlService(controller, daemon, NullLogger<DockerEngineControlService>.Instance);
+
+    // An unknown action must not reach the host at all.
+    var invalid = await service.ApplyAsync("delete", confirmed: true);
+    Assert(!invalid.Success && invalid.ProblemCode == DockerEngineProblem.InvalidAction
+        && invalid.Status is null && controller.Requests.Count == 0,
+        "An unsupported engine action reached the host instead of being rejected.");
+
+    // Stop and restart terminate every running container, so neither happens without confirmation.
+    foreach (var action in new[] { "stop", "restart" })
+    {
+        var unconfirmed = await service.ApplyAsync(action, confirmed: false);
+        Assert(!unconfirmed.Success && unconfirmed.ProblemCode == DockerEngineProblem.ConfirmationRequired,
+            $"An unconfirmed '{action}' was accepted.");
+    }
+    Assert(controller.Requests.Count == 0, "An unconfirmed engine action was executed on the host.");
+
+    // Start interrupts nothing, so it needs no confirmation and is passed through unchanged.
+    var started = await service.ApplyAsync("start", confirmed: false);
+    Assert(started.Success && started.Status is { IsAvailable: true } && controller.Requests.SequenceEqual([DockerEngineAction.Start]),
+        "Starting the engine was blocked, mis-mapped, or reported without the engine state.");
+
+    // A host failure is reported with its own code, and the engine state is still reported.
+    controller.Succeed = false;
+    var failed = await service.ApplyAsync("restart", confirmed: true);
+    Assert(!failed.Success && failed.ProblemCode == DockerEngineProblem.ActionFailed && failed.Status is not null
+        && controller.Requests[^1] == DockerEngineAction.Restart,
+        "A failed engine command did not report its problem code, the engine state, or the wrong action.");
+
+    // A platform without a mechanism never touches a host command.
+    controller.IsSupported = false;
+    var unsupported = await service.ApplyAsync("start", confirmed: false);
+    Assert(!unsupported.Success && unsupported.ProblemCode == DockerEngineProblem.PlatformUnsupported
+        && controller.Requests.Count == 2,
+        "A platform without an engine mechanism still ran a host command.");
+
+    Console.WriteLine("PASS DOCKER ENGINE: lifecycle route, action mapping, confirmation, host dispatch, and outcome reporting verified.");
+}
 
 static async Task VerifyMihomoGeoDataStagingAsync(string root)
 {
@@ -2027,14 +2123,42 @@ sealed class TestPolicyProvider : IAppPolicyProvider
 sealed class DockerProxyServiceFixture
 {
     public DockerProxyServiceFixture(IDockerProxySettingsRepository settings, IDockerProxyResolver resolver,
-        IDockerEngineService engine, bool supported)
+        IDockerEngineService engine, bool supported, IDockerDesktopProxyReader? desktopProxy)
     {
         Configurator = new RecordingDockerEngineProxyConfigurator { IsSupported = supported };
-        Service = new DockerProxyService(settings, resolver, Configurator, engine, NullLogger<DockerProxyService>.Instance);
+        DesktopProxy = desktopProxy ?? new StaticDockerDesktopProxyReader(null);
+        Service = new DockerProxyService(settings, resolver, Configurator, engine, DesktopProxy, NullLogger<DockerProxyService>.Instance);
     }
 
     public DockerProxyService Service { get; }
     public RecordingDockerEngineProxyConfigurator Configurator { get; }
+    public IDockerDesktopProxyReader DesktopProxy { get; }
+}
+
+/// <summary>Stand-in for Docker Desktop's settings file, so a test controls what that app stores.</summary>
+sealed class StaticDockerDesktopProxyReader(DockerDesktopProxyDto? snapshot) : IDockerDesktopProxyReader
+{
+    public DockerDesktopProxyDto? Snapshot { get; set; } = snapshot;
+
+    public DockerDesktopProxyDto? Read() => Snapshot;
+}
+
+/// <summary>Stand-in for the host mechanism: records the lifecycle commands a caller asked for.</summary>
+sealed class RecordingDockerEngineHostController : IDockerEngineHostController
+{
+    public List<DockerEngineAction> Requests { get; } = [];
+
+    public string Platform => "test-mechanism";
+    public bool IsSupported { get; set; } = true;
+    public bool Succeed { get; set; } = true;
+
+    public Task<DockerEngineHostCommandResult> ApplyAsync(DockerEngineAction action, CancellationToken cancellationToken = default)
+    {
+        Requests.Add(action);
+        return Task.FromResult(Succeed
+            ? new DockerEngineHostCommandResult(true, string.Empty)
+            : new DockerEngineHostCommandResult(false, DockerEngineProblem.ActionFailed));
+    }
 }
 
 /// <summary>Stand-in for the daemon-side writer: records which host changes were requested.</summary>
@@ -2056,16 +2180,19 @@ sealed class RecordingDockerEngineProxyConfigurator : IDockerEngineProxyConfigur
 }
 
 /// <summary>
-/// Docker engine stub. Only <c>GetProxyStateAsync</c> is exercised by the proxy service; every
-/// other member throws, so a future call through this stub fails loudly rather than silently.
+/// Docker engine stub. Only <c>GetProxyStateAsync</c> and <c>GetStatusAsync</c> are exercised by the
+/// proxy and engine-control services; every other member throws, so a future call through this stub
+/// fails loudly rather than silently.
 /// </summary>
 class StubDockerEngine : DispatchProxy
 {
     public DockerEngineProxyState? State { get; set; }
+    public DockerStatusDto? Status { get; set; }
 
     protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) => targetMethod?.Name switch
     {
         nameof(IDockerEngineService.GetProxyStateAsync) => Task.FromResult(State),
+        nameof(IDockerEngineService.GetStatusAsync) => Task.FromResult(Status ?? new DockerStatusDto(true, string.Empty, "29.8.0", "linux", "x64")),
         _ => throw new NotSupportedException(targetMethod?.Name),
     };
 }

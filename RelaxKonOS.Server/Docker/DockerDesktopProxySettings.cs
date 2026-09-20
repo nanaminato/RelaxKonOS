@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Win32;
+using RelaxKonOS.Protocol.Docker;
 
 namespace RelaxKonOS.Server.Docker;
 
@@ -148,44 +148,42 @@ internal static class DockerDesktopProxySettings
     }
 
     /// <summary>
-    /// Stops or starts Docker Desktop through its own CLI. Docker Desktop rewrites its settings file
-    /// while shutting down, so the caller must stop it before writing and start it afterwards.
+    /// Reads the proxy Docker Desktop currently has stored, or null when the file is absent,
+    /// unreadable, not JSON, or holds no proxy keys. A read failure is reported as "nothing to
+    /// show" rather than as an error: this is a diagnostic view of another application's file.
     /// </summary>
-    internal static async Task<bool> RunDesktopCommandAsync(string command, TimeSpan timeout, CancellationToken cancellationToken)
+    internal static DockerDesktopProxyDto? TryRead(string path)
     {
         try
         {
-            using var process = new Process { StartInfo = new ProcessStartInfo("docker")
-            {
-                RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
-            } };
-            process.StartInfo.ArgumentList.Add("desktop");
-            process.StartInfo.ArgumentList.Add(command);
-            if (!process.Start()) return false;
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            deadline.CancelAfter(timeout);
-            var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-            var error = process.StandardError.ReadToEndAsync(CancellationToken.None);
-            try { await process.WaitForExitAsync(deadline.Token); }
-            catch (OperationCanceledException)
-            {
-                TryStop(process);
-                await process.WaitForExitAsync(CancellationToken.None);
-                await Task.WhenAll(output, error);
-                return false;
-            }
-            await Task.WhenAll(output, error);
-            return process.ExitCode == 0;
+            if (!File.Exists(path)) return null;
+            var content = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(content) || JsonNode.Parse(content) is not JsonObject document) return null;
+            return new DockerDesktopProxyDto(
+                ReadString(document, ProxyModeKey),
+                ReadString(document, HttpProxyKey),
+                ReadString(document, HttpsProxyKey),
+                ReadString(document, ExcludeKey),
+                path);
         }
-        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or FileNotFoundException) { return false; }
-        catch (InvalidOperationException) { return false; }
+        catch (JsonException) { return null; }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
     }
 
-    private static void TryStop(Process process)
-    {
-        try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
-        catch (InvalidOperationException) { /* The process exited between the checks. */ }
-    }
+    /// <summary>Docker Desktop stores these as strings; any other JSON type is not a proxy value.</summary>
+    private static string ReadString(JsonObject document, string key) =>
+        document.TryGetPropertyValue(key, out var node)
+        && node is not null && node.GetValueKind() == JsonValueKind.String
+            ? node.GetValue<string>()
+            : string.Empty;
+
+    /// <summary>
+    /// Stops or starts Docker Desktop through its own CLI. Docker Desktop rewrites its settings file
+    /// while shutting down, so the caller must stop it before writing and start it afterwards.
+    /// </summary>
+    internal static Task<bool> RunDesktopCommandAsync(string command, TimeSpan timeout, CancellationToken cancellationToken) =>
+        DockerDesktopCli.RunAsync(command, timeout, cancellationToken);
 
     private static void TryDelete(string path)
     {

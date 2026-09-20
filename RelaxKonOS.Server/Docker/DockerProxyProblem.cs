@@ -35,6 +35,8 @@ public static class DockerProxyProblem
     public const string DesktopSettingsDenied = "docker.proxy.problem.desktop_settings_denied";
     /// <summary>Docker Desktop could not be stopped, so its settings were not replaced.</summary>
     public const string DesktopStopFailed = "docker.proxy.problem.desktop_stop_failed";
+    /// <summary>Docker Desktop did not keep the value that was written to its settings file.</summary>
+    public const string DesktopSettingsNotApplied = "docker.proxy.problem.desktop_settings_not_applied";
     /// <summary>The daemon does not report proxy information, so nothing can be verified.</summary>
     public const string DaemonUnavailable = "docker.proxy.problem.daemon_unavailable";
 }
@@ -46,6 +48,8 @@ public static class DockerProxyDetail
     public const string RestartPending = "docker.proxy.detail.restart_pending";
     /// <summary>Docker Desktop could not be restarted by the Server and needs a manual restart.</summary>
     public const string DesktopRestartPending = "docker.proxy.detail.desktop_restart_pending";
+    /// <summary>Docker Desktop is running, but it forwards to a different upstream than the saved one.</summary>
+    public const string DesktopUpstreamDiffers = "docker.proxy.detail.desktop_upstream_differs";
     /// <summary>The client already passes the proxy to builds, so no host change was needed.</summary>
     public const string BuildOnly = "docker.proxy.detail.build_only";
 }

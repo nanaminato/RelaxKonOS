@@ -532,7 +532,18 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerComposeService, Re
 // Windows) and reports Unsupported elsewhere.
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineProxyConfigurator, RelaxKonOS.Server.Docker.DockerEngineProxyConfigurator>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyResolver, RelaxKonOS.Server.Docker.DockerProxyResolver>();
+// Docker Desktop is the only host that hides the real upstream behind an internal relay, so the
+// reader that knows its settings file is selected here instead of probing for a file that cannot
+// exist on the other platforms.
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerDesktopProxyReader>(_ =>
+    OperatingSystem.IsWindows()
+        ? new RelaxKonOS.Server.Docker.WindowsDockerDesktopProxyReader()
+        : new RelaxKonOS.Server.Docker.UnsupportedDockerDesktopProxyReader());
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyService, RelaxKonOS.Server.Docker.DockerProxyService>();
+// Engine lifecycle control reuses the same platform split as the proxy configurator: a systemd
+// unit driven through the privileged Helper, or the Docker Desktop CLI.
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineHostController, RelaxKonOS.Server.Docker.DockerEngineHostController>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineControlService, RelaxKonOS.Server.Docker.DockerEngineControlService>();
 var guardianOptions = builder.Configuration.GetSection("GuardianAgent").Get<RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions>() ?? new RelaxKonOS.Server.ProcessGuardian.GuardianAgentOptions();
 builder.Services.AddSingleton(guardianOptions);
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService, RelaxKonOS.Server.ProcessGuardian.NamedPipeProcessGuardianService>();

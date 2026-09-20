@@ -53,6 +53,17 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             });
             return confirmed;
         };
+        // Stopping or restarting the engine terminates every running container on the host, so it
+        // gets its own confirmation wording instead of the deletion dialog's.
+        vm.RequestEngineConfirmationAsync = async message =>
+        {
+            var confirmed = false;
+            await context.ShowDialogAsync<bool>(window!, LocalizedText.Get("docker.engine.control"), dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(message, result => { confirmed = result; dialog.Close(result); }, LocalizedText.Get("docker.engine.confirm_continue")),
+            });
+            return confirmed;
+        };
         vm.ShowDockerUnavailableAsync = () => DockerManagerDialogs.ShowDockerUnavailableAsync(context, window, vm);
         vm.ShowEditContainerAsync = () => DockerManagerDialogs.ShowEditContainerAsync(context, window!, vm);
         vm.ShowEditStackAsync = () => DockerManagerDialogs.ShowEditStackAsync(context, window!, vm);

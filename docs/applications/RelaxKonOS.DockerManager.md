@@ -44,6 +44,7 @@
 ```text
 概览
 ├─ 运行时与安装
+├─ 引擎控制          启动 / 停止 / 重启整机 Docker 引擎（需确认）
 ├─ Containers       列表 / 详情 / 创建
 ├─ Stacks           Compose / 模板 / 部署历史
 ├─ Images           本地镜像 / 拉取 / 构建
@@ -129,6 +130,7 @@ IDockerEngineService ── IDockerRuntimeInstaller ── IDockerComposeService
 | GET/POST/DELETE | `/api/v1.0/docker/images|networks|volumes` | read/manage | 资源管理，删除前依赖检查 |
 | GET | `/api/v1.0/docker/events` | `server.docker.read` | 过滤后的事件和审计只读流 |
 | GET/PUT/DELETE | `/api/v1.0/docker/proxy` | read/manage | 读取、写入、移除守护进程层与构建层代理；写操作返回完整状态，被拒绝时返回稳定问题码 |
+| POST | `/api/v1.0/docker/engine/{action}` | `server.docker.manage` | 启动/停止/重启整机 Docker 引擎；`stop`/`restart` 必须带 `confirmed`，返回操作后的引擎状态 |
 
 长任务（拉取、构建、部署、导入导出、安装）返回 `OperationId`，以通用 SignalR 任务通道推送阶段、百分比、可本地化消息键和终态。日志与终端必须设置最大帧、速率限制、取消和断连清理；浏览器/客户端不保留 raw Docker stream。
 
@@ -158,29 +160,49 @@ Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；Rel
 
 | 层 | 作用 | Linux | Windows（Docker Desktop） |
 |---|---|---|---|
-| `Engine`（守护进程层） | 镜像拉取等守护进程自身的出网 | 写 `/etc/systemd/system/docker.service.d/http-proxy.conf` drop-in，再 `systemctl daemon-reload` + `try-restart docker.service` | Docker Desktop 忽略 `daemon.json`，改为编辑 `%APPDATA%\Docker\settings-store.json`（键 `ProxyHTTPMode`/`OverrideProxyHTTP`/`OverrideProxyHTTPS`/`OverrideProxyExclude`），前后 `docker desktop stop`/`start` |
+| `Engine`（守护进程层） | 镜像拉取等守护进程自身的出网 | 写 `/etc/systemd/system/docker.service.d/http-proxy.conf` drop-in，再 `systemctl daemon-reload` + `try-restart docker.service` | Docker Desktop 忽略 `daemon.json`，改为编辑 `%APPDATA%\Docker\settings-store.json`（键 `ProxyHTTPMode`/`OverrideProxyHTTP`/`OverrideProxyHTTPS`/`OverrideProxyExclude`），前后 `docker desktop stop`/`start`，写后回读该文件校验取值确实落盘 |
 | `Build`（构建层） | `docker build`（BuildKit 预定义构建参数）与 `docker compose` | 不写宿主文件 | 不写宿主文件 |
 
 - **代理来源**：`Custom`（运维填写 URL）或 `ManagedProxy`（复用内置代理运行时，即 mihomo 的 mixed-port 监听）。内置来源不落库任何 URL，避免切回自定义时复活过期值；解析时对 `127.0.0.1:{MixedPort}` 做 TCP 监听探测，不可达则判定失败关闭（`docker.proxy.problem.managed_proxy_unavailable`），不会把守护进程指向无人监听的端口。
 - **单一解析器**：`IDockerProxyResolver` 是两层唯一的取值来源（带 5 秒缓存 + 保存后 `Invalidate`），因此同一次保存不可能只作用于其中一层。
 - **构建层无须宿主操作**：`DockerCliEngineService` 与 `DockerComposeService` 在启动 `docker` 子进程前注入 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 大小写各一份；禁用时清除继承的同名变量，避免上层环境残留导致“已关闭却仍在走代理”。
-- **凭据处理**：代理 URL 可能内嵌 `user:pass@`。服务端加密存储；已保存的偏好原样返回给获授权调用者，使表单能回填而不会把凭据改写成掩码值后再存回。守护进程自报的有效值、问题细节、层诊断、日志与审计一律经 `DockerProxyValidation.MaskProxy` 去掉 userinfo；特权 Helper 也从不回显收到的值（读回校验用文件内容比对而非 `systemctl show`，后者会打印环境变量）。
+- **凭据处理**：代理 URL 可能内嵌 `user:pass@`。服务端加密存储；**返回界面时不做掩码** —— 已保存的偏好与守护进程自报的有效值都原样返回，只在日志、审计、问题码与层诊断中经 `DockerProxyValidation.MaskProxy` 去掉 userinfo。掩码只面向“非操作者”的读者：若把掩码值回填进表单，下一次保存就会把真实凭据改写成 `***`，等于损坏配置。特权 Helper 也从不回显收到的值（读回校验用文件内容比对而非 `systemctl show`，后者会打印环境变量）。
 - **宿主全局**：Docker daemon 是机器资源而非租户资源，故配置为单行表、以最后一位获授权写入者为准，不采用镜像源的每用户模型；`updated_by` 仅用于可追溯。
 - **确认语义**：安装/替换守护进程层会重启 Docker 并中断运行中的容器，因此 `SaveDockerProxySettingsRequest.Confirmed` 缺失时该层只返回 `docker.proxy.problem.confirmation_required` 而不写宿主；客户端在提交前用确认对话框取回该确认。移除时仅当本机确曾由 RelaxKonOS 写入过（`engine_applied`）才触碰宿主，避免为一次空操作重启 Docker。
-- **“已写入”不等于“已生效”**：守护进程层写入成功后状态为 `RestartRequired`；只有 `docker info` 回报非空 `HttpProxy`/`HttpsProxy` 才升级为 `Applied`。Docker Desktop 会把 manual 代理改写成内部地址，故判定依据是非空而非与输入逐字相等，实际值同时展示以便发现漂移。
+- **读取 Docker Desktop 自身的配置**：Docker Desktop 始终让守护进程连到它自己的内部代理（`docker info` 报 `http.docker.internal:3128`），并把该内部代理的上游动态指向运维填写的地址。因此守护进程的自报值在该平台**永远看不到真实上游**。`IDockerDesktopProxyReader` 直接读取 `settings-store.json` 的 `ProxyHTTPMode` 与 override 键，页面单独展示“Docker Desktop 正在使用的代理”，并提供一键导入表单。
+- **“已写入”不等于“已生效”**：守护进程层写入成功后状态先为 `RestartRequired`，再由回读判定。判定依据按平台区分：
+  - **Docker Desktop**：以 `settings-store.json` 中实际保存的上游是否等于解析值判定（比较前归一化首尾空白、末尾 `/` 与大小写）。相等 → `Applied`；manual 模式但上游不同 → `RestartRequired` + `docker.proxy.detail.desktop_upstream_differs`；仍是 `system` 模式 → `RestartRequired` + `docker.proxy.detail.desktop_restart_pending`。这样不会因为“守护进程报了个非空代理”（那个代理其实是 Docker Desktop 的内部中转）而误判为已生效。该判定不依赖守护进程是否在运行。
+  - **原生 Linux**：只有 `docker info` 回报非空 `HttpProxy`/`HttpsProxy` 才升级为 `Applied`，否则 `RestartRequired`。
+- **为什么 Docker Desktop 改代理不需要重启引擎**：Docker Desktop 的 vpnkit 内部代理会在上游变更时**动态重配**，而守护进程指向的地址（内部代理）始终不变，所以引擎进程不需要重启（Docker 官方《How Docker Desktop Networking Works Under the Hood》即此结论）。相对地，原生 Linux 守护进程是从 systemd 单元的启动环境读取 `HTTP_PROXY`，属于启动期配置，必须重启 `docker.service` 才生效。本功能在 Windows 上因此只需重启 Docker Desktop 应用本身；这一步不可省略的原因不是引擎，而是**该应用在退出时会用内存中的设置覆盖 `settings-store.json`**，所以必须先停它再写、写完再启动。若 Server 无法驱动 Docker Desktop，写入仍然落盘，状态提示交由运维手动重启。
 - **平台限制**：Linux 经特权 Helper 写入（路径、单元名与命令行均为常量，不接受任意路径/命令，不构成通用提权面）；Windows 走 Docker Desktop 自己的设置文件。其余平台报 `Unsupported`。Windows Server 上的 Docker Desktop 不属于受支持路径，见 §2.2。
 
 ```text
 客户端「网络代理」页 ──HTTPS+JWT──► /api/v1.0/docker/proxy
                                         │
                              IDockerProxyService
-                                   │            │
-                     IDockerProxyResolver   IDockerEngineProxyConfigurator
-                        （两层唯一取值）        （唯一的平台分支点）
-                                                     │
-                                    Linux: PrivilegedHelper → systemd drop-in
-                                    Windows: Docker Desktop settings-store.json
+                          │            │            │
+        IDockerProxyResolver   IDockerEngineProxyConfigurator   IDockerDesktopProxyReader
+           （两层唯一取值）        （唯一的平台分支点）              （只读 Docker Desktop 上游）
+                                        │
+                       Linux: PrivilegedHelper → systemd drop-in
+                       Windows: Docker Desktop settings-store.json
 ```
+
+### 3.6 引擎生命周期控制
+
+Docker 引擎是整机资源，控制它中断的是**本机所有容器**，因此与按容器的 `/containers/{id}/{action}` 分开，独立为 `/docker/engine/{action}`，并要求 `server.docker.manage`：
+
+| 动作 | Linux（原生守护进程） | Windows（Docker Desktop） |
+|---|---|---|
+| `start` | 特权 Helper 执行 `systemctl start docker.service` | `docker desktop start` |
+| `stop` | `systemctl stop docker.service` | `docker desktop stop` |
+| `restart` | `systemctl restart docker.service` | `docker desktop restart` |
+
+- **只传动作，不传目标**：请求体只有 `confirmed`；单元名 `docker.service` 是 Helper 常量，平台标识与命令由 `IDockerEngineHostController` 自行决定，端点与客户端都不分支操作系统。因此该能力不会被用来操作任意服务或执行任意命令。
+- **不改变开机策略**：这些动作不会 `enable`/`disable` 单元，也不会改动宿主上的任何配置文件，仅改变当前运行状态。
+- **确认语义**：`stop` 与 `restart` 必须带 `Confirmed`，否则返回 `docker.engine.problem.confirmation_required` 且不触碰宿主；`start` 不需要确认（它不中断任何东西）。客户端在点击后先弹确认对话框。
+- **返回操作后状态**：响应同时携带动作后的 `DockerStatusDto`，客户端不必轮询即可知道引擎是否恢复；`stop` 之后守护进程不可达属于预期结果，由状态表达，不计作动作失败。
+- **与安装流程的区别**：`DockerEngineInstall` 只负责首次安装与权限授予，安装后需要重启的是 RelaxKonOS Server 自身（见 `docker.access_restart_required`），不是引擎；本节的三个动作不涉及安装。
 
 客户端结果约定沿用 Docker Manager 既有的“HTTP 200 + 结果 DTO”风格：状态对象同时携带两层结果、守护进程自报的有效值与问题码；仅当偏好本身不合法（`DockerProxyValidationException`）时返回 `400` 与 ProblemDetails，客户端读取其中的 `problemCode` 并本地化，未映射的码原样显示而不是被吞掉。
 
@@ -193,11 +215,11 @@ Docker daemon 的控制权相当于宿主机高权限。故默认原则是“只
 | 权限 | 允许内容 |
 |---|---|
 | `server.docker.read` | 状态、资源元数据、脱敏配置、日志与事件读取 |
-| `server.docker.manage` | 创建和改变容器/Stack/镜像/网络/卷、终端与导入导出 |
+| `server.docker.manage` | 创建和改变容器/Stack/镜像/网络/卷、终端与导入导出、整机引擎启停与重启 |
 | `server.docker.install` | 生成并执行 Docker 运行时安装、启动、升级计划 |
 
 - `manage` 不蕴含 `install`；任何删除、强制停止、主机网络/特权容器、Docker socket 挂载、host PID/IPC、`--privileged` 或高危端口发布均须二次确认并说明风险。
-- 表单里的 `password`、token、secret 和整个敏感环境变量值默认掩码；日志、审计和异常不得回显它们。代理 URL 的 userinfo（`user:pass@`）按同一规则处理：加密落库、返回前掩码、审计只记动作与结果，见 §3.5。
+- 表单里的 `password`、token、secret 和整个敏感环境变量值默认掩码；日志、审计和异常不得回显它们。代理 URL 的 userinfo（`user:pass@`）按同一规则处理，但**面向操作者的界面是例外**：该值必须原样返回，否则表单回填后再保存会把真实凭据改写成掩码。因此掩码只作用于日志、审计、问题码与诊断信息，见 §3.5。
 - 应用只接受 local transport。若将来增加远程 Engine，必须使用 TLS、证书轮换、允许列表、显式环境配置及单独权限，不能复用本机默认。
 - 审计事件最少记录操作者、时间、目标、动作、确认方式、结果和关联 `OperationId`；记录命令模板/结构化差异，不记录秘密。
 

@@ -29,6 +29,7 @@ public sealed class DockerProxyService(
     IDockerProxyResolver resolver,
     IDockerEngineProxyConfigurator configurator,
     IDockerEngineService engine,
+    IDockerDesktopProxyReader desktopProxy,
     ILogger<DockerProxyService> logger) : IDockerProxyService
 {
     public async Task<DockerProxyStatusDto> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -36,8 +37,10 @@ public sealed class DockerProxyService(
         var resolution = await resolver.ResolveAsync(cancellationToken);
         var saved = await ReadSavedAsync(cancellationToken);
         var engineState = await SafeReadEngineProxyAsync(cancellationToken);
-        return Describe(resolution, saved, engineState,
-            [BuildLayer(resolution), EngineLayer(resolution, saved, engineState)]);
+        var desktop = ReadDesktopProxy();
+        LogReportedProxy(engineState);
+        return Describe(resolution, saved, engineState, desktop,
+            [BuildLayer(resolution), EngineLayer(resolution, saved, engineState, desktop)]);
     }
 
     public async Task<DockerProxyStatusDto> SaveAsync(SaveDockerProxySettingsRequest request, Guid actorUserId, CancellationToken cancellationToken = default)
@@ -69,10 +72,11 @@ public sealed class DockerProxyService(
         // The freshly installed layer is re-evaluated against the daemon's own read-back, because a
         // written configuration is not yet a live one.
         var engineState = await SafeReadEngineProxyAsync(cancellationToken);
+        var desktop = ReadDesktopProxy();
         var reEvaluated = layers.Any(layer => layer.Target == DockerProxyTarget.Engine && layer.State == DockerProxyLayerState.RestartRequired)
-            ? EngineLayer(resolution, await ReadSavedAsync(cancellationToken), engineState)
+            ? EngineLayer(resolution, await ReadSavedAsync(cancellationToken), engineState, desktop)
             : layers.Single(layer => layer.Target == DockerProxyTarget.Engine);
-        return Describe(resolution, await ReadSavedAsync(cancellationToken), engineState,
+        return Describe(resolution, await ReadSavedAsync(cancellationToken), engineState, desktop,
             [layers.Single(layer => layer.Target == DockerProxyTarget.Build), reEvaluated]);
     }
 
@@ -96,7 +100,7 @@ public sealed class DockerProxyService(
             await RetireEngineLayerAsync(previous, resolution, cancellationToken),
         };
         var engineState = await SafeReadEngineProxyAsync(cancellationToken);
-        return Describe(resolution, null, engineState, layers);
+        return Describe(resolution, null, engineState, ReadDesktopProxy(), layers);
     }
 
     private async Task<DockerProxyLayerDto> InstallEngineLayerAsync(DockerProxyResolution resolution, CancellationToken cancellationToken)
@@ -147,7 +151,7 @@ public sealed class DockerProxyService(
         return new(DockerProxyTarget.Build, DockerProxyLayerState.Applied, string.Empty, DockerProxyDetail.BuildOnly);
     }
 
-    private DockerProxyLayerDto EngineLayer(DockerProxyResolution resolution, DockerProxySetting? saved, DockerEngineProxyState? engineState)
+    private DockerProxyLayerDto EngineLayer(DockerProxyResolution resolution, DockerProxySetting? saved, DockerEngineProxyState? engineState, DockerDesktopProxyDto? desktop)
     {
         if (!resolution.Enabled || !resolution.ApplyToEngine)
             return new(DockerProxyTarget.Engine, DockerProxyLayerState.Disabled, string.Empty, string.Empty);
@@ -158,22 +162,48 @@ public sealed class DockerProxyService(
         if (saved is null || !saved.EngineApplied)
             return new(DockerProxyTarget.Engine, DockerProxyLayerState.Failed,
                 saved is { EngineProblemCode.Length: > 0 } ? saved.EngineProblemCode : DockerProxyProblem.EngineNotApplied, string.Empty);
+
+        // Docker Desktop always routes the daemon through its internal relay and re-points that relay
+        // at the operator's upstream without restarting the engine, so the daemon reporting a proxy
+        // only proves the relay is there. The upstream Docker Desktop actually stored is the only
+        // value that can confirm this layer, and it is readable whether or not the app is running.
+        if (desktop is not null)
+        {
+            if (desktop.IsManual && MatchesDesktopUpstream(desktop, resolution))
+                return new(DockerProxyTarget.Engine, DockerProxyLayerState.Applied, string.Empty, string.Empty);
+            return new(DockerProxyTarget.Engine, DockerProxyLayerState.RestartRequired, string.Empty,
+                desktop.IsManual ? DockerProxyDetail.DesktopUpstreamDiffers : DockerProxyDetail.DesktopRestartPending);
+        }
+
         if (engineState is null)
             return new(DockerProxyTarget.Engine, DockerProxyLayerState.Failed, DockerProxyProblem.DaemonUnavailable, string.Empty);
 
-        // Docker is allowed to normalise or relay the configured value, which Docker Desktop does by
-        // routing a manual proxy through an internal address. A non-empty daemon proxy is therefore
-        // the achievable proof that the layer is live; the exact value is reported alongside it so
-        // drift stays visible to the operator.
+        // Docker is allowed to normalise or relay the configured value, so on the platforms without
+        // an internal relay a non-empty daemon proxy is the achievable proof that the layer is live;
+        // the exact value is reported alongside it so drift stays visible to the operator.
         return engineState.HttpProxy.Length > 0 || engineState.HttpsProxy.Length > 0
             ? new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.Applied, string.Empty, string.Empty)
             : new DockerProxyLayerDto(DockerProxyTarget.Engine, DockerProxyLayerState.RestartRequired, string.Empty, DockerProxyDetail.RestartPending);
     }
 
-    private DockerProxyStatusDto Describe(DockerProxyResolution resolution, DockerProxySetting? saved, DockerEngineProxyState? engineState, IReadOnlyList<DockerProxyLayerDto> layers) =>
+    /// <summary>
+    /// Compares the stored upstream against the resolved preference. Docker Desktop may keep the
+    /// address with a trailing slash or a different scheme casing, so those are normalised away
+    /// before the two are considered different.
+    /// </summary>
+    private static bool MatchesDesktopUpstream(DockerDesktopProxyDto desktop, DockerProxyResolution resolution) =>
+        SameUpstream(desktop.HttpProxy, resolution.HttpProxy)
+        && SameUpstream(desktop.HttpsProxy.Length > 0 ? desktop.HttpsProxy : desktop.HttpProxy, resolution.HttpsProxy);
+
+    private static bool SameUpstream(string stored, string expected) =>
+        string.Equals(NormalizeUpstream(stored), NormalizeUpstream(expected), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeUpstream(string value) => value.Trim().TrimEnd('/');
+
+    private DockerProxyStatusDto Describe(DockerProxyResolution resolution, DockerProxySetting? saved, DockerEngineProxyState? engineState, DockerDesktopProxyDto? desktop, IReadOnlyList<DockerProxyLayerDto> layers) =>
         new(ToDto(saved), layers,
-            Mask(engineState?.HttpProxy), Mask(engineState?.HttpsProxy), Mask(engineState?.NoProxy),
-            resolution.ManagedProxyEndpoint, resolution.ManagedProxyAvailable, configurator.Platform);
+            engineState?.HttpProxy ?? string.Empty, engineState?.HttpsProxy ?? string.Empty, engineState?.NoProxy ?? string.Empty,
+            resolution.ManagedProxyEndpoint, resolution.ManagedProxyAvailable, configurator.Platform, desktop);
 
     /// <summary>
     /// Validates and normalizes the request. The managed source derives its URLs from the proxy
@@ -236,6 +266,30 @@ public sealed class DockerProxyService(
         }
     }
 
-    /// <summary>The daemon's reported proxy may embed credentials from the host configuration.</summary>
-    private static string Mask(string? value) => string.IsNullOrEmpty(value) ? string.Empty : DockerProxyValidation.MaskProxy(value);
+    /// <summary>
+    /// Docker Desktop's own stored proxy, when this host has one. The read is a diagnostic side
+    /// channel, so a missing or unreadable file never turns a status read into a failure.
+    /// </summary>
+    private DockerDesktopProxyDto? ReadDesktopProxy()
+    {
+        try { return desktopProxy.Read(); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning("The Docker Desktop settings file could not be read.");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The daemon's reported proxy is shown to the operator verbatim, but a log line has a wider
+    /// audience than the operator, so anything embedding a credential is masked before it is written.
+    /// </summary>
+    private void LogReportedProxy(DockerEngineProxyState? state)
+    {
+        if (state is null || state.HttpProxy.Length == 0 && state.HttpsProxy.Length == 0) return;
+        logger.LogDebug("Docker daemon reports a proxy. HttpProxy={HttpProxy} HttpsProxy={HttpsProxy} NoProxy={NoProxy}",
+            DockerProxyValidation.MaskProxy(state.HttpProxy),
+            DockerProxyValidation.MaskProxy(state.HttpsProxy),
+            DockerProxyValidation.MaskProxy(state.NoProxy));
+    }
 }

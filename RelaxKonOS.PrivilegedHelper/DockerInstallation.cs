@@ -70,6 +70,27 @@ public static partial class PrivilegedOperationExecutor
         return new(false, ProblemCode: PrivilegedProblemCode.RestartRequired, Error: "restart RelaxKonOS Server to apply Docker access");
     }
 
+    // The daemon unit is a Helper constant. A request selects only the action, so engine control
+    // cannot be redirected at another unit the way a caller-supplied service id could.
+    private const string DockerServiceUnit = "docker.service";
+
+    static async Task<PrivilegedOperationResult> ApplyDockerEngineServiceActionAsync(PrivilegedServiceAction? action)
+    {
+        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/systemctl"))
+            return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
+        if (action is not (PrivilegedServiceAction.Start or PrivilegedServiceAction.Stop or PrivilegedServiceAction.Restart))
+            return DockerFailure(PrivilegedProblemCode.InvalidRequest);
+        var command = action switch
+        {
+            PrivilegedServiceAction.Start => "start",
+            PrivilegedServiceAction.Stop => "stop",
+            _ => "restart",
+        };
+        // Unlike the proxy drop-in this changes no unit file, so it never enables or disables the
+        // daemon: the host's boot policy stays exactly as the administrator left it.
+        return await RunFixedCommandAsync("/usr/bin/systemctl", [command, DockerServiceUnit], TimeSpan.FromSeconds(120), "docker service action failed");
+    }
+
     // Docker Desktop ignores daemon.json proxies, but a native Linux daemon reads its proxy from
     // the unit's start-up environment. This drop-in is therefore the only supported Linux
     // mechanism, and both its path and its contents are owned by the Helper.

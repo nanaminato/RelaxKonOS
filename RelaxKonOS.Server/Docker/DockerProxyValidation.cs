@@ -45,9 +45,10 @@ internal static class DockerProxyValidation
     }
 
     /// <summary>
-    /// Hides the user information of a proxy URL. The authorized caller that owns the setting may
-    /// read the full value back, but nothing that leaves the service boundary through a log, an
-    /// audit record, a problem detail, or a layer diagnostic may contain it.
+    /// Hides the user information of a proxy URL. The operator who owns the setting reads the full
+    /// value back in the Docker Manager, because a masked echo would be written back as the mask on
+    /// the next save. This exists for the audiences that are not the operator: log lines, audit
+    /// records, problem details, and layer diagnostics.
     /// </summary>
     internal static string MaskProxy(string value)
     {

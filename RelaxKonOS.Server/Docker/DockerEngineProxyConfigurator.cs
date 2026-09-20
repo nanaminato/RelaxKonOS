@@ -76,6 +76,16 @@ public sealed class DockerEngineProxyConfigurator(IPrivilegedOperationTransport 
         if (!DockerDesktopProxySettings.TryWrite(path, resolution.HttpProxy, resolution.HttpsProxy, resolution.NoProxy, enabled, out var problemCode))
             return new(false, problemCode);
 
+        // Read the file back rather than trusting the write: Docker Desktop can present a locked or
+        // replaced file, and a proxy that silently failed to stick would otherwise be reported as
+        // installed until the operator noticed the daemon was still using the old upstream.
+        if (DockerDesktopProxySettings.TryRead(path) is not { } stored) return new(false, DockerProxyProblem.DesktopSettingsUnreadable);
+        var http = string.Equals(stored.Mode, DockerDesktopProxySettings.ManualMode, StringComparison.OrdinalIgnoreCase)
+            ? stored.HttpProxy.Trim()
+            : string.Empty;
+        if (enabled && !string.Equals(http, resolution.HttpProxy, StringComparison.OrdinalIgnoreCase))
+            return new(false, DockerProxyProblem.DesktopSettingsNotApplied);
+
         var started = await DockerDesktopProxySettings.RunDesktopCommandAsync("start", TimeSpan.FromMinutes(3), cancellationToken);
         return new(true, string.Empty, started ? DockerProxyDetail.RestartPending : DockerProxyDetail.DesktopRestartPending);
     }

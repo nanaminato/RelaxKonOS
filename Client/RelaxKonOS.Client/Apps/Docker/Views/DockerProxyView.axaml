@@ -82,6 +82,26 @@
             </StackPanel>
         </Border>
 
+        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20" IsVisible="{Binding HasDesktopProxy}">
+            <StackPanel Spacing="12">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.subtitle}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="8">
+                    <TextBlock Text="{loc:Loc docker.proxy.desktop.mode}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding DesktopProxyModeText}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Grid.Row="1" Text="{loc:Loc docker.proxy.http.label}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DesktopProxyHttp}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Text="{loc:Loc docker.proxy.https.label}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DesktopProxyHttps}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Text="{loc:Loc docker.proxy.desktop.settings_path}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DesktopSettingsPath}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" TextWrapping="Wrap" />
+                </Grid>
+                <Button Content="{loc:Loc docker.proxy.desktop.import}" Command="{Binding ImportDesktopProxyCommand}" HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+
         <Border Background="{DynamicResource AccentMutedBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" CornerRadius="14" Padding="18">
             <StackPanel Spacing="6">
                 <TextBlock Text="{loc:Loc docker.proxy.notes}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="SemiBold" />
