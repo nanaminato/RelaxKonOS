@@ -215,8 +215,12 @@ public sealed class DockerComposeService : IDockerComposeService
         try
         {
             using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
-            // Compose pulls and builds images through the same client environment as `docker build`,
-            // so an unproxied compose command would fail exactly where a proxied one succeeds.
+            // Same build-layer attempt as `docker build`: the proxy variables are placed on the
+            // client process only. Measured on Windows with Docker Desktop, compose does not forward
+            // them to the build container either (it honours config-file `proxies` or --build-arg
+            // on `compose build`, but `up` accepts no build argument at all). Left in place because
+            // it is harmless and still covers any client that does read its own environment.
+            // See docs/applications/RelaxKonOS.DockerManager.md §3.5.
             var resolution = await _proxyResolver.ResolveAsync(cancellationToken);
             if (resolution.BuildLayerActive)
             {

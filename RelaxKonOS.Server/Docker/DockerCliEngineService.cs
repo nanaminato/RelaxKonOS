@@ -359,10 +359,15 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
     }
 
     /// <summary>
-    /// Applies the build-layer proxy to a docker child process. BuildKit takes its own proxy
-    /// configuration from the client environment and forwards it into the build as a predefined
-    /// build argument, so this is what lets a Dockerfile's package installs work behind a proxy
-    /// without writing a proxy into the daemon's global configuration.
+    /// Sets the build-layer proxy variables on a docker child process. This is what the build layer
+    /// is designed around, and it deliberately writes nothing to the host.
+    /// Measured on Windows with Docker Desktop (docker 29.8, buildx 0.37): these variables do NOT
+    /// reach a build container — neither BuildKit nor the classic builder forwards a client
+    /// environment variable into the build. Only an explicit <c>--build-arg HTTP_PROXY=...</c> or a
+    /// <c>proxies</c> section in the docker CLI config file does. The comment here used to claim the
+    /// opposite; keep this note until the layer is reworked, and do not read the reported
+    /// <c>Applied</c> state as proof that builds actually go through the proxy.
+    /// See docs/applications/RelaxKonOS.DockerManager.md §3.5.
     /// </summary>
     private async Task ApplyProxyEnvironmentAsync(ProcessStartInfo startInfo, CancellationToken cancellationToken)
     {
