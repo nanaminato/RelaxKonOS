@@ -13,6 +13,9 @@ namespace RelaxKonOS.Server.Docker;
 public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogger<DockerCliEngineService> logger) : IDockerEngineService
 {
     private const int MaxArchiveBytes = 64 * 1024 * 1024;
+    /// <summary>Command output is kept as a bounded tail: enough to explain a failure, never a stream.</summary>
+    private const int MaximumLogLines = 100;
+    private const int MaximumLogLineLength = 512;
 
     public async Task<DockerStatusDto> GetStatusAsync(CancellationToken cancellationToken = default)
     {
@@ -232,7 +235,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         return row is null ? null : new DockerContainerStatsDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4));
     }
 
-    public async Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, CancellationToken cancellationToken = default)
+    public async Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, bool includeBuildOutput = false, CancellationToken cancellationToken = default)
     {
         if (!IsImageReference(request.ImageReference) || !IsBuildPathAllowed(request.ContextDirectory, out var contextDirectory))
             return new DockerOperationResult(false, "docker.validation_failed");
@@ -244,9 +247,12 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
             arguments.Add("--file"); arguments.Add(dockerfile);
         }
         arguments.Add(contextDirectory);
-        // Build output can echo Dockerfile content and build arguments, so it is retained only
-        // in protected server diagnostics rather than returned to a client.
-        return ToOperationResult(await RunAsync(arguments, cancellationToken, CommandTimeout.LongRunning), includeLogLines: false);
+        // Build output can echo Dockerfile content and build arguments, so it is only returned to a
+        // caller that already owns what is being built. The application-deployment path builds a
+        // server-generated context from a template-authored Dockerfile and cannot explain a failure
+        // without the command's own text; the general Docker Manager endpoint keeps the default and
+        // still exposes nothing. Either way the full output stays in the protected server log.
+        return ToOperationResult(await RunAsync(arguments, cancellationToken, CommandTimeout.LongRunning), includeBuildOutput);
     }
 
     public async Task<DockerImageArchiveDto?> ExportImageAsync(string imageId, CancellationToken cancellationToken = default)
@@ -348,13 +354,17 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
         try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
         catch (InvalidOperationException) { /* The process exited between the checks. */ }
     }
-    private static DockerOperationResult ToOperationResult(CommandResult result, bool includeLogLines = true) =>
-        new(result.Success, result.Success ? string.Empty : ToProblemCode(result), includeLogLines ? ToLogLines(result) : []);
-    private static IReadOnlyList<string> ToLogLines(CommandResult result) =>
+    private static DockerOperationResult ToOperationResult(CommandResult result, bool includeLogLines = true)
+    {
+        var problem = result.Success ? string.Empty : ToProblemCode(result);
+        if (!includeLogLines) return new(result.Success, problem);
+        var lines = AllLogLines(result);
+        return new(result.Success, problem, [.. lines.TakeLast(MaximumLogLines)], lines.Count > MaximumLogLines);
+    }
+    private static IReadOnlyList<string> AllLogLines(CommandResult result) =>
         string.Concat(result.Output, string.IsNullOrWhiteSpace(result.Output) || string.IsNullOrWhiteSpace(result.Error) ? string.Empty : Environment.NewLine, result.Error)
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => line.Length <= 512 ? line : $"{line[..509]}...")
-            .TakeLast(100)
+            .Select(line => line.Length <= MaximumLogLineLength ? line : $"{line[..(MaximumLogLineLength - 3)]}...")
             .ToArray();
     private static string CommandName(IReadOnlyList<string> arguments) => string.Join(' ', arguments.Take(2));
     private static string Diagnostic(string value) => value.Length <= 4096 ? value : $"{value[..4093]}...";
@@ -413,7 +423,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, ILogg
 }
 
 /// <summary>Host-admin approved source roots for Docker builds; an API caller cannot read arbitrary paths.</summary>
-public sealed class DockerCliEngineOptions
+public sealed record DockerCliEngineOptions
 {
     public IReadOnlyList<string> BuildRoots { get; init; } = [];
     /// <summary>Maximum duration for fast availability checks.</summary>

@@ -189,6 +189,10 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     [ObservableProperty] private LocalizedStatus _previewText;
     [ObservableProperty] private LocalizedStatus _operationText;
     [ObservableProperty] private string _progressText = string.Empty;
+    /// <summary>What the step that failed actually printed. It is the difference between "构建镜像失败。"
+    /// and an operator knowing which layer, which file, or which registry refused.</summary>
+    [ObservableProperty] private string _diagnosticsText = string.Empty;
+    [ObservableProperty] private bool _isDiagnosticsTruncated;
     [ObservableProperty] private bool _isFinished;
     [ObservableProperty] private bool _submitted;
 
@@ -200,6 +204,9 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
     public bool CanGoForward => !IsPreviewStep && !IsProgressStep;
     public bool HasError => !ErrorText.IsEmpty;
     public bool HasStatus => !StatusText.IsEmpty;
+    /// <summary>True only once a failed step's own output has actually been loaded, so the pane is
+    /// never revealed empty while the request is still in flight.</summary>
+    public bool HasDiagnostics => DiagnosticsText.Length > 0;
 
     // One visibility flag per step. The wizard keeps every step in the same view and reveals the
     // current one, so a partially filled form survives stepping backwards without extra state.
@@ -235,6 +242,10 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
 
     /// <summary>A definition edit may not choose a different deployment source, so those steps are hidden.</summary>
     public bool IsEditingDefinition => Intent == DeploymentWizardIntent.EditDefinition;
+
+    /// <summary>A step's output arrives after the failure it explains, so the pane's own visibility
+    /// follows the text rather than the operation's state.</summary>
+    partial void OnDiagnosticsTextChanged(string value) => OnPropertyChanged(nameof(HasDiagnostics));
 
     partial void OnStepIndexChanged(int value)
     {
@@ -430,8 +441,35 @@ public sealed partial class DeploymentWizardViewModel : LocalizedObservableObjec
         Operation = current;
         IsFinished = true;
         ReportStage(current);
-        if (current.ProblemCode is { Length: > 0 } problem) ErrorText = DeploymentText.Problem(problem);
-        else if (current.RecoveryProblemCode is { Length: > 0 } recovery) ErrorText = DeploymentText.Problem(recovery);
+        if (current.ProblemCode is { Length: > 0 } problem)
+        {
+            ErrorText = DeploymentText.Problem(problem);
+            // The problem code names the failure; the step's own output is what explains it. Fetching it
+            // here means the operator never has to know that a second request exists.
+            await LoadDiagnosticsAsync(current.OperationId, token);
+        }
+        else if (current.RecoveryProblemCode is { Length: > 0 } recovery)
+        {
+            ErrorText = DeploymentText.Problem(recovery);
+        }
+    }
+
+    /// <summary>
+    /// Loads the output of the step that produced the failure. A load failure stays silent on purpose:
+    /// the diagnosis is supplementary, so it must never replace the failure the operator already sees
+    /// with a transport error of its own.
+    /// </summary>
+    private async Task LoadDiagnosticsAsync(Guid operationId, CancellationToken token)
+    {
+        try
+        {
+            var diagnostics = await client.GetOperationDiagnosticsAsync(operationId, token);
+            if (diagnostics is not { Lines.Count: > 0 }) return;
+            // The server already sanitized and length-limited every line; the client adds no framing.
+            DiagnosticsText = string.Join(Environment.NewLine, diagnostics.Lines);
+            IsDiagnosticsTruncated = diagnostics.Truncated;
+        }
+        catch (Exception exception) when (IsExpected(exception)) { }
     }
 
     private void ReportStage(DeploymentOperationDto operation)

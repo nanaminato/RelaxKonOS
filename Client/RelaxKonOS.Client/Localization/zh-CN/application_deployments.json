@@ -54,6 +54,8 @@
     "application_deployments.load_logs": "加载日志",
     "application_deployments.log_truncated": "输出已截断，显示的是最新的行。",
     "application_deployments.log_empty": "尚未加载日志输出。",
+    "application_deployments.diagnostics_header": "失败步骤的输出",
+    "application_deployments.load_diagnostics": "查看日志",
     "application_deployments.wizard.title": "部署",
     "application_deployments.wizard.subtitle": "定义应用，然后排队一次持久的部署操作。",
     "application_deployments.wizard.back": "上一步",

@@ -479,11 +479,12 @@ internal sealed class ApplicationDeploymentService(
                 "docker.operation_timeout" => ApplicationDeploymentProblemCodes.RegistryUnreachable,
                 "docker.permission_denied" => ApplicationDeploymentProblemCodes.RegistryAuthenticationFailed,
                 _ => ApplicationDeploymentProblemCodes.ImageNotFound,
-            }, 409);
+            }, 409, pull.LogLines, pull.LogTruncated);
         }
 
         var build = await runtime.BuildAsync(contextDirectory, plan.ImageReference, cancellationToken);
-        if (!build.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.BuildFailed, 409);
+        if (!build.Success)
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.BuildFailed, 409, build.LogLines, build.LogTruncated);
     }
 
     /// <summary>

@@ -87,6 +87,20 @@ internal sealed class ApplicationDeploymentManager(
     }
 
     /// <summary>
+    /// Bounded output of the step that produced an operation's outcome. An unknown operation and an
+    /// operation that recorded no output both answer null, so the route reports them identically and
+    /// a client never has to tell "nothing to show" apart from "does not exist".
+    /// </summary>
+    public DeploymentOperationDiagnosticsDto? OperationDiagnostics(Guid operationId)
+    {
+        var entry = operations.Get(operationId);
+        if (entry?.Diagnostics is not { Length: > 0 } lines) return null;
+        var operation = entry.Operation;
+        return new(operation.OperationId, operation.ApplicationId, operation.Kind, operation.Stage,
+            operation.ProblemCode, lines, entry.DiagnosticsTruncated);
+    }
+
+    /// <summary>
     /// Creates the definition. The source archive or image is deliberately not part of it: a published
     /// revision binds the source, so the definition can be edited without implying a rebuild.
     /// </summary>

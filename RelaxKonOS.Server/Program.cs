@@ -503,7 +503,20 @@ builder.Services.AddSingleton<RelaxKonOS.Server.SystemPerformance.IProcessServic
 
 // Built-in Docker manager: the provider uses Docker's local CLI transport only; no socket/pipe
 // is ever exposed to clients. Guardian intentionally remains a separate Agent boundary.
-builder.Services.AddSingleton(builder.Configuration.GetSection("DockerEngine").Get<RelaxKonOS.Server.Docker.DockerCliEngineOptions>() ?? new RelaxKonOS.Server.Docker.DockerCliEngineOptions());
+// The application-deployment domain generates its build contexts under its own root, so that root
+// is approved here too. Without it every archive-source build is rejected before the Docker CLI is
+// ever invoked, and the failure only surfaces later as a build problem. Deriving the path from the
+// deployment options keeps a single source of truth for where build contexts live.
+builder.Services.AddSingleton(sp =>
+{
+    var configured = sp.GetRequiredService<IConfiguration>().GetSection("DockerEngine")
+        .Get<RelaxKonOS.Server.Docker.DockerCliEngineOptions>() ?? new RelaxKonOS.Server.Docker.DockerCliEngineOptions();
+    var deploymentBuildRoot = Path.Combine(
+        builder.Environment.ContentRootPath,
+        sp.GetRequiredService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentOptions>().RootDirectory,
+        "build");
+    return configured with { BuildRoots = [.. configured.BuildRoots, deploymentBuildRoot] };
+});
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineService, RelaxKonOS.Server.Docker.DockerCliEngineService>();
 builder.Services.AddScoped<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorResolver, RelaxKonOS.Server.ImageMirrors.DockerImageMirrorResolver>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerRuntimeInstaller, RelaxKonOS.Server.Docker.DockerRuntimeInstaller>();

@@ -20,19 +20,59 @@
 
 ## 共用前提（六者相同）
 
-### 四项前置检查
+### 五项前置检查
 
 | 检查 | 怎么看 | 不满足时的表现 |
 | --- | --- | --- |
 | Server 处于系统模式 | 客户端能看到「应用部署」并加载出应用列表 | 「此服务器未提供应用部署接口。」/「服务器未提供"应用部署"接口。」 |
 | 当前账号有管理权限 | `新建部署` 按钮可点 | 按钮灰掉，或「此账户无权执行该操作。」 |
 | Docker Engine 跑 Linux 容器 | 宿主机执行 `docker version` | 「容器引擎不可用。」/「服务器上未安装容器引擎。」 |
+| 宿主能拉到基础镜像 | `docker pull eclipse-temurin:21-jre`、`docker pull nginx:1.29.0-alpine` 能成功 | 「构建镜像失败。」/「找不到该镜像。」——见下 |
 | 宿主端口空闲 | `netstat -ano \| findstr 18081` 无结果 | 「宿主端口已被占用。」 |
 
 本领域**继承 Docker 边界**：User Mode 宿主不提供该能力（`Supports(ApplicationDeployments) == false`），
 客户端表现为「服务器未提供该接口」——这不是版本问题，换系统模式的宿主即可。
 
 端口按用例分配，互不冲突：Web 用例占 18081–18084；两个 Worker 用例**不给宿主端口**。
+
+### 基础镜像必须拉得下来
+
+用例 1–5 都是**在部署时现场构建镜像**，构建上下文里的 `Dockerfile` 第一行是 `FROM <基础镜像>`。
+默认值分属两个不同的仓库，得分开测：
+
+| 用例 | 默认基础镜像 | 仓库 |
+| --- | --- | --- |
+| 1 Java | `eclipse-temurin:21-jre` | Docker Hub |
+| 2、3 .NET | `mcr.microsoft.com/dotnet/aspnet:10.0` / `runtime:10.0` | **MCR（不是 Docker Hub）** |
+| 4、5 Python | `python:3.12-slim` | Docker Hub |
+| 6 镜像 | `nginx:1.29.0-alpine` | Docker Hub |
+
+这一行由 Docker 守护进程自己去拉，**不经过本项目的镜像源设置**——`IDockerImageMirrorResolver`
+只作用于 Docker 管理器自己的「拉取镜像」端点。另外用例 4 的构建期还会 `pip install`（`flask==3.1.0`），
+所以它还要能访问 PyPI；用例 5 的 `requirements.txt` 没有依赖，不需要。
+
+先自测：
+
+```bash
+docker manifest inspect eclipse-temurin:21-jre
+docker manifest inspect python:3.12-slim
+docker manifest inspect nginx:1.29.0-alpine
+```
+
+若报 `registry-1.docker.io/v2/: Bad Gateway` 或超时，说明 Docker Hub 不通。三种绕法：
+
+1. **给 Docker 守护进程配镜像源**（推荐，Docker Hub 那几条一次配好）：在 Docker Desktop 的
+   `daemon.json` 里加 `"registry-mirrors": ["https://<你的镜像源>"]` 后重启引擎。
+2. **改第 2 步的「基础镜像」**：填成可达镜像源上的**同一个镜像**，例如
+   `docker.m.daocloud.io/library/eclipse-temurin:21-jre`，同时**把「运行时版本」留空**。
+   留空时服务端不做 `:{版本}` 一致性检查（只要求不带 `latest`），所以不会撞 `runtime_mismatch`。
+3. **先只跑 .NET 用例**：MCR 与 Docker Hub 是两套独立的基础设施，Docker Hub 不通时
+   `mcr.microsoft.com` 往往仍然可达，用例 2、3 因此可能是六个里唯一能直接跑起来的。
+
+换基础镜像时有一个硬约束：三种来源生成的 Dockerfile 都会执行
+`RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin appuser`。
+所以替代镜像必须带 `useradd`——Debian / Ubuntu 系（`-jre`、`-slim`、`aspnet`）都有，
+Alpine 系没有，换过去会在构建期报 `useradd: not found`。
 
 ### 第 2 步的字段可见性（先看这个，避免「我的界面上没有这一格」）
 
@@ -710,6 +750,50 @@ HEARTBEAT_SECONDS=2
 
 ---
 
+## 失败时先看「失败步骤的输出」
+
+**构建或拉取失败时，界面会直接给出这一步的原始输出** —— 这是最省事的排查入口，比对着问题码猜要快得多。
+
+两处都能看：
+
+| 位置 | 怎么出现 |
+| --- | --- |
+| 向导第 7 步 | 操作失败后**自动加载**，在错误横幅下方以等宽字体显示 |
+| 工作区「操作」标签页 | 每个**已结束**的操作行有「查看日志」按钮，点开显示在同一行下方 |
+
+它记录的是**产出镜像那一步**的命令输出：归档来源是 `docker build` 的输出，镜像来源是 `docker pull`
+的输出。只有失败的操作会记录，成功的操作不占地方。
+
+典型的三类内容：
+
+```
+#2 [internal] load metadata for docker.io/library/eclipse-temurin:21-jre
+#2 ERROR: failed to fetch oauth token: Post "https://auth.docker.io/token": Bad Gateway
+```
+→ 宿主连不上镜像仓库。见上文[「基础镜像必须拉得下来」](#基础镜像必须拉得下来)。
+
+```
+#5 [2/3] RUN useradd --system --uid 10001 --create-home --shell /usr/sbin/nologin appuser
+#5 ERROR: process "/bin/sh -c useradd ..." did not complete successfully: exit code: 127
+```
+→ 基础镜像里没有 `useradd`（Alpine 系）。换回默认镜像，或换一个完整发行版。
+
+```
+#8 [3/3] RUN pip install --no-cache-dir --requirement requirements.txt
+#8 ERROR: Could not find a version that satisfies the requirement flask==3.1.0
+```
+→ 构建期到不了 PyPI。
+
+三点说明：
+
+- 输出是**行尾截断**的：最多保留最后 120 行，每行最多 512 字符，界面若显示「输出已截断」就说明
+  开头被丢掉了。
+- 客户端**不会**替你解释这些行：它就是命令原话。含凭据的字符串在服务端持久化前已被同一个
+  日志净化器处理，不会写进账本。
+- 这两处读的是**持久记录**，不是内存里的日志。所以关掉向导、重启客户端之后仍然看得到。
+
+---
+
 ## 报错对照表
 
 | 界面文案 / 问题码 | 原因 | 怎么改 |
@@ -726,7 +810,9 @@ HEARTBEAT_SECONDS=2
 | 宿主端口已被占用 / 与另一个已部署应用冲突（`port_unavailable` / `port_conflict`） | 18081–18084 被别的进程或另一个应用占了 | 换一个端口，并同步调整验证用的 URL |
 | 找不到该镜像 / 镜像仓库拒绝了凭据（`image_not_found` / `registry_authentication_failed`） | 镜像引用打错，或私有仓库缺凭据 | 用 `nginx:1.29.0-alpine`；私有仓库先配好凭据 |
 | 该镜像不支持此服务器的平台（`platform_unsupported`） | 镜像没有 `linux/amd64`、`linux/arm64` 或 `linux/arm` 变体 | 换一个多架构或 Linux 变体的镜像 |
-| 安装依赖失败。 / 构建镜像失败。（`dependency_install_failed` / `build_failed`） | 构建期装不上依赖（离线环境），或 Dockerfile 构建失败 | 离线时改用 `demo-python-worker`；或先让宿主能访问包索引 |
+| 构建镜像失败。且失败几乎是**瞬间**出现的（`build_failed`） | 服务端**在调用 `docker build` 之前**就拒绝了：Docker 引擎的构建路径白名单（`DockerCliEngineOptions.BuildRoots`）里没有部署的构建根目录。特征：进度从 `Building` 到 `Failed` 只隔几毫秒，服务端日志里**没有 `docker build` 命令行** | 确认服务端已包含「把部署构建根并入构建白名单」的修复；没有的话需在配置节 `DockerEngine:BuildRoots` 里显式写**绝对路径**，且与 `ApplicationDeployments:RootDirectory` 手工对齐 |
+| 构建镜像失败。且日志里能看到 `docker build`（`build_failed`） | 构建真的跑了但失败：拉不到基础镜像（`Bad Gateway` / 超时），或 Python 装不上依赖 | 见上文「基础镜像必须拉得下来」：配 registry mirror，或把第 2 步「基础镜像」改成可达镜像源上的同一镜像并留空「运行时版本」 |
+| 安装依赖失败。（`dependency_install_failed`） | 构建期 `pip install` 装不上（离线环境） | 先让宿主能访问 PyPI；不需要依赖的用例改用 `demo-python-worker` |
 | 容器引擎不可用 / 未安装容器引擎 | Docker 没起或不可达 | 启动 Docker Engine |
 | 另一个操作正在处理此应用。（`resource_conflict`） | 同一个应用上重复发了变更请求 | 等当前操作跑完再发 |
 | 服务器未提供“应用部署”接口。（`http_404`） | User Mode 宿主，或客户端与服务端版本不匹配 | 换系统模式宿主；或对齐版本 |

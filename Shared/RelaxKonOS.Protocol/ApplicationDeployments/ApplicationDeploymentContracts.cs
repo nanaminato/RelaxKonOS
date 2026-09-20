@@ -130,3 +130,20 @@ public sealed record DeploymentLogDto(
     [property: JsonPropertyName("revisionId")] Guid? RevisionId,
     [property: JsonPropertyName("lines")] IReadOnlyList<string> Lines,
     [property: JsonPropertyName("truncated")] bool Truncated);
+
+/// <summary>
+/// Bounded output of the step that produced an operation's outcome — the image build or the image
+/// pull. It exists because a problem code alone cannot explain a build failure: the operator needs
+/// the command's own text. The server sanitizes and length-limits every line, so a value that was
+/// never allowed into a container log cannot appear here either.
+/// </summary>
+/// <param name="Truncated">True when the head of the output was dropped, so a reader never mistakes
+/// the visible tail for the complete log.</param>
+public sealed record DeploymentOperationDiagnosticsDto(
+    [property: JsonPropertyName("operationId")] Guid OperationId,
+    [property: JsonPropertyName("applicationId")] Guid ApplicationId,
+    [property: JsonPropertyName("kind")] DeploymentOperationKind Kind,
+    [property: JsonPropertyName("stage")] DeploymentStage Stage,
+    [property: JsonPropertyName("problemCode")] string? ProblemCode,
+    [property: JsonPropertyName("lines")] IReadOnlyList<string> Lines,
+    [property: JsonPropertyName("truncated")] bool Truncated);

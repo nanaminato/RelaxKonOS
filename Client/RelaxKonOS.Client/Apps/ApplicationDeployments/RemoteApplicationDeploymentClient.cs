@@ -38,6 +38,9 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
     public Task<DeploymentLogDto> GetLogsAsync(Guid applicationId, int tail = 200, CancellationToken cancellationToken = default) =>
         SendAsync<DeploymentLogDto>($"{ApplicationDeploymentApiRoutes.Logs(applicationId)}?tail={tail}", cancellationToken);
 
+    public Task<DeploymentOperationDiagnosticsDto?> GetOperationDiagnosticsAsync(Guid operationId, CancellationToken cancellationToken = default) =>
+        TrySendAsync<DeploymentOperationDiagnosticsDto>(ApplicationDeploymentApiRoutes.OperationLogs(operationId), cancellationToken);
+
     public Task<DeploymentOperationDto> DeployAsync(Guid applicationId, DeployApplicationRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
         SendAsync<DeploymentOperationDto>(HttpMethod.Post, ApplicationDeploymentApiRoutes.Deploy(applicationId), request, idempotencyKey, cancellationToken);
 

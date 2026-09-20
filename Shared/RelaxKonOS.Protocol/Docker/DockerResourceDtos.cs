@@ -33,7 +33,9 @@ public sealed record DockerContainerUpdateRequest(string Name);
 /// command progress for operations whose output is safe to show in the Docker Manager; detailed
 /// daemon diagnostics remain in the server logs.
 /// </summary>
-public sealed record DockerOperationResult(bool Success, string ProblemCode, IReadOnlyList<string>? LogLines = null);
+/// <param name="LogTruncated">True when the head of <see cref="LogLines"/> was dropped, so a reader
+/// never mistakes a tail for the complete command output.</param>
+public sealed record DockerOperationResult(bool Success, string ProblemCode, IReadOnlyList<string>? LogLines = null, bool LogTruncated = false);
 public sealed record DockerImageOperationRequest(string ImageReference, bool Confirmed = false);
 /// <summary>
 /// Bounded runtime constraints for a created container. A null member leaves the Docker default in

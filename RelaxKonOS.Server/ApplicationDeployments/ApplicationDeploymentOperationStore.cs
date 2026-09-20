@@ -9,7 +9,9 @@ internal sealed record DeploymentEntry(
     string ActorReference,
     string IdempotencyReference,
     string RequestReference,
-    string[] Resources);
+    string[] Resources,
+    string[]? Diagnostics = null,
+    bool DiagnosticsTruncated = false);
 
 internal sealed record DeploymentAudit(
     Guid OperationId,
@@ -34,6 +36,10 @@ internal sealed class ApplicationDeploymentOperationStore
     /// an active one, so trimming cannot lose work a startup reconciliation still has to reason about.</summary>
     private const int RetainedOperations = 500;
     private const int RetainedAuditRecords = 2000;
+    /// <summary>Bound for the output of the step that produced an outcome. The ledger is one JSON
+    /// document rewritten on every change, so this keeps a diagnosis useful without letting a single
+    /// chatty failing build define the size of the file.</summary>
+    private const int MaximumDiagnosticsLines = 120;
 
     private readonly object gate = new();
     private readonly string path;
@@ -141,13 +147,22 @@ internal sealed class ApplicationDeploymentOperationStore
         }
     }
 
-    public DeploymentOperationDto Update(Guid operationId, Func<DeploymentOperationDto, DeploymentOperationDto> update, string eventName)
+    /// <param name="diagnostics">Raw output of the step that produced this outcome. It is sanitized and
+    /// bounded here, at the persistence boundary, so nothing unsanitized can ever be written.</param>
+    /// <param name="diagnosticsTruncated">True when that output already lost its head upstream.</param>
+    public DeploymentOperationDto Update(Guid operationId, Func<DeploymentOperationDto, DeploymentOperationDto> update, string eventName,
+        IReadOnlyList<string>? diagnostics = null, bool diagnosticsTruncated = false)
     {
         lock (gate)
         {
             EnsureAvailable();
             var before = ledger.Entries.Single(x => x.Operation.OperationId == operationId);
             var after = before with { Operation = update(before.Operation) };
+            if (diagnostics is { Count: > 0 })
+            {
+                var bounded = BoundDiagnostics(diagnostics, diagnosticsTruncated);
+                after = after with { Diagnostics = bounded.Lines, DiagnosticsTruncated = bounded.Truncated };
+            }
             if (!Valid(after)) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 500);
             if (after == before) return before.Operation;
             var audit = after.Operation.State != before.Operation.State
@@ -158,6 +173,19 @@ internal sealed class ApplicationDeploymentOperationStore
                 audit ? [.. ledger.Audit, Audit(after, eventName)] : ledger.Audit));
             return after.Operation;
         }
+    }
+
+    /// <summary>
+    /// Sanitizes and bounds step output so it can be persisted and later shown to an operator. A line
+    /// that sanitizes away entirely is dropped rather than stored blank, and the truncation of the head
+    /// is recorded instead of implied, so a reader never mistakes a tail for the complete log.
+    /// </summary>
+    private static (string[]? Lines, bool Truncated) BoundDiagnostics(IReadOnlyList<string> diagnostics, bool headDropped)
+    {
+        var lines = diagnostics.Select(ApplicationDeploymentLogSanitizer.Sanitize).Where(line => line.Length > 0).ToArray();
+        return lines.Length == 0
+            ? (null, false)
+            : ([.. lines.TakeLast(MaximumDiagnosticsLines)], headDropped || lines.Length > MaximumDiagnosticsLines);
     }
 
     private static DeploymentAudit Audit(DeploymentEntry entry, string name) => new(entry.Operation.OperationId,
@@ -232,7 +260,9 @@ internal sealed class ApplicationDeploymentOperationStore
         && entry.ActorReference?.Length == 64
         && entry.IdempotencyReference?.Length == 64
         && entry.RequestReference?.Length == 64
-        && entry.Resources is { Length: > 0 } && entry.Resources.All(x => x?.Length == 64);
+        && entry.Resources is { Length: > 0 } && entry.Resources.All(x => x?.Length == 64)
+        && entry.Diagnostics is null or { Length: > 0 and <= MaximumDiagnosticsLines }
+        && (entry.Diagnostics is not null || !entry.DiagnosticsTruncated);
 
     private static bool Valid(DeploymentAudit audit, IReadOnlyCollection<DeploymentEntry> entries) => audit.OperationId != Guid.Empty
         && entries.Any(x => x.Operation.OperationId == audit.OperationId)

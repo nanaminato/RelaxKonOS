@@ -54,6 +54,8 @@
     "application_deployments.load_logs": "ログを読み込む",
     "application_deployments.log_truncated": "出力は切り詰められ、最新の行が表示されています。",
     "application_deployments.log_empty": "ログ出力はまだ読み込まれていません。",
+    "application_deployments.diagnostics_header": "失敗した手順の出力",
+    "application_deployments.load_diagnostics": "ログを表示",
     "application_deployments.wizard.title": "配置",
     "application_deployments.wizard.subtitle": "アプリケーションを定義し、永続的な配置操作を 1 件キューに入れます。",
     "application_deployments.wizard.back": "戻る",

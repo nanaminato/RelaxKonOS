@@ -90,6 +90,7 @@ try
     await VerifyDeploymentAndNginxSnapshotsAsync(root);
     await VerifyWebServerProviderRoutingAsync();
     await VerifyOperationIdempotencyAsync(root);
+    ApplicationDeploymentDiagnosticsVerification.Run(root);
     VerifyTunnelProtocolContract();
     VerifyProxyProtocolContract();
     await VerifyMihomoControllerSafetyAsync();

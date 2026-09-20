@@ -54,6 +54,8 @@
     "application_deployments.load_logs": "Load Logs",
     "application_deployments.log_truncated": "Output was truncated; the newest lines are shown.",
     "application_deployments.log_empty": "No log output has been loaded yet.",
+    "application_deployments.diagnostics_header": "Output of the failed step",
+    "application_deployments.load_diagnostics": "View Log",
     "application_deployments.wizard.title": "Deployment",
     "application_deployments.wizard.subtitle": "Define the application, then queue one durable deployment operation.",
     "application_deployments.wizard.back": "Back",

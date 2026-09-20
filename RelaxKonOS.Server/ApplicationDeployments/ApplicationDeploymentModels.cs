@@ -3,10 +3,18 @@ using RelaxKonOS.Protocol.ApplicationDeployments;
 namespace RelaxKonOS.Server.ApplicationDeployments;
 
 /// <summary>Domain failure carrying a stable problem code. Status codes follow the existing REST convention.</summary>
-public sealed class ApplicationDeploymentException(string problemCode, int statusCode = 409) : Exception(problemCode)
+/// <param name="Diagnostics">Raw output of the step that failed. It travels on the exception so the
+/// coordinator — which owns the ledger and its sanitizer — can persist it, letting the service stay
+/// free of any dependency on the store.</param>
+/// <param name="DiagnosticsTruncated">Set when the head of that output was already dropped before it
+/// got here, so the persisted record does not present a tail as the whole log.</param>
+public sealed class ApplicationDeploymentException(string problemCode, int statusCode = 409,
+    IReadOnlyList<string>? diagnostics = null, bool diagnosticsTruncated = false) : Exception(problemCode)
 {
     public string ProblemCode { get; } = problemCode;
     public int StatusCode { get; } = statusCode;
+    public IReadOnlyList<string>? Diagnostics { get; } = diagnostics;
+    public bool DiagnosticsTruncated { get; } = diagnosticsTruncated;
 }
 
 /// <param name="Progress">Verified in-stage work. Null means no reliable denominator exists, and the

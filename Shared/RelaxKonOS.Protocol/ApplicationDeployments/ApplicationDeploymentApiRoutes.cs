@@ -33,6 +33,9 @@ public static class ApplicationDeploymentApiRoutes
     public const string RestartPattern = "/applications/{applicationId:guid}/restart";
     public const string OperationPattern = "/operations/{operationId:guid}";
     public const string CancelOperationPattern = "/operations/{operationId:guid}/cancel";
+    /// <summary>Bounded output of the step that produced an operation's outcome. It is a separate read
+    /// from the operation itself so a listing never carries build output it does not need.</summary>
+    public const string OperationLogsPattern = "/operations/{operationId:guid}/logs";
     public const string ActiveOperationPattern = "/operations/active";
 
     /// <summary>Bounded archive upload into the server-owned staging area.</summary>
@@ -54,5 +57,6 @@ public static class ApplicationDeploymentApiRoutes
     public static string Restart(Guid applicationId) => $"{Applications}/{applicationId:D}/restart";
     public static string Operation(Guid operationId) => $"{Root}/operations/{operationId:D}";
     public static string Cancel(Guid operationId) => Operation(operationId) + "/cancel";
+    public static string OperationLogs(Guid operationId) => Operation(operationId) + "/logs";
     public static string ActiveOperation() => $"{Root}/operations/active";
 }

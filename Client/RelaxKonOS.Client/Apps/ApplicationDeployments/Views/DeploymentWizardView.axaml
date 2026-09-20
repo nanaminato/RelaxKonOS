@@ -252,6 +252,21 @@
                                Foreground="{DynamicResource TextPrimaryBrush}" />
                     <TextBlock Text="{Binding ProgressText}" FontSize="12"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <!-- Why the step failed, in the command's own words. It appears only once a failed
+                         operation has actually produced output, so the pane is never shown empty. -->
+                    <StackPanel Spacing="6" IsVisible="{Binding HasDiagnostics}">
+                        <TextBlock Text="{loc:Loc application_deployments.diagnostics_header}"
+                                   FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBox Text="{Binding DiagnosticsText}" IsReadOnly="True" AcceptsReturn="True"
+                                 TextWrapping="NoWrap" Height="220"
+                                 FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                        <TextBlock Text="{loc:Loc application_deployments.log_truncated}"
+                                   IsVisible="{Binding IsDiagnosticsTruncated}" FontSize="11"
+                                   Foreground="{DynamicResource WarningBrush}" />
+                    </StackPanel>
                 </StackPanel>
                 </Grid>
             </Border>

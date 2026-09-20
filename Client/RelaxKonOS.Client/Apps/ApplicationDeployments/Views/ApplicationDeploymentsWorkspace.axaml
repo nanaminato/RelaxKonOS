@@ -229,6 +229,23 @@
                                         <TextBlock Text="{Binding RecoveryText}" FontSize="12" TextWrapping="Wrap"
                                                    IsVisible="{Binding HasRecoveryProblem}"
                                                    Foreground="{DynamicResource WarningBrush}" />
+                                        <!-- The failed step's own output, loaded on demand: a problem code
+                                             names a failure, but only the command's text explains it. -->
+                                        <Button Content="{loc:Loc application_deployments.load_diagnostics}"
+                                                Command="{Binding LoadDiagnosticsCommand}"
+                                                IsVisible="{Binding ShowDiagnosticsAction}"
+                                                IsEnabled="{Binding !IsLoadingDiagnostics}"
+                                                HorizontalAlignment="Left" Padding="10,3" FontSize="11" />
+                                        <StackPanel Spacing="4" IsVisible="{Binding HasDiagnostics}">
+                                            <TextBox Text="{Binding DiagnosticsText}" IsReadOnly="True" AcceptsReturn="True"
+                                                     TextWrapping="NoWrap" Height="180"
+                                                     FontFamily="Cascadia Mono,Consolas,monospace" FontSize="11"
+                                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                                            <TextBlock Text="{loc:Loc application_deployments.log_truncated}"
+                                                       IsVisible="{Binding IsDiagnosticsTruncated}" FontSize="11"
+                                                       Foreground="{DynamicResource WarningBrush}" />
+                                        </StackPanel>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

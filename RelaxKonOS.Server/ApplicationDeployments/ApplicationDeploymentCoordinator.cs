@@ -109,7 +109,8 @@ internal sealed class ApplicationDeploymentCoordinator(
         }
         catch (ApplicationDeploymentException exception)
         {
-            Complete(id, DeploymentOperationState.Failed, exception.ProblemCode, null);
+            Complete(id, DeploymentOperationState.Failed, exception.ProblemCode, null,
+                exception.Diagnostics, exception.DiagnosticsTruncated);
         }
         catch
         {
@@ -122,7 +123,11 @@ internal sealed class ApplicationDeploymentCoordinator(
         }
     }
 
-    private void Complete(Guid id, DeploymentOperationState state, string? problem, string? recovery)
+    /// <param name="diagnostics">Output of the step that produced this outcome. The store sanitizes and
+    /// bounds it, so the operation carries a readable explanation of a failure, not just a code.</param>
+    /// <param name="diagnosticsTruncated">True when that output already lost its head upstream.</param>
+    private void Complete(Guid id, DeploymentOperationState state, string? problem, string? recovery,
+        IReadOnlyList<string>? diagnostics = null, bool diagnosticsTruncated = false)
     {
         try
         {
@@ -141,7 +146,7 @@ internal sealed class ApplicationDeploymentCoordinator(
                 RecoveryProblemCode = recovery,
                 CompletedAt = DateTimeOffset.UtcNow,
                 Cancellable = false,
-            }, "completed");
+            }, "completed", diagnostics, diagnosticsTruncated);
         }
         catch (Exception exception) when (exception is ApplicationDeploymentException or InvalidOperationException)
         {

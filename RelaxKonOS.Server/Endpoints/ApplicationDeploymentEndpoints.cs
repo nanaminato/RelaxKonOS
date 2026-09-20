@@ -117,6 +117,13 @@ public static class ApplicationDeploymentEndpoints
                 coordinator.Get(operationId) is { } operation ? Results.Ok(operation) : Results.NotFound()))
             .RequireAuthorization(ReadPolicy);
 
+        // Why a step failed is a read of the same operation, so it shares the read policy and stays a
+        // separate call: listing operations must not carry build output nobody asked to see.
+        group.MapGet(ApplicationDeploymentApiRoutes.OperationLogsPattern,
+            (Guid operationId, ApplicationDeploymentManager manager) => Handle(() =>
+                manager.OperationDiagnostics(operationId) is { } diagnostics ? Results.Ok(diagnostics) : Results.NotFound()))
+            .RequireAuthorization(ReadPolicy);
+
         group.MapGet(ApplicationDeploymentApiRoutes.ActiveOperationPattern,
             (Guid applicationId, ApplicationDeploymentCoordinator coordinator) => Handle(() =>
                 coordinator.GetActive(applicationId) is { } operation ? Results.Ok(operation) : Results.NotFound()))

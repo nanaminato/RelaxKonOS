@@ -24,7 +24,10 @@ public interface IDockerEngineService
     Task<DockerOperationResult> DeleteVolumeAsync(string name, bool confirmed, CancellationToken cancellationToken = default);
     Task<DockerContainerLogsDto?> GetContainerLogsAsync(string id, int tail, CancellationToken cancellationToken = default);
     Task<DockerContainerStatsDto?> GetContainerStatsAsync(string id, CancellationToken cancellationToken = default);
-    Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, CancellationToken cancellationToken = default);
+    /// <param name="includeBuildOutput">Returns the build's own stdout/stderr to the caller. It defaults
+    /// to false because build output can echo Dockerfile content and build arguments, so only a caller
+    /// that owns the context being built may ask for it.</param>
+    Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, bool includeBuildOutput = false, CancellationToken cancellationToken = default);
     Task<DockerImageArchiveDto?> ExportImageAsync(string imageId, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> ImportImageAsync(DockerImageArchiveDto archive, CancellationToken cancellationToken = default);
 }

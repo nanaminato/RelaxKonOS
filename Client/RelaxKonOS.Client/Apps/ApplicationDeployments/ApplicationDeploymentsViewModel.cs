@@ -139,7 +139,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         foreach (var revision in snapshot.Revisions)
             Revisions.Add(new RevisionRowViewModel(revision, snapshot.Application.CurrentRevisionId));
         Operations.Clear();
-        foreach (var operation in snapshot.Operations) Operations.Add(new OperationRowViewModel(operation));
+        foreach (var operation in snapshot.Operations) Operations.Add(Row(operation));
 
         if (snapshot.ActiveOperation is { } active)
         {
@@ -181,7 +181,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
 
         if (queued is not null && SelectedApplication is { } selected)
         {
-            ActiveOperation = new OperationRowViewModel(queued);
+            ActiveOperation = Row(queued);
             _ = PollAsync(selected.Id, queued);
         }
     }
@@ -269,7 +269,7 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         try
         {
             var cancelled = await client.CancelOperationAsync(operation.Id, Guid.NewGuid().ToString("N"));
-            ActiveOperation = new OperationRowViewModel(cancelled);
+            ActiveOperation = Row(cancelled);
             StatusText = LocalizedStatus.Key(DeploymentText.Prefix + ".status.cancel_requested");
         }
         catch (Exception exception) when (IsExpected(exception))
@@ -325,6 +325,13 @@ public sealed partial class ApplicationDeploymentsViewModel : LocalizedObservabl
         }
         await LoadAsync();
     }
+
+    /// <summary>
+    /// Every operation row is built through the client, so the output of a failed step can be opened
+    /// from the history list too — not only from the wizard, whose error disappears when it closes.
+    /// </summary>
+    private OperationRowViewModel Row(DeploymentOperationDto operation) =>
+        new(operation, client.GetOperationDiagnosticsAsync);
 
     [RelayCommand]
     private async Task LoadLogsAsync()
