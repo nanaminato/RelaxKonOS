@@ -70,7 +70,7 @@ internal sealed class ApplicationDeploymentService(
                 await RollbackAsync(application, operationId, request, progress, cancellationToken);
                 return;
             case DeploymentOperationKind.Start or DeploymentOperationKind.Stop or DeploymentOperationKind.Restart:
-                await ApplyLifecycleAsync(application, request, progress, cancellationToken);
+                await ApplyLifecycleAsync(application, operationId, request, progress, cancellationToken);
                 return;
             case DeploymentOperationKind.Delete:
                 await DeleteAsync(application, operationId, progress, request.DeleteVolumes, cancellationToken);
@@ -167,6 +167,11 @@ internal sealed class ApplicationDeploymentService(
             Directory.CreateDirectory(contextDirectory);
             using (var archive = staging.Open(plan.ArchiveReferenceId!, actor))
                 await ApplicationArchiveSafety.ExtractAsync(archive.Stream, contextDirectory, options, cancellationToken);
+            // An archive may wrap its payload in one top-level directory. The Docker engine receives
+            // this directory as the build context, so the wrapper is removed before the template
+            // stages its files: otherwise the payload sits one level below every context-relative
+            // path the generated Dockerfile uses.
+            ApplicationTemplateCatalog.UnwrapPublishRoot(contextDirectory);
             (entryPoint, arguments) = await template.PrepareBuildContextAsync(plan, contextDirectory, application, options, cancellationToken);
         }
 
@@ -258,7 +263,7 @@ internal sealed class ApplicationDeploymentService(
             if (!started.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerStartFailed, 409);
 
             await progress.ReportAsync(new(DeploymentStage.HealthChecking, null, true), cancellationToken);
-            if (!await WaitForReadyAsync(definition, candidate.Id, cancellationToken))
+            if (!await WaitForReadyAsync(definition, candidate.Id, operationId, cancellationToken))
                 throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.HealthCheckTimeout, 409);
 
             // Activation is the critical section: cancellation is no longer offered from here on.
@@ -316,6 +321,8 @@ internal sealed class ApplicationDeploymentService(
         }
         catch (Exception exception) when (IsExpected(exception))
         {
+            var diagnostics = exception is ApplicationDeploymentException diagnosed ? diagnosed.Diagnostics : null;
+            var diagnosticsTruncated = exception is ApplicationDeploymentException bounded && bounded.DiagnosticsTruncated;
             var problem = exception switch
             {
                 ProxyFailure proxyFailure => proxyFailure.ProblemCode,
@@ -327,8 +334,8 @@ internal sealed class ApplicationDeploymentService(
             logger.LogWarning("Deployment activation failed. ApplicationId={ApplicationId}, ProblemCode={ProblemCode}, Recovery={Recovery}",
                 application.Id, problem, recovery.ProblemCode ?? "<none>");
             throw recovery.ProblemCode is { Length: > 0 }
-                ? new DeploymentFailure(problem, recovery.ProblemCode)
-                : new ApplicationDeploymentException(problem, 409);
+                ? new DeploymentFailure(problem, recovery.ProblemCode, diagnostics, diagnosticsTruncated)
+                : new ApplicationDeploymentException(problem, 409, diagnostics, diagnosticsTruncated);
         }
     }
 
@@ -382,7 +389,7 @@ internal sealed class ApplicationDeploymentService(
         }
     }
 
-    private async Task ApplyLifecycleAsync(ApplicationRecord application, DeploymentRequest request,
+    private async Task ApplyLifecycleAsync(ApplicationRecord application, Guid operationId, DeploymentRequest request,
         IApplicationDeploymentProgress progress, CancellationToken cancellationToken)
     {
         await progress.ReportAsync(new(DeploymentStage.Preflight, null, true), cancellationToken);
@@ -413,7 +420,7 @@ internal sealed class ApplicationDeploymentService(
         if (!started.Success) throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ContainerStartFailed, 409);
 
         await progress.ReportAsync(new(DeploymentStage.HealthChecking, null, false), cancellationToken);
-        if (!await WaitForReadyAsync(definition, container.Id, cancellationToken))
+        if (!await WaitForReadyAsync(definition, container.Id, operationId, cancellationToken))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.HealthCheckTimeout, 409);
 
         catalog.BindRuntime(application.Id, container.Names, container.Id, ApplicationDesiredState.Running);
@@ -513,7 +520,8 @@ internal sealed class ApplicationDeploymentService(
         return environment;
     }
 
-    private async Task<bool> WaitForReadyAsync(ApplicationRecord application, string containerId, CancellationToken cancellationToken)
+    private async Task<bool> WaitForReadyAsync(ApplicationRecord application, string containerId, Guid operationId,
+        CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(options.HealthCheckTimeoutSeconds, 5, 3600));
         var interval = TimeSpan.FromSeconds(Math.Clamp(options.HealthCheckIntervalSeconds, 1, 30));
@@ -524,7 +532,16 @@ internal sealed class ApplicationDeploymentService(
 
             // A container that already exited cannot become ready; fail fast instead of waiting.
             var details = await runtime.InspectAsync(containerId, cancellationToken);
-            if (details is not null && details.State is "exited" or "dead") return false;
+            if (details is not null && details.State is "exited" or "dead")
+            {
+                // docker start only confirms that the process was launched. If its entry point exits
+                // immediately, waiting for the readiness deadline hides the real cause as a timeout.
+                var output = await runtime.LogsAsync(containerId, 200, cancellationToken);
+                if (output is not null)
+                    foreach (var line in output.Lines) liveLogs.Append(operationId, line, DeploymentStage.HealthChecking);
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.HealthCheckFailed, 409,
+                    output?.Lines, output?.Truncated ?? false);
+            }
             await Task.Delay(interval, cancellationToken);
         }
         return false;
@@ -601,10 +618,13 @@ internal sealed class ProxyFailure(string problemCode, string? revertedProblemCo
 }
 
 /// <summary>A failure whose recovery outcome must be reported separately from the original error.</summary>
-internal sealed class DeploymentFailure(string problemCode, string recoveryProblemCode) : Exception(problemCode)
+internal sealed class DeploymentFailure(string problemCode, string recoveryProblemCode,
+    IReadOnlyList<string>? diagnostics = null, bool diagnosticsTruncated = false) : Exception(problemCode)
 {
     public string ProblemCode { get; } = problemCode;
     public string RecoveryProblemCode { get; } = recoveryProblemCode;
+    public IReadOnlyList<string>? Diagnostics { get; } = diagnostics;
+    public bool DiagnosticsTruncated { get; } = diagnosticsTruncated;
 }
 
 /// <summary>Log sanitization shared with the proxy domain so no credential ever reaches the client.</summary>

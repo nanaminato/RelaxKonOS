@@ -101,6 +101,7 @@
 
 ## 变更日志
 
+- 2026-09-20：修复 .NET Web/Worker 发布包的单一包装目录未成为 Docker 构建根目录的问题。保留的真实上下文显示 DLL 位于 `relaxkonos-ad-dotnet-web/DotNetWebDemo.dll`，旧服务生成的入口却是 `/app/DotNetWebDemo.dll`；实际故障镜像内确认存在 .NET/ASP.NET Core 10.0.12，故“No SDKs were found”只是 dotnet 找不到目标后附带的 SDK 分支提示，并非运行时缺失。部署在生成 Dockerfile 前解包唯一包装目录（Linux/Windows 分别使用正确的文件/目录移动 API）；模板同时覆盖不受信任的 `.dockerignore`，并在构建时断言入口文件已复制。候选容器若已退出则立即读取并持久化/实时推送最近 200 行日志，返回 `health_check_failed`，不再误报 `health_check_timeout`。专项回归已复现包装目录和排除型 `.dockerignore` 并通过；再以故障部署保留的真实 `DotNetWebDemo` 发布文件构建和启动隔离镜像，容器保持 Running 且监听 `0.0.0.0:8080`。验证容器、镜像和临时上下文均已清理。
 - 2026-09-20：新增 SignalR 实时部署日志及本地归档上传字节/百分比/速率/取消 UI；客户端和服务端直接流式传输，禁用上传正文诊断缓冲，服务端显式按配置限制大小。专项命令 `dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -p:OutputPath=D:/RelaxKon/RelaxKonOS/artifacts/deployment-progress-tests/ -- --deployment-progress-only` 已通过：32 MiB+123 字节真实 HTTP 上传及内容完整性、单调字节进度、传输中取消、配置超限与错误 multipart 拒绝、增量 Docker 输出读取、SignalR 权限拒绝/实时推送/脱敏/断线补回 300 行。首次测试因测试宿主遗漏 DI 注册失败，补齐后通过；补充超限测试发现提前拒绝可能重置上传连接，生产客户端和测试均启用 `Expect: 100-continue` 后重跑通过。Client 构建通过（0 警告/0 错误），Server 构建通过（既有平台兼容性警告）。这些是 T05/T09/T10/T13 的部分 HTTP/传输层证据，不等同于完整测试矩阵通过；真实 Docker 镜像拉取/构建及桌面视觉端到端仍未执行。
 - 2026-09-19：建立第一阶段范围、I01–I12 实施清单、T01–T15 测试矩阵和证据记录格式；源码/Git 构建及自动切流保留后续范围。
 - 2026-09-19：完成设计文档与 M1–M5 全量实现（协议冻结、Server 领域层与 HTTP 端点、客户端内置应用、三语文本）；记录 B01–B04 构建与本地化校验证据；T01–T15 全部跳过（无 Docker 环境）；登记阻塞 B-01–B-03。

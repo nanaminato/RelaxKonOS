@@ -235,7 +235,9 @@ interface IApplicationTemplate
 
 ### 6.3 构建上下文
 
-只有声明的文件进入构建上下文；构建上下文与宿主其他目录物理隔离在 `build/{inputReference[..16]}` 下，`PublishRoot` 只识别「单一顶层目录」的常见包装形式。凭据与无关宿主文件不进入镜像层。
+只有声明的文件进入构建上下文；构建上下文与宿主其他目录物理隔离在 `build/{inputReference[..16]}` 下，`PublishRoot` 只识别「单一顶层目录」的常见包装形式。**识别出的这层包装目录会被解包（`UnwrapPublishRoot`），使构建上下文根目录与发布根目录是同一个目录**：Docker 引擎拿到的是解压根目录，而各模板生成的 Dockerfile 也都写在这个根目录下、并以「相对上下文」的路径引用载荷（`COPY requirements.txt`、`COPY . /app`）。若保留包装层，载荷会整体落在 Dockerfile 相对路径的下一级，表现为构建期 `COPY` 失败（`build_failed`），或通配复制成功但载荷深了一层、声明的入口点起不来。凭据与无关宿主文件不进入镜像层。
+
+归档中的 `Dockerfile` 与 `.dockerignore` 均不属于受信任输入：模板覆盖 Dockerfile，并生成自己的无排除 `.dockerignore`，保证已校验的发布文件都会进入 `COPY`。以 .NET 为例，生成的构建步骤还会在切换非 root 用户前执行 `test -f /app/{assembly}.dll`（self-contained 时检查可执行文件），缺少入口文件会在构建阶段失败，而不会生成空镜像后等到就绪超时。
 
 ## 7. 发布事务
 

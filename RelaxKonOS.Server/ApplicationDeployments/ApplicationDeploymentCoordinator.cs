@@ -106,7 +106,8 @@ internal sealed class ApplicationDeploymentCoordinator(
         }
         catch (DeploymentFailure failure)
         {
-            Complete(id, DeploymentOperationState.Failed, failure.ProblemCode, failure.RecoveryProblemCode);
+            Complete(id, DeploymentOperationState.Failed, failure.ProblemCode, failure.RecoveryProblemCode,
+                failure.Diagnostics, failure.DiagnosticsTruncated);
         }
         catch (ApplicationDeploymentException exception)
         {

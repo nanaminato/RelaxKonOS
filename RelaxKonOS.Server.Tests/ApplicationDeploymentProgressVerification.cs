@@ -28,6 +28,7 @@ internal static class ApplicationDeploymentProgressVerification
     {
         await VerifyIncrementalOutputAsync();
         await VerifyUploadCancellationAsync();
+        await VerifyDotNetPublishContextAsync(root);
         var directory = Path.Combine(root, "deployment-progress");
         Directory.CreateDirectory(directory);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = directory });
@@ -166,6 +167,37 @@ internal static class ApplicationDeploymentProgressVerification
         }
         catch (OperationCanceledException) { }
         Check(input.Position > 0 && input.Position < input.Length, "Mid-transfer cancellation must stop reading the archive before EOF.");
+    }
+
+    private static async Task VerifyDotNetPublishContextAsync(string root)
+    {
+        var context = Path.Combine(root, "dotnet-publish-context");
+        Directory.CreateDirectory(context);
+        var wrapper = Path.Combine(context, "published-application");
+        Directory.CreateDirectory(wrapper);
+        await File.WriteAllTextAsync(Path.Combine(wrapper, ".dockerignore"), "*\n!Dockerfile\n");
+        await File.WriteAllTextAsync(Path.Combine(wrapper, "Demo.dll"), "published-assembly");
+        await File.WriteAllTextAsync(Path.Combine(wrapper, "Demo.runtimeconfig.json"),
+            "{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"frameworks\":[{\"name\":\"Microsoft.AspNetCore.App\",\"version\":\"10.0.0\"}]}}");
+
+        var application = new ApplicationRecord(Guid.NewGuid(), "dotnet-context-test", "owner",
+            ApplicationSourceKind.DotNetPublish, ApplicationWorkloadKind.Web, ApplicationDesiredState.Stopped,
+            ApplicationReadinessLevel.Process, null, 8080, null, "127.0.0.1",
+            new ApplicationResourceLimitsDto(), [], [], null, null, null, null, null, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null);
+        var plan = new DeploymentPlan(ApplicationSourceKind.DotNetPublish, "1.0", "test:1", null,
+            "archive", null, null, [], false);
+        var template = ApplicationTemplateCatalog.Require(ApplicationSourceKind.DotNetPublish);
+        ApplicationTemplateCatalog.UnwrapPublishRoot(context);
+        await template.PrepareBuildContextAsync(plan, context, application, new ApplicationDeploymentOptions(), CancellationToken.None);
+
+        var ignore = await File.ReadAllTextAsync(Path.Combine(context, ".dockerignore"));
+        var dockerfile = await File.ReadAllTextAsync(Path.Combine(context, "Dockerfile"));
+        Check(!Directory.Exists(wrapper) && !ignore.Contains('*') && File.Exists(Path.Combine(context, "Demo.dll")),
+            "A wrapped publish must become the build root, and its .dockerignore must not control the generated context.");
+        Check(dockerfile.Contains("FROM mcr.microsoft.com/dotnet/aspnet:10.0", StringComparison.Ordinal)
+            && dockerfile.Contains("RUN test -f /app/Demo.dll", StringComparison.Ordinal),
+            "Framework-dependent web publishes must use the matching runtime and verify the copied entry assembly.");
     }
 
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
