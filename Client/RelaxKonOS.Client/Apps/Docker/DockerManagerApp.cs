@@ -10,6 +10,7 @@ using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.WindowManager;
+using Microsoft.Extensions.DependencyInjection;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
 
 namespace RelaxKonOS.Client.Apps.Docker;
@@ -32,7 +33,7 @@ public sealed class DockerManagerApp : RemoteApplicationBase
         }
 
         var vm = new DockerManagerViewModel(client);
-        var proxyViewModel = new DockerProxyViewModel(client);
+        var proxyViewModel = new DockerProxyViewModel(client, dockerOnly: true);
         var imageMirrorsViewModel = new DockerImageMirrorsViewModel(context.Services.GetRequiredService<IDockerImageMirrorClient>());
         vm.Installation = InstallationPanel.Create(context, InstallationServiceId.Docker, "relaxkonos.docker", () => vm.RefreshCommand.ExecuteAsync(null));
         ManagedWindow? window = null;
@@ -43,8 +44,6 @@ public sealed class DockerManagerApp : RemoteApplicationBase
             () => DockerManagerDialogs.ShowCreateNetworkAsync(context, window!, vm),
             () => DockerManagerDialogs.ShowCreateVolumeAsync(context, window!, vm));
         window = context.ShowWindow(LocalizedText.Get("application.relaxkonos.docker.display_name"), InstallationPanel.Wrap(view, vm.Installation), new Rect(70, 55, 1180, 760), Manifest.IconGlyph);
-        // A daemon-layer change restarts Docker and interrupts running containers, so it is always
-        // confirmed interactively rather than being an effect of pressing Save.
         proxyViewModel.RequestConfirmationAsync = async message =>
         {
             var confirmed = false;

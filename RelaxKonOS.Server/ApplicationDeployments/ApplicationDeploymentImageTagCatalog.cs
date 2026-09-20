@@ -9,9 +9,8 @@ namespace RelaxKonOS.Server.ApplicationDeployments;
 /// "most recently updated" ordering, whereas Docker Hub does; private and other registries remain
 /// manually enterable rather than being probed with an operator's credentials.
 /// </summary>
-internal sealed class ApplicationDeploymentImageTagCatalog(IHttpClientFactory clients, ILogger<ApplicationDeploymentImageTagCatalog> logger)
+internal sealed class ApplicationDeploymentImageTagCatalog(IOutboundProxyHttpClientFactory clients, ILogger<ApplicationDeploymentImageTagCatalog> logger)
 {
-    public const string HttpClientName = "application-deployment-image-tags";
     private const int MaximumTags = 20;
 
     public async Task<ApplicationImageTagsDto> ListAsync(string repositoryReference, CancellationToken cancellationToken)
@@ -22,18 +21,15 @@ internal sealed class ApplicationDeploymentImageTagCatalog(IHttpClientFactory cl
 
         try
         {
-            var client = clients.CreateClient(HttpClientName);
+            using var client = await clients.CreateAsync(OutboundProxyTarget.ImageTags, TimeSpan.FromSeconds(10), cancellationToken);
+            client.BaseAddress = new Uri("https://hub.docker.com/");
             var requestPath = $"v2/repositories/{Uri.EscapeDataString(dockerHubPath.Namespace)}/{Uri.EscapeDataString(dockerHubPath.Name)}/tags?page_size={MaximumTags}&ordering=last_updated";
             var destination = new Uri(client.BaseAddress!, requestPath);
-            var proxy = DescribeSystemProxy(destination);
-            // This makes the effective route observable without writing credentials from a proxy URL.
-            // The client is explicitly configured with UseProxy=true, so HttpClient.DefaultProxy is
-            // also the proxy source the handler consults for this request.
-            logger.LogInformation("Application image-tag lookup started. Repository={Repository} Destination={Destination} Proxy={Proxy}",
-                repository, destination.GetLeftPart(UriPartial.Authority), proxy);
+            logger.LogInformation("Application image-tag lookup started. Repository={Repository} Destination={Destination}",
+                repository, destination.GetLeftPart(UriPartial.Authority));
             using var response = await client.GetAsync(requestPath, cancellationToken);
-            logger.LogInformation("Application image-tag lookup received a response. Repository={Repository} StatusCode={StatusCode} Proxy={Proxy}",
-                repository, (int)response.StatusCode, proxy);
+            logger.LogInformation("Application image-tag lookup received a response. Repository={Repository} StatusCode={StatusCode}",
+                repository, (int)response.StatusCode);
             if (!response.IsSuccessStatusCode) return new(repository, [], false);
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -58,8 +54,8 @@ internal sealed class ApplicationDeploymentImageTagCatalog(IHttpClientFactory cl
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException or TaskCanceledException)
         {
-            logger.LogWarning("Application image-tag lookup failed. Repository={Repository} Failure={Failure} Proxy={Proxy}",
-                repository, exception.GetType().Name, DescribeSystemProxy(new Uri("https://hub.docker.com/")));
+            logger.LogWarning("Application image-tag lookup failed. Repository={Repository} Failure={Failure}",
+                repository, exception.GetType().Name);
             return new(repository, [], false);
         }
     }
@@ -93,19 +89,4 @@ internal sealed class ApplicationDeploymentImageTagCatalog(IHttpClientFactory cl
         return separator > value.LastIndexOf('/') ? value[..separator] : value;
     }
 
-    /// <summary>Reports the handler's system-proxy route while never exposing proxy credentials.</summary>
-    private static string DescribeSystemProxy(Uri destination)
-    {
-        try
-        {
-            var proxy = HttpClient.DefaultProxy;
-            if (proxy.IsBypassed(destination)) return "direct";
-            var endpoint = proxy.GetProxy(destination);
-            return endpoint is null || endpoint == destination ? "direct" : DockerProxyValidation.MaskProxy(endpoint.ToString());
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or UriFormatException)
-        {
-            return "unavailable";
-        }
-    }
 }

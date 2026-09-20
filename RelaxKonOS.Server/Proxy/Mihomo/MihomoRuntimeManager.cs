@@ -8,6 +8,7 @@ using RelaxKonOS.Protocol.Proxy;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Server.Installations;
 using RelaxKonOS.Server.Proxy.Platform;
+using RelaxKonOS.Server.Docker;
 
 namespace RelaxKonOS.Server.Proxy.Mihomo;
 
@@ -17,7 +18,7 @@ namespace RelaxKonOS.Server.Proxy.Mihomo;
 /// </summary>
 public sealed class MihomoRuntimeManager(
     IProxyPlatformPaths paths,
-    IHttpClientFactory httpClients,
+    IOutboundProxyHttpClientFactory httpClients,
     IProxyPrivilegedOperations privileged,
     IMihomoRuntimeProbe probe,
     IMihomoControllerClient controller,
@@ -349,7 +350,8 @@ public sealed class MihomoRuntimeManager(
 
     private async Task DownloadAndVerifyAsync(MihomoRuntimeRelease release, string destination, CancellationToken cancellationToken)
     {
-        using var response = await httpClients.CreateClient("MihomoRuntime").GetAsync(release.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var client = await httpClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromSeconds(30), cancellationToken);
+        using var response = await client.GetAsync(release.DownloadUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MihomoRuntimeManifest.MaximumArchiveBytes)
             throw new RuntimeInstallException(ProxyProblemCodes.RuntimeIntegrityFailed);
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);

@@ -23,6 +23,10 @@ public sealed class DockerProxySetting
     public bool ApplyToEngine { get; set; }
     /// <summary>Install the proxy on the Server's own docker child processes, which governs builds.</summary>
     public bool ApplyToBuild { get; set; }
+    /// <summary>Route the Docker Hub tag catalogue through this proxy.</summary>
+    public bool ApplyToImageTags { get; set; }
+    /// <summary>Route managed Nginx, FRP, and Mihomo runtime downloads through this proxy.</summary>
+    public bool ApplyToRuntimeDownloads { get; set; }
     /// <summary>
     /// True when the last engine-layer write reached the host successfully. It distinguishes "the
     /// host is configured but its daemon has not restarted" from "the write never happened", which

@@ -46,6 +46,8 @@ public sealed class InMemoryDockerProxySettingsRepository : IDockerProxySettings
         NoProxy = value.NoProxy,
         ApplyToEngine = value.ApplyToEngine,
         ApplyToBuild = value.ApplyToBuild,
+        ApplyToImageTags = value.ApplyToImageTags,
+        ApplyToRuntimeDownloads = value.ApplyToRuntimeDownloads,
         EngineApplied = value.EngineApplied,
         EngineProblemCode = value.EngineProblemCode,
         UpdatedAt = value.UpdatedAt,

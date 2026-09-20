@@ -130,7 +130,6 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxyGeoDataService, Rela
 builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.MihomoGeoDataHostedService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Proxy.IProxySettingsService, RelaxKonOS.Server.Proxy.Mihomo.MihomoSettingsService>();
 builder.Services.AddHostedService<RelaxKonOS.Server.Proxy.Mihomo.SystemProxyGuardHostedService>();
-builder.Services.AddHttpClient("MihomoRuntime", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient("ProxySubscriptionDirect", client => client.Timeout = TimeSpan.FromSeconds(30))
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
@@ -435,13 +434,6 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.
 builder.Services.AddHttpClient(RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime.HealthClientName,
         client => client.Timeout = TimeSpan.FromSeconds(10))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
-builder.Services.AddHttpClient(RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentImageTagCatalog.HttpClientName,
-        client =>
-        {
-            client.BaseAddress = new Uri("https://hub.docker.com/");
-            client.Timeout = TimeSpan.FromSeconds(10);
-        })
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseProxy = true, AllowAutoRedirect = false });
 
 // Identity transport is a deployment decision, not a Development-environment shortcut.  A
 // no-sudo User Mode Server authenticates the account that owns the process through the host's
@@ -540,6 +532,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerComposeService, Re
 // Windows) and reports Unsupported elsewhere.
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerEngineProxyConfigurator, RelaxKonOS.Server.Docker.DockerEngineProxyConfigurator>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerProxyResolver, RelaxKonOS.Server.Docker.DockerProxyResolver>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IOutboundProxyHttpClientFactory, RelaxKonOS.Server.Docker.OutboundProxyHttpClientFactory>();
 // Docker Desktop is the only host that hides the real upstream behind an internal relay, so the
 // reader that knows its settings file is selected here instead of probing for a file that cannot
 // exist on the other platforms.
@@ -592,7 +585,6 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Runtimes.IRuntimeManager, RelaxK
 builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.ITunnelProvider, RelaxKonOS.Server.Tunnels.FrpTunnelProvider>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Tunnels.IManagedFrpsService, RelaxKonOS.Server.Tunnels.ManagedFrpsService>();
 builder.Services.Configure<RelaxKonOS.Server.Runtimes.FrpRuntimeOptions>(builder.Configuration.GetSection("FrpRuntime"));
-builder.Services.AddHttpClient("FrpRuntime", client => client.Timeout = TimeSpan.FromMinutes(2));
 
 // Certificate management is host-global. PEM/account keys remain behind the server-side
 // store; the API exposes metadata and operation IDs only.

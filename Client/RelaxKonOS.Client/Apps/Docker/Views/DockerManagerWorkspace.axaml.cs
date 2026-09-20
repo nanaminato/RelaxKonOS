@@ -49,8 +49,6 @@ internal partial class DockerManagerWorkspace : UserControl
 
         _selectedButton = button;
         button.Classes.Add("nav-selected");
-        // The proxy page reads the host preference on every visit: it is host-global state that
-        // another operator or an out-of-band host change can alter while this window is open.
         if (section == "proxy") _ = _proxyViewModel.LoadAsync();
         if (section == "mirrors") _ = _imageMirrorsViewModel.LoadAsync();
         ContentHost.Content = section switch
@@ -59,9 +57,9 @@ internal partial class DockerManagerWorkspace : UserControl
             "stacks" => new DockerStacksView(_showDeployStack),
             "images" => new DockerImagesView(_showPullImage),
             "mirrors" => new DockerImageMirrorsView(_imageMirrorsViewModel),
+            "proxy" => new DockerProxyView(_proxyViewModel),
             "networks" => new DockerNetworksView(_showCreateNetwork),
             "volumes" => new DockerVolumesView(_showCreateVolume),
-            "proxy" => new DockerProxyView(_proxyViewModel),
             _ => new DockerOverviewView()
         };
     }

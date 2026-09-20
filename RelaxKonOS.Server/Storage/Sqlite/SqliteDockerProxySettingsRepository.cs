@@ -23,7 +23,7 @@ public sealed class SqliteDockerProxySettingsRepository(IHostEnvironment environ
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT enabled,source,http_proxy,https_proxy,no_proxy,apply_to_engine,apply_to_build,engine_applied,engine_problem_code,updated_at,updated_by FROM docker_proxy_settings WHERE settings_id=1;";
+        command.CommandText = "SELECT enabled,source,http_proxy,https_proxy,no_proxy,apply_to_engine,apply_to_build,apply_to_image_tags,apply_to_runtime_downloads,engine_applied,engine_problem_code,updated_at,updated_by FROM docker_proxy_settings WHERE settings_id=1;";
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
         return new DockerProxySetting
@@ -35,10 +35,12 @@ public sealed class SqliteDockerProxySettingsRepository(IHostEnvironment environ
             NoProxy = reader.GetString(4),
             ApplyToEngine = reader.GetInt64(5) != 0,
             ApplyToBuild = reader.GetInt64(6) != 0,
-            EngineApplied = reader.GetInt64(7) != 0,
-            EngineProblemCode = reader.GetString(8),
-            UpdatedAt = DateTimeOffset.Parse(reader.GetString(9), null, System.Globalization.DateTimeStyles.RoundtripKind),
-            UpdatedBy = reader.GetString(10),
+            ApplyToImageTags = reader.GetInt64(7) != 0,
+            ApplyToRuntimeDownloads = reader.GetInt64(8) != 0,
+            EngineApplied = reader.GetInt64(9) != 0,
+            EngineProblemCode = reader.GetString(10),
+            UpdatedAt = DateTimeOffset.Parse(reader.GetString(11), null, System.Globalization.DateTimeStyles.RoundtripKind),
+            UpdatedBy = reader.GetString(12),
         };
     }
 
@@ -48,11 +50,11 @@ public sealed class SqliteDockerProxySettingsRepository(IHostEnvironment environ
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO docker_proxy_settings(settings_id,enabled,source,http_proxy,https_proxy,no_proxy,apply_to_engine,apply_to_build,engine_applied,engine_problem_code,updated_at,updated_by)
-            VALUES(1,$enabled,$source,$http,$https,$noProxy,$engine,$build,$applied,$engineProblem,$updated,$actor)
+            INSERT INTO docker_proxy_settings(settings_id,enabled,source,http_proxy,https_proxy,no_proxy,apply_to_engine,apply_to_build,apply_to_image_tags,apply_to_runtime_downloads,engine_applied,engine_problem_code,updated_at,updated_by)
+            VALUES(1,$enabled,$source,$http,$https,$noProxy,$engine,$build,$imageTags,$runtimeDownloads,$applied,$engineProblem,$updated,$actor)
             ON CONFLICT(settings_id) DO UPDATE SET
                 enabled=$enabled,source=$source,http_proxy=$http,https_proxy=$https,no_proxy=$noProxy,
-                apply_to_engine=$engine,apply_to_build=$build,engine_applied=$applied,
+                apply_to_engine=$engine,apply_to_build=$build,apply_to_image_tags=$imageTags,apply_to_runtime_downloads=$runtimeDownloads,engine_applied=$applied,
                 engine_problem_code=$engineProblem,updated_at=$updated,updated_by=$actor;
             """;
         command.Parameters.AddWithValue("$enabled", setting.Enabled ? 1 : 0);
@@ -62,6 +64,8 @@ public sealed class SqliteDockerProxySettingsRepository(IHostEnvironment environ
         command.Parameters.AddWithValue("$noProxy", setting.NoProxy);
         command.Parameters.AddWithValue("$engine", setting.ApplyToEngine ? 1 : 0);
         command.Parameters.AddWithValue("$build", setting.ApplyToBuild ? 1 : 0);
+        command.Parameters.AddWithValue("$imageTags", setting.ApplyToImageTags ? 1 : 0);
+        command.Parameters.AddWithValue("$runtimeDownloads", setting.ApplyToRuntimeDownloads ? 1 : 0);
         command.Parameters.AddWithValue("$applied", setting.EngineApplied ? 1 : 0);
         command.Parameters.AddWithValue("$engineProblem", setting.EngineProblemCode);
         command.Parameters.AddWithValue("$updated", setting.UpdatedAt.ToString("O"));

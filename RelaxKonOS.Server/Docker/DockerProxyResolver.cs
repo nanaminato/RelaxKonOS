@@ -10,9 +10,9 @@ using RelaxKonOS.Server.Storage.Sqlite;
 namespace RelaxKonOS.Server.Docker;
 
 /// <summary>
-/// The effective proxy values for this host, resolved from the saved preference. Every consumer
-/// (the docker child-process environment and the daemon configurator) reads the same resolution, so
-/// a saved setting can never be applied to one layer and silently skipped for the other.
+/// The effective outbound-proxy values for this host, resolved from the shared preference. Docker
+/// layers and host-initiated download clients read the same resolution, so a saved setting can
+/// never be applied to one consumer and silently skipped for another.
 /// </summary>
 public sealed record DockerProxyResolution(
     bool Enabled,
@@ -22,18 +22,22 @@ public sealed record DockerProxyResolution(
     string NoProxy,
     bool ApplyToBuild,
     bool ApplyToEngine,
+    bool ApplyToImageTags,
+    bool ApplyToRuntimeDownloads,
     string ManagedProxyEndpoint,
     bool ManagedProxyAvailable,
     string ProblemCode)
 {
     /// <summary>Nothing is configured and nothing may be applied.</summary>
     public static DockerProxyResolution Disabled(string problemCode = "") =>
-        new(false, DockerProxySource.Custom, "", "", "", false, false, "", false, problemCode);
+        new(false, DockerProxySource.Custom, "", "", "", false, false, false, false, "", false, problemCode);
 
     /// <summary>True when the resolution is usable, so a layer may actually be installed.</summary>
     public bool IsUsable => Enabled && ProblemCode.Length == 0;
     public bool BuildLayerActive => IsUsable && ApplyToBuild;
     public bool EngineLayerRequested => IsUsable && ApplyToEngine;
+    public bool ImageTagsActive => IsUsable && ApplyToImageTags;
+    public bool RuntimeDownloadsActive => IsUsable && ApplyToRuntimeDownloads;
 }
 
 public interface IDockerProxyResolver
@@ -92,6 +96,7 @@ public sealed class DockerProxyResolver(IDockerProxySettingsRepository settings,
                 return DockerProxyResolution.Disabled(DockerProxyProblem.ManagedProxyUnavailable) with
                 {
                     Enabled = true, Source = saved.Source, ApplyToBuild = saved.ApplyToBuild, ApplyToEngine = saved.ApplyToEngine,
+                    ApplyToImageTags = saved.ApplyToImageTags, ApplyToRuntimeDownloads = saved.ApplyToRuntimeDownloads,
                     ManagedProxyEndpoint = managedEndpoint, ManagedProxyAvailable = false, NoProxy = noProxy,
                 };
             httpProxy = httpsProxy = managedEndpoint;
@@ -109,10 +114,11 @@ public sealed class DockerProxyResolver(IDockerProxySettingsRepository settings,
             return DockerProxyResolution.Disabled(DockerProxyProblem.ConfigurationInvalid) with
             {
                 Enabled = true, Source = saved.Source, ApplyToBuild = saved.ApplyToBuild, ApplyToEngine = saved.ApplyToEngine,
+                ApplyToImageTags = saved.ApplyToImageTags, ApplyToRuntimeDownloads = saved.ApplyToRuntimeDownloads,
                 ManagedProxyEndpoint = managedEndpoint, ManagedProxyAvailable = managedAvailable, NoProxy = noProxy,
             };
 
-        return new(true, saved.Source, httpProxy, httpsProxy, noProxy, saved.ApplyToBuild, saved.ApplyToEngine,
+        return new(true, saved.Source, httpProxy, httpsProxy, noProxy, saved.ApplyToBuild, saved.ApplyToEngine, saved.ApplyToImageTags, saved.ApplyToRuntimeDownloads,
             managedEndpoint, managedAvailable, "");
     }
 

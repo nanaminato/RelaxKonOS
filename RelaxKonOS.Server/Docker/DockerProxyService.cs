@@ -20,9 +20,9 @@ public interface IDockerProxyService
 }
 
 /// <summary>
-/// Owns the Docker proxy preference and installs it on both layers. The build layer needs no host
-/// change because the Server already controls its own docker child processes; the daemon layer is
-/// delegated to <see cref="IDockerEngineProxyConfigurator"/>.
+/// Owns the shared outbound-proxy preference and installs its Docker layers. The build layer needs
+/// no host change because the Server already controls its own docker child processes; the daemon
+/// layer is delegated to <see cref="IDockerEngineProxyConfigurator"/>.
 /// </summary>
 public sealed class DockerProxyService(
     IDockerProxySettingsRepository settings,
@@ -250,6 +250,8 @@ public sealed class DockerProxyService(
             NoProxy = noProxy,
             ApplyToEngine = request.Enabled && request.ApplyToEngine,
             ApplyToBuild = request.Enabled && request.ApplyToBuild,
+            ApplyToImageTags = request.Enabled && request.ApplyToImageTags,
+            ApplyToRuntimeDownloads = request.Enabled && request.ApplyToRuntimeDownloads,
             // A new preference has not been installed on the host yet, so the previous outcome is
             // discarded: the values it described no longer apply.
             EngineApplied = false,
@@ -260,8 +262,9 @@ public sealed class DockerProxyService(
     }
 
     private static DockerProxySettingsDto ToDto(DockerProxySetting? saved) => saved is null
-        ? new DockerProxySettingsDto(false, DockerProxySource.Custom, string.Empty, string.Empty, string.Empty, false, false)
-        : new DockerProxySettingsDto(saved.Enabled, saved.Source, saved.HttpProxy, saved.HttpsProxy, saved.NoProxy, saved.ApplyToEngine, saved.ApplyToBuild);
+        ? new DockerProxySettingsDto(false, DockerProxySource.Custom, string.Empty, string.Empty, string.Empty, false, false, false, false)
+        : new DockerProxySettingsDto(saved.Enabled, saved.Source, saved.HttpProxy, saved.HttpsProxy, saved.NoProxy,
+            saved.ApplyToEngine, saved.ApplyToBuild, saved.ApplyToImageTags, saved.ApplyToRuntimeDownloads);
 
     private async Task<DockerProxySetting?> ReadSavedAsync(CancellationToken cancellationToken)
     {

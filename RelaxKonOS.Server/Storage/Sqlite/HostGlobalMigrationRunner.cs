@@ -309,6 +309,16 @@ internal static class HostGlobalMigrationRunner
                     updated_by TEXT NOT NULL
                 );
                 INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (14, CURRENT_TIMESTAMP);
+            """, cancellationToken);
+        }
+        if (!await IsAppliedAsync(connection, transaction, 15, cancellationToken))
+        {
+            // Targets are deliberately grouped so release downloads and Docker Hub tag lookups
+            // can use the shared outbound proxy without changing the Docker daemon itself.
+            await ExecuteAsync(connection, transaction, """
+                ALTER TABLE docker_proxy_settings ADD COLUMN apply_to_image_tags INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE docker_proxy_settings ADD COLUMN apply_to_runtime_downloads INTEGER NOT NULL DEFAULT 0;
+                INSERT INTO relaxkonos_host_schema_migrations(version, applied_at) VALUES (15, CURRENT_TIMESTAMP);
                 """, cancellationToken);
         }
         transaction.Commit();

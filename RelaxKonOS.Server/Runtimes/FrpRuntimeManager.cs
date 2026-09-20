@@ -7,11 +7,12 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.Protocol.Tunnels;
+using RelaxKonOS.Server.Docker;
 
 namespace RelaxKonOS.Server.Runtimes;
 
 /// <summary>Owns RelaxKonOS-managed FRP releases. Activation changes a private state pointer, never overwrites a release.</summary>
-public sealed class FrpRuntimeManager(IHostEnvironment environment, IHttpClientFactory httpClients, IOptions<FrpRuntimeOptions> options) : IRuntimeManager
+public sealed class FrpRuntimeManager(IHostEnvironment environment, IOutboundProxyHttpClientFactory httpClients, IOptions<FrpRuntimeOptions> options) : IRuntimeManager
 {
     private const string RuntimeId = "frp";
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -154,7 +155,8 @@ public sealed class FrpRuntimeManager(IHostEnvironment environment, IHttpClientF
 
     private async Task DownloadVerifiedAsync(FrpRuntimeRelease release, string destination, IInstallationProgress progress, CancellationToken ct)
     {
-        using var response = await httpClients.CreateClient("FrpRuntime").GetAsync(release.Url, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var client = await httpClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromMinutes(2), ct);
+        using var response = await client.GetAsync(release.Url, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode) throw new RuntimeInstallException("tunnel.runtime_download_failed");
         if (response.Content.Headers.ContentLength > _options.MaximumArchiveBytes) throw new RuntimeInstallException("tunnel.runtime_download_too_large");
         await progress.ReportAsync(new(InstallationStage.Downloading, Cancellable: true), ct);

@@ -46,8 +46,8 @@ public enum DockerProxyLayerState
 public sealed record DockerProxyLayerDto(DockerProxyTarget Target, DockerProxyLayerState State, string ProblemCode, string Detail);
 
 /// <summary>
-/// Saved proxy preference. Proxy URLs may embed credentials. Every value in this record is the
-/// operator's own input and is returned verbatim, because a masked echo would make the form
+/// Shared outbound-proxy preference. It configures selected host-initiated features and Docker
+/// layers. Proxy URLs may embed credentials. Every value in this record is the operator's own input and is returned verbatim, because a masked echo would make the form
 /// unusable: saving it back would replace the real credential with the mask. Credentials are
 /// therefore kept out of logs, audits, problem details, and layer diagnostics instead of being
 /// hidden from the authorized operator who typed them. The values are protected at rest.
@@ -59,10 +59,12 @@ public sealed record DockerProxySettingsDto(
     string HttpsProxy,
     string NoProxy,
     bool ApplyToEngine,
-    bool ApplyToBuild);
+    bool ApplyToBuild,
+    bool ApplyToImageTags,
+    bool ApplyToRuntimeDownloads);
 
 /// <summary>
-/// Proxy preference to save. An empty HTTPS proxy means "reuse the HTTP proxy". Installing the
+/// Shared outbound-proxy preference to save. An empty HTTPS proxy means "reuse the HTTP proxy". Installing the
 /// daemon layer restarts Docker and interrupts running containers, so it requires
 /// <see cref="Confirmed"/>.
 /// </summary>
@@ -74,6 +76,8 @@ public sealed record SaveDockerProxySettingsRequest(
     string? NoProxy = null,
     bool ApplyToEngine = true,
     bool ApplyToBuild = true,
+    bool ApplyToImageTags = false,
+    bool ApplyToRuntimeDownloads = false,
     bool Confirmed = false);
 
 /// <summary>

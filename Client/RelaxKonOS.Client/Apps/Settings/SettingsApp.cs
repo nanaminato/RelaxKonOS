@@ -81,6 +81,16 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             iconGlyph: Manifest.IconGlyph);
         _viewModel = viewModel;
         _window = window;
+        var outboundProxy = viewModel.Pages.OfType<NetworkPageViewModel>().Single().OutboundProxy;
+        outboundProxy.RequestConfirmationAsync = async message =>
+        {
+            var confirmed = false;
+            await context.ShowDialogAsync<bool>(window, LocalizedText.Get("settings.outbound_proxy.title"), dialog => new ConfirmDialogView
+            {
+                DataContext = new ConfirmDialogViewModel(message, result => { confirmed = result; dialog.Close(result); }, LocalizedText.Get("settings.outbound_proxy.confirm_continue")),
+            });
+            return confirmed;
+        };
         viewModel.Pages.OfType<AccountSecurityPageViewModel>().Single().RequestOperationAsync = async (operation, configuration, cancellationToken) =>
         {
             AliasOperationDialogViewModel? editor = null;

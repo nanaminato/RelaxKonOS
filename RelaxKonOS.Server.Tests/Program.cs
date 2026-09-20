@@ -1134,7 +1134,7 @@ static async Task VerifyDockerProxyAsync(string root)
     // --- Build layer: a value-less build argument carries the proxy -------------------------
     var buildResolution = new DockerProxyResolution(true, DockerProxySource.Custom,
         "http://operator:s3cr3t@proxy.example:8080", "http://operator:s3cr3t@proxy.example:8080", "localhost",
-        true, true, string.Empty, true, string.Empty);
+        true, true, false, false, string.Empty, true, string.Empty);
     var buildArguments = DockerBuildProxy.ArgumentNames(buildResolution);
     Assert(buildArguments.Count == 12 && buildArguments[0] == "--build-arg"
         && buildArguments.Where((_, index) => index % 2 == 1)
@@ -1170,12 +1170,12 @@ static async Task VerifyDockerProxyAsync(string root)
     await settings.SaveAsync(new DockerProxySetting
     {
         Enabled = true, Source = DockerProxySource.Custom, HttpProxy = "http://127.0.0.1:3128", HttpsProxy = string.Empty,
-        ApplyToBuild = true, ApplyToEngine = true,
+        ApplyToBuild = true, ApplyToEngine = true, ApplyToImageTags = true, ApplyToRuntimeDownloads = true,
     });
     var resolver = new DockerProxyResolver(settings, new StaticProxySettingsService());
     var custom = await resolver.ResolveAsync();
     Assert(custom.IsUsable && custom.HttpProxy == "http://127.0.0.1:3128" && custom.HttpsProxy == "http://127.0.0.1:3128"
-        && custom.BuildLayerActive && custom.EngineLayerRequested,
+        && custom.BuildLayerActive && custom.EngineLayerRequested && custom.ImageTagsActive && custom.RuntimeDownloadsActive,
         "A custom proxy did not resolve, or an empty HTTPS value was not replaced by the HTTP one.");
     Assert(custom.ManagedProxyEndpoint == "http://127.0.0.1:7890",
         "The managed proxy endpoint was not advertised for one-click selection.");
@@ -1220,11 +1220,12 @@ static async Task VerifyDockerProxyAsync(string root)
     await repository.SaveAsync(new DockerProxySetting
     {
         Enabled = true, Source = DockerProxySource.Custom, HttpProxy = secret, HttpsProxy = secret, NoProxy = "localhost",
-        ApplyToEngine = true, ApplyToBuild = true, EngineApplied = true,
+        ApplyToEngine = true, ApplyToBuild = true, ApplyToImageTags = true, ApplyToRuntimeDownloads = true, EngineApplied = true,
         UpdatedAt = DateTimeOffset.UtcNow, UpdatedBy = Guid.NewGuid().ToString("D"),
     });
     var reloaded = await repository.GetAsync();
-    Assert(reloaded?.HttpProxy == secret && reloaded.EngineApplied && reloaded.NoProxy == "localhost",
+    Assert(reloaded?.HttpProxy == secret && reloaded.EngineApplied && reloaded.NoProxy == "localhost"
+        && reloaded.ApplyToImageTags && reloaded.ApplyToRuntimeDownloads,
         "The Docker proxy preference was not persisted, or its protected URL could not be recovered.");
     await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath}"))
     {
@@ -1904,7 +1905,7 @@ sealed class CapturingLogger<T> : ILogger<T>
         => Entries.Add(formatter(state, exception));
 }
 
-sealed class FixtureHttpClientFactory(byte[] payload) : IHttpClientFactory
+sealed class FixtureHttpClientFactory(byte[] payload) : IHttpClientFactory, IOutboundProxyHttpClientFactory
 {
     public string? LastClientName { get; private set; }
     public string? LastUserAgent { get; private set; }
@@ -1913,6 +1914,13 @@ sealed class FixtureHttpClientFactory(byte[] payload) : IHttpClientFactory
     {
         LastClientName = name;
         return new(new FixtureHandler(payload, request => LastUserAgent = request.Headers.UserAgent.ToString()));
+    }
+
+    public Task<HttpClient> CreateAsync(OutboundProxyTarget target, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        var client = CreateClient(target.ToString());
+        client.Timeout = timeout;
+        return Task.FromResult(client);
     }
 
     private sealed class FixtureHandler(byte[] payload, Action<HttpRequestMessage> inspect) : HttpMessageHandler
