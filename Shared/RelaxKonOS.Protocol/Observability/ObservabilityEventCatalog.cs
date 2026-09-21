@@ -28,6 +28,7 @@ public static class ObservabilityEventCatalog
     public static readonly Definition GuardianRestartCompleted = new(1801, "guardian.restart.completed");
     public static readonly Definition SinkDegraded = new(1900, "observability.sink.degraded");
     public static readonly Definition AuditWriteFailed = new(1901, "observability.audit_write_failed");
+    public static readonly Definition StorageVerified = new(1902, "observability.storage.verified");
 
     public static IReadOnlyList<Definition> All { get; } =
     [
@@ -35,7 +36,7 @@ public static class ObservabilityEventCatalog
         AuthorizationDenied, ElevationGranted, PrivilegedRequestAccepted, PrivilegedTransportRejected,
         PrivilegedRequestCompleted, ConfigurationChanged, ServiceRestart, CertificateDeployed, DependencyUnavailable,
         InputRejected, TrustValidationFailed, StorageMigrationFailed, OperationRecoveryStarted, GuardianProbeFailed,
-        GuardianRestartCompleted, SinkDegraded, AuditWriteFailed
+        GuardianRestartCompleted, SinkDegraded, AuditWriteFailed, StorageVerified
     ];
 
     private static readonly HashSet<string> Actions = new(StringComparer.Ordinal)

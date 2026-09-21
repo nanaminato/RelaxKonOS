@@ -71,6 +71,7 @@ builder.Services.AddSingleton<IObservabilitySanitizer, ObservabilitySanitizer>()
 builder.Services.AddSingleton<IRuntimeLogSink, JsonRuntimeLogSink>();
 builder.Services.AddSingleton<IEventLogger, EventLogger>();
 builder.Services.AddSingleton<ISecurityAuditWriter, SecurityAuditWriter>();
+builder.Services.AddHostedService<ObservabilityStartupValidationService>();
 // Deployment mode is an explicit security contract. In particular, Development must not turn a
 // system installation into User Mode or enable its in-process PAM path.
 var serverModeResolver = new ServerModeResolver(builder.Configuration);

@@ -26,9 +26,9 @@ public sealed class ObservabilityOptions
         if (AuditDatabasePath is not null && !Path.IsPathFullyQualified(AuditDatabasePath))
             throw new InvalidOperationException("Observability:AuditDatabasePath must be an absolute path.");
         if (!production) return;
-        if (AuditRetentionDays < 365 || string.IsNullOrWhiteSpace(InstanceId) || string.IsNullOrWhiteSpace(AuditDatabasePath)
+        if (AuditRetentionDays < 365 || string.IsNullOrWhiteSpace(InstanceId) || string.IsNullOrWhiteSpace(LogDirectory) || string.IsNullOrWhiteSpace(AuditDatabasePath)
             || string.IsNullOrWhiteSpace(AuditHmacKey))
-            throw new InvalidOperationException("Production requires InstanceId, AuditDatabasePath, AuditHmacKey, and at least 365 days of security audit retention.");
+            throw new InvalidOperationException("Production requires InstanceId, LogDirectory, AuditDatabasePath, AuditHmacKey, and at least 365 days of security audit retention.");
         try { if (Convert.FromBase64String(AuditHmacKey).Length < 32) throw new FormatException(); }
         catch (FormatException) { throw new InvalidOperationException("Observability:AuditHmacKey must be a base64-encoded 256-bit key or stronger."); }
     }

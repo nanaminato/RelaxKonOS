@@ -25,8 +25,12 @@ public sealed partial class ObservabilitySanitizer : IObservabilitySanitizer
 
     public ObservabilitySanitizer(ObservabilityOptions options)
     {
-        var material = options.AuditHmacKey;
-        _referenceKey = string.IsNullOrWhiteSpace(material) ? RandomNumberGenerator.GetBytes(32) : Convert.FromBase64String(material);
+        try
+        {
+            var material = options.AuditHmacKey;
+            _referenceKey = string.IsNullOrWhiteSpace(material) ? RandomNumberGenerator.GetBytes(32) : Convert.FromBase64String(material);
+        }
+        catch (FormatException) { _referenceKey = RandomNumberGenerator.GetBytes(32); }
     }
 
     public string ToReference(string? value)
