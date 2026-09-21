@@ -16,13 +16,17 @@ public sealed class AuthenticationEndpointFilter(AuthenticationGate gate, ILogge
             LogFailure(context.HttpContext, exception.Status, exception.Code);
             return Failure(context.HttpContext, exception.Status, exception.Code);
         }
-        catch (DbException)
+        catch (DbException exception)
         {
+            logger.LogError("Authentication database operation failed. ExceptionType={ExceptionType} Route={Route}",
+                exception.GetType().Name, context.HttpContext.Request.Path.Value);
             LogFailure(context.HttpContext, 503, "authentication-unavailable");
             return Failure(context.HttpContext, 503, "authentication-unavailable");
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
+            logger.LogError("Authentication database update failed. ExceptionType={ExceptionType} Route={Route}",
+                exception.GetType().Name, context.HttpContext.Request.Path.Value);
             LogFailure(context.HttpContext, 503, "authentication-unavailable");
             return Failure(context.HttpContext, 503, "authentication-unavailable");
         }

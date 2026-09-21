@@ -11,7 +11,7 @@ public sealed record AuthenticatedLogin(User User, string Method, long Revision,
 
 public sealed class LoginAuthenticationService(IIdentityProvider identities, IUserRepository users,
     IAliasCredentialRepository credentials, AliasPasswordService passwords, CanonicalUserResolver resolver,
-    LoginProtectionService protection, IServerModeResolver serverMode)
+    LoginProtectionService protection, IServerModeResolver serverMode, ILogger<LoginAuthenticationService> logger)
 {
     public async Task<AuthenticatedLogin> AuthenticateAsync(string identifier, string password, IPAddress? ip, CancellationToken ct)
     {
@@ -22,7 +22,7 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
         await CheckAsync(identifier, ip, ct);
         var alias = credentials.FindAlias(identifier);
         var system = identities.Lookup(identifier);
-        if (system.Status == IdentityLookupStatus.Unavailable) throw new AliasAuthenticationException(503, "authentication-unavailable");
+        if (system.Status == IdentityLookupStatus.Unavailable) throw Unavailable("system-identity-lookup");
         var user = alias is not null ? users.FindById(alias.UserId)
             : system.Identity is { } identity ? users.FindByIdentity(identity.Uid, identity.Platform) : null;
         var key = user?.Id.ToString("D") ?? identifier;
@@ -41,7 +41,7 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
             if (system.Identity is null) { passwords.Dummy(password); throw Invalid(); }
             if (policy?.SystemLoginEnabled == false || user?.IdentityReviewRequired == true) { passwords.Dummy(password); throw Invalid(); }
             var verified = identities.Verify(identifier, password);
-            if (verified.Error == CredentialError.Unknown) throw new AliasAuthenticationException(503, "authentication-unavailable");
+            if (verified.Error == CredentialError.Unknown) throw Unavailable("system-credential-verification");
             if (!verified.Success || verified.Identity is not { } trusted || trusted.Uid != system.Identity.Uid || trusted.Platform != system.Identity.Platform)
                 throw Invalid();
             user = resolver.ResolveSystem(trusted);
@@ -72,7 +72,7 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
         await CheckAsync(identifier, ip, ct);
         var system = identities.Lookup(identifier);
         if (system.Status == IdentityLookupStatus.Unavailable)
-            throw new AliasAuthenticationException(503, "authentication-unavailable");
+            throw Unavailable("user-mode-identity-lookup");
         if (system.Identity is null)
         {
             passwords.Dummy(password);
@@ -86,7 +86,7 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
         {
             var verified = identities.Verify(identifier, password);
             if (verified.Error == CredentialError.Unknown)
-                throw new AliasAuthenticationException(503, "authentication-unavailable");
+                throw Unavailable("user-mode-credential-verification");
             if (!verified.Success || verified.Identity is not { } trusted
                 || trusted.Uid != system.Identity.Uid || trusted.Platform != system.Identity.Platform)
                 throw Invalid();
@@ -104,6 +104,11 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
     private async Task CheckAsync(string key, IPAddress? ip, CancellationToken ct, Guid? canonicalUserId = null)
     {
         if ((await protection.CheckAsync(key, ip, ct, canonicalUserId)).IsBlocked) throw new AliasAuthenticationException(429, "login-rate-limited");
+    }
+    private AliasAuthenticationException Unavailable(string stage)
+    {
+        logger.LogError("Authentication backend is unavailable. Stage={Stage} ServerMode={ServerMode}", stage, serverMode.Mode);
+        return new AliasAuthenticationException(503, "authentication-unavailable");
     }
     private static AliasAuthenticationException Invalid() => new(401, "invalid-credential");
 }

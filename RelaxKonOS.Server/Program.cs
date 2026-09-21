@@ -60,11 +60,23 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         ? AppContext.BaseDirectory
         : null,
 });
+var isDevelopment = environmentName.Equals(Environments.Development, StringComparison.OrdinalIgnoreCase);
 // The installer writes this optional host configuration before the mode boundary is evaluated.
 // It must not be possible for a later configuration provider to change an already-validated mode.
 builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
+// Critical privileged operations fail closed when their security audit cannot be persisted. A
+// Rider/dotnet-run development process has no installer-managed audit path, so give it a stable,
+// user-writable location beside the Debug output. Production always requires an explicit
+// machine-protected path and is unaffected by this fallback.
+if (isDevelopment && string.IsNullOrWhiteSpace(builder.Configuration["Observability:AuditDatabasePath"]))
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["Observability:AuditDatabasePath"] = Path.Combine(AppContext.BaseDirectory, "data", "security-audit.db")
+    });
+}
 var observabilityOptions = builder.Configuration.GetSection(ObservabilityOptions.SectionName).Get<ObservabilityOptions>() ?? new ObservabilityOptions();
-observabilityOptions.Validate(environmentName.Equals(Environments.Production, StringComparison.OrdinalIgnoreCase));
+observabilityOptions.Validate(!isDevelopment);
 builder.Services.AddSingleton(observabilityOptions);
 builder.Services.AddSingleton<ICorrelationContextAccessor, CorrelationContextAccessor>();
 builder.Services.AddSingleton<IObservabilitySanitizer, ObservabilitySanitizer>();
@@ -737,6 +749,8 @@ builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+app.Logger.LogInformation("Authentication configuration loaded. ServerMode={ServerMode} LinuxPamTransport={LinuxPamTransport} PrivilegedHelperPathConfigured={PrivilegedHelperPathConfigured}",
+    serverModeResolver.Mode, linuxPamTransport, !string.IsNullOrWhiteSpace(builder.Configuration["PrivilegedHelper:HelperPath"]));
 if (eventAlertsOptions.Enabled)
     app.Services.GetRequiredService<RelaxKonOS.Server.Hubs.EventAlertNotificationHub>().Attach();
 

@@ -26,7 +26,10 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
             Version = PrivilegedOperationProtocol.Version
         };
         if (!WriteSecurityAudit(request, null, ObservabilityOutcome.Started))
+        {
+            logger.LogError("Privileged Helper operation was not started because security audit persistence is unavailable. Operation={Operation}", request.Operation);
             return new(false, 69, Error: "security audit is unavailable", ProblemCode: PrivilegedProblemCode.HelperUnavailable);
+        }
         if (!OperatingSystem.IsLinux())
             return Complete(request, new(false, 69, Error: "the Linux privileged transport is unavailable on this platform", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
         if (string.IsNullOrWhiteSpace(options.HelperPath) || !File.Exists(options.HelperPath))

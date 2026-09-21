@@ -23,7 +23,12 @@ public sealed class SecurityAuditWriter(ObservabilityOptions options, IObservabi
 
     public async Task<bool> TryWriteAsync(SecurityAuditEvent entry, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(options.AuditDatabasePath)) return false;
+        if (string.IsNullOrWhiteSpace(options.AuditDatabasePath))
+        {
+            eventLogger.Write(new(ObservabilityEventCatalog.AuditWriteFailed, ObservabilitySeverity.Critical, ObservabilityOutcome.Failed,
+                "server", "Security audit persistence is not configured.", "observability.audit_path_unconfigured"));
+            return false;
+        }
         await _writeGate.WaitAsync(cancellationToken);
         try
         {
