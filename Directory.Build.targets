@@ -7,8 +7,9 @@
   <!-- 核心修复：强行拦截并修正项目间引用的 TargetFramework 协商逻辑 -->
   <ItemDefinitionGroup>
     <ProjectReference>
-      <!-- 如果 MSBuild 没能正确推导并传递 TargetFramework，则强制将当前项目的 net10.0 作为协商值传递过去，绝不允许空值出现 -->
-      <SetTargetFramework Condition="'%(ProjectReference.SetTargetFramework)' == '' and '$(TargetFramework)' != ''">TargetFramework=$(TargetFramework)</SetTargetFramework>
+      <!-- 仅为普通 .NET 项目补齐协商值。平台 TFM（例如 net10.0-android）必须让 SDK
+           选择其兼容的 net10.0 项目引用；把 Android TFM 强制传给纯库会使其 assets 缺少目标。 -->
+      <SetTargetFramework Condition="'%(ProjectReference.SetTargetFramework)' == '' and '$(TargetFramework)' != '' and '$(TargetPlatformIdentifier)' == ''">TargetFramework=$(TargetFramework)</SetTargetFramework>
     </ProjectReference>
   </ItemDefinitionGroup>
 

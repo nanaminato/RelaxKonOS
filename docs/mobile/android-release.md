@@ -11,7 +11,11 @@ pwsh Tools/Mobile/Run-Android.ps1
 pwsh Tools/Mobile/Debug-Android.ps1
 ```
 
-`Build-Android.ps1` 会检查 `D:\environments\Android\Sdk` 和 .NET Android workload。缺少 workload 时会停止并说明原因；请从组织批准的本地 workload/NuGet 源安装，而不是让脚本访问网络。
+`Build-Android.ps1` 会检查 `D:\environments\Android\Sdk`、.NET Android workload 和 JDK 21。缺少 workload 或 JDK 21 时会停止并说明原因；请从组织批准的本地 workload/NuGet/JDK 源安装，而不是让脚本访问网络。当前机器的 JDK 25 不受 .NET Android workload 36.1 支持，需显式提供 JDK 21，例如：
+
+```powershell
+pwsh Tools/Mobile/Build-Android.ps1 -JavaSdkRoot D:\environments\JDK\jdk-21
+```
 
 ## 调试服务器地址
 
