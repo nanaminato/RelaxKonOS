@@ -3,6 +3,7 @@
 > 本文档描述 RelaxKonOS 当前实现状态：Solution 结构、项目列表、代码地图、当前实现进度、开发状态。
 >
 > - 架构设计原则见 [`RelaxKonOS.Architecture.md`](./architecture/RelaxKonOS.Architecture.md)
+> - Android 手机与平板 Mobile Shell 的设计、代码位置与实施阶段见 [`RelaxKonOS.Mobile.Design.md`](./mobile/RelaxKonOS.Mobile.Design.md)（提案，尚未实现）
 > - 应用启动 URI 与窗口实例策略见 [`RelaxKonOS.ApplicationActivation.md`](./architecture/RelaxKonOS.ApplicationActivation.md)
 > - 虚拟系统盘、Catalog、Shell 与受限自动化执行基线见 [`RelaxKonOS.VirtualSystemDrive.Goal.md`](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)，已冻结的 V1 目录/schema/迁移契约见 [`RelaxKonOS.VirtualSystemDrive.Contracts.md`](./architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)
 > - 用户 Workspace 模型见 [`RelaxKonOS.Workspace.md`](./architecture/RelaxKonOS.Workspace.md)
@@ -49,6 +50,7 @@
 | [`applications/`](./applications/) | 各内置应用的设计与实现说明 |
 | [`services/`](./services/) | 受管宿主服务的安装计划与 File Services 文档 |
 | [`development/`](./development/) | 开发调试、开发者模式与应用扩展规范 |
+| [`mobile/`](./mobile/) | Android 手机/平板 Mobile Shell 的设计、进度与发布文档 |
 
 ---
 
