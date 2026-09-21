@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.Mobile.ViewModels"
              x:Class="RelaxKonOS.Client.Mobile.Views.MobileShellView"
+             x:DataType="vm:MobileShellViewModel"
              Background="#10151F">
   <Grid RowDefinitions="*,Auto">
     <Grid x:Name="LoginPanel" Margin="24" MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center" RowSpacing="14">
@@ -8,9 +10,9 @@
         <StackPanel Spacing="14">
           <TextBlock Text="RelaxKonOS" FontSize="32" FontWeight="SemiBold" />
           <TextBlock Text="Mobile control center" Opacity="0.7" />
-          <TextBox Watermark="Server address" Text="{Binding ServerUrl, Mode=TwoWay}" MinHeight="48" />
-          <TextBox Watermark="Username" Text="{Binding Identifier, Mode=TwoWay}" MinHeight="48" />
-          <TextBox Watermark="Password" PasswordChar="●" Text="{Binding Password, Mode=TwoWay}" MinHeight="48" />
+          <TextBox PlaceholderText="Server address" Text="{Binding ServerUrl, Mode=TwoWay}" MinHeight="48" />
+          <TextBox PlaceholderText="Username" Text="{Binding Identifier, Mode=TwoWay}" MinHeight="48" />
+          <TextBox PlaceholderText="Password" PasswordChar="●" Text="{Binding Password, Mode=TwoWay}" MinHeight="48" />
           <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Opacity="0.75" />
           <Button Content="Connect" Click="ConnectOnClick" MinHeight="48" HorizontalAlignment="Stretch" />
         </StackPanel>

@@ -9,10 +9,11 @@ namespace RelaxKonOS.Client.Android;
 /// <summary>Android-only host. Mobile pages and all business rules remain in RelaxKonOS.Client.Mobile/Foundation.</summary>
 [Activity(
     Label = "RelaxKonOS",
+    Theme = "@style/RelaxKonOSMobileTheme",
     MainLauncher = true,
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.SmallestScreenSize |
                            ConfigChanges.ScreenLayout | ConfigChanges.UiMode | ConfigChanges.KeyboardHidden)]
-public sealed class MainActivity : AvaloniaMainActivity<MobileApp>
+public sealed class MainActivity : AvaloniaMainActivity
 {
     protected override void OnCreate(Bundle? savedInstanceState)
     {

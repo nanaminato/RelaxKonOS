@@ -1,5 +1,3 @@
-using Android.Content;
-
 namespace RelaxKonOS.Client.Android;
 
 /// <summary>
@@ -13,7 +11,7 @@ public interface IAndroidSecureCredentialStore
     Task RemovePasswordAsync(string serverUrl, string identifier, CancellationToken cancellationToken = default);
 }
 
-public sealed class AndroidSecureCredentialStore(Context context) : IAndroidSecureCredentialStore
+public sealed class AndroidSecureCredentialStore : IAndroidSecureCredentialStore
 {
     public Task<string?> ReadPasswordAsync(string serverUrl, string identifier, CancellationToken cancellationToken = default)
         => throw new NotSupportedException("Android Keystore persistence is introduced with M1; M0 never stores credentials.");

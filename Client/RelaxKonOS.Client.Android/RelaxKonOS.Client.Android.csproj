@@ -8,10 +8,12 @@
     <RootNamespace>RelaxKonOS.Client.Android</RootNamespace>
     <ApplicationId>app.relaxkonos.mobile</ApplicationId>
     <ApplicationTitle>RelaxKonOS</ApplicationTitle>
-    <ApplicationVersion>0.1</ApplicationVersion>
+    <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>0.1.0-m0</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
     <AndroidUseLatestPlatformSdk>true</AndroidUseLatestPlatformSdk>
+    <!-- Run-Android.ps1 installs a complete APK rather than deploying IDE Fast Deployment artifacts. -->
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia.Android" />

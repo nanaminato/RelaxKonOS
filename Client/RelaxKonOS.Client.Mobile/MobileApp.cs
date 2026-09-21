@@ -22,9 +22,16 @@ public sealed class MobileApp : Application
         services.AddSingleton<MobileShellViewModel>();
         Services = services.BuildServiceProvider();
 
-        if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
-            singleView.MainView = new MobileShellView { DataContext = Services.GetRequiredService<MobileShellViewModel>() };
+        if (ApplicationLifetime is IActivityApplicationLifetime activityLifetime)
+            activityLifetime.MainViewFactory = () => CreateShellView();
+        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
+            singleView.MainView = CreateShellView();
 
         base.OnFrameworkInitializationCompleted();
     }
+
+    private MobileShellView CreateShellView() => new()
+    {
+        DataContext = Services.GetRequiredService<MobileShellViewModel>()
+    };
 }
