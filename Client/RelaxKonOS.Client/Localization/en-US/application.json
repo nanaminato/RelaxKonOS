@@ -44,6 +44,11 @@
         "application.relaxkonos.proxy.display_name": "Proxy Manager",
         "application.relaxkonos.proxy.description": "Manage the host proxy runtime, traffic, and network recovery state",
         "application.relaxkonos.application-deployments.display_name": "Application Deployments",
-        "application.relaxkonos.application-deployments.description": "Deploy and manage containerized applications on the RelaxKonOS Server"
+        "application.relaxkonos.application-deployments.description": "Deploy and manage containerized applications on the RelaxKonOS Server",
+        "application.relaxkonos.event-alerts.display_name": "Event & Alert Center",
+        "application.relaxkonos.event-alerts.description": "Browse safe operational events and current alerts on the RelaxKonOS Server",
+        "event_alerts.sign_in": "Sign in to view operational alerts.",
+        "event_alerts.empty": "No alerts match the current view.",
+        "event_alerts.load_failed": "Alert data is currently unavailable. Try again shortly."
     }
 }

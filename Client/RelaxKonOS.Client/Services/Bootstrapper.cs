@@ -237,6 +237,10 @@ public static class Bootstrapper
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "registry"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.EventAlerts.IRemoteEventAlertClient, RelaxKonOS.Client.Apps.EventAlerts.RemoteEventAlertClient>()
+            .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "event-alerts"))
+            .AddHttpMessageHandler<AcceptLanguageHandler>()
+            .AddRelaxKonOSAuthentication();
         services.AddSingleton<ISettingsNavigation, SettingsNavigationService>();
         services.AddSingleton<ExternalAppContextFactory>();
         services.AddSingleton<DeveloperPackageManager>();
@@ -274,6 +278,7 @@ public static class Bootstrapper
         services.AddSingleton<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Registry.RegistryApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.ApplicationDeployments.ApplicationDeploymentsApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.EventAlerts.EventAlertCenterApp>();
 
         services.AddSingleton<DesktopShellViewModel>(sp =>
         {

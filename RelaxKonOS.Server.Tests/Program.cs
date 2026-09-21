@@ -5,6 +5,7 @@ Directory.CreateDirectory(root);
 try
 {
     ObservabilityChecks.VerifyProtocolAndSanitization();
+    await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(root);
     if (args.Contains("--proxy-geodata-only"))
     {
         await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);

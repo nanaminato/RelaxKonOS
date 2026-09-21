@@ -62,6 +62,10 @@
         "permission.server.tunnels.read.display_name": "トンネル構成の読み取り",
         "permission.server.tunnels.read.description": "サーバー上の安全なトンネル、FRP サーバープロファイル、ランタイム、機密情報を除去したログの状態を表示します。",
         "permission.server.tunnels.manage.display_name": "トンネルの管理",
-        "permission.server.tunnels.manage.description": "サーバートンネル構成と FRP ランタイム設定の作成、変更、適用、停止、削除を行います。"
+        "permission.server.tunnels.manage.description": "サーバートンネル構成と FRP ランタイム設定の作成、変更、適用、停止、削除を行います。",
+        "permission.server.event-alerts.read.display_name": "運用アラートの読み取り",
+        "permission.server.event-alerts.read.description": "サーバー上の安全な運用イベント履歴、アラート状態、修復参照を表示します。",
+        "permission.server.event-alerts.manage.display_name": "運用アラートの管理",
+        "permission.server.event-alerts.manage.description": "アラートの確認、許可されたアラートの手動解決、期限付き抑制を実行します。"
     }
 }

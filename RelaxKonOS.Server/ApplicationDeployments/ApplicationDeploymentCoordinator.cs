@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using RelaxKonOS.Protocol.ApplicationDeployments;
+using RelaxKonOS.Server.EventAlerts;
 
 namespace RelaxKonOS.Server.ApplicationDeployments;
 
@@ -15,7 +16,9 @@ internal sealed class ApplicationDeploymentCoordinator(
     ApplicationDeploymentService service,
     ApplicationDeploymentOptions options,
     ApplicationDeploymentLiveLogs logs,
-    IHostApplicationLifetime lifetime) : IHostedService
+    IHostApplicationLifetime lifetime,
+    IOperationalEventPublisher eventPublisher,
+    ILogger<ApplicationDeploymentCoordinator> logger) : IHostedService
 {
     private readonly object gate = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> cancellations = new();
@@ -145,7 +148,7 @@ internal sealed class ApplicationDeploymentCoordinator(
             var tail = logs.Snapshot(id);
             diagnostics ??= tail.Lines.Select(x => x.Stage is { } s ? $"[{s}] {x.Message}" : x.Message).ToArray();
             diagnosticsTruncated |= tail.Truncated;
-            operations.Update(id, operation => operation with
+            var terminal = operations.Update(id, operation => operation with
             {
                 State = state,
                 Stage = state switch
@@ -161,11 +164,36 @@ internal sealed class ApplicationDeploymentCoordinator(
                 CompletedAt = DateTimeOffset.UtcNow,
                 Cancellable = false,
             }, "completed", diagnostics, diagnosticsTruncated);
+            PublishTerminalSignal(terminal);
         }
         catch (Exception exception) when (exception is ApplicationDeploymentException or InvalidOperationException)
         {
             // The store has failed closed. The durable Running record is what the next startup
             // reconciles, so the operation is not lost by failing to write its outcome now.
+        }
+    }
+
+    /// <summary>
+    /// The deployment ledger is committed before the Event & Alert Center observes it. A center
+    /// failure must never alter a deployment result; the durable operation remains the authority
+    /// and is available for the planned source-replay worker.
+    /// </summary>
+    private void PublishTerminalSignal(DeploymentOperationDto terminal)
+    {
+        if (terminal.State is not (DeploymentOperationState.Failed or DeploymentOperationState.Succeeded)) return;
+        try
+        {
+            eventPublisher.PublishAsync(new OperationalEventSignal(
+                $"deployment-terminal:{terminal.OperationId:D}:{terminal.State}",
+                "deployment.operation_failed", terminal.OperationId, Guid.NewGuid(),
+                terminal.ProblemCode ?? terminal.RecoveryProblemCode ?? "deployment.recovered",
+                terminal.OperationId, IsRecovery: terminal.State == DeploymentOperationState.Succeeded)).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Do not log raw exception text: a provider failure can include a connection string
+            // or a host path. The durable deployment journal supplies the later replay input.
+            logger.LogWarning("Event Alert Center did not record terminal deployment operation {OperationId}.", terminal.OperationId);
         }
     }
 

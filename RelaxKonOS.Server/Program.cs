@@ -72,6 +72,15 @@ builder.Services.AddSingleton<IRuntimeLogSink, JsonRuntimeLogSink>();
 builder.Services.AddSingleton<IEventLogger, EventLogger>();
 builder.Services.AddSingleton<ISecurityAuditWriter, SecurityAuditWriter>();
 builder.Services.AddHostedService<ObservabilityStartupValidationService>();
+var eventAlertsOptions = builder.Configuration.GetSection(RelaxKonOS.Server.EventAlerts.EventAlertsOptions.SectionName)
+    .Get<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>() ?? new RelaxKonOS.Server.EventAlerts.EventAlertsOptions();
+eventAlertsOptions.Validate();
+builder.Services.AddSingleton(eventAlertsOptions);
+builder.Services.AddSingleton<RelaxKonOS.Server.EventAlerts.EventAlertStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.EventAlerts.IOperationalEventPublisher, RelaxKonOS.Server.EventAlerts.OperationalEventPublisher>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Hubs.EventAlertNotificationHub>();
+if (eventAlertsOptions.Enabled)
+    builder.Services.AddHostedService<RelaxKonOS.Server.EventAlerts.EventAlertRetentionService>();
 // Deployment mode is an explicit security contract. In particular, Development must not turn a
 // system installation into User Mode or enable its in-process PAM path.
 var serverModeResolver = new ServerModeResolver(builder.Configuration);
@@ -379,6 +388,13 @@ builder.Services.AddAuthorization(options =>
         context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
         || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
     options.AddPolicy("TunnelsManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+        context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+    options.AddPolicy("EventsRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+        context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
+        || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "observer")));
+    options.AddPolicy("EventsManage", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+        context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
+    options.AddPolicy("EventsCriticalSuppress", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
         context.User.HasClaim("role", "controller") || context.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "controller")));
     options.AddPolicy("ProxyRead", policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
         context.User.HasClaim("role", "controller") || context.User.HasClaim("role", "observer")
@@ -721,6 +737,8 @@ builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+if (eventAlertsOptions.Enabled)
+    app.Services.GetRequiredService<RelaxKonOS.Server.Hubs.EventAlertNotificationHub>().Attach();
 
 // Only configured reverse proxies can affect the source IP used by login protection.
 // With no KnownProxies, ForwardedHeadersMiddleware ignores X-Forwarded-For entirely.
@@ -950,6 +968,7 @@ app.MapGitEndpoints();
 app.MapInstallationEndpoints();
 app.MapApplicationDeploymentEndpoints();
 app.MapTunnelEndpoints();
+if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
 app.MapProxyEndpoints();
 if (OperatingSystem.IsLinux())
     app.MapFirewallEndpoints();
@@ -959,6 +978,8 @@ app.MapHub<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogsHub
     options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<PerformanceHub>(RelaxKonOSEndpoints.PerformanceHubPath, options => options.CloseOnAuthenticationExpiration = true);
 app.MapHub<SettingsChangesHub>(RelaxKonOSEndpoints.SettingsChangesHubPath, options => options.CloseOnAuthenticationExpiration = true);
+if (eventAlertsOptions.Enabled)
+    app.MapHub<RelaxKonOS.Server.Hubs.EventAlertsHub>("/hubs/event-alerts", options => options.CloseOnAuthenticationExpiration = true);
 
 app.Run();
 
