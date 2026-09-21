@@ -94,6 +94,28 @@ EOF
   mv -f -- "$temporary_policy" /etc/relaxkonos/privileged-helper-roots
 }
 
+# The Helper deliberately uses its own PAM service instead of the host's login stack.  Keep
+# this development installation self-contained: installing only the apphost and sudoers rule
+# would make every system-account login fail with authentication-unavailable when the service
+# file has not already been created by a full system installation.
+install_pam_service() {
+  local pam_service=/etc/pam.d/relaxkonos temporary_pam
+  if [[ -e "$pam_service" ]] && ! grep -Fqx '# Managed by RelaxKonOS PAM authentication service.' "$pam_service"; then
+    echo "Refusing to replace unmanaged PAM configuration: $pam_service" >&2
+    exit 65
+  fi
+  temporary_pam="$(mktemp /etc/pam.d/.relaxkonos.XXXXXX)"
+  cat >"$temporary_pam" <<'EOF'
+# Managed by RelaxKonOS PAM authentication service.
+# Authentication and account policy only. Deliberately no login/session stack.
+@include common-auth
+@include common-account
+EOF
+  chown root:root "$temporary_pam"
+  chmod 0644 "$temporary_pam"
+  mv -f -- "$temporary_pam" "$pam_service"
+}
+
 [[ "$DEVELOPMENT_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo "Invalid development user." >&2; exit 1; }
 id -u "$DEVELOPMENT_USER" >/dev/null 2>&1 || { echo "User does not exist: $DEVELOPMENT_USER" >&2; exit 1; }
 [[ "$DEVELOPMENT_USER" != root ]] || { echo "Specify the unprivileged account that runs your IDE." >&2; exit 1; }
@@ -106,6 +128,7 @@ command -v visudo >/dev/null || { echo "visudo is required for validating the su
 # sudo's env_reset intentionally prevents the development Server from providing a file policy.
 # Install the selected root-owned policy before granting it access to the fixed apphost.
 install_file_root_policy
+install_pam_service
 
 # Match the production ownership boundary so the development Server can stage the verified
 # runtime, controller configuration, GEO data, state, and diagnostics before it asks the

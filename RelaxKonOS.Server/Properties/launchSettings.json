@@ -43,6 +43,7 @@
         "NginxManaged__InstallationRoot": "%HOME%/.local/share/RelaxKonOS/debug/webserver/nginx",
         "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
         "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
+        "Identity__LinuxPamTransport": "helper",
         "PrivilegedHelper__HelperPath": "/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper",
         "PrivilegedHelper__SudoPath": "/usr/bin/sudo"
       }

@@ -103,8 +103,10 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 
 该脚本复制完整 Debug 输出（包括 PDB）到
 `/usr/local/lib/relaxkonos/privileged-helper-development/`，使其归 `root:root` 且开发账户不可写；
-再创建只允许当前 IDE 用户启动该 apphost 的无密码 sudoers 规则。它不会创建或启动 systemd
-服务，也不会启动 Server、Guardian 或 Client。每次改动 Helper 后，重新执行构建和该脚本以部署新副本。
+再原子安装 Helper 所需的受管 `/etc/pam.d/relaxkonos`（仅 `common-auth` 与
+`common-account`）并创建只允许当前 IDE 用户启动该 apphost 的无密码 sudoers 规则。若同名 PAM
+文件不是 RelaxKonOS 受管文件，脚本会拒绝覆盖。它不会创建或启动 systemd 服务，也不会启动 Server、Guardian
+或 Client。每次改动 Helper 后，重新执行构建和该脚本以部署新副本。
 
 该脚本默认安装 `restricted` 文件策略（`/etc/relaxkonos` 和 `/var/lib/relaxkonos`）。如需调试由
 Helper 访问的受保护文件，请使用单独的无敏感数据夹具，并通过白名单显式授权：

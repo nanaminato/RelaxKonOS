@@ -27,7 +27,14 @@ public sealed class EventLogger(ILogger<EventLogger> logger, ICorrelationContext
             ["durationMs"] = entry.DurationMs, ["exceptionType"] = entry.Exception?.Type
         });
         sink.Write(entry, context);
-        logger.Log(ToLogLevel(entry.Severity), new EventId(entry.Definition.Id, entry.Definition.Name), "{Message}", sanitizer.SanitizeSummary(entry.Message));
+        var resourceReference = entry.ResourceReference is null ? null
+            : entry.ResourceType == "route" ? sanitizer.SanitizeSummary(entry.ResourceReference)
+            : sanitizer.ToReference(entry.ResourceReference);
+        logger.Log(ToLogLevel(entry.Severity), new EventId(entry.Definition.Id, entry.Definition.Name),
+            "{Message} Outcome={Outcome} ProblemCode={ProblemCode} Action={Action} ResourceType={ResourceType} ResourceReference={ResourceReference} DurationMs={DurationMs} CorrelationId={CorrelationId} OperationId={OperationId}",
+            sanitizer.SanitizeSummary(entry.Message), entry.Outcome.ToString().ToLowerInvariant(), entry.ProblemCode,
+            entry.Action ?? context.Action, entry.ResourceType, resourceReference, entry.DurationMs,
+            context.CorrelationId, entry.OperationId ?? context.OperationId);
     }
 
     private static LogLevel ToLogLevel(ObservabilitySeverity severity) => severity switch
