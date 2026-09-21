@@ -8,6 +8,8 @@
         "api.auth.account_expired": "This account has expired.",
         "api.auth.account_restriction": "This account is restricted from signing in.",
         "api.auth.invalid_input": "Enter all required information.",
+        "api.auth.authentication_unavailable": "System account authentication is temporarily unavailable. Check the server authentication configuration and try again.",
+        "api.auth.login_rate_limited": "Too many sign-in attempts. Wait a few minutes and try again.",
         "api.auth.failed": "Sign-in failed. Try again later.",
         "api.auth.failed_short": "Sign-in failed."
     }

@@ -8,6 +8,8 @@
         "api.auth.account_expired": "此账户已过期。",
         "api.auth.account_restriction": "此账户受到登录限制。",
         "api.auth.invalid_input": "请输入所有必填信息。",
+        "api.auth.authentication_unavailable": "系统账户认证暂时不可用。请检查服务器认证配置后重试。",
+        "api.auth.login_rate_limited": "登录尝试次数过多。请等待几分钟后重试。",
         "api.auth.failed": "登录失败。请稍后重试。",
         "api.auth.failed_short": "登录失败。"
     }

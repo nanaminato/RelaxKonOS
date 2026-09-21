@@ -9,6 +9,7 @@ using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Primitives;
 using RelaxKonOS.Protocol.EventAlerts;
 using AppContext = RelaxKonOS.AppSDK.AppContext;
+using Rect = RelaxKonOS.Core.Primitives.Rect;
 
 namespace RelaxKonOS.Client.Apps.EventAlerts;
 
