@@ -1,4 +1,8 @@
 ﻿<Solution>
   <Project Path="RelaxKonOS.Client.Desktop/RelaxKonOS.Client.Desktop.csproj" />
   <Project Path="Client/RelaxKonOS.Client.csproj" />
+  <Project Path="RelaxKonOS.Client.Foundation/RelaxKonOS.Client.Foundation.csproj" />
+  <Project Path="RelaxKonOS.Client.Mobile/RelaxKonOS.Client.Mobile.csproj" />
+  <Project Path="RelaxKonOS.Client.Android/RelaxKonOS.Client.Android.csproj" />
+  <Project Path="RelaxKonOS.Client.Mobile.Tests/RelaxKonOS.Client.Mobile.Tests.csproj" />
 </Solution>

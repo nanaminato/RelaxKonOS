@@ -109,7 +109,7 @@ internal static class AliasLoginVerification
             if (token is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             return await client.SendAsync(request);
         }
-        async Task<LoginResponse> Login(string identifier, string password, PlatformKind platform = PlatformKind.Windows)
+        async Task<LoginResponse> Login(string identifier, string password, ClientPlatformKind platform = ClientPlatformKind.Windows)
         {
             using var response = await Send(HttpMethod.Post, AuthApiRoutes.Login, new LoginRequest(identifier, password, platform, "test-device", "1"));
             Check(response.StatusCode == HttpStatusCode.OK, "login succeeds: " + identifier + ": " + response.StatusCode);
@@ -122,9 +122,9 @@ internal static class AliasLoginVerification
             return (await response.Content.ReadFromJsonAsync<AliasConfigurationDto>(Json))!;
         }
         var system = await Login("nanami", OsPassword);
-        var otherPlatform = await Login("HOST\\nanami", OsPassword, PlatformKind.Linux);
+        var otherPlatform = await Login("HOST\\nanami", OsPassword, ClientPlatformKind.Android);
         Check(system.User.Id == otherPlatform.User.Id && system.Workspace.Id == otherPlatform.Workspace.Id, "equivalent OS identity and client platforms preserve workspace");
-        Check(system.User.Platform == PlatformKind.Windows, "User uses host platform");
+        Check(system.User.Platform == HostPlatformKind.Windows, "User uses host platform");
         var token = system.Tokens.AccessToken;
         var parsed = new JwtSecurityTokenHandler().ReadJwtToken(token);
         Check(parsed.Claims.Single(x => x.Type == "sid").Value == system.Session.Id.ToString(), "domain session equals JWT sid");
@@ -146,7 +146,7 @@ internal static class AliasLoginVerification
         using (var response = await Send(HttpMethod.Put, AuthApiRoutes.SystemLogin, new SetSystemLoginRequest(false, AliasPassword, configured.Revision), token))
             Check(response.StatusCode == HttpStatusCode.OK, "disable atomic transition");
         var verifyCalls = provider.VerifyCalls;
-        using (var response = await Send(HttpMethod.Post, AuthApiRoutes.Login, new LoginRequest("nanami", OsPassword, PlatformKind.Windows, "x", "1")))
+        using (var response = await Send(HttpMethod.Post, AuthApiRoutes.Login, new LoginRequest("nanami", OsPassword, ClientPlatformKind.Windows, "x", "1")))
             Check(response.StatusCode == HttpStatusCode.Unauthorized && provider.VerifyCalls == verifyCalls, "disabled system login never calls OS password verifier");
         using (var response = await Send(HttpMethod.Post, AuthApiRoutes.Refresh, new RefreshTokenRequest(system.Tokens.RefreshToken)))
             Check(response.StatusCode == HttpStatusCode.OK, "system session can refresh after direct system login disabled");
@@ -175,7 +175,7 @@ internal static class AliasLoginVerification
             Check(response.StatusCode == HttpStatusCode.Unauthorized, "file capability cannot manage alias");
         }
         provider.Collision = true;
-        using (var response = await Send(HttpMethod.Post, AuthApiRoutes.Login, new LoginRequest("developer2", "another unique password 2026", PlatformKind.Windows, "x", "1")))
+        using (var response = await Send(HttpMethod.Post, AuthApiRoutes.Login, new LoginRequest("developer2", "another unique password 2026", ClientPlatformKind.Windows, "x", "1")))
             Check(response.StatusCode == HttpStatusCode.Unauthorized, "external OS alias collision fails closed");
         provider.Collision = false;
         configured = await Read(fresh.Tokens.AccessToken);
@@ -214,7 +214,7 @@ internal static class AliasLoginVerification
         using var db = new RelaxKonOSDbContext(new DbContextOptionsBuilder<RelaxKonOSDbContext>().UseSqlite("Data Source=" + Path.Combine(root, "alias-legacy.db")).Options);
         db.Database.EnsureCreated();
         var userId = Guid.NewGuid(); var workspaceId = Guid.NewGuid();
-        db.Users.Add(new User { Id = userId, Username = "nanami", Platform = PlatformKind.Linux, PlatformIdentity = "HOST\\nanami", CreatedAt = DateTimeOffset.UtcNow });
+        db.Users.Add(new User { Id = userId, Username = "nanami", Platform = HostPlatformKind.Linux, PlatformIdentity = "HOST\\nanami", CreatedAt = DateTimeOffset.UtcNow });
         db.Workspaces.Add(new Workspace { Id = workspaceId, UserId = userId, Name = "Existing workspace", CreatedAt = DateTimeOffset.UtcNow }); db.SaveChanges();
         var report = IdentityMigrationRunner.Preflight(db.Database.GetDbConnection(), provider);
         Check(report.Single().Problem is null && report.Single().WorkspaceId == workspaceId, "read-only legacy preflight");
@@ -222,7 +222,7 @@ internal static class AliasLoginVerification
         Check(db.Users.Single().Id == userId && db.Users.Single().PlatformIdentity == "S-1-5-21-100-100-100-1001" && db.Workspaces.Single().Id == workspaceId, "migration preserves GUID and workspace");
         IdentityMigrationRunner.Migrate(db, provider);
         db.Database.ExecuteSqlRaw("DROP INDEX IX_users_Platform_PlatformIdentity");
-        db.Users.Add(new User { Id = Guid.NewGuid(), Username = "HOST\\nanami", Platform = PlatformKind.Windows, PlatformIdentity = "S-1-5-21-100-100-100-1001" }); db.SaveChanges();
+        db.Users.Add(new User { Id = Guid.NewGuid(), Username = "HOST\\nanami", Platform = HostPlatformKind.Windows, PlatformIdentity = "S-1-5-21-100-100-100-1001" }); db.SaveChanges();
         Check(IdentityMigrationRunner.Preflight(db.Database.GetDbConnection(), provider).All(x => x.Problem == "duplicate-canonical-identity"), "duplicate identities block preflight without merging");
     }
     private static void Check(bool condition, string description)
@@ -232,7 +232,7 @@ internal static class AliasLoginVerification
     {
         public int VerifyCalls;
         public bool Collision;
-        private static readonly PlatformUserInfo User = new("S-1-5-21-100-100-100-1001", "HOST\\nanami", PlatformKind.Windows, "Nanami", "C:\\Users\\nanami");
+        private static readonly PlatformUserInfo User = new("S-1-5-21-100-100-100-1001", "HOST\\nanami", HostPlatformKind.Windows, "Nanami", "C:\\Users\\nanami");
         public CredentialVerifyResult Verify(string username, string password)
         { VerifyCalls++; return Lookup(username).Identity is { } info && info.Uid == User.Uid && password == OsPassword ? CredentialVerifyResult.Ok(info) : CredentialVerifyResult.Failed("Rejected", CredentialError.BadCredentials); }
         public PlatformUserInfo GetUserInfo(string username) => Lookup(username).Identity ?? throw new KeyNotFoundException();

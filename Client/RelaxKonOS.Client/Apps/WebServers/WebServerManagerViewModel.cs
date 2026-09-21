@@ -106,8 +106,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
     public bool IsRoot => string.Equals(_session.CurrentUser?.Username, "root", StringComparison.Ordinal);
     /// <summary>Provided by the window to surface unavailable privileged operations prominently.</summary>
     public Func<string?, Task>? ShowPrivilegedHelperUnavailableAsync { get; set; }
-    public bool IsWindowsServer => _session.CurrentServer?.Platform == PlatformKind.Windows;
-    public bool IsLinuxServer => _session.CurrentServer?.Platform == PlatformKind.Linux;
+    public bool IsWindowsServer => _session.CurrentServer?.Platform == HostPlatformKind.Windows;
+    public bool IsLinuxServer => _session.CurrentServer?.Platform == HostPlatformKind.Linux;
     public bool HasOperationActivity => !string.IsNullOrWhiteSpace(OperationText);
     public bool IsManagedCertificateSource => SelectedSiteCertificateSource?.Value != SiteCertificateSource.ServerFiles;
     public bool IsServerFileCertificateSource => SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles;

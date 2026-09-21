@@ -259,9 +259,9 @@ public partial class LoginViewModel : ObservableObject
                && !string.IsNullOrWhiteSpace(uri.Host);
     }
 
-    /// <summary>运行时探测客户端宿主平台，而非硬编码。PlatformKind 目前仅 Linux/Windows。</summary>
-    private static PlatformKind DetectClientPlatform()
-        => OperatingSystem.IsWindows() ? PlatformKind.Windows : PlatformKind.Linux;
+    /// <summary>运行时探测客户端平台；它与 Server 宿主平台是不同的 Protocol 语义。</summary>
+    private static ClientPlatformKind DetectClientPlatform()
+        => OperatingSystem.IsWindows() ? ClientPlatformKind.Windows : ClientPlatformKind.Linux;
 
     /// <summary>HttpRequestException → 可操作的 UI 文案。重点区分连接拒绝/重置/超时，
     /// 这些通常对应服务器未启动、地址端口不对，或 HTTP/HTTPS 协议不匹配（最易踩坑）。</summary>

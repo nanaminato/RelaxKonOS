@@ -48,7 +48,7 @@ SignalR 内部走 WebSocket（不可用降级 SSE/长轮询），**不裸用 Web
 
 ```text
 Shared/RelaxKonOS.Protocol/
-├── Common/              # PlatformKind、RelaxKonOSEndpoints（含 Hub 路径）、ProblemDetails、RelaxKonOSJsonOptions、ServerDescriptorDto
+├── Common/              # HostPlatformKind、ClientPlatformKind、RelaxKonOSEndpoints（含 Hub 路径）、ProblemDetails、RelaxKonOSJsonOptions、ServerDescriptorDto
 ├── Identity/            # UserDto、AuthTokens、LoginRequest/Response、RefreshToken、Logout、AuthApiRoutes
 ├── Workspace/           # WorkspaceDto、SessionDto、DeviceDto、ControllerLeaseInfo、3 enum
 │                        # WorkspacePreferencesDto（含 desktopExperience + desktopDisplay + 文本编码）、DefaultAppMappingDto

@@ -1,6 +1,6 @@
 # RelaxKonOS Android Mobile（手机与平板）设计
 
-> **状态：提案 / 实施前设计基线**  
+> **状态：设计基线；M0 架构准备已启动。**
 > **首发范围：Android 手机与 Android 平板；iOS/iPadOS 为同一架构下的后续平台。**
 >
 > 本文定义移动客户端的产品边界、项目布局、模块依赖、协议演进、响应式交互、安全与验收要求；不代表当前已实现功能。本文与现有架构冲突时，遵守 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md) 的“本地渲染、状态同步、Protocol 契约优先”原则。
@@ -131,7 +131,7 @@ Desktop Client ────────┘（仅按需引用 Foundation；不反
 
 ## 4. 先决协议调整
 
-现有 `LoginRequest.ClientPlatform` 使用 `PlatformKind`，而 `PlatformKind` 当前只有 `Linux` 与 `Windows`，且同时描述 Server 宿主平台。这会使 Android 客户端被错误归类，不能直接沿用。
+`LoginRequest.ClientPlatform` 曾使用同时描述 Server 宿主平台的 `PlatformKind`，会使 Android 客户端被错误归类。M0 已完成下列直接 breaking change。
 
 实施前必须将两种语义拆开：
 
@@ -142,7 +142,7 @@ Desktop Client ────────┘（仅按需引用 Foundation；不反
 
 涉及位置：
 
-- `Shared/RelaxKonOS.Protocol/Common/PlatformKind.cs`：替换为语义明确的枚举。
+- `Shared/RelaxKonOS.Protocol/Common/PlatformKind.cs`：已替换为语义明确的两个枚举。
 - `Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs`：`ClientPlatform` 改为 `ClientPlatformKind`。
 - `Shared/RelaxKonOS.Protocol/Workspace/RegisterDeviceRequest.cs`、设备 DTO/仓储/测试：使用客户端平台。
 - Server 的 `ServerDescriptorDto`、身份 Provider、宿主能力判断：使用 `HostPlatformKind`。

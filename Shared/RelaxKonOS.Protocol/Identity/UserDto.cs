@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.Identity;
 public sealed record UserDto(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("username")] string Username,
-    [property: JsonPropertyName("platform")] PlatformKind Platform,
+    [property: JsonPropertyName("platform")] HostPlatformKind Platform,
     [property: JsonPropertyName("platformIdentity")] string PlatformIdentity,
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt,
     [property: JsonPropertyName("lastLoginAt")] DateTimeOffset? LastLoginAt);

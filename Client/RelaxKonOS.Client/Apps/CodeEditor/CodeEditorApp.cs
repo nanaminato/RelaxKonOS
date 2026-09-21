@@ -57,7 +57,7 @@ public sealed class CodeEditorApp : RemoteApplicationBase, IFileOpenApplication
         var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
         var encodingSettings = context.Services.GetService(typeof(TextEditorEncodingSettings)) as TextEditorEncodingSettings;
-        var pathCaseSensitive = session?.CurrentServer?.Platform != PlatformKind.Windows;
+        var pathCaseSensitive = session?.CurrentServer?.Platform != HostPlatformKind.Windows;
         var viewModel = new CodeEditorViewModel(files, pathCaseSensitive, encodingSettings?.CodeEditorDefaultEncoding ?? "UTF-8")
         {
             SaveDefaultEncodingAsync = encoding => encodingSettings?.SetCodeEditorDefaultEncodingAsync(encoding) ?? Task.CompletedTask,

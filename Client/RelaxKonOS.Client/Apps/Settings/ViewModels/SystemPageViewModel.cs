@@ -29,8 +29,8 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel, IDispos
     public string UserName => _session.CurrentUser?.Username ?? "—";
     public string Platform => _session.CurrentUser?.Platform switch
     {
-        PlatformKind.Windows => T("settings.platform.windows", "Windows"),
-        PlatformKind.Linux => T("settings.platform.linux", "Linux"),
+            HostPlatformKind.Windows => T("settings.platform.windows", "Windows"),
+            HostPlatformKind.Linux => T("settings.platform.linux", "Linux"),
         _ => "—",
     };
     public string ServerMode => _session.CurrentServer?.Host?.Mode switch
