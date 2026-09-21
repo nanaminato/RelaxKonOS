@@ -3,15 +3,30 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Observability;
+using RelaxKonOS.Server.Observability;
 
 namespace RelaxKonOS.Server.Privileged;
 
 /// <summary>Runs the installed helper. Linux uses its dedicated passwordless sudoers rule.</summary>
-public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions options, ILogger<LocalPrivilegedOperationRunner> logger) : IPrivilegedOperationTransport
+public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions options, ILogger<LocalPrivilegedOperationRunner> logger,
+    ICorrelationContextAccessor? correlation = null, ISecurityAuditWriter? securityAudit = null,
+    ObservabilityOptions? observability = null) : IPrivilegedOperationTransport
 {
     public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
     {
-        request = request with { OperationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid(), Version = PrivilegedOperationProtocol.Version };
+        var operationId = request.OperationId is { } requestedId && requestedId != Guid.Empty ? requestedId : Guid.NewGuid();
+        var ambient = correlation?.Current;
+        request = request with
+        {
+            OperationId = operationId,
+            Correlation = request.Correlation ?? (ambient is null
+                ? CorrelationContext.Create(operationId, "privileged.operation")
+                : new CorrelationContext(ambient.CorrelationId, operationId, "privileged.operation")),
+            Version = PrivilegedOperationProtocol.Version
+        };
+        if (!WriteSecurityAudit(request, null, ObservabilityOutcome.Started))
+            return new(false, 69, Error: "security audit is unavailable", ProblemCode: PrivilegedProblemCode.HelperUnavailable);
         if (!OperatingSystem.IsLinux())
             return Complete(request, new(false, 69, Error: "the Linux privileged transport is unavailable on this platform", ProblemCode: PrivilegedProblemCode.HelperUnavailable));
         if (string.IsNullOrWhiteSpace(options.HelperPath) || !File.Exists(options.HelperPath))
@@ -49,11 +64,24 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
 
     private PrivilegedOperationResult Complete(PrivilegedOperationRequest request, PrivilegedOperationResult result)
     {
-        Audit(request, result);
+        WriteSecurityAudit(request, result, result.Success ? ObservabilityOutcome.Succeeded : ObservabilityOutcome.Failed);
+        AuditRuntime(request, result);
         return result;
     }
 
-    private void Audit(PrivilegedOperationRequest request, PrivilegedOperationResult result)
+    private bool WriteSecurityAudit(PrivilegedOperationRequest request, PrivilegedOperationResult? result, ObservabilityOutcome outcome)
+    {
+        if (securityAudit is null) return true;
+        var context = request.Correlation!;
+        return securityAudit.TryWriteAsync(new SecurityAuditEvent(
+            outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Id : ObservabilityEventCatalog.PrivilegedRequestCompleted.Id,
+            outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Name : ObservabilityEventCatalog.PrivilegedRequestCompleted.Name,
+            outcome, "server", context.CorrelationId, DateTimeOffset.UtcNow, observability?.InstanceId ?? "unconfigured",
+            "privileged.operation", request.OperationId, ResourceType: "privileged-operation", ResourceReference: request.Path ?? request.ServiceId ?? request.DestinationPath,
+            ProblemCode: result?.ProblemCode.ToString())).GetAwaiter().GetResult();
+    }
+
+    private void AuditRuntime(PrivilegedOperationRequest request, PrivilegedOperationResult result)
     {
         var resource = string.Join("\n", new[] { request.Path, request.DestinationPath, request.ServiceId, request.EnvironmentTarget?.ResourceId }.Where(value => !string.IsNullOrWhiteSpace(value))!);
         var resourceHash = resource.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resource)))[..16];

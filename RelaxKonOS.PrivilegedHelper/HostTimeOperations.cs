@@ -10,7 +10,7 @@ internal static class HostTimeOperations
     public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request)
     {
         var allowed = new PrivilegedOperationRequest(request.Operation, TimeZoneId: request.TimeZoneId,
-            ExpectedRevision: request.ExpectedRevision, OperationId: request.OperationId);
+            ExpectedRevision: request.ExpectedRevision, OperationId: request.OperationId, Correlation: request.Correlation);
         if (request != allowed || (request.Operation == PrivilegedOperationKind.HostTimeRead
             && (request.TimeZoneId is not null || request.ExpectedRevision is not null)))
             return Failure(PrivilegedProblemCode.InvalidRequest);

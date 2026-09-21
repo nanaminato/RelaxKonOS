@@ -19,6 +19,7 @@ using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Storage.Sqlite;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Observability;
 
 if (args.FirstOrDefault() == "auth") { Environment.ExitCode = await AuthMaintenanceCommand.RunAsync(args); return; }
 
@@ -62,6 +63,14 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // The installer writes this optional host configuration before the mode boundary is evaluated.
 // It must not be possible for a later configuration provider to change an already-validated mode.
 builder.Configuration.AddJsonFile("appsettings.host.json", optional: true, reloadOnChange: false);
+var observabilityOptions = builder.Configuration.GetSection(ObservabilityOptions.SectionName).Get<ObservabilityOptions>() ?? new ObservabilityOptions();
+observabilityOptions.Validate(environmentName.Equals(Environments.Production, StringComparison.OrdinalIgnoreCase));
+builder.Services.AddSingleton(observabilityOptions);
+builder.Services.AddSingleton<ICorrelationContextAccessor, CorrelationContextAccessor>();
+builder.Services.AddSingleton<IObservabilitySanitizer, ObservabilitySanitizer>();
+builder.Services.AddSingleton<IRuntimeLogSink, JsonRuntimeLogSink>();
+builder.Services.AddSingleton<IEventLogger, EventLogger>();
+builder.Services.AddSingleton<ISecurityAuditWriter, SecurityAuditWriter>();
 // Deployment mode is an explicit security contract. In particular, Development must not turn a
 // system installation into User Mode or enable its in-process PAM path.
 var serverModeResolver = new ServerModeResolver(builder.Configuration);
@@ -674,7 +683,12 @@ builder.Services.AddSingleton<IPtyFactory, RelaxKonOS.Server.Terminal.PlatformPt
 builder.Services.AddSingleton<RelaxKonOS.Server.Terminal.TerminalSessionManager>();
 // 以 JWT sub claim 作为 Hub UserIdentifier，供 TerminalHub 按用户索引/过滤持久会话。
 builder.Services.AddSingleton<IUserIdProvider, RelaxKonOS.Server.Terminal.TerminalUserIdProvider>();
-builder.Services.AddSignalR(options => { options.MaximumReceiveMessageSize = null; options.AddFilter<SessionValidityHubFilter>(); });
+builder.Services.AddSignalR(options =>
+{
+    options.MaximumReceiveMessageSize = null;
+    options.AddFilter<SessionValidityHubFilter>();
+    options.AddFilter<ObservationHubFilter>();
+});
 builder.Services.AddSingleton<GuardianLogSubscriptionRegistry>();
 builder.Services.AddHostedService<GuardianLogBroadcastService>();
 builder.Services.AddHostedService<PerformanceBroadcastService>();
@@ -725,6 +739,7 @@ app.Use(async (context, next) =>
         context.Response.Headers.ContentLanguage = language;
     await next();
 });
+app.UseMiddleware<RequestObservationMiddleware>();
 
 // 启动时建库/建表（SQLite 模式）。EnsureCreated 零工具依赖，适合当前稳定 schema；
 // 未来 schema 需演进时切换为 EF Core Migrations（db.Database.MigrateAsync）。

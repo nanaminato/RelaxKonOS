@@ -4,6 +4,7 @@ var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewG
 Directory.CreateDirectory(root);
 try
 {
+    ObservabilityChecks.VerifyProtocolAndSanitization();
     if (args.Contains("--proxy-geodata-only"))
     {
         await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);

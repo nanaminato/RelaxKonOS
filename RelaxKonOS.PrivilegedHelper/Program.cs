@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.FileServices;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.PrivilegedHelper;
@@ -77,6 +78,8 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
         return Fail(64, PrivilegedProblemCode.InvalidProtocol, "unsupported protocol version");
     if (request.OperationId is not { } operationId || operationId == Guid.Empty)
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
+    if (request.Correlation is not { } correlation || !correlation.IsValid())
+        return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
     if (OperatingSystem.IsWindows() && request.Operation is >= PrivilegedOperationKind.SmbDetect and <= PrivilegedOperationKind.SmbSetUserPassword)
     {
         if (request.Operation == PrivilegedOperationKind.SmbPackageInstall && progress is not null)

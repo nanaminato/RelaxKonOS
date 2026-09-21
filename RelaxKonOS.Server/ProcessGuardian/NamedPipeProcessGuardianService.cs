@@ -2,11 +2,13 @@ using System.IO.Pipes;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ProcessGuardian;
+using RelaxKonOS.Protocol.Observability;
+using RelaxKonOS.Server.Observability;
 
 namespace RelaxKonOS.Server.ProcessGuardian;
 
 /// <summary>Server-to-Agent local IPC adapter. The server never launches or owns child processes.</summary>
-public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options) : IProcessGuardianService
+public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options, ICorrelationContextAccessor? correlation = null) : IProcessGuardianService
 {
     // The agent intentionally exposes a single pipe instance. This service is a singleton
     // shared by endpoints and the log broadcaster, so its IPC requests must be queued.
@@ -45,6 +47,12 @@ public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options
     private async Task<GuardianAgentResponse?> SendAsync(GuardianAgentRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.SharedSecret)) return new GuardianAgentResponse(false, "guardian.agent_not_configured");
+        request = request with
+        {
+            Correlation = request.Correlation ?? (correlation?.Current is { } ambient
+                ? new CorrelationContext(ambient.CorrelationId, ambient.OperationId, "guardian.workload.change")
+                : CorrelationContext.Create(action: "guardian.workload.change"))
+        };
         await _pipeGate.WaitAsync(cancellationToken);
         try
         {

@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Settings;
+using RelaxKonOS.Protocol.Observability;
 
 namespace RelaxKonOS.Protocol.Privileged;
 
@@ -232,6 +233,7 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("hostName")] string? HostName = null,
     [property: JsonPropertyName("expectedRevision")] string? ExpectedRevision = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
+    [property: JsonPropertyName("correlation")] CorrelationContext? Correlation = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>

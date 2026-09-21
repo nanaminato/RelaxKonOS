@@ -49,6 +49,7 @@ global using RelaxKonOS.Server.ProcessGuardian;
 global using RelaxKonOS.Server.Docker;
 global using RelaxKonOS.Server.Firewall;
 global using RelaxKonOS.Server.Identity;
+global using RelaxKonOS.Server.Observability;
 global using System.Security.Claims;
 global using System.IdentityModel.Tokens.Jwt;
 global using RelaxKonOS.Core.Applications;
