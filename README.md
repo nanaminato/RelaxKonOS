@@ -486,6 +486,7 @@ dotnet run
 | [RelaxKonOS.Firewall.md](./docs/applications/RelaxKonOS.Firewall.md) | Linux Server UFW 防火墙应用 |
 | [RelaxKonOS.ProcessGuardian.md](./docs/applications/RelaxKonOS.ProcessGuardian.md) | 进程守护、健康检查、原生服务管理、日志 Hub |
 | [RelaxKonOS.CertificateManager.md](./docs/applications/RelaxKonOS.CertificateManager.md) | ACME 证书生命周期、Kestrel 部署、续期、HostGlobal 持久化 |
+| [RelaxKonOS.EventAlertCenter.Goal.md](./docs/applications/RelaxKonOS.EventAlertCenter.Goal.md) | 事件与告警中心：汇聚、审计、跳转与处理入口实施计划 |
 | [RelaxKonOS.WebServerManager.Design.md](./docs/applications/RelaxKonOS.WebServerManager.Design.md) | Web Server 管理、Nginx 集成、站点/快照/审计 |
 | [RelaxKonOS.GitClient.md](./docs/applications/RelaxKonOS.GitClient.md) | Git 客户端、仓库/分支/提交/冲突/历史 |
 | [RelaxKonOS.FRP_Integration.Design.md](./docs/applications/RelaxKonOS.FRP_Integration.Design.md) | FRP 内网穿透架构、安全与运维边界 |
