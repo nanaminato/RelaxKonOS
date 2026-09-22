@@ -38,6 +38,8 @@
   请求体和服务端诊断内容，因此不替代服务器审计日志。
 - 连接密码的系统认证与保险箱写入现在先于认证态切换完成，避免登录页卸载后错失生物识别提示；成功登录后，
   主界面才会出现。
+- 修复首次打开“更多”子页时路由栈未被 Compose 观察的问题；账户与安全、连接、外观、诊断和关于现在会在
+  第一次点击后立即显示，无需先切换顶级导航。
 - 密码输入（登录页与提权对话框）共用一个两态控件：默认掩码，点击尾部眼睛图标转为明文并保持在明文，
   再点一次回到掩码；可见性只存在于界面状态（`rememberSaveable`），不进会话、保险箱或任何文件。
 - 首页与 `manage/monitor` 的主机指标走 `GET /system/performance/snapshot`。Android 没有 SignalR 客户端，
@@ -69,10 +71,14 @@
 
 - `:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，Kotlin 编译零警告；
   产物为 `app/build/outputs/apk/debug/app-debug.apk`。
-- 单元测试 12 个测试类、106 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 18、`AuthSessionTest` 14、
+- 单元测试 12 个测试类、107 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 18、`AuthSessionTest` 14、
   `ElevationRepositoryTest` 13、`WireTest` 12、`BiometricCapabilityTest` 11、`ConnectionProfileStoreTest` 9、
-  `MobileNavigatorTest` 9、`ProblemCodesTest` 8、`LayoutStateTest` 4、`TopDestinationTest` 4、`FilesRepositoryTest` 3、
+  `MobileNavigatorTest` 10、`ProblemCodesTest` 8、`LayoutStateTest` 4、`TopDestinationTest` 4、`FilesRepositoryTest` 3、
   `RecentOperationJournalTest` 1。
+- 密码可见性两态与主机指标按需采样落地后再次校验（同日）：`:app:assembleDebug` BUILD SUCCESSFUL，产物同上；
+  `:app:testDebugUnitTest` 112 个用例，111 通过，其中 `ProblemCodesTest` 新增的 5 个用例（4xx/5xx 判定、命名问题码、
+  凭据判定边界）全部通过。唯一失败的是 `MobileNavigatorTest` 的「首个子路由 push 触发路由观察者」用例——它来自工作树中
+  尚未完成的导航改动，与本轮改动无关。
 - 残留警告一处：`app/build.gradle.kts` 的 `resourceConfigurations` 在 AGP 9.4.1 已弃用，官方替代是
   `androidResources.localeFilters`。本模块暂未迁移（AGP 9.4.1 仍支持该属性），待确认新 DSL 精确签名后再改。
 - 以上均为本机 JVM 单元测试与打包验证；设备矩阵验证仍未执行（见上）。

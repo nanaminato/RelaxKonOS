@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.ui.nav
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -22,14 +23,16 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
  * the JVM.
  */
 class MobileNavigator(initialDestination: String) {
-    private val stacks = mutableMapOf<String, SnapshotStateList<String>>()
+    // This must be observable as well as each individual stack. It preserves the stacks for
+    // navigation rules and tests, while [route] below is the single state screens subscribe to.
+    private val stacks = mutableStateMapOf<String, SnapshotStateList<String>>()
 
     var currentDestination: String by mutableStateOf(initialDestination)
         private set
 
-    /** The route that should be rendered right now. */
-    val route: String
-        get() = peek(currentDestination).lastOrNull() ?: currentDestination
+    /** The route that should be rendered right now. Updated with every navigation mutation. */
+    var route: String by mutableStateOf(initialDestination)
+        private set
 
     /** True when the destination is showing a pushed sub-page rather than its own root. */
     val isAtDestinationRoot: Boolean get() = peek(currentDestination).isEmpty()
@@ -37,6 +40,7 @@ class MobileNavigator(initialDestination: String) {
     /** Switches top-level destination. The previous destination keeps its own stack. */
     fun select(destination: String) {
         currentDestination = destination
+        route = peek(destination).lastOrNull() ?: destination
     }
 
     /** Pushes a sub-route onto the active destination's stack. */
@@ -46,6 +50,7 @@ class MobileNavigator(initialDestination: String) {
             return
         }
         stackOf(currentDestination).add(route)
+        this.route = route
     }
 
     /** Pops one sub-route. Returns false when the destination is already at its root. */
@@ -55,6 +60,7 @@ class MobileNavigator(initialDestination: String) {
             return false
         }
         stack.removeAt(stack.lastIndex)
+        route = stack.lastOrNull() ?: currentDestination
         return true
     }
 
@@ -65,6 +71,7 @@ class MobileNavigator(initialDestination: String) {
             return false
         }
         stack.clear()
+        route = currentDestination
         return true
     }
 
@@ -73,6 +80,7 @@ class MobileNavigator(initialDestination: String) {
         stacks.values.forEach { it.clear() }
         stacks.clear()
         currentDestination = destination
+        route = destination
     }
 
     /** True when the destination is on its own root, e.g. to decide whether back exits the app. */

@@ -1,5 +1,13 @@
 package app.relaxkonos.mobile.ui.nav
 
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,6 +18,24 @@ import org.junit.Test
  * are product behaviour rather than an implementation detail of a navigation library.
  */
 class MobileNavigatorTest {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `the first sub-route push invalidates a route observer`() = runTest {
+        val navigator = MobileNavigator(Routes.MORE)
+        val observed = mutableListOf<String>()
+        val collector = launch {
+            snapshotFlow { navigator.route }.take(2).toList(observed)
+        }
+        runCurrent()
+
+        navigator.push(Routes.MORE_ACCOUNT_SECURITY)
+        Snapshot.sendApplyNotifications()
+        runCurrent()
+
+        assertEquals(listOf(Routes.MORE, Routes.MORE_ACCOUNT_SECURITY), observed)
+        collector.cancel()
+    }
+
     @Test
     fun `the initial route is the destination itself`() {
         val navigator = MobileNavigator(Routes.HOME)
