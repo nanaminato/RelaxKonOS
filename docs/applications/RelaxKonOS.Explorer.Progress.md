@@ -25,7 +25,7 @@
 - [x] 文本框编辑时，窗口级 Delete / Ctrl+C / Ctrl+X / Ctrl+V 不再触发远端文件操作。
 - [x] 面包屑与向上导航按远端路径解析，支持 POSIX、Windows 盘符和 UNC 分享根目录，不依赖客户端操作系统。
 - [x] 保留文件/文件夹/保存选择器；新增中文、英文、日文本地化资源。
-- [x] 独立无桌面回归项目 `Client/RelaxKonOS.Explorer.Tests`，覆盖生产 ViewModel 与路径解析逻辑。
+- [x] 独立无桌面回归项目 `Tests/Client/RelaxKonOS.Explorer.Tests`，覆盖生产 ViewModel 与路径解析逻辑。
 
 ## 第二轮完成（2026-09-06）
 
@@ -95,7 +95,7 @@
 
 ```bash
 dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false -v minimal
-dotnet run --project Client/RelaxKonOS.Explorer.Tests -p:MSBuildEnableWorkloadResolver=false -m:1 --verbosity quiet
+dotnet run --project Tests/Client/RelaxKonOS.Explorer.Tests -p:MSBuildEnableWorkloadResolver=false -m:1 --verbosity quiet
 git diff --check
 ```
 

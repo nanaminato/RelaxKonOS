@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
+    <ProjectReference Include="../../../Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj" />
   </ItemGroup>
 </Project>
