@@ -220,5 +220,6 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | System Mode batch file jobs | 已完成代码迁移，集成暂缓 | Job 在入队时冻结 execution context；后台每一次路径读取/修改都经 User Execution Helper。真实多用户、冲突决定、取消与跨文件系统演练仍需要隔离 Linux 环境。 |
 | `dotnet build Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj -c Debug --no-restore` | 通过 | 共享 framework 回归构建。 |
 | `RelaxKonOS.Server.Tests` | 暂缓 | 当前桌面 SDK 在 restore graph 的 `RelaxKonOS.Core` 项目阶段无诊断即失败；该项目文件已注明可使用预构建 Server assembly 的本地 smoke 路径，但本环境的项目图仍未生成。待恢复环境修复后必须运行新增的 `VerifyUserExecutionContextContract`。 |
+| `Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj` | 暂缓 | 本环境以 `--no-restore` 构建时同样在项目图阶段以 `0 errors` 失败，未进入编译；Guardian Agent 已单独成功构建，待 restore graph 可用后仍须完成 Client/Explorer 回归。 |
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |
 | Windows impersonation 集成 | 暂缓 | 首版 Windows user execution 尚未启用，需真实 Windows Server + LocalSystem Helper 环境。 |
