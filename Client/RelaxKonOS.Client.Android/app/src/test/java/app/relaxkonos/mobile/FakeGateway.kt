@@ -12,6 +12,7 @@ import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import app.relaxkonos.mobile.core.net.ServerDescriptor
 import java.io.File
+import java.io.InputStream
 
 /**
  * Scriptable [RelaxKonGateway].
@@ -31,10 +32,13 @@ class FakeGateway : RelaxKonGateway {
     var onCreateDirectory: (suspend (String, String, String) -> ApiResult<Unit>)? = null
     var onDelete: (suspend (String, String, String) -> ApiResult<Unit>)? = null
     var onRename: (suspend (String, String, String, String) -> ApiResult<Unit>)? = null
+    var onMove: (suspend (String, String, String, String) -> ApiResult<Unit>)? = null
+    var onCopy: (suspend (String, String, String, String) -> ApiResult<Unit>)? = null
+    var onUpload: (suspend (String, String, String, String, InputStream, Long?, ((Long) -> Unit)?) -> ApiResult<Unit>)? = null
     var onPerformance: (suspend (String, String) -> ApiResult<PerformanceSnapshot>)? = null
     var onProcesses: (suspend (String, String, Int, Int, String?) -> ApiResult<ProcessPage>)? = null
     var onKill: (suspend (String, String, Int, Boolean) -> ApiResult<Unit>)? = null
-    var onDownload: (suspend (String, String, String, File) -> ApiResult<Long>)? = null
+    var onDownload: (suspend (String, String, String, File, ((Long, Long?) -> Unit)?) -> ApiResult<Long>)? = null
 
     var loginCount = 0
         private set
@@ -124,6 +128,30 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun rename(serverUrl: String, accessToken: String, sourcePath: String, newName: String): ApiResult<Unit> =
         requireHandler(onRename, "rename")(serverUrl, accessToken, sourcePath, newName)
 
+    override suspend fun move(serverUrl: String, accessToken: String, sourcePath: String, destinationPath: String): ApiResult<Unit> =
+        requireHandler(onMove, "move")(serverUrl, accessToken, sourcePath, destinationPath)
+
+    override suspend fun copy(serverUrl: String, accessToken: String, sourcePath: String, destinationPath: String): ApiResult<Unit> =
+        requireHandler(onCopy, "copy")(serverUrl, accessToken, sourcePath, destinationPath)
+
+    override suspend fun upload(
+        serverUrl: String,
+        accessToken: String,
+        targetDirectoryPath: String,
+        fileName: String,
+        source: InputStream,
+        contentLength: Long?,
+        onProgress: ((Long) -> Unit)?,
+    ): ApiResult<Unit> = requireHandler(onUpload, "upload")(
+        serverUrl,
+        accessToken,
+        targetDirectoryPath,
+        fileName,
+        source,
+        contentLength,
+        onProgress,
+    )
+
     override suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot> =
         requireHandler(onPerformance, "performanceSnapshot")(serverUrl, accessToken)
 
@@ -140,8 +168,13 @@ class FakeGateway : RelaxKonGateway {
         return requireHandler(onKill, "killProcess")(serverUrl, accessToken, pid, force)
     }
 
-    override suspend fun download(serverUrl: String, accessToken: String, path: String, target: File): ApiResult<Long> =
-        requireHandler(onDownload, "download")(serverUrl, accessToken, path, target)
+    override suspend fun download(
+        serverUrl: String,
+        accessToken: String,
+        path: String,
+        target: File,
+        onProgress: ((Long, Long?) -> Unit)?,
+    ): ApiResult<Long> = requireHandler(onDownload, "download")(serverUrl, accessToken, path, target, onProgress)
 
     private fun <T> requireHandler(handler: T?, name: String): T =
         handler ?: error("FakeGateway.$name was called but no handler was configured.")

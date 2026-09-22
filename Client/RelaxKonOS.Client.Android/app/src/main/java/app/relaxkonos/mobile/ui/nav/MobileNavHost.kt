@@ -21,7 +21,9 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.files.FileDetailScreen
+import app.relaxkonos.mobile.ui.files.FileOperationOverlays
 import app.relaxkonos.mobile.ui.files.FilesScreen
+import app.relaxkonos.mobile.ui.files.FilesViewModel
 import app.relaxkonos.mobile.ui.home.HomeScreen
 import app.relaxkonos.mobile.ui.manage.ManageScreen
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
@@ -74,17 +76,19 @@ fun MobileNavHost(
 
 @Composable
 private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutState) {
-    if (layoutState == LayoutState.Expanded) {
-        Row(Modifier.fillMaxSize()) {
-            FilesScreen(onOpenDetail = {}, modifier = Modifier.weight(1f))
-            FileDetailScreen(onBack = null, modifier = Modifier.weight(1f))
+    val viewModel: FilesViewModel = viewModel()
+    Box(Modifier.fillMaxSize()) {
+        if (layoutState == LayoutState.Expanded) {
+            Row(Modifier.fillMaxSize()) {
+                FilesScreen(viewModel, onOpenDetail = {}, modifier = Modifier.weight(1f))
+                FileDetailScreen(viewModel, onBack = null, modifier = Modifier.weight(1f))
+            }
+        } else if (navigator.route == Routes.FILES_DETAIL) {
+            FileDetailScreen(viewModel, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+        } else {
+            FilesScreen(viewModel, onOpenDetail = { navigator.push(Routes.FILES_DETAIL) }, modifier = Modifier.fillMaxSize())
         }
-        return
-    }
-    if (navigator.route == Routes.FILES_DETAIL) {
-        FileDetailScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
-    } else {
-        FilesScreen(onOpenDetail = { navigator.push(Routes.FILES_DETAIL) }, modifier = Modifier.fillMaxSize())
+        FileOperationOverlays(viewModel)
     }
 }
 

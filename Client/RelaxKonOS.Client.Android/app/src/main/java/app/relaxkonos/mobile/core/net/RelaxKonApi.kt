@@ -2,11 +2,13 @@ package app.relaxkonos.mobile.core.net
 
 import android.os.Build
 import java.io.File
+import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -195,6 +197,66 @@ class RelaxKonApi(
         return execute("POST", serverUrl, FileRoutes.RENAME, accessToken, body).asUnit()
     }
 
+    override suspend fun move(serverUrl: String, accessToken: String, sourcePath: String, destinationPath: String): ApiResult<Unit> {
+        val body = JsonBody().string("sourcePath", sourcePath).string("destinationPath", destinationPath).bool("overwrite", false)
+        return execute("POST", serverUrl, FileRoutes.MOVE, accessToken, body).asUnit()
+    }
+
+    override suspend fun copy(serverUrl: String, accessToken: String, sourcePath: String, destinationPath: String): ApiResult<Unit> {
+        val body = JsonBody().string("sourcePath", sourcePath).string("destinationPath", destinationPath).bool("overwrite", false)
+        return execute("POST", serverUrl, FileRoutes.COPY, accessToken, body).asUnit()
+    }
+
+    override suspend fun upload(
+        serverUrl: String,
+        accessToken: String,
+        targetDirectoryPath: String,
+        fileName: String,
+        source: InputStream,
+        contentLength: Long?,
+        onProgress: ((Long) -> Unit)?,
+    ): ApiResult<Unit> = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            val boundary = "RelaxKonOS-${System.currentTimeMillis()}"
+            val header = buildMultipartHeader(boundary, fileName)
+            val footer = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+            connection = openConnection(serverUrl, FileRoutes.UPLOAD + "?path=" + encode(targetDirectoryPath), "POST", accessToken)
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            if (contentLength != null && contentLength >= 0) {
+                val total = header.size.toLong() + contentLength + footer.size
+                if (total <= Int.MAX_VALUE) connection.setFixedLengthStreamingMode(total.toInt()) else connection.setFixedLengthStreamingMode(total)
+            } else {
+                connection.setChunkedStreamingMode(BUFFER_SIZE)
+            }
+            connection.outputStream.use { output ->
+                output.write(header)
+                source.use { input ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    var written = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                        written += count
+                        onProgress?.invoke(written)
+                    }
+                }
+                output.write(footer)
+            }
+            val code = connection.responseCode
+            if (code !in 200..299) return@withContext readProblem(connection, code)
+            ApiResult.Success(Unit)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            ApiResult.Transport(error.message)
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
     override suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot> {
         return when (val parsed = execute("GET", serverUrl, SystemRoutes.PERFORMANCE_SNAPSHOT, accessToken, null)) {
             is ApiResult.Problem -> parsed
@@ -274,20 +336,38 @@ class RelaxKonApi(
         accessToken: String,
         path: String,
         target: File,
+        onProgress: ((writtenBytes: Long, totalBytes: Long?) -> Unit)?,
     ): ApiResult<Long> = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
         try {
-            val connection = openConnection(serverUrl, FileRoutes.DOWNLOAD + "?path=" + encode(path), "GET", accessToken)
+            connection = openConnection(serverUrl, FileRoutes.DOWNLOAD + "?path=" + encode(path), "GET", accessToken)
             connection.connect()
             val code = connection.responseCode
             if (code !in 200..299) {
                 return@withContext readProblem(connection, code)
             }
+            val total = connection.contentLengthLong.takeIf { it >= 0 }
             val written = connection.inputStream.use { input ->
-                target.outputStream().use { output -> input.copyTo(output) }
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    var copied = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                        copied += count
+                        onProgress?.invoke(copied, total)
+                    }
+                    copied
+                }
             }
             ApiResult.Success(written)
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             ApiResult.Transport(error.message)
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -377,12 +457,23 @@ class RelaxKonApi(
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
+    private fun buildMultipartHeader(boundary: String, fileName: String): ByteArray {
+        // A Content-Disposition filename is a header value, not a display string. Remove control
+        // characters and delimiters so a malicious provider cannot inject a second MIME header.
+        val safeName = fileName.replace(Regex("[\\r\\n\\\"\\\\]"), "_")
+        return (
+            "--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$safeName\"\r\n" +
+                "Content-Type: application/octet-stream\r\n\r\n"
+            ).toByteArray(Charsets.UTF_8)
+    }
+
     private fun JSONObject.optNullableLong(name: String): Long? = if (isNull(name)) null else optLong(name)
 
     private companion object {
         const val CLIENT_PLATFORM = "android"
         const val CONNECT_TIMEOUT_MILLIS = 15_000
         const val READ_TIMEOUT_MILLIS = 20_000
+        const val BUFFER_SIZE = 81_920
 
         fun defaultDeviceName(): String = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
     }
@@ -410,6 +501,9 @@ private object FileRoutes {
     const val DIRECTORY = "$V1/files/directory"
     const val DELETE = "$V1/files"
     const val RENAME = "$V1/files/rename"
+    const val MOVE = "$V1/files/move"
+    const val COPY = "$V1/files/copy"
+    const val UPLOAD = "$V1/files/upload"
     const val DOWNLOAD = "$V1/files/download"
 }
 

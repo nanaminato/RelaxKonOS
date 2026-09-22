@@ -15,7 +15,7 @@
 | --- | --- | --- |
 | V1-A 认证闭环 | 已实现 | 连接档案、登录、token 单次刷新重试、连接保险箱 + 指纹登录、登出 |
 | V1-B 自适应 Shell | 已实现 | 顶级导航、断点布局、能力门控、首页、`more/*` 子页 |
-| V1-C 核心操作 | 部分 | 文件浏览与常用变更操作已完成；终端（SignalR + PTY）未实现 |
+| V1-C 核心操作 | 部分 | 文件浏览、上传/下载、创建、重命名、复制、移动与删除已完成；终端（SignalR + PTY）未实现 |
 | V1-D 提权闭环 | 已实现 | 提权对话框、提权保险箱 + 指纹提权、危险操作确认、5 分钟窗口 |
 | V1-E 管理工作台 | 部分 | 系统监控与进程管理已完成；Docker、守护、部署未实现 |
 
@@ -30,6 +30,12 @@
 - 提权严格保持 `capability + target + jti + 5 分钟`；客户端只做一次安全重试，token 变化即丢弃本地授权缓存。
 - 文本全部走 Android resource（`values`、`values-zh-rCN`、`values-ja`），无用户可见字符串字面量；方向使用 `start`/`end`。
 - 终端入口（`TopDestination.Terminal`）标记为未实现，因此不出现在导航中——设计 §8 禁止"不可用入口"。
+- 文件上传使用 Android Storage Access Framework 的单个文档流，不申请宽泛的存储权限；上传和下载均显示
+  已传输字节进度并可取消。下载保留于私有缓存，完成后只通过短时 `FileProvider` URI 交给系统打开/分享面板。
+- 复制和移动会将提权范围限定为源与目标目录；Windows 驱动器根路径（例如 `C:\\`）在向上导航、创建目录
+  与提权时保持正确的根分隔符。文件详情与列表共享操作对话框，手机详情页不再出现无响应的操作按钮。
+- Expanded 首页现在显示本次进程内成功完成的文件与进程操作；记录最多 20 条，且不会落盘或包含密码、令牌、
+  请求体和服务端诊断内容，因此不替代服务器审计日志。
 
 ## 已知限制
 
@@ -55,9 +61,10 @@
 
 - `:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，Kotlin 编译零警告；
   产物为 `app/build/outputs/apk/debug/app-debug.apk`。
-- 单元测试 10 个测试类、101 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 18、`AuthSessionTest` 13、
+- 单元测试 12 个测试类、105 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 18、`AuthSessionTest` 13、
   `ElevationRepositoryTest` 13、`WireTest` 12、`BiometricCapabilityTest` 11、`ConnectionProfileStoreTest` 9、
-  `MobileNavigatorTest` 9、`ProblemCodesTest` 8、`LayoutStateTest` 4、`TopDestinationTest` 4。
+  `MobileNavigatorTest` 9、`ProblemCodesTest` 8、`LayoutStateTest` 4、`TopDestinationTest` 4、`FilesRepositoryTest` 3、
+  `RecentOperationJournalTest` 1。
 - 残留警告一处：`app/build.gradle.kts` 的 `resourceConfigurations` 在 AGP 9.4.1 已弃用，官方替代是
   `androidResources.localeFilters`。本模块暂未迁移（AGP 9.4.1 仍支持该属性），待确认新 DSL 精确签名后再改。
 - 以上均为本机 JVM 单元测试与打包验证；设备矩阵验证仍未执行（见上）。

@@ -12,6 +12,7 @@ import app.relaxkonos.mobile.data.ElevationCoordinator
 import app.relaxkonos.mobile.data.ElevationRepository
 import app.relaxkonos.mobile.data.FileProfileStorage
 import app.relaxkonos.mobile.data.FilesRepository
+import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.data.SystemRepository
 import app.relaxkonos.mobile.security.AndroidBiometricCapabilityDetector
 import app.relaxkonos.mobile.security.BiometricCapability
@@ -65,6 +66,9 @@ class AppContainer(context: Context) {
     val files = FilesRepository(gateway, session, elevations)
 
     val system = SystemRepository(gateway, session)
+
+    /** Small, memory-only success journal shown on the expanded home layout. */
+    val recentOperations = RecentOperationJournal()
 
     /** Pending elevation prompts; a screen renders the dialog and answers it. */
     val elevationPrompts = ElevationCoordinator()

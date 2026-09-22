@@ -34,6 +34,7 @@ import app.relaxkonos.mobile.core.net.PerformanceSnapshot
 import app.relaxkonos.mobile.core.net.ProcessPage
 import app.relaxkonos.mobile.core.net.RemoteProcess
 import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.data.RecentOperationKind
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.failureMessage
@@ -166,7 +167,10 @@ class ManageViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             processesLoading = true
             when (val result = container.system.killProcess(target.pid, force, container.elevations, container.elevationAnswers)) {
-                is ApiResult.Success -> loadProcesses()
+                is ApiResult.Success -> {
+                    container.recentOperations.record(RecentOperationKind.EndProcess, target.name)
+                    loadProcesses()
+                }
                 else -> processMessage = result.failureMessage()
             }
             processesLoading = false

@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.core.net
 
 import java.io.File
+import java.io.InputStream
 
 /**
  * The REST surface the app depends on. Declared as an interface so `AuthSession`, the repositories
@@ -46,6 +47,21 @@ interface RelaxKonGateway {
 
     suspend fun rename(serverUrl: String, accessToken: String, sourcePath: String, newName: String): ApiResult<Unit>
 
+    suspend fun move(serverUrl: String, accessToken: String, sourcePath: String, destinationPath: String): ApiResult<Unit>
+
+    suspend fun copy(serverUrl: String, accessToken: String, sourcePath: String, destinationPath: String): ApiResult<Unit>
+
+    /** Uploads one SAF-owned stream. [onProgress] receives bytes accepted by the request body. */
+    suspend fun upload(
+        serverUrl: String,
+        accessToken: String,
+        targetDirectoryPath: String,
+        fileName: String,
+        source: InputStream,
+        contentLength: Long?,
+        onProgress: ((Long) -> Unit)? = null,
+    ): ApiResult<Unit>
+
     suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot>
 
     suspend fun queryProcesses(
@@ -58,5 +74,12 @@ interface RelaxKonGateway {
 
     suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, force: Boolean): ApiResult<Unit>
 
-    suspend fun download(serverUrl: String, accessToken: String, path: String, target: File): ApiResult<Long>
+    /** Downloads to an app-owned cache file. [onProgress] receives written bytes and total bytes when known. */
+    suspend fun download(
+        serverUrl: String,
+        accessToken: String,
+        path: String,
+        target: File,
+        onProgress: ((writtenBytes: Long, totalBytes: Long?) -> Unit)? = null,
+    ): ApiResult<Long>
 }

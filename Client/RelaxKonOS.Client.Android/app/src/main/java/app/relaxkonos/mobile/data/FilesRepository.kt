@@ -7,6 +7,7 @@ import app.relaxkonos.mobile.core.net.FileElevationCapabilities
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import java.io.File
+import java.io.InputStream
 
 /**
  * Remote file operations.
@@ -61,26 +62,90 @@ class FilesRepository(
             provider = provider,
         ) { serverUrl, accessToken -> gateway.rename(serverUrl, accessToken, sourcePath, newName) }
 
+    suspend fun move(sourcePath: String, destinationPath: String, provider: ElevationAnswerProvider): ApiResult<Unit> =
+        transfer(sourcePath, destinationPath, FileElevationCapabilities.MOVE, provider) { serverUrl, accessToken ->
+            gateway.move(serverUrl, accessToken, sourcePath, destinationPath)
+        }
+
+    suspend fun copy(sourcePath: String, destinationPath: String, provider: ElevationAnswerProvider): ApiResult<Unit> =
+        transfer(sourcePath, destinationPath, FileElevationCapabilities.COPY, provider) { serverUrl, accessToken ->
+            gateway.copy(serverUrl, accessToken, sourcePath, destinationPath)
+        }
+
+    /** Uploads a system document stream without ever relying on a filesystem path. */
+    suspend fun upload(
+        targetDirectoryPath: String,
+        fileName: String,
+        source: InputStream,
+        contentLength: Long?,
+        provider: ElevationAnswerProvider,
+        onProgress: ((Long) -> Unit)? = null,
+    ): ApiResult<Unit> = elevations.withPathElevation(
+        path = targetDirectoryPath,
+        capability = FileElevationCapabilities.UPLOAD,
+        includeDescendants = true,
+        provider = provider,
+    ) { serverUrl, accessToken ->
+        gateway.upload(serverUrl, accessToken, targetDirectoryPath, fileName, source, contentLength, onProgress)
+    }
+
     /** Downloads into [target]. The server grants read access to the file's own path. */
-    suspend fun download(path: String, target: File, provider: ElevationAnswerProvider): ApiResult<Long> =
+    suspend fun download(
+        path: String,
+        target: File,
+        provider: ElevationAnswerProvider,
+        onProgress: ((writtenBytes: Long, totalBytes: Long?) -> Unit)? = null,
+    ): ApiResult<Long> =
         elevations.withPathElevation(
             path = path,
             capability = FileElevationCapabilities.READ,
             provider = provider,
-        ) { serverUrl, accessToken -> gateway.download(serverUrl, accessToken, path, target) }
+        ) { serverUrl, accessToken -> gateway.download(serverUrl, accessToken, path, target, onProgress) }
 
     /** The parent directory of a canonical path, used to scope grants for newly created entries. */
     internal fun parentOf(path: String): String {
+        if (isDriveRoot(path)) {
+            return path
+        }
         val trimmed = path.trimEnd('/', '\\')
         val separator = trimmed.lastIndexOfAny(charArrayOf('/', '\\'))
-        return if (separator <= 0) ROOT else trimmed.substring(0, separator)
+        return when {
+            separator < 0 -> ROOT
+            separator == 0 -> ROOT
+            // Keep the separator in a Windows drive root: `C:\\work` has parent `C:\\`, not `C:`.
+            separator == 2 && trimmed.length >= 3 && trimmed[1] == ':' -> trimmed.substring(0, separator + 1)
+            else -> trimmed.substring(0, separator)
+        }
     }
 
-    private fun join(parent: String, name: String): String = when {
+    private suspend fun transfer(
+        sourcePath: String,
+        destinationPath: String,
+        capability: String,
+        provider: ElevationAnswerProvider,
+        operation: suspend (String, String) -> ApiResult<Unit>,
+    ): ApiResult<Unit> = elevations.withPathElevation(
+        // Both parent directories must be in the elevated scope: source is read/removed and the
+        // destination is created. Sending the directory scopes also avoids granting a whole drive.
+        path = parentOf(sourcePath),
+        capability = capability,
+        relatedPaths = listOf(parentOf(destinationPath)),
+        includeDescendants = true,
+        provider = provider,
+        call = operation,
+    )
+
+    internal fun childOf(parent: String, name: String): String = when {
         parent == ROOT -> "$ROOT$name"
         parent.endsWith("/") || parent.endsWith("\\") -> parent + name
+        parent.contains('\\') && !parent.contains('/') -> "$parent\\$name"
         else -> "$parent/$name"
     }
+
+    private fun join(parent: String, name: String): String = childOf(parent, name)
+
+    private fun isDriveRoot(path: String): Boolean =
+        path.length == 3 && path[1] == ':' && (path[2] == '/' || path[2] == '\\')
 
     private companion object {
         const val ROOT = "/"

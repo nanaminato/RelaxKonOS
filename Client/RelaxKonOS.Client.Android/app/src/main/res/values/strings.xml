@@ -133,7 +133,16 @@
     <string name="home_capabilities_empty">The server reported no capabilities.</string>
     <string name="home_open_files">Open files</string>
     <string name="home_recent_title">Recent activity</string>
-    <string name="home_recent_empty">The activity log is not implemented yet.</string>
+    <string name="home_recent_empty">Successful operations from this app session will appear here.</string>
+    <string name="home_recent_item">%1$s · %2$s · %3$s</string>
+    <string name="home_recent_create_directory">Created folder</string>
+    <string name="home_recent_rename">Renamed</string>
+    <string name="home_recent_delete">Deleted</string>
+    <string name="home_recent_copy">Copied</string>
+    <string name="home_recent_move">Moved</string>
+    <string name="home_recent_upload">Uploaded</string>
+    <string name="home_recent_download">Downloaded</string>
+    <string name="home_recent_end_process">Ended process</string>
 
     <!-- Files -->
     <string name="files_root">Roots</string>
@@ -145,14 +154,26 @@
     <string name="files_action_new_directory">New folder</string>
     <string name="files_action_rename">Rename</string>
     <string name="files_action_download">Download</string>
+    <string name="files_action_upload">Upload</string>
+    <string name="files_action_copy">Copy</string>
+    <string name="files_action_move">Move</string>
     <string name="files_new_directory_title">New folder</string>
     <string name="files_new_directory_body">Create a folder in %1$s</string>
     <string name="files_rename_title">Rename</string>
+    <string name="files_copy_title">Copy</string>
+    <string name="files_move_title">Move</string>
+    <string name="files_transfer_body">Choose the full remote destination path for %1$s.</string>
+    <string name="files_destination_path">Destination path</string>
     <string name="files_delete_title">Delete</string>
     <string name="files_delete_message">Delete %1$s? This cannot be undone.</string>
     <string name="files_created">Created %1$s</string>
     <string name="files_downloading">Downloading</string>
-    <string name="files_downloaded">Saved to %1$s</string>
+    <string name="files_uploading">Uploading</string>
+    <string name="files_copying">Copying</string>
+    <string name="files_moving">Moving</string>
+    <string name="files_uploaded">Uploaded %1$s</string>
+    <string name="files_share_download">Open downloaded file</string>
+    <string name="files_upload_default_name">upload</string>
     <string name="files_detail_title">Properties</string>
     <string name="files_detail_none">Select a file or folder to see its properties.</string>
     <string name="files_detail_unavailable">The server did not return properties for this entry.</string>

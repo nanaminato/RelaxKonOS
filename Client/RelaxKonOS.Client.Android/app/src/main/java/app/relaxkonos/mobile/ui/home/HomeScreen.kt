@@ -31,6 +31,8 @@ import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.PerformanceSnapshot
 import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.data.RecentOperation
+import app.relaxkonos.mobile.data.RecentOperationKind
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.ErrorBanner
 import app.relaxkonos.mobile.ui.common.KeyValueRow
@@ -40,6 +42,7 @@ import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import kotlinx.coroutines.launch
 
 /**
@@ -62,6 +65,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     val metricsAvailable: Boolean get() = container.capabilities.contains(ServerCapabilities.METRICS)
+
+    val recentOperations get() = container.recentOperations.entries
 
     fun refresh() {
         if (!metricsAvailable || loading) {
@@ -88,8 +93,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
  *
  * Compact shows the status cards in one column; Medium and Expanded widen the same content
  * (`RelaxKonOS.Mobile.V1.Design.md` §3.2, `home` row). The recent-operations region exists only where
- * the design gives it a column, and it says plainly that the journal is not implemented rather than
- * pretending to be empty.
+ * the design gives it a column and shows bounded, in-memory successes from this app session.
  */
 @Composable
 fun HomeScreen(
@@ -103,6 +107,7 @@ fun HomeScreen(
     LaunchedEffect(session.serverUrl) { viewModel.refresh() }
 
     val snapshot = viewModel.snapshot
+    val recentOperations = viewModel.recentOperations.collectAsStateValue()
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -200,8 +205,36 @@ fun HomeScreen(
 
         if (layoutState == LayoutState.Expanded) {
             SectionCard(title = stringResource(R.string.home_recent_title)) {
-                EmptyHint(stringResource(R.string.home_recent_empty))
+                if (recentOperations.isEmpty()) {
+                    EmptyHint(stringResource(R.string.home_recent_empty))
+                } else {
+                    recentOperations.forEach { operation ->
+                        Text(
+                            text = stringResource(
+                                R.string.home_recent_item,
+                                recentOperationLabel(operation),
+                                operation.target,
+                                formatTimestamp(operation.atEpochMillis).orEmpty(),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+@Composable
+private fun recentOperationLabel(operation: RecentOperation): String = stringResource(
+    when (operation.kind) {
+        RecentOperationKind.CreateDirectory -> R.string.home_recent_create_directory
+        RecentOperationKind.Rename -> R.string.home_recent_rename
+        RecentOperationKind.Delete -> R.string.home_recent_delete
+        RecentOperationKind.Copy -> R.string.home_recent_copy
+        RecentOperationKind.Move -> R.string.home_recent_move
+        RecentOperationKind.Upload -> R.string.home_recent_upload
+        RecentOperationKind.Download -> R.string.home_recent_download
+        RecentOperationKind.EndProcess -> R.string.home_recent_end_process
+    },
+)

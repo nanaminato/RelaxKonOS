@@ -1,6 +1,12 @@
 package app.relaxkonos.mobile.ui.files
 
 import android.app.Application
+import android.content.Intent
+import android.database.Cursor
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -42,7 +49,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
@@ -51,6 +57,7 @@ import app.relaxkonos.mobile.core.net.DirectoryListing
 import app.relaxkonos.mobile.core.net.RemoteEntry
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.data.RecentOperationKind
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.ErrorBanner
@@ -64,10 +71,24 @@ import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.text
 import java.io.File
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** A long-running transfer the shell is showing progress for. */
-data class Transfer(val label: String, val collapsed: Boolean = false)
+data class Transfer(
+    val label: String,
+    val kind: TransferKind,
+    val transferredBytes: Long = 0,
+    val totalBytes: Long? = null,
+    val collapsed: Boolean = false,
+) {
+    val progress: Float? get() = totalBytes?.takeIf { it > 0 }?.let { (transferredBytes.toFloat() / it).coerceIn(0f, 1f) }
+}
+
+enum class TransferKind { Download, Upload, Move, Copy }
 
 /**
  * Files destination state.
@@ -109,8 +130,16 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     var deleteTarget by mutableStateOf<RemoteEntry?>(null)
         private set
 
+    var transferTarget by mutableStateOf<TransferTarget?>(null)
+        private set
+
+    var downloadReady by mutableStateOf<File?>(null)
+        private set
+
     var transfer by mutableStateOf<Transfer?>(null)
         private set
+
+    private var transferJob: Job? = null
 
     private var started = false
 
@@ -133,10 +162,11 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun goUp() {
-        if (path.isBlank()) {
+        val parent = container.files.parentOf(path)
+        if (path.isBlank() || parent == path) {
             return
         }
-        open(container.files.parentOf(path))
+        open(parent)
     }
 
     fun select(entry: RemoteEntry?) {
@@ -161,12 +191,13 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun confirmNewDirectory(name: String) {
         newDirectoryOpen = false
-        val target = childOf(path, name)
+        val target = container.files.childOf(path, name)
         viewModelScope.launch {
             loading = true
             when (val result = container.files.createDirectory(target, container.elevationAnswers)) {
                 is ApiResult.Success -> {
                     message = UiMessage(R.string.files_created, listOf(target))
+                    container.recentOperations.record(RecentOperationKind.CreateDirectory, target)
                     reload()
                 }
 
@@ -190,7 +221,10 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             loading = true
             when (val result = container.files.rename(target.path, newName, container.elevationAnswers)) {
-                is ApiResult.Success -> reload()
+                is ApiResult.Success -> {
+                    container.recentOperations.record(RecentOperationKind.Rename, target.path)
+                    reload()
+                }
                 else -> message = result.failureMessage()
             }
             loading = false
@@ -199,6 +233,48 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun requestDelete(entry: RemoteEntry) {
         deleteTarget = entry
+    }
+
+    fun requestTransfer(entry: RemoteEntry, move: Boolean) {
+        transferTarget = TransferTarget(entry, move)
+    }
+
+    fun cancelTransferTarget() {
+        transferTarget = null
+    }
+
+    fun confirmTransfer(destinationPath: String) {
+        val request = transferTarget ?: return
+        transferTarget = null
+        if (destinationPath.isBlank() || transfer != null) {
+            return
+        }
+        val label = request.entry.path
+        transfer = Transfer(label = label, kind = if (request.move) TransferKind.Move else TransferKind.Copy)
+        transferJob = viewModelScope.launch {
+            try {
+                val result = if (request.move) {
+                    container.files.move(request.entry.path, destinationPath, container.elevationAnswers)
+                } else {
+                    container.files.copy(request.entry.path, destinationPath, container.elevationAnswers)
+                }
+                if (result is ApiResult.Success) {
+                    container.recentOperations.record(
+                        if (request.move) RecentOperationKind.Move else RecentOperationKind.Copy,
+                        request.entry.path,
+                    )
+                    if (request.move && selected?.path == request.entry.path) select(null)
+                    reload()
+                } else {
+                    message = result.failureMessage()
+                }
+            } catch (_: CancellationException) {
+                // The transfer card disappears; cancellation is an expected user action.
+            } finally {
+                transfer = null
+                transferJob = null
+            }
+        }
     }
 
     fun cancelDelete() {
@@ -212,6 +288,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             loading = true
             when (val result = container.files.delete(target.path, container.elevationAnswers)) {
                 is ApiResult.Success -> {
+                    container.recentOperations.record(RecentOperationKind.Delete, target.path)
                     if (selected?.path == target.path) {
                         select(null)
                     }
@@ -224,26 +301,87 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Streams the file into the app cache directory.
-     *
-     * No progress fraction and no cancel affordance are offered, because the transport in
-     * `core/net/RelaxKonApi.kt` neither reports byte counts nor accepts cancellation. Showing a
-     * percentage or a cancel button that cannot cancel would be worse than showing none.
-     */
+    /** Streams a remote file into private cache, then lets the screen hand it to Android's share sheet. */
     fun download(entry: RemoteEntry) {
         if (transfer != null) {
             return
         }
         val target = File(getApplication<RelaxKonApplication>().cacheDir, entry.name)
-        transfer = Transfer(label = entry.path)
-        viewModelScope.launch {
-            when (val result = container.files.download(entry.path, target, container.elevationAnswers)) {
-                is ApiResult.Success -> message = UiMessage(R.string.files_downloaded, listOf(target.absolutePath))
-                else -> message = result.failureMessage()
+        transfer = Transfer(label = entry.path, kind = TransferKind.Download)
+        transferJob = viewModelScope.launch {
+            try {
+                val result = container.files.download(entry.path, target, container.elevationAnswers) { written, total ->
+                    viewModelScope.launch(Dispatchers.Main.immediate) {
+                        transfer = transfer?.takeIf { it.kind == TransferKind.Download }?.copy(
+                            transferredBytes = written,
+                            totalBytes = total,
+                        )
+                    }
+                }
+                when (result) {
+                    is ApiResult.Success -> {
+                        container.recentOperations.record(RecentOperationKind.Download, entry.path)
+                        downloadReady = target
+                    }
+                    else -> message = result.failureMessage()
+                }
+            } catch (_: CancellationException) {
+                // Expected when the user cancels the transfer.
+            } finally {
+                transfer = null
+                transferJob = null
             }
-            transfer = null
         }
+    }
+
+    /** Copies a user-selected document stream directly to the server; no broad storage permission is needed. */
+    fun upload(uri: Uri) {
+        if (transfer != null) return
+        val resolver = getApplication<RelaxKonApplication>().contentResolver
+        val name = resolver.displayName(uri) ?: getApplication<RelaxKonApplication>().getString(R.string.files_upload_default_name)
+        val length = runCatching { resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } }
+            .getOrNull()
+            ?.takeIf { it >= 0 }
+        transfer = Transfer(label = name, kind = TransferKind.Upload, totalBytes = length)
+        transferJob = viewModelScope.launch {
+            try {
+                val result = runCatching {
+                    resolver.openInputStream(uri)?.use { input ->
+                        container.files.upload(path, name, input, length, container.elevationAnswers) { written ->
+                            viewModelScope.launch(Dispatchers.Main.immediate) {
+                                transfer = transfer?.takeIf { it.kind == TransferKind.Upload }?.copy(transferredBytes = written)
+                            }
+                        }
+                    } ?: ApiResult.Transport(null)
+                }.getOrElse {
+                    if (it is CancellationException) throw it
+                    ApiResult.Transport(it.message)
+                }
+                when (result) {
+                    is ApiResult.Success -> {
+                        message = UiMessage(R.string.files_uploaded, listOf(name))
+                        container.recentOperations.record(RecentOperationKind.Upload, name)
+                        reload()
+                    }
+                    else -> message = result.failureMessage()
+                }
+            } catch (_: CancellationException) {
+                // Expected when the user cancels the transfer.
+            } finally {
+                transfer = null
+                transferJob = null
+            }
+        }
+    }
+
+    fun cancelActiveTransfer() {
+        transferJob?.cancel()
+        transferJob = null
+        transfer = null
+    }
+
+    fun consumeDownloadReady() {
+        downloadReady = null
     }
 
     fun setTransferCollapsed(collapsed: Boolean) {
@@ -276,11 +414,15 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun childOf(parent: String, name: String): String = when {
-        parent.isBlank() || parent == "/" -> "/$name"
-        else -> "${parent.trimEnd('/')}/$name"
-    }
 }
+
+data class TransferTarget(val entry: RemoteEntry, val move: Boolean)
+
+private fun android.content.ContentResolver.displayName(uri: Uri): String? = runCatching {
+    query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor: Cursor ->
+        cursor.takeIf { it.moveToFirst() }?.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+    }
+}.getOrNull()
 
 /**
  * The file list.
@@ -293,10 +435,14 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
  */
 @Composable
 fun FilesScreen(
+    viewModel: FilesViewModel,
     onOpenDetail: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val viewModel: FilesViewModel = viewModel()
+    val context = LocalContext.current
+    val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::upload)
+    }
 
     LaunchedEffect(Unit) { viewModel.start() }
 
@@ -313,7 +459,7 @@ fun FilesScreen(
 
         Card(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { viewModel.goUp() }, enabled = viewModel.path.isNotBlank()) {
+                IconButton(onClick = { viewModel.goUp() }, enabled = viewModel.path.isNotBlank() && viewModel.path != appContainer().files.parentOf(viewModel.path)) {
                     Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.files_action_up))
                 }
                 Text(
@@ -328,6 +474,9 @@ fun FilesScreen(
                 }
                 IconButton(onClick = { viewModel.openNewDirectory() }) {
                     Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.files_action_new_directory))
+                }
+                TextButton(onClick = { pickUpload.launch(arrayOf("*/*")) }, enabled = viewModel.transfer == null) {
+                    Text(stringResource(R.string.files_action_upload))
                 }
             }
         }
@@ -387,6 +536,20 @@ fun FilesScreen(
                                     },
                                 )
                                 DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.files_action_copy)) },
+                                    onClick = {
+                                        menuForPath = null
+                                        viewModel.requestTransfer(entry, move = false)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.files_action_move)) },
+                                    onClick = {
+                                        menuForPath = null
+                                        viewModel.requestTransfer(entry, move = true)
+                                    },
+                                )
+                                DropdownMenuItem(
                                     text = { Text(stringResource(R.string.common_delete)) },
                                     leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
                                     onClick = {
@@ -403,41 +566,36 @@ fun FilesScreen(
 
         viewModel.transfer?.let { transfer ->
             ProgressSheet(
-                title = stringResource(R.string.files_downloading),
+                title = stringResource(
+                    when (transfer.kind) {
+                        TransferKind.Download -> R.string.files_downloading
+                        TransferKind.Upload -> R.string.files_uploading
+                        TransferKind.Move -> R.string.files_moving
+                        TransferKind.Copy -> R.string.files_copying
+                    },
+                ),
                 detail = transfer.label,
-                progress = null,
+                progress = transfer.progress,
                 collapsed = transfer.collapsed,
                 onCollapsedChange = { viewModel.setTransferCollapsed(it) },
-                onCancel = null,
+                onCancel = viewModel::cancelActiveTransfer,
             )
         }
     }
 
-    if (viewModel.newDirectoryOpen) {
-        NewDirectoryDialog(
-            parentPath = viewModel.path,
-            onDismiss = { viewModel.cancelNewDirectory() },
-            onConfirm = { viewModel.confirmNewDirectory(it) },
+    LaunchedEffect(viewModel.downloadReady) {
+        val file = viewModel.downloadReady ?: return@LaunchedEffect
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        context.startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND)
+                    .setType("application/octet-stream")
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                context.getString(R.string.files_share_download),
+            ),
         )
-    }
-
-    viewModel.renameTarget?.let { entry ->
-        RenameDialog(
-            entry = entry,
-            onDismiss = { viewModel.cancelRename() },
-            onConfirm = { viewModel.confirmRename(it) },
-        )
-    }
-
-    viewModel.deleteTarget?.let { entry ->
-        ConfirmDangerousDialog(
-            title = stringResource(R.string.files_delete_title),
-            message = stringResource(R.string.files_delete_message, entry.path),
-            confirmLabel = stringResource(R.string.common_delete),
-            busy = viewModel.loading,
-            onConfirm = { viewModel.confirmDelete() },
-            onDismiss = { viewModel.cancelDelete() },
-        )
+        viewModel.consumeDownloadReady()
     }
 }
 
@@ -449,10 +607,10 @@ fun FilesScreen(
  */
 @Composable
 fun FileDetailScreen(
+    viewModel: FilesViewModel,
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val viewModel: FilesViewModel = viewModel()
     val container = appContainer()
     val entry = viewModel.selected
     val properties = viewModel.properties
@@ -503,8 +661,42 @@ fun FileDetailScreen(
                 }
             }
             TextButton(onClick = { viewModel.requestRename(entry) }) { Text(stringResource(R.string.files_action_rename)) }
+            TextButton(onClick = { viewModel.requestTransfer(entry, move = false) }) { Text(stringResource(R.string.files_action_copy)) }
+            TextButton(onClick = { viewModel.requestTransfer(entry, move = true) }) { Text(stringResource(R.string.files_action_move)) }
             TextButton(onClick = { viewModel.requestDelete(entry) }) { Text(stringResource(R.string.common_delete)) }
         }
+    }
+}
+
+/** Shared overlay for both list and detail routes, so compact detail actions never become inert. */
+@Composable
+fun FileOperationOverlays(viewModel: FilesViewModel) {
+    if (viewModel.newDirectoryOpen) {
+        NewDirectoryDialog(
+            parentPath = viewModel.path,
+            onDismiss = viewModel::cancelNewDirectory,
+            onConfirm = viewModel::confirmNewDirectory,
+        )
+    }
+    viewModel.renameTarget?.let { entry ->
+        RenameDialog(entry, onDismiss = viewModel::cancelRename, onConfirm = viewModel::confirmRename)
+    }
+    viewModel.transferTarget?.let { request ->
+        TransferDialog(
+            request = request,
+            onDismiss = viewModel::cancelTransferTarget,
+            onConfirm = viewModel::confirmTransfer,
+        )
+    }
+    viewModel.deleteTarget?.let { entry ->
+        ConfirmDangerousDialog(
+            title = stringResource(R.string.files_delete_title),
+            message = stringResource(R.string.files_delete_message, entry.path),
+            confirmLabel = stringResource(R.string.common_delete),
+            busy = viewModel.loading,
+            onConfirm = viewModel::confirmDelete,
+            onDismiss = viewModel::cancelDelete,
+        )
     }
 }
 
@@ -554,6 +746,33 @@ private fun RenameDialog(entry: RemoteEntry, onDismiss: () -> Unit, onConfirm: (
         confirmButton = {
             Button(onClick = { onConfirm(name.trim()) }, enabled = name.isNotBlank() && name != entry.name) {
                 Text(stringResource(R.string.common_save))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
+}
+
+@Composable
+private fun TransferDialog(request: TransferTarget, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var destination by remember { mutableStateOf(request.entry.path) }
+    val title = stringResource(if (request.move) R.string.files_move_title else R.string.files_copy_title)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.files_transfer_body, request.entry.path))
+                OutlinedTextField(
+                    value = destination,
+                    onValueChange = { destination = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.files_destination_path)) },
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(destination.trim()) }, enabled = destination.isNotBlank() && destination != request.entry.path) {
+                Text(stringResource(if (request.move) R.string.files_action_move else R.string.files_action_copy))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
