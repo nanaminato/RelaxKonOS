@@ -22,7 +22,7 @@ public sealed class RunAsAuthorizationService(IIdentityProvider identities, ISer
 {
     public RunAsAuthorizationResult Authorize(string requester, string? requestedRunAs, RunAsAdministratorApproval? approval)
     {
-        var target = requestedRunAs?.Trim();
+        var target = string.IsNullOrWhiteSpace(requestedRunAs) ? requester.Trim() : requestedRunAs.Trim();
         if (string.IsNullOrWhiteSpace(requester) || string.IsNullOrWhiteSpace(target) || target.IndexOf('\0') >= 0)
             return new RunAsAuthorizationResult(false, "guardian.run_as_invalid_account");
 

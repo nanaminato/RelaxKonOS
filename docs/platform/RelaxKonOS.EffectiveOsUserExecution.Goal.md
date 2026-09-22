@@ -198,6 +198,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - 特殊位置、目录枚举、读写、上传、删除、重命名、移动、复制、创建目录、属性和 POSIX mode 均覆盖这一文件通道。System Mode batch file jobs 尚未迁移，因此在启动时 fail closed，避免后台以 Server 账号执行。
 - Git 的 Linux 通道已迁移为专用 `GitExecute` operation：Helper 只使用固定位置的 Git binary，并在降权后以当前用户身份运行服务端 Git domain 生成的 arguments 与工作目录。没有 generic executable、shell 或环境字段。需要临时 AskPass 凭据的远程操作暂时 fail closed，直到凭据可在不进入 User Execution wire contract 的前提下安全注入。
 - Terminal 的 Linux System Mode 已迁移到专用 `--user-terminal` Helper 入口：它读取一次结构化、allowlisted shell 请求，重新验证身份并降权，然后通过固定 PTY broker 桥接 shell 标准输入输出到现有 SignalR 会话。当前只支持 bash/sh；窗口 resize 尚未传递给 broker，必须在正式发布前补齐。
+- Guardian workload 创建入口现在从 JWT `sub` 解析 canonical OS account；未声明 `runAs` 时默认当前用户，跨账户仍需要单独管理员批准。现有 Linux Agent 的 `runuser` child transition 保持为执行机制；Agent-side stable UID revalidation 仍待完成。
 - 添加 contract/context 单元检查，覆盖 canonical identity、请求身份替换拒绝、System Mode fail-closed 以及无敏感/通用命令字段。
 
 ### 尚未实施（明确不跳过）
@@ -205,7 +206,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - Windows LocalSystem named-pipe/SID impersonation。
 - 批处理文件作业、Terminal/Git/Guardian 与应用部署的迁移。批处理作业已 fail closed；其余域仍不能声称具备跨用户执行能力。
 - Terminal、Guardian 与应用部署的迁移；Git 的临时 AskPass 远程凭据路径尚未完成。
-- Guardian 与应用部署的迁移；Terminal resize 与 Windows terminal impersonation；Git 的临时 AskPass 远程凭据路径尚未完成。
+- Guardian Agent-side stable identity revalidation 与应用部署的迁移；Terminal resize 与 Windows terminal impersonation；Git 的临时 AskPass 远程凭据路径尚未完成。
 - Linux user-execution 的 install/upgrade audit、openat-style TOCTOU hardening、跨 filesystem 行为、取消处理和 root-owned 残留演练。
 - 安装器、Helper 配置和真实 Linux/Windows integration 环境。
 

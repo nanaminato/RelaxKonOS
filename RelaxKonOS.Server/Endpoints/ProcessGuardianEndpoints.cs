@@ -4,6 +4,7 @@ using RelaxKonOS.Protocol.ProcessGuardian;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.UserExecution;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -18,13 +19,15 @@ public static class ProcessGuardianEndpoints
         group.MapPost("/workloads", (
             UpsertGuardianWorkloadRequest request,
             HttpContext http,
+            IUserExecutionContextResolver executionContexts,
             RelaxKonOS.Server.ProcessGuardian.IRunAsAuthorizationService runAs,
             RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service,
             CancellationToken ct) =>
         {
-            var requester = http.User.FindFirst(JwtRegisteredClaimNames.Name)?.Value
-                            ?? http.User.FindFirst(ClaimTypes.Name)?.Value
-                            ?? string.Empty;
+            string requester;
+            try { requester = executionContexts.Resolve(http.User).Identity.CanonicalAccount; }
+            catch (UserExecutionException exception)
+            { return Task.FromResult(new GuardianAgentResponse(false, "guardian." + exception.ProblemCode.ToString().ToLowerInvariant())); }
             var authorization = runAs.Authorize(requester, request.Definition.RunAs, request.RunAsApproval);
             if (!authorization.Success)
                 return Task.FromResult(new GuardianAgentResponse(false, authorization.ProblemCode));
