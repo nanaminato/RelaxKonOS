@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ProcessGuardian;
 
@@ -139,6 +140,12 @@ internal sealed partial class WorkloadSupervisor
         if (workload.Process is { HasExited: false }) return;
         workload.LastProblemCode = null;
         workload.DesiredState = "Running"; workload.ActualState = "Starting"; workload.Generation++;
+        if (!ValidateStableRunAsIdentity(workload.Definition, out var identityProblem))
+        {
+            workload.LastProblemCode = identityProblem;
+            workload.ActualState = "Failed";
+            return;
+        }
         var start = CreateStartInfo(workload.Definition, out var launchProblem);
         if (start is null)
         {
@@ -340,6 +347,7 @@ internal sealed partial class WorkloadSupervisor
         problem = null;
         if (string.IsNullOrWhiteSpace(definition.RunAs)) { problem = "guardian.run_as_migration_required"; return false; }
         if (definition.RunAs.IndexOf('\0') >= 0 || definition.RunAs.StartsWith('-')) { problem = "guardian.run_as_invalid_account"; return false; }
+        if (!ValidateStableRunAsIdentity(definition, out problem)) return false;
         if (string.IsNullOrWhiteSpace(definition.Id) || string.IsNullOrWhiteSpace(definition.Name) || !Path.IsPathFullyQualified(definition.ExecutablePath) || !File.Exists(definition.ExecutablePath)) { problem = "guardian.validation_executable"; return false; }
         if (!Path.IsPathFullyQualified(definition.WorkingDirectory) || !Directory.Exists(definition.WorkingDirectory)) { problem = "guardian.validation_working_directory"; return false; }
         var executableName = Path.GetFileNameWithoutExtension(definition.ExecutablePath);
@@ -347,6 +355,75 @@ internal sealed partial class WorkloadSupervisor
         if (definition.Arguments.Any(argument => argument.Contains('\0')) || definition.StopTimeoutSeconds is < 1 or > 300 || definition.MaxRestartAttempts is < 0 or > 100 || !ValidateHealthCheck(definition.HealthCheck)) { problem = "guardian.validation_failed"; return false; }
         return true;
     }
+
+    /// <summary>
+    /// Re-resolves the authorised account immediately before accepting and before launching a
+    /// workload. A mutable account name alone is not an authority: Linux validates its NSS UID,
+    /// while Windows accepts only the current process token's SID (cross-account Windows launch
+    /// is intentionally unsupported until a token broker exists).
+    /// </summary>
+    private static bool ValidateStableRunAsIdentity(ProcessDefinitionDto definition, out string? problem)
+    {
+        if (string.IsNullOrWhiteSpace(definition.RunAsIdentity))
+        {
+            problem = "guardian.run_as_identity_migration_required";
+            return false;
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            if (!uint.TryParse(definition.RunAsIdentity, out var expectedUid)
+                || !TryGetLinuxUserId(definition.RunAs!, out var actualUid)
+                || actualUid != expectedUid)
+            {
+                problem = "guardian.run_as_identity_mismatch";
+                return false;
+            }
+            problem = null;
+            return true;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            var currentSid = System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value;
+            if (!string.Equals(definition.RunAsIdentity, currentSid, StringComparison.OrdinalIgnoreCase))
+            {
+                problem = "guardian.run_as_identity_mismatch";
+                return false;
+            }
+            problem = null;
+            return true;
+        }
+
+        problem = "guardian.run_as_platform_not_supported";
+        return false;
+    }
+
+    private static bool TryGetLinuxUserId(string username, out uint uid)
+    {
+        uid = 0;
+        if (string.IsNullOrWhiteSpace(username) || username.IndexOf('\0') >= 0) return false;
+        var buffer = Marshal.AllocHGlobal(65_536);
+        try
+        {
+            if (getpwnam_r(username, out var entry, buffer, 65_536, out var result) != 0 || result == IntPtr.Zero)
+                return false;
+            uid = entry.Uid;
+            return true;
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Passwd
+    {
+        public IntPtr Name, Password;
+        public uint Uid, Gid;
+        public IntPtr Gecos, Home, Shell;
+    }
+
+    [DllImport("libc.so.6", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int getpwnam_r(string name, out Passwd entry, IntPtr buffer, nuint length, out IntPtr result);
 
     /// <summary>
     /// Converts a bare program name to the concrete executable selected from the Agent launch

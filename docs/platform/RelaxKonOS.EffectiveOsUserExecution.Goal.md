@@ -1,6 +1,6 @@
 # RelaxKonOS 有效 OS 执行身份（Effective OS User Execution）Goal
 
-> 状态：实施中（2026-09-22：Linux 单文件 API 已接入独立降权 Helper；Windows、批处理文件作业及进程域仍 fail-closed。）
+> 状态：实施中（2026-09-22：Linux 文件、Git、Terminal、Guardian 与部署源文件已接入有效用户执行；Windows、批处理文件作业及若干安全收尾项仍未完成。）
 >
 > 建立日期：2026-09-22
 >
@@ -45,8 +45,8 @@ RelaxKonOS JWT subject → nanami 的稳定 OS 身份
 2. **普通执行与管理员提权分离。** `RunAsAuthenticatedUser` 不消耗 elevation、不显示管理员认证窗口、不以 root/LocalSystem 访问；管理员操作仍须使用既有 capability、`jti`、范围和短期授权模型。
 3. **User Mode 不改变。** Linux User Mode 进程已是实际用户，且 [`LinuxPamProvider`](../../RelaxKonOS.Server/Identity/LinuxPamProvider.cs) 已限制进程内 PAM/NSS 只能解析 eUID 对应账户。它不调用 Helper、不支持跨用户 `runAs`。
 4. **稳定身份而非展示名。** Linux 使用 NSS 验证的 UID 与 canonical username；Windows 使用 SID 与 canonical account。显示名、Alias、裸用户名、主目录字符串都不能作为授权键。
-5. **权限由宿主裁决。** 目标账户对路径没有权限时，返回普通 `access-denied`；不得放宽家目录权限、修改 ACL、递归 `chown`、回退到 Server 身份或自动请求管理员授权。
-6. **封闭能力，不提供通用命令执行。** 该能力只承载明确的文件/进程领域操作，不能演变为“以任意用户运行任意命令”。所有路径、文件名、大小、链接/reparse point、操作类型和执行身份仍由 Server 与 Helper 双层验证。
+5. **权限由宿主裁决，提权必须由用户发起。** 目标账户对路径没有权限时，先返回 `elevation-required`，但绝不自动运行 elevated operation 或自动弹出认证；客户端仅在用户明确选择提权后，才以该次操作的精确 scope 请求管理员认证。认证成功后才可走既有 root/LocalSystem capability 重试。不得放宽家目录权限、修改 ACL、递归 `chown` 或回退到 Server 身份。
+6. **封闭能力，不提供通用命令执行。** 该能力只承载明确的文件/进程领域操作，不能演变为“以任意用户运行任意命令”。Git arguments 只来自既有 Git domain；Terminal 只接受 allowlisted shell；两者均没有 caller-supplied executable 或 environment。所有路径、文件名、大小、链接/reparse point、操作类型和执行身份仍由 Server 与 Helper 双层验证。
 7. **不保留旧接口或双语义。** 按仓库 API 演进政策，实施时同时升级所有内部调用方、测试、文档与协议；不保留旧的“Server 身份普通 I/O”兼容开关、路由或解析回退。
 
 ## 4. 目标架构
@@ -190,24 +190,24 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 
 ### 已完成：Goal 1 与 Linux 文件 API 的首个垂直切片
 
-- 新增独立 `Protocol/UserExecution/` 版本化 contract：只有封闭的文件 operation kind 和 Server 派生的 stable identity，且没有密码、JWT、token、shell、命令、arguments 或 environment 字段。
+- 新增独立 `Protocol/UserExecution/` 版本化 contract：包含封闭的文件、Git 与 Terminal operation kind 和 Server 派生的 stable identity；没有密码、JWT、token、任意 executable 或 environment 字段。Git arguments 及 Terminal shell 仅是 Server domain 构造、Helper 再验证的受限字段，不能由 HTTP 直接扩展为通用执行。
 - 新增 `UserExecutionContextResolver`：仅从验证后的 JWT `sub` 找到 RelaxKonOS 用户，再经 `CanonicalUserResolver` 对 username 与 UID/SID 重新绑定验证；HTTP body/query/header 不参与身份选择。
 - 新增 `IUserExecutionService` 的 User Mode 验证 adapter。它不会切换 Server 身份。
 - Linux one-shot Helper 新增独立 `--user-execution` 入口：以 root 重新解析 UID、canonical username 与 home，拒绝 UID < 1000；在 `initgroups`、`setgid`、`setuid` 和 eUID/eGID 复核成功后才执行一项封闭文件操作。降权后没有特权 dispatcher 可返回。
-- `IFileService` 已替换为有效用户路由：User Mode 仍调用本地服务；Linux System Mode 通过独立 transport 调用 Helper。目标用户的权限拒绝首先返回 `elevation-required`，由客户端在用户明确确认并完成管理员认证后取得短期 capability，再通过既有 root/LocalSystem Helper 重试对应的受控操作；绝不静默提权。
+- `IFileService` 已替换为有效用户路由：User Mode 仍调用本地服务；Linux System Mode 通过独立 transport 调用 Helper。目标用户的权限拒绝首先返回 `elevation-required`；只有客户端在用户明确确认并完成管理员认证后才取得短期 capability，并通过既有 root/LocalSystem Helper 重试对应的受控操作；绝不静默提权或自动认证。
 - 特殊位置、目录枚举、读写、上传、删除、重命名、移动、复制、创建目录、属性和 POSIX mode 均覆盖这一文件通道。System Mode batch file jobs 尚未迁移，因此在启动时 fail closed，避免后台以 Server 账号执行。
 - Git 的 Linux 通道已迁移为专用 `GitExecute` operation：Helper 只使用固定位置的 Git binary，并在降权后以当前用户身份运行服务端 Git domain 生成的 arguments 与工作目录。没有 generic executable、shell 或环境字段。需要临时 AskPass 凭据的远程操作暂时 fail closed，直到凭据可在不进入 User Execution wire contract 的前提下安全注入。
 - Terminal 的 Linux System Mode 已迁移到专用 `--user-terminal` Helper 入口：它读取一次结构化、allowlisted shell 请求，重新验证身份并降权，然后通过固定 PTY broker 桥接 shell 标准输入输出到现有 SignalR 会话。当前只支持 bash/sh；窗口 resize 尚未传递给 broker，必须在正式发布前补齐。
-- Guardian workload 创建入口现在从 JWT `sub` 解析 canonical OS account；未声明 `runAs` 时默认当前用户，跨账户仍需要单独管理员批准。现有 Linux Agent 的 `runuser` child transition 保持为执行机制；Agent-side stable UID revalidation 仍待完成。
+- Guardian workload 创建入口现在从 JWT `sub` 解析 canonical OS account；未声明 `runAs` 时默认当前用户，跨账户仍需要单独管理员批准。Server 会把 canonical launch account 与稳定 Linux UID/Windows SID 写入定义；Agent 在接收定义及每次启动前重新解析该账号并比对 UID/SID。旧定义缺少稳定身份时 fail closed，必须重新保存；Linux 继续使用 `runuser` 完成 child UID/GID/groups transition。
 - 应用部署的本地文件引用现在通过 `IFileService` 以当前登录用户读取，并立刻复制到 deployment-owned staging；后续 Docker build 只使用 staging 副本，不会在后台以 Server 服务账号重新读取用户项目文件。
 - 添加 contract/context 单元检查，覆盖 canonical identity、请求身份替换拒绝、System Mode fail-closed 以及无敏感/通用命令字段。
 
 ### 尚未实施（明确不跳过）
 
 - Windows LocalSystem named-pipe/SID impersonation。
-- 批处理文件作业、Terminal/Git/Guardian 与应用部署的迁移。批处理作业已 fail closed；其余域仍不能声称具备跨用户执行能力。
-- Terminal、Guardian 与应用部署的迁移；Git 的临时 AskPass 远程凭据路径尚未完成。
-- Guardian Agent-side stable identity revalidation；应用部署的完整用户工作负载 owner model；Terminal resize 与 Windows terminal impersonation；Git 的临时 AskPass 远程凭据路径尚未完成。
+- 批处理文件作业迁移。它目前在 System Mode fail closed，避免后台以 Server 服务账号执行。
+- Git 的临时 AskPass 远程凭据路径；Terminal resize 与 Windows terminal impersonation。
+- 应用部署的完整用户工作负载 owner model：当前只保证从文件选择器导入源 archive 时按登录用户读取、随后由 deployment-owned staging 使用；Docker Engine 容器本身仍是宿主级资源。
 - Linux user-execution 的 install/upgrade audit、openat-style TOCTOU hardening、跨 filesystem 行为、取消处理和 root-owned 残留演练。
 - 安装器、Helper 配置和真实 Linux/Windows integration 环境。
 
@@ -217,6 +217,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | --- | --- | --- |
 | `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -c Debug --no-restore` | 通过 | 新增协议和 Server 代码可编译；仅有既存的 Linux/Windows 平台分析警告。 |
 | `dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj -c Debug --no-restore` | 通过 | Linux 降权 dispatcher 与独立 Helper 入口可编译。 |
+| `dotnet build RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj -c Debug --no-restore` | 通过 | Guardian stable UID/SID binding 与 Agent-side revalidation 可编译。 |
 | `dotnet build Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj -c Debug --no-restore` | 通过 | 共享 framework 回归构建。 |
 | `RelaxKonOS.Server.Tests` | 暂缓 | 当前桌面 SDK 在 restore graph 的 `RelaxKonOS.Core` 项目阶段无诊断即失败；该项目文件已注明可使用预构建 Server assembly 的本地 smoke 路径，但本环境的项目图仍未生成。待恢复环境修复后必须运行新增的 `VerifyUserExecutionContextContract`。 |
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |

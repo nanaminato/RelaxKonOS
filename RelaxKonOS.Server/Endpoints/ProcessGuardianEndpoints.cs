@@ -31,7 +31,11 @@ public static class ProcessGuardianEndpoints
             var authorization = runAs.Authorize(requester, request.Definition.RunAs, request.RunAsApproval);
             if (!authorization.Success)
                 return Task.FromResult(new GuardianAgentResponse(false, authorization.ProblemCode));
-            return service.UpsertAsync(request.Definition with { RunAs = authorization.RunAs }, ct);
+            return service.UpsertAsync(request.Definition with
+            {
+                RunAs = authorization.RunAs,
+                RunAsIdentity = authorization.StableIdentity,
+            }, ct);
         });
         group.MapDelete("/workloads/{id}", (string id, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.DeleteAsync(id, ct));
         group.MapPost("/workloads/{id}/{action}", (string id, string action, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ApplyActionAsync(id, action, ct));
