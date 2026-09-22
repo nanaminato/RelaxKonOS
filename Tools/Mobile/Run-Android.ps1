@@ -10,9 +10,10 @@ $adb = Join-Path $AndroidSdkRoot 'platform-tools\adb.exe'
 if (-not (Test-Path -LiteralPath $adb)) { throw "adb was not found: $adb" }
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$apk = Join-Path $repositoryRoot "Client\RelaxKonOS.Client.Android\bin\$Configuration\net10.0-android\$PackageId-Signed.apk"
+$variant = $Configuration.ToLowerInvariant()
+$apk = Join-Path $repositoryRoot "Client\RelaxKonOS.Client.Android\app\build\outputs\apk\$variant\app-$variant.apk"
 if (-not (Test-Path -LiteralPath $apk)) {
-    throw "Signed APK was not found: $apk. Build the Android project first."
+    throw "APK was not found: $apk. Build the Kotlin/Compose Android project first."
 }
 
 & $adb devices

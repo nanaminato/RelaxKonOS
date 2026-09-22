@@ -13,9 +13,9 @@
 
 | 项目 | 决策 |
 | --- | --- |
-| UI 技术 | Avalonia 12 + .NET 10；沿用既有 C#、XAML、MVVM 与 `RelaxKonOS.Protocol`。 |
+| UI 技术 | Kotlin + Jetpack Compose + Android SDK；不引入 Avalonia Mobile、.NET for Android、XAML 或跨平台 UI 运行时。 |
 | 首发平台 | 一个 Android 安装包，同时支持手机、8 英寸级平板与 11 英寸级平板；不按设备型号拆分 App。 |
-| 后续平台 | 预留 iOS/iPadOS Host，业务、ViewModel、移动页面与布局规则复用；iOS 构建、签名与发布另需 Mac/Xcode。 |
+| 后续平台 | iOS/iPadOS 如需支持，采用独立原生实现并复用 Foundation 与 Protocol；不以共享 UI 层为前提。iOS 构建、签名与发布另需 Mac/Xcode。 |
 | 产品形态 | 独立的 **Mobile Shell**，不是桌面 Shell 的缩小版，也不是仅展示数据的仪表盘。 |
 | 通信模型 | 复用 REST + SignalR + Protocol DTO；客户端本地渲染，禁止像素流、RDP/VNC 或让服务端生成 UI。 |
 | 平板定位 | 一等支持：平板是持续轻量管理工作台，使用双栏/三栏；手机是快速查看与应急操作。 |
@@ -51,14 +51,14 @@
        认证会话、Token 刷新、HTTP 处理链、Hub 连接、能力判断、远程服务代理
                          ▲                         ▲
                          │                         │
-       既有 Desktop Shell │                         │ 新增 Mobile Shell
- RelaxKonOS.Client + Client.Desktop          Client.Mobile + Client.Android
-  桌面/窗口/内置桌面应用                      页面导航/响应式布局/Android 平台适配
+       既有 Desktop Shell │                         │ Kotlin/Compose Android 客户端
+ RelaxKonOS.Client + Client.Desktop              Client.Android/app
+  桌面/窗口/内置桌面应用                    Compose 页面、响应式布局、平台适配
 ```
 
-`RelaxKonOS.Client.Foundation` 是共享的客户端基础设施，而非新的“万能 Core”。它只能依赖 `RelaxKonOS.Protocol` 和通用 .NET / Microsoft 扩展包；不得引用 Avalonia、WindowManager、App SDK、Runtime、桌面 `Window`、文件路径或 Android API。
+`RelaxKonOS.Client.Foundation` 是桌面 .NET 侧的共享客户端基础设施，而非新的“万能 Core”。它只能依赖 `RelaxKonOS.Protocol` 和通用 .NET / Microsoft 扩展包；不得引用 Avalonia、WindowManager、App SDK、Runtime、桌面 `Window`、文件路径或 Android API。
 
-移动端不引用现有 `RelaxKonOS.Client`：该项目是桌面 Shell，已包含 WindowManager、Runtime、桌面内置应用、桌面凭据存储以及可能不支持 Android 的控件。共享代码必须以小步、按功能提取的方式迁移到 Foundation，不能先进行大规模重写。
+Android 不引用现有 `RelaxKonOS.Client` 或 `RelaxKonOS.Client.Foundation`：前者是桌面 Shell，后者是 .NET 程序集。Kotlin 数据层以 `RelaxKonOS.Protocol` 定义的 REST/JSON wire contract 为唯一事实来源；路由、字段名和枚举值变更必须同步更新 Kotlin 调用方与契约测试。
 
 ---
 
@@ -78,30 +78,16 @@ RelaxKonOS/
 │  │  ├─ Capabilities/
 │  │  ├─ RemoteServices/
 │  │  └─ DependencyInjection/
-│  ├─ RelaxKonOS.Client.Mobile/             # 新增：平台无关的 Avalonia 移动 UI
-│  │  ├─ Navigation/
-│  │  ├─ Shell/
-│  │  ├─ Features/
-│  │  │  ├─ Authentication/
-│  │  │  ├─ Dashboard/
-│  │  │  ├─ Files/
-│  │  │  ├─ Terminal/
-│  │  │  ├─ Workloads/
-│  │  │  └─ Settings/
-│  │  ├─ Controls/
-│  │  ├─ Resources/
-│  │  ├─ Services/
-│  │  └─ ViewModels/
-│  ├─ RelaxKonOS.Client.Android/            # 新增：net10.0-android Host
-│  │  ├─ MainActivity.cs
-│  │  ├─ AndroidManifest.xml
-│  │  ├─ PlatformServices/
-│  │  │  ├─ AndroidSecureCredentialStore.cs
-│  │  │  ├─ AndroidFilePicker.cs
-│  │  │  ├─ AndroidShareService.cs
-│  │  │  └─ AndroidLifecycleService.cs
-│  │  └─ Resources/
-│  └─ RelaxKonOS.Client.Mobile.Tests/       # 新增：导航、布局状态、ViewModel、服务代理测试
+│  └─ RelaxKonOS.Client.Android/            # Gradle Kotlin/Compose Android 应用
+│     ├─ settings.gradle.kts
+│     ├─ build.gradle.kts
+│     └─ app/
+│        └─ src/
+│           ├─ main/java/app/relaxkonos/mobile/
+│           │  ├─ MainActivity.kt
+│           │  ├─ RelaxKonApi.kt
+│           │  └─ LayoutState.kt
+│           └─ test/java/app/relaxkonos/mobile/
 ├─ Shared/RelaxKonOS.Protocol/               # 既有：仅跨端 DTO/路由/Hub 契约
 ├─ Framework/RelaxKonOS.UI/                  # 既有：只复用经移动验证的颜色、字体、令牌
 └─ docs/
@@ -111,21 +97,21 @@ RelaxKonOS/
       └─ android-release.md                  # 实施后新增：签名、AAB、商店/侧载发布
 ```
 
-项目均应加入 `RelaxKonOS.sln`。`Directory.Packages.props` 统一管理 Avalonia Android、AndroidX 及未来 iOS 依赖版本；不在各项目内写浮动版本号。
+Android 工程由 Gradle 构建，不加入 `RelaxKonOS.sln`。Android UI 仅使用 Kotlin、Compose 与 Android SDK；`Directory.Packages.props` 不管理 Android 的 Gradle 依赖，也不保留 Avalonia Android 或 AndroidX 占位依赖。
 
 ### 3.2 依赖规则
 
 ```text
-Protocol  ← Foundation ← Mobile ← Android Host
-                         ↑
-Desktop Client ────────┘（仅按需引用 Foundation；不反向依赖 Mobile）
+Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
+          ↑
+          └────────── Foundation ← Desktop Client
 ```
 
 - `Protocol` 保持零 `PackageReference`，只定义 wire contract。
-- Foundation 的远程服务接口和实现应沿用现有 typed `HttpClient`、认证 handler、SignalR 重连策略；ViewModel 不拼 URL、不直接 `new HttpClient`。
-- Mobile 只负责 View、ViewModel、导航与触摸交互；不调用 Android API。
-- Android Host 只负责 Activity、运行时权限、Keystore、文件选择/分享、Insets 和生命周期桥接；不得放业务规则或页面逻辑。
-- 通用 UI 只在确认手机/平板可用后从 `Framework/RelaxKonOS.UI` 复用。`RemoteWindow`、桌面模态机制、Taskbar 样式不进入 Mobile。
+- Foundation 的远程服务接口和实现仅供 .NET Desktop 使用；Kotlin Android 以独立 repository/data source 调用同一 wire contract。
+- Compose 页面只消费状态与意图；认证、HTTP、令牌与错误映射放在 Kotlin data layer，不散落在 Composable 中。
+- Android 平台层负责 Activity、运行时权限、Keystore、文件选择/分享、Insets 和生命周期桥接；不得把服务端业务规则复制到页面中。
+- Android 不复用 `Framework/RelaxKonOS.UI` 的 Avalonia 控件或资源。`RemoteWindow`、桌面模态机制、Taskbar 样式不进入 Android 客户端。
 
 ---
 
@@ -245,14 +231,14 @@ Desktop Client ────────┘（仅按需引用 Foundation；不反
 
 ## 9. 后续 iOS/iPadOS 接入
 
-在 Android M2 之后才新建 `Client/RelaxKonOS.Client.iOS/`。它引用 Foundation 与 Mobile，不复制页面或业务逻辑；仅提供 iOS `AppDelegate` / Scene、Keychain、安全区、文件选择和分享服务实现。iPad 直接采用本设计的 Medium/Expanded 布局，不另建“iPad UI”。
+在 Android M2 之后才评估 `Client/RelaxKonOS.Client.iOS/`。它只复用 Foundation 与 Protocol；页面、导航和平台服务由 iOS 原生框架实现，不复制网络或服务端业务逻辑。
 
 ---
 
 ## 10. 实施约束清单
 
-- 新的移动功能先定义/修正 Protocol，再实现 Server（若需要），最后实现 Foundation 与 Mobile UI。
-- 任何 ViewModel 都不得直接创建 `HttpClient`、拼接路由、使用 Android 原生 API 或访问桌面窗口管理器。
+- 新的移动功能先定义/修正 Protocol，再实现 Server（若需要），最后实现 Foundation 与 Android 原生页面。
+- Compose 页面不得直接执行 HTTP、拼接路由或访问桌面窗口管理器。
 - 不以“能编译”为移动兼容性依据；终端、文件选择、软键盘、后台恢复和横竖屏必须在真实手机与平板验证。
 - 不为保留当前错误的平台语义添加兼容 shim；直接更新仓库内所有调用者、测试和文档。
 - 所有实施进展、已验证设备、已知限制和待决风险记录在 `docs/mobile/RelaxKonOS.Mobile.Progress.md`，而不是在本文中混写实现状态。

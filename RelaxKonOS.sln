@@ -26,12 +26,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Shell", "Framewo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Client.Foundation", "Client\RelaxKonOS.Client.Foundation\RelaxKonOS.Client.Foundation.csproj", "{A7E6C32B-0E54-4557-92E1-351A3FB1AD90}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Client.Mobile", "Client\RelaxKonOS.Client.Mobile\RelaxKonOS.Client.Mobile.csproj", "{2D03FD26-4B59-4072-AB84-8D4BEE8628B5}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Client.Android", "Client\RelaxKonOS.Client.Android\RelaxKonOS.Client.Android.csproj", "{C9EACFE5-B52F-4C36-96FD-7E2FCB502408}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelaxKonOS.Client.Mobile.Tests", "Client\RelaxKonOS.Client.Mobile.Tests\RelaxKonOS.Client.Mobile.Tests.csproj", "{CD33660D-03AB-4B48-8C9C-C61A2CED367B}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -90,17 +84,5 @@ Global
 		{A7E6C32B-0E54-4557-92E1-351A3FB1AD90}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A7E6C32B-0E54-4557-92E1-351A3FB1AD90}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A7E6C32B-0E54-4557-92E1-351A3FB1AD90}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2D03FD26-4B59-4072-AB84-8D4BEE8628B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2D03FD26-4B59-4072-AB84-8D4BEE8628B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2D03FD26-4B59-4072-AB84-8D4BEE8628B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2D03FD26-4B59-4072-AB84-8D4BEE8628B5}.Release|Any CPU.Build.0 = Release|Any CPU
-		{C9EACFE5-B52F-4C36-96FD-7E2FCB502408}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{C9EACFE5-B52F-4C36-96FD-7E2FCB502408}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{C9EACFE5-B52F-4C36-96FD-7E2FCB502408}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{C9EACFE5-B52F-4C36-96FD-7E2FCB502408}.Release|Any CPU.Build.0 = Release|Any CPU
-		{CD33660D-03AB-4B48-8C9C-C61A2CED367B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{CD33660D-03AB-4B48-8C9C-C61A2CED367B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{CD33660D-03AB-4B48-8C9C-C61A2CED367B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{CD33660D-03AB-4B48-8C9C-C61A2CED367B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

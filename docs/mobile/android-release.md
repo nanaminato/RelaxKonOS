@@ -2,7 +2,7 @@
 
 ## 本地环境
 
-本项目的 Android Host 是 `net10.0-android` + Avalonia，不依赖 Gradle 来编译 C# 项目。Gradle 只为将来的原生辅助工作保留，本仓库提供的初始化脚本只使用 `D:\environments\gradle-9.7.1-all.zip`，不会下载 distribution 或 SDK。
+Android 客户端是独立的 Kotlin + Jetpack Compose Gradle 工程，位于 `Client/RelaxKonOS.Client.Android`，不使用 .NET Android workload 或 Avalonia。
 
 ```powershell
 pwsh Tools/Mobile/Initialize-AndroidEnvironment.ps1
@@ -11,10 +11,20 @@ pwsh Tools/Mobile/Run-Android.ps1
 pwsh Tools/Mobile/Debug-Android.ps1
 ```
 
-`Build-Android.ps1` 会检查 `D:\environments\Android\Sdk`、.NET Android workload 和 JDK 21。缺少 workload 或 JDK 21 时会停止并说明原因；请从组织批准的本地 workload/NuGet/JDK 源安装，而不是让脚本访问网络。当前机器的 JDK 25 不受 .NET Android workload 36.1 支持，需显式提供 JDK 21，例如：
+`Build-Android.ps1` 会检查 Android SDK、Gradle 9.7.1 与 JDK 21，然后运行 `:app:assembleDebug` 或 `:app:assembleRelease`。若只允许使用已缓存的依赖，传入 `-Offline`。Gradle 依赖版本在 `Client/RelaxKonOS.Client.Android/build.gradle.kts` 与 `app/build.gradle.kts` 管理，而非 `Directory.Packages.props`。
+
+APK 输出位置为：
+
+```text
+Client/RelaxKonOS.Client.Android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+运行 Kotlin 单元测试：
 
 ```powershell
-pwsh Tools/Mobile/Build-Android.ps1 -JavaSdkRoot D:\environments\JDK\jdk-21
+Push-Location Client/RelaxKonOS.Client.Android
+D:\environments\Android\gradle-9.7.1\bin\gradle.bat :app:testDebugUnitTest --no-daemon
+Pop-Location
 ```
 
 ## 调试服务器地址

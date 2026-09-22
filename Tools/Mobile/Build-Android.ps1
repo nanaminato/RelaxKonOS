@@ -2,38 +2,33 @@
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
     [string]$AndroidSdkRoot = 'D:\environments\Android\Sdk',
-    [string]$JavaSdkRoot,
-    [switch]$NoRestore
+    [string]$GradleHome = 'D:\environments\Android\gradle-9.7.1',
+    [string]$JavaSdkRoot = 'D:\environments\JDK\jdk-21',
+    [switch]$Offline
 )
 
 $ErrorActionPreference = 'Stop'
-$project = Join-Path $PSScriptRoot '..\..\Client\RelaxKonOS.Client.Android\RelaxKonOS.Client.Android.csproj'
+$project = Join-Path $PSScriptRoot '..\..\Client\RelaxKonOS.Client.Android'
+$gradle = Join-Path $GradleHome 'bin\gradle.bat'
 if (-not (Test-Path -LiteralPath $AndroidSdkRoot)) { throw "Android SDK was not found: $AndroidSdkRoot" }
-if (-not (dotnet workload list | Select-String -Quiet '^android')) {
-    throw 'The .NET Android workload is missing. Install it from an approved local workload source before building; this repository never downloads it implicitly.'
-}
-
-if ([string]::IsNullOrWhiteSpace($JavaSdkRoot)) {
-    if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
-        $JavaSdkRoot = $env:JAVA_HOME
-    }
-    else {
-        $javaCommand = Get-Command java -ErrorAction Stop
-        $JavaSdkRoot = Split-Path -Parent (Split-Path -Parent $javaCommand.Source)
-    }
-}
-$javaExecutable = Join-Path $JavaSdkRoot 'bin\java.exe'
-if (-not (Test-Path -LiteralPath $javaExecutable)) { throw "JDK java.exe was not found: $javaExecutable" }
-# `java -version` intentionally writes its version banner to stderr. Invoke through cmd.exe so
-# Windows PowerShell 5.1 receives the redirected text as ordinary stdout rather than an ErrorRecord.
-$javaVersion = (& $env:ComSpec /d /c ('""{0}" -version 2>&1"' -f $javaExecutable) | Out-String)
-if ($javaVersion -notmatch '(?m)(openjdk|java) version "21(?:\.|\")') {
-    throw "The .NET Android workload requires JDK 21, but '$JavaSdkRoot' reports: $($javaVersion.Trim()). Install or supply an approved local JDK 21 with -JavaSdkRoot."
-}
+if (-not (Test-Path -LiteralPath $gradle)) { throw "Gradle was not found: $gradle" }
+if (-not (Test-Path -LiteralPath (Join-Path $JavaSdkRoot 'bin\java.exe'))) { throw "JDK java.exe was not found: $JavaSdkRoot" }
 
 $env:ANDROID_SDK_ROOT = $AndroidSdkRoot
 $env:JAVA_HOME = $JavaSdkRoot
-$args = @('build', $project, '--configuration', $Configuration, "-p:AndroidSdkDirectory=$AndroidSdkRoot", "-p:JavaSdkDirectory=$JavaSdkRoot")
-if ($NoRestore) { $args += '--no-restore' }
-& dotnet @args
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$variant = $Configuration.ToLowerInvariant()
+$args = @(":app:assemble$Configuration", '--no-daemon')
+if ($Offline) { $args += '--offline' }
+
+Push-Location $project
+try {
+    & $gradle @args
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+finally {
+    Pop-Location
+}
+
+$apk = Join-Path $project "app\build\outputs\apk\$variant\app-$variant.apk"
+if (-not (Test-Path -LiteralPath $apk)) { throw "APK was not produced: $apk" }
+Write-Host "APK: $apk"

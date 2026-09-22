@@ -10,7 +10,6 @@
         <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.2" />
         <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.2" />
         <PackageVersion Include="Avalonia.Desktop" Version="12.1.2" />
-        <PackageVersion Include="Avalonia.Android" Version="12.1.2" />
         <PackageVersion Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
         <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
         <PackageVersion Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
@@ -43,8 +42,6 @@
         <PackageVersion Include="Webprofusion.Certify.ACME.Anvil" Version="3.3.3" />
         <!-- RoyalTerminal 0.5.2 requires the .NET 10 package family. -->
         <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
-
-        <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.15" />
 
         <!-- Terminal: RoyalTerminal 终端栈（Managed Avalonia terminal，含 TerminalControl + 默认会话组合） -->
         <!-- 0.4.0 → 0.5.2：修复 Tab/光标渲染缺陷（0.4.1 PR #106 "Clear terminal selection when typing"） -->
