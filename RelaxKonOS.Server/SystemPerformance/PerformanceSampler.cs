@@ -29,38 +29,69 @@ public sealed class PerformanceSampler(
 
     public IReadOnlyList<PerformanceRealtimeSnapshotDto> GetHistory(int seconds) => history.GetRecent(seconds);
 
+    /// <summary>
+    /// 一次性读取：有有效快照就直接给；没有就为本请求申请一段有界 demand，等它产出第一份有效样本。
+    /// 等待窗口结束后租约立即释放，空闲的服务器随即回到完全不采样。
+    /// </summary>
+    public async ValueTask<PerformanceRealtimeSnapshotDto?> ReadSnapshotAsync(TimeSpan wait, CancellationToken cancellationToken = default)
+    {
+        if (history.Latest() is { } ready) return ready;
+
+        using var demand = subscriptions.RequestCollection(wait);
+        var published = new TaskCompletionSource<PerformanceRealtimeSnapshotDto>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnSnapshot(PerformanceRealtimeSnapshotDto snapshot) => published.TrySetResult(snapshot);
+        SnapshotAvailable += OnSnapshot;
+        try
+        {
+            // 第一份原始读只建立差分基线，所以有效样本要等下一个周期；窗口必须覆盖这一点，而不只是读本身。
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var expired = Task.Delay(wait, timeout.Token);
+            if (await Task.WhenAny(published.Task, expired).ConfigureAwait(false) != published.Task)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return history.Latest();
+            }
+            timeout.Cancel();
+            return await published.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            SnapshotAvailable -= OnSnapshot;
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        subscriptions.SubscriberPresenceChanged += OnSubscriberPresenceChanged;
+        subscriptions.CollectionNeededChanged += OnCollectionNeededChanged;
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (!subscriptions.HasSubscribers)
+                if (!subscriptions.NeedsCollection)
                     await _subscriberSignal.WaitAsync(stoppingToken);
-                if (!subscriptions.HasSubscribers) continue;
+                if (!subscriptions.NeedsCollection) continue;
 
-                // Rates are meaningful only relative to a sample taken in this subscription period.
+                // Rates are meaningful only relative to a sample taken in this collection period.
                 lock (_stateGate) _previous = null;
                 using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
                 await SampleOnceAsync(stoppingToken);
-                while (subscriptions.HasSubscribers && await timer.WaitForNextTickAsync(stoppingToken))
+                while (subscriptions.NeedsCollection && await timer.WaitForNextTickAsync(stoppingToken))
                     await SampleOnceAsync(stoppingToken);
             }
         }
         finally
         {
-            subscriptions.SubscriberPresenceChanged -= OnSubscriberPresenceChanged;
+            subscriptions.CollectionNeededChanged -= OnCollectionNeededChanged;
         }
     }
 
     private async Task SampleOnceAsync(CancellationToken cancellationToken)
     {
-        if (!subscriptions.HasSubscribers) return;
+        if (!subscriptions.NeedsCollection) return;
         try
         {
             var current = await source.ReadAsync(cancellationToken);
-            if (!subscriptions.HasSubscribers) return;
+            if (!subscriptions.NeedsCollection) return;
             RawPerformanceSample? previous;
             lock (_stateGate)
             {
@@ -196,9 +227,9 @@ public sealed class PerformanceSampler(
         }
     }
 
-    private void OnSubscriberPresenceChanged(bool hasSubscribers)
+    private void OnCollectionNeededChanged(bool needed)
     {
-        if (!hasSubscribers)
+        if (!needed)
         {
             lock (_stateGate) _previous = null;
             history.Clear();

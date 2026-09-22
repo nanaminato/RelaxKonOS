@@ -32,6 +32,7 @@ try
         return;
     }
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
+    if (args.Contains("--performance-only")) { await ServerCoreChecks.VerifyPerformanceSamplerAsync(); Console.WriteLine("Performance sampler checks passed."); return; }
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     await AliasLoginVerification.RunAsync(root);

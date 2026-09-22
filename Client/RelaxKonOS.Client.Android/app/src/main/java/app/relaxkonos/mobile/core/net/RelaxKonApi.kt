@@ -411,20 +411,27 @@ class RelaxKonApi(
         }
     }
 
+    /**
+     * Turns a non-2xx response into a verdict.
+     *
+     * The 4xx/5xx split is decided by [readsAsProblem]: a 4xx body is always a Problem, a 5xx body only
+     * when the server named a RelaxKonOS problem code. A body that is not JSON at all is never a verdict
+     * — it is the transport failure it looks like.
+     */
     private fun readProblem(connection: HttpURLConnection, code: Int): ApiResult<Nothing> {
         val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-        // A 5xx is deliberately *not* a verdict about the submitted credential (design §5.8.2).
-        if (code >= 500) {
+        val json = runCatching { JSONObject(text) }.getOrNull()
+            ?: return ApiResult.Transport("Server returned HTTP $code.")
+        val type = json.optString("type").takeIf { it.isNotBlank() }
+        val problemCode = json.optString("problemCode").takeIf { it.isNotBlank() }
+        if (!readsAsProblem(code, type, problemCode)) {
             return ApiResult.Transport("Server returned HTTP $code.")
         }
-        return runCatching {
-            val json = JSONObject(text)
-            ApiResult.Problem(
-                status = code,
-                code = ProblemCodes.from(json.optString("type"), json.optString("problemCode")),
-                traceId = json.optString("traceId").takeIf { it.isNotBlank() },
-            )
-        }.getOrElse { ApiResult.Transport("Server returned HTTP $code.") }
+        return ApiResult.Problem(
+            status = code,
+            code = ProblemCodes.from(type, problemCode),
+            traceId = json.optString("traceId").takeIf { it.isNotBlank() },
+        )
     }
 
     private fun parseLogin(payload: String): ApiResult<LoginSession> = runCatching {
@@ -432,7 +439,8 @@ class RelaxKonApi(
         val server = json.getJSONObject("server")
         val capabilities = server.optJSONArray("capabilities") ?: JSONArray()
         LoginSession(
-            userName = json.getJSONObject("user").optString("name"),
+            // `UserDto` names the field `username`; reading `name` left the account blank on the home page.
+            userName = json.getJSONObject("user").optString("username"),
             workspaceName = json.getJSONObject("workspace").optString("name"),
             server = ServerDescriptor(
                 platform = server.optString("platform"),

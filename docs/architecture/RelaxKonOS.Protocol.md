@@ -199,10 +199,12 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | 方法     | 路径                                              | 请求                                  | 响应                                           | 认证  |
 | ------ | ----------------------------------------------- | ----------------------------------- | -------------------------------------------- | --- |
 | GET    | `/api/v1.0/system/performance/info`               | —                                   | `PerformanceInfoDto`                         | JWT |
-| GET    | `/api/v1.0/system/performance/snapshot`           | —                                   | `PerformanceRealtimeSnapshotDto` / 503（首样本前） | JWT |
+| GET    | `/api/v1.0/system/performance/snapshot`           | —                                   | `PerformanceRealtimeSnapshotDto` / 503（等待窗口内仍无有效样本） | JWT |
 | GET    | `/api/v1.0/system/performance/history?seconds=60` | query: `seconds`（1–60）              | `PerformanceRealtimeSnapshotDto[]`           | JWT |
 | GET    | `/api/v1.0/system/processes/query`                | page/pageSize/filter/sort/direction | `ProcessPageDto`                             | JWT |
 | DELETE | `/api/v1.0/system/processes/{id}?force=`          | query: `force`（可选）                  | `KillProcessResultDto`                       | JWT |
+
+`GET /system/performance/snapshot` 是首进、重连与没有实时订阅的客户端的降级路径，因此**读取本身构成 demand**：当前无人需要采集时，服务端为该请求申请一段有界采样窗口（窗口需覆盖建立差分基线所需的两个采样周期），窗口内取到有效样本即返回，仍取不到才返回 `503` + `type: .../performance-not-ready`。客户端必须按问题码渲染该状态，不得当作连接失败。demand 一释放采样立即回到空闲，`订阅期间才采集`的成本规则不变。
 
 ### Docker（Docker 管理器）
 

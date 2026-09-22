@@ -33,7 +33,7 @@ class ElevationRepositoryTest {
 
     private suspend fun signIn() {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
-        session.login(server, "nana", "pw".toCharArray())
+        session.login(server, "nana", "pw".toCharArray()) {}
     }
 
     private fun seedElevationCredential(account: String, password: String) {

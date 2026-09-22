@@ -21,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import app.relaxkonos.mobile.AppContainer
@@ -88,14 +87,11 @@ fun ElevationDialog(container: AppContainer) {
                     singleLine = true,
                     enabled = !busy,
                 )
-                OutlinedTextField(
+                PasswordTextField(
                     value = password,
                     onValueChange = { password = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(stringResource(R.string.elevation_password_label)) },
-                    singleLine = true,
+                    label = stringResource(R.string.elevation_password_label),
                     enabled = !busy,
-                    visualTransformation = PasswordVisualTransformation(),
                 )
                 if (elevationMode == null) {
                     Text(

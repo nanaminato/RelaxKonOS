@@ -41,10 +41,37 @@ object ProblemCodes {
         type.startsWith(PREFIX) -> type.removePrefix(PREFIX)
         else -> type.substringAfterLast('/')
     }
+
+    /**
+     * True when the server names a code itself, either through the `problemCode` extension or through a
+     * `type` URI in the RelaxKonOS problem namespace. A body that names nothing is a generic error page
+     * (a proxy or a framework default), not a contract answer.
+     */
+    fun namesContractCode(type: String?, problemCode: String?): Boolean =
+        !problemCode.isNullOrBlank() || type?.startsWith(PREFIX) == true
 }
 
-/** True when this problem means the credential that was just sent must be discarded (design §5.8.2). */
-fun ApiResult.Problem.isCredentialRejection(): Boolean = when (code) {
+/**
+ * Whether a non-2xx response is read as a server verdict ([ApiResult.Problem]) instead of a transport
+ * failure ([ApiResult.Transport]).
+ *
+ * Every 4xx is a verdict: the server deliberately refused the request. A 5xx is a verdict only when its
+ * body names a RelaxKonOS problem code. Two reasons: `RelaxKonOS.Mobile.V1.Design.md` §5.8.2 forbids
+ * reading a 5xx as a judgement about the submitted credential, and an unrecognised 5xx body says nothing
+ * the UI could put into words. Reporting a named 5xx code as a transport failure is not a safe default —
+ * a `503 performance-not-ready` shown as "cannot reach the server" sends the user hunting for a network
+ * fault that does not exist.
+ */
+internal fun readsAsProblem(status: Int, type: String?, problemCode: String?): Boolean =
+    status < 500 || ProblemCodes.namesContractCode(type, problemCode)
+
+/**
+ * True when this problem means the credential that was just sent must be discarded (design §5.8.2).
+ *
+ * A status of 500 or above never qualifies, whatever code the body carries: the server did not answer
+ * the credential question, so the stored password stays where it is.
+ */
+fun ApiResult.Problem.isCredentialRejection(): Boolean = status in 400..499 && when (code) {
     ProblemCodes.ELEVATION_PASSWORD_INVALID,
     ProblemCodes.ELEVATION_ACCOUNT_NOT_ADMINISTRATOR,
     ProblemCodes.INVALID_CREDENTIAL,

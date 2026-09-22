@@ -36,6 +36,14 @@
   与提权时保持正确的根分隔符。文件详情与列表共享操作对话框，手机详情页不再出现无响应的操作按钮。
 - Expanded 首页现在显示本次进程内成功完成的文件与进程操作；记录最多 20 条，且不会落盘或包含密码、令牌、
   请求体和服务端诊断内容，因此不替代服务器审计日志。
+- 连接密码的系统认证与保险箱写入现在先于认证态切换完成，避免登录页卸载后错失生物识别提示；成功登录后，
+  主界面才会出现。
+- 密码输入（登录页与提权对话框）共用一个两态控件：默认掩码，点击尾部眼睛图标转为明文并保持在明文，
+  再点一次回到掩码；可见性只存在于界面状态（`rememberSaveable`），不进会话、保险箱或任何文件。
+- 首页与 `manage/monitor` 的主机指标走 `GET /system/performance/snapshot`。Android 没有 SignalR 客户端，
+  服务端把这次读取当作一次有界 demand（覆盖建立差分基线所需的两个采样周期），因此没有实时订阅者时也能取到样本；
+  只有在窗口内确实取不到样本（`503 performance-not-ready`）时才提示指标尚未就绪，而不再被误报为
+  "无法连接到服务器"——`RelaxKonApi` 只在 5xx 响应体明确给出 RelaxKonOS 问题码时才把它当作 Problem。
 
 ## 已知限制
 
@@ -61,7 +69,7 @@
 
 - `:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，Kotlin 编译零警告；
   产物为 `app/build/outputs/apk/debug/app-debug.apk`。
-- 单元测试 12 个测试类、105 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 18、`AuthSessionTest` 13、
+- 单元测试 12 个测试类、106 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 18、`AuthSessionTest` 14、
   `ElevationRepositoryTest` 13、`WireTest` 12、`BiometricCapabilityTest` 11、`ConnectionProfileStoreTest` 9、
   `MobileNavigatorTest` 9、`ProblemCodesTest` 8、`LayoutStateTest` 4、`TopDestinationTest` 4、`FilesRepositoryTest` 3、
   `RecentOperationJournalTest` 1。

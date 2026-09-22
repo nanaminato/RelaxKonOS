@@ -22,6 +22,8 @@
     <string name="common_retry">重试</string>
     <string name="common_save">保存</string>
     <string name="common_search">查询</string>
+    <string name="password_show">显示密码</string>
+    <string name="password_hide">隐藏密码</string>
 
     <string name="login_title">登录</string>
     <string name="login_subtitle">连接到 RelaxKonOS 服务器。密码只用于在本机建立会话，不会发送到其他任何地方。</string>

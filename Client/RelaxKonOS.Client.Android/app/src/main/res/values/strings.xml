@@ -27,6 +27,9 @@
     <string name="common_retry">Retry</string>
     <string name="common_save">Save</string>
     <string name="common_search">Search</string>
+    <!-- The eye on a password field: what pressing it does, never what the field currently shows. -->
+    <string name="password_show">Show the password</string>
+    <string name="password_hide">Hide the password</string>
 
     <!-- Sign-in -->
     <string name="login_title">Sign in</string>

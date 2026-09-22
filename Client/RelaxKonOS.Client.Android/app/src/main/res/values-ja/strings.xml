@@ -22,6 +22,8 @@
     <string name="common_retry">再試行</string>
     <string name="common_save">保存</string>
     <string name="common_search">検索</string>
+    <string name="password_show">パスワードを表示</string>
+    <string name="password_hide">パスワードを隠す</string>
 
     <string name="login_title">サインイン</string>
     <string name="login_subtitle">RelaxKonOS サーバーに接続します。パスワードはこの端末でセッションを開始するためだけに使われ、他のどこにも送信されません。</string>

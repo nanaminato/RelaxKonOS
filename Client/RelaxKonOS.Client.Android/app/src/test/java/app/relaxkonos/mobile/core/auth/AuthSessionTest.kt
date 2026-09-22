@@ -23,14 +23,14 @@ class AuthSessionTest {
 
     private suspend fun signIn(accessToken: String = "access-1", refreshToken: String = "refresh-1") {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(accessToken, refreshToken)) }
-        session.login(server, "nana", "pw".toCharArray())
+        session.login(server, "nana", "pw".toCharArray()) {}
     }
 
     @Test
     fun `a successful login activates the session`() = runTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(capabilities = setOf("server.files", "server.metrics"))) }
 
-        val result = session.login(server, "nana", "pw".toCharArray())
+        val result = session.login(server, "nana", "pw".toCharArray()) {}
 
         assertTrue(result is ApiResult.Success)
         val state = session.state.value
@@ -45,10 +45,24 @@ class AuthSessionTest {
     }
 
     @Test
+    fun `post-login credential work finishes before the shell becomes active`() = runTest {
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
+        var stateDuringCredentialSave: SessionState? = null
+
+        val result = session.login(server, "nana", "pw".toCharArray()) {
+            stateDuringCredentialSave = session.state.value
+        }
+
+        assertTrue(result is ApiResult.Success)
+        assertEquals(SessionState.Authenticating, stateDuringCredentialSave)
+        assertTrue(session.state.value is SessionState.Active)
+    }
+
+    @Test
     fun `the server address is normalised before it is stored`() = runTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
 
-        session.login("  https://host:5090/  ", "nana", "pw".toCharArray())
+        session.login("  https://host:5090/  ", "nana", "pw".toCharArray()) {}
 
         assertEquals("https://host:5090", session.serverUrl)
     }
@@ -57,7 +71,7 @@ class AuthSessionTest {
     fun `a rejected login leaves the session signed out`() = runTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Problem(401, ProblemCodes.INVALID_CREDENTIAL, null) }
 
-        val result = session.login(server, "nana", "pw".toCharArray())
+        val result = session.login(server, "nana", "pw".toCharArray()) {}
 
         assertTrue(result is ApiResult.Problem)
         assertEquals(SessionState.SignedOut, session.state.value)
@@ -68,7 +82,7 @@ class AuthSessionTest {
     fun `a transport failure at login is not treated as a rejected credential`() = runTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Transport("timeout") }
 
-        val result = session.login(server, "nana", "pw".toCharArray())
+        val result = session.login(server, "nana", "pw".toCharArray()) {}
 
         assertTrue(result is ApiResult.Transport)
         assertEquals(SessionState.SignedOut, session.state.value)

@@ -27,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.AndroidViewModel
@@ -46,6 +45,7 @@ import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.security.model.SavedConnection
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.failureMessage
@@ -151,15 +151,17 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         busy = true
         message = null
         viewModelScope.launch {
-            when (val result = container.session.login(normalized, account, credential)) {
+            when (val result = container.session.login(normalized, account, credential) {
+                container.profiles.upsert(SavedConnection(normalized, account, System.currentTimeMillis()))
+                revision++
+                if (rememberCredential) {
+                    storeCredential(activity, normalized, account, credential)
+                } else {
+                    credential.fill('\u0000')
+                }
+            }) {
                 is ApiResult.Success -> {
-                    container.profiles.upsert(SavedConnection(normalized, account, System.currentTimeMillis()))
-                    revision++
-                    if (rememberCredential) {
-                        storeCredential(activity, normalized, account, credential)
-                    } else {
-                        credential.fill('\u0000')
-                    }
+                    // The profile and optional vault record were committed before the shell appeared.
                 }
 
                 is ApiResult.Problem -> {
@@ -213,7 +215,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun submitUnlockedCredential(record: VaultRecord, credential: CharArray) {
-        when (val result = container.session.login(record.serverUrl, record.account, credential)) {
+        when (val result = container.session.login(record.serverUrl, record.account, credential) {}) {
             is ApiResult.Success -> {
                 container.profiles.upsert(SavedConnection(record.serverUrl, record.account, System.currentTimeMillis()))
                 container.vault.markUsed(record, System.currentTimeMillis())
@@ -391,14 +393,11 @@ fun LoginScreen(modifier: Modifier = Modifier) {
                         singleLine = true,
                         enabled = !viewModel.busy,
                     )
-                    OutlinedTextField(
+                    PasswordTextField(
                         value = viewModel.password,
                         onValueChange = { viewModel.changePassword(it) },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.login_password)) },
-                        singleLine = true,
+                        label = stringResource(R.string.login_password),
                         enabled = !viewModel.busy,
-                        visualTransformation = PasswordVisualTransformation(),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(

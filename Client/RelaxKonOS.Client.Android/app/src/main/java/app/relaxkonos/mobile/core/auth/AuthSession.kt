@@ -69,11 +69,26 @@ class AuthSession(
 
     val accessToken: String? get() = tokenStore.accessToken
 
-    suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession> {
+    /**
+     * Authenticates with the server, runs [afterSuccessfulLogin] while the sign-in UI is still
+     * present, then exposes the authenticated shell.
+     *
+     * Saving a biometric-protected password invokes an Android system prompt. If the active session
+     * were published first, Compose would remove the login screen before that prompt could be shown.
+     * Keeping this sequencing in the session state machine makes the prompt deterministic instead of
+     * relying on a ViewModel that happens to outlive a composable.
+     */
+    suspend fun login(
+        serverUrl: String,
+        identifier: String,
+        password: CharArray,
+        afterSuccessfulLogin: suspend () -> Unit,
+    ): ApiResult<LoginSession> {
         stateFlow.value = SessionState.Authenticating
         val normalized = serverUrl.trim().trimEnd('/')
         return when (val result = gateway.login(normalized, identifier, password)) {
             is ApiResult.Success -> {
+                afterSuccessfulLogin()
                 adopt(normalized, result.value)
                 result
             }

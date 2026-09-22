@@ -23,7 +23,7 @@ class FilesRepositoryTest {
 
     private suspend fun signIn() {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
-        session.login("https://relaxkonos.local", "nana", "pw".toCharArray())
+        session.login("https://relaxkonos.local", "nana", "pw".toCharArray()) {}
     }
 
     @Test
