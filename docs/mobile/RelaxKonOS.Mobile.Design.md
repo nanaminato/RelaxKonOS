@@ -15,7 +15,7 @@
 | --- | --- |
 | UI 技术 | Kotlin + Jetpack Compose + Android SDK；不引入 Avalonia Mobile、.NET for Android、XAML 或跨平台 UI 运行时。 |
 | 首发平台 | 一个 Android 安装包，同时支持手机、8 英寸级平板与 11 英寸级平板；不按设备型号拆分 App。 |
-| 后续平台 | iOS/iPadOS 如需支持，采用独立原生实现并复用 Foundation 与 Protocol；不以共享 UI 层为前提。iOS 构建、签名与发布另需 Mac/Xcode。 |
+| 后续平台 | iOS/iPadOS 如需支持，采用独立原生实现并遵循 Protocol wire contract；不以共享 UI 层为前提。iOS 构建、签名与发布另需 Mac/Xcode。 |
 | 产品形态 | 独立的 **Mobile Shell**，不是桌面 Shell 的缩小版，也不是仅展示数据的仪表盘。 |
 | 通信模型 | 复用 REST + SignalR + Protocol DTO；客户端本地渲染，禁止像素流、RDP/VNC 或让服务端生成 UI。 |
 | 平板定位 | 一等支持：平板是持续轻量管理工作台，使用双栏/三栏；手机是快速查看与应急操作。 |
@@ -47,18 +47,15 @@
               │ DTO、路由、Hub 方法/事件、序列化契约       │
               └────────────────────┬────────────────────┘
                                    │
-                    RelaxKonOS.Client.Foundation（新增）
-       认证会话、Token 刷新、HTTP 处理链、Hub 连接、能力判断、远程服务代理
-                         ▲                         ▲
-                         │                         │
-       既有 Desktop Shell │                         │ Kotlin/Compose Android 客户端
- RelaxKonOS.Client + Client.Desktop              Client.Android/app
-  桌面/窗口/内置桌面应用                    Compose 页面、响应式布局、平台适配
+                    Kotlin Android data layer
+        认证会话、Token 刷新、HTTP、Hub 连接、能力判断、远程服务代理
+                                   ▲
+                                   │
+                         Kotlin/Compose Android 客户端
+                    Compose 页面、响应式布局、平台适配
 ```
 
-`RelaxKonOS.Client.Foundation` 是桌面 .NET 侧的共享客户端基础设施，而非新的“万能 Core”。它只能依赖 `RelaxKonOS.Protocol` 和通用 .NET / Microsoft 扩展包；不得引用 Avalonia、WindowManager、App SDK、Runtime、桌面 `Window`、文件路径或 Android API。
-
-Android 不引用现有 `RelaxKonOS.Client` 或 `RelaxKonOS.Client.Foundation`：前者是桌面 Shell，后者是 .NET 程序集。Kotlin 数据层以 `RelaxKonOS.Protocol` 定义的 REST/JSON wire contract 为唯一事实来源；路由、字段名和枚举值变更必须同步更新 Kotlin 调用方与契约测试。
+Android 不引用现有 `RelaxKonOS.Client`：它是桌面 Shell，已包含 WindowManager、Runtime、桌面内置应用、桌面凭据存储以及不支持 Android 的控件。Kotlin 数据层以 `RelaxKonOS.Protocol` 定义的 REST/JSON wire contract 为唯一事实来源；路由、字段名和枚举值变更必须同步更新 Kotlin 调用方与契约测试。
 
 ---
 
@@ -71,13 +68,6 @@ RelaxKonOS/
 ├─ Client/
 │  ├─ RelaxKonOS.Client/                    # 既有：Desktop Shell；不供 Mobile 引用
 │  ├─ RelaxKonOS.Client.Desktop/            # 既有：桌面启动入口
-│  ├─ RelaxKonOS.Client.Foundation/         # 新增：纯客户端通信与业务基础设施
-│  │  ├─ Auth/
-│  │  ├─ Http/
-│  │  ├─ Hubs/
-│  │  ├─ Capabilities/
-│  │  ├─ RemoteServices/
-│  │  └─ DependencyInjection/
 │  └─ RelaxKonOS.Client.Android/            # Gradle Kotlin/Compose Android 应用
 │     ├─ settings.gradle.kts
 │     ├─ build.gradle.kts
@@ -103,12 +93,9 @@ Android 工程由 Gradle 构建，不加入 `RelaxKonOS.sln`。Android UI 仅使
 
 ```text
 Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
-          ↑
-          └────────── Foundation ← Desktop Client
 ```
 
 - `Protocol` 保持零 `PackageReference`，只定义 wire contract。
-- Foundation 的远程服务接口和实现仅供 .NET Desktop 使用；Kotlin Android 以独立 repository/data source 调用同一 wire contract。
 - Compose 页面只消费状态与意图；认证、HTTP、令牌与错误映射放在 Kotlin data layer，不散落在 Composable 中。
 - Android 平台层负责 Activity、运行时权限、Keystore、文件选择/分享、Insets 和生命周期桥接；不得把服务端业务规则复制到页面中。
 - Android 不复用 `Framework/RelaxKonOS.UI` 的 Avalonia 控件或资源。`RemoteWindow`、桌面模态机制、Taskbar 样式不进入 Android 客户端。
@@ -219,7 +206,7 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
 
 | 阶段 | 交付 | 退出条件 |
 | --- | --- | --- |
-| M0：架构准备 | 新项目骨架、Protocol 平台语义拆分、Foundation 首批认证/HTTP、Android Host 可启动 | Solution 构建；Desktop 回归；Android 模拟器和真机均能显示登录页。 |
+| M0：架构准备 | Kotlin/Compose 项目骨架、Protocol 平台语义拆分、Android 认证/HTTP、应用可启动 | Desktop 回归；Android 模拟器和真机均能显示登录页。 |
 | M1：自适应 Shell | 登录、Keystore、能力读取、Compact/Medium/Expanded 导航和首页 | 手机/平板旋转、分屏、重启后布局正确；无凭据泄露。 |
 | M2：核心操作 | 文件、状态、终端真机 PoC 与断线恢复 | Android 手机和两种平板尺寸完成登录、文件上传、终端 reconnect。 |
 | M3：管理工作台 | Docker、守护/进程、日志与明确确认操作 | 仅显示受支持能力；失败、取消、超时均有可理解状态。 |
@@ -231,13 +218,13 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
 
 ## 9. 后续 iOS/iPadOS 接入
 
-在 Android M2 之后才评估 `Client/RelaxKonOS.Client.iOS/`。它只复用 Foundation 与 Protocol；页面、导航和平台服务由 iOS 原生框架实现，不复制网络或服务端业务逻辑。
+在 Android M2 之后才评估 `Client/RelaxKonOS.Client.iOS/`。它遵循 Protocol wire contract；页面、导航、网络和平台服务由 iOS 原生框架实现，不复制服务端业务逻辑。
 
 ---
 
 ## 10. 实施约束清单
 
-- 新的移动功能先定义/修正 Protocol，再实现 Server（若需要），最后实现 Foundation 与 Android 原生页面。
+- 新的移动功能先定义/修正 Protocol，再实现 Server（若需要），最后实现 Kotlin data layer 与 Compose 页面。
 - Compose 页面不得直接执行 HTTP、拼接路由或访问桌面窗口管理器。
 - 不以“能编译”为移动兼容性依据；终端、文件选择、软键盘、后台恢复和横竖屏必须在真实手机与平板验证。
 - 不为保留当前错误的平台语义添加兼容 shim；直接更新仓库内所有调用者、测试和文档。

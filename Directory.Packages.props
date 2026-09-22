@@ -17,7 +17,6 @@
         <!-- MVVM / DI -->
         <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
         <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
 
         <!-- Server -->
         <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
