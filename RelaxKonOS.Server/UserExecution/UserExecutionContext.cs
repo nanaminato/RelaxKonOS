@@ -12,5 +12,3 @@ public sealed class UserExecutionException(UserExecutionProblemCode problemCode,
 {
     public UserExecutionProblemCode ProblemCode { get; } = problemCode;
 }
-
-public sealed class UserExecutionAccessDeniedException() : UnauthorizedAccessException("Access denied for the authenticated OS user.");

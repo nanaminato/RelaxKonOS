@@ -194,7 +194,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - 新增 `UserExecutionContextResolver`：仅从验证后的 JWT `sub` 找到 RelaxKonOS 用户，再经 `CanonicalUserResolver` 对 username 与 UID/SID 重新绑定验证；HTTP body/query/header 不参与身份选择。
 - 新增 `IUserExecutionService` 的 User Mode 验证 adapter。它不会切换 Server 身份。
 - Linux one-shot Helper 新增独立 `--user-execution` 入口：以 root 重新解析 UID、canonical username 与 home，拒绝 UID < 1000；在 `initgroups`、`setgid`、`setuid` 和 eUID/eGID 复核成功后才执行一项封闭文件操作。降权后没有特权 dispatcher 可返回。
-- `IFileService` 已替换为有效用户路由：User Mode 仍调用本地服务；Linux System Mode 通过独立 transport 调用 Helper。目标用户的权限拒绝映射为普通 `access-denied`，端点不会再把它转换为 elevation 请求或 root/LocalSystem fallback。
+- `IFileService` 已替换为有效用户路由：User Mode 仍调用本地服务；Linux System Mode 通过独立 transport 调用 Helper。目标用户的权限拒绝首先返回 `elevation-required`，由客户端在用户明确确认并完成管理员认证后取得短期 capability，再通过既有 root/LocalSystem Helper 重试对应的受控操作；绝不静默提权。
 - 特殊位置、目录枚举、读写、上传、删除、重命名、移动、复制、创建目录、属性和 POSIX mode 均覆盖这一文件通道。System Mode batch file jobs 尚未迁移，因此在启动时 fail closed，避免后台以 Server 账号执行。
 - 添加 contract/context 单元检查，覆盖 canonical identity、请求身份替换拒绝、System Mode fail-closed 以及无敏感/通用命令字段。
 

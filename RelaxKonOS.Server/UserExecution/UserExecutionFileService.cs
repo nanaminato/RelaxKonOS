@@ -97,7 +97,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         if (result.Success) return;
         throw result.ProblemCode switch
         {
-            UserExecutionProblemCode.AccessDenied => new UserExecutionAccessDeniedException(),
+            UserExecutionProblemCode.AccessDenied => new UnauthorizedAccessException("Access denied for the authenticated OS user."),
             UserExecutionProblemCode.NotFound => new FileNotFoundException("User-execution path not found."),
             UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new ArgumentException("Invalid user-execution file request."),
             UserExecutionProblemCode.Conflict => new IOException("User-execution file operation failed."),
