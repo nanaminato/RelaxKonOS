@@ -702,6 +702,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionServ
     RelaxKonOS.Server.UserExecution.DirectUserExecutionService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.FileOperationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseFileReader>();
 builder.Services.AddSingleton<WorkspaceWallpaperStore>();
 // The service only depends on the singleton runtime registry, so the singleton lifetime lets
 // background notification delivery read the cache without creating a database scope.

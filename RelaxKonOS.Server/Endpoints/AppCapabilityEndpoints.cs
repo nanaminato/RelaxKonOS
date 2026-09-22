@@ -5,6 +5,7 @@ using RelaxKonOS.Protocol.Capabilities;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.Identity;
+using RelaxKonOS.Server.UserExecution;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -44,6 +45,7 @@ public static class AppCapabilityEndpoints
             CreateMediaLeaseRequest request,
             ClaimsPrincipal principal,
             IFileService files,
+            IUserExecutionContextResolver executionContexts,
             MediaLeaseStore leases) =>
         {
             if (!TryGetOwner(principal, out var owner))
@@ -61,10 +63,22 @@ public static class AppCapabilityEndpoints
                 var entry = files.GetInfo(request.Path);
                 if (entry is null || entry.Type != FileSystemEntryType.File)
                     return Results.NotFound();
-                var lease = leases.Create(owner.UserId, owner.WorkspaceId, owner.DeviceId, request.AppId, request.Path, long.Parse(principal.FindFirstValue("security_version")!));
+                var context = executionContexts.Resolve(principal);
+                var lease = leases.Create(owner.UserId, owner.WorkspaceId, owner.DeviceId, request.AppId, request.Path,
+                    long.Parse(principal.FindFirstValue("security_version")!), context.Identity, entry.Modified);
                 return Results.Ok(new MediaLeaseDto(lease.Id, lease.ExpiresAt));
             }
             catch (UnauthorizedAccessException) { return Results.Forbid(); }
+            catch (UserExecutionException exception)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "User execution unavailable",
+                    type: "https://relaxkonos.app/problems/" + exception.ProblemCode.ToString().ToLowerInvariant());
+            }
+            catch (InvalidOperationException)
+            {
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
             catch (ArgumentException exception)
             {
                 return Results.Problem(statusCode: StatusCodes.Status400BadRequest,
@@ -103,7 +117,7 @@ public static class AppCapabilityEndpoints
         app.MapMethods($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/media/{{leaseId}}", ["GET", "HEAD"], (
             string leaseId,
             HttpContext context,
-            IFileService files,
+            MediaLeaseFileReader files,
             MediaLeaseStore leases) =>
         {
             if (!leases.TryGetActive(leaseId, out var lease))
@@ -111,7 +125,7 @@ public static class AppCapabilityEndpoints
 
             try
             {
-                var read = files.OpenRead(lease.Path);
+                var read = files.OpenReadAsync(lease, context.RequestAborted).GetAwaiter().GetResult();
                 if (read is not (var stream, _, _))
                     return Results.NotFound();
 
@@ -121,12 +135,14 @@ public static class AppCapabilityEndpoints
                     stream,
                     contentType ?? "application/octet-stream",
                     fileDownloadName: null,
-                    lastModified: File.GetLastWriteTimeUtc(lease.Path),
+                    lastModified: lease.LastModified,
                     entityTag: null,
                     enableRangeProcessing: true);
             }
             catch (UnauthorizedAccessException) { return Results.NotFound(); }
+            catch (FileNotFoundException) { return Results.NotFound(); }
             catch (ArgumentException) { return Results.NotFound(); }
+            catch (InvalidOperationException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
         })
         .WithTags("Media");
 

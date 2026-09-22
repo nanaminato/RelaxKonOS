@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
+using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.Identity;
 
 namespace RelaxKonOS.Server.Files;
@@ -23,7 +24,8 @@ public sealed class MediaLeaseStore
         _maximumLifetime = options.Value.MediaLeaseMaximumLifetime;
     }
 
-    public MediaLease Create(Guid userId, Guid workspaceId, Guid deviceId, string appId, string path, long securityVersion)
+    public MediaLease Create(Guid userId, Guid workspaceId, Guid deviceId, string appId, string path, long securityVersion,
+        UserExecutionIdentity? executionIdentity, DateTimeOffset? lastModified)
     {
         RemoveExpired();
         var now = DateTimeOffset.UtcNow;
@@ -36,7 +38,7 @@ public sealed class MediaLeaseStore
             path,
             now,
             now.Add(_ttl),
-            now.Add(_maximumLifetime), securityVersion);
+            now.Add(_maximumLifetime), securityVersion, executionIdentity, lastModified);
         _leases[lease.Id] = lease;
         return lease;
     }
@@ -101,4 +103,7 @@ public sealed record MediaLease(
     string Path,
     DateTimeOffset CreatedAt,
     DateTimeOffset ExpiresAt,
-    DateTimeOffset MaximumExpiresAt, long SecurityVersion);
+    DateTimeOffset MaximumExpiresAt,
+    long SecurityVersion,
+    UserExecutionIdentity? ExecutionIdentity,
+    DateTimeOffset? LastModified);
