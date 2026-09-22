@@ -233,7 +233,7 @@ Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑�
 
 ### 7.3 Android 平台边界
 
-- 凭据使用 Android Keystore；日志、诊断、崩溃报告不得写入密码、JWT、refresh token 或命令中的秘密。
+- 凭据使用 Android Keystore；日志、诊断、崩溃报告不得写入密码、JWT、refresh token 或命令中的秘密。登录密码与宿主管理员密码分属两个独立保险箱，指纹只解封本机密文，不产生任何免验证凭据；管理员密码的保存条件是 [`RelaxKonOS.Security.md`](../../../docs/platform/RelaxKonOS.Security.md) §5.2 定义的受限例外，详细设计见 [`RelaxKonOS.Mobile.V1.Design.md`](./RelaxKonOS.Mobile.V1.Design.md) §5。
 - 文件上传通过 Android 系统文件选择器取得内容流，不将用户文件路径假定为可访问的本地路径；下载完成后通过系统分享/打开机制交给用户。
 - 仅按功能声明网络、通知等权限；不申请存储全盘访问、常驻后台或无关权限。
 - 高风险动作（删除、停止/重启服务、部署、关闭终端）必须二次确认；确认文本必须包含具体目标。
