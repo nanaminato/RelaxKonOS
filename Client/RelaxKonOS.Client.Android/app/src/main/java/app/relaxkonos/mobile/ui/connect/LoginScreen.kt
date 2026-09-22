@@ -51,6 +51,7 @@ import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.problemMessage
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.common.withDebugDetail
 import kotlinx.coroutines.launch
 
 /**
@@ -163,12 +164,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
                 is ApiResult.Problem -> {
                     credential.fill('\u0000')
-                    message = problemMessage(result.code)
+                    message = loginProblemMessage(result)
                 }
 
                 is ApiResult.Transport -> {
                     credential.fill('\u0000')
-                    message = UiMessage(R.string.error_connectivity)
+                    message = loginTransportMessage(result)
                 }
             }
             busy = false
@@ -226,11 +227,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     revision++
                     message = UiMessage(R.string.login_stored_credential_rejected)
                 } else {
-                    message = problemMessage(result.code)
+                    message = loginProblemMessage(result)
                 }
             }
 
-            is ApiResult.Transport -> message = UiMessage(R.string.error_connectivity)
+            is ApiResult.Transport -> message = loginTransportMessage(result)
         }
         credential.fill('\u0000')
     }
@@ -280,6 +281,20 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
         return container.vault.record(VaultKind.Connection, serverUrl.trim().trimEnd('/'), identifier.trim())
     }
+
+    /**
+     * Release builds retain the localised, user-safe sentence. Debug builds additionally expose
+     * the HTTP verdict so a rejected credential is distinguishable from throttling or a server
+     * failure while testing Android against a real host.
+     */
+    private fun loginProblemMessage(result: ApiResult.Problem): UiMessage {
+        val trace = result.traceId?.let { "; traceId=$it" }.orEmpty()
+        return problemMessage(result.code).withDebugDetail("HTTP ${result.status}; problem=${result.code}$trace")
+    }
+
+    /** A transport result is also used for malformed responses and non-JSON 429/5xx responses. */
+    private fun loginTransportMessage(result: ApiResult.Transport): UiMessage =
+        UiMessage(R.string.error_connectivity).withDebugDetail(result.detail)
 
     private fun failureMessage(failure: UnlockFailure): UiMessage = UiMessage(
         when (failure) {

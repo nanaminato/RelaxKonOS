@@ -2,15 +2,40 @@ package app.relaxkonos.mobile.ui.common
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
+import app.relaxkonos.mobile.BuildConfig
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ProblemCodes
 
 /** A localised message: a resource id plus optional format arguments. */
-data class UiMessage(val resId: Int, val args: List<Any> = emptyList())
+data class UiMessage(
+    val resId: Int,
+    val args: List<Any> = emptyList(),
+    /** Non-sensitive diagnostic context, rendered only in debug builds. */
+    val debugDetail: String? = null,
+)
 
 @Composable
-fun UiMessage.text(): String = stringResource(resId, *args.toTypedArray())
+fun UiMessage.text(): String {
+    val primary = stringResource(resId, *args.toTypedArray())
+    return if (BuildConfig.DEBUG && !debugDetail.isNullOrBlank()) {
+        "$primary\n\n${stringResource(R.string.debug_detail, debugDetail)}"
+    } else {
+        primary
+    }
+}
+
+/**
+ * Adds bounded, single-line context for a developer build without changing release UI or exposing
+ * server response bodies. Callers must pass only protocol metadata or exception summaries.
+ */
+fun UiMessage.withDebugDetail(detail: String?): UiMessage {
+    if (!BuildConfig.DEBUG || detail.isNullOrBlank()) {
+        return this
+    }
+    val normalized = detail.replace(Regex("[\\r\\n\\t]+"), " ").trim().take(240)
+    return if (normalized.isEmpty()) this else copy(debugDetail = normalized)
+}
 
 /** The sentence shown for a problem the client has no specific mapping for. */
 fun genericProblemMessage(): UiMessage = UiMessage(R.string.error_generic)

@@ -87,6 +87,7 @@
     <!-- Errors -->
     <string name="error_generic">The server refused the request.</string>
     <string name="error_connectivity">Could not reach the server. Check the network and the server address.</string>
+    <string name="debug_detail">Debug: %1$s</string>
     <string name="error_invalid_credential">The account or password is incorrect.</string>
     <string name="error_account_disabled">This account is disabled.</string>
     <string name="error_account_locked">This account is locked.</string>

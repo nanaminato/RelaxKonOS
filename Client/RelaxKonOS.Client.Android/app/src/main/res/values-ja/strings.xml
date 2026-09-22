@@ -77,6 +77,7 @@
 
     <string name="error_generic">サーバーが要求を拒否しました。</string>
     <string name="error_connectivity">サーバーに到達できません。ネットワークとサーバーアドレスを確認してください。</string>
+    <string name="debug_detail">デバッグ情報: %1$s</string>
     <string name="error_invalid_credential">アカウントまたはパスワードが正しくありません。</string>
     <string name="error_account_disabled">このアカウントは無効です。</string>
     <string name="error_account_locked">このアカウントはロックされています。</string>

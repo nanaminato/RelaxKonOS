@@ -77,6 +77,7 @@
 
     <string name="error_generic">服务器拒绝了该请求。</string>
     <string name="error_connectivity">无法连接到服务器，请检查网络和服务器地址。</string>
+    <string name="debug_detail">调试信息：%1$s</string>
     <string name="error_invalid_credential">账户或密码不正确。</string>
     <string name="error_account_disabled">该账户已被禁用。</string>
     <string name="error_account_locked">该账户已被锁定。</string>
