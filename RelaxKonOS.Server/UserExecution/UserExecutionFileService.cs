@@ -43,7 +43,8 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     {
         var principal = http.HttpContext?.User ?? throw new InvalidOperationException("User execution requires an authenticated HTTP request.");
         var context = contexts.Resolve(principal);
-        var request = new UserExecutionRequest(context.Identity, operation, path, destinationPath, newName, fileName, overwrite, content, unixMode, Guid.NewGuid());
+        var request = new UserExecutionRequest(context.Identity, operation, path, destinationPath, newName, fileName, overwrite,
+            content, unixMode, OperationId: Guid.NewGuid());
         if (mode.Mode == ServerMode.User)
         {
             var validation = new DirectUserExecutionService(mode).Validate(context, request);

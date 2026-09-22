@@ -10,6 +10,8 @@ using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Domain;
 using RelaxKonOS.Server.Storage.Sqlite;
+using RelaxKonOS.Server.UserExecution;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -20,7 +22,11 @@ public sealed partial class LocalGitRepositoryService(
     IDbContextFactory<RelaxKonOSDbContext> dbFactory,
     IHostGitCli gitCli,
     IDataProtectionProvider dataProtection,
-    ILogger<LocalGitRepositoryService> logger) : IGitRepositoryService
+    ILogger<LocalGitRepositoryService> logger,
+    IUserExecutionContextResolver executionContexts,
+    IUserExecutionTransport executionTransport,
+    IServerModeResolver serverMode,
+    IHttpContextAccessor http) : IGitRepositoryService
 {
     private const int MaxDiffPatchSize = 200 * 1024; // 200KB
     private static readonly TimeSpan SemaphoreTimeout = TimeSpan.FromSeconds(3);
@@ -1430,6 +1436,25 @@ public sealed partial class LocalGitRepositoryService(
         GitCredentialRequest? credentials = null)
     {
         var operation = arguments.FirstOrDefault() ?? "unknown";
+        if (serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System)
+        {
+            if (credentials is not null)
+                return new CommandResult(false, "", "credentialed_user_execution_not_supported");
+            var principal = http.HttpContext?.User;
+            if (principal is null) return new CommandResult(false, "", "user_execution_context_unavailable");
+            try
+            {
+                var context = executionContexts.Resolve(principal);
+                var response = await executionTransport.ExecuteAsync(new RelaxKonOS.Protocol.UserExecution.UserExecutionRequest(
+                    context.Identity, RelaxKonOS.Protocol.UserExecution.UserExecutionOperationKind.GitExecute, Path: workingDir,
+                    GitArguments: arguments, OperationId: Guid.NewGuid()), cancellationToken);
+                if (!response.Success || string.IsNullOrWhiteSpace(response.OutputBase64)) return new CommandResult(false, "", "user_execution_unavailable");
+                var result = JsonSerializer.Deserialize<GitExecutionResult>(Convert.FromBase64String(response.OutputBase64), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+                return result is null ? new CommandResult(false, "", "user_execution_invalid_result") : new CommandResult(result.Success, result.Output, result.Error);
+            }
+            catch (Exception exception) when (exception is UserExecutionException or InvalidOperationException or JsonException or FormatException)
+            { return new CommandResult(false, "", "user_execution_unavailable"); }
+        }
         try
         {
             logger.LogDebug("Starting git operation {GitOperation}.", operation);
@@ -1528,4 +1553,5 @@ public sealed partial class LocalGitRepositoryService(
     }
 
     private sealed record CommandResult(bool Success, string Output, string Error);
+    private sealed record GitExecutionResult(bool Success, int ExitCode, string Output, string Error);
 }

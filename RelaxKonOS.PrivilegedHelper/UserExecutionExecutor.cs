@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
@@ -69,6 +70,7 @@ public static class UserExecutionExecutor
             UserExecutionOperationKind.FileCreateDirectory => Create(path!),
             UserExecutionOperationKind.FileGetProperties => Properties(path!),
             UserExecutionOperationKind.FileSetUnixPermissions => SetMode(path!, request.UnixMode),
+            UserExecutionOperationKind.GitExecute => await GitAsync(path!, request.GitArguments),
             _ => throw new ArgumentException(),
         };
         var json = JsonSerializer.SerializeToUtf8Bytes(result, RelaxKonOSJsonOptions.Default);
@@ -97,6 +99,19 @@ public static class UserExecutionExecutor
     private static FileSystemEntryDto Copy(string source, string target, bool overwrite) { if (System.IO.Directory.Exists(source)) { CopyDirectory(source, target, overwrite); return DirectoryEntry(target); } System.IO.File.Copy(source, target, overwrite); return ToInfo(FileEntry(new FileInfo(target))); }
     private static async Task<FileEntryDto> UploadAsync(string directory, string name, string content, string home) { ValidateName(name); var path = ValidatePath(Path.Combine(directory, name)); await System.IO.File.WriteAllBytesAsync(path, Decode(content)); return FileEntry(new FileInfo(path)); }
     private static bool Create(string path) { System.IO.Directory.CreateDirectory(path); return true; }
+    private static async Task<GitResult> GitAsync(string workingDirectory, IReadOnlyList<string>? arguments)
+    {
+        if (arguments is null || arguments.Count == 0 || arguments.Count > 64 || arguments.Any(x => x is null || x.Length > 16_384)) throw new ArgumentException();
+        var git = File.Exists("/usr/bin/git") ? "/usr/bin/git" : File.Exists("/usr/local/bin/git") ? "/usr/local/bin/git" : throw new FileNotFoundException();
+        using var process = new Process { StartInfo = new ProcessStartInfo(git) { WorkingDirectory = workingDirectory, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true } };
+        process.StartInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        process.StartInfo.Environment["GIT_EDITOR"] = "true";
+        foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+        process.Start();
+        var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        return new(process.ExitCode == 0, process.ExitCode, await stdout, await stderr);
+    }
     private static FilePropertiesDto? Properties(string path)
     {
         var info = Info(path); if (info is null) return null;
@@ -131,6 +146,7 @@ public static class UserExecutionExecutor
     private static string? Text(IntPtr value) => value == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(value);
     private readonly record struct Account(string Name, string Home, uint Uid, uint Gid);
     private sealed record FileRead(string ContentBase64, string FileName, string ContentType);
+    private sealed record GitResult(bool Success, int ExitCode, string Output, string Error);
     [StructLayout(LayoutKind.Sequential)] private struct Passwd { public IntPtr Name, Password; public uint Uid, Gid; public IntPtr Gecos, Home, Shell; }
     [DllImport(LibC)] private static extern uint geteuid(); [DllImport(LibC)] private static extern uint getegid(); [DllImport(LibC, SetLastError = true)] private static extern int initgroups(string user, uint group); [DllImport(LibC, SetLastError = true)] private static extern int setgid(uint gid); [DllImport(LibC, SetLastError = true)] private static extern int setuid(uint uid); [DllImport(LibC)] private static extern int getpwuid_r(uint uid, out Passwd pwd, IntPtr buffer, nuint length, out IntPtr result);
 }
