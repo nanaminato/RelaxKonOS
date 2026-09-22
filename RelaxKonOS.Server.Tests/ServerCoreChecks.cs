@@ -68,6 +68,57 @@ internal static void VerifyFileElevationSessionScope(string root)
         "File elevation request lost its multi-directory grant contract.");
 }
 
+internal static void VerifyUserExecutionContextContract()
+{
+    var account = new PlatformUserInfo("1001", "nanami", RelaxKonOS.Protocol.Common.PlatformKind.Linux,
+        "Nanami", "/home/nanami");
+    var identities = new UserExecutionIdentityProvider(account);
+    var users = new InMemoryUserRepository();
+    var user = users.Add(new User
+    {
+        Id = Guid.NewGuid(), Username = "nanami", Platform = RelaxKonOS.Protocol.Common.PlatformKind.Linux,
+        PlatformIdentity = "1001", CreatedAt = DateTimeOffset.UtcNow,
+    });
+    var resolver = new UserExecutionContextResolver(users,
+        new CanonicalUserResolver(identities, users, new InMemoryAliasCredentialRepository(), new AuthSessionStore()),
+        new UserExecutionMode(ServerMode.System));
+    var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString())], "test"));
+    var context = resolver.Resolve(principal);
+    TestAssert.Assert(context.Identity.StableIdentity == "1001" && context.Identity.CanonicalAccount == "nanami"
+        && context.Identity.HomeDirectory == "/home/nanami", "User execution context is derived from the canonical server-side identity.");
+    TestAssert.Assert(!typeof(UserExecutionRequest).GetProperties().Select(x => x.Name).Intersect(
+        ["Password", "Token", "Jwt", "Executable", "Arguments", "Environment"], StringComparer.OrdinalIgnoreCase).Any(),
+        "The user-execution contract exposes no credential or generic-command fields.");
+
+    var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.FileListDirectory,
+        Path: "/home/nanami", OperationId: Guid.NewGuid());
+    var systemResult = new DirectUserExecutionService(new UserExecutionMode(ServerMode.System)).Validate(context, request);
+    TestAssert.Assert(!systemResult.Success && systemResult.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
+        "System Mode user execution fails closed until its dedicated Helper is available.");
+    var mismatched = new DirectUserExecutionService(new UserExecutionMode(ServerMode.System)).Validate(context,
+        request with { Identity = context.Identity with { StableIdentity = "1002" } });
+    TestAssert.Assert(!mismatched.Success && mismatched.ProblemCode == UserExecutionProblemCode.IdentityMismatch,
+        "User execution refuses a caller-substituted stable OS identity.");
+}
+
+private sealed class UserExecutionMode(ServerMode mode) : IServerModeResolver
+{
+    public ServerMode Mode { get; } = mode;
+    public ServerCapabilitiesDto Describe() => throw new NotSupportedException();
+    public bool Supports(ServerHostFeature feature) => false;
+}
+
+private sealed class UserExecutionIdentityProvider(PlatformUserInfo account) : IIdentityProvider
+{
+    public CredentialVerifyResult Verify(string username, string password) => CredentialVerifyResult.Failed("not used", CredentialError.Unknown);
+    public PlatformUserInfo GetUserInfo(string username) => account;
+    public IdentityLookup Lookup(string identifier) => identifier == account.Username
+        ? new(IdentityLookupStatus.Found, account) : new(IdentityLookupStatus.NotFound);
+    public IdentityLookup LookupIdentity(string identity) => identity == account.Uid
+        ? new(IdentityLookupStatus.Found, account) : new(IdentityLookupStatus.NotFound);
+    public AliasEligibility CheckAliasEligibility(PlatformUserInfo identity) => new(true);
+}
+
 internal static void VerifyHostElevationCapabilityScope(string root)
 {
     var directory = Path.Combine(root, "capability-protected");

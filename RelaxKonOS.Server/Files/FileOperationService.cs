@@ -1,12 +1,13 @@
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Files;
 
 /// <summary>In-memory, identity-scoped file jobs. Never replays jobs after a server restart.</summary>
 public sealed class FileOperationService(IPrivilegedFileService privileged,
-    IFileElevationSessionStore elevations) : IDisposable
+    IFileElevationSessionStore elevations, IServerModeResolver mode) : IDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, Job> _jobs = [];
@@ -19,6 +20,8 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
 
     public FileOperationDto Start(string owner, ClaimsPrincipal principal, StartFileOperationRequest request)
     {
+        if (mode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System)
+            throw new InvalidOperationException("Batch file operations await migration to the user-execution Helper.");
         if (request.RequestId == Guid.Empty || !Enum.IsDefined(request.Kind) || request.Items is null
             || request.Items.Count is < 1 or > 1000 || request.Items.Any(item => item is null)) throw new ArgumentException("Invalid operation request (1–1000 items required).");
         var items = request.Items.Select(item =>

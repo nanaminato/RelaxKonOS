@@ -87,6 +87,7 @@ try
     await ServerCoreChecks.VerifyRegistryRuntimeCacheAsync(root);
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();
     ServerCoreChecks.VerifyFileElevationSessionScope(root);
+    ServerCoreChecks.VerifyUserExecutionContextContract();
     ServerCoreChecks.VerifyHostElevationCapabilityScope(root);
     ServerCoreChecks.VerifyAppPermissionEvaluator();
     Console.WriteLine("RelaxKonOS.Server backend verification passed.");

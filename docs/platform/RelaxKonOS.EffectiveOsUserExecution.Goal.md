@@ -1,6 +1,6 @@
 # RelaxKonOS 有效 OS 执行身份（Effective OS User Execution）Goal
 
-> 状态：待审查，未实施
+> 状态：实施中（2026-09-22：Linux 单文件 API 已接入独立降权 Helper；Windows、批处理文件作业及进程域仍 fail-closed。）
 >
 > 建立日期：2026-09-22
 >
@@ -22,7 +22,7 @@ RelaxKonOS JWT subject → nanami 的稳定 OS 身份
 
 因此，访问控制、文件所有者、默认组、ACL/POSIX 权限和子进程归属均由 `nanami` 的宿主账户决定。管理员提权是完全独立的路径：它可在用户明确授权后以 root/LocalSystem 执行受限宿主操作，但绝不能被用作普通用户文件 I/O 的隐式替代。
 
-本 Goal 是设计与实施计划，不包含代码、协议或部署修改。
+本 Goal 是设计与实施计划。实施进度和经批准暂缓的验证项记录在本文末尾。
 
 ## 2. 当前基线与问题
 
@@ -175,3 +175,43 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 5. 哪些后台任务在文件迁移完成前必须 fail closed，而不是继续以 Server 服务账号运行；Terminal、Git、Guardian 和应用部署不应被无意地遗留为不同身份模型。
 
 这些决策在 Phase 0 定稿前，不应开始改变现有文件端点或 Helper 协议。
+
+## 10. 实施记录
+
+### 2026-09-22：Goal 0 决策冻结
+
+首版边界已冻结如下，后续实现不得通过兼容开关放宽：
+
+- Linux System Mode 只接受本地 NSS 可重新解析的非 root、UID ≥ 1000 账户；解析时必须同时验证 canonical username、UID 和绝对 home directory。LDAP/SSSD、UID 小于 1000 的服务账户及身份漂移均 fail closed。
+- 初始文件范围是目标身份的 canonical home。配置的额外 roots、跨 home 操作、符号链接/TOCTOU 的 openat-style 处理，必须随 Linux Helper 一并实现并经集成测试验证，不能提前启用。
+- Windows 首版不启用 user execution；本地账户 SID impersonation 在真实 Windows Server 验证完成前返回 `unsupported-platform`/`helper-unavailable`，域账户明确不支持。
+- Linux worker 将使用独立的一次性降权执行单元；root dispatcher 不执行用户 I/O，也不允许降权代码回到特权 dispatcher。此项尚未实现。
+- Explorer/Desktop 文件 API 是首个迁移域。Terminal/PTY、Git、Guardian、应用部署和后台文件任务在迁移前不得宣称已具备跨用户执行能力。
+
+### 已完成：Goal 1 与 Linux 文件 API 的首个垂直切片
+
+- 新增独立 `Protocol/UserExecution/` 版本化 contract：只有封闭的文件 operation kind 和 Server 派生的 stable identity，且没有密码、JWT、token、shell、命令、arguments 或 environment 字段。
+- 新增 `UserExecutionContextResolver`：仅从验证后的 JWT `sub` 找到 RelaxKonOS 用户，再经 `CanonicalUserResolver` 对 username 与 UID/SID 重新绑定验证；HTTP body/query/header 不参与身份选择。
+- 新增 `IUserExecutionService` 的 User Mode 验证 adapter。它不会切换 Server 身份。
+- Linux one-shot Helper 新增独立 `--user-execution` 入口：以 root 重新解析 UID、canonical username 与 home，拒绝 UID < 1000；在 `initgroups`、`setgid`、`setuid` 和 eUID/eGID 复核成功后才执行一项封闭文件操作。降权后没有特权 dispatcher 可返回。
+- `IFileService` 已替换为有效用户路由：User Mode 仍调用本地服务；Linux System Mode 通过独立 transport 调用 Helper。目标用户的权限拒绝映射为普通 `access-denied`，端点不会再把它转换为 elevation 请求或 root/LocalSystem fallback。
+- 特殊位置、目录枚举、读写、上传、删除、重命名、移动、复制、创建目录、属性和 POSIX mode 均覆盖这一文件通道。System Mode batch file jobs 尚未迁移，因此在启动时 fail closed，避免后台以 Server 账号执行。
+- 添加 contract/context 单元检查，覆盖 canonical identity、请求身份替换拒绝、System Mode fail-closed 以及无敏感/通用命令字段。
+
+### 尚未实施（明确不跳过）
+
+- Windows LocalSystem named-pipe/SID impersonation。
+- 批处理文件作业、Terminal/Git/Guardian 与应用部署的迁移。批处理作业已 fail closed；其余域仍不能声称具备跨用户执行能力。
+- Linux user-execution 的 install/upgrade audit、openat-style TOCTOU hardening、跨 filesystem 行为、取消处理和 root-owned 残留演练。
+- 安装器、Helper 配置和真实 Linux/Windows integration 环境。
+
+### 本次验证与暂缓项
+
+| 项目 | 状态 | 说明 |
+| --- | --- | --- |
+| `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -c Debug --no-restore` | 通过 | 新增协议和 Server 代码可编译；仅有既存的 Linux/Windows 平台分析警告。 |
+| `dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj -c Debug --no-restore` | 通过 | Linux 降权 dispatcher 与独立 Helper 入口可编译。 |
+| `dotnet build Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj -c Debug --no-restore` | 通过 | 共享 framework 回归构建。 |
+| `RelaxKonOS.Server.Tests` | 暂缓 | 当前桌面 SDK 在 restore graph 的 `RelaxKonOS.Core` 项目阶段无诊断即失败；该项目文件已注明可使用预构建 Server assembly 的本地 smoke 路径，但本环境的项目图仍未生成。待恢复环境修复后必须运行新增的 `VerifyUserExecutionContextContract`。 |
+| Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |
+| Windows impersonation 集成 | 暂缓 | 首版 Windows user execution 尚未启用，需真实 Windows Server + LocalSystem Helper 环境。 |

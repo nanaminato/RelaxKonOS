@@ -6,6 +6,7 @@ using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.UserExecution;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -48,6 +49,7 @@ public static class FileEndpoints
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "路径不存在", ex.Message); }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "访问被拒", ex.Message);
                 if (string.IsNullOrWhiteSpace(path) || !elevations.IsElevated(http.User, FileElevationCapability.Read, path))
                     return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try { return Results.Ok(await privileged.ListDirectoryAsync(path, ct)); }
@@ -88,6 +90,7 @@ public static class FileEndpoints
             }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "访问被拒", ex.Message);
                 if (!elevations.IsElevated(http.User, FileElevationCapability.Read, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try
                 {
@@ -115,6 +118,7 @@ public static class FileEndpoints
             }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "Access denied", ex.Message);
                 if (!elevations.IsElevated(http.User, FileElevationCapability.Read, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try
                 {
@@ -142,6 +146,7 @@ public static class FileEndpoints
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "Target directory not found", ex.Message); }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "Access denied", ex.Message);
                 if (!elevations.IsElevated(request.HttpContext.User, FileElevationCapability.Write, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try
                 {
@@ -237,6 +242,7 @@ public static class FileEndpoints
             catch (IOException ex) { return Problem(409, "already-exists", "已存在", ex.Message); }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "访问被拒", ex.Message);
                 if (!elevations.IsElevated(http.User, FileElevationCapability.CreateDirectory, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try
                 {
@@ -264,6 +270,7 @@ public static class FileEndpoints
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "路径不存在", ex.Message); }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "访问被拒", ex.Message);
                 if (!elevations.IsElevated(http.User, FileElevationCapability.Delete, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try { await privileged.DeleteAsync(path, ct); return Results.NoContent(); }
                 catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
@@ -285,6 +292,7 @@ public static class FileEndpoints
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "源路径不存在", ex.Message); }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "访问被拒", ex.Message);
                 var target = RenameTarget(req.SourcePath, req.NewName);
                 if (!elevations.IsElevated(http.User, FileElevationCapability.Rename, req.SourcePath, target)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try { return Results.Ok(await privileged.RenameAsync(req.SourcePath, req.NewName, ct)); }
@@ -307,6 +315,7 @@ public static class FileEndpoints
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "源路径不存在", ex.Message); }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "访问被拒", ex.Message);
                 if (!elevations.IsElevated(http.User, FileElevationCapability.Move, req.SourcePath, req.DestinationPath)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try { return Results.Ok(await privileged.MoveAsync(req.SourcePath, req.DestinationPath, req.Overwrite, ct)); }
                 catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
@@ -328,6 +337,7 @@ public static class FileEndpoints
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "源路径不存在", ex.Message); }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "访问被拒", ex.Message);
                 if (!elevations.IsElevated(http.User, FileElevationCapability.Copy, req.SourcePath, req.DestinationPath)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try { return Results.Ok(await privileged.CopyAsync(req.SourcePath, req.DestinationPath, req.Overwrite, ct)); }
                 catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
@@ -363,6 +373,7 @@ public static class FileEndpoints
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "目标目录不存在", ex.Message); }
             catch (UnauthorizedAccessException ex)
             {
+                if (ex is UserExecutionAccessDeniedException) return Problem(403, "access-denied", "访问被拒", ex.Message);
                 if (!elevations.IsElevated(ctx.User, FileElevationCapability.Upload, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
                 try
                 {

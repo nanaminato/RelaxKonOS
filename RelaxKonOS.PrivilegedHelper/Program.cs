@@ -27,6 +27,9 @@ if (OperatingSystem.IsWindows() && args.Contains("--console", StringComparer.Ord
     }
 }
 
+if (args.Contains("--user-execution", StringComparer.Ordinal))
+    return await UserExecutionExecutor.RunOneShotAsync();
+
 return await PrivilegedOperationExecutor.RunOneShotAsync();
 
 /// <summary>
