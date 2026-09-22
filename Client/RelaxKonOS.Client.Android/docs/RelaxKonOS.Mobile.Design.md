@@ -1,6 +1,6 @@
 # RelaxKonOS Android Mobile（手机与平板）设计
 
-> **状态：设计基线；M0 架构准备已启动。**
+> **状态：产品与技术设计初稿；M0 架构准备已启动。**
 > **首发范围：Android 手机与 Android 平板；iOS/iPadOS 为同一架构下的后续平台。**
 >
 > 本文定义移动客户端的产品边界、项目布局、模块依赖、协议演进、响应式交互、安全与验收要求；不代表当前已实现功能。本文与现有架构冲突时，遵守 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md) 的“本地渲染、状态同步、Protocol 契约优先”原则。
@@ -71,6 +71,11 @@ RelaxKonOS/
 │  └─ RelaxKonOS.Client.Android/            # Gradle Kotlin/Compose Android 应用
 │     ├─ settings.gradle.kts
 │     ├─ build.gradle.kts
+│     ├─ AGENTS.md                           # Android 文档与实现约束
+│     ├─ docs/                               # Android 文档的唯一详细来源
+│     │  ├─ RelaxKonOS.Mobile.Design.md      # 本文：产品与技术设计初稿
+│     │  ├─ RelaxKonOS.Mobile.Progress.md    # 阶段、验证与已知问题
+│     │  └─ android-release.md               # 构建、签名与发布
 │     └─ app/
 │        └─ src/
 │           ├─ main/java/app/relaxkonos/mobile/
@@ -82,9 +87,7 @@ RelaxKonOS/
 ├─ Framework/RelaxKonOS.UI/                  # 既有：只复用经移动验证的颜色、字体、令牌
 └─ docs/
    └─ mobile/
-      ├─ RelaxKonOS.Mobile.Design.md         # 本文：架构与设计基线
-      ├─ RelaxKonOS.Mobile.Progress.md       # 实施后新增：阶段、验证与已知问题
-      └─ android-release.md                  # 实施后新增：签名、AAB、商店/侧载发布
+      └─ README.md                           # 仅作跨仓库入口，链接到 Android docs/
 ```
 
 Android 工程由 Gradle 构建，不加入 `RelaxKonOS.sln`。Android UI 仅使用 Kotlin、Compose 与 Android SDK；`Directory.Packages.props` 不管理 Android 的 Gradle 依赖，也不保留 Avalonia Android 或 AndroidX 占位依赖。
@@ -146,6 +149,22 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
 
 不支持的服务不显示入口，不以灰色“伪功能”占位。影响运行环境的操作必须显示目标、后果和状态；现有的控制权与受限提权流程仍由 Server 决定，Mobile 只负责清晰确认与结果展示。
 
+### 5.2 首发应用目录
+
+Mobile Shell 的导航项是能力类别，不是把桌面所有应用逐一缩小后塞进底栏。具体应用只有在 Server 同时声明能力、当前账号拥有权限且该布局状态具备可用操作路径时才出现。
+
+| 类别 / 应用 | 目标工作流 | 首发优先级 | 手机与平板差异 |
+| --- | --- | --- | --- |
+| 主页（Home） | 连接健康、主机资源、近期操作和常用入口 | P0 | 手机显示可扫读的状态卡；平板将告警、趋势和近期操作并列。 |
+| 文件（Files） | 浏览、上传、下载、新建、重命名、复制/移动、属性与删除确认 | P0 | 手机为列表→详情的导航栈；平板为位置/目录、列表、详情或预览多栏。 |
+| 终端（Terminal） | 打开、恢复和关闭远端 PTY；输入命令与查看输出 | P0 PoC | 手机只聚焦一个会话并提供扩展键栏；平板可保留会话列表。 |
+| 容器（Docker） | 容器、镜像、Stack、网络和卷的查看与受控操作 | P1 | 手机先呈现状态和单资源详情；平板增加日志/操作栏，不复制桌面表格。 |
+| 进程与守护（Processes & Guardian） | 指标、受管工作负载、日志和重启等受控操作 | P1 | 手机用筛选列表；平板并列指标、资源和日志。 |
+| 部署与 Web 服务（Deployments & Web） | 查看发布、任务状态、站点和服务操作 | P2 | 手机按向导分步完成；平板允许列表、详情和任务状态并列。 |
+| 设置与诊断（More） | 账户、服务器连接、语言、主题、无障碍、日志导出、关于和登出 | P0（设置骨架） | 使用同一偏好模型；平板仅扩大内容列，不将设置拆成窗口。 |
+
+Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑等桌面应用不属于首批 Mobile Shell。将来只有在能定义移动端独立、可完成且安全的任务流后才加入管理目录；不得因为桌面端已有图标而添加只读或不可操作的占位入口。
+
 ---
 
 ## 6. 手机与平板响应式规范
@@ -168,6 +187,25 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
 | 终端 | 单会话全屏；底部扩展键栏 | 会话列表 + 当前终端双栏；横屏优先。 |
 | Docker/守护 | 卡片或列表进入详情页 | 资源列表 + 详情 + 日志/操作面板。 |
 | 性能/进程 | 指标卡 + 可筛选列表 | 指标、趋势和进程/详情并列；不因屏幕变大增加无意义图表。 |
+
+### 6.2 国际化、主题与无障碍
+
+#### 国际化
+
+- 界面默认源语言为 `en`；首批语言包目标为 `en`、`zh-CN` 与 `ja-JP`，使用 BCP 47 locale 标识。缺失翻译回退到 `en`，不回退到硬编码文本或其他语言。
+- 所有可见文案放入 Android resource；Compose 不得保留用户可见字符串字面量。使用 `stringResource`、复数资源和带命名参数的格式化文本，不通过字符串拼接构造句子。
+- 日期、时间、数字、文件大小与排序使用用户 locale。Server 返回的稳定状态码、错误码和枚举由客户端映射为本地化文案；不得要求 Server 返回某一种自然语言的显示字符串。
+- 默认跟随系统应用语言；“更多 → 语言”可显式覆写，并以 Android AppCompat locale API 持久化。语言切换后允许 Activity 重建，但登录会话和当前安全操作不得丢失或被重复提交。
+- 使用逻辑方向 `start`/`end`，不用 `left`/`right`；首发虽未承诺 RTL 语言，布局、图标镜像和导航顺序必须能够支持 RTL。测试至少覆盖 `en`、`zh-CN`、`ja-JP`、伪语言扩展长度与 RTL 预览。
+
+#### 多主题与无障碍
+
+设置提供 **跟随系统、浅色、深色** 三种颜色模式，并提供独立的“提高对比度”开关。模式优先级为用户显式选择 > 系统设置；未选择时跟随系统。主题偏好属于客户端体验设置，M1 先本地持久化，只有在跨设备偏好契约已定义后才能同步到 Workspace。
+
+- 基于 Material 3 `ColorScheme` 和语义设计令牌（`primary`、`surface`、`error`、`outline` 等）实现；业务页面不得直接写入十六进制颜色、特定背景色或仅靠颜色表达状态。
+- Android 12+ 的动态颜色只能作为“跟随系统”模式的可选输入，且必须通过对比度和状态色验证；浅色、深色和高对比度方案必须有确定的 RelaxKonOS 回退调色板。
+- 正文、图标、焦点、禁用、错误、成功和危险操作在每个主题中都须满足 Android/Material 可读性要求；错误/告警同时使用文本、图标或形状，而不是单一颜色。
+- 支持系统字号/Display size、TalkBack 的内容描述和合理焦点顺序；48dp 最小命中区域是下限而非视觉尺寸。不得通过关闭字体缩放来保持布局。
 
 ---
 
@@ -228,4 +266,4 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
 - Compose 页面不得直接执行 HTTP、拼接路由或访问桌面窗口管理器。
 - 不以“能编译”为移动兼容性依据；终端、文件选择、软键盘、后台恢复和横竖屏必须在真实手机与平板验证。
 - 不为保留当前错误的平台语义添加兼容 shim；直接更新仓库内所有调用者、测试和文档。
-- 所有实施进展、已验证设备、已知限制和待决风险记录在 `docs/mobile/RelaxKonOS.Mobile.Progress.md`，而不是在本文中混写实现状态。
+- 所有实施进展、已验证设备、已知限制和待决风险记录在同目录的 [`RelaxKonOS.Mobile.Progress.md`](./RelaxKonOS.Mobile.Progress.md)，而不是在本文中混写实现状态。

@@ -20,7 +20,7 @@
 
 ## 构建与校验
 
-- 使用 [`Tools/Mobile/Build-Android.ps1`](../../Tools/Mobile/Build-Android.ps1) 运行 Gradle `:app:assembleDebug`；需要 Android SDK、JDK 21 与 Gradle 9.7.1。
+- 使用 [`Tools/Mobile/Build-Android.ps1`](../../../Tools/Mobile/Build-Android.ps1) 运行 Gradle `:app:assembleDebug`；需要 Android SDK、JDK 21 与 Gradle 9.7.1。
 - 使用 Gradle `:app:testDebugUnitTest` 执行 Kotlin 布局边界测试。
 
 ## 后续步骤

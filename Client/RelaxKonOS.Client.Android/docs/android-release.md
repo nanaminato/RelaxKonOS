@@ -4,6 +4,8 @@
 
 Android 客户端是独立的 Kotlin + Jetpack Compose Gradle 工程，位于 `Client/RelaxKonOS.Client.Android`，不使用 .NET Android workload 或 Avalonia。
 
+工程的 [`gradle/wrapper/gradle-wrapper.properties`](../gradle/wrapper/gradle-wrapper.properties) 将发行包固定为本机 `D:\environments\gradle-9.7.1-all.zip`（`file:///D:/environments/gradle-9.7.1-all.zip`）。首次执行环境初始化时，`Initialize-AndroidEnvironment.ps1` 从该本地包解压 Gradle；构建过程不应改回在线 Gradle 分发地址。
+
 ```powershell
 pwsh Tools/Mobile/Initialize-AndroidEnvironment.ps1
 pwsh Tools/Mobile/Build-Android.ps1 -Configuration Debug
