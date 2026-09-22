@@ -41,6 +41,32 @@ public static class UserExecutionExecutor
         catch { return await WriteAsync(Fail(UserExecutionProblemCode.InternalError, "user-execution operation failed")); }
     }
 
+    public static async Task<int> RunTerminalAsync()
+    {
+        var line = await Console.In.ReadLineAsync();
+        if (string.IsNullOrWhiteSpace(line)) return 64;
+        UserExecutionRequest? request;
+        try { request = JsonSerializer.Deserialize<UserExecutionRequest>(line, RelaxKonOSJsonOptions.Default); }
+        catch (JsonException) { return 64; }
+        if (!OperatingSystem.IsLinux() || geteuid() != 0 || request is null || request.Operation != UserExecutionOperationKind.TerminalStart
+            || request.Version != UserExecutionProtocol.Version || request.Path is null || request.OperationId is not { } id || id == Guid.Empty
+            || !TryResolve(request.Identity, out var account) || !TryShell(request.TerminalShell, out var shell)) return 77;
+        var directory = ValidatePath(request.Path);
+        if (initgroups(account.Name, account.Gid) != 0 || setgid(account.Gid) != 0 || setuid(account.Uid) != 0 || geteuid() != account.Uid) return 77;
+        // script is a fixed PTY broker, not a caller-supplied command runner. The shell choice is
+        // an allowlisted terminal preference and user input thereafter belongs to that shell.
+        var script = File.Exists("/usr/bin/script") ? "/usr/bin/script" : throw new FileNotFoundException("script is required for user terminal execution");
+        using var process = new Process { StartInfo = new ProcessStartInfo(script) { WorkingDirectory = directory, UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = false } };
+        process.StartInfo.ArgumentList.Add("-qfec"); process.StartInfo.ArgumentList.Add(shell); process.StartInfo.ArgumentList.Add("/dev/null");
+        process.Start();
+        var output = process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput());
+        var input = Console.OpenStandardInput().CopyToAsync(process.StandardInput.BaseStream);
+        await Task.WhenAny(process.WaitForExitAsync(), input);
+        if (!process.HasExited) { try { process.Kill(entireProcessTree: true); } catch { } }
+        await process.WaitForExitAsync(); await output;
+        return process.ExitCode;
+    }
+
     private static async Task<int> WriteAsync(UserExecutionResult result)
     {
         await Console.Out.WriteAsync(JsonSerializer.Serialize(result, RelaxKonOSJsonOptions.Default));
@@ -136,6 +162,11 @@ public static class UserExecutionExecutor
     private static byte[] Decode(string value) { var bytes = Convert.FromBase64String(value); if (bytes.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ArgumentException(); return bytes; }
     private static void ValidateName(string name) { if (string.IsNullOrWhiteSpace(name) || name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.Contains('/') || name.Contains('\\')) throw new ArgumentException(); }
     private static string ValidatePath(string path) => !Path.IsPathFullyQualified(path) ? throw new ArgumentException() : Path.GetFullPath(path);
+    private static bool TryShell(string? requested, out string shell)
+    {
+        shell = requested?.Trim() switch { null or "" or "bash" or "/bin/bash" => "/bin/bash", "sh" or "/bin/sh" => "/bin/sh", _ => string.Empty };
+        return shell.Length > 0 && File.Exists(shell);
+    }
     private static void CopyDirectory(string source, string target, bool overwrite) { System.IO.Directory.CreateDirectory(target); foreach (var file in System.IO.Directory.EnumerateFiles(source)) System.IO.File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite); foreach (var dir in System.IO.Directory.EnumerateDirectories(source)) CopyDirectory(dir, Path.Combine(target, Path.GetFileName(dir)), overwrite); }
     private static UserExecutionResult Fail(UserExecutionProblemCode code, string message) => new(false, Error: message, ProblemCode: code);
     private static bool TryResolve(UserExecutionIdentity expected, out Account account)

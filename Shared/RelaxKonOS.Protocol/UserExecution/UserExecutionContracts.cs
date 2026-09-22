@@ -33,6 +33,7 @@ public enum UserExecutionOperationKind
     FileGetProperties,
     FileSetUnixPermissions,
     GitExecute,
+    TerminalStart,
 }
 
 /// <summary>
@@ -57,6 +58,7 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("contentBase64")] string? ContentBase64 = null,
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
     [property: JsonPropertyName("gitArguments")] IReadOnlyList<string>? GitArguments = null,
+    [property: JsonPropertyName("terminalShell")] string? TerminalShell = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
     [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version);
 
