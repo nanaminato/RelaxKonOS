@@ -1,5 +1,9 @@
 using System.Security.Claims;
+using System.Text.Json;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Server.UserExecution;
 using RelaxKonOS.Server.Privileged;
 using RelaxKonOS.Server.HostMode;
 
@@ -7,7 +11,8 @@ namespace RelaxKonOS.Server.Files;
 
 /// <summary>In-memory, identity-scoped file jobs. Never replays jobs after a server restart.</summary>
 public sealed class FileOperationService(IPrivilegedFileService privileged,
-    IFileElevationSessionStore elevations, IServerModeResolver mode) : IDisposable
+    IFileElevationSessionStore elevations, IServerModeResolver mode,
+    IUserExecutionContextResolver executionContexts, IUserExecutionTransport executionTransport) : IDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, Job> _jobs = [];
@@ -20,8 +25,9 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
 
     public FileOperationDto Start(string owner, ClaimsPrincipal principal, StartFileOperationRequest request)
     {
-        if (mode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System)
-            throw new InvalidOperationException("Batch file operations await migration to the user-execution Helper.");
+        // A job outlives its HTTP request. Resolve and freeze the authenticated OS identity now;
+        // background work must never fall back to the Server service account later.
+        var executionContext = mode.Mode == ServerMode.System ? executionContexts.Resolve(principal) : null;
         if (request.RequestId == Guid.Empty || !Enum.IsDefined(request.Kind) || request.Items is null
             || request.Items.Count is < 1 or > 1000 || request.Items.Any(item => item is null)) throw new ArgumentException("Invalid operation request (1–1000 items required).");
         var items = request.Items.Select(item =>
@@ -63,7 +69,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             }
             if (_jobs.Count >= 256 || _jobs.Values.Count(j => !j.Snapshot().IsTerminal) >= 32)
                 throw new InvalidOperationException("Operation capacity reached. Clear or wait for existing operations.");
-            var job = new Job(owner, new ClaimsPrincipal(principal), request);
+            var job = new Job(owner, new ClaimsPrincipal(principal), request, executionContext);
             _jobs.Add(job.Id, job);
             _ = Task.Run(() => RunAsync(job));
             return job.Snapshot();
@@ -164,6 +170,9 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
 
     private async Task<bool> ProcessAsync(Job job, string source, string? destination)
     {
+        if (job.ExecutionContext is not null)
+            return await ProcessUserExecutionAsync(job, source, destination);
+
         var ct = job.Cancellation.Token;
         var replace = false;
         while (true)
@@ -258,6 +267,141 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
                 if (decision == FileOperationDecision.Skip) return Skip(job, source, ex.Message);
                 replace = false; // A retry always rechecks destination conflicts.
             }
+        }
+    }
+
+    /// <summary>
+    /// System Mode counterpart of <see cref="ProcessAsync"/>. Each filesystem observation and
+    /// mutation is a dedicated one-shot Helper request executed as the stored login identity;
+    /// this background worker never opens a user path under the Server service account.
+    /// </summary>
+    private async Task<bool> ProcessUserExecutionAsync(Job job, string source, string? destination)
+    {
+        var ct = job.Cancellation.Token;
+        var replace = false;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            lock (job.Gate) { job.CurrentPath = source; job.Bytes = 0; job.TotalBytes = 0; }
+            FileSystemEntryDto? sourceInfo = null;
+            FileSystemEntryDto? destinationInfo = null;
+            var directory = false;
+            var identifiedFile = false;
+            try
+            {
+                sourceInfo = await GetUserInfoAsync(job, source, ct) ?? throw new FileNotFoundException("Source path was not found.", source);
+                directory = sourceInfo.Type == FileSystemEntryType.Directory;
+                destinationInfo = destination is null ? null : await GetUserInfoAsync(job, destination, ct);
+                identifiedFile = !directory;
+                if (destinationInfo is not null && !(directory && destinationInfo.Type == FileSystemEntryType.Directory) && !replace)
+                {
+                    var choices = !directory && destinationInfo.Type != FileSystemEntryType.Directory
+                        ? new[] { FileOperationDecision.Replace, FileOperationDecision.Skip, FileOperationDecision.KeepBoth }
+                        : new[] { FileOperationDecision.Skip, FileOperationDecision.KeepBoth };
+                    var decision = await AskAsync(job, "conflict", source, destination, "Destination already exists.", choices);
+                    if (decision == FileOperationDecision.Skip) return Skip(job, source, "Destination already exists.");
+                    if (decision == FileOperationDecision.KeepBoth)
+                        destination = await CopyNameUserAsync(job, destination!, ct);
+                    replace = decision == FileOperationDecision.Replace;
+                    continue;
+                }
+
+                if (job.Request.Kind == FileOperationKind.Delete)
+                {
+                    await ExecuteUserAsync<bool>(job, UserExecutionOperationKind.FileDelete, source, cancellationToken: ct);
+                }
+                else if (job.Request.Kind == FileOperationKind.Move && directory && destinationInfo?.Type == FileSystemEntryType.Directory)
+                {
+                    // Directory.Move cannot merge into an existing directory. Reproduce the
+                    // established job semantics through identity-bound enumeration and child
+                    // moves, then remove the now-empty source directory as that same user.
+                    var children = await ExecuteUserAsync<DirectoryDto>(job, UserExecutionOperationKind.FileListDirectory, source, cancellationToken: ct);
+                    var complete = true;
+                    foreach (var child in children.Directories.Select(item => item.Path).Concat(children.Files.Select(item => item.Path)))
+                        complete &= await ProcessUserExecutionAsync(job, child, Path.Combine(destination!, Path.GetFileName(child)));
+                    if (complete)
+                        await ExecuteUserAsync<bool>(job, UserExecutionOperationKind.FileDelete, source, cancellationToken: ct);
+                    job.ProcessedOne(source, complete);
+                    return complete;
+                }
+                else
+                {
+                    await ExecuteUserAsync<FileSystemEntryDto>(job,
+                        job.Request.Kind == FileOperationKind.Copy ? UserExecutionOperationKind.FileCopy : UserExecutionOperationKind.FileMove,
+                        source, destination, overwrite: replace, cancellationToken: ct);
+                }
+                job.ProcessedOne(source);
+                return true;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException)
+            {
+                if (ex is UnauthorizedAccessException && identifiedFile && IsElevated(job, source, destination))
+                {
+                    try
+                    {
+                        if (destination is not null && destinationInfo?.Type == FileSystemEntryType.Directory)
+                            throw new IOException("Destination is a directory.");
+                        await ExecutePrivilegedAsync(job, source, destination, replace);
+                        job.ProcessedOne(source);
+                        return true;
+                    }
+                    catch (Exception elevatedError) { ex = elevatedError; }
+                }
+                var code = ex switch
+                {
+                    UnauthorizedAccessException => "access-denied",
+                    NotSupportedException => "unsupported",
+                    InvalidOperationException => "user-execution-unavailable",
+                    FileNotFoundException or DirectoryNotFoundException => "not-found",
+                    IOException when OperatingSystem.IsWindows() && (ex.HResult & 0xffff) is 32 or 33 => "in-use",
+                    IOException when !OperatingSystem.IsWindows() && (ex.HResult & 0xffff) is 11 or 16 => "in-use",
+                    IOException when (ex.HResult & 0xffff) == (OperatingSystem.IsWindows() ? 112 : 28) => "disk-full",
+                    _ => "io-error",
+                };
+                var decision = await AskAsync(job, code, source, destination, ex.Message,
+                    [FileOperationDecision.Retry, FileOperationDecision.Skip]);
+                if (decision == FileOperationDecision.Skip) return Skip(job, source, ex.Message);
+                replace = false;
+            }
+        }
+    }
+
+    private async Task<FileSystemEntryDto?> GetUserInfoAsync(Job job, string path, CancellationToken cancellationToken)
+        => await ExecuteUserAsync<FileSystemEntryDto?>(job, UserExecutionOperationKind.FileGetInfo, path, cancellationToken: cancellationToken);
+
+    private async Task<string> CopyNameUserAsync(Job job, string path, CancellationToken cancellationToken)
+    {
+        var name = Path.GetFileName(path);
+        var dot = name.LastIndexOf('.');
+        var stem = dot > 0 ? name[..dot] : name;
+        var extension = dot > 0 ? name[dot..] : string.Empty;
+        for (long number = 2; ; number++)
+        {
+            var candidate = Path.Combine(Path.GetDirectoryName(path)!, $"{stem} ({number}){extension}");
+            if (await GetUserInfoAsync(job, candidate, cancellationToken) is null) return candidate;
+        }
+    }
+
+    private async Task<T> ExecuteUserAsync<T>(Job job, UserExecutionOperationKind operation, string? path = null,
+        string? destinationPath = null, bool overwrite = false, CancellationToken cancellationToken = default)
+    {
+        var context = job.ExecutionContext ?? throw new InvalidOperationException("A user-execution context is required.");
+        var response = await executionTransport.ExecuteAsync(new UserExecutionRequest(context.Identity, operation,
+            Path: path, DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid()), cancellationToken);
+        if (!response.Success)
+            throw response.ProblemCode switch
+            {
+                UserExecutionProblemCode.AccessDenied => new UnauthorizedAccessException("Access denied for the authenticated OS user."),
+                UserExecutionProblemCode.NotFound => new FileNotFoundException("User-execution path was not found.", path),
+                UserExecutionProblemCode.Conflict => new IOException("User-execution file operation failed."),
+                UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new ArgumentException("Invalid user-execution file request."),
+                _ => new InvalidOperationException("User-execution Helper is unavailable."),
+            };
+        try { return JsonSerializer.Deserialize<T>(Convert.FromBase64String(response.OutputBase64!), RelaxKonOSJsonOptions.Default)!; }
+        catch (Exception exception) when (exception is FormatException or JsonException)
+        {
+            throw new InvalidOperationException("User-execution Helper returned an invalid result.");
         }
     }
 
@@ -383,7 +527,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             foreach (var job in _jobs.Values) job.Cancellation.Cancel();
         }
     }
-    private sealed class Job(string owner, ClaimsPrincipal principal, StartFileOperationRequest request)
+    private sealed class Job(string owner, ClaimsPrincipal principal, StartFileOperationRequest request, UserExecutionContext? executionContext)
     {
         public readonly object Gate = new();
         public Guid Id { get; } = Guid.NewGuid();
@@ -391,6 +535,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         public string Owner { get; } = owner;
         public ClaimsPrincipal Principal { get; set; } = principal;
         public StartFileOperationRequest Request { get; } = request;
+        public UserExecutionContext? ExecutionContext { get; } = executionContext;
         public CancellationTokenSource Cancellation { get; } = new();
         public FileOperationState State = FileOperationState.Queued;
         public string? CurrentPath;

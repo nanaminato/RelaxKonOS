@@ -1,6 +1,6 @@
 # RelaxKonOS 有效 OS 执行身份（Effective OS User Execution）Goal
 
-> 状态：实施中（2026-09-22：Linux 文件、Git、Terminal、Guardian 与部署源文件已接入有效用户执行；Windows、批处理文件作业及若干安全收尾项仍未完成。）
+> 状态：实施中（2026-09-22：Linux 文件、批处理文件作业、Git、Terminal、Guardian 与部署源文件已接入有效用户执行；Windows 及若干安全收尾项仍未完成。）
 >
 > 建立日期：2026-09-22
 >
@@ -195,7 +195,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - 新增 `IUserExecutionService` 的 User Mode 验证 adapter。它不会切换 Server 身份。
 - Linux one-shot Helper 新增独立 `--user-execution` 入口：以 root 重新解析 UID、canonical username 与 home，拒绝 UID < 1000；在 `initgroups`、`setgid`、`setuid` 和 eUID/eGID 复核成功后才执行一项封闭文件操作。降权后没有特权 dispatcher 可返回。
 - `IFileService` 已替换为有效用户路由：User Mode 仍调用本地服务；Linux System Mode 通过独立 transport 调用 Helper。目标用户的权限拒绝首先返回 `elevation-required`；只有客户端在用户明确确认并完成管理员认证后才取得短期 capability，并通过既有 root/LocalSystem Helper 重试对应的受控操作；绝不静默提权或自动认证。
-- 特殊位置、目录枚举、读写、上传、删除、重命名、移动、复制、创建目录、属性和 POSIX mode 均覆盖这一文件通道。System Mode batch file jobs 尚未迁移，因此在启动时 fail closed，避免后台以 Server 账号执行。
+- 特殊位置、目录枚举、读写、上传、删除、重命名、移动、复制、创建目录、属性和 POSIX mode 均覆盖这一文件通道。System Mode batch file jobs 也会在 HTTP 请求存活时冻结有效用户 context；每一次后台枚举、冲突检查、复制、移动或删除均通过同一 one-shot Helper 完成，绝不在 Server 服务账号下打开用户路径。既有冲突决定、取消和 elevated retry 语义保持；目录合并移动按用户身份逐项执行。
 - Git 的 Linux 通道已迁移为专用 `GitExecute` operation：Helper 只使用固定位置的 Git binary，并在降权后以当前用户身份运行服务端 Git domain 生成的 arguments 与工作目录。没有 generic executable、shell 或环境字段。需要临时 AskPass 凭据的远程操作暂时 fail closed，直到凭据可在不进入 User Execution wire contract 的前提下安全注入。
 - Terminal 的 Linux System Mode 已迁移到专用 `--user-terminal` Helper 入口：它读取一次结构化、allowlisted shell 请求，重新验证身份并降权，然后通过固定 PTY broker 桥接 shell 标准输入输出到现有 SignalR 会话。当前只支持 bash/sh；窗口 resize 尚未传递给 broker，必须在正式发布前补齐。
 - Guardian workload 创建入口现在从 JWT `sub` 解析 canonical OS account；未声明 `runAs` 时默认当前用户，跨账户仍需要单独管理员批准。Server 会把 canonical launch account 与稳定 Linux UID/Windows SID 写入定义；Agent 在接收定义及每次启动前重新解析该账号并比对 UID/SID。旧定义缺少稳定身份时 fail closed，必须重新保存；Linux 继续使用 `runuser` 完成 child UID/GID/groups transition。
@@ -205,7 +205,6 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 ### 尚未实施（明确不跳过）
 
 - Windows LocalSystem named-pipe/SID impersonation。
-- 批处理文件作业迁移。它目前在 System Mode fail closed，避免后台以 Server 服务账号执行。
 - Git 的临时 AskPass 远程凭据路径；Terminal resize 与 Windows terminal impersonation。
 - 应用部署的完整用户工作负载 owner model：当前只保证从文件选择器导入源 archive 时按登录用户读取、随后由 deployment-owned staging 使用；Docker Engine 容器本身仍是宿主级资源。
 - Linux user-execution 的 install/upgrade audit、openat-style TOCTOU hardening、跨 filesystem 行为、取消处理和 root-owned 残留演练。
@@ -218,6 +217,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -c Debug --no-restore` | 通过 | 新增协议和 Server 代码可编译；仅有既存的 Linux/Windows 平台分析警告。 |
 | `dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj -c Debug --no-restore` | 通过 | Linux 降权 dispatcher 与独立 Helper 入口可编译。 |
 | `dotnet build RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj -c Debug --no-restore` | 通过 | Guardian stable UID/SID binding 与 Agent-side revalidation 可编译。 |
+| System Mode batch file jobs | 已完成代码迁移，集成暂缓 | Job 在入队时冻结 execution context；后台每一次路径读取/修改都经 User Execution Helper。真实多用户、冲突决定、取消与跨文件系统演练仍需要隔离 Linux 环境。 |
 | `dotnet build Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj -c Debug --no-restore` | 通过 | 共享 framework 回归构建。 |
 | `RelaxKonOS.Server.Tests` | 暂缓 | 当前桌面 SDK 在 restore graph 的 `RelaxKonOS.Core` 项目阶段无诊断即失败；该项目文件已注明可使用预构建 Server assembly 的本地 smoke 路径，但本环境的项目图仍未生成。待恢复环境修复后必须运行新增的 `VerifyUserExecutionContextContract`。 |
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |
