@@ -1,162 +1,91 @@
 package app.relaxkonos.mobile
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.ui.common.ElevationDialog
+import app.relaxkonos.mobile.ui.common.LocalAppContainer
+import app.relaxkonos.mobile.ui.common.collectAsStateValue
+import app.relaxkonos.mobile.ui.connect.LoginScreen
+import app.relaxkonos.mobile.ui.nav.Routes
+import app.relaxkonos.mobile.ui.nav.ShellScaffold
+import app.relaxkonos.mobile.ui.nav.ShellViewModel
+import app.relaxkonos.mobile.ui.theme.RelaxKonOSTheme
+import app.relaxkonos.mobile.ui.theme.applyAppLanguage
+import app.relaxkonos.mobile.ui.theme.applyAppNightMode
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+/**
+ * The single activity. It hosts Compose and nothing else.
+ *
+ * It extends `AppCompatActivity` for one reason: per-app language selection below API 33 is implemented
+ * by AppCompat, and that requires an AppCompat host activity (`RelaxKonOS.Mobile.V1.Design.md` §3.3,
+ * `more/appearance`). It is also a `FragmentActivity`, which is what `BiometricPrompt` needs.
+ */
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val container = (application as RelaxKonApplication).container
+        // Locale and night mode are applied before super.onCreate: AppCompat resolves both while
+        // attaching the base context, so applying them later would cost a second recreation.
+        runCatching { applyAppLanguage(container.appearance.language) }
+        runCatching { applyAppNightMode(container.appearance.colorMode) }
         super.onCreate(savedInstanceState)
-        setContent { RelaxKonOSTheme { RelaxKonOSApp() } }
-    }
-}
-
-private val navigationItems = listOf("Home", "Files", "Terminal", "Manage", "More")
-
-@Composable
-private fun RelaxKonOSTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = androidx.compose.ui.graphics.Color(0xFF8AB4F8),
-            background = androidx.compose.ui.graphics.Color(0xFF10151F),
-            surface = androidx.compose.ui.graphics.Color(0xFF1B2433),
-        ),
-        content = content,
-    )
-}
-
-@Composable
-private fun RelaxKonOSApp() {
-    var workspaceName by remember { mutableStateOf<String?>(null) }
-    if (workspaceName == null) LoginScreen(onConnected = { workspaceName = it })
-    else ShellScreen(workspaceName = workspaceName!!)
-}
-
-@Composable
-private fun LoginScreen(onConnected: (String) -> Unit) {
-    var serverUrl by remember { mutableStateOf("http://10.0.2.2:5090") }
-    var identifier by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("Connect to a RelaxKonOS server.") }
-    var connecting by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val api = remember { RelaxKonApi() }
-
-    Column(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-            Column(modifier = Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("RelaxKonOS", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-                Text("Mobile control center", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(serverUrl, { serverUrl = it }, Modifier.fillMaxWidth(), label = { Text("Server address") }, singleLine = true)
-                OutlinedTextField(identifier, { identifier = it }, Modifier.fillMaxWidth(), label = { Text("Username") }, singleLine = true)
-                OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-                Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(
-                    onClick = {
-                        connecting = true
-                        status = "Connecting…"
-                        scope.launch {
-                            when (val result = api.login(serverUrl, identifier, password)) {
-                                is LoginResult.Success -> onConnected(result.workspaceName)
-                                is LoginResult.Failure -> status = result.message
-                            }
-                            password = ""
-                            connecting = false
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    enabled = !connecting,
-                ) { Text(if (connecting) "Connecting…" else "Connect") }
+        setContent {
+            CompositionLocalProvider(LocalAppContainer provides container) {
+                RelaxKonApp(container)
             }
         }
     }
 }
 
+/**
+ * Root composable: sign-in until the session is active, the shell afterwards.
+ *
+ * The screen switch is driven by `AuthSession`'s state flow rather than by a callback from the login
+ * screen, so a session lost to a rejected refresh lands on the same sign-in screen as an explicit
+ * sign-out — with the stored credential still in the vault, ready for one fingerprint.
+ */
 @Composable
-private fun ShellScreen(workspaceName: String) = BoxWithConstraints(
-    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-) {
-    when (layoutStateFor(maxWidth)) {
-        LayoutState.Compact -> CompactShell(workspaceName)
-        LayoutState.Medium -> WideShell(workspaceName, compactRail = true, showDetails = false)
-        LayoutState.Expanded -> WideShell(workspaceName, compactRail = false, showDetails = true)
-    }
-}
+private fun RelaxKonApp(container: AppContainer) {
+    val appearance = container.appearance
+    RelaxKonOSTheme(colorMode = appearance.colorMode, highContrast = appearance.highContrast) {
+        val sessionState = container.session.state.collectAsStateValue()
+        val shell: ShellViewModel = viewModel()
+        val scope = rememberCoroutineScope()
 
-@Composable
-private fun CompactShell(workspaceName: String) {
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Overview(workspaceName, Modifier.weight(1f))
-        NavigationBar {
-            navigationItems.forEach { item -> NavigationBarItem(selected = item == "Home", onClick = {}, icon = {}, label = { Text(item) }) }
+        // Sign-out and a rejected refresh both clear the navigation stacks;
+        // the saved connection profiles are untouched (design §4.1, rule 3).
+        LaunchedEffect(sessionState) {
+            if (sessionState !is SessionState.Active) {
+                shell.navigator.resetTo(Routes.HOME)
+            }
         }
-    }
-}
 
-@Composable
-private fun WideShell(workspaceName: String, compactRail: Boolean, showDetails: Boolean) {
-    Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        NavigationRail(Modifier.fillMaxHeight()) {
-            navigationItems.forEach { item -> NavigationRailItem(selected = item == "Home", onClick = {}, icon = {}, label = { Text(if (compactRail) item.first().toString() else item) }) }
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            when (sessionState) {
+                is SessionState.Active -> ShellScaffold(
+                    container = container,
+                    navigator = shell.navigator,
+                    session = sessionState,
+                    onSignOut = { scope.launch { container.session.logout() } },
+                )
+
+                else -> LoginScreen()
+            }
         }
-        Overview(workspaceName, Modifier.weight(1f))
-        if (showDetails) Card(Modifier.width(300.dp).fillMaxHeight()) { Text("Details", Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium) }
-    }
-}
 
-@Composable
-private fun Overview(workspaceName: String, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text(workspaceName, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-        Text("Connected. The Kotlin/Compose Android shell provides the authenticated session foundation; Files, Terminal, and management pages follow in M1–M3.")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusCard("System status", Modifier.weight(1f))
-            StatusCard("Server capabilities", Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun StatusCard(title: String, modifier: Modifier) = Card(modifier.height(100.dp)) {
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text(title)
+        // Global overlays live outside the screen switch so navigating never dismisses a prompt the
+        // user is still answering (design §3.4).
+        ElevationDialog(container)
     }
 }

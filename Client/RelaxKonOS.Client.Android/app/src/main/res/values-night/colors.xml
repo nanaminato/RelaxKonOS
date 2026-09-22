@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors the dark RelaxKonOS background colour; selected by the AppCompat DayNight theme. -->
+    <color name="window_background">#10151F</color>
+</resources>

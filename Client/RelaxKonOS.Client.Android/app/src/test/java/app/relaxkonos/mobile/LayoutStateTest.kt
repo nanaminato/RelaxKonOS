@@ -1,6 +1,8 @@
 package app.relaxkonos.mobile
 
 import androidx.compose.ui.unit.dp
+import app.relaxkonos.mobile.core.layout.LayoutState
+import app.relaxkonos.mobile.core.layout.layoutStateFor
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

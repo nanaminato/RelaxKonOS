@@ -61,7 +61,7 @@ Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码�
 
 ## 3. 页面清单
 
-路由常量集中在 Kotlin `ui/nav/Routes.kt`，与 `AuthApiRoutes` / `PrivilegedApiRoutes` 一样只定义一次。布局列标明该页在各断点下的形态（Compact `<600dp`、Medium `600–839dp`、Expanded `≥840dp`，沿用 [`LayoutState.kt`](../app/src/main/java/app/relaxkonos/mobile/LayoutState.kt) 的既有实现）。
+路由常量集中在 Kotlin `ui/nav/Routes.kt`，与 `AuthApiRoutes` / `PrivilegedApiRoutes` 一样只定义一次。布局列标明该页在各断点下的形态（Compact `<600dp`、Medium `600–839dp`、Expanded `≥840dp`，沿用 [`LayoutState.kt`](../app/src/main/java/app/relaxkonos/mobile/core/layout/LayoutState.kt) 的既有实现）。
 
 ### 3.1 认证入口（Shell 之外）
 
@@ -245,7 +245,7 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 ```text
 Keystore                     →  Keystore 之外
 ┌──────────────────────┐        ┌────────────────────────────────┐
-│ AES-256 密钥          │        │ CredentialVault (DataStore)     │
+│ AES-256 密钥          │        │ CredentialVault (noBackupDir)   │
 │ alias:                │  加解密 │  connection[]: iv + ciphertext  │
 │  rk.connection.vault  │◄──────►│  elevation[]:  iv + ciphertext  │
 │  rk.elevation.vault   │        │  记录键: serverUrl + account    │
@@ -279,6 +279,21 @@ Keystore                     →  Keystore 之外
 | `ERROR_LOCKOUT_PERMANENT` | 引导用设备凭据解锁设备后重试，或直接用密码输入 |
 | `KeyPermanentlyInvalidatedException` | 清除该保险箱中**受影响的那条记录**，保留服务器与账户，提示重新输入；在账户与安全页标注原因 |
 | 设备无强生物识别 / 未录入 | 入口不出现（R4），走密码输入 |
+
+**实现期确认的两处平台约束**
+
+1. **Keystore 没有"弱生物识别"标志位。** `KeyProperties` 只提供 `AUTH_BIOMETRIC_STRONG` 与
+   `AUTH_DEVICE_CREDENTIAL`，因此 D3 的时间窗密钥（`DeviceUnlockWindow`）只能声明
+   `AUTH_DEVICE_CREDENTIAL or AUTH_BIOMETRIC_STRONG`：强生物识别设备上两者皆可解封，`WEAK_ONLY` 设备上只有
+   设备凭据可以。`BiometricPrompt` 提供的认证方式必须与密钥接受的集合同步，否则会出现"提示框成功、解密失败"
+   的错配——那会被保险箱当成篡改并删除用户记录。
+   若设备只有弱生物识别且从未设置锁屏，窗口密钥无法创建：`VaultKeyManager` 抛 `VaultKeyUnavailableException`，
+   `VaultAccess` 归类为 `UnlockFailure.Unavailable`，界面回退到输入密码，且**不删除**任何记录
+   （"无法使用"不是"已失效"的证据）。
+
+2. **保存管理员密码失败不取消提权。** 勾选「在本机保存管理员密码」后若这次保存未成功（用户取消指纹、
+   保险箱不可用或密钥失效），提权对话框保持打开、勾选被清除并显示原因；用户再按一次「授权」即在**不保存**的
+   前提下继续提权。用户显式提出的保存请求不能被静默丢弃，但一次便利性失败也不应中断他已经发起的操作。
 
 ### 5.5 交互流程
 
@@ -412,46 +427,64 @@ connect/login（简洁模式）
 
 ## 6. Kotlin 工程落点
 
+下面是**已落地**的目录（与源码逐项对应；尚未落地的部分单列在表后）：
+
 ```text
 app/src/main/java/app/relaxkonos/mobile/
-├─ MainActivity.kt                      # 现状保留：承载 Compose
+├─ MainActivity.kt                      # AppCompatActivity 宿主：应用语言/夜间模式、会话裁决、全局叠加层
+├─ AppContainer.kt                      # 组合根（含 RelaxKonApplication）
 ├─ core/
-│  ├─ auth/  AuthSession.kt  TokenStore.kt  AuthInterceptor.kt
-│  ├─ net/   RelaxKonApi.kt（现状）  ProblemDetails.kt  RelaxKonJson.kt
-│  └─ layout/LayoutState.kt（现状）
+│  ├─ auth/  AuthSession.kt             # SessionState / TokenStore 同文件；401 单次刷新 + 单次重试
+│  ├─ layout/LayoutState.kt             # Compact / Medium / Expanded 断点
+│  └─ net/   RelaxKonApi.kt             # REST 实现（路由常量按域分组，同文件私有）
+│            RelaxKonGateway.kt         # 便于替换的网关接口
+│            Models.kt  ApiResult.kt  Wire.kt
 ├─ security/
-│  ├─ BiometricCapability.kt            # STRONG / WEAK_ONLY / DEVICE_CREDENTIAL_ONLY / NONE
+│  ├─ BiometricCapability.kt            # STRONG / WEAK_ONLY / DEVICE_CREDENTIAL_ONLY / NONE + 解锁模式映射
 │  ├─ VaultKeyManager.kt                # Keystore 密钥生成、失效检测、StrongBox 探测
-│  ├─ CredentialVault.kt                # 两个保险箱的读写、AAD 绑定、清零
-│  ├─ BiometricUnlock.kt                # BiometricPrompt + CryptoObject 封装
-│  └─ model/SavedConnection.kt  SavedElevationCredential.kt
+│  ├─ CredentialVault.kt                # 两个保险箱的读写、AAD 绑定、二进制容器
+│  ├─ BiometricUnlock.kt                # BiometricPrompt 封装 + VaultAccess（保存/解封全序列）
+│  └─ model/SavedConnection.kt
 ├─ data/
-│  ├─ AuthRepository.kt
-│  ├─ ElevationRepository.kt            # elevation-required → 提权 → 单次重试（与桌面同语义）
+│  ├─ ConnectionProfileStore.kt
+│  ├─ ElevationRepository.kt            # 含 ElevationCoordinator / ElevationAnswer(Provider)
 │  ├─ FilesRepository.kt
-│  ├─ TerminalRepository.kt
-│  └─ ManageRepository.kt               # Docker / Monitor / Guardian / Deployments
+│  └─ SystemRepository.kt
 └─ ui/
-   ├─ nav/    Routes.kt  MobileNavHost.kt  ShellScaffold.kt
+   ├─ nav/    Routes.kt  MobileNavigator.kt  MobileNavHost.kt  ShellScaffold.kt
    ├─ connect/ LoginScreen.kt  ConnectionListScreen.kt
    ├─ home/    HomeScreen.kt
-   ├─ files/   FilesScreen.kt  FileDetailScreen.kt  UploadScreen.kt
-   ├─ terminal/TerminalScreen.kt  SessionListScreen.kt
-   ├─ manage/  ManageScreen.kt  docker/  monitor/  processes/  guardian/  deployments/  webservers/
+   ├─ files/   FilesScreen.kt  FileDetailScreen.kt
+   ├─ manage/  ManageScreen.kt  monitor/MonitorScreen.kt  processes/ProcessesScreen.kt
    ├─ more/    MoreScreen.kt  AccountSecurityScreen.kt  ConnectionsScreen.kt
    │           AppearanceScreen.kt  DiagnosticsScreen.kt  AboutScreen.kt
-   └─ common/  ElevationDialog.kt  ConfirmDangerousDialog.kt  ErrorBanner.kt  ProgressSheet.kt
+   └─ common/  CommonState.kt  UiMessage.kt  Labels.kt  SectionCard.kt
+               ElevationDialog.kt  ConfirmDangerousDialog.kt  ErrorBanner.kt  ProgressSheet.kt
 ```
+
+尚未落地（按阶段归属，落地时补入上表）：
+
+| 计划文件 | 阶段 | 说明 |
+| --- | --- | --- |
+| `core/net/ProblemDetails.kt` `RelaxKonJson.kt` | — | 已由 `ApiResult.kt` + `Wire.kt` 覆盖，不单独拆文件 |
+| `data/AuthRepository.kt` | — | 认证职责已在 `AuthSession` 内，不另加一层 |
+| `data/TerminalRepository.kt`、`ui/terminal/*` | V1-C | 需要 SignalR 客户端与 PTY 渲染 |
+| `data/ManageRepository.kt`、`ui/manage/docker|guardian|deployments|webservers/*` | V1-E | Docker、守护工作负载、部署、Web 服务 |
+| `ui/files/UploadScreen.kt` | V1-C | 需要网关新增流式上传入口；当前 `RelaxKonGateway` 无上传方法 |
+| `security/model/SavedElevationCredential.kt` | — | 管理员凭据即 `VaultRecord`，无需额外模型 |
 
 依赖新增（仅 Android 侧 Gradle，不进 `Directory.Packages.props`）：
 
-| 依赖 | 用途 |
-| --- | --- |
-| `androidx.biometric:biometric` | `BiometricPrompt` / `BiometricManager` 兼容封装 |
-| `androidx.datastore:datastore` | 保险箱密文与连接档案的原子写入 |
-| `androidx.navigation:navigation-compose` | 导航图与 save/restore state |
-| `androidx.lifecycle:lifecycle-viewmodel-compose` | 页面状态与意图 |
-| `androidx.security:security-crypto` | 可选：若采用 `EncryptedFile` 承载密文 blob |
+| 依赖 | 用途 | 状态 |
+| --- | --- | --- |
+| `androidx.biometric:biometric` | `BiometricPrompt` / `BiometricManager` 兼容封装 | 已用于 `security/` |
+| `androidx.fragment:fragment` | `FragmentActivity` 宿主（`BiometricPrompt` 要求） | 已用于 `MainActivity` |
+| `androidx.lifecycle:lifecycle-viewmodel-compose` | 页面状态与意图 | 已用于各目的地状态 |
+| `androidx.compose.material:material-icons-core` | 导航项图标 | 已用于 `ui/nav/` |
+| `androidx.appcompat:appcompat` | API 33 以下的“应用语言”实现（`AppCompatDelegate.setApplicationLocales`） | 已用于 `MainActivity` + `more/appearance` |
+| `androidx.datastore:datastore` | 原子写入 | 未采用：现有实现用 `noBackupFilesDir` 下的临时文件 + `renameTo` 原子提交，`CredentialVault` / `ConnectionProfileStore` 已覆盖该需求 |
+| `androidx.navigation:navigation-compose` | 导航图与 save/restore state | 未采用：§4.1 的“每个目的地各自保有栈”由 `ui/nav/MobileNavigator.kt` 直接表达，避免为三条规则引入整张导航图 |
+| `androidx.security:security-crypto` | `EncryptedFile` | 未采用：密文已由 Keystore 密钥直接加密，`EncryptedFile` 只会再包一层非必要的加密 |
 
 Manifest 新增：
 
@@ -460,6 +493,9 @@ Manifest 新增：
 <!-- API 23–27 旧接口回退，按探测结果决定是否需要 -->
 <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 ```
+
+另有 `android:localeConfig="@xml/locales_config"`（en / zh-CN / ja）与
+`androidx.appcompat.app.AppCompatDelegate.autoStoreLocales`（API 33 以下的语言持久化）。
 
 `allowBackup="false"` 保持不动——凭据密文不得随系统备份迁移到其他设备。
 
