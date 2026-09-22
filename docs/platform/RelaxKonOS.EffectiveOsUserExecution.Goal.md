@@ -170,7 +170,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 
 1. Linux System Mode 首版支持的账户来源：仅本地 NSS 账户，还是也承诺 LDAP/SSSD；后者必须在身份、supplementary groups 和 UID reuse 场景实测。
 2. Windows 首版范围是否明确限制为本地账户；域用户应在何种 token/logon 与 offline 语义验证后启用。
-3. User execution 的初始路径范围：是否维持现有 Explorer 全路径能力，还是先限制为 canonical home 与管理员配置的显式 roots。无论选择哪一个，OS 权限仍是最终裁决。
+3. 已决：User execution 维持 Explorer 的全路径能力，和 Ubuntu 桌面一致；不以 canonical home 或应用 allowlist 限制普通浏览。降权完成后由 OS 权限作最终裁决。
 4. Linux worker 模型及其资源限制：one-shot Helper 内 fork、独立 worker binary，或受控 service worker；需要在 Goal 0 根据 .NET/POSIX 互操作风险、取消与审计要求确定。
 5. 哪些后台任务在文件迁移完成前必须 fail closed，而不是继续以 Server 服务账号运行；Terminal、Git、Guardian 和应用部署不应被无意地遗留为不同身份模型。
 
@@ -183,7 +183,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 首版边界已冻结如下，后续实现不得通过兼容开关放宽：
 
 - Linux System Mode 只接受本地 NSS 可重新解析的非 root、UID ≥ 1000 账户；解析时必须同时验证 canonical username、UID 和绝对 home directory。LDAP/SSSD、UID 小于 1000 的服务账户及身份漂移均 fail closed。
-- 初始文件范围是目标身份的 canonical home。配置的额外 roots、跨 home 操作、符号链接/TOCTOU 的 openat-style 处理，必须随 Linux Helper 一并实现并经集成测试验证，不能提前启用。
+- 初始文件范围与 Ubuntu 桌面一致：允许浏览任意绝对路径，不设 RelaxKonOS 自己的 home-only allowlist。降权完成后由内核以目标 UID、supplementary groups、ACL 和目录 traversal permission 裁决；因此用户可浏览如 `/etc` 中实际可读的内容、使用有权限的组共享目录或项目目录，但不能读 `/root`、其他用户私有目录或无权写入的系统位置。root dispatcher 在降权前不打开、解析或验证调用者路径。
 - Windows 首版不启用 user execution；本地账户 SID impersonation 在真实 Windows Server 验证完成前返回 `unsupported-platform`/`helper-unavailable`，域账户明确不支持。
 - Linux worker 将使用独立的一次性降权执行单元；root dispatcher 不执行用户 I/O，也不允许降权代码回到特权 dispatcher。此项尚未实现。
 - Explorer/Desktop 文件 API 是首个迁移域。Terminal/PTY、Git、Guardian、应用部署和后台文件任务在迁移前不得宣称已具备跨用户执行能力。

@@ -48,8 +48,12 @@ public static class UserExecutionExecutor
 
     private static async Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, string home)
     {
-        var path = request.Path is null ? null : ValidatePath(request.Path, home);
-        var destination = request.DestinationPath is null ? null : ValidatePath(request.DestinationPath, home);
+        // Identity has already been permanently dropped.  Paths deliberately retain normal
+        // desktop semantics: any absolute host path is allowed here and the kernel evaluates the
+        // target user's UID, supplementary groups, ACLs and traversal permissions.  The root
+        // dispatcher never opens or resolves a caller-controlled path.
+        var path = request.Path is null ? null : ValidatePath(request.Path);
+        var destination = request.DestinationPath is null ? null : ValidatePath(request.DestinationPath);
         object result = request.Operation switch
         {
             UserExecutionOperationKind.FileListDirectory => List(path!),
@@ -88,10 +92,10 @@ public static class UserExecutionExecutor
     private static async Task<FileRead> ReadAsync(string path) { var content = await System.IO.File.ReadAllBytesAsync(path); if (content.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new IOException(); return new(Convert.ToBase64String(content), Path.GetFileName(path), ContentType(path)); }
     private static async Task<FileEntryDto> WriteAsync(string path, string content) { await System.IO.File.WriteAllBytesAsync(path, Decode(content)); return FileEntry(new FileInfo(path)); }
     private static bool Delete(string path) { if (System.IO.Directory.Exists(path)) System.IO.Directory.Delete(path, true); else if (System.IO.File.Exists(path)) System.IO.File.Delete(path); else throw new FileNotFoundException(); return true; }
-    private static FileSystemEntryDto Rename(string path, string name, string home) { ValidateName(name); var target = ValidatePath(Path.Combine(Path.GetDirectoryName(path)!, name), home); if (System.IO.Directory.Exists(path)) { System.IO.Directory.Move(path, target); return DirectoryEntry(target); } System.IO.File.Move(path, target); return ToInfo(FileEntry(new FileInfo(target))); }
+    private static FileSystemEntryDto Rename(string path, string name, string home) { ValidateName(name); var target = ValidatePath(Path.Combine(Path.GetDirectoryName(path)!, name)); if (System.IO.Directory.Exists(path)) { System.IO.Directory.Move(path, target); return DirectoryEntry(target); } System.IO.File.Move(path, target); return ToInfo(FileEntry(new FileInfo(target))); }
     private static FileSystemEntryDto Move(string source, string target, bool overwrite) { if (System.IO.Directory.Exists(source)) { if (System.IO.Directory.Exists(target) && overwrite) System.IO.Directory.Delete(target, true); System.IO.Directory.Move(source, target); return DirectoryEntry(target); } System.IO.File.Move(source, target, overwrite); return ToInfo(FileEntry(new FileInfo(target))); }
     private static FileSystemEntryDto Copy(string source, string target, bool overwrite) { if (System.IO.Directory.Exists(source)) { CopyDirectory(source, target, overwrite); return DirectoryEntry(target); } System.IO.File.Copy(source, target, overwrite); return ToInfo(FileEntry(new FileInfo(target))); }
-    private static async Task<FileEntryDto> UploadAsync(string directory, string name, string content, string home) { ValidateName(name); var path = ValidatePath(Path.Combine(directory, name), home); await System.IO.File.WriteAllBytesAsync(path, Decode(content)); return FileEntry(new FileInfo(path)); }
+    private static async Task<FileEntryDto> UploadAsync(string directory, string name, string content, string home) { ValidateName(name); var path = ValidatePath(Path.Combine(directory, name)); await System.IO.File.WriteAllBytesAsync(path, Decode(content)); return FileEntry(new FileInfo(path)); }
     private static bool Create(string path) { System.IO.Directory.CreateDirectory(path); return true; }
     private static FilePropertiesDto? Properties(string path)
     {
@@ -116,9 +120,7 @@ public static class UserExecutionExecutor
     };
     private static byte[] Decode(string value) { var bytes = Convert.FromBase64String(value); if (bytes.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ArgumentException(); return bytes; }
     private static void ValidateName(string name) { if (string.IsNullOrWhiteSpace(name) || name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.Contains('/') || name.Contains('\\')) throw new ArgumentException(); }
-    private static string ValidatePath(string path, string home) { if (!Path.IsPathFullyQualified(path)) throw new ArgumentException(); var full = Path.GetFullPath(path); if (!Within(full, home)) throw new UnauthorizedAccessException(); RejectLinks(home, full); return full; }
-    private static bool Within(string path, string home) => path.Equals(home, StringComparison.Ordinal) || path.StartsWith(Path.TrimEndingDirectorySeparator(home) + Path.DirectorySeparatorChar, StringComparison.Ordinal);
-    private static void RejectLinks(string home, string path) { for (var current = home; ; ) { if (System.IO.File.Exists(current) || System.IO.Directory.Exists(current)) if (System.IO.File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint)) throw new UnauthorizedAccessException(); if (current == path) break; var relative = Path.GetRelativePath(current, path); var next = relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(); if (next is null) break; current = Path.Combine(current, next); if (!System.IO.File.Exists(current) && !System.IO.Directory.Exists(current)) break; } }
+    private static string ValidatePath(string path) => !Path.IsPathFullyQualified(path) ? throw new ArgumentException() : Path.GetFullPath(path);
     private static void CopyDirectory(string source, string target, bool overwrite) { System.IO.Directory.CreateDirectory(target); foreach (var file in System.IO.Directory.EnumerateFiles(source)) System.IO.File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite); foreach (var dir in System.IO.Directory.EnumerateDirectories(source)) CopyDirectory(dir, Path.Combine(target, Path.GetFileName(dir)), overwrite); }
     private static UserExecutionResult Fail(UserExecutionProblemCode code, string message) => new(false, Error: message, ProblemCode: code);
     private static bool TryResolve(UserExecutionIdentity expected, out Account account)
