@@ -2,6 +2,9 @@ package app.relaxkonos.mobile
 
 import android.app.Application
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.RelaxKonApi
@@ -27,6 +30,7 @@ import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.security.unlockModeFor
 import app.relaxkonos.mobile.ui.theme.AppearancePreferences
 import app.relaxkonos.mobile.ui.theme.AppearanceState
+import app.relaxkonos.mobile.ui.common.UiMessage
 
 /**
  * Composition root.
@@ -56,6 +60,25 @@ class AppContainer(context: Context) {
     val vaultAccess = VaultAccess(vault, keyManager, BiometricUnlock())
 
     val profiles = ConnectionProfileStore(FileProfileStorage(appContext.noBackupFilesDir))
+
+    /**
+     * A user-visible notice that survives the sign-in-to-shell composition switch.
+     *
+     * Saving a credential happens while the login screen is still mounted, but its outcome is known
+     * immediately before the successful session switches that screen out. Keeping the notice at the
+     * process-owned composition root prevents a real "signed in, but password was not saved" result
+     * from being lost with the login ViewModel.
+     */
+    var pendingNotice by mutableStateOf<UiMessage?>(null)
+        private set
+
+    fun showNotice(notice: UiMessage) {
+        pendingNotice = notice
+    }
+
+    fun dismissNotice() {
+        pendingNotice = null
+    }
 
     /**
      * Reconciles the stored credential projection against the vault, once per process.

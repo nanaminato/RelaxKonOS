@@ -3,6 +3,7 @@ package app.relaxkonos.mobile
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -11,11 +12,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.ui.common.ElevationDialog
+import app.relaxkonos.mobile.ui.common.ErrorBanner
 import app.relaxkonos.mobile.ui.common.LocalAppContainer
 import app.relaxkonos.mobile.ui.common.collectAsStateValue
+import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.connect.LoginScreen
 import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.nav.ShellScaffold
@@ -72,15 +76,26 @@ private fun RelaxKonApp(container: AppContainer) {
         }
 
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            when (sessionState) {
-                is SessionState.Active -> ShellScaffold(
-                    container = container,
-                    navigator = shell.navigator,
-                    session = sessionState,
-                    onSignOut = { scope.launch { container.session.logout() } },
-                )
+            Box(Modifier.fillMaxSize()) {
+                when (sessionState) {
+                    is SessionState.Active -> ShellScaffold(
+                        container = container,
+                        navigator = shell.navigator,
+                        session = sessionState,
+                        onSignOut = { scope.launch { container.session.logout() } },
+                    )
 
-                else -> LoginScreen()
+                    else -> LoginScreen()
+                }
+
+                container.pendingNotice?.let { notice ->
+                    ErrorBanner(
+                        message = notice.text(),
+                        onRetry = null,
+                        onDismiss = container::dismissNotice,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                }
             }
         }
 

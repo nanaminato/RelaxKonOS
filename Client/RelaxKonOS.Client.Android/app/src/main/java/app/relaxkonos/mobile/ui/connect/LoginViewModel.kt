@@ -31,6 +31,7 @@ import app.relaxkonos.mobile.ui.common.problemMessage
 import app.relaxkonos.mobile.ui.common.unlockFailureLabel
 import app.relaxkonos.mobile.ui.common.unlockFailureMessage
 import app.relaxkonos.mobile.ui.common.withDebugDetail
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** The field a rejected click pointed at. One-shot: the screen focuses it, then clears the request. */
@@ -218,6 +219,19 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 report(result)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                // AuthSession has already published the successful server session in its finally
+                // block. Keep a local persistence failure from being swallowed with the sign-in
+                // screen, without ever exposing its raw detail in a release build.
+                val failure = UiMessage(R.string.error_generic)
+                    .withDebugDetail(error.message ?: error::class.java.simpleName)
+                if (container.session.state.value is app.relaxkonos.mobile.core.auth.SessionState.Active) {
+                    container.showNotice(failure)
+                } else {
+                    message = failure
+                }
             } finally {
                 credential.fill('\u0000')
                 isLoggingIn = false
@@ -318,7 +332,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun storeCredential(activity: FragmentActivity, login: SelectedLogin, credential: CharArray) {
         val mode = container.unlockMode(VaultKind.Connection)
         if (mode == null) {
-            message = UiMessage(R.string.login_credential_not_saved)
+            container.showNotice(UiMessage(R.string.login_credential_not_saved))
             return
         }
         val outcome = try {
@@ -342,11 +356,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             is VaultOperation.Success ->
                 container.profiles.setHasSavedCredential(login.normalizedServerUrl, login.normalizedIdentifier, true)
 
-            VaultOperation.Cancelled -> message = UiMessage(R.string.login_credential_not_saved)
+            VaultOperation.Cancelled -> container.showNotice(UiMessage(R.string.login_credential_not_saved))
 
-            is VaultOperation.Failed -> message = UiMessage(
-                R.string.login_credential_not_saved_reason,
-                listOf(unlockFailureLabel(getApplication<Application>(), outcome.failure)),
+            is VaultOperation.Failed -> container.showNotice(
+                UiMessage(
+                    R.string.login_credential_not_saved_reason,
+                    listOf(unlockFailureLabel(getApplication<Application>(), outcome.failure)),
+                ),
             )
         }
     }

@@ -6,6 +6,7 @@ import app.relaxkonos.mobile.core.net.LoginSession
 import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.isSessionExpired
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,7 +89,22 @@ class AuthSession(
         val normalized = serverUrl.trim().trimEnd('/')
         return when (val result = gateway.login(normalized, identifier, password)) {
             is ApiResult.Success -> {
-                afterSuccessfulLogin()
+                // Credential/profile work is deliberately performed before publishing the shell so a
+                // biometric prompt still has its login-screen host. It is nevertheless auxiliary to
+                // the server's successful authentication: a local I/O failure must not leave the
+                // state machine stuck in Authenticating forever. The caller can surface that failure
+                // after the shell appears, while the authenticated session is always made usable.
+                try {
+                    afterSuccessfulLogin()
+                } catch (cancellation: CancellationException) {
+                    // Cancellation means the screen or process is going away, not that local
+                    // credential work failed. Do not revive a session while its owner is cancelling.
+                    stateFlow.value = SessionState.SignedOut
+                    throw cancellation
+                } catch (error: Exception) {
+                    adopt(normalized, result.value)
+                    throw error
+                }
                 adopt(normalized, result.value)
                 result
             }

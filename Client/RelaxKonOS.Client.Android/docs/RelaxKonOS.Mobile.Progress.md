@@ -53,6 +53,7 @@
 - 四个概念分离为可单测的纯 Kotlin：`SelectedLogin` / `SavedCredentialState`（四态）/ `CredentialStatus`（状态行）/ `LoginDecision` + `decideLogin`（§5.1 决策表）。`core/auth/` 不依赖任何 Android 类型。
 - 登录页改为单形态：密码框始终可见、`value` 只表示本次手动输入；「已保存密码」由密码框外的状态行（锁形图标 + 文案）表达；按钮文案随决策变化（`登录` / `连接` / `连接中…`）；缺字段或需要输入密码时把焦点移到对应输入框。原「简洁模式」与「指纹登录 / 改用密码」双按钮路径删除。
 - 保存动作仍在认证成功之后（`AuthSession.login` 的 `afterLogin` 回调）；认证失败不触碰任何已存凭据，`401 invalid-credential` **不再删除**连接保险箱里的密码（§7.3，相对旧实现的行为变更）。保存失败提示为「已登录，但密码没有保存：<原因>」。
+- 保存结果跨过登录页到 Shell 的界面切换：认证成功后发生的「未保存」提示由 `AppContainer.pendingNotice` 承载，在 Shell 顶部显示并可关闭；本地档案或凭据写入抛异常时，`AuthSession` 仍会发布已认证会话，不会永久停在「连接中…」。
 - D5 落地：密钥永久失效由「自动删除」改为「标记作废、保留记录与密文、禁止读取」。`VaultRecord` 增加 `state`（`Sealed` / `Invalidated`）、`CredentialVault.markInvalidated`、`VaultRecordInvalidatedException`；`beginOpen()` 与 `open()` 双双拒绝作废记录；保险箱文件格式升到 `RKV2`（每条记录多一个 state 字节），旧格式按版本不匹配降级为「无已保存凭据」，不写迁移。账户与安全页对作废记录标注原因；提权保险箱沿用同一规则，作废记录不再出现在「使用指纹确认」路径上。
 - `mapKeyException` 现在把 `UserNotAuthenticatedException` 归为「当前不可用」而不是「已失效」。D5 之后误判会把一条好记录永久标死，所以「无法使用不是已失效的证据」必须在 Keystore 层也成立。
 - 连接管理拆成两个互不替代的动作，且一律按 `(serverUrl, identifier)` 成对生效：**忘记密码**（只删凭据、保留登录记录）与**删除登录记录**（删凭据 + 删该条登录）。`ConnectionProfileStore.remove(serverUrl)` 的「按服务器全删」缺陷修复。

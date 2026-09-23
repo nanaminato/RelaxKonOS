@@ -5,6 +5,7 @@ import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.AuthTokens
 import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.loginSession
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,6 +58,36 @@ class AuthSessionTest {
         assertTrue(result is ApiResult.Success)
         assertEquals(SessionState.Authenticating, stateDuringCredentialSave)
         assertTrue(session.state.value is SessionState.Active)
+    }
+
+    @Test
+    fun `a failed post-login credential step still activates the server session`() = runTest {
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
+
+        val failure = runCatching {
+            session.login(server, "nana", "pw".toCharArray()) {
+                error("The local profile storage failed.")
+            }
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalStateException)
+        assertTrue(session.state.value is SessionState.Active)
+        assertEquals("access-1", session.accessToken)
+    }
+
+    @Test
+    fun `a cancelled post-login step does not revive a session`() = runTest {
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
+
+        val failure = runCatching {
+            session.login(server, "nana", "pw".toCharArray()) {
+                throw CancellationException("The sign-in screen left composition.")
+            }
+        }.exceptionOrNull()
+
+        assertTrue(failure is CancellationException)
+        assertEquals(SessionState.SignedOut, session.state.value)
+        assertNull(session.accessToken)
     }
 
     @Test
