@@ -84,6 +84,8 @@ public static class Bootstrapper
         services.AddHttpClient<IRelaxKonOSClient, RelaxKonOSClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "auth"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
+        services.AddHttpClient<ServerEndpointResolver>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<ITerminalSettingsClient, TerminalSettingsClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "terminal-settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()

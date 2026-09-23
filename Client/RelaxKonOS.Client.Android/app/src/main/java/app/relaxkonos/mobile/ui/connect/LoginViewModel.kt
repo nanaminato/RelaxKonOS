@@ -19,6 +19,8 @@ import app.relaxkonos.mobile.core.auth.credentialState
 import app.relaxkonos.mobile.core.auth.credentialStatus as credentialStatusOf
 import app.relaxkonos.mobile.core.auth.decideLogin
 import app.relaxkonos.mobile.core.net.ApiResult
+import app.relaxkonos.mobile.core.net.EndpointDiscoveryResult
+import app.relaxkonos.mobile.core.net.ServerEndpointDiscovery
 import app.relaxkonos.mobile.security.UnlockFailure
 import app.relaxkonos.mobile.security.VaultKeyInvalidatedException
 import app.relaxkonos.mobile.security.VaultKind
@@ -32,10 +34,14 @@ import app.relaxkonos.mobile.ui.common.unlockFailureLabel
 import app.relaxkonos.mobile.ui.common.unlockFailureMessage
 import app.relaxkonos.mobile.ui.common.withDebugDetail
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** The field a rejected click pointed at. One-shot: the screen focuses it, then clears the request. */
 enum class LoginField { Server, Identifier, Password }
+
+/** The address field's non-secret endpoint discovery feedback. */
+enum class EndpointDiscoveryState { Idle, Checking, Found, InvalidAddress, Unavailable }
 
 /**
  * Sign-in state for the single-form login screen.
@@ -65,6 +71,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     var isLoggingIn by mutableStateOf(false)
     var message by mutableStateOf<UiMessage?>(null)
     var connectionsOpen by mutableStateOf(false)
+    var endpointDiscoveryState by mutableStateOf(EndpointDiscoveryState.Idle)
+        private set
 
     var focusRequest by mutableStateOf<LoginField?>(null)
         private set
@@ -76,6 +84,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * on its own (§4.3).
      */
     private var windowUnlocked: Set<String> = emptySet()
+    private var discoveryJob: Job? = null
 
     /** The identity the form currently describes, i.e. the `(Service, Username)` pair (§2.1). */
     val selectedLogin: SelectedLogin get() = SelectedLogin(serverUrl, identifier)
@@ -103,7 +112,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         get() = decideLogin(selectedLogin, passwordText, savedCredentialState, isLoggingIn)
 
     fun changeServer(value: String) {
+        discoveryJob?.cancel()
         serverUrl = value
+        endpointDiscoveryState = EndpointDiscoveryState.Idle
     }
 
     fun changeIdentifier(value: String) {
@@ -176,6 +187,48 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * the same table, so there is no second path that could fail to fall back to the first.
      */
     fun submit(activity: FragmentActivity) {
+        if (serverUrl.isNotBlank()) {
+            discoverServerEndpoint { submitResolved(activity) }
+        } else {
+            submitResolved(activity)
+        }
+    }
+
+    /** Starts discovery when the address loses focus. A newer edit always cancels the older probe. */
+    fun discoverServerEndpoint(afterResolved: (() -> Unit)? = null) {
+        val entered = serverUrl
+        if (entered.isBlank() || isLoggingIn) return
+
+        discoveryJob?.cancel()
+        endpointDiscoveryState = EndpointDiscoveryState.Checking
+        discoveryJob = viewModelScope.launch {
+            when (val result = ServerEndpointDiscovery.discover(entered)) {
+                is EndpointDiscoveryResult.Found -> {
+                    if (serverUrl == entered) {
+                        serverUrl = result.serverUrl
+                        endpointDiscoveryState = EndpointDiscoveryState.Found
+                        afterResolved?.invoke()
+                    }
+                }
+
+                EndpointDiscoveryResult.InvalidAddress -> {
+                    if (serverUrl == entered) {
+                        endpointDiscoveryState = EndpointDiscoveryState.InvalidAddress
+                        if (afterResolved != null) message = UiMessage(R.string.login_server_invalid)
+                    }
+                }
+
+                EndpointDiscoveryResult.Unavailable -> {
+                    if (serverUrl == entered) {
+                        endpointDiscoveryState = EndpointDiscoveryState.Unavailable
+                        if (afterResolved != null) message = UiMessage(R.string.login_server_unavailable)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun submitResolved(activity: FragmentActivity) {
         when (val plan = decision) {
             // A sign-in is already in flight: the click is ignored rather than queued.
             null -> Unit

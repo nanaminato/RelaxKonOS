@@ -28,6 +28,10 @@
     <string name="login_title">登录</string>
     <string name="login_subtitle">连接到 RelaxKonOS 服务器。密码只用于在本机建立会话，不会发送到其他任何地方。</string>
     <string name="login_server_address">服务器地址</string>
+    <string name="login_server_checking">正在检查 HTTPS 和 HTTP 端点…</string>
+    <string name="login_server_found">已找到服务器，将使用首选端点。</string>
+    <string name="login_server_invalid">请输入主机名或 HTTP(S) 地址，例如：host:port。</string>
+    <string name="login_server_unavailable">此地址没有可访问的 RelaxKonOS 登录端点。</string>
     <string name="login_identifier">登录标识</string>
     <string name="login_password">密码</string>
     <string name="login_remember_hint">在本机保存密码，用指纹解封</string>

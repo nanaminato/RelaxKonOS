@@ -35,6 +35,10 @@
     <string name="login_title">Sign in</string>
     <string name="login_subtitle">Connect to a RelaxKonOS server. The password is used to open a session on this device and is sent nowhere else.</string>
     <string name="login_server_address">Server address</string>
+    <string name="login_server_checking">Checking HTTPS and HTTP endpoints…</string>
+    <string name="login_server_found">Server found. The preferred endpoint will be used.</string>
+    <string name="login_server_invalid">Enter a host name or an HTTP(S) address, for example: host:port.</string>
+    <string name="login_server_unavailable">No RelaxKonOS login endpoint could be reached at this address.</string>
     <string name="login_identifier">Account</string>
     <string name="login_password">Password</string>
     <string name="login_remember_hint">Save the password on this device and unlock it with the fingerprint</string>

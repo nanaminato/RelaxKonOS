@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -115,8 +116,11 @@ fun LoginScreen(modifier: Modifier = Modifier) {
                 OutlinedTextField(
                     value = viewModel.serverUrl,
                     onValueChange = { viewModel.changeServer(it) },
-                    modifier = Modifier.fillMaxWidth().focusRequester(serverFocus),
+                    modifier = Modifier.fillMaxWidth().focusRequester(serverFocus).onFocusChanged {
+                        if (!it.isFocused) viewModel.discoverServerEndpoint()
+                    },
                     label = { Text(stringResource(R.string.login_server_address)) },
+                    supportingText = { endpointDiscoveryStatus(viewModel.endpointDiscoveryState) },
                     singleLine = true,
                     enabled = !viewModel.isLoggingIn,
                 )
@@ -126,7 +130,7 @@ fun LoginScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.fillMaxWidth().focusRequester(identifierFocus),
                     label = { Text(stringResource(R.string.login_identifier)) },
                     singleLine = true,
-                    enabled = !viewModel.isLoggingIn,
+                    enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking,
                 )
                 PasswordTextField(
                     value = viewModel.passwordText,
@@ -161,7 +165,7 @@ fun LoginScreen(modifier: Modifier = Modifier) {
 
                 Button(
                     onClick = { viewModel.submit(activity) },
-                    enabled = !viewModel.isLoggingIn,
+                    enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(actionLabel)) }
 
@@ -218,4 +222,20 @@ private fun credentialStatusLine(status: CredentialStatus): (@Composable () -> U
             Text(label, style = MaterialTheme.typography.bodySmall, color = color)
         }
     }
+}
+
+@Composable
+private fun endpointDiscoveryStatus(state: EndpointDiscoveryState) {
+    val label = when (state) {
+        EndpointDiscoveryState.Idle -> return
+        EndpointDiscoveryState.Checking -> R.string.login_server_checking
+        EndpointDiscoveryState.Found -> R.string.login_server_found
+        EndpointDiscoveryState.InvalidAddress -> R.string.login_server_invalid
+        EndpointDiscoveryState.Unavailable -> R.string.login_server_unavailable
+    }
+    val color = when (state) {
+        EndpointDiscoveryState.InvalidAddress, EndpointDiscoveryState.Unavailable -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(stringResource(label), style = MaterialTheme.typography.bodySmall, color = color)
 }

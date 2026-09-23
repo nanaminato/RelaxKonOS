@@ -28,6 +28,10 @@
     <string name="login_title">サインイン</string>
     <string name="login_subtitle">RelaxKonOS サーバーに接続します。パスワードはこの端末でセッションを開始するためだけに使われ、他のどこにも送信されません。</string>
     <string name="login_server_address">サーバーアドレス</string>
+    <string name="login_server_checking">HTTPS と HTTP のエンドポイントを確認しています…</string>
+    <string name="login_server_found">サーバーが見つかりました。優先エンドポイントを使用します。</string>
+    <string name="login_server_invalid">ホスト名または HTTP(S) アドレスを入力してください。例: host:port</string>
+    <string name="login_server_unavailable">このアドレスで RelaxKonOS のログインエンドポイントに到達できません。</string>
     <string name="login_identifier">アカウント</string>
     <string name="login_password">パスワード</string>
     <string name="login_remember_hint">この端末にパスワードを保存し、指紋で解錠する</string>

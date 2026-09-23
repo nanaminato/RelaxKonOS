@@ -37,17 +37,28 @@ class VaultKeyManager : VaultCrypto {
     /** Creates the key for [kind] when it is missing. Idempotent. */
     fun ensureKey(kind: VaultKind, mode: VaultUnlockMode) {
         if (hasKey(kind)) {
+            VaultDiagnostics.trace("key.present", "${kind.name} alias already exists")
             return
         }
+        VaultDiagnostics.trace("key.create", "${kind.name} mode=$mode")
         try {
             generate(kind, mode)
-        } catch (error: GeneralSecurityException) {
-            // Typically a weak-biometric-only device with no device credential: the platform cannot
-            // satisfy the policy at all, so the vault reports "unavailable" rather than "tampered".
+        } catch (error: Exception) {
+            // Typically a weak-biometric-only device with no device credential, or a policy the
+            // platform rejects outright. Any failure to produce the key means the vault reports
+            // "unavailable" — it must never be reported as invalidated, because "we could not create
+            // a key" and "your fingerprint changed" call for opposite advice to the user.
+            VaultDiagnostics.failure("key.create.failed", error)
             throw VaultKeyUnavailableException("Unable to create the ${kind.name} vault key.", error)
-        } catch (error: IllegalArgumentException) {
-            throw VaultKeyUnavailableException("The ${kind.name} vault key policy was rejected.", error)
         }
+        // A key generator that accepts a policy but stores nothing would surface much later as "the
+        // key is missing", which reads as a biometric change. Verifying here keeps the contradiction
+        // at the point where it can still be described honestly.
+        if (!hasKey(kind)) {
+            VaultDiagnostics.trace("key.create.absent", "${kind.name} alias missing after generate()")
+            throw VaultKeyUnavailableException("The ${kind.name} vault key was not created.")
+        }
+        VaultDiagnostics.trace("key.created", "${kind.name} alias created")
     }
 
     fun hasKey(kind: VaultKind): Boolean = keyStore().containsAlias(alias(kind))
@@ -122,14 +133,23 @@ class VaultKeyManager : VaultCrypto {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
                 generator.init(strongBoxSpec(builder).build())
+                generator.generateKey()
+                VaultDiagnostics.trace("key.provider", "${kind.name} strongbox")
                 return
             } catch (_: StrongBoxUnavailableException) {
                 // Fall back to the TEE: hardware-backed-less devices must not lose the feature.
+                VaultDiagnostics.trace("key.provider", "${kind.name} strongbox unavailable, retrying on TEE")
             } catch (_: IllegalArgumentException) {
                 // Some vendors advertise StrongBox but reject the combination; retry without it.
+                VaultDiagnostics.trace("key.provider", "${kind.name} strongbox spec rejected, retrying on TEE")
             }
         }
         generator.init(builder.build())
+        // The alias only exists once the generator has been asked to produce the key: configuring a
+        // policy is not creating a key. Skipping this call made every later lookup of the alias
+        // return null, which the vault reported to the user as a changed fingerprint.
+        generator.generateKey()
+        VaultDiagnostics.trace("key.provider", "${kind.name} tee")
     }
 
     private fun strongBoxSpec(builder: KeyGenParameterSpec.Builder): KeyGenParameterSpec.Builder = builder
