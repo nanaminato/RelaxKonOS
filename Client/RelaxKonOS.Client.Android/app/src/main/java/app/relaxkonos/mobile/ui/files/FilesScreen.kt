@@ -162,12 +162,15 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun goUp() {
-        val parent = container.files.parentOf(path)
+        val parent = container.files.navigationParentOf(path)
         if (path.isBlank() || parent == path) {
             return
         }
         open(parent)
     }
+
+    val canGoUp: Boolean
+        get() = path.isNotBlank() && container.files.navigationParentOf(path) != path
 
     fun select(entry: RemoteEntry?) {
         selected = entry
@@ -459,7 +462,7 @@ fun FilesScreen(
 
         Card(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { viewModel.goUp() }, enabled = viewModel.path.isNotBlank() && viewModel.path != appContainer().files.parentOf(viewModel.path)) {
+                IconButton(onClick = { viewModel.goUp() }, enabled = viewModel.canGoUp) {
                     Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.files_action_up))
                 }
                 Text(

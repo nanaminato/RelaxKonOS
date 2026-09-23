@@ -286,6 +286,14 @@ Keystore                     →  Keystore 之外
 | `KeyPermanentlyInvalidatedException` | 把该保险箱中**由同一 alias 保护的全部记录标记为作废并保留密文，不删除记录**，保留服务器与账户，提示重新输入；用户之后手动登录成功且明确保存时轮换 alias，只重新保存当前记录（见 §5.2 的 2026-09-23 修订） |
 | 设备无强生物识别 / 未录入 | 入口不出现（R4），走密码输入 |
 
+**排障**：`AndroidKeyStore` 的行为无法在 JVM 单测里复现，而上面这四类拒绝在界面上各只有一句话，因此
+`security/VaultDiagnostics.kt` 提供 debug-only 的可过滤日志（tag `RelaxKonVault`，`adb logcat -s RelaxKonVault:D`）：
+能力探测的原始 `canAuthenticate` 码、解锁模式裁决、密钥创建与 provider（StrongBox / TEE）选择、alias 存在性、
+`BiometricPrompt` 的结果码与返回文本，以及 Keystore 异常被映射前的原始类型与消息。三类失败必须始终可区分——
+「设备不满足策略」「alias 不存在或从未创建」「密钥已作废」——因为只有最后一类才允许标记记录作废。日志只含
+保险箱种类、provider 决策、异常类与结果枚举，不含密码、账户、服务器地址、`Cipher` 或密钥材料；release 构建
+不安装 sink，`security` 包因此从不触碰 `android.util.Log`。
+
 **实现期确认的两处平台约束**
 
 1. **Keystore 没有"弱生物识别"标志位。** `KeyProperties` 只提供 `AUTH_BIOMETRIC_STRONG` 与

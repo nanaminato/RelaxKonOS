@@ -86,18 +86,26 @@ class BiometricUnlock {
         }
 
         val promptInfo = builder.build()
+        VaultDiagnostics.trace("prompt.show", "mode=$mode cryptoObject=${cipher != null}")
         return suspendCancellableCoroutine { continuation ->
             val prompt = BiometricPrompt(
                 activity,
                 mainExecutor(),
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        VaultDiagnostics.trace(
+                            "prompt.succeeded",
+                            "mode=$mode cipherReturned=${result.cryptoObject?.cipher != null}",
+                        )
                         if (continuation.isActive) {
                             continuation.resume(UnlockOutcome.Authorized(result.cryptoObject?.cipher))
                         }
                     }
 
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                        // Logged before the liveness check: an error that arrived after the caller went
+                        // away is still the platform's verdict on this attempt.
+                        VaultDiagnostics.trace("prompt.error", "code=$errorCode message=$errString")
                         if (!continuation.isActive) {
                             return
                         }
@@ -111,6 +119,7 @@ class BiometricUnlock {
 
                     override fun onAuthenticationFailed() {
                         // One non-matching sample is not fatal: the prompt stays open.
+                        VaultDiagnostics.trace("prompt.retry", "one sample not recognised")
                     }
                 },
             )
@@ -209,6 +218,10 @@ class VaultAccess(
         nowEpochMillis: Long,
         canReplaceInvalidatedKey: Boolean,
     ): VaultOperation<VaultRecord> = try {
+        VaultDiagnostics.trace(
+            "vault.save.begin",
+            "kind=${kind.name} mode=$mode mayRotateAlias=$canReplaceInvalidatedKey",
+        )
         val cipher = when (mode) {
             VaultUnlockMode.PerUseStrongBiometric -> {
                 keys.ensureKey(kind, mode)
@@ -233,6 +246,7 @@ class VaultAccess(
             }
         }
 
+        VaultDiagnostics.trace("vault.seal", "kind=${kind.name} authorized Cipher from mode=$mode")
         VaultOperation.Success(
             vault.seal(
                 kind = kind,
@@ -244,10 +258,12 @@ class VaultAccess(
                 nowEpochMillis = nowEpochMillis,
             ),
         )
-    } catch (_: VaultKeyInvalidatedException) {
+    } catch (error: VaultKeyInvalidatedException) {
         if (!canReplaceInvalidatedKey) {
+            VaultDiagnostics.failure("vault.save.invalidated", error)
             VaultOperation.Failed(UnlockFailure.KeyInvalidated)
         } else {
+            VaultDiagnostics.trace("vault.save.rotate", "${kind.name} alias unusable, replacing it")
             vault.markAllInvalidated(kind)
             keys.deleteKey(kind)
             saveOnce(
@@ -264,11 +280,13 @@ class VaultAccess(
                 canReplaceInvalidatedKey = false,
             )
         }
-    } catch (_: VaultKeyUnavailableException) {
+    } catch (error: VaultKeyUnavailableException) {
         // The device cannot satisfy the key policy at all. Nothing was corrupted and nothing needs to
         // be deleted, so the caller degrades to "type the password".
+        VaultDiagnostics.failure("vault.save.unavailable", error)
         VaultOperation.Failed(UnlockFailure.Unavailable)
-    } catch (_: VaultTamperException) {
+    } catch (error: VaultTamperException) {
+        VaultDiagnostics.failure("vault.save.tampered", error)
         VaultOperation.Failed(UnlockFailure.Tampered)
     }
 
@@ -281,6 +299,7 @@ class VaultAccess(
         subtitle: String,
         negativeButton: String,
     ): VaultOperation<CharArray> = try {
+        VaultDiagnostics.trace("vault.load.begin", "kind=${record.kind.name} mode=$mode")
         val cipher = when (mode) {
             VaultUnlockMode.PerUseStrongBiometric -> {
                 val pending = vault.beginOpen(record)
@@ -302,17 +321,20 @@ class VaultAccess(
             }
         }
 
+        VaultDiagnostics.trace("vault.open", "kind=${record.kind.name} record unsealed")
         VaultOperation.Success(vault.open(record, cipher))
-    } catch (_: VaultKeyInvalidatedException) {
+    } catch (error: VaultKeyInvalidatedException) {
+        VaultDiagnostics.failure("vault.load.invalidated", error)
         VaultOperation.Failed(UnlockFailure.KeyInvalidated)
-    } catch (_: VaultRecordInvalidatedException) {
-        // The record was already marked invalidated, so no prompt is shown for a dead key. The caller
-        // marks it again (idempotent) and falls back to typing the password — nothing is deleted (D5).
+    } catch (error: VaultRecordInvalidatedException) {
+        VaultDiagnostics.failure("vault.load.record-invalidated", error)
         VaultOperation.Failed(UnlockFailure.KeyInvalidated)
-    } catch (_: VaultKeyUnavailableException) {
+    } catch (error: VaultKeyUnavailableException) {
         // The stored record is untouched: an unavailable authenticator is not evidence of tampering.
+        VaultDiagnostics.failure("vault.load.unavailable", error)
         VaultOperation.Failed(UnlockFailure.Unavailable)
-    } catch (_: VaultTamperException) {
+    } catch (error: VaultTamperException) {
+        VaultDiagnostics.failure("vault.load.tampered", error)
         VaultOperation.Failed(UnlockFailure.Tampered)
     }
 
@@ -325,14 +347,19 @@ class VaultAccess(
      * [load]. Reading the record through the vault keeps the only security boundary in one place.
      */
     fun loadWithoutPrompt(record: VaultRecord): VaultOperation<CharArray> = try {
+        VaultDiagnostics.trace("vault.load.unattended", "kind=${record.kind.name} reading inside an open window")
         VaultOperation.Success(vault.open(record, vault.beginOpen(record)))
-    } catch (_: VaultKeyInvalidatedException) {
+    } catch (error: VaultKeyInvalidatedException) {
+        VaultDiagnostics.failure("vault.load.unattended.invalidated", error)
         VaultOperation.Failed(UnlockFailure.KeyInvalidated)
-    } catch (_: VaultRecordInvalidatedException) {
+    } catch (error: VaultRecordInvalidatedException) {
+        VaultDiagnostics.failure("vault.load.unattended.record-invalidated", error)
         VaultOperation.Failed(UnlockFailure.KeyInvalidated)
-    } catch (_: VaultKeyUnavailableException) {
+    } catch (error: VaultKeyUnavailableException) {
+        VaultDiagnostics.failure("vault.load.unattended.unavailable", error)
         VaultOperation.Failed(UnlockFailure.Unavailable)
-    } catch (_: VaultTamperException) {
+    } catch (error: VaultTamperException) {
+        VaultDiagnostics.failure("vault.load.unattended.tampered", error)
         VaultOperation.Failed(UnlockFailure.Tampered)
     }
 }

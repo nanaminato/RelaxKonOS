@@ -27,9 +27,11 @@ class FilesRepositoryTest {
     }
 
     @Test
-    fun `windows paths preserve their drive root when navigating and creating`() {
+    fun `windows drive roots use distinct operation and navigation parents`() {
         assertEquals("C:\\", repository.parentOf("C:\\work"))
         assertEquals("C:\\", repository.parentOf("C:\\"))
+        assertEquals("", repository.navigationParentOf("C:\\"))
+        assertEquals("C:\\", repository.navigationParentOf("C:\\work"))
         assertEquals("C:\\work\\new", repository.childOf("C:\\work", "new"))
         assertEquals("/etc/new", repository.childOf("/etc", "new"))
     }

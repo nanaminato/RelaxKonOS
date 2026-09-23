@@ -2,6 +2,7 @@ package app.relaxkonos.mobile
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,6 +25,7 @@ import app.relaxkonos.mobile.security.BiometricUnlock
 import app.relaxkonos.mobile.security.CredentialVault
 import app.relaxkonos.mobile.security.FileVaultStorage
 import app.relaxkonos.mobile.security.VaultAccess
+import app.relaxkonos.mobile.security.VaultDiagnostics
 import app.relaxkonos.mobile.security.VaultKeyManager
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultUnlockMode
@@ -128,11 +130,27 @@ class AppContainer(context: Context) {
      * user removing their fingerprints or turning the master switch off.
      */
     fun unlockMode(kind: VaultKind): VaultUnlockMode? {
-        if (!appearance.fingerprintEnabled) {
-            return null
+        val mode = if (!appearance.fingerprintEnabled) {
+            null
+        } else {
+            unlockModeFor(kind, biometrics.detect(), deviceUnlockWindowEnabled = true)
         }
-        return unlockModeFor(kind, biometrics.detect(), deviceUnlockWindowEnabled = true)
+        // Only transitions are logged: the probe above deliberately runs on every call, so logging
+        // every answer would bury the one line that changed. Nothing about the answer is cached.
+        val previous = lastUnlockModes[kind]
+        val seen = lastUnlockModes.containsKey(kind)
+        lastUnlockModes[kind] = mode
+        if (!seen || previous != mode) {
+            VaultDiagnostics.trace(
+                "unlock.mode",
+                "${kind.name} => ${mode ?: "null"} (fingerprintEnabled=${appearance.fingerprintEnabled})",
+            )
+        }
+        return mode
     }
+
+    /** Last `unlockMode` answer per vault, for log de-duplication only. Never read as a decision. */
+    private val lastUnlockModes = mutableMapOf<VaultKind, VaultUnlockMode?>()
 
     /** The live authenticator tier, for the account and security page. */
     fun biometricCapability(): BiometricCapability = biometrics.detect()
@@ -158,13 +176,25 @@ class AppContainer(context: Context) {
     }
 }
 
-/** Holds the process-wide [AppContainer] so a recreated activity reuses the same session and vaults. */
+/**
+ * Holds the process-wide [AppContainer] so a recreated activity reuses the same session and vaults.
+ *
+ * It also installs the vault's diagnostic sink, and only in a debug build: the Keystore behaviour
+ * behind the credential vaults cannot be reproduced in a JVM test, so a real device needs a way to
+ * report which platform refusal it hit. A release build leaves the sink unset, so the security
+ * package never reaches for `android.util.Log` at all.
+ */
 class RelaxKonApplication : Application() {
     lateinit var container: AppContainer
         private set
 
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.DEBUG) {
+            VaultDiagnostics.sink = { event, detail ->
+                Log.d(VaultDiagnostics.TAG, if (detail == null) event else "$event: $detail")
+            }
+        }
         container = AppContainer(this)
     }
 }

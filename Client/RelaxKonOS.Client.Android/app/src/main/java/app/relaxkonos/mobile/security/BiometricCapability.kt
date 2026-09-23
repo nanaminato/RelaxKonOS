@@ -82,11 +82,44 @@ interface BiometricCapabilityDetector {
 
 /** [BiometricCapabilityDetector] backed by `androidx.biometric`. */
 class AndroidBiometricCapabilityDetector(private val context: Context) : BiometricCapabilityDetector {
+    /**
+     * The last answer that was written to the log, so a recomposition storm does not bury the one
+     * line that changed. This is *not* a cached answer: [detect] still probes the platform on every
+     * call, because a cached "usable" would survive the user removing their fingerprints.
+     */
+    @Volatile
+    private var lastLogged: String? = null
+
     override fun detect(): BiometricCapability {
         val manager = BiometricManager.from(context)
-        val strong = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
-        val weak = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS
-        val deviceCredential = manager.canAuthenticate(BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS
-        return capabilityFor(strong, weak, deviceCredential)
+        val strong = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        val weak = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        val deviceCredential = manager.canAuthenticate(BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+        val capability = capabilityFor(
+            strongAvailable = strong == BiometricManager.BIOMETRIC_SUCCESS,
+            weakAvailable = weak == BiometricManager.BIOMETRIC_SUCCESS,
+            deviceCredentialAvailable = deviceCredential == BiometricManager.BIOMETRIC_SUCCESS,
+        )
+        // The raw codes are kept because they collapse into one capability: BIOMETRIC_ERROR_NONE_ENROLLED
+        // and BIOMETRIC_ERROR_NO_HARDWARE both end up as "no strong biometrics", but only the first is
+        // something the user can fix by enrolling a finger.
+        val detail = "strong=${describe(strong)} weak=${describe(weak)} " +
+            "deviceCredential=${describe(deviceCredential)} => $capability"
+        if (detail != lastLogged) {
+            lastLogged = detail
+            VaultDiagnostics.trace("capability", detail)
+        }
+        return capability
+    }
+
+    /** Spells out the code: `BIOMETRIC_SUCCESS` is `0`, which reads as a failure when logged raw. */
+    private fun describe(code: Int): String = when (code) {
+        BiometricManager.BIOMETRIC_SUCCESS -> "SUCCESS"
+        BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "HW_UNAVAILABLE"
+        BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "NONE_ENROLLED"
+        BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "NO_HARDWARE"
+        BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "SECURITY_UPDATE_REQUIRED"
+        BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "STATUS_UNKNOWN"
+        else -> "code$code"
     }
 }

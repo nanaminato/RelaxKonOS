@@ -61,6 +61,8 @@
 - `CredentialUnlocked` 落地为「本进程内、窗口模式（D3）下已授权过的身份集合」：窗口内再次登录走 `VaultAccess.loadWithoutPrompt`，失败即回落为正常授权提示；按次强指纹模式恒为 false，不参与安全边界。
 - 新增 `ProblemCodes.LOGIN_RATE_LIMITED`（`429 login-rate-limited`）与对应文案：登录被限流时说「登录尝试过于频繁」而不是通用拒绝；它不参与任何凭据删除判定。
 - 三份 `strings.xml`（`values` / `values-zh-rCN` / `values-ja`）键集完全一致（275 键），并删除了不再使用的 `login_stored_credential_rejected`、`login_use_fingerprint`、`login_use_password`、`login_saved_credential`。
+- **修复指纹保存与解封完全不可用**（真机报「设备的指纹已变更」）：`VaultKeyManager.generate` 只调用了 `KeyGenerator.init()` 配置策略，却从未调用 `generateKey()`，因此两个保险箱的 Keystore alias 从未被创建（该文件自 `58b4c64d` 起即如此）。随后 `beginSeal` / `beginOpen` 拿到的 `getKey()` 为 `null`，抛出的「密钥缺失」被界面统一呈现为「设备的指纹已变更」，与 debug / release 无关——两条构建路径是同一份代码。现在补上 `generateKey()`，`ensureKey` 在建钥后校验 alias 确实存在，并把**任何**建钥失败归类为 `VaultKeyUnavailableException`：「拿不到密钥」不是「指纹变了」，两者给用户的建议相反。
+- 新增 debug-only 排障链路 `security/VaultDiagnostics.kt`（logcat tag `RelaxKonVault`，`adb logcat -s RelaxKonVault:D`）：记录 `canAuthenticate` 码（映射为 `SUCCESS` / `NONE_ENROLLED` / `NO_HARDWARE` 等名称——`BIOMETRIC_SUCCESS` 就是 `0`，原样打印会被读成失败）、`unlockMode` 裁决、密钥创建与 provider（StrongBox / TEE）选择、alias 存在性、`BiometricPrompt` 的结果码与返回文本，以及 Keystore 异常被分类前的原始类型与消息。能力探测与解锁模式只在结果**变化**时打印（探测本身仍每次调用都执行，不缓存结论），否则重组风暴会淹没关键行。日志只含保险箱种类、provider 决策、异常类与结果枚举，不含密码、账户、服务器地址、`Cipher` 或任何密钥材料；sink 由 `RelaxKonApplication` 仅在 debug 构建安装，release 构建保持未安装，`security` 包因此从不触碰 `android.util.Log`（`VaultDiagnosticsTest` 断言了这一点）。
 
 ## 已知限制
 
@@ -83,10 +85,11 @@
 - 使用 Gradle `:app:testDebugUnitTest` 执行单元测试：登录决策与身份键、凭据四态与显示投影、布局断点、
   认证状态机、保险箱加解密与 AAD 绑定、提权单次重试、生物识别能力映射、wire 时间戳解析、导航栈、能力门控。
 
-最近一次校验（2026-09-22）：
+最近一次校验（2026-09-23）：
 
-- `:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，Kotlin 编译零警告；
+- `:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL；单测 158 个、0 失败；
   产物为 `app/build/outputs/apk/debug/app-debug.apk`。
+- 真机（SM-S9380）已安装该 APK；指纹链路排障用 `adb logcat -s RelaxKonVault:D`。
 - 单元测试 12 个测试类、107 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 18、`AuthSessionTest` 14、
   `ElevationRepositoryTest` 13、`WireTest` 12、`BiometricCapabilityTest` 11、`ConnectionProfileStoreTest` 9、
   `MobileNavigatorTest` 10、`ProblemCodesTest` 8、`LayoutStateTest` 4、`TopDestinationTest` 4、`FilesRepositoryTest` 3、

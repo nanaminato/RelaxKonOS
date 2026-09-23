@@ -423,22 +423,27 @@ internal fun decodeUtf8(bytes: ByteArray): CharArray {
  * must not be reported as a dead key, because that would permanently brand a perfectly good record
  * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §4.1: unavailable is not invalidated).
  */
-internal fun mapKeyException(kind: VaultKind, error: Throwable): Nothing = when (error) {
-    is VaultKeyInvalidatedException -> throw error
-    is KeyPermanentlyInvalidatedException ->
-        throw VaultKeyInvalidatedException("The ${kind.name} vault key was invalidated by a biometric change.", error)
+internal fun mapKeyException(kind: VaultKind, error: Throwable): Nothing {
+    // The raw type and message are the only things that tell the four platform refusals apart, and
+    // none of them is presentable to the user. Logged before the mapping discards the difference.
+    VaultDiagnostics.failure("keystore.failure", error)
+    when (error) {
+        is VaultKeyInvalidatedException -> throw error
+        is KeyPermanentlyInvalidatedException ->
+            throw VaultKeyInvalidatedException("The ${kind.name} vault key was invalidated by a biometric change.", error)
 
-    is UnrecoverableKeyException ->
-        throw VaultKeyInvalidatedException("The ${kind.name} vault key can no longer be recovered.", error)
+        is UnrecoverableKeyException ->
+            throw VaultKeyInvalidatedException("The ${kind.name} vault key can no longer be recovered.", error)
 
-    is UserNotAuthenticatedException ->
-        throw VaultKeyUnavailableException(
-            "The ${kind.name} vault key needs a fresh authorization before it can be used.",
-            error,
-        )
+        is UserNotAuthenticatedException ->
+            throw VaultKeyUnavailableException(
+                "The ${kind.name} vault key needs a fresh authorization before it can be used.",
+                error,
+            )
 
-    is GeneralSecurityException ->
-        throw VaultKeyInvalidatedException("Keystore rejected the ${kind.name} vault key.", error)
+        is GeneralSecurityException ->
+            throw VaultKeyInvalidatedException("Keystore rejected the ${kind.name} vault key.", error)
 
-    else -> throw error
+        else -> throw error
+    }
 }

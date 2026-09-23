@@ -118,6 +118,17 @@ class FilesRepository(
         }
     }
 
+    /**
+     * The parent location used by the file-browser UI.
+     *
+     * A Windows drive root is its own filesystem parent for operations such as creating a
+     * directory, but its navigation parent is the virtual drive list (represented by an empty
+     * path). Keeping those two meanings separate lets the user return to the drive picker without
+     * widening any elevation scope.
+     */
+    internal fun navigationParentOf(path: String): String =
+        if (isDriveRoot(path)) "" else parentOf(path)
+
     private suspend fun transfer(
         sourcePath: String,
         destinationPath: String,

@@ -2,12 +2,9 @@ package app.relaxkonos.mobile.security
 
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
-import java.security.GeneralSecurityException
 import java.security.KeyStore
-import java.security.UnrecoverableKeyException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -73,7 +70,13 @@ class VaultKeyManager : VaultCrypto {
 
     private fun newCipher(kind: VaultKind, mode: Int, iv: ByteArray?): Cipher = try {
         val key = keyStore().getKey(alias(kind), null) as? SecretKey
-            ?: throw VaultKeyInvalidatedException("The ${kind.name} vault key is missing.")
+        if (key == null) {
+            // Either the key was never created, or the alias was wiped by an uninstall-like event.
+            // Both are "we have no key", not "the user's fingerprint changed": log which one it is
+            // before the vault collapses every missing-key case into one user-facing sentence.
+            VaultDiagnostics.trace("key.missing", "${kind.name} alias holds no key to initialise a Cipher with")
+            throw VaultKeyInvalidatedException("The ${kind.name} vault key is missing.")
+        }
         Cipher.getInstance(TRANSFORMATION).apply {
             if (iv == null) {
                 init(mode, key)
