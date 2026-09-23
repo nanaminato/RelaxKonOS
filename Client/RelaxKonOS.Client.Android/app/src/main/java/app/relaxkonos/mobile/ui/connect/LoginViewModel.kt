@@ -260,8 +260,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
                 is VaultOperation.Failed -> {
                     if (outcome.failure == UnlockFailure.KeyInvalidated) {
-                        // The record is marked, never deleted: it stays visible with the reason (§7.4).
-                        container.vault.markInvalidated(record)
+                        // One Keystore alias protects the entire connection vault. A dead alias means
+                        // every one of its records is unreadable, so mark all of them — never delete.
+                        container.vault.markAllInvalidated(VaultKind.Connection)
                         revision++
                     }
                     message = unlockFailureMessage(outcome.failure)

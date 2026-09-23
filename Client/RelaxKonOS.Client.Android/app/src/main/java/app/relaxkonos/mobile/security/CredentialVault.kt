@@ -233,13 +233,30 @@ class CredentialVault(
      */
     fun markInvalidated(record: VaultRecord) {
         val current = read(record.kind)
-        if (current.none { it.id == record.id }) {
+        if (current.none { it.id == record.id && it.state != VaultRecordState.Invalidated }) {
             return
         }
         write(
             record.kind,
             current.map { if (it.id == record.id) it.asInvalidated() else it },
         )
+    }
+
+    /**
+     * Marks every record in one vault as permanently unreadable, retaining their encrypted payloads.
+     *
+     * A [VaultKind] has one Keystore alias, not one key per record. Once that key is permanently
+     * invalidated, none of the records sealed by it can be opened. Marking the entire vault prevents
+     * the misleading state where only the first attempted login says "invalidated" while each sibling
+     * credential is equally unrecoverable. A later explicit save may create a replacement key and seal
+     * only the identity the user just authenticated as.
+     */
+    fun markAllInvalidated(kind: VaultKind) {
+        val current = read(kind)
+        if (current.none { it.state != VaultRecordState.Invalidated }) {
+            return
+        }
+        write(kind, current.map { it.asInvalidated() })
     }
 
     /** Touches the "last used" stamp after a successful server-side verification. */

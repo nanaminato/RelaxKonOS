@@ -268,6 +268,21 @@ class CredentialVaultTest {
     }
 
     @Test
+    fun `markAllInvalidated retains every record protected by one dead vault key`() {
+        val first = seal(VaultKind.Connection, "nana", "first")
+        val second = seal(VaultKind.Connection, "kana", "second")
+
+        vault.markAllInvalidated(VaultKind.Connection)
+
+        val records = vault.records(VaultKind.Connection)
+        assertEquals(2, records.size)
+        assertEquals(VaultRecordState.Invalidated, records.first { it.id == first.id }.state)
+        assertEquals(VaultRecordState.Invalidated, records.first { it.id == second.id }.state)
+        assertArrayEquals(first.ciphertext, records.first { it.id == first.id }.ciphertext)
+        assertArrayEquals(second.ciphertext, records.first { it.id == second.id }.ciphertext)
+    }
+
+    @Test
     fun `markInvalidated ignores a record that is no longer stored`() {
         val sealed = seal(VaultKind.Connection, "nana", "hunter2")
         vault.delete(sealed)

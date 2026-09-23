@@ -233,7 +233,7 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 
 **为什么提权保险箱更严格。** 提权密码一行就能改变宿主机状态（文件删除、服务启停、部署、宿主时区/主机名），且服务端只给 5 分钟、单 capability 的窗口。允许它被「PIN 解锁的长期密钥」保护，等于把设备 PIN 的强度降级为宿主管理员强度。宁可让用户每次手输，也不降级。
 
-**密钥永久失效不再删除记录（2026-09-23 修订）。** 用户新录入指纹会令 Keystore 密钥永久失效。两个保险箱的处置统一改为**标记作废、保留记录与密文、禁止读取**：记录仍在账户与安全页可见并标注原因，只有用户显式的「忘记密码」或「删除登录记录」才会删掉记录本身。生物识别链路上的任何失败——取消、不匹配、暂时锁定、密钥失效——都不自动丢弃用户保存过的凭据。见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md) §7.4（D5）。
+**密钥永久失效不再删除记录（2026-09-23 修订）。** 用户新录入指纹会令 Keystore 密钥永久失效。两个保险箱的处置统一改为**标记作废、保留记录与密文、禁止读取**：一个保险箱共用一个 Keystore alias，所以 alias 失效时该保险箱的全部记录都必须标记作废。用户手动登录成功并明确选择保存时，客户端删除失效 alias、创建新 alias、再次请求授权，只重新密封当前身份；其他旧记录保持作废。只有用户显式的「忘记密码」或「删除登录记录」才会删掉记录本身。生物识别链路上的任何失败——取消、不匹配、暂时锁定、密钥失效——都不自动丢弃用户保存过的凭据。见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md) §7.4（D5）。
 
 ### 5.3 不可变安全约束
 
@@ -283,7 +283,7 @@ Keystore                     →  Keystore 之外
 | `ERROR_USER_CANCELED` / `ERROR_NEGATIVE_BUTTON` | 静默回退到密码输入，不报错、不改变记录 |
 | `ERROR_LOCKOUT`（暂时锁定） | 提示稍后重试或改用密码输入 |
 | `ERROR_LOCKOUT_PERMANENT` | 引导用设备凭据解锁设备后重试，或直接用密码输入 |
-| `KeyPermanentlyInvalidatedException` | 把该保险箱中**受影响的那条记录标记为作废并保留密文，不删除记录**，保留服务器与账户，提示重新输入；在账户与安全页标注原因（见 §5.2 的 2026-09-23 修订） |
+| `KeyPermanentlyInvalidatedException` | 把该保险箱中**由同一 alias 保护的全部记录标记为作废并保留密文，不删除记录**，保留服务器与账户，提示重新输入；用户之后手动登录成功且明确保存时轮换 alias，只重新保存当前记录（见 §5.2 的 2026-09-23 修订） |
 | 设备无强生物识别 / 未录入 | 入口不出现（R4），走密码输入 |
 
 **实现期确认的两处平台约束**

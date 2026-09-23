@@ -160,11 +160,10 @@ fun ElevationDialog(container: AppContainer) {
                             }
                             is VaultOperation.Failed -> {
                                 if (outcome.failure == UnlockFailure.KeyInvalidated) {
-                                    // Only the affected record, and only marked: never deleted (D5).
-                                    savedRecord?.let {
-                                        container.vault.markInvalidated(it)
-                                        vaultRevision++
-                                    }
+                                    // The elevation vault uses one alias, so mark its records together
+                                    // and retain them all rather than deleting user data (D5).
+                                    container.vault.markAllInvalidated(VaultKind.Elevation)
+                                    vaultRevision++
                                 }
                                 answer.password.fill('\u0000')
                                 storeRequested = false
@@ -201,7 +200,7 @@ fun ElevationDialog(container: AppContainer) {
                                         if (outcome.failure == UnlockFailure.KeyInvalidated) {
                                             // The record is kept and marked, so the user can see why the
                                             // saved password stopped working (D5).
-                                            container.vault.markInvalidated(savedRecord)
+                                            container.vault.markAllInvalidated(VaultKind.Elevation)
                                             vaultRevision++
                                         }
                                         message = unlockFailureLabel(context, outcome.failure)

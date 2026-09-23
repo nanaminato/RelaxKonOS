@@ -341,7 +341,7 @@ fun decideLogin(
 | 用户取消 | 保持空 | 不动 | 重新点按钮，或手动输入密码 |
 | 指纹不匹配 / 暂时锁定 | 保持空 | 不动 | 稍后重试，或手动输入密码 |
 | 永久锁定 | 保持空 | 不动 | 先解锁设备再重试，或手动输入密码 |
-| 密钥永久失效 | 保持空 | **保留记录与密文，标记为 `Invalidated`**（D5），禁止读取 | 手动输入密码；成功并勾选保存后该记录被新密文替换 |
+| 密钥永久失效 | 保持空 | **保留记录与密文；同一 `VaultKind` 的共享 Keystore alias 保护的全部记录都标记为 `Invalidated`**（D5），禁止读取 | 手动输入密码并勾选保存；客户端轮换失效 alias、再次请求本次明确的授权，仅把当前身份重新密封 |
 | 本机无可用认证方式 | 保持空 | 不动，状态降为 `Unavailable` | 手动输入密码 |
 
 **取消是静默的**（V1 §5.4）：`ERROR_USER_CANCELED` / `ERROR_NEGATIVE_BUTTON` 不弹错误、不改记录。上表除「取消」外的情形都要给出原因，但绝不给出任何与密码内容有关的信息。
@@ -360,7 +360,7 @@ fun decideLogin(
 
 ### 7.4 密钥永久失效改为「标记」而非「删除」（D5）
 
-**变更点：** V1 §5.4 现行规则是「清除该保险箱中受影响的那条记录，保留服务器与账户」。本设计改为**保留记录和密文、标记为 `Invalidated`、禁止读取**。
+**变更点：** V1 §5.4 的旧规则是「清除该保险箱中受影响的记录，保留服务器与账户」。本设计改为**保留记录和密文、标记为 `Invalidated`、禁止读取**。一个 `VaultKind` 只有一个 Keystore alias，因此 alias 永久失效时，该保险箱内的所有记录都受影响；不能只把第一次尝试读取的那一条标成失效。
 
 理由：
 
@@ -371,8 +371,8 @@ fun decideLogin(
 实现：
 
 - `VaultRecord` 增加 `state: VaultRecordState { Sealed, Invalidated }`；转为 `Invalidated` 时保留 `iv` / `ciphertext`，但任何读取路径都必须拒绝解封。
-- 新增 `CredentialVault.markInvalidated(record)`；`open()` 对 `Invalidated` 记录直接抛 `VaultRecordInvalidatedException`。
-- `VaultAccess.load` 把该异常映射为 `UnlockFailure.KeyInvalidated`（与 Keystore 的 `KeyPermanentlyInvalidatedException` 同一出口），调用方只做「标记」，不再做「删除」。
+- 新增 `CredentialVault.markInvalidated(record)` 与 `markAllInvalidated(kind)`；`open()` 对 `Invalidated` 记录直接抛 `VaultRecordInvalidatedException`。后者用于共享 alias 失效，避免同保险箱的兄弟记录显示成可用。
+- `VaultAccess.load` 把该异常映射为 `UnlockFailure.KeyInvalidated`（与 Keystore 的 `KeyPermanentlyInvalidatedException` 同一出口），调用方只做「标记」，不再做「删除」。用户随后用手动密码成功登录并明确勾选保存时，`VaultAccess.save` 仅轮换一次失效 alias、重新请求生物识别授权，并重新密封当前身份；不会无限重试，也不会复活其他旧记录。
 - 保险箱文件格式 `MAGIC` 升版并新增 `state` 字节。按 [AGENTS.md](../../../AGENTS.md) 的 API 演进策略，**不写迁移适配**：旧文件按版本不匹配降级为「无已保存凭据」，用户重新保存一次即可。
 
 ### 7.5 同一规则适用于提权保险箱
@@ -428,8 +428,8 @@ CredentialStore(密文)
 | --- | --- |
 | `data/ConnectionProfileStore.kt` | `remove(serverUrl)` → `remove(serverUrl, identifier)`；`upsert` 已按对去重，保持 |
 | `security/model/SavedConnection.kt` | 直接改名 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey`（见 §12） |
-| `security/CredentialVault.kt` | `VaultRecordState`、`VaultRecord.state`、`markInvalidated()`、`VaultRecordInvalidatedException`、`open()` 拒绝作废记录、文件格式升版 |
-| `security/BiometricUnlock.kt` | `VaultAccess.load` 映射新异常；`save` 路径不变 |
+| `security/CredentialVault.kt` | `VaultRecordState`、`VaultRecord.state`、`markInvalidated()` / `markAllInvalidated()`、`VaultRecordInvalidatedException`、`open()` 拒绝作废记录、文件格式升版 |
+| `security/BiometricUnlock.kt` | `VaultAccess.load` 映射新异常；明确保存时轮换一次失效 alias 并重新密封当前身份 |
 | `ui/connect/LoginScreen.kt` | 表单改为单形态；按钮文案随决策；凭据状态行；错误提示按 `CredentialGap` 分派 |
 | `ui/connect/ConnectionListScreen.kt` | 每项两个动作：忘记密码 / 删除登录记录 |
 | `ui/more/ConnectionsScreen.kt` | 同上；修掉按 `serverUrl` 全删的缺陷 |

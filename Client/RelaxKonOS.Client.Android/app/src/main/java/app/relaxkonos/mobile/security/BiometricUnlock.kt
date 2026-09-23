@@ -172,6 +172,42 @@ class VaultAccess(
         subtitle: String,
         negativeButton: String,
         nowEpochMillis: Long,
+    ): VaultOperation<VaultRecord> = saveOnce(
+        kind = kind,
+        mode = mode,
+        serverUrl = serverUrl,
+        account = account,
+        password = password,
+        activity = activity,
+        title = title,
+        subtitle = subtitle,
+        negativeButton = negativeButton,
+        nowEpochMillis = nowEpochMillis,
+        canReplaceInvalidatedKey = true,
+    )
+
+    /**
+     * Performs one explicit save request, repairing a permanently invalid Keystore alias at most once.
+     *
+     * The alias is shared by every record of [kind]. A biometric enrolment change makes that alias
+     * unusable forever; merely reporting the failure leaves the user unable to save a replacement on
+     * every later login. The current password was both server-verified and explicitly offered for
+     * saving, so it is safe to replace the dead alias, request a fresh authorization, and seal this
+     * one identity. The other records stay present but are marked invalidated because the old alias
+     * could not possibly open them.
+     */
+    private suspend fun saveOnce(
+        kind: VaultKind,
+        mode: VaultUnlockMode,
+        serverUrl: String,
+        account: String,
+        password: CharArray,
+        activity: FragmentActivity,
+        title: String,
+        subtitle: String,
+        negativeButton: String,
+        nowEpochMillis: Long,
+        canReplaceInvalidatedKey: Boolean,
     ): VaultOperation<VaultRecord> = try {
         val cipher = when (mode) {
             VaultUnlockMode.PerUseStrongBiometric -> {
@@ -209,7 +245,25 @@ class VaultAccess(
             ),
         )
     } catch (_: VaultKeyInvalidatedException) {
-        VaultOperation.Failed(UnlockFailure.KeyInvalidated)
+        if (!canReplaceInvalidatedKey) {
+            VaultOperation.Failed(UnlockFailure.KeyInvalidated)
+        } else {
+            vault.markAllInvalidated(kind)
+            keys.deleteKey(kind)
+            saveOnce(
+                kind = kind,
+                mode = mode,
+                serverUrl = serverUrl,
+                account = account,
+                password = password,
+                activity = activity,
+                title = title,
+                subtitle = subtitle,
+                negativeButton = negativeButton,
+                nowEpochMillis = nowEpochMillis,
+                canReplaceInvalidatedKey = false,
+            )
+        }
     } catch (_: VaultKeyUnavailableException) {
         // The device cannot satisfy the key policy at all. Nothing was corrupted and nothing needs to
         // be deleted, so the caller degrades to "type the password".
