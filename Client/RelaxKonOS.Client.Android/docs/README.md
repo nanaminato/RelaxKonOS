@@ -6,6 +6,7 @@
 | --- | --- |
 | [`RelaxKonOS.Mobile.Design.md`](./RelaxKonOS.Mobile.Design.md) | Mobile Shell 初稿：应用目录、导航、手机/平板自适应、国际化、多主题、安全边界和验收。 |
 | [`RelaxKonOS.Mobile.V1.Design.md`](./RelaxKonOS.Mobile.V1.Design.md) | 初版（V1）可落地设计：功能集与能力门控、页面清单与路由、界面流转、指纹解锁已保存凭据（服务器密码与管理员密码）。 |
+| [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md) | 登录与本地凭据：身份唯一键、四个独立概念、登录决策表、密码框与「已保存密码」的关系、切账号/忘记密码/删除记录、明文生命周期。 |
 | [`RelaxKonOS.Mobile.Progress.md`](./RelaxKonOS.Mobile.Progress.md) | 已实现范围、验证记录、已知限制和下一阶段。 |
 | [`android-release.md`](./android-release.md) | Android 本地环境、构建、调试、签名和发布要求。 |
 

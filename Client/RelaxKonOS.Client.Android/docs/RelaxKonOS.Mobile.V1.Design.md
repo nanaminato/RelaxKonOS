@@ -68,9 +68,9 @@ Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码�
 | 路由 | 页面 | 作用 | 布局差异 |
 | --- | --- | --- | --- |
 | `connect/list` | 连接档案列表 | 多服务器选择、编辑、删除单条记录；显示该条是否已保存密码/是否受指纹保护 | 单栏列表；平板为列表 + 详情两栏 |
-| `connect/login` | 登录 | 服务器地址、登录标识、密码、记住连接、**使用指纹登录** | 单栏卡片；平板居中卡片 + 连接信息侧栏 |
+| `connect/login` | 登录 | 服务器地址、登录标识、密码、记住连接、已保存密码状态、**登录** | 单栏卡片；平板居中卡片 + 连接信息侧栏 |
 
-启动裁决（不是独立路由，是 `AuthSession` 的一个状态）：进程启动后先读本地连接档案 —— 无档案 → `connect/login` 完整表单；有档案 → `connect/login` 简洁模式（默认选中最近使用项，凭据不可见，主按钮为指纹登录）。
+启动裁决（不是独立路由，是 `AuthSession` 的一个状态）：进程启动后先读本地连接档案；无论是否有档案，均进入同一形态的 `connect/login`。有档案时仅默认选中最近使用项并显示该身份的「已保存密码」状态；密码输入框仍为空且始终可用。实际读取保存密码只在用户点击「登录」、且本次未手动输入密码时发生。完整状态模型与决策见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md)。
 
 密码输入框（登录页与提权对话框共用同一个控件）是**两态**的：默认掩码，点击尾部眼睛图标切成明文并**保持在明文**，再点一次回到掩码。它不是"按住才可见"的手势——长密码需要能看清，而不是靠按住按键维持。可见性只是展示状态（`rememberSaveable`），不写入会话、保险箱或任何文件；密码本身仍按 §5.3.2 的规则以 `CharArray` 承载并在请求结束后清零。
 
@@ -127,9 +127,9 @@ Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码�
 ```text
 启动
  │
- ├─ 无连接档案 ──────────────► connect/login（完整表单）
+ ├─ 无连接档案 ──────────────► connect/login（统一登录表单）
  │                                  │
- └─ 有连接档案 ──► connect/login（简洁模式，指纹登录）
+ └─ 有连接档案 ──► connect/login（统一登录表单；显示已保存密码状态）
                                     │
                          认证成功 → 拉取 ServerDescriptorDto
                                     │
@@ -208,6 +208,8 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 
 ## 5. 指纹解锁已保存凭据（核心需求）
 
+> 本章规定凭据保险箱的安全约束与解锁机制。**登录决策、密码输入框与本地凭据状态模型**（何时用手动密码、何时读保存密码、何时允许删记录）另见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md)。两文冲突时，本章 §5.3「不可变安全约束」优先。
+
 ### 5.1 需求分解
 
 | 编号 | 需求 | 交付物 |
@@ -223,13 +225,15 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 | --- | --- | --- |
 | 记录键 | `serverUrl + 登录标识` | `serverUrl + 宿主管理员账户名` |
 | 载荷 | 登录密码 | 管理员密码 |
-| 解锁时机 | 登录页点击「使用指纹登录」 | 提权对话框点击「使用指纹确认」 |
+| 解锁时机 | 登录页点击「登录」且密码框为空时 | 提权对话框点击「使用指纹确认」 |
 | 用途 | `POST /auth/login` | `POST /privileged/elevation` |
 | 指纹强度要求 | `BIOMETRIC_STRONG` 优先；不满足时可用设备凭据（见 §5.6） | **只接受 `BIOMETRIC_STRONG` 按次授权**；不满足则不保存 |
 | 保存前提 | 用户显式勾选「记住此服务器的登录凭据」 | 用户在提权对话框显式勾选「用指纹保存此管理员密码」 |
-| 清除时机 | 用户删除、密码被服务端拒绝、密钥永久失效 | 用户删除、密码被服务端拒绝、密钥永久失效 |
+| 清除时机 | 用户显式「忘记密码」或「删除登录记录」 | 用户显式删除、密码被服务端拒绝 |
 
 **为什么提权保险箱更严格。** 提权密码一行就能改变宿主机状态（文件删除、服务启停、部署、宿主时区/主机名），且服务端只给 5 分钟、单 capability 的窗口。允许它被「PIN 解锁的长期密钥」保护，等于把设备 PIN 的强度降级为宿主管理员强度。宁可让用户每次手输，也不降级。
+
+**密钥永久失效不再删除记录（2026-09-23 修订）。** 用户新录入指纹会令 Keystore 密钥永久失效。两个保险箱的处置统一改为**标记作废、保留记录与密文、禁止读取**：记录仍在账户与安全页可见并标注原因，只有用户显式的「忘记密码」或「删除登录记录」才会删掉记录本身。生物识别链路上的任何失败——取消、不匹配、暂时锁定、密钥失效——都不自动丢弃用户保存过的凭据。见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md) §7.4（D5）。
 
 ### 5.3 不可变安全约束
 
@@ -279,7 +283,7 @@ Keystore                     →  Keystore 之外
 | `ERROR_USER_CANCELED` / `ERROR_NEGATIVE_BUTTON` | 静默回退到密码输入，不报错、不改变记录 |
 | `ERROR_LOCKOUT`（暂时锁定） | 提示稍后重试或改用密码输入 |
 | `ERROR_LOCKOUT_PERMANENT` | 引导用设备凭据解锁设备后重试，或直接用密码输入 |
-| `KeyPermanentlyInvalidatedException` | 清除该保险箱中**受影响的那条记录**，保留服务器与账户，提示重新输入；在账户与安全页标注原因 |
+| `KeyPermanentlyInvalidatedException` | 把该保险箱中**受影响的那条记录标记为作废并保留密文，不删除记录**，保留服务器与账户，提示重新输入；在账户与安全页标注原因（见 §5.2 的 2026-09-23 修订） |
 | 设备无强生物识别 / 未录入 | 入口不出现（R4），走密码输入 |
 
 **实现期确认的两处平台约束**
@@ -288,7 +292,7 @@ Keystore                     →  Keystore 之外
    `AUTH_DEVICE_CREDENTIAL`，因此 D3 的时间窗密钥（`DeviceUnlockWindow`）只能声明
    `AUTH_DEVICE_CREDENTIAL or AUTH_BIOMETRIC_STRONG`：强生物识别设备上两者皆可解封，`WEAK_ONLY` 设备上只有
    设备凭据可以。`BiometricPrompt` 提供的认证方式必须与密钥接受的集合同步，否则会出现"提示框成功、解密失败"
-   的错配——那会被保险箱当成篡改并删除用户记录。
+   的错配——必须归类为解锁失败并保留用户记录，不能把它当成篡改后自动删除。
    若设备只有弱生物识别且从未设置锁屏，窗口密钥无法创建：`VaultKeyManager` 抛 `VaultKeyUnavailableException`，
    `VaultAccess` 归类为 `UnlockFailure.Unavailable`，界面回退到输入密码，且**不删除**任何记录
    （"无法使用"不是"已失效"的证据）。
@@ -314,22 +318,24 @@ Keystore                     →  Keystore 之外
               └─ 不支持 ────────► 明确告知「此设备不支持指纹，未保存密码」
 ```
 
-**指纹登录**
+**登录（统一决策）**
 
 ```text
-connect/login（简洁模式）
-   显示：服务器选择器、登录标识、[使用指纹登录]（主）、[使用密码]（次）
+connect/login（统一表单；密码框 value 始终只表示本次手动输入）
+   用户点击 [登录]
         │
-        ▼ 点击指纹
-   BiometricPrompt → 解出密码
-        │
-        ▼
+        ├─ PasswordText 非空 ─► 直接使用本次手动密码
+        ├─ PasswordText 为空且有 SavedCredential ─► BiometricPrompt → 临时解封密码
+        └─ PasswordText 为空且无 SavedCredential ─► 聚焦密码框，不发请求
+                                      │
+                                      ▼
    POST /auth/login { identifier, password, clientPlatform: "android", deviceName, clientVersion }
-        │
-        ├─ 200 ─► 拉取 ServerDescriptorDto ─► MobileShell
-        └─ 401 invalid-credential ─► 删除该条密码（保留 serverUrl + 标识）
-                                     ─► 提示「保存的密码已失效，请重新输入」
+                                      │
+        ├─ 200 ─► 拉取 ServerDescriptorDto ─► 如勾选保存才写入/更新凭据 ─► MobileShell
+        └─ 任意失败 ─► 立即清除本次明文；不删除、不覆盖已保存凭据
 ```
+
+生物识别取消、失败、锁定或密钥失效时均不读取或删除保存密码；密码框保持为空，用户仍可手动输入或重新尝试。密钥永久失效的记录标记为作废并保留记录，详见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md) §7。
 
 **指纹提权**
 
