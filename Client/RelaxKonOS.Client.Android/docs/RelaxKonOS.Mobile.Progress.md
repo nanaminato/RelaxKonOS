@@ -112,6 +112,50 @@
 APK 由 13.3 MB 增至 14.5 MB，`sync-desktop-icons.py --check` 复跑输出 "113 icons are up to date"（幂等）。**尚未做真机目视确认**：
 底部导航 26dp 槽位上的彩色应用图标在深色与高对比度主题下的对比度、文件列表行改用彩色字形后的信息密度，都需要按设备矩阵复核。
 
+## 登录链路修复与 debug 明文兜底（2026-09-23）
+
+对应两条要求：「正确的用户名密码也必须卸载重装才能登录」与「debug 构建且机器没有强密码时能否保存密码（只存一条、可读取）」。
+
+**根因：地址探测被当成了门禁。** `LoginViewModel.submit` 原先先做一次服务端地址探测（`ServerEndpointDiscovery`，
+`OPTIONS /api/v1.0/auth/login`），只有探测通过才发登录请求；探测失败直接写一条提示并 `return`，请求根本不发出。
+持久化的服务器地址一旦探测不过——改了端口或协议、中间有代理、探测路径被拒——正确凭据永远没有机会被发送；
+卸载重装会清掉 `noBackupFilesDir` 下的地址，于是「重装就能登录」，与症状完全自洽。修法是把它降回**优化**：
+`submit` 现在无条件进入 `submitResolved`，探测在后台并行跑，只用于润色「连不上」时的文案（`loginTransportMessage`
+按探测结论分派 `login_server_unavailable` / `login_server_invalid` / `error_connectivity`），且结果只在地址未被
+用户改过时才应用。这条原则已写进代码注释：**地址解析是优化，永远不是门禁。**
+
+**顺带修掉两条「登录页点击后永久卡住」的路径**（与主 bug 同属「点击没反应」这一症状族）：
+`signInWithSavedPassword` 原先在两个分支静默 `return`（既没有可用记录、也没有可用解锁方式时，点击等于什么都没发生），
+且 `isLoggingIn` 不在 `finally` 里清除——一次异常就会让整张表单（三个输入框 + 按钮）永久 disabled。现在无凭据可用时
+给出明确文案（`login_saved_password_unavailable`）并把焦点移回密码框，`isLoggingIn` 一律在 `finally` 复位。
+`VaultAccess` 的三个入口（`save` / `load` / `loadWithoutPrompt`）原先不捕获未知平台异常，现在统一经
+`unnameableVaultFailure(operation, error)` 归类为 `UnlockFailure.Unknown`，并在 `catch (Exception)` 之前先重抛
+`CancellationException`（否则协程取消会被吞成「未知失败」）。未知异常映射为 `Unknown` 而不是 `KeyInvalidated` 至关重要：
+前者提示「暂时不可用」，后者会把好记录 `markAllInvalidated` 永久标死，两者给用户的建议相反。
+
+**debug 明文兜底（设计文档 §8.1，决策 D10）。** `AndroidKeyStore` 的 `setUserAuthenticationParameters` 只接受
+`AUTH_BIOMETRIC_STRONG` 与 `AUTH_DEVICE_CREDENTIAL`，没有「弱生物识别」标志位；设备完全没有锁屏时
+（`BiometricCapability.None`）连接保险箱在结构上无法建钥，`unlockMode()` 恒为 `null`，「保存密码」整体不可用。
+为此新增 `security/DebugCredentialStore.kt`：仅 debug 构建、仅当设备无任何可用锁屏且用户已开启指纹保存总开关时，
+把**一条**凭据明文写入 `noBackupFilesDir/debug-credential.bin`（格式 `RKD1`）。边界用代码结构锁死：release 下
+`AppContainer.debugCredentials` 恒为 `null`，调用点全部走可空接收者；`save` 即替换，永远只有一条。界面每个出现处
+都写明「未加密」（登录页勾选框与提示、状态行、连接列表、安全页），忘记密码 / 删除登录记录 / 关闭指纹总开关 /
+清空全部四条删除路径全部接通。安全页会单独列出这条明文记录并标红，诊断导出含 `debugCredentialRecord=` 一行。
+
+界面与文案：三份 `strings.xml` 各新增 5 键（现 285 键，键集一致）：`login_remember_hint_debug`、
+`login_no_lock_screen_debug`、`login_saved_password_debug`、`login_credential_saved_debug`、
+`connections_saved_password_debug`、`account_security_debug_record_note`。
+
+调试诊断：登录决策链路新增 debug-only 跟踪点，走既有 `VaultDiagnostics` 通道（`adb logcat -s RelaxKonVault:D`，
+release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、为什么）、`login.discovery`（探测结论）、
+`login.result`（服务端结论）、`login.debug-store`（明文落盘）、`login.stored-path.failed`。
+
+校验（2026-09-23）：`:app:assembleDebug`、`:app:compileReleaseKotlin` 与 `:app:testDebugUnitTest --rerun-tasks`
+均 BUILD SUCCESSFUL，Kotlin 编译零警告；单测 **21 个测试类、194 个用例，0 失败 / 0 错误 / 0 跳过**
+（本轮新增 `DebugCredentialStoreTest` 13、`VaultAccessTest` 6，`SavedCredentialStateTest` 由 6 增至 10）；
+产物 `app/build/outputs/apk/debug/app-debug.apk` 14.4 MB。**根因修复与兜底逻辑尚未真机复现**：
+需要在「旧 APK 直接覆盖安装」的机器上确认登录不再被地址探测拦截，并在无锁屏设备上确认明文兜底可用。
+
 ## 已知限制
 
 - 连接保险箱的密码被服务端拒绝时**不**删除（§7.3）。代价是：用户已在服务端改密后，本机那条旧密码会一直失败，直到手动输入新密码并在成功后保存覆盖它。这是有意选择——删除只在用户显式「忘记密码」或「删除登录记录」时发生。
@@ -120,6 +164,8 @@ APK 由 13.3 MB 增至 14.5 MB，`sync-desktop-icons.py --check` 复跑输出 "1
   "弱生物识别"标志位，`setUserAuthenticationParameters` 只接受 `AUTH_BIOMETRIC_STRONG` 与 `AUTH_DEVICE_CREDENTIAL`。
   仅有弱生物识别且未设置锁屏的设备无法创建窗口密钥，此时降级为输入密码，且**不删除**任何已存记录。
   详见 `RelaxKonOS.Mobile.V1.Design.md` §5.4。
+- **完全没有锁屏的设备上，「保存密码」只由 debug 构建的明文兜底提供**（设计文档 §8.1 / 决策 D10）：该记录以**明文**
+  存于 `noBackupFilesDir`，界面上每个出现处都标注「未加密」。release 构建与有锁屏的设备一律不具备这条路径。
 - `androidx.lifecycle:lifecycle-viewmodel-compose` 固定在 `2.10.0`：`2.11.0` 起声明 `minCompileSdk 37`，而本模块编译于
   `compileSdk 36`。升 `compileSdk` 到 37 后应一并升回。
 - 真机、横竖屏旋转、分屏、软键盘、后台恢复与 Insets 仍需设备矩阵验证。
@@ -169,6 +215,18 @@ APK 由 13.3 MB 增至 14.5 MB，`sync-desktop-icons.py --check` 复跑输出 "1
   `markInvalidated` 后记录与密文仍在、两个读取入口都被拒绝、重新保存可替换；保险箱格式升版后旧文件降级为空；
   认证失败不触发登录后的凭据步骤；限流既有专门文案也不被当成凭据拒绝。
 - 仍未做设备矩阵验证：指纹授权、取消、失败、锁定、指纹变更后的「标记作废」提示都需要真机确认（见「后续步骤」）。
+
+最近一次校验（2026-09-23，登录链路修复与 debug 明文兜底落地后）：
+
+- `:app:assembleDebug`、`:app:compileReleaseKotlin` 与 `:app:testDebugUnitTest --rerun-tasks` 均 BUILD SUCCESSFUL，
+  Kotlin 编译零警告（release 变体一并编译，确认 `BuildConfig.DEBUG` 为假时 `debugCredentials` 的空分支成立）。
+- 单测 21 个测试类、194 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 26、`AuthSessionTest` 18、
+  `ConnectionProfileStoreTest` 16、`ProblemCodesTest` 15、`DebugCredentialStoreTest` 13、`ElevationRepositoryTest` 13、
+  `WireTest` 12、`BiometricCapabilityTest` 11、`MobileNavigatorTest` 10、`SavedCredentialStateTest` 10、
+  `LoginDecisionTest` 7、`DesktopIconsTest` 7、`SelectedLoginTest` 6、`VaultAccessTest` 6、`AppLanguageTest` 6、
+  `LayoutStateTest` 4、`TopDestinationTest` 4、`ServerEndpointDiscoveryTest` 3、`VaultDiagnosticsTest` 3、
+  `FilesRepositoryTest` 3、`RecentOperationJournalTest` 1。
+- 产物 `app/build/outputs/apk/debug/app-debug.apk` 14.4 MB；三份 `strings.xml` 均为 285 键且键集一致。
 
 ## 后续步骤
 

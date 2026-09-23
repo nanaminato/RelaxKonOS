@@ -105,6 +105,9 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
             appendLine("accessTokenHeld=" + (container.session.accessToken != null))
             appendLine("connectionVaultRecords=" + container.vault.records(VaultKind.Connection).size)
             appendLine("elevationVaultRecords=" + container.vault.records(VaultKind.Elevation).size)
+            // Debug-only, and a boolean rather than a count: there is never more than one record. A
+            // report that left out a plaintext password on disk would be the one line nobody could act on.
+            appendLine("debugCredentialRecord=" + (container.debugCredentials?.hasRecord() ?: false))
             appendLine("biometricCapability=" + container.biometricCapability().name)
             appendLine("fingerprintEnabled=" + container.appearance.fingerprintEnabled)
             appendLine("--- self check ---")

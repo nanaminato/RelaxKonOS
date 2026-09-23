@@ -21,7 +21,9 @@ import app.relaxkonos.mobile.core.auth.decideLogin
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.EndpointDiscoveryResult
 import app.relaxkonos.mobile.core.net.ServerEndpointDiscovery
+import app.relaxkonos.mobile.security.BiometricCapability
 import app.relaxkonos.mobile.security.UnlockFailure
+import app.relaxkonos.mobile.security.VaultDiagnostics
 import app.relaxkonos.mobile.security.VaultKeyInvalidatedException
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultOperation
@@ -96,16 +98,61 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     val hasLogins: Boolean get() = logins.isNotEmpty()
 
+    /**
+     * Whether the debug-only plaintext store may stand in for the vault.
+     *
+     * Three conditions, all necessary: a debug build (`AppContainer` builds no store otherwise), a
+     * device with **no lock screen at all** — the one case where `AndroidKeyStore` cannot create a
+     * user-authentication key, so the vault genuinely cannot exist — and the fingerprint master switch
+     * left on, because turning it off means "no password is stored at all". It is never a shortcut on a
+     * device that could use the vault.
+     */
+    val debugFallbackAvailable: Boolean
+        get() = container.debugCredentials != null &&
+            container.appearance.fingerprintEnabled &&
+            container.biometricCapability() == BiometricCapability.None
+
+    /** Whether the debug store holds the password for the identity currently in the form. */
+    private fun debugCredentialExists(): Boolean {
+        val login = selectedLogin
+        return login.isComplete &&
+            container.hasDebugCredential(login.normalizedServerUrl, login.normalizedIdentifier)
+    }
+
+    /**
+     * The saved-credential line for one identity, and the single place the debug fallback is folded in.
+     *
+     * Both the form and the connection list read this, so the row label and the field's status line can
+     * never disagree about whether a password is stored. A usable vault record always wins, and an
+     * invalidated one is never papered over: see [app.relaxkonos.mobile.core.auth.credentialState].
+     */
+    fun savedCredentialStatus(serverUrl: String, identifier: String): CredentialStatus {
+        val mode = container.unlockMode(VaultKind.Connection)
+        val vaultState = credentialState(container.vault.record(VaultKind.Connection, serverUrl, identifier), mode)
+        val fromDebugStore = debugFallbackAvailable &&
+            container.hasDebugCredential(serverUrl, identifier) &&
+            vaultState != SavedCredentialState.Available &&
+            vaultState != SavedCredentialState.Invalidated
+        return credentialStatusOf(credentialState(vaultState, fromDebugStore), mode, fromDebugFallback = fromDebugStore)
+    }
+
+    /** Whether the credential the sign-in button will use comes out of the debug store. */
+    private val usingDebugFallback: Boolean
+        get() = debugFallbackAvailable && debugCredentialExists() &&
+            credentialStatus == CredentialStatus.SavedInDebugBuild
+
     /** Whether the identity in the form has a saved password, and whether it can be used right now. */
     val savedCredentialState: SavedCredentialState
-        get() = revision.let { credentialState(storedRecord(), container.unlockMode(VaultKind.Connection)) }
+        get() = revision.let {
+            credentialState(
+                credentialState(storedRecord(), container.unlockMode(VaultKind.Connection)),
+                usingDebugFallback,
+            )
+        }
 
     /** The line rendered beside the password field. Never the password, only the fact. */
     val credentialStatus: CredentialStatus
-        get() = revision.let {
-            val mode = container.unlockMode(VaultKind.Connection)
-            credentialStatusOf(credentialState(storedRecord(), mode), mode)
-        }
+        get() = revision.let { savedCredentialStatus(selectedLogin.normalizedServerUrl, selectedLogin.normalizedIdentifier) }
 
     /** What the sign-in button will do on this click. */
     val decision: LoginDecision?
@@ -161,6 +208,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     /** "Forget the password": drops the credential, keeps the login (§6.3). */
     fun forgetPassword(login: SavedLogin) {
         container.vault.delete(VaultKind.Connection, login.serverUrl, login.identifier)
+        container.forgetDebugCredential(login.serverUrl, login.identifier)
         container.profiles.setHasSavedCredential(login.serverUrl, login.identifier, false)
         windowUnlocked = windowUnlocked - loginIdOf(login.serverUrl, login.identifier)
         message = null
@@ -170,6 +218,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     /** "Delete login record": drops the credential *and* this login, and no other account on it (§6.3). */
     fun deleteLogin(login: SavedLogin) {
         container.vault.delete(VaultKind.Connection, login.serverUrl, login.identifier)
+        container.forgetDebugCredential(login.serverUrl, login.identifier)
         container.profiles.remove(login.serverUrl, login.identifier)
         windowUnlocked = windowUnlocked - loginIdOf(login.serverUrl, login.identifier)
         revision++
@@ -185,51 +234,89 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      *
      * The button has no mode: this is the decision table of §5.1, and the button's label is derived from
      * the same table, so there is no second path that could fail to fall back to the first.
+     *
+     * The address is resolved first, but resolution is an **optimization and never a gate**. A probe
+     * cannot see everything the request can — an endpoint that answers `OPTIONS` oddly, a proxy, a
+     * captive portal, a stored address whose scheme or port no longer matches the server — and treating
+     * its verdict as a precondition meant the credentials the user had just typed were never sent at
+     * all, which reads exactly like "the correct password does not work". The verdict is kept and used
+     * to choose the sentence a transport failure shows; the request itself is always attempted.
      */
     fun submit(activity: FragmentActivity) {
-        if (serverUrl.isNotBlank()) {
-            discoverServerEndpoint { submitResolved(activity) }
-        } else {
+        val entered = serverUrl
+        if (entered.isBlank()) {
+            submitResolved(activity)
+            return
+        }
+
+        discoveryJob?.cancel()
+        endpointDiscoveryState = EndpointDiscoveryState.Checking
+        discoveryJob = viewModelScope.launch {
+            resolve(entered)
             submitResolved(activity)
         }
     }
 
-    /** Starts discovery when the address loses focus. A newer edit always cancels the older probe. */
-    fun discoverServerEndpoint(afterResolved: (() -> Unit)? = null) {
+    /**
+     * Probes the address after it loses focus, purely to give early feedback.
+     *
+     * It raises no message of its own: leaving a field is not an action yet, and the click is where an
+     * answer belongs. A newer edit always cancels the older probe.
+     */
+    fun discoverServerEndpoint() {
         val entered = serverUrl
         if (entered.isBlank() || isLoggingIn) return
 
         discoveryJob?.cancel()
         endpointDiscoveryState = EndpointDiscoveryState.Checking
-        discoveryJob = viewModelScope.launch {
-            when (val result = ServerEndpointDiscovery.discover(entered)) {
+        discoveryJob = viewModelScope.launch { resolve(entered) }
+    }
+
+    /**
+     * One probe, applied only while the field still holds the text that was probed.
+     *
+     * A stale verdict overwriting a newer address would send the request somewhere the user did not
+     * type, so the guard is not cosmetic.
+     */
+    private suspend fun resolve(entered: String) {
+        val result = ServerEndpointDiscovery.discover(entered)
+        if (serverUrl == entered) {
+            when (result) {
                 is EndpointDiscoveryResult.Found -> {
-                    if (serverUrl == entered) {
-                        serverUrl = result.serverUrl
-                        endpointDiscoveryState = EndpointDiscoveryState.Found
-                        afterResolved?.invoke()
-                    }
+                    serverUrl = result.serverUrl
+                    endpointDiscoveryState = EndpointDiscoveryState.Found
                 }
 
-                EndpointDiscoveryResult.InvalidAddress -> {
-                    if (serverUrl == entered) {
-                        endpointDiscoveryState = EndpointDiscoveryState.InvalidAddress
-                        if (afterResolved != null) message = UiMessage(R.string.login_server_invalid)
-                    }
-                }
+                EndpointDiscoveryResult.InvalidAddress -> endpointDiscoveryState = EndpointDiscoveryState.InvalidAddress
 
-                EndpointDiscoveryResult.Unavailable -> {
-                    if (serverUrl == entered) {
-                        endpointDiscoveryState = EndpointDiscoveryState.Unavailable
-                        if (afterResolved != null) message = UiMessage(R.string.login_server_unavailable)
-                    }
-                }
+                EndpointDiscoveryResult.Unavailable -> endpointDiscoveryState = EndpointDiscoveryState.Unavailable
             }
         }
+        VaultDiagnostics.trace(
+            "login.discovery",
+            when (result) {
+                is EndpointDiscoveryResult.Found -> "found"
+                EndpointDiscoveryResult.InvalidAddress -> "invalid-address"
+                EndpointDiscoveryResult.Unavailable -> "unavailable"
+            },
+        )
     }
 
     private fun submitResolved(activity: FragmentActivity) {
-        when (val plan = decision) {
+        val plan = decision
+        // The decision is the first thing worth having in a log: "the click did nothing" and "the click
+        // signed in with something else" are different bugs, and only this line tells them apart.
+        VaultDiagnostics.trace(
+            "login.decision",
+            when (plan) {
+                null -> "ignored, a sign-in is already in flight"
+                is LoginDecision.ManualPassword -> "manual password"
+                LoginDecision.UnlockSavedCredential -> "stored credential"
+                is LoginDecision.RequirePassword -> "password required (${plan.gap})"
+                is LoginDecision.MissingFields -> "missing fields"
+            },
+        )
+        when (plan) {
             // A sign-in is already in flight: the click is ignored rather than queued.
             null -> Unit
 
@@ -292,52 +379,102 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Path two: the stored password is unsealed after authorization, then used once (§5.2). */
+    /**
+     * Path two: a stored password is used, after authorization when it comes out of the vault (§5.2).
+     *
+     * Three things have to hold here, and each of them used to be a way to lose the sign-in button
+     * altogether:
+     *
+     * - the credential may come from the debug plaintext store instead of the vault, which needs no
+     *   authorization because nothing protects it;
+     * - a click that finds no credential at all must say so rather than returning silently;
+     * - the busy flag is cleared in a `finally`, so a failure anywhere in this path cannot leave every
+     *   field and the button disabled for the rest of the process.
+     */
     private fun signInWithSavedPassword(activity: FragmentActivity) {
-        val record = storedRecord() ?: return
-        val mode = container.unlockMode(VaultKind.Connection) ?: return
-        val login = SelectedLogin(record.serverUrl, record.account)
+        val login = selectedLogin
+        val record = storedRecord()
+        val mode = container.unlockMode(VaultKind.Connection)
         message = null
         isLoggingIn = true
         viewModelScope.launch {
-            when (val outcome = unseal(record, activity, mode)) {
-                is VaultOperation.Success -> {
-                    if (mode == VaultUnlockMode.DeviceUnlockWindow) {
-                        windowUnlocked = windowUnlocked + login.id
-                    }
-                    submitUnsealed(record, login, outcome.value)
-                }
+            try {
+                val credential = if (record != null && mode != null) {
+                    when (val outcome = unseal(record, activity, mode)) {
+                        is VaultOperation.Success -> {
+                            if (mode == VaultUnlockMode.DeviceUnlockWindow) {
+                                windowUnlocked = windowUnlocked + login.id
+                            }
+                            outcome.value
+                        }
 
-                // A dismissed prompt is silent: no error, no change to the record (§7.2).
-                VaultOperation.Cancelled -> Unit
+                        // A dismissed prompt is silent: no error, no change to the record (§7.2).
+                        VaultOperation.Cancelled -> return@launch
 
-                is VaultOperation.Failed -> {
-                    if (outcome.failure == UnlockFailure.KeyInvalidated) {
-                        // One Keystore alias protects the entire connection vault. A dead alias means
-                        // every one of its records is unreadable, so mark all of them — never delete.
-                        container.vault.markAllInvalidated(VaultKind.Connection)
-                        revision++
+                        is VaultOperation.Failed -> {
+                            if (outcome.failure == UnlockFailure.KeyInvalidated) {
+                                // One Keystore alias protects the entire connection vault. A dead alias
+                                // means every one of its records is unreadable, so mark all of them —
+                                // never delete.
+                                container.vault.markAllInvalidated(VaultKind.Connection)
+                                revision++
+                            }
+                            VaultDiagnostics.trace("login.unseal", "failed=${outcome.failure}")
+                            message = unlockFailureMessage(outcome.failure)
+                            return@launch
+                        }
                     }
-                    message = unlockFailureMessage(outcome.failure)
+                } else {
+                    // No usable vault record, so the debug store is what the button was pointing at.
+                    // It has no authorization step — anyone holding the phone can read it — which is
+                    // exactly why it exists only in a debug build on a device with no lock screen.
+                    val revealed = container.debugCredential(login.normalizedServerUrl, login.normalizedIdentifier)
+                    if (revealed == null) {
+                        VaultDiagnostics.trace("login.unseal", "no stored credential to unseal")
+                        message = UiMessage(R.string.login_saved_password_unavailable)
+                        focusRequest = LoginField.Password
+                        return@launch
+                    }
+                    revealed
                 }
+                submitUnsealed(login, record, credential)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                // Nothing in this path is supposed to throw, but a prompt the platform refuses to show
+                // or a profile file that cannot commit must not leave the form disabled forever.
+                VaultDiagnostics.failure("login.stored-path.failed", error)
+                message = UiMessage(R.string.error_generic)
+                    .withDebugDetail(error.message ?: error::class.java.simpleName)
+            } finally {
+                isLoggingIn = false
             }
-            isLoggingIn = false
         }
     }
 
     /**
-     * Signs in with a password that came out of the vault.
+     * Signs in with a stored password.
      *
      * A rejected password leaves the stored one exactly as it was, whether the server rejected it or the
      * request never got an answer (§7.3): deletion is an explicit user action, never a side effect of a
      * failed sign-in.
      */
-    private suspend fun submitUnsealed(record: VaultRecord, login: SelectedLogin, credential: CharArray) {
+    private suspend fun submitUnsealed(login: SelectedLogin, record: VaultRecord?, credential: CharArray) {
         try {
-            when (val result = container.session.login(record.serverUrl, record.account, credential) {}) {
+            val result = container.session.login(login.normalizedServerUrl, login.normalizedIdentifier, credential) {}
+            VaultDiagnostics.trace(
+                "login.result",
+                when (result) {
+                    is ApiResult.Success -> "success (stored credential)"
+                    is ApiResult.Problem -> "problem HTTP ${result.status} code=${result.code}"
+                    is ApiResult.Transport -> "transport (stored credential)"
+                },
+            )
+            when (result) {
                 is ApiResult.Success -> {
                     rememberLogin(login)
-                    container.vault.markUsed(record, System.currentTimeMillis())
+                    // Only a vault record carries a "last used" stamp; the debug store has none.
+                    record?.let { container.vault.markUsed(it, System.currentTimeMillis()) }
                     revision++
                 }
 
@@ -386,6 +523,17 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun storeCredential(activity: FragmentActivity, login: SelectedLogin, credential: CharArray) {
         val mode = container.unlockMode(VaultKind.Connection)
         if (mode == null) {
+            // The vault cannot exist on this device. A debug build can fall back to the plaintext store,
+            // which is the entire reason it exists; the notice says out loud that nothing protects it.
+            // Every other build — and every device that could host a key — keeps the honest refusal.
+            if (debugFallbackAvailable) {
+                container.debugCredentials?.save(login.normalizedServerUrl, login.normalizedIdentifier, credential)
+                container.profiles.setHasSavedCredential(login.normalizedServerUrl, login.normalizedIdentifier, true)
+                VaultDiagnostics.trace("login.debug-store", "saved unencrypted (debug build, device has no lock screen)")
+                revision++
+                container.showNotice(UiMessage(R.string.login_credential_saved_debug))
+                return
+            }
             container.showNotice(UiMessage(R.string.login_credential_not_saved))
             return
         }
@@ -468,9 +616,18 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         return problemMessage(result.code).withDebugDetail("HTTP ${result.status}; problem=${result.code}$trace")
     }
 
-    /** A transport result is also used for malformed responses and non-JSON 429/5xx responses. */
-    private fun loginTransportMessage(result: ApiResult.Transport): UiMessage =
-        UiMessage(R.string.error_connectivity).withDebugDetail(result.detail)
+    /**
+     * A transport result is also used for malformed responses and non-JSON 429/5xx responses.
+     *
+     * When the address probe could not reach a login endpoint either, that is the more useful sentence:
+     * it says "wrong address" instead of "network problem". The probe chooses the sentence, never
+     * whether the request is sent — see [submit].
+     */
+    private fun loginTransportMessage(result: ApiResult.Transport): UiMessage = when (endpointDiscoveryState) {
+        EndpointDiscoveryState.Unavailable -> UiMessage(R.string.login_server_unavailable)
+        EndpointDiscoveryState.InvalidAddress -> UiMessage(R.string.login_server_invalid)
+        else -> UiMessage(R.string.error_connectivity)
+    }.withDebugDetail(result.detail)
 
     private fun promptTitle() = getApplication<Application>().getString(R.string.vault_unlock_title)
 

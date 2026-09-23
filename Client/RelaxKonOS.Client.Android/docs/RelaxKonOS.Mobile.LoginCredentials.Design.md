@@ -409,6 +409,32 @@ CredentialStore(密文)
 | 为了显示 `••••••••` 而提前读明文 | 状态行由 `CredentialVault.record(...)` 的**存在性**派生，不涉及解密 |
 | 用 `bool IsFingerprintVerified` 当安全边界 | 边界是 Keystore 密钥策略 + `BiometricPrompt.CryptoObject`；`CredentialUnlocked` 明确声明不参与安全边界（§4.3） |
 
+### 8.1 debug 构建的明文兜底（D10）
+
+上面这张表的立场是「明文不落盘」。有一类设备让这条立场无法执行到底：**完全没有锁屏**的机器。
+`AndroidKeyStore` 的 `setUserAuthenticationParameters` 只接受 `AUTH_BIOMETRIC_STRONG` 与 `AUTH_DEVICE_CREDENTIAL`，
+不存在「弱生物识别」标志位。设备不设锁屏时，连接保险箱在结构上无法创建窗口密钥，`unlockMode()` 恒为 `null`。
+此时「保存密码」整体不可用——不是提示不够清楚，而是底层没有可用的密钥策略，任何界面文案都改变不了这一点。
+
+为了让调试构建在这种情况下仍能跑通登录闭环，新增 `security/DebugCredentialStore.kt`：debug 构建下，
+当设备没有任何可用锁屏时，把**一条**凭据以明文写入 `noBackupFilesDir/debug-credential.bin`。
+它是刻意的例外，因此边界用**代码结构**锁死，而不是靠文档约定：
+
+| 约束 | 实现 |
+| --- | --- |
+| release 构建永远拿不到明文 | `AppContainer.debugCredentials` 只在 `BuildConfig.DEBUG` 时创建实例，release 下恒为 `null`；所有调用点都以可空接收者访问，release 里根本不存在这条写入路径 |
+| 只在「确实没有锁屏」时启用 | 三个条件必须同时成立：实例存在、用户开启了指纹保存总开关、`biometricCapability() == BiometricCapability.None`（`LoginViewModel.debugFallbackAvailable`） |
+| 只保存一条 | 单文件单记录；`save` 即以新记录**替换**旧记录，不累积（`DebugCredentialStoreTest` 断言连续保存两次后文件里有且只有一个身份） |
+| 能读回来 | `reveal(serverUrl, identifier)` 返回新分配的 `CharArray` 副本，调用方用后清零；身份不匹配返回 `null` |
+| 界面必须说明「未加密」 | 勾选框提示（`login_remember_hint_debug` / `login_no_lock_screen_debug`）、保存后提示（`login_credential_saved_debug`）、状态行（`login_saved_password_debug`）、连接列表（`connections_saved_password_debug`）、安全页（`account_security_debug_record_note`）全部写明未加密 |
+| 删除路径必须接通 | 忘记密码、删除登录记录、关闭指纹总开关、安全页「清空全部」都调用 `DebugCredentialStore.delete` / `clear`；安全页单独列出这条记录并标红 |
+
+文件格式 `RKD1`（`magic(i32) | serverUrl(UTF) | account(UTF) | len(i32) | secret(bytes)`）。magic 不匹配或文件被截断时
+解码为「无记录」——与本仓库其它二进制格式的演进策略一致（不写迁移，版本不匹配即降级为空）。
+
+安全页与诊断导出都**显式列出**这条记录：`AccountSecurityScreen` 单列一项并注明未加密，`DiagnosticsScreen` 导出报告含
+`debugCredentialRecord=` 一行。若某个界面漏报这条明文密码，它就是这个屏幕上唯一不诚实的地方。
+
 ---
 
 ## 9. 落地方案
@@ -450,6 +476,9 @@ CredentialStore(密文)
 | `ConnectionProfileStoreTest`（改） | 按对删除只影响一条；同服务器多账号互不牵连 |
 | `CredentialVaultTest`（改） | `markInvalidated` 后记录与密文仍在、`open()` 被拒绝；「忘记密码」删记录；格式升版后旧文件降级为空 |
 | `AuthSessionTest`（改） | 认证失败不触碰凭据；`invalid-credential`、`429` 与 `Transport` 均不会修改保存凭据 |
+| `DebugCredentialStoreTest`（新） | §8.1 的兜底存储：连续保存两次后只剩一条、身份不匹配读取为空、`reveal` 返回可清零的副本、`delete` 只删匹配身份、`clear` 清空、异 magic 与截断文件降级为无记录、断言落盘内容确实含明文 |
+| `VaultAccessTest`（新） | 平台不可命名的异常变成 `Failed(Unknown)` 而不是逃逸；四种已知拒绝各自保留原结论；`Invalidated` 记录在触达 Keystore 之前就被拒 |
+| `SavedCredentialStateTest`（改） | §8.1 的兜底映射只填 `Absent` / `Unavailable`，绝不覆盖 `Available` / `Invalidated`；`SavedInDebugBuild` 优先于解锁方式 |
 
 ---
 
@@ -477,6 +506,7 @@ CredentialStore(密文)
 | D7 | 登录页是否保留「简洁模式」 | **取消**，单形态；「有保存密码」用状态行表达 | §6.1 |
 | D8 | 空密码登录 | **不允许**，不引入分支（服务端不支持） | §5.1 |
 | D9 | 认证成功但用户未勾选保存 | **不动**已有旧凭据；删除是独立动作 | §5.2、§7.3 |
+| D10 | 无锁屏设备（结构上无法建窗口密钥）能否保存密码 | **仅 debug 构建可以**，且需同时满足「设备无任何可用锁屏」与「用户开启指纹保存总开关」；明文落盘、只存一条、界面标注未加密、四条删除路径全部接通 | §8.1 |
 
 ## 12. 实施约束
 

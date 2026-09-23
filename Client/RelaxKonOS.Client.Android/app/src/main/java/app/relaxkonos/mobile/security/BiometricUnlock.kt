@@ -8,6 +8,7 @@ import androidx.fragment.app.FragmentActivity
 import java.util.concurrent.Executor
 import javax.crypto.Cipher
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Why unlocking did not complete. Mapped to localised text by the UI, never shown raw. */
@@ -56,9 +57,25 @@ sealed interface UnlockOutcome {
  * The authenticators offered by each prompt are exactly the ones the matching Keystore key accepts.
  * They must stay in step: a prompt that succeeded with an authenticator the key does not accept would
  * report a successful unlock and then fail to decrypt, which the vault has to treat as tampering.
+ *
+ * An interface rather than a concrete class so [VaultAccess]'s handling of a *refused* prompt — the
+ * case where the platform throws instead of answering — can be verified in a JVM test. That path is
+ * what used to leave a sign-in form permanently busy on a real device.
  */
-class BiometricUnlock {
+interface BiometricUnlock {
     suspend fun authorize(
+        activity: FragmentActivity,
+        mode: VaultUnlockMode,
+        cipher: Cipher?,
+        title: String,
+        subtitle: String,
+        negativeButton: String,
+    ): UnlockOutcome
+}
+
+/** [BiometricUnlock] backed by `androidx.biometric`. */
+class AndroidBiometricUnlock : BiometricUnlock {
+    override suspend fun authorize(
         activity: FragmentActivity,
         mode: VaultUnlockMode,
         cipher: Cipher?,
@@ -155,6 +172,24 @@ sealed interface VaultOperation<out T> {
     data class Success<T>(val value: T) : VaultOperation<T>
     data object Cancelled : VaultOperation<Nothing>
     data class Failed(val failure: UnlockFailure) : VaultOperation<Nothing>
+}
+
+/**
+ * The verdict for a refusal the vault has no name for.
+ *
+ * The platform can refuse in ways this client never enumerated: a Keystore provider that throws a
+ * runtime exception, a prompt the system declines to show at all, a `Cipher` factory that fails for a
+ * reason outside `GeneralSecurityException`. Letting such an exception escape lands in a UI coroutine
+ * that has no idea what to do with it — which is how a sign-in form ended up with its busy flag stuck
+ * on, every field and the button disabled until the process died.
+ *
+ * [UnlockFailure.Unknown] is the verdict that is always safe: it never deletes a record, never claims a
+ * key is dead, and always falls back to "type the password". Cancellation is not routed here — see the
+ * call sites, which rethrow it ahead of this.
+ */
+internal fun unnameableVaultFailure(operation: String, error: Exception): VaultOperation.Failed {
+    VaultDiagnostics.failure("vault.$operation.unexpected", error)
+    return VaultOperation.Failed(UnlockFailure.Unknown)
 }
 
 /**
@@ -288,6 +323,11 @@ class VaultAccess(
     } catch (error: VaultTamperException) {
         VaultDiagnostics.failure("vault.save.tampered", error)
         VaultOperation.Failed(UnlockFailure.Tampered)
+    } catch (error: CancellationException) {
+        // The caller went away; that is not a verdict on the vault.
+        throw error
+    } catch (error: Exception) {
+        unnameableVaultFailure(operation = "save", error = error)
     }
 
     /** Decrypts [record] after a successful biometric confirmation. */
@@ -336,6 +376,10 @@ class VaultAccess(
     } catch (error: VaultTamperException) {
         VaultDiagnostics.failure("vault.load.tampered", error)
         VaultOperation.Failed(UnlockFailure.Tampered)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        unnameableVaultFailure(operation = "load", error = error)
     }
 
     /**
@@ -361,5 +405,9 @@ class VaultAccess(
     } catch (error: VaultTamperException) {
         VaultDiagnostics.failure("vault.load.unattended.tampered", error)
         VaultOperation.Failed(UnlockFailure.Tampered)
+    } catch (error: Exception) {
+        // Same rule as the attended read: an unattended read is an optimization, so any surprise is
+        // simply "not this time" and the caller falls through to the authorized path.
+        unnameableVaultFailure(operation = "load.unattended", error = error)
     }
 }

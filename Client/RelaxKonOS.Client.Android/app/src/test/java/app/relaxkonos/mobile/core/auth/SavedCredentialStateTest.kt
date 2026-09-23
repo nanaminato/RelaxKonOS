@@ -75,4 +75,40 @@ class SavedCredentialStateTest {
         assertEquals(CredentialStatus.Unavailable, credentialStatus(SavedCredentialState.Unavailable, null))
         assertEquals(CredentialStatus.Invalidated, credentialStatus(SavedCredentialState.Invalidated, null))
     }
+
+    @Test
+    fun `the debug fallback fills exactly the two states that mean nothing usable is here`() {
+        assertEquals(SavedCredentialState.Available, credentialState(SavedCredentialState.Absent, debugFallbackAvailable = true))
+        assertEquals(SavedCredentialState.Available, credentialState(SavedCredentialState.Unavailable, debugFallbackAvailable = true))
+    }
+
+    @Test
+    fun `the debug fallback never overrides the vault`() {
+        // A usable protected record wins because it is the protected one, and an invalidated record must
+        // still be reported as dead: the user has to be told the old password is gone rather than quietly
+        // handed a different one.
+        assertEquals(SavedCredentialState.Available, credentialState(SavedCredentialState.Available, debugFallbackAvailable = true))
+        assertEquals(SavedCredentialState.Invalidated, credentialState(SavedCredentialState.Invalidated, debugFallbackAvailable = true))
+    }
+
+    @Test
+    fun `without the fallback the vault's answer is passed through untouched`() {
+        assertEquals(SavedCredentialState.Absent, credentialState(SavedCredentialState.Absent, debugFallbackAvailable = false))
+        assertEquals(SavedCredentialState.Unavailable, credentialState(SavedCredentialState.Unavailable, debugFallbackAvailable = false))
+        assertEquals(SavedCredentialState.Invalidated, credentialState(SavedCredentialState.Invalidated, debugFallbackAvailable = false))
+    }
+
+    @Test
+    fun `the debug status line reports what actually protects the password`() {
+        assertEquals(
+            CredentialStatus.SavedInDebugBuild,
+            credentialStatus(SavedCredentialState.Available, null, fromDebugFallback = true),
+        )
+        // It outranks the unlock mode on purpose: telling the user to unlock it with the screen lock
+        // would be a lie about a plaintext file.
+        assertEquals(
+            CredentialStatus.SavedInDebugBuild,
+            credentialStatus(SavedCredentialState.Available, VaultUnlockMode.DeviceUnlockWindow, fromDebugFallback = true),
+        )
+    }
 }

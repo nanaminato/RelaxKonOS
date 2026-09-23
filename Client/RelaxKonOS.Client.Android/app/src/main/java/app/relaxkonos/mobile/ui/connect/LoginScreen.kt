@@ -39,13 +39,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.CredentialStatus
 import app.relaxkonos.mobile.core.auth.LoginDecision
-import app.relaxkonos.mobile.core.auth.credentialState
-import app.relaxkonos.mobile.core.auth.credentialStatus
-import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.ui.common.ErrorBanner
 import app.relaxkonos.mobile.ui.common.PasswordTextField
-import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
@@ -71,7 +67,6 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 fun LoginScreen(modifier: Modifier = Modifier) {
     val activity = LocalContext.current as? FragmentActivity ?: return
     val viewModel: LoginViewModel = viewModel()
-    val container = appContainer()
 
     val serverFocus = remember { FocusRequester() }
     val identifierFocus = remember { FocusRequester() }
@@ -169,18 +164,35 @@ fun LoginScreen(modifier: Modifier = Modifier) {
                         Checkbox(
                             checked = viewModel.rememberCredential,
                             onCheckedChange = { viewModel.rememberCredential = it },
-                            enabled = !viewModel.isLoggingIn && unlockMode != null,
+                            // The debug plaintext store makes saving possible where the vault cannot be
+                            // created at all, so the switch has to follow the same condition the store
+                            // itself follows — never a looser one.
+                            enabled = !viewModel.isLoggingIn && (unlockMode != null || viewModel.debugFallbackAvailable),
                         )
-                        Text(stringResource(R.string.login_remember_hint))
-                    }
-                    if (unlockMode == null) {
                         Text(
+                            stringResource(
+                                if (viewModel.debugFallbackAvailable) {
+                                    R.string.login_remember_hint_debug
+                                } else {
+                                    R.string.login_remember_hint
+                                },
+                            ),
+                        )
+                    }
+                    when {
+                        viewModel.debugFallbackAvailable -> Text(
+                            stringResource(R.string.login_no_lock_screen_debug),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+
+                        unlockMode == null -> Text(
                             stringResource(R.string.login_no_fingerprint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    } else if (unlockMode == VaultUnlockMode.DeviceUnlockWindow) {
-                        Text(
+
+                        unlockMode == VaultUnlockMode.DeviceUnlockWindow -> Text(
                             stringResource(R.string.vault_device_window_notice),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -206,13 +218,9 @@ fun LoginScreen(modifier: Modifier = Modifier) {
     if (viewModel.connectionsOpen) {
         ConnectionListScreen(
             logins = viewModel.logins,
-            credentialStatus = { login ->
-                val mode = container.unlockMode(VaultKind.Connection)
-                credentialStatus(
-                    credentialState(container.vault.record(VaultKind.Connection, login.serverUrl, login.identifier), mode),
-                    mode,
-                )
-            },
+            // The row asks the same question the form does, through the same function, so a login
+            // cannot be listed as having no password while the field above says one is saved.
+            credentialStatus = { login -> viewModel.savedCredentialStatus(login.serverUrl, login.identifier) },
             onSelected = { viewModel.select(it) },
             onForgetPassword = { viewModel.forgetPassword(it) },
             onDeleteLogin = { viewModel.deleteLogin(it) },
@@ -246,6 +254,7 @@ private fun credentialStatusLine(status: CredentialStatus): (@Composable () -> U
         CredentialStatus.None -> return null
         CredentialStatus.SavedByFingerprint -> stringResource(R.string.login_saved_password_fingerprint)
         CredentialStatus.SavedByScreenLock -> stringResource(R.string.login_saved_password_screen_lock)
+        CredentialStatus.SavedInDebugBuild -> stringResource(R.string.login_saved_password_debug)
         CredentialStatus.Unavailable -> stringResource(R.string.login_saved_password_unavailable)
         CredentialStatus.Invalidated -> stringResource(R.string.login_saved_password_invalidated)
     }

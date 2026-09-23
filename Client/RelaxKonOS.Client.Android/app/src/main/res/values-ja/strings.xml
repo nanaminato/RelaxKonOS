@@ -35,17 +35,21 @@
     <string name="login_identifier">アカウント</string>
     <string name="login_password">パスワード</string>
     <string name="login_remember_hint">この端末にパスワードを保存し、指紋で解錠する</string>
+    <string name="login_remember_hint_debug">この端末にパスワードを保存する（デバッグビルド: 平文で保存）</string>
     <string name="login_no_fingerprint">利用できる指紋も画面ロックもないため、この端末にパスワードを保存できません。</string>
+    <string name="login_no_lock_screen_debug">この端末には画面ロックがないため、パスワードは平文でしか保存できません。許可されるのはデバッグビルドだけです。</string>
     <string name="login_action_connect">接続</string>
     <string name="login_action_sign_in">サインイン</string>
     <string name="login_action_connecting">接続中…</string>
     <string name="login_saved_password_fingerprint">パスワード保存済み · 空欄のまま指紋でサインインできます</string>
     <string name="login_saved_password_screen_lock">パスワード保存済み · 空欄のまま画面ロックで解錠できます</string>
+    <string name="login_saved_password_debug">パスワード保存済み（デバッグビルド、暗号化なし）· 空欄のままこれでサインインできます</string>
     <string name="login_saved_password_unavailable">この端末では現在、保存したパスワードを解錠できません。パスワードを入力してサインインしてください。</string>
     <string name="login_saved_password_invalidated">保存したパスワードは無効になりました。パスワードを入力し、保存し直して置き換えてください。</string>
     <string name="login_password_required">パスワードを入力してください。</string>
     <string name="login_credential_not_saved">サインインしましたが、パスワードは保存されませんでした。</string>
     <string name="login_credential_not_saved_reason">サインインしましたが、パスワードは保存されませんでした: %1$s</string>
+    <string name="login_credential_saved_debug">サインインしました。デバッグビルドで画面ロックがない端末のため、パスワードは暗号化せずに保存されました。</string>
     <string name="login_missing_fields">サーバーアドレスとアカウントを入力してください。</string>
 
     <string name="vault_unlock_title">保存したパスワードを解錠</string>
@@ -105,6 +109,7 @@
     <string name="connections_empty">保存されたサーバーはまだありません。</string>
     <string name="connections_saved_password">パスワード保存済み、指紋で解錠</string>
     <string name="connections_saved_password_screen_lock">パスワード保存済み、画面ロックで解錠</string>
+    <string name="connections_saved_password_debug">パスワードは暗号化せず保存（デバッグビルド、画面ロックなし）</string>
     <string name="connections_password_unavailable">パスワードは保存されていますが、この端末では現在解錠できません</string>
     <string name="connections_password_invalidated">保存したパスワードは無効になりました</string>
     <string name="connections_no_password">パスワード未保存</string>
@@ -246,6 +251,7 @@
     <string name="account_security_clear_all_title">保存されたパスワードをすべて削除</string>
     <string name="account_security_clear_all_message">この端末に保存されたすべてのパスワードを削除しますか？保存された接続は残りますが、パスワードを入力し直す必要があります。</string>
     <string name="account_security_record_invalidated">無効になりました: 端末の指紋が変更されたためです。削除するか、必要ならパスワードを保存し直してください。</string>
+    <string name="account_security_debug_record_note">暗号化せずに保存: デバッグビルドで、この端末に画面ロックがありません。</string>
     <string name="account_security_delete_title">このパスワードを削除</string>
     <string name="account_security_delete_message">%2$s の %1$s に保存されたパスワードを削除しますか？</string>
 

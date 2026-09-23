@@ -35,17 +35,21 @@
     <string name="login_identifier">登录标识</string>
     <string name="login_password">密码</string>
     <string name="login_remember_hint">在本机保存密码，用指纹解封</string>
+    <string name="login_remember_hint_debug">在本机保存密码（调试构建：明文保存）</string>
     <string name="login_no_fingerprint">未找到可用的指纹或锁屏，本机无法保存密码。</string>
+    <string name="login_no_lock_screen_debug">本机没有锁屏，因此密码只能明文保存。只有调试构建允许这样做，正式构建不会。</string>
     <string name="login_action_connect">连接</string>
     <string name="login_action_sign_in">登录</string>
     <string name="login_action_connecting">连接中…</string>
     <string name="login_saved_password_fingerprint">已保存密码 · 留空即可用指纹登录</string>
     <string name="login_saved_password_screen_lock">已保存密码 · 留空即可用锁屏解锁</string>
+    <string name="login_saved_password_debug">已保存密码（调试构建，未加密）· 留空即可用它登录</string>
     <string name="login_saved_password_unavailable">本机当前无法解封保存的密码，请输入密码登录。</string>
     <string name="login_saved_password_invalidated">保存的密码已失效，请输入密码并在成功后重新保存。</string>
     <string name="login_password_required">请输入密码。</string>
     <string name="login_credential_not_saved">已登录，但密码没有保存。</string>
     <string name="login_credential_not_saved_reason">已登录，但密码没有保存：%1$s</string>
+    <string name="login_credential_saved_debug">已登录。密码以明文保存，因为当前是调试构建且本机没有锁屏。</string>
     <string name="login_missing_fields">请填写服务器地址和登录标识。</string>
 
     <string name="vault_unlock_title">解封已保存的密码</string>
@@ -105,6 +109,7 @@
     <string name="connections_empty">还没有保存任何服务器。</string>
     <string name="connections_saved_password">已保存密码，用指纹解封</string>
     <string name="connections_saved_password_screen_lock">已保存密码，用锁屏解锁</string>
+    <string name="connections_saved_password_debug">密码未加密保存（调试构建、无锁屏）</string>
     <string name="connections_password_unavailable">已保存密码，但本机当前无法解封</string>
     <string name="connections_password_invalidated">已保存的密码已失效</string>
     <string name="connections_no_password">未保存密码</string>
@@ -246,6 +251,7 @@
     <string name="account_security_clear_all_title">删除全部已保存密码</string>
     <string name="account_security_clear_all_message">删除本机已保存的全部密码？已保存的连接会保留，但你需要重新输入密码。</string>
     <string name="account_security_record_invalidated">已失效：设备指纹已变更。可以删除它，如果还需要就重新保存一次。</string>
+    <string name="account_security_debug_record_note">未加密保存：调试构建，且本机没有锁屏。</string>
     <string name="account_security_delete_title">删除这个密码</string>
     <string name="account_security_delete_message">删除 %2$s 上 %1$s 的已保存密码？</string>
 

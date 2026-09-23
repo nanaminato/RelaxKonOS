@@ -45,7 +45,9 @@
     <string name="login_identifier">Account</string>
     <string name="login_password">Password</string>
     <string name="login_remember_hint">Save the password on this device and unlock it with the fingerprint</string>
+    <string name="login_remember_hint_debug">Save the password on this device (debug build: stored unencrypted)</string>
     <string name="login_no_fingerprint">No usable fingerprint or screen lock was found, so a password cannot be saved on this device.</string>
+    <string name="login_no_lock_screen_debug">This device has no screen lock, so a password can only be stored unencrypted here. Debug builds allow that; release builds never do.</string>
     <string name="login_action_connect">Connect</string>
     <string name="login_action_sign_in">Sign in</string>
     <string name="login_action_connecting">Connecting…</string>
@@ -55,11 +57,18 @@
     -->
     <string name="login_saved_password_fingerprint">Saved password · leave the field empty to sign in with the fingerprint</string>
     <string name="login_saved_password_screen_lock">Saved password · leave the field empty to unlock it with the screen lock</string>
+    <!--
+      Debug-only: the plaintext fallback of last resort, used when the device has no lock screen and so
+      cannot host a Keystore key at all. The wording has to say "not encrypted" out loud — a line that
+      read like the two above would imply protection that does not exist.
+    -->
+    <string name="login_saved_password_debug">Saved password (debug build, not encrypted) · leave the field empty to sign in with it</string>
     <string name="login_saved_password_unavailable">The saved password cannot be unlocked on this device right now. Enter the password to sign in.</string>
     <string name="login_saved_password_invalidated">The saved password is no longer valid. Enter the password and save it again to replace it.</string>
     <string name="login_password_required">Enter the password to sign in.</string>
     <string name="login_credential_not_saved">Signed in, but the password was not saved.</string>
     <string name="login_credential_not_saved_reason">Signed in, but the password was not saved: %1$s</string>
+    <string name="login_credential_saved_debug">Signed in. The password was saved unencrypted, because this is a debug build and the device has no screen lock.</string>
     <string name="login_missing_fields">Enter the server address and account.</string>
 
     <!-- Credential vault -->
@@ -124,6 +133,7 @@
     <string name="connections_empty">No server has been saved yet.</string>
     <string name="connections_saved_password">Password saved, unlocked by fingerprint</string>
     <string name="connections_saved_password_screen_lock">Password saved, unlocked by the screen lock</string>
+    <string name="connections_saved_password_debug">Password saved unencrypted (debug build, no screen lock)</string>
     <string name="connections_password_unavailable">A password is saved but cannot be unlocked on this device right now</string>
     <string name="connections_password_invalidated">The saved password is no longer valid</string>
     <string name="connections_no_password">No password saved</string>
@@ -270,6 +280,8 @@
     <string name="account_security_clear_all_title">Delete all saved passwords</string>
     <string name="account_security_clear_all_message">Delete every saved password from this device? Saved connections stay, and you will have to type the passwords again.</string>
     <string name="account_security_record_invalidated">No longer valid: the device fingerprints changed. Delete it, and save the password again if you still need it.</string>
+    <!-- Debug-only: the one plaintext record, listed so this page never under-reports what is stored. -->
+    <string name="account_security_debug_record_note">Saved unencrypted: debug build, and this device has no screen lock.</string>
     <string name="account_security_delete_title">Delete this password</string>
     <string name="account_security_delete_message">Delete the saved password for %1$s on %2$s?</string>
 

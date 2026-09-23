@@ -51,6 +51,22 @@ fun credentialState(record: VaultRecord?, unlockMode: VaultUnlockMode?): SavedCr
 }
 
 /**
+ * Reconciles the vault's answer with the debug-only plaintext store.
+ *
+ * The store is a fallback, never an override: a usable vault record always wins because it is the
+ * protected one. This only fills the two states that mean "nothing usable can be unsealed here" —
+ * nothing stored, or stored but unusable on this device — which is exactly the state a device with no
+ * lock screen is in. It deliberately does not resurrect an [SavedCredentialState.Invalidated] record:
+ * the user has to be told that the old password is dead rather than quietly handed a different one.
+ */
+fun credentialState(vaultState: SavedCredentialState, debugFallbackAvailable: Boolean): SavedCredentialState =
+    if (debugFallbackAvailable && vaultState != SavedCredentialState.Available && vaultState != SavedCredentialState.Invalidated) {
+        SavedCredentialState.Available
+    } else {
+        vaultState
+    }
+
+/**
  * What a screen shows about the saved password: one line, outside the password field.
  *
  * Kept separate from [SavedCredentialState] so the same state can be described differently per screen
@@ -67,6 +83,9 @@ enum class CredentialStatus {
     /** Saved and unlocked through the device credential window (D3, connection vault only). */
     SavedByScreenLock,
 
+    /** Saved in the debug-only plaintext store. Says so, because nothing protects it. */
+    SavedInDebugBuild,
+
     /** Saved, but not unlockable on this device right now. */
     Unavailable,
 
@@ -74,15 +93,22 @@ enum class CredentialStatus {
     Invalidated,
 }
 
-/** Maps a credential state onto the line a screen renders. Pure so the mapping cannot drift. */
-fun credentialStatus(state: SavedCredentialState, unlockMode: VaultUnlockMode?): CredentialStatus = when (state) {
-    SavedCredentialState.Absent -> CredentialStatus.None
-    SavedCredentialState.Unavailable -> CredentialStatus.Unavailable
-    SavedCredentialState.Invalidated -> CredentialStatus.Invalidated
-    SavedCredentialState.Available ->
-        if (unlockMode == VaultUnlockMode.DeviceUnlockWindow) {
-            CredentialStatus.SavedByScreenLock
-        } else {
-            CredentialStatus.SavedByFingerprint
-        }
+/**
+ * Maps a credential state onto the line a screen renders. Pure so the mapping cannot drift.
+ *
+ * [fromDebugFallback] is set only when the debug-only store supplied the credential. It outranks the
+ * state on purpose: the line's job is to say what protects the password, and on that path the answer
+ * is "nothing" — reading "unlock it with the screen lock" there would be a lie.
+ */
+fun credentialStatus(
+    state: SavedCredentialState,
+    unlockMode: VaultUnlockMode?,
+    fromDebugFallback: Boolean = false,
+): CredentialStatus = when {
+    fromDebugFallback -> CredentialStatus.SavedInDebugBuild
+    state == SavedCredentialState.Absent -> CredentialStatus.None
+    state == SavedCredentialState.Unavailable -> CredentialStatus.Unavailable
+    state == SavedCredentialState.Invalidated -> CredentialStatus.Invalidated
+    unlockMode == VaultUnlockMode.DeviceUnlockWindow -> CredentialStatus.SavedByScreenLock
+    else -> CredentialStatus.SavedByFingerprint
 }

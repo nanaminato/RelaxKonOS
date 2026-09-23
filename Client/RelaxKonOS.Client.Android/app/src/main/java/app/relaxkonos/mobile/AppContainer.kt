@@ -19,10 +19,13 @@ import app.relaxkonos.mobile.data.FilesRepository
 import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.data.SystemRepository
 import app.relaxkonos.mobile.security.AndroidBiometricCapabilityDetector
+import app.relaxkonos.mobile.security.AndroidBiometricUnlock
 import app.relaxkonos.mobile.security.BiometricCapability
 import app.relaxkonos.mobile.security.BiometricCapabilityDetector
 import app.relaxkonos.mobile.security.BiometricUnlock
 import app.relaxkonos.mobile.security.CredentialVault
+import app.relaxkonos.mobile.security.DebugCredentialStore
+import app.relaxkonos.mobile.security.FileDebugCredentialStorage
 import app.relaxkonos.mobile.security.FileVaultStorage
 import app.relaxkonos.mobile.security.VaultAccess
 import app.relaxkonos.mobile.security.VaultDiagnostics
@@ -59,9 +62,20 @@ class AppContainer(context: Context) {
 
     val vault = CredentialVault(FileVaultStorage(appContext.noBackupFilesDir), keyManager)
 
-    val vaultAccess = VaultAccess(vault, keyManager, BiometricUnlock())
+    val vaultAccess = VaultAccess(vault, keyManager, AndroidBiometricUnlock())
 
     val profiles = ConnectionProfileStore(FileProfileStorage(appContext.noBackupFilesDir))
+
+    /**
+     * Plaintext fallback for a device that cannot host a Keystore key at all.
+     *
+     * `null` in every release build, which is what keeps it from being a shipping feature: with no
+     * instance there is no code path that could write the file. It is offered to the sign-in screen
+     * only while the device reports no lock screen at all, i.e. exactly when the vault is impossible —
+     * never as a shortcut on a device that could use the vault (`DebugCredentialStore`).
+     */
+    val debugCredentials: DebugCredentialStore? =
+        if (BuildConfig.DEBUG) DebugCredentialStore(FileDebugCredentialStorage(appContext.noBackupFilesDir)) else null
 
     /**
      * A user-visible notice that survives the sign-in-to-shell composition switch.
@@ -93,7 +107,12 @@ class AppContainer(context: Context) {
      */
     init {
         val stored = vault.records(VaultKind.Connection).map { it.serverUrl to it.account }.toSet()
-        profiles.reconcileCredentialProjection { serverUrl, identifier -> (serverUrl to identifier) in stored }
+        // The debug store counts as a credential here too: it is a real, readable password for this
+        // device, and a list claiming "no password saved" while one sits in a file would be lying
+        // about what is on disk.
+        profiles.reconcileCredentialProjection { serverUrl, identifier ->
+            (serverUrl to identifier) in stored || hasDebugCredential(serverUrl, identifier)
+        }
     }
 
     val gateway: RelaxKonGateway = RelaxKonApi(clientVersion = BuildConfig.VERSION_NAME)
@@ -163,6 +182,24 @@ class AppContainer(context: Context) {
      */
     fun savedAdministratorAccount(): String? =
         vault.records(VaultKind.Elevation).firstOrNull()?.account
+
+    /**
+     * The debug-only plaintext credential for one identity, or `null` when there is none.
+     *
+     * Always `null` in a release build, where [debugCredentials] is `null`. The returned array belongs
+     * to the caller, which zeroes it exactly like an unsealed vault record.
+     */
+    fun debugCredential(serverUrl: String, identifier: String): CharArray? =
+        debugCredentials?.reveal(serverUrl, identifier)
+
+    /** Whether the debug store holds a password for one identity. Never a security decision. */
+    fun hasDebugCredential(serverUrl: String, identifier: String): Boolean =
+        debugCredentials?.exists(serverUrl, identifier) == true
+
+    /** Drops the debug-only credential, for the explicit "forget password" and delete actions. */
+    fun forgetDebugCredential(serverUrl: String, identifier: String) {
+        debugCredentials?.delete(serverUrl, identifier)
+    }
 
     /**
      * The answer supplier handed to the repositories.

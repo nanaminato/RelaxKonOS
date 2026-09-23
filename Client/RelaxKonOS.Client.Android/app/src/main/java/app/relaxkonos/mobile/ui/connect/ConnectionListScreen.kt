@@ -147,6 +147,7 @@ internal fun credentialStatusLabel(status: CredentialStatus): String = stringRes
         CredentialStatus.None -> R.string.connections_no_password
         CredentialStatus.SavedByFingerprint -> R.string.connections_saved_password
         CredentialStatus.SavedByScreenLock -> R.string.connections_saved_password_screen_lock
+        CredentialStatus.SavedInDebugBuild -> R.string.connections_saved_password_debug
         CredentialStatus.Unavailable -> R.string.connections_password_unavailable
         CredentialStatus.Invalidated -> R.string.connections_password_invalidated
     },
