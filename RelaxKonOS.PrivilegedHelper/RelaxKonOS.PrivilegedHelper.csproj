@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Shared\RelaxKonOS.Protocol\RelaxKonOS.Protocol.csproj" />
+    <PackageReference Include="RoyalApps.RoyalTerminal.Terminal.Pty.Platform" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
     <PackageReference Include="System.Management" />
   </ItemGroup>

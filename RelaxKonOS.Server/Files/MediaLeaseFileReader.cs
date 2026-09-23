@@ -31,6 +31,7 @@ public sealed class MediaLeaseFileReader(LocalFileService direct, IUserExecution
                 UserExecutionProblemCode.AccessDenied => new UnauthorizedAccessException("Access denied for the media lease user."),
                 UserExecutionProblemCode.NotFound => new FileNotFoundException("Media file was not found.", lease.Path),
                 UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new IOException("Media file cannot be served by user execution."),
+                UserExecutionProblemCode.TimedOut => new TimeoutException("Media file user execution timed out."),
                 _ => new InvalidOperationException("User-execution Helper is unavailable."),
             };
 

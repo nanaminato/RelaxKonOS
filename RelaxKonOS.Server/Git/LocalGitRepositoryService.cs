@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.Domain;
 using RelaxKonOS.Server.Storage.Sqlite;
 using RelaxKonOS.Server.UserExecution;
@@ -1436,6 +1437,8 @@ public sealed partial class LocalGitRepositoryService(
         GitCredentialRequest? credentials = null)
     {
         var operation = arguments.FirstOrDefault() ?? "unknown";
+        if (!UserExecutionGitPolicy.IsAllowed(arguments))
+            return new CommandResult(false, "", "git_domain_arguments_rejected");
         if (serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System)
         {
             if (credentials is not null)
@@ -1475,9 +1478,7 @@ public sealed partial class LocalGitRepositoryService(
             // A remote server has no interactive terminal to hand over to the desktop client.
             // Fail promptly when no saved/supplied credential exists; when one is available,
             // Git obtains it from the temporary askpass process below.
-            process.StartInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
-            process.StartInfo.Environment["GIT_EDITOR"] = "true";
-            process.StartInfo.Environment["GIT_SEQUENCE_EDITOR"] = "true";
+            UserExecutionGitPolicy.ApplySafeEnvironment(process.StartInfo);
             if (askPass is not null)
             {
                 process.StartInfo.Environment["GIT_ASKPASS"] = askPass.Path;

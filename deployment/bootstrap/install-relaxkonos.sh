@@ -90,7 +90,11 @@ say() {
 }
 
 TEMPORARY_DIRECTORY=
-cleanup() { [[ -z "$TEMPORARY_DIRECTORY" ]] || rm -rf -- "$TEMPORARY_DIRECTORY"; }
+RUNTIME_STAGING_DIRECTORY=
+cleanup() {
+  [[ -z "$RUNTIME_STAGING_DIRECTORY" || ! -e "$RUNTIME_STAGING_DIRECTORY" ]] || rm -rf -- "$RUNTIME_STAGING_DIRECTORY"
+  [[ -z "$TEMPORARY_DIRECTORY" ]] || rm -rf -- "$TEMPORARY_DIRECTORY"
+}
 trap cleanup EXIT
 validate_custom_certificate() {
   [[ -f "$CERTIFICATE_PATH" ]] || return 1
@@ -184,13 +188,23 @@ fi
 [[ -d "$BUNDLE_PATH" ]] || { echo 'Bundle path must be a release directory or ZIP archive.' >&2; exit 64; }
 
 MANIFEST="$BUNDLE_PATH/manifest.json"
+INVENTORY="$BUNDLE_PATH/manifest.sha256"
 SERVER="$BUNDLE_PATH/payload/linux/server/RelaxKonOS.Server"
 GUARDIAN="$BUNDLE_PATH/payload/linux/guardian/RelaxKonOS.Guardian.Agent"
 HELPER="$BUNDLE_PATH/payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"
 ENGINE="$BUNDLE_PATH/deployment/linux/install-relaxkonos-services.sh"
-[[ -f "$MANIFEST" && -f "$SERVER" && -f "$GUARDIAN" && -f "$HELPER" && -f "$ENGINE" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
+[[ -f "$MANIFEST" && -f "$INVENTORY" && -f "$SERVER" && -f "$GUARDIAN" && -f "$HELPER" && -f "$ENGINE" ]] || { echo 'Release bundle is incomplete or has an unsupported layout.' >&2; exit 65; }
 grep -Eq '"schemaVersion"[[:space:]]*:[[:space:]]*1' "$MANIFEST" && grep -Eq '"packageKind"[[:space:]]*:[[:space:]]*"server"' "$MANIFEST" || { echo 'Unsupported server release manifest.' >&2; exit 65; }
 grep -Eq "\"runtime\"[[:space:]]*:[[:space:]]*\"$CURRENT_RUNTIME\"" "$MANIFEST" || { echo "This release package is not compatible with $CURRENT_RUNTIME." >&2; exit 65; }
+if [[ -n "$(find "$BUNDLE_PATH" -mindepth 1 \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit)" ]]; then
+  echo 'Release bundle contains a symbolic link or unsupported filesystem entry.' >&2
+  exit 65
+fi
+command -v sha256sum >/dev/null || { echo 'sha256sum is required to verify the release inventory.' >&2; exit 69; }
+if [[ -z "$TEMPORARY_DIRECTORY" ]]; then TEMPORARY_DIRECTORY="$(mktemp -d)"; fi
+ACTUAL_INVENTORY="$TEMPORARY_DIRECTORY/manifest.actual.sha256"
+(cd "$BUNDLE_PATH" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$ACTUAL_INVENTORY"
+cmp --silent "$INVENTORY" "$ACTUAL_INVENTORY" || { echo 'Release file inventory verification failed.' >&2; exit 65; }
 command -v systemctl >/dev/null && [[ -d /run/systemd/system ]] || { echo 'RelaxKonOS requires a systemd host.' >&2; exit 69; }
 for tool in sudo visudo openssl; do command -v "$tool" >/dev/null || { echo "Required system tool is missing: $tool" >&2; exit 69; }; done
 if [[ "$CERTIFICATE_MODE" == custom ]] && ! validate_custom_certificate; then
@@ -217,17 +231,44 @@ LISTEN_SCHEME=http
 [[ "$CERTIFICATE_MODE" == none ]] || LISTEN_SCHEME=https
 
 # A release bundle is an input, not a service directory. The online bundle is temporary and
-# must be removable after setup, so install all publish output under the durable install root.
+# must be removable after setup. Build one complete runtime snapshot before changing the active
+# directory, so an upgrade can never leave a mixture of old and new publish output.
 systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
-install -d -o root -g root -m 0755 "$INSTALL_ROOT/server" "$INSTALL_ROOT/guardian" "$INSTALL_ROOT/privileged-helper"
-cp -a "$BUNDLE_PATH/payload/linux/server/." "$INSTALL_ROOT/server/"
-cp -a "$BUNDLE_PATH/payload/linux/guardian/." "$INSTALL_ROOT/guardian/"
-cp -a "$BUNDLE_PATH/payload/linux/privileged-helper/." "$INSTALL_ROOT/privileged-helper/"
-chown -R root:root "$INSTALL_ROOT"
-chmod -R go-w "$INSTALL_ROOT"
-SERVER="$INSTALL_ROOT/server/RelaxKonOS.Server"
-GUARDIAN="$INSTALL_ROOT/guardian/RelaxKonOS.Guardian.Agent"
-HELPER="$INSTALL_ROOT/privileged-helper/RelaxKonOS.PrivilegedHelper"
+install -d -o root -g root -m 0755 "$INSTALL_ROOT"
+RUNTIME_DIRECTORY="$INSTALL_ROOT/runtime"
+RUNTIME_BACKUP_DIRECTORY="$INSTALL_ROOT/.runtime.previous"
+if [[ -e "$RUNTIME_BACKUP_DIRECTORY" ]]; then
+  # An interrupted prior activation is rolled back before another release is staged.
+  [[ ! -e "$RUNTIME_DIRECTORY" ]] || rm -rf -- "$RUNTIME_DIRECTORY"
+  mv -T -- "$RUNTIME_BACKUP_DIRECTORY" "$RUNTIME_DIRECTORY"
+fi
+for stale_stage in "$INSTALL_ROOT"/.runtime.installing.*; do
+  [[ -d "$stale_stage" && ! -L "$stale_stage" ]] || continue
+  rm -rf -- "$stale_stage"
+done
+RUNTIME_STAGING_DIRECTORY="$(mktemp -d "$INSTALL_ROOT/.runtime.installing.XXXXXX")"
+chmod 0755 "$RUNTIME_STAGING_DIRECTORY"
+install -d -o root -g root -m 0755 "$RUNTIME_STAGING_DIRECTORY/server" "$RUNTIME_STAGING_DIRECTORY/guardian" "$RUNTIME_STAGING_DIRECTORY/privileged-helper"
+cp -a "$BUNDLE_PATH/payload/linux/server/." "$RUNTIME_STAGING_DIRECTORY/server/"
+cp -a "$BUNDLE_PATH/payload/linux/guardian/." "$RUNTIME_STAGING_DIRECTORY/guardian/"
+cp -a "$BUNDLE_PATH/payload/linux/privileged-helper/." "$RUNTIME_STAGING_DIRECTORY/privileged-helper/"
+chown -R root:root "$RUNTIME_STAGING_DIRECTORY"
+chmod -R go-w "$RUNTIME_STAGING_DIRECTORY"
+STAGED_SERVER="$RUNTIME_STAGING_DIRECTORY/server/RelaxKonOS.Server"
+STAGED_GUARDIAN="$RUNTIME_STAGING_DIRECTORY/guardian/RelaxKonOS.Guardian.Agent"
+STAGED_HELPER="$RUNTIME_STAGING_DIRECTORY/privileged-helper/RelaxKonOS.PrivilegedHelper"
+[[ -f "$STAGED_SERVER" && -f "$STAGED_GUARDIAN" && -f "$STAGED_HELPER" ]] || { echo 'Staged runtime is incomplete.' >&2; exit 65; }
+chmod 0755 "$STAGED_SERVER" "$STAGED_GUARDIAN" "$STAGED_HELPER"
+if [[ -e "$RUNTIME_DIRECTORY" ]]; then mv -T -- "$RUNTIME_DIRECTORY" "$RUNTIME_BACKUP_DIRECTORY"; fi
+if ! mv -T -- "$RUNTIME_STAGING_DIRECTORY" "$RUNTIME_DIRECTORY"; then
+  [[ ! -e "$RUNTIME_BACKUP_DIRECTORY" ]] || mv -T -- "$RUNTIME_BACKUP_DIRECTORY" "$RUNTIME_DIRECTORY"
+  exit 1
+fi
+RUNTIME_STAGING_DIRECTORY=
+rm -rf -- "$RUNTIME_BACKUP_DIRECTORY"
+SERVER="$RUNTIME_DIRECTORY/server/RelaxKonOS.Server"
+GUARDIAN="$RUNTIME_DIRECTORY/guardian/RelaxKonOS.Guardian.Agent"
+HELPER="$RUNTIME_DIRECTORY/privileged-helper/RelaxKonOS.PrivilegedHelper"
 chmod 0755 "$SERVER" "$GUARDIAN" "$HELPER"
 engine_arguments=("$INSTALL_ROOT" "$SERVER" "$GUARDIAN" "$HELPER" "$SERVER_PORT" "$LISTEN_SCHEME://$LISTEN_HOST:$SERVER_PORT" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --certificate-mode "$CERTIFICATE_MODE")
 if [[ "$DOCKER_ACCESS" == true ]]; then engine_arguments+=(--docker-access); fi
@@ -247,4 +288,7 @@ chmod 0600 "$DATA_ROOT/install-state.json"
 health_curl_arguments=(--fail --silent --max-time 15)
 [[ "$LISTEN_SCHEME" != https ]] || health_curl_arguments+=(--insecure)
 if command -v curl >/dev/null && curl "${health_curl_arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then echo 'Health check passed.'; else systemctl is-active --quiet relaxkonos-server.service; fi
+# Remove component directories created by the pre-runtime-snapshot installer only after the new
+# service is healthy. They are not consulted as a compatibility fallback.
+rm -rf -- "$INSTALL_ROOT/server" "$INSTALL_ROOT/guardian" "$INSTALL_ROOT/privileged-helper"
 echo "$(say done) $LISTEN_SCHEME://$LISTEN_HOST:$SERVER_PORT"

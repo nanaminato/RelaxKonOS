@@ -2,19 +2,20 @@
 
 发布制品分为 `client`、`server` 与 `user-server` 三种包。`server` 包是 System Mode，包含已 `dotnet publish` 的 Server、Guardian Agent、权限助手和平台部署引擎；`user-server` 是无 sudo 的 Linux User Mode，包含 Server、同 UID Guardian 和用户 launcher，但不包含权限助手、sudoers 或系统服务安装器；`client` 包只包含桌面 Client。
 
-引导安装器会先把三个组件的完整 publish 输出复制到持久安装目录（Windows 默认 `C:\Program Files\RelaxKonOS`，Linux 默认 `/opt/relaxkonos`）；服务绝不会指向临时下载目录或离线介质。
+引导安装器会先把三个组件的完整 publish 输出复制到持久安装目录（Windows 默认 `C:\Program Files\RelaxKonOS`，Linux 默认 `/opt/relaxkonos`）；服务绝不会指向临时下载目录或离线介质。Linux System Mode 会在 `/opt/relaxkonos/runtime` 外组装完整 staging 快照后一次替换该目录，不会把新版覆盖复制到旧 publish 目录。
 
 ## 发布包布局
 
 ```text
 manifest.json
+manifest.sha256
 payload/windows/{server,guardian,privileged-helper}/...
 payload/linux/{server,guardian,privileged-helper}/...
 deployment/windows/Install-RelaxKonOSServices.ps1
 deployment/linux/install-relaxkonos-services.sh
 ```
 
-`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client` 或 `server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。线上安装必须由发布页同时提供 ZIP 的 SHA-256，安装器会在解压前验证它。正式发行应在此基础上对 ZIP 使用代码签名或签名的发布清单。
+`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client` 或 `server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。`manifest.sha256` 列出包内除两个 manifest 以外的全部文件；Linux System Mode 安装时会重算并精确比对该 inventory，因此缺失、篡改或多出的文件都会在停止服务之前被拒绝。线上安装必须由发布页同时提供 ZIP 的 SHA-256，安装器会在解压前验证它。正式发行应在此基础上对 ZIP 使用代码签名或签名的发布清单。
 
 维护者用下列命令制作一个自包含的单平台发布包（会同时生成 ZIP 与同名 `.sha256` 文件）：
 

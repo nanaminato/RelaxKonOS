@@ -14,12 +14,13 @@
     <Compile Include="../RelaxKonOS.PrivilegedHelper/SambaCredentialCommand.cs" Link="SambaCredentialCommand.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/SambaUserStatus.cs" Link="SambaUserStatus.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxDistributionSupport.cs" Link="LinuxDistributionSupport.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxUserFileOperations.cs" Link="LinuxUserFileOperations.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsSmbShareSecurity.cs" Link="WindowsSmbShareSecurity.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/DeveloperUserSidAllowList.cs" Link="DeveloperUserSidAllowList.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsPrivilegedPipeSecurity.cs" Link="WindowsPrivilegedPipeSecurity.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsFeatureInstallationState.cs" Link="WindowsFeatureInstallationState.cs" />
     <Compile Include="../Client/RelaxKonOS.Client/Apps/Git/GitConflictBlock.cs" Link="GitConflictBlock.cs" />
-    <ProjectReference Include="../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" />
+    <ProjectReference Include="../Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj" Condition="'$(UsePrebuiltServerAssembly)' != 'true'" />
     <ProjectReference Include="../RelaxKonOS.Server/RelaxKonOS.Server.csproj" Condition="'$(UsePrebuiltServerAssembly)' != 'true'" />
     <!-- The local desktop SDK currently lacks workload locator SDKs. This opt-in path permits
          the smoke test to run against a just-built Server assembly without weakening CI's normal
@@ -48,6 +49,9 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" Condition="'$(UsePrebuiltServerAssembly)' == 'true'" />
     <Reference Include="RelaxKonOS.Protocol" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>../Shared/RelaxKonOS.Protocol/bin/Debug/net10.0/RelaxKonOS.Protocol.dll</HintPath>
+    </Reference>
+    <Reference Include="RelaxKonOS.Core" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>../Framework/RelaxKonOS.Core/bin/Debug/net10.0/RelaxKonOS.Core.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.EntityFrameworkCore" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/Microsoft.EntityFrameworkCore.dll</HintPath>

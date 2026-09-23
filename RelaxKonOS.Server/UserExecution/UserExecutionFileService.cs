@@ -59,23 +59,27 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     }
 
     private async Task<T> DirectAsync<T>(UserExecutionOperationKind operation, string? path, string? destinationPath, string? newName,
-        string? fileName, bool overwrite, string? content, int? unixMode) => (T)(object)(operation switch
+        string? fileName, bool overwrite, string? content, int? unixMode)
     {
-        UserExecutionOperationKind.FileGetSpecialLocations => direct.GetSpecialLocations(),
-        UserExecutionOperationKind.FileListDirectory => direct.GetDirectory(path),
-        UserExecutionOperationKind.FileGetInfo => direct.GetInfo(path!),
-        UserExecutionOperationKind.FileRead => ReadDirect(path!),
-        UserExecutionOperationKind.FileWrite => await direct.WriteFileAsync(path!, Bytes(content!)),
-        UserExecutionOperationKind.FileGetProperties => direct.GetProperties(path!),
-        UserExecutionOperationKind.FileSetUnixPermissions => direct.SetUnixPermissions(path!, unixMode!.Value),
-        UserExecutionOperationKind.FileDelete => DeleteDirect(path!),
-        UserExecutionOperationKind.FileRename => direct.Rename(path!, newName!),
-        UserExecutionOperationKind.FileMove => direct.Move(path!, destinationPath!, overwrite),
-        UserExecutionOperationKind.FileCopy => direct.Copy(path!, destinationPath!, overwrite),
-        UserExecutionOperationKind.FileUpload => await direct.UploadAsync(path!, fileName!, Bytes(content!)),
-        UserExecutionOperationKind.FileCreateDirectory => CreateDirect(path!),
-        _ => throw new ArgumentException("Unsupported user-execution operation."),
-    });
+        object? value = operation switch
+        {
+            UserExecutionOperationKind.FileGetSpecialLocations => direct.GetSpecialLocations(),
+            UserExecutionOperationKind.FileListDirectory => direct.GetDirectory(path),
+            UserExecutionOperationKind.FileGetInfo => direct.GetInfo(path!),
+            UserExecutionOperationKind.FileRead => ReadDirect(path!),
+            UserExecutionOperationKind.FileWrite => await direct.WriteFileAsync(path!, Bytes(content!)),
+            UserExecutionOperationKind.FileGetProperties => direct.GetProperties(path!),
+            UserExecutionOperationKind.FileSetUnixPermissions => direct.SetUnixPermissions(path!, unixMode!.Value),
+            UserExecutionOperationKind.FileDelete => DeleteDirect(path!),
+            UserExecutionOperationKind.FileRename => direct.Rename(path!, newName!),
+            UserExecutionOperationKind.FileMove => direct.Move(path!, destinationPath!, overwrite),
+            UserExecutionOperationKind.FileCopy => direct.Copy(path!, destinationPath!, overwrite),
+            UserExecutionOperationKind.FileUpload => await direct.UploadAsync(path!, fileName!, Bytes(content!)),
+            UserExecutionOperationKind.FileCreateDirectory => CreateDirect(path!),
+            _ => throw new ArgumentException("Unsupported user-execution operation."),
+        };
+        return (T)value!;
+    }
 
     private FileReadResult ReadDirect(string path)
     {
@@ -102,6 +106,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             UserExecutionProblemCode.NotFound => new FileNotFoundException("User-execution path not found."),
             UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new ArgumentException("Invalid user-execution file request."),
             UserExecutionProblemCode.Conflict => new IOException("User-execution file operation failed."),
+            UserExecutionProblemCode.TimedOut => new TimeoutException("User-execution file operation timed out."),
             _ => new InvalidOperationException("User-execution Helper is unavailable."),
         };
     }

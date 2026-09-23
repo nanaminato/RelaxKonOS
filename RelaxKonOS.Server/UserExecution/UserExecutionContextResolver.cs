@@ -31,7 +31,8 @@ public sealed class UserExecutionContextResolver(IUserRepository users, Canonica
 
         if (identity.Platform == PlatformKind.Linux)
         {
-            if (!uint.TryParse(identity.Uid, out var uid) || uid == 0 || (serverMode.Mode == ServerMode.System && uid < 1000)
+            if (!uint.TryParse(identity.Uid, out var uid) || uid is 0 or 65534
+                || (serverMode.Mode == ServerMode.System && !UserExecutionProtocol.IsEligibleLinuxUserId(uid))
                 || string.IsNullOrWhiteSpace(identity.HomeDirectory)
                 || !Path.IsPathFullyQualified(identity.HomeDirectory))
                 throw new UserExecutionException(UserExecutionProblemCode.IdentityNotExecutable, "The OS identity is not eligible for user execution.");

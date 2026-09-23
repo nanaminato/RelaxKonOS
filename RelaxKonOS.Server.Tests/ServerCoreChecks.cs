@@ -89,6 +89,14 @@ internal static void VerifyUserExecutionContextContract()
     TestAssert.Assert(!typeof(UserExecutionRequest).GetProperties().Select(x => x.Name).Intersect(
         ["Password", "Token", "Jwt", "Executable", "Arguments", "Environment"], StringComparer.OrdinalIgnoreCase).Any(),
         "The user-execution contract exposes no credential or generic-command fields.");
+    TestAssert.Assert(UserExecutionProtocol.MaximumRequestBytes > UserExecutionProtocol.MaximumFileContentBytes * 4L / 3
+        && UserExecutionProtocol.MaximumResponseBytes > UserExecutionProtocol.MaximumResultBytes * 4L / 3,
+        "User-execution envelope limits must accommodate their bounded base64 payloads.");
+    TestAssert.Assert(UserExecutionProtocol.IsEligibleLinuxUserId(1000)
+        && !UserExecutionProtocol.IsEligibleLinuxUserId(0)
+        && !UserExecutionProtocol.IsEligibleLinuxUserId(999)
+        && !UserExecutionProtocol.IsEligibleLinuxUserId(65534),
+        "Linux user execution did not reject root, system, or nobody identities.");
 
     var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.FileListDirectory,
         Path: "/home/nanami", OperationId: Guid.NewGuid());
@@ -99,6 +107,143 @@ internal static void VerifyUserExecutionContextContract()
         request with { Identity = context.Identity with { StableIdentity = "1002" } });
     TestAssert.Assert(!mismatched.Success && mismatched.ProblemCode == UserExecutionProblemCode.IdentityMismatch,
         "User execution refuses a caller-substituted stable OS identity.");
+
+    using var terminalFrames = new MemoryStream();
+    UserTerminalStreamProtocol.WriteInput(terminalFrames, "hello"u8);
+    UserTerminalStreamProtocol.WriteResize(terminalFrames, 120, 40, 1440, 900);
+    UserTerminalStreamProtocol.WriteClose(terminalFrames);
+    terminalFrames.Position = 0;
+    var inputFrame = UserTerminalStreamProtocol.ReadAsync(terminalFrames).AsTask().GetAwaiter().GetResult();
+    var resizeFrame = UserTerminalStreamProtocol.ReadAsync(terminalFrames).AsTask().GetAwaiter().GetResult();
+    var closeFrame = UserTerminalStreamProtocol.ReadAsync(terminalFrames).AsTask().GetAwaiter().GetResult();
+    TestAssert.Assert(inputFrame is { Kind: UserTerminalFrameKind.Input, Input: not null }
+        && Encoding.UTF8.GetString(inputFrame.Input) == "hello", "Terminal input framing changed user bytes.");
+    TestAssert.Assert(resizeFrame is { Kind: UserTerminalFrameKind.Resize, Columns: 120, Rows: 40,
+            WidthPixels: 1440, HeightPixels: 900 }, "Terminal resize framing lost PTY dimensions.");
+    TestAssert.Assert(closeFrame?.Kind == UserTerminalFrameKind.Close,
+        "Terminal close framing did not preserve the closed control operation.");
+
+    TestAssert.Assert(UserExecutionGitPolicy.IsAllowed(["status", "--porcelain=v2"])
+        && UserExecutionGitPolicy.IsAllowed(["--literal-pathspecs", "add", "--", "file.txt"])
+        && UserExecutionGitPolicy.IsAllowed(["config", "--get", "branch.main.remote"]),
+        "Helper Git policy rejected a command used by the Server Git domain.");
+    string[] gitDomainCommands = ["add", "branch", "cat-file", "checkout", "cherry-pick", "commit", "diff",
+        "diff-tree", "fetch", "for-each-ref", "init", "log", "ls-files", "merge", "merge-base", "pull", "push", "rebase",
+        "remote", "reset", "restore", "revert", "rev-parse", "rm", "show", "show-ref", "status", "symbolic-ref", "update-ref"];
+    TestAssert.Assert(gitDomainCommands.All(command => UserExecutionGitPolicy.IsAllowed([command])),
+        "Helper Git policy is missing a Server Git domain subcommand.");
+    TestAssert.Assert(!UserExecutionGitPolicy.IsAllowed(["-c", "alias.run=!sh", "run"])
+        && !UserExecutionGitPolicy.IsAllowed(["config", "core.sshCommand", "sh"])
+        && !UserExecutionGitPolicy.IsAllowed(["fetch", "--upload-pack=/tmp/run", "origin"])
+        && !UserExecutionGitPolicy.IsAllowed(["diff", "--ext-diff"])
+        && !UserExecutionGitPolicy.IsAllowed(["remote", "add", "origin", "ext::sh -c run"]),
+        "Helper Git policy accepted configuration or options that can name an external command.");
+}
+
+internal static async Task VerifyUserExecutionTransportLifecycleAsync(string root)
+{
+    if (!OperatingSystem.IsLinux()) return;
+    var fakeSudo = Path.Combine(root, "fake-user-execution-sudo");
+    var fakeHelper = Path.Combine(root, "fake-user-execution-helper");
+    await File.WriteAllTextAsync(fakeSudo, "#!/bin/sh\nexec /bin/sleep 30\n");
+    await File.WriteAllTextAsync(fakeHelper, "placeholder");
+    File.SetUnixFileMode(fakeSudo, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    var identity = new UserExecutionIdentity(PlatformKind.Linux, "1001", "nanami", "/home/nanami");
+    var request = new UserExecutionRequest(identity, UserExecutionOperationKind.FileGetSpecialLocations,
+        OperationId: Guid.NewGuid());
+
+    var cancelledTransport = new LinuxUserExecutionTransport(new PrivilegedHelperOptions
+    {
+        SudoPath = fakeSudo,
+        HelperPath = fakeHelper,
+        TimeoutSeconds = 30,
+    }, NullLogger<LinuxUserExecutionTransport>.Instance);
+    using (var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+    {
+        var cancelled = false;
+        try { await cancelledTransport.ExecuteAsync(request, cancellation.Token); }
+        catch (OperationCanceledException) { cancelled = true; }
+        TestAssert.Assert(cancelled, "User-execution cancellation did not stop and surface the cancelled Helper request.");
+    }
+
+    var timeoutTransport = new LinuxUserExecutionTransport(new PrivilegedHelperOptions
+    {
+        SudoPath = fakeSudo,
+        HelperPath = fakeHelper,
+        TimeoutSeconds = 1,
+    }, NullLogger<LinuxUserExecutionTransport>.Instance);
+    var timedOut = await timeoutTransport.ExecuteAsync(request with { OperationId = Guid.NewGuid() });
+    TestAssert.Assert(!timedOut.Success && timedOut.ProblemCode == UserExecutionProblemCode.TimedOut,
+        "User-execution timeout did not terminate the Helper with the stable TimedOut result.");
+}
+
+internal static void VerifyLinuxUserFileOperationCommit(string root)
+{
+    if (!OperatingSystem.IsLinux()) return;
+    var operationRoot = Path.Combine(root, "linux-user-file-operations");
+    Directory.CreateDirectory(operationRoot);
+
+    var sourceFile = Path.Combine(operationRoot, "source.txt");
+    var targetFile = Path.Combine(operationRoot, "target.txt");
+    File.WriteAllText(sourceFile, "new");
+    File.WriteAllText(targetFile, "old");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(sourceFile, targetFile, overwrite: true);
+    TestAssert.Assert(File.ReadAllText(targetFile) == "new" && File.Exists(sourceFile),
+        "Linux user file copy did not atomically replace the destination while retaining its source.");
+
+    var sourceDirectory = Path.Combine(operationRoot, "source-directory");
+    var targetDirectory = Path.Combine(operationRoot, "target-directory");
+    Directory.CreateDirectory(sourceDirectory);
+    Directory.CreateDirectory(targetDirectory);
+    File.WriteAllText(Path.Combine(sourceDirectory, "new.txt"), "new");
+    File.WriteAllText(Path.Combine(targetDirectory, "old.txt"), "old");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Move(sourceDirectory, targetDirectory, overwrite: true);
+    TestAssert.Assert(!Directory.Exists(sourceDirectory)
+        && File.ReadAllText(Path.Combine(targetDirectory, "new.txt")) == "new"
+        && !File.Exists(Path.Combine(targetDirectory, "old.txt")),
+        "Linux user directory move did not replace the destination only after staging completed.");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Move(targetDirectory, targetDirectory, overwrite: true);
+    TestAssert.Assert(File.Exists(Path.Combine(targetDirectory, "new.txt")),
+        "A same-path Linux user move removed its own destination.");
+    var descendantRejected = false;
+    try
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(targetDirectory,
+            Path.Combine(targetDirectory, "nested-copy"), overwrite: false);
+    }
+    catch (ArgumentException) { descendantRejected = true; }
+    TestAssert.Assert(descendantRejected, "Linux user directory copy accepted its own descendant as the destination.");
+
+    var externalDirectory = Path.Combine(operationRoot, "external-directory");
+    var linkedSource = Path.Combine(operationRoot, "linked-source");
+    var linkedTarget = Path.Combine(operationRoot, "linked-target");
+    Directory.CreateDirectory(externalDirectory);
+    Directory.CreateDirectory(linkedSource);
+    File.WriteAllText(Path.Combine(externalDirectory, "outside.txt"), "outside");
+    Directory.CreateSymbolicLink(Path.Combine(linkedSource, "external-link"), externalDirectory);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(linkedSource, linkedTarget, overwrite: false);
+    var copiedLink = new DirectoryInfo(Path.Combine(linkedTarget, "external-link"));
+    TestAssert.Assert(copiedLink.LinkTarget == externalDirectory
+        && copiedLink.Attributes.HasFlag(FileAttributes.ReparsePoint),
+        "Linux user directory copy traversed a symbolic link instead of copying the link itself.");
+    TestAssert.Assert(!Directory.EnumerateFileSystemEntries(operationRoot, ".relaxkonos-*", SearchOption.TopDirectoryOnly).Any(),
+        "Linux user file operations left a staging or backup artifact after a successful commit.");
+
+    if (Environment.GetEnvironmentVariable("RELAXKONOS_USER_EXECUTION_SECONDARY_ROOT") is { Length: > 0 } secondaryRoot)
+    {
+        var secondary = Path.Combine(secondaryRoot, "user-execution-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(secondary);
+        try
+        {
+            var crossSource = Path.Combine(operationRoot, "cross-source.txt");
+            var crossTarget = Path.Combine(secondary, "cross-target.txt");
+            File.WriteAllText(crossSource, "cross-filesystem");
+            RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Move(crossSource, crossTarget, overwrite: false);
+            TestAssert.Assert(!File.Exists(crossSource) && File.ReadAllText(crossTarget) == "cross-filesystem",
+                "Linux user file move did not complete its staged cross-filesystem fallback.");
+        }
+        finally { Directory.Delete(secondary, recursive: true); }
+    }
 }
 
 private sealed class UserExecutionMode(ServerMode mode) : IServerModeResolver

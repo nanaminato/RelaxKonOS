@@ -22,7 +22,8 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 
 This copies the complete Debug output to
 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`, then grants
-the development account permission to run only that exact apphost as root. Select the Server
+the development account permission to run only that apphost's no-argument protocol,
+`--user-execution`, and `--user-terminal` entry points as root. Select the Server
 `http-linux-privileged` profile, which sets `PrivilegedHelper__HelperPath` to this copy and
 `PrivilegedHelper__SudoPath` to `/usr/bin/sudo`. Re-run the script after each Helper rebuild.
 

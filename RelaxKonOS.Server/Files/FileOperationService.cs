@@ -334,7 +334,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
                 return true;
             }
             catch (OperationCanceledException) { throw; }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or TimeoutException)
             {
                 if (ex is UnauthorizedAccessException && identifiedFile && IsElevated(job, source, destination))
                 {
@@ -353,6 +353,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
                     UnauthorizedAccessException => "access-denied",
                     NotSupportedException => "unsupported",
                     InvalidOperationException => "user-execution-unavailable",
+                    TimeoutException => "timeout",
                     FileNotFoundException or DirectoryNotFoundException => "not-found",
                     IOException when OperatingSystem.IsWindows() && (ex.HResult & 0xffff) is 32 or 33 => "in-use",
                     IOException when !OperatingSystem.IsWindows() && (ex.HResult & 0xffff) is 11 or 16 => "in-use",
@@ -396,6 +397,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
                 UserExecutionProblemCode.NotFound => new FileNotFoundException("User-execution path was not found.", path),
                 UserExecutionProblemCode.Conflict => new IOException("User-execution file operation failed."),
                 UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new ArgumentException("Invalid user-execution file request."),
+                UserExecutionProblemCode.TimedOut => new TimeoutException("User-execution file operation timed out."),
                 _ => new InvalidOperationException("User-execution Helper is unavailable."),
             };
         try { return JsonSerializer.Deserialize<T>(Convert.FromBase64String(response.OutputBase64!), RelaxKonOSJsonOptions.Default)!; }

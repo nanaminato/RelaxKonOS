@@ -6,9 +6,15 @@ namespace RelaxKonOS.Protocol.UserExecution;
 /// <summary>Protocol constants for the dedicated, local-only user-execution channel.</summary>
 public static class UserExecutionProtocol
 {
-    public const string Version = "1.0";
-    public const int MaximumRequestBytes = 16 * 1024 * 1024;
+    public const string Version = "1.1";
+    // A 12 MiB payload expands to 16 MiB in base64; leave bounded room for the JSON envelope.
+    public const int MaximumRequestBytes = 17 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
+    public const int MaximumResultBytes = 17 * 1024 * 1024;
+    public const int MaximumResponseBytes = 24 * 1024 * 1024;
+    public const int MaximumTerminalInputBytes = 1024 * 1024;
+
+    public static bool IsEligibleLinuxUserId(uint uid) => uid >= 1000 && uid != 65534;
 }
 
 /// <summary>
@@ -59,6 +65,10 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
     [property: JsonPropertyName("gitArguments")] IReadOnlyList<string>? GitArguments = null,
     [property: JsonPropertyName("terminalShell")] string? TerminalShell = null,
+    [property: JsonPropertyName("terminalColumns")] int? TerminalColumns = null,
+    [property: JsonPropertyName("terminalRows")] int? TerminalRows = null,
+    [property: JsonPropertyName("terminalWidthPixels")] int? TerminalWidthPixels = null,
+    [property: JsonPropertyName("terminalHeightPixels")] int? TerminalHeightPixels = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
     [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version);
 
@@ -78,6 +88,7 @@ public enum UserExecutionProblemCode
     NotFound,
     Conflict,
     ContentTooLarge,
+    Cancelled,
     TimedOut,
     InternalError,
 }

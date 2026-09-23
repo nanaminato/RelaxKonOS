@@ -12,7 +12,7 @@ LocalSystem 或 Administrator 身份运行；所有成功的宿主特权操作�
 - 将 Helper 发布目录、sudoers 与策略文件设为 root 所有且 Server 用户不可写；
 - 将受管文件根和服务 ID 写入 `/etc/relaxkonos/privileged-helper-roots` 与
   `/etc/relaxkonos/privileged-services`；
-- 仅允许 Server 用户以 `sudo -n` 调用无参数 Helper apphost。
+- 仅允许 Server 用户以 `sudo -n` 调用 Helper apphost 的三个精确入口：无参数特权协议、`--user-execution` 和 `--user-terminal`。
 
 ### Docker 访问（显式选择）
 
@@ -37,7 +37,8 @@ sudo -u relaxkonos-server sudo -n /usr/local/lib/relaxkonos/privileged-helper/<a
 ```
 
 第二个命令没有 JSON 请求时必须失败；它只能证明 sudoers 指向固定 apphost，不能用于
-执行命令。不要向 sudoers 增加通配符、shell 或自定义参数规则。
+执行命令。sudoers 中的 `""` 明确表示无参数，另外两条规则只匹配固定的 user-execution 入口。
+不要增加通配符、shell、额外参数或可由 Server 选择的命令路径。
 
 ### 文件访问配置
 

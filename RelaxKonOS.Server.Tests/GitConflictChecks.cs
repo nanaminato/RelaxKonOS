@@ -16,7 +16,10 @@ public static class GitConflictChecks
         var factory = new Factory(options);
         await using (var db = factory.CreateDbContext()) await db.Database.EnsureCreatedAsync();
         var service = new LocalGitRepositoryService(factory, new HostGitCli(), new EphemeralDataProtectionProvider(),
-            NullLogger<LocalGitRepositoryService>.Instance);
+            NullLogger<LocalGitRepositoryService>.Instance,
+            DispatchProxy.Create<IUserExecutionContextResolver, RejectProxy>(),
+            DispatchProxy.Create<IUserExecutionTransport, RejectProxy>(),
+            new TestUserModeResolver(), new Microsoft.AspNetCore.Http.HttpContextAccessor());
         var user = Guid.NewGuid();
         var count = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); Console.WriteLine($"PASS GIT {++count}: {name}"); }

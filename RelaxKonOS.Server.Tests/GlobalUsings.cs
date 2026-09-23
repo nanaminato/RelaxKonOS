@@ -51,6 +51,7 @@ global using RelaxKonOS.Server.Firewall;
 global using RelaxKonOS.Server.Identity;
 global using RelaxKonOS.Server.UserExecution;
 global using RelaxKonOS.Protocol.UserExecution;
+global using RelaxKonOS.Protocol.Common;
 global using RelaxKonOS.Server.HostMode;
 global using System.Security.Claims;
 global using System.IdentityModel.Tokens.Jwt;

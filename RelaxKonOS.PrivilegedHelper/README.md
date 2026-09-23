@@ -16,7 +16,7 @@ dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj
 sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER"
 ```
 
-该脚本会把完整的 Debug 输出复制到 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`，再只允许开发账户以 root 身份运行该精确的 apphost。选择 Server 的 `http-linux-privileged` 配置，它将 `PrivilegedHelper__HelperPath` 设为该副本、`PrivilegedHelper__SudoPath` 设为 `/usr/bin/sudo`。每次重新构建 Helper 后都要重新运行脚本。
+该脚本会把完整的 Debug 输出复制到 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`，再只允许开发账户以 root 身份运行该 apphost 的无参数协议、`--user-execution` 和 `--user-terminal` 三个精确入口。选择 Server 的 `http-linux-privileged` 配置，它将 `PrivilegedHelper__HelperPath` 设为该副本、`PrivilegedHelper__SudoPath` 设为 `/usr/bin/sudo`。每次重新构建 Helper 后都要重新运行脚本。
 
 Server 本身仍是非特权进程：sudo 会针对每个结构化请求启动一个 Helper 进程，且 Helper 只允许封闭操作集。绝不可让 sudoers 规则指向开发账户可写的 `bin/Debug` 可执行文件；这会赋予账户等同 root 的控制权。
 
