@@ -5,12 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -20,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -45,12 +43,7 @@ fun ErrorBanner(message: String, onRetry: (() -> Unit)?, onDismiss: () -> Unit, 
             Modifier.padding(Spacing.md),
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Icon(
-                Icons.Filled.Warning,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onErrorContainer,
-            )
+            DesktopIcon(icon = DesktopIcons.notice, size = 22.dp)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 Text(message, style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

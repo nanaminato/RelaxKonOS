@@ -15,22 +15,30 @@ import androidx.core.os.LocaleListCompat
 enum class ColorMode { FollowSystem, Light, Dark }
 
 /**
- * Languages the app ships, matching `app/src/main/res/values*` and `res/xml/locales_config.xml`.
- * [FollowSystem] is stored as an empty tag and resolved by the platform.
+ * Languages the app ships, matching `app/src/main/res/values*`, `res/xml/locales_config.xml` and the
+ * `androidResources.localeFilters` list in `app/build.gradle.kts`.
+ *
+ * All four places use *language* tags, never region ones. [FollowSystem] is stored as an empty tag and
+ * resolved by the platform rather than by code. That resolution is language-level too: the Chinese
+ * strings live in `values-zh`, so every Chinese variant — Simplified or Traditional, any region —
+ * lands on them, while every other system language falls through to `values`, which is English. The
+ * resource folders therefore *are* the rule, and nothing here has to guess what the device is set to.
  */
 enum class AppLanguage(val tag: String) {
     FollowSystem(""),
     English("en"),
-    SimplifiedChinese("zh-CN"),
+    Chinese("zh-CN"),
     Japanese("ja");
 
     companion object {
-        /** Accepts both the BCP-47 form the platform uses and the legacy `zh-rCN` resource form. */
+        /** Accepts the BCP-47 form the platform uses and the `zh-rCN` resource form older builds stored. */
         fun fromStoredTag(tag: String): AppLanguage = when {
             tag.isBlank() -> FollowSystem
-            tag.startsWith("zh") -> SimplifiedChinese
-            tag.startsWith("ja") -> Japanese
-            tag.startsWith("en") -> English
+            tag.startsWith("zh", ignoreCase = true) -> Chinese
+            tag.startsWith("ja", ignoreCase = true) -> Japanese
+            tag.startsWith("en", ignoreCase = true) -> English
+            // A language this build does not ship. Following the system is the safe answer, and the
+            // resource set resolves it to English anyway.
             else -> FollowSystem
         }
     }

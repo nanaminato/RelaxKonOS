@@ -28,7 +28,7 @@
 - D1–D4 按设计落地：管理员密码仅强生物识别按次授权可保存；服务端拒绝提权即删除该条密码，不按错误码分支；
   网络错误、超时与 5xx 不删除。
 - 提权严格保持 `capability + target + jti + 5 分钟`；客户端只做一次安全重试，token 变化即丢弃本地授权缓存。
-- 文本全部走 Android resource（`values`、`values-zh-rCN`、`values-ja`），无用户可见字符串字面量；方向使用 `start`/`end`。
+- 文本全部走 Android resource（`values`、`values-zh`、`values-ja`），无用户可见字符串字面量；方向使用 `start`/`end`。
 - 终端入口（`TopDestination.Terminal`）标记为未实现，因此不出现在导航中——设计 §8 禁止"不可用入口"。
 - 文件上传使用 Android Storage Access Framework 的单个文档流，不申请宽泛的存储权限；上传和下载均显示
   已传输字节进度并可取消。下载保留于私有缓存，完成后只通过短时 `FileProvider` URI 交给系统打开/分享面板。
@@ -60,7 +60,7 @@
 - `SavedConnection` 更名为 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey`，档案文件格式升到 `RKC2`。`hasSavedCredential` 只是显示投影：启动时由 `AppContainer` 以保险箱记录复核修正，两者不一致时以保险箱为准；布尔值不构成安全边界。
 - `CredentialUnlocked` 落地为「本进程内、窗口模式（D3）下已授权过的身份集合」：窗口内再次登录走 `VaultAccess.loadWithoutPrompt`，失败即回落为正常授权提示；按次强指纹模式恒为 false，不参与安全边界。
 - 新增 `ProblemCodes.LOGIN_RATE_LIMITED`（`429 login-rate-limited`）与对应文案：登录被限流时说「登录尝试过于频繁」而不是通用拒绝；它不参与任何凭据删除判定。
-- 三份 `strings.xml`（`values` / `values-zh-rCN` / `values-ja`）键集完全一致（现 279 键），并删除了不再使用的 `login_stored_credential_rejected`、`login_use_fingerprint`、`login_use_password`、`login_saved_credential`。
+- 三份 `strings.xml`（`values` / `values-zh` / `values-ja`）键集完全一致（现 279 键），并删除了不再使用的 `login_stored_credential_rejected`、`login_use_fingerprint`、`login_use_password`、`login_saved_credential`。
 - **修复指纹保存与解封完全不可用**（真机报「设备的指纹已变更」）：`VaultKeyManager.generate` 只调用了 `KeyGenerator.init()` 配置策略，却从未调用 `generateKey()`，因此两个保险箱的 Keystore alias 从未被创建（该文件自 `58b4c64d` 起即如此）。随后 `beginSeal` / `beginOpen` 拿到的 `getKey()` 为 `null`，抛出的「密钥缺失」被界面统一呈现为「设备的指纹已变更」，与 debug / release 无关——两条构建路径是同一份代码。现在补上 `generateKey()`，`ensureKey` 在建钥后校验 alias 确实存在，并把**任何**建钥失败归类为 `VaultKeyUnavailableException`：「拿不到密钥」不是「指纹变了」，两者给用户的建议相反。
 - 新增 debug-only 排障链路 `security/VaultDiagnostics.kt`（logcat tag `RelaxKonVault`，`adb logcat -s RelaxKonVault:D`）：记录 `canAuthenticate` 码（映射为 `SUCCESS` / `NONE_ENROLLED` / `NO_HARDWARE` 等名称——`BIOMETRIC_SUCCESS` 就是 `0`，原样打印会被读成失败）、`unlockMode` 裁决、密钥创建与 provider（StrongBox / TEE）选择、alias 存在性、`BiometricPrompt` 的结果码与返回文本，以及 Keystore 异常被分类前的原始类型与消息。能力探测与解锁模式只在结果**变化**时打印（探测本身仍每次调用都执行，不缓存结论），否则重组风暴会淹没关键行。日志只含保险箱种类、provider 决策、异常类与结果枚举，不含密码、账户、服务器地址、`Cipher` 或任何密钥材料；sink 由 `RelaxKonApplication` 仅在 debug 构建安装，release 构建保持未安装，`security` 包因此从不触碰 `android.util.Log`（`VaultDiagnosticsTest` 断言了这一点）。
 
@@ -71,11 +71,46 @@
 - 新增设计令牌层：`ui/theme/Palette.kt`（四套调色板 + `RelaxKonColors` 语义色，经 `MaterialTheme.relaxKon` 读取）与 `ui/theme/Tokens.kt`（`Spacing` / `Radius` / `Layout`、`RelaxKonShapes`、`RelaxKonTypography`）。四套调色板都显式填满 `surfaceContainer*` 阶梯，避免 Material 基线紫灰调渗入；`RelaxKonOSTheme` 的对外 API（`ColorMode` / `AppLanguage` / `AppearanceState` / `applyAppLanguage` / `applyAppNightMode`）保持不变。
 - 新增共享组件：`AppBackdrop`（整窗渐变 + 两处柔光，高对比度下近似纯色）、`ScreenHeader`、`StatusChip`（含 `loadTone` 阈值）、`MetricTile` / `MetricTrack` / `DiskRow`、`ListRow` / `IconBadge`、`EmptyState`、`SectionGroup` / `SectionLabel`；`SectionCard`、`ErrorBanner`、`ProgressSheet` 改为零阴影 + 细边表面。`ErrorBanner` 不再自带外边距，改由调用方决定（页面内与整窗浮层两种位置需要不同的内缩）。
 - 界面改造：首页改为「身份 hero 卡 + 状态胶囊 + 指标磁贴 + 能力清单」（hero 替换原来的会话事实卡，服务器/账户/工作区/平台四个事实全部保留）；登录页加品牌标记与渐变；文件页改为位置栏 + 新建/上传双按钮 + 图标列表行；管理与更多改为分组图标行；性能页与进程页改用指标磁贴、胶囊与统一列表行；`more/*` 五个子页统一 `ScreenHeader` 与分组卡。`MainActivity` 只保留一处背景绘制，Shell 的 `Scaffold` 改为透明并补上 `safeDrawingPadding`。
-- 新增 12 个自绘矢量图标（`ic_server` / `ic_folder` / `ic_file` / `ic_memory` / `ic_storage` / `ic_activity` / `ic_process` / `ic_upload` / `ic_download` / `ic_copy` / `ic_link`）。**未**引入 `material-icons-extended`：Compose BOM 2025.12.01 已不再解析该坐标（图标库在 Compose 1.7 起冻结），且会显著增大包体。
+- 新增 12 个自绘矢量图标（`ic_server` / `ic_folder` / `ic_file` / `ic_memory` / `ic_storage` / `ic_activity` / `ic_process` / `ic_upload` / `ic_download` / `ic_copy` / `ic_link`）。**未**引入 `material-icons-extended`：Compose BOM 2025.12.01 已不再解析该坐标（图标库在 Compose 1.7 起冻结），且会显著增大包体。**这套自绘矢量已在下一节被桌面端图标镜像整体取代。**
 - `values/colors.xml` 与 `values-night/colors.xml` 的 `window_background` 改为对应渐变的首个色标，避免首帧 Compose 之前闪出不同底色。
 - 未新增或删除任何字符串资源；三份 `strings.xml` 键集仍完全一致（279 键）。
 
 校验：`:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，产物 `app/build/outputs/apk/debug/app-debug.apk`（13.3 MB）；单测 17 个测试类、158 个用例，0 失败 / 0 错误 / 0 跳过。**本次改动全部是界面层，尚未在真机上目视确认**：渐变与柔光在小屏上的观感、指标磁贴在窄屏（360dp）两列布局下的换行、以及深色与高对比度两套调色板的实际对比度，都需要按设备矩阵复核。
+
+## 图标与语言（2026-09-23）
+
+对应两条要求：「图标使用和桌面端相同的图标」与「语言跟随系统，中文、日文以外均使用英文」。业务逻辑、导航栈、凭据与提权链路未改动。
+
+- **图标不再自绘**：来源改为桌面端 `Client/RelaxKonOS.Client/Assets`，由新增的 `Tools/Mobile/sync-desktop-icons.py` 镜像到
+  `app/src/main/res/drawable-nodpi/`（128px 见方，113 个 PNG，1.71 MB）。分两组，职责与桌面端一致：`ic_app_*`（24 个，来自
+  `Assets/AppIcons`，另有 `RelaxKonOS-client-icon.png` 作为品牌图）是自带上色的圆角方形应用图标，只用于品牌标记与顶层目的地；
+  `ic_sys_*`（89 个，来自 `Assets/Icons/Explorer`）是透明彩色字形，用于表头、列表行、按钮与文件类型。桌面端的
+  `Assets/Icons/Explorer/debug-grid.png` 是 2048×768 sprite sheet 而非图标，脚本按名跳过。脚本支持 `--check`（只报差异、
+  不写文件，有差异即以非零退出码失败），用于在提交前或未来的 CI 中防止图标与桌面端漂移。
+- **单一映射层**：新增 `ui/icons/DesktopIcons.kt`，按语义（导航、页面头、动作、文件系统）暴露资源 id，并提供 `DesktopIcon`
+  组件。业务代码不再直接引用 `R.drawable.*`——现在只剩 `PasswordTextField.kt` 的两个自绘矢量（见下）。
+  `TopDestination` 与 `ManageDomain` 的 `icon: ImageVector` 改为 `@param:DrawableRes iconRes: Int`（用 `@param:` 形式，
+  否则 Kotlin 2.x 会报「注解目前只作用于值参数」警告）。
+- **不做主题染色**：素材自带配色，`Icon` 的 tint 会把它们压成剪影，因此统一用 `Image`。`IconBadge` 容器相应从
+  `primaryContainer` 改为中性 `surfaceContainerHigh`（蓝底衬黄文件夹是染色徽章的典型坏结果），文件列表行也不再按目录/文件分色。
+  首页能力清单的勾选图标改为 6dp 成功色圆点——桌面图标集里没有对勾，凭空造一个会引入第二套图标语言。
+- **桌面端确实没有的两类**：上传/下载（桌面把这两个动作放在无图标的菜单里，故取集合中语义最近的箭头）与密码显隐
+  （桌面登录页没有该控件，保留 Android 自绘的 `ic_password_visible|hidden.xml`）。这是有意例外，不是遗漏。
+- **文件类型判定移植**：`DesktopIcons.fileFor(name, isDirectory)` 的判定顺序（整名 → 具体扩展名 → 归类）逐条移植自桌面端
+  `ExplorerIconAssetResolver` / `ExplorerFileIconKindResolver`，由 `ui/icons/DesktopIconsTest.kt`（7 个用例）固化，
+  两个客户端对同一文件必须给出同一图形。
+- **语言规则落到资源目录**：`values-zh-rCN` 重命名为 `values-zh`，`app/build.gradle.kts` 改用语言级
+  `androidResources.localeFilters`（`en` / `zh` / `ja`，同时消掉了 `resourceConfigurations` 的 AGP 弃用警告），
+  `res/xml/locales_config.xml` 同步由 `zh-CN` 改为 `zh`——写成区域级会让系统「应用语言」页声称本应用只支持这一种中文。
+  只有一份中文译文，`zh-TW`/`zh-HK` 等全部变体因此落到同一份中文而不是英文。Kotlin 侧不写猜设备语言的分支：
+  `AppLanguage.SimplifiedChinese` 更名为 `Chinese`，`AppLanguageTest`（6 个用例）固化各变体归属。
+- 删除 11 个不再使用的自绘矢量（`ic_activity` / `ic_copy` / `ic_download` / `ic_file` / `ic_folder` / `ic_link` / `ic_memory` /
+  `ic_process` / `ic_server` / `ic_storage` / `ic_upload`）；`appearance_language_note` 等三语文案同步更新，键集仍为 279 一致。
+
+校验：`:app:assembleDebug` 与 `:app:testDebugUnitTest --rerun-tasks` 均 BUILD SUCCESSFUL，Kotlin 编译零警告；单测 19 个测试类、
+171 个用例，0 失败 / 0 错误 / 0 跳过（本轮新增 `DesktopIconsTest` 7、`AppLanguageTest` 6）。图标资源共 113 个文件、1.71 MB，
+APK 由 13.3 MB 增至 14.5 MB，`sync-desktop-icons.py --check` 复跑输出 "113 icons are up to date"（幂等）。**尚未做真机目视确认**：
+底部导航 26dp 槽位上的彩色应用图标在深色与高对比度主题下的对比度、文件列表行改用彩色字形后的信息密度，都需要按设备矩阵复核。
 
 ## 已知限制
 
@@ -96,7 +131,11 @@
 - 使用 [`Tools/Mobile/Build-Android.ps1`](../../../Tools/Mobile/Build-Android.ps1) 运行 Gradle `:app:assembleDebug`；
   需要 Android SDK、JDK 21 与 Gradle 9.7.1。
 - 使用 Gradle `:app:testDebugUnitTest` 执行单元测试：登录决策与身份键、凭据四态与显示投影、布局断点、
-  认证状态机、保险箱加解密与 AAD 绑定、提权单次重试、生物识别能力映射、wire 时间戳解析、导航栈、能力门控。
+  认证状态机、保险箱加解密与 AAD 绑定、提权单次重试、生物识别能力映射、wire 时间戳解析、导航栈、能力门控、
+  桌面端文件图标判定顺序、应用语言归属。
+- 图标资源来自桌面端，不手工维护：改了 `Client/RelaxKonOS.Client/Assets` 下的图标后，运行
+  [`Tools/Mobile/sync-desktop-icons.py`](../../../Tools/Mobile/sync-desktop-icons.py) 重新镜像到 `app/src/main/res/drawable-nodpi/`；
+  提交前可用 `--check` 让它只报差异而不写文件（有差异时返回非零退出码）。
 
 最近一次校验（2026-09-23）：
 
@@ -112,7 +151,7 @@
   凭据判定边界）全部通过。唯一失败的是 `MobileNavigatorTest` 的「首个子路由 push 触发路由观察者」用例——它来自工作树中
   尚未完成的导航改动，与本轮改动无关。
 - 残留警告一处：`app/build.gradle.kts` 的 `resourceConfigurations` 在 AGP 9.4.1 已弃用，官方替代是
-  `androidResources.localeFilters`。本模块暂未迁移（AGP 9.4.1 仍支持该属性），待确认新 DSL 精确签名后再改。
+  `androidResources.localeFilters`。**该警告已在下一节「图标与语言」中随迁移消除**。
 - 以上均为本机 JVM 单元测试与打包验证；设备矩阵验证仍未执行（见上）。
 
 最近一次校验（2026-09-23，登录决策与本地凭据模型落地后）：

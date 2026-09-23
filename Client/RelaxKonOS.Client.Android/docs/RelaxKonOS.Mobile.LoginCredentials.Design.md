@@ -437,7 +437,7 @@ CredentialStore(密文)
 | `ui/common/ElevationDialog.kt` | `KeyInvalidated` → 标记作废（§7.5） |
 | `core/net/ApiResult.kt` | 补 `ProblemCodes.LOGIN_RATE_LIMITED`，提供准确的限流文案；不参与任何凭据删除决策 |
 | `core/net/RelaxKonApi.kt` | 登录失败只映射用户可读错误；凭据处置统一由成功后的保存流程和显式删除操作处理 |
-| `res/values*/strings.xml` | 新文案，`values` / `values-zh-rCN` / `values-ja` 三份同步（缺项会回落英文） |
+| `res/values*/strings.xml` | 新文案，`values` / `values-zh` / `values-ja` 三份同步（缺项会回落英文） |
 | `docs/` | 本文档 + V1 修订（§10） |
 
 ### 9.3 测试计划

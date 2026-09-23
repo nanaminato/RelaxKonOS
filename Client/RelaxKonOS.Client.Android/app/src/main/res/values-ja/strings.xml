@@ -265,7 +265,7 @@
     <string name="appearance_language_english">English</string>
     <string name="appearance_language_chinese">简体中文</string>
     <string name="appearance_language_japanese">日本語</string>
-    <string name="appearance_language_note">言語を変更すると画面が再作成されます。サインイン状態は保たれ、保存されたパスワードにも影響しません。</string>
+    <string name="appearance_language_note">言語を変更すると画面が再作成されます。サインイン状態は保たれ、保存されたパスワードにも影響しません。システムに合わせる場合、端末が中国語または日本語ならその言語を、それ以外は英語を使用します。</string>
 
     <string name="diagnostics_title">診断</string>
     <string name="diagnostics_self_check">接続のセルフチェック</string>

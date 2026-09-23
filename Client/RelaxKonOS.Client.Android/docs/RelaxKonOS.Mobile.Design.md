@@ -192,11 +192,12 @@ Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑�
 
 #### 国际化
 
-- 界面默认源语言为 `en`；首批语言包目标为 `en`、`zh-CN` 与 `ja-JP`，使用 BCP 47 locale 标识。缺失翻译回退到 `en`，不回退到硬编码文本或其他语言。
+- 界面默认源语言为 `en`；语言包目标为 `en`、`zh` 与 `ja`。缺失翻译回退到 `en`，不回退到硬编码文本或其他语言。
+- **语言包目录使用语言级限定符**（`values` / `values-zh` / `values-ja`），与 `app/build.gradle.kts` 的 `androidResources.localeFilters`（`en`、`zh`、`ja`）一致；`res/xml/locales_config.xml` 同样只声明语言级标签——写成 `zh-CN` 会让系统「应用语言」页声称本应用只支持这一种中文。只有一份中文译文，所以任何 `zh-*`（含繁体脚本与各区域变体）都必须落到它——写成 `values-zh-rCN` 会让 `zh-TW`/`zh-HK` 落回英文，这是一条回归。中文与日文以外的一切系统语言落到 `values`，即英文；这条规则由资源目录本身承担，Kotlin 侧不写「猜设备语言」的分支。
 - 所有可见文案放入 Android resource；Compose 不得保留用户可见字符串字面量。使用 `stringResource`、复数资源和带命名参数的格式化文本，不通过字符串拼接构造句子。
 - 日期、时间、数字、文件大小与排序使用用户 locale。Server 返回的稳定状态码、错误码和枚举由客户端映射为本地化文案；不得要求 Server 返回某一种自然语言的显示字符串。
-- 默认跟随系统应用语言；“更多 → 语言”可显式覆写，并以 Android AppCompat locale API 持久化。语言切换后允许 Activity 重建，但登录会话和当前安全操作不得丢失或被重复提交。
-- 使用逻辑方向 `start`/`end`，不用 `left`/`right`；首发虽未承诺 RTL 语言，布局、图标镜像和导航顺序必须能够支持 RTL。测试至少覆盖 `en`、`zh-CN`、`ja-JP`、伪语言扩展长度与 RTL 预览。
+- 默认跟随系统应用语言；“更多 → 语言”可显式覆写，并以 Android AppCompat locale API 持久化。**跟随系统时的取值规则**：设备语言为中文（任意变体）用中文、日文用日文、其余一切语言用英文。语言切换后允许 Activity 重建，但登录会话和当前安全操作不得丢失或被重复提交。
+- 使用逻辑方向 `start`/`end`，不用 `left`/`right`；首发虽未承诺 RTL 语言，布局、图标镜像和导航顺序必须能够支持 RTL。测试至少覆盖 `en`、`zh`（含 `zh-TW` 这类繁体变体，它们必须落到同一份中文译文而不是英文）、`ja`、伪语言扩展长度与 RTL 预览。
 
 #### 多主题与无障碍
 
@@ -217,7 +218,13 @@ Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑�
 - **语义色**：Material 3 没有 success / warning / info 角色，因此这三组颜色由 `MaterialTheme.relaxKon` 提供。业务页只选择 tone（`Neutral` / `Primary` / `Success` / `Warning` / `Danger` / `Info`），由调色板决定该 tone 在浅色、深色、高对比度下分别是什么；页面不得出现十六进制颜色。调色板必须显式填满 `surfaceContainer*` 阶梯——留空会沿用 Material 基线，把紫灰调带进蓝色体系。
 - **状态不靠颜色单独表达**：`StatusChip` 始终携带文字，图标只是补充。主机指标的阈值只在一处定义（`loadTone`）：<70% 正常、70–90% 需要留意、≥90% 视为问题。
 - **页面构成**：每个目的地以同一个 `ScreenHeader` 开头（标题 + 可选副标题 + 可选返回圆钮）；`onBack` 为 `null` 时是平板分栏形态，此时不渲染返回钮——分栏没有「返回」可退。设置类页面用「分组标题 + 分组卡」（`SectionLabel` + `SectionGroup`），页面标题不在卡内重复。列表项统一为「图标徽章 + 标题 + 两行细节 + 尾部动作」，不再把多个事实用分隔符拼成一行。
-- **图标**：不引入 `androidx.compose.material:material-icons-extended`——Compose BOM 2025.12.01 已不再解析该坐标（图标库在 Compose 1.7 冻结），且会显著增大包体。`material-icons-core` 已有的图标直接使用，其余（服务器、目录、文件、CPU、存储、性能、进程、上传、下载、复制、连接）在 `res/drawable/` 自绘矢量。
+- **图标与桌面端同源**：Android 不自绘图标集。桌面端 `Client/RelaxKonOS.Client/Assets` 是唯一来源，`Tools/Mobile/sync-desktop-icons.py` 把它镜像到 `res/drawable-nodpi/`，`ui/icons/DesktopIcons.kt` 是按语义寻址的唯一映射点。改图标必须走这个脚本，不得在 `res/drawable/` 里另画一套。
+  - 镜像分两组，职责与桌面端一致（桌面 Dock 用应用图标，Explorer 工具栏与文件类型用字形）：`ic_app_*` 是自带上色的圆角方形应用图标，只用于顶层目的地与产品标识（底部导航、rail 头部、登录页品牌标记、首页 hero）；`ic_sys_*` 是透明彩色字形，用于页面内的表头、列表行、按钮与文件类型。
+  - 位图**不做主题染色**：素材自带配色与形状，套上主题色会被压成剪影。`IconBadge` 因此用中性底色而不是 `primaryContainer`——蓝底衬黄文件夹就是染色徽章的典型坏结果。
+  - 素材为 128px 见方、放在 `drawable-nodpi`（不带密度，最大 32dp 槽位在 xxxhdpi 上仍 1:1 采样）；192px 原件会多出约两兆谁也用不到的像素。
+  - 桌面端确实没有的两类：上传/下载（桌面把这两个动作放在无图标的菜单里）与密码显隐（桌面登录页没有该控件）。前者取集合中语义最近的箭头，后者保留 `res/drawable/ic_password_visible|hidden.xml` 自绘矢量。
+  - 文件列表按扩展名选图标，规则逐条移植自桌面端 `ExplorerIconAssetResolver` / `ExplorerFileIconKindResolver`；`ui/icons/DesktopIconsTest.kt` 固化其判定顺序（先整名、再具体扩展名、最后归类），两个客户端对同一文件必须给出同一图形。
+  - 不引入 `androidx.compose.material:material-icons-extended`：Compose BOM 2025.12.01 已不再解析该坐标（图标库在 Compose 1.7 冻结），且会显著增大包体。
 
 ---
 

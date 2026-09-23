@@ -16,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.CredentialStatus
@@ -26,6 +25,7 @@ import app.relaxkonos.mobile.ui.common.EmptyState
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.formatTimestamp
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
@@ -130,7 +130,7 @@ private fun SavedLoginEntry(
                 statusLabel,
                 formatTimestamp(login.lastUsedEpochMillis),
             ).joinToString(" · "),
-            leading = { IconBadge(icon = painterResource(R.drawable.ic_link)) },
+            leading = { IconBadge(icon = DesktopIcons.connections) },
         )
         Row(Modifier.fillMaxWidth().padding(start = Spacing.sm), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             TextButton(onClick = onSelect) { Text(stringResource(R.string.connections_use)) }

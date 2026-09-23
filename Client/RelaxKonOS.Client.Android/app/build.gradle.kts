@@ -14,7 +14,12 @@ android {
         versionCode = 1
         versionName = "0.2.0-v1a"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        resourceConfigurations += listOf("en", "zh-rCN", "ja")
+    }
+
+    androidResources {
+        // Language-level, not region-level: the app ships one Chinese translation, and `zh` matches
+        // every Chinese variant the platform may report, including Traditional-script ones.
+        localeFilters += listOf("en", "zh", "ja")
     }
 
     buildTypes {

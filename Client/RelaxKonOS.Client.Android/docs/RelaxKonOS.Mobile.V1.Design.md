@@ -510,7 +510,7 @@ Manifest 新增：
 <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 ```
 
-另有 `android:localeConfig="@xml/locales_config"`（en / zh-CN / ja）与
+另有 `android:localeConfig="@xml/locales_config"`（语言级标签 en / zh / ja，与 `values*` 目录一一对应）与
 `androidx.appcompat.app.AppCompatDelegate.autoStoreLocales`（API 33 以下的语言持久化）。
 
 `allowBackup="false"` 保持不动——凭据密文不得随系统备份迁移到其他设备。

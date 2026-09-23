@@ -1,9 +1,7 @@
 package app.relaxkonos.mobile.ui.connect
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,18 +10,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -33,14 +27,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
@@ -56,9 +47,10 @@ import app.relaxkonos.mobile.ui.common.ErrorBanner
 import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
-import app.relaxkonos.mobile.ui.theme.relaxKon
 
 /**
  * Sign-in screen, in one shape.
@@ -232,30 +224,17 @@ fun LoginScreen(modifier: Modifier = Modifier) {
 /**
  * The wordmark above the form.
  *
- * The mark is filled with the same hero gradient the home screen uses for its identity card, which is
- * how the two ends of the app (signed out, signed in) read as one product.
+ * It is the desktop client's own mark, drawn at the size the gradient plate used to occupy, which is
+ * how the two ends of the app (signed out, signed in) read as one product. The artwork brings its own
+ * colour and shape, so the plate it used to sit on is gone.
  */
 @Composable
 private fun LoginBrand() {
-    val colors = MaterialTheme.relaxKon
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(RoundedCornerShape(Radius.xl))
-                .background(Brush.linearGradient(listOf(colors.heroStart, colors.heroEnd))),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_server),
-                contentDescription = null,
-                tint = colors.onHero,
-                modifier = Modifier.size(34.dp),
-            )
-        }
+        DesktopIcon(icon = DesktopIcons.brand, size = 72.dp)
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
     }
 }
@@ -276,13 +255,7 @@ private fun credentialStatusLine(status: CredentialStatus): (@Composable () -> U
     }
     return {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs + 2.dp)) {
-            Icon(
-                imageVector = Icons.Filled.Lock,
-                // The sentence already says what this means; the icon is decoration for it.
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = color,
-            )
+            DesktopIcon(icon = DesktopIcons.credentials, size = 16.dp)
             Text(label, style = MaterialTheme.typography.bodySmall, color = color)
         }
     }

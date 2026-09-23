@@ -5,6 +5,8 @@
 -->
 <locale-config xmlns:android="http://schemas.android.com/apk/res/android">
     <locale android:name="en" />
-    <locale android:name="zh-CN" />
+    <!-- Language-level, matching res/values-zh: the app ships one Chinese translation that also
+         serves Traditional-script and regional variants, so claiming zh-CN here would understate it. -->
+    <locale android:name="zh" />
     <locale android:name="ja" />
 </locale-config>

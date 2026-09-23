@@ -88,9 +88,9 @@ fun AppearanceScreen(
                     appearance.setLanguage(AppLanguage.English)
                     applyAppLanguage(AppLanguage.English)
                 }
-                ChoiceRow(R.string.appearance_language_chinese, appearance.language == AppLanguage.SimplifiedChinese) {
-                    appearance.setLanguage(AppLanguage.SimplifiedChinese)
-                    applyAppLanguage(AppLanguage.SimplifiedChinese)
+                ChoiceRow(R.string.appearance_language_chinese, appearance.language == AppLanguage.Chinese) {
+                    appearance.setLanguage(AppLanguage.Chinese)
+                    applyAppLanguage(AppLanguage.Chinese)
                 }
                 ChoiceRow(R.string.appearance_language_japanese, appearance.language == AppLanguage.Japanese) {
                     appearance.setLanguage(AppLanguage.Japanese)

@@ -1,24 +1,21 @@
 package app.relaxkonos.mobile.ui.manage
 
 import android.app.Application
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.AppContainer
@@ -36,6 +33,8 @@ import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.failureMessage
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
@@ -184,14 +183,13 @@ class ManageViewModel(application: Application) : AndroidViewModel(application) 
 /**
  * A manageable domain and the glyph that identifies it.
  *
- * The glyph is a resource id rather than an `ImageVector` because these two are drawn from this app's
- * own vector drawables: the Material core set has no speed or process-list icon, and pulling in
- * `material-icons-extended` for two glyphs would cost more than it is worth.
+ * The glyph is a resource id from the desktop icon set (`ui/icons/DesktopIcons.kt`), not a Material
+ * `ImageVector`: the phone shows the same marks the desktop shows for the same two domains.
  */
 private data class ManageDomain(
-    val titleRes: Int,
-    val subtitleRes: Int,
-    val iconRes: Int,
+    @param:StringRes val titleRes: Int,
+    @param:StringRes val subtitleRes: Int,
+    @param:DrawableRes val iconRes: Int,
     val open: () -> Unit,
 )
 
@@ -219,7 +217,7 @@ fun ManageScreen(
                 ManageDomain(
                     R.string.manage_monitor_title,
                     R.string.manage_monitor_subtitle,
-                    R.drawable.ic_activity,
+                    DesktopIcons.system,
                     onOpenMonitor,
                 ),
             )
@@ -229,7 +227,7 @@ fun ManageScreen(
                 ManageDomain(
                     R.string.manage_processes_title,
                     R.string.manage_processes_subtitle,
-                    R.drawable.ic_process,
+                    DesktopIcons.processes,
                     onOpenProcesses,
                 ),
             )
@@ -245,7 +243,7 @@ fun ManageScreen(
         if (domains.isEmpty()) {
             EmptyState(
                 text = stringResource(R.string.error_capability_missing),
-                icon = Icons.Filled.Build,
+                icon = DesktopIcons.notice,
             )
         } else {
             SectionGroup {
@@ -253,14 +251,8 @@ fun ManageScreen(
                     ListRow(
                         title = stringResource(domain.titleRes),
                         subtitle = stringResource(domain.subtitleRes),
-                        leading = { IconBadge(icon = painterResource(domain.iconRes)) },
-                        trailing = {
-                            Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
+                        leading = { IconBadge(icon = domain.iconRes) },
+                        trailing = { DesktopIcon(icon = DesktopIcons.disclosure, size = 20.dp) },
                         onClick = domain.open,
                     )
                 }

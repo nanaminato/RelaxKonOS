@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.ui.common
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,8 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -30,16 +29,15 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * tinted backdrop produces a grey halo that hurts the text above it, so separation comes from the
  * surface step and the border instead — which also survives a dark theme unchanged.
  *
- * [leadingIcon] and [leadingPainter] are alternatives, not both: the app draws some glyphs from the
- * Material core set and some from its own `res/drawable` vectors.
+ * [leading] is the desktop icon shown beside the title; the app has exactly one icon vocabulary, so
+ * there is one parameter for it rather than one per glyph source.
  */
 @Composable
 fun SectionCard(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    leadingIcon: ImageVector? = null,
-    leadingPainter: Painter? = null,
+    @DrawableRes leading: Int? = null,
     trailing: @Composable (() -> Unit)? = null,
     contentSpacing: Dp = Spacing.md,
     content: @Composable ColumnScope.() -> Unit,
@@ -57,9 +55,8 @@ fun SectionCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
-                when {
-                    leadingIcon != null -> IconBadge(leadingIcon)
-                    leadingPainter != null -> IconBadge(leadingPainter)
+                if (leading != null) {
+                    IconBadge(leading)
                 }
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium)

@@ -8,14 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -28,8 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
@@ -41,6 +36,8 @@ import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -85,7 +82,7 @@ fun ProcessesScreen(
         if (!viewModel.processesAvailable) {
             EmptyState(
                 text = stringResource(R.string.error_capability_missing),
-                icon = Icons.Filled.Build,
+                icon = DesktopIcons.notice,
             )
             return@Column
         }
@@ -100,7 +97,7 @@ fun ProcessesScreen(
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 label = { Text(stringResource(R.string.manage_processes_filter)) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                leadingIcon = { DesktopIcon(icon = DesktopIcons.search, size = 20.dp) },
                 shape = MaterialTheme.shapes.medium,
             )
             Button(onClick = { viewModel.loadProcesses(1) }, enabled = !viewModel.processesLoading) {
@@ -113,7 +110,7 @@ fun ProcessesScreen(
                 text = stringResource(
                     if (viewModel.processesLoading) R.string.common_loading else R.string.manage_processes_empty,
                 ),
-                icon = Icons.AutoMirrored.Filled.List,
+                icon = DesktopIcons.processes,
             )
         } else {
             SectionGroup(modifier = Modifier.weight(1f)) {
@@ -127,7 +124,7 @@ fun ProcessesScreen(
                                 formatSize(process.memoryBytes),
                                 process.userName,
                             ).joinToString(" · "),
-                            leading = { IconBadge(icon = painterResource(R.drawable.ic_process)) },
+                            leading = { IconBadge(icon = DesktopIcons.processes) },
                             trailing = {
                                 TextButton(
                                     onClick = { viewModel.requestKill(process) },

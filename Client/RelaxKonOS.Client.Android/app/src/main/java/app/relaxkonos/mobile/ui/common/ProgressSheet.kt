@@ -5,11 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -21,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -55,12 +53,7 @@ fun ProgressSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                Icon(
-                    Icons.Filled.Refresh,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
+                DesktopIcon(icon = DesktopIcons.refresh, size = 20.dp)
                 Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 TextButton(onClick = { onCollapsedChange(!collapsed) }) {
                     Text(

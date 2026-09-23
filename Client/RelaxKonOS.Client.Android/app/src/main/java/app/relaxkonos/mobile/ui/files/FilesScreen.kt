@@ -15,18 +15,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,6 +70,8 @@ import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.io.File
 import androidx.core.content.FileProvider
@@ -483,20 +475,28 @@ fun FilesScreen(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
             FilledTonalIconButton(onClick = { viewModel.goUp() }, enabled = viewModel.canGoUp) {
-                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.files_action_up))
+                DesktopIcon(
+                    icon = DesktopIcons.parentDirectory,
+                    size = 24.dp,
+                    contentDescription = stringResource(R.string.files_action_up),
+                )
             }
             LocationBar(
                 path = viewModel.path.ifBlank { stringResource(R.string.files_root) },
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { viewModel.refresh() }) {
-                Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.common_refresh))
+                DesktopIcon(
+                    icon = DesktopIcons.refresh,
+                    size = 24.dp,
+                    contentDescription = stringResource(R.string.common_refresh),
+                )
             }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             OutlinedButton(onClick = { viewModel.openNewDirectory() }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                DesktopIcon(icon = DesktopIcons.newFolder, size = 18.dp)
                 Spacer(Modifier.width(Spacing.sm))
                 Text(stringResource(R.string.files_action_new_directory))
             }
@@ -505,11 +505,7 @@ fun FilesScreen(
                 enabled = viewModel.transfer == null,
                 modifier = Modifier.weight(1f),
             ) {
-                Icon(
-                    painterResource(R.drawable.ic_upload),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
+                DesktopIcon(icon = DesktopIcons.upload, size = 18.dp)
                 Spacer(Modifier.width(Spacing.sm))
                 Text(stringResource(R.string.files_action_upload))
             }
@@ -519,7 +515,7 @@ fun FilesScreen(
         if (listing == null || listing.entries.isEmpty()) {
             EmptyState(
                 text = stringResource(if (viewModel.loading) R.string.common_loading else R.string.files_empty),
-                icon = Icons.Filled.Info,
+                icon = DesktopIcons.notice,
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -609,8 +605,9 @@ private fun LocationBar(path: String, modifier: Modifier = Modifier) {
 /**
  * One directory entry.
  *
- * Directories and files get different badge tints so the two kinds are separable without reading the
- * name, and only the per-row menu carries the operations — none of them is destructive on tap.
+ * The glyph is chosen from the name, exactly as the desktop Explorer chooses it, so a Kotlin file, a
+ * PDF and an archive are told apart without reading the name. Only the per-row menu carries the
+ * operations — none of them is destructive on tap.
  */
 @Composable
 private fun FileEntryRow(
@@ -628,30 +625,20 @@ private fun FileEntryRow(
             formatSize(entry.sizeBytes),
             formatTimestamp(entry.modifiedAtMillis),
         ).joinToString(" · "),
-        leading = {
-            IconBadge(
-                icon = painterResource(if (entry.isDirectory) R.drawable.ic_folder else R.drawable.ic_file),
-                container = if (entry.isDirectory) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHighest
-                },
-                tint = if (entry.isDirectory) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-        },
+        leading = { IconBadge(icon = DesktopIcons.fileFor(entry.name, entry.isDirectory)) },
         trailing = {
             Box {
                 IconButton(onClick = onOpenMenu) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.files_action_more))
+                    DesktopIcon(
+                        icon = DesktopIcons.overflow,
+                        size = 24.dp,
+                        contentDescription = stringResource(R.string.files_action_more),
+                    )
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = onCloseMenu) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.files_action_rename)) },
-                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                        leadingIcon = { DesktopIcon(icon = DesktopIcons.rename, size = 20.dp) },
                         onClick = {
                             onCloseMenu()
                             viewModel.requestRename(entry)
@@ -659,6 +646,7 @@ private fun FileEntryRow(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.files_action_copy)) },
+                        leadingIcon = { DesktopIcon(icon = DesktopIcons.copy, size = 20.dp) },
                         onClick = {
                             onCloseMenu()
                             viewModel.requestTransfer(entry, move = false)
@@ -666,6 +654,7 @@ private fun FileEntryRow(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.files_action_move)) },
+                        leadingIcon = { DesktopIcon(icon = DesktopIcons.move, size = 20.dp) },
                         onClick = {
                             onCloseMenu()
                             viewModel.requestTransfer(entry, move = true)
@@ -673,7 +662,7 @@ private fun FileEntryRow(
                     )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.common_delete)) },
-                        leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                        leadingIcon = { DesktopIcon(icon = DesktopIcons.delete, size = 20.dp) },
                         onClick = {
                             onCloseMenu()
                             viewModel.requestDelete(entry)
@@ -710,7 +699,7 @@ fun FileDetailScreen(
             ScreenHeader(title = stringResource(R.string.files_detail_title), onBack = onBack)
             EmptyState(
                 text = stringResource(R.string.files_detail_none),
-                icon = Icons.Filled.Info,
+                icon = DesktopIcons.notice,
             )
             return@Column
         }
@@ -722,7 +711,7 @@ fun FileDetailScreen(
 
         SectionCard(
             title = entry.name,
-            leadingPainter = painterResource(if (entry.isDirectory) R.drawable.ic_folder else R.drawable.ic_file),
+            leading = DesktopIcons.fileFor(entry.name, entry.isDirectory),
         ) {
             KeyValueRow(stringResource(R.string.files_label_path), entry.path)
             KeyValueRow(
@@ -761,11 +750,7 @@ fun FileDetailScreen(
                     enabled = viewModel.transfer == null,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(
-                        painterResource(R.drawable.ic_download),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
+                    DesktopIcon(icon = DesktopIcons.download, size = 18.dp)
                     Spacer(Modifier.width(Spacing.sm))
                     Text(stringResource(R.string.files_action_download))
                 }

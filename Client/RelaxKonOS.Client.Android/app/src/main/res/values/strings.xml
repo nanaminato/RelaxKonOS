@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Canonical strings. Every user-visible sentence lives here; the Kotlin sources contain no literals
-  (`RelaxKonOS.Mobile.V1.Design.md` §8). Locales shipped: en, zh-rCN, ja.
+  (`RelaxKonOS.Mobile.V1.Design.md` §8).
+
+  Locales shipped: en (this file, the fallback for anything that is not Chinese or Japanese), zh, ja.
+  The Chinese folder is language-level on purpose — see `values-zh/strings.xml`.
 -->
 <resources>
     <string name="app_name">RelaxKonOS</string>
@@ -287,7 +290,7 @@
     <string name="appearance_language_english">English</string>
     <string name="appearance_language_chinese">简体中文</string>
     <string name="appearance_language_japanese">日本語</string>
-    <string name="appearance_language_note">Changing the language restarts the screen. You stay signed in and saved passwords are untouched.</string>
+    <string name="appearance_language_note">Changing the language restarts the screen. You stay signed in and saved passwords are untouched. Following the system uses Chinese or Japanese when the device is set to either, and English for every other language.</string>
 
     <!-- Diagnostics -->
     <string name="diagnostics_title">Diagnostics</string>

@@ -11,23 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,9 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,15 +56,14 @@ import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.StatusChip
 import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.UiMessage
+import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.loadTone
 import app.relaxkonos.mobile.ui.common.text
-import app.relaxkonos.mobile.ui.common.toneContainer
-import app.relaxkonos.mobile.ui.common.toneContent
-import app.relaxkonos.mobile.ui.common.collectAsStateValue
-import app.relaxkonos.mobile.ui.theme.Layout
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 import app.relaxkonos.mobile.ui.theme.relaxKon
@@ -171,13 +156,17 @@ fun HomeScreen(
 
         SectionCard(
             title = stringResource(R.string.home_system_title),
-            leadingPainter = painterResource(R.drawable.ic_activity),
+            leading = DesktopIcons.system,
             trailing = {
                 FilledTonalIconButton(
                     onClick = { viewModel.refresh() },
                     enabled = !viewModel.loading && viewModel.metricsAvailable,
                 ) {
-                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.common_refresh))
+                    DesktopIcon(
+                        icon = DesktopIcons.refresh,
+                        size = 22.dp,
+                        contentDescription = stringResource(R.string.common_refresh),
+                    )
                 }
             },
         ) {
@@ -205,7 +194,7 @@ fun HomeScreen(
 
         SectionCard(
             title = stringResource(R.string.home_capabilities_title),
-            leadingIcon = Icons.Filled.CheckCircle,
+            leading = DesktopIcons.capabilities,
             trailing = {
                 if (session.capabilities.contains(ServerCapabilities.FILES)) {
                     Button(onClick = onOpenFiles) { Text(stringResource(R.string.home_open_files)) }
@@ -220,11 +209,12 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.relaxKon.success,
-                            modifier = Modifier.size(16.dp),
+                        // A success-toned dot rather than a checkmark: the desktop icon set has no
+                        // tick, and inventing one here would put a second icon language in the row.
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .background(MaterialTheme.relaxKon.success, CircleShape),
                         )
                         Text(
                             capability,
@@ -239,7 +229,7 @@ fun HomeScreen(
         if (layoutState == LayoutState.Expanded) {
             SectionCard(
                 title = stringResource(R.string.home_recent_title),
-                leadingIcon = Icons.Filled.DateRange,
+                leading = DesktopIcons.history,
             ) {
                 if (recentOperations.isEmpty()) {
                     EmptyHint(stringResource(R.string.home_recent_empty))
@@ -319,6 +309,9 @@ private fun MetricsBlock(snapshot: PerformanceSnapshot) {
  * The gradient panel is the one piece of chrome the app allows itself. It answers "which host am I on"
  * before any reading, and the two chips below the name carry the state that is otherwise a sentence:
  * the connection is live, and this is the platform it is live on.
+ *
+ * The mark is the desktop's web-servers tile drawn bare rather than inside a badge: the artwork already
+ * is a tile, and a second rounded square around it would read as two containers.
  */
 @Composable
 private fun IdentityCard(session: SessionState.Active) {
@@ -335,19 +328,7 @@ private fun IdentityCard(session: SessionState.Active) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(Layout.iconBadge)
-                        .background(colors.onHero.copy(alpha = 0.16f), RoundedCornerShape(Radius.md)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_server),
-                        contentDescription = null,
-                        tint = colors.onHero,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
+                DesktopIcon(icon = DesktopIcons.host, size = 40.dp)
                 Column(Modifier.weight(1f)) {
                     Text(
                         session.workspaceName,
@@ -378,12 +359,7 @@ private fun IdentityCard(session: SessionState.Active) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             ) {
-                Icon(
-                    Icons.Filled.Person,
-                    contentDescription = null,
-                    tint = colors.onHeroMuted,
-                    modifier = Modifier.size(16.dp),
-                )
+                DesktopIcon(icon = DesktopIcons.credentials, size = 16.dp)
                 Text(
                     text = session.userName,
                     style = MaterialTheme.typography.bodyMedium,
@@ -412,41 +388,29 @@ private fun HeroChip(text: String) {
 /** One recorded operation: what happened, where, and when. */
 @Composable
 private fun RecentOperationRow(operation: RecentOperation) {
-    val tone = when (operation.kind) {
-        RecentOperationKind.Delete, RecentOperationKind.EndProcess -> StatusTone.Danger
-        RecentOperationKind.Upload, RecentOperationKind.Download -> StatusTone.Info
-        else -> StatusTone.Primary
-    }
     ListRow(
         title = recentOperationLabel(operation),
         subtitle = operation.target,
         supporting = formatTimestamp(operation.atEpochMillis),
-        leading = {
-            IconBadge(
-                icon = recentOperationIcon(operation.kind),
-                container = toneContainer(tone),
-                tint = toneContent(tone),
-            )
-        },
+        leading = { IconBadge(icon = recentOperationIcon(operation.kind)) },
     )
 }
 
 /**
  * The glyph for a recorded operation.
  *
- * Returned as a [Painter] because the set is drawn from two sources — the Material core icons and this
- * app's own vector drawables — and a list row must not care which.
+ * These are the same marks the file screen offers the action with, so a recorded "rename" is
+ * recognisable as the command the user ran.
  */
-@Composable
-private fun recentOperationIcon(kind: RecentOperationKind): Painter = when (kind) {
-    RecentOperationKind.CreateDirectory -> rememberVectorPainter(Icons.Filled.AddCircle)
-    RecentOperationKind.Rename -> rememberVectorPainter(Icons.Filled.Edit)
-    RecentOperationKind.Delete -> rememberVectorPainter(Icons.Filled.Delete)
-    RecentOperationKind.Copy -> painterResource(R.drawable.ic_copy)
-    RecentOperationKind.Move -> rememberVectorPainter(Icons.AutoMirrored.Filled.Send)
-    RecentOperationKind.Upload -> painterResource(R.drawable.ic_upload)
-    RecentOperationKind.Download -> painterResource(R.drawable.ic_download)
-    RecentOperationKind.EndProcess -> rememberVectorPainter(Icons.Filled.Clear)
+private fun recentOperationIcon(kind: RecentOperationKind): Int = when (kind) {
+    RecentOperationKind.CreateDirectory -> DesktopIcons.newFolder
+    RecentOperationKind.Rename -> DesktopIcons.rename
+    RecentOperationKind.Delete -> DesktopIcons.delete
+    RecentOperationKind.Copy -> DesktopIcons.copy
+    RecentOperationKind.Move -> DesktopIcons.move
+    RecentOperationKind.Upload -> DesktopIcons.upload
+    RecentOperationKind.Download -> DesktopIcons.download
+    RecentOperationKind.EndProcess -> DesktopIcons.delete
 }
 
 @Composable

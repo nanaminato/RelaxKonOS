@@ -19,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.security.BiometricCapability
@@ -36,6 +35,7 @@ import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.formatTimestamp
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
@@ -144,7 +144,7 @@ fun AccountSecurityScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
-                        IconBadge(icon = painterResource(R.drawable.ic_link))
+                        IconBadge(icon = DesktopIcons.connections)
                         Column(Modifier.weight(1f)) {
                             Text(record.serverUrl, style = MaterialTheme.typography.bodyMedium)
                             Text(
@@ -170,7 +170,7 @@ fun AccountSecurityScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
-                        IconBadge(icon = painterResource(R.drawable.ic_server))
+                        IconBadge(icon = DesktopIcons.host)
                         Column(Modifier.weight(1f)) {
                             Text(record.account, style = MaterialTheme.typography.bodyMedium)
                             Text(

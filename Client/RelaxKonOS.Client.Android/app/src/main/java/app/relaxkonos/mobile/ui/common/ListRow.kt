@@ -1,17 +1,16 @@
 package app.relaxkonos.mobile.ui.common
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,57 +18,36 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.theme.Layout
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
- * A square, tinted container for a leading glyph.
+ * A square container for a leading glyph.
  *
  * Icons dropped bare next to a title read as decoration; giving them a container makes a list scan as
- * a set of distinct entries. Three overloads exist because the app draws from three sources: core
- * Material icons, its own vector drawables, and occasionally a composable.
+ * a set of distinct entries.
+ *
+ * The container is a neutral surface step rather than a tinted accent, and the glyph is never tinted:
+ * the artwork comes from the desktop set and carries its own colours (see `ui/icons/DesktopIcons.kt`).
+ * A blue container under a yellow folder is what a tinted badge would produce here.
  */
 @Composable
 fun IconBadge(
+    @DrawableRes icon: Int,
     modifier: Modifier = Modifier,
-    container: Color = MaterialTheme.colorScheme.primaryContainer,
-    content: @Composable BoxScope.() -> Unit,
+    contentDescription: String? = null,
 ) {
     Box(
         modifier = modifier
             .size(Layout.iconBadge)
-            .background(container, RoundedCornerShape(Radius.md)),
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(Radius.md)),
         contentAlignment = Alignment.Center,
-        content = content,
-    )
-}
-
-@Composable
-fun IconBadge(
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.onPrimaryContainer,
-    container: Color = MaterialTheme.colorScheme.primaryContainer,
-) {
-    IconBadge(modifier = modifier, container = container) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
-    }
-}
-
-@Composable
-fun IconBadge(
-    icon: Painter,
-    modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.onPrimaryContainer,
-    container: Color = MaterialTheme.colorScheme.primaryContainer,
-) {
-    IconBadge(modifier = modifier, container = container) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+    ) {
+        DesktopIcon(icon = icon, size = 22.dp, contentDescription = contentDescription)
     }
 }
 

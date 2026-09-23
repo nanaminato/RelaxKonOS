@@ -7,18 +7,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.common.DiskRow
@@ -34,6 +31,8 @@ import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.loadTone
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -77,10 +76,14 @@ fun MonitorScreen(
 
         SectionCard(
             title = stringResource(R.string.home_system_title),
-            leadingPainter = painterResource(R.drawable.ic_activity),
+            leading = DesktopIcons.system,
             trailing = {
                 FilledTonalIconButton(onClick = { viewModel.loadMonitor() }, enabled = !viewModel.monitorLoading) {
-                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.common_refresh))
+                    DesktopIcon(
+                        icon = DesktopIcons.refresh,
+                        size = 22.dp,
+                        contentDescription = stringResource(R.string.common_refresh),
+                    )
                 }
             },
         ) {
@@ -150,7 +153,7 @@ fun MonitorScreen(
         if (snapshot != null && snapshot.filesystems.isNotEmpty()) {
             SectionCard(
                 title = stringResource(R.string.home_filesystems_title),
-                leadingPainter = painterResource(R.drawable.ic_storage),
+                leading = DesktopIcons.storage,
             ) {
                 snapshot.filesystems.forEach { disk ->
                     DiskRow(

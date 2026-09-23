@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -23,16 +22,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import app.relaxkonos.mobile.AppContainer
-import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.layout.layoutStateFor
-import app.relaxkonos.mobile.ui.common.IconBadge
+import app.relaxkonos.mobile.ui.icons.DesktopIcon
+import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
@@ -99,7 +97,11 @@ fun ShellScaffold(
                                 NavigationBarItem(
                                     selected = navigator.currentDestination == destination.route,
                                     onClick = { select(destination) },
-                                    icon = { Icon(destination.icon, contentDescription = null) },
+                                    icon = {
+                                        // Drawn with `Image`, not `Icon`: the desktop artwork is
+                                        // full colour, and a Material tint would flatten it.
+                                        DesktopIcon(icon = destination.iconRes, size = 26.dp)
+                                    },
                                     label = { Text(stringResource(destination.labelRes)) },
                                 )
                             }
@@ -129,7 +131,7 @@ fun ShellScaffold(
                         NavigationRailItem(
                             selected = navigator.currentDestination == destination.route,
                             onClick = { select(destination) },
-                            icon = { Icon(destination.icon, contentDescription = null) },
+                            icon = { DesktopIcon(icon = destination.iconRes, size = 26.dp) },
                             label = {
                                 // A compact rail must stay narrow; the label is dropped below 840dp.
                                 if (layoutState == LayoutState.Expanded) {
@@ -156,8 +158,9 @@ fun ShellScaffold(
 /** Anchors the rail: without a mark at the top it reads as a row of loose icons. */
 @Composable
 private fun RailHeader() {
-    IconBadge(
-        icon = painterResource(R.drawable.ic_server),
+    DesktopIcon(
+        icon = DesktopIcons.brand,
+        size = 36.dp,
         modifier = Modifier.padding(bottom = Spacing.md),
     )
 }
