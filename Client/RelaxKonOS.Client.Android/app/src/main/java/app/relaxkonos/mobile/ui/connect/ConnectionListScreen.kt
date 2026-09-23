@@ -5,9 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -16,13 +16,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.CredentialStatus
 import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
+import app.relaxkonos.mobile.ui.common.EmptyState
+import app.relaxkonos.mobile.ui.common.IconBadge
+import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.formatTimestamp
+import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
  * The saved-login picker shown from the sign-in screen.
@@ -34,6 +38,9 @@ import app.relaxkonos.mobile.ui.common.formatTimestamp
  *
  * Whether a password is saved is asked of the vault rather than read from the profile list, so the list
  * cannot claim a credential the user already removed (§4.2).
+ *
+ * The rows are scrollable: the number of saved logins is the user's business, and a dialog that clips
+ * its own content would hide the very action the list exists for.
  */
 @Composable
 fun ConnectionListScreen(
@@ -51,38 +58,21 @@ fun ConnectionListScreen(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.connections_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (logins.isEmpty()) {
-                    Text(stringResource(R.string.connections_empty))
-                }
-                logins.forEach { login ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(login.displayName ?: login.serverUrl, style = MaterialTheme.typography.titleSmall)
-                            if (login.displayName != null) {
-                                Text(login.serverUrl, style = MaterialTheme.typography.bodySmall)
-                            }
-                            Text(login.identifier, style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                listOfNotNull(
-                                    credentialStatusLabel(credentialStatus(login)),
-                                    formatTimestamp(login.lastUsedEpochMillis),
-                                ).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Row {
-                                TextButton(onClick = { onSelected(login) }) {
-                                    Text(stringResource(R.string.connections_use))
-                                }
-                                TextButton(onClick = { forgetTarget = login }) {
-                                    Text(stringResource(R.string.connections_forget_password))
-                                }
-                                TextButton(onClick = { deleteTarget = login }) {
-                                    Text(stringResource(R.string.common_delete))
-                                }
-                            }
-                        }
+            if (logins.isEmpty()) {
+                EmptyState(text = stringResource(R.string.connections_empty))
+            } else {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    logins.forEach { login ->
+                        SavedLoginEntry(
+                            login = login,
+                            statusLabel = credentialStatusLabel(credentialStatus(login)),
+                            onSelect = { onSelected(login) },
+                            onForget = { forgetTarget = login },
+                            onDelete = { deleteTarget = login },
+                        )
                     }
                 }
             }
@@ -114,6 +104,39 @@ fun ConnectionListScreen(
             },
             onDismiss = { deleteTarget = null },
         )
+    }
+}
+
+/**
+ * One saved login.
+ *
+ * The identifier, the credential state and the last use share one line because they are all detail;
+ * the actions sit under them, where they read as belonging to this entry and not to the one above.
+ */
+@Composable
+private fun SavedLoginEntry(
+    login: SavedLogin,
+    statusLabel: String,
+    onSelect: () -> Unit,
+    onForget: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        ListRow(
+            title = login.displayName ?: login.serverUrl,
+            subtitle = login.displayName?.let { login.serverUrl },
+            supporting = listOfNotNull(
+                login.identifier,
+                statusLabel,
+                formatTimestamp(login.lastUsedEpochMillis),
+            ).joinToString(" · "),
+            leading = { IconBadge(icon = painterResource(R.drawable.ic_link)) },
+        )
+        Row(Modifier.fillMaxWidth().padding(start = Spacing.sm), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            TextButton(onClick = onSelect) { Text(stringResource(R.string.connections_use)) }
+            TextButton(onClick = onForget) { Text(stringResource(R.string.connections_forget_password)) }
+            TextButton(onClick = onDelete) { Text(stringResource(R.string.common_delete)) }
+        }
     }
 }
 

@@ -7,32 +7,38 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,9 +47,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,10 +66,13 @@ import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.data.RecentOperationKind
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
-import app.relaxkonos.mobile.ui.common.EmptyHint
+import app.relaxkonos.mobile.ui.common.EmptyState
 import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.KeyValueRow
+import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ProgressSheet
+import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.appContainer
@@ -70,6 +80,7 @@ import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.theme.Spacing
 import java.io.File
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Job
@@ -431,7 +442,9 @@ private fun android.content.ContentResolver.displayName(uri: Uri): String? = run
  * The file list.
  *
  * The location bar is always visible, including while a directory is loading, because "where am I" is
- * a permanent part of this destination rather than something shown only on success.
+ * a permanent part of this destination rather than something shown only on success. It is a single row
+ * of three controls — up, path, refresh — with the two write actions on their own line, so "navigate"
+ * and "change something" never sit under the same thumb.
  *
  * [onOpenDetail] is invoked when the user picks something the detail view must show. In the Expanded
  * layout the caller passes a no-op, because the detail is already on screen as a pane.
@@ -451,7 +464,12 @@ fun FilesScreen(
 
     var menuForPath by remember { mutableStateOf<String?>(null) }
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = modifier.fillMaxSize().padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md),
+    ) {
+        ScreenHeader(title = stringResource(R.string.nav_files))
+
         viewModel.message?.let { banner ->
             ErrorBanner(
                 message = banner.text(),
@@ -460,109 +478,71 @@ fun FilesScreen(
             )
         }
 
-        Card(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { viewModel.goUp() }, enabled = viewModel.canGoUp) {
-                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.files_action_up))
-                }
-                Text(
-                    text = viewModel.path.ifBlank { stringResource(R.string.files_root) },
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            FilledTonalIconButton(onClick = { viewModel.goUp() }, enabled = viewModel.canGoUp) {
+                Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.files_action_up))
+            }
+            LocationBar(
+                path = viewModel.path.ifBlank { stringResource(R.string.files_root) },
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { viewModel.refresh() }) {
+                Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.common_refresh))
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            OutlinedButton(onClick = { viewModel.openNewDirectory() }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(Spacing.sm))
+                Text(stringResource(R.string.files_action_new_directory))
+            }
+            Button(
+                onClick = { pickUpload.launch(arrayOf("*/*")) },
+                enabled = viewModel.transfer == null,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_upload),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
                 )
-                IconButton(onClick = { viewModel.refresh() }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.common_refresh))
-                }
-                IconButton(onClick = { viewModel.openNewDirectory() }) {
-                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.files_action_new_directory))
-                }
-                TextButton(onClick = { pickUpload.launch(arrayOf("*/*")) }, enabled = viewModel.transfer == null) {
-                    Text(stringResource(R.string.files_action_upload))
-                }
+                Spacer(Modifier.width(Spacing.sm))
+                Text(stringResource(R.string.files_action_upload))
             }
         }
 
         val listing = viewModel.listing
         if (listing == null || listing.entries.isEmpty()) {
-            EmptyHint(stringResource(if (viewModel.loading) R.string.common_loading else R.string.files_empty))
+            EmptyState(
+                text = stringResource(if (viewModel.loading) R.string.common_loading else R.string.files_empty),
+                icon = Icons.Filled.Info,
+                modifier = Modifier.weight(1f),
+            )
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
                 items(listing.entries, key = { it.path }) { entry ->
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    if (entry.isDirectory) {
-                                        viewModel.open(entry.path)
-                                    } else {
-                                        viewModel.select(entry)
-                                        onOpenDetail()
-                                    }
-                                }
-                                .padding(vertical = 8.dp),
-                        ) {
-                            Text(
-                                text = entry.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = listOfNotNull(
-                                    stringResource(
-                                        if (entry.isDirectory) R.string.files_kind_directory else R.string.files_kind_file,
-                                    ),
-                                    formatSize(entry.sizeBytes),
-                                    formatTimestamp(entry.modifiedAtMillis),
-                                ).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { menuForPath = entry.path }) {
-                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.files_action_more))
+                    FileEntryRow(
+                        entry = entry,
+                        menuOpen = menuForPath == entry.path,
+                        onOpenMenu = { menuForPath = entry.path },
+                        onCloseMenu = { menuForPath = null },
+                        onOpen = {
+                            if (entry.isDirectory) {
+                                viewModel.open(entry.path)
+                            } else {
+                                viewModel.select(entry)
+                                onOpenDetail()
                             }
-                            DropdownMenu(
-                                expanded = menuForPath == entry.path,
-                                onDismissRequest = { menuForPath = null },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.files_action_rename)) },
-                                    leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
-                                    onClick = {
-                                        menuForPath = null
-                                        viewModel.requestRename(entry)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.files_action_copy)) },
-                                    onClick = {
-                                        menuForPath = null
-                                        viewModel.requestTransfer(entry, move = false)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.files_action_move)) },
-                                    onClick = {
-                                        menuForPath = null
-                                        viewModel.requestTransfer(entry, move = true)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.common_delete)) },
-                                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
-                                    onClick = {
-                                        menuForPath = null
-                                        viewModel.requestDelete(entry)
-                                    },
-                                )
-                            }
-                        }
-                    }
+                        },
+                        viewModel = viewModel,
+                    )
                 }
             }
         }
@@ -603,6 +583,110 @@ fun FilesScreen(
 }
 
 /**
+ * The current directory.
+ *
+ * It is a recessed surface rather than a heading, because it changes as often as the user taps and a
+ * heading that rewrites itself reads as a title for the wrong thing. The path is truncated from the
+ * end: the tail of a path is the part that says where you are.
+ */
+@Composable
+private fun LocationBar(path: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Text(
+            text = path,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm + 2.dp),
+        )
+    }
+}
+
+/**
+ * One directory entry.
+ *
+ * Directories and files get different badge tints so the two kinds are separable without reading the
+ * name, and only the per-row menu carries the operations — none of them is destructive on tap.
+ */
+@Composable
+private fun FileEntryRow(
+    entry: RemoteEntry,
+    menuOpen: Boolean,
+    onOpenMenu: () -> Unit,
+    onCloseMenu: () -> Unit,
+    onOpen: () -> Unit,
+    viewModel: FilesViewModel,
+) {
+    ListRow(
+        title = entry.name,
+        supporting = listOfNotNull(
+            stringResource(if (entry.isDirectory) R.string.files_kind_directory else R.string.files_kind_file),
+            formatSize(entry.sizeBytes),
+            formatTimestamp(entry.modifiedAtMillis),
+        ).joinToString(" · "),
+        leading = {
+            IconBadge(
+                icon = painterResource(if (entry.isDirectory) R.drawable.ic_folder else R.drawable.ic_file),
+                container = if (entry.isDirectory) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHighest
+                },
+                tint = if (entry.isDirectory) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        },
+        trailing = {
+            Box {
+                IconButton(onClick = onOpenMenu) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.files_action_more))
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = onCloseMenu) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.files_action_rename)) },
+                        leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                        onClick = {
+                            onCloseMenu()
+                            viewModel.requestRename(entry)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.files_action_copy)) },
+                        onClick = {
+                            onCloseMenu()
+                            viewModel.requestTransfer(entry, move = false)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.files_action_move)) },
+                        onClick = {
+                            onCloseMenu()
+                            viewModel.requestTransfer(entry, move = true)
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.common_delete)) },
+                        leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                        onClick = {
+                            onCloseMenu()
+                            viewModel.requestDelete(entry)
+                        },
+                    )
+                }
+            }
+        },
+        onClick = onOpen,
+    )
+}
+
+/**
  * Properties of the selected entry.
  *
  * [onBack] is `null` when the caller is rendering this as a pane; a pane has nothing to go back from,
@@ -618,17 +702,28 @@ fun FileDetailScreen(
     val entry = viewModel.selected
     val properties = viewModel.properties
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (onBack != null) {
-            TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
-        }
+    Column(
+        modifier = modifier.fillMaxSize().padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+    ) {
         if (entry == null) {
-            EmptyHint(stringResource(R.string.files_detail_none))
+            ScreenHeader(title = stringResource(R.string.files_detail_title), onBack = onBack)
+            EmptyState(
+                text = stringResource(R.string.files_detail_none),
+                icon = Icons.Filled.Info,
+            )
             return@Column
         }
 
-        SectionCard(stringResource(R.string.files_detail_title)) {
-            KeyValueRow(stringResource(R.string.files_label_name), entry.name)
+        ScreenHeader(
+            title = stringResource(R.string.files_detail_title),
+            onBack = onBack,
+        )
+
+        SectionCard(
+            title = entry.name,
+            leadingPainter = painterResource(if (entry.isDirectory) R.drawable.ic_folder else R.drawable.ic_file),
+        ) {
             KeyValueRow(stringResource(R.string.files_label_path), entry.path)
             KeyValueRow(
                 stringResource(R.string.files_label_kind),
@@ -649,24 +744,51 @@ fun FileDetailScreen(
                 }
             }
             if (properties == null) {
-                EmptyHint(
+                Text(
                     stringResource(
                         if (viewModel.propertiesLoading) R.string.common_loading else R.string.files_detail_unavailable,
                     ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             if (!entry.isDirectory) {
-                Button(onClick = { viewModel.download(entry) }, enabled = viewModel.transfer == null) {
+                Button(
+                    onClick = { viewModel.download(entry) },
+                    enabled = viewModel.transfer == null,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_download),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(Spacing.sm))
                     Text(stringResource(R.string.files_action_download))
                 }
             }
-            TextButton(onClick = { viewModel.requestRename(entry) }) { Text(stringResource(R.string.files_action_rename)) }
-            TextButton(onClick = { viewModel.requestTransfer(entry, move = false) }) { Text(stringResource(R.string.files_action_copy)) }
-            TextButton(onClick = { viewModel.requestTransfer(entry, move = true) }) { Text(stringResource(R.string.files_action_move)) }
-            TextButton(onClick = { viewModel.requestDelete(entry) }) { Text(stringResource(R.string.common_delete)) }
+            OutlinedButton(onClick = { viewModel.requestRename(entry) }, modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.files_action_rename))
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            TextButton(onClick = { viewModel.requestTransfer(entry, move = false) }) {
+                Text(stringResource(R.string.files_action_copy))
+            }
+            TextButton(onClick = { viewModel.requestTransfer(entry, move = true) }) {
+                Text(stringResource(R.string.files_action_move))
+            }
+            TextButton(
+                onClick = { viewModel.requestDelete(entry) },
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) { Text(stringResource(R.string.common_delete)) }
         }
     }
 }
@@ -710,13 +832,14 @@ private fun NewDirectoryDialog(parentPath: String, onDismiss: () -> Unit, onConf
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.files_new_directory_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(R.string.files_new_directory_body, parentPath.ifBlank { "/" }))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     singleLine = true,
                     label = { Text(stringResource(R.string.files_label_name)) },
+                    shape = MaterialTheme.shapes.medium,
                 )
             }
         },
@@ -736,13 +859,14 @@ private fun RenameDialog(entry: RemoteEntry, onDismiss: () -> Unit, onConfirm: (
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.files_rename_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(entry.path)
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     singleLine = true,
                     label = { Text(stringResource(R.string.files_label_name)) },
+                    shape = MaterialTheme.shapes.medium,
                 )
             }
         },
@@ -763,13 +887,14 @@ private fun TransferDialog(request: TransferTarget, onDismiss: () -> Unit, onCon
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(R.string.files_transfer_body, request.entry.path))
                 OutlinedTextField(
                     value = destination,
                     onValueChange = { destination = it },
                     singleLine = true,
                     label = { Text(stringResource(R.string.files_destination_path)) },
+                    shape = MaterialTheme.shapes.medium,
                 )
             }
         },

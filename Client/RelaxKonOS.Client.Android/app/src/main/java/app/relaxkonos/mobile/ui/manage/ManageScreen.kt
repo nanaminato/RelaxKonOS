@@ -1,29 +1,24 @@
 package app.relaxkonos.mobile.ui.manage
 
 import android.app.Application
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.AppContainer
@@ -31,13 +26,17 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.PerformanceSnapshot
-import app.relaxkonos.mobile.core.net.ProcessPage
 import app.relaxkonos.mobile.core.net.RemoteProcess
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.data.RecentOperationKind
-import app.relaxkonos.mobile.ui.common.EmptyHint
+import app.relaxkonos.mobile.ui.common.EmptyState
+import app.relaxkonos.mobile.ui.common.IconBadge
+import app.relaxkonos.mobile.ui.common.ListRow
+import app.relaxkonos.mobile.ui.common.ScreenHeader
+import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.failureMessage
+import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
 /**
@@ -183,11 +182,28 @@ class ManageViewModel(application: Application) : AndroidViewModel(application) 
 }
 
 /**
+ * A manageable domain and the glyph that identifies it.
+ *
+ * The glyph is a resource id rather than an `ImageVector` because these two are drawn from this app's
+ * own vector drawables: the Material core set has no speed or process-list icon, and pulling in
+ * `material-icons-extended` for two glyphs would cost more than it is worth.
+ */
+private data class ManageDomain(
+    val titleRes: Int,
+    val subtitleRes: Int,
+    val iconRes: Int,
+    val open: () -> Unit,
+)
+
+/**
  * Manage.
  *
  * Only domains with a working mobile workflow are listed. The design forbids adding an entry just
  * because the desktop has one (`RelaxKonOS.Mobile.V1.Design.md` §8), so Docker, Guardian, deployments
  * and web servers simply do not appear until V1-E implements them.
+ *
+ * The domains sit in one group rather than in one card each: they are alternatives at the same level,
+ * and stacking them made a two-item list look like a dashboard.
  */
 @Composable
 fun ManageScreen(
@@ -197,40 +213,56 @@ fun ManageScreen(
 ) {
     val container = app.relaxkonos.mobile.ui.common.appContainer()
 
-    Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(stringResource(R.string.manage_title), style = MaterialTheme.typography.headlineSmall)
-
-        val domains = buildList {
-            if (container.capabilities.contains(ServerCapabilities.METRICS)) {
-                add(Triple(stringResource(R.string.manage_monitor_title), stringResource(R.string.manage_monitor_subtitle), onOpenMonitor))
-            }
-            if (container.capabilities.contains(ServerCapabilities.PROCESSES)) {
-                add(Triple(stringResource(R.string.manage_processes_title), stringResource(R.string.manage_processes_subtitle), onOpenProcesses))
-            }
+    val domains = buildList {
+        if (container.capabilities.contains(ServerCapabilities.METRICS)) {
+            add(
+                ManageDomain(
+                    R.string.manage_monitor_title,
+                    R.string.manage_monitor_subtitle,
+                    R.drawable.ic_activity,
+                    onOpenMonitor,
+                ),
+            )
         }
+        if (container.capabilities.contains(ServerCapabilities.PROCESSES)) {
+            add(
+                ManageDomain(
+                    R.string.manage_processes_title,
+                    R.string.manage_processes_subtitle,
+                    R.drawable.ic_process,
+                    onOpenProcesses,
+                ),
+            )
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+    ) {
+        ScreenHeader(title = stringResource(R.string.manage_title))
 
         if (domains.isEmpty()) {
-            EmptyHint(stringResource(R.string.error_capability_missing))
+            EmptyState(
+                text = stringResource(R.string.error_capability_missing),
+                icon = Icons.Filled.Build,
+            )
         } else {
-            domains.forEach { (title, subtitle, open) ->
-                Card(Modifier.fillMaxWidth().clickable { open() }) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(title, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                subtitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            SectionGroup {
+                domains.forEach { domain ->
+                    ListRow(
+                        title = stringResource(domain.titleRes),
+                        subtitle = stringResource(domain.subtitleRes),
+                        leading = { IconBadge(icon = painterResource(domain.iconRes)) },
+                        trailing = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                    }
+                        },
+                        onClick = domain.open,
+                    )
                 }
             }
         }

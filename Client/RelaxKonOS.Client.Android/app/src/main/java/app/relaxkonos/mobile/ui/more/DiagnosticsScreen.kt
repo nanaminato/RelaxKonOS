@@ -18,7 +18,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -29,8 +28,10 @@ import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.ui.common.EmptyHint
+import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.appContainer
+import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
 /**
@@ -139,13 +140,13 @@ fun DiagnosticsScreen(
     val container = appContainer()
 
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
-        if (onBack != null) {
-            TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
-        }
-        Text(stringResource(R.string.diagnostics_title), style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader(
+            title = stringResource(R.string.diagnostics_title),
+            onBack = onBack,
+        )
 
         SectionCard(
             title = stringResource(R.string.diagnostics_self_check),

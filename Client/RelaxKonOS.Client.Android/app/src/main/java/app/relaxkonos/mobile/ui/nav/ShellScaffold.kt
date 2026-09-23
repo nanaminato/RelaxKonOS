@@ -2,12 +2,15 @@ package app.relaxkonos.mobile.ui.nav
 
 import android.app.Application
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -19,14 +22,18 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.AppContainer
+import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.layout.layoutStateFor
+import app.relaxkonos.mobile.ui.common.IconBadge
+import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
  * Owns shell navigation.
@@ -46,6 +53,11 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
  * and Expanded a full rail (`RelaxKonOS.Mobile.V1.Design.md` §3.2). The destination list is derived
  * from the server's advertised capabilities, so an entry that the server cannot serve is absent rather
  * than disabled.
+ *
+ * The shell paints nothing itself — its scaffolds are transparent so the window backdrop from
+ * `MainActivity` shows through, which is what lets the sign-in screen and the shell share one
+ * background. The navigation surfaces are opaque on purpose: a bar the user drags over must not make
+ * the content behind it legible.
  */
 @Composable
 fun ShellScaffold(
@@ -54,7 +66,7 @@ fun ShellScaffold(
     session: SessionState.Active,
     onSignOut: () -> Unit,
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val layoutState = layoutStateFor(maxWidth)
         val destinations = remember(session.capabilities) { TopDestination.visible(session.capabilities) }
 
@@ -72,15 +84,25 @@ fun ShellScaffold(
 
         when (layoutState) {
             LayoutState.Compact -> Scaffold(
+                containerColor = Color.Transparent,
                 bottomBar = {
-                    NavigationBar {
-                        destinations.forEach { destination ->
-                            NavigationBarItem(
-                                selected = navigator.currentDestination == destination.route,
-                                onClick = { select(destination) },
-                                icon = { Icon(destination.icon, contentDescription = null) },
-                                label = { Text(stringResource(destination.labelRes)) },
-                            )
+                    Column {
+                        HorizontalDivider(
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 0.dp,
+                        ) {
+                            destinations.forEach { destination ->
+                                NavigationBarItem(
+                                    selected = navigator.currentDestination == destination.route,
+                                    onClick = { select(destination) },
+                                    icon = { Icon(destination.icon, contentDescription = null) },
+                                    label = { Text(stringResource(destination.labelRes)) },
+                                )
+                            }
                         }
                     }
                 },
@@ -95,8 +117,14 @@ fun ShellScaffold(
                 )
             }
 
-            LayoutState.Medium, LayoutState.Expanded -> Row(Modifier.fillMaxSize()) {
-                NavigationRail(Modifier.fillMaxHeight()) {
+            LayoutState.Medium, LayoutState.Expanded -> Row(Modifier.fillMaxSize().safeDrawingPadding()) {
+                NavigationRail(
+                    modifier = Modifier.fillMaxHeight(),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    // The surrounding Row already applied the window insets.
+                    windowInsets = WindowInsets(0),
+                    header = { RailHeader() },
+                ) {
                     destinations.forEach { destination ->
                         NavigationRailItem(
                             selected = navigator.currentDestination == destination.route,
@@ -117,9 +145,19 @@ fun ShellScaffold(
                     session = session,
                     layoutState = layoutState,
                     onSignOut = onSignOut,
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                    // The rail is opaque, so the content needs no border of its own — only a gap.
+                    modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.xs),
                 )
             }
         }
     }
+}
+
+/** Anchors the rail: without a mark at the top it reads as a row of loose icons. */
+@Composable
+private fun RailHeader() {
+    IconBadge(
+        icon = painterResource(R.drawable.ic_server),
+        modifier = Modifier.padding(bottom = Spacing.md),
+    )
 }

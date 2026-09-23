@@ -3,18 +3,17 @@ package app.relaxkonos.mobile
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.ui.common.AppBackdrop
 import app.relaxkonos.mobile.ui.common.ElevationDialog
 import app.relaxkonos.mobile.ui.common.ErrorBanner
 import app.relaxkonos.mobile.ui.common.LocalAppContainer
@@ -25,6 +24,7 @@ import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.nav.ShellScaffold
 import app.relaxkonos.mobile.ui.nav.ShellViewModel
 import app.relaxkonos.mobile.ui.theme.RelaxKonOSTheme
+import app.relaxkonos.mobile.ui.theme.Spacing
 import app.relaxkonos.mobile.ui.theme.applyAppLanguage
 import app.relaxkonos.mobile.ui.theme.applyAppNightMode
 import kotlinx.coroutines.launch
@@ -58,6 +58,10 @@ class MainActivity : AppCompatActivity() {
  * The screen switch is driven by `AuthSession`'s state flow rather than by a callback from the login
  * screen, so a session lost to a rejected refresh lands on the same sign-in screen as an explicit
  * sign-out — with the stored credential still in the vault, ready for one fingerprint.
+ *
+ * The window backdrop is painted once, here, and both branches draw on top of it. Putting it in one
+ * place is what keeps the sign-in screen and the shell from disagreeing about what "the background" is,
+ * and it also means nothing has to know the palette to inherit it.
  */
 @Composable
 private fun RelaxKonApp(container: AppContainer) {
@@ -75,27 +79,29 @@ private fun RelaxKonApp(container: AppContainer) {
             }
         }
 
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Box(Modifier.fillMaxSize()) {
-                when (sessionState) {
-                    is SessionState.Active -> ShellScaffold(
-                        container = container,
-                        navigator = shell.navigator,
-                        session = sessionState,
-                        onSignOut = { scope.launch { container.session.logout() } },
-                    )
+        AppBackdrop {
+            when (sessionState) {
+                is SessionState.Active -> ShellScaffold(
+                    container = container,
+                    navigator = shell.navigator,
+                    session = sessionState,
+                    onSignOut = { scope.launch { container.session.logout() } },
+                )
 
-                    else -> LoginScreen()
-                }
+                else -> LoginScreen()
+            }
 
-                container.pendingNotice?.let { notice ->
-                    ErrorBanner(
-                        message = notice.text(),
-                        onRetry = null,
-                        onDismiss = container::dismissNotice,
-                        modifier = Modifier.align(Alignment.TopCenter),
-                    )
-                }
+            container.pendingNotice?.let { notice ->
+                ErrorBanner(
+                    message = notice.text(),
+                    onRetry = null,
+                    onDismiss = container::dismissNotice,
+                    // This banner floats over whatever screen is current, so it owns its own inset.
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .safeDrawingPadding()
+                        .padding(Spacing.lg),
+                )
             }
         }
 

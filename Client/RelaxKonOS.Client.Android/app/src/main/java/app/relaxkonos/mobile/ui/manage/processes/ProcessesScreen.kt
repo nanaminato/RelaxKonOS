@@ -8,8 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -22,17 +28,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
-import app.relaxkonos.mobile.ui.common.EmptyHint
+import app.relaxkonos.mobile.ui.common.EmptyState
 import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.IconBadge
+import app.relaxkonos.mobile.ui.common.ListRow
+import app.relaxkonos.mobile.ui.common.ScreenHeader
+import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
+import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
  * Process list.
@@ -40,6 +50,9 @@ import app.relaxkonos.mobile.ui.manage.ManageViewModel
  * Paged because the server paginates, and sorted by CPU on the server side so the client cannot
  * disagree with it about ordering. Ending a process is a dangerous operation, so it goes through the
  * naming confirmation and then the elevation dialog.
+ *
+ * The rows live in a [SectionGroup] rather than loose on the backdrop: a process list is a set of
+ * interchangeable entries, and a shared container is what says so.
  */
 @Composable
 fun ProcessesScreen(
@@ -52,10 +65,14 @@ fun ProcessesScreen(
 
     var forceKill by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (onBack != null) {
-            TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
-        }
+    Column(
+        modifier = modifier.fillMaxSize().padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+    ) {
+        ScreenHeader(
+            title = stringResource(R.string.manage_processes_title),
+            onBack = onBack,
+        )
 
         viewModel.processMessage?.let { banner ->
             ErrorBanner(
@@ -65,55 +82,68 @@ fun ProcessesScreen(
             )
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!viewModel.processesAvailable) {
+            EmptyState(
+                text = stringResource(R.string.error_capability_missing),
+                icon = Icons.Filled.Build,
+            )
+            return@Column
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
             OutlinedTextField(
                 value = viewModel.processFilter,
                 onValueChange = { viewModel.updateProcessFilter(it) },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 label = { Text(stringResource(R.string.manage_processes_filter)) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                shape = MaterialTheme.shapes.medium,
             )
             Button(onClick = { viewModel.loadProcesses(1) }, enabled = !viewModel.processesLoading) {
                 Text(stringResource(R.string.common_search))
             }
         }
 
-        if (!viewModel.processesAvailable) {
-            EmptyHint(stringResource(R.string.error_capability_missing))
-        } else if (viewModel.processItems.isEmpty()) {
-            EmptyHint(
-                stringResource(if (viewModel.processesLoading) R.string.common_loading else R.string.manage_processes_empty),
+        if (viewModel.processItems.isEmpty()) {
+            EmptyState(
+                text = stringResource(
+                    if (viewModel.processesLoading) R.string.common_loading else R.string.manage_processes_empty,
+                ),
+                icon = Icons.AutoMirrored.Filled.List,
             )
         } else {
-            LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(viewModel.processItems, key = { it.pid }) { process ->
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
-                            Text(
-                                text = process.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = listOfNotNull(
-                                    stringResource(R.string.manage_processes_pid, process.pid),
-                                    stringResource(R.string.manage_processes_cpu, process.cpuPercent),
-                                    formatSize(process.memoryBytes),
-                                    process.userName,
-                                ).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        TextButton(onClick = { viewModel.requestKill(process) }) {
-                            Text(stringResource(R.string.manage_processes_kill))
-                        }
+            SectionGroup(modifier = Modifier.weight(1f)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    items(viewModel.processItems, key = { it.pid }) { process ->
+                        ListRow(
+                            title = process.name,
+                            subtitle = stringResource(R.string.manage_processes_pid, process.pid),
+                            supporting = listOfNotNull(
+                                stringResource(R.string.manage_processes_cpu, process.cpuPercent),
+                                formatSize(process.memoryBytes),
+                                process.userName,
+                            ).joinToString(" · "),
+                            leading = { IconBadge(icon = painterResource(R.drawable.ic_process)) },
+                            trailing = {
+                                TextButton(
+                                    onClick = { viewModel.requestKill(process) },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                ) { Text(stringResource(R.string.manage_processes_kill)) }
+                            },
+                        )
                     }
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
                 TextButton(
                     onClick = { viewModel.loadProcesses(viewModel.processPage - 1) },
                     enabled = viewModel.processPage > 1 && !viewModel.processesLoading,
@@ -125,6 +155,7 @@ fun ProcessesScreen(
                         viewModel.processTotalCount.coerceAtLeast(viewModel.processItems.size),
                     ),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 TextButton(
                     onClick = { viewModel.loadProcesses(viewModel.processPage + 1) },

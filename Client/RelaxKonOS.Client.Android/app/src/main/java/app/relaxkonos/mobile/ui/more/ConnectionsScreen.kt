@@ -18,7 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.credentialState
 import app.relaxkonos.mobile.core.auth.credentialStatus
@@ -26,10 +25,12 @@ import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyHint
-import app.relaxkonos.mobile.ui.common.SectionCard
+import app.relaxkonos.mobile.ui.common.ScreenHeader
+import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.connect.credentialStatusLabel
+import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
  * Connections, inside the shell.
@@ -56,15 +57,16 @@ fun ConnectionsScreen(
     val activeServerUrl = container.session.serverUrl
 
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
-        if (onBack != null) {
-            TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
-        }
-        Text(stringResource(R.string.connections_title), style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader(
+            title = stringResource(R.string.connections_title),
+            onBack = onBack,
+        )
 
-        SectionCard(stringResource(R.string.connections_title)) {
+        // The page header already names this list, so the group carries no title of its own.
+        SectionGroup {
             if (logins.isEmpty()) {
                 EmptyHint(stringResource(R.string.connections_empty))
             } else {
@@ -72,7 +74,7 @@ fun ConnectionsScreen(
                     val mode = container.unlockMode(VaultKind.Connection)
                     val record = container.vault.record(VaultKind.Connection, login.serverUrl, login.identifier)
                     Row(Modifier.fillMaxWidth()) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                             Text(login.displayName ?: login.serverUrl, style = MaterialTheme.typography.bodyLarge)
                             if (login.displayName != null) {
                                 Text(login.serverUrl, style = MaterialTheme.typography.bodySmall)

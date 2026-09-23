@@ -4,13 +4,11 @@ import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import androidx.core.os.LocaleListCompat
 
 /** Colour mode offered in appearance settings. The explicit choice always beats the system value. */
@@ -167,84 +165,12 @@ fun applyAppNightMode(colorMode: ColorMode) {
 }
 
 /**
- * Fixed RelaxKonOS palettes.
+ * The app theme.
  *
- * Dynamic colour is intentionally not used: the design requires definite, contrast-checked palettes
- * for light, dark and high contrast so status and danger colours cannot be re-tinted by a device
- * theme. Business screens reference semantic roles only.
+ * It publishes three things and nothing else: the Material colour roles, the app-specific colours that
+ * Material has no slot for (`MaterialTheme.relaxKon`), and the shape/type scales the layout primitives
+ * resolve against. Palettes live in `Palette.kt`; spacing and radii in `Tokens.kt`.
  */
-private val RelaxKonLight = lightColorScheme(
-    primary = Color(0xFF1F5FA9),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD4E3FF),
-    onPrimaryContainer = Color(0xFF001B3D),
-    secondary = Color(0xFF475F87),
-    onSecondary = Color(0xFFFFFFFF),
-    surface = Color(0xFFFAF9FD),
-    onSurface = Color(0xFF1A1C1E),
-    surfaceVariant = Color(0xFFE0E2EC),
-    onSurfaceVariant = Color(0xFF43474E),
-    background = Color(0xFFFAF9FD),
-    onBackground = Color(0xFF1A1C1E),
-    outline = Color(0xFF74777F),
-    error = Color(0xFFB3261E),
-    onError = Color(0xFFFFFFFF),
-)
-
-private val RelaxKonLightHighContrast = lightColorScheme(
-    primary = Color(0xFF0B3D75),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFBDD6FF),
-    onPrimaryContainer = Color(0xFF000000),
-    secondary = Color(0xFF2A3F61),
-    onSecondary = Color(0xFFFFFFFF),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF000000),
-    surfaceVariant = Color(0xFFD3D6DE),
-    onSurfaceVariant = Color(0xFF101214),
-    background = Color(0xFFFFFFFF),
-    onBackground = Color(0xFF000000),
-    outline = Color(0xFF2B2F33),
-    error = Color(0xFF8C0009),
-    onError = Color(0xFFFFFFFF),
-)
-
-private val RelaxKonDark = darkColorScheme(
-    primary = Color(0xFFA8C8FF),
-    onPrimary = Color(0xFF00315F),
-    primaryContainer = Color(0xFF004786),
-    onPrimaryContainer = Color(0xFFD4E3FF),
-    secondary = Color(0xFFB6C7E9),
-    onSecondary = Color(0xFF1E3149),
-    surface = Color(0xFF1B2433),
-    onSurface = Color(0xFFE2E2E6),
-    surfaceVariant = Color(0xFF44474E),
-    onSurfaceVariant = Color(0xFFC4C6CF),
-    background = Color(0xFF10151F),
-    onBackground = Color(0xFFE2E2E6),
-    outline = Color(0xFF8E9099),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-)
-
-private val RelaxKonDarkHighContrast = darkColorScheme(
-    primary = Color(0xFFCFE0FF),
-    onPrimary = Color(0xFF000000),
-    primaryContainer = Color(0xFF7FB0FF),
-    onPrimaryContainer = Color(0xFF000000),
-    secondary = Color(0xFFD6E2FF),
-    onSecondary = Color(0xFF000000),
-    surface = Color(0xFF10151F),
-    onSurface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFF5A5E67),
-    onSurfaceVariant = Color(0xFFFFFFFF),
-    background = Color(0xFF0A0E15),
-    onBackground = Color(0xFFFFFFFF),
-    outline = Color(0xFFD7D9E0),
-    error = Color(0xFFFFD2CC),
-    onError = Color(0xFF000000),
-)
-
 @Composable
 fun RelaxKonOSTheme(
     colorMode: ColorMode,
@@ -262,5 +188,14 @@ fun RelaxKonOSTheme(
         highContrast -> RelaxKonLightHighContrast
         else -> RelaxKonLight
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+    val extras = if (dark) darkRelaxKonColors(highContrast) else lightRelaxKonColors(highContrast)
+
+    CompositionLocalProvider(LocalRelaxKonColors provides extras) {
+        MaterialTheme(
+            colorScheme = scheme,
+            shapes = RelaxKonShapes,
+            typography = RelaxKonTypography,
+            content = content,
+        )
+    }
 }

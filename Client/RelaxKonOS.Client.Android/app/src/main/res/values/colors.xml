@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Mirrors the light RelaxKonOS surface colour so the pre-Compose frame does not flash. -->
-    <color name="window_background">#FAF9FD</color>
+    <!--
+      Mirrors the top stop of the light RelaxKonOS backdrop gradient
+      (ui/theme/Palette.kt, RelaxKonLightColors.backdropStart) so the window frame drawn before the
+      first Compose frame does not flash a different colour than the app paints over it.
+    -->
+    <color name="window_background">#F7F9FE</color>
 </resources>

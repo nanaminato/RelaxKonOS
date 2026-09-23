@@ -19,8 +19,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.security.BiometricCapability
 import app.relaxkonos.mobile.security.VaultKind
@@ -29,10 +29,14 @@ import app.relaxkonos.mobile.security.VaultRecordState
 import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyHint
+import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.KeyValueRow
+import app.relaxkonos.mobile.ui.common.ListRow
+import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.formatTimestamp
+import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
  * Account and security.
@@ -63,32 +67,40 @@ fun AccountSecurityScreen(
     val elevationMode = container.unlockMode(VaultKind.Elevation)
 
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
-        if (onBack != null) {
-            TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
-        }
-        Text(stringResource(R.string.account_security_title), style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader(
+            title = stringResource(R.string.account_security_title),
+            onBack = onBack,
+        )
 
-        SectionCard(stringResource(R.string.account_security_fingerprint)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(
-                    checked = appearance.fingerprintEnabled,
-                    onCheckedChange = { enabled ->
-                        if (enabled) {
-                            appearance.setFingerprintEnabled(true)
-                        } else {
-                            confirmDisable = true
-                        }
-                    },
-                )
-                Text(
-                    stringResource(R.string.account_security_fingerprint_subtitle),
-                    modifier = Modifier.padding(start = 12.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
+        SectionCard(
+            title = stringResource(R.string.account_security_fingerprint),
+            contentSpacing = Spacing.xs,
+        ) {
+            ListRow(
+                title = stringResource(R.string.account_security_fingerprint_subtitle),
+                trailing = {
+                    Switch(
+                        checked = appearance.fingerprintEnabled,
+                        onCheckedChange = { enabled ->
+                            if (enabled) {
+                                appearance.setFingerprintEnabled(true)
+                            } else {
+                                confirmDisable = true
+                            }
+                        },
+                    )
+                },
+                onClick = {
+                    if (appearance.fingerprintEnabled) {
+                        confirmDisable = true
+                    } else {
+                        appearance.setFingerprintEnabled(true)
+                    }
+                },
+            )
         }
 
         SectionCard(stringResource(R.string.account_security_device_title)) {
@@ -127,7 +139,12 @@ fun AccountSecurityScreen(
                 EmptyHint(stringResource(R.string.account_security_connection_vault_empty))
             } else {
                 connectionRecords.forEach { record ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        IconBadge(icon = painterResource(R.drawable.ic_link))
                         Column(Modifier.weight(1f)) {
                             Text(record.serverUrl, style = MaterialTheme.typography.bodyMedium)
                             Text(
@@ -148,7 +165,12 @@ fun AccountSecurityScreen(
                 EmptyHint(stringResource(R.string.account_security_elevation_vault_empty))
             } else {
                 elevationRecords.forEach { record ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        IconBadge(icon = painterResource(R.drawable.ic_server))
                         Column(Modifier.weight(1f)) {
                             Text(record.account, style = MaterialTheme.typography.bodyMedium)
                             Text(

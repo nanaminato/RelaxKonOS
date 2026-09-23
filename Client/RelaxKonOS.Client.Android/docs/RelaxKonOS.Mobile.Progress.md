@@ -60,9 +60,22 @@
 - `SavedConnection` 更名为 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey`，档案文件格式升到 `RKC2`。`hasSavedCredential` 只是显示投影：启动时由 `AppContainer` 以保险箱记录复核修正，两者不一致时以保险箱为准；布尔值不构成安全边界。
 - `CredentialUnlocked` 落地为「本进程内、窗口模式（D3）下已授权过的身份集合」：窗口内再次登录走 `VaultAccess.loadWithoutPrompt`，失败即回落为正常授权提示；按次强指纹模式恒为 false，不参与安全边界。
 - 新增 `ProblemCodes.LOGIN_RATE_LIMITED`（`429 login-rate-limited`）与对应文案：登录被限流时说「登录尝试过于频繁」而不是通用拒绝；它不参与任何凭据删除判定。
-- 三份 `strings.xml`（`values` / `values-zh-rCN` / `values-ja`）键集完全一致（275 键），并删除了不再使用的 `login_stored_credential_rejected`、`login_use_fingerprint`、`login_use_password`、`login_saved_credential`。
+- 三份 `strings.xml`（`values` / `values-zh-rCN` / `values-ja`）键集完全一致（现 279 键），并删除了不再使用的 `login_stored_credential_rejected`、`login_use_fingerprint`、`login_use_password`、`login_saved_credential`。
 - **修复指纹保存与解封完全不可用**（真机报「设备的指纹已变更」）：`VaultKeyManager.generate` 只调用了 `KeyGenerator.init()` 配置策略，却从未调用 `generateKey()`，因此两个保险箱的 Keystore alias 从未被创建（该文件自 `58b4c64d` 起即如此）。随后 `beginSeal` / `beginOpen` 拿到的 `getKey()` 为 `null`，抛出的「密钥缺失」被界面统一呈现为「设备的指纹已变更」，与 debug / release 无关——两条构建路径是同一份代码。现在补上 `generateKey()`，`ensureKey` 在建钥后校验 alias 确实存在，并把**任何**建钥失败归类为 `VaultKeyUnavailableException`：「拿不到密钥」不是「指纹变了」，两者给用户的建议相反。
 - 新增 debug-only 排障链路 `security/VaultDiagnostics.kt`（logcat tag `RelaxKonVault`，`adb logcat -s RelaxKonVault:D`）：记录 `canAuthenticate` 码（映射为 `SUCCESS` / `NONE_ENROLLED` / `NO_HARDWARE` 等名称——`BIOMETRIC_SUCCESS` 就是 `0`，原样打印会被读成失败）、`unlockMode` 裁决、密钥创建与 provider（StrongBox / TEE）选择、alias 存在性、`BiometricPrompt` 的结果码与返回文本，以及 Keystore 异常被分类前的原始类型与消息。能力探测与解锁模式只在结果**变化**时打印（探测本身仍每次调用都执行，不缓存结论），否则重组风暴会淹没关键行。日志只含保险箱种类、provider 决策、异常类与结果枚举，不含密码、账户、服务器地址、`Cipher` 或任何密钥材料；sink 由 `RelaxKonApplication` 仅在 debug 构建安装，release 构建保持未安装，`security` 包因此从不触碰 `android.util.Log`（`VaultDiagnosticsTest` 断言了这一点）。
+
+## 界面现代化（2026-09-23）
+
+按 `RelaxKonOS.Mobile.Design.md` §6.2「视觉语言与界面构成」重做 Android 端的界面层。业务逻辑、导航、凭据与提权链路未改动。
+
+- 新增设计令牌层：`ui/theme/Palette.kt`（四套调色板 + `RelaxKonColors` 语义色，经 `MaterialTheme.relaxKon` 读取）与 `ui/theme/Tokens.kt`（`Spacing` / `Radius` / `Layout`、`RelaxKonShapes`、`RelaxKonTypography`）。四套调色板都显式填满 `surfaceContainer*` 阶梯，避免 Material 基线紫灰调渗入；`RelaxKonOSTheme` 的对外 API（`ColorMode` / `AppLanguage` / `AppearanceState` / `applyAppLanguage` / `applyAppNightMode`）保持不变。
+- 新增共享组件：`AppBackdrop`（整窗渐变 + 两处柔光，高对比度下近似纯色）、`ScreenHeader`、`StatusChip`（含 `loadTone` 阈值）、`MetricTile` / `MetricTrack` / `DiskRow`、`ListRow` / `IconBadge`、`EmptyState`、`SectionGroup` / `SectionLabel`；`SectionCard`、`ErrorBanner`、`ProgressSheet` 改为零阴影 + 细边表面。`ErrorBanner` 不再自带外边距，改由调用方决定（页面内与整窗浮层两种位置需要不同的内缩）。
+- 界面改造：首页改为「身份 hero 卡 + 状态胶囊 + 指标磁贴 + 能力清单」（hero 替换原来的会话事实卡，服务器/账户/工作区/平台四个事实全部保留）；登录页加品牌标记与渐变；文件页改为位置栏 + 新建/上传双按钮 + 图标列表行；管理与更多改为分组图标行；性能页与进程页改用指标磁贴、胶囊与统一列表行；`more/*` 五个子页统一 `ScreenHeader` 与分组卡。`MainActivity` 只保留一处背景绘制，Shell 的 `Scaffold` 改为透明并补上 `safeDrawingPadding`。
+- 新增 12 个自绘矢量图标（`ic_server` / `ic_folder` / `ic_file` / `ic_memory` / `ic_storage` / `ic_activity` / `ic_process` / `ic_upload` / `ic_download` / `ic_copy` / `ic_link`）。**未**引入 `material-icons-extended`：Compose BOM 2025.12.01 已不再解析该坐标（图标库在 Compose 1.7 起冻结），且会显著增大包体。
+- `values/colors.xml` 与 `values-night/colors.xml` 的 `window_background` 改为对应渐变的首个色标，避免首帧 Compose 之前闪出不同底色。
+- 未新增或删除任何字符串资源；三份 `strings.xml` 键集仍完全一致（279 键）。
+
+校验：`:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，产物 `app/build/outputs/apk/debug/app-debug.apk`（13.3 MB）；单测 17 个测试类、158 个用例，0 失败 / 0 错误 / 0 跳过。**本次改动全部是界面层，尚未在真机上目视确认**：渐变与柔光在小屏上的观感、指标磁贴在窄屏（360dp）两列布局下的换行、以及深色与高对比度两套调色板的实际对比度，都需要按设备矩阵复核。
 
 ## 已知限制
 

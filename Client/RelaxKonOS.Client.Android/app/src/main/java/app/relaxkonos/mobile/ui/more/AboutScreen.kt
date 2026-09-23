@@ -8,17 +8,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.BuildConfig
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.KeyValueRow
+import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.appContainer
+import app.relaxkonos.mobile.ui.theme.Spacing
 
 /** Version and server identification. Everything here is non-secret by construction. */
 @Composable
@@ -30,13 +30,13 @@ fun AboutScreen(
     val session = container.activeSession
 
     Column(
-        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {
-        if (onBack != null) {
-            TextButton(onClick = onBack) { Text(stringResource(R.string.common_back)) }
-        }
-        Text(stringResource(R.string.about_title), style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader(
+            title = stringResource(R.string.about_title),
+            onBack = onBack,
+        )
 
         SectionCard(stringResource(R.string.about_client_title)) {
             KeyValueRow(stringResource(R.string.about_client_version), BuildConfig.VERSION_NAME)
