@@ -29,6 +29,11 @@ import app.relaxkonos.mobile.R
  * recreation of the screen but is never written to the session, the vault or any file. The password
  * itself keeps following the rule the callers already implement — a `String` only for as long as the
  * field holds it, a `CharArray` zeroed as soon as the request that needed it has finished.
+ *
+ * [supportingText] is where "a password is saved" is reported. It is the only place that fact may be
+ * rendered: writing dots into `value`, or into a placeholder that looks identical to typed text, would
+ * make the field claim the user had typed something
+ * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §3, §6.2).
  */
 @Composable
 fun PasswordTextField(
@@ -37,6 +42,7 @@ fun PasswordTextField(
     label: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    supportingText: (@Composable () -> Unit)? = null,
 ) {
     var revealed by rememberSaveable { mutableStateOf(false) }
     OutlinedTextField(
@@ -46,6 +52,7 @@ fun PasswordTextField(
         label = { Text(label) },
         singleLine = true,
         enabled = enabled,
+        supportingText = supportingText,
         visualTransformation = if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
             IconButton(onClick = { revealed = !revealed }, enabled = enabled) {

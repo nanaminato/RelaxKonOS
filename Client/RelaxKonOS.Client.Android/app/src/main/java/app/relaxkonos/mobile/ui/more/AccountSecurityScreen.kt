@@ -25,6 +25,7 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.security.BiometricCapability
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultRecord
+import app.relaxkonos.mobile.security.VaultRecordState
 import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyHint
@@ -134,6 +135,7 @@ fun AccountSecurityScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            InvalidatedNote(record)
                         }
                         TextButton(onClick = { deleteTarget = record }) { Text(stringResource(R.string.common_delete)) }
                     }
@@ -154,6 +156,7 @@ fun AccountSecurityScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            InvalidatedNote(record)
                         }
                         TextButton(onClick = { deleteTarget = record }) { Text(stringResource(R.string.common_delete)) }
                     }
@@ -218,6 +221,25 @@ fun AccountSecurityScreen(
             onDismiss = { deleteTarget = null },
         )
     }
+}
+
+/**
+ * Says why a stored record can never be unsealed again.
+ *
+ * A record in this state stays listed on purpose: removing it would erase the only trace of what
+ * happened to the saved password, and the user would go on saving it and losing it without ever seeing
+ * a reason (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.4).
+ */
+@Composable
+private fun InvalidatedNote(record: VaultRecord) {
+    if (record.state != VaultRecordState.Invalidated) {
+        return
+    }
+    Text(
+        stringResource(R.string.account_security_record_invalidated),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
+    )
 }
 
 @Composable

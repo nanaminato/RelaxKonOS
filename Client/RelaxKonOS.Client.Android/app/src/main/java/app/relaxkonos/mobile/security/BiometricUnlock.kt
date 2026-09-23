@@ -251,8 +251,32 @@ class VaultAccess(
         VaultOperation.Success(vault.open(record, cipher))
     } catch (_: VaultKeyInvalidatedException) {
         VaultOperation.Failed(UnlockFailure.KeyInvalidated)
+    } catch (_: VaultRecordInvalidatedException) {
+        // The record was already marked invalidated, so no prompt is shown for a dead key. The caller
+        // marks it again (idempotent) and falls back to typing the password — nothing is deleted (D5).
+        VaultOperation.Failed(UnlockFailure.KeyInvalidated)
     } catch (_: VaultKeyUnavailableException) {
         // The stored record is untouched: an unavailable authenticator is not evidence of tampering.
+        VaultOperation.Failed(UnlockFailure.Unavailable)
+    } catch (_: VaultTamperException) {
+        VaultOperation.Failed(UnlockFailure.Tampered)
+    }
+
+    /**
+     * Reads [record] without raising a confirmation prompt.
+     *
+     * Only meaningful with a device-unlock window key (D3): while the window is still open the Keystore
+     * key can be used again without a new authorization. It is never a gate — an expired window, a locked
+     * device or a dead key all come back as a failure so the caller can fall through to the authorized
+     * [load]. Reading the record through the vault keeps the only security boundary in one place.
+     */
+    fun loadWithoutPrompt(record: VaultRecord): VaultOperation<CharArray> = try {
+        VaultOperation.Success(vault.open(record, vault.beginOpen(record)))
+    } catch (_: VaultKeyInvalidatedException) {
+        VaultOperation.Failed(UnlockFailure.KeyInvalidated)
+    } catch (_: VaultRecordInvalidatedException) {
+        VaultOperation.Failed(UnlockFailure.KeyInvalidated)
+    } catch (_: VaultKeyUnavailableException) {
         VaultOperation.Failed(UnlockFailure.Unavailable)
     } catch (_: VaultTamperException) {
         VaultOperation.Failed(UnlockFailure.Tampered)

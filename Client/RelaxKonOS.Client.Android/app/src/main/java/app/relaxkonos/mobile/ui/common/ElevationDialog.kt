@@ -29,6 +29,7 @@ import app.relaxkonos.mobile.data.ElevationAnswer
 import app.relaxkonos.mobile.security.UnlockFailure
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultOperation
+import app.relaxkonos.mobile.security.VaultRecordState
 import kotlinx.coroutines.launch
 
 /**
@@ -38,6 +39,10 @@ import kotlinx.coroutines.launch
  * a stray tap must not be able to authorize a host-level change. The dialog names the exact capability
  * and target, is the only place an administrator password is entered, and is the only place one can be
  * stored — saving requires ticking an explicit box and passing a second strong-biometric check (D1).
+ *
+ * An administrator credential whose key was permanently invalidated is still listed on the account and
+ * security page, but it is not offered here: the only way to authorize is to type the password again
+ * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.5).
  */
 @Composable
 fun ElevationDialog(container: AppContainer) {
@@ -49,7 +54,8 @@ fun ElevationDialog(container: AppContainer) {
     val serverUrl = container.session.serverUrl.orEmpty()
     val elevationMode = container.unlockMode(VaultKind.Elevation)
     val savedAccount = prompt.savedAdministratorAccount
-    val savedRecord = remember(serverUrl, savedAccount) {
+    var vaultRevision by remember { mutableStateOf(0) }
+    val savedRecord = remember(serverUrl, savedAccount, vaultRevision) {
         if (serverUrl.isBlank() || savedAccount.isNullOrBlank()) {
             null
         } else {
@@ -154,8 +160,11 @@ fun ElevationDialog(container: AppContainer) {
                             }
                             is VaultOperation.Failed -> {
                                 if (outcome.failure == UnlockFailure.KeyInvalidated) {
-                                    // A new biometric enrolment invalidates only this record.
-                                    savedRecord?.let { container.vault.delete(it) }
+                                    // Only the affected record, and only marked: never deleted (D5).
+                                    savedRecord?.let {
+                                        container.vault.markInvalidated(it)
+                                        vaultRevision++
+                                    }
                                 }
                                 answer.password.fill('\u0000')
                                 storeRequested = false
@@ -168,7 +177,7 @@ fun ElevationDialog(container: AppContainer) {
         },
         dismissButton = {
             Row {
-                if (savedRecord != null && elevationMode != null) {
+                if (savedRecord?.state == VaultRecordState.Sealed && elevationMode != null) {
                     TextButton(
                         enabled = !busy,
                         onClick = {
@@ -190,8 +199,10 @@ fun ElevationDialog(container: AppContainer) {
                                     VaultOperation.Cancelled -> Unit
                                     is VaultOperation.Failed -> {
                                         if (outcome.failure == UnlockFailure.KeyInvalidated) {
-                                            // A new biometric enrolment invalidates only this record.
-                                            container.vault.delete(savedRecord)
+                                            // The record is kept and marked, so the user can see why the
+                                            // saved password stopped working (D5).
+                                            container.vault.markInvalidated(savedRecord)
+                                            vaultRevision++
                                         }
                                         message = unlockFailureLabel(context, outcome.failure)
                                     }

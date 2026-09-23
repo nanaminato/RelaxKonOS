@@ -8,6 +8,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 
 /**
  * The invariants of `RelaxKonOS.Mobile.V1.Design.md` §5.3 that the vault itself must hold: payloads are
@@ -211,6 +213,24 @@ class CredentialVaultTest {
         assertTrue(vault.records(VaultKind.Connection).isEmpty())
     }
 
+    /**
+     * The layout gained a state byte per record, so the version moved to `RKV2` and a file written by the
+     * previous layout is not migrated: it reads as "no stored credentials" and the user saves once more
+     * (`AGENTS.md`: no compatibility shims before the first release).
+     */
+    @Test
+    fun `a vault file from the previous layout degrades to no credentials`() {
+        val legacy = ByteArrayOutputStream()
+        DataOutputStream(legacy).use { output ->
+            output.writeInt(0x524B5631)
+            output.writeByte(VaultKind.Connection.ordinal)
+            output.writeInt(0)
+        }
+        storage.write(VaultKind.Connection, legacy.toByteArray())
+
+        assertTrue(vault.records(VaultKind.Connection).isEmpty())
+    }
+
     @Test
     fun `a truncated vault file degrades to no credentials`() {
         seal(VaultKind.Connection, "nana", "hunter2")
@@ -218,5 +238,75 @@ class CredentialVaultTest {
         storage.write(VaultKind.Connection, full.copyOfRange(0, full.size - 3))
 
         assertTrue(vault.records(VaultKind.Connection).isEmpty())
+    }
+
+    @Test
+    fun `markInvalidated keeps the record and its ciphertext but refuses to read it`() {
+        val sealed = seal(VaultKind.Connection, "nana", "hunter2")
+
+        vault.markInvalidated(sealed)
+
+        val kept = vault.record(VaultKind.Connection, server, "nana")!!
+        assertEquals(VaultRecordState.Invalidated, kept.state)
+        assertArrayEquals(sealed.iv, kept.iv)
+        assertArrayEquals(sealed.ciphertext, kept.ciphertext)
+        // Both gates refuse: building a Cipher for a dead key, and decrypting with one already built.
+        assertThrows(VaultRecordInvalidatedException::class.java) { vault.beginOpen(kept) }
+        assertThrows(VaultRecordInvalidatedException::class.java) { vault.open(kept, vault.beginOpen(sealed)) }
+    }
+
+    @Test
+    fun `markInvalidated leaves the other records of the same vault sealed`() {
+        seal(VaultKind.Connection, "nana", "first")
+        val target = seal(VaultKind.Connection, "kana", "second")
+
+        vault.markInvalidated(target)
+
+        assertEquals(VaultRecordState.Sealed, vault.record(VaultKind.Connection, server, "nana")!!.state)
+        assertEquals(VaultRecordState.Invalidated, vault.record(VaultKind.Connection, server, "kana")!!.state)
+        assertEquals("first", open(vault.record(VaultKind.Connection, server, "nana")!!))
+    }
+
+    @Test
+    fun `markInvalidated ignores a record that is no longer stored`() {
+        val sealed = seal(VaultKind.Connection, "nana", "hunter2")
+        vault.delete(sealed)
+
+        vault.markInvalidated(sealed)
+
+        assertNull(vault.record(VaultKind.Connection, server, "nana"))
+    }
+
+    @Test
+    fun `saving again replaces an invalidated record with a sealed one`() {
+        val sealed = seal(VaultKind.Connection, "nana", "old")
+        vault.markInvalidated(sealed)
+
+        val replacement = seal(VaultKind.Connection, "nana", "new")
+
+        assertEquals(VaultRecordState.Sealed, replacement.state)
+        assertEquals(1, vault.records(VaultKind.Connection).size)
+        assertEquals("new", open(vault.record(VaultKind.Connection, server, "nana")!!))
+    }
+
+    @Test
+    fun `the invalidated state survives a reload of the vault file`() {
+        vault.markInvalidated(seal(VaultKind.Connection, "nana", "hunter2"))
+
+        val reloaded = CredentialVault(storage, FakeVaultCrypto())
+            .record(VaultKind.Connection, server, "nana")!!
+
+        assertEquals(VaultRecordState.Invalidated, reloaded.state)
+    }
+
+    @Test
+    fun `markUsed does not resurrect an invalidated record`() {
+        vault.markInvalidated(seal(VaultKind.Connection, "nana", "hunter2"))
+
+        vault.markUsed(vault.record(VaultKind.Connection, server, "nana")!!, 9_000L)
+
+        val after = vault.record(VaultKind.Connection, server, "nana")!!
+        assertEquals(VaultRecordState.Invalidated, after.state)
+        assertEquals(9_000L, after.lastUsedEpochMillis)
     }
 }

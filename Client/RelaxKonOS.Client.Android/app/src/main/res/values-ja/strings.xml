@@ -33,13 +33,16 @@
     <string name="login_remember_hint">この端末にパスワードを保存し、指紋で解錠する</string>
     <string name="login_no_fingerprint">利用できる指紋も画面ロックもないため、この端末にパスワードを保存できません。</string>
     <string name="login_action_connect">接続</string>
+    <string name="login_action_sign_in">サインイン</string>
     <string name="login_action_connecting">接続中…</string>
-    <string name="login_saved_credential">%2$s の %1$s</string>
-    <string name="login_use_fingerprint">指紋でサインイン</string>
-    <string name="login_use_password">パスワードを入力する</string>
-    <string name="login_stored_credential_rejected">サーバーが保存済みのパスワードを拒否したため、この端末から削除しました。</string>
+    <string name="login_saved_password_fingerprint">パスワード保存済み · 空欄のまま指紋でサインインできます</string>
+    <string name="login_saved_password_screen_lock">パスワード保存済み · 空欄のまま画面ロックで解錠できます</string>
+    <string name="login_saved_password_unavailable">この端末では現在、保存したパスワードを解錠できません。パスワードを入力してサインインしてください。</string>
+    <string name="login_saved_password_invalidated">保存したパスワードは無効になりました。パスワードを入力し、保存し直して置き換えてください。</string>
+    <string name="login_password_required">パスワードを入力してください。</string>
     <string name="login_credential_not_saved">サインインしましたが、パスワードは保存されませんでした。</string>
-    <string name="login_missing_fields">サーバーアドレス、アカウント、パスワードを入力してください。</string>
+    <string name="login_credential_not_saved_reason">サインインしましたが、パスワードは保存されませんでした: %1$s</string>
+    <string name="login_missing_fields">サーバーアドレスとアカウントを入力してください。</string>
 
     <string name="vault_unlock_title">保存したパスワードを解錠</string>
     <string name="vault_unlock_subtitle">%1$s</string>
@@ -50,9 +53,9 @@
     <string name="vault_device_window_notice">この端末には強力な指紋センサーがないため、保存したパスワードは画面ロックで保護され、端末のロック解除後 5 分間だけ使用できます。</string>
     <string name="vault_failure_locked_out">失敗回数が上限に達しました。しばらく待つか、パスワードを入力してください。</string>
     <string name="vault_failure_locked_out_permanent">指紋による解錠がロックされています。画面ロックで端末を解錠してから再試行してください。</string>
-    <string name="vault_failure_key_invalidated">端末の指紋が変更されたため、保存したパスワードを解錠できません。パスワードでサインインし、保存し直してください。</string>
-    <string name="vault_failure_unavailable">この端末では現在、指紋による解錠を利用できません。</string>
-    <string name="vault_failure_tampered">保存したパスワードが検証に失敗したため破棄しました。</string>
+    <string name="vault_failure_key_invalidated">端末の指紋が変更されたため、保存したパスワードを解錠できません。削除するまでこの端末に残ります。パスワードでサインインし、保存し直して置き換えてください。</string>
+    <string name="vault_failure_unavailable">この端末では現在、指紋による解錠を利用できません。保存したパスワードは影響を受けません。</string>
+    <string name="vault_failure_tampered">保存したパスワードを検証できませんでした。削除するまでこの端末に残ります。パスワードを入力し、保存し直して置き換えてください。</string>
     <string name="vault_failure_unknown">指紋による解錠に失敗しました。</string>
 
     <string name="elevation_title">管理者の確認</string>
@@ -81,6 +84,7 @@
     <string name="error_connectivity">サーバーに到達できません。ネットワークとサーバーアドレスを確認してください。</string>
     <string name="debug_detail">デバッグ情報: %1$s</string>
     <string name="error_invalid_credential">アカウントまたはパスワードが正しくありません。</string>
+    <string name="error_login_rate_limited">サインインの試行が多すぎます。しばらく待ってから再試行してください。</string>
     <string name="error_account_disabled">このアカウントは無効です。</string>
     <string name="error_account_locked">このアカウントはロックされています。</string>
     <string name="error_account_expired">このアカウントは有効期限が切れています。</string>
@@ -95,13 +99,19 @@
 
     <string name="connections_title">接続</string>
     <string name="connections_empty">保存されたサーバーはまだありません。</string>
-    <string name="connections_saved_password">指紋で保護されたパスワードを保存済み</string>
+    <string name="connections_saved_password">パスワード保存済み、指紋で解錠</string>
+    <string name="connections_saved_password_screen_lock">パスワード保存済み、画面ロックで解錠</string>
+    <string name="connections_password_unavailable">パスワードは保存されていますが、この端末では現在解錠できません</string>
+    <string name="connections_password_invalidated">保存したパスワードは無効になりました</string>
     <string name="connections_no_password">パスワード未保存</string>
     <string name="connections_use">使用</string>
     <string name="connections_active">現在の接続</string>
     <string name="connections_sign_out_note">サインアウトしても、保存された接続とパスワードは残ります。</string>
-    <string name="connections_delete_title">この接続を削除</string>
-    <string name="connections_delete_message">%1$s（%2$s）への接続と、それに保存したパスワードを削除しますか？</string>
+    <string name="connections_forget_password">パスワードを忘れる</string>
+    <string name="connections_forget_title">このパスワードを忘れる</string>
+    <string name="connections_forget_message">%1$s（%2$s）に保存したパスワードを削除しますか？接続は残り、次回はパスワードを入力する必要があります。</string>
+    <string name="connections_delete_title">このログインを削除</string>
+    <string name="connections_delete_message">%1$s（%2$s）のログインと、それに保存したパスワードを削除しますか？</string>
 
     <string name="home_session_title">セッション</string>
     <string name="home_label_server">サーバー</string>
@@ -231,6 +241,7 @@
     <string name="account_security_clear_all">保存されたパスワードをすべて削除</string>
     <string name="account_security_clear_all_title">保存されたパスワードをすべて削除</string>
     <string name="account_security_clear_all_message">この端末に保存されたすべてのパスワードを削除しますか？保存された接続は残りますが、パスワードを入力し直す必要があります。</string>
+    <string name="account_security_record_invalidated">無効になりました: 端末の指紋が変更されたためです。削除するか、必要ならパスワードを保存し直してください。</string>
     <string name="account_security_delete_title">このパスワードを削除</string>
     <string name="account_security_delete_message">%2$s の %1$s に保存されたパスワードを削除しますか？</string>
 

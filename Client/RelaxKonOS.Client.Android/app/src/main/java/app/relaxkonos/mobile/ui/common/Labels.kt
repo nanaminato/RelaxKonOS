@@ -48,6 +48,9 @@ fun unlockFailureLabel(failure: UnlockFailure): String = stringResource(unlockFa
 fun unlockFailureLabel(context: Context, failure: UnlockFailure): String =
     context.getString(unlockFailureRes(failure))
 
+/** The same failure as a message a screen can hold in its own state. */
+fun unlockFailureMessage(failure: UnlockFailure): UiMessage = UiMessage(unlockFailureRes(failure))
+
 private fun unlockFailureRes(failure: UnlockFailure): Int = when (failure) {
     UnlockFailure.LockedOut -> R.string.vault_failure_locked_out
     UnlockFailure.LockedOutPermanently -> R.string.vault_failure_locked_out_permanent

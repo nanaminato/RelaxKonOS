@@ -105,4 +105,19 @@ class ProblemCodesTest {
         assertFalse(ApiResult.Problem(500, ProblemCodes.INVALID_CREDENTIAL, null).isCredentialRejection())
         assertFalse(ApiResult.Problem(503, ProblemCodes.PERFORMANCE_NOT_READY, null).isCredentialRejection())
     }
+
+    @Test
+    fun `sign-in throttling is explained rather than shown as a generic refusal`() {
+        assertEquals(
+            R.string.error_login_rate_limited,
+            problemMessage(ProblemCodes.LOGIN_RATE_LIMITED).resId,
+        )
+    }
+
+    @Test
+    fun `sign-in throttling never counts as a rejected credential`() {
+        // A 429 says the attempt was too soon, not that the password is wrong: dropping a stored
+        // password over it would punish the user for retrying (`…LoginCredentials.Design.md` §7.3).
+        assertFalse(ApiResult.Problem(429, ProblemCodes.LOGIN_RATE_LIMITED, null).isCredentialRejection())
+    }
 }

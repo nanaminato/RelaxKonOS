@@ -7,6 +7,7 @@ import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.loginSession
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -86,6 +87,31 @@ class AuthSessionTest {
 
         assertTrue(result is ApiResult.Transport)
         assertEquals(SessionState.SignedOut, session.state.value)
+    }
+
+    /**
+     * The only thing that may touch a stored credential after a sign-in attempt is the step that runs
+     * when the server accepted it. A rejected sign-in must therefore never reach that step
+     * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.3).
+     */
+    @Test
+    fun `a failed sign-in never runs the post-login credential step`() = runTest {
+        var credentialStepRan = false
+        gateway.onLogin = { _, _, _ -> ApiResult.Problem(401, ProblemCodes.INVALID_CREDENTIAL, null) }
+
+        session.login(server, "nana", "pw".toCharArray()) { credentialStepRan = true }
+
+        assertFalse(credentialStepRan)
+    }
+
+    @Test
+    fun `a transport failure never runs the post-login credential step`() = runTest {
+        var credentialStepRan = false
+        gateway.onLogin = { _, _, _ -> ApiResult.Transport("timeout") }
+
+        session.login(server, "nana", "pw".toCharArray()) { credentialStepRan = true }
+
+        assertFalse(credentialStepRan)
     }
 
     @Test

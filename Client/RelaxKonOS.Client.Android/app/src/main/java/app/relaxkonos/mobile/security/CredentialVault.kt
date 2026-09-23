@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.security
 
 import android.security.keystore.KeyPermanentlyInvalidatedException
+import android.security.keystore.UserNotAuthenticatedException
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -14,8 +15,22 @@ import javax.crypto.Cipher
 enum class VaultKind { Connection, Elevation }
 
 /**
+ * Whether a stored payload may still be decrypted.
+ *
+ * A record whose key was permanently invalidated — typically because the user enrolled a new
+ * fingerprint — cannot be read again, but it is **not** deleted: the fact that this identity once had a
+ * saved password is information the user needs, and the only thing that removes a record is an explicit
+ * delete (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.4, D5).
+ */
+enum class VaultRecordState { Sealed, Invalidated }
+
+/**
  * One stored credential. The key material never lives here: only the GCM payload produced by a
  * Keystore key that requires user authentication.
+ *
+ * [iv] and [ciphertext] are retained even when [state] is [VaultRecordState.Invalidated] — the vault
+ * refuses to read them, and keeping them means a later save overwrites one record rather than leaving
+ * an unreadable orphan behind.
  */
 class VaultRecord(
     val kind: VaultKind,
@@ -25,6 +40,7 @@ class VaultRecord(
     val fingerprintProtected: Boolean,
     val iv: ByteArray,
     val ciphertext: ByteArray,
+    val state: VaultRecordState = VaultRecordState.Sealed,
 ) {
     val id: String get() = recordId(kind, serverUrl, account)
 
@@ -48,6 +64,15 @@ class VaultKeyInvalidatedException(message: String, cause: Throwable? = null) : 
 
 /** Raised when a stored payload fails authentication: the record must be treated as unusable. */
 class VaultTamperException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/**
+ * Raised when a record is read after it was marked invalidated.
+ *
+ * Separate from [VaultKeyInvalidatedException] because it is a decision this client already made, not a
+ * Keystore verdict, but callers map both onto the same user-facing outcome: the saved password cannot
+ * be unsealed and must be typed instead.
+ */
+class VaultRecordInvalidatedException(message: String) : Exception(message)
 
 /** Keystore operations the vault depends on. Implemented by [VaultKeyManager]; faked in tests. */
 interface VaultCrypto {
@@ -134,7 +159,13 @@ class CredentialVault(
     /** Starts a save. The returned Cipher must be authorized before it can encrypt anything. */
     fun beginSeal(kind: VaultKind): Cipher = crypto.sealCipher(kind)
 
-    /** Stores [password] with an authorized [cipher]. */
+    /**
+     * Stores [password] with an authorized [cipher].
+     *
+     * A record that already exists at the same identity is replaced, whatever its state: saving again
+     * is how an invalidated record is refreshed, so this is also the only way a record returns from
+     * [VaultRecordState.Invalidated] to [VaultRecordState.Sealed].
+     */
     fun seal(
         kind: VaultKind,
         serverUrl: String,
@@ -167,10 +198,19 @@ class CredentialVault(
     }
 
     /** Starts an unlock. The returned Cipher must be authorized before it can decrypt anything. */
-    fun beginOpen(record: VaultRecord): Cipher = crypto.openCipher(record.kind, record.iv)
+    fun beginOpen(record: VaultRecord): Cipher {
+        requireSealed(record)
+        return crypto.openCipher(record.kind, record.iv)
+    }
 
-    /** Decrypts a record with an authorized [cipher]. */
+    /**
+     * Decrypts a record with an authorized [cipher].
+     *
+     * An invalidated record is refused here as well as in [beginOpen]: the second gate matters because
+     * a caller may hold a record that was marked invalid between the two calls.
+     */
     fun open(record: VaultRecord, cipher: Cipher): CharArray {
+        requireSealed(record)
         val plaintext = try {
             cipher.updateAAD(vaultAad(record.kind, record.serverUrl, record.account))
             cipher.doFinal(record.ciphertext)
@@ -184,6 +224,24 @@ class CredentialVault(
         }
     }
 
+    /**
+     * Marks one record as permanently unreadable, keeping the record and its ciphertext.
+     *
+     * Called when the Keystore reports a permanently invalidated key. The payload is deliberately not
+     * destroyed and the record is deliberately not removed: the user must be able to see that this
+     * identity once had a saved password and why it stopped working (D5).
+     */
+    fun markInvalidated(record: VaultRecord) {
+        val current = read(record.kind)
+        if (current.none { it.id == record.id }) {
+            return
+        }
+        write(
+            record.kind,
+            current.map { if (it.id == record.id) it.asInvalidated() else it },
+        )
+    }
+
     /** Touches the "last used" stamp after a successful server-side verification. */
     fun markUsed(record: VaultRecord, nowEpochMillis: Long) {
         val current = read(record.kind)
@@ -194,7 +252,16 @@ class CredentialVault(
             record.kind,
             current.map {
                 if (it.id == record.id) {
-                    VaultRecord(it.kind, it.serverUrl, it.account, nowEpochMillis, it.fingerprintProtected, it.iv, it.ciphertext)
+                    VaultRecord(
+                        it.kind,
+                        it.serverUrl,
+                        it.account,
+                        nowEpochMillis,
+                        it.fingerprintProtected,
+                        it.iv,
+                        it.ciphertext,
+                        it.state,
+                    )
                 } else {
                     it
                 }
@@ -202,10 +269,7 @@ class CredentialVault(
         )
     }
 
-    /**
-     * Drops a single record. Called by the account and security page and whenever the server
-     * rejects a stored credential (`RelaxKonOS.Mobile.V1.Design.md` §5.8.2).
-     */
+    /** Drops a single record: the explicit "forget the password" action of the design (§6.3). */
     fun delete(kind: VaultKind, serverUrl: String, account: String) {
         val id = recordId(kind, serverUrl, account)
         write(kind, read(kind).filterNot { it.id == id })
@@ -223,6 +287,25 @@ class CredentialVault(
         val ids = records.map { it.id }.toSet()
         write(kind, read(kind).filterNot { it.id in ids })
     }
+
+    private fun requireSealed(record: VaultRecord) {
+        if (record.state == VaultRecordState.Invalidated) {
+            throw VaultRecordInvalidatedException(
+                "The ${record.kind.name} credential for ${record.account} was invalidated and is not readable.",
+            )
+        }
+    }
+
+    private fun VaultRecord.asInvalidated(): VaultRecord = VaultRecord(
+        kind = kind,
+        serverUrl = serverUrl,
+        account = account,
+        lastUsedEpochMillis = lastUsedEpochMillis,
+        fingerprintProtected = fingerprintProtected,
+        iv = iv,
+        ciphertext = ciphertext,
+        state = VaultRecordState.Invalidated,
+    )
 
     private fun read(kind: VaultKind): List<VaultRecord> {
         val payload = storage.read(kind) ?: return emptyList()
@@ -242,11 +325,16 @@ class CredentialVault(
  * Binary container for vault records. A private, fixed layout is used instead of JSON so the same
  * code path runs on the device and in JVM unit tests.
  *
- * `magic("RKV1") | kindOrdinal(u8) | count(i32) | record*`
- * `record = url(UTF) | account(UTF) | lastUsed(i64) | protected(u8) | iv(byte[]) | ciphertext(byte[])`
+ * `magic("RKV2") | kindOrdinal(u8) | count(i32) | record*`
+ * `record = url(UTF) | account(UTF) | lastUsed(i64) | protected(u8) | state(u8) | iv(byte[]) | ciphertext(byte[])`
+ *
+ * The magic carries the version, and the version is bumped whenever the layout changes instead of
+ * carrying migration code for a build that has never shipped: a file from another version decodes as
+ * "no stored credentials" and the user saves the password once more (`AGENTS.md`, and
+ * `RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.4).
  */
 internal object VaultFileFormat {
-    private const val MAGIC = 0x524B5631
+    private const val MAGIC = 0x524B5632
 
     fun encode(records: List<VaultRecord>): ByteArray {
         val buffer = ByteArrayOutputStream()
@@ -259,6 +347,7 @@ internal object VaultFileFormat {
                 output.writeUTF(record.account)
                 output.writeLong(record.lastUsedEpochMillis)
                 output.writeByte(if (record.fingerprintProtected) 1 else 0)
+                output.writeByte(record.state.ordinal)
                 output.writeInt(record.iv.size)
                 output.write(record.iv)
                 output.writeInt(record.ciphertext.size)
@@ -280,9 +369,10 @@ internal object VaultFileFormat {
                     val account = input.readUTF()
                     val lastUsed = input.readLong()
                     val protected = input.readByte().toInt() == 1
+                    val state = VaultRecordState.entries[input.readByte().toInt()]
                     val iv = ByteArray(input.readInt()).also { input.readFully(it) }
                     val ciphertext = ByteArray(input.readInt()).also { input.readFully(it) }
-                    records += VaultRecord(kind, serverUrl, account, lastUsed, protected, iv, ciphertext)
+                    records += VaultRecord(kind, serverUrl, account, lastUsed, protected, iv, ciphertext, state)
                 }
                 records
             }
@@ -308,7 +398,14 @@ internal fun decodeUtf8(bytes: ByteArray): CharArray {
     return chars
 }
 
-/** Maps Keystore failures onto the vault's own invalidation signal. */
+/**
+ * Maps Keystore failures onto the vault's own signal.
+ *
+ * The split matters now that an invalidated key only marks a record instead of deleting it: a failure
+ * that merely means "not authorized right now" — the device is locked, or the window key has expired —
+ * must not be reported as a dead key, because that would permanently brand a perfectly good record
+ * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §4.1: unavailable is not invalidated).
+ */
 internal fun mapKeyException(kind: VaultKind, error: Throwable): Nothing = when (error) {
     is VaultKeyInvalidatedException -> throw error
     is KeyPermanentlyInvalidatedException ->
@@ -316,6 +413,12 @@ internal fun mapKeyException(kind: VaultKind, error: Throwable): Nothing = when 
 
     is UnrecoverableKeyException ->
         throw VaultKeyInvalidatedException("The ${kind.name} vault key can no longer be recovered.", error)
+
+    is UserNotAuthenticatedException ->
+        throw VaultKeyUnavailableException(
+            "The ${kind.name} vault key needs a fresh authorization before it can be used.",
+            error,
+        )
 
     is GeneralSecurityException ->
         throw VaultKeyInvalidatedException("Keystore rejected the ${kind.name} vault key.", error)

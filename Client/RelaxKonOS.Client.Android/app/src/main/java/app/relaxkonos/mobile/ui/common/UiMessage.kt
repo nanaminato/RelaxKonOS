@@ -50,6 +50,7 @@ fun genericProblemMessage(): UiMessage = UiMessage(R.string.error_generic)
 fun problemMessage(code: String): UiMessage = UiMessage(
     when (code) {
         ProblemCodes.INVALID_CREDENTIAL -> R.string.error_invalid_credential
+        ProblemCodes.LOGIN_RATE_LIMITED -> R.string.error_login_rate_limited
         ProblemCodes.ACCOUNT_DISABLED -> R.string.error_account_disabled
         ProblemCodes.ACCOUNT_LOCKED -> R.string.error_account_locked
         ProblemCodes.ACCOUNT_EXPIRED -> R.string.error_account_expired

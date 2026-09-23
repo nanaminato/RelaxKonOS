@@ -52,6 +52,7 @@
 
 - 资料中的 `Service` 在 RelaxKonOS 里就是**服务端地址**（`serverUrl`）；`Username` 就是协议里的 **`identifier`**（[`LoginRequest`](../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 的字段名）。因此不与仓库既有词汇（桌面端 `SavedLoginProfile(ServerUrl, Username, …)`、保险箱记录键 `kind|serverUrl|account`）产生第二套叫法。
 - 本机稳定身份：`loginId(serverUrl, identifier)`。
+- 归一化只有两条：去掉首尾空白、去掉地址结尾的斜杠。**不折叠大小写**——地址可能带大小写敏感的路径，标识可能是服务端要区分的两个账户，折叠任一者都会把两条独立记录并成一条，一次保存就会覆盖另一条凭据。
 - 与保存凭据的连接键：`CredentialKey` = `recordId(VaultKind.Connection, serverUrl, identifier)`，即 [`CredentialVault.kt`](../app/src/main/java/app/relaxkonos/mobile/security/CredentialVault.kt) 里已有的 `recordId(...)`。
 
 > **同一台服务器上的两个账号是两条记录，不是一个记录的两个字段。** 任何按 `serverUrl` 单独删除的操作都是缺陷，见 §3 的 G7。
@@ -84,6 +85,8 @@
 ---
 
 ## 3. 与当前实现的差异清单
+
+> 本节是**设计时的快照**：它记录了本文各条规则相对当时实现的落差，也是每条规则存在的理由。哪些已经落地，看 [`RelaxKonOS.Mobile.Progress.md`](./RelaxKonOS.Mobile.Progress.md)。
 
 现状来自 `app/src/main/java/app/relaxkonos/mobile/` 的实际代码（非文档声明）。判定沿用仓库规则：**注释与实现矛盾时以实现为准**。
 
@@ -443,7 +446,7 @@ CredentialStore(密文)
 | --- | --- |
 | `LoginDecisionTest`（新） | §5.1 决策表逐行，含「PasswordText 非空时 `Available` 被忽略」与「字段不全优先于一切」 |
 | `SavedCredentialStateTest`（新） | 四态派生；`Invalidated` 优先于 `unlockMode == null`；`Unavailable ≠ Invalidated` |
-| `SelectedLoginTest`（新） | `id` / `credentialKey` 对大小写、前后空格、结尾斜杠归一化后稳定；不同身份不碰撞 |
+| `SelectedLoginTest`（新） | 归一化只做「去前后空格」与「去结尾斜杠」，**不折叠大小写**；同服务器不同账号、不同服务器同账号都不碰撞；`credentialKey` 与保险箱 `recordId` 一致 |
 | `ConnectionProfileStoreTest`（改） | 按对删除只影响一条；同服务器多账号互不牵连 |
 | `CredentialVaultTest`（改） | `markInvalidated` 后记录与密文仍在、`open()` 被拒绝；「忘记密码」删记录；格式升版后旧文件降级为空 |
 | `AuthSessionTest`（改） | 认证失败不触碰凭据；`invalid-credential`、`429` 与 `Transport` 均不会修改保存凭据 |

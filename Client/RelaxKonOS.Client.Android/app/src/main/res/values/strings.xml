@@ -37,16 +37,23 @@
     <string name="login_server_address">Server address</string>
     <string name="login_identifier">Account</string>
     <string name="login_password">Password</string>
-    <string name="login_remember_hint">Save the password on this device, unlocked by fingerprint</string>
+    <string name="login_remember_hint">Save the password on this device and unlock it with the fingerprint</string>
     <string name="login_no_fingerprint">No usable fingerprint or screen lock was found, so a password cannot be saved on this device.</string>
     <string name="login_action_connect">Connect</string>
+    <string name="login_action_sign_in">Sign in</string>
     <string name="login_action_connecting">Connecting…</string>
-    <string name="login_saved_credential">%1$s at %2$s</string>
-    <string name="login_use_fingerprint">Sign in with fingerprint</string>
-    <string name="login_use_password">Enter the password instead</string>
-    <string name="login_stored_credential_rejected">The server rejected the saved password. It has been deleted from this device.</string>
+    <!--
+      The saved-password state line. It is rendered beside the password field and reports only that a
+      credential exists and what unlocks it; producing it never reads the password.
+    -->
+    <string name="login_saved_password_fingerprint">Saved password · leave the field empty to sign in with the fingerprint</string>
+    <string name="login_saved_password_screen_lock">Saved password · leave the field empty to unlock it with the screen lock</string>
+    <string name="login_saved_password_unavailable">The saved password cannot be unlocked on this device right now. Enter the password to sign in.</string>
+    <string name="login_saved_password_invalidated">The saved password is no longer valid. Enter the password and save it again to replace it.</string>
+    <string name="login_password_required">Enter the password to sign in.</string>
     <string name="login_credential_not_saved">Signed in, but the password was not saved.</string>
-    <string name="login_missing_fields">Enter the server address, account and password.</string>
+    <string name="login_credential_not_saved_reason">Signed in, but the password was not saved: %1$s</string>
+    <string name="login_missing_fields">Enter the server address and account.</string>
 
     <!-- Credential vault -->
     <string name="vault_unlock_title">Unlock the saved password</string>
@@ -58,9 +65,9 @@
     <string name="vault_device_window_notice">This device has no strong fingerprint sensor, so the saved password is protected by the screen lock and can be used for five minutes after you unlock the device.</string>
     <string name="vault_failure_locked_out">Too many failed attempts. Try again later, or enter the password.</string>
     <string name="vault_failure_locked_out_permanent">Fingerprint unlocking is locked. Unlock the device with its screen lock, then try again.</string>
-    <string name="vault_failure_key_invalidated">The saved password can no longer be unlocked because the device fingerprints changed. Sign in with the password and save it again.</string>
-    <string name="vault_failure_unavailable">Fingerprint unlocking is not available on this device right now.</string>
-    <string name="vault_failure_tampered">The saved password failed verification and was discarded.</string>
+    <string name="vault_failure_key_invalidated">The saved password can no longer be unlocked because the device fingerprints changed. It stays on this device until you delete it; sign in with the password and save it again to replace it.</string>
+    <string name="vault_failure_unavailable">Fingerprint unlocking is not available on this device right now. The saved password is not affected.</string>
+    <string name="vault_failure_tampered">The saved password could not be verified. It stays on this device; enter the password and save it again to replace it.</string>
     <string name="vault_failure_unknown">Fingerprint unlocking failed.</string>
 
     <!-- Elevation -->
@@ -92,6 +99,7 @@
     <string name="error_connectivity">Could not reach the server. Check the network and the server address.</string>
     <string name="debug_detail">Debug: %1$s</string>
     <string name="error_invalid_credential">The account or password is incorrect.</string>
+    <string name="error_login_rate_limited">Too many sign-in attempts. Wait a moment and try again.</string>
     <string name="error_account_disabled">This account is disabled.</string>
     <string name="error_account_locked">This account is locked.</string>
     <string name="error_account_expired">This account has expired.</string>
@@ -107,13 +115,19 @@
     <!-- Connections -->
     <string name="connections_title">Connections</string>
     <string name="connections_empty">No server has been saved yet.</string>
-    <string name="connections_saved_password">Fingerprint-protected password saved</string>
+    <string name="connections_saved_password">Password saved, unlocked by fingerprint</string>
+    <string name="connections_saved_password_screen_lock">Password saved, unlocked by the screen lock</string>
+    <string name="connections_password_unavailable">A password is saved but cannot be unlocked on this device right now</string>
+    <string name="connections_password_invalidated">The saved password is no longer valid</string>
     <string name="connections_no_password">No password saved</string>
     <string name="connections_use">Use</string>
     <string name="connections_active">Current connection</string>
     <string name="connections_sign_out_note">Signing out keeps the saved connections and their passwords.</string>
-    <string name="connections_delete_title">Delete this connection</string>
-    <string name="connections_delete_message">Delete the saved connection to %1$s (%2$s) together with the password stored for it?</string>
+    <string name="connections_forget_password">Forget the password</string>
+    <string name="connections_forget_title">Forget this password</string>
+    <string name="connections_forget_message">Delete the password saved for %1$s (%2$s)? The connection stays, and the password will have to be typed again.</string>
+    <string name="connections_delete_title">Delete this login</string>
+    <string name="connections_delete_message">Delete the saved login for %1$s (%2$s) together with the password stored for it?</string>
 
     <!-- Home -->
     <string name="home_session_title">Session</string>
@@ -248,6 +262,7 @@
     <string name="account_security_clear_all">Delete all saved passwords</string>
     <string name="account_security_clear_all_title">Delete all saved passwords</string>
     <string name="account_security_clear_all_message">Delete every saved password from this device? Saved connections stay, and you will have to type the passwords again.</string>
+    <string name="account_security_record_invalidated">No longer valid: the device fingerprints changed. Delete it, and save the password again if you still need it.</string>
     <string name="account_security_delete_title">Delete this password</string>
     <string name="account_security_delete_message">Delete the saved password for %1$s on %2$s?</string>
 

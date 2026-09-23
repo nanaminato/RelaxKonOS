@@ -57,6 +57,20 @@ class AppContainer(context: Context) {
 
     val profiles = ConnectionProfileStore(FileProfileStorage(appContext.noBackupFilesDir))
 
+    /**
+     * Reconciles the stored credential projection against the vault, once per process.
+     *
+     * The vault owns the answer to "is a password saved"; the projection in the profile file is only a
+     * convenience for lists. Reconciling here means a projection left behind by an interrupted save, or
+     * written by an older build, cannot outlive the record it describes
+     * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §2.2, §4.2). Reading the vault is not a biometric
+     * operation: only the payload is encrypted, and it stays encrypted.
+     */
+    init {
+        val stored = vault.records(VaultKind.Connection).map { it.serverUrl to it.account }.toSet()
+        profiles.reconcileCredentialProjection { serverUrl, identifier -> (serverUrl to identifier) in stored }
+    }
+
     val gateway: RelaxKonGateway = RelaxKonApi(clientVersion = BuildConfig.VERSION_NAME)
 
     val session = AuthSession(gateway)

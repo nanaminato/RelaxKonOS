@@ -47,8 +47,23 @@
   只有在窗口内确实取不到样本（`503 performance-not-ready`）时才提示指标尚未就绪，而不再被误报为
   "无法连接到服务器"——`RelaxKonApi` 只在 5xx 响应体明确给出 RelaxKonOS 问题码时才把它当作 Problem。
 
+## 登录与本地凭据（2026-09-23，对应 `RelaxKonOS.Mobile.LoginCredentials.Design.md`）
+
+- 身份唯一键落到 `(serverUrl, identifier)`：新增 `core/auth/SelectedLogin.kt`，归一化只做「去首尾空白 + 去地址结尾斜杠」，**不折叠大小写**；`id` 与保险箱 `credentialKey`（`recordId`）由同一对值派生，不会出现两套键。
+- 四个概念分离为可单测的纯 Kotlin：`SelectedLogin` / `SavedCredentialState`（四态）/ `CredentialStatus`（状态行）/ `LoginDecision` + `decideLogin`（§5.1 决策表）。`core/auth/` 不依赖任何 Android 类型。
+- 登录页改为单形态：密码框始终可见、`value` 只表示本次手动输入；「已保存密码」由密码框外的状态行（锁形图标 + 文案）表达；按钮文案随决策变化（`登录` / `连接` / `连接中…`）；缺字段或需要输入密码时把焦点移到对应输入框。原「简洁模式」与「指纹登录 / 改用密码」双按钮路径删除。
+- 保存动作仍在认证成功之后（`AuthSession.login` 的 `afterLogin` 回调）；认证失败不触碰任何已存凭据，`401 invalid-credential` **不再删除**连接保险箱里的密码（§7.3，相对旧实现的行为变更）。保存失败提示为「已登录，但密码没有保存：<原因>」。
+- D5 落地：密钥永久失效由「自动删除」改为「标记作废、保留记录与密文、禁止读取」。`VaultRecord` 增加 `state`（`Sealed` / `Invalidated`）、`CredentialVault.markInvalidated`、`VaultRecordInvalidatedException`；`beginOpen()` 与 `open()` 双双拒绝作废记录；保险箱文件格式升到 `RKV2`（每条记录多一个 state 字节），旧格式按版本不匹配降级为「无已保存凭据」，不写迁移。账户与安全页对作废记录标注原因；提权保险箱沿用同一规则，作废记录不再出现在「使用指纹确认」路径上。
+- `mapKeyException` 现在把 `UserNotAuthenticatedException` 归为「当前不可用」而不是「已失效」。D5 之后误判会把一条好记录永久标死，所以「无法使用不是已失效的证据」必须在 Keystore 层也成立。
+- 连接管理拆成两个互不替代的动作，且一律按 `(serverUrl, identifier)` 成对生效：**忘记密码**（只删凭据、保留登录记录）与**删除登录记录**（删凭据 + 删该条登录）。`ConnectionProfileStore.remove(serverUrl)` 的「按服务器全删」缺陷修复。
+- `SavedConnection` 更名为 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey`，档案文件格式升到 `RKC2`。`hasSavedCredential` 只是显示投影：启动时由 `AppContainer` 以保险箱记录复核修正，两者不一致时以保险箱为准；布尔值不构成安全边界。
+- `CredentialUnlocked` 落地为「本进程内、窗口模式（D3）下已授权过的身份集合」：窗口内再次登录走 `VaultAccess.loadWithoutPrompt`，失败即回落为正常授权提示；按次强指纹模式恒为 false，不参与安全边界。
+- 新增 `ProblemCodes.LOGIN_RATE_LIMITED`（`429 login-rate-limited`）与对应文案：登录被限流时说「登录尝试过于频繁」而不是通用拒绝；它不参与任何凭据删除判定。
+- 三份 `strings.xml`（`values` / `values-zh-rCN` / `values-ja`）键集完全一致（275 键），并删除了不再使用的 `login_stored_credential_rejected`、`login_use_fingerprint`、`login_use_password`、`login_saved_credential`。
+
 ## 已知限制
 
+- 连接保险箱的密码被服务端拒绝时**不**删除（§7.3）。代价是：用户已在服务端改密后，本机那条旧密码会一直失败，直到手动输入新密码并在成功后保存覆盖它。这是有意选择——删除只在用户显式「忘记密码」或「删除登录记录」时发生。
 - 终端、Docker、部署与守护进程管理尚未实现，对应入口不会出现。
 - 连接保险箱在 `WEAK_ONLY` 设备上只能用**设备凭据**（锁屏 PIN/图案/密码）解封：Android Keystore 不存在
   "弱生物识别"标志位，`setUserAuthenticationParameters` 只接受 `AUTH_BIOMETRIC_STRONG` 与 `AUTH_DEVICE_CREDENTIAL`。
@@ -64,8 +79,8 @@
 
 - 使用 [`Tools/Mobile/Build-Android.ps1`](../../../Tools/Mobile/Build-Android.ps1) 运行 Gradle `:app:assembleDebug`；
   需要 Android SDK、JDK 21 与 Gradle 9.7.1。
-- 使用 Gradle `:app:testDebugUnitTest` 执行单元测试：布局断点、认证状态机、保险箱加解密与 AAD 绑定、
-  提权单次重试、生物识别能力映射、wire 时间戳解析、导航栈、能力门控。
+- 使用 Gradle `:app:testDebugUnitTest` 执行单元测试：登录决策与身份键、凭据四态与显示投影、布局断点、
+  认证状态机、保险箱加解密与 AAD 绑定、提权单次重试、生物识别能力映射、wire 时间戳解析、导航栈、能力门控。
 
 最近一次校验（2026-09-22）：
 
@@ -83,9 +98,28 @@
   `androidResources.localeFilters`。本模块暂未迁移（AGP 9.4.1 仍支持该属性），待确认新 DSL 精确签名后再改。
 - 以上均为本机 JVM 单元测试与打包验证；设备矩阵验证仍未执行（见上）。
 
+最近一次校验（2026-09-23，登录决策与本地凭据模型落地后）：
+
+- `:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，Kotlin 编译零警告；
+  产物为 `app/build/outputs/apk/debug/app-debug.apk`。
+- 单元测试 15 个测试类、149 个用例，0 失败 / 0 错误 / 0 跳过：`CredentialVaultTest` 25、`AuthSessionTest` 16、
+  `ConnectionProfileStoreTest` 16、`ProblemCodesTest` 15、`ElevationRepositoryTest` 13、`WireTest` 12、
+  `BiometricCapabilityTest` 11、`MobileNavigatorTest` 10、`LoginDecisionTest` 7、`SavedCredentialStateTest` 6、
+  `SelectedLoginTest` 6、`LayoutStateTest` 4、`TopDestinationTest` 4、`FilesRepositoryTest` 3、
+  `RecentOperationJournalTest` 1。上一轮记录中失败的 `MobileNavigatorTest` 用例（工作树里未完成的导航改动）
+  本轮已随该改动完成而通过。
+- 本轮新增覆盖：§5.1 决策表逐行（含「字段不全优先于一切」「手动输入的密码覆盖已保存凭据」）；凭据四态与状态行映射；
+  身份键归一化不折叠大小写、同服务器不同账号不碰撞；按对删除只影响一条登录且不触碰同服务器其他账号；
+  `markInvalidated` 后记录与密文仍在、两个读取入口都被拒绝、重新保存可替换；保险箱格式升版后旧文件降级为空；
+  认证失败不触发登录后的凭据步骤；限流既有专门文案也不被当成凭据拒绝。
+- 仍未做设备矩阵验证：指纹授权、取消、失败、锁定、指纹变更后的「标记作废」提示都需要真机确认（见「后续步骤」）。
+
 ## 后续步骤
 
 - 按设计文档 §8 的最小设备矩阵补齐真机验证：一台手机（竖/横屏）、约 8 英寸与约 11 英寸平板，逐台验证指纹登录
-  （成功/取消/失败/锁定）、指纹提权、软键盘遮挡、旋转、后台恢复与危险操作确认文本。
+  （成功/取消/失败/锁定）、**新录入指纹后记录变为「已失效」而不是消失**、删除记录后重建的指纹、指纹提权、软键盘遮挡、
+  旋转、后台恢复与危险操作确认文本。
+- 真机验证时顺带确认窗口模式（`WEAK_ONLY` / `DEVICE_CREDENTIAL_ONLY`）下五分钟内免二次确认，以及窗口过期后回落为
+  正常授权提示而不是「已失效」。
 - V1-C 终端：SignalR 客户端与 PTY 渲染。
 - V1-E 其余域：Docker、部署、守护（按服务端能力门控）。

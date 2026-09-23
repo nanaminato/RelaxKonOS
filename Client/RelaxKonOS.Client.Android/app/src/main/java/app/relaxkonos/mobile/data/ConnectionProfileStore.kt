@@ -1,6 +1,6 @@
 package app.relaxkonos.mobile.data
 
-import app.relaxkonos.mobile.security.model.SavedConnection
+import app.relaxkonos.mobile.security.model.SavedLogin
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -45,26 +45,66 @@ class InMemoryProfileStorage : ProfileStorage {
 }
 
 /**
- * The connection list shown on the login and connections screens.
+ * The login list shown on the sign-in and connections screens.
  *
- * Only the address and the login identifier are stored here; whether a password is available is
- * answered by the connection vault, so there is exactly one source of truth for that question.
+ * Every mutation addresses one login through the pair `(serverUrl, identifier)`. There is deliberately
+ * no operation that acts on a server address alone: one server can hold several accounts, and removing
+ * "the server" would silently take the other accounts' records with it
+ * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
+ *
+ * The list holds no secret — the password is in the connection vault — and the one flag it does carry
+ * about credentials ([SavedLogin.hasSavedCredential]) is a projection that is reconciled against the
+ * vault rather than trusted as the truth (§2.2, §4.2).
  */
 class ConnectionProfileStore(private val storage: ProfileStorage) {
-    fun all(): List<SavedConnection> = read().sortedByDescending { it.lastUsedEpochMillis }
+    fun all(): List<SavedLogin> = read().sortedByDescending { it.lastUsedEpochMillis }
 
-    fun recent(): SavedConnection? = all().firstOrNull()
+    fun recent(): SavedLogin? = all().firstOrNull()
 
-    fun upsert(connection: SavedConnection) {
-        val updated = read().filterNot { it.serverUrl == connection.serverUrl && it.identifier == connection.identifier } + connection
-        write(updated)
+    fun upsert(login: SavedLogin) {
+        write(read().filterNot { it.sameIdentityAs(login) } + login)
     }
 
-    fun remove(serverUrl: String) {
-        write(read().filterNot { it.serverUrl == serverUrl })
+    /** Removes exactly one login, leaving every other account on the same server untouched. */
+    fun remove(serverUrl: String, identifier: String) {
+        write(read().filterNot { it.serverUrl == serverUrl && it.identifier == identifier })
     }
 
-    private fun read(): List<SavedConnection> {
+    /** Updates the credential projection for one login, or does nothing when it is not stored. */
+    fun setHasSavedCredential(serverUrl: String, identifier: String, hasCredential: Boolean) {
+        val current = read()
+        if (current.none { it.serverUrl == serverUrl && it.identifier == identifier }) {
+            return
+        }
+        write(
+            current.map {
+                if (it.serverUrl == serverUrl && it.identifier == identifier) {
+                    it.copy(hasSavedCredential = hasCredential)
+                } else {
+                    it
+                }
+            },
+        )
+    }
+
+    /**
+     * Re-aligns one projection with the vault, which is the only source of truth for "is a credential
+     * stored". Called once at start-up so a projection written by an older build, or left behind by an
+     * interrupted operation, cannot outlive the record it describes (§2.2). The file is only rewritten
+     * when something actually differs.
+     */
+    fun reconcileCredentialProjection(exists: (serverUrl: String, identifier: String) -> Boolean) {
+        val current = read()
+        val reconciled = current.map { it.copy(hasSavedCredential = exists(it.serverUrl, it.identifier)) }
+        if (reconciled != current) {
+            write(reconciled)
+        }
+    }
+
+    private fun SavedLogin.sameIdentityAs(other: SavedLogin): Boolean =
+        serverUrl == other.serverUrl && identifier == other.identifier
+
+    private fun read(): List<SavedLogin> {
         val payload = storage.read() ?: return emptyList()
         return try {
             DataInputStream(ByteArrayInputStream(payload)).use { input ->
@@ -72,9 +112,14 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
                     emptyList()
                 } else {
                     val count = input.readInt()
-                    ArrayList<SavedConnection>(count).apply {
+                    ArrayList<SavedLogin>(count).apply {
                         repeat(count) {
-                            add(SavedConnection(input.readUTF(), input.readUTF(), input.readLong()))
+                            val serverUrl = input.readUTF()
+                            val identifier = input.readUTF()
+                            val lastUsed = input.readLong()
+                            val displayName = if (input.readByte().toInt() == 1) input.readUTF() else null
+                            val hasCredential = input.readByte().toInt() == 1
+                            add(SavedLogin(serverUrl, identifier, lastUsed, displayName, hasCredential))
                         }
                     }
                 }
@@ -85,21 +130,28 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
         }
     }
 
-    private fun write(connections: List<SavedConnection>) {
+    private fun write(logins: List<SavedLogin>) {
         val buffer = ByteArrayOutputStream()
         DataOutputStream(buffer).use { output ->
             output.writeInt(MAGIC)
-            output.writeInt(connections.size)
-            for (connection in connections) {
-                output.writeUTF(connection.serverUrl)
-                output.writeUTF(connection.identifier)
-                output.writeLong(connection.lastUsedEpochMillis)
+            output.writeInt(logins.size)
+            for (login in logins) {
+                output.writeUTF(login.serverUrl)
+                output.writeUTF(login.identifier)
+                output.writeLong(login.lastUsedEpochMillis)
+                val displayName = login.displayName
+                output.writeByte(if (displayName == null) 0 else 1)
+                if (displayName != null) {
+                    output.writeUTF(displayName)
+                }
+                output.writeByte(if (login.hasSavedCredential) 1 else 0)
             }
         }
         storage.write(buffer.toByteArray())
     }
 
     private companion object {
-        const val MAGIC = 0x524B4331
+        /** `RKC2`: the layout carries the optional display name and the credential projection. */
+        const val MAGIC = 0x524B4332
     }
 }

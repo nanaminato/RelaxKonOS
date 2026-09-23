@@ -18,6 +18,15 @@ sealed interface ApiResult<out T> {
 /** Stable problem codes this client branches on. Anything else is rendered as a generic error. */
 object ProblemCodes {
     const val INVALID_CREDENTIAL = "invalid-credential"
+
+    /**
+     * Sign-in throttling (429, `RelaxKonOS.Login.md` §10).
+     *
+     * Named so a throttled attempt reads as what it is instead of as a generic refusal. It is a verdict
+     * about the *rate*, never about the password, so it must stay out of every credential-deletion
+     * decision: see [ApiResult.Problem.isCredentialRejection], which excludes it.
+     */
+    const val LOGIN_RATE_LIMITED = "login-rate-limited"
     const val ACCOUNT_DISABLED = "account-disabled"
     const val ACCOUNT_LOCKED = "account-locked"
     const val ACCOUNT_EXPIRED = "account-expired"
