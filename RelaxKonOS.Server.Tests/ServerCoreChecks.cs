@@ -229,6 +229,62 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     TestAssert.Assert(!Directory.EnumerateFileSystemEntries(operationRoot, ".relaxkonos-*", SearchOption.TopDirectoryOnly).Any(),
         "Linux user file operations left a staging or backup artifact after a successful commit.");
 
+    var atomicWrite = Path.Combine(operationRoot, "atomic-write.txt");
+    File.WriteAllText(atomicWrite, "old-content");
+    File.SetUnixFileMode(atomicWrite, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.WriteAllBytes(atomicWrite, Encoding.UTF8.GetBytes("new-content"));
+    TestAssert.Assert(File.ReadAllText(atomicWrite) == "new-content"
+        && File.GetUnixFileMode(atomicWrite) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+        "Linux user file write did not atomically replace content while preserving the existing mode.");
+
+    // Simulate a Helper killed after moving the old destination into its transaction directory.
+    // A later directory listing/new operation must restore the old destination before discarding
+    // the incomplete staged replacement.
+    var interruptedDestination = Path.Combine(operationRoot, "interrupted-write.txt");
+    var interruptedTransaction = Path.Combine(operationRoot, ".relaxkonos-stage-v1-interrupted.tmp");
+    Directory.CreateDirectory(interruptedTransaction);
+    File.WriteAllText(Path.Combine(interruptedTransaction, "backup"), "old");
+    File.WriteAllText(Path.Combine(interruptedTransaction, "staged"), "partial-new");
+    WriteTransactionManifest(interruptedTransaction, interruptedDestination, int.MaxValue, 1);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(interruptedDestination) == "old" && !Directory.Exists(interruptedTransaction),
+        "Abandoned Linux user file transaction did not restore its pre-commit destination.");
+
+    // If the final destination is already present, the rename committed before termination and
+    // recovery must keep it while removing only the obsolete backup.
+    var committedDestination = Path.Combine(operationRoot, "committed-write.txt");
+    var committedTransaction = Path.Combine(operationRoot, ".relaxkonos-stage-v1-committed.tmp");
+    File.WriteAllText(committedDestination, "new");
+    Directory.CreateDirectory(committedTransaction);
+    File.WriteAllText(Path.Combine(committedTransaction, "backup"), "old");
+    WriteTransactionManifest(committedTransaction, committedDestination, int.MaxValue, 1);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(committedDestination) == "new" && !Directory.Exists(committedTransaction),
+        "Abandoned Linux user file transaction rolled back an already committed destination.");
+
+    // Recovery must not race a second live one-shot Helper operating in the same directory.
+    var liveDestination = Path.Combine(operationRoot, "live-write.txt");
+    var liveTransaction = Path.Combine(operationRoot, ".relaxkonos-stage-v1-live.tmp");
+    Directory.CreateDirectory(liveTransaction);
+    using (var current = System.Diagnostics.Process.GetCurrentProcess())
+        WriteTransactionManifest(liveTransaction, liveDestination, current.Id,
+            current.StartTime.ToUniversalTime().Ticks);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(Directory.Exists(liveTransaction),
+        "Linux user file recovery removed a live concurrent transaction.");
+    Directory.Delete(liveTransaction, recursive: true);
+
+    var unrelatedHiddenDirectory = Path.Combine(operationRoot, ".relaxkonos-stage-v1-untrusted.tmp");
+    Directory.CreateDirectory(unrelatedHiddenDirectory);
+    File.WriteAllText(Path.Combine(unrelatedHiddenDirectory, "user-data.txt"), "keep");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(Path.Combine(unrelatedHiddenDirectory, "user-data.txt")) == "keep",
+        "Linux user file recovery removed an unverified lookalike directory.");
+    Directory.Delete(unrelatedHiddenDirectory, recursive: true);
+
+    TestAssert.Assert(!Directory.EnumerateFileSystemEntries(operationRoot, ".relaxkonos-*", SearchOption.TopDirectoryOnly).Any(),
+        "Linux user file write or recovery left a staging artifact behind.");
+
     if (Environment.GetEnvironmentVariable("RELAXKONOS_USER_EXECUTION_SECONDARY_ROOT") is { Length: > 0 } secondaryRoot)
     {
         var secondary = Path.Combine(secondaryRoot, "user-execution-tests-" + Guid.NewGuid().ToString("N"));
@@ -243,6 +299,14 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
                 "Linux user file move did not complete its staged cross-filesystem fallback.");
         }
         finally { Directory.Delete(secondary, recursive: true); }
+    }
+
+    static void WriteTransactionManifest(string transactionRoot, string destination, int processId,
+        long processStartUtcTicks)
+    {
+        File.WriteAllText(Path.Combine(transactionRoot, "manifest"), string.Join('\n',
+            "1", processId.ToString(), processStartUtcTicks.ToString(),
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(destination)), string.Empty));
     }
 }
 

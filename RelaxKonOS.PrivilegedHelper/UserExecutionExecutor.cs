@@ -166,6 +166,7 @@ public static class UserExecutionExecutor
 
     private static DirectoryDto List(string path)
     {
+        LinuxUserFileOperations.RecoverAbandonedInDirectory(path);
         var d = new DirectoryInfo(path);
         var directories = d.EnumerateDirectories().Select(x => new FileSystemEntryDto(x.FullName, x.Name, null, FileSystemEntryType.Directory,
             x.CreationTimeUtc, x.LastWriteTimeUtc, x.LastAccessTimeUtc, x.Attributes.HasFlag(FileAttributes.Hidden), x.Attributes.HasFlag(FileAttributes.System), "inode/directory")).ToArray();
@@ -185,12 +186,22 @@ public static class UserExecutionExecutor
         var content = await ReadBoundedBytesAsync(file, UserExecutionProtocol.MaximumFileContentBytes);
         return new(Convert.ToBase64String(content), Path.GetFileName(path), ContentType(path));
     }
-    private static async Task<FileEntryDto> WriteAsync(string path, string content) { await System.IO.File.WriteAllBytesAsync(path, Decode(content)); return FileEntry(new FileInfo(path)); }
+    private static Task<FileEntryDto> WriteAsync(string path, string content)
+    {
+        LinuxUserFileOperations.WriteAllBytes(path, Decode(content));
+        return Task.FromResult(FileEntry(new FileInfo(path)));
+    }
     private static bool Delete(string path) { if (System.IO.Directory.Exists(path)) System.IO.Directory.Delete(path, true); else if (System.IO.File.Exists(path)) System.IO.File.Delete(path); else throw new FileNotFoundException(); return true; }
     private static FileSystemEntryDto Rename(string path, string name, string home) { ValidateName(name); var target = ValidatePath(Path.Combine(Path.GetDirectoryName(path)!, name)); if (System.IO.Directory.Exists(path)) { System.IO.Directory.Move(path, target); return DirectoryEntry(target); } System.IO.File.Move(path, target); return ToInfo(FileEntry(new FileInfo(target))); }
     private static FileSystemEntryDto Move(string source, string target, bool overwrite) { var directory = System.IO.Directory.Exists(source); LinuxUserFileOperations.Move(source, target, overwrite); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
     private static FileSystemEntryDto Copy(string source, string target, bool overwrite) { var directory = System.IO.Directory.Exists(source); LinuxUserFileOperations.Copy(source, target, overwrite); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
-    private static async Task<FileEntryDto> UploadAsync(string directory, string name, string content, string home) { ValidateName(name); var path = ValidatePath(Path.Combine(directory, name)); await System.IO.File.WriteAllBytesAsync(path, Decode(content)); return FileEntry(new FileInfo(path)); }
+    private static Task<FileEntryDto> UploadAsync(string directory, string name, string content, string home)
+    {
+        ValidateName(name);
+        var path = ValidatePath(Path.Combine(directory, name));
+        LinuxUserFileOperations.WriteAllBytes(path, Decode(content));
+        return Task.FromResult(FileEntry(new FileInfo(path)));
+    }
     private static bool Create(string path) { System.IO.Directory.CreateDirectory(path); return true; }
     private static async Task<GitResult> GitAsync(string workingDirectory, IReadOnlyList<string>? arguments)
     {
