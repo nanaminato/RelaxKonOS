@@ -175,6 +175,47 @@ class UploadCoordinatorTest {
     // ---- adoption ---------------------------------------------------------------------------------
 
     @Test
+    fun `a cached source resumes when the document provider grant is gone`() = runTest {
+        signIn()
+        val remembered = entry(confirmedOffset = CHUNK.toLong())
+        journal.record(remembered)
+        // No reopenable document: only the complete private copy survives the restart.
+        val cached = stager.cacheFileFor(remembered.sourceKey)
+        cached.parentFile!!.mkdirs()
+        payload.copyTo(cached)
+        gateway.onUploadSession = { _, _, _ -> ApiResult.Success(remoteSession(offset = CHUNK.toLong())) }
+        acceptAllChunks()
+
+        start(this, StandardTestDispatcher(testScheduler)).resume(remembered)
+        advanceUntilIdle()
+
+        assertTrue(coordinator!!.state.value!!.isFinished)
+        assertFalse(cached.exists())
+    }
+
+    @Test
+    fun `a lost create response reuses the same idempotency key on retry`() = runTest {
+        signIn()
+        val keys = mutableListOf<String>()
+        gateway.onCreateUploadSession = { _, _, _, _, _, _, idempotencyKey ->
+            keys += idempotencyKey
+            if (keys.size == 1) ApiResult.Transport("response lost")
+            else ApiResult.Success(remoteSession())
+        }
+        acceptAllChunks()
+        val uploads = start(this, StandardTestDispatcher(testScheduler))
+
+        uploads.start(DIRECTORY, document())
+        advanceUntilIdle()
+        uploads.start(DIRECTORY, document())
+        advanceUntilIdle()
+
+        assertEquals(2, keys.size)
+        assertEquals(keys[0], keys[1])
+        assertTrue(uploads.state.value!!.isFinished)
+    }
+
+    @Test
     fun `a resumed session continues from the offset the server reports, not the one remembered locally`() =
         runTest {
             signIn()

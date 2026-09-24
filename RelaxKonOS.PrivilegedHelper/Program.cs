@@ -286,6 +286,13 @@ static async Task<PrivilegedOperationResult> AppendUploadChunkAsync(string? stag
     {
         // The offset is verified rather than trusted: a mismatch must not silently corrupt the file,
         // because the Server advances its session offset from the value returned here.
+        if (file.Length > offset.Value)
+        {
+            // The Server may have stopped after a chunk write but before persisting its offset.
+            // Discard only those unconfirmed bytes; a shorter file still signals lost confirmed data.
+            file.SetLength(offset.Value);
+            await file.FlushAsync();
+        }
         if (file.Length != offset.Value) return Fail(74, PrivilegedProblemCode.Conflict, "staging length does not match the requested offset");
         file.Position = offset.Value;
         await file.WriteAsync(content);

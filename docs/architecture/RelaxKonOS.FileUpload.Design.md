@@ -220,7 +220,7 @@ Idempotency-Key: <1–128 可打印 ASCII>
    - `DirectoryNotFoundException` → `404` + `not-found`。
 5. 写入会话记录（§4.2），返回 `UploadSessionDto`。
 
-**幂等**：相同 `Idempotency-Key` + 相同身份 + 内容一致 → 返回**同一个**会话（不新建）。这样创建请求在网络失败后重试不会泄漏会话或暂存文件。键相同但内容不一致 → `409` + `idempotency-conflict`（与 `ApplicationDeploymentEndpoints` 对同一头的处理保持一致）。
+**幂等**：相同 `Idempotency-Key` + 相同身份 + 内容一致 → 返回**同一个**会话（不新建）。客户端从服务器、目标和源签名生成稳定键；并发创建也只生成一个会话。这样创建请求在网络失败后重试不会泄漏会话或暂存文件。键相同但内容不一致 → `409` + `idempotency-conflict`（与 `ApplicationDeploymentEndpoints` 对同一头的处理保持一致）。过期会话先清理，随后可用相同键创建新会话。
 
 ### 3.3 追加分片
 
@@ -407,7 +407,7 @@ D:\Work\big.iso                     ← 提交后才有；只由一次原子改�
 | `RelaxKonOS.Server/Privileged/PrivilegedFileService.cs` | 新增 `AppendChunkAsync` / `CommitAsync`；`UploadAsync` 保留给单发快路径 |
 | `RelaxKonOS.PrivilegedHelper/Program.cs` | 新增两个操作的分发与形状校验 |
 | `RelaxKonOS.Server/Program.cs` | 注册 `UploadSessionStore`（单例）、`UploadSessionService`（单例）、`UploadSessionSweeper`（托管服务） |
-| `RelaxKonOS.Server.Tests/UploadSessionChecks.cs`（新） | 会话校验（§9.1，86 条）：净化、幂等、偏移、长度、并发、提交、清理、重启恢复、提权路径 |
+| `RelaxKonOS.Server.Tests/UploadSessionChecks.cs`（新） | 会话校验（§9.1，91 条）：净化、幂等、偏移、长度、并发、提交、清理、重启恢复、提权路径 |
 | `RelaxKonOS.Server.Tests/Program.cs` | 新增 `--uploads-only` 窄口径开关（与既有开关并列） |
 
 ---
@@ -627,13 +627,13 @@ JVM 覆盖（`app/src/test/java/app/relaxkonos/mobile/data/`，共 **41 项**，
 
 | 阶段 | 内容 | 出口条件 | 状态 |
 | --- | --- | --- | --- |
-| P1 协议 + 服务端 | 路由/DTO/问题码、`UploadSessionStore`/`Service`、清理服务、单发路由显式上限、文件名净化 | §9.1 全绿；两个旧客户端仍可用单发路由（≤ 4 MiB） | **已完成**：`--uploads-only` 86/86 PASS |
-| P2 特权路径 | `FileUploadChunk` / `FileUploadCommit`、Helper 形状校验、会话级提权固定 | §9.1 第 6 组全绿（该组无独立窄口径开关，见 §9.1） | **已完成**：完整套件内 `UPLOAD 69–86` 全绿，含 FILE SERVICES / FILE JOB / 缩略图等既有组 |
-| P3 桌面客户端 | 上传通道 HttpClient、编排器、续传日志、进度语义、操作中心集成 | §9.2 全绿 + §9.4 前三行 | **已完成**：`LargeUploadChecks` 196/196 全绿；`RelaxKonOS.Client` 与校验项目均 0 错误 0 新警告。§9.4 前三行属真机验收，未执行 |
-| P4 Android | 可寻址策略与缓存落盘、前台服务、分片循环、续传日志 | Android 文档验收节 | **已完成（JVM 层）**：全仓 273 项全绿，其中上传相关 41 项；真机矩阵待执行 |
+| P1 协议 + 服务端 | 路由/DTO/问题码、`UploadSessionStore`/`Service`、清理服务、单发路由显式上限、文件名净化 | §9.1 全绿；两个旧客户端仍可用单发路由（≤ 4 MiB） | **已完成**：`--uploads-only` 91/91 PASS |
+| P2 特权路径 | `FileUploadChunk` / `FileUploadCommit`、Helper 形状校验、会话级提权固定 | §9.1 第 6 组全绿（该组无独立窄口径开关，见 §9.1） | **已完成**：上传专项校验 91/91 PASS；全量套件仍受本机 DataProtection 目录权限限制 |
+| P3 桌面客户端 | 上传通道 HttpClient、编排器、续传日志、进度语义、操作中心集成 | §9.2 全绿 + §9.4 前三行 | **已完成**：Explorer 回归检查 197/197 全绿；`RelaxKonOS.Client` 与校验项目均 0 错误 0 新警告。§9.4 前三行属真机验收，未执行 |
+| P4 Android | 可寻址策略与缓存落盘、前台服务、分片循环、续传日志 | Android 文档验收节 | **已完成（JVM 层）**：全仓 275 项全绿，其中上传相关 43 项；真机矩阵待执行 |
 | P5 文档与部署 | README 索引、Explorer 文档、Android 文档、`deployment/` 代理配置说明 | 文档与代码同一次改动内一致 | **已完成**：本文件、`RelaxKonOS.Protocol.md` 路由表、`RelaxKonOS.Explorer.md`/`.Operations.md`/`.Progress.md`、两份 `docs/README.md`、Android 大上传设计、`deployment/README.md`（反向代理一节）均与代码同批更新 |
 
-> 复现命令：服务端 `RelaxKonOS.Server.Tests.exe --uploads-only`（或直接跑全量）；桌面端 `RelaxKonOS.Explorer.Tests.exe`（打印"196 Explorer regression checks passed."）；Android `gradle :app:testDebugUnitTest`。
+> 复现命令：服务端 `RelaxKonOS.Server.Tests.exe --uploads-only`（或直接跑全量）；桌面端 `RelaxKonOS.Explorer.Tests.exe`（打印"197 Explorer regression checks passed."）；Android `gradle :app:testDebugUnitTest`。
 
 ---
 

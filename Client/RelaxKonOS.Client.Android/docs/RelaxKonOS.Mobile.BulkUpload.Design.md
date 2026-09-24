@@ -50,6 +50,7 @@ class SeekUnsupported : Exception("source is not seekable")
 落盘阶段在转移卡片上必须显示**独立的阶段**（"准备中"），不能计入上传百分比——否则用户会以为在传，其实在读云盘。落盘前检查 `cacheDir` 可用空间 ≥ 长度 × 1.1，不满足时给出明确错误（`files_upload_cache_full`），不静默降级为不可续传的一次性上传。
 
 缓存键包含 `uri` 与 `lastModified`/`size` 的摘要：云盘文件在本地改了内容就必须换键。
+恢复时先校验同一源签名的缓存副本及其长度；完整副本可直接用于续传，即使原 URI 的临时读取授权已失效。
 
 ---
 
@@ -80,7 +81,7 @@ ensureSession()
   ├─ 续传日志命中（serverKey + uri + length + lastModified 全部一致）→ GET /files/uploads/{id}
   │     ├─ 200 → offset = 权威偏移（可能小于本地记忆：信任服务端）
   │     └─ 404/410 → 丢掉条目，新建会话
-  └─ POST /files/uploads（带 Idempotency-Key = 会话 id 常量）
+  └─ POST /files/uploads（Idempotency-Key 由服务器键、目标目录和源签名稳定生成；创建响应丢失后重试仍用同一个键）
         └─ 403 elevation-required → container.elevationAnswers 弹窗 → 重试创建（只重试创建）
 
 loop:
@@ -194,7 +195,7 @@ commit:
 
 ### 10.1 JVM 单元测试（无 Android framework 依赖）
 
-三类共 **41 项**，与全仓 273 项一起通过（`gradle :app:testDebugUnitTest`）。它们跑在**被 stub 的 `org.json`** 上（每次调用都抛），所以续传日志用制表符转义行格式而不是 JSON——这不是风格选择，是测试可行性。
+三类共 **43 项**，与全仓 275 项一起通过（`gradle :app:testDebugUnitTest`）。它们跑在**被 stub 的 `org.json`** 上（每次调用都抛），所以续传日志用制表符转义行格式而不是 JSON——这不是风格选择，是测试可行性。
 
 `data/UploadResumeJournalTest`（13 项）——日志的读写与淘汰：
 

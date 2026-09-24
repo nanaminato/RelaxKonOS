@@ -465,6 +465,13 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         if (expectedBytes < 0) throw new ArgumentOutOfRangeException(nameof(expectedBytes));
         await using var file = new FileStream(stagingPath, FileMode.Open, FileAccess.Write, FileShare.None, 81920,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
+        // A process can stop after writing some bytes but before the session index is advanced. Those
+        // unconfirmed bytes must be discarded so a restarted client can resend from the indexed offset.
+        if (file.Length > offset)
+        {
+            file.SetLength(offset);
+            await file.FlushAsync(cancellationToken);
+        }
         if (file.Length != offset)
             throw new IOException($"暂存文件长度 {file.Length} 与声明的偏移 {offset} 不一致。");
         file.Position = offset;

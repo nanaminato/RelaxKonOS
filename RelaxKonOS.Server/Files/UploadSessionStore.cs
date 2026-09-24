@@ -144,7 +144,8 @@ public sealed class UploadSessionStore
         lock (gate)
         {
             sessions[record.SessionId] = record;
-            Persist();
+            try { Persist(); }
+            catch { sessions.Remove(record.SessionId); throw; }
         }
     }
 
@@ -156,7 +157,8 @@ public sealed class UploadSessionStore
             if (!sessions.TryGetValue(sessionId, out var session)) return null;
             var updated = session with { Offset = offset, LastActivityAt = activity };
             sessions[sessionId] = updated;
-            Persist();
+            try { Persist(); }
+            catch { sessions[sessionId] = session; throw; }
             return updated;
         }
     }
@@ -165,8 +167,9 @@ public sealed class UploadSessionStore
     {
         lock (gate)
         {
-            if (!sessions.Remove(sessionId)) return false;
-            Persist();
+            if (!sessions.Remove(sessionId, out var session)) return false;
+            try { Persist(); }
+            catch { sessions[sessionId] = session; throw; }
             return true;
         }
     }
@@ -204,9 +207,10 @@ public sealed class UploadSessionStore
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            logger.LogWarning(exception, "File upload session index could not be written. Index={IndexPath}", indexPath);
+            logger.LogError(exception, "File upload session index could not be written. Index={IndexPath}", indexPath);
             try { if (File.Exists(temporary)) File.Delete(temporary); }
             catch (IOException) { }
+            throw;
         }
     }
 }

@@ -42,6 +42,7 @@ public sealed class UploadSessionService(
     ILogger<UploadSessionService> logger)
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> gates = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim creationGate = new(1, 1);
 
     /// <summary>Opens a session, or returns the one the same idempotency key already opened.</summary>
     public async Task<UploadSessionDto> CreateAsync(ClaimsPrincipal user, CreateUploadRequest request,
@@ -63,15 +64,34 @@ public sealed class UploadSessionService(
             throw new UploadSessionException("invalid-input", 400,
                 $"文件长度超出服务端上限 {options.MaximumFileLengthBytes} 字节。");
 
+        // The key check, quota check, and insertion are one operation. Two concurrent retries of the
+        // same POST must not open two staging files before either request reaches the index.
+        await creationGate.WaitAsync(cancellationToken);
+        try { return await CreateUnderGateAsync(user, request, idempotencyKey, identityKey, cancellationToken); }
+        finally { creationGate.Release(); }
+    }
+
+    private async Task<UploadSessionDto> CreateUnderGateAsync(ClaimsPrincipal user, CreateUploadRequest request,
+        string idempotencyKey, string identityKey, CancellationToken cancellationToken)
+    {
         var digest = DigestOf(request);
         if (store.FindByIdempotencyKey(identityKey, idempotencyKey) is { } existing)
         {
-            if (!string.Equals(existing.IdempotencyDigest, digest, StringComparison.Ordinal))
-                throw new UploadSessionException(FileUploadProblemCodes.IdempotencyConflict, 409,
-                    "Idempotency-Key 已用于内容不同的请求。");
-            // The retry gets the same session back, so a lost response never leaks a staging file and a
-            // client can simply continue from the offset reported here.
-            return ToDto(existing);
+            if (existing.IsExpired(options, DateTimeOffset.UtcNow))
+            {
+                // A deterministic client key may be used again after the session lifetime. Expired
+                // records must not make a fresh attempt resume a session that GET would reject with 410.
+                await AbandonAsync(existing, cancellationToken);
+            }
+            else
+            {
+                if (!string.Equals(existing.IdempotencyDigest, digest, StringComparison.Ordinal))
+                    throw new UploadSessionException(FileUploadProblemCodes.IdempotencyConflict, 409,
+                        "Idempotency-Key 已用于内容不同的请求。");
+                // The retry gets the same session back, so a lost response never leaks a staging file and a
+                // client can simply continue from the offset reported here.
+                return ToDto(existing);
+            }
         }
 
         if (!Directory.Exists(request.TargetDirectoryPath))
@@ -122,7 +142,20 @@ public sealed class UploadSessionService(
         var chunkSize = elevated ? FileUploadProtocol.ElevatedChunkSize : FileUploadProtocol.DefaultChunkSize;
         var record = new UploadSessionRecord(sessionId, identityKey, request.TargetDirectoryPath, request.FileName,
             stagingPath, request.Length, 0, chunkSize, elevated, idempotencyKey, digest, now, now);
-        store.Add(record);
+        try { store.Add(record); }
+        catch
+        {
+            if (elevated)
+            {
+                try { await privileged.DeleteAsync(stagingPath, CancellationToken.None); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+                {
+                    logger.LogWarning(exception, "Failed to clean up an unindexed staging file. SessionId={SessionId}", sessionId);
+                }
+            }
+            else files.DeleteStagingFile(stagingPath);
+            throw;
+        }
         logger.LogInformation(
             "File upload session opened. SessionId={SessionId}, Length={Length}, ChunkSize={ChunkSize}, Elevated={Elevated}, TargetDirectoryHash={TargetDirectoryHash}",
             sessionId, request.Length, chunkSize, elevated, Hash(request.TargetDirectoryPath));
@@ -164,6 +197,13 @@ public sealed class UploadSessionService(
 
         try
         {
+            // The first offset check ran before the gate. A previous chunk may have completed while this
+            // request was waiting to enter, so never truncate a now-confirmed tail using that stale view.
+            var current = RequireLive(user, sessionId);
+            if (offset.Value != current.Offset)
+                throw new UploadSessionException(FileUploadProblemCodes.OffsetMismatch, 409,
+                    $"Upload-Offset 与服务端不一致，服务端当前为 {current.Offset}。")
+                { AuthoritativeOffset = current.Offset };
             long newOffset;
             if (session.Elevated)
             {

@@ -69,6 +69,7 @@ class PickedDocument(
     val lastModifiedMillis: Long?,
     val open: () -> InputStream,
     val openAt: (Long) -> InputStream,
+    private val sourceKeyOverride: String? = null,
 ) {
     /**
      * Whether the provider can position at an arbitrary offset.
@@ -86,7 +87,7 @@ class PickedDocument(
      * with: resuming into it would publish a mixture of the old and the new file, which is worse than
      * starting again.
      */
-    val sourceKey: String get() = "$uri|${length ?: -1L}|${lastModifiedMillis ?: -1L}"
+    val sourceKey: String get() = sourceKeyOverride ?: "$uri|${length ?: -1L}|${lastModifiedMillis ?: -1L}"
 
     /** Adapts this document to an [UploadSource] without copying it anywhere, or `null` when its length is unknown. */
     fun asSource(): UploadSource? = length?.takeIf { it >= 0L }?.let { known ->

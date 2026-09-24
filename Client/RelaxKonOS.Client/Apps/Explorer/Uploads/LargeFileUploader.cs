@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.Uploads;
@@ -251,9 +253,11 @@ public sealed class LargeFileUploader(
         Func<IReadOnlyList<string>, FileElevationCapability, Task<bool>> requestElevation, CancellationToken ct)
     {
         var body = new CreateUploadRequest(request.TargetDirectoryPath, request.FileName, request.Length, request.LastWriteUtc);
+        var idempotencyKey = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{key}\0{request.TargetDirectoryPath}\0{request.FileName}\0{request.SourcePath}\0{request.Length}\0{request.LastWriteUtc:O}")))[..32];
         try
         {
-            return await channel.CreateSessionAsync(body, Guid.NewGuid().ToString("N"), ct);
+            return await channel.CreateSessionAsync(body, idempotencyKey, ct);
         }
         catch (UploadChannelException exception) when (exception.IsElevationRequired)
         {
@@ -261,7 +265,7 @@ public sealed class LargeFileUploader(
             // refused mid-transfer and no dialog appears after forty minutes of uploading.
             if (!await requestElevation([request.TargetDirectoryPath], FileElevationCapability.Upload))
                 throw new UnauthorizedAccessException("目标目录需要管理员授权。");
-            return await channel.CreateSessionAsync(body, Guid.NewGuid().ToString("N"), ct);
+            return await channel.CreateSessionAsync(body, idempotencyKey, ct);
         }
     }
 

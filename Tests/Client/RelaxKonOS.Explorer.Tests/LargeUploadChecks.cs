@@ -19,6 +19,7 @@ public static class LargeUploadChecks
         try
         {
             await VerifyPumpAsync(root, check);
+            await VerifyCreateResponseLostAsync(root, check);
             await VerifyLostResponseAsync(root, check);
             await VerifyShortCommitAsync(root, check);
             await VerifyVanishedSessionAsync(root, check);
@@ -35,6 +36,21 @@ public static class LargeUploadChecks
         {
             try { Directory.Delete(root, recursive: true); } catch (IOException) { }
         }
+    }
+
+    private static async Task VerifyCreateResponseLostAsync(string root, Action<bool, string> check)
+    {
+        var (source, length) = WriteFile(root, "create-response.bin", 1024 * 1024);
+        var channel = new FakeUploadChannel { LoseCreateResponseOnce = true };
+        var uploader = new LargeFileUploader(channel,
+            new UploadResumeJournal(Path.Combine(root, "create-response-journal.json")), () => "server/user/workspace/device");
+        var request = new LargeFileUploadRequest(source, "/target", "create-response.bin", length,
+            File.GetLastWriteTimeUtc(source));
+        try { await uploader.UploadAsync(request, (_, _) => Task.FromResult(false), null); }
+        catch (HttpRequestException) { }
+        await uploader.UploadAsync(request, (_, _) => Task.FromResult(false), null);
+        check(channel.IdempotencyKeys.Count == 2 && channel.IdempotencyKeys[0] == channel.IdempotencyKeys[1],
+            "A retry after a lost create response reuses the same idempotency key");
     }
 
     private static async Task VerifyPumpAsync(string root, Action<bool, string> check)
@@ -386,6 +402,7 @@ public static class LargeUploadChecks
         /// <summary>Every byte read off the wire, including a re-send. The measure of wasted work.</summary>
         public long BytesReceived { get; private set; }
         public int CreateCalls { get; private set; }
+        public bool LoseCreateResponseOnce { get; set; }
         public int GetCalls { get; private set; }
         public int RefreshCalls { get; private set; }
         public bool Aborted { get; private set; }
@@ -421,6 +438,11 @@ public static class LargeUploadChecks
         {
             CreateCalls++;
             IdempotencyKeys.Add(idempotencyKey);
+            if (LoseCreateResponseOnce)
+            {
+                LoseCreateResponseOnce = false;
+                throw new HttpRequestException("Create response was lost.");
+            }
             _length = request.Length;
             _fileName = request.FileName;
             _target = request.TargetDirectoryPath;

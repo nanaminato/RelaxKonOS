@@ -204,12 +204,19 @@ class UploadCoordinator(
     /**
      * Continues an unfinished upload.
      *
-     * The document is re-opened from the URI the entry remembers. A picker's grant does not survive a
-     * process restart, so a document that can no longer be read is reported as having to be picked again
-     * rather than as a transfer failure — the difference is what the user has to do about it.
+     * A complete staged copy is used first. Otherwise the document is re-opened from the remembered URI;
+     * if neither source remains readable, the user must pick it again.
      */
     fun resume(entry: UploadResumeEntry) {
-        val document = runCatching { documents.open(entry.sourceUri) }.getOrNull()
+        // A provider grant can disappear across a restart. If this source was already staged, its
+        // complete private copy is sufficient to continue without reopening the provider URI.
+        val cache = stager.cacheFileFor(entry.sourceKey)
+        val document = if (cache.isFile && cache.length() == entry.totalLength) {
+            val source = FileUploadSource(cache, entry.fileName)
+            PickedDocument(entry.sourceUri, entry.fileName, entry.totalLength, null,
+                open = { source.openAt(0) }, openAt = source::openAt,
+                sourceKeyOverride = entry.sourceKey)
+        } else runCatching { documents.open(entry.sourceUri) }.getOrNull()
         if (document == null) {
             failWith(entry.fileName, UploadFailure.SourceUnreadable)
             journal.remove(entry.uploadId)?.let { stager.discardCache(it.sourceKey) }
@@ -502,6 +509,10 @@ class UploadCoordinator(
         document: PickedDocument,
         length: Long,
     ): ActiveSession? {
+        val key = serverKey() ?: return null
+        val idempotencyKey = UUID.nameUUIDFromBytes(
+            "$key\u0000$targetDirectoryPath\u0000${document.displayName}\u0000${document.sourceKey}\u0000$length".toByteArray(Charsets.UTF_8),
+        ).toString().replace("-", "")
         val result = elevations.withPathElevation(
             path = targetDirectoryPath,
             capability = FileElevationCapabilities.UPLOAD,
@@ -515,9 +526,8 @@ class UploadCoordinator(
                 fileName = document.displayName,
                 length = length,
                 lastModifiedMillis = document.lastModifiedMillis,
-                // Retry-safe: the same key returns the same session, so a lost response cannot leak a
-                // second staging file on the server.
-                idempotencyKey = UUID.randomUUID().toString().replace("-", ""),
+                // Stable across a lost create response and a later user retry.
+                idempotencyKey = idempotencyKey,
             )
         }
         return when (result) {

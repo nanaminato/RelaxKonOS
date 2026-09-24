@@ -23,6 +23,9 @@ public static class UploadSessionChecks
         await VerifySessionLifecycleAsync(root, Check);
         await VerifyAbandonAndSweepAsync(root, Check);
         await VerifyRestartRecoveryAsync(root, Check);
+        await VerifyIndexWriteFailureAsync(root, Check);
+        await VerifyConcurrentCreateAsync(root, Check);
+        await VerifyExpiredIdempotencyKeyAsync(root, Check);
         await VerifyElevatedSessionAsync(root, Check);
         await VerifyElevationRequiredAsync(root, Check);
         Check(FileUploadProtocol.ElevatedChunkSize < PrivilegedOperationProtocol.MaximumFileContentBytes,
@@ -253,6 +256,8 @@ public static class UploadSessionChecks
             new RecordingElevationStore(), store, options, NullLogger<UploadSessionService>.Instance);
         var session = await service.CreateAsync(user, new CreateUploadRequest(directory, "resume.bin", 60), "restart-1", default);
         await service.AppendAsync(user, session.UploadId, 0, 25, Content(25, 21), default);
+        var staging = Path.Combine(directory, FileUploadNamePolicy.BuildStagingFileName("resume.bin", session.UploadId));
+        File.AppendAllText(staging, "unconfirmed");
 
         // A second store over the same directory is what a server restart looks like here.
         var restartedStore = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
@@ -262,11 +267,78 @@ public static class UploadSessionChecks
         var resumed = restarted.Get(user, session.UploadId);
         check(resumed.Offset == 25, "The confirmed offset survives a restart");
         var advanced = await restarted.AppendAsync(user, session.UploadId, 25, 35, Content(35, 22), default);
-        check(advanced == 60, "A restarted server continues from the confirmed offset");
+        check(advanced == 60, "A restarted server discards unconfirmed staging bytes and continues");
         var committed = await restarted.CommitAsync(user, session.UploadId, null, default);
         check(committed.Size == 60 && File.Exists(Path.Combine(directory, "resume.bin")),
             "A session opened before a restart can still be committed after it");
         check(restartedStore.Count == 0, "The restarted index drops the session after the commit");
+    }
+
+    private static async Task VerifyIndexWriteFailureAsync(string root, Action<bool, string> check)
+    {
+        var (service, store, _, _, _) = Build(root, "index-write-failure");
+        var directory = Path.Combine(root, "index-write-failure-target");
+        Directory.CreateDirectory(directory);
+        var user = Principal("index-user");
+        var blockedTemporary = store.IndexPath + ".tmp";
+        Directory.CreateDirectory(blockedTemporary);
+        try
+        {
+            var refused = false;
+            try { await service.CreateAsync(user, new CreateUploadRequest(directory, "file.bin", 5), "index-1", default); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { refused = true; }
+            check(refused && store.Count == 0 && !Directory.EnumerateFiles(directory, "*.rkup").Any(),
+                "An unwritable session index refuses creation and removes its staging file");
+        }
+        finally { Directory.Delete(blockedTemporary); }
+
+        var session = await service.CreateAsync(user, new CreateUploadRequest(directory, "file.bin", 5), "index-1", default);
+        Directory.CreateDirectory(blockedTemporary);
+        try
+        {
+            var refused = false;
+            try { await service.AppendAsync(user, session.UploadId, 0, 3, Content(3, 1), default); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { refused = true; }
+            check(refused && service.Get(user, session.UploadId).Offset == 0,
+                "An index write failure cannot confirm a chunk");
+        }
+        finally { Directory.Delete(blockedTemporary); }
+        check(await service.AppendAsync(user, session.UploadId, 0, 5, Content(5, 2), default) == 5,
+            "A failed index update can be retried from the confirmed offset");
+        await service.AbortAsync(user, session.UploadId, default);
+    }
+
+    private static async Task VerifyConcurrentCreateAsync(string root, Action<bool, string> check)
+    {
+        var (service, store, _, _, _) = Build(root, "concurrent-create");
+        var directory = Path.Combine(root, "concurrent-create-target");
+        Directory.CreateDirectory(directory);
+        var user = Principal("concurrent-user");
+        var request = new CreateUploadRequest(directory, "file.bin", 10);
+        var created = await Task.WhenAll(Enumerable.Range(0, 8)
+            .Select(_ => service.CreateAsync(user, request, "same-key", default)));
+        check(created.All(item => item.UploadId == created[0].UploadId) && store.Count == 1,
+            "Concurrent creates with one idempotency key open exactly one session");
+        await service.AbortAsync(user, created[0].UploadId, default);
+    }
+
+    private static async Task VerifyExpiredIdempotencyKeyAsync(string root, Action<bool, string> check)
+    {
+        var (service, store, _, _, files) = Build(root, "expired-key");
+        var directory = Path.Combine(root, "expired-key-target");
+        Directory.CreateDirectory(directory);
+        var oldId = Guid.NewGuid().ToString("N");
+        var oldStaging = Path.Combine(directory, FileUploadNamePolicy.BuildStagingFileName("file.bin", oldId));
+        files.CreateStagingFile(oldStaging);
+        var oldTime = DateTimeOffset.UtcNow.AddDays(-8);
+        store.Add(new UploadSessionRecord(oldId, "expired-user", directory, "file.bin", oldStaging, 5, 0,
+            FileUploadProtocol.DefaultChunkSize, false, "stable-key", "old-digest", oldTime, oldTime));
+
+        var fresh = await service.CreateAsync(Principal("expired-user"),
+            new CreateUploadRequest(directory, "file.bin", 5), "stable-key", default);
+        check(fresh.UploadId != oldId && store.Count == 1 && !File.Exists(oldStaging),
+            "An expired idempotency key opens a new session and cleans up the old staging file");
+        await service.AbortAsync(Principal("expired-user"), fresh.UploadId, default);
     }
 
     private static async Task VerifyElevatedSessionAsync(string root, Action<bool, string> check)
