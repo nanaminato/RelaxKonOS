@@ -74,6 +74,35 @@ public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) 
     public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default)
         => EnsureSuccess(await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileCreateDirectory, Path: path), cancellationToken), path);
 
+    public async Task CreateStagingAsync(string stagingPath, CancellationToken cancellationToken = default)
+    {
+        // An empty FileWrite is the cheapest honest probe: it creates the exact file the session will
+        // append to, so a directory this account may not write to fails here rather than silently later.
+        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileWrite,
+            Path: stagingPath, ContentBase64: string.Empty), cancellationToken);
+        EnsureSuccess(result, stagingPath);
+    }
+
+    public async Task<long> AppendChunkAsync(string stagingPath, long offset, Stream content, CancellationToken cancellationToken = default)
+    {
+        using var bytes = await ReadContentAsync(content, cancellationToken);
+        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileUploadChunk,
+            Path: stagingPath, Offset: offset, ContentBase64: Convert.ToBase64String(bytes.ToArray())), cancellationToken);
+        if (!result.Success) throw ToException(result, stagingPath);
+        // The Helper reports the length it actually flushed; failing back to arithmetic would let the
+        // server confirm bytes that were never written.
+        return result.Offset ?? offset + bytes.Length;
+    }
+
+    public async Task<FileEntryDto> CommitAsync(string stagingPath, string destinationFileName, CancellationToken cancellationToken = default)
+    {
+        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileUploadCommit,
+            Path: stagingPath, FileName: destinationFileName), cancellationToken);
+        EnsureSuccess(result, stagingPath);
+        var directory = Path.GetDirectoryName(stagingPath) ?? string.Empty;
+        return ToFileEntry(Path.Combine(directory, destinationFileName));
+    }
+
     private static void EnsureSuccess(RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult result, string path)
     {
         if (!result.Success) throw ToException(result, path);

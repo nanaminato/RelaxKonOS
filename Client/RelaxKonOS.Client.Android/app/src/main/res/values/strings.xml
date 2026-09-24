@@ -207,10 +207,33 @@
     <string name="files_moving">Moving</string>
     <string name="files_uploaded">Uploaded %1$s</string>
     <string name="files_upload_unreadable">Could not read the selected file.</string>
+    <string name="files_upload_needs_folder">Open a folder to upload into.</string>
     <string name="files_downloaded">Saved to %1$s</string>
     <string name="files_download_failed">Could not save to this device.</string>
     <string name="files_download_default_name">download</string>
     <string name="files_upload_default_name">upload</string>
+    <!--
+      Resumable upload. Staging and finishing are stages of their own and never a fraction of the bar:
+      the version the desktop client shows and this one must describe the same situation the same way.
+    -->
+    <string name="files_upload_preparing">Preparing…</string>
+    <string name="files_upload_committing">Finishing…</string>
+    <string name="files_upload_reconciling">Checking progress with the server…</string>
+    <string name="files_upload_channel">Uploads</string>
+    <string name="files_upload_progress">%1$s of %2$s</string>
+    <string name="files_upload_resumable">Unfinished upload</string>
+    <string name="files_upload_resume">Continue</string>
+    <string name="files_upload_discard">Discard</string>
+    <!-- Failures are worded as what the user can do about them, never as an I/O message. -->
+    <string name="files_upload_failed_network">The connection was interrupted. Progress is kept, so you can continue.</string>
+    <string name="files_upload_failed_server_storage">The server has no room for this file.</string>
+    <string name="files_upload_failed_local_cache">This device has no room to prepare the file.</string>
+    <string name="files_upload_failed_source_changed">The file changed while it was being sent. Start again.</string>
+    <string name="files_upload_failed_source_unreadable">The selected file can no longer be read. Pick it again.</string>
+    <string name="files_upload_failed_elevation">This folder needs an administrator password.</string>
+    <string name="files_upload_failed_name">The server cannot use this file name. Rename the file and try again.</string>
+    <string name="files_upload_failed_session">The upload session was refused. Sign in again and retry.</string>
+    <string name="files_upload_failed_server">The server refused the upload.</string>
     <string name="files_detail_title">Properties</string>
     <string name="files_preview_title">Preview</string>
     <string name="files_preview_open">Open</string>

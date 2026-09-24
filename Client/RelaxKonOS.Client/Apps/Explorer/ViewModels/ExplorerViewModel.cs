@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Apps.Explorer.Models;
+using RelaxKonOS.Client.Apps.Explorer.Uploads;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.ViewModels;
@@ -238,6 +239,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public Func<IReadOnlyList<string>, FileElevationCapability, Task<bool>>? RequestFileOperationElevationAsync { get; set; }
     public Func<StartFileOperationRequest, Action<FileOperationDto>, Task>? QueueOperationAsync { get; set; }
     public Action<IReadOnlyList<FileOperationItem>, long, Func<Action<string, long, int>, CancellationToken, Task>>? QueueUpload { get; set; }
+    /// <summary>Resumable uploader for files past the single-shot threshold. When it is absent every file
+    /// stays on the single-shot route, which is correct but cannot carry a large one.</summary>
+    public ILargeFileUploader? LargeFileUploader { get; set; }
     public Action? ShowFileOperations { get; set; }
     [RelayCommand] private void ShowOperations() => ShowFileOperations?.Invoke();
 
@@ -1379,15 +1383,23 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                     var path = LocalUploadPlan.CombineRemotePath(destination, file.RelativePath);
                     var start = bytes;
                     var processed = count;
-                    var progress = new Progress<long>(uploaded => report(path, start + uploaded, processed));
+                    // Progress comes from the server's confirmed offset plus the current chunk in flight, and
+                    // it never moves backwards: a resynchronisation may discover fewer bytes than the estimate
+                    // showed, and the honest answer to that is to hold the bar, not to rewind it.
+                    long shown = 0;
+                    void Report(long confirmed, long inFlight, bool reconciling)
+                    {
+                        // The operation centre's per-item row carries a path and a byte count and no status
+                        // line, so a check in flight is expressed by holding the counter — which is what the
+                        // absence of a new number already does. Nothing here may claim bytes it cannot prove.
+                        if (reconciling) return;
+                        var value = Math.Min(confirmed + inFlight, file.Length);
+                        if (value < shown) return;
+                        shown = value;
+                        report(path, start + value, processed);
+                    }
                     report(path, bytes, count);
-                    if (!await RetryWithOperationElevationAsync(async () =>
-                        {
-                            ct.ThrowIfCancellationRequested();
-                            // Open a fresh stream on retry so an elevation response cannot truncate the upload.
-                            using var stream = File.OpenRead(file.SourcePath);
-                            await _client.UploadAsync(ExplorerPath.Parent(path)!, GetRelativeFileName(file.RelativePath), stream, progress, ct);
-                        }, FileElevationCapability.Upload, destination))
+                    if (!await UploadPlannedFileAsync(destination, file, Report, ct))
                         throw new InvalidOperationException(LocalizedText.Get("explorer.status.elevation_required"));
                     bytes += file.Length;
                     report(path, bytes, ++count);
@@ -1418,18 +1430,23 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 var operationIndex = plan.Directories.Count + index + 1;
                 TransferText = LocalizedText.Format("explorer.status.uploading_item", file.RelativePath, operationIndex, TransferItemTotal);
                 var currentFileStart = completedBytes;
-                var progress = new Progress<long>(uploaded =>
+                long shown = 0;
+                void Report(long confirmed, long inFlight, bool reconciling)
                 {
-                    TransferBytesCompleted = currentFileStart + uploaded;
-                    TransferText = LocalizedText.Format("explorer.status.uploading_item", file.RelativePath, operationIndex, TransferItemTotal);
-                });
-                var destinationDirectory = GetRelativeDirectory(file.RelativePath);
-                var targetDirectory = string.IsNullOrEmpty(destinationDirectory)
-                    ? AddressbarPath
-                    : LocalUploadPlan.CombineRemotePath(AddressbarPath, destinationDirectory);
-                using var stream = File.OpenRead(file.SourcePath);
-                if (!await RetryWithOperationElevationAsync(
-                        async () => { await _client.UploadAsync(targetDirectory, GetRelativeFileName(file.RelativePath), stream, progress); }, FileElevationCapability.Upload, AddressbarPath)) return;
+                    // While the authoritative offset is being re-read there is no number worth showing, so
+                    // the line says what is happening instead and the bar holds where it is
+                    // (`RelaxKonOS.FileUpload.Design.md` §5.4). A bar that moved on a guess would be the
+                    // same lie as one that fills before the socket does.
+                    TransferText = LocalizedText.Format(
+                        reconciling ? "explorer.status.upload_reconciling" : "explorer.status.uploading_item",
+                        file.RelativePath, operationIndex, TransferItemTotal);
+                    if (reconciling) return;
+                    var value = Math.Min(confirmed + inFlight, file.Length);
+                    if (value < shown) return;
+                    shown = value;
+                    TransferBytesCompleted = currentFileStart + value;
+                }
+                if (!await UploadPlannedFileAsync(AddressbarPath, file, Report)) return;
                 completedBytes += file.Length;
                 TransferBytesCompleted = completedBytes;
                 TransferItemCompleted = operationIndex;
@@ -1447,6 +1464,40 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             IsBusy = false;
             PasteCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    /// <summary>
+    /// Uploads one planned file, choosing the route by its declared length. Both routes are wired to the
+    /// same elevation prompt, so which one a file takes never changes what the user is asked. Returns false
+    /// only when the destination needs authorization that was refused or unavailable.
+    /// </summary>
+    private async Task<bool> UploadPlannedFileAsync(string destination, LocalUploadFile file,
+        Action<long, long, bool> onProgress, CancellationToken ct = default)
+    {
+        var targetDirectory = GetRelativeDirectory(file.RelativePath) is { Length: > 0 } relative
+            ? LocalUploadPlan.CombineRemotePath(destination, relative)
+            : destination;
+        var fileName = GetRelativeFileName(file.RelativePath);
+        if (LargeFileUploader is { } uploader && file.Length > FileUploadProtocol.SingleShotThresholdBytes)
+        {
+            await uploader.UploadAsync(
+                new LargeFileUploadRequest(file.SourcePath, targetDirectory, fileName, file.Length,
+                    File.GetLastWriteTimeUtc(file.SourcePath)),
+                (paths, capability) => RequestFileOperationElevationAsync?.Invoke(paths, capability) ?? Task.FromResult(false),
+                update => onProgress(update.ConfirmedBytes, update.InFlightBytes, update.Reconciling), ct);
+            return true;
+        }
+
+        // A single request has one number and no doubts about it: nothing is ever re-read, so the third
+        // piece of the report is always false on this route.
+        var progress = new Progress<long>(sent => onProgress(sent, 0, false));
+        return await RetryWithOperationElevationAsync(async () =>
+        {
+            ct.ThrowIfCancellationRequested();
+            // A fresh stream for each attempt: an elevation retry must not reuse a partially consumed one.
+            using var stream = File.OpenRead(file.SourcePath);
+            await _client.UploadAsync(targetDirectory, fileName, stream, progress, ct);
+        }, FileElevationCapability.Upload, destination);
     }
 
     private IReadOnlyList<FileSystemEntryDto> GetSelectedEntries()

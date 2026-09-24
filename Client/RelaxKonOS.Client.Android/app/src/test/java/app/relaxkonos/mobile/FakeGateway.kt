@@ -12,6 +12,8 @@ import app.relaxkonos.mobile.core.net.ProcessPage
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import app.relaxkonos.mobile.core.net.ServerDescriptor
+import app.relaxkonos.mobile.core.net.UploadChunkResult
+import app.relaxkonos.mobile.core.net.UploadSession
 import java.io.InputStream
 
 /**
@@ -40,6 +42,13 @@ class FakeGateway : RelaxKonGateway {
     var onKill: (suspend (String, String, Int, Boolean) -> ApiResult<Unit>)? = null
     var onDownload: (suspend (String, String, String, DownloadSink, ((Long, Long?) -> Unit)?) -> ApiResult<Long>)? = null
     var onThumbnail: (suspend (String, String, String, Int) -> ApiResult<ByteArray>)? = null
+    var onCreateUploadSession:
+        (suspend (String, String, String, String, Long, Long?, String) -> ApiResult<UploadSession>)? = null
+    var onUploadSession: (suspend (String, String, String) -> ApiResult<UploadSession>)? = null
+    var onSendUploadChunk:
+        (suspend (String, String, String, Long, Long, InputStream, ((Long) -> Unit)?) -> UploadChunkResult)? = null
+    var onCommitUpload: (suspend (String, String, String, String?) -> ApiResult<Unit>)? = null
+    var onAbortUpload: (suspend (String, String, String) -> ApiResult<Unit>)? = null
 
     var loginCount = 0
         private set
@@ -57,6 +66,13 @@ class FakeGateway : RelaxKonGateway {
     val elevationAccounts = mutableListOf<String?>()
     val listDirectoryPaths = mutableListOf<String>()
     val killCalls = mutableListOf<Pair<Int, Boolean>>()
+
+    /** Abandoned sessions, so a test can assert that cancel really told the server. */
+    val abortedUploadIds = mutableListOf<String>()
+    val committedUploadIds = mutableListOf<String>()
+
+    /** Offsets requested through the authoritative read, so a test can count resynchronisations. */
+    val uploadSessionReads = mutableListOf<String>()
 
     override suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession> {
         loginCount++
@@ -153,9 +169,64 @@ class FakeGateway : RelaxKonGateway {
         onProgress,
     )
 
+    override suspend fun createUploadSession(
+        serverUrl: String,
+        accessToken: String,
+        targetDirectoryPath: String,
+        fileName: String,
+        length: Long,
+        lastModifiedMillis: Long?,
+        idempotencyKey: String,
+    ): ApiResult<UploadSession> = requireHandler(onCreateUploadSession, "createUploadSession")(
+        serverUrl,
+        accessToken,
+        targetDirectoryPath,
+        fileName,
+        length,
+        lastModifiedMillis,
+        idempotencyKey,
+    )
+
+    override suspend fun uploadSession(serverUrl: String, accessToken: String, uploadId: String): ApiResult<UploadSession> {
+        uploadSessionReads += uploadId
+        return requireHandler(onUploadSession, "uploadSession")(serverUrl, accessToken, uploadId)
+    }
+
+    override suspend fun sendUploadChunk(
+        serverUrl: String,
+        accessToken: String,
+        uploadId: String,
+        offset: Long,
+        chunkLength: Long,
+        source: InputStream,
+        onInFlight: ((Long) -> Unit)?,
+    ): UploadChunkResult = requireHandler(onSendUploadChunk, "sendUploadChunk")(
+        serverUrl,
+        accessToken,
+        uploadId,
+        offset,
+        chunkLength,
+        source,
+        onInFlight,
+    )
+
+    override suspend fun commitUpload(
+        serverUrl: String,
+        accessToken: String,
+        uploadId: String,
+        contentHash: String?,
+    ): ApiResult<Unit> {
+        committedUploadIds += uploadId
+        return requireHandler(onCommitUpload, "commitUpload")(serverUrl, accessToken, uploadId, contentHash)
+    }
+
+    override suspend fun abortUpload(serverUrl: String, accessToken: String, uploadId: String): ApiResult<Unit> {
+        abortedUploadIds += uploadId
+        return requireHandler(onAbortUpload, "abortUpload")(serverUrl, accessToken, uploadId)
+    }
+
     override suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot> =
         requireHandler(onPerformance, "performanceSnapshot")(serverUrl, accessToken)
-
     override suspend fun queryProcesses(
         serverUrl: String,
         accessToken: String,

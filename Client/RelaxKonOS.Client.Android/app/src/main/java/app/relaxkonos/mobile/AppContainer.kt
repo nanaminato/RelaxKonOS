@@ -2,6 +2,7 @@ package app.relaxkonos.mobile
 
 import android.app.Application
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,6 +11,7 @@ import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.RelaxKonApi
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
+import app.relaxkonos.mobile.data.AndroidUploadDocuments
 import app.relaxkonos.mobile.data.BitmapFactoryImageDecoder
 import app.relaxkonos.mobile.data.ConnectionProfileStore
 import app.relaxkonos.mobile.data.DownloadStore
@@ -23,6 +25,9 @@ import app.relaxkonos.mobile.data.ImagePreviewCache
 import app.relaxkonos.mobile.data.PREVIEW_CACHE_DIRECTORY
 import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.data.SystemRepository
+import app.relaxkonos.mobile.data.UploadCoordinator
+import app.relaxkonos.mobile.data.UploadResumeJournal
+import app.relaxkonos.mobile.data.UploadSourceStager
 import app.relaxkonos.mobile.security.AndroidBiometricCapabilityDetector
 import app.relaxkonos.mobile.security.AndroidBiometricUnlock
 import app.relaxkonos.mobile.security.BiometricCapability
@@ -42,6 +47,10 @@ import app.relaxkonos.mobile.ui.theme.AppearancePreferences
 import app.relaxkonos.mobile.ui.theme.AppearanceState
 import app.relaxkonos.mobile.ui.common.UiMessage
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Composition root.
@@ -56,6 +65,14 @@ import java.io.File
  */
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
+
+    /**
+     * Scope for work that must outlive every screen.
+     *
+     * Only an upload uses it today, and that is the point: a multi-gigabyte transfer cannot be tied to
+     * the page that started it, and it has to survive that page being destroyed.
+     */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val preferences = AppearancePreferences(appContext)
 
@@ -145,6 +162,26 @@ class AppContainer(context: Context) {
 
     val system = SystemRepository(gateway, session)
 
+    /**
+     * Where an unfinished upload is remembered.
+     *
+     * Kept apart from the credential vault and deliberately not encrypted: it holds a session id, a
+     * target path and a source URI, and no credential at all. Putting it in `noBackupFilesDir` also
+     * keeps it off a restored device, where the sessions it names are long gone.
+     */
+    private val uploadJournal = UploadResumeJournal(File(appContext.noBackupFilesDir, UPLOAD_JOURNAL_FILE))
+
+    /** Staging area for a document a provider cannot read from an offset. Emptied by the platform, as a cache should be. */
+    private val uploadStager = UploadSourceStager(UploadSourceStager.defaultCacheRoot(appContext.cacheDir))
+
+    /**
+     * Opens the documents the picker returns.
+     *
+     * Exposed rather than hidden inside [uploads] because the single-request route needs the same
+     * document description — name, length, a stream — and both routes must agree on what was picked.
+     */
+    val uploadDocuments = AndroidUploadDocuments(appContext)
+
     /** Small, memory-only success journal shown on the expanded home layout. */
     val recentOperations = RecentOperationJournal()
 
@@ -230,6 +267,59 @@ class AppContainer(context: Context) {
      */
     val elevationAnswers = ElevationAnswerProvider { capability, target ->
         elevationPrompts.request(capability, target, savedAdministratorAccount())
+    }
+
+    /**
+     * Runs resumable uploads for the lifetime of the process.
+     *
+     * Declared last because it depends on [elevationAnswers], which is itself declared here: an
+     * initialiser that ran earlier would read a property that has not been assigned yet.
+     *
+     * App-scoped on purpose: a multi-gigabyte transfer must not be tied to the screen that started it,
+     * and the foreground service that keeps it alive only renders progress — it does not own the work.
+     */
+    val uploads = UploadCoordinator(
+        gateway = gateway,
+        session = session,
+        elevations = elevations,
+        journal = uploadJournal,
+        stager = uploadStager,
+        documents = uploadDocuments,
+        elevationAnswers = elevationAnswers,
+        serverKey = ::uploadServerKey,
+        scope = appScope,
+    )
+
+    /**
+     * The identity an unfinished upload belongs to: server, account, workspace and this device.
+     *
+     * Same shape as the desktop client's session key, and for the same reason: a session id is only
+     * meaningful to the identity that opened it, so an entry from another server — or another account on
+     * the same server — must never be offered as something to continue.
+     */
+    private fun uploadServerKey(): String? {
+        val active = session.state.value as? SessionState.Active ?: return null
+        val device = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+        return "${active.serverUrl}|${active.userName}|${active.workspaceName}|$device"
+    }
+
+    /**
+     * Keeps the unfinished-upload list in step with the signed-in identity.
+     *
+     * Signing in drops entries belonging to another server and any cache copy nothing owns; signing out
+     * empties the list, because an entry that cannot be sent to anywhere is not something to offer. This
+     * runs here rather than in a screen so it happens even when the user never opens Files.
+     */
+    init {
+        appScope.launch {
+            session.state.collect { state ->
+                if (state is SessionState.Active) uploads.forgetOtherServers() else uploads.restore()
+            }
+        }
+    }
+
+    private companion object {
+        const val UPLOAD_JOURNAL_FILE = "upload-resume.txt"
     }
 }
 

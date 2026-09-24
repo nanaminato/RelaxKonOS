@@ -107,6 +107,24 @@ class JsonBody {
  * the UI simply omits the timestamp instead of showing a wrong one.
  */
 object IsoInstant {
+    /**
+     * Renders an epoch millisecond count in the shape [toEpochMillis] accepts.
+     *
+     * Only used to tell the server when the source file was last modified, so second precision is
+     * plenty — and it round-trips through the parser above, which is what the server compares against.
+     */
+    fun fromEpochMillis(millis: Long): String {
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
+        return "%04d-%02d-%02dT%02d:%02d:%02dZ".format(
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH) + 1,
+            calendar.get(Calendar.DAY_OF_MONTH),
+            calendar.get(Calendar.HOUR_OF_DAY),
+            calendar.get(Calendar.MINUTE),
+            calendar.get(Calendar.SECOND),
+        )
+    }
+
     fun toEpochMillis(value: String?): Long? {
         if (value.isNullOrBlank()) {
             return null

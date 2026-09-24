@@ -58,6 +58,24 @@ public static class FileApiRoutes
     /// <summary>复制（POST，需 JWT）。body: CopyRequest。</summary>
     public const string Copy = $"/{V1}/files/copy";
 
-    /// <summary>上传文件（POST，需 JWT）。query: path（目标目录）。body: multipart/form-data。</summary>
+    /// <summary>Small-file upload (POST, JWT required). query: path (target directory). body: multipart/form-data.
+    /// Declared ceiling: <see cref="FileUploadProtocol.SingleShotMaximumBytes"/>; anything larger uses
+    /// <see cref="Uploads"/>, which carries the length in its body instead of in a form part.</summary>
     public const string Upload = $"/{V1}/files/upload";
+
+    /// <summary>Opens a resumable upload session (POST, JWT required). body: CreateUploadRequest,
+    /// header: Idempotency-Key. Answers 201 with <see cref="UploadSessionDto"/>.</summary>
+    public const string Uploads = $"/{V1}/files/uploads";
+
+    /// <summary>Session sub-resource (GET reads the authoritative offset, DELETE abandons it).
+    /// path parameter: uploadId. Both answer <c>upload-session-not-found</c> for an unknown session.</summary>
+    public const string UploadPattern = $"/{V1}/files/uploads/{{uploadId}}";
+
+    /// <summary>Appends one chunk (PATCH, JWT required). path parameter: uploadId.
+    /// headers: <see cref="FileUploadProtocol.OffsetHeader"/> and Content-Length; body: application/octet-stream.</summary>
+    public const string UploadChunkPattern = $"/{V1}/files/uploads/{{uploadId}}";
+
+    /// <summary>Publishes a fully received session as the destination file (POST, JWT required).
+    /// path parameter: uploadId. body: CommitUploadRequest.</summary>
+    public const string UploadCommitPattern = $"{UploadPattern}/commit";
 }

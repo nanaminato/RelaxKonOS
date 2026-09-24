@@ -5,6 +5,15 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- API 23-27 fall back to the legacy fingerprint API; availability is probed at runtime. -->
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+    <!--
+      A large upload must survive the app going to the background, which is exactly what a data-sync
+      foreground service is for. Android 14 and later require the transfer to be stoppable from its
+      notification; the cancel action is part of the design rather than a concession to the platform.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Progress is only useful if it is visible: the notification is the transfer's own status. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".RelaxKonApplication"
@@ -33,5 +42,14 @@
         <meta-data
             android:name="androidx.appcompat.app.AppCompatDelegate.autoStoreLocales"
             android:value="true" />
+
+        <!--
+          Keeps one upload alive and visible while the app is in the background. The transfer itself is
+          owned by the process-wide coordinator, so nothing here holds state that a restart would lose.
+        -->
+        <service
+            android:name=".service.UploadForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

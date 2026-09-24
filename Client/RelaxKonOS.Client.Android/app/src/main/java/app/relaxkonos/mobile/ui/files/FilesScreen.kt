@@ -1,16 +1,19 @@
 package app.relaxkonos.mobile.ui.files
 
+import android.Manifest
 import android.app.Application
-import android.database.Cursor
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
-import android.provider.OpenableColumns
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,10 +60,18 @@ import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.core.net.RemoteEntry
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.core.net.UploadProblemCodes
 import app.relaxkonos.mobile.data.DownloadTarget
 import app.relaxkonos.mobile.data.ElevationAnswerProvider
+import app.relaxkonos.mobile.data.PickedDocument
 import app.relaxkonos.mobile.data.RecentOperationKind
+import app.relaxkonos.mobile.data.UploadFailure
+import app.relaxkonos.mobile.data.UploadResumeEntry
+import app.relaxkonos.mobile.data.UploadStage
+import app.relaxkonos.mobile.data.UploadState
 import app.relaxkonos.mobile.data.isDecodableImage
+import app.relaxkonos.mobile.data.isSingleShotLength
+import app.relaxkonos.mobile.service.UploadForegroundService
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyState
 import app.relaxkonos.mobile.ui.common.ErrorBanner
@@ -73,6 +84,7 @@ import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.appContainer
+import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
@@ -82,10 +94,10 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.io.File
-import java.io.InputStream
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -177,6 +189,58 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     private var transferJob: Job? = null
+
+    /** Uploads this device can still continue, as the coordinator sees them. */
+    val resumableUploads: StateFlow<List<UploadResumeEntry>> get() = container.uploads.resumable
+
+    /** The resumable transfer in flight or the last one that stopped. */
+    val uploadState: StateFlow<UploadState?> get() = container.uploads.state
+
+    /** Whether the resumable upload card is showing its detail, kept on the page like [transfer]'s. */
+    var uploadCollapsed by mutableStateOf(false)
+        private set
+
+    /**
+     * Named `…State` rather than `setUploadCollapsed` because the property above already generates a
+     * private setter with that exact JVM signature, and the two would be a platform declaration clash.
+     */
+    fun setUploadCollapsedState(collapsed: Boolean) {
+        uploadCollapsed = collapsed
+    }
+
+    /** Set when an upload needs the notification permission asked for; cleared once the prompt has run. */
+    var uploadNotificationPrompt by mutableStateOf(false)
+        private set
+
+    fun uploadNotificationPromptHandled() {
+        uploadNotificationPrompt = false
+    }
+
+    /**
+     * The finished-upload report.
+     *
+     * A resumable upload is not awaited by any screen, so its outcome has to be *observed*. It is
+     * announced through the process-wide notice rather than this page's banner, because the transfer
+     * routinely finishes while the files route is somewhere behind the user: a banner owned by the page
+     * would surface the result only on the way back, or never.
+     */
+    private var reportedUpload: UploadState? = null
+
+    init {
+        viewModelScope.launch {
+            container.uploads.state.collect { state ->
+                if (state == null || state === reportedUpload) return@collect
+                if (!state.isFinished) return@collect
+                reportedUpload = state
+                container.showNotice(
+                    UiMessage(R.string.files_uploaded, listOf(state.fileName), tone = StatusTone.Success),
+                )
+                container.recentOperations.record(RecentOperationKind.Upload, state.fileName)
+                container.uploads.dismiss()
+                reload()
+            }
+        }
+    }
 
     /** What the detail pane shows above the properties; see `ImagePreview`. */
     var preview by mutableStateOf<ImagePreview>(ImagePreview.Hidden)
@@ -481,60 +545,130 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Copies a user-selected document stream directly to the server; no broad storage permission is
-     * needed, and the document's own path is never assumed to be readable (`RelaxKonOS.Mobile.
-     * Design.md` §7).
+     * Starts an upload of one picked document.
      *
-     * The destination directory is captured before the coroutine starts, so navigating while a large
-     * upload runs cannot move the file to wherever the user ended up. The card is posted with a
-     * placeholder name and corrected once the provider has answered: reading a document's name and
-     * opening its stream are both someone else's process doing disk or network work — a cloud-backed
-     * file can take seconds — and neither may happen on the main thread.
+     * Which route it takes is decided by its declared length. A photo or a PDF stays on the single
+     * request route, because paying for a session would only be slower. Anything past the threshold goes
+     * through the app-scoped [UploadCoordinator], under a foreground service: a multi-gigabyte transfer
+     * must not be tied to this page, and it has to be continuable after the process is killed.
+     *
+     * The destination directory is captured before anything is opened, so navigating while a large upload
+     * runs cannot move the file to wherever the user ended up.
      */
     fun upload(uri: Uri) {
-        if (transfer != null) {
+        if (isUploadBusy()) return
+        val directory = path
+        if (directory.isBlank()) {
+            message = UiMessage(R.string.files_upload_needs_folder)
             return
         }
-        val app = getApplication<RelaxKonApplication>()
-        val directory = path
-        transfer = Transfer(label = app.getString(R.string.files_upload_default_name), kind = TransferKind.Upload)
         transferJob = viewModelScope.launch {
-            try {
-                val document = withContext(Dispatchers.IO) { app.contentResolver.openPickedDocument(uri) }
-                if (document == null) {
-                    message = UiMessage(R.string.files_upload_unreadable)
-                    return@launch
-                }
-                val name = document.name.ifBlank { app.getString(R.string.files_upload_default_name) }
-                transfer = transfer?.takeIf { it.kind == TransferKind.Upload }?.copy(label = name, totalBytes = document.length)
-                val result = runCatching {
-                    document.stream.use { input ->
-                        container.files.upload(directory, name, input, document.length, container.elevationAnswers) { written ->
-                            viewModelScope.launch(Dispatchers.Main.immediate) {
-                                transfer = transfer?.takeIf { it.kind == TransferKind.Upload }?.copy(transferredBytes = written)
-                            }
-                        }
-                    }
-                }.getOrElse {
-                    if (it is CancellationException) throw it
-                    ApiResult.Transport(it.message)
-                }
-                when (result) {
-                    is ApiResult.Success -> {
-                        message = UiMessage(R.string.files_uploaded, listOf(name), tone = StatusTone.Success)
-                        container.recentOperations.record(RecentOperationKind.Upload, name)
-                        reload()
-                    }
-                    else -> message = result.failureMessage()
-                }
-            } catch (_: CancellationException) {
-                // Expected when the user cancels the transfer.
-            } finally {
-                transfer = null
-                transferJob = null
+            // Reading a document's metadata and opening it are the provider's work — a cloud-backed file
+            // can take seconds — so neither happens on the main thread.
+            val document = withContext(Dispatchers.IO) {
+                runCatching { container.uploadDocuments.open(uri.toString()) }.getOrNull()
             }
+            if (document == null) {
+                message = UiMessage(R.string.files_upload_unreadable)
+                transferJob = null
+                return@launch
+            }
+            val length = document.length
+            if (length != null && isSingleShotLength(length)) {
+                uploadSingleShot(document, directory)
+            } else {
+                startResumable(document, directory)
+            }
+            transferJob = null
         }
     }
+
+    /** True while either route is busy; only one transfer runs at a time. */
+    private fun isUploadBusy(): Boolean = transfer != null || container.uploads.isRunning
+
+    /**
+     * Hands the document to the resumable coordinator.
+     *
+     * Nothing here is awaited: the transfer is the coordinator's, so the card keeps rendering after this
+     * ViewModel is gone and the transfer survives the page. The foreground service is what keeps Android
+     * from freezing the process the moment the user leaves the app.
+     */
+    private fun startResumable(document: PickedDocument, directory: String) {
+        transfer = null
+        container.uploads.start(directory, document)
+        // Started before the prompt, not after: a foreground service has to be up within seconds, and the
+        // permission request must never be a precondition for the transfer the user asked for.
+        UploadForegroundService.start(getApplication())
+        if (needsNotificationPermission()) uploadNotificationPrompt = true
+    }
+
+    /**
+     * Whether the transfer's notification would be invisible without asking.
+     *
+     * Android 13 suppresses foreground-service notifications when `POST_NOTIFICATIONS` has not been
+     * granted, which takes the cancel action with it and leaves a running upload the user can only stop
+     * from inside the app. The flag is raised here and the request is made by the composition, because
+     * only an activity can ask.
+     */
+    private fun needsNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            getApplication<Application>().checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Copies a small document to the server in one request.
+     *
+     * A declared length is a scheduling hint, not a contract: a provider that under-reports its size — or
+     * refuses to report one — is answered by the server with `upload-too-large-for-single-shot`, and that
+     * specific refusal falls through to the resumable route rather than failing the upload.
+     */
+    private suspend fun uploadSingleShot(document: PickedDocument, directory: String) {
+        val app = getApplication<RelaxKonApplication>()
+        val name = document.displayName.ifBlank { app.getString(R.string.files_upload_default_name) }
+        transfer = Transfer(label = name, kind = TransferKind.Upload, totalBytes = document.length)
+        val result = runCatching {
+            withContext(Dispatchers.IO) { document.open() }.use { input ->
+                container.files.upload(directory, name, input, document.length, container.elevationAnswers) { written ->
+                    viewModelScope.launch(Dispatchers.Main.immediate) {
+                        transfer = transfer?.takeIf { it.kind == TransferKind.Upload }?.copy(transferredBytes = written)
+                    }
+                }
+            }
+        }.getOrElse {
+            if (it is CancellationException) throw it
+            ApiResult.Transport(it.message)
+        }
+        transfer = null
+        when (result) {
+            is ApiResult.Success -> {
+                message = UiMessage(R.string.files_uploaded, listOf(name), tone = StatusTone.Success)
+                container.recentOperations.record(RecentOperationKind.Upload, name)
+                reload()
+            }
+
+            is ApiResult.Problem if result.code == UploadProblemCodes.TOO_LARGE_FOR_SINGLE_SHOT ->
+                startResumable(document, directory)
+
+            else -> message = result.failureMessage()
+        }
+    }
+
+    /** Continues an unfinished upload the coordinator remembers. */
+    fun resumeUpload(entry: UploadResumeEntry) {
+        if (isUploadBusy()) return
+        container.uploads.resume(entry)
+        UploadForegroundService.start(getApplication())
+        if (needsNotificationPermission()) uploadNotificationPrompt = true
+    }
+
+    /** Abandons an unfinished upload: session, resume entry and cache copy all go. */
+    fun discardUpload(entry: UploadResumeEntry) = container.uploads.discard(entry)
+
+    /** Stops the resumable upload in flight and abandons it. */
+    fun cancelUpload() = container.uploads.cancel()
+
+    /** Clears a stopped upload card that has no session left to continue. */
+    fun dismissUpload() = container.uploads.dismiss()
 
     fun cancelActiveTransfer() {
         transferJob?.cancel()
@@ -827,41 +961,6 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
 data class TransferTarget(val entry: RemoteEntry, val move: Boolean)
 
-/** One picked document: what to call it, how big it claims to be, and the stream to read it from. */
-private class PickedDocument(val name: String, val length: Long?, val stream: InputStream)
-
-/**
- * Reads a picked document's metadata and opens its stream.
- *
- * Both steps are the provider's, not ours: a `query` against a cloud-backed document can take
- * hundreds of milliseconds and `openFile` seconds, so this runs on `Dispatchers.IO`. The name and
- * size are best-effort — a provider that refuses either still gets to upload, with the transfer card
- * falling back to a generic label and an indeterminate progress bar.
- */
-private fun android.content.ContentResolver.openPickedDocument(uri: Uri): PickedDocument? {
-    var name: String? = null
-    var size: Long? = null
-    runCatching {
-        query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor: Cursor ->
-            if (cursor.moveToFirst()) {
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (nameIndex >= 0) {
-                    name = cursor.getString(nameIndex)
-                }
-                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
-                    size = cursor.getLong(sizeIndex)
-                }
-            }
-        }
-    }
-    val stream = runCatching { openInputStream(uri) }.getOrNull() ?: return null
-    val length = size
-        ?.takeIf { it >= 0 }
-        ?: runCatching { openAssetFileDescriptor(uri, "r")?.use { it.length } }.getOrNull()?.takeIf { it >= 0 }
-    return PickedDocument(name.orEmpty(), length, stream)
-}
-
 /**
  * The file list.
  *
@@ -883,7 +982,25 @@ fun FilesScreen(
         uri?.let(viewModel::upload)
     }
 
+    // Asked for only once an upload is actually running, and never before it starts: the permission is
+    // what makes the transfer's cancel action visible, so the moment the user has a transfer to cancel is
+    // the only moment the question has a reason. A refusal costs the notification, not the upload.
+    val requestUploadNotifications = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { viewModel.uploadNotificationPromptHandled() }
+
+    LaunchedEffect(viewModel.uploadNotificationPrompt) {
+        if (viewModel.uploadNotificationPrompt) {
+            requestUploadNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     LaunchedEffect(Unit) { viewModel.start() }
+
+    // Only one upload runs at a time, so the picker stays closed while either route is busy. The
+    // resumable route is not awaited by this page, which is why its running state comes from the
+    // coordinator's flow rather than from `transfer`.
+    val uploadRunning = viewModel.uploadState.collectAsStateValue()?.isRunning == true
 
     var menuForPath by remember { mutableStateOf<String?>(null) }
 
@@ -925,7 +1042,7 @@ fun FilesScreen(
             }
             Button(
                 onClick = { pickUpload.launch(arrayOf("*/*")) },
-                enabled = viewModel.transfer == null,
+                enabled = viewModel.transfer == null && !uploadRunning,
                 modifier = Modifier.weight(1f),
             ) {
                 DesktopIcon(icon = DesktopIcons.upload, size = 18.dp)
@@ -933,6 +1050,10 @@ fun FilesScreen(
                 Text(stringResource(R.string.files_action_upload))
             }
         }
+
+        // Above the list, not below it: an unfinished upload is a thing the user came here to act on,
+        // and a card that only appears once every entry has been scrolled past is a card nobody sees.
+        FileResumableUploadsCard(viewModel)
 
         val listing = viewModel.listing
         if (listing == null || listing.entries.isEmpty()) {
@@ -1016,6 +1137,154 @@ fun FileTransferCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
         onCancel = viewModel::cancelActiveTransfer,
         modifier = modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
     )
+}
+
+/**
+ * The card for the resumable upload in flight, or the last one that stopped.
+ *
+ * It sits beside [FileTransferCard] for the same reason that one does — a multi-gigabyte transfer
+ * outlives the page that started it — but it is a card of its own because it answers a different
+ * question. A transfer card reports bytes; this one also reports that the transfer is stoppable *and
+ * continuable*, which is the entire point of the resumable protocol. A stopped upload has deliberately
+ * kept its session, its resume entry and its cache copy, so the card offers "continue" and "discard"
+ * instead of pretending the transfer is still running or offering a "retry" that would quietly start
+ * again from zero.
+ *
+ * [UploadStage.Preparing] is drawn as a stage of its own and never as the first few percent: while a
+ * document is being copied into the cache nothing has left the device, and a bar that advanced would
+ * claim otherwise. For the same reason a stopped transfer's bar is frozen where it stopped rather than
+ * left indeterminate, which would read as "still working".
+ */
+@Composable
+fun FileUploadCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
+    val state = viewModel.uploadState.collectAsStateValue() ?: return
+    // A finished upload is reported through the process-wide notice, which outlives this page.
+    if (state.isFinished) return
+    val resumable = viewModel.resumableUploads.collectAsStateValue()
+    val stopped = state.failure != null
+    // The entry is looked up by session id rather than by file name: two uploads of the same name are
+    // two different sessions, and "continue" has to resume the one the failure belongs to.
+    val entry = state.uploadId?.let { id -> resumable.firstOrNull { it.uploadId == id } }
+    val actions: (@Composable RowScope.() -> Unit)? =
+        if (!stopped) {
+            null
+        } else {
+            {
+                if (entry != null) {
+                    Button(
+                        onClick = { viewModel.resumeUpload(entry) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.files_upload_resume))
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.discardUpload(entry) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.files_upload_discard))
+                    }
+                } else {
+                    // Nothing is left to continue — a session the server refused outright, or a document
+                    // that could not even be staged. Dismissing is the only honest action.
+                    OutlinedButton(
+                        onClick = viewModel::dismissUpload,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.common_dismiss))
+                    }
+                }
+            }
+        }
+    ProgressSheet(
+        title = stringResource(uploadTitle(state)),
+        detail = state.fileName,
+        progress = when {
+            stopped -> state.progress ?: 0f
+            state.stage == UploadStage.Preparing -> null
+            else -> state.progress ?: 0f
+        },
+        collapsed = viewModel.uploadCollapsed,
+        onCollapsedChange = viewModel::setUploadCollapsedState,
+        onCancel = if (stopped) null else viewModel::cancelUpload,
+        modifier = modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+        footnote = when {
+            stopped -> stringResource(uploadFailureText(state.failure!!))
+            state.resynchronising -> stringResource(R.string.files_upload_reconciling)
+            state.totalBytes != null -> stringResource(
+                R.string.files_upload_progress,
+                formatSize(state.displayedBytes) ?: "",
+                formatSize(state.totalBytes) ?: "",
+            )
+
+            else -> null
+        },
+        actions = actions,
+    )
+}
+
+/**
+ * The unfinished uploads this device can still continue.
+ *
+ * Belongs with the file list rather than beside the transfer card, because it is content and not a
+ * receipt: a resume entry outlives the process, so it has to be reachable by opening the files
+ * destination rather than by being on screen at the right moment. The transfer currently on the card is
+ * filtered out so the same session is never offered twice.
+ */
+@Composable
+fun FileResumableUploadsCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
+    val entries = viewModel.resumableUploads.collectAsStateValue()
+    val active = viewModel.uploadState.collectAsStateValue()?.uploadId
+    val pending = entries.filterNot { it.uploadId == active }
+    if (pending.isEmpty()) return
+    SectionCard(
+        title = stringResource(R.string.files_upload_resumable),
+        leading = DesktopIcons.upload,
+        modifier = modifier,
+    ) {
+        for (entry in pending) {
+            ListRow(
+                title = entry.fileName,
+                supporting = listOfNotNull(
+                    entry.targetDirectoryPath,
+                    formatSize(entry.confirmedOffset),
+                    formatSize(entry.totalLength),
+                ).joinToString(" · "),
+                leading = { IconBadge(DesktopIcons.fileFor(entry.fileName, false)) },
+                trailing = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        OutlinedButton(onClick = { viewModel.discardUpload(entry) }) {
+                            Text(stringResource(R.string.files_upload_discard))
+                        }
+                        Button(onClick = { viewModel.resumeUpload(entry) }) {
+                            Text(stringResource(R.string.files_upload_resume))
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+@StringRes
+private fun uploadTitle(state: UploadState): Int = when {
+    state.failure != null -> R.string.files_upload_resumable
+    state.stage == UploadStage.Preparing -> R.string.files_upload_preparing
+    state.stage == UploadStage.Committing -> R.string.files_upload_committing
+    else -> R.string.files_uploading
+}
+
+/** One sentence per failure, in terms of what the user has to do about it. */
+@StringRes
+private fun uploadFailureText(failure: UploadFailure): Int = when (failure) {
+    UploadFailure.Network -> R.string.files_upload_failed_network
+    UploadFailure.ServerStorage -> R.string.files_upload_failed_server_storage
+    UploadFailure.LocalCache -> R.string.files_upload_failed_local_cache
+    UploadFailure.SourceChanged -> R.string.files_upload_failed_source_changed
+    UploadFailure.SourceUnreadable -> R.string.files_upload_failed_source_unreadable
+    UploadFailure.ElevationRequired -> R.string.files_upload_failed_elevation
+    UploadFailure.SessionLost -> R.string.files_upload_failed_session
+    UploadFailure.NameUnusable -> R.string.files_upload_failed_name
+    UploadFailure.Server -> R.string.files_upload_failed_server
 }
 
 /**

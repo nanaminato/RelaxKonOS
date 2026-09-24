@@ -17,6 +17,9 @@
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/RemoteFileClipboard.cs" Link="RemoteFileClipboard.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/HostFileClipboard.cs" Link="HostFileClipboard.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ExplorerPickerOptions.cs" Link="ExplorerPickerOptions.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Uploads/IExplorerUploadChannel.cs" Link="Uploads/IExplorerUploadChannel.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Uploads/UploadResumeJournal.cs" Link="Uploads/UploadResumeJournal.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Uploads/LargeFileUploader.cs" Link="Uploads/LargeFileUploader.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Localization/LocalizedStatus.cs" Link="LocalizedStatus.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/Auth/RelaxKonOSAuthException.cs" Link="RelaxKonOSAuthException.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/Privileged/PrivilegedHelperProblemText.cs" Link="PrivilegedHelperProblemText.cs" />

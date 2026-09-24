@@ -71,6 +71,7 @@
         "explorer.status.uploading_folders": "正在上传文件夹…",
         "explorer.status.no_uploadable_files": "所选内容中没有可上传的文件。",
         "explorer.status.uploading_item": "正在上传 {0}（{1}/{2}）…",
+        "explorer.status.upload_reconciling": "正在与服务器核对 {0} 的进度（{1}/{2}）…",
         "explorer.status.creating_folder": "正在创建 {0}（{1}/{2}）…",
         "explorer.status.upload_completed": "已完成上传 {0} 个文件。",
         "explorer.status.upload_completed_with_folders": "已完成上传 {0} 个文件和 {1} 个文件夹。",

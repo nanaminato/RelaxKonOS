@@ -257,6 +257,121 @@ class RelaxKonApi(
         }
     }
 
+    override suspend fun createUploadSession(
+        serverUrl: String,
+        accessToken: String,
+        targetDirectoryPath: String,
+        fileName: String,
+        length: Long,
+        lastModifiedMillis: Long?,
+        idempotencyKey: String,
+    ): ApiResult<UploadSession> {
+        val body = JsonBody()
+            .string("targetDirectoryPath", targetDirectoryPath)
+            .string("fileName", fileName)
+            .raw("length", length.toString())
+            .raw("lastModifiedUtc", lastModifiedMillis?.let { "\"${IsoInstant.fromEpochMillis(it)}\"" } ?: "null")
+        return when (val parsed = execute(
+            "POST",
+            serverUrl,
+            FileRoutes.UPLOADS,
+            accessToken,
+            body,
+            headers = mapOf(UploadProtocol.IDEMPOTENCY_KEY_HEADER to idempotencyKey),
+        )) {
+            is ApiResult.Problem -> parsed
+            is ApiResult.Transport -> parsed
+            is ApiResult.Success -> parseUploadSession(parsed.value)
+        }
+    }
+
+    override suspend fun uploadSession(
+        serverUrl: String,
+        accessToken: String,
+        uploadId: String,
+    ): ApiResult<UploadSession> =
+        when (val parsed = execute("GET", serverUrl, FileRoutes.upload(uploadId), accessToken, null)) {
+            is ApiResult.Problem -> parsed
+            is ApiResult.Transport -> parsed
+            is ApiResult.Success -> parseUploadSession(parsed.value)
+        }
+
+    override suspend fun sendUploadChunk(
+        serverUrl: String,
+        accessToken: String,
+        uploadId: String,
+        offset: Long,
+        chunkLength: Long,
+        source: InputStream,
+        onInFlight: ((Long) -> Unit)?,
+    ): UploadChunkResult = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            // One chunk, one connection. A pooled keep-alive socket that survived a network change is
+            // exactly the thing that must not be reused here, so the request never depends on one.
+            connection = openConnection(
+                serverUrl,
+                FileRoutes.upload(uploadId),
+                "PATCH",
+                accessToken,
+                readTimeoutMillis = CHUNK_READ_TIMEOUT_MILLIS,
+            )
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/octet-stream")
+            connection.setRequestProperty(UploadProtocol.OFFSET_HEADER, offset.toString())
+            // Declaring the length is what gives the server a Content-Length to hold the chunk to; a
+            // chunk is far below 2 GiB, so the long overload's ceiling is never reached.
+            connection.setFixedLengthStreamingMode(chunkLength)
+            connection.outputStream.use { output ->
+                val buffer = ByteArray(BUFFER_SIZE)
+                var written = 0L
+                while (written < chunkLength) {
+                    val count = source.read(buffer, 0, minOf(buffer.size.toLong(), chunkLength - written).toInt())
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    written += count
+                    onInFlight?.invoke(written)
+                }
+                if (written < chunkLength) {
+                    // The source stopped early: the document changed under us. Sending the remainder of
+                    // a file that no longer exists would publish a mixture of two versions.
+                    throw TruncatedSourceException(written)
+                }
+            }
+            val code = connection.responseCode
+            val authoritative = connection.getHeaderField(UploadProtocol.OFFSET_HEADER)?.trim()?.toLongOrNull()
+            if (code in 200..299) {
+                // The server always names the offset on 204. The declared end is the same number and is
+                // only used when something between us dropped the header, never in preference to it.
+                return@withContext UploadChunkResult.Confirmed(authoritative ?: (offset + chunkLength))
+            }
+            val problem = readProblemBody(connection, code)
+                ?: return@withContext UploadChunkResult.Unreachable("Server returned HTTP $code.")
+            UploadChunkResult.Refused(code, problem.code, authoritative)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: TruncatedSourceException) {
+            UploadChunkResult.SourceShort(error.deliveredBytes)
+        } catch (error: Exception) {
+            UploadChunkResult.Unreachable(error.message)
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    override suspend fun commitUpload(
+        serverUrl: String,
+        accessToken: String,
+        uploadId: String,
+        contentHash: String?,
+    ): ApiResult<Unit> {
+        val body = JsonBody().string("contentHash", contentHash)
+        return execute("POST", serverUrl, FileRoutes.uploadCommit(uploadId), accessToken, body).asUnit()
+    }
+
+    override suspend fun abortUpload(serverUrl: String, accessToken: String, uploadId: String): ApiResult<Unit> =
+        execute("DELETE", serverUrl, FileRoutes.upload(uploadId), accessToken, null).asUnit()
+
     override suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot> {
         return when (val parsed = execute("GET", serverUrl, SystemRoutes.PERFORMANCE_SNAPSHOT, accessToken, null)) {
             is ApiResult.Problem -> parsed
@@ -427,9 +542,13 @@ class RelaxKonApi(
         path: String,
         accessToken: String?,
         body: JsonBody?,
+        headers: Map<String, String> = emptyMap(),
     ): ApiResult<String> = withContext(Dispatchers.IO) {
         try {
             val connection = openConnection(serverUrl, path, method, accessToken)
+            for ((name, value) in headers) {
+                connection.setRequestProperty(name, value)
+            }
             if (body != null) {
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -448,12 +567,18 @@ class RelaxKonApi(
         }
     }
 
-    private fun openConnection(serverUrl: String, path: String, method: String, accessToken: String?): HttpURLConnection {
+    private fun openConnection(
+        serverUrl: String,
+        path: String,
+        method: String,
+        accessToken: String?,
+        readTimeoutMillis: Int = READ_TIMEOUT_MILLIS,
+    ): HttpURLConnection {
         val url = URL(serverUrl.trim().trimEnd('/') + path)
         return (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = CONNECT_TIMEOUT_MILLIS
-            readTimeout = READ_TIMEOUT_MILLIS
+            readTimeout = readTimeoutMillis
             setRequestProperty("Accept", "application/json")
             if (accessToken != null) {
                 setRequestProperty("Authorization", "Bearer $accessToken")
@@ -469,20 +594,39 @@ class RelaxKonApi(
      * — it is the transport failure it looks like.
      */
     private fun readProblem(connection: HttpURLConnection, code: Int): ApiResult<Nothing> {
-        val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-        val json = runCatching { JSONObject(text) }.getOrNull()
+        val problem = readProblemBody(connection, code)
             ?: return ApiResult.Transport("Server returned HTTP $code.")
+        return ApiResult.Problem(status = code, code = problem.code, traceId = problem.traceId)
+    }
+
+    /**
+     * Reads a ProblemDetails body, or `null` when the response is not a contract answer.
+     *
+     * Split out of [readProblem] because the chunk route needs the code *and* keeps the connection open
+     * to read the authoritative `Upload-Offset` header, which a sealed [ApiResult] cannot carry.
+     */
+    private fun readProblemBody(connection: HttpURLConnection, status: Int): ProblemBody? {
+        val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+        val json = runCatching { JSONObject(text) }.getOrNull() ?: return null
         val type = json.optNullableString("type")
         val problemCode = json.optNullableString("problemCode")
-        if (!readsAsProblem(code, type, problemCode)) {
-            return ApiResult.Transport("Server returned HTTP $code.")
+        if (!readsAsProblem(status, type, problemCode)) {
+            return null
         }
-        return ApiResult.Problem(
-            status = code,
-            code = ProblemCodes.from(type, problemCode),
-            traceId = json.optNullableString("traceId"),
-        )
+        return ProblemBody(code = ProblemCodes.from(type, problemCode), traceId = json.optNullableString("traceId"))
     }
+
+    private fun parseUploadSession(payload: String): ApiResult<UploadSession> = runCatching {
+        val json = JSONObject(payload)
+        UploadSession(
+            uploadId = json.getString("uploadId"),
+            offset = json.getLong("offset"),
+            length = json.getLong("length"),
+            chunkSize = json.optInt("chunkSize", UploadProtocol.DEFAULT_CHUNK_SIZE),
+            elevated = json.optBoolean("elevated"),
+            expiresAtMillis = IsoInstant.toEpochMillis(json.optString("expiresAt")),
+        )
+    }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed upload session.") })
 
     private fun parseLogin(payload: String): ApiResult<LoginSession> = runCatching {
         val json = JSONObject(payload)
@@ -544,11 +688,24 @@ class RelaxKonApi(
         const val CLIENT_PLATFORM = "android"
         const val CONNECT_TIMEOUT_MILLIS = 15_000
         const val READ_TIMEOUT_MILLIS = 20_000
+
+        /**
+         * Read timeout of one chunk request.
+         *
+         * Deliberately not the 20 s the rest of the API uses: an 8 MiB chunk on a slow mobile link
+         * legitimately takes minutes, and a timeout there would abort a transfer that is making
+         * progress. A stalled chunk is instead answered by the loop's backoff, which retries after
+         * asking the server where it actually is.
+         */
+        const val CHUNK_READ_TIMEOUT_MILLIS = 300_000
         const val BUFFER_SIZE = 81_920
 
         fun defaultDeviceName(): String = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
     }
 }
+
+/** The code and trace id of one ProblemDetails response, read while the connection is still open. */
+private class ProblemBody(val code: String, val traceId: String?)
 
 /** Route constants mirroring `AuthApiRoutes`. */
 private object AuthRoutes {
@@ -577,6 +734,19 @@ private object FileRoutes {
     const val UPLOAD = "$V1/files/upload"
     const val DOWNLOAD = "$V1/files/download"
     const val THUMBNAIL = "$V1/files/thumbnail"
+
+    /** Resumable upload sessions: POST opens one, GET reads its offset, DELETE abandons it. */
+    const val UPLOADS = "$V1/files/uploads"
+
+    /**
+     * The session sub-resource and its chunk route, which are the same URL under different methods.
+     *
+     * [uploadId] is issued by the server as 32 lowercase hex characters, so no escaping is involved;
+     * it is never built from anything the user typed.
+     */
+    fun upload(uploadId: String) = "$UPLOADS/$uploadId"
+
+    fun uploadCommit(uploadId: String) = "${upload(uploadId)}/commit"
 }
 
 /** Serialises one path into a JSON string literal. Paths are not secrets, so a plain builder is fine. */

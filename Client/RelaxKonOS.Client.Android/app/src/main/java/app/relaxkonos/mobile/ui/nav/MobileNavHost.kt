@@ -25,6 +25,7 @@ import app.relaxkonos.mobile.ui.files.FileDetailScreen
 import app.relaxkonos.mobile.ui.files.FileMessageBanner
 import app.relaxkonos.mobile.ui.files.FileOperationOverlays
 import app.relaxkonos.mobile.ui.files.FileTransferCard
+import app.relaxkonos.mobile.ui.files.FileUploadCard
 import app.relaxkonos.mobile.ui.files.FilesScreen
 import app.relaxkonos.mobile.ui.files.FilesViewModel
 import app.relaxkonos.mobile.ui.home.HomeScreen
@@ -105,6 +106,7 @@ private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutStat
                 }
             }
             FileTransferCard(viewModel)
+            FileUploadCard(viewModel)
         }
         FileOperationOverlays(viewModel)
     }

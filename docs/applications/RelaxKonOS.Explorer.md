@@ -99,7 +99,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 
 1. **请求/响应天然契合**目录列举（一次请求返回完整 `DirectoryDto`）。
 2. 与 Auth 端点同构（`Results.Ok` / `Results.Problem`），错误处理复用 `RelaxKonOSAuthException`。
-3. 文件下载用 `Results.File(stream, ...)` 流式返回；上传用 `multipart/form-data`。
+3. 文件下载用 `Results.File(stream, ...)` 流式返回；上传按声明长度分派：≤ 4 MiB 走 `POST /api/v1.0/files/upload`（`multipart/form-data`），更大的走可续传的分块会话 `POST/PATCH/GET /api/v1.0/files/uploads`（体为原始字节，不是 multipart）。
 4. SignalR 仅未来 watch（目录变化推送）/大文件分块流式才需要，当前不引入。
 
 ### 3.3 认证复用 IAuthSession
@@ -304,7 +304,7 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 - **视图模式切换**：Details/Icons/List/Tiles/Content（Jaya `PaneConfigModel.ViewMode`）。
 - **权限提升**：危险操作（如删除系统目录）委托宿主 OS（Linux: sudo / Windows: UAC、RunAs）——project_memory 硬约束。
 - **目录 watch**：SignalR Hub 推送目录变化（`FileSystemWatcher` → Hub → Client 刷新）。
-- **大文件流式**：分块上传/断点续传（替代当前一次性 `multipart/form-data`）。
+- **大文件流式**：分块上传/断点续传，设计与实现规格见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md)。已实现：声明长度 ≤ 4 MiB 的文件仍走单发 `multipart/form-data`；更大的走分块会话（`POST/PATCH/GET /api/v1.0/files/uploads`），只发送尚未确认的字节，失败/重启后从服务端权威偏移继续。上传通道使用独立的 `HttpClient`（不缓冲正文、整请求无超时、由 60 秒分片停滞看门狗负责），因此不再受客户端整包缓冲、整请求超时与服务端请求体上限的三重限制。反向代理需要放宽 `/api/v1.0/files/uploads` 前缀的请求体与超时，见 [`deployment/README.md`](../../deployment/README.md)。
 - **配置持久化**：Jaya `PaneConfigModel` / `ToolbarConfigModel` / `ApplicationConfigModel` 本地保存（保留 Newtonsoft 序列化）。
 - **快速访问**：Windows File Explorer 的"快速访问"（Quick Access）需要持久化最近访问记录 + 用户固定项，当前"主目录"组节点仅枚举标准特殊位置，不含最近访问；后续接入。
 

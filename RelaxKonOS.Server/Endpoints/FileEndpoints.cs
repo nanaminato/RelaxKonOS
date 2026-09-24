@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http.Features;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.Storage;
@@ -373,19 +375,45 @@ public static class FileEndpoints
         .RequireAuthorization(FileAuthorizationPolicies.Manage)
         .WithTags("Files");
 
-        // POST upload?path=
+        // POST upload?path= — the small-file fast path. Its ceiling is declared here rather than inherited
+        // from Kestrel's 30 MB default and the form reader's 128 MiB default, so a client that overruns it
+        // gets a named answer instead of an opaque 413 from an unrelated layer.
         app.MapPost(FileApiRoutes.Upload, async (HttpContext ctx, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations) =>
         {
             var path = ctx.Request.Query["path"].ToString();
             if (string.IsNullOrWhiteSpace(path))
                 return Problem(400, "invalid-input", "输入无效", "query path 不能为空");
+            if (ctx.Request.ContentLength is { } declared && declared > FileUploadProtocol.SingleShotMaximumBytes)
+                return Problem(413, FileUploadProblemCodes.TooLargeForSingleShot, "文件过大",
+                    $"单发上传上限为 {FileUploadProtocol.SingleShotMaximumBytes} 字节，更大的文件请使用分块上传会话。");
+            if (ctx.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+                limit.MaxRequestBodySize = FileUploadProtocol.SingleShotMaximumBytes;
             if (!ctx.Request.HasFormContentType)
                 return Problem(415, "unsupported-media-type", "不支持的媒体类型", "需 multipart/form-data");
 
-            var form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
+            IFormCollection form;
+            try
+            {
+                form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
+            }
+            catch (InvalidDataException)
+            {
+                return Problem(413, FileUploadProblemCodes.TooLargeForSingleShot, "文件过大",
+                    $"单发上传上限为 {FileUploadProtocol.SingleShotMaximumBytes} 字节，更大的文件请使用分块上传会话。");
+            }
+            catch (BadHttpRequestException badRequest) when (badRequest.StatusCode == StatusCodes.Status413PayloadTooLarge)
+            {
+                return Problem(413, FileUploadProblemCodes.TooLargeForSingleShot, "文件过大",
+                    $"单发上传上限为 {FileUploadProtocol.SingleShotMaximumBytes} 字节，更大的文件请使用分块上传会话。");
+            }
             var file = form.Files.FirstOrDefault();
             if (file is null || file.Length == 0)
                 return Problem(400, "invalid-input", "输入无效", "未提供文件");
+            // The name reaches Path.Combine, so it must be one component and nothing else. Renaming it
+            // silently would leave the user unable to find the file they just uploaded.
+            if (!FileUploadNamePolicy.IsValidFileName(file.FileName))
+                return Problem(400, FileUploadProblemCodes.InvalidFileName, "文件名无效",
+                    $"文件名必须是单一成分: {FileUploadNamePolicy.DescribeForLog(file.FileName)}");
 
             try
             {
@@ -414,11 +442,98 @@ public static class FileEndpoints
         .RequireAuthorization(FileAuthorizationPolicies.Write)
         .WithTags("Files");
 
+        // ---- Resumable upload sessions --------------------------------------------------------------
+        // The data plane for large files. A chunk is raw bytes, so the request body is never buffered as a
+        // form and never read into a byte[]; the server streams it into the staging file at the offset the
+        // client declares, and only then confirms that offset.
+
+        // POST uploads — open a session.
+        app.MapPost(FileApiRoutes.Uploads, async (CreateUploadRequest req, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
+        {
+            try
+            {
+                var dto = await sessions.CreateAsync(ctx.User, req, ctx.Request.Headers[FileUploadProtocol.IdempotencyKeyHeader].ToString(), ct);
+                ctx.Response.Headers[FileUploadProtocol.OffsetHeader] = dto.Offset.ToString(CultureInfo.InvariantCulture);
+                return Results.Created($"{FileApiRoutes.Uploads}/{dto.UploadId}", dto);
+            }
+            catch (UploadSessionException ex) { return UploadProblem(ctx, ex); }
+        })
+        .RequireAuthorization(FileAuthorizationPolicies.Write)
+        .WithTags("Files");
+
+        // GET uploads/{uploadId} — the authoritative offset, and the only way to resolve doubt.
+        app.MapGet(FileApiRoutes.UploadPattern, (string uploadId, HttpContext ctx, UploadSessionService sessions) =>
+        {
+            try { return Results.Ok(sessions.Get(ctx.User, uploadId)); }
+            catch (UploadSessionException ex) { return UploadProblem(ctx, ex); }
+        })
+        .RequireAuthorization(FileAuthorizationPolicies.List)
+        .WithTags("Files");
+
+        // PATCH uploads/{uploadId} — append one chunk of raw bytes.
+        app.MapPatch(FileApiRoutes.UploadChunkPattern, async (string uploadId, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
+        {
+            // Declared for the same reason as the single-shot ceiling: the largest legal chunk must be
+            // reachable, and anything larger must be rejected by name.
+            if (ctx.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+                limit.MaxRequestBodySize = FileUploadProtocol.DefaultChunkSize + 65_536;
+            var offset = long.TryParse(ctx.Request.Headers[FileUploadProtocol.OffsetHeader].ToString(),
+                NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : (long?)null;
+            try
+            {
+                var newOffset = await sessions.AppendAsync(ctx.User, uploadId, offset, ctx.Request.ContentLength, ctx.Request.Body, ct);
+                ctx.Response.Headers[FileUploadProtocol.OffsetHeader] = newOffset.ToString(CultureInfo.InvariantCulture);
+                return Results.NoContent();
+            }
+            catch (UploadSessionException ex) { return UploadProblem(ctx, ex); }
+        })
+        .RequireAuthorization(FileAuthorizationPolicies.Write)
+        .WithTags("Files");
+
+        // POST uploads/{uploadId}/commit — the only step that creates or replaces the destination file.
+        app.MapPost(FileApiRoutes.UploadCommitPattern, async (string uploadId, CommitUploadRequest? req, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
+        {
+            try
+            {
+                var dto = await sessions.CommitAsync(ctx.User, uploadId, req?.ContentHash, ct);
+                return Results.Created(GetInfoLocation(dto.Path), dto);
+            }
+            catch (UploadSessionException ex) { return UploadProblem(ctx, ex); }
+        })
+        .RequireAuthorization(FileAuthorizationPolicies.Write)
+        .WithTags("Files");
+
+        // DELETE uploads/{uploadId} — abandon. Always 204: the caller's goal is "it is not there".
+        app.MapDelete(FileApiRoutes.UploadPattern, async (string uploadId, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
+        {
+            await sessions.AbortAsync(ctx.User, uploadId, ct);
+            return Results.NoContent();
+        })
+        .RequireAuthorization(FileAuthorizationPolicies.Write)
+        .WithTags("Files");
+
         return app;
     }
 
     private static IResult Problem(int status, string typeSuffix, string title, string detail)
         => Results.Problem(detail: detail, statusCode: status, title: title, type: ProblemBase + typeSuffix);
+
+    /// <summary>
+    /// Renders an upload-session refusal. The two "resynchronise and continue" answers travel with the
+    /// authoritative offset in a header, so a client never needs a second round trip to learn where to
+    /// resume; the problem code is present as both the <c>type</c> suffix and the <c>problemCode</c>
+    /// extension, which is how every RelaxKonOS client reads a stable code.
+    /// </summary>
+    private static IResult UploadProblem(HttpContext ctx, UploadSessionException exception)
+    {
+        if (exception.AuthoritativeOffset is { } offset)
+            ctx.Response.Headers[FileUploadProtocol.OffsetHeader] = offset.ToString(CultureInfo.InvariantCulture);
+        if (exception.StatusCode == StatusCodes.Status429TooManyRequests)
+            ctx.Response.Headers.RetryAfter = "30";
+        return Results.Problem(detail: exception.Message, statusCode: exception.StatusCode, title: exception.ProblemCode,
+            type: ProblemBase + exception.ProblemCode,
+            extensions: new Dictionary<string, object?> { ["problemCode"] = exception.ProblemCode });
+    }
 
     /// <summary>Renders the small copy of an image, or says that this file has none to give.</summary>
     private static IResult Thumbnail(Stream source, int maxEdge, string path)

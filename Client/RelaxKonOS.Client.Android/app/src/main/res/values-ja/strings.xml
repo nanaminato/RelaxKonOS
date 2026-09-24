@@ -181,10 +181,30 @@
     <string name="files_moving">移動中</string>
     <string name="files_uploaded">%1$s をアップロードしました</string>
     <string name="files_upload_unreadable">選択したファイルを読み取れませんでした。</string>
+    <string name="files_upload_needs_folder">アップロード先のフォルダーを開いてください。</string>
     <string name="files_downloaded">%1$s に保存しました</string>
     <string name="files_download_failed">端末に保存できませんでした。</string>
     <string name="files_download_default_name">ダウンロード</string>
     <string name="files_upload_default_name">アップロード</string>
+    <!-- 分割アップロード：準備と完了処理は独立した段階で、進捗バーの一部にはしない。 -->
+    <string name="files_upload_preparing">準備中…</string>
+    <string name="files_upload_committing">完了処理中…</string>
+    <string name="files_upload_reconciling">サーバーと進捗を確認しています…</string>
+    <string name="files_upload_channel">アップロード</string>
+    <string name="files_upload_progress">%1$s / %2$s</string>
+    <string name="files_upload_resumable">未完了のアップロード</string>
+    <string name="files_upload_resume">再開</string>
+    <string name="files_upload_discard">破棄</string>
+    <!-- 失敗の文言はユーザーが取れる行動として書き、I/O の生メッセージは出さない。 -->
+    <string name="files_upload_failed_network">ネットワークが中断しました。進捗は保持されているため再開できます。</string>
+    <string name="files_upload_failed_server_storage">サーバーの空き容量が不足しています。</string>
+    <string name="files_upload_failed_local_cache">端末の空き容量が不足しているため、ファイルを準備できません。</string>
+    <string name="files_upload_failed_source_changed">送信中にファイルが変更されました。最初からやり直してください。</string>
+    <string name="files_upload_failed_source_unreadable">選択したファイルを読み取れません。選び直してください。</string>
+    <string name="files_upload_failed_elevation">このフォルダーには管理者パスワードが必要です。</string>
+    <string name="files_upload_failed_name">サーバーではこのファイル名を使用できません。名前を変更して再試行してください。</string>
+    <string name="files_upload_failed_session">アップロードセッションが拒否されました。再ログインして再試行してください。</string>
+    <string name="files_upload_failed_server">サーバーがアップロードを拒否しました。</string>
     <string name="files_detail_title">プロパティ</string>
     <string name="files_preview_title">プレビュー</string>
     <string name="files_preview_open">開く</string>

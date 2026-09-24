@@ -71,6 +71,7 @@
         "explorer.status.uploading_folders": "Uploading folders…",
         "explorer.status.no_uploadable_files": "The selected items contain no uploadable files.",
         "explorer.status.uploading_item": "Uploading {0} ({1}/{2})…",
+        "explorer.status.upload_reconciling": "Checking {0}'s progress with the server ({1}/{2})…",
         "explorer.status.creating_folder": "Creating {0} ({1}/{2})…",
         "explorer.status.upload_completed": "Uploaded {0} file(s).",
         "explorer.status.upload_completed_with_folders": "Uploaded {0} file(s) and {1} folder(s).",

@@ -166,6 +166,17 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | POST   | `/api/v1.0/files/move`        | `MoveRequest`                       | `FileSystemEntryDto`               | JWT |
 | POST   | `/api/v1.0/files/copy`        | `CopyRequest`                       | `FileSystemEntryDto`               | JWT |
 | POST   | `/api/v1.0/files/upload`      | query: `path` + multipart/form-data | `FileEntryDto`                     | JWT |
+| POST   | `/api/v1.0/files/uploads`     | `CreateUploadRequest` + 头 `Idempotency-Key` | `UploadSessionDto`（201）            | JWT |
+| GET    | `/api/v1.0/files/uploads/{uploadId}` | —                             | `UploadSessionDto`                 | JWT |
+| PATCH  | `/api/v1.0/files/uploads/{uploadId}` | 头 `Upload-Offset`、`Content-Length`；体为原始字节 | 204 + 头 `Upload-Offset`            | JWT |
+| DELETE | `/api/v1.0/files/uploads/{uploadId}` | —                             | 204                                | JWT |
+| POST   | `/api/v1.0/files/uploads/{uploadId}/commit` | `CommitUploadRequest`      | `FileEntryDto`（201）                | JWT |
+
+`files/upload` 是**小文件快路径**（服务端显式声明请求体上限 16 MiB，超限 `413` + `upload-too-large-for-single-shot`，
+客户端只在声明长度 ≤ 4 MiB 时使用）；大文件走可续传的分块会话 `files/uploads*`，`Upload-Offset` 是"服务端到底收到多少"
+的唯一权威（任何疑问都用 `GET` 询问，绝不用本地估计代替）。完整的偏移规则、问题码、幂等语义、暂存与提交方式、
+提权如何固定在会话级，以及反向代理必须放宽的项，见
+[`RelaxKonOS.FileUpload.Design.md`](./RelaxKonOS.FileUpload.Design.md)。
 
 缩略图（`files/thumbnail`）不是原图的替代品，而是「原图还在路上时先给一张认得出的图」：渲染在
 `ImageThumbnailRenderer`，响应体为 `image/jpeg`（含 alpha 通道时改用 `image/png`），`maxEdge` 越界返回

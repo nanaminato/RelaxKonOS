@@ -118,6 +118,31 @@ public static class Bootstrapper
         });
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.IRemoteFileClipboard, RelaxKonOS.Client.Apps.Explorer.RemoteFileClipboard>();
 
+        // 大文件上传数据面：独立 HttpClient，不经 AuthenticatedHttpHandler（它会为 401 重放而整包缓冲正文）。
+        // 整请求超时关闭（一个分片在慢链路上合法地耗时数分钟），停滞由编排器的分片看门狗负责；
+        // 401 原样返回给编排器：分块协议靠重新读取偏移续传，不需要正文副本。
+        services.AddTransient<RelaxKonOS.Client.Services.Auth.UploadAuthenticationHandler>();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.Explorer.Uploads.IExplorerUploadChannel,
+                RelaxKonOS.Client.Apps.Explorer.Uploads.ExplorerUploadChannel>(http => http.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                ConnectTimeout = TimeSpan.FromSeconds(15),
+                AllowAutoRedirect = false,
+            })
+            .AddHttpMessageHandler<RelaxKonOS.Client.Services.Auth.UploadAuthenticationHandler>()
+            .AddHttpMessageHandler<AcceptLanguageHandler>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.Uploads.UploadResumeJournal>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.Uploads.ILargeFileUploader>(sp =>
+        {
+            var session = sp.GetRequiredService<IAuthSession>();
+            return new RelaxKonOS.Client.Apps.Explorer.Uploads.LargeFileUploader(
+                sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.Uploads.IExplorerUploadChannel>(),
+                sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.Uploads.UploadResumeJournal>(),
+                // 与 ExplorerOperationCenter.SessionKey 同口径：换服务器/账号/工作区/设备后不得拿旧日志去续传。
+                () => session.State == AuthSessionState.Authenticated
+                    ? $"{session.ServerUrl}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null);
+        });
+
         // Browser（浏览器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。
         // NativeWebView 用平台原生引擎（Win=WebView2/macOS=WKWebView/Linux=WebKitGTK），网页内容走客户端网络；
         // Server 仅持久化书签与历史记录（按用户隔离）。

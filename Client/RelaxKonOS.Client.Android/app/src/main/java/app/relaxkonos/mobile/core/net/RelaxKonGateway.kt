@@ -74,6 +74,59 @@ interface RelaxKonGateway {
         onProgress: ((Long) -> Unit)? = null,
     ): ApiResult<Unit>
 
+    /**
+     * Opens a resumable session for one file of [length] bytes.
+     *
+     * [idempotencyKey] is not optional: creating a session is the one step that allocates a staging
+     * file on the server, so a retry after a lost response must return the same session rather than
+     * leak a second one. The server rejects a request that arrives without one.
+     *
+     * A protected destination answers `elevation-required` here and only here, which is what keeps the
+     * authorization dialog from appearing in the middle of a transfer.
+     */
+    suspend fun createUploadSession(
+        serverUrl: String,
+        accessToken: String,
+        targetDirectoryPath: String,
+        fileName: String,
+        length: Long,
+        lastModifiedMillis: Long?,
+        idempotencyKey: String,
+    ): ApiResult<UploadSession>
+
+    /** Reads the authoritative offset of [uploadId]. The only way to resolve any doubt about what arrived. */
+    suspend fun uploadSession(serverUrl: String, accessToken: String, uploadId: String): ApiResult<UploadSession>
+
+    /**
+     * Sends exactly [chunkLength] bytes read from [source] as the chunk at [offset].
+     *
+     * [onInFlight] reports bytes handed to the socket, which the caller turns into a progress estimate.
+     * The chunk is streamed: nothing here holds a whole chunk in memory on the transport's behalf.
+     */
+    suspend fun sendUploadChunk(
+        serverUrl: String,
+        accessToken: String,
+        uploadId: String,
+        offset: Long,
+        chunkLength: Long,
+        source: InputStream,
+        onInFlight: ((Long) -> Unit)? = null,
+    ): UploadChunkResult
+
+    /**
+     * Publishes a fully received session as the destination file. The only step that creates or
+     * replaces anything the user can see: a session that was never committed leaves no trace.
+     */
+    suspend fun commitUpload(
+        serverUrl: String,
+        accessToken: String,
+        uploadId: String,
+        contentHash: String? = null,
+    ): ApiResult<Unit>
+
+    /** Abandons a session. Always reported as success when the session is already gone. */
+    suspend fun abortUpload(serverUrl: String, accessToken: String, uploadId: String): ApiResult<Unit>
+
     suspend fun performanceSnapshot(serverUrl: String, accessToken: String): ApiResult<PerformanceSnapshot>
 
     suspend fun queryProcesses(

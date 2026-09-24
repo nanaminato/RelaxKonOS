@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.ui.common
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +32,11 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  *
  * The surface is raised above the page rather than outlined like [SectionCard]: this one genuinely
  * floats over a list the user can keep scrolling, so it has to separate from a busy background.
+ *
+ * [footnote] carries a second line under the bar — the byte counter for a transfer, or the reason one
+ * stopped. [actions] is for the case where the transfer is no longer running and the only useful
+ * controls are the ones that decide its fate, such as "continue" and "discard"; a running transfer
+ * offers [onCancel] and nothing else, because there is nothing else to decide yet.
  */
 @Composable
 fun ProgressSheet(
@@ -41,6 +47,8 @@ fun ProgressSheet(
     onCollapsedChange: (Boolean) -> Unit,
     onCancel: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    footnote: String? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -74,6 +82,21 @@ fun ProgressSheet(
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 } else {
                     LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                }
+                if (footnote != null) {
+                    Text(
+                        footnote,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (!collapsed && actions != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    actions()
                 }
             }
         }
