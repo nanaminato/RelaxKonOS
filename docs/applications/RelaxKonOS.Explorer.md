@@ -144,6 +144,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 | `GET /files/list?path=` | `string? path`（空=盘符根） | `DirectoryDto` | `not-found` / `access-denied` / `invalid-path` |
 | `GET /files/info?path=` | `string path` | `FileSystemEntryDto`（404 if 缺） | `not-found` / `access-denied` |
 | `GET /files/download?path=` | `string path` | `Results.File(stream, contentType, fileName)` | `not-found` / `access-denied` |
+| `GET /files/thumbnail?path=&maxEdge=` | `string path`、`int? maxEdge`（16–1024，缺省 256） | `Results.File(bytes, "image/jpeg")`（含 alpha 通道时 `image/png`） | `not-found` / `access-denied` / `invalid-path` / `invalid-size`(400) / `thumbnail-unsupported`(415) |
 | `GET /files/content?path=` | `string path` | 原始文件字节流 | `not-found` / `access-denied` / `invalid-path` |
 | `PUT /files/content?path=` | `string path` + 请求体字节流 | `FileEntryDto` | `not-found` / `access-denied` / `io-error` / `invalid-path` |
 | `GET /files/properties?path=` | `string path` | `FilePropertiesDto`（404 if 缺） | `not-found` / `access-denied` / `invalid-path` |

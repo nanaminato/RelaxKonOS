@@ -3,10 +3,10 @@ package app.relaxkonos.mobile.data
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DirectoryListing
+import app.relaxkonos.mobile.core.net.DownloadSink
 import app.relaxkonos.mobile.core.net.FileElevationCapabilities
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
-import java.io.File
 import java.io.InputStream
 
 /**
@@ -89,10 +89,16 @@ class FilesRepository(
         gateway.upload(serverUrl, accessToken, targetDirectoryPath, fileName, source, contentLength, onProgress)
     }
 
-    /** Downloads into [target]. The server grants read access to the file's own path. */
+    /**
+     * Streams one remote file into [target]. The server grants read access to the file's own path.
+     *
+     * The destination is opened by the transport only after the request succeeds, and committing or
+     * discarding it stays with the caller: a transfer that the server refuses must not leave a file
+     * behind (`DownloadTarget`).
+     */
     suspend fun download(
         path: String,
-        target: File,
+        target: DownloadSink,
         provider: ElevationAnswerProvider,
         onProgress: ((writtenBytes: Long, totalBytes: Long?) -> Unit)? = null,
     ): ApiResult<Long> =
@@ -101,6 +107,25 @@ class FilesRepository(
             capability = FileElevationCapabilities.READ,
             provider = provider,
         ) { serverUrl, accessToken -> gateway.download(serverUrl, accessToken, path, target, onProgress) }
+
+    /**
+     * Fetches the server's small rendering of one image.
+     *
+     * It asks for the same capability a download does, because it reads the same bytes: a protected
+     * file answers `elevation-required` here exactly as it would there, and going through the same
+     * coordinator means a caller that has already declined is not asked a second time for the same
+     * picture.
+     */
+    suspend fun thumbnail(
+        path: String,
+        maxEdge: Int,
+        provider: ElevationAnswerProvider,
+    ): ApiResult<ByteArray> =
+        elevations.withPathElevation(
+            path = path,
+            capability = FileElevationCapabilities.READ,
+            provider = provider,
+        ) { serverUrl, accessToken -> gateway.thumbnail(serverUrl, accessToken, path, maxEdge) }
 
     /** The parent directory of a canonical path, used to scope grants for newly created entries. */
     internal fun parentOf(path: String): String {

@@ -31,7 +31,7 @@
 - 文本全部走 Android resource（`values`、`values-zh`、`values-ja`），无用户可见字符串字面量；方向使用 `start`/`end`。
 - 终端入口（`TopDestination.Terminal`）标记为未实现，因此不出现在导航中——设计 §8 禁止"不可用入口"。
 - 文件上传使用 Android Storage Access Framework 的单个文档流，不申请宽泛的存储权限；上传和下载均显示
-  已传输字节进度并可取消。下载保留于私有缓存，完成后只通过短时 `FileProvider` URI 交给系统打开/分享面板。
+  已传输字节进度并可取消。**下载已改为直接落盘**，见下节；不再经过私有缓存与分享面板。
 - 复制和移动会将提权范围限定为源与目标目录；Windows 驱动器根路径（例如 `C:\\`）在向上导航、创建目录
   与提权时保持正确的根分隔符。文件详情与列表共享操作对话框，手机详情页不再出现无响应的操作按钮。
 - Expanded 首页现在显示本次进程内成功完成的文件与进程操作；记录最多 20 条，且不会落盘或包含密码、令牌、
@@ -156,6 +156,96 @@ release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、�
 产物 `app/build/outputs/apk/debug/app-debug.apk` 14.4 MB。**根因修复与兜底逻辑尚未真机复现**：
 需要在「旧 APK 直接覆盖安装」的机器上确认登录不再被地址探测拦截，并在无锁屏设备上确认明文兜底可用。
 
+## 文件传输落盘与回执归属（2026-09-24）
+
+**用户报告**：小屏（Compact/Medium）上点「下载」不立即生效，按下返回键之后才生效；平板端（Expanded）能生效但弹的是
+分享面板，文件并没有落到本机目录。
+
+**根因有两层，缺一不可**：
+
+1. **动作由界面托管，而不是由状态托管。** 下载完成后的投递写成 `FilesScreen` 内的
+   `LaunchedEffect(viewModel.downloadReady)`，而 Compact/Medium 的文件详情是**压栈页**——点开文件后 `FilesScreen`
+   已不在组合中，`LaunchedEffect` 自然不会跑；等用户返回、列表重新入栈时它才以当时的非空 `downloadReady` 触发，
+   于是表现成「按返回键才生效」。**同一个缺陷还吞掉了另外两样东西**：`ProgressSheet`（进度卡）与 `ErrorBanner`
+   （错误横幅）此前也只在 `FilesScreen` 里渲染，所以详情页上启动的传输**全程没有任何进度或失败提示**。
+2. **投递目标本身就是错的。** 下载只写进私有 `cacheDir`，完成后再用 `FileProvider` 交给分享面板——文件从未进入
+   本机存储，用户必须为每个文件在系统面板里挑一次目标。
+
+**修复**：
+
+- **落盘**：新增 `data/DownloadStore.kt`（`DownloadTarget` = `open` / `commit` / `discard`）。API 29+ 经 `MediaStore`
+  写入共享的 `Download/RelaxKonOS`：无权限、无对话框，文件名冲突由 MediaStore 追加计数解决，写入前 `IS_PENDING=1`，
+  `commit()` 清零后才对全设备可见；失败或取消则 `discard()` 删除，不留半截文件（旧实现会留下残包）。API 23–28
+  没有无权限的公共下载目录写入路径，落入应用自身的外部 `Download` 目录——这不是降级为缓存，而是本机共享存储上
+  用户可删的真实文件；应用内文案始终报出实际落盘位置。
+- **传输层不再认识「文件」**：`RelaxKonGateway.download` 的目标参数由 `java.io.File` 改为 `core/net` 的
+  `fun interface DownloadSink`，`RelaxKonApi` 只在响应码通过后才 `sink.open()`——被拒绝的下载不会创建任何文件。
+- **回执归属移出页面**：新增 `FileMessageBanner` 与 `FileTransferCard`，由 `MobileNavHost.FilesDestination`（三种
+  布局、两条 files 路由都在组合中）渲染；`ProgressSheet` 与 `ErrorBanner` 从 `FilesScreen` 移除。
+- **上传两处修正**：目录在协程启动前取定，上传途中导航不会把文件投到别的目录；文档名、大小与流都在
+  `Dispatchers.IO` 上取——云端文档的 `query` 要几百毫秒、`openFile` 可能数秒，旧实现是主线程同步调用。名称与大小
+  取自一次 `OpenableColumns` 查询（`DISPLAY_NAME` + `SIZE`），失败才回落 `AssetFileDescriptor.length`。
+- **回执语气**：`UiMessage` 增加 `tone`（默认 `Danger`），`ErrorBanner` 接受同一 tone 取色。下载/上传/新建目录的
+  成功回执改用 `StatusTone.Success`——旧实现把「已上传 x」显示在红色错误横幅里。
+- **删除**：`FileProvider` 声明、`res/xml/file_paths.xml` 与 `files_share_download` 文案随分享面板一并移除；
+  应用不再需要任何文件分享 URI。三份 `strings.xml` 各删 1 键、增 4 键（`files_downloaded`、
+  `files_download_failed`、`files_download_default_name`、`files_upload_unreadable`），现 288 键且键集一致。
+
+**未做真机验证**：`MediaStore` 落盘、`Download/RelaxKonOS` 的可见性与重名追加计数需要在真机上确认一次。
+
+## 图片预览与预览缓存（2026-09-24）
+
+- **选中图片即显示**：详情页在属性卡片上方增加「预览」卡片。是否可预览由文件名扩展名判定，名字没有可用扩展名时才看服务端
+  推断的 `mimeType`；`image/svg+xml`、`image/tiff`、`image/x-icon` 被显式排除——平台本来就解不出来，把它们算作图片
+  只会让应用自己刚承诺可预览的文件立刻报「无法显示」。目录永不预览。
+- **字节进缓存而非 Downloads**：新增 `data/ImagePreviewCache.kt`，图片流写进 `cacheDir/previews`。键是
+  `服务器 + 远端路径 + 大小 + 修改时间` 的 SHA-1：远端路径本身不能当文件名（Windows 路径含 `\` 与 `:`），而改动过的
+  文件必须换键，否则会把旧图当新图给用户看。复用前校验文件长度等于服务端报告的大小，因此崩溃或中断留下的半截文件不会
+  成为命中（重命名做不到这件事——它分不清完整与截断）。容量上限 64 MB，`trim` 按最久未查看淘汰。
+- **两次解码的阶梯**：新增 `data/ImageDecoder.kt`。第一趟只解码 96 px 见方并立即上屏（再大的照片也几乎不耗时），
+  第二趟按当前显示框的像素尺寸重新解码并替换。降采样倍率由纯函数 `previewSampleSize` 决定，先保证「不小于显示框」
+  （观感），再用 400 万像素上限兜底（内存：4000×3000 的 `ARGB_8888` 是 48 MB；50000×50000 的 25 亿像素还会让
+  `Int` 乘积溢出成负数，所以这条比较在 `Long` 上做）。EXIF 方向在解码器里应用，竖拍照片不会横躺。
+- **显示框由界面上报**：卡片与全屏查看器各自用 `BoxWithConstraints` 量出自己的像素尺寸交给 ViewModel。质量在一次
+  选中内只升不降——打开查看器只对**已缓存**的文件重新解码到屏幕尺寸（不产生第二次传输），关闭不会把刚解出的图降回去。
+- **代次守卫**：取消一个协程不等于停住它——取消下载不会中断阻塞读，旧任务仍会写完并走到收尾。因此每次新选中都递增
+  `previewGeneration`，旧任务对 `preview`、缓存与磁盘的每一次写入都以「我的代次仍是当前的」为前提；过期的任务只留下
+  一个长度不符的文件，而长度校验会把它当作未命中。
+- **预览不自动提权**：`ElevationAnswerProvider.Declines`（加在 `ElevationRepository.kt`）给出的答案与「用户关掉对话框」
+  完全相同——`null`，于是 `withPathElevation` 原样返回服务端的拒绝。选中受保护文件得到的是「读取该文件需要管理员密码」
+  与「授权并预览」，只有点击才弹管理员密码提示。
+- 详情页内容改为可滚动：预览加在原属性卡之上后，手机横屏会超出窗口；标题栏留在滚动区之外，返回入口不会滚走。
+- 新增 7 个字符串键（`files_preview_title/open/loading/progress/failed/elevation/authorize`），三份 `strings.xml`
+  现 295 键且键集一致。
+
+## 服务端缩略图（2026-09-24）
+
+- **为什么加它**：此前的「先缩略图」省的只是**解码时间**——图片仍是一次完整请求，第二次点同一张图才命中缓存。
+  要让大图与慢链路上的**传输本身**渐进，只能让服务端先给一张小图。新增
+  `GET /api/v1.0/files/thumbnail?path=&maxEdge=`（路由常量 `FileApiRoutes.Thumbnail`；`maxEdge` 缺省 256、允许
+  16–1024、越界 400 `invalid-size`）。
+- **渲染**：新增 `RelaxKonOS.Server/Files/ImageThumbnailRenderer.cs`。先 `Image.Identify` 读头，声明像素数超过 6400 万
+  直接拒绝（解压炸弹在读第一个像素之前就被挡下）；解码只取一帧（`DecoderOptions.MaxFrames = 1`，否则一张动图会按
+  帧数放大内存）；EXIF 方向在缩放前应用；缩放用 `ResizeMode.Max` + Lanczos3，小图不放大。输出格式跟着**像素**走
+  而不是容器：`CloneAs<Rgba32>()` + `ProcessPixelRows` 逐像素扫描 alpha，有透明像素出 PNG，否则出 JPEG(q85)。
+  **这一条踩过坑**：`image.PixelType.AlphaRepresentation` 对同一张透明 PNG 报 `bpp=32 alpha=[]`（编码侧不声明 alpha），
+  据此判断会把透明图当 JPEG 输出、透明区域直接丢成黑底，因此改为按像素扫描。并发上限
+  `MaxDegreeOfParallelism = min(4, CPU)`，几个缩略图请求占不满一个宿主。
+- **不是错误的错误码**：内容不是本服务能解码的图像时返回 415 `thumbnail-unsupported`，客户端读作「没有缩略图」并
+  照旧拉原图（`ProblemCodes.THUMBNAIL_UNSUPPORTED`）。受保护路径与 `download` 完全同构：`elevation-required` → 提权后重试。
+- **客户端**：`RelaxKonGateway.thumbnail(...): ApiResult<ByteArray>`——唯一归宿是内存，因此不是 `DownloadSink`；
+  `RelaxKonApi` 把它与 `download` 共用的传输逻辑抽成 `streamInto(route, query, sink, onProgress)`，
+  `FilesRepository.thumbnail` 走同一个 `withPathElevation`，因此与下载**同权限、同范围**（文件自身路径，不扩大到目录）。
+  `FilesViewModel` 在确认没有缓存命中后**并行**发起预取（`prefetchThumbnail`，`ElevationAnswerProvider.Declines`，
+  永不等待、永不弹窗）：到货即画在进度条下方（`ImagePreview.Downloading.thumbnail`），原图落地后再充当详细图解码的
+  占位，省掉本地那趟 96 px 解码。代次守卫沿用既有规则——过期、或已经进入 `Ready` 的缩略图一律丢弃，绝不把已解码的
+  照片换回小图。
+- **许可判定**：`SixLabors.ImageSharp` 3.1.12。Six Labors Split License v1.0 第 2 条把「用于 Open Source 或
+  Source-Available 许可的软件」划入 **Apache-2.0** 分支，本项目即 Source-Available，故可用；3.1.x 是首个提供
+  `DecoderOptions.MaxFrames` 的稳定线，纯托管、无原生依赖。判定依据已写进 `THIRD_PARTY_NOTICES.md` 与
+  `Directory.Packages.props`。
+- 客户端未新增字符串键（复用预览既有文案），三份 `strings.xml` 仍 295 键且键集一致。
+
 ## 已知限制
 
 - 连接保险箱的密码被服务端拒绝时**不**删除（§7.3）。代价是：用户已在服务端改密后，本机那条旧密码会一直失败，直到手动输入新密码并在成功后保存覆盖它。这是有意选择——删除只在用户显式「忘记密码」或「删除登录记录」时发生。
@@ -227,6 +317,45 @@ release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、�
   `LayoutStateTest` 4、`TopDestinationTest` 4、`ServerEndpointDiscoveryTest` 3、`VaultDiagnosticsTest` 3、
   `FilesRepositoryTest` 3、`RecentOperationJournalTest` 1。
 - 产物 `app/build/outputs/apk/debug/app-debug.apk` 14.4 MB；三份 `strings.xml` 均为 285 键且键集一致。
+
+最近一次校验（2026-09-24，文件传输落盘与回执归属修复后）：
+
+- `:app:assembleDebug`、`:app:compileReleaseKotlin` 与 `:app:testDebugUnitTest --rerun-tasks` 均 BUILD SUCCESSFUL，
+  Kotlin 编译零警告。
+- 单测 22 个测试类、201 个用例，0 失败 / 0 错误 / 0 跳过：本轮新增 `DownloadStoreTest` 6（重名追加计数、扩展名
+  拆分、点文件、服务端名取末段路径）与 `FilesRepositoryTest` 的下载用例 1（sink 落字节 + 进度回调 + 不请求提权），
+  `FilesRepositoryTest` 由 3 增至 4。
+- 产物 `app/build/outputs/apk/debug/app-debug.apk` 14.4 MB；三份 `strings.xml` 均为 288 键且键集一致。
+- **尚未真机验证**：`MediaStore` 落盘后 `Download/RelaxKonOS` 在系统「文件 / 下载」中的可见性、重名追加计数的实际
+  文案，以及大屏与手机两端「点下载立即出现进度卡、完成后横幅报出落盘路径」。
+
+最近一次校验（2026-09-24，图片预览与预览缓存落地后）：
+
+- `:app:assembleDebug`、`:app:compileReleaseKotlin` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，Kotlin 编译零警告。
+- 单测 24 个测试类、230 个用例，0 失败 / 0 错误 / 0 跳过。本轮新增：
+  - `ImagePreviewCacheTest` 15：键对同一修订稳定、大小或修改时间变化即换键、不同服务器不同键、远端路径里的 `\` 与 `:`
+    不会进入文件名；长度不符、空文件不算命中，未报告长度但有字节仍算命中；超预算时按最久未用先淘汰且满足预算即停、
+    单个超过整个预算的条目被淘汰、`trim` 只删自己命名的文件（同目录下的其他文件不动）。
+  - `ImageDecoderTest` 14：比显示框小的图不放大、4000×3000 取 1/2、8000×6000 取 1/4、结果不小于显示框且再降一级就
+    小于显示框、全景图与 50000×50000 扫描图受 400 万像素上限约束、显示框或图片尺寸为 0 时退回原尺寸；扩展名与
+    `mimeType` 的判定优先级、宿主不可解码的图片类型被排除、目录永不预览。
+- 产物 `app/build/outputs/apk/debug/app-debug.apk` 14.4 MB；三份 `strings.xml` 均为 295 键且键集一致。
+- **尚未真机验证**：先缩略图后详细图的实际过渡观感与大图首次载入耗时、EXIF 方向（竖拍照片应正立）、
+  受保护路径的「授权并预览」只在点击后弹窗、预览缓存在 `cacheDir` 中的实际占用与淘汰效果。
+
+最近一次校验（2026-09-24，服务端缩略图落地后）：
+
+- 服务端：`dotnet build RelaxKonOS.Server.Tests` 成功；`RelaxKonOS.Server.Tests.exe --thumbnails-only` 22 条
+  `PASS THUMBNAILS:` 全绿，全量序列（已在 `FileServiceChecks` 之后插入 `ImageThumbnailChecks.Run`）以
+  `RelaxKonOS.Server backend verification passed.` 结束。
+- 客户端：`:app:assembleDebug`、`:app:compileReleaseKotlin` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，
+  Kotlin 编译零警告；单测 24 个测试类、232 个用例，0 失败 / 0 错误 / 0 跳过。本轮 `FilesRepositoryTest` 由 4 增至 6：
+  透传 `maxEdge` 并回传字节而非字节数、受保护路径按**文件自身路径**以 `read` 提权一次后重试（范围不扩大到目录）。
+- 产物 `app/build/outputs/apk/debug/app-debug.apk` 14.5 MB。
+- **尚未真机验证**：320 px 小图放进 220 dp 卡片的实际观感（偏软就该调大）、`thumbnail-unsupported` 的回落路径、
+  受保护路径上「预取不弹窗、下载卡片才弹窗」、以及「小图先到 → 详细图替换」的过渡。
+- `ImageDecoder.decode(bytes)` 在 JVM 单测里无法覆盖（`BitmapFactory` 在测试运行时是 stub），只能真机验证或引入
+  影子实现，本轮没有为它造这个轮子。
 
 ## 后续步骤
 

@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.ui.nav
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -21,7 +22,9 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.files.FileDetailScreen
+import app.relaxkonos.mobile.ui.files.FileMessageBanner
 import app.relaxkonos.mobile.ui.files.FileOperationOverlays
+import app.relaxkonos.mobile.ui.files.FileTransferCard
 import app.relaxkonos.mobile.ui.files.FilesScreen
 import app.relaxkonos.mobile.ui.files.FilesViewModel
 import app.relaxkonos.mobile.ui.home.HomeScreen
@@ -74,19 +77,34 @@ fun MobileNavHost(
     }
 }
 
+/**
+ * The files destination.
+ *
+ * The layout switch happens inside the destination's own chrome, not around it: the message banner
+ * and the transfer card are owned here because a download or an upload outlives the page that started
+ * it. In the Compact and Medium layouts the list and the detail are alternate routes, so a banner or
+ * a progress card living in either one would be gone while the other is shown — which is exactly how
+ * a finished download ends up reported on the next navigation instead of when it finishes.
+ */
 @Composable
 private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutState) {
     val viewModel: FilesViewModel = viewModel()
     Box(Modifier.fillMaxSize()) {
-        if (layoutState == LayoutState.Expanded) {
-            Row(Modifier.fillMaxSize()) {
-                FilesScreen(viewModel, onOpenDetail = {}, modifier = Modifier.weight(1f))
-                FileDetailScreen(viewModel, onBack = null, modifier = Modifier.weight(1f))
+        Column(Modifier.fillMaxSize()) {
+            FileMessageBanner(viewModel)
+            Box(Modifier.weight(1f)) {
+                if (layoutState == LayoutState.Expanded) {
+                    Row(Modifier.fillMaxSize()) {
+                        FilesScreen(viewModel, onOpenDetail = {}, modifier = Modifier.weight(1f))
+                        FileDetailScreen(viewModel, onBack = null, modifier = Modifier.weight(1f))
+                    }
+                } else if (navigator.route == Routes.FILES_DETAIL) {
+                    FileDetailScreen(viewModel, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+                } else {
+                    FilesScreen(viewModel, onOpenDetail = { navigator.push(Routes.FILES_DETAIL) }, modifier = Modifier.fillMaxSize())
+                }
             }
-        } else if (navigator.route == Routes.FILES_DETAIL) {
-            FileDetailScreen(viewModel, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
-        } else {
-            FilesScreen(viewModel, onOpenDetail = { navigator.push(Routes.FILES_DETAIL) }, modifier = Modifier.fillMaxSize())
+            FileTransferCard(viewModel)
         }
         FileOperationOverlays(viewModel)
     }

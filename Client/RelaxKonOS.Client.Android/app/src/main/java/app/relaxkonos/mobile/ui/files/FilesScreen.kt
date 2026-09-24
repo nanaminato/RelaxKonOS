@@ -1,8 +1,8 @@
 package app.relaxkonos.mobile.ui.files
 
 import android.app.Application
-import android.content.Intent
 import android.database.Cursor
+import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -40,9 +42,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -51,10 +53,14 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DirectoryListing
+import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.core.net.RemoteEntry
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.data.DownloadTarget
+import app.relaxkonos.mobile.data.ElevationAnswerProvider
 import app.relaxkonos.mobile.data.RecentOperationKind
+import app.relaxkonos.mobile.data.isDecodableImage
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyState
 import app.relaxkonos.mobile.ui.common.ErrorBanner
@@ -64,21 +70,24 @@ import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ProgressSheet
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
+import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.text
+import app.relaxkonos.mobile.ui.common.withDebugDetail
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.io.File
-import androidx.core.content.FileProvider
+import java.io.InputStream
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** A long-running transfer the shell is showing progress for. */
 data class Transfer(
@@ -92,6 +101,34 @@ data class Transfer(
 }
 
 enum class TransferKind { Download, Upload, Move, Copy }
+
+/**
+ * The edge, in pixels, of the first decode of an image, done here on the file that has just landed.
+ *
+ * Small enough that the decode is free no matter how large the picture is, and large enough that the
+ * blur it shows is recognisably the picture rather than a smear of colours.
+ */
+private const val LOCAL_THUMBNAIL_EDGE_PX = 96
+
+/**
+ * The longest edge, in pixels, asked of the server for its own small copy of the picture.
+ *
+ * Larger than [LOCAL_THUMBNAIL_EDGE_PX] because this one arrives *instead of* the file rather than
+ * after it: it is the only thing on screen while a whole photograph is still transferring, and it is
+ * drawn in a box 220 dp tall — 320 px is that box on the densities phones actually have, near enough
+ * that the picture reads as itself, while the answer stays tens of kilobytes rather than megabytes.
+ * A local decode on top of it would add nothing.
+ */
+private const val SERVER_THUMBNAIL_EDGE_PX = 320
+
+/**
+ * The box a decode assumes before a screen has measured itself.
+ *
+ * Only ever used for the moment between selecting a file and the pane reporting its size, and rounded
+ * up on purpose: a decode for a box that turns out to be smaller is wasted memory, but one for a box
+ * that turns out to be larger is a visibly soft picture.
+ */
+private val DEFAULT_PREVIEW_BOX = IntSize(1080, 1080)
 
 /**
  * Files destination state.
@@ -136,13 +173,65 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     var transferTarget by mutableStateOf<TransferTarget?>(null)
         private set
 
-    var downloadReady by mutableStateOf<File?>(null)
-        private set
-
     var transfer by mutableStateOf<Transfer?>(null)
         private set
 
     private var transferJob: Job? = null
+
+    /** What the detail pane shows above the properties; see `ImagePreview`. */
+    var preview by mutableStateOf<ImagePreview>(ImagePreview.Hidden)
+        private set
+
+    /** Whether the full-screen viewer is open. It draws the same cached bytes at the screen's size. */
+    var viewerOpen by mutableStateOf(false)
+        private set
+
+    private var previewJob: Job? = null
+
+    /**
+     * The decode of a larger box, kept apart from [previewJob] because it never touches the network:
+     * cancelling it costs nothing, and it must not be able to cancel the transfer.
+     */
+    private var previewUpgradeJob: Job? = null
+
+    /**
+     * Bumped whenever a newer preview takes over the pane.
+     *
+     * A cancelled job is not a stopped job: cancelling a transfer does not interrupt a blocking read,
+     * so the old download keeps writing and reaches its epilogue afterwards. Every write a job makes —
+     * to [preview], to the cache, to the screen — is therefore guarded by "is my generation still the
+     * current one", which is what keeps the previous selection's image from landing on top of the new
+     * one's a moment after the user taps something else.
+     */
+    private var previewGeneration = 0
+
+    /** The cached file the current preview came from, once something has been decoded from it. */
+    private var previewFile: File? = null
+
+    /** The box the bitmap on screen was decoded for, so a larger box can be recognised as an upgrade. */
+    private var previewDecodedFor = IntSize.Zero
+
+    /** The box the next decode should use; reported by whatever is drawing the preview. */
+    private var previewBounds = DEFAULT_PREVIEW_BOX
+
+    /**
+     * The fetch of the server's small copy of the current picture, while one is running.
+     *
+     * It is kept apart from [previewJob] because nothing depends on it: it is never awaited, so
+     * cancelling it can never cancel a transfer, and a fetch that is still running when the picture
+     * itself arrives has simply outlived its usefulness.
+     */
+    private var thumbnailJob: Job? = null
+
+    /**
+     * The server's small copy of the current picture, once it has arrived.
+     *
+     * Held rather than used and dropped, because it is drawn twice: under the progress bar while the
+     * transfer runs, and afterwards as the placeholder the full decode sits behind. It also has to
+     * survive a race — a thumbnail that lands before the transfer has published its first byte must
+     * still be there when that byte is announced.
+     */
+    private var thumbnail: Bitmap? = null
 
     private var started = false
 
@@ -159,8 +248,8 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun open(nextPath: String) {
         path = nextPath
-        selected = null
-        properties = null
+        // Leaving a directory also leaves the entry the detail pane was describing, preview included.
+        select(null)
         reload()
     }
 
@@ -175,11 +264,30 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     val canGoUp: Boolean
         get() = path.isNotBlank() && container.files.navigationParentOf(path) != path
 
+    /**
+     * Shows the properties of [entry] — and, when it is an image, the image itself.
+     *
+     * The preview starts by itself: a user who taps a picture in a file list is asking to see it, and
+     * making them ask twice would be a worse answer than fetching it. What it will not do is ask for
+     * anything on its own — an image behind a path the account cannot read reports that it needs
+     * authorization instead of raising a password prompt nobody requested.
+     */
     fun select(entry: RemoteEntry?) {
+        // Whatever was loading belonged to the previous selection and is worthless now.
+        cancelPreview()
         selected = entry
         properties = null
-        if (entry != null) {
-            loadProperties(entry.path)
+        preview = ImagePreview.Hidden
+        previewFile = null
+        previewDecodedFor = IntSize.Zero
+        thumbnail = null
+        viewerOpen = false
+        if (entry == null) {
+            return
+        }
+        loadProperties(entry.path)
+        if (entry.isDecodableImage()) {
+            loadPreview(entry, authorize = false)
         }
     }
 
@@ -202,7 +310,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
             loading = true
             when (val result = container.files.createDirectory(target, container.elevationAnswers)) {
                 is ApiResult.Success -> {
-                    message = UiMessage(R.string.files_created, listOf(target))
+                    message = UiMessage(R.string.files_created, listOf(target), tone = StatusTone.Success)
                     container.recentOperations.record(RecentOperationKind.CreateDirectory, target)
                     reload()
                 }
@@ -307,16 +415,35 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Streams a remote file into private cache, then lets the screen hand it to Android's share sheet. */
+    /**
+     * Streams a remote file into this device's Downloads.
+     *
+     * The transfer is owned by the ViewModel and by nothing else. It must not need a screen to be
+     * mounted to finish or to be reported: in the Compact and Medium layouts the file detail is a
+     * pushed page, so the list is out of the composition while the download runs, and anything the
+     * download needs — the progress card, the result message, the confirmation — has to come from
+     * somewhere that outlives both routes (`FileTransferCard`, `FileMessageBanner`).
+     */
     fun download(entry: RemoteEntry) {
         if (transfer != null) {
             return
         }
-        val target = File(getApplication<RelaxKonApplication>().cacheDir, entry.name)
         transfer = Transfer(label = entry.path, kind = TransferKind.Download)
         transferJob = viewModelScope.launch {
+            var target: DownloadTarget? = null
             try {
-                val result = container.files.download(entry.path, target, container.elevationAnswers) { written, total ->
+                // Creating the destination is a write into someone else's storage (a `MediaStore`
+                // insert, or a directory that has to be made). It happens off the main thread, and
+                // after the card is already on screen, so the tap is acknowledged before the first
+                // byte and without a stalled frame.
+                val created = withContext(Dispatchers.IO) { runCatching { container.downloads.create(entry.name) } }
+                if (created.isFailure) {
+                    message = UiMessage(R.string.files_download_failed).withDebugDetail(created.exceptionOrNull()?.message)
+                    return@launch
+                }
+                val destination = created.getOrThrow()
+                target = destination
+                val result = container.files.download(entry.path, destination, container.elevationAnswers) { written, total ->
                     viewModelScope.launch(Dispatchers.Main.immediate) {
                         transfer = transfer?.takeIf { it.kind == TransferKind.Download }?.copy(
                             transferredBytes = written,
@@ -326,46 +453,75 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 when (result) {
                     is ApiResult.Success -> {
-                        container.recentOperations.record(RecentOperationKind.Download, entry.path)
-                        downloadReady = target
+                        // Pending until this call: the file becomes visible to the rest of the device
+                        // only once it is complete. A commit the platform refuses means the bytes are
+                        // not actually in Downloads, so it is reported as a failure rather than
+                        // followed by a success message that would not be true.
+                        val committed = withContext(Dispatchers.IO) { runCatching { destination.commit() } }
+                        if (committed.isSuccess) {
+                            target = null
+                            container.recentOperations.record(RecentOperationKind.Download, entry.path)
+                            message = UiMessage(R.string.files_downloaded, listOf(destination.location), tone = StatusTone.Success)
+                        } else {
+                            message = UiMessage(R.string.files_download_failed).withDebugDetail(committed.exceptionOrNull()?.message)
+                        }
                     }
                     else -> message = result.failureMessage()
                 }
             } catch (_: CancellationException) {
                 // Expected when the user cancels the transfer.
             } finally {
+                // A refused, failed or cancelled transfer leaves no file: on the shared Downloads
+                // collection an abandoned row would be a corrupt entry for the whole device to see.
+                target?.let { runCatching { it.discard() } }
                 transfer = null
                 transferJob = null
             }
         }
     }
 
-    /** Copies a user-selected document stream directly to the server; no broad storage permission is needed. */
+    /**
+     * Copies a user-selected document stream directly to the server; no broad storage permission is
+     * needed, and the document's own path is never assumed to be readable (`RelaxKonOS.Mobile.
+     * Design.md` §7).
+     *
+     * The destination directory is captured before the coroutine starts, so navigating while a large
+     * upload runs cannot move the file to wherever the user ended up. The card is posted with a
+     * placeholder name and corrected once the provider has answered: reading a document's name and
+     * opening its stream are both someone else's process doing disk or network work — a cloud-backed
+     * file can take seconds — and neither may happen on the main thread.
+     */
     fun upload(uri: Uri) {
-        if (transfer != null) return
-        val resolver = getApplication<RelaxKonApplication>().contentResolver
-        val name = resolver.displayName(uri) ?: getApplication<RelaxKonApplication>().getString(R.string.files_upload_default_name)
-        val length = runCatching { resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } }
-            .getOrNull()
-            ?.takeIf { it >= 0 }
-        transfer = Transfer(label = name, kind = TransferKind.Upload, totalBytes = length)
+        if (transfer != null) {
+            return
+        }
+        val app = getApplication<RelaxKonApplication>()
+        val directory = path
+        transfer = Transfer(label = app.getString(R.string.files_upload_default_name), kind = TransferKind.Upload)
         transferJob = viewModelScope.launch {
             try {
+                val document = withContext(Dispatchers.IO) { app.contentResolver.openPickedDocument(uri) }
+                if (document == null) {
+                    message = UiMessage(R.string.files_upload_unreadable)
+                    return@launch
+                }
+                val name = document.name.ifBlank { app.getString(R.string.files_upload_default_name) }
+                transfer = transfer?.takeIf { it.kind == TransferKind.Upload }?.copy(label = name, totalBytes = document.length)
                 val result = runCatching {
-                    resolver.openInputStream(uri)?.use { input ->
-                        container.files.upload(path, name, input, length, container.elevationAnswers) { written ->
+                    document.stream.use { input ->
+                        container.files.upload(directory, name, input, document.length, container.elevationAnswers) { written ->
                             viewModelScope.launch(Dispatchers.Main.immediate) {
                                 transfer = transfer?.takeIf { it.kind == TransferKind.Upload }?.copy(transferredBytes = written)
                             }
                         }
-                    } ?: ApiResult.Transport(null)
+                    }
                 }.getOrElse {
                     if (it is CancellationException) throw it
                     ApiResult.Transport(it.message)
                 }
                 when (result) {
                     is ApiResult.Success -> {
-                        message = UiMessage(R.string.files_uploaded, listOf(name))
+                        message = UiMessage(R.string.files_uploaded, listOf(name), tone = StatusTone.Success)
                         container.recentOperations.record(RecentOperationKind.Upload, name)
                         reload()
                     }
@@ -386,12 +542,259 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         transfer = null
     }
 
-    fun consumeDownloadReady() {
-        downloadReady = null
-    }
-
     fun setTransferCollapsed(collapsed: Boolean) {
         transfer = transfer?.copy(collapsed = collapsed)
+    }
+
+    /** Opens the full-screen viewer for the image already on screen; there is nothing to load first. */
+    fun openViewer() {
+        if (preview is ImagePreview.Ready) {
+            viewerOpen = true
+        }
+    }
+
+    fun closeViewer() {
+        viewerOpen = false
+    }
+
+    /**
+     * Runs the preview again: after a failure, or after the user has authorized a protected file.
+     *
+     * [authorize] is what separates the two: only a tap on the card's own authorization button may
+     * raise the elevation prompt, which is the same answer-the-dialog-or-decline contract every other
+     * file operation follows (`RelaxKonOS.Mobile.V1.Design.md` §5.3.8).
+     */
+    fun reloadPreview(authorize: Boolean) {
+        val entry = selected ?: return
+        cancelPreview()
+        preview = ImagePreview.Hidden
+        previewFile = null
+        previewDecodedFor = IntSize.Zero
+        thumbnail = null
+        loadPreview(entry, authorize)
+    }
+
+    /**
+     * Records the pixel size of the box the preview is drawn in.
+     *
+     * Called by whatever is on screen — the card, and the viewer once it opens — because that
+     * measurement, not a constant, is what decides how much of the picture is worth decoding. Quality
+     * only ever goes up within one selection: a box that wants more pixels triggers a re-decode from the
+     * cache, and one that wants fewer is ignored, so closing the viewer does not throw away the decode
+     * that was just made.
+     */
+    fun setPreviewBounds(widthPx: Int, heightPx: Int) {
+        val box = if (widthPx > 0 && heightPx > 0) IntSize(widthPx, heightPx) else DEFAULT_PREVIEW_BOX
+        previewBounds = box
+        val file = previewFile ?: return
+        // Below a quarter more on both axes the difference would not be visible; re-decoding for it
+        // would only make the pane flicker.
+        if (box.width * 4 < previewDecodedFor.width * 5 && box.height * 4 < previewDecodedFor.height * 5) {
+            return
+        }
+        upgradePreview(file, box)
+    }
+
+    /** Invalidates whatever is loading and stops it from publishing anything further. */
+    private fun cancelPreview() {
+        previewJob?.cancel()
+        previewJob = null
+        previewUpgradeJob?.cancel()
+        previewUpgradeJob = null
+        // Cancelling this one costs nothing and can break nothing: nothing awaits it, and a thumbnail
+        // of the previous selection has no meaning for the new one.
+        thumbnailJob?.cancel()
+        thumbnailJob = null
+        previewGeneration++
+    }
+
+    /**
+     * Fetches the selected image unless a copy is already cached, then decodes it.
+     *
+     * The caller must have bumped [previewGeneration] first: the generation captured here is what its
+     * every write is checked against.
+     */
+    private fun loadPreview(entry: RemoteEntry, authorize: Boolean) {
+        val generation = previewGeneration
+        previewJob = viewModelScope.launch {
+            val scope = container.activeSession?.serverUrl.orEmpty()
+            // Reading the cache is stat calls and, on a miss, a directory listing followed by an
+            // eviction pass. None of that belongs on the main thread, for the same reason the download
+            // destination is not created there.
+            val cached = withContext(Dispatchers.IO) {
+                container.imagePreviews.cached(scope, entry.path, entry.sizeBytes, entry.modifiedAtMillis)
+            }
+            // Only when a transfer is actually coming. A picture that is already in the cache decodes in
+            // milliseconds, and asking the server for a copy of it that cannot improve on that would be
+            // a request, a read and a render spent on a frame nobody would have noticed.
+            if (cached == null) {
+                prefetchThumbnail(entry, generation)
+            }
+            val file = cached ?: downloadPreview(entry, scope, generation, authorize) ?: return@launch
+            decodePreview(file, generation)
+        }
+    }
+
+    /**
+     * Asks the server for its own small copy of the picture, and does not wait for the answer.
+     *
+     * It runs *beside* the transfer rather than before it. Awaiting it would delay the progress bar by
+     * a whole round trip, and the progress bar is the first thing the pane owes the user; started
+     * alongside, this answers with a few kilobytes while the photograph itself is still arriving. That
+     * is the whole trick: the *transport* becomes gradual, rather than only the decode.
+     *
+     * It never raises the elevation prompt, whatever [reloadPreview] was last asked to do. A prefetch
+     * is the app's own idea rather than the user's, and asking for a password on nobody's behalf is
+     * exactly what `RelaxKonOS.Mobile.V1.Design.md` §5.3.8 forbids. The consequence is deliberately
+     * dull: a protected file answers `elevation-required` here and is simply left without a thumbnail,
+     * and the download that follows is where authorization is asked for — from a card the user can
+     * see, behind a button they pressed.
+     *
+     * Every other answer is equally uninteresting. `thumbnail-unsupported` is the ordinary case for a
+     * file the host cannot draw, and a server without the route answers 404; both mean "no thumbnail",
+     * which is what every image did before this existed, and neither is a state the user is told about.
+     */
+    private fun prefetchThumbnail(entry: RemoteEntry, generation: Int) {
+        thumbnailJob?.cancel()
+        thumbnailJob = viewModelScope.launch {
+            val result = try {
+                container.files.thumbnail(entry.path, SERVER_THUMBNAIL_EDGE_PX, ElevationAnswerProvider.Declines)
+            } catch (cancelled: CancellationException) {
+                // Never swallowed: this is the one exception that has to reach the coroutine machinery.
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            val bytes = when (result) {
+                is ApiResult.Success -> result.value
+                else -> return@launch
+            }
+            val bitmap = withContext(Dispatchers.IO) { container.imageDecoder.decode(bytes) } ?: return@launch
+            if (generation != previewGeneration) {
+                return@launch
+            }
+            thumbnail = bitmap
+            // Only ever published into a transfer that is still running. A thumbnail that arrives once
+            // the picture itself is on screen has nothing left to describe, and swapping a decoded
+            // photograph for its own thumbnail would be a visible step backwards.
+            preview = (preview as? ImagePreview.Downloading)?.copy(thumbnail = bitmap) ?: preview
+        }
+    }
+
+    /**
+     * Streams one image into the preview cache.
+     *
+     * The bytes are kept in `cacheDir` rather than offered as a download, because a preview is not
+     * something the user asked to keep: it is what makes tapping the same picture twice cost one
+     * transfer instead of two, and it is thrown away by the platform whenever storage runs short
+     * (`ImagePreviewCache`).
+     */
+    private suspend fun downloadPreview(
+        entry: RemoteEntry,
+        scope: String,
+        generation: Int,
+        authorize: Boolean,
+    ): File? {
+        val target = withContext(Dispatchers.IO) {
+            container.imagePreviews.create(scope, entry.path, entry.sizeBytes, entry.modifiedAtMillis)
+        }
+        if (generation == previewGeneration) {
+            // A thumbnail that beat the first byte is carried in from here: it has to be on screen for
+            // the whole of the transfer, not from the first progress callback onwards.
+            preview = ImagePreview.Downloading(0, entry.sizeBytes, thumbnail = thumbnail)
+        }
+        val result = container.files.download(
+            path = entry.path,
+            target = target,
+            provider = if (authorize) container.elevationAnswers else ElevationAnswerProvider.Declines,
+        ) { written, total ->
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                if (generation == previewGeneration) {
+                    // The announced length comes first and stays: a server that omits or mislabels it
+                    // mid-stream must not turn a bar with a denominator into one without.
+                    preview = ImagePreview.Downloading(written, total ?: entry.sizeBytes, thumbnail = thumbnail)
+                }
+            }
+        }
+        if (result is ApiResult.Success) {
+            return target.file
+        }
+        if (generation == previewGeneration) {
+            // A transfer that was refused, failed or interrupted leaves nothing usable, and a
+            // truncated file left in the cache would be handed to the decoder the next time round.
+            withContext(Dispatchers.IO) { runCatching { target.file.delete() } }
+            val needsElevation = result is ApiResult.Problem && result.code == ProblemCodes.ELEVATION_REQUIRED
+            preview = ImagePreview.Unavailable(
+                message = if (needsElevation) {
+                    UiMessage(R.string.files_preview_elevation)
+                } else {
+                    result.failureMessage() ?: UiMessage(R.string.files_preview_failed)
+                },
+                needsElevation = needsElevation,
+            )
+        }
+        return null
+    }
+
+    /**
+     * Decodes the cached file twice, small then large.
+     *
+     * This is the "thumbnail first" the preview is built around. The first pass is a 96-pixel square,
+     * which costs almost nothing even for a forty-megapixel photograph, and publishing it is what puts
+     * something recognisable on screen while the second pass — the one that can take a moment on a
+     * large picture — is still running. Both passes read the same cached file, so the ladder is made of
+     * decode time, not of a second transfer.
+     *
+     * [thumbnail] takes the place of that first pass whenever the server has already sent one. It is
+     * the same rung of the ladder, arrived from the other side of the network, and re-decoding the file
+     * down to 96 pixels would only produce a worse copy of a picture that is already in memory.
+     */
+    private suspend fun decodePreview(file: File, generation: Int) {
+        val codec = container.imageDecoder
+        val box = previewBounds
+        val arrived = thumbnail
+        val placeholder = withContext(Dispatchers.IO) {
+            arrived ?: codec.decode(file, LOCAL_THUMBNAIL_EDGE_PX, LOCAL_THUMBNAIL_EDGE_PX)
+        }
+        if (generation != previewGeneration) {
+            return
+        }
+        if (placeholder == null) {
+            preview = ImagePreview.Unavailable(UiMessage(R.string.files_preview_failed), needsElevation = false)
+            return
+        }
+        preview = ImagePreview.Ready(placeholder, null)
+        val image = withContext(Dispatchers.IO) { codec.decode(file, box.width, box.height) }
+        if (generation != previewGeneration) {
+            return
+        }
+        previewFile = file
+        previewDecodedFor = box
+        withContext(Dispatchers.IO) { container.imagePreviews.touch(file) }
+        preview = if (image == null) {
+            ImagePreview.Unavailable(UiMessage(R.string.files_preview_failed), needsElevation = false)
+        } else {
+            ImagePreview.Ready(placeholder, image)
+        }
+    }
+
+    /**
+     * Re-reads the cached file for a box that grew — the viewer opening, or a rotation.
+     *
+     * Nothing is transferred: this is the same ladder [decodePreview] climbs, taken one rung higher
+     * because something on screen now asks for more.
+     */
+    private fun upgradePreview(file: File, box: IntSize) {
+        val generation = previewGeneration
+        previewUpgradeJob?.cancel()
+        previewUpgradeJob = viewModelScope.launch {
+            val image = withContext(Dispatchers.IO) { container.imageDecoder.decode(file, box.width, box.height) }
+            if (image == null || generation != previewGeneration) {
+                return@launch
+            }
+            previewDecodedFor = box
+            (preview as? ImagePreview.Ready)?.let { preview = it.copy(image = image) }
+        }
     }
 
     private fun loadProperties(targetPath: String) {
@@ -424,11 +827,40 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
 data class TransferTarget(val entry: RemoteEntry, val move: Boolean)
 
-private fun android.content.ContentResolver.displayName(uri: Uri): String? = runCatching {
-    query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor: Cursor ->
-        cursor.takeIf { it.moveToFirst() }?.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+/** One picked document: what to call it, how big it claims to be, and the stream to read it from. */
+private class PickedDocument(val name: String, val length: Long?, val stream: InputStream)
+
+/**
+ * Reads a picked document's metadata and opens its stream.
+ *
+ * Both steps are the provider's, not ours: a `query` against a cloud-backed document can take
+ * hundreds of milliseconds and `openFile` seconds, so this runs on `Dispatchers.IO`. The name and
+ * size are best-effort — a provider that refuses either still gets to upload, with the transfer card
+ * falling back to a generic label and an indeterminate progress bar.
+ */
+private fun android.content.ContentResolver.openPickedDocument(uri: Uri): PickedDocument? {
+    var name: String? = null
+    var size: Long? = null
+    runCatching {
+        query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor: Cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) {
+                    name = cursor.getString(nameIndex)
+                }
+                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                    size = cursor.getLong(sizeIndex)
+                }
+            }
+        }
     }
-}.getOrNull()
+    val stream = runCatching { openInputStream(uri) }.getOrNull() ?: return null
+    val length = size
+        ?.takeIf { it >= 0 }
+        ?: runCatching { openAssetFileDescriptor(uri, "r")?.use { it.length } }.getOrNull()?.takeIf { it >= 0 }
+    return PickedDocument(name.orEmpty(), length, stream)
+}
 
 /**
  * The file list.
@@ -447,7 +879,6 @@ fun FilesScreen(
     onOpenDetail: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val pickUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::upload)
     }
@@ -461,14 +892,6 @@ fun FilesScreen(
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         ScreenHeader(title = stringResource(R.string.nav_files))
-
-        viewModel.message?.let { banner ->
-            ErrorBanner(
-                message = banner.text(),
-                onRetry = { viewModel.refresh() },
-                onDismiss = { viewModel.dismissMessage() },
-            )
-        }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -542,40 +965,57 @@ fun FilesScreen(
                 }
             }
         }
-
-        viewModel.transfer?.let { transfer ->
-            ProgressSheet(
-                title = stringResource(
-                    when (transfer.kind) {
-                        TransferKind.Download -> R.string.files_downloading
-                        TransferKind.Upload -> R.string.files_uploading
-                        TransferKind.Move -> R.string.files_moving
-                        TransferKind.Copy -> R.string.files_copying
-                    },
-                ),
-                detail = transfer.label,
-                progress = transfer.progress,
-                collapsed = transfer.collapsed,
-                onCollapsedChange = { viewModel.setTransferCollapsed(it) },
-                onCancel = viewModel::cancelActiveTransfer,
-            )
-        }
     }
+}
 
-    LaunchedEffect(viewModel.downloadReady) {
-        val file = viewModel.downloadReady ?: return@LaunchedEffect
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        context.startActivity(
-            Intent.createChooser(
-                Intent(Intent.ACTION_SEND)
-                    .setType("application/octet-stream")
-                    .putExtra(Intent.EXTRA_STREAM, uri)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                context.getString(R.string.files_share_download),
-            ),
+/**
+ * The message banner for everything the files destination reports.
+ *
+ * It is rendered by the destination rather than by a screen because a transfer and a failed
+ * navigation both outlive the page that started them: the Compact and Medium layouts pop the list out
+ * of the composition while the file detail is shown, so a banner owned by the list would surface a
+ * result only on the way back — long after the moment it describes.
+ */
+@Composable
+fun FileMessageBanner(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
+    viewModel.message?.let { banner ->
+        ErrorBanner(
+            message = banner.text(),
+            onRetry = { viewModel.refresh() },
+            onDismiss = { viewModel.dismissMessage() },
+            modifier = modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            tone = banner.tone,
         )
-        viewModel.consumeDownloadReady()
     }
+}
+
+/**
+ * The progress card for the transfer in flight, pinned below the files content.
+ *
+ * Like the banner, it belongs to the destination: a download started from the detail page is still
+ * running when that page is popped, and a card that left with it would be the only sign the user ever
+ * gets that anything happened. The card is collapsible and never blocks navigation
+ * (`RelaxKonOS.Mobile.V1.Design.md` §3.4).
+ */
+@Composable
+fun FileTransferCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {
+    val transfer = viewModel.transfer ?: return
+    ProgressSheet(
+        title = stringResource(
+            when (transfer.kind) {
+                TransferKind.Download -> R.string.files_downloading
+                TransferKind.Upload -> R.string.files_uploading
+                TransferKind.Move -> R.string.files_moving
+                TransferKind.Copy -> R.string.files_copying
+            },
+        ),
+        detail = transfer.label,
+        progress = transfer.progress,
+        collapsed = transfer.collapsed,
+        onCollapsedChange = { viewModel.setTransferCollapsed(it) },
+        onCancel = viewModel::cancelActiveTransfer,
+        modifier = modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+    )
 }
 
 /**
@@ -676,10 +1116,14 @@ private fun FileEntryRow(
 }
 
 /**
- * Properties of the selected entry.
+ * Properties of the selected entry, and its picture when it holds one.
  *
  * [onBack] is `null` when the caller is rendering this as a pane; a pane has nothing to go back from,
  * and a visible-but-inert back button would misdescribe the layout.
+ *
+ * The content scrolls, and that is not a detail: a preview was added above the facts, and on a phone
+ * held sideways the two together are taller than the window. The header stays outside the scrolling
+ * area so the way back never leaves the screen.
  */
 @Composable
 fun FileDetailScreen(
@@ -709,71 +1153,78 @@ fun FileDetailScreen(
             onBack = onBack,
         )
 
-        SectionCard(
-            title = entry.name,
-            leading = DesktopIcons.fileFor(entry.name, entry.isDirectory),
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
-            KeyValueRow(stringResource(R.string.files_label_path), entry.path)
-            KeyValueRow(
-                stringResource(R.string.files_label_kind),
-                stringResource(if (entry.isDirectory) R.string.files_kind_directory else R.string.files_kind_file),
-            )
-            formatSize(properties?.sizeBytes ?: entry.sizeBytes)?.let {
-                KeyValueRow(stringResource(R.string.files_label_size), it)
-            }
-            formatTimestamp(properties?.modifiedMillis ?: entry.modifiedAtMillis)?.let {
-                KeyValueRow(stringResource(R.string.files_label_modified), it)
-            }
-            formatTimestamp(properties?.createdMillis)?.let {
-                KeyValueRow(stringResource(R.string.files_label_created), it)
-            }
-            if (container.capabilities.contains(ServerCapabilities.POSIX_PERMISSIONS)) {
-                properties?.permissions?.takeIf { it.isNotBlank() }?.let {
-                    KeyValueRow(stringResource(R.string.files_label_permissions), it)
-                }
-            }
-            if (properties == null) {
-                Text(
-                    stringResource(
-                        if (viewModel.propertiesLoading) R.string.common_loading else R.string.files_detail_unavailable,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            FileImagePreview(viewModel)
+
+            SectionCard(
+                title = entry.name,
+                leading = DesktopIcons.fileFor(entry.name, entry.isDirectory),
+            ) {
+                KeyValueRow(stringResource(R.string.files_label_path), entry.path)
+                KeyValueRow(
+                    stringResource(R.string.files_label_kind),
+                    stringResource(if (entry.isDirectory) R.string.files_kind_directory else R.string.files_kind_file),
                 )
-            }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            if (!entry.isDirectory) {
-                Button(
-                    onClick = { viewModel.download(entry) },
-                    enabled = viewModel.transfer == null,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    DesktopIcon(icon = DesktopIcons.download, size = 18.dp)
-                    Spacer(Modifier.width(Spacing.sm))
-                    Text(stringResource(R.string.files_action_download))
+                formatSize(properties?.sizeBytes ?: entry.sizeBytes)?.let {
+                    KeyValueRow(stringResource(R.string.files_label_size), it)
+                }
+                formatTimestamp(properties?.modifiedMillis ?: entry.modifiedAtMillis)?.let {
+                    KeyValueRow(stringResource(R.string.files_label_modified), it)
+                }
+                formatTimestamp(properties?.createdMillis)?.let {
+                    KeyValueRow(stringResource(R.string.files_label_created), it)
+                }
+                if (container.capabilities.contains(ServerCapabilities.POSIX_PERMISSIONS)) {
+                    properties?.permissions?.takeIf { it.isNotBlank() }?.let {
+                        KeyValueRow(stringResource(R.string.files_label_permissions), it)
+                    }
+                }
+                if (properties == null) {
+                    Text(
+                        stringResource(
+                            if (viewModel.propertiesLoading) R.string.common_loading else R.string.files_detail_unavailable,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-            OutlinedButton(onClick = { viewModel.requestRename(entry) }, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.files_action_rename))
-            }
-        }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            TextButton(onClick = { viewModel.requestTransfer(entry, move = false) }) {
-                Text(stringResource(R.string.files_action_copy))
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                if (!entry.isDirectory) {
+                    Button(
+                        onClick = { viewModel.download(entry) },
+                        enabled = viewModel.transfer == null,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        DesktopIcon(icon = DesktopIcons.download, size = 18.dp)
+                        Spacer(Modifier.width(Spacing.sm))
+                        Text(stringResource(R.string.files_action_download))
+                    }
+                }
+                OutlinedButton(onClick = { viewModel.requestRename(entry) }, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.files_action_rename))
+                }
             }
-            TextButton(onClick = { viewModel.requestTransfer(entry, move = true) }) {
-                Text(stringResource(R.string.files_action_move))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(onClick = { viewModel.requestTransfer(entry, move = false) }) {
+                    Text(stringResource(R.string.files_action_copy))
+                }
+                TextButton(onClick = { viewModel.requestTransfer(entry, move = true) }) {
+                    Text(stringResource(R.string.files_action_move))
+                }
+                TextButton(
+                    onClick = { viewModel.requestDelete(entry) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text(stringResource(R.string.common_delete)) }
             }
-            TextButton(
-                onClick = { viewModel.requestDelete(entry) },
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            ) { Text(stringResource(R.string.common_delete)) }
         }
     }
 }
@@ -808,6 +1259,9 @@ fun FileOperationOverlays(viewModel: FilesViewModel) {
             onDismiss = viewModel::cancelDelete,
         )
     }
+    // The viewer covers the whole window, so it belongs to the destination rather than to the detail
+    // pane that opened it: a re-layout that unmounts that pane must not take the picture with it.
+    ImagePreviewViewer(viewModel)
 }
 
 @Composable

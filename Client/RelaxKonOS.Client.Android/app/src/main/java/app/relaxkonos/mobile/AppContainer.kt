@@ -10,12 +10,17 @@ import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.RelaxKonApi
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
+import app.relaxkonos.mobile.data.BitmapFactoryImageDecoder
 import app.relaxkonos.mobile.data.ConnectionProfileStore
+import app.relaxkonos.mobile.data.DownloadStore
 import app.relaxkonos.mobile.data.ElevationAnswerProvider
 import app.relaxkonos.mobile.data.ElevationCoordinator
 import app.relaxkonos.mobile.data.ElevationRepository
 import app.relaxkonos.mobile.data.FileProfileStorage
 import app.relaxkonos.mobile.data.FilesRepository
+import app.relaxkonos.mobile.data.ImageDecoder
+import app.relaxkonos.mobile.data.ImagePreviewCache
+import app.relaxkonos.mobile.data.PREVIEW_CACHE_DIRECTORY
 import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.data.SystemRepository
 import app.relaxkonos.mobile.security.AndroidBiometricCapabilityDetector
@@ -36,6 +41,7 @@ import app.relaxkonos.mobile.security.unlockModeFor
 import app.relaxkonos.mobile.ui.theme.AppearancePreferences
 import app.relaxkonos.mobile.ui.theme.AppearanceState
 import app.relaxkonos.mobile.ui.common.UiMessage
+import java.io.File
 
 /**
  * Composition root.
@@ -122,6 +128,20 @@ class AppContainer(context: Context) {
     val elevations = ElevationRepository(gateway, session, vault)
 
     val files = FilesRepository(gateway, session, elevations)
+
+    /** Resolves where a downloaded file lands on this device; see `DownloadStore`. */
+    val downloads = DownloadStore(appContext)
+
+    /**
+     * Where the images the user looked at are cached.
+     *
+     * It lives in `cacheDir` on purpose: the platform may empty it, and a preview is only ever a copy
+     * of a file that is still on the host (`ImagePreviewCache`).
+     */
+    val imagePreviews = ImagePreviewCache(File(appContext.cacheDir, PREVIEW_CACHE_DIRECTORY))
+
+    /** Turns a cached preview file into a bitmap, subsampled to what the screen can actually show. */
+    val imageDecoder: ImageDecoder = BitmapFactoryImageDecoder()
 
     val system = SystemRepository(gateway, session)
 

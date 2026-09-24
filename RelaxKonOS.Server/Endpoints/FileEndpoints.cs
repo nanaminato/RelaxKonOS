@@ -104,6 +104,39 @@ public static class FileEndpoints
         .RequireAuthorization(FileAuthorizationPolicies.Read)
         .WithTags("Files");
 
+        // GET thumbnail?path=&maxEdge=
+        app.MapGet(FileApiRoutes.Thumbnail, async (string path, int? maxEdge, HttpContext http, IFileService fs,
+            IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        {
+            var edge = maxEdge ?? ImageThumbnailRenderer.DefaultMaxEdge;
+            if (edge is < ImageThumbnailRenderer.MinimumMaxEdge or > ImageThumbnailRenderer.MaximumMaxEdge)
+                return Problem(400, "invalid-size", "缩略图尺寸无效",
+                    $"maxEdge 须在 {ImageThumbnailRenderer.MinimumMaxEdge}–{ImageThumbnailRenderer.MaximumMaxEdge} 之间。");
+            try
+            {
+                var r = fs.OpenRead(path);
+                if (r is not (var stream, _, _))
+                    return Problem(404, "not-found", "文件不存在", $"找不到: {path}");
+                using (stream) return Thumbnail(stream, edge, path);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                if (!elevations.IsElevated(http.User, FileElevationCapability.Read, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
+                try
+                {
+                    var r = await privileged.OpenReadAsync(path, ct);
+                    using (r.Stream) return Thumbnail(r.Stream, edge, path);
+                }
+                catch (FileNotFoundException) { return Problem(404, "not-found", "文件不存在", $"找不到: {path}"); }
+                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
+                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
+                catch (IOException helperEx) { return Problem(500, "io-error", "I/O 错误", helperEx.Message); }
+            }
+            catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
+        })
+        .RequireAuthorization(FileAuthorizationPolicies.Read)
+        .WithTags("Files");
+
         app.MapGet(FileApiRoutes.Content, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             try
@@ -386,6 +419,18 @@ public static class FileEndpoints
 
     private static IResult Problem(int status, string typeSuffix, string title, string detail)
         => Results.Problem(detail: detail, statusCode: status, title: title, type: ProblemBase + typeSuffix);
+
+    /// <summary>Renders the small copy of an image, or says that this file has none to give.</summary>
+    private static IResult Thumbnail(Stream source, int maxEdge, string path)
+    {
+        // 415 rather than 404 or 500: the file is there and the account may read it — the answer is
+        // about what can be made of its content. A client reads this as "show the icon, fetch the
+        // original instead", never as a failure to report.
+        var rendered = ImageThumbnailRenderer.Render(source, maxEdge);
+        return rendered is null
+            ? Problem(415, "thumbnail-unsupported", "无法生成缩略图", $"内容不是本服务可解码的图像: {path}")
+            : Results.File(rendered.Bytes, rendered.ContentType);
+    }
 
     private static IResult GrantElevation(FileElevationRequest request, HttpContext http, IHostAdministratorAuthenticator administrators, IFileElevationSessionStore elevations)
     {

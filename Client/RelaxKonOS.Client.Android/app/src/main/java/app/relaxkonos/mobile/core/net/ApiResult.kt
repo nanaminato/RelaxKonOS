@@ -38,6 +38,15 @@ object ProblemCodes {
     const val PERFORMANCE_NOT_READY = "performance-not-ready"
     const val UNAUTHORIZED = "unauthorized"
 
+    /**
+     * The server holds the file but cannot draw it (415, `FileApiRoutes.Thumbnail`).
+     *
+     * A normal answer rather than a failure: it means there is no small copy to show — the file is not
+     * an image, or it uses a codec the host does not carry — so the client fetches the original as it
+     * always did. Nothing here is worth telling the user about, and nothing here is an error.
+     */
+    const val THUMBNAIL_UNSUPPORTED = "thumbnail-unsupported"
+
     private const val PREFIX = "https://relaxkonos.app/problems/"
 
     /**

@@ -34,6 +34,7 @@ try
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     if (args.Contains("--performance-only")) { await ServerCoreChecks.VerifyPerformanceSamplerAsync(); Console.WriteLine("Performance sampler checks passed."); return; }
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
+    if (args.Contains("--thumbnails-only")) { ImageThumbnailChecks.Run(root); Console.WriteLine("Thumbnail checks passed."); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     await AliasLoginVerification.RunAsync(root);
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
@@ -53,6 +54,7 @@ try
     ServerCoreChecks.VerifyLinuxSystemAuthenticationProvider();
     ServerCoreChecks.VerifySmbProtocolAndElevationContract();
     await FileServiceChecks.RunAsync();
+    ImageThumbnailChecks.Run(root);
     await CertificateChecks.VerifyCertificateStoreAndSniAsync(root);
     CertificateChecks.VerifyCertificateApiRoutes();
     await HostStorageChecks.VerifyRenewalRetryAsync(root);

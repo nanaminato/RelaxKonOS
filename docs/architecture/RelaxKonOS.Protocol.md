@@ -155,6 +155,7 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | GET    | `/api/v1.0/files/list`        | query: `path`（空=盘符根）                | `DirectoryDto`                     | JWT |
 | GET    | `/api/v1.0/files/info`        | query: `path`                       | `FileSystemEntryDto`               | JWT |
 | GET    | `/api/v1.0/files/download`    | query: `path`                       | 字节流                                | JWT |
+| GET    | `/api/v1.0/files/thumbnail`   | query: `path`、`maxEdge`（16–1024，默认 256） | `image/jpeg` 或 `image/png` 字节流       | JWT |
 | GET    | `/api/v1.0/files/content`     | query: `path`                       | 原始文件字节流                            | JWT |
 | PUT    | `/api/v1.0/files/content`     | query: `path` + 请求体字节流              | `FileEntryDto`                     | JWT |
 | GET    | `/api/v1.0/files/properties`  | query: `path`                       | `FilePropertiesDto`                | JWT |
@@ -165,6 +166,12 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | POST   | `/api/v1.0/files/move`        | `MoveRequest`                       | `FileSystemEntryDto`               | JWT |
 | POST   | `/api/v1.0/files/copy`        | `CopyRequest`                       | `FileSystemEntryDto`               | JWT |
 | POST   | `/api/v1.0/files/upload`      | query: `path` + multipart/form-data | `FileEntryDto`                     | JWT |
+
+缩略图（`files/thumbnail`）不是原图的替代品，而是「原图还在路上时先给一张认得出的图」：渲染在
+`ImageThumbnailRenderer`，响应体为 `image/jpeg`（含 alpha 通道时改用 `image/png`），`maxEdge` 越界返回
+400 `invalid-size`。内容不是本服务能解码的图像时返回 415 `thumbnail-unsupported` —— 这是**正常答复而非错误**，
+客户端应读作「没有缩略图」并照旧拉取原图。渲染顺序是先 `Identify` 读头（声明像素数超过 64M 直接拒绝，防解压炸弹），
+再单帧解码（`DecoderOptions.MaxFrames = 1`，防动画帧内存放大），并在缩放前应用 EXIF 方向。
 
 ### Browser（浏览器）
 

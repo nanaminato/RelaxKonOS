@@ -23,6 +23,11 @@
         <!-- ASP.NET Core OpenAPI 10.0.x requires Microsoft.OpenApi < 3.0. -->
         <PackageVersion Include="Microsoft.OpenApi" Version="2.12.0" />
         <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+        <!-- Server 端缩略图渲染。Six Labors Split License v1.0 第 2 条把「用于 Source Available 许可的软件」
+             明确划入 Apache-2.0 分支，本项目即 Source-Available（见 THIRD_PARTY_NOTICES.md）。
+             3.1.x 是首个提供 DecoderOptions.MaxFrames 的稳定线：动画图片只解一帧，内存上界才守得住。
+             纯托管、无原生依赖，Windows/Linux/macOS 行为一致。 -->
+        <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
 
         <!-- Server Persistence: EF Core + SQLite（User/Workspace/Device 持久化，含 TerminalSettings） -->
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />

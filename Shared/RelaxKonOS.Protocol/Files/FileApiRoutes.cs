@@ -26,6 +26,11 @@ public static class FileApiRoutes
     /// <summary>下载文件（GET，需 JWT）。query: path。返回字节流。</summary>
     public const string Download = $"/{V1}/files/download";
 
+    /// <summary>生成并返回文件的缩略图（GET，需 JWT）。query: path、maxEdge（可选，最长边像素，默认 256，须在 16–1024 之间）。
+    /// 返回 image/jpeg 或 image/png 字节流（有 alpha 通道时用 PNG，否则用 JPEG）；内容不是本服务能解码的图像时返回
+    /// 415 thumbnail-unsupported。客户端可用它先出小图，再拉原图。</summary>
+    public const string Thumbnail = $"/{V1}/files/thumbnail";
+
     /// <summary>读取或覆盖保存单个文件内容（GET/PUT，需 JWT）。Query: path。</summary>
     public const string Content = $"/{V1}/files/content";
 

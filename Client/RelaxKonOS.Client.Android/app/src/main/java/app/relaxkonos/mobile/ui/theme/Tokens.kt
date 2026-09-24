@@ -62,6 +62,15 @@ object Layout {
 
     /** Height of the small icon badge that leads a card header or a list row. */
     val iconBadge = 40.dp
+
+    /**
+     * Height of the image preview in the file detail pane.
+     *
+     * A fixed height rather than an aspect ratio computed from the decoded picture: the box has to
+     * exist before the picture does, and it has to measure the same while it is empty, while it is
+     * loading and once it is full — otherwise the properties below it jump around as the image arrives.
+     */
+    val previewHeight = 220.dp
 }
 
 /**

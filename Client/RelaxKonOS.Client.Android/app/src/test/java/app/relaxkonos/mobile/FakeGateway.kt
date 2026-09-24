@@ -3,6 +3,7 @@ package app.relaxkonos.mobile
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.AuthTokens
 import app.relaxkonos.mobile.core.net.DirectoryListing
+import app.relaxkonos.mobile.core.net.DownloadSink
 import app.relaxkonos.mobile.core.net.ElevationGrant
 import app.relaxkonos.mobile.core.net.FileElevationGrant
 import app.relaxkonos.mobile.core.net.LoginSession
@@ -11,7 +12,6 @@ import app.relaxkonos.mobile.core.net.ProcessPage
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.RemoteFileProperties
 import app.relaxkonos.mobile.core.net.ServerDescriptor
-import java.io.File
 import java.io.InputStream
 
 /**
@@ -38,7 +38,8 @@ class FakeGateway : RelaxKonGateway {
     var onPerformance: (suspend (String, String) -> ApiResult<PerformanceSnapshot>)? = null
     var onProcesses: (suspend (String, String, Int, Int, String?) -> ApiResult<ProcessPage>)? = null
     var onKill: (suspend (String, String, Int, Boolean) -> ApiResult<Unit>)? = null
-    var onDownload: (suspend (String, String, String, File, ((Long, Long?) -> Unit)?) -> ApiResult<Long>)? = null
+    var onDownload: (suspend (String, String, String, DownloadSink, ((Long, Long?) -> Unit)?) -> ApiResult<Long>)? = null
+    var onThumbnail: (suspend (String, String, String, Int) -> ApiResult<ByteArray>)? = null
 
     var loginCount = 0
         private set
@@ -172,9 +173,16 @@ class FakeGateway : RelaxKonGateway {
         serverUrl: String,
         accessToken: String,
         path: String,
-        target: File,
+        sink: DownloadSink,
         onProgress: ((Long, Long?) -> Unit)?,
-    ): ApiResult<Long> = requireHandler(onDownload, "download")(serverUrl, accessToken, path, target, onProgress)
+    ): ApiResult<Long> = requireHandler(onDownload, "download")(serverUrl, accessToken, path, sink, onProgress)
+
+    override suspend fun thumbnail(
+        serverUrl: String,
+        accessToken: String,
+        path: String,
+        maxEdge: Int,
+    ): ApiResult<ByteArray> = requireHandler(onThumbnail, "thumbnail")(serverUrl, accessToken, path, maxEdge)
 
     private fun <T> requireHandler(handler: T?, name: String): T =
         handler ?: error("FakeGateway.$name was called but no handler was configured.")

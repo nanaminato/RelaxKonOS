@@ -22,22 +22,32 @@ import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
- * Inline banner for a failed call.
+ * Inline banner for a reported outcome.
  *
  * Only the mapped, localised sentence is rendered: the raw RFC 7807 `type` URI, the problem code and
  * the server's English `detail` stay out of the UI (`RelaxKonOS.Mobile.V1.Design.md` §8).
+ *
+ * [tone] defaults to danger because a message worth interrupting the page for is usually a refusal,
+ * but a completed action reports itself through the same banner with `StatusTone.Success`: one
+ * component means its layout, dismissing and retry affordances cannot drift between the two cases.
  *
  * It carries no outer padding of its own. The banner appears both inside an already-padded page column
  * and floating over the whole window, so the inset belongs to the caller — a fixed one here would
  * double up in the first case and be missing in the second.
  */
 @Composable
-fun ErrorBanner(message: String, onRetry: (() -> Unit)?, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun ErrorBanner(
+    message: String,
+    onRetry: (() -> Unit)?,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    tone: StatusTone = StatusTone.Danger,
+) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(Radius.md),
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        color = toneContainer(tone),
+        contentColor = toneContent(tone),
     ) {
         Row(
             Modifier.padding(Spacing.md),
@@ -50,12 +60,12 @@ fun ErrorBanner(message: String, onRetry: (() -> Unit)?, onDismiss: () -> Unit, 
                     if (onRetry != null) {
                         TextButton(
                             onClick = onRetry,
-                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                            colors = ButtonDefaults.textButtonColors(contentColor = toneContent(tone)),
                         ) { Text(stringResource(R.string.common_retry)) }
                     }
                     TextButton(
                         onClick = onDismiss,
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                        colors = ButtonDefaults.textButtonColors(contentColor = toneContent(tone)),
                     ) { Text(stringResource(R.string.common_dismiss)) }
                 }
             }

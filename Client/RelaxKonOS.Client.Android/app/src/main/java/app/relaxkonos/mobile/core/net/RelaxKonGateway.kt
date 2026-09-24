@@ -1,7 +1,19 @@
 package app.relaxkonos.mobile.core.net
 
-import java.io.File
 import java.io.InputStream
+import java.io.OutputStream
+
+/**
+ * Where the body of a download is written.
+ *
+ * The transport knows how to fetch bytes and nothing about where they belong, which is what keeps
+ * `MediaStore`, the cache and any future destination out of the HTTP layer. The stream is opened only
+ * after the server has accepted the request, so a refused download never creates a file, and it
+ * belongs to the caller, which closes it.
+ */
+fun interface DownloadSink {
+    fun open(): OutputStream
+}
 
 /**
  * The REST surface the app depends on. Declared as an interface so `AuthSession`, the repositories
@@ -74,12 +86,30 @@ interface RelaxKonGateway {
 
     suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, force: Boolean): ApiResult<Unit>
 
-    /** Downloads to an app-owned cache file. [onProgress] receives written bytes and total bytes when known. */
+    /** Streams a remote file into [sink]. [onProgress] receives written bytes and total bytes when known. */
     suspend fun download(
         serverUrl: String,
         accessToken: String,
         path: String,
-        target: File,
+        sink: DownloadSink,
         onProgress: ((writtenBytes: Long, totalBytes: Long?) -> Unit)? = null,
     ): ApiResult<Long>
+
+    /**
+     * Fetches the server's small rendering of [path]: an image whose longest edge is at most
+     * [maxEdge] pixels, returned as the encoded bytes.
+     *
+     * Bytes rather than a download destination, because there is only ever one destination for a
+     * thumbnail — memory, for as long as it takes to decode it. It exists so that a picture can be
+     * shown before a whole photograph has been transferred.
+     *
+     * A file the server cannot draw answers with the `thumbnail-unsupported` problem, which is a
+     * normal answer rather than a failure: there is no thumbnail, and the caller fetches the file.
+     */
+    suspend fun thumbnail(
+        serverUrl: String,
+        accessToken: String,
+        path: String,
+        maxEdge: Int,
+    ): ApiResult<ByteArray>
 }

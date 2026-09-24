@@ -13,6 +13,14 @@ data class UiMessage(
     val args: List<Any> = emptyList(),
     /** Non-sensitive diagnostic context, rendered only in debug builds. */
     val debugDetail: String? = null,
+    /**
+     * How the message should read.
+     *
+     * Most of what a screen has to report is a refusal, so the default is danger. An action that
+     * succeeded says so in the success tone instead of borrowing the red of a failure — while the
+     * banner stays one component, so the two can never drift into different layouts.
+     */
+    val tone: StatusTone = StatusTone.Danger,
 )
 
 @Composable

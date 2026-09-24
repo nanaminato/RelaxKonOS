@@ -83,8 +83,25 @@ RelaxKonOS 通过 NuGet 引用以下第三方包（版本声明集中于 [`Direc
 | `Microsoft.AspNetCore.Authentication.JwtBearer` | MIT | Server JWT 鉴权 |
 | `Microsoft.AspNetCore.OpenApi` | MIT | Server OpenAPI |
 | `RoyalApps.RoyalTerminal.Avalonia` / `RoyalApps.RoyalTerminal.Terminal.Pty.Platform` | Apache-2.0 | 终端控件 + 平台 PTY 工厂 |
+| `SixLabors.ImageSharp` | Apache-2.0（见下） | Server 端缩略图渲染（`/files/thumbnail`） |
 | `Xaml.Behaviors.Avalonia` | MIT | Explorer 交互 behaviors（双击导航等） |
 | `Newtonsoft.Json` | MIT | Explorer 配置模型序列化（保留 Jaya 原依赖） |
 | AndroidX Activity / Jetpack Compose / Material 3 | Apache-2.0 | Kotlin Android 原生 UI |
 | Kotlin / Kotlin Coroutines | Apache-2.0 | Kotlin Android 运行时与异步执行 |
 | Google Material Icons | Apache-2.0 | Android 矢量图标路径（密码可见性切换） |
+
+### `SixLabors.ImageSharp` 的许可判定
+
+ImageSharp 3.x 采用 **Six Labors Split License v1.0**（双分支许可），并非无条件的 Apache-2.0。该许可第 2 条明确：
+若软件被用于以 Open Source 或 **Source Available** 许可发布的软件，则按 **Apache License 2.0** 授权。
+
+RelaxKonOS 以 **Non-Commercial Source-Available License** 发布（见 [`LICENSE`](./LICENSE)），落在这个分支里，
+因此本仓库及其非商业衍生分发可依 Apache-2.0 使用 ImageSharp，无需单独购买商业许可。**注意**：若将来以本项目的
+商业许可对外提供 RelaxKonOS，ImageSharp 的商业分支条件需要重新评估——Apache-2.0 分支的前提是「Source Available
+许可的软件」，而非本项目自身的商业条款。
+
+- 用途：Server 端 `GET /api/v1.0/files/thumbnail` 的缩略图渲染（`RelaxKonOS.Server/Files/ImageThumbnailRenderer.cs`）。
+- 版本：`3.1.12`（版本声明与选型理由见 [`Directory.Packages.props`](./Directory.Packages.props)）。选 3.1.x 而非
+  2.1.x 的技术原因是 `DecoderOptions.MaxFrames`：缩略图必须只解一帧，否则动图会按帧数放大内存占用。
+- 纯托管实现、无原生依赖，Windows / Linux / macOS 行为一致。
+- 上游许可全文：<https://github.com/SixLabors/ImageSharp/blob/main/LICENSE>

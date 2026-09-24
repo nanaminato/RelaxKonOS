@@ -1,7 +1,7 @@
 package app.relaxkonos.mobile.core.net
 
 import android.os.Build
-import java.io.File
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -330,17 +330,67 @@ class RelaxKonApi(
     override suspend fun killProcess(serverUrl: String, accessToken: String, pid: Int, force: Boolean): ApiResult<Unit> =
         execute("DELETE", serverUrl, SystemRoutes.processKill(pid) + "?force=$force", accessToken, null).asUnit()
 
-    /** Streams a remote file into [target]. Used by the download action. */
+    /** Streams a remote file into [sink]. Used by the download action. */
     override suspend fun download(
         serverUrl: String,
         accessToken: String,
         path: String,
-        target: File,
+        sink: DownloadSink,
+        onProgress: ((writtenBytes: Long, totalBytes: Long?) -> Unit)?,
+    ): ApiResult<Long> = streamInto(
+        serverUrl = serverUrl,
+        accessToken = accessToken,
+        route = FileRoutes.DOWNLOAD,
+        query = "?path=" + encode(path),
+        sink = sink,
+        onProgress = onProgress,
+    )
+
+    override suspend fun thumbnail(
+        serverUrl: String,
+        accessToken: String,
+        path: String,
+        maxEdge: Int,
+    ): ApiResult<ByteArray> {
+        val buffer = ByteArrayOutputStream()
+        val result = streamInto(
+            serverUrl = serverUrl,
+            accessToken = accessToken,
+            route = FileRoutes.THUMBNAIL,
+            // `maxEdge` is a plain count, so it needs no encoding; the path does.
+            query = "?path=" + encode(path) + "&maxEdge=" + maxEdge,
+            sink = { buffer },
+            onProgress = null,
+        )
+        // The buffer is the answer, so the byte count the transfer reported is discarded and the
+        // bytes themselves are returned. A thumbnail is small by construction; that is what makes
+        // holding one in memory reasonable at all.
+        return when (result) {
+            is ApiResult.Success -> ApiResult.Success(buffer.toByteArray())
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+    }
+
+    /**
+     * Streams one GET body into [sink].
+     *
+     * A download and a thumbnail differ in the route they ask and what comes back; everything that
+     * makes the transfer itself correct is the same, and it is the part that has to stay correct —
+     * the destination is opened only after the server has accepted the request, so a refused or
+     * unauthorized transfer writes nothing anywhere.
+     */
+    private suspend fun streamInto(
+        serverUrl: String,
+        accessToken: String,
+        route: String,
+        query: String,
+        sink: DownloadSink,
         onProgress: ((writtenBytes: Long, totalBytes: Long?) -> Unit)?,
     ): ApiResult<Long> = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
         try {
-            connection = openConnection(serverUrl, FileRoutes.DOWNLOAD + "?path=" + encode(path), "GET", accessToken)
+            connection = openConnection(serverUrl, route + query, "GET", accessToken)
             connection.connect()
             val code = connection.responseCode
             if (code !in 200..299) {
@@ -348,7 +398,7 @@ class RelaxKonApi(
             }
             val total = connection.contentLengthLong.takeIf { it >= 0 }
             val written = connection.inputStream.use { input ->
-                target.outputStream().use { output ->
+                sink.open().use { output ->
                     val buffer = ByteArray(BUFFER_SIZE)
                     var copied = 0L
                     while (true) {
@@ -513,6 +563,7 @@ private object FileRoutes {
     const val COPY = "$V1/files/copy"
     const val UPLOAD = "$V1/files/upload"
     const val DOWNLOAD = "$V1/files/download"
+    const val THUMBNAIL = "$V1/files/thumbnail"
 }
 
 /** Serialises one path into a JSON string literal. Paths are not secrets, so a plain builder is fine. */

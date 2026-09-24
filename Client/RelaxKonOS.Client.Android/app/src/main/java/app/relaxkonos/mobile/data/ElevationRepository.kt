@@ -25,6 +25,19 @@ class ElevationAnswer(val account: String, val password: CharArray)
 /** Asks the user for an administrator answer for one exact capability and target. */
 fun interface ElevationAnswerProvider {
     suspend fun answer(capability: String, target: String): ElevationAnswer?
+
+    companion object {
+        /**
+         * The answer for a request nobody made.
+         *
+         * `null` is the same answer the dialog gives when the user closes it, and the elevation
+         * repository turns it into the server's original refusal: nothing is sent, nothing is granted
+         * and no stored credential is touched. It exists for calls the user did not ask for a privilege
+         * with — an image preview that follows a tap, for instance — so that those can report "this
+         * needs authorization" instead of raising a password prompt on their own (design §5.3.8).
+         */
+        val Declines = ElevationAnswerProvider { _, _ -> null }
+    }
 }
 
 /** Result of one elevation attempt. */
