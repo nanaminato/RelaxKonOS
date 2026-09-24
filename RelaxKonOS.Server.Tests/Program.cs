@@ -1,3 +1,9 @@
+if (args.Length == 3 && args[0] == "--user-execution-copy-worker")
+{
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(args[1], args[2], overwrite: true);
+    return;
+}
+
 Batteries_V2.Init();
 
 var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewGuid():N}");

@@ -241,7 +241,7 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     // A later directory listing/new operation must restore the old destination before discarding
     // the incomplete staged replacement.
     var interruptedDestination = Path.Combine(operationRoot, "interrupted-write.txt");
-    var interruptedTransaction = Path.Combine(operationRoot, ".relaxkonos-stage-v1-interrupted.tmp");
+    var interruptedTransaction = TransactionRoot(operationRoot, int.MaxValue, 1);
     Directory.CreateDirectory(interruptedTransaction);
     File.WriteAllText(Path.Combine(interruptedTransaction, "backup"), "old");
     File.WriteAllText(Path.Combine(interruptedTransaction, "staged"), "partial-new");
@@ -253,7 +253,7 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     // If the final destination is already present, the rename committed before termination and
     // recovery must keep it while removing only the obsolete backup.
     var committedDestination = Path.Combine(operationRoot, "committed-write.txt");
-    var committedTransaction = Path.Combine(operationRoot, ".relaxkonos-stage-v1-committed.tmp");
+    var committedTransaction = TransactionRoot(operationRoot, int.MaxValue, 1);
     File.WriteAllText(committedDestination, "new");
     Directory.CreateDirectory(committedTransaction);
     File.WriteAllText(Path.Combine(committedTransaction, "backup"), "old");
@@ -264,15 +264,26 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
 
     // Recovery must not race a second live one-shot Helper operating in the same directory.
     var liveDestination = Path.Combine(operationRoot, "live-write.txt");
-    var liveTransaction = Path.Combine(operationRoot, ".relaxkonos-stage-v1-live.tmp");
-    Directory.CreateDirectory(liveTransaction);
     using (var current = System.Diagnostics.Process.GetCurrentProcess())
+    {
+        var liveTransaction = TransactionRoot(operationRoot, current.Id,
+            current.StartTime.ToUniversalTime().Ticks);
+        Directory.CreateDirectory(liveTransaction);
         WriteTransactionManifest(liveTransaction, liveDestination, current.Id,
             current.StartTime.ToUniversalTime().Ticks);
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+        TestAssert.Assert(Directory.Exists(liveTransaction),
+            "Linux user file recovery removed a live concurrent transaction.");
+        Directory.Delete(liveTransaction, recursive: true);
+    }
+
+    var incompleteTransaction = Path.Combine(operationRoot,
+        $".relaxkonos-stage-v1-{int.MaxValue}-1-{Guid.NewGuid():N}.tmp");
+    Directory.CreateDirectory(incompleteTransaction);
+    File.WriteAllText(Path.Combine(incompleteTransaction, "manifest.pending"), "partial");
     RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
-    TestAssert.Assert(Directory.Exists(liveTransaction),
-        "Linux user file recovery removed a live concurrent transaction.");
-    Directory.Delete(liveTransaction, recursive: true);
+    TestAssert.Assert(!Directory.Exists(incompleteTransaction),
+        "Linux user file recovery left a verifiably abandoned manifest initialization behind.");
 
     var unrelatedHiddenDirectory = Path.Combine(operationRoot, ".relaxkonos-stage-v1-untrusted.tmp");
     Directory.CreateDirectory(unrelatedHiddenDirectory);
@@ -281,6 +292,56 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     TestAssert.Assert(File.ReadAllText(Path.Combine(unrelatedHiddenDirectory, "user-data.txt")) == "keep",
         "Linux user file recovery removed an unverified lookalike directory.");
     Directory.Delete(unrelatedHiddenDirectory, recursive: true);
+
+    // Exercise an actual forced process termination. The FIFO makes the child block only after
+    // its durable manifest and staging directory exist, so the parent can deterministically kill
+    // it at the same boundary used by a timed-out one-shot Helper.
+    var killedSource = Path.Combine(operationRoot, "killed-source");
+    var killedDestination = Path.Combine(operationRoot, "killed-destination");
+    Directory.CreateDirectory(killedSource);
+    Directory.CreateDirectory(killedDestination);
+    File.WriteAllText(Path.Combine(killedDestination, "old.txt"), "old");
+    var fifo = Path.Combine(killedSource, "blocked-input");
+    if (MkFifo(fifo, Convert.ToUInt32("600", 8)) != 0)
+        throw new IOException($"Could not create the user-execution test FIFO (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}).");
+    var start = new System.Diagnostics.ProcessStartInfo("dotnet")
+    {
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        CreateNoWindow = true,
+    };
+    start.ArgumentList.Add(typeof(ServerCoreChecks).Assembly.Location);
+    start.ArgumentList.Add("--user-execution-copy-worker");
+    start.ArgumentList.Add(killedSource);
+    start.ArgumentList.Add(killedDestination);
+    using (var child = System.Diagnostics.Process.Start(start)
+        ?? throw new InvalidOperationException("Could not start the user-execution test worker."))
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        string? transaction = null;
+        while (DateTime.UtcNow < deadline && !child.HasExited)
+        {
+            transaction = Directory.EnumerateDirectories(operationRoot, ".relaxkonos-stage-v1-*.tmp",
+                SearchOption.TopDirectoryOnly).FirstOrDefault(path => Directory.Exists(Path.Combine(path, "staged")));
+            if (transaction is not null) break;
+            Thread.Sleep(5);
+        }
+        TestAssert.Assert(transaction is not null && !child.HasExited,
+            "The forced-termination worker did not reach its staged copy boundary.");
+        TestAssert.Assert(File.GetUnixFileMode(transaction!)
+            == (UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute),
+            "The user-execution transaction directory was not restricted to its target OS user.");
+        child.Kill(entireProcessTree: true);
+        child.WaitForExit();
+        TestAssert.Assert(Directory.Exists(transaction!),
+            "The forced-termination worker unexpectedly removed its interrupted transaction.");
+    }
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(Path.Combine(killedDestination, "old.txt")) == "old"
+        && !Directory.EnumerateDirectories(operationRoot, ".relaxkonos-stage-v1-*.tmp",
+            SearchOption.TopDirectoryOnly).Any(),
+        "A real forced process termination was not recovered without changing the old destination.");
 
     TestAssert.Assert(!Directory.EnumerateFileSystemEntries(operationRoot, ".relaxkonos-*", SearchOption.TopDirectoryOnly).Any(),
         "Linux user file write or recovery left a staging artifact behind.");
@@ -308,7 +369,14 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
             "1", processId.ToString(), processStartUtcTicks.ToString(),
             Convert.ToBase64String(Encoding.UTF8.GetBytes(destination)), string.Empty));
     }
+
+    static string TransactionRoot(string parent, int processId, long processStartUtcTicks)
+        => Path.Combine(parent,
+            $".relaxkonos-stage-v1-{processId}-{processStartUtcTicks}-{Guid.NewGuid():N}.tmp");
 }
+
+[System.Runtime.InteropServices.DllImport("libc.so.6", EntryPoint = "mkfifo", SetLastError = true)]
+private static extern int MkFifo(string path, uint mode);
 
 private sealed class UserExecutionMode(ServerMode mode) : IServerModeResolver
 {

@@ -14,6 +14,7 @@ public static class LinuxUserFileOperations
     private const string TransactionPrefix = ".relaxkonos-stage-v1-";
     private const string TransactionSuffix = ".tmp";
     private const string ManifestName = "manifest";
+    private const string PendingManifestName = "manifest.pending";
     private const string StagedName = "staged";
     private const string BackupName = "backup";
 
@@ -81,8 +82,12 @@ public static class LinuxUserFileOperations
         foreach (var candidate in Directory.EnumerateDirectories(directory, $"{TransactionPrefix}*{TransactionSuffix}",
                      SearchOption.TopDirectoryOnly))
         {
-            if (!TryReadTransaction(candidate, out var transaction) || IsCreatingProcessAlive(transaction))
+            if (!TryReadTransaction(candidate, out var transaction))
+            {
+                RecoverIncompleteInitialization(candidate);
                 continue;
+            }
+            if (IsCreatingProcessAlive(transaction)) continue;
             if (!FinishTransaction(transaction) && requiredDestination is not null
                 && SamePath(transaction.Destination, requiredDestination))
                 throw new IOException("An interrupted destination transaction could not be recovered.");
@@ -172,24 +177,35 @@ public static class LinuxUserFileOperations
         // Recovery of this exact destination is fail-closed. Starting a replacement while its old
         // backup cannot be restored could otherwise turn a recoverable interruption into data loss.
         RecoverAbandoned(parent, destination);
-        var process = Process.GetCurrentProcess();
-        var root = Path.Combine(parent, $"{TransactionPrefix}{Guid.NewGuid():N}{TransactionSuffix}");
-        Directory.CreateDirectory(root);
-        var transaction = new Transaction(root, destination, Environment.ProcessId,
-            process.StartTime.ToUniversalTime().Ticks);
+        using var process = Process.GetCurrentProcess();
+        var processStartUtcTicks = process.StartTime.ToUniversalTime().Ticks;
+        var root = Path.Combine(parent, $"{TransactionPrefix}{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}-"
+            + $"{processStartUtcTicks.ToString(CultureInfo.InvariantCulture)}-{Guid.NewGuid():N}{TransactionSuffix}");
+        if (OperatingSystem.IsLinux())
+            Directory.CreateDirectory(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        else
+            Directory.CreateDirectory(root);
+        var transaction = new Transaction(root, destination, Environment.ProcessId, processStartUtcTicks);
         try
         {
             // The manifest is intentionally small and contains no file content or credentials.
             // Flush it before staging begins so a later Helper can identify an interrupted owner.
-            using var manifest = new FileStream(transaction.Manifest, FileMode.CreateNew, FileAccess.Write,
-                FileShare.None, 4096, FileOptions.WriteThrough);
-            using var writer = new StreamWriter(manifest, new System.Text.UTF8Encoding(false), 4096, leaveOpen: true);
-            writer.WriteLine("1");
-            writer.WriteLine(transaction.ProcessId.ToString(CultureInfo.InvariantCulture));
-            writer.WriteLine(transaction.ProcessStartUtcTicks.ToString(CultureInfo.InvariantCulture));
-            writer.WriteLine(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(destination)));
-            writer.Flush();
-            manifest.Flush(flushToDisk: true);
+            var pendingManifest = Path.Combine(root, PendingManifestName);
+            using (var manifest = new FileStream(pendingManifest, FileMode.CreateNew, FileAccess.Write,
+                       FileShare.None, 4096, FileOptions.WriteThrough))
+            {
+                using (var writer = new StreamWriter(manifest, new System.Text.UTF8Encoding(false), 4096,
+                           leaveOpen: true))
+                {
+                    writer.WriteLine("1");
+                    writer.WriteLine(transaction.ProcessId.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(transaction.ProcessStartUtcTicks.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(destination)));
+                    writer.Flush();
+                }
+                manifest.Flush(flushToDisk: true);
+            }
+            File.Move(pendingManifest, transaction.Manifest);
             return transaction;
         }
         catch
@@ -216,6 +232,10 @@ public static class LinuxUserFileOperations
                 || !long.TryParse(lines[2], NumberStyles.None, CultureInfo.InvariantCulture, out var processStartUtcTicks)
                 || processStartUtcTicks <= 0)
                 return false;
+            if (!TryReadOwnerFromTransactionName(root, out var namedProcessId,
+                    out var namedProcessStartUtcTicks)
+                || namedProcessId != processId || namedProcessStartUtcTicks != processStartUtcTicks)
+                return false;
             var destination = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(lines[3]));
             if (!Path.IsPathFullyQualified(destination)) return false;
             destination = Path.GetFullPath(destination);
@@ -231,17 +251,63 @@ public static class LinuxUserFileOperations
     }
 
     private static bool IsCreatingProcessAlive(Transaction transaction)
+        => IsCreatingProcessAlive(transaction.ProcessId, transaction.ProcessStartUtcTicks);
+
+    private static bool IsCreatingProcessAlive(int processId, long processStartUtcTicks)
     {
         try
         {
-            using var process = Process.GetProcessById(transaction.ProcessId);
-            return !process.HasExited && process.StartTime.ToUniversalTime().Ticks == transaction.ProcessStartUtcTicks;
+            using var process = Process.GetProcessById(processId);
+            return !process.HasExited && process.StartTime.ToUniversalTime().Ticks == processStartUtcTicks;
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
             or System.ComponentModel.Win32Exception or NotSupportedException)
         {
             return false;
         }
+    }
+
+    private static void RecoverIncompleteInitialization(string root)
+    {
+        try
+        {
+            var attributes = File.GetAttributes(root);
+            if (!attributes.HasFlag(FileAttributes.Directory) || attributes.HasFlag(FileAttributes.ReparsePoint)
+                || !TryReadOwnerFromTransactionName(root, out var processId, out var processStartUtcTicks)
+                || IsCreatingProcessAlive(processId, processStartUtcTicks))
+                return;
+            var entries = Directory.EnumerateFileSystemEntries(root).ToArray();
+            if (entries.Any(entry => Path.GetFileName(entry) is not (ManifestName or PendingManifestName)
+                || (File.GetAttributes(entry) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0))
+                return;
+            foreach (var entry in entries) File.Delete(entry);
+            Directory.Delete(root, recursive: false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or ArgumentException or System.ComponentModel.Win32Exception)
+        {
+            // An invalid or inaccessible lookalike is not trusted as an application transaction.
+        }
+    }
+
+    private static bool TryReadOwnerFromTransactionName(string root, out int processId,
+        out long processStartUtcTicks)
+    {
+        processId = 0;
+        processStartUtcTicks = 0;
+        var name = Path.GetFileName(root);
+        if (!name.StartsWith(TransactionPrefix, StringComparison.Ordinal)
+            || !name.EndsWith(TransactionSuffix, StringComparison.Ordinal))
+            return false;
+        var value = name[TransactionPrefix.Length..^TransactionSuffix.Length];
+        var parts = value.Split('-', StringSplitOptions.None);
+        return parts.Length == 3
+            && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out processId)
+            && processId > 0
+            && long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture,
+                out processStartUtcTicks)
+            && processStartUtcTicks > 0
+            && Guid.TryParseExact(parts[2], "N", out _);
     }
 
     private static bool FinishTransaction(Transaction transaction)
