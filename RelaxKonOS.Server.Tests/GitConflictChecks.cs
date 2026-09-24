@@ -15,9 +15,12 @@ public static class GitConflictChecks
         var options = new DbContextOptionsBuilder<RelaxKonOSDbContext>().UseSqlite($"Data Source={Path.Combine(root, "git.sqlite")};Pooling=False").Options;
         var factory = new Factory(options);
         await using (var db = factory.CreateDbContext()) await db.Database.EnsureCreatedAsync();
+        using var executionScopeProvider = new ServiceCollection()
+            .AddSingleton(DispatchProxy.Create<IUserExecutionContextResolver, RejectProxy>())
+            .BuildServiceProvider();
         var service = new LocalGitRepositoryService(factory, new HostGitCli(), new EphemeralDataProtectionProvider(),
             NullLogger<LocalGitRepositoryService>.Instance,
-            DispatchProxy.Create<IUserExecutionContextResolver, RejectProxy>(),
+            executionScopeProvider.GetRequiredService<IServiceScopeFactory>(),
             DispatchProxy.Create<IUserExecutionTransport, RejectProxy>(),
             new TestUserModeResolver(), new Microsoft.AspNetCore.Http.HttpContextAccessor());
         var user = Guid.NewGuid();

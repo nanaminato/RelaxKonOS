@@ -24,7 +24,7 @@ public sealed partial class LocalGitRepositoryService(
     IHostGitCli gitCli,
     IDataProtectionProvider dataProtection,
     ILogger<LocalGitRepositoryService> logger,
-    IUserExecutionContextResolver executionContexts,
+    IServiceScopeFactory executionScopes,
     IUserExecutionTransport executionTransport,
     IServerModeResolver serverMode,
     IHttpContextAccessor http) : IGitRepositoryService
@@ -1447,7 +1447,9 @@ public sealed partial class LocalGitRepositoryService(
             if (principal is null) return new CommandResult(false, "", "user_execution_context_unavailable");
             try
             {
-                var context = executionContexts.Resolve(principal);
+                UserExecutionContext context;
+                using (var scope = executionScopes.CreateScope())
+                    context = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
                 var response = await executionTransport.ExecuteAsync(new RelaxKonOS.Protocol.UserExecution.UserExecutionRequest(
                     context.Identity, RelaxKonOS.Protocol.UserExecution.UserExecutionOperationKind.GitExecute, Path: workingDir,
                     GitArguments: arguments, OperationId: Guid.NewGuid()), cancellationToken);

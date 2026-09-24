@@ -563,7 +563,7 @@ builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.INativeServiceAd
 // Git client: server-side git CLI service (Singleton—holds per-repo write semaphore).
 // Invokes host git CLI as the host user; credentials handled entirely by the host git credential helper.
 builder.Services.AddSingleton<RelaxKonOS.Server.Git.IHostGitCli, RelaxKonOS.Server.Git.HostGitCli>();
-builder.Services.AddScoped<RelaxKonOS.Server.Git.IGitRepositoryService, RelaxKonOS.Server.Git.LocalGitRepositoryService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Git.IGitRepositoryService, RelaxKonOS.Server.Git.LocalGitRepositoryService>();
 
 // Firewall keeps a deliberately narrow UFW-only surface. On Linux the RelaxKonOS Server service
 // is the privileged host facade; on Windows the unavailable provider is retained only so all

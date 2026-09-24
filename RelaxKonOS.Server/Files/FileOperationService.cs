@@ -12,7 +12,7 @@ namespace RelaxKonOS.Server.Files;
 /// <summary>In-memory, identity-scoped file jobs. Never replays jobs after a server restart.</summary>
 public sealed class FileOperationService(IPrivilegedFileService privileged,
     IFileElevationSessionStore elevations, IServerModeResolver mode,
-    IUserExecutionContextResolver executionContexts, IUserExecutionTransport executionTransport) : IDisposable
+    IServiceScopeFactory executionScopes, IUserExecutionTransport executionTransport) : IDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, Job> _jobs = [];
@@ -27,7 +27,14 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
     {
         // A job outlives its HTTP request. Resolve and freeze the authenticated OS identity now;
         // background work must never fall back to the Server service account later.
-        var executionContext = mode.Mode == ServerMode.System ? executionContexts.Resolve(principal) : null;
+        UserExecutionContext? executionContext = null;
+        if (mode.Mode == ServerMode.System)
+        {
+            // A file job outlives the request. Resolve the identity in a short-lived scope and
+            // retain only the immutable execution context, never the scoped resolver itself.
+            using var scope = executionScopes.CreateScope();
+            executionContext = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
+        }
         if (request.RequestId == Guid.Empty || !Enum.IsDefined(request.Kind) || request.Items is null
             || request.Items.Count is < 1 or > 1000 || request.Items.Any(item => item is null)) throw new ArgumentException("Invalid operation request (1–1000 items required).");
         var items = request.Items.Select(item =>
