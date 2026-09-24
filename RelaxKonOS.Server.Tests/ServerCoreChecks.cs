@@ -258,6 +258,53 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
         && File.ReadAllText(Path.Combine(deleteExternal, "keep.txt")) == "keep",
         "Descriptor-relative recursive delete followed a symbolic link outside its tree.");
 
+    var readParent = Path.Combine(operationRoot, "read-parent");
+    var movedReadParent = Path.Combine(operationRoot, "read-parent-moved");
+    var readPath = Path.Combine(readParent, "value.txt");
+    Directory.CreateDirectory(readParent);
+    File.WriteAllText(readPath, "original-read");
+    using (var openedRead = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.OpenRead(readPath))
+    {
+        Directory.Move(readParent, movedReadParent);
+        Directory.CreateDirectory(readParent);
+        File.WriteAllText(readPath, "replacement-read");
+        using var reader = new StreamReader(openedRead, Encoding.UTF8);
+        TestAssert.Assert(reader.ReadToEnd() == "original-read",
+            "An opened user-execution read followed a replaced lexical parent path.");
+    }
+
+    var createdRoot = Path.Combine(operationRoot, "descriptor-created");
+    var createdTarget = Path.Combine(createdRoot, "one", "two", "three");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateDirectory(createdTarget);
+    TestAssert.Assert(Directory.Exists(createdTarget),
+        "Descriptor-relative recursive directory creation did not create the requested tree.");
+    var createLinkTarget = Path.Combine(operationRoot, "create-link-target");
+    var createLink = Path.Combine(operationRoot, "create-link");
+    Directory.CreateDirectory(createLinkTarget);
+    Directory.CreateSymbolicLink(createLink, createLinkTarget);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateDirectory(
+        Path.Combine(createLink, "nested"));
+    TestAssert.Assert(Directory.Exists(Path.Combine(createLinkTarget, "nested")),
+        "Descriptor-relative directory creation did not preserve existing symlink semantics.");
+
+    var modeTarget = Path.Combine(operationRoot, "mode-target.txt");
+    var modeLink = Path.Combine(operationRoot, "mode-link.txt");
+    File.WriteAllText(modeTarget, "mode");
+    File.CreateSymbolicLink(modeLink, modeTarget);
+    File.SetUnixFileMode(modeTarget, UnixFileMode.None);
+    var modeMetadata = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixFileMode(modeLink,
+        UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    TestAssert.Assert(File.GetUnixFileMode(modeTarget)
+            == (UnixFileMode.UserRead | UnixFileMode.UserWrite)
+        && modeMetadata.Attributes.HasFlag(FileAttributes.ReparsePoint)
+        && modeMetadata.UnixMode == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+        "Descriptor-anchored POSIX mode update did not bind and report the symlink target correctly.");
+    var targetMetadata = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.GetMetadata(modeLink);
+    TestAssert.Assert(targetMetadata is { IsDirectory: false }
+        && targetMetadata.Attributes.HasFlag(FileAttributes.ReparsePoint)
+        && targetMetadata.Size == 4,
+        "Descriptor-relative metadata did not preserve the user-visible symlink target semantics.");
+
     var atomicWrite = Path.Combine(operationRoot, "atomic-write.txt");
     File.WriteAllText(atomicWrite, "old-content");
     File.SetUnixFileMode(atomicWrite, UnixFileMode.UserRead | UnixFileMode.UserWrite);
@@ -290,6 +337,37 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
     TestAssert.Assert(File.ReadAllText(committedDestination) == "new" && !Directory.Exists(committedTransaction),
         "Abandoned Linux user file transaction rolled back an already committed destination.");
+
+    var recoveryParent = Path.Combine(operationRoot, "recovery-parent");
+    var movedRecoveryParent = Path.Combine(operationRoot, "recovery-parent-moved");
+    Directory.CreateDirectory(recoveryParent);
+    var recoveryDestination = Path.Combine(recoveryParent, "recovered.txt");
+    var movedRecoveryDestination = Path.Combine(movedRecoveryParent, "recovered.txt");
+    var anchoredRecoveryTransaction = TransactionRoot(recoveryParent, int.MaxValue, 1);
+    Directory.CreateDirectory(anchoredRecoveryTransaction);
+    File.WriteAllText(Path.Combine(anchoredRecoveryTransaction, "backup"), "anchored-old");
+    WriteTransactionManifest(anchoredRecoveryTransaction, recoveryDestination, int.MaxValue, 1);
+    Directory.Move(recoveryParent, movedRecoveryParent);
+    Directory.CreateDirectory(recoveryParent);
+    File.WriteAllText(Path.Combine(recoveryParent, "replacement.txt"), "replacement");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(movedRecoveryParent);
+    TestAssert.Assert(File.ReadAllText(movedRecoveryDestination) == "anchored-old"
+        && File.ReadAllText(Path.Combine(recoveryParent, "replacement.txt")) == "replacement"
+        && !Directory.Exists(Path.Combine(movedRecoveryParent,
+            Path.GetFileName(anchoredRecoveryTransaction))),
+        "Transaction recovery did not remain valid and anchored after its parent directory was renamed.");
+
+    var legacyTransaction = TransactionRoot(operationRoot, int.MaxValue, 1);
+    Directory.CreateDirectory(legacyTransaction);
+    File.WriteAllText(Path.Combine(legacyTransaction, "staged"), "keep-unrecognized");
+    File.WriteAllText(Path.Combine(legacyTransaction, "manifest"), string.Join('\n',
+        "1", int.MaxValue.ToString(), "1",
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.Combine(operationRoot, "legacy.txt"))),
+        string.Empty));
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(Path.Combine(legacyTransaction, "staged")) == "keep-unrecognized",
+        "User-execution recovery accepted or deleted a legacy transaction format.");
+    Directory.Delete(legacyTransaction, recursive: true);
 
     // Recovery must not race a second live one-shot Helper operating in the same directory.
     var liveDestination = Path.Combine(operationRoot, "live-write.txt");
@@ -491,8 +569,8 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
         long processStartUtcTicks)
     {
         File.WriteAllText(Path.Combine(transactionRoot, "manifest"), string.Join('\n',
-            "1", processId.ToString(), processStartUtcTicks.ToString(),
-            Convert.ToBase64String(Encoding.UTF8.GetBytes(destination)), string.Empty));
+            "2", processId.ToString(), processStartUtcTicks.ToString(),
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFileName(destination))), string.Empty));
     }
 
     static string TransactionRoot(string parent, int processId, long processStartUtcTicks)

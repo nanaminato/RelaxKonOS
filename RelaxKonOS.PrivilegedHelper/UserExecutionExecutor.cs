@@ -186,12 +186,15 @@ public static class UserExecutionExecutor
     private static IReadOnlyList<SpecialLocationDto> Special(string home) => new[] { (SpecialFolderKind.Home, "主目录", home), (SpecialFolderKind.Desktop, "桌面", Path.Combine(home, "Desktop")),
         (SpecialFolderKind.Documents, "文档", Path.Combine(home, "Documents")), (SpecialFolderKind.Downloads, "下载", Path.Combine(home, "Downloads")),
         (SpecialFolderKind.Pictures, "图片", Path.Combine(home, "Pictures")), (SpecialFolderKind.Music, "音乐", Path.Combine(home, "Music")), (SpecialFolderKind.Videos, "视频", Path.Combine(home, "Videos")) }
-        .Where(x => System.IO.Directory.Exists(x.Item3)).Select(x => new SpecialLocationDto(x.Item1, x.Item2, x.Item3)).ToArray();
-    private static FileSystemEntryDto? Info(string? path) => path is not null && System.IO.Directory.Exists(path) ? DirectoryEntry(path) : path is not null && System.IO.File.Exists(path) ? ToInfo(FileEntry(new FileInfo(path))) : null;
+        .Where(x => LinuxUserFileOperations.GetMetadata(x.Item3) is { IsDirectory: true })
+        .Select(x => new SpecialLocationDto(x.Item1, x.Item2, x.Item3)).ToArray();
+    private static FileSystemEntryDto? Info(string? path)
+        => path is null ? null : LinuxUserFileOperations.GetMetadata(path) is { } metadata
+            ? ToInfo(metadata)
+            : null;
     private static async Task<FileRead> ReadAsync(string path)
     {
-        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            bufferSize: 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using var file = LinuxUserFileOperations.OpenRead(path);
         if (file.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new ContentTooLargeException();
         var content = await ReadBoundedBytesAsync(file, UserExecutionProtocol.MaximumFileContentBytes);
         return new(Convert.ToBase64String(content), Path.GetFileName(path), ContentType(path));
@@ -199,20 +202,20 @@ public static class UserExecutionExecutor
     private static Task<FileEntryDto> WriteAsync(string path, string content)
     {
         LinuxUserFileOperations.WriteAllBytes(path, Decode(content));
-        return Task.FromResult(FileEntry(new FileInfo(path)));
+        return Task.FromResult(ToFileEntry(RequiredMetadata(path)));
     }
     private static bool Delete(string path) => LinuxUserFileOperations.Delete(path);
-    private static FileSystemEntryDto Rename(string path, string name, string home) { ValidateName(name); var target = ValidatePath(Path.Combine(Path.GetDirectoryName(path)!, name)); var directory = LinuxUserFileOperations.Rename(path, name); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
-    private static FileSystemEntryDto Move(string source, string target, bool overwrite) { var directory = LinuxUserFileOperations.Move(source, target, overwrite); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
-    private static FileSystemEntryDto Copy(string source, string target, bool overwrite) { var directory = LinuxUserFileOperations.Copy(source, target, overwrite); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
+    private static FileSystemEntryDto Rename(string path, string name, string home) { ValidateName(name); var target = ValidatePath(Path.Combine(Path.GetDirectoryName(path)!, name)); LinuxUserFileOperations.Rename(path, name); return ToInfo(RequiredMetadata(target)); }
+    private static FileSystemEntryDto Move(string source, string target, bool overwrite) { LinuxUserFileOperations.Move(source, target, overwrite); return ToInfo(RequiredMetadata(target)); }
+    private static FileSystemEntryDto Copy(string source, string target, bool overwrite) { LinuxUserFileOperations.Copy(source, target, overwrite); return ToInfo(RequiredMetadata(target)); }
     private static Task<FileEntryDto> UploadAsync(string directory, string name, string content, string home)
     {
         ValidateName(name);
         var path = ValidatePath(Path.Combine(directory, name));
         LinuxUserFileOperations.WriteAllBytes(path, Decode(content));
-        return Task.FromResult(FileEntry(new FileInfo(path)));
+        return Task.FromResult(ToFileEntry(RequiredMetadata(path)));
     }
-    private static bool Create(string path) { System.IO.Directory.CreateDirectory(path); return true; }
+    private static bool Create(string path) => LinuxUserFileOperations.CreateDirectory(path);
     private static async Task<GitResult> GitAsync(string workingDirectory, IReadOnlyList<string>? arguments)
     {
         if (!UserExecutionGitPolicy.IsAllowed(arguments)) throw new ArgumentException();
@@ -229,15 +232,33 @@ public static class UserExecutionExecutor
     }
     private static FilePropertiesDto? Properties(string path)
     {
-        var info = Info(path); if (info is null) return null;
-        var mode = (int)System.IO.File.GetUnixFileMode(path);
-        return new(info.Path, info.Name, info.Type, info.Size, info.Created, info.Modified, info.Accessed,
-            Convert.ToString(mode, 8).PadLeft(4, '0'), System.IO.File.GetAttributes(path).ToString(), mode);
+        var metadata = LinuxUserFileOperations.GetMetadata(path);
+        return metadata is null ? null : ToProperties(metadata);
     }
-    private static FilePropertiesDto SetMode(string path, int? mode) { if (mode is < 0 or > 0xfff or null) throw new ArgumentException(); System.IO.File.SetUnixFileMode(path, (UnixFileMode)mode.Value); return Properties(path)!; }
+    private static FilePropertiesDto SetMode(string path, int? mode) { if (mode is < 0 or > 0xfff or null) throw new ArgumentException(); return ToProperties(LinuxUserFileOperations.SetUnixFileMode(path, (UnixFileMode)mode.Value)); }
     private static FileEntryDto FileEntry(FileInfo f, string? reportedPath = null) => new(reportedPath ?? f.FullName, f.Name, f.Extension, f.Length, f.CreationTimeUtc, f.LastWriteTimeUtc, f.LastAccessTimeUtc, f.Attributes.HasFlag(FileAttributes.Hidden), f.Attributes.HasFlag(FileAttributes.System), ContentType(reportedPath ?? f.FullName));
+    private static LinuxUserFileOperations.LinuxPathMetadata RequiredMetadata(string path)
+        => LinuxUserFileOperations.GetMetadata(path) ?? throw new FileNotFoundException();
+    private static FileEntryDto ToFileEntry(LinuxUserFileOperations.LinuxPathMetadata metadata)
+        => new(metadata.Path, metadata.Name, Path.GetExtension(metadata.Name), checked((long)metadata.Size),
+            metadata.CreatedUtc, metadata.ModifiedUtc, metadata.AccessedUtc,
+            metadata.Attributes.HasFlag(FileAttributes.Hidden),
+            metadata.Attributes.HasFlag(FileAttributes.System), ContentType(metadata.Path));
+    private static FileSystemEntryDto ToInfo(LinuxUserFileOperations.LinuxPathMetadata metadata)
+        => new(metadata.Path, metadata.Name, metadata.IsDirectory ? null : checked((long)metadata.Size),
+            metadata.IsDirectory ? FileSystemEntryType.Directory : FileSystemEntryType.File,
+            metadata.CreatedUtc, metadata.ModifiedUtc, metadata.AccessedUtc,
+            metadata.Attributes.HasFlag(FileAttributes.Hidden),
+            metadata.Attributes.HasFlag(FileAttributes.System),
+            metadata.IsDirectory ? "inode/directory" : ContentType(metadata.Path));
+    private static FilePropertiesDto ToProperties(LinuxUserFileOperations.LinuxPathMetadata metadata)
+    {
+        var mode = (int)metadata.UnixMode;
+        var info = ToInfo(metadata);
+        return new(info.Path, info.Name, info.Type, info.Size, info.Created, info.Modified, info.Accessed,
+            Convert.ToString(mode, 8).PadLeft(4, '0'), metadata.Attributes.ToString(), mode);
+    }
     private static FileSystemEntryDto ToInfo(FileEntryDto f) => new(f.Path, f.Name, f.Size, FileSystemEntryType.File, f.Created, f.Modified, f.Accessed, f.IsHidden, f.IsSystem, f.MimeType);
-    private static FileSystemEntryDto DirectoryEntry(string path) { var d = new DirectoryInfo(path); return new(d.FullName, d.Name, null, FileSystemEntryType.Directory, d.CreationTimeUtc, d.LastWriteTimeUtc, d.LastAccessTimeUtc, d.Attributes.HasFlag(FileAttributes.Hidden), d.Attributes.HasFlag(FileAttributes.System), "inode/directory"); }
     private static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
         ".txt" or ".log" or ".md" or ".json" or ".cs" => "text/plain",

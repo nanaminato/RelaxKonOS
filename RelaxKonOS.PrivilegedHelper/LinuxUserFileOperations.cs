@@ -17,10 +17,12 @@ public static class LinuxUserFileOperations
     private const int OpenDirectory = 0x10000;
     private const int OpenNoFollow = 0x20000;
     private const int OpenCloseOnExec = 0x80000;
+    private const int OpenPathOnly = 0x200000;
     private const int RemoveDirectory = 0x200;
     private const int AtEmptyPath = 0x1000;
     private const int AtSymlinkNoFollow = 0x100;
     private const uint StatxBasicStats = 0x7ff;
+    private const uint StatxBirthTime = 0x800;
     private const uint RenameNoReplace = 1;
     private const ushort FileTypeMask = 0xf000;
     private const ushort DirectoryType = 0x4000;
@@ -99,13 +101,25 @@ public static class LinuxUserFileOperations
 
     private static void RecoverAbandoned(string directory, string? requiredDestination)
     {
-        if (!Directory.Exists(directory)) return;
-        foreach (var candidate in Directory.EnumerateDirectories(directory, $"{TransactionPrefix}*{TransactionSuffix}",
+        directory = NormalizePath(directory);
+        SafeFileHandle parent;
+        try { parent = OpenDirectoryHandle(directory); }
+        catch (NativeFileIOException exception) when (exception.Errno == 2) { return; }
+        using (parent)
+            RecoverAbandoned(parent, directory, requiredDestination);
+    }
+
+    private static void RecoverAbandoned(SafeFileHandle parent, string reportedDirectory,
+        string? requiredDestination)
+    {
+        foreach (var candidate in Directory.EnumerateDirectories(DescriptorPath(parent),
+                     $"{TransactionPrefix}*{TransactionSuffix}",
                      SearchOption.TopDirectoryOnly))
         {
-            if (!TryReadTransaction(candidate, out var transaction))
+            var rootName = Path.GetFileName(candidate);
+            if (!TryReadTransaction(parent, reportedDirectory, rootName, out var transaction))
             {
-                RecoverIncompleteInitialization(candidate);
+                RecoverIncompleteInitialization(parent, rootName);
                 continue;
             }
             using (transaction)
@@ -170,6 +184,92 @@ public static class LinuxUserFileOperations
         return IsDirectory(reference.Stat);
     }
 
+    public static LinuxPathMetadata? GetMetadata(string path)
+    {
+        path = NormalizePath(path);
+        if (Path.GetPathRoot(path) == path)
+        {
+            using var root = OpenDirectoryHandle(path);
+            return Metadata(path, StatHandle(root), reparsePoint: false);
+        }
+
+        using var parent = OpenParentDirectory(path, out var name);
+        if (!TryStatAt(parent, name, out var linkStat)) return null;
+        var reparsePoint = IsSymbolicLink(linkStat);
+        if (!TryStatAtFollowing(parent, name, out var targetStat)) return null;
+        return Metadata(path, targetStat, reparsePoint);
+    }
+
+    public static FileStream OpenRead(string path)
+    {
+        using var parent = OpenParentDirectory(path, out var name);
+        var handle = OpenFileHandleAtFollowing(parent, name);
+        try { return new FileStream(handle, FileAccess.Read, 64 * 1024, isAsync: false); }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    public static bool CreateDirectory(string path)
+    {
+        path = NormalizePath(path);
+        var root = Path.GetPathRoot(path)
+            ?? throw new ArgumentException("An absolute path is required.", nameof(path));
+        using var rootHandle = OpenDirectoryHandle(root);
+        if (root == path) return true;
+
+        SafeFileHandle current = rootHandle;
+        var ownsCurrent = false;
+        try
+        {
+            foreach (var component in path[root.Length..].Split(Path.DirectorySeparatorChar,
+                         StringSplitOptions.RemoveEmptyEntries))
+            {
+                SafeFileHandle next;
+                if (!TryOpenDirectoryHandleAt(current, component, noFollow: false, out next))
+                {
+                    if (mkdirat(Descriptor(current), component, Convert.ToUInt32("777", 8)) != 0)
+                    {
+                        var error = Marshal.GetLastPInvokeError();
+                        if (error != 17)
+                            throw new NativeFileIOException("Could not create a user-execution directory", error);
+                        next = OpenDirectoryHandleAtFollowing(current, component);
+                    }
+                    else
+                    {
+                        next = OpenDirectoryHandleAt(current, component);
+                    }
+                }
+                if (ownsCurrent) current.Dispose();
+                current = next;
+                ownsCurrent = true;
+            }
+            return true;
+        }
+        finally
+        {
+            if (ownsCurrent) current.Dispose();
+        }
+    }
+
+    public static LinuxPathMetadata SetUnixFileMode(string path, UnixFileMode mode)
+    {
+        path = NormalizePath(path);
+        if (Path.GetPathRoot(path) == path)
+        {
+            using var root = OpenDirectoryHandle(path);
+            ChangeMode(DescriptorPath(root), mode);
+            return Metadata(path, StatHandle(root), reparsePoint: false);
+        }
+        using var parent = OpenParentDirectory(path, out var name);
+        var reparsePoint = IsSymbolicLink(StatAt(parent, name));
+        using var handle = OpenPathHandleAtFollowing(parent, name);
+        ChangeMode(DescriptorPath(handle), mode);
+        return Metadata(path, StatHandle(handle), reparsePoint);
+    }
+
     internal static T WithAnchoredDirectory<T>(string path, Func<string, T> action)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -226,19 +326,24 @@ public static class LinuxUserFileOperations
 
     private static Transaction BeginTransaction(string destination)
     {
-        destination = Path.GetFullPath(destination);
+        destination = NormalizePath(destination);
         var parent = Path.GetDirectoryName(destination);
-        if (string.IsNullOrWhiteSpace(parent) || !Directory.Exists(parent))
+        if (string.IsNullOrWhiteSpace(parent))
             throw new DirectoryNotFoundException("Destination directory does not exist.");
 
+        var parentHandle = OpenDirectoryHandle(parent);
         // Recovery of this exact destination is fail-closed. Starting a replacement while its old
         // backup cannot be restored could otherwise turn a recoverable interruption into data loss.
-        RecoverAbandoned(parent, destination);
+        try { RecoverAbandoned(parentHandle, parent, destination); }
+        catch
+        {
+            parentHandle.Dispose();
+            throw;
+        }
         using var process = Process.GetCurrentProcess();
         var processStartUtcTicks = process.StartTime.ToUniversalTime().Ticks;
         var rootName = $"{TransactionPrefix}{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}-"
             + $"{processStartUtcTicks.ToString(CultureInfo.InvariantCulture)}-{Guid.NewGuid():N}{TransactionSuffix}";
-        var parentHandle = OpenDirectoryHandle(parent);
         if (mkdirat(Descriptor(parentHandle), rootName, Convert.ToUInt32("700", 8)) != 0)
         {
             var exception = NativeIOException("Could not create the user-execution transaction directory");
@@ -269,10 +374,11 @@ public static class LinuxUserFileOperations
                 using (var writer = new StreamWriter(manifest, new System.Text.UTF8Encoding(false), 4096,
                            leaveOpen: true))
                 {
-                    writer.WriteLine("1");
+                    writer.WriteLine("2");
                     writer.WriteLine(transaction.ProcessId.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine(transaction.ProcessStartUtcTicks.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(destination)));
+                    writer.WriteLine(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
+                        transaction.DestinationName)));
                     writer.Flush();
                 }
                 manifest.Flush(flushToDisk: true);
@@ -289,37 +395,39 @@ public static class LinuxUserFileOperations
         }
     }
 
-    private static bool TryReadTransaction(string root, out Transaction transaction)
+    private static bool TryReadTransaction(SafeFileHandle anchoredParent, string reportedDirectory,
+        string rootName, out Transaction transaction)
     {
         transaction = null!;
         SafeFileHandle? parentHandle = null;
         SafeFileHandle? rootHandle = null;
         try
         {
-            var attributes = File.GetAttributes(root);
+            var anchoredRoot = Path.Combine(DescriptorPath(anchoredParent), rootName);
+            var attributes = File.GetAttributes(anchoredRoot);
             if (!attributes.HasFlag(FileAttributes.Directory) || attributes.HasFlag(FileAttributes.ReparsePoint))
                 return false;
-            var parent = Path.GetDirectoryName(root)!;
-            var rootName = Path.GetFileName(root);
-            parentHandle = OpenDirectoryHandle(parent);
+            parentHandle = DuplicateHandle(anchoredParent);
             rootHandle = OpenDirectoryHandleAt(parentHandle, rootName);
             var manifestPath = Path.Combine(DescriptorPath(rootHandle), ManifestName);
             if (new FileInfo(manifestPath).Length > 4096) return false;
             var lines = File.ReadAllLines(manifestPath);
-            if (lines.Length != 4 || lines[0] != "1"
+            if (lines.Length != 4 || lines[0] != "2"
                 || !int.TryParse(lines[1], NumberStyles.None, CultureInfo.InvariantCulture, out var processId)
                 || processId <= 0
                 || !long.TryParse(lines[2], NumberStyles.None, CultureInfo.InvariantCulture, out var processStartUtcTicks)
                 || processStartUtcTicks <= 0)
                 return false;
-            if (!TryReadOwnerFromTransactionName(root, out var namedProcessId,
+            if (!TryReadOwnerFromTransactionName(rootName, out var namedProcessId,
                     out var namedProcessStartUtcTicks)
                 || namedProcessId != processId || namedProcessStartUtcTicks != processStartUtcTicks)
                 return false;
-            var destination = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(lines[3]));
-            if (!Path.IsPathFullyQualified(destination)) return false;
-            destination = Path.GetFullPath(destination);
-            if (!SamePath(Path.GetDirectoryName(destination)!, Path.GetDirectoryName(root)!)) return false;
+            var destinationName = System.Text.Encoding.UTF8.GetString(
+                Convert.FromBase64String(lines[3]));
+            if (string.IsNullOrEmpty(destinationName)
+                || destinationName is "." or ".."
+                || destinationName != Path.GetFileName(destinationName)) return false;
+            var destination = Path.Combine(reportedDirectory, destinationName);
             transaction = new(rootName, destination, processId, processStartUtcTicks,
                 parentHandle, rootHandle);
             parentHandle = null;
@@ -355,20 +463,18 @@ public static class LinuxUserFileOperations
         }
     }
 
-    private static void RecoverIncompleteInitialization(string root)
+    private static void RecoverIncompleteInitialization(SafeFileHandle parentHandle,
+        string rootName)
     {
-        SafeFileHandle? parentHandle = null;
         SafeFileHandle? rootHandle = null;
         try
         {
+            var root = Path.Combine(DescriptorPath(parentHandle), rootName);
             var attributes = File.GetAttributes(root);
             if (!attributes.HasFlag(FileAttributes.Directory) || attributes.HasFlag(FileAttributes.ReparsePoint)
                 || !TryReadOwnerFromTransactionName(root, out var processId, out var processStartUtcTicks)
                 || IsCreatingProcessAlive(processId, processStartUtcTicks))
                 return;
-            var parent = Path.GetDirectoryName(root)!;
-            var rootName = Path.GetFileName(root);
-            parentHandle = OpenDirectoryHandle(parent);
             rootHandle = OpenDirectoryHandleAt(parentHandle, rootName);
             var anchoredRoot = DescriptorPath(rootHandle);
             var entries = Directory.EnumerateFileSystemEntries(anchoredRoot).ToArray();
@@ -386,7 +492,6 @@ public static class LinuxUserFileOperations
         finally
         {
             rootHandle?.Dispose();
-            parentHandle?.Dispose();
         }
     }
 
@@ -482,7 +587,7 @@ public static class LinuxUserFileOperations
         using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write,
                    FileShare.None, 64 * 1024, FileOptions.SequentialScan))
             input.CopyTo(output);
-        File.SetUnixFileMode(destination, (UnixFileMode)(openedFileStat.Mode & PermissionMask));
+        ChangeMode(destination, (UnixFileMode)(openedFileStat.Mode & PermissionMask));
         return Identity(openedFileStat);
     }
 
@@ -551,6 +656,14 @@ public static class LinuxUserFileOperations
             : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
     }
 
+    private static SafeFileHandle DuplicateHandle(SafeFileHandle handle)
+    {
+        var descriptor = dup(Descriptor(handle));
+        return descriptor < 0
+            ? throw NativeIOException("Could not duplicate a user-execution directory handle")
+            : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+    }
+
     private static SafeFileHandle OpenDirectoryHandleAt(SafeFileHandle parent, string name)
     {
         var descriptor = openat(Descriptor(parent), name,
@@ -560,12 +673,51 @@ public static class LinuxUserFileOperations
             : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
     }
 
+    private static SafeFileHandle OpenDirectoryHandleAtFollowing(SafeFileHandle parent, string name)
+    {
+        if (TryOpenDirectoryHandleAt(parent, name, noFollow: false, out var handle)) return handle;
+        throw NativeIOException("Could not open a user-execution directory");
+    }
+
+    private static bool TryOpenDirectoryHandleAt(SafeFileHandle parent, string name, bool noFollow,
+        out SafeFileHandle handle)
+    {
+        var flags = OpenReadOnly | OpenDirectory | OpenCloseOnExec;
+        if (noFollow) flags |= OpenNoFollow;
+        var descriptor = openat(Descriptor(parent), name, flags);
+        if (descriptor >= 0)
+        {
+            handle = new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+            return true;
+        }
+        var error = Marshal.GetLastPInvokeError();
+        handle = null!;
+        if (error == 2) return false;
+        throw new NativeFileIOException("Could not open a user-execution directory", error);
+    }
+
     private static SafeFileHandle OpenFileHandleAt(SafeFileHandle parent, string name)
     {
         var descriptor = openat(Descriptor(parent), name,
             OpenReadOnly | OpenNoFollow | OpenCloseOnExec);
         return descriptor < 0
             ? throw NativeIOException("Could not open the user-execution source file")
+            : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+    }
+
+    private static SafeFileHandle OpenFileHandleAtFollowing(SafeFileHandle parent, string name)
+    {
+        var descriptor = openat(Descriptor(parent), name, OpenReadOnly | OpenCloseOnExec);
+        return descriptor < 0
+            ? throw NativeIOException("Could not open the user-execution file")
+            : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+    }
+
+    private static SafeFileHandle OpenPathHandleAtFollowing(SafeFileHandle parent, string name)
+    {
+        var descriptor = openat(Descriptor(parent), name, OpenPathOnly | OpenCloseOnExec);
+        return descriptor < 0
+            ? throw NativeIOException("Could not open the user-execution path")
             : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
     }
 
@@ -632,16 +784,28 @@ public static class LinuxUserFileOperations
 
     private static bool TryStatAt(SafeFileHandle parent, string name, out StatxBuffer stat)
     {
-        if (statx(Descriptor(parent), name, AtSymlinkNoFollow, StatxBasicStats, out stat) == 0)
+        if (statx(Descriptor(parent), name, AtSymlinkNoFollow,
+                StatxBasicStats | StatxBirthTime, out stat) == 0)
             return true;
         var error = Marshal.GetLastPInvokeError();
         if (error is 2 or 20) return false;
         throw new NativeFileIOException("Could not inspect a user-execution path", error);
     }
 
+    private static bool TryStatAtFollowing(SafeFileHandle parent, string name,
+        out StatxBuffer stat)
+    {
+        if (statx(Descriptor(parent), name, 0, StatxBasicStats | StatxBirthTime, out stat) == 0)
+            return true;
+        var error = Marshal.GetLastPInvokeError();
+        if (error is 2 or 20 or 40) return false;
+        throw new NativeFileIOException("Could not inspect a user-execution path", error);
+    }
+
     private static StatxBuffer StatHandle(SafeFileHandle handle)
     {
-        if (statx(Descriptor(handle), string.Empty, AtEmptyPath, StatxBasicStats, out var stat) != 0)
+        if (statx(Descriptor(handle), string.Empty, AtEmptyPath,
+                StatxBasicStats | StatxBirthTime, out var stat) != 0)
             throw NativeIOException("Could not inspect an opened user-execution path");
         return stat;
     }
@@ -653,6 +817,29 @@ public static class LinuxUserFileOperations
     private static NodeIdentity Identity(StatxBuffer stat)
         => new(stat.DeviceMajor, stat.DeviceMinor, stat.Inode);
 
+    private static LinuxPathMetadata Metadata(string path, StatxBuffer stat,
+        bool reparsePoint)
+    {
+        var attributes = IsDirectory(stat) ? FileAttributes.Directory : 0;
+        if (reparsePoint) attributes |= FileAttributes.ReparsePoint;
+        if (Path.GetFileName(path).StartsWith(".", StringComparison.Ordinal))
+            attributes |= FileAttributes.Hidden;
+        if (attributes == 0) attributes = FileAttributes.Normal;
+        var created = (stat.Mask & StatxBirthTime) != 0
+            ? ToDateTimeUtc(stat.BirthTime)
+            : ToDateTimeUtc(stat.ChangeTime);
+        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+        if (string.IsNullOrEmpty(name)) name = path;
+        return new(path, name,
+            IsDirectory(stat), stat.Size, created, ToDateTimeUtc(stat.ModificationTime),
+            ToDateTimeUtc(stat.AccessTime), attributes,
+            (UnixFileMode)(stat.Mode & PermissionMask));
+    }
+
+    private static DateTime ToDateTimeUtc(StatxTimestamp timestamp)
+        => DateTimeOffset.FromUnixTimeSeconds(timestamp.Seconds).UtcDateTime
+            .AddTicks(timestamp.Nanoseconds / 100);
+
     private static string ReadLinkAt(SafeFileHandle parent, string name)
     {
         var buffer = new byte[4096];
@@ -660,6 +847,12 @@ public static class LinuxUserFileOperations
         if (length < 0) throw NativeIOException("Could not read a user-execution symbolic link");
         if (length == buffer.Length) throw new IOException("Symbolic link target is too long.");
         return System.Text.Encoding.UTF8.GetString(buffer, 0, checked((int)length));
+    }
+
+    private static void ChangeMode(string path, UnixFileMode mode)
+    {
+        if (chmod(path, (uint)mode) != 0)
+            throw NativeIOException("Could not change user-execution path permissions");
     }
 
     private static NativeFileIOException NativeIOException(string message)
@@ -682,11 +875,29 @@ public static class LinuxUserFileOperations
 
     private readonly record struct NodeIdentity(uint DeviceMajor, uint DeviceMinor, ulong Inode);
 
+    public sealed record LinuxPathMetadata(string Path, string Name, bool IsDirectory, ulong Size,
+        DateTime CreatedUtc, DateTime ModifiedUtc, DateTime AccessedUtc, FileAttributes Attributes,
+        UnixFileMode UnixMode);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StatxTimestamp
+    {
+        public long Seconds;
+        public uint Nanoseconds;
+        private int Reserved;
+    }
+
     [StructLayout(LayoutKind.Explicit, Size = 256)]
     private struct StatxBuffer
     {
+        [FieldOffset(0)] public uint Mask;
         [FieldOffset(28)] public ushort Mode;
         [FieldOffset(32)] public ulong Inode;
+        [FieldOffset(40)] public ulong Size;
+        [FieldOffset(64)] public StatxTimestamp AccessTime;
+        [FieldOffset(80)] public StatxTimestamp BirthTime;
+        [FieldOffset(96)] public StatxTimestamp ChangeTime;
+        [FieldOffset(112)] public StatxTimestamp ModificationTime;
         [FieldOffset(136)] public uint DeviceMajor;
         [FieldOffset(140)] public uint DeviceMinor;
     }
@@ -715,6 +926,8 @@ public static class LinuxUserFileOperations
     }
 
     [DllImport("libc.so.6", SetLastError = true)] private static extern int open(string path, int flags);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int dup(int descriptor);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int chmod(string path, uint mode);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int openat(int directory, string path, int flags);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int mkdirat(int directory, string path, uint mode);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int renameat(int oldDirectory, string oldPath, int newDirectory, string newPath);
