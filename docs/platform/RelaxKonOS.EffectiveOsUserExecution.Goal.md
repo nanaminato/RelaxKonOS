@@ -1,6 +1,6 @@
 # RelaxKonOS 有效 OS 执行身份（Effective OS User Execution）Goal
 
-> 状态：实施中（2026-09-24：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Linux 文件操作与事务恢复已收紧到目录/文件描述符；Windows 及真实多用户集成验证仍未完成。）
+> 状态：实施中（2026-09-24：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Linux 文件操作与事务恢复已收紧到目录/文件描述符；Windows 本地账户文件 impersonation 代码已接入但默认关闭，真实多用户集成验证仍未完成。）
 >
 > 建立日期：2026-09-22
 >
@@ -212,11 +212,13 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - Guardian workload 创建入口现在从 JWT `sub` 解析 canonical OS account；未声明 `runAs` 时默认当前用户，跨账户仍需要单独管理员批准。Server 会把 canonical launch account 与稳定 Linux UID/Windows SID 写入定义；Agent 在接收定义及每次启动前重新解析该账号并比对 UID/SID。旧定义缺少稳定身份时 fail closed，必须重新保存；Linux 继续使用 `runuser` 完成 child UID/GID/groups transition。
 - 应用部署的本地文件引用现在通过 `IFileService` 以当前登录用户读取，并立刻复制到 deployment-owned staging；后续 Docker build 只使用 staging 副本，不会在后台以 Server 服务账号重新读取用户项目文件。
 - 媒体播放 lease 在创建时冻结 Server 派生的有效 OS identity 与文件修改时间；后续 bearer lease URL 没有 JWT 时，仍通过该 identity 的 user-execution 通道读取，而不是因为缺少 HTTP 主体回退到 Server 服务账号。
+- Windows System Mode 已增加与管理员操作分离的 `<privileged-pipe>-user` 本机管道。LocalSystem Helper 会重新把 SID 解析为规范 `MACHINE\\user`、拒绝域/系统账户并复核 Profile 路径，然后通过 MSV1_0 S4U 创建不含密码的一次性 network logon token；只有 SID 匹配、impersonation level 精确为 Impersonation 且管理员组未在 token 中启用时才接受。token 仅在同步 `WindowsIdentity.RunImpersonated` 文件操作作用域内存在，操作后立即释放，不进入协议、缓存或日志。文件列表、元数据、特殊位置、读写、上传、创建、删除、重命名、移动和 staged copy 已接入；Git、Terminal 与 POSIX mode 明确返回 unsupported。
+- Windows user execution 仍由 Server 与 Helper 两侧的 `EnableWindowsUserExecution` 开关共同 fail closed，默认值及安装器写入值均为 `false`。这不是兼容开关，而是尚未通过目标平台验收前的能力门；通过真实 Windows Server 验证后应直接移除门控并更新安装器，不保留双行为。
 - 添加 contract/context 单元检查，覆盖 canonical identity、请求身份替换拒绝、System Mode fail-closed 以及无敏感/通用命令字段。
 
 ### 尚未实施（明确不跳过）
 
-- Windows LocalSystem named-pipe/SID impersonation。
+- Windows LocalSystem named-pipe/SID impersonation 的代码路径已完成首个文件垂直切片，但尚未在真实 Windows Server 验证 S4U logon type、NTFS deny/allow、UAC/管理员本地账户语义、token 释放、并发、取消、服务重启、profile/known-folder 与网络/映射盘行为；验收前保持默认关闭，不能标记 Goal 3/4 完成。
 - Git 的临时 AskPass 远程凭据路径；Windows terminal impersonation。
 - 应用部署的完整用户工作负载 owner model：当前只保证从文件选择器导入源 archive 时按登录用户读取、随后由 deployment-owned staging 使用；Docker Engine 容器本身仍是宿主级资源。
 - Linux user-execution 的文件代码路径已完成本轮 descriptor-relative 收尾；仍需安装为 root-owned Helper 后的真实多用户残留演练。代码已用真实子进程 SIGKILL 验证 staging 恢复与清单初始化窗口回收，并用源/目标/恢复父路径替换验证 descriptor anchoring；隔离环境仍须验证 root Helper、`relaxkon-server`/`nanami`/`alice` 三账户、共享目录、supplementary groups 与 owner/group 结果。
@@ -231,8 +233,9 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | `dotnet build RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj -c Debug --no-restore` | 通过 | Guardian stable UID/SID binding 与 Agent-side revalidation 可编译。 |
 | System Mode batch file jobs | 已完成代码迁移，集成暂缓 | Job 在入队时冻结 execution context；后台每一次路径读取/修改都经 User Execution Helper。真实多用户、冲突决定、取消与跨文件系统演练仍需要隔离 Linux 环境。 |
 | `dotnet build Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj -c Debug --no-restore` | 通过 | 共享 framework 回归构建。 |
-| `RelaxKonOS.Server.Tests` | 专项通过 | 普通 project-reference restore graph 仍在当前桌面 SDK 中无诊断失败；使用项目既有的预构建 Server/Core assembly 路径后，测试工程可从源码重建，`--user-execution-only` 通过，包含 identity contract 与 reserved UID、Git allowlist 及危险选项拒绝、Terminal 输入/resize/close 帧往返、Helper 取消/超时、复制与写入原子覆盖、Unix mode 保留、提交前/后中断恢复、真实子进程 SIGKILL、`0700` staging、v2 清单与未完成清单回收、旧清单 fail closed、并发事务保护、伪造 staging 拒绝、源/目标/恢复父路径替换时的 descriptor anchoring、打开后读取路径替换、metadata/递归创建/POSIX mode、递归删除不跟随符号链接、重命名 no-replace，以及工作区到 `/tmp` 不同设备号之间的 staged move。同时 `--file-operations-only` 35 项和 `--git-conflicts-only` 47 项全部通过。 |
+| `RelaxKonOS.Server.Tests` | 专项通过 | 普通 project-reference restore graph 仍在当前桌面 SDK 中无诊断失败；使用项目既有的预构建 Server/Core assembly 路径后，测试工程可从源码重建，`--user-execution-only` 通过，包含 identity contract 与 reserved UID、Windows 独立管道/默认关闭能力门、严格 request-shape 拒绝、Git allowlist 及危险选项拒绝、Terminal 输入/resize/close 帧往返、Helper 取消/超时、复制与写入原子覆盖、Unix mode 保留、提交前/后中断恢复、真实子进程 SIGKILL、`0700` staging、v2 清单与未完成清单回收、旧清单 fail closed、并发事务保护、伪造 staging 拒绝、源/目标/恢复父路径替换时的 descriptor anchoring、打开后读取路径替换、metadata/递归创建/POSIX mode、递归删除不跟随符号链接、重命名 no-replace，以及工作区到 `/tmp` 不同设备号之间的 staged move。同时 `--file-operations-only` 35 项和 `--git-conflicts-only` 47 项全部通过。 |
 | `dotnet build RelaxKonOS.sln -c Debug --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false` | 通过 | Server、Helper、Guardian Agent、Client/Desktop 及 Framework 全部编译成功；最新整体构建为 0 warning / 0 error。 |
 | Linux installer / sudoers | 通过 | 四个受影响的安装/卸载脚本均通过 `bash -n`；三个精确命令形状组成的 sudoers 条目通过 `visudo -cf -`。发布 inventory 的缺失、篡改与多余文件拒绝以及 runtime 快照清理使用临时目录 smoke test 验证。 |
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |
-| Windows impersonation 集成 | 暂缓 | 首版 Windows user execution 尚未启用，需真实 Windows Server + LocalSystem Helper 环境。 |
+| Windows impersonation 代码 | 首个文件切片完成、默认关闭 | 独立认证管道、本地 SID/account/profile 二次验证、一次性 MSV1_0 S4U token、同步 impersonation 文件操作和 replay/大小限制已接入；域账户、Git、Terminal 与 POSIX mode fail closed。 |
+| Windows impersonation 集成 | 暂缓 | 安装器明确写入 `EnableWindowsUserExecution=false`；需真实 Windows Server + LocalSystem Helper + 两个普通本地账户完成 NTFS ACL、owner、token、并发、取消与重启验收后才可启用。 |

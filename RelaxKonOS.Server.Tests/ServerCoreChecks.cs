@@ -97,9 +97,20 @@ internal static void VerifyUserExecutionContextContract()
         && !UserExecutionProtocol.IsEligibleLinuxUserId(999)
         && !UserExecutionProtocol.IsEligibleLinuxUserId(65534),
         "Linux user execution did not reject root, system, or nobody identities.");
+    TestAssert.Assert(UserExecutionProtocol.WindowsPipeName("relaxkonos-privileged-helper")
+            == "relaxkonos-privileged-helper-user"
+        && UserExecutionProtocol.MaximumAuthenticatedPipeFrameBytes > UserExecutionProtocol.MaximumResponseBytes * 4L / 3,
+        "The Windows user-execution pipe is distinct and large enough for its authenticated envelope.");
+    TestAssert.Assert(!new PrivilegedHelperOptions().EnableWindowsUserExecution,
+        "Windows user execution must stay disabled until its target-host acceptance matrix passes.");
 
     var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.FileListDirectory,
         Path: "/home/nanami", OperationId: Guid.NewGuid());
+    TestAssert.Assert(UserExecutionRequestPolicy.IsValid(request, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(request with { FileName = "ignored.txt" }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(request with { Overwrite = true }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(request with { OperationId = Guid.Empty }, terminal: false),
+        "User-execution request policy accepted an unrelated field, overwrite flag, or empty operation id.");
     var systemResult = new DirectUserExecutionService(new UserExecutionMode(ServerMode.System)).Validate(context, request);
     TestAssert.Assert(!systemResult.Success && systemResult.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
         "System Mode user execution fails closed until its dedicated Helper is available.");

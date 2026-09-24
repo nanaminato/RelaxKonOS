@@ -12,9 +12,14 @@ public static class UserExecutionProtocol
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
     public const int MaximumResultBytes = 17 * 1024 * 1024;
     public const int MaximumResponseBytes = 24 * 1024 * 1024;
+    // Windows adds an authenticated base64 envelope around the already bounded response.
+    public const int MaximumAuthenticatedPipeFrameBytes = 36 * 1024 * 1024;
     public const int MaximumTerminalInputBytes = 1024 * 1024;
+    public const string WindowsPipeSuffix = "-user";
 
     public static bool IsEligibleLinuxUserId(uint uid) => uid >= 1000 && uid != 65534;
+
+    public static string WindowsPipeName(string privilegedPipeName) => privilegedPipeName + WindowsPipeSuffix;
 }
 
 /// <summary>

@@ -469,12 +469,15 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationT
         ? ActivatorUtilities.CreateInstance<RelaxKonOS.Server.Privileged.WindowsNamedPipePrivilegedOperationTransport>(sp)
         : sp.GetRequiredService<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>());
 builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>();
+builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>();
 builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionTransport>(sp =>
     serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User
         ? new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport()
         : OperatingSystem.IsLinux()
             ? sp.GetRequiredService<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>()
-            : new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport());
+            : OperatingSystem.IsWindows() && privilegedHelperOptions.EnableWindowsUserExecution
+                ? sp.GetRequiredService<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>()
+                : new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport());
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedFileService, RelaxKonOS.Server.Privileged.PrivilegedFileService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IFileElevationSessionStore, RelaxKonOS.Server.Privileged.FileElevationSessionStore>();

@@ -39,8 +39,17 @@ public sealed class UserExecutionContextResolver(IUserRepository users, Canonica
             if (serverMode.Mode == ServerMode.User && uid != geteuid())
                 throw new UserExecutionException(UserExecutionProblemCode.IdentityNotExecutable, "User Mode can execute only as the Server's effective Unix user.");
         }
-        else if (identity.Platform != PlatformKind.Windows || string.IsNullOrWhiteSpace(identity.HomeDirectory)
-            || !Path.IsPathFullyQualified(identity.HomeDirectory))
+        else if (identity.Platform == PlatformKind.Windows)
+        {
+            var account = identity.Username.Split('\\', 2);
+            if (serverMode.Mode != ServerMode.System || account.Length != 2
+                || !account[0].Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(identity.Uid) || !identity.Uid.StartsWith("S-1-5-", StringComparison.Ordinal)
+                || string.IsNullOrWhiteSpace(identity.HomeDirectory) || !Path.IsPathFullyQualified(identity.HomeDirectory))
+                throw new UserExecutionException(UserExecutionProblemCode.IdentityNotExecutable,
+                    "Only local Windows accounts with a verified profile are eligible for System Mode user execution.");
+        }
+        else
         {
             throw new UserExecutionException(UserExecutionProblemCode.UnsupportedPlatform, "The OS identity is not supported for user execution.");
         }

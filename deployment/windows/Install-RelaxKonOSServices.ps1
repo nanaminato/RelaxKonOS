@@ -203,6 +203,7 @@ $serverSettings = [ordered]@{
         PipeName = 'relaxkonos-privileged-helper'
         SharedSecret = $helperSecret
         TimeoutSeconds = 30
+        EnableWindowsUserExecution = $false
     }
 }
 if ($bootstrapCertificate) {
@@ -247,6 +248,8 @@ $helperSettings = [ordered]@{
     fileAllowedRoots = $fileAllowedRoots
     allowedServiceIds = @($ServerServiceName, $GuardianServiceName)
     helperExecutableSha256 = (Get-FileHash -LiteralPath $PrivilegedHelperExecutable -Algorithm SHA256).Hash
+    enableWindowsUserExecution = $false
+    userExecutionTimeoutSeconds = 25
 }
 [IO.File]::WriteAllText($serverHostConfig, ($serverSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText($privilegedConfig, ($helperSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
