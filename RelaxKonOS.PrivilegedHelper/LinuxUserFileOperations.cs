@@ -18,6 +18,14 @@ public static class LinuxUserFileOperations
     private const int OpenNoFollow = 0x20000;
     private const int OpenCloseOnExec = 0x80000;
     private const int RemoveDirectory = 0x200;
+    private const int AtEmptyPath = 0x1000;
+    private const int AtSymlinkNoFollow = 0x100;
+    private const uint StatxBasicStats = 0x7ff;
+    private const uint RenameNoReplace = 1;
+    private const ushort FileTypeMask = 0xf000;
+    private const ushort DirectoryType = 0x4000;
+    private const ushort SymbolicLinkType = 0xa000;
+    private const ushort PermissionMask = 0x0fff;
     private const string TransactionPrefix = ".relaxkonos-stage-v1-";
     private const string TransactionSuffix = ".tmp";
     private const string ManifestName = "manifest";
@@ -49,12 +57,17 @@ public static class LinuxUserFileOperations
         }
     }
 
-    public static void Copy(string source, string destination, bool overwrite)
+    public static bool Copy(string source, string destination, bool overwrite)
     {
-        if (!Exists(source)) throw new FileNotFoundException("Source path does not exist.", source);
-        if (SamePath(source, destination)) return;
-        var attributes = File.GetAttributes(source);
-        var directory = attributes.HasFlag(FileAttributes.Directory) && !attributes.HasFlag(FileAttributes.ReparsePoint);
+        source = NormalizePath(source);
+        destination = NormalizePath(destination);
+        if (SamePath(source, destination))
+        {
+            using var sameReference = OpenPathReference(source);
+            return IsDirectory(sameReference.Stat);
+        }
+        using var sourceReference = OpenPathReference(source);
+        var directory = IsDirectory(sourceReference.Stat);
         if (directory && ContainsPath(source, destination))
             throw new ArgumentException("A directory cannot be copied into its own descendant.");
         if (Exists(destination) && !overwrite) throw new IOException("Destination already exists.");
@@ -65,10 +78,10 @@ public static class LinuxUserFileOperations
         using var transaction = BeginTransaction(destination);
         try
         {
-            if (directory) CopyDirectory(source, transaction.Staged);
-            else if (attributes.HasFlag(FileAttributes.ReparsePoint)) CopySymbolicLink(source, transaction.Staged, attributes);
-            else File.Copy(source, transaction.Staged, overwrite: false);
+            CopyEntry(sourceReference.ParentHandle, sourceReference.Name, sourceReference.Stat,
+                transaction.Staged);
             Commit(transaction, overwrite);
+            return directory;
         }
         finally
         {
@@ -105,38 +118,63 @@ public static class LinuxUserFileOperations
         }
     }
 
-    public static void Move(string source, string destination, bool overwrite)
+    public static bool Move(string source, string destination, bool overwrite)
     {
-        if (!Exists(source)) throw new FileNotFoundException("Source path does not exist.", source);
-        if (SamePath(source, destination)) return;
-        var sourceAttributes = File.GetAttributes(source);
-        var sourceIsDirectory = sourceAttributes.HasFlag(FileAttributes.Directory)
-            && !sourceAttributes.HasFlag(FileAttributes.ReparsePoint);
+        source = NormalizePath(source);
+        destination = NormalizePath(destination);
+        using var sourceReference = OpenPathReference(source);
+        var sourceIsDirectory = IsDirectory(sourceReference.Stat);
+        if (SamePath(source, destination)) return sourceIsDirectory;
         if (sourceIsDirectory && ContainsPath(source, destination))
             throw new ArgumentException("A directory cannot be moved into its own descendant.");
-        var destinationExists = Exists(destination);
+        using var destinationParent = OpenParentDirectory(destination, out var destinationName);
+        var destinationExists = TryStatAt(destinationParent, destinationName, out _);
         if (destinationExists && !overwrite) throw new IOException("Destination already exists.");
 
         // Directory.Move cannot replace an existing tree. Stage first so the old destination
         // remains intact until the replacement is complete.
         if (sourceIsDirectory && destinationExists)
         {
-            Copy(source, destination, overwrite: true);
-            Directory.Delete(source, recursive: true);
-            return;
+            var copiedIdentity = CopyReferenced(sourceReference, destination, overwrite: true);
+            DeleteReferencedIfUnchanged(sourceReference, copiedIdentity);
+            return true;
         }
 
         try
         {
-            if (sourceIsDirectory) Directory.Move(source, destination);
-            else File.Move(source, destination, overwrite);
+            RenameAt(sourceReference.ParentHandle, sourceReference.Name, destinationParent,
+                destinationName);
+            return sourceIsDirectory;
         }
-        catch (IOException exception) when (IsCrossDevice(exception))
+        catch (NativeFileIOException exception) when (exception.Errno == CrossDeviceLink)
         {
-            Copy(source, destination, overwrite);
-            if (sourceIsDirectory) Directory.Delete(source, recursive: true);
-            else File.Delete(source);
+            var copiedIdentity = CopyReferenced(sourceReference, destination, overwrite);
+            DeleteReferencedIfUnchanged(sourceReference, copiedIdentity);
+            return sourceIsDirectory;
         }
+    }
+
+    public static bool Delete(string path)
+    {
+        using var reference = OpenPathReference(path);
+        DeleteEntryAt(reference.ParentHandle, reference.Name, reference.Stat);
+        return true;
+    }
+
+    public static bool Rename(string path, string newName)
+    {
+        using var reference = OpenPathReference(path);
+        if (TryStatAt(reference.ParentHandle, newName, out _))
+            throw new IOException("Destination already exists.");
+        RenameAtNoReplace(reference.ParentHandle, reference.Name, reference.ParentHandle, newName);
+        return IsDirectory(reference.Stat);
+    }
+
+    internal static T WithAnchoredDirectory<T>(string path, Func<string, T> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using var handle = OpenDirectoryHandle(NormalizePath(path));
+        return action(DescriptorPath(handle));
     }
 
     private static void Commit(Transaction transaction, bool overwrite)
@@ -397,29 +435,81 @@ public static class LinuxUserFileOperations
         }
     }
 
-    private static void CopyDirectory(string source, string destination)
+    private static NodeIdentity CopyReferenced(PathReference source, string destination,
+        bool overwrite)
     {
-        Directory.CreateDirectory(destination);
-        foreach (var entry in Directory.EnumerateFileSystemEntries(source))
+        using var transaction = BeginTransaction(destination);
+        try
         {
-            var target = Path.Combine(destination, Path.GetFileName(entry));
-            var attributes = File.GetAttributes(entry);
-            if (attributes.HasFlag(FileAttributes.ReparsePoint))
-                CopySymbolicLink(entry, target, attributes);
-            else if (attributes.HasFlag(FileAttributes.Directory))
-                CopyDirectory(entry, target);
-            else
-                File.Copy(entry, target, overwrite: false);
+            var identity = CopyEntry(source.ParentHandle, source.Name, source.Stat,
+                transaction.Staged);
+            Commit(transaction, overwrite);
+            return identity;
+        }
+        finally
+        {
+            FinishTransaction(transaction);
         }
     }
 
-    private static void CopySymbolicLink(string source, string destination, FileAttributes attributes)
+    private static NodeIdentity CopyEntry(SafeFileHandle sourceParent, string sourceName,
+        StatxBuffer sourceStat, string destination)
     {
-        var directory = attributes.HasFlag(FileAttributes.Directory);
-        var target = directory ? new DirectoryInfo(source).LinkTarget : new FileInfo(source).LinkTarget;
-        if (string.IsNullOrEmpty(target)) throw new IOException("Symbolic link target is unavailable.");
-        if (directory) Directory.CreateSymbolicLink(destination, target);
-        else File.CreateSymbolicLink(destination, target);
+        if (IsDirectory(sourceStat))
+        {
+            using var source = OpenDirectoryHandleAt(sourceParent, sourceName);
+            var openedStat = StatHandle(source);
+            Directory.CreateDirectory(destination);
+            foreach (var entry in Directory.EnumerateFileSystemEntries(DescriptorPath(source)))
+            {
+                var name = Path.GetFileName(entry);
+                var stat = StatAt(source, name);
+                CopyEntry(source, name, stat, Path.Combine(destination, name));
+            }
+            return Identity(openedStat);
+        }
+
+        if (IsSymbolicLink(sourceStat))
+        {
+            var target = ReadLinkAt(sourceParent, sourceName);
+            File.CreateSymbolicLink(destination, target);
+            return Identity(sourceStat);
+        }
+
+        using var sourceFile = OpenFileHandleAt(sourceParent, sourceName);
+        var openedFileStat = StatHandle(sourceFile);
+        using (var input = new FileStream(sourceFile, FileAccess.Read))
+        using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write,
+                   FileShare.None, 64 * 1024, FileOptions.SequentialScan))
+            input.CopyTo(output);
+        File.SetUnixFileMode(destination, (UnixFileMode)(openedFileStat.Mode & PermissionMask));
+        return Identity(openedFileStat);
+    }
+
+    private static void DeleteReferencedIfUnchanged(PathReference source,
+        NodeIdentity copiedIdentity)
+    {
+        if (!TryStatAt(source.ParentHandle, source.Name, out var current)
+            || Identity(current) != copiedIdentity)
+            throw new IOException("Source changed while the move was in progress.");
+        DeleteEntryAt(source.ParentHandle, source.Name, current);
+    }
+
+    private static void DeleteEntryAt(SafeFileHandle parent, string name, StatxBuffer stat)
+    {
+        if (!IsDirectory(stat))
+        {
+            UnlinkAt(parent, name, removeDirectory: false);
+            return;
+        }
+
+        using var directory = OpenDirectoryHandleAt(parent, name);
+        foreach (var entry in Directory.EnumerateFileSystemEntries(DescriptorPath(directory)))
+        {
+            var childName = Path.GetFileName(entry);
+            DeleteEntryAt(directory, childName, StatAt(directory, childName));
+        }
+        UnlinkAt(parent, name, removeDirectory: true);
     }
 
     private static void DeleteIfPresent(string path)
@@ -437,10 +527,15 @@ public static class LinuxUserFileOperations
         try { _ = File.GetAttributes(path); return true; }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException) { return false; }
     }
-    private static bool IsCrossDevice(IOException exception) => (exception.HResult & 0xffff) == CrossDeviceLink;
+    private static string NormalizePath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        return Path.GetPathRoot(fullPath) == fullPath
+            ? fullPath
+            : Path.TrimEndingDirectorySeparator(fullPath);
+    }
     private static bool SamePath(string left, string right) => string.Equals(
-        Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
-        Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)), StringComparison.Ordinal);
+        NormalizePath(left), NormalizePath(right), StringComparison.Ordinal);
     private static bool ContainsPath(string parent, string child)
     {
         var normalizedParent = Path.TrimEndingDirectorySeparator(Path.GetFullPath(parent));
@@ -465,11 +560,55 @@ public static class LinuxUserFileOperations
             : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
     }
 
+    private static SafeFileHandle OpenFileHandleAt(SafeFileHandle parent, string name)
+    {
+        var descriptor = openat(Descriptor(parent), name,
+            OpenReadOnly | OpenNoFollow | OpenCloseOnExec);
+        return descriptor < 0
+            ? throw NativeIOException("Could not open the user-execution source file")
+            : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+    }
+
+    private static SafeFileHandle OpenParentDirectory(string path, out string name)
+    {
+        path = NormalizePath(path);
+        var parent = Path.GetDirectoryName(path);
+        name = Path.GetFileName(path);
+        if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(name))
+            throw new ArgumentException("A filesystem root cannot be used for this operation.", nameof(path));
+        return OpenDirectoryHandle(parent);
+    }
+
+    private static PathReference OpenPathReference(string path)
+    {
+        var handle = OpenParentDirectory(path, out var name);
+        try { return new PathReference(handle, name, StatAt(handle, name)); }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
     private static void RenameAt(SafeFileHandle oldDirectory, string oldName,
         SafeFileHandle newDirectory, string newName)
     {
         if (renameat(Descriptor(oldDirectory), oldName, Descriptor(newDirectory), newName) != 0)
             throw NativeIOException("Could not atomically rename a user-execution path");
+    }
+
+    private static void RenameAtNoReplace(SafeFileHandle oldDirectory, string oldName,
+        SafeFileHandle newDirectory, string newName)
+    {
+        if (renameat2(Descriptor(oldDirectory), oldName, Descriptor(newDirectory), newName,
+                RenameNoReplace) != 0)
+            throw NativeIOException("Could not atomically rename a user-execution path");
+    }
+
+    private static void UnlinkAt(SafeFileHandle parent, string name, bool removeDirectory)
+    {
+        if (unlinkat(Descriptor(parent), name, removeDirectory ? RemoveDirectory : 0) != 0)
+            throw NativeIOException("Could not delete a user-execution path");
     }
 
     private static void RemoveDirectoryAt(SafeFileHandle parent, string name)
@@ -486,8 +625,71 @@ public static class LinuxUserFileOperations
 
     private static int Descriptor(SafeFileHandle handle) => handle.DangerousGetHandle().ToInt32();
     private static string DescriptorPath(SafeFileHandle handle) => $"/proc/self/fd/{Descriptor(handle)}";
-    private static IOException NativeIOException(string message)
-        => new($"{message} (errno {Marshal.GetLastPInvokeError()}).");
+    private static StatxBuffer StatAt(SafeFileHandle parent, string name)
+        => TryStatAt(parent, name, out var stat)
+            ? stat
+            : throw NativeIOException("Could not inspect a user-execution path");
+
+    private static bool TryStatAt(SafeFileHandle parent, string name, out StatxBuffer stat)
+    {
+        if (statx(Descriptor(parent), name, AtSymlinkNoFollow, StatxBasicStats, out stat) == 0)
+            return true;
+        var error = Marshal.GetLastPInvokeError();
+        if (error is 2 or 20) return false;
+        throw new NativeFileIOException("Could not inspect a user-execution path", error);
+    }
+
+    private static StatxBuffer StatHandle(SafeFileHandle handle)
+    {
+        if (statx(Descriptor(handle), string.Empty, AtEmptyPath, StatxBasicStats, out var stat) != 0)
+            throw NativeIOException("Could not inspect an opened user-execution path");
+        return stat;
+    }
+
+    private static bool IsDirectory(StatxBuffer stat)
+        => (stat.Mode & FileTypeMask) == DirectoryType;
+    private static bool IsSymbolicLink(StatxBuffer stat)
+        => (stat.Mode & FileTypeMask) == SymbolicLinkType;
+    private static NodeIdentity Identity(StatxBuffer stat)
+        => new(stat.DeviceMajor, stat.DeviceMinor, stat.Inode);
+
+    private static string ReadLinkAt(SafeFileHandle parent, string name)
+    {
+        var buffer = new byte[4096];
+        var length = readlinkat(Descriptor(parent), name, buffer, (nuint)buffer.Length);
+        if (length < 0) throw NativeIOException("Could not read a user-execution symbolic link");
+        if (length == buffer.Length) throw new IOException("Symbolic link target is too long.");
+        return System.Text.Encoding.UTF8.GetString(buffer, 0, checked((int)length));
+    }
+
+    private static NativeFileIOException NativeIOException(string message)
+        => new(message, Marshal.GetLastPInvokeError());
+
+    private sealed class NativeFileIOException(string message, int errno)
+        : IOException($"{message} (errno {errno}).")
+    {
+        public int Errno { get; } = errno;
+    }
+
+    private sealed class PathReference(SafeFileHandle parentHandle, string name, StatxBuffer stat)
+        : IDisposable
+    {
+        public SafeFileHandle ParentHandle { get; } = parentHandle;
+        public string Name { get; } = name;
+        public StatxBuffer Stat { get; } = stat;
+        public void Dispose() => ParentHandle.Dispose();
+    }
+
+    private readonly record struct NodeIdentity(uint DeviceMajor, uint DeviceMinor, ulong Inode);
+
+    [StructLayout(LayoutKind.Explicit, Size = 256)]
+    private struct StatxBuffer
+    {
+        [FieldOffset(28)] public ushort Mode;
+        [FieldOffset(32)] public ulong Inode;
+        [FieldOffset(136)] public uint DeviceMajor;
+        [FieldOffset(140)] public uint DeviceMinor;
+    }
 
     private sealed class Transaction(string rootName, string destination, int processId,
         long processStartUtcTicks, SafeFileHandle parentHandle, SafeFileHandle rootHandle) : IDisposable
@@ -516,5 +718,8 @@ public static class LinuxUserFileOperations
     [DllImport("libc.so.6", SetLastError = true)] private static extern int openat(int directory, string path, int flags);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int mkdirat(int directory, string path, uint mode);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int renameat(int oldDirectory, string oldPath, int newDirectory, string newPath);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int renameat2(int oldDirectory, string oldPath, int newDirectory, string newPath, uint flags);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int unlinkat(int directory, string path, int flags);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern long readlinkat(int directory, string path, byte[] buffer, nuint bufferSize);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int statx(int directory, string path, int flags, uint mask, out StatxBuffer stat);
 }

@@ -1,6 +1,6 @@
 # RelaxKonOS 有效 OS 执行身份（Effective OS User Execution）Goal
 
-> 状态：实施中（2026-09-23：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Windows 及若干安全收尾项仍未完成。）
+> 状态：实施中（2026-09-24：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Linux 文件源遍历与删除/重命名/移动/枚举已继续收紧到目录描述符；Windows 及若干安全收尾项仍未完成。）
 >
 > 建立日期：2026-09-22
 >
@@ -206,6 +206,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - Helper 的用户文件复制现在先在目标同目录创建隐藏 staging，内容完整后才以 rename 提交最终名称；覆盖时先保留旧目标，提交或旧目标清理失败都尝试恢复。目录内的符号链接会复制链接本身、绝不递归进入链接目标。跨 filesystem 移动在 `EXDEV` 后改用同样的 staged copy，只在目标提交后删除源。
 - Helper 的普通写入与上传也已改用同目录事务 staging，不再直接截断最终文件。权限为 `0700` 的事务目录和原子切换的清单在写入内容前落盘，目录名与清单共同记录创建进程 PID/启动时间和最终目标；同目录的后续操作或目录枚举会在目标用户身份下回收已退出进程的事务，包括清单尚未完成的初始化窗口。提交前中断则恢复旧目标，提交后中断则保留新目标并清除旧备份，存活中的并发 Helper 事务不会被误删。替换已有普通文件时保留其 Unix mode；伪造、损坏或包含非清单内容的相似隐藏目录不会被自动删除。
 - 文件事务的目标侧已开始采用 openat 风格加固：Helper 在事务开始时打开父目录描述符，并以 `mkdirat`/`openat(O_NOFOLLOW)` 创建及锁定事务目录；旧目标备份、staging 提交与事务目录删除分别使用 `renameat`/`unlinkat` 相对该描述符完成。执行中即使父目录被整体改名、原字符串路径被同名替代目录占用，提交仍只落到最初打开的目录，不会重新解析并写入替代路径。专项测试会在 staging 中用 `SIGSTOP` 暂停真实子进程、替换父路径后再恢复，验证替代目录未被修改。
+- Linux 文件源侧也已收紧到 descriptor-relative 执行：递归复制只在已打开的源目录上使用 `statx`/`openat(O_NOFOLLOW)` 遍历，符号链接用 `readlinkat` 复制链接本身；删除、同目录重命名和直接移动分别使用 `unlinkat`/`renameat2(RENAME_NOREPLACE)`/`renameat`。目录枚举先打开目录再生成快照；跨文件系统移动只在 device/inode 仍与已复制源对象一致时删除源。真实子进程测试会用 FIFO 阻塞源遍历、替换源父路径后恢复，确认复制仍来自原已打开目录；递归删除测试确认不跟随树内符号链接。
 - Guardian workload 创建入口现在从 JWT `sub` 解析 canonical OS account；未声明 `runAs` 时默认当前用户，跨账户仍需要单独管理员批准。Server 会把 canonical launch account 与稳定 Linux UID/Windows SID 写入定义；Agent 在接收定义及每次启动前重新解析该账号并比对 UID/SID。旧定义缺少稳定身份时 fail closed，必须重新保存；Linux 继续使用 `runuser` 完成 child UID/GID/groups transition。
 - 应用部署的本地文件引用现在通过 `IFileService` 以当前登录用户读取，并立刻复制到 deployment-owned staging；后续 Docker build 只使用 staging 副本，不会在后台以 Server 服务账号重新读取用户项目文件。
 - 媒体播放 lease 在创建时冻结 Server 派生的有效 OS identity 与文件修改时间；后续 bearer lease URL 没有 JWT 时，仍通过该 identity 的 user-execution 通道读取，而不是因为缺少 HTTP 主体回退到 Server 服务账号。
@@ -216,7 +217,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - Windows LocalSystem named-pipe/SID impersonation。
 - Git 的临时 AskPass 远程凭据路径；Windows terminal impersonation。
 - 应用部署的完整用户工作负载 owner model：当前只保证从文件选择器导入源 archive 时按登录用户读取、随后由 deployment-owned staging 使用；Docker Engine 容器本身仍是宿主级资源。
-- Linux user-execution 路径剩余的 openat-style TOCTOU hardening（源目录递归遍历、删除、重命名和普通目录枚举仍有路径重复解析），以及安装为 root-owned Helper 后的真实多用户残留演练；目标事务提交已绑定目录描述符，代码也已用真实子进程 SIGKILL 验证 staging 恢复与清单初始化窗口回收，但仍需在隔离多用户环境验证 root Helper、不同用户共享目录和 owner/group 结果。
+- Linux user-execution 仍需收尾事务恢复发现、单路径 metadata/创建/权限修改的 descriptor-relative 一致性，以及安装为 root-owned Helper 后的真实多用户残留演练；目标事务提交、源目录递归遍历、删除、重命名、移动与普通目录枚举已绑定目录描述符。代码已用真实子进程 SIGKILL 验证 staging 恢复与清单初始化窗口回收，也用源/目标父路径替换验证 descriptor anchoring；仍需在隔离多用户环境验证 root Helper、不同用户共享目录和 owner/group 结果。
 - 安装器、Helper 配置和真实 Linux/Windows integration 环境。
 
 ### 本次验证与暂缓项
@@ -228,7 +229,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | `dotnet build RelaxKonOS.Guardian.Agent/RelaxKonOS.Guardian.Agent.csproj -c Debug --no-restore` | 通过 | Guardian stable UID/SID binding 与 Agent-side revalidation 可编译。 |
 | System Mode batch file jobs | 已完成代码迁移，集成暂缓 | Job 在入队时冻结 execution context；后台每一次路径读取/修改都经 User Execution Helper。真实多用户、冲突决定、取消与跨文件系统演练仍需要隔离 Linux 环境。 |
 | `dotnet build Framework/RelaxKonOS.Core/RelaxKonOS.Core.csproj -c Debug --no-restore` | 通过 | 共享 framework 回归构建。 |
-| `RelaxKonOS.Server.Tests` | 专项通过 | 普通 project-reference restore graph 仍在当前桌面 SDK 中无诊断失败；使用项目既有的预构建 Server/Core assembly 路径后，测试工程可从源码重建，`--user-execution-only` 通过，包含 identity contract 与 reserved UID、Git allowlist 及危险选项拒绝、Terminal 输入/resize/close 帧往返、Helper 取消/超时、复制与写入原子覆盖、Unix mode 保留、提交前/后中断恢复、真实子进程 SIGKILL、`0700` staging、未完成清单回收、并发事务保护、伪造 staging 拒绝、父路径替换时的 descriptor-anchored commit、符号链接不递归，以及工作区到 `/tmp` 不同设备号之间的 staged move。同时 `--file-operations-only` 35 项和 `--git-conflicts-only` 47 项全部通过。 |
+| `RelaxKonOS.Server.Tests` | 专项通过 | 普通 project-reference restore graph 仍在当前桌面 SDK 中无诊断失败；使用项目既有的预构建 Server/Core assembly 路径后，测试工程可从源码重建，`--user-execution-only` 通过，包含 identity contract 与 reserved UID、Git allowlist 及危险选项拒绝、Terminal 输入/resize/close 帧往返、Helper 取消/超时、复制与写入原子覆盖、Unix mode 保留、提交前/后中断恢复、真实子进程 SIGKILL、`0700` staging、未完成清单回收、并发事务保护、伪造 staging 拒绝、源与目标父路径替换时的 descriptor anchoring、递归删除不跟随符号链接、重命名 no-replace，以及工作区到 `/tmp` 不同设备号之间的 staged move。同时 `--file-operations-only` 35 项和 `--git-conflicts-only` 47 项全部通过。 |
 | `dotnet build RelaxKonOS.sln -c Debug --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false` | 通过 | Server、Helper、Guardian Agent、Client/Desktop 及 Framework 全部编译成功；仅有平台分析与一条 Avalonia XAML 警告。 |
 | Linux installer / sudoers | 通过 | 四个受影响的安装/卸载脚本均通过 `bash -n`；三个精确命令形状组成的 sudoers 条目通过 `visudo -cf -`。发布 inventory 的缺失、篡改与多余文件拒绝以及 runtime 快照清理使用临时目录 smoke test 验证。 |
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |

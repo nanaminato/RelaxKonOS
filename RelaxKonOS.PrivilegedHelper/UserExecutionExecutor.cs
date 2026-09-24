@@ -167,11 +167,21 @@ public static class UserExecutionExecutor
     private static DirectoryDto List(string path)
     {
         LinuxUserFileOperations.RecoverAbandonedInDirectory(path);
-        var d = new DirectoryInfo(path);
-        var directories = d.EnumerateDirectories().Select(x => new FileSystemEntryDto(x.FullName, x.Name, null, FileSystemEntryType.Directory,
-            x.CreationTimeUtc, x.LastWriteTimeUtc, x.LastAccessTimeUtc, x.Attributes.HasFlag(FileAttributes.Hidden), x.Attributes.HasFlag(FileAttributes.System), "inode/directory")).ToArray();
-        var files = d.EnumerateFiles().Select(FileEntry).ToArray();
-        return new(d.FullName, d.Name, FileSystemEntryType.Directory, directories, files, d.CreationTimeUtc, d.LastWriteTimeUtc);
+        var fullPath = Path.GetFullPath(path);
+        return LinuxUserFileOperations.WithAnchoredDirectory<DirectoryDto>(fullPath, anchoredPath =>
+        {
+            var d = new DirectoryInfo(anchoredPath);
+            var directories = d.EnumerateDirectories().Select(x => new FileSystemEntryDto(
+                Path.Combine(fullPath, x.Name), x.Name, null, FileSystemEntryType.Directory,
+                x.CreationTimeUtc, x.LastWriteTimeUtc, x.LastAccessTimeUtc,
+                x.Attributes.HasFlag(FileAttributes.Hidden), x.Attributes.HasFlag(FileAttributes.System),
+                "inode/directory")).ToArray();
+            var files = d.EnumerateFiles().Select(x => FileEntry(x, Path.Combine(fullPath, x.Name))).ToArray();
+            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(fullPath));
+            if (string.IsNullOrEmpty(name)) name = fullPath;
+            return new(fullPath, name, FileSystemEntryType.Directory, directories, files,
+                d.CreationTimeUtc, d.LastWriteTimeUtc);
+        });
     }
     private static IReadOnlyList<SpecialLocationDto> Special(string home) => new[] { (SpecialFolderKind.Home, "主目录", home), (SpecialFolderKind.Desktop, "桌面", Path.Combine(home, "Desktop")),
         (SpecialFolderKind.Documents, "文档", Path.Combine(home, "Documents")), (SpecialFolderKind.Downloads, "下载", Path.Combine(home, "Downloads")),
@@ -191,10 +201,10 @@ public static class UserExecutionExecutor
         LinuxUserFileOperations.WriteAllBytes(path, Decode(content));
         return Task.FromResult(FileEntry(new FileInfo(path)));
     }
-    private static bool Delete(string path) { if (System.IO.Directory.Exists(path)) System.IO.Directory.Delete(path, true); else if (System.IO.File.Exists(path)) System.IO.File.Delete(path); else throw new FileNotFoundException(); return true; }
-    private static FileSystemEntryDto Rename(string path, string name, string home) { ValidateName(name); var target = ValidatePath(Path.Combine(Path.GetDirectoryName(path)!, name)); if (System.IO.Directory.Exists(path)) { System.IO.Directory.Move(path, target); return DirectoryEntry(target); } System.IO.File.Move(path, target); return ToInfo(FileEntry(new FileInfo(target))); }
-    private static FileSystemEntryDto Move(string source, string target, bool overwrite) { var directory = System.IO.Directory.Exists(source); LinuxUserFileOperations.Move(source, target, overwrite); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
-    private static FileSystemEntryDto Copy(string source, string target, bool overwrite) { var directory = System.IO.Directory.Exists(source); LinuxUserFileOperations.Copy(source, target, overwrite); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
+    private static bool Delete(string path) => LinuxUserFileOperations.Delete(path);
+    private static FileSystemEntryDto Rename(string path, string name, string home) { ValidateName(name); var target = ValidatePath(Path.Combine(Path.GetDirectoryName(path)!, name)); var directory = LinuxUserFileOperations.Rename(path, name); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
+    private static FileSystemEntryDto Move(string source, string target, bool overwrite) { var directory = LinuxUserFileOperations.Move(source, target, overwrite); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
+    private static FileSystemEntryDto Copy(string source, string target, bool overwrite) { var directory = LinuxUserFileOperations.Copy(source, target, overwrite); return directory ? DirectoryEntry(target) : ToInfo(FileEntry(new FileInfo(target))); }
     private static Task<FileEntryDto> UploadAsync(string directory, string name, string content, string home)
     {
         ValidateName(name);
@@ -225,7 +235,7 @@ public static class UserExecutionExecutor
             Convert.ToString(mode, 8).PadLeft(4, '0'), System.IO.File.GetAttributes(path).ToString(), mode);
     }
     private static FilePropertiesDto SetMode(string path, int? mode) { if (mode is < 0 or > 0xfff or null) throw new ArgumentException(); System.IO.File.SetUnixFileMode(path, (UnixFileMode)mode.Value); return Properties(path)!; }
-    private static FileEntryDto FileEntry(FileInfo f) => new(f.FullName, f.Name, f.Extension, f.Length, f.CreationTimeUtc, f.LastWriteTimeUtc, f.LastAccessTimeUtc, f.Attributes.HasFlag(FileAttributes.Hidden), f.Attributes.HasFlag(FileAttributes.System), ContentType(f.FullName));
+    private static FileEntryDto FileEntry(FileInfo f, string? reportedPath = null) => new(reportedPath ?? f.FullName, f.Name, f.Extension, f.Length, f.CreationTimeUtc, f.LastWriteTimeUtc, f.LastAccessTimeUtc, f.Attributes.HasFlag(FileAttributes.Hidden), f.Attributes.HasFlag(FileAttributes.System), ContentType(reportedPath ?? f.FullName));
     private static FileSystemEntryDto ToInfo(FileEntryDto f) => new(f.Path, f.Name, f.Size, FileSystemEntryType.File, f.Created, f.Modified, f.Accessed, f.IsHidden, f.IsSystem, f.MimeType);
     private static FileSystemEntryDto DirectoryEntry(string path) { var d = new DirectoryInfo(path); return new(d.FullName, d.Name, null, FileSystemEntryType.Directory, d.CreationTimeUtc, d.LastWriteTimeUtc, d.LastAccessTimeUtc, d.Attributes.HasFlag(FileAttributes.Hidden), d.Attributes.HasFlag(FileAttributes.System), "inode/directory"); }
     private static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch

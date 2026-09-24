@@ -229,6 +229,35 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     TestAssert.Assert(!Directory.EnumerateFileSystemEntries(operationRoot, ".relaxkonos-*", SearchOption.TopDirectoryOnly).Any(),
         "Linux user file operations left a staging or backup artifact after a successful commit.");
 
+    var renameSource = Path.Combine(operationRoot, "rename-source.txt");
+    var renameTarget = Path.Combine(operationRoot, "rename-target.txt");
+    File.WriteAllText(renameSource, "rename");
+    TestAssert.Assert(!RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Rename(renameSource,
+            Path.GetFileName(renameTarget))
+        && !File.Exists(renameSource) && File.ReadAllText(renameTarget) == "rename",
+        "Linux user file rename did not operate relative to its opened parent directory.");
+    var overwriteRenameRejected = false;
+    File.WriteAllText(renameSource, "replacement");
+    try
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Rename(renameSource,
+            Path.GetFileName(renameTarget));
+    }
+    catch (IOException) { overwriteRenameRejected = true; }
+    TestAssert.Assert(overwriteRenameRejected && File.ReadAllText(renameTarget) == "rename",
+        "Linux user file rename replaced an existing destination.");
+
+    var deleteExternal = Path.Combine(operationRoot, "delete-external");
+    var deleteTree = Path.Combine(operationRoot, "delete-tree");
+    Directory.CreateDirectory(deleteExternal);
+    Directory.CreateDirectory(deleteTree);
+    File.WriteAllText(Path.Combine(deleteExternal, "keep.txt"), "keep");
+    Directory.CreateSymbolicLink(Path.Combine(deleteTree, "external-link"), deleteExternal);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Delete(deleteTree);
+    TestAssert.Assert(!Directory.Exists(deleteTree)
+        && File.ReadAllText(Path.Combine(deleteExternal, "keep.txt")) == "keep",
+        "Descriptor-relative recursive delete followed a symbolic link outside its tree.");
+
     var atomicWrite = Path.Combine(operationRoot, "atomic-write.txt");
     File.WriteAllText(atomicWrite, "old-content");
     File.SetUnixFileMode(atomicWrite, UnixFileMode.UserRead | UnixFileMode.UserWrite);
@@ -395,6 +424,49 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
         && File.ReadAllText(Path.Combine(movedAnchoredParent, "destination", "payload-1999.txt")) == "1999"
         && !File.Exists(Path.Combine(movedAnchoredParent, "destination", "old.txt")),
         "A parent path replacement redirected the user-execution transaction commit.");
+
+    // Keep the source tree open across a lexical parent replacement. The FIFO blocks the copy
+    // after the source directory descriptor has been acquired; after the parent is moved, the
+    // worker must continue reading the original tree instead of the replacement path.
+    var sourceAnchorParent = Path.Combine(operationRoot, "source-anchor-parent");
+    var movedSourceAnchorParent = Path.Combine(operationRoot, "source-anchor-parent-moved");
+    var sourceAnchor = Path.Combine(sourceAnchorParent, "source");
+    var sourceAnchorDestination = Path.Combine(operationRoot, "source-anchor-destination");
+    Directory.CreateDirectory(sourceAnchor);
+    File.WriteAllText(Path.Combine(sourceAnchor, "payload.txt"), "original");
+    var sourceAnchorFifo = Path.Combine(sourceAnchor, "000-blocked-input");
+    if (MkFifo(sourceAnchorFifo, Convert.ToUInt32("600", 8)) != 0)
+        throw new IOException($"Could not create the source-anchor test FIFO (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}).");
+    using (var child = StartCopyWorker(sourceAnchor, sourceAnchorDestination))
+    {
+        try
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (DateTime.UtcNow < deadline && !child.HasExited
+                && !Directory.EnumerateDirectories(operationRoot, ".relaxkonos-stage-v1-*.tmp",
+                    SearchOption.TopDirectoryOnly).Any(path => Directory.Exists(Path.Combine(path, "staged"))))
+                Thread.Sleep(5);
+            TestAssert.Assert(!child.HasExited,
+                "The source-anchor worker exited before its source parent could be replaced.");
+            Directory.Move(sourceAnchorParent, movedSourceAnchorParent);
+            Directory.CreateDirectory(sourceAnchor);
+            File.WriteAllText(Path.Combine(sourceAnchor, "payload.txt"), "replacement");
+            using (var writer = new FileStream(Path.Combine(movedSourceAnchorParent, "source",
+                       "000-blocked-input"), FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+                writer.WriteByte(1);
+            var exited = child.WaitForExit(10_000);
+            var diagnostics = exited ? child.StandardError.ReadToEnd() : "worker timeout";
+            TestAssert.Assert(exited && child.ExitCode == 0,
+                $"The source-anchor worker did not complete successfully: {diagnostics}");
+        }
+        finally
+        {
+            TerminateWorker(child, resume: false);
+        }
+    }
+    TestAssert.Assert(File.ReadAllText(Path.Combine(sourceAnchorDestination, "payload.txt")) == "original"
+        && File.ReadAllText(Path.Combine(sourceAnchor, "payload.txt")) == "replacement",
+        "A source parent path replacement redirected descriptor-anchored recursive copy.");
 
     TestAssert.Assert(!Directory.EnumerateFileSystemEntries(operationRoot, ".relaxkonos-*", SearchOption.TopDirectoryOnly).Any(),
         "Linux user file write or recovery left a staging artifact behind.");
