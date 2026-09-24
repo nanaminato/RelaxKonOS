@@ -207,7 +207,7 @@ Client/RelaxKonOS.Client/Apps/Explorer/
 - **打开方式与默认关联**：右键菜单提供 `Open` / `Open with...` / `Properties`。“打开方式”仅列出同时实现 `IFileOpenApplication` 且在 manifest 声明当前扩展名的应用；可将所选应用设为该扩展名的默认程序，映射即时写入注册表并持久化到当前 Workspace。
 - **属性与权限**：属性对话框展示类型、大小、时间、属性和宿主 OS 权限摘要；Linux 返回 `UnixMode` 时可编辑并保存 POSIX 权限位。Windows 等不支持的平台仅展示只读属性。
 - **文件操作命令**：`Open` / `OpenWithSelected` / `Properties` / `NewFolder` / `Delete` / `Rename` / `Copy` / `Cut` / `Paste` / `Move` / `Upload` / `UploadFolder` / `Download` / `About` / `Close`，均通过 `[RelayCommand]` 生成；会改变目录内容的操作后调 `RefreshAsync` 刷新视图。
-- **Windows 式剪贴板与进度**：远端条目复制/剪切仅保存短暂客户端会话引用，粘贴时才调用 Server 的 `Copy`/`Move`；当没有远端剪贴板内容时，“粘贴”读取宿主机系统剪贴板的文件/文件夹并上传。多文件、文件夹和剪贴板导入按项目顺序执行，状态栏显示项目数进度；上传还显示已发送字节百分比。宿主机路径只在 Client 读取，绝不发送给 Server。
+- **Windows 式剪贴板与进度**：远端条目复制/剪切保存客户端会话引用，并在系统剪贴板写入应用标记；随后宿主机复制文件会替换标记。普通“粘贴”据此选择最近一次复制的来源：远端条目调用 Server 的 `Copy`/`Move`，宿主机文件/文件夹则上传；“从宿主机剪贴板粘贴”始终使用宿主机来源。桌面空白处的“粘贴”也遵循同一规则，上传至远端桌面目录。多文件、文件夹和剪贴板导入按项目顺序执行，文件管理器状态栏显示项目数进度；上传还显示已发送字节百分比。宿主机路径只在 Client 读取，绝不发送给 Server。
 - **可复用远端文件选择器**：`ExplorerPickerOptions` 将同一导航和条目视图嵌入应用的模态对话框；支持单/多文件选择、扩展名通配符过滤及目录选择。Notebook 与 Code Editor 用它选择远端文件，不会绕过 `IExplorerClient` 直接访问服务端文件系统。
 
 #### 多根导航树（参考 Windows File Explorer Navigation Pane）
@@ -254,7 +254,7 @@ Nodes
 | `RequestConfirmAsync` | 删除确认 | `AppContext.ShowDialogAsync<bool?>` + `ConfirmDialogView` |
 | `ShowMessageAsync` | About 消息 | `ConfirmDialogView`（单按钮） |
 | `RequestLocalUploadFilesAsync` / `RequestLocalUploadFoldersAsync` | 上传本地文件（多选）/ 文件夹（多选） | `StorageProvider.OpenFilePickerAsync` / `OpenFolderPickerAsync`（TopLevel = MainWindow） |
-| `RequestClipboardUploadSourcesAsync` | 导入宿主机剪贴板文件/文件夹 | Avalonia 跨平台 `IClipboard.TryGetDataAsync` + `TryGetFilesAsync` |
+| `ReadHostFileClipboardAsync` / `MarkRemoteFileCopyAsync` | 判定最近复制来源并读取宿主机文件/文件夹 | Avalonia 跨平台 `IClipboard.SetDataAsync` / `TryGetDataAsync` + 应用专用格式标记 |
 | `RequestLocalSaveFileAsync` | 下载本地保存路径 | `StorageProvider.SaveFilePickerAsync` |
 | `OpenFileAsync` | 根据默认关联或兼容应用打开远端文件 | `ApplicationManager.OpenFile` |
 | `RequestOpenWithAsync` | 显式选择兼容应用并可保存默认关联 | `OpenWithDialogView` + `DefaultAppRegistry` |

@@ -10,6 +10,7 @@ void Check(bool condition, string label)
     if (!condition) throw new Exception(label);
     Console.WriteLine($"PASS {++passed}: {label}");
 }
+await HostFileClipboardChecks.RunAsync(Check);
 Check(ExplorerBreadcrumb.ParentPath("/home/alice") == "/home", "POSIX parent");
 Check(ExplorerBreadcrumb.ParentPath("/") is null, "POSIX root goes to Computer");
 Check(ExplorerBreadcrumb.ParentPath(@"C:\Users\Alice") == @"C:\Users", "Windows parent on any client OS");

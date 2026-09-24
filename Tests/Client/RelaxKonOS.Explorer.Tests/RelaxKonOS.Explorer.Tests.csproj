@@ -15,6 +15,7 @@
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/Controls/ExplorerIcon.cs" Link="Controls/ExplorerIcon.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/IExplorerClient.cs" Link="IExplorerClient.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/RemoteFileClipboard.cs" Link="RemoteFileClipboard.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/HostFileClipboard.cs" Link="HostFileClipboard.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Apps/Explorer/ExplorerPickerOptions.cs" Link="ExplorerPickerOptions.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Localization/LocalizedStatus.cs" Link="LocalizedStatus.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/Auth/RelaxKonOSAuthException.cs" Link="RelaxKonOSAuthException.cs" />

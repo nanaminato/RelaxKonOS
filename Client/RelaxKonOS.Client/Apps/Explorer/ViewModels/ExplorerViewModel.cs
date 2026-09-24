@@ -227,8 +227,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public Func<Task<IReadOnlyList<LocalUploadSource>>>? RequestLocalUploadFilesAsync { get; set; }
     /// <summary>请求选择客户端宿主机文件夹（可多选）。</summary>
     public Func<Task<IReadOnlyList<LocalUploadSource>>>? RequestLocalUploadFoldersAsync { get; set; }
-    /// <summary>读取宿主机剪贴板中的文件/文件夹。</summary>
-    public Func<Task<IReadOnlyList<LocalUploadSource>>>? RequestClipboardUploadSourcesAsync { get; set; }
+    /// <summary>读取宿主机剪贴板及最近一次远端复制的标记。</summary>
+    public Func<Task<HostFileClipboardSnapshot>>? ReadHostFileClipboardAsync { get; set; }
+    public Func<Task>? MarkRemoteFileCopyAsync { get; set; }
     /// <summary>请求本地保存路径（用于下载目标）。参数：默认文件名。返回本地路径或 null。</summary>
     public Func<string, Task<string?>>? RequestLocalSaveFileAsync { get; set; }
     /// <summary>Ensures direct or short-lived elevated access before a protected file is opened or downloaded.</summary>
@@ -1190,16 +1191,18 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void Copy()
+    private async Task CopyAsync()
     {
+        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
         _fileClipboard.Set(GetSelectedEntries(), RemoteFileClipboardOperation.Copy);
         PasteCommand.NotifyCanExecuteChanged();
         StatusText = LocalizedText.Ref("explorer.status.copied_to_clipboard", _fileClipboard.Entries.Count);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void Cut()
+    private async Task CutAsync()
     {
+        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
         _fileClipboard.Set(GetSelectedEntries(), RemoteFileClipboardOperation.Cut);
         PasteCommand.NotifyCanExecuteChanged();
         StatusText = LocalizedText.Ref("explorer.status.cut_to_clipboard", _fileClipboard.Entries.Count);
@@ -1214,13 +1217,15 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (_fileClipboard.HasEntries)
+        var snapshot = await (ReadHostFileClipboardAsync?.Invoke()
+            ?? Task.FromResult(new HostFileClipboardSnapshot(false, Array.Empty<LocalUploadSource>())));
+        if (_fileClipboard.HasEntries && (snapshot.IsRemoteCopy || snapshot.Files.Count == 0))
         {
             await PasteRemoteClipboardAsync(AddressbarPath);
             return;
         }
 
-        await PasteHostClipboardAsync();
+        await PasteHostClipboardAsync(snapshot);
     }
 
     [RelayCommand(CanExecute = nameof(CanPaste))]
@@ -1244,14 +1249,16 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         PasteCommand.NotifyCanExecuteChanged();
     }
 
-    private async Task PasteHostClipboardAsync()
+    private async Task PasteHostClipboardAsync(HostFileClipboardSnapshot? snapshot = null)
     {
         if (string.IsNullOrWhiteSpace(AddressbarPath))
         {
             StatusText = LocalizedText.Ref("explorer.status.enter_target_directory_first");
             return;
         }
-        var sources = await (RequestClipboardUploadSourcesAsync?.Invoke() ?? Task.FromResult<IReadOnlyList<LocalUploadSource>>([]));
+        snapshot ??= await (ReadHostFileClipboardAsync?.Invoke()
+            ?? Task.FromResult(new HostFileClipboardSnapshot(false, Array.Empty<LocalUploadSource>())));
+        var sources = snapshot.Files;
         if (sources.Count == 0)
         {
             StatusText = LocalizedText.Ref("explorer.status.clipboard_no_files");
@@ -1335,8 +1342,8 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             return;
         }
 
-        UploadPlan plan;
-        try { plan = BuildUploadPlan(sources); }
+        LocalUploadPlan plan;
+        try { plan = LocalUploadPlan.Build(sources); }
         catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.upload_failed", ex.Message); return; }
         if (plan.Files.Count == 0 && plan.Directories.Count == 0)
         {
@@ -1347,8 +1354,8 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         var destination = AddressbarPath;
         if (QueueUpload is not null)
         {
-            var items = plan.Directories.Select(path => new FileOperationItem(path, CombineRemoteRelativePath(destination, path)))
-                .Concat(plan.Files.Select(file => new FileOperationItem(file.SourcePath, CombineRemoteRelativePath(destination, file.RelativePath)))).ToArray();
+            var items = plan.Directories.Select(path => new FileOperationItem(path, LocalUploadPlan.CombineRemotePath(destination, path)))
+                .Concat(plan.Files.Select(file => new FileOperationItem(file.SourcePath, LocalUploadPlan.CombineRemotePath(destination, file.RelativePath)))).ToArray();
             QueueUpload(items, plan.TotalBytes, async (report, ct) =>
             {
                 var count = 0;
@@ -1356,7 +1363,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 foreach (var directory in plan.Directories)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var path = CombineRemoteRelativePath(destination, directory);
+                    var path = LocalUploadPlan.CombineRemotePath(destination, directory);
                     report(path, bytes, count);
                     if (!await RetryWithOperationElevationAsync(async () =>
                         {
@@ -1369,7 +1376,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 foreach (var file in plan.Files)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var path = CombineRemoteRelativePath(destination, file.RelativePath);
+                    var path = LocalUploadPlan.CombineRemotePath(destination, file.RelativePath);
                     var start = bytes;
                     var processed = count;
                     var progress = new Progress<long>(uploaded => report(path, start + uploaded, processed));
@@ -1398,7 +1405,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             {
                 var directory = plan.Directories[index];
                 TransferText = LocalizedText.Format("explorer.status.creating_folder", directory, index + 1, TransferItemTotal);
-                var remoteDirectory = CombineRemoteRelativePath(AddressbarPath, directory);
+                var remoteDirectory = LocalUploadPlan.CombineRemotePath(AddressbarPath, directory);
                 if (!await RetryWithOperationElevationAsync(
                         async () => { await _client.CreateDirectoryAsync(remoteDirectory); }, FileElevationCapability.CreateDirectory, AddressbarPath)) return;
                 TransferItemCompleted = index + 1;
@@ -1419,7 +1426,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 var destinationDirectory = GetRelativeDirectory(file.RelativePath);
                 var targetDirectory = string.IsNullOrEmpty(destinationDirectory)
                     ? AddressbarPath
-                    : CombineRemoteRelativePath(AddressbarPath, destinationDirectory);
+                    : LocalUploadPlan.CombineRemotePath(AddressbarPath, destinationDirectory);
                 using var stream = File.OpenRead(file.SourcePath);
                 if (!await RetryWithOperationElevationAsync(
                         async () => { await _client.UploadAsync(targetDirectory, GetRelativeFileName(file.RelativePath), stream, progress); }, FileElevationCapability.Upload, AddressbarPath)) return;
@@ -1500,60 +1507,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         TransferTotalBytes = totalBytes;
         TransferBytesCompleted = 0;
         IsTransferActive = true;
-    }
-
-    private static UploadPlan BuildUploadPlan(IEnumerable<LocalUploadSource> sources)
-    {
-        var directories = new HashSet<string>(StringComparer.Ordinal);
-        var files = new List<UploadFile>();
-        foreach (var source in sources.Select(item => item.Path).Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.Ordinal))
-        {
-            if (File.Exists(source))
-            {
-                var info = new FileInfo(source);
-                files.Add(new UploadFile(source, info.Name, info.Length));
-                continue;
-            }
-            if (!Directory.Exists(source)) continue;
-
-            var root = Path.TrimEndingDirectorySeparator(source);
-            if (string.Equals(root, Path.GetPathRoot(root), OperatingSystem.IsWindows()
-                    ? StringComparison.OrdinalIgnoreCase
-                    : StringComparison.Ordinal))
-                throw new ArgumentException("Selecting a filesystem root for upload is not supported.");
-            var parent = Path.GetDirectoryName(root) ?? root;
-            directories.Add(Path.GetRelativePath(parent, root));
-            foreach (var directory in Directory.EnumerateDirectories(root, "*", new EnumerationOptions
-                     {
-                         RecurseSubdirectories = true,
-                         IgnoreInaccessible = true,
-                         AttributesToSkip = FileAttributes.ReparsePoint,
-                     }))
-                directories.Add(Path.GetRelativePath(parent, directory));
-
-            foreach (var file in Directory.EnumerateFiles(root, "*", new EnumerationOptions
-                     {
-                         RecurseSubdirectories = true,
-                         IgnoreInaccessible = true,
-                         AttributesToSkip = FileAttributes.ReparsePoint,
-                     }))
-            {
-                var info = new FileInfo(file);
-                files.Add(new UploadFile(file, Path.GetRelativePath(parent, file), info.Length));
-            }
-        }
-
-        return new UploadPlan(directories.OrderBy(path => path.Length).ToArray(), files, files.Sum(file => file.Length));
-    }
-
-    private sealed record UploadPlan(IReadOnlyList<string> Directories, IReadOnlyList<UploadFile> Files, long TotalBytes);
-    private sealed record UploadFile(string SourcePath, string RelativePath, long Length);
-    private static string CombineRemoteRelativePath(string directory, string relativePath)
-    {
-        var result = directory;
-        foreach (var segment in relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
-            result = CombineRemotePath(result, segment);
-        return result;
     }
 
     // These paths originate in the client's upload plan, so System.IO.Path is intentional here.

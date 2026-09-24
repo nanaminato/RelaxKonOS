@@ -4,6 +4,7 @@ using System.Globalization;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
@@ -169,6 +170,9 @@ public partial class DesktopShellViewModel : ObservableObject
     public Func<string, string, string, Task<string?>>? RequestDesktopTextInputAsync { get; set; }
     public Func<IReadOnlyList<ApplicationInfo>, string, Task<OpenWithChoice?>>? RequestDesktopOpenWithAsync { get; set; }
     public Func<FilePropertiesDto, Task>? ShowDesktopPropertiesAsync { get; set; }
+    public Func<Task<HostFileClipboardSnapshot>>? ReadHostFileClipboardAsync { get; set; }
+    public Func<Task>? MarkRemoteFileCopyAsync { get; set; }
+    public Func<string, Task>? ShowDesktopPasteErrorAsync { get; set; }
 
     [ObservableProperty] private bool _isStartOpen;
     [ObservableProperty] private string _startSearchQuery = string.Empty;
@@ -467,17 +471,19 @@ public partial class DesktopShellViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void CopyDesktopEntry(DesktopFileEntryViewModel? item)
+    private async Task CopyDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         if (item is null) return;
+        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
         _fileClipboard.Set([item.Entry], RemoteFileClipboardOperation.Copy);
         RecordDesktopFileMenuDiagnostic($"copy stored in desktop clipboard: entry={item.DisplayName}.");
     }
 
     [RelayCommand]
-    private void CutDesktopEntry(DesktopFileEntryViewModel? item)
+    private async Task CutDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         if (item is null) return;
+        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
         _fileClipboard.Set([item.Entry], RemoteFileClipboardOperation.Cut);
         RecordDesktopFileMenuDiagnostic($"cut stored in desktop clipboard: entry={item.DisplayName}.");
     }
@@ -488,12 +494,38 @@ public partial class DesktopShellViewModel : ObservableObject
     private async Task PasteDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         var targetDirectory = item is { IsDirectory: true } ? item.Entry.Path : _desktopPath;
-        if (string.IsNullOrWhiteSpace(targetDirectory) || !_fileClipboard.HasEntries)
+        if (string.IsNullOrWhiteSpace(targetDirectory))
         {
-            RecordDesktopFileMenuDiagnostic($"desktop paste stopped: targetAvailable={!string.IsNullOrWhiteSpace(targetDirectory)}, clipboardItems={_fileClipboard.Entries.Count}.");
+            RecordDesktopFileMenuDiagnostic("desktop paste stopped: target directory unavailable.");
             return;
         }
 
+        try
+        {
+            var snapshot = await (ReadHostFileClipboardAsync?.Invoke()
+                ?? Task.FromResult(new HostFileClipboardSnapshot(false, Array.Empty<LocalUploadSource>())));
+            if (snapshot.Files.Count > 0 && !snapshot.IsRemoteCopy)
+            {
+                await PasteHostFilesToDesktopAsync(targetDirectory, snapshot.Files);
+                return;
+            }
+            if (!_fileClipboard.HasEntries)
+            {
+                RecordDesktopFileMenuDiagnostic("desktop paste stopped: clipboard has no files.");
+                return;
+            }
+            await PasteRemoteDesktopEntryAsync(targetDirectory);
+        }
+        catch (Exception ex)
+        {
+            RecordDesktopFileMenuDiagnostic($"desktop paste failed: {ex.GetType().Name}: {ex.Message}");
+            if (ShowDesktopPasteErrorAsync is not null)
+                await ShowDesktopPasteErrorAsync(LocalizedText.Format("explorer.status.upload_failed", ex.Message));
+        }
+    }
+
+    private async Task PasteRemoteDesktopEntryAsync(string targetDirectory)
+    {
         RecordDesktopFileMenuDiagnostic($"desktop paste started: clipboardItems={_fileClipboard.Entries.Count}, operation={_fileClipboard.Operation}.");
 
         try
@@ -524,6 +556,29 @@ public partial class DesktopShellViewModel : ObservableObject
         {
             RecordDesktopFileMenuDiagnostic($"desktop paste failed: {ex.GetType().Name}: {ex.Message}");
         }
+    }
+
+    private async Task PasteHostFilesToDesktopAsync(string targetDirectory, IReadOnlyList<LocalUploadSource> sources)
+    {
+        var plan = LocalUploadPlan.Build(sources);
+        var changed = false;
+        try
+        {
+            foreach (var directory in plan.Directories)
+            {
+                await _files.CreateDirectoryAsync(LocalUploadPlan.CombineRemotePath(targetDirectory, directory));
+                changed = true;
+            }
+            foreach (var file in plan.Files)
+            {
+                var destination = LocalUploadPlan.CombineRemotePath(targetDirectory, file.RelativePath);
+                using var stream = File.OpenRead(file.SourcePath);
+                await _files.UploadAsync(ExplorerPath.Parent(destination)!, Path.GetFileName(file.RelativePath), stream);
+                changed = true;
+            }
+            RecordDesktopFileMenuDiagnostic($"desktop host paste completed: files={plan.Files.Count}, folders={plan.Directories.Count}.");
+        }
+        finally { if (changed) RefreshDesktop(); }
     }
 
     [RelayCommand]

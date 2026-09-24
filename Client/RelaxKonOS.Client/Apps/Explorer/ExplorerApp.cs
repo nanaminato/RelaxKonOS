@@ -358,25 +358,8 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 .OfType<string>().Select(path => new Models.LocalUploadSource(path)).ToArray();
         };
 
-        vm.RequestClipboardUploadSourcesAsync = async () =>
-        {
-            var topLevel = GetTopLevel(context, vm);
-            if (topLevel?.Clipboard is null) return [];
-            var transfer = await topLevel.Clipboard.TryGetDataAsync();
-            if (transfer is null) return [];
-            try
-            {
-                var items = await transfer.TryGetFilesAsync();
-                return items?.Select(item => item.TryGetLocalPath()).OfType<string>()
-                    .Select(path => new Models.LocalUploadSource(path)).ToArray()
-                    ?? [];
-            }
-            finally
-            {
-                if (transfer is IAsyncDisposable asynchronous) await asynchronous.DisposeAsync();
-                else (transfer as IDisposable)?.Dispose();
-            }
-        };
+        vm.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(GetTopLevel(context, vm)?.Clipboard);
+        vm.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(GetTopLevel(context, vm)?.Clipboard);
 
         vm.RequestLocalSaveFileAsync = async defaultName =>
         {

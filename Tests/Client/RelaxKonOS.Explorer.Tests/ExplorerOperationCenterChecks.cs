@@ -64,8 +64,8 @@ public static class ExplorerOperationCenterChecks
         try
         {
             await File.WriteAllTextAsync(localFile, "upload");
-            vm.RequestClipboardUploadSourcesAsync = () =>
-                Task.FromResult<IReadOnlyList<LocalUploadSource>>([new(localFile)]);
+            vm.ReadHostFileClipboardAsync = () =>
+                Task.FromResult(new HostFileClipboardSnapshot(false, [new LocalUploadSource(localFile)]));
             fake.UploadCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             await vm.PasteFromHostCommand.ExecuteAsync(null);
             check(center.Jobs.Single().IsUpload && !vm.IsBusy && !vm.PasteFromHostCommand.IsRunning,
@@ -85,6 +85,21 @@ public static class ExplorerOperationCenterChecks
             await Eventually(() => center.Jobs.Count == 0);
             check(fake.UploadToken.IsCancellationRequested, "Upload cancellation reaches the HTTP request");
 
+            clipboard.Set([file], RemoteFileClipboardOperation.Copy);
+            fake.UploadCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await vm.PasteCommand.ExecuteAsync(null);
+            check(center.Jobs.Single().IsUpload, "A newer host file copy takes precedence over a remote copy");
+            fake.UploadCompletion.SetResult(null!);
+            await Eventually(() => center.Jobs.Count == 0);
+
+            vm.ReadHostFileClipboardAsync = () =>
+                Task.FromResult(new HostFileClipboardSnapshot(true, []));
+            await vm.PasteCommand.ExecuteAsync(null);
+            check(center.Jobs.Single().Snapshot.Kind == FileOperationKind.Copy && !center.Jobs.Single().IsUpload,
+                "A newer remote copy takes precedence over the host clipboard");
+            fake.Finish(center.Jobs.Single().Snapshot.Id, [file.Path]);
+            await Eventually(() => center.Jobs.Count == 0);
+
             var uploadEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             center.QueueUpload([new("host", "/target/host")], 1, (_, _) => uploadEnd.Task);
             await center.SubmitAsync(new(Guid.NewGuid(), FileOperationKind.Copy, [new("/a", "/target/a")]), _ => { });
@@ -99,10 +114,11 @@ public static class ExplorerOperationCenterChecks
         finally { File.Delete(localFile); }
 
         var callbackCount = 0;
+        var requestCount = fake.Requests.Count;
         fake.LoseSubmissionResponse = true;
         try { await center.SubmitAsync(new(Guid.NewGuid(), FileOperationKind.Copy, [new("/a", "/b")]), _ => callbackCount++); }
         catch (IOException) { }
-        check(center.Jobs.Count == 1 && fake.Requests.Count == 4,
+        check(center.Jobs.Count == 1 && fake.Requests.Count == requestCount + 1,
             "Lost submission response recovers the existing job without resubmitting");
         fake.Finish(center.Jobs[0].Snapshot.Id, ["/a"]);
         await Eventually(() => callbackCount == 1);

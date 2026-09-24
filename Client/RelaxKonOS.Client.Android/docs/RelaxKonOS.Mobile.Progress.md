@@ -246,6 +246,28 @@ release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、�
   `Directory.Packages.props`。
 - 客户端未新增字符串键（复用预览既有文案），三份 `strings.xml` 仍 295 键且键集一致。
 
+## 进程属主显示为 null 的修复（2026-09-24）
+
+- **现象**：手机端「管理 → 进程」每一行的细节都是 `CPU 0.7% · 2.91 GB · null`。
+- **`userName` 确实是 null**：服务端只有 Linux 才解析 `/proc/<pid>/status` 的 `Uid:` 并映射 `/etc/passwd`；Windows 走的
+  `ProcessSampler` 拿到的是 `LinuxProcessDetails(null, 0)`，所以线上的字段本身就是 null，这是既有设计
+  （[`RelaxKonOS.TaskManager.md`](../../../docs/applications/RelaxKonOS.TaskManager.md) §319/§334）。
+- **屏幕上那四个字母是客户端读出来的**：`RelaxKonApi` 原来写的是 `item.optString("userName").takeIf { it.isNotBlank() }`，
+  而 Android 的 `org.json` 对 JSON null 返回的是**字面字符串** `"null"`（`JSON.toString(JSONObject.NULL)` →
+  `String.valueOf(NULL)`；参考实现 `org.json:json` 在同一输入上返回空串），非空判断拦不住它，于是 `"null"` 进了
+  `RemoteProcess.userName`，再被细节行的 `listOfNotNull` 原样拼上屏幕。
+- **改法**：新增 `JSONObject.optNullableString(name)`（`if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }`），
+  与既有 `optNullableLong` 同处、同形状；`isNull` 在 Android 与参考实现上语义一致（缺键与 JSON null 都算 null），
+  因此这条修复不依赖运行时怪癖。5 处可空字符串读取全部换过去：`userName`、`mimeType`
+  （`FileSystemEntryDto.MimeType` 可空，此前文件详情的 MIME 同样会显示 `null`），以及 RFC 7807 判定用的
+  `type` / `problemCode` / `traceId`。
+- **顺带修掉一个真缺陷**：`problemCode` 被判成 `"null"` 时 `ProblemCodes.namesContractCode` 会认为服务端**已经给出**
+  契约码，于是 `readsAsProblem` 把没有问题的 5xx 读成 `Problem`——违反 §5.8.2（服务端未给出问题码时，5xx 不构成
+  凭据判定，也不该被当作契约答复）。
+- 界面不需要改：细节行是 `listOfNotNull(CPU, 内存, userName).joinToString(" · ")`，属主为空时这一段自然消失。
+  Windows 服务端上属主恒为空，要让那里也显示属主要求服务端补 WMI / P/Invoke（TaskManager 文档 §334）。
+- 未新增字符串键，三份 `strings.xml` 仍 295 键且键集一致。
+
 ## 已知限制
 
 - 连接保险箱的密码被服务端拒绝时**不**删除（§7.3）。代价是：用户已在服务端改密后，本机那条旧密码会一直失败，直到手动输入新密码并在成功后保存覆盖它。这是有意选择——删除只在用户显式「忘记密码」或「删除登录记录」时发生。
@@ -356,6 +378,16 @@ release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、�
   受保护路径上「预取不弹窗、下载卡片才弹窗」、以及「小图先到 → 详细图替换」的过渡。
 - `ImageDecoder.decode(bytes)` 在 JVM 单测里无法覆盖（`BitmapFactory` 在测试运行时是 stub），只能真机验证或引入
   影子实现，本轮没有为它造这个轮子。
+
+最近一次校验（2026-09-24，可空字符串读取修复后）：
+
+- `:app:assembleDebug`、`:app:compileReleaseKotlin` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL，Kotlin 编译零警告。
+- 单测 24 个测试类、232 个用例，0 失败 / 0 错误 / 0 跳过；产物 `app/build/outputs/apk/debug/app-debug.apk` 14.5 MB；
+  三份 `strings.xml` 均为 295 键且键集一致。
+- 本轮**没有**新增用例，这是有意的：这条缺陷只在 Android 运行时复现——参考实现的 `org.json` 对 JSON null 返回空串，
+  只有 Android 的 `JSON.toString(JSONObject.NULL)` 才给出 `"null"`，因此 JVM 单测区分不了修复前后（写出来是一个恒过的
+  断言）。防护放在唯一入口 `optNullableString` 与其注释上：可空字符串不再有第二种读法。
+- **待真机确认**：进程行的属主段消失（Windows 服务端恒无属主）、文件详情的 MIME 不再显示 `null`。
 
 ## 后续步骤
 

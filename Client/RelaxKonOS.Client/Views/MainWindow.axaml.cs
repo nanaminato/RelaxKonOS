@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services.WindowLayout;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Developer;
@@ -70,6 +71,8 @@ public partial class MainWindow : Window
         var started = DateTime.UtcNow;
         DesktopLoadingOverlay.IsVisible = true;
         shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
+        shell.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(Clipboard);
+        shell.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(Clipboard);
         shell.IsHostFullScreen = _isFullScreen;
         await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell);
 

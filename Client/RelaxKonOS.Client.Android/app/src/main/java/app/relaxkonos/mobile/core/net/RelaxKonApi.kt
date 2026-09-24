@@ -151,7 +151,7 @@ class RelaxKonApi(
                         isDirectory = false,
                         sizeBytes = item.optNullableLong("size"),
                         modifiedAtMillis = IsoInstant.toEpochMillis(item.optString("modified")),
-                        mimeType = item.optString("mimeType").takeIf { it.isNotBlank() },
+                        mimeType = item.optNullableString("mimeType"),
                     )
                 }
                 DirectoryListing(
@@ -317,7 +317,7 @@ class RelaxKonApi(
                             name = item.getString("name"),
                             cpuPercent = item.optDouble("cpuPercent", 0.0),
                             memoryBytes = item.optLong("memoryBytes"),
-                            userName = item.optString("userName").takeIf { it.isNotBlank() },
+                            userName = item.optNullableString("userName"),
                             threadCount = item.optInt("threadCount"),
                         )
                     },
@@ -472,15 +472,15 @@ class RelaxKonApi(
         val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
         val json = runCatching { JSONObject(text) }.getOrNull()
             ?: return ApiResult.Transport("Server returned HTTP $code.")
-        val type = json.optString("type").takeIf { it.isNotBlank() }
-        val problemCode = json.optString("problemCode").takeIf { it.isNotBlank() }
+        val type = json.optNullableString("type")
+        val problemCode = json.optNullableString("problemCode")
         if (!readsAsProblem(code, type, problemCode)) {
             return ApiResult.Transport("Server returned HTTP $code.")
         }
         return ApiResult.Problem(
             status = code,
             code = ProblemCodes.from(type, problemCode),
-            traceId = json.optString("traceId").takeIf { it.isNotBlank() },
+            traceId = json.optNullableString("traceId"),
         )
     }
 
@@ -526,6 +526,19 @@ class RelaxKonApi(
     }
 
     private fun JSONObject.optNullableLong(name: String): Long? = if (isNull(name)) null else optLong(name)
+
+    /**
+     * Reads a string the server is allowed to leave empty.
+     *
+     * `optString` alone cannot answer this. Android's `org.json` renders a JSON null as the four-letter
+     * string "null" (`JSON.toString(JSONObject.NULL)` -> `String.valueOf(NULL)`), so a blank-check keeps
+     * it and the field reaches the UI as that literal word — which is exactly what put "null" in every
+     * row of the process list: a Windows server never resolves a process owner, so `userName` is
+     * genuinely null on the wire. Only `isNull` separates "the server sent nothing" from "the server
+     * sent a value", and it answers the same way on Android and on the reference `org.json`.
+     */
+    private fun JSONObject.optNullableString(name: String): String? =
+        if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }
 
     private companion object {
         const val CLIENT_PLATFORM = "android"
