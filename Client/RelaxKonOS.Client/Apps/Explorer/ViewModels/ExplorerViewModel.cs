@@ -82,6 +82,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _renameDraft = string.Empty;
     public Action<FileSystemEntryDto>? RequestRenameFocus { get; set; }
     private bool _isRenameCommitInProgress;
+    public bool IsRenameCommitInProgress => _isRenameCommitInProgress;
     [ObservableProperty] private string? _addressbarPath;
     [ObservableProperty] private string? _addressInput;
     [ObservableProperty] private bool _isEditingAddress;

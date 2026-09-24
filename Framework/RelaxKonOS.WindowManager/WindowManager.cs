@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
 using RelaxKonOS.Core.Primitives;
@@ -350,9 +351,27 @@ public sealed class WindowManager : IWindowManager
         var session = new ShellModalSession<TResult>(dialogWindow, blocker, dialogHost, dialog, coversFullDesktop: true);
         _shellModalSessions.Add(session);
         UpdateFullScreenHostInteractivity();
+        FocusFirstInteractiveControl(dialogWindow);
         _ = dialog.Result.ContinueWith(_ => Dispatcher.UIThread.Post(() => CloseShellModalSession(session)),
             TaskScheduler.Default);
         return dialog.Result;
+    }
+
+    private static void FocusFirstInteractiveControl(ManagedWindow dialogWindow)
+    {
+        // System dialogs are created on the regular window host and then reparented to the
+        // full-desktop overlay. Reparenting can discard the focus assigned during Create(), so
+        // wait until the visual tree has settled and focus the first field/button in the dialog.
+        Dispatcher.UIThread.Post(() =>
+        {
+            var target = dialogWindow.View.GetVisualDescendants()
+                .OfType<Control>()
+                .FirstOrDefault(control => control.Focusable && control.IsEffectivelyEnabled && control.IsVisible);
+            if (target is not null)
+                target.Focus();
+            else
+                dialogWindow.View.Focus();
+        }, DispatcherPriority.Loaded);
     }
 
     public void Close(ManagedWindow window)
