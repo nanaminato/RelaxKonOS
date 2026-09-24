@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -11,6 +13,11 @@ namespace RelaxKonOS.PrivilegedHelper;
 public static class LinuxUserFileOperations
 {
     private const int CrossDeviceLink = 18;
+    private const int OpenReadOnly = 0;
+    private const int OpenDirectory = 0x10000;
+    private const int OpenNoFollow = 0x20000;
+    private const int OpenCloseOnExec = 0x80000;
+    private const int RemoveDirectory = 0x200;
     private const string TransactionPrefix = ".relaxkonos-stage-v1-";
     private const string TransactionSuffix = ".tmp";
     private const string ManifestName = "manifest";
@@ -26,13 +33,14 @@ public static class LinuxUserFileOperations
     public static void WriteAllBytes(string destination, byte[] content)
     {
         ArgumentNullException.ThrowIfNull(content);
-        var transaction = BeginTransaction(destination);
+        using var transaction = BeginTransaction(destination);
         try
         {
             File.WriteAllBytes(transaction.Staged, content);
-            if (OperatingSystem.IsLinux() && File.Exists(destination)
-                && !File.GetAttributes(destination).HasFlag(FileAttributes.ReparsePoint))
-                File.SetUnixFileMode(transaction.Staged, File.GetUnixFileMode(destination));
+            if (OperatingSystem.IsLinux() && File.Exists(transaction.AnchoredDestination)
+                && !File.GetAttributes(transaction.AnchoredDestination).HasFlag(FileAttributes.ReparsePoint))
+                File.SetUnixFileMode(transaction.Staged,
+                    File.GetUnixFileMode(transaction.AnchoredDestination));
             Commit(transaction, overwrite: true);
         }
         finally
@@ -54,7 +62,7 @@ public static class LinuxUserFileOperations
         if (string.IsNullOrWhiteSpace(parent) || !Directory.Exists(parent))
             throw new DirectoryNotFoundException("Destination directory does not exist.");
 
-        var transaction = BeginTransaction(destination);
+        using var transaction = BeginTransaction(destination);
         try
         {
             if (directory) CopyDirectory(source, transaction.Staged);
@@ -87,10 +95,13 @@ public static class LinuxUserFileOperations
                 RecoverIncompleteInitialization(candidate);
                 continue;
             }
-            if (IsCreatingProcessAlive(transaction)) continue;
-            if (!FinishTransaction(transaction) && requiredDestination is not null
-                && SamePath(transaction.Destination, requiredDestination))
-                throw new IOException("An interrupted destination transaction could not be recovered.");
+            using (transaction)
+            {
+                if (IsCreatingProcessAlive(transaction)) continue;
+                if (!FinishTransaction(transaction) && requiredDestination is not null
+                    && SamePath(transaction.Destination, requiredDestination))
+                    throw new IOException("An interrupted destination transaction could not be recovered.");
+            }
         }
     }
 
@@ -130,24 +141,28 @@ public static class LinuxUserFileOperations
 
     private static void Commit(Transaction transaction, bool overwrite)
     {
-        if (!Exists(transaction.Destination))
+        if (!Exists(transaction.AnchoredDestination))
         {
-            MovePath(transaction.Staged, transaction.Destination);
+            RenameAt(transaction.RootHandle, StagedName, transaction.ParentHandle,
+                transaction.DestinationName);
             return;
         }
         if (!overwrite) throw new IOException("Destination already exists.");
 
-        MovePath(transaction.Destination, transaction.Backup);
+        RenameAt(transaction.ParentHandle, transaction.DestinationName, transaction.RootHandle,
+            BackupName);
         try
         {
-            MovePath(transaction.Staged, transaction.Destination);
+            RenameAt(transaction.RootHandle, StagedName, transaction.ParentHandle,
+                transaction.DestinationName);
         }
         catch
         {
             try
             {
-                if (!Exists(transaction.Destination) && Exists(transaction.Backup))
-                    MovePath(transaction.Backup, transaction.Destination);
+                if (!Exists(transaction.AnchoredDestination) && Exists(transaction.Backup))
+                    RenameAt(transaction.RootHandle, BackupName, transaction.ParentHandle,
+                        transaction.DestinationName);
             }
             catch { }
             throw;
@@ -159,8 +174,12 @@ public static class LinuxUserFileOperations
             // reported failure never leaves the caller observing the new destination anyway.
             try
             {
-                if (Exists(transaction.Destination)) MovePath(transaction.Destination, transaction.Staged);
-                if (Exists(transaction.Backup)) MovePath(transaction.Backup, transaction.Destination);
+                if (Exists(transaction.AnchoredDestination))
+                    RenameAt(transaction.ParentHandle, transaction.DestinationName,
+                        transaction.RootHandle, StagedName);
+                if (Exists(transaction.Backup))
+                    RenameAt(transaction.RootHandle, BackupName, transaction.ParentHandle,
+                        transaction.DestinationName);
             }
             catch { }
             throw;
@@ -179,18 +198,33 @@ public static class LinuxUserFileOperations
         RecoverAbandoned(parent, destination);
         using var process = Process.GetCurrentProcess();
         var processStartUtcTicks = process.StartTime.ToUniversalTime().Ticks;
-        var root = Path.Combine(parent, $"{TransactionPrefix}{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}-"
-            + $"{processStartUtcTicks.ToString(CultureInfo.InvariantCulture)}-{Guid.NewGuid():N}{TransactionSuffix}");
-        if (OperatingSystem.IsLinux())
-            Directory.CreateDirectory(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        else
-            Directory.CreateDirectory(root);
-        var transaction = new Transaction(root, destination, Environment.ProcessId, processStartUtcTicks);
+        var rootName = $"{TransactionPrefix}{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}-"
+            + $"{processStartUtcTicks.ToString(CultureInfo.InvariantCulture)}-{Guid.NewGuid():N}{TransactionSuffix}";
+        var parentHandle = OpenDirectoryHandle(parent);
+        if (mkdirat(Descriptor(parentHandle), rootName, Convert.ToUInt32("700", 8)) != 0)
+        {
+            var exception = NativeIOException("Could not create the user-execution transaction directory");
+            parentHandle.Dispose();
+            throw exception;
+        }
+        SafeFileHandle? rootHandle = null;
+        try
+        {
+            rootHandle = OpenDirectoryHandleAt(parentHandle, rootName);
+        }
+        catch
+        {
+            TryRemoveDirectoryAt(parentHandle, rootName);
+            parentHandle.Dispose();
+            throw;
+        }
+        var transaction = new Transaction(rootName, destination, Environment.ProcessId,
+            processStartUtcTicks, parentHandle, rootHandle);
         try
         {
             // The manifest is intentionally small and contains no file content or credentials.
             // Flush it before staging begins so a later Helper can identify an interrupted owner.
-            var pendingManifest = Path.Combine(root, PendingManifestName);
+            var pendingManifest = transaction.PendingManifest;
             using (var manifest = new FileStream(pendingManifest, FileMode.CreateNew, FileAccess.Write,
                        FileShare.None, 4096, FileOptions.WriteThrough))
             {
@@ -205,25 +239,33 @@ public static class LinuxUserFileOperations
                 }
                 manifest.Flush(flushToDisk: true);
             }
-            File.Move(pendingManifest, transaction.Manifest);
+            RenameAt(transaction.RootHandle, PendingManifestName, transaction.RootHandle,
+                ManifestName);
             return transaction;
         }
         catch
         {
-            DeleteIfPresent(root);
+            FinishTransaction(transaction);
+            transaction.Dispose();
             throw;
         }
     }
 
     private static bool TryReadTransaction(string root, out Transaction transaction)
     {
-        transaction = default;
+        transaction = null!;
+        SafeFileHandle? parentHandle = null;
+        SafeFileHandle? rootHandle = null;
         try
         {
             var attributes = File.GetAttributes(root);
             if (!attributes.HasFlag(FileAttributes.Directory) || attributes.HasFlag(FileAttributes.ReparsePoint))
                 return false;
-            var manifestPath = Path.Combine(root, ManifestName);
+            var parent = Path.GetDirectoryName(root)!;
+            var rootName = Path.GetFileName(root);
+            parentHandle = OpenDirectoryHandle(parent);
+            rootHandle = OpenDirectoryHandleAt(parentHandle, rootName);
+            var manifestPath = Path.Combine(DescriptorPath(rootHandle), ManifestName);
             if (new FileInfo(manifestPath).Length > 4096) return false;
             var lines = File.ReadAllLines(manifestPath);
             if (lines.Length != 4 || lines[0] != "1"
@@ -240,13 +282,21 @@ public static class LinuxUserFileOperations
             if (!Path.IsPathFullyQualified(destination)) return false;
             destination = Path.GetFullPath(destination);
             if (!SamePath(Path.GetDirectoryName(destination)!, Path.GetDirectoryName(root)!)) return false;
-            transaction = new(root, destination, processId, processStartUtcTicks);
+            transaction = new(rootName, destination, processId, processStartUtcTicks,
+                parentHandle, rootHandle);
+            parentHandle = null;
+            rootHandle = null;
             return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
             or FormatException or ArgumentException)
         {
             return false;
+        }
+        finally
+        {
+            rootHandle?.Dispose();
+            parentHandle?.Dispose();
         }
     }
 
@@ -269,6 +319,8 @@ public static class LinuxUserFileOperations
 
     private static void RecoverIncompleteInitialization(string root)
     {
+        SafeFileHandle? parentHandle = null;
+        SafeFileHandle? rootHandle = null;
         try
         {
             var attributes = File.GetAttributes(root);
@@ -276,17 +328,27 @@ public static class LinuxUserFileOperations
                 || !TryReadOwnerFromTransactionName(root, out var processId, out var processStartUtcTicks)
                 || IsCreatingProcessAlive(processId, processStartUtcTicks))
                 return;
-            var entries = Directory.EnumerateFileSystemEntries(root).ToArray();
+            var parent = Path.GetDirectoryName(root)!;
+            var rootName = Path.GetFileName(root);
+            parentHandle = OpenDirectoryHandle(parent);
+            rootHandle = OpenDirectoryHandleAt(parentHandle, rootName);
+            var anchoredRoot = DescriptorPath(rootHandle);
+            var entries = Directory.EnumerateFileSystemEntries(anchoredRoot).ToArray();
             if (entries.Any(entry => Path.GetFileName(entry) is not (ManifestName or PendingManifestName)
                 || (File.GetAttributes(entry) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0))
                 return;
             foreach (var entry in entries) File.Delete(entry);
-            Directory.Delete(root, recursive: false);
+            RemoveDirectoryAt(parentHandle, rootName);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
             or ArgumentException or System.ComponentModel.Win32Exception)
         {
             // An invalid or inaccessible lookalike is not trusted as an application transaction.
+        }
+        finally
+        {
+            rootHandle?.Dispose();
+            parentHandle?.Dispose();
         }
     }
 
@@ -316,12 +378,15 @@ public static class LinuxUserFileOperations
         {
             if (Exists(transaction.Backup))
             {
-                if (Exists(transaction.Destination)) DeleteIfPresent(transaction.Backup);
-                else MovePath(transaction.Backup, transaction.Destination);
+                if (Exists(transaction.AnchoredDestination)) DeleteIfPresent(transaction.Backup);
+                else RenameAt(transaction.RootHandle, BackupName, transaction.ParentHandle,
+                    transaction.DestinationName);
             }
             DeleteIfPresent(transaction.Staged);
             if (File.Exists(transaction.Manifest)) File.Delete(transaction.Manifest);
-            if (Directory.Exists(transaction.Root)) Directory.Delete(transaction.Root, recursive: false);
+            if (File.Exists(transaction.PendingManifest)) File.Delete(transaction.PendingManifest);
+            if (Directory.Exists(transaction.AnchoredRootAtParent))
+                RemoveDirectoryAt(transaction.ParentHandle, transaction.RootName);
             return true;
         }
         catch
@@ -357,14 +422,6 @@ public static class LinuxUserFileOperations
         else File.CreateSymbolicLink(destination, target);
     }
 
-    private static void MovePath(string source, string destination)
-    {
-        var attributes = File.GetAttributes(source);
-        if (attributes.HasFlag(FileAttributes.Directory) && !attributes.HasFlag(FileAttributes.ReparsePoint))
-            Directory.Move(source, destination);
-        else File.Move(source, destination, overwrite: false);
-    }
-
     private static void DeleteIfPresent(string path)
     {
         if (!Exists(path)) return;
@@ -391,11 +448,73 @@ public static class LinuxUserFileOperations
         return normalizedChild.StartsWith(normalizedParent + Path.DirectorySeparatorChar, StringComparison.Ordinal);
     }
 
-    private readonly record struct Transaction(string Root, string Destination, int ProcessId,
-        long ProcessStartUtcTicks)
+    private static SafeFileHandle OpenDirectoryHandle(string path)
     {
-        public string Manifest => Path.Combine(Root, ManifestName);
-        public string Staged => Path.Combine(Root, StagedName);
-        public string Backup => Path.Combine(Root, BackupName);
+        var descriptor = open(path, OpenReadOnly | OpenDirectory | OpenCloseOnExec);
+        return descriptor < 0
+            ? throw NativeIOException("Could not open the user-execution parent directory")
+            : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
     }
+
+    private static SafeFileHandle OpenDirectoryHandleAt(SafeFileHandle parent, string name)
+    {
+        var descriptor = openat(Descriptor(parent), name,
+            OpenReadOnly | OpenDirectory | OpenNoFollow | OpenCloseOnExec);
+        return descriptor < 0
+            ? throw NativeIOException("Could not open the user-execution transaction directory")
+            : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+    }
+
+    private static void RenameAt(SafeFileHandle oldDirectory, string oldName,
+        SafeFileHandle newDirectory, string newName)
+    {
+        if (renameat(Descriptor(oldDirectory), oldName, Descriptor(newDirectory), newName) != 0)
+            throw NativeIOException("Could not atomically rename a user-execution path");
+    }
+
+    private static void RemoveDirectoryAt(SafeFileHandle parent, string name)
+    {
+        if (unlinkat(Descriptor(parent), name, RemoveDirectory) != 0)
+            throw NativeIOException("Could not remove the user-execution transaction directory");
+    }
+
+    private static void TryRemoveDirectoryAt(SafeFileHandle parent, string name)
+    {
+        try { RemoveDirectoryAt(parent, name); }
+        catch { }
+    }
+
+    private static int Descriptor(SafeFileHandle handle) => handle.DangerousGetHandle().ToInt32();
+    private static string DescriptorPath(SafeFileHandle handle) => $"/proc/self/fd/{Descriptor(handle)}";
+    private static IOException NativeIOException(string message)
+        => new($"{message} (errno {Marshal.GetLastPInvokeError()}).");
+
+    private sealed class Transaction(string rootName, string destination, int processId,
+        long processStartUtcTicks, SafeFileHandle parentHandle, SafeFileHandle rootHandle) : IDisposable
+    {
+        public string RootName { get; } = rootName;
+        public string Destination { get; } = destination;
+        public string DestinationName { get; } = Path.GetFileName(destination);
+        public int ProcessId { get; } = processId;
+        public long ProcessStartUtcTicks { get; } = processStartUtcTicks;
+        public SafeFileHandle ParentHandle { get; } = parentHandle;
+        public SafeFileHandle RootHandle { get; } = rootHandle;
+        public string AnchoredRootAtParent => Path.Combine(DescriptorPath(ParentHandle), RootName);
+        public string AnchoredDestination => Path.Combine(DescriptorPath(ParentHandle), DestinationName);
+        public string Manifest => Path.Combine(DescriptorPath(RootHandle), ManifestName);
+        public string PendingManifest => Path.Combine(DescriptorPath(RootHandle), PendingManifestName);
+        public string Staged => Path.Combine(DescriptorPath(RootHandle), StagedName);
+        public string Backup => Path.Combine(DescriptorPath(RootHandle), BackupName);
+        public void Dispose()
+        {
+            RootHandle.Dispose();
+            ParentHandle.Dispose();
+        }
+    }
+
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int open(string path, int flags);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int openat(int directory, string path, int flags);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int mkdirat(int directory, string path, uint mode);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int renameat(int oldDirectory, string oldPath, int newDirectory, string newPath);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int unlinkat(int directory, string path, int flags);
 }
