@@ -43,6 +43,14 @@ import app.relaxkonos.mobile.security.VaultKeyManager
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.security.unlockModeFor
+import app.relaxkonos.mobile.servercenter.DefaultServerCenterConnectionResolver
+import app.relaxkonos.mobile.servercenter.FileHostKeyStorage
+import app.relaxkonos.mobile.servercenter.FileHostTargetStorage
+import app.relaxkonos.mobile.servercenter.JschServerCenterSshTransportFactory
+import app.relaxkonos.mobile.servercenter.ServerCenterConnectionResolver
+import app.relaxkonos.mobile.servercenter.ServerCenterSshCredentialStore
+import app.relaxkonos.mobile.servercenter.ServerHostKeyTrustStore
+import app.relaxkonos.mobile.servercenter.ServerHostTargetStore
 import app.relaxkonos.mobile.ui.theme.AppearancePreferences
 import app.relaxkonos.mobile.ui.theme.AppearanceState
 import app.relaxkonos.mobile.ui.common.UiMessage
@@ -88,6 +96,29 @@ class AppContainer(context: Context) {
     val vaultAccess = VaultAccess(vault, keyManager, AndroidBiometricUnlock())
 
     val profiles = ConnectionProfileStore(FileProfileStorage(appContext.noBackupFilesDir))
+
+    /**
+     * 服务器中心的宿主管理资料与主机密钥信任资料。
+     *
+     * 两者都落在 `noBackupFilesDir` 且不与 Workspace 同步：宿主目标只描述本机对某台宿主的管辖关系，
+     * 固定主机密钥也只对本机有意义。它们都不含凭据——SSH 凭据另走 [VaultKind.Ssh] 保险箱域，
+     * 与登录、提权凭据互不复用。
+     */
+    val serverHostTargets = ServerHostTargetStore(FileHostTargetStorage(appContext.noBackupFilesDir))
+
+    val sshHostKeyTrust = ServerHostKeyTrustStore(FileHostKeyStorage(appContext.noBackupFilesDir))
+
+    val sshCredentials = ServerCenterSshCredentialStore(vault, vaultAccess)
+
+    /**
+     * 连接解析器：把宿主目标与 SSH 凭据变成一条会话，并维护 loopback 隧道的稳定身份。
+     * 传输由内置 JSch 提供，因此不需要外部 SSH App。
+     */
+    val serverCenterConnections: ServerCenterConnectionResolver = DefaultServerCenterConnectionResolver(
+        hostKeyTrust = sshHostKeyTrust,
+        hostTargets = serverHostTargets,
+        transportFactory = JschServerCenterSshTransportFactory(),
+    )
 
     /**
      * Plaintext fallback for a device that cannot host a Keystore key at all.

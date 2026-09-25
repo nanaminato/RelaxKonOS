@@ -61,6 +61,9 @@ fun unlockModeFor(kind: VaultKind, capability: BiometricCapability, deviceUnlock
         capability == BiometricCapability.None -> null
         kind == VaultKind.Elevation ->
             if (capability.allowsElevationVault) VaultUnlockMode.PerUseStrongBiometric else null
+        // The SSH vault follows the connection vault's policy: per-use strong biometrics where they
+        // exist, otherwise the opt-in device-unlock window. SSH credentials are saved by explicit user
+        // choice, so a device that can only offer the weaker window must not lose the feature entirely.
         capability == BiometricCapability.Strong -> VaultUnlockMode.PerUseStrongBiometric
         deviceUnlockWindowEnabled -> VaultUnlockMode.DeviceUnlockWindow
         else -> null

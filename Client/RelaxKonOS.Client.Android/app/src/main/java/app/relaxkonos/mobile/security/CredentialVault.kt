@@ -11,8 +11,15 @@ import java.security.GeneralSecurityException
 import java.security.UnrecoverableKeyException
 import javax.crypto.Cipher
 
-/** The two credential domains. They are never merged, shared or cross-filled. */
-enum class VaultKind { Connection, Elevation }
+/**
+ * The credential domains. They are never merged, shared or cross-filled.
+ *
+ * [Ssh] is the server centre's SSH credential domain. It is a separate kind rather than a reuse of
+ * [Connection] because an SSH credential is bound to a host endpoint and SSH user, not to a RelaxKonOS
+ * server URL and login identifier; two records that happen to hold the same password are still two
+ * records (`RelaxKonOS.Mobile.ServerCenter.Design.md` §3).
+ */
+enum class VaultKind { Connection, Elevation, Ssh }
 
 /**
  * Whether a stored payload may still be decrypted.
@@ -134,7 +141,7 @@ class InMemoryVaultStorage : VaultStorage {
 }
 
 /**
- * The client-side credential vault. Holds the two independent vaults required by
+ * The client-side credential vault. Holds the independent vaults required by
  * `RelaxKonOS.Mobile.V1.Design.md` §5.2 and enforces the invariants of §5.3:
  *
  * - payloads are bound to `vault|serverUrl|account` through AES-GCM additional authenticated data;

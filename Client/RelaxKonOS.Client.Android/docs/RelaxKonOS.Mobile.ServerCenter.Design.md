@@ -1,6 +1,6 @@
 # Android 服务器中心接入设计
 
-> 状态：设计完成，待实施。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
+> 状态：接入中。Android 已有独立宿主资料、SSH 凭据域、主机密钥固定、JSch 传输、隧道基础件及回执校验规则；登录前后入口、部署协调器、远端操作恢复及真机验收尚未完成。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
 >
 > 基线：独立 Kotlin / Jetpack Compose / Material 3 工程；`MainActivity` 在未认证时显示 `LoginScreen`，认证后显示五类导航的 `ShellScaffold`。当前没有内置 SSH/SFTP 或服务器部署页面。
 

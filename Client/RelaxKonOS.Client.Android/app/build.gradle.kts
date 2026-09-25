@@ -50,6 +50,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
+    // 服务器中心：内置 SSH/SFTP 传输，替代对系统 ssh/scp/sftp 工具的依赖。
+    // mwiede/jsch 是 com.jcraft:jsch 的维护分支，支持 rsa-sha2-256/512 等现代算法；
+    // bcprov 提供 ed25519 / curve25519 / chacha20-poly1305 所需的密码学原语（jsch 直接调用其轻量 API）。
+    implementation("com.github.mwiede:jsch:2.28.7")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80.2")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")

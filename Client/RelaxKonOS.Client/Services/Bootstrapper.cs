@@ -16,6 +16,7 @@ using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.DesktopRestore;
 using RelaxKonOS.Client.Services.Diagnostics;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services.WindowLayout;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using VirtualSystemDriveService = RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive;
@@ -99,6 +100,14 @@ public static class Bootstrapper
         services.AddSingleton<IApplicationCompatibilityEvaluator>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());
         services.AddSingleton<IApplicationCompatibilityNotifier>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());
         services.AddSingleton<LoginViewModel>();
+
+        // 服务器中心：宿主管理资料、主机密钥固定、SSH 凭据与内置 SSH/SFTP 传输。
+        // 这些存储都只写本机，且 SSH 凭据使用独立于登录凭据的安全存储槽。
+        services.AddSingleton<IHostTargetStore, HostTargetStore>();
+        services.AddSingleton<ISshHostKeyTrustStore, SshHostKeyTrustStore>();
+        services.AddSingleton<ISshCredentialStore, SshCredentialStore>();
+        services.AddSingleton<IServerCenterSshTransportFactory, SshNetServerCenterTransportFactory>();
+        services.AddSingleton<IServerCenterConnectionResolver, ServerCenterConnectionResolver>();
 
         // Explorer（文件管理器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。
         services.AddHttpClient<RelaxKonOS.Client.Apps.Explorer.IExplorerClient, RelaxKonOS.Client.Apps.Explorer.ExplorerClient>()

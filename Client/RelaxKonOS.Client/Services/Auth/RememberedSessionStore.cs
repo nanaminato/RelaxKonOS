@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
@@ -63,6 +62,12 @@ internal sealed record LegacyRememberedSession(string ServerUrl, AuthTokens Toke
 public sealed class RememberedSessionStore : IRememberedSessionStore
 {
     private static readonly byte[] Entropy = "RelaxKonOS.RememberedSession.v2"u8.ToArray();
+    private static readonly IPlatformSecretStore MacKeychainStore =
+        new MacKeychainStore(PlatformSecretSlot.MacKeychain("RelaxKonOS.Client.RememberedSession"));
+    private static readonly IPlatformSecretStore LinuxSecretStore =
+        new LinuxSecretServiceStore(PlatformSecretSlot.LinuxSecret(
+            "com.relaxkonos.client.remembered-session", "application", "RelaxKonOS.Client"));
+
     private readonly string _windowsFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RelaxKonOS",
@@ -80,7 +85,7 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
             var payload = OperatingSystem.IsWindows()
                 ? await LoadWindowsAsync(ct)
                 : OperatingSystem.IsMacOS()
-                    ? MacKeychain.TryRead(out var macValue) ? macValue : null
+                    ? MacKeychainStore.TryRead(out var macValue) ? macValue : null
                     : OperatingSystem.IsLinux()
                         ? await LoadLinuxAsync(ct)
                         : null;
@@ -126,7 +131,7 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
             }
 
             if (OperatingSystem.IsMacOS())
-                return MacKeychain.TryWrite(payload)
+                return MacKeychainStore.TryWrite(payload)
                     ? RememberedProfileSaveResult.Saved
                     : RememberedProfileSaveResult.CredentialStoreUnavailable;
 
@@ -169,11 +174,11 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
             }
             else if (OperatingSystem.IsMacOS())
             {
-                MacKeychain.TryClear();
+                MacKeychainStore.TryClear();
             }
             else if (OperatingSystem.IsLinux())
             {
-                LinuxSecretService.TryClear();
+                LinuxSecretStore.TryClear();
                 if (File.Exists(_linuxProfilesPath)) File.Delete(_linuxProfilesPath);
             }
         }
@@ -224,7 +229,7 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         // Password-bearing profiles remain exclusively in the desktop Secret Service.
         // Older releases stored the complete payload there, so merging also migrates them
         // into the new always-available connection metadata file on the next successful login.
-        if (!LinuxSecretService.TryRead(out var protectedPayload) || protectedPayload is null)
+        if (!LinuxSecretStore.TryRead(out var protectedPayload) || protectedPayload is null)
             return Serialize(metadata);
 
         var protectedProfiles = Deserialize(protectedPayload);
@@ -261,13 +266,13 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
 
         if (profiles.Any(profile => profile.HasPassword))
         {
-            if (LinuxSecretService.TryWrite(protectedPayload)) return true;
+            if (LinuxSecretStore.TryWrite(protectedPayload)) return true;
             // Do not leave an older password associated with newly updated metadata.
-            LinuxSecretService.TryClear();
+            LinuxSecretStore.TryClear();
             return false;
         }
 
-        LinuxSecretService.TryClear();
+        LinuxSecretStore.TryClear();
         return true;
     }
 
@@ -287,293 +292,4 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
             ? Array.Empty<SavedLoginProfile>()
             : [new SavedLoginProfile(legacy.ServerUrl, legacy.User.Username, legacy.Password, DateTimeOffset.UtcNow)];
     }
-}
-
-internal static class MacKeychain
-{
-    private const int Success = 0;
-    private const int ItemNotFound = -25300;
-    private static readonly byte[] Service = Encoding.UTF8.GetBytes("RelaxKonOS.Client.RememberedSession");
-    private static readonly byte[] Account = Encoding.UTF8.GetBytes("default");
-
-    public static bool TryRead(out string? value)
-    {
-        value = null;
-        IntPtr data = IntPtr.Zero;
-        IntPtr item = IntPtr.Zero;
-        try
-        {
-            var status = SecKeychainFindGenericPassword(
-                IntPtr.Zero, (uint)Service.Length, Service, (uint)Account.Length, Account,
-                out var length, out data, out item);
-            if (status == ItemNotFound) return true;
-            if (status != Success) return false;
-
-            var bytes = new byte[length];
-            Marshal.Copy(data, bytes, 0, bytes.Length);
-            value = Encoding.UTF8.GetString(bytes);
-            return true;
-        }
-        catch (DllNotFoundException) { return false; }
-        catch (EntryPointNotFoundException) { return false; }
-        finally
-        {
-            if (data != IntPtr.Zero) SecKeychainItemFreeContent(IntPtr.Zero, data);
-            if (item != IntPtr.Zero) CFRelease(item);
-        }
-    }
-
-    public static bool TryWrite(string value)
-    {
-        var password = Encoding.UTF8.GetBytes(value);
-        IntPtr data = IntPtr.Zero;
-        IntPtr item = IntPtr.Zero;
-        try
-        {
-            var status = SecKeychainFindGenericPassword(
-                IntPtr.Zero, (uint)Service.Length, Service, (uint)Account.Length, Account,
-                out var length, out data, out item);
-            if (status == Success)
-                return SecKeychainItemModifyAttributesAndData(item, IntPtr.Zero, (uint)password.Length, password) == Success;
-            if (status != ItemNotFound) return false;
-
-            return SecKeychainAddGenericPassword(
-                IntPtr.Zero, (uint)Service.Length, Service, (uint)Account.Length, Account,
-                (uint)password.Length, password, out item) == Success;
-        }
-        catch (DllNotFoundException) { return false; }
-        catch (EntryPointNotFoundException) { return false; }
-        finally
-        {
-            if (data != IntPtr.Zero) SecKeychainItemFreeContent(IntPtr.Zero, data);
-            if (item != IntPtr.Zero) CFRelease(item);
-        }
-    }
-
-    public static bool TryClear()
-    {
-        IntPtr data = IntPtr.Zero;
-        IntPtr item = IntPtr.Zero;
-        try
-        {
-            var status = SecKeychainFindGenericPassword(
-                IntPtr.Zero, (uint)Service.Length, Service, (uint)Account.Length, Account,
-                out _, out data, out item);
-            return status == ItemNotFound || (status == Success && SecKeychainItemDelete(item) == Success);
-        }
-        catch (DllNotFoundException) { return false; }
-        catch (EntryPointNotFoundException) { return false; }
-        finally
-        {
-            if (data != IntPtr.Zero) SecKeychainItemFreeContent(IntPtr.Zero, data);
-            if (item != IntPtr.Zero) CFRelease(item);
-        }
-    }
-
-    [DllImport("/System/Library/Frameworks/Security.framework/Security")]
-    private static extern int SecKeychainFindGenericPassword(
-        IntPtr keychainOrArray, uint serviceNameLength, byte[] serviceName,
-        uint accountNameLength, byte[] accountName, out uint passwordLength,
-        out IntPtr passwordData, out IntPtr itemRef);
-
-    [DllImport("/System/Library/Frameworks/Security.framework/Security")]
-    private static extern int SecKeychainAddGenericPassword(
-        IntPtr keychain, uint serviceNameLength, byte[] serviceName,
-        uint accountNameLength, byte[] accountName, uint passwordLength,
-        byte[] passwordData, out IntPtr itemRef);
-
-    [DllImport("/System/Library/Frameworks/Security.framework/Security")]
-    private static extern int SecKeychainItemModifyAttributesAndData(
-        IntPtr itemRef, IntPtr attrList, uint length, byte[] data);
-
-    [DllImport("/System/Library/Frameworks/Security.framework/Security")]
-    private static extern int SecKeychainItemDelete(IntPtr itemRef);
-
-    [DllImport("/System/Library/Frameworks/Security.framework/Security")]
-    private static extern int SecKeychainItemFreeContent(IntPtr attrList, IntPtr data);
-
-    [DllImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")]
-    private static extern void CFRelease(IntPtr cf);
-}
-
-internal static class LinuxSecretService
-{
-    private const string SchemaName = "com.relaxkonos.client.remembered-session";
-    private const string AttributeName = "application";
-    private const string AttributeValue = "RelaxKonOS.Client";
-    private static readonly GlibHashFunction HashFunction = Hash;
-    private static readonly GlibEqualFunction EqualFunction = Equal;
-    private static readonly IntPtr HashFunctionPointer = Marshal.GetFunctionPointerForDelegate(HashFunction);
-    private static readonly IntPtr EqualFunctionPointer = Marshal.GetFunctionPointerForDelegate(EqualFunction);
-
-    public static bool TryRead(out string? value)
-    {
-        value = null;
-        try
-        {
-            using var attributes = new SecretAttributes();
-            var password = secret_password_lookupv_sync(ref Schema.Value, attributes.Handle, IntPtr.Zero, out var error);
-            try
-            {
-                if (error != IntPtr.Zero) return false;
-                if (password == IntPtr.Zero) return true;
-                value = Marshal.PtrToStringUTF8(password);
-                return true;
-            }
-            finally
-            {
-                if (password != IntPtr.Zero) secret_password_free(password);
-                FreeError(error);
-            }
-        }
-        catch (DllNotFoundException) { return false; }
-        catch (EntryPointNotFoundException) { return false; }
-    }
-
-    public static bool TryWrite(string value)
-    {
-        try
-        {
-            using var attributes = new SecretAttributes();
-            var saved = secret_password_storev_sync(
-                ref Schema.Value, IntPtr.Zero, "RelaxKonOS remembered login", value,
-                attributes.Handle, IntPtr.Zero, out var error);
-            var hasError = error != IntPtr.Zero;
-            FreeError(error);
-            return saved && !hasError;
-        }
-        catch (DllNotFoundException) { return false; }
-        catch (EntryPointNotFoundException) { return false; }
-    }
-
-    public static bool TryClear()
-    {
-        try
-        {
-            using var attributes = new SecretAttributes();
-            var cleared = secret_password_clearv_sync(ref Schema.Value, attributes.Handle, IntPtr.Zero, out var error);
-            var hasError = error != IntPtr.Zero;
-            FreeError(error);
-            return cleared && !hasError;
-        }
-        catch (DllNotFoundException) { return false; }
-        catch (EntryPointNotFoundException) { return false; }
-    }
-
-    private static void FreeError(IntPtr error)
-    {
-        if (error != IntPtr.Zero) g_error_free(error);
-    }
-
-    private static class Schema
-    {
-        public static SecretSchema Value = new()
-        {
-            Name = SchemaName,
-            Flags = 0,
-            Attributes = CreateAttributes(),
-        };
-
-        private static SecretSchemaAttribute[] CreateAttributes()
-        {
-            var attributes = new SecretSchemaAttribute[32];
-            attributes[0] = new SecretSchemaAttribute { Name = AttributeName, Type = 0 };
-            return attributes;
-        }
-    }
-
-    private sealed class SecretAttributes : IDisposable
-    {
-        private readonly IntPtr _key;
-        private readonly IntPtr _value;
-        public IntPtr Handle { get; }
-
-        public SecretAttributes()
-        {
-            Handle = g_hash_table_new(HashFunctionPointer, EqualFunctionPointer);
-            _key = Marshal.StringToCoTaskMemUTF8(AttributeName);
-            _value = Marshal.StringToCoTaskMemUTF8(AttributeValue);
-            g_hash_table_insert(Handle, _key, _value);
-        }
-
-        public void Dispose()
-        {
-            if (Handle != IntPtr.Zero) g_hash_table_destroy(Handle);
-            Marshal.FreeCoTaskMem(_key);
-            Marshal.FreeCoTaskMem(_value);
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SecretSchema
-    {
-        [MarshalAs(UnmanagedType.LPUTF8Str)] public string Name;
-        public int Flags;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public SecretSchemaAttribute[] Attributes;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SecretSchemaAttribute
-    {
-        [MarshalAs(UnmanagedType.LPUTF8Str)] public string? Name;
-        public int Type;
-    }
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate uint GlibHashFunction(IntPtr value);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate bool GlibEqualFunction(IntPtr first, IntPtr second);
-
-    private static uint Hash(IntPtr value)
-    {
-        uint hash = 5381;
-        for (var index = 0; ; index++)
-        {
-            var current = Marshal.ReadByte(value, index);
-            if (current == 0) return hash;
-            hash = (hash << 5) + hash + current;
-        }
-    }
-
-    private static bool Equal(IntPtr first, IntPtr second)
-    {
-        var index = 0;
-        while (true)
-        {
-            var left = Marshal.ReadByte(first, index);
-            var right = Marshal.ReadByte(second, index);
-            if (left != right) return false;
-            if (left == 0) return true;
-            index++;
-        }
-    }
-
-    [DllImport("libsecret-1.so.0", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr secret_password_lookupv_sync(
-        ref SecretSchema schema, IntPtr attributes, IntPtr cancellable, out IntPtr error);
-
-    [DllImport("libsecret-1.so.0", CallingConvention = CallingConvention.Cdecl)]
-    private static extern bool secret_password_storev_sync(
-        ref SecretSchema schema, IntPtr collection, string label, string password,
-        IntPtr attributes, IntPtr cancellable, out IntPtr error);
-
-    [DllImport("libsecret-1.so.0", CallingConvention = CallingConvention.Cdecl)]
-    private static extern bool secret_password_clearv_sync(
-        ref SecretSchema schema, IntPtr attributes, IntPtr cancellable, out IntPtr error);
-
-    [DllImport("libsecret-1.so.0", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void secret_password_free(IntPtr password);
-
-    [DllImport("libglib-2.0.so.0", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr g_hash_table_new(IntPtr hashFunc, IntPtr equalFunc);
-
-    [DllImport("libglib-2.0.so.0", CallingConvention = CallingConvention.Cdecl)]
-    private static extern bool g_hash_table_insert(IntPtr hashTable, IntPtr key, IntPtr value);
-
-    [DllImport("libglib-2.0.so.0", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void g_hash_table_destroy(IntPtr hashTable);
-
-    [DllImport("libglib-2.0.so.0", CallingConvention = CallingConvention.Cdecl)]
-    private static extern void g_error_free(IntPtr error);
 }

@@ -20,7 +20,7 @@ import javax.crypto.spec.GCMParameterSpec
 class VaultKeyUnavailableException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /**
- * Owns the two AES-256-GCM Keystore keys behind the credential vaults.
+ * Owns the AES-256-GCM Keystore keys behind the credential vaults.
  *
  * Key material is generated inside the Keystore and never leaves it; callers only ever receive a
  * [`Cipher`] that the platform has bound to a user-authentication requirement. See
@@ -163,6 +163,7 @@ class VaultKeyManager : VaultCrypto {
     private fun alias(kind: VaultKind): String = when (kind) {
         VaultKind.Connection -> "rk.connection.vault"
         VaultKind.Elevation -> "rk.elevation.vault"
+        VaultKind.Ssh -> "rk.ssh.vault"
     }
 
     private companion object {

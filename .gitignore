@@ -13,6 +13,7 @@
 *.Production.json
 # 调试日志
 *operations.json
+.jschprobe
 
 
 dataSources.xml
