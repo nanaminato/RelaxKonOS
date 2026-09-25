@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.FakeGateway
 import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DownloadSink
 import app.relaxkonos.mobile.core.net.FileElevationGrant
@@ -25,7 +26,7 @@ class FilesRepositoryTest {
 
     private suspend fun signIn() {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
-        session.login("https://relaxkonos.local", "nana", "pw".toCharArray()) {}
+        session.login(ServerConnectionIdentityRules.direct("https://relaxkonos.local"), "nana", "pw".toCharArray()) {}
     }
 
     @Test

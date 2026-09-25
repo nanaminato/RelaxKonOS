@@ -265,14 +265,14 @@ class ElevationRepository(
      * up (design §5.8.2). A transport failure or a user cancellation never reaches here.
      */
     private fun discardStoredCredential(account: String): Boolean {
-        val serverUrl = session.serverUrl ?: return false
+        val serviceId = session.serviceId ?: return false
         if (account.isBlank()) {
             return false
         }
-        if (vault.record(VaultKind.Elevation, serverUrl, account) == null) {
+        if (vault.record(VaultKind.Elevation, serviceId, account) == null) {
             return false
         }
-        vault.delete(VaultKind.Elevation, serverUrl, account)
+        vault.delete(VaultKind.Elevation, serviceId, account)
         return true
     }
 

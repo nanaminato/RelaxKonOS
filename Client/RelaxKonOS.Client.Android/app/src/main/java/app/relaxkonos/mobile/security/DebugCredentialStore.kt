@@ -58,7 +58,7 @@ class InMemoryDebugCredentialStorage : DebugCredentialStorage {
 }
 
 /** Which identity the single debug credential belongs to. Carries no secret. */
-data class DebugCredentialRecord(val serverUrl: String, val identifier: String)
+data class DebugCredentialRecord(val serviceId: String, val identifier: String)
 
 /**
  * A plaintext credential store that exists only in debug builds, and only for devices where the
@@ -95,22 +95,22 @@ class DebugCredentialStore(private val storage: DebugCredentialStorage) {
     /** The identity this store holds, or `null` when it holds nothing readable. */
     fun record(): DebugCredentialRecord? {
         val parsed = parse(storage.read() ?: return null, withSecret = false) ?: return null
-        return DebugCredentialRecord(parsed.serverUrl, parsed.identifier)
+        return DebugCredentialRecord(parsed.serviceId, parsed.identifier)
     }
 
     fun hasRecord(): Boolean = record() != null
 
     /** True when this store holds a password for exactly this identity. */
-    fun exists(serverUrl: String, identifier: String): Boolean =
-        record()?.let { it.serverUrl == serverUrl && it.identifier == identifier } ?: false
+    fun exists(serviceId: String, identifier: String): Boolean =
+        record()?.let { it.serviceId == serviceId && it.identifier == identifier } ?: false
 
     /**
      * The password for this identity, as a fresh array the caller must zero, or `null` when the store
      * holds nothing for it. No authorization is involved: there is nothing to authorize against.
      */
-    fun reveal(serverUrl: String, identifier: String): CharArray? {
+    fun reveal(serviceId: String, identifier: String): CharArray? {
         val parsed = parse(storage.read() ?: return null, withSecret = true) ?: return null
-        if (parsed.serverUrl != serverUrl || parsed.identifier != identifier) {
+        if (parsed.serviceId != serviceId || parsed.identifier != identifier) {
             return null
         }
         return parsed.secret
@@ -122,13 +122,13 @@ class DebugCredentialStore(private val storage: DebugCredentialStorage) {
      * Replacing instead of appending is the whole point of "only one": the store can never grow into a
      * second password list, and there is exactly one thing for the user to delete.
      */
-    fun save(serverUrl: String, identifier: String, password: CharArray) {
+    fun save(serviceId: String, identifier: String, password: CharArray) {
         val buffer = ByteArrayOutputStream()
         val secret = encodeUtf8(password)
         try {
             DataOutputStream(buffer).use { output ->
                 output.writeInt(MAGIC)
-                output.writeUTF(serverUrl)
+                output.writeUTF(serviceId)
                 output.writeUTF(identifier)
                 output.writeInt(secret.size)
                 output.write(secret)
@@ -140,8 +140,8 @@ class DebugCredentialStore(private val storage: DebugCredentialStorage) {
     }
 
     /** Drops the record, but only when it belongs to this identity — same rule as the vault. */
-    fun delete(serverUrl: String, identifier: String) {
-        if (exists(serverUrl, identifier)) {
+    fun delete(serviceId: String, identifier: String) {
+        if (exists(serviceId, identifier)) {
             storage.delete()
         }
     }
@@ -152,21 +152,21 @@ class DebugCredentialStore(private val storage: DebugCredentialStorage) {
     }
 
     /** One parse of the file. `secret` is present only when it was asked for, and the caller owns it. */
-    private class Parsed(val serverUrl: String, val identifier: String, val secret: CharArray?)
+    private class Parsed(val serviceId: String, val identifier: String, val secret: CharArray?)
 
     private fun parse(payload: ByteArray, withSecret: Boolean): Parsed? = try {
         DataInputStream(ByteArrayInputStream(payload)).use { input ->
             if (input.readInt() == MAGIC) {
-                val serverUrl = input.readUTF()
+                val serviceId = input.readUTF()
                 val identifier = input.readUTF()
                 val length = input.readInt()
                 when {
                     length < 0 -> null
-                    !withSecret -> Parsed(serverUrl, identifier, null)
+                    !withSecret -> Parsed(serviceId, identifier, null)
                     else -> {
                         val bytes = ByteArray(length).also { input.readFully(it) }
                         try {
-                            Parsed(serverUrl, identifier, decodeUtf8(bytes))
+                            Parsed(serviceId, identifier, decodeUtf8(bytes))
                         } finally {
                             bytes.fill(0)
                         }

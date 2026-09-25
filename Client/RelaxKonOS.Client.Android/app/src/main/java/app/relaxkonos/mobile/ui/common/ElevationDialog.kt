@@ -51,15 +51,15 @@ fun ElevationDialog(container: AppContainer) {
     val activity = context as? FragmentActivity ?: return
     val scope = rememberCoroutineScope()
 
-    val serverUrl = container.session.serverUrl.orEmpty()
+    val serviceId = container.session.serviceId.orEmpty()
     val elevationMode = container.unlockMode(VaultKind.Elevation)
     val savedAccount = prompt.savedAdministratorAccount
     var vaultRevision by remember { mutableStateOf(0) }
-    val savedRecord = remember(serverUrl, savedAccount, vaultRevision) {
-        if (serverUrl.isBlank() || savedAccount.isNullOrBlank()) {
+    val savedRecord = remember(serviceId, savedAccount, vaultRevision) {
+        if (serviceId.isBlank() || savedAccount.isNullOrBlank()) {
             null
         } else {
-            container.vault.record(VaultKind.Elevation, serverUrl, savedAccount)
+            container.vault.record(VaultKind.Elevation, serviceId, savedAccount)
         }
     }
 
@@ -130,7 +130,7 @@ fun ElevationDialog(container: AppContainer) {
                     }
                     val answer = ElevationAnswer(account.trim(), password.toCharArray())
                     password = ""
-                    if (!storeRequested || elevationMode == null || serverUrl.isBlank()) {
+                    if (!storeRequested || elevationMode == null || serviceId.isBlank()) {
                         container.elevationPrompts.supply(answer)
                         return@Button
                     }
@@ -141,7 +141,7 @@ fun ElevationDialog(container: AppContainer) {
                         val outcome = container.vaultAccess.save(
                             kind = VaultKind.Elevation,
                             mode = elevationMode,
-                            serverUrl = serverUrl,
+                            serviceId = serviceId,
                             account = answer.account,
                             password = answer.password,
                             activity = activity,

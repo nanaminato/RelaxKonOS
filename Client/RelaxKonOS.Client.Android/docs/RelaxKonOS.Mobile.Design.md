@@ -137,7 +137,7 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
      → MobileShell（首页） → 页面导航 / 操作确认 / 网络恢复
 ```
 
-首次登录要求服务器地址、用户名和密码。用户勾选“记住连接”时，服务器地址与用户名可保存；密码只能保存到 Android Keystore，刷新令牌始终仅在内存中。移动端不复用当前 Windows DPAPI、macOS Keychain 或 Linux Secret Service 的桌面实现。
+直连首次登录要求服务器地址、用户名和密码；服务器中心受管连接则先核实安装 ID 并建立本次 SSH 隧道。用户勾选“记住连接”时，只保存稳定 `serviceId`（直连规范化 URL 或受管安装 ID）与用户名，不保存临时隧道端口；密码只能保存到 Android Keystore，刷新令牌始终仅在内存中。移动端不复用当前 Windows DPAPI、macOS Keychain 或 Linux Secret Service 的桌面实现。
 
 主导航固定为：**主页、文件、终端、管理、更多**。
 

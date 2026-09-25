@@ -208,7 +208,7 @@ class VaultAccess(
     suspend fun save(
         kind: VaultKind,
         mode: VaultUnlockMode,
-        serverUrl: String,
+        serviceId: String,
         account: String,
         password: CharArray,
         activity: FragmentActivity,
@@ -219,7 +219,7 @@ class VaultAccess(
     ): VaultOperation<VaultRecord> = saveOnce(
         kind = kind,
         mode = mode,
-        serverUrl = serverUrl,
+        serviceId = serviceId,
         account = account,
         password = password,
         activity = activity,
@@ -243,7 +243,7 @@ class VaultAccess(
     private suspend fun saveOnce(
         kind: VaultKind,
         mode: VaultUnlockMode,
-        serverUrl: String,
+        serviceId: String,
         account: String,
         password: CharArray,
         activity: FragmentActivity,
@@ -285,7 +285,7 @@ class VaultAccess(
         VaultOperation.Success(
             vault.seal(
                 kind = kind,
-                serverUrl = serverUrl,
+                serviceId = serviceId,
                 account = account,
                 password = password,
                 cipher = cipher,
@@ -304,7 +304,7 @@ class VaultAccess(
             saveOnce(
                 kind = kind,
                 mode = mode,
-                serverUrl = serverUrl,
+                serviceId = serviceId,
                 account = account,
                 password = password,
                 activity = activity,

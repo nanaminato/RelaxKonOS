@@ -751,7 +751,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadPreview(entry: RemoteEntry, authorize: Boolean) {
         val generation = previewGeneration
         previewJob = viewModelScope.launch {
-            val scope = container.activeSession?.serverUrl.orEmpty()
+            val scope = container.activeSession?.serviceId.orEmpty()
             // Reading the cache is stat calls and, on a miss, a directory listing followed by an
             // eviction pass. None of that belongs on the main thread, for the same reason the download
             // destination is not created there.

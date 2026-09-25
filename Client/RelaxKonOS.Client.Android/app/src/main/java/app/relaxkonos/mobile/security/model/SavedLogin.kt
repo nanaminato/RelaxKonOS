@@ -3,19 +3,15 @@ package app.relaxkonos.mobile.security.model
 import app.relaxkonos.mobile.core.auth.loginId
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.recordId
+import app.relaxkonos.mobile.servercenter.ServerInstallationId
+import app.relaxkonos.mobile.servercenter.ServerServiceIdKind
 
 /**
- * A login the user has used before: one server address plus one login identifier.
- *
- * Deliberately carries no secret. The password lives in the connection vault, and whether it is
- * available is answered by that vault.
- *
- * The logical key is `(ServiceId, Username)` — here `(serverUrl, identifier)` — so the same server with
- * two accounts is two independent records, each with its own credential state. Nothing may look a login
- * up, or delete one, by server address alone (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §1, §2.2).
+ * A remembered login. [serviceId] is a canonical URL for direct connections and a verified
+ * installation id for managed tunnels. A temporary loopback address is never persisted here.
  */
 data class SavedLogin(
-    val serverUrl: String,
+    val serviceId: String,
     val identifier: String,
     val lastUsedEpochMillis: Long,
     /**
@@ -33,8 +29,7 @@ data class SavedLogin(
      */
     val hasSavedCredential: Boolean = false,
 ) {
-    /** Stable local identity of this login: `serverUrl|identifier`. */
-    val id: String get() = loginId(serverUrl, identifier)
+    val id: String get() = loginId(serviceId, identifier)
 
     /**
      * The vault record that holds this login's password.
@@ -42,5 +37,13 @@ data class SavedLogin(
      * An internal association only: it identifies a record, never contains a password, and is not shown
      * on screen or written to logs and diagnostic exports (§12).
      */
-    val credentialKey: String get() = recordId(VaultKind.Connection, serverUrl, identifier)
+    val credentialKey: String get() = recordId(VaultKind.Connection, serviceId, identifier)
+
+    val serviceIdKind: ServerServiceIdKind
+        get() = if (ServerInstallationId.isValid(serviceId)) {
+            ServerServiceIdKind.ManagedInstallation
+        } else ServerServiceIdKind.DirectUrl
+
+    /** Direct profiles may refill the URL field; managed profiles must first resolve an SSH tunnel. */
+    val directServerUrl: String? get() = serviceId.takeIf { serviceIdKind == ServerServiceIdKind.DirectUrl }
 }

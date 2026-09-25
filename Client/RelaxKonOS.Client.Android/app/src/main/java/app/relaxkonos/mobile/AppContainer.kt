@@ -160,12 +160,12 @@ class AppContainer(context: Context) {
      * operation: only the payload is encrypted, and it stays encrypted.
      */
     init {
-        val stored = vault.records(VaultKind.Connection).map { it.serverUrl to it.account }.toSet()
+        val stored = vault.records(VaultKind.Connection).map { it.serviceId to it.account }.toSet()
         // The debug store counts as a credential here too: it is a real, readable password for this
         // device, and a list claiming "no password saved" while one sits in a file would be lying
         // about what is on disk.
-        profiles.reconcileCredentialProjection { serverUrl, identifier ->
-            (serverUrl to identifier) in stored || hasDebugCredential(serverUrl, identifier)
+        profiles.reconcileCredentialProjection { serviceId, identifier ->
+            (serviceId to identifier) in stored || hasDebugCredential(serviceId, identifier)
         }
     }
 
@@ -277,16 +277,16 @@ class AppContainer(context: Context) {
      * Always `null` in a release build, where [debugCredentials] is `null`. The returned array belongs
      * to the caller, which zeroes it exactly like an unsealed vault record.
      */
-    fun debugCredential(serverUrl: String, identifier: String): CharArray? =
-        debugCredentials?.reveal(serverUrl, identifier)
+    fun debugCredential(serviceId: String, identifier: String): CharArray? =
+        debugCredentials?.reveal(serviceId, identifier)
 
     /** Whether the debug store holds a password for one identity. Never a security decision. */
-    fun hasDebugCredential(serverUrl: String, identifier: String): Boolean =
-        debugCredentials?.exists(serverUrl, identifier) == true
+    fun hasDebugCredential(serviceId: String, identifier: String): Boolean =
+        debugCredentials?.exists(serviceId, identifier) == true
 
     /** Drops the debug-only credential, for the explicit "forget password" and delete actions. */
-    fun forgetDebugCredential(serverUrl: String, identifier: String) {
-        debugCredentials?.delete(serverUrl, identifier)
+    fun forgetDebugCredential(serviceId: String, identifier: String) {
+        debugCredentials?.delete(serviceId, identifier)
     }
 
     /**
@@ -331,7 +331,7 @@ class AppContainer(context: Context) {
     private fun uploadServerKey(): String? {
         val active = session.state.value as? SessionState.Active ?: return null
         val device = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
-        return "${active.serverUrl}|${active.userName}|${active.workspaceName}|$device"
+        return "${active.serviceId}|${active.userName}|${active.workspaceName}|$device"
     }
 
     /**

@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.FakeGateway
 import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.FileElevationGrant
 import app.relaxkonos.mobile.core.net.ProblemCodes
@@ -124,7 +125,7 @@ class UploadCoordinatorTest {
 
     private suspend fun signIn() {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(userName = "nana", workspaceName = "studio")) }
-        session.login(SERVER_URL, "nana", "pw".toCharArray()) {}
+        session.login(ServerConnectionIdentityRules.direct(SERVER_URL), "nana", "pw".toCharArray()) {}
     }
 
     private fun start(

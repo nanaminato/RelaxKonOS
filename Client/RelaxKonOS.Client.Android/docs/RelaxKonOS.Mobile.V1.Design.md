@@ -223,7 +223,7 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 
 | | 连接保险箱（Connection Vault） | 提权保险箱（Elevation Vault） |
 | --- | --- | --- |
-| 记录键 | `serverUrl + 登录标识` | `serverUrl + 宿主管理员账户名` |
+| 记录键 | `serviceId + 登录标识` | `serviceId + 宿主管理员账户名` |
 | 载荷 | 登录密码 | 管理员密码 |
 | 解锁时机 | 登录页点击「登录」且密码框为空时 | 提权对话框点击「使用指纹确认」 |
 | 用途 | `POST /auth/login` | `POST /privileged/elevation` |
@@ -241,7 +241,7 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 2. **服务器不存储密码**（既有原则，不变）。Android 端明文也只在内存中短暂存在：用 `ByteArray`/`CharArray` 承载，提交后立即清零；不进入 `String` 常量池、不进入日志、崩溃报告、分析事件或诊断导出。
 3. **不保存 RefreshToken。** 沿用桌面与 M0 规则：iOS/Android 均只在内存中持有 token。
 4. **密文与元数据分离。** 密文写入 `noBackupFilesDir`（`allowBackup="false"` 已设置）；Keystore 只保存密钥，不保存数据。
-5. **AAD 绑定记录身份。** AES-GCM 的附加认证数据绑定 `vault | serverUrl | account`，防止把 A 服务器的密文挪到 B 服务器条目下复用。
+5. **AAD 绑定记录身份。** AES-GCM 的附加认证数据绑定 `vault | serviceId | account`，防止把 A 服务身份的密文挪到 B 服务身份条目下复用；临时隧道端口不参与 AAD。
 6. **不做跨设备迁移。** 不导出、不云同步、不随系统备份恢复。卸载即失效（Keystore 密钥随应用卸载销毁）。
 7. **首次保存必须先验证一次指纹。** 保存动作本身要过一次 `BiometricPrompt`，确保密钥确实受用户生物特征保护、且用户当场能通过；不允许"先存着，等用的时候再说"。
 8. **禁止静默提权。** 任何拿到管理员密码后自动重试的操作，都必须由用户在这次交互中点过按钮（指纹或输密码）。不做"失败自动弹指纹"的后台循环。
@@ -254,7 +254,7 @@ Keystore                     →  Keystore 之外
 │ AES-256 密钥          │        │ CredentialVault (noBackupDir)   │
 │ alias:                │  加解密 │  connection[]: iv + ciphertext  │
 │  rk.connection.vault  │◄──────►│  elevation[]:  iv + ciphertext  │
-│  rk.elevation.vault   │        │  记录键: serverUrl + account    │
+│  rk.elevation.vault   │        │  记录键: serviceId + account    │
 │ setUserAuthentication │        └────────────────────────────────┘
 │  Required(true)       │
 │ setInvalidatedBy      │        BiometricPrompt(cryptoObject)
@@ -318,11 +318,11 @@ Keystore                     →  Keystore 之外
    │
    ▼
 「记住此服务器的登录凭据？」
-   ├─ 否 ─► 只保存 serverUrl + 登录标识（下次回填账户，仍需输入密码）
+   ├─ 否 ─► 只保存 serviceId + 登录标识（下次回填账户，仍需输入密码）
    └─ 是 ─► 能力探测
               ├─ 支持强生物识别 ─► BiometricPrompt 验证一次
               │                     ├─ 通过 ─► 写入连接保险箱，标记「指纹保护」
-              │                     └─ 取消/失败 ─► 不保存密码，只保存 serverUrl + 标识
+              │                     └─ 取消/失败 ─► 不保存密码，只保存 serviceId + 标识
               └─ 不支持 ────────► 明确告知「此设备不支持指纹，未保存密码」
 ```
 

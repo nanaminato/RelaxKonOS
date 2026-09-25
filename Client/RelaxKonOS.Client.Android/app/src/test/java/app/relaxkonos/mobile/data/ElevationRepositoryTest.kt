@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.FakeGateway
 import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.AuthTokens
 import app.relaxkonos.mobile.core.net.ElevationGrant
@@ -33,13 +34,13 @@ class ElevationRepositoryTest {
 
     private suspend fun signIn() {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
-        session.login(server, "nana", "pw".toCharArray()) {}
+        session.login(ServerConnectionIdentityRules.direct(server), "nana", "pw".toCharArray()) {}
     }
 
     private fun seedElevationCredential(account: String, password: String) {
         vault.seal(
             kind = VaultKind.Elevation,
-            serverUrl = server,
+            serviceId = server,
             account = account,
             password = password.toCharArray(),
             cipher = vault.beginSeal(VaultKind.Elevation),

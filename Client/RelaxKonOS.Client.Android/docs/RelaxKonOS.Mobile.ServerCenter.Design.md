@@ -1,8 +1,8 @@
 # Android 服务器中心接入设计
 
-> 状态：接入中。Android 已有独立宿主资料、SSH 凭据域、主机密钥固定、JSch 传输、隧道基础件及回执校验规则；登录前后入口、部署协调器、远端操作恢复及真机验收尚未完成。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
+> 状态：接入中。Android 已有独立宿主资料、SSH 凭据域、主机密钥固定、JSch 传输、隧道基础件、签名 ZIP 逐文件验证、远端操作层，以及稳定 `serviceId` / 动态 `effectiveBaseUrl` 的登录与会话模型；登录前后入口、应用级部署协调器、受管登录的隧道解析与远端操作恢复及真机验收尚未完成。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
 >
-> 基线：独立 Kotlin / Jetpack Compose / Material 3 工程；`MainActivity` 在未认证时显示 `LoginScreen`，认证后显示五类导航的 `ShellScaffold`。当前没有内置 SSH/SFTP 或服务器部署页面。
+> 基线：独立 Kotlin / Jetpack Compose / Material 3 工程；`MainActivity` 在未认证时显示 `LoginScreen`，认证后显示五类导航的 `ShellScaffold`。已有内置 SSH/SFTP 与无界面操作层，尚无服务器部署页面。
 
 ## 1. 体验原则
 
@@ -15,7 +15,7 @@
 | 现有落点 | 加入的入口 | 不改变的行为 |
 |---|---|---|
 | `ui/connect/LoginScreen.kt` | 登录按钮下的「安装或管理服务器」次级按钮；可带入当前合法的地址，但不提交登录。 | 单形态三字段、凭据状态行、手动密码优先、保存凭据的生物识别决策。 |
-| `ui/connect/ConnectionListScreen.kt` | 每条登录行的更多操作中可进入其**已明确关联**的宿主详情；未关联时提供「设置 SSH 管理连接」，不增加第四个常驻文字按钮。 | “使用 / 忘记密码 / 删除登录记录”仍只作用于该 `(serverUrl, identifier)`。 |
+| `ui/connect/ConnectionListScreen.kt` | 每条登录行的更多操作中可进入其**已明确关联**的宿主详情；未关联时提供「设置 SSH 管理连接」，不增加第四个常驻文字按钮。 | “使用 / 忘记密码 / 删除登录记录”仍只作用于该 `(serviceId, identifier)`。 |
 | `ui/more/ConnectionsScreen.kt` | 在登录资料组之后增加「服务器维护」区，显示当前宿主的安装状态和「打开服务器中心」。 | 已登录时不从此页切换账号；登出仍是切换服务器登录的显式路径。 |
 | `ui/home/HomeScreen.kt` | 只在已核实当前安装有更新或异常时显示轻量提示，点入详情。 | 首页 hero 的身份、主机与指标信息；不把部署进度塞进指标卡。 |
 | `ui/nav/Routes.kt`、`MobileNavHost.kt` | 已认证层仅增加通往宿主流程的入口；宿主列表、详情和操作步骤由独立的服务器中心导航状态管理，路由不携带凭据、路径或操作 JSON。 | 五个 `TopDestination`、能力门控、Compact/Medium/Expanded 的导航策略。 |
@@ -40,21 +40,21 @@
 
 | 资料 | 用途与键 | 持有者 |
 |---|---|---|
-| `SavedLogin` | 当前键为 `(serverUrl, identifier)`；隧道接入前演进为稳定 `(serviceId, identifier)` | `ConnectionProfileStore` 与 `VaultKind.Connection` |
+| `SavedLogin` | 键为稳定 `(serviceId, identifier)`；直连使用规范化 URL，受管连接使用安装 ID，不保存临时隧道端口 | `ConnectionProfileStore` 与 `VaultKind.Connection` |
 | `HostTarget`（新设计名） | SSH 目标、已确认主机密钥、受管安装 ID、部署模式和最近验证状态；可在没有 `SavedLogin` 时存在 | 新的设备本地宿主仓库 |
 | SSH 凭据（可选保存） | 只用于连接宿主 SSH；以主机密钥身份、端口和 SSH 用户绑定 | 独立 Keystore 凭据域；不可重用 `Connection` / `Elevation` 记录 |
 | 宿主提权凭据 | Linux sudo / Windows 管理权限预检与操作；不是 RelaxKonOS API 提权 token | 本次操作的最小生命周期；如设计保存，另立规则，不自动读取现有 `Elevation` 保险箱 |
 
-`VaultKind.Connection` 保存的是 RelaxKonOS 登录密码，`VaultKind.Elevation` 服务于现有 `/privileged/elevation`；两者的 AAD 都按服务器 URL 与账号绑定，不适用于 SSH 的主机密钥身份。若扩展现有 `CredentialVault`，须新增独立 kind、文件与 Keystore alias，并同步更新每一个 `when`、保险箱管理页面和测试。现有 debug-only 明文登录兜底不能用于 SSH 凭据。主机指纹可明文保存，但必须抗意外覆盖并在变化时阻断写操作。
+`VaultKind.Connection` 保存的是 RelaxKonOS 登录密码，`VaultKind.Elevation` 服务于现有 `/privileged/elevation`；两者的 AAD 都按稳定 `serviceId` 与账号绑定，不适用于 SSH 的主机密钥身份。若扩展现有 `CredentialVault`，须新增独立 kind、文件与 Keystore alias，并同步更新每一个 `when`、保险箱管理页面和测试。现有 debug-only 明文登录兜底不能用于 SSH 凭据。主机指纹可明文保存，但必须抗意外覆盖并在变化时阻断写操作。
 
 ### 3.1 稳定身份与动态隧道端口
 
-当前 `SelectedLogin`、`ConnectionProfileStore`、`CredentialVault`、`AuthSession` 和 `RelaxKonApi` 都将 `serverUrl` 同时作为**身份**和**请求地址**。隧道绑定的本地端口可能变化，直接存 `http://127.0.0.1:<port>` 会创建新的 `SavedLogin`，旧保险箱也无法命中。因此接入隧道之前，必须直接调整本地模型与所有调用者：
+Android 本地模型已将**稳定身份**与**请求地址**拆开：`SelectedLogin`、`SavedLogin`、`ConnectionProfileStore`、`CredentialVault` 和 debug 凭据存储只用 `serviceId` 建立身份；`AuthSession` 同时持有 `serviceId` 与 `effectiveBaseUrl`，所有已认证 API 调用使用后者。隧道绑定的本地端口变化不再创建新的 `SavedLogin`，也不会改变保险箱 AAD。后续接入受管隧道时必须保持这些边界：
 
 - 直连的 `serviceId` 为规范化的持久服务器 URL；受管隧道的 `serviceId` 为 SSH 主机密钥与安装清单共同验证过的安装 ID。登录与保险箱以 `(serviceId, identifier)` 为键，不以当前端口为键。
-- `effectiveBaseUrl` 是当前会话的实际 HTTP 地址。直连时等于持久 URL；隧道时由连接解析器建立并持有。`AuthSession`、文件、指标、提权等所有 `RelaxKonApi` 请求都从同一解析器取得地址。隧道断开时先重建并核对主机身份，换端口后只更新传输地址。
+- `effectiveBaseUrl` 是当前会话的实际 HTTP 地址。直连时等于持久 URL；隧道时由连接解析器建立并持有。`AuthSession.updateConnection` 只接受不改变 `kind + serviceId` 的重绑定；文件、指标、提权和上传等调用都从会话取得当前地址。隧道断开时先重建并核对主机身份，换端口后只更新传输地址。
 - 登录表单的“服务器”字段在直连模式仍可编辑原 URL；选择受管隧道时显示宿主名称和「通过 SSH 连接」说明，编辑入口回到宿主详情。不能把临时 loopback 地址伪装为用户应保存的服务器地址。
-- 这是发布前的本地接口演进；同一变更要更新 `SelectedLogin`、档案存储、保险箱 AAD、登录决策、会话、API 调用、测试与 `RelaxKonOS.Mobile.LoginCredentials.Design.md`。不增设依赖旧端口键的兼容分支。对已保存的直连登录要有明确的本地数据处置与验证，不能默默丢失密码记录。
+- 这是发布前的本地接口演进，已直接更新 `SelectedLogin`、档案存储、保险箱 AAD、登录决策、会话、API 调用和 JVM 测试；没有增设依赖旧端口键的兼容分支。`RKC2` / `RKV2` 的二进制布局未改变，原先保存的直连 URL 在新语义下就是直连 `serviceId`；受管安装 ID 只由后续经过验证的服务器中心流程写入。
 
 在宿主目标中记录由部署引擎签发/读取的安装 ID；连接到 API 后，再用经验证的安装信息把目标与一个或多个 `SavedLogin` 关联。**删除登录记录不删宿主，忘记密码不删 SSH 凭据，卸载服务端不批量删除登录记录。** 删除宿主资料时要提示其关联的登录记录和 SSH 凭据分别如何处理，不能把三件事合成一个按钮。
 

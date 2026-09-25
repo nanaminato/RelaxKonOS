@@ -22,7 +22,7 @@
 已实现细节：
 
 - 两个独立保险箱（`VaultKind.Connection` / `VaultKind.Elevation`）：AES-256-GCM + Android Keystore，AAD 绑定
-  `relaxkonos-vault|kind|serverUrl|account`，永不合并、永不互相回填、不可移动密文。
+  `relaxkonos-vault|kind|serviceId|account`，永不合并、永不互相回填、不可移动密文。
 - 生物识别四档（`Strong` / `WeakOnly` / `DeviceCredentialOnly` / `None`）与两种解锁模式（按次强生物识别
   `CryptoObject` 与 5 分钟设备解锁窗口），由 `unlockModeFor` 统一裁决。
 - D1–D4 按设计落地：管理员密码仅强生物识别按次授权可保存；服务端拒绝提权即删除该条密码，不按错误码分支；
@@ -49,20 +49,28 @@
 
 ## 登录与本地凭据（2026-09-23，对应 `RelaxKonOS.Mobile.LoginCredentials.Design.md`）
 
-- 身份唯一键落到 `(serverUrl, identifier)`：新增 `core/auth/SelectedLogin.kt`，归一化只做「去首尾空白 + 去地址结尾斜杠」，**不折叠大小写**；`id` 与保险箱 `credentialKey`（`recordId`）由同一对值派生，不会出现两套键。
+- 身份唯一键已演进为 `(serviceId, identifier)`：直连 `serviceId` 是规范化 URL，受管隧道使用安装 ID；`id` 与保险箱 `credentialKey`（`recordId`）由同一对值派生，临时 loopback 端口不参与身份。
 - 四个概念分离为可单测的纯 Kotlin：`SelectedLogin` / `SavedCredentialState`（四态）/ `CredentialStatus`（状态行）/ `LoginDecision` + `decideLogin`（§5.1 决策表）。`core/auth/` 不依赖任何 Android 类型。
 - 登录页改为单形态：密码框始终可见、`value` 只表示本次手动输入；「已保存密码」由密码框外的状态行（锁形图标 + 文案）表达；按钮文案随决策变化（`登录` / `连接` / `连接中…`）；缺字段或需要输入密码时把焦点移到对应输入框。原「简洁模式」与「指纹登录 / 改用密码」双按钮路径删除。
 - 保存动作仍在认证成功之后（`AuthSession.login` 的 `afterLogin` 回调）；认证失败不触碰任何已存凭据，`401 invalid-credential` **不再删除**连接保险箱里的密码（§7.3，相对旧实现的行为变更）。保存失败提示为「已登录，但密码没有保存：<原因>」。
 - 保存结果跨过登录页到 Shell 的界面切换：认证成功后发生的「未保存」提示由 `AppContainer.pendingNotice` 承载，在 Shell 顶部显示并可关闭；本地档案或凭据写入抛异常时，`AuthSession` 仍会发布已认证会话，不会永久停在「连接中…」。
 - D5 落地：密钥永久失效由「自动删除」改为「标记作废、保留记录与密文、禁止读取」。`VaultRecord` 增加 `state`（`Sealed` / `Invalidated`）、`CredentialVault.markInvalidated` / `markAllInvalidated`、`VaultRecordInvalidatedException`；一个 `VaultKind` 共享一把 Keystore alias，因此 alias 失效会标记该保险箱的全部记录。用户手动登录成功并明确保存时，`VaultAccess.save` 会轮换一次失效 alias、重新请求授权并仅重新密封当前身份，避免每次登录都重复报「指纹已变更」。`beginOpen()` 与 `open()` 双双拒绝作废记录；保险箱文件格式升到 `RKV2`（每条记录多一个 state 字节），旧格式按版本不匹配降级为「无已保存凭据」，不写迁移。账户与安全页对作废记录标注原因；提权保险箱沿用同一规则，作废记录不再出现在「使用指纹确认」路径上。
 - `mapKeyException` 现在把 `UserNotAuthenticatedException` 归为「当前不可用」而不是「已失效」。D5 之后误判会把一条好记录永久标死，所以「无法使用不是已失效的证据」必须在 Keystore 层也成立。
-- 连接管理拆成两个互不替代的动作，且一律按 `(serverUrl, identifier)` 成对生效：**忘记密码**（只删凭据、保留登录记录）与**删除登录记录**（删凭据 + 删该条登录）。`ConnectionProfileStore.remove(serverUrl)` 的「按服务器全删」缺陷修复。
+- 连接管理拆成两个互不替代的动作，且一律按 `(serviceId, identifier)` 成对生效：**忘记密码**（只删凭据、保留登录记录）与**删除登录记录**（删凭据 + 删该条登录）。按服务器全删的缺陷已修复。
 - `SavedConnection` 更名为 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey`，档案文件格式升到 `RKC2`。`hasSavedCredential` 只是显示投影：启动时由 `AppContainer` 以保险箱记录复核修正，两者不一致时以保险箱为准；布尔值不构成安全边界。
 - `CredentialUnlocked` 落地为「本进程内、窗口模式（D3）下已授权过的身份集合」：窗口内再次登录走 `VaultAccess.loadWithoutPrompt`，失败即回落为正常授权提示；按次强指纹模式恒为 false，不参与安全边界。
 - 新增 `ProblemCodes.LOGIN_RATE_LIMITED`（`429 login-rate-limited`）与对应文案：登录被限流时说「登录尝试过于频繁」而不是通用拒绝；它不参与任何凭据删除判定。
 - 三份 `strings.xml`（`values` / `values-zh` / `values-ja`）键集完全一致（现 279 键），并删除了不再使用的 `login_stored_credential_rejected`、`login_use_fingerprint`、`login_use_password`、`login_saved_credential`。
 - **修复指纹保存与解封完全不可用**（真机报「设备的指纹已变更」）：`VaultKeyManager.generate` 只调用了 `KeyGenerator.init()` 配置策略，却从未调用 `generateKey()`，因此两个保险箱的 Keystore alias 从未被创建（该文件自 `58b4c64d` 起即如此）。随后 `beginSeal` / `beginOpen` 拿到的 `getKey()` 为 `null`，抛出的「密钥缺失」被界面统一呈现为「设备的指纹已变更」，与 debug / release 无关——两条构建路径是同一份代码。现在补上 `generateKey()`，`ensureKey` 在建钥后校验 alias 确实存在，并把**任何**建钥失败归类为 `VaultKeyUnavailableException`：「拿不到密钥」不是「指纹变了」，两者给用户的建议相反。
 - 新增 debug-only 排障链路 `security/VaultDiagnostics.kt`（logcat tag `RelaxKonVault`，`adb logcat -s RelaxKonVault:D`）：记录 `canAuthenticate` 码（映射为 `SUCCESS` / `NONE_ENROLLED` / `NO_HARDWARE` 等名称——`BIOMETRIC_SUCCESS` 就是 `0`，原样打印会被读成失败）、`unlockMode` 裁决、密钥创建与 provider（StrongBox / TEE）选择、alias 存在性、`BiometricPrompt` 的结果码与返回文本，以及 Keystore 异常被分类前的原始类型与消息。能力探测与解锁模式只在结果**变化**时打印（探测本身仍每次调用都执行，不缓存结论），否则重组风暴会淹没关键行。日志只含保险箱种类、provider 决策、异常类与结果枚举，不含密码、账户、服务器地址、`Cipher` 或任何密钥材料；sink 由 `RelaxKonApplication` 仅在 debug 构建安装，release 构建保持未安装，`security` 包因此从不触碰 `android.util.Log`（`VaultDiagnosticsTest` 断言了这一点）。
+
+## 服务器中心 G2 基础件（2026-09-25）
+
+- 已有独立宿主资料、主机密钥固定、SSH 凭据域、JSch SSH/SFTP、loopback 隧道与连接解析规则；SSH 密码/私钥不复用登录或 API 提权保险箱。
+- 新增无界面部署操作层：上传前验证签名 ZIP、RID、架构和逐文件摘要，经内置 SFTP 写入远端私有暂存目录，调用固定启动器，并按 `operationId` 查询权威回执。该层尚未接入 Compose 页面或应用级恢复协调器。
+- 登录身份与传输地址已拆分。`SelectedLogin` / `SavedLogin` / `ConnectionProfileStore` / 连接与 debug 凭据都按 `(serviceId, identifier)`；`AuthSession` 另持有可重绑定的 `effectiveBaseUrl`，文件、指标、提权和上传等 API 调用读取当前地址。隧道换端口只更新传输地址，不改变登录记录、保险箱 AAD 或上传恢复归属。
+- `RKC2` / `RKV2` 的二进制布局未改变：直连记录原先保存的 URL 本身就是 URL 型 `serviceId`；未增加旧端口键兼容分支。受管安装记录只允许保存安装 ID，不保存临时 loopback 地址。
+- 已补 JVM 单元检查，覆盖受管登录档案持久化、隧道换端口后登录/凭据键不变、会话改用新端口，以及部署操作的上传、执行、回执与拒绝路径。本环境缺少 JDK、可执行 Gradle wrapper 及 Android SDK 接线，新增检查尚未在本轮执行；真机与真实 Windows/Linux 宿主验收仍未完成。
 
 ## 界面现代化（2026-09-23）
 

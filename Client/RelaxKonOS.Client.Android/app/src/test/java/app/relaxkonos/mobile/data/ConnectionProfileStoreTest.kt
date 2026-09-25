@@ -11,7 +11,7 @@ import org.junit.Test
  * The saved login list holds no secret, but two properties matter
  * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §2.2, §6.3):
  *
- * - every mutation addresses one `(serverUrl, identifier)` pair, so one server's other accounts are
+ * - every mutation addresses one `(serviceId, identifier)` pair, so one server's other accounts are
  *   never touched;
  * - the credential projection is a projection: it is reconciled against the vault rather than trusted.
  */
@@ -122,7 +122,9 @@ class ConnectionProfileStoreTest {
         store.upsert(alpha.copy(hasSavedCredential = true))
         store.upsert(beta)
 
-        store.reconcileCredentialProjection { url, account -> url == beta.serverUrl && account == beta.identifier }
+        store.reconcileCredentialProjection { serviceId, account ->
+            serviceId == beta.serviceId && account == beta.identifier
+        }
 
         assertEquals(
             listOf(beta.copy(hasSavedCredential = true), alpha.copy(hasSavedCredential = false)),
@@ -154,6 +156,16 @@ class ConnectionProfileStoreTest {
         store.upsert(alpha)
 
         assertNull(store.all().first().displayName)
+    }
+
+    @Test
+    fun `managed login persists installation identity without a tunnel address`() {
+        val managed = SavedLogin("rki-0123456789abcdef0123456789abcdef", "nana", 300L, "Home lab")
+
+        store.upsert(managed)
+
+        assertEquals(managed, store.all().single())
+        assertNull(store.all().single().directServerUrl)
     }
 
     @Test

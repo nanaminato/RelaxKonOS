@@ -23,7 +23,7 @@ class CredentialVaultTest {
 
     private fun seal(kind: VaultKind, account: String, password: String, url: String = server): VaultRecord = vault.seal(
         kind = kind,
-        serverUrl = url,
+        serviceId = url,
         account = account,
         password = password.toCharArray(),
         cipher = vault.beginSeal(kind),
@@ -68,7 +68,7 @@ class CredentialVaultTest {
         val sealed = seal(VaultKind.Connection, "nana", "hunter2")
         val moved = VaultRecord(
             kind = VaultKind.Connection,
-            serverUrl = "https://elsewhere:5090",
+            serviceId = "https://elsewhere:5090",
             account = sealed.account,
             lastUsedEpochMillis = sealed.lastUsedEpochMillis,
             fingerprintProtected = sealed.fingerprintProtected,
@@ -83,7 +83,7 @@ class CredentialVaultTest {
         val sealed = seal(VaultKind.Connection, "nana", "hunter2")
         val moved = VaultRecord(
             kind = VaultKind.Connection,
-            serverUrl = sealed.serverUrl,
+            serviceId = sealed.serviceId,
             account = "someone-else",
             lastUsedEpochMillis = sealed.lastUsedEpochMillis,
             fingerprintProtected = sealed.fingerprintProtected,
@@ -98,7 +98,7 @@ class CredentialVaultTest {
         val sealed = seal(VaultKind.Connection, "nana", "hunter2")
         val relabelled = VaultRecord(
             kind = VaultKind.Elevation,
-            serverUrl = sealed.serverUrl,
+            serviceId = sealed.serviceId,
             account = sealed.account,
             lastUsedEpochMillis = sealed.lastUsedEpochMillis,
             fingerprintProtected = sealed.fingerprintProtected,

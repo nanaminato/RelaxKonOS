@@ -105,7 +105,7 @@ class VaultAccessTest {
 
     private fun record(state: VaultRecordState = VaultRecordState.Sealed) = VaultRecord(
         kind = VaultKind.Connection,
-        serverUrl = "https://relaxkonos.local:5090",
+        serviceId = "https://relaxkonos.local:5090",
         account = "nana",
         lastUsedEpochMillis = 1_000L,
         fingerprintProtected = true,

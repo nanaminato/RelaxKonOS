@@ -47,7 +47,7 @@ fun AboutScreen(
             if (session == null) {
                 EmptyHint(stringResource(R.string.about_server_unavailable))
             } else {
-                KeyValueRow(stringResource(R.string.home_label_server), session.serverUrl)
+                KeyValueRow(stringResource(R.string.home_label_server), session.serviceId)
                 KeyValueRow(stringResource(R.string.home_label_platform), session.serverPlatform)
                 KeyValueRow(stringResource(R.string.home_label_workspace), session.workspaceName)
                 KeyValueRow(stringResource(R.string.about_server_capabilities), session.capabilities.size.toString())

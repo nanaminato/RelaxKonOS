@@ -54,7 +54,7 @@ fun ConnectionsScreen(
     var deleteTarget by remember { mutableStateOf<SavedLogin?>(null) }
 
     val logins = remember(revision) { container.profiles.all() }
-    val activeServerUrl = container.session.serverUrl
+    val activeServiceId = container.session.serviceId
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
@@ -72,12 +72,12 @@ fun ConnectionsScreen(
             } else {
                 logins.forEach { login ->
                     val mode = container.unlockMode(VaultKind.Connection)
-                    val record = container.vault.record(VaultKind.Connection, login.serverUrl, login.identifier)
+                    val record = container.vault.record(VaultKind.Connection, login.serviceId, login.identifier)
                     Row(Modifier.fillMaxWidth()) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                            Text(login.displayName ?: login.serverUrl, style = MaterialTheme.typography.bodyLarge)
+                            Text(login.displayName ?: login.serviceId, style = MaterialTheme.typography.bodyLarge)
                             if (login.displayName != null) {
-                                Text(login.serverUrl, style = MaterialTheme.typography.bodySmall)
+                                Text(login.serviceId, style = MaterialTheme.typography.bodySmall)
                             }
                             Text(
                                 listOfNotNull(login.identifier, formatTimestamp(login.lastUsedEpochMillis)).joinToString(" · "),
@@ -89,7 +89,7 @@ fun ConnectionsScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (login.serverUrl == activeServerUrl) {
+                            if (login.serviceId == activeServiceId) {
                                 Text(
                                     stringResource(R.string.connections_active),
                                     style = MaterialTheme.typography.bodySmall,
@@ -120,12 +120,13 @@ fun ConnectionsScreen(
     forgetTarget?.let { login ->
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_forget_title),
-            message = stringResource(R.string.connections_forget_message, login.serverUrl, login.identifier),
+            message = stringResource(R.string.connections_forget_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.connections_forget_password),
             onConfirm = {
                 forgetTarget = null
-                container.vault.delete(VaultKind.Connection, login.serverUrl, login.identifier)
-                container.profiles.setHasSavedCredential(login.serverUrl, login.identifier, false)
+                container.vault.delete(VaultKind.Connection, login.serviceId, login.identifier)
+                container.forgetDebugCredential(login.serviceId, login.identifier)
+                container.profiles.setHasSavedCredential(login.serviceId, login.identifier, false)
                 revision++
             },
             onDismiss = { forgetTarget = null },
@@ -135,13 +136,14 @@ fun ConnectionsScreen(
     deleteTarget?.let { login ->
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_delete_title),
-            message = stringResource(R.string.connections_delete_message, login.serverUrl, login.identifier),
+            message = stringResource(R.string.connections_delete_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.common_delete),
             onConfirm = {
                 deleteTarget = null
-                container.vault.delete(VaultKind.Connection, login.serverUrl, login.identifier)
+                container.vault.delete(VaultKind.Connection, login.serviceId, login.identifier)
+                container.forgetDebugCredential(login.serviceId, login.identifier)
                 // One login, not the whole server: another account on it keeps its own record (§6.3).
-                container.profiles.remove(login.serverUrl, login.identifier)
+                container.profiles.remove(login.serviceId, login.identifier)
                 revision++
             },
             onDismiss = { deleteTarget = null },

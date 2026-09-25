@@ -83,7 +83,7 @@ fun ConnectionListScreen(
     forgetTarget?.let { login ->
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_forget_title),
-            message = stringResource(R.string.connections_forget_message, login.serverUrl, login.identifier),
+            message = stringResource(R.string.connections_forget_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.connections_forget_password),
             onConfirm = {
                 forgetTarget = null
@@ -96,7 +96,7 @@ fun ConnectionListScreen(
     deleteTarget?.let { login ->
         ConfirmDangerousDialog(
             title = stringResource(R.string.connections_delete_title),
-            message = stringResource(R.string.connections_delete_message, login.serverUrl, login.identifier),
+            message = stringResource(R.string.connections_delete_message, login.serviceId, login.identifier),
             confirmLabel = stringResource(R.string.common_delete),
             onConfirm = {
                 deleteTarget = null
@@ -123,8 +123,8 @@ private fun SavedLoginEntry(
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         ListRow(
-            title = login.displayName ?: login.serverUrl,
-            subtitle = login.displayName?.let { login.serverUrl },
+            title = login.displayName ?: login.serviceId,
+            subtitle = login.displayName?.let { login.serviceId },
             supporting = listOfNotNull(
                 login.identifier,
                 statusLabel,

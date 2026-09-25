@@ -151,7 +151,7 @@ fun AccountSecurityScreen(
                     ) {
                         IconBadge(icon = DesktopIcons.connections)
                         Column(Modifier.weight(1f)) {
-                            Text(record.serverUrl, style = MaterialTheme.typography.bodyMedium)
+                            Text(record.serviceId, style = MaterialTheme.typography.bodyMedium)
                             Text(
                                 listOfNotNull(record.account, formatTimestamp(record.lastUsedEpochMillis)).joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
@@ -172,7 +172,7 @@ fun AccountSecurityScreen(
                     ) {
                         IconBadge(icon = DesktopIcons.connections)
                         Column(Modifier.weight(1f)) {
-                            Text(record.serverUrl, style = MaterialTheme.typography.bodyMedium)
+                            Text(record.serviceId, style = MaterialTheme.typography.bodyMedium)
                             Text(
                                 record.identifier,
                                 style = MaterialTheme.typography.bodySmall,
@@ -206,7 +206,7 @@ fun AccountSecurityScreen(
                         Column(Modifier.weight(1f)) {
                             Text(record.account, style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                listOfNotNull(record.serverUrl, formatTimestamp(record.lastUsedEpochMillis)).joinToString(" · "),
+                                listOfNotNull(record.serviceId, formatTimestamp(record.lastUsedEpochMillis)).joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -271,22 +271,22 @@ fun AccountSecurityScreen(
     deleteTarget?.let { target ->
         // Both cases are "the saved password for this identity on this server", so they share the
         // sentence; only what is removed differs.
-        val (identifier, serverUrl, remove) = when (target) {
+        val (identifier, serviceId, remove) = when (target) {
             is DeletionTarget.Vault -> Triple(
                 target.record.account,
-                target.record.serverUrl,
+                target.record.serviceId,
                 { container.vault.delete(target.record) },
             )
 
             DeletionTarget.DebugStore -> Triple(
                 debugRecord?.identifier.orEmpty(),
-                debugRecord?.serverUrl.orEmpty(),
+                debugRecord?.serviceId.orEmpty(),
                 { container.debugCredentials?.clear() },
             )
         }
         ConfirmDangerousDialog(
             title = stringResource(R.string.account_security_delete_title),
-            message = stringResource(R.string.account_security_delete_message, identifier, serverUrl),
+            message = stringResource(R.string.account_security_delete_message, identifier, serviceId),
             confirmLabel = stringResource(R.string.common_delete),
             onConfirm = {
                 deleteTarget = null

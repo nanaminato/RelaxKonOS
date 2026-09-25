@@ -128,7 +128,7 @@ class ServerCenterSshCredentialStore(
             access.save(
                 kind = VaultKind.Ssh,
                 mode = mode,
-                serverUrl = endpointIdentity(host, port),
+                serviceId = endpointIdentity(host, port),
                 account = userName,
                 password = payload,
                 activity = activity,

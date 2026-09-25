@@ -120,7 +120,7 @@ commit:
 
 `data/UploadResumeJournal.kt`，存应用私有目录（`noBackupFilesDir` 与凭据分离，**不加密**：它只有路径与偏移，没有任何凭据；这一点要在注释里写明，避免后来者误以为需要凭据保护）。
 
-一个条目：`serverKey`（`serverUrl + 用户 id + 工作区 id + 设备 id`，与桌面端 `ExplorerOperationCenter.SessionKey` 同口径）、`uploadId`、目标目录、文件名、源 uri、源 length/lastModified、已确认偏移、记录时间。
+一个条目：`serverKey`（稳定 `serviceId + 用户 id + 工作区 id + 设备 id`；隧道换端口不改变恢复归属）、`uploadId`、目标目录、文件名、源 uri、源 length/lastModified、已确认偏移、记录时间。桌面端接入动态隧道前也须把 `ExplorerOperationCenter.SessionKey` 调整到相同语义。
 
 规则：
 

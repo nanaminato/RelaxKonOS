@@ -6,6 +6,8 @@ import app.relaxkonos.mobile.core.net.LoginSession
 import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.isSessionExpired
+import app.relaxkonos.mobile.servercenter.ServerConnectionIdentity
+import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +20,8 @@ sealed interface SessionState {
     data object Authenticating : SessionState
 
     data class Active(
-        val serverUrl: String,
+        val serviceId: String,
+        val effectiveBaseUrl: String,
         val userName: String,
         val workspaceName: String,
         val capabilities: Set<String>,
@@ -64,9 +67,15 @@ class AuthSession(
 
     val state: StateFlow<SessionState> = stateFlow.asStateFlow()
 
-    /** The server address of the active or most recent session. */
-    var serverUrl: String? = null
+    /** Stable identity of the active or most recent session. Used for profiles and credential AAD. */
+    var serviceId: String? = null
         private set
+
+    /** Current HTTP address. A managed tunnel may replace this without changing [serviceId]. */
+    var effectiveBaseUrl: String? = null
+        private set
+
+    private var connectionIdentity: ServerConnectionIdentity? = null
 
     val accessToken: String? get() = tokenStore.accessToken
 
@@ -80,14 +89,13 @@ class AuthSession(
      * relying on a ViewModel that happens to outlive a composable.
      */
     suspend fun login(
-        serverUrl: String,
+        connection: ServerConnectionIdentity,
         identifier: String,
         password: CharArray,
         afterSuccessfulLogin: suspend () -> Unit,
     ): ApiResult<LoginSession> {
         stateFlow.value = SessionState.Authenticating
-        val normalized = serverUrl.trim().trimEnd('/')
-        return when (val result = gateway.login(normalized, identifier, password)) {
+        return when (val result = gateway.login(connection.effectiveBaseUrl, identifier, password)) {
             is ApiResult.Success -> {
                 // Credential/profile work is deliberately performed before publishing the shell so a
                 // biometric prompt still has its login-screen host. It is nevertheless auxiliary to
@@ -102,10 +110,10 @@ class AuthSession(
                     stateFlow.value = SessionState.SignedOut
                     throw cancellation
                 } catch (error: Exception) {
-                    adopt(normalized, result.value)
+                    adopt(connection, result.value)
                     throw error
                 }
-                adopt(normalized, result.value)
+                adopt(connection, result.value)
                 result
             }
 
@@ -124,7 +132,7 @@ class AuthSession(
 
     /** Refreshes the token pair. Returns the renewed tokens, or the reason it failed. */
     suspend fun renew(): ApiResult<AuthTokens> {
-        val url = serverUrl ?: return ApiResult.Transport("No server has been selected.")
+        val url = effectiveBaseUrl ?: return ApiResult.Transport("No server has been selected.")
         val refreshToken = tokenStore.refreshToken ?: return ApiResult.Transport("No refresh token is held.")
         return when (val result = gateway.refresh(url, refreshToken)) {
             is ApiResult.Success -> {
@@ -148,7 +156,7 @@ class AuthSession(
      * token actually changes (`jti` changes invalidate host grants: design §4.3).
      */
     suspend fun <T> authenticated(call: suspend (serverUrl: String, accessToken: String) -> ApiResult<T>): ApiResult<T> {
-        val url = serverUrl ?: return ApiResult.Transport("No server has been selected.")
+        val url = effectiveBaseUrl ?: return ApiResult.Transport("No server has been selected.")
         val token = tokenStore.accessToken ?: return ApiResult.Problem(401, ProblemCodes.UNAUTHORIZED, null)
 
         val first = call(url, token)
@@ -156,7 +164,10 @@ class AuthSession(
             return first
         }
         return when (val renewed = renew()) {
-            is ApiResult.Success -> call(url, renewed.value.accessToken)
+            is ApiResult.Success -> {
+                val reboundUrl = effectiveBaseUrl ?: return ApiResult.Transport("No server has been selected.")
+                call(reboundUrl, renewed.value.accessToken)
+            }
             is ApiResult.Problem -> ApiResult.Problem(401, ProblemCodes.UNAUTHORIZED, renewed.traceId)
             is ApiResult.Transport -> renewed
         }
@@ -167,7 +178,7 @@ class AuthSession(
      * and its credential stay in the vault so the user can log back in with one fingerprint.
      */
     suspend fun logout() {
-        val url = serverUrl
+        val url = effectiveBaseUrl
         val access = tokenStore.accessToken
         val refresh = tokenStore.refreshToken
         if (url != null && access != null && refresh != null) {
@@ -182,11 +193,26 @@ class AuthSession(
         stateFlow.value = SessionState.SignedOut
     }
 
-    private fun adopt(serverUrl: String, session: LoginSession) {
-        this.serverUrl = serverUrl
+    /** Updates only the transport address after a verified tunnel rebind. */
+    fun updateConnection(connection: ServerConnectionIdentity) {
+        val previous = connectionIdentity ?: throw IllegalStateException("No server has been selected.")
+        require(ServerConnectionIdentityRules.preservesIdentity(previous, connection)) {
+            "A transport rebind must not change the service identity."
+        }
+        connectionIdentity = connection
+        effectiveBaseUrl = connection.effectiveBaseUrl
+        val active = stateFlow.value as? SessionState.Active
+        if (active != null) stateFlow.value = active.copy(effectiveBaseUrl = connection.effectiveBaseUrl)
+    }
+
+    private fun adopt(connection: ServerConnectionIdentity, session: LoginSession) {
+        connectionIdentity = connection
+        serviceId = connection.serviceId
+        effectiveBaseUrl = connection.effectiveBaseUrl
         tokenStore.update(session.tokens)
         stateFlow.value = SessionState.Active(
-            serverUrl = serverUrl,
+            serviceId = connection.serviceId,
+            effectiveBaseUrl = connection.effectiveBaseUrl,
             userName = session.userName,
             workspaceName = session.workspaceName,
             capabilities = session.server.capabilities,

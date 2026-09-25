@@ -42,7 +42,7 @@
 
 ### 2.1 身份唯一键
 
-身份键是 **`(服务器地址, 登录标识)`**。
+身份键是 **`(serviceId, 登录标识)`**。`serviceId` 是本机稳定服务器身份，不等同于每次请求所用的地址。
 
 ```text
 连接A + root      ─┐
@@ -50,21 +50,22 @@
 连接B + nanami    ─┘
 ```
 
-- 资料中的 `Service` 在 RelaxKonOS 里就是**服务端地址**（`serverUrl`）；`Username` 就是协议里的 **`identifier`**（[`LoginRequest`](../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 的字段名）。因此不与仓库既有词汇（桌面端 `SavedLoginProfile(ServerUrl, Username, …)`、保险箱记录键 `kind|serverUrl|account`）产生第二套叫法。
-- 本机稳定身份：`loginId(serverUrl, identifier)`。
-- 归一化只有两条：去掉首尾空白、去掉地址结尾的斜杠。**不折叠大小写**——地址可能带大小写敏感的路径，标识可能是服务端要区分的两个账户，折叠任一者都会把两条独立记录并成一条，一次保存就会覆盖另一条凭据。
-- 与保存凭据的连接键：`CredentialKey` = `recordId(VaultKind.Connection, serverUrl, identifier)`，即 [`CredentialVault.kt`](../app/src/main/java/app/relaxkonos/mobile/security/CredentialVault.kt) 里已有的 `recordId(...)`。
+- `Username` 是协议里的 **`identifier`**（[`LoginRequest`](../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 的字段名）。`ServiceId` 在直连时是规范化的持久服务器 URL，在服务器中心管理的 SSH 隧道连接中则是经过核实的安装 ID。
+- 本机稳定身份：`loginId(serviceId, identifier)`。保险箱和登录档案只使用这个身份；临时 `http://127.0.0.1:<port>` 不得写入其中。
+- 直连 URL 归一化会小写 scheme 与 host、去除默认端口和结尾斜杠、丢弃 query / fragment，同时保留可能区分大小写的 path。`identifier` 只去首尾空白，**不折叠大小写**。
+- 本次请求地址是 `effectiveBaseUrl`。直连时它等于 URL 型 `serviceId`；隧道时它可以随重连换端口，但 `serviceId` 不变。
+- 与保存凭据的连接键：`CredentialKey` = `recordId(VaultKind.Connection, serviceId, identifier)`，即 [`CredentialVault.kt`](../app/src/main/java/app/relaxkonos/mobile/security/CredentialVault.kt) 里已有的 `recordId(...)`。
 
-> **同一台服务器上的两个账号是两条记录，不是一个记录的两个字段。** 任何按 `serverUrl` 单独删除的操作都是缺陷，见 §3 的 G7。
+> **同一服务身份上的两个账号是两条记录，不是一个记录的两个字段。** 任何按 `serviceId` 单独删除的操作都是缺陷，见 §3 的 G7。
 
 ### 2.2 `SavedLogin` 与 `SavedCredential` 分离
 
-`SavedLogin` 只保存非敏感登录资料；其逻辑唯一键是 `(ServiceId, Username)`。在 Android 中，`ServiceId` 是经规范化的 `serverUrl`，`Username` 是协议中的 `identifier`。
+`SavedLogin` 只保存非敏感登录资料；其逻辑唯一键是 `(ServiceId, Username)`。在 Android 中，`ServiceId` 是直连规范化 URL 或受管安装 ID，`Username` 是协议中的 `identifier`。
 
 | `SavedLogin` 字段 | 用途 |
 | --- | --- |
 | `Id` | 稳定的本地登录记录标识 |
-| `ServiceId` | 经规范化的服务端地址 |
+| `ServiceId` | 直连规范化 URL，或受管连接的安装 ID；不保存临时隧道端口 |
 | `Username` | 登录标识 |
 | `DisplayName` | 可选的用户可读标签；无来源时不展示空值 |
 | `HasSavedCredential` | 供列表和登录页显示的非敏感状态投影 |
@@ -76,7 +77,7 @@
 
 | 内容 | 保存位置 | 说明 |
 | --- | --- | --- |
-| `SavedLogin`：服务器地址、登录标识、显示名（如有）、`HasSavedCredential`、`CredentialKey`、最后使用时间 | `noBackupFilesDir/connections.bin` | 非敏感；不含任何秘密 |
+| `SavedLogin`：稳定 `serviceId`、登录标识、显示名（如有）、`HasSavedCredential`、`CredentialKey`、最后使用时间 | `noBackupFilesDir/connections.bin` | 非敏感；不含任何秘密或临时隧道地址 |
 | 登录密码 | `noBackupFilesDir/connection-vault.bin`，AES-256-GCM + Keystore | 密文；明文永不落盘 |
 | AccessToken / RefreshToken | **仅内存** | V1 §5.3.3；进程结束即失效 |
 
@@ -112,11 +113,17 @@
 状态集中在一个**不依赖 Android 类型**的纯 Kotlin 状态里，因此决策表可以被 JVM 单测完整覆盖（沿用 `LayoutState` / `unlockModeFor` 的既有做法）。
 
 ```kotlin
-/** 现在准备以哪个身份登录。资料中的 (Service, Username)。 */
-data class SelectedLogin(val serverUrl: String, val identifier: String) {
-    val id: String get() = loginId(serverUrl, identifier)
-    val credentialKey: String get() = recordId(VaultKind.Connection, serverUrl, identifier)
-    val isComplete: Boolean get() = serverUrl.isNotBlank() && identifier.isNotBlank()
+/** 现在准备以哪个身份、通过哪个当前地址登录。 */
+data class SelectedLogin(
+    val kind: ServerServiceIdKind,
+    val serviceId: String,
+    val effectiveBaseUrl: String,
+    val identifier: String,
+) {
+    val id: String get() = loginId(serviceId, identifier)
+    val credentialKey: String get() = recordId(VaultKind.Connection, serviceId, identifier)
+    val isComplete: Boolean
+        get() = serviceId.isNotBlank() && effectiveBaseUrl.isNotBlank() && identifier.isNotBlank()
 }
 
 /** 该身份的保存凭据处于什么状态。四态互斥，且必须能把「不可用」与「不存在」分开。 */
@@ -140,7 +147,7 @@ fun credentialState(record: VaultRecord?, unlockMode: VaultUnlockMode?): SavedCr
 
 | ViewModel 状态（§9） | 落点 | 说明 |
 | --- | --- | --- |
-| `SelectedLogin` | `SelectedLogin` | 由 `serverUrl` + `identifier` 两个输入框派生 |
+| `SelectedLogin` | `SelectedLogin` | 直连时由 `serverUrl` + `identifier` 输入派生；受管连接由已验证安装 ID、当前隧道地址和 `identifier` 构造 |
 | `HasSavedCredential` | `SavedLogin.HasSavedCredential` + `credentialState` 复核 | 持久化的非敏感显示投影，不构成安全边界，见 §4.2 |
 | `PasswordText` | `OutlinedTextField.value` | 提交后立即置空 |
 | `UseBiometricProtection` | `AppearanceState.fingerprintEnabled` | 已有的全局指纹总开关（V1 §5.5） |
@@ -257,7 +264,7 @@ fun decideLogin(
 
 ```text
 认证成功
-   ├─ 连接档案 upsert(serverUrl, identifier, now)          ← 回填账户，不含秘密
+   ├─ 连接档案 upsert(serviceId, identifier, now)          ← 回填稳定身份，不含秘密/临时端口
    └─ 用户勾选了「在本机保存密码」？
         ├─ 是 ──► 生物识别确认一次（V1 §5.3.7）──► 写入 / 覆盖该身份的凭据
         │            └─ 取消或失败 ──► 不写；提示「已登录，但密码没有保存」（不视为登录失败）
@@ -307,14 +314,14 @@ fun decideLogin(
 
 ### 6.3 连接管理（登录页与 Shell 内共用）
 
-每条记录展示：服务器地址、登录标识、凭据状态、最后使用时间；两个**互不替代**的动作（资料 §11）：
+每条记录展示：可读的服务器身份、登录标识、凭据状态、最后使用时间；两个**互不替代**的动作（资料 §11）：
 
 | 动作 | 对凭据 | 对档案 | 确认文案要点 |
 | --- | --- | --- | --- |
 | **忘记密码** | 删除该身份的凭据 | 保留 | 「下次登录需要重新输入密码；服务器与账户记录会保留。」 |
 | **删除登录记录** | 删除（若存在） | 删除该条 `(服务器, 标识)` | 「同时删除为它保存的密码。」并给出具体服务器 + 账户 |
 
-两个动作都只作用于**选中的那一条**。`ConnectionProfileStore.remove` 必须按 `(serverUrl, identifier)` 成对删除（G7/G8 缺陷修复）。
+两个动作都只作用于**选中的那一条**。`ConnectionProfileStore.remove` 必须按 `(serviceId, identifier)` 成对删除（G7/G8 缺陷修复）。受管登录被选择时须先由服务器中心恢复并核实隧道；不能把安装 ID 当作 HTTP URL 请求，也不能回填旧的临时端口。
 
 ---
 
@@ -425,11 +432,11 @@ CredentialStore(密文)
 | release 构建永远拿不到明文 | `AppContainer.debugCredentials` 只在 `BuildConfig.DEBUG` 时创建实例，release 下恒为 `null`；所有调用点都以可空接收者访问，release 里根本不存在这条写入路径 |
 | 只在「确实没有锁屏」时启用 | 三个条件必须同时成立：实例存在、用户开启了指纹保存总开关、`biometricCapability() == BiometricCapability.None`（`LoginViewModel.debugFallbackAvailable`） |
 | 只保存一条 | 单文件单记录；`save` 即以新记录**替换**旧记录，不累积（`DebugCredentialStoreTest` 断言连续保存两次后文件里有且只有一个身份） |
-| 能读回来 | `reveal(serverUrl, identifier)` 返回新分配的 `CharArray` 副本，调用方用后清零；身份不匹配返回 `null` |
+| 能读回来 | `reveal(serviceId, identifier)` 返回新分配的 `CharArray` 副本，调用方用后清零；身份不匹配返回 `null` |
 | 界面必须说明「未加密」 | 勾选框提示（`login_remember_hint_debug` / `login_no_lock_screen_debug`）、保存后提示（`login_credential_saved_debug`）、状态行（`login_saved_password_debug`）、连接列表（`connections_saved_password_debug`）、安全页（`account_security_debug_record_note`）全部写明未加密 |
 | 删除路径必须接通 | 忘记密码、删除登录记录、关闭指纹总开关、安全页「清空全部」都调用 `DebugCredentialStore.delete` / `clear`；安全页单独列出这条记录并标红 |
 
-文件格式 `RKD1`（`magic(i32) | serverUrl(UTF) | account(UTF) | len(i32) | secret(bytes)`）。magic 不匹配或文件被截断时
+文件格式 `RKD1`（`magic(i32) | serviceId(UTF) | account(UTF) | len(i32) | secret(bytes)`）。magic 不匹配或文件被截断时
 解码为「无记录」——与本仓库其它二进制格式的演进策略一致（不写迁移，版本不匹配即降级为空）。
 
 安全页与诊断导出都**显式列出**这条记录：`AccountSecurityScreen` 单列一项并注明未加密，`DiagnosticsScreen` 导出报告含
@@ -452,13 +459,14 @@ CredentialStore(密文)
 
 | 文件 | 改动 |
 | --- | --- |
-| `data/ConnectionProfileStore.kt` | `remove(serverUrl)` → `remove(serverUrl, identifier)`；`upsert` 已按对去重，保持 |
+| `data/ConnectionProfileStore.kt` | 所有身份操作按 `(serviceId, identifier)`；直连旧记录的首字段在相同 `RKC2` 布局中直接解释为 URL 型 `serviceId` |
 | `security/model/SavedConnection.kt` | 直接改名 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey`（见 §12） |
-| `security/CredentialVault.kt` | `VaultRecordState`、`VaultRecord.state`、`markInvalidated()` / `markAllInvalidated()`、`VaultRecordInvalidatedException`、`open()` 拒绝作废记录、文件格式升版 |
+| `security/CredentialVault.kt` | `VaultRecordState`、`VaultRecord.state`、`markInvalidated()` / `markAllInvalidated()`、`VaultRecordInvalidatedException`、`open()` 拒绝作废记录；AAD 与记录键按 `serviceId` 绑定 |
 | `security/BiometricUnlock.kt` | `VaultAccess.load` 映射新异常；明确保存时轮换一次失效 alias 并重新密封当前身份 |
 | `ui/connect/LoginScreen.kt` | 表单改为单形态；按钮文案随决策；凭据状态行；错误提示按 `CredentialGap` 分派 |
 | `ui/connect/ConnectionListScreen.kt` | 每项两个动作：忘记密码 / 删除登录记录 |
-| `ui/more/ConnectionsScreen.kt` | 同上；修掉按 `serverUrl` 全删的缺陷 |
+| `ui/more/ConnectionsScreen.kt` | 同上；按 `(serviceId, identifier)` 精确删除，修掉按服务器全删的缺陷 |
+| `core/auth/AuthSession.kt` | 同时持有稳定 `serviceId` 与当前 `effectiveBaseUrl`；隧道重绑定只允许传输地址变化，API 请求始终读取当前地址 |
 | `ui/more/AccountSecurityScreen.kt` | `Invalidated` 记录单独标注失效原因 |
 | `ui/common/ElevationDialog.kt` | `KeyInvalidated` → 标记作废（§7.5） |
 | `core/net/ApiResult.kt` | 补 `ProblemCodes.LOGIN_RATE_LIMITED`，提供准确的限流文案；不参与任何凭据删除决策 |
@@ -472,10 +480,10 @@ CredentialStore(密文)
 | --- | --- |
 | `LoginDecisionTest`（新） | §5.1 决策表逐行，含「PasswordText 非空时 `Available` 被忽略」与「字段不全优先于一切」 |
 | `SavedCredentialStateTest`（新） | 四态派生；`Invalidated` 优先于 `unlockMode == null`；`Unavailable ≠ Invalidated` |
-| `SelectedLoginTest`（新） | 归一化只做「去前后空格」与「去结尾斜杠」，**不折叠大小写**；同服务器不同账号、不同服务器同账号都不碰撞；`credentialKey` 与保险箱 `recordId` 一致 |
+| `SelectedLoginTest`（新） | 直连 URL 规范化；账号与路径大小写不折叠；同服务不同账号、不同服务同账号不碰撞；受管隧道换端口后 `loginId` / `credentialKey` 不变 |
 | `ConnectionProfileStoreTest`（改） | 按对删除只影响一条；同服务器多账号互不牵连 |
 | `CredentialVaultTest`（改） | `markInvalidated` 后记录与密文仍在、`open()` 被拒绝；「忘记密码」删记录；格式升版后旧文件降级为空 |
-| `AuthSessionTest`（改） | 认证失败不触碰凭据；`invalid-credential`、`429` 与 `Transport` 均不会修改保存凭据 |
+| `AuthSessionTest`（改） | 认证失败不触碰凭据；`invalid-credential`、`429` 与 `Transport` 均不会修改保存凭据；同一受管身份重绑定后请求使用新端口而会话身份不变 |
 | `DebugCredentialStoreTest`（新） | §8.1 的兜底存储：连续保存两次后只剩一条、身份不匹配读取为空、`reveal` 返回可清零的副本、`delete` 只删匹配身份、`clear` 清空、异 magic 与截断文件降级为无记录、断言落盘内容确实含明文 |
 | `VaultAccessTest`（新） | 平台不可命名的异常变成 `Failed(Unknown)` 而不是逃逸；四种已知拒绝各自保留原结论；`Invalidated` 记录在触达 Keystore 之前就被拒 |
 | `SavedCredentialStateTest`（改） | §8.1 的兜底映射只填 `Absent` / `Unavailable`，绝不覆盖 `Available` / `Invalidated`；`SavedInDebugBuild` 优先于解锁方式 |

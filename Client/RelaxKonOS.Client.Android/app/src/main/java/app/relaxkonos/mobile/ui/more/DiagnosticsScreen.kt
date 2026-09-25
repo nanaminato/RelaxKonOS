@@ -63,7 +63,7 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             val collected = mutableListOf<String>()
             val session = container.activeSession
-            collected += if (session == null) text(R.string.diagnostics_no_session) else text(R.string.diagnostics_session_ok, session.serverUrl)
+            collected += if (session == null) text(R.string.diagnostics_no_session) else text(R.string.diagnostics_session_ok, session.serviceId)
             collected += if (container.session.accessToken != null) {
                 text(R.string.diagnostics_token_held)
             } else {
@@ -98,7 +98,8 @@ class DiagnosticsViewModel(application: Application) : AndroidViewModel(applicat
         val report = buildString {
             appendLine("RelaxKonOS Android diagnostics")
             appendLine("clientVersion=" + appVersion())
-            appendLine("serverUrl=" + (session?.serverUrl ?: "-"))
+            appendLine("serviceId=" + (session?.serviceId ?: "-"))
+            appendLine("effectiveBaseUrl=" + (session?.effectiveBaseUrl ?: "-"))
             appendLine("serverPlatform=" + (session?.serverPlatform ?: "-"))
             appendLine("workspace=" + (session?.workspaceName ?: "-"))
             appendLine("capabilities=" + container.capabilities.sorted().joinToString(","))

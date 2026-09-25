@@ -220,7 +220,7 @@ fun LoginScreen(modifier: Modifier = Modifier) {
             logins = viewModel.logins,
             // The row asks the same question the form does, through the same function, so a login
             // cannot be listed as having no password while the field above says one is saved.
-            credentialStatus = { login -> viewModel.savedCredentialStatus(login.serverUrl, login.identifier) },
+            credentialStatus = { login -> viewModel.savedCredentialStatus(login.serviceId, login.identifier) },
             onSelected = { viewModel.select(it) },
             onForgetPassword = { viewModel.forgetPassword(it) },
             onDeleteLogin = { viewModel.deleteLogin(it) },

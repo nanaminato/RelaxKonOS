@@ -130,7 +130,7 @@ fun HomeScreen(
 ) {
     val viewModel: HomeViewModel = viewModel()
 
-    LaunchedEffect(session.serverUrl) { viewModel.refresh() }
+    LaunchedEffect(session.effectiveBaseUrl) { viewModel.refresh() }
 
     val snapshot = viewModel.snapshot
     val recentOperations = viewModel.recentOperations.collectAsStateValue()
@@ -338,7 +338,7 @@ private fun IdentityCard(session: SessionState.Active) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        session.serverUrl,
+                        session.serviceId,
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onHeroMuted,
                         maxLines = 1,

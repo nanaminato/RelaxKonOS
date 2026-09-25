@@ -460,7 +460,7 @@ class UploadCoordinator(
      *    file nobody owns, so the transfer stops and the entry is kept for the next attempt.
      */
     private suspend fun adoptResume(entry: UploadResumeEntry): Adoption {
-        val url = session.serverUrl
+        val url = session.effectiveBaseUrl
         val token = session.accessToken
         if (url == null || token == null) {
             failWith(entry.fileName, UploadFailure.SessionLost)
@@ -566,7 +566,7 @@ class UploadCoordinator(
         document: PickedDocument,
     ): Boolean {
         while (active.offset < target) {
-            val url = session.serverUrl
+            val url = session.effectiveBaseUrl
             val token = session.accessToken
             if (url == null || token == null) {
                 failWith(source.displayName, UploadFailure.SessionLost)
@@ -723,7 +723,7 @@ class UploadCoordinator(
 
     /** The server's own number, or `null` when it cannot be asked. Never a local guess. */
     private suspend fun resolveOffset(uploadId: String): Long? {
-        val url = session.serverUrl ?: return null
+        val url = session.effectiveBaseUrl ?: return null
         val token = session.accessToken ?: return null
         return when (val result = gateway.uploadSession(url, token, uploadId)) {
             is ApiResult.Success -> result.value.offset
@@ -753,7 +753,7 @@ class UploadCoordinator(
     private suspend fun commit(uploadId: String): CommitOutcome {
         var attempts = 0
         while (true) {
-            val url = session.serverUrl
+            val url = session.effectiveBaseUrl
             val token = session.accessToken
             if (url == null || token == null) return CommitOutcome.Failed(UploadFailure.SessionLost)
             when (val result = gateway.commitUpload(url, token, uploadId)) {
@@ -818,7 +818,7 @@ class UploadCoordinator(
     }
 
     private suspend fun abortSession(uploadId: String) {
-        val url = session.serverUrl ?: return
+        val url = session.effectiveBaseUrl ?: return
         val token = session.accessToken ?: return
         gateway.abortUpload(url, token, uploadId)
     }

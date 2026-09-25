@@ -60,7 +60,7 @@ fun decideLogin(
     isLoggingIn: Boolean,
 ): LoginDecision? = when {
     !selected.isComplete -> LoginDecision.MissingFields(
-        server = selected.serverUrl.isBlank(),
+        server = selected.effectiveBaseUrl.isBlank(),
         identifier = selected.identifier.isBlank(),
     )
 

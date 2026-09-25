@@ -18,6 +18,7 @@ import app.relaxkonos.mobile.core.auth.SelectedLogin
 import app.relaxkonos.mobile.core.auth.credentialState
 import app.relaxkonos.mobile.core.auth.credentialStatus as credentialStatusOf
 import app.relaxkonos.mobile.core.auth.decideLogin
+import app.relaxkonos.mobile.core.auth.loginId
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.EndpointDiscoveryResult
 import app.relaxkonos.mobile.core.net.ServerEndpointDiscovery
@@ -62,9 +63,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
 
     private var revision by mutableStateOf(0)
+    private val initialDirectLogin = container.profiles.all().firstOrNull { it.directServerUrl != null }
 
-    var serverUrl by mutableStateOf(container.profiles.recent()?.serverUrl.orEmpty())
-    var identifier by mutableStateOf(container.profiles.recent()?.identifier.orEmpty())
+    var serverUrl by mutableStateOf(initialDirectLogin?.directServerUrl.orEmpty())
+    var identifier by mutableStateOf(initialDirectLogin?.identifier.orEmpty())
 
     /** Only ever what was typed this time. A saved password is never written here (§3, §6.2). */
     var passwordText by mutableStateOf("")
@@ -89,7 +91,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private var discoveryJob: Job? = null
 
     /** The identity the form currently describes, i.e. the `(Service, Username)` pair (§2.1). */
-    val selectedLogin: SelectedLogin get() = SelectedLogin(serverUrl, identifier)
+    val selectedLogin: SelectedLogin get() = SelectedLogin.direct(serverUrl, identifier)
 
     /** How this device can unseal a credential right now, or `null` when it cannot unseal anything. */
     val vaultUnlockMode: VaultUnlockMode? get() = container.unlockMode(VaultKind.Connection)
@@ -116,7 +118,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private fun debugCredentialExists(): Boolean {
         val login = selectedLogin
         return login.isComplete &&
-            container.hasDebugCredential(login.normalizedServerUrl, login.normalizedIdentifier)
+            container.hasDebugCredential(login.serviceId, login.normalizedIdentifier)
     }
 
     /**
@@ -126,11 +128,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * never disagree about whether a password is stored. A usable vault record always wins, and an
      * invalidated one is never papered over: see [app.relaxkonos.mobile.core.auth.credentialState].
      */
-    fun savedCredentialStatus(serverUrl: String, identifier: String): CredentialStatus {
+    fun savedCredentialStatus(serviceId: String, identifier: String): CredentialStatus {
         val mode = container.unlockMode(VaultKind.Connection)
-        val vaultState = credentialState(container.vault.record(VaultKind.Connection, serverUrl, identifier), mode)
+        val vaultState = credentialState(container.vault.record(VaultKind.Connection, serviceId, identifier), mode)
         val fromDebugStore = debugFallbackAvailable &&
-            container.hasDebugCredential(serverUrl, identifier) &&
+            container.hasDebugCredential(serviceId, identifier) &&
             vaultState != SavedCredentialState.Available &&
             vaultState != SavedCredentialState.Invalidated
         return credentialStatusOf(credentialState(vaultState, fromDebugStore), mode, fromDebugFallback = fromDebugStore)
@@ -152,7 +154,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The line rendered beside the password field. Never the password, only the fact. */
     val credentialStatus: CredentialStatus
-        get() = revision.let { savedCredentialStatus(selectedLogin.normalizedServerUrl, selectedLogin.normalizedIdentifier) }
+        get() = revision.let { savedCredentialStatus(selectedLogin.serviceId, selectedLogin.normalizedIdentifier) }
 
     /** What the sign-in button will do on this click. */
     val decision: LoginDecision?
@@ -196,33 +198,40 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * authorization happens later, when the saved password is actually needed (§7.1).
      */
     fun select(login: SavedLogin) {
-        serverUrl = login.serverUrl
+        val directUrl = login.directServerUrl
+        if (directUrl == null) {
+            // Managed profiles require the server-centre flow to establish and verify a fresh tunnel.
+            message = UiMessage(R.string.login_server_unavailable)
+            connectionsOpen = false
+            return
+        }
+        serverUrl = directUrl
         identifier = login.identifier
         passwordText = ""
         message = null
         connectionsOpen = false
         focusRequest = null
-        windowUnlocked = windowUnlocked - loginIdOf(login.serverUrl, login.identifier)
+        windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
     }
 
     /** "Forget the password": drops the credential, keeps the login (§6.3). */
     fun forgetPassword(login: SavedLogin) {
-        container.vault.delete(VaultKind.Connection, login.serverUrl, login.identifier)
-        container.forgetDebugCredential(login.serverUrl, login.identifier)
-        container.profiles.setHasSavedCredential(login.serverUrl, login.identifier, false)
-        windowUnlocked = windowUnlocked - loginIdOf(login.serverUrl, login.identifier)
+        container.vault.delete(VaultKind.Connection, login.serviceId, login.identifier)
+        container.forgetDebugCredential(login.serviceId, login.identifier)
+        container.profiles.setHasSavedCredential(login.serviceId, login.identifier, false)
+        windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
         message = null
         revision++
     }
 
     /** "Delete login record": drops the credential *and* this login, and no other account on it (§6.3). */
     fun deleteLogin(login: SavedLogin) {
-        container.vault.delete(VaultKind.Connection, login.serverUrl, login.identifier)
-        container.forgetDebugCredential(login.serverUrl, login.identifier)
-        container.profiles.remove(login.serverUrl, login.identifier)
-        windowUnlocked = windowUnlocked - loginIdOf(login.serverUrl, login.identifier)
+        container.vault.delete(VaultKind.Connection, login.serviceId, login.identifier)
+        container.forgetDebugCredential(login.serviceId, login.identifier)
+        container.profiles.remove(login.serviceId, login.identifier)
+        windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
         revision++
-        if (serverUrl == login.serverUrl && identifier == login.identifier) {
+        if (selectedLogin.serviceId == login.serviceId && identifier == login.identifier) {
             serverUrl = ""
             identifier = ""
             passwordText = ""
@@ -349,7 +358,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val result = container.session.login(
-                    serverUrl = login.normalizedServerUrl,
+                    connection = login.connectionIdentity,
                     identifier = login.normalizedIdentifier,
                     password = credential,
                 ) {
@@ -428,7 +437,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     // No usable vault record, so the debug store is what the button was pointing at.
                     // It has no authorization step — anyone holding the phone can read it — which is
                     // exactly why it exists only in a debug build on a device with no lock screen.
-                    val revealed = container.debugCredential(login.normalizedServerUrl, login.normalizedIdentifier)
+                    val revealed = container.debugCredential(login.serviceId, login.normalizedIdentifier)
                     if (revealed == null) {
                         VaultDiagnostics.trace("login.unseal", "no stored credential to unseal")
                         message = UiMessage(R.string.login_saved_password_unavailable)
@@ -461,7 +470,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun submitUnsealed(login: SelectedLogin, record: VaultRecord?, credential: CharArray) {
         try {
-            val result = container.session.login(login.normalizedServerUrl, login.normalizedIdentifier, credential) {}
+            val result = container.session.login(login.connectionIdentity, login.normalizedIdentifier, credential) {}
             VaultDiagnostics.trace(
                 "login.result",
                 when (result) {
@@ -508,7 +517,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             record = record,
             activity = activity,
             title = promptTitle(),
-            subtitle = promptSubtitle(record.serverUrl),
+            subtitle = promptSubtitle(record.serviceId),
             negativeButton = promptCancel(),
         )
     }
@@ -527,8 +536,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             // which is the entire reason it exists; the notice says out loud that nothing protects it.
             // Every other build — and every device that could host a key — keeps the honest refusal.
             if (debugFallbackAvailable) {
-                container.debugCredentials?.save(login.normalizedServerUrl, login.normalizedIdentifier, credential)
-                container.profiles.setHasSavedCredential(login.normalizedServerUrl, login.normalizedIdentifier, true)
+                container.debugCredentials?.save(login.serviceId, login.normalizedIdentifier, credential)
+                container.profiles.setHasSavedCredential(login.serviceId, login.normalizedIdentifier, true)
                 VaultDiagnostics.trace("login.debug-store", "saved unencrypted (debug build, device has no lock screen)")
                 revision++
                 container.showNotice(UiMessage(R.string.login_credential_saved_debug))
@@ -541,12 +550,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             container.vaultAccess.save(
                 kind = VaultKind.Connection,
                 mode = mode,
-                serverUrl = login.normalizedServerUrl,
+                serviceId = login.serviceId,
                 account = login.normalizedIdentifier,
                 password = credential,
                 activity = activity,
                 title = saveTitle(),
-                subtitle = saveSubtitle(login.normalizedServerUrl),
+                subtitle = saveSubtitle(login.serviceId),
                 negativeButton = promptCancel(),
                 nowEpochMillis = System.currentTimeMillis(),
             )
@@ -556,7 +565,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         revision++
         when (outcome) {
             is VaultOperation.Success ->
-                container.profiles.setHasSavedCredential(login.normalizedServerUrl, login.normalizedIdentifier, true)
+                container.profiles.setHasSavedCredential(login.serviceId, login.normalizedIdentifier, true)
 
             VaultOperation.Cancelled -> container.showNotice(UiMessage(R.string.login_credential_not_saved))
 
@@ -573,15 +582,15 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private fun rememberLogin(login: SelectedLogin) {
         val existing = container.profiles
             .all()
-            .firstOrNull { it.serverUrl == login.normalizedServerUrl && it.identifier == login.normalizedIdentifier }
+            .firstOrNull { it.serviceId == login.serviceId && it.identifier == login.normalizedIdentifier }
         container.profiles.upsert(
             SavedLogin(
-                serverUrl = login.normalizedServerUrl,
+                serviceId = login.serviceId,
                 identifier = login.normalizedIdentifier,
                 lastUsedEpochMillis = System.currentTimeMillis(),
                 displayName = existing?.displayName,
                 hasSavedCredential = container.vault
-                    .record(VaultKind.Connection, login.normalizedServerUrl, login.normalizedIdentifier) != null,
+                    .record(VaultKind.Connection, login.serviceId, login.normalizedIdentifier) != null,
             ),
         )
         revision++
@@ -593,10 +602,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         if (!login.isComplete) {
             return null
         }
-        return container.vault.record(VaultKind.Connection, login.normalizedServerUrl, login.normalizedIdentifier)
+        return container.vault.record(VaultKind.Connection, login.serviceId, login.normalizedIdentifier)
     }
 
-    private fun loginIdOf(serverUrl: String, identifier: String): String = SelectedLogin(serverUrl, identifier).id
+    private fun loginIdOf(serviceId: String, identifier: String): String = loginId(serviceId, identifier)
 
     private fun report(result: ApiResult<*>) {
         when (result) {

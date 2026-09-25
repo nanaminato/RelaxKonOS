@@ -47,8 +47,8 @@ class InMemoryProfileStorage : ProfileStorage {
 /**
  * The login list shown on the sign-in and connections screens.
  *
- * Every mutation addresses one login through the pair `(serverUrl, identifier)`. There is deliberately
- * no operation that acts on a server address alone: one server can hold several accounts, and removing
+ * Every mutation addresses one login through the pair `(serviceId, identifier)`. There is deliberately
+ * no operation that acts on a service identity alone: one server can hold several accounts, and removing
  * "the server" would silently take the other accounts' records with it
  * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
  *
@@ -66,19 +66,19 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
     }
 
     /** Removes exactly one login, leaving every other account on the same server untouched. */
-    fun remove(serverUrl: String, identifier: String) {
-        write(read().filterNot { it.serverUrl == serverUrl && it.identifier == identifier })
+    fun remove(serviceId: String, identifier: String) {
+        write(read().filterNot { it.serviceId == serviceId && it.identifier == identifier })
     }
 
     /** Updates the credential projection for one login, or does nothing when it is not stored. */
-    fun setHasSavedCredential(serverUrl: String, identifier: String, hasCredential: Boolean) {
+    fun setHasSavedCredential(serviceId: String, identifier: String, hasCredential: Boolean) {
         val current = read()
-        if (current.none { it.serverUrl == serverUrl && it.identifier == identifier }) {
+        if (current.none { it.serviceId == serviceId && it.identifier == identifier }) {
             return
         }
         write(
             current.map {
-                if (it.serverUrl == serverUrl && it.identifier == identifier) {
+                if (it.serviceId == serviceId && it.identifier == identifier) {
                     it.copy(hasSavedCredential = hasCredential)
                 } else {
                     it
@@ -93,16 +93,16 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
      * interrupted operation, cannot outlive the record it describes (§2.2). The file is only rewritten
      * when something actually differs.
      */
-    fun reconcileCredentialProjection(exists: (serverUrl: String, identifier: String) -> Boolean) {
+    fun reconcileCredentialProjection(exists: (serviceId: String, identifier: String) -> Boolean) {
         val current = read()
-        val reconciled = current.map { it.copy(hasSavedCredential = exists(it.serverUrl, it.identifier)) }
+        val reconciled = current.map { it.copy(hasSavedCredential = exists(it.serviceId, it.identifier)) }
         if (reconciled != current) {
             write(reconciled)
         }
     }
 
     private fun SavedLogin.sameIdentityAs(other: SavedLogin): Boolean =
-        serverUrl == other.serverUrl && identifier == other.identifier
+        serviceId == other.serviceId && identifier == other.identifier
 
     private fun read(): List<SavedLogin> {
         val payload = storage.read() ?: return emptyList()
@@ -114,12 +114,12 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
                     val count = input.readInt()
                     ArrayList<SavedLogin>(count).apply {
                         repeat(count) {
-                            val serverUrl = input.readUTF()
+                            val serviceId = input.readUTF()
                             val identifier = input.readUTF()
                             val lastUsed = input.readLong()
                             val displayName = if (input.readByte().toInt() == 1) input.readUTF() else null
                             val hasCredential = input.readByte().toInt() == 1
-                            add(SavedLogin(serverUrl, identifier, lastUsed, displayName, hasCredential))
+                            add(SavedLogin(serviceId, identifier, lastUsed, displayName, hasCredential))
                         }
                     }
                 }
@@ -136,7 +136,7 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
             output.writeInt(MAGIC)
             output.writeInt(logins.size)
             for (login in logins) {
-                output.writeUTF(login.serverUrl)
+                output.writeUTF(login.serviceId)
                 output.writeUTF(login.identifier)
                 output.writeLong(login.lastUsedEpochMillis)
                 val displayName = login.displayName
@@ -151,7 +151,7 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
     }
 
     private companion object {
-        /** `RKC2`: the layout carries the optional display name and the credential projection. */
+        /** `RKC2`: the first string is serviceId; direct records already store that canonical URL. */
         const val MAGIC = 0x524B4332
     }
 }

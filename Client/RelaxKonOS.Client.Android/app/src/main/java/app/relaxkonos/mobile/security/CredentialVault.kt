@@ -16,7 +16,7 @@ import javax.crypto.Cipher
  *
  * [Ssh] is the server centre's SSH credential domain. It is a separate kind rather than a reuse of
  * [Connection] because an SSH credential is bound to a host endpoint and SSH user, not to a RelaxKonOS
- * server URL and login identifier; two records that happen to hold the same password are still two
+ * service identity and login identifier; two records that happen to hold the same password are still two
  * records (`RelaxKonOS.Mobile.ServerCenter.Design.md` §3).
  */
 enum class VaultKind { Connection, Elevation, Ssh }
@@ -41,7 +41,7 @@ enum class VaultRecordState { Sealed, Invalidated }
  */
 class VaultRecord(
     val kind: VaultKind,
-    val serverUrl: String,
+    val serviceId: String,
     val account: String,
     val lastUsedEpochMillis: Long,
     val fingerprintProtected: Boolean,
@@ -49,22 +49,22 @@ class VaultRecord(
     val ciphertext: ByteArray,
     val state: VaultRecordState = VaultRecordState.Sealed,
 ) {
-    val id: String get() = recordId(kind, serverUrl, account)
+    val id: String get() = recordId(kind, serviceId, account)
 
     override fun equals(other: Any?): Boolean = other is VaultRecord && other.id == id
 
     override fun hashCode(): Int = id.hashCode()
 }
 
-/** Stable record identity: `kind|serverUrl|account`. */
-fun recordId(kind: VaultKind, serverUrl: String, account: String): String = "${kind.name}|$serverUrl|$account"
+/** Stable record identity: `kind|serviceId|account`. */
+fun recordId(kind: VaultKind, serviceId: String, account: String): String = "${kind.name}|$serviceId|$account"
 
 /**
  * Additional authenticated data binding a payload to its record identity. Moving a ciphertext under
- * a different server or account makes decryption fail instead of silently succeeding.
+ * a different service identity or account makes decryption fail instead of silently succeeding.
  */
-fun vaultAad(kind: VaultKind, serverUrl: String, account: String): ByteArray =
-    "relaxkonos-vault|${kind.name}|$serverUrl|$account".toByteArray(Charsets.UTF_8)
+fun vaultAad(kind: VaultKind, serviceId: String, account: String): ByteArray =
+    "relaxkonos-vault|${kind.name}|$serviceId|$account".toByteArray(Charsets.UTF_8)
 
 /** Raised when the Keystore key can no longer be used, e.g. after a new biometric enrolment. */
 class VaultKeyInvalidatedException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -144,7 +144,7 @@ class InMemoryVaultStorage : VaultStorage {
  * The client-side credential vault. Holds the independent vaults required by
  * `RelaxKonOS.Mobile.V1.Design.md` §5.2 and enforces the invariants of §5.3:
  *
- * - payloads are bound to `vault|serverUrl|account` through AES-GCM additional authenticated data;
+ * - payloads are bound to `vault|serviceId|account` through AES-GCM additional authenticated data;
  * - a record can only be opened through its own [VaultRecord], so a connection payload cannot be
  *   read back as an elevation credential;
  * - plaintext passwords are handled as `CharArray` and zeroed by the caller.
@@ -158,8 +158,8 @@ class CredentialVault(
 ) {
     fun records(kind: VaultKind): List<VaultRecord> = read(kind)
 
-    fun record(kind: VaultKind, serverUrl: String, account: String): VaultRecord? =
-        read(kind).firstOrNull { it.serverUrl == serverUrl && it.account == account }
+    fun record(kind: VaultKind, serviceId: String, account: String): VaultRecord? =
+        read(kind).firstOrNull { it.serviceId == serviceId && it.account == account }
 
     fun hasRecords(kind: VaultKind): Boolean = read(kind).isNotEmpty()
 
@@ -175,7 +175,7 @@ class CredentialVault(
      */
     fun seal(
         kind: VaultKind,
-        serverUrl: String,
+        serviceId: String,
         account: String,
         password: CharArray,
         cipher: Cipher,
@@ -184,7 +184,7 @@ class CredentialVault(
     ): VaultRecord {
         val plaintext = encodeUtf8(password)
         val ciphertext = try {
-            cipher.updateAAD(vaultAad(kind, serverUrl, account))
+            cipher.updateAAD(vaultAad(kind, serviceId, account))
             cipher.doFinal(plaintext)
         } catch (error: GeneralSecurityException) {
             throw VaultTamperException("Unable to seal the ${kind.name} credential.", error)
@@ -193,7 +193,7 @@ class CredentialVault(
         }
         val record = VaultRecord(
             kind = kind,
-            serverUrl = serverUrl,
+            serviceId = serviceId,
             account = account,
             lastUsedEpochMillis = nowEpochMillis,
             fingerprintProtected = fingerprintProtected,
@@ -219,7 +219,7 @@ class CredentialVault(
     fun open(record: VaultRecord, cipher: Cipher): CharArray {
         requireSealed(record)
         val plaintext = try {
-            cipher.updateAAD(vaultAad(record.kind, record.serverUrl, record.account))
+            cipher.updateAAD(vaultAad(record.kind, record.serviceId, record.account))
             cipher.doFinal(record.ciphertext)
         } catch (error: GeneralSecurityException) {
             throw VaultTamperException("Unable to open the ${record.kind.name} credential.", error)
@@ -278,7 +278,7 @@ class CredentialVault(
                 if (it.id == record.id) {
                     VaultRecord(
                         it.kind,
-                        it.serverUrl,
+                        it.serviceId,
                         it.account,
                         nowEpochMillis,
                         it.fingerprintProtected,
@@ -294,12 +294,12 @@ class CredentialVault(
     }
 
     /** Drops a single record: the explicit "forget the password" action of the design (§6.3). */
-    fun delete(kind: VaultKind, serverUrl: String, account: String) {
-        val id = recordId(kind, serverUrl, account)
+    fun delete(kind: VaultKind, serviceId: String, account: String) {
+        val id = recordId(kind, serviceId, account)
         write(kind, read(kind).filterNot { it.id == id })
     }
 
-    fun delete(record: VaultRecord) = delete(record.kind, record.serverUrl, record.account)
+    fun delete(record: VaultRecord) = delete(record.kind, record.serviceId, record.account)
 
     /** Clears one vault completely, e.g. when the fingerprint master switch is turned off. */
     fun clear(kind: VaultKind) {
@@ -322,7 +322,7 @@ class CredentialVault(
 
     private fun VaultRecord.asInvalidated(): VaultRecord = VaultRecord(
         kind = kind,
-        serverUrl = serverUrl,
+        serviceId = serviceId,
         account = account,
         lastUsedEpochMillis = lastUsedEpochMillis,
         fingerprintProtected = fingerprintProtected,
@@ -350,7 +350,7 @@ class CredentialVault(
  * code path runs on the device and in JVM unit tests.
  *
  * `magic("RKV2") | kindOrdinal(u8) | count(i32) | record*`
- * `record = url(UTF) | account(UTF) | lastUsed(i64) | protected(u8) | state(u8) | iv(byte[]) | ciphertext(byte[])`
+ * `record = serviceId(UTF) | account(UTF) | lastUsed(i64) | protected(u8) | state(u8) | iv(byte[]) | ciphertext(byte[])`
  *
  * The magic carries the version, and the version is bumped whenever the layout changes instead of
  * carrying migration code for a build that has never shipped: a file from another version decodes as
@@ -367,7 +367,7 @@ internal object VaultFileFormat {
             output.writeByte(records.first().kind.ordinal)
             output.writeInt(records.size)
             for (record in records) {
-                output.writeUTF(record.serverUrl)
+                output.writeUTF(record.serviceId)
                 output.writeUTF(record.account)
                 output.writeLong(record.lastUsedEpochMillis)
                 output.writeByte(if (record.fingerprintProtected) 1 else 0)
@@ -389,14 +389,14 @@ internal object VaultFileFormat {
                 val count = input.readInt()
                 val records = ArrayList<VaultRecord>(count)
                 repeat(count) {
-                    val serverUrl = input.readUTF()
+                    val serviceId = input.readUTF()
                     val account = input.readUTF()
                     val lastUsed = input.readLong()
                     val protected = input.readByte().toInt() == 1
                     val state = VaultRecordState.entries[input.readByte().toInt()]
                     val iv = ByteArray(input.readInt()).also { input.readFully(it) }
                     val ciphertext = ByteArray(input.readInt()).also { input.readFully(it) }
-                    records += VaultRecord(kind, serverUrl, account, lastUsed, protected, iv, ciphertext, state)
+                    records += VaultRecord(kind, serviceId, account, lastUsed, protected, iv, ciphertext, state)
                 }
                 records
             }

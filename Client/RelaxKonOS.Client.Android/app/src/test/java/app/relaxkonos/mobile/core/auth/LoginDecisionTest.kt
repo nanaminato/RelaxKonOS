@@ -12,7 +12,7 @@ import org.junit.Test
  * possible to state every row here instead of reasoning about a Compose click handler.
  */
 class LoginDecisionTest {
-    private val login = SelectedLogin("https://relaxkonos.local:5090", "nana")
+    private val login = SelectedLogin.direct("https://relaxkonos.local:5090", "nana")
 
     private fun decide(
         password: String = "",
@@ -26,12 +26,12 @@ class LoginDecisionTest {
     fun `incomplete fields are reported first`() {
         assertEquals(
             LoginDecision.MissingFields(server = true, identifier = false),
-            decide(selected = SelectedLogin("   ", "nana"), isLoggingIn = true),
+            decide(selected = SelectedLogin.direct("   ", "nana"), isLoggingIn = true),
         )
         assertEquals(
             LoginDecision.MissingFields(server = false, identifier = true),
             decide(
-                selected = SelectedLogin("https://relaxkonos.local:5090", "  "),
+                selected = SelectedLogin.direct("https://relaxkonos.local:5090", "  "),
                 credential = SavedCredentialState.Available,
             ),
         )

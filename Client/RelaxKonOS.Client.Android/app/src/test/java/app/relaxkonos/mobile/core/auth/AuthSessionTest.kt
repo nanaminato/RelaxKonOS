@@ -5,6 +5,7 @@ import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.AuthTokens
 import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.loginSession
+import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -23,16 +24,18 @@ class AuthSessionTest {
     private val session = AuthSession(gateway)
     private val server = "https://relaxkonos.local:5090"
 
+    private fun direct(url: String = server) = ServerConnectionIdentityRules.direct(url)
+
     private suspend fun signIn(accessToken: String = "access-1", refreshToken: String = "refresh-1") {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(accessToken, refreshToken)) }
-        session.login(server, "nana", "pw".toCharArray()) {}
+        session.login(direct(), "nana", "pw".toCharArray()) {}
     }
 
     @Test
     fun `a successful login activates the session`() = runTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(capabilities = setOf("server.files", "server.metrics"))) }
 
-        val result = session.login(server, "nana", "pw".toCharArray()) {}
+        val result = session.login(direct(), "nana", "pw".toCharArray()) {}
 
         assertTrue(result is ApiResult.Success)
         val state = session.state.value
@@ -42,7 +45,8 @@ class AuthSessionTest {
         assertEquals("nana", state.userName)
         assertEquals("linux", state.serverPlatform)
         assertEquals(setOf("server.files", "server.metrics"), state.capabilities)
-        assertEquals(server, session.serverUrl)
+        assertEquals(server, session.serviceId)
+        assertEquals(server, session.effectiveBaseUrl)
         assertEquals("access-1", session.accessToken)
     }
 
@@ -51,7 +55,7 @@ class AuthSessionTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
         var stateDuringCredentialSave: SessionState? = null
 
-        val result = session.login(server, "nana", "pw".toCharArray()) {
+        val result = session.login(direct(), "nana", "pw".toCharArray()) {
             stateDuringCredentialSave = session.state.value
         }
 
@@ -65,7 +69,7 @@ class AuthSessionTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
 
         val failure = runCatching {
-            session.login(server, "nana", "pw".toCharArray()) {
+            session.login(direct(), "nana", "pw".toCharArray()) {
                 error("The local profile storage failed.")
             }
         }.exceptionOrNull()
@@ -80,7 +84,7 @@ class AuthSessionTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
 
         val failure = runCatching {
-            session.login(server, "nana", "pw".toCharArray()) {
+            session.login(direct(), "nana", "pw".toCharArray()) {
                 throw CancellationException("The sign-in screen left composition.")
             }
         }.exceptionOrNull()
@@ -94,16 +98,17 @@ class AuthSessionTest {
     fun `the server address is normalised before it is stored`() = runTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
 
-        session.login("  https://host:5090/  ", "nana", "pw".toCharArray()) {}
+        session.login(direct("  https://host:5090/  "), "nana", "pw".toCharArray()) {}
 
-        assertEquals("https://host:5090", session.serverUrl)
+        assertEquals("https://host:5090", session.serviceId)
+        assertEquals("https://host:5090", session.effectiveBaseUrl)
     }
 
     @Test
     fun `a rejected login leaves the session signed out`() = runTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Problem(401, ProblemCodes.INVALID_CREDENTIAL, null) }
 
-        val result = session.login(server, "nana", "pw".toCharArray()) {}
+        val result = session.login(direct(), "nana", "pw".toCharArray()) {}
 
         assertTrue(result is ApiResult.Problem)
         assertEquals(SessionState.SignedOut, session.state.value)
@@ -114,7 +119,7 @@ class AuthSessionTest {
     fun `a transport failure at login is not treated as a rejected credential`() = runTest {
         gateway.onLogin = { _, _, _ -> ApiResult.Transport("timeout") }
 
-        val result = session.login(server, "nana", "pw".toCharArray()) {}
+        val result = session.login(direct(), "nana", "pw".toCharArray()) {}
 
         assertTrue(result is ApiResult.Transport)
         assertEquals(SessionState.SignedOut, session.state.value)
@@ -130,7 +135,7 @@ class AuthSessionTest {
         var credentialStepRan = false
         gateway.onLogin = { _, _, _ -> ApiResult.Problem(401, ProblemCodes.INVALID_CREDENTIAL, null) }
 
-        session.login(server, "nana", "pw".toCharArray()) { credentialStepRan = true }
+        session.login(direct(), "nana", "pw".toCharArray()) { credentialStepRan = true }
 
         assertFalse(credentialStepRan)
     }
@@ -140,7 +145,7 @@ class AuthSessionTest {
         var credentialStepRan = false
         gateway.onLogin = { _, _, _ -> ApiResult.Transport("timeout") }
 
-        session.login(server, "nana", "pw".toCharArray()) { credentialStepRan = true }
+        session.login(direct(), "nana", "pw".toCharArray()) { credentialStepRan = true }
 
         assertFalse(credentialStepRan)
     }
@@ -205,7 +210,7 @@ class AuthSessionTest {
         assertEquals(SessionState.SignedOut, session.state.value)
         assertNull(session.accessToken)
         // The address survives so the next sign-in can pre-fill it.
-        assertEquals(server, session.serverUrl)
+        assertEquals(server, session.serviceId)
     }
 
     @Test
@@ -265,5 +270,48 @@ class AuthSessionTest {
 
         assertEquals(0, gateway.logoutCount)
         assertEquals(SessionState.SignedOut, session.state.value)
+    }
+
+    @Test
+    fun `managed tunnel rebind changes request address without changing service identity`() = runTest {
+        val installationId = "rki-0123456789abcdef0123456789abcdef"
+        val first = ServerConnectionIdentityRules.managedTunnel(installationId, "http://127.0.0.1:51000")
+        val rebound = ServerConnectionIdentityRules.managedTunnel(installationId, "http://127.0.0.1:52345")
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
+        session.login(first, "nana", "pw".toCharArray()) {}
+
+        session.updateConnection(rebound)
+        var requestUrl: String? = null
+        session.authenticated { url, _ ->
+            requestUrl = url
+            ApiResult.Success(Unit)
+        }
+
+        assertEquals(installationId, session.serviceId)
+        assertEquals("http://127.0.0.1:52345", session.effectiveBaseUrl)
+        assertEquals("http://127.0.0.1:52345", requestUrl)
+        val active = session.state.value as SessionState.Active
+        assertEquals(installationId, active.serviceId)
+        assertEquals("http://127.0.0.1:52345", active.effectiveBaseUrl)
+    }
+
+    @Test
+    fun `managed tunnel rebind refuses another installation identity`() = runTest {
+        val first = ServerConnectionIdentityRules.managedTunnel(
+            "rki-0123456789abcdef0123456789abcdef",
+            "http://127.0.0.1:51000",
+        )
+        val another = ServerConnectionIdentityRules.managedTunnel(
+            "rki-fedcba9876543210fedcba9876543210",
+            "http://127.0.0.1:52345",
+        )
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
+        session.login(first, "nana", "pw".toCharArray()) {}
+
+        val failure = runCatching { session.updateConnection(another) }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertEquals(first.serviceId, session.serviceId)
+        assertEquals(first.effectiveBaseUrl, session.effectiveBaseUrl)
     }
 }
