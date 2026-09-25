@@ -3,8 +3,7 @@
   "Strings": {
     "server_center.open": "安装或管理服务器",
     "server_center.title": "服务器中心",
-    "server_center.login_mode": "使用 SSH 登录（关闭时使用 RelaxKonOS 登录）",
-    "server_center.subtitle": "选择 SSH 或 RelaxKonOS 登录，并管理 SSH 主机和服务器安装。",
+    "server_center.subtitle": "管理 SSH 主机和 RelaxKonOS 服务器安装。",
     "server_center.hosts": "受管主机",
     "server_center.empty": "此设备尚未添加受管主机。",
     "server_center.add_host": "添加主机",

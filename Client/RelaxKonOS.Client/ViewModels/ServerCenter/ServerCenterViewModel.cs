@@ -63,7 +63,6 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _sshPassword = string.Empty;
-    [ObservableProperty] private bool _useSshLogin;
     [ObservableProperty] private string _hostKeyFingerprint = string.Empty;
     [ObservableProperty] private bool _needsHostKeyConfirmation;
     [ObservableProperty] private bool _hostKeyChanged;
@@ -77,8 +76,7 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private ServerCenterOperationRecord? _selectedOperation;
 
     public string Title => T("server_center.title", "Server centre");
-    public string LoginModeLabel => T("server_center.login_mode", "Use SSH login (off: RelaxKonOS login)");
-    public string Subtitle => T("server_center.subtitle", "Choose SSH or RelaxKonOS login, and manage SSH hosts and server installations.");
+    public string Subtitle => T("server_center.subtitle", "Manage SSH hosts and RelaxKonOS server installations.");
     public string HostsLabel => T("server_center.hosts", "Managed hosts");
     public string EmptyHostsText => T("server_center.empty", "No managed hosts have been added on this device.");
     public string AddHostLabel => T("server_center.add_host", "Add host");

@@ -16,6 +16,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Core.VirtualSystemDrive;
 using RelaxKonOS.Core.Windows;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.WindowManager;
@@ -50,6 +51,7 @@ public partial class DesktopShellViewModel : ObservableObject
     private readonly ShortcutStore _shortcuts;
     private readonly ShortcutActivationRouter _shortcutRouter;
     private int _desktopFileLoadGeneration;
+    private int _shortcutLoadGeneration;
 
     /// <summary>打开桌面显示配置窗口的回调。由 View 层设置。</summary>
     public Func<Task>? RequestOpenDesktopDisplaySettingsAsync { get; set; }
@@ -206,7 +208,7 @@ public partial class DesktopShellViewModel : ObservableObject
                 && _applications.EvaluateCompatibility(manifest).IsCompatible
                 && (_sshDesktop.IsConnected
                     ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
-                    : application.Id.Value != "relaxkonos.ssh-files"))
+                    : application.Id.Value is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
             .Select(i => new AppEntryViewModel(Localize(i), _applications))
             .ToList();
 
@@ -218,7 +220,12 @@ public partial class DesktopShellViewModel : ObservableObject
 
         // ── 桌面图标：根据桌面显示配置过滤 ──
         DesktopIcons.Clear();
-        if (_settings.ShowBuiltInApps)
+        if (_sshDesktop.IsConnected)
+        {
+            foreach (var entry in compatibleEntries)
+                DesktopIcons.Add(entry);
+        }
+        else if (_settings.ShowBuiltInApps)
         {
             // 当 VisibleAppIds 为空时显示全部；否则仅显示列表中的
             var visibleSet = new HashSet<string>(_settings.VisibleAppIds, StringComparer.Ordinal);
@@ -231,8 +238,9 @@ public partial class DesktopShellViewModel : ObservableObject
         }
 
         RefreshDesktopItems();
+        var shortcutGeneration = ++_shortcutLoadGeneration;
         if (_sshDesktop.IsConnected) DesktopShortcuts.Clear();
-        else _ = RefreshDesktopShortcutsAsync();
+        else _ = RefreshDesktopShortcutsAsync(shortcutGeneration);
         RefreshTaskbarGroups();
         _ = LoadDesktopFilesAsync();
     }
@@ -898,13 +906,16 @@ public partial class DesktopShellViewModel : ObservableObject
         foreach (var file in DesktopFiles) DesktopItems.Add(file);
     }
 
-    private async Task RefreshDesktopShortcutsAsync()
+    private async Task RefreshDesktopShortcutsAsync(int generation)
     {
         var shortcuts = await _shortcuts.ListAsync();
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            if (generation != _shortcutLoadGeneration || _sshDesktop.IsConnected) return;
             DesktopShortcuts.Clear();
-            foreach (var shortcut in shortcuts)
+            foreach (var shortcut in shortcuts.Where(item =>
+                item.Kind != RelaxKonOSShortcutKind.Application ||
+                item.Target is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
                 DesktopShortcuts.Add(new ShortcutEntryViewModel(shortcut, _shortcutRouter));
             RefreshDesktopItems();
         });

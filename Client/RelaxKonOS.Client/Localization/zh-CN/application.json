@@ -3,7 +3,7 @@
     "Strings": {
         "application.relaxkonos.welcome.display_name": "欢迎",
         "application.relaxkonos.terminal.display_name": "终端",
-        "application.relaxkonos.server-center.display_name": "服务器中心",
+        "application.relaxkonos.server-center.display_name": "安装或管理服务器",
         "application.relaxkonos.ssh-files.display_name": "SSH 文件浏览器",
         "application.relaxkonos.server-center.description": "管理 SSH 主机和 RelaxKonOS 安装",
         "application.relaxkonos.ssh-files.description": "通过 SFTP 浏览和传输文件",
