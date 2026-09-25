@@ -60,6 +60,19 @@ Check(windowsStage.Platform == HostPlatformKind.Windows &&
       windows.Uploaded.Keys.Any(path => path.EndsWith("/release-verifier.exe", StringComparison.Ordinal)),
     "Windows 暂存使用目标平台验证器文件名");
 
+var recovery = new FakeTransport();
+var recoveryClient = new ServerCenterDeploymentClient(recovery);
+var recoveryId = Guid.NewGuid();
+var recoveryStage = await recoveryClient.StageQueryAsync(
+    recoveryId, HostPlatformKind.Linux, launcher, verifier, CancellationToken.None);
+Check(recoveryStage.OperationId == recoveryId &&
+      recovery.Uploaded.Keys.All(path => !path.EndsWith("/request.json", StringComparison.Ordinal)),
+    "断线恢复仅上传固定查询工具而不创建新部署请求");
+var recovered = await recoveryClient.QueryAsync(recoveryStage, CancellationToken.None);
+Check(recovered.OperationId == recoveryId && recovery.Commands.Any(command =>
+    command.Contains(" --query " + recoveryId, StringComparison.Ordinal)),
+    "断线恢复按原操作 ID 读取权威回执");
+
 Console.WriteLine("桌面服务器中心传输检查通过。");
 
 sealed class FakeTransport : IServerCenterSshTransport
