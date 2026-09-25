@@ -269,3 +269,16 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | `Client/RelaxKonOS.FileServices.Tests` | 无法构建 | 既存破损：该工程仅以 `Compile Include` 链接 `FileServicesViewModel.cs`，而该 VM 依赖未链接的 `LocalizedStatus`/`LocalizedObservableObject`/`RelaxKonOS.Client.Services`/`InstallationTaskViewModel`；master 上同样如此，与本 Goal 无关。 |
 | `deployment/windows/Install-RelaxKonOSServices.ps1` | 通过 | `Parser::ParseFile` 语法检查通过；安装器在 Server 段写入 `EnableWindowsUserExecution = $false`，在 Helper 段写入 `enableWindowsUserExecution = $false` 与 `userExecutionTimeoutSeconds = 25`，能力门默认关闭与代码默认值一致。 |
 | Windows impersonation 真实多用户集成 | 仍未验证 | 本轮只在 Windows 开发宿主上验证了构建、契约与关闭态；S4U logon type、NTFS ACL/owner、token 释放、并发、取消、服务重启、profile/known-folder 与网络盘行为仍需隔离 Windows Server + LocalSystem Helper + 两个本地账户，能力门在此期间保持 `false`。 |
+
+### 2026-09-25：用户执行通道接入统一可观测性
+
+`feature_log` 引入的可观测性基础设施（事件目录、`CorrelationContext`、`ISecurityAuditWriter`、`IEventLogger`）此前只覆盖管理员提权通道。本次把有效用户执行通道补到同一标准：
+
+- `ObservabilityEventCatalog` 在「特权与 IPC」区间（1300–1399）新增 `user.execution.request.accepted`(1310) 与 `user.execution.request.completed`(1311)，封闭 action 集合新增 `user.execution`。目录变更直接更新本仓库调用方、测试与文档，不保留旧名或别名。
+- `UserExecutionRequest` 增加只含安全字段的 `Correlation`（`CorrelationContext`，无 JWT/密码/账户），协议版本直接升级为 `1.2`。Linux one-shot 与 Windows 用户执行管道都在 `UserExecutionRequestPolicy` 之后再校验关联元数据，缺失或非法即 `InvalidRequest` fail closed——与提权通道同构，不保留双格式解析。
+- Server 侧 Linux 与 Windows 用户执行 transport 现在与提权 transport 同构：延续请求作用域的 correlation、以 `user.execution` 动作写 `accepted` 审计（审计不可用时**失败关闭**，不启动 Helper），完成后写 `completed` 审计，并保留既有的身份/资源哈希运行日志（不记录账户名与完整路径）。`actorReference` 由 `SecurityAuditWriter` 做逐实例 HMAC 转换。
+- `UserExecutionContextResolver` 对每一次身份解析拒绝写 `security.authorization.denied`（`Information`，带稳定 problem code），不记录账户、subject 或家目录；成功解析刻意不逐请求记录，避免正常只读浏览产生日志噪声。
+- 审计因此可区分 user execution 与 administrator elevation，满足本 Goal 完成标准中「审计可区分两类通道但不记录敏感路径/凭据」的要求。
+
+尚未覆盖，明确记录为后续工作：Guardian 的 `RunAsAuthorizationService` 跨账户授权决定目前只返回结果、不写审计；`DisabledUserExecutionTransport`（Windows 能力门关闭时的发布默认路径）对每次被拒绝的请求不写审计；媒体 lease 读取路径未单独埋点。三项都需要各自的 operation/correlation 上下文与可失败关闭策略，不在本次范围内。
+

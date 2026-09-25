@@ -32,6 +32,9 @@ public static class UserExecutionExecutor
         if (request is null) return await WriteAsync(Fail(UserExecutionProblemCode.InvalidRequest, "missing user-execution request"));
         if (!OperatingSystem.IsLinux() || geteuid() != 0) return await WriteAsync(Fail(UserExecutionProblemCode.HelperUnavailable, "root Linux Helper is required"));
         if (!UserExecutionRequestPolicy.IsValid(request, terminal: false)) return await WriteAsync(Fail(UserExecutionProblemCode.InvalidRequest, "invalid user-execution request"));
+        // Correlation metadata is required, exactly as on the elevated channel: a request that
+        // cannot be correlated must not start work whose audit trail cannot be joined up.
+        if (request.Correlation is not { } correlation || !correlation.IsValid()) return await WriteAsync(Fail(UserExecutionProblemCode.InvalidRequest, "valid correlation metadata is required"));
         if (!TryResolve(request.Identity, out var account)) return await WriteAsync(Fail(UserExecutionProblemCode.IdentityMismatch, "OS identity changed or is not executable"));
         try
         {
@@ -59,6 +62,7 @@ public static class UserExecutionExecutor
         catch (Exception exception) when (exception is JsonException or InvalidDataException) { return 64; }
         if (!OperatingSystem.IsLinux() || geteuid() != 0) return 77;
         if (request is null || !UserExecutionRequestPolicy.IsValid(request, terminal: true) || !TryShell(request.TerminalShell, out var shell)) return 64;
+        if (request.Correlation is not { } correlation || !correlation.IsValid()) return 64;
         if (!TryResolve(request.Identity, out var account)) return 77;
         var directory = ValidatePath(request.Path!);
         var columns = request.TerminalColumns ?? 80;

@@ -284,3 +284,13 @@ RelaxKonOS.Guardian.Agent/Observability/
 5. 是否批准受控诊断包及其读取能力；未批准前只提供本机管理员日志访问，不开放 Server API。
 
 在这些决定冻结前，不应批量添加日志调用或引入新的日志库，以免形成无法清理的格式、泄露面和兼容负担。
+
+## 10. 实施记录
+
+### 2026-09-25：用户执行（effective OS user）通道接入
+
+- 事件目录在「特权与 IPC」区间新增 `user.execution.request.accepted`(1310)、`user.execution.request.completed`(1311)，封闭 action 新增 `user.execution`。
+- `UserExecutionRequest` 增加 `CorrelationContext`，协议升级为 `1.2`；Server 的两个用户执行 transport 按提权 transport 同一模式写 accepted/completed 审计并在审计不可用时失败关闭；Helper 的两个用户执行入口拒绝缺失或非法的关联元数据（§3.3 要求的「Helper 必须拒绝缺失或格式错误的关联元数据」）。
+- `UserExecutionContextResolver` 的身份解析拒绝写入 `security.authorization.denied`。成功解析不逐请求记录，遵守 §4.3 对正常只读操作不逐条写 `Information` 的约束。
+- **已知缺陷（先于本次改动存在，未修复）**：`RelaxKonOS.Server.Tests/ObservabilityChecks.cs` 由提交 `a8caa481` 引入，却调用了 `TestAssert` 中并不存在的 `Equal`/`True`，因此 `RelaxKonOS.Server.Tests` 一直无法编译、该文件的断言从未被执行。补上缺失的断言辅助方法后，`sanitizer must not retain supplied secrets` 断言失败，说明 `ObservabilitySanitizer` 的实现与其测试期望不一致（从实现看，`SensitiveAssignment` 要求敏感键名后紧跟 `:`/`=`，疑似未覆盖带引号的 JSON 赋值形式）。该缺陷阻塞 §1.2 中「自动化测试证明秘密不会进入任一日志或审计 sink」的发布完成条件，需要单独定稿修复后再更新本节。
+

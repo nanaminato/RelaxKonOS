@@ -2,23 +2,25 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Runtime.InteropServices;
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Identity;
+using RelaxKonOS.Server.Observability;
 using RelaxKonOS.Server.Storage;
 
 namespace RelaxKonOS.Server.UserExecution;
 
 /// <summary>Resolves an effective OS identity only from a validated RelaxKonOS subject.</summary>
 public sealed class UserExecutionContextResolver(IUserRepository users, CanonicalUserResolver canonicalUsers,
-    IServerModeResolver serverMode) : IUserExecutionContextResolver
+    IServerModeResolver serverMode, IEventLogger? eventLogger = null) : IUserExecutionContextResolver
 {
     public UserExecutionContext Resolve(ClaimsPrincipal principal)
     {
         var subject = principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
             ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(subject, out var userId) || users.FindById(userId) is not { } user)
-            throw new UserExecutionException(UserExecutionProblemCode.AuthenticationInvalid, "The authenticated user does not exist.");
+            throw Reject(UserExecutionProblemCode.AuthenticationInvalid, "The authenticated user does not exist.");
 
         PlatformUserInfo identity;
         try { identity = canonicalUsers.RequireBinding(user, requireEligibility: false); }
@@ -26,7 +28,7 @@ public sealed class UserExecutionContextResolver(IUserRepository users, Canonica
         {
             var code = exception.Code == "authentication-unavailable"
                 ? UserExecutionProblemCode.IdentityUnavailable : UserExecutionProblemCode.IdentityMismatch;
-            throw new UserExecutionException(code, "The authenticated OS identity could not be verified.");
+            throw Reject(code, "The authenticated OS identity could not be verified.");
         }
 
         if (identity.Platform == PlatformKind.Linux)
@@ -34,9 +36,9 @@ public sealed class UserExecutionContextResolver(IUserRepository users, Canonica
             if (!uint.TryParse(identity.Uid, out var uid) || uid is 0 or 65534
                 || (serverMode.Mode == ServerMode.System && !UserExecutionProtocol.IsEligibleLinuxUserId(uid))
                 || !UserExecutionProtocol.IsEligibleHomeDirectory(PlatformKind.Linux, identity.HomeDirectory))
-                throw new UserExecutionException(UserExecutionProblemCode.IdentityNotExecutable, "The OS identity is not eligible for user execution.");
+                throw Reject(UserExecutionProblemCode.IdentityNotExecutable, "The OS identity is not eligible for user execution.");
             if (serverMode.Mode == ServerMode.User && !IsServerEffectiveUnixUser(uid))
-                throw new UserExecutionException(UserExecutionProblemCode.IdentityNotExecutable, "User Mode can execute only as the Server's effective Unix user.");
+                throw Reject(UserExecutionProblemCode.IdentityNotExecutable, "User Mode can execute only as the Server's effective Unix user.");
         }
         else if (identity.Platform == PlatformKind.Windows)
         {
@@ -45,16 +47,29 @@ public sealed class UserExecutionContextResolver(IUserRepository users, Canonica
                 || !account[0].Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(identity.Uid) || !identity.Uid.StartsWith("S-1-5-", StringComparison.Ordinal)
                 || !UserExecutionProtocol.IsEligibleHomeDirectory(PlatformKind.Windows, identity.HomeDirectory))
-                throw new UserExecutionException(UserExecutionProblemCode.IdentityNotExecutable,
+                throw Reject(UserExecutionProblemCode.IdentityNotExecutable,
                     "Only local Windows accounts with a verified profile are eligible for System Mode user execution.");
         }
         else
         {
-            throw new UserExecutionException(UserExecutionProblemCode.UnsupportedPlatform, "The OS identity is not supported for user execution.");
+            throw Reject(UserExecutionProblemCode.UnsupportedPlatform, "The OS identity is not supported for user execution.");
         }
 
         return new UserExecutionContext(userId, new UserExecutionIdentity(identity.Platform, identity.Uid,
             identity.Username, identity.HomeDirectory!));
+    }
+
+    /// <summary>
+    /// A refused identity resolution is an authorization denial: it must leave a correlatable
+    /// record even though no OS operation runs. The account and the raw subject are never written;
+    /// only the stable identity-resolution problem code is.
+    /// </summary>
+    private UserExecutionException Reject(UserExecutionProblemCode code, string message)
+    {
+        eventLogger?.Write(new ObservabilityEvent(ObservabilityEventCatalog.AuthorizationDenied,
+            ObservabilitySeverity.Information, ObservabilityOutcome.Denied, "server", message,
+            ProblemCode: code.ToString(), Action: "authorization.check"));
+        return new UserExecutionException(code, message);
     }
 
     /// <summary>
