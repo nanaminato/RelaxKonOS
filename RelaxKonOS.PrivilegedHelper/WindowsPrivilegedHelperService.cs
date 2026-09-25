@@ -4,6 +4,7 @@ using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text.Json;
 using System.Runtime.Versioning;
+using RelaxKonOS.Protocol.UserExecution;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -13,6 +14,7 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 {
     private readonly WindowsHelperServiceConfiguration _configuration;
     private WindowsPrivilegedPipeServer? _pipeServer;
+    private WindowsUserExecutionPipeServer? _userExecutionPipeServer;
 
     private WindowsPrivilegedHelperService(WindowsHelperServiceConfiguration configuration)
     {
@@ -51,16 +53,24 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
         _pipeServer = new WindowsPrivilegedPipeServer(_configuration.ToPipeConfiguration(), exception =>
             EventLog.WriteEntry(ServiceName, $"Privileged Helper pipe request failed: {exception.GetType().Name}", EventLogEntryType.Warning));
         _pipeServer.Start();
+        if (_configuration.EnableWindowsUserExecution)
+        {
+            _userExecutionPipeServer = new WindowsUserExecutionPipeServer(_configuration.ToPipeConfiguration(), exception =>
+                EventLog.WriteEntry(ServiceName, $"User-execution Helper pipe request failed: {exception.GetType().Name}", EventLogEntryType.Warning));
+            _userExecutionPipeServer.Start();
+        }
     }
 
     protected override void OnStop()
     {
         WindowsMihomoPrivilegedProcessHost.StopForHelperShutdownAsync().GetAwaiter().GetResult();
+        if (_userExecutionPipeServer is not null) _userExecutionPipeServer.StopAsync().GetAwaiter().GetResult();
         if (_pipeServer is not null) _pipeServer.StopAsync().GetAwaiter().GetResult();
     }
 
     protected override void Dispose(bool disposing)
     {
+        if (disposing && _userExecutionPipeServer is not null) _userExecutionPipeServer.DisposeAsync().AsTask().GetAwaiter().GetResult();
         if (disposing && _pipeServer is not null) _pipeServer.DisposeAsync().AsTask().GetAwaiter().GetResult();
         base.Dispose(disposing);
     }
@@ -68,13 +78,15 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 
 [SupportedOSPlatform("windows")]
 public sealed record WindowsHelperServiceConfiguration(string PipeName, string SharedSecret, string ServerServiceSid,
-    IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds, string HelperExecutableSha256)
+    IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds, string HelperExecutableSha256,
+    bool EnableWindowsUserExecution = false, int UserExecutionTimeoutSeconds = 25)
 {
     public void Validate()
     {
-        if (string.IsNullOrWhiteSpace(PipeName) || PipeName.Length > 128 || string.IsNullOrWhiteSpace(ServerServiceSid)
+        if (string.IsNullOrWhiteSpace(PipeName) || UserExecutionProtocol.WindowsPipeName(PipeName).Length > 128 || string.IsNullOrWhiteSpace(ServerServiceSid)
             || FileAllowedRoots.Count == 0 || FileAllowedRoots.Any(root => string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root))
             || AllowedServiceIds.Count == 0 || AllowedServiceIds.Any(id => string.IsNullOrWhiteSpace(id) || id.Length > 256)
+            || UserExecutionTimeoutSeconds is < 1 or > 120
             || string.IsNullOrWhiteSpace(HelperExecutableSha256) || !System.Text.RegularExpressions.Regex.IsMatch(HelperExecutableSha256, "^[0-9a-fA-F]{64}$"))
             throw new InvalidOperationException("Windows Helper configuration is incomplete.");
         if (Convert.FromBase64String(SharedSecret).Length < 32) throw new InvalidOperationException("Windows Helper secret is too short.");
@@ -82,7 +94,8 @@ public sealed record WindowsHelperServiceConfiguration(string PipeName, string S
     }
 
     internal WindowsHelperPipeConfiguration ToPipeConfiguration()
-        => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds, ServerServiceSid);
+        => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds, ServerServiceSid,
+            UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds);
 
     public void VerifyCurrentExecutable()
     {

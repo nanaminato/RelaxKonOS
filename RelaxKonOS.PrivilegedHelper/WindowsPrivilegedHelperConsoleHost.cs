@@ -1,6 +1,7 @@
 using System.Security.Principal;
 using System.Text.Json;
 using System.Runtime.Versioning;
+using RelaxKonOS.Protocol.UserExecution;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -35,15 +36,24 @@ public static class WindowsPrivilegedHelperConsoleHost
         // the Server. Resolving the configured allowlist up front turns "wrong caller" into a
         // startup error with the offending entry named, instead of an unexplained denial later.
         var authorizedClientSids = DeveloperUserSidAllowList.Resolve(userSid, configuration.DeveloperUserSids);
-        await using var pipeServer = new WindowsPrivilegedPipeServer(configuration.ToPipeConfiguration(authorizedClientSids), exception =>
+        var pipeConfiguration = configuration.ToPipeConfiguration(authorizedClientSids);
+        await using var pipeServer = new WindowsPrivilegedPipeServer(pipeConfiguration, exception =>
             Console.Error.WriteLine($"Privileged Helper pipe request failed: {exception.GetType().Name}: {exception.Message}"));
+        await using var userExecutionPipeServer = configuration.EnableWindowsUserExecution
+            ? new WindowsUserExecutionPipeServer(pipeConfiguration, exception =>
+                Console.Error.WriteLine($"User-execution Helper pipe request failed: {exception.GetType().Name}: {exception.Message}"))
+            : null;
         using var stopping = new CancellationTokenSource();
         Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; stopping.Cancel(); };
         pipeServer.Start();
+        userExecutionPipeServer?.Start();
         // The kernel refuses an unauthorized caller before authentication, so the rejected client
         // learns only "access denied" while this process sees nothing at all. Publishing the
         // effective identities is what makes that denial diagnosable.
-        Console.Error.WriteLine($"RelaxKonOS Privileged Helper console host is listening on '{configuration.PipeName}'. "
+        var listeningPipes = configuration.EnableWindowsUserExecution
+            ? $"'{configuration.PipeName}' and '{UserExecutionProtocol.WindowsPipeName(configuration.PipeName)}'"
+            : $"'{configuration.PipeName}'";
+        Console.Error.WriteLine($"RelaxKonOS Privileged Helper console host is listening on {listeningPipes}. "
             + $"Authorized client SIDs: {string.Join(", ", authorizedClientSids)} (plus LocalSystem and local Administrators). Press Ctrl+C to stop.");
         try { await Task.Delay(Timeout.InfiniteTimeSpan, stopping.Token); }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
@@ -70,15 +80,17 @@ public static class WindowsPrivilegedHelperConsoleHost
 [SupportedOSPlatform("windows")]
 public sealed record WindowsHelperConsoleConfiguration(string PipeName, string SharedSecret,
     IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds, bool AllowConsoleDebug = false,
-    IReadOnlyList<string>? DeveloperUserSids = null)
+    IReadOnlyList<string>? DeveloperUserSids = null, bool EnableWindowsUserExecution = false,
+    int UserExecutionTimeoutSeconds = 25)
 {
     public void Validate()
     {
         if (!AllowConsoleDebug)
             throw new InvalidOperationException("Console debugging is disabled by this configuration.");
-        if (string.IsNullOrWhiteSpace(PipeName) || PipeName.Length > 128
+        if (string.IsNullOrWhiteSpace(PipeName) || UserExecutionProtocol.WindowsPipeName(PipeName).Length > 128
             || FileAllowedRoots.Count == 0 || FileAllowedRoots.Any(root => string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root))
             || AllowedServiceIds.Count == 0 || AllowedServiceIds.Any(id => string.IsNullOrWhiteSpace(id) || id.Length > 256)
+            || UserExecutionTimeoutSeconds is < 1 or > 120
             || DeveloperUserSids is { Count: > DeveloperUserSidAllowList.MaximumEntries })
             throw new InvalidOperationException("Windows Helper console configuration is incomplete.");
         if (Convert.FromBase64String(SharedSecret).Length < 32)
@@ -86,5 +98,6 @@ public sealed record WindowsHelperConsoleConfiguration(string PipeName, string S
     }
 
     internal WindowsHelperPipeConfiguration ToPipeConfiguration(IReadOnlyList<string> authorizedClientSids)
-        => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds, DeveloperUserSids: authorizedClientSids);
+        => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds,
+            DeveloperUserSids: authorizedClientSids, UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds);
 }

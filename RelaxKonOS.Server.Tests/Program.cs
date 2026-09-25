@@ -1,3 +1,9 @@
+if (args.Length == 3 && args[0] == "--user-execution-copy-worker")
+{
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(args[1], args[2], overwrite: true);
+    return;
+}
+
 Batteries_V2.Init();
 
 var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewGuid():N}");
@@ -31,19 +37,34 @@ try
         await ApplicationDeploymentProgressVerification.RunAsync(root);
         return;
     }
+    if (args.Contains("--user-execution-only"))
+    {
+        ServerCoreChecks.VerifyUserExecutionContextContract();
+        await ServerCoreChecks.VerifyUserExecutionTransportLifecycleAsync(root);
+        ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
+        await ServerCoreChecks.VerifyUserExecutionFailsClosedAsync();
+        await ServerCoreChecks.VerifyWindowsUserExecutionTransportAsync();
+        Console.WriteLine("User-execution contract checks passed.");
+        return;
+    }
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
-    await AliasLoginVerification.RunAsync(root);
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
     var fileServicesOnly = args.Contains("--file-services-only", StringComparer.Ordinal);
+    if (fileOperationsOnly)
+    {
+        await FileOperationChecks.RunAsync(root);
+        return;
+    }
     if (fileServicesOnly)
     {
         ServerCoreChecks.VerifySmbProtocolAndElevationContract();
         await FileServiceChecks.RunAsync();
         return;
     }
+    await AliasLoginVerification.RunAsync(root);
     if (!fileOperationsOnly || settingsOnly) await SettingsSystemVerification.RunAsync(root);
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
     if (settingsOnly || fileOperationsOnly) return;
@@ -87,6 +108,11 @@ try
     await ServerCoreChecks.VerifyRegistryRuntimeCacheAsync(root);
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();
     ServerCoreChecks.VerifyFileElevationSessionScope(root);
+    ServerCoreChecks.VerifyUserExecutionContextContract();
+    await ServerCoreChecks.VerifyUserExecutionTransportLifecycleAsync(root);
+    ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
+    await ServerCoreChecks.VerifyUserExecutionFailsClosedAsync();
+    await ServerCoreChecks.VerifyWindowsUserExecutionTransportAsync();
     ServerCoreChecks.VerifyHostElevationCapabilityScope(root);
     ServerCoreChecks.VerifyAppPermissionEvaluator();
     Console.WriteLine("RelaxKonOS.Server backend verification passed.");

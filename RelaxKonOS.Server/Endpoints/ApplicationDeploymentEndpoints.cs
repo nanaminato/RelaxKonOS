@@ -5,6 +5,7 @@ using Microsoft.Net.Http.Headers;
 using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.HostMode;
+using RelaxKonOS.Server.Files;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -217,8 +218,17 @@ public static class ApplicationDeploymentEndpoints
             .DisableAntiforgery();
 
         group.MapPost(ApplicationDeploymentApiRoutes.FileReferencePattern,
-            (CreateDeploymentFileReferenceRequest request, HttpContext http, ApplicationDeploymentStagingStore staging) => Handle(() =>
-                Results.Ok(staging.Register(request.Path, Actor(http.User)))))
+            async (CreateDeploymentFileReferenceRequest request, HttpContext http, ApplicationDeploymentStagingStore staging, IFileService files) => await HandleAsync(async () =>
+            {
+                // Read the selected source under the authenticated OS user, then copy it into
+                // deployment-owned staging. Background Docker work never retains a handle to a
+                // user home or falls back to the Server service account.
+                var source = files.OpenRead(request.Path);
+                if (source is null) return Problem(ApplicationDeploymentProblemCodes.FileReferenceUnavailable, 404);
+                await using var stream = source.Value.Stream;
+                var staged = await staging.StageAsync(source.Value.FileName, stream, Actor(http.User), http.RequestAborted);
+                return Results.Ok(staged);
+            }))
             .RequireAuthorization(ManagePolicy);
 
         return app;

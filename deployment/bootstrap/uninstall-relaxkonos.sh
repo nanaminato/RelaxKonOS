@@ -54,7 +54,7 @@ systemctl disable --now relaxkonos-server.service relaxkonos-guardian.service 2>
 rm -f -- /etc/systemd/system/relaxkonos-server.service /etc/systemd/system/relaxkonos-guardian.service
 systemctl daemon-reload
 
-if [[ -f "$INSTALL_ROOT/server/RelaxKonOS.Server" || -f "$INSTALL_ROOT/guardian/RelaxKonOS.Guardian.Agent" || -f "$INSTALL_ROOT/privileged-helper/RelaxKonOS.PrivilegedHelper" ]]; then
+if [[ -f "$INSTALL_ROOT/runtime/server/RelaxKonOS.Server" && -f "$INSTALL_ROOT/runtime/guardian/RelaxKonOS.Guardian.Agent" && -f "$INSTALL_ROOT/runtime/privileged-helper/RelaxKonOS.PrivilegedHelper" ]]; then
   rm -rf -- "$INSTALL_ROOT"
 else
   echo "Refusing to remove an unrecognised installation directory: $INSTALL_ROOT" >&2

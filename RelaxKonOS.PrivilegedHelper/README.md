@@ -16,7 +16,7 @@ dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj
 sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER"
 ```
 
-该脚本会把完整的 Debug 输出复制到 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`，再只允许开发账户以 root 身份运行该精确的 apphost。选择 Server 的 `http-linux-privileged` 配置，它将 `PrivilegedHelper__HelperPath` 设为该副本、`PrivilegedHelper__SudoPath` 设为 `/usr/bin/sudo`。每次重新构建 Helper 后都要重新运行脚本。
+该脚本会把完整的 Debug 输出复制到 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`，再只允许开发账户以 root 身份运行该 apphost 的无参数协议、`--user-execution` 和 `--user-terminal` 三个精确入口。选择 Server 的 `http-linux-privileged` 配置，它将 `PrivilegedHelper__HelperPath` 设为该副本、`PrivilegedHelper__SudoPath` 设为 `/usr/bin/sudo`。每次重新构建 Helper 后都要重新运行脚本。
 
 Server 本身仍是非特权进程：sudo 会针对每个结构化请求启动一个 Helper 进程，且 Helper 只允许封闭操作集。绝不可让 sudoers 规则指向开发账户可写的 `bin/Debug` 可执行文件；这会赋予账户等同 root 的控制权。
 
@@ -35,6 +35,8 @@ Server 本身仍是非特权进程：sudo 会针对每个结构化请求启动�
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
   "allowConsoleDebug": true,
+  "enableWindowsUserExecution": false,
+  "userExecutionTimeoutSeconds": 25,
   "developerUserSids": ["S-1-5-21-1111111111-2222222222-3333333333-1005"]
 }
 ```
@@ -55,6 +57,8 @@ PrivilegedHelper__SharedSecret=<相同的 Base64 密钥>
 ```
 
 控制台宿主把管道访问权限授予"启动它的账户"，加上 `developerUserSids` 列出的身份（以及 SYSTEM 和 Administrators），使由该账户启动的 Server 可走生产 IPC 路径。Helper 需要提权，因此它常常以另一个账户运行（例如 Helper 以 Administrator 启动、Server 以普通开发账户运行）；此时必须在 `developerUserSids` 里点名 Server 的账户，否则该连接会在任何认证发生之前被内核拒绝（EPERM），而客户端只会看到"特权助手不可用"，看起来像密钥错误。启动日志会打印实际生效的客户端 SID 列表——连不上时先把 `whoami /user` 与那一行对比。仅在测试确实需要管理员权限的操作时，以提升权限运行 IDE。配置要求 `allowConsoleDebug: true`；生产 `helper.json` 不使用此架构，因而不会意外启用控制台模式（反过来，服务模式也会拒绝含 `developerUserSids` 的部署配置，避免它被静默忽略）。发布前应通过 LocalSystem 服务测试一次，以覆盖 Session 0、用户配置文件、DPAPI、网络凭据和映射驱动器差异。
+
+Windows 普通用户文件执行使用派生管道 `<pipeName>-user` 和一次性本地账户 S4U token；域账户、Git、Terminal 与 POSIX mode 均 fail closed。该路径只有 Server 与 LocalSystem Helper 两侧都显式设置 `EnableWindowsUserExecution=true` 时才启用，安装器目前固定写入 `false`。管理员控制台宿主不是 LocalSystem，即使为协议排障临时打开开关，也不会获得 S4U 执行能力。完成隔离 Windows Server 上的双用户 SID/ACL、token 释放、并发和服务重启验收前，不得在生产配置启用。
 
 ## Linux 发布安装
 

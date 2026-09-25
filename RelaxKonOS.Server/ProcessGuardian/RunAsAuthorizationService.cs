@@ -16,13 +16,13 @@ public interface IRunAsAuthorizationService
     RunAsAuthorizationResult Authorize(string requester, string? requestedRunAs, RunAsAdministratorApproval? approval);
 }
 
-public sealed record RunAsAuthorizationResult(bool Success, string ProblemCode, string? RunAs = null);
+public sealed record RunAsAuthorizationResult(bool Success, string ProblemCode, string? RunAs = null, string? StableIdentity = null);
 
 public sealed class RunAsAuthorizationService(IIdentityProvider identities, IServerModeResolver mode) : IRunAsAuthorizationService
 {
     public RunAsAuthorizationResult Authorize(string requester, string? requestedRunAs, RunAsAdministratorApproval? approval)
     {
-        var target = requestedRunAs?.Trim();
+        var target = string.IsNullOrWhiteSpace(requestedRunAs) ? requester.Trim() : requestedRunAs.Trim();
         if (string.IsNullOrWhiteSpace(requester) || string.IsNullOrWhiteSpace(target) || target.IndexOf('\0') >= 0)
             return new RunAsAuthorizationResult(false, "guardian.run_as_invalid_account");
 
@@ -36,27 +36,35 @@ public sealed class RunAsAuthorizationService(IIdentityProvider identities, ISer
         {
             // This resolves Linux users through NSS and validates malformed Windows identities.
             // The original normalized spelling remains the launch identity passed to the Agent.
-            identities.GetUserInfo(target);
+            var identity = identities.GetUserInfo(target);
+            if (string.IsNullOrWhiteSpace(identity.Uid))
+                return new RunAsAuthorizationResult(false, "guardian.run_as_invalid_account");
+
+            // Persist the provider's canonical launch name and immutable account identity. The
+            // Agent resolves this pair again immediately before every launch, so a later NSS/SAM
+            // name reassignment cannot make an existing workload run as a different account.
+            target = identity.Username;
+            var stableIdentity = identity.Uid;
+
+            // Every cross-account launch requires a fresh administrator confirmation. This
+            // deliberately includes a logged-in root/Administrator switching to another user.
+            if (SameAccount(requester, target))
+                return new RunAsAuthorizationResult(true, string.Empty, target, stableIdentity);
+
+            if (approval is null || string.IsNullOrWhiteSpace(approval.Username) || string.IsNullOrEmpty(approval.Password))
+                return new RunAsAuthorizationResult(false, "guardian.run_as_admin_authentication_required");
+
+            // Deliberately collapse bad passwords, missing accounts, and non-administrators to one
+            // result, so this endpoint cannot be used to enumerate administrator accounts.
+            var verified = identities.Verify(approval.Username, approval.Password);
+            if (!verified.Success || !IsHostAdministrator(approval.Username))
+                return new RunAsAuthorizationResult(false, "guardian.run_as_admin_authentication_failed");
+
+            return new RunAsAuthorizationResult(true, string.Empty, target, stableIdentity);
         }
         catch (ArgumentException) { return new RunAsAuthorizationResult(false, "guardian.run_as_invalid_account"); }
         catch (KeyNotFoundException) { return new RunAsAuthorizationResult(false, "guardian.run_as_invalid_account"); }
         catch (InvalidOperationException) { return new RunAsAuthorizationResult(false, "guardian.run_as_invalid_account"); }
-
-        // Every cross-account launch requires a fresh administrator confirmation. This
-        // deliberately includes a logged-in root/Administrator switching to another user.
-        if (SameAccount(requester, target))
-            return new RunAsAuthorizationResult(true, string.Empty, target);
-
-        if (approval is null || string.IsNullOrWhiteSpace(approval.Username) || string.IsNullOrEmpty(approval.Password))
-            return new RunAsAuthorizationResult(false, "guardian.run_as_admin_authentication_required");
-
-        // Deliberately collapse bad passwords, missing accounts, and non-administrators to one
-        // result, so this endpoint cannot be used to enumerate administrator accounts.
-        var verified = identities.Verify(approval.Username, approval.Password);
-        if (!verified.Success || !IsHostAdministrator(approval.Username))
-            return new RunAsAuthorizationResult(false, "guardian.run_as_admin_authentication_failed");
-
-        return new RunAsAuthorizationResult(true, string.Empty, target);
     }
 
     private static bool SameAccount(string left, string right) => OperatingSystem.IsWindows()

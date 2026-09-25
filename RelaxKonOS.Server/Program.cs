@@ -265,6 +265,8 @@ builder.Services.AddSingleton<AliasPasswordService>();
 builder.Services.AddSingleton<SessionValidityService>();
 builder.Services.AddSingleton<SessionValidityHubFilter>();
 builder.Services.AddScoped<CanonicalUserResolver>();
+builder.Services.AddScoped<RelaxKonOS.Server.UserExecution.IUserExecutionContextResolver,
+    RelaxKonOS.Server.UserExecution.UserExecutionContextResolver>();
 builder.Services.AddScoped<LoginAuthenticationService>();
 builder.Services.AddScoped<AliasCredentialService>();
 builder.Services.AddSingleton<AuthSessionStore>();
@@ -466,6 +468,16 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationT
         : OperatingSystem.IsWindows()
         ? ActivatorUtilities.CreateInstance<RelaxKonOS.Server.Privileged.WindowsNamedPipePrivilegedOperationTransport>(sp)
         : sp.GetRequiredService<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>());
+builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>();
+builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>();
+builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionTransport>(sp =>
+    serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User
+        ? new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport()
+        : OperatingSystem.IsLinux()
+            ? sp.GetRequiredService<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>()
+            : OperatingSystem.IsWindows() && privilegedHelperOptions.EnableWindowsUserExecution
+                ? sp.GetRequiredService<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>()
+                : new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport());
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedFileService, RelaxKonOS.Server.Privileged.PrivilegedFileService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IFileElevationSessionStore, RelaxKonOS.Server.Privileged.FileElevationSessionStore>();
@@ -683,9 +695,17 @@ builder.Services.AddHostedService<SettingsChangesBroadcastService>();
 
 // 文件管理：以宿主 OS 进程身份执行 IO，复用宿主用户/权限（不另建 ACL——见 project_memory 硬约束）。
 // LocalFileService 移植自 Jaya FileSystemService 的目录枚举逻辑并扩展为完整文件操作；平台感知（Windows 盘符 / Linux "/" 根）。
-builder.Services.AddSingleton<RelaxKonOS.Server.Files.IFileService, RelaxKonOS.Server.Files.LocalFileService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<RelaxKonOS.Server.Files.LocalFileService>();
+builder.Services.AddScoped<RelaxKonOS.Server.Files.IFileService, RelaxKonOS.Server.UserExecution.UserExecutionFileService>();
+// This is intentionally not a fallback to the Server account.  In this first delivery it
+// validates the closed User Mode channel and makes System Mode fail closed until the dedicated
+// user-execution Helper is installed.
+builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionService,
+    RelaxKonOS.Server.UserExecution.DirectUserExecutionService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.FileOperationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseFileReader>();
 builder.Services.AddSingleton<WorkspaceWallpaperStore>();
 // The service only depends on the singleton runtime registry, so the singleton lifetime lets
 // background notification delivery read the cache without creating a database scope.

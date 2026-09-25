@@ -22,7 +22,8 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 
 This copies the complete Debug output to
 `/usr/local/lib/relaxkonos/privileged-helper-development/RelaxKonOS.PrivilegedHelper`, then grants
-the development account permission to run only that exact apphost as root. Select the Server
+the development account permission to run only that apphost's no-argument protocol,
+`--user-execution`, and `--user-terminal` entry points as root. Select the Server
 `http-linux-privileged` profile, which sets `PrivilegedHelper__HelperPath` to this copy and
 `PrivilegedHelper__SudoPath` to `/usr/bin/sudo`. Re-run the script after each Helper rebuild.
 
@@ -49,6 +50,8 @@ new random Base64 secret (at least 32 bytes) and only disposable file roots:
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
   "allowConsoleDebug": true,
+  "enableWindowsUserExecution": false,
+  "userExecutionTimeoutSeconds": 25,
   "developerUserSids": ["S-1-5-21-1111111111-2222222222-3333333333-1005"]
 }
 ```
@@ -85,6 +88,8 @@ console mode accidentally (conversely, service mode rejects a deployed configura
 `developerUserSids` instead of silently ignoring it). Before release, test once through the
 LocalSystem service to cover Session 0, profile, DPAPI, network-credential and mapped-drive
 differences.
+
+Ordinary Windows file execution uses the derived `<pipeName>-user` endpoint and a fresh local-account S4U token. Domain accounts, Git, Terminal, and POSIX mode remain fail-closed. This path is enabled only when both the Server and the LocalSystem Helper explicitly set `EnableWindowsUserExecution=true`; the installer currently writes `false`. The elevated console host is not LocalSystem and therefore cannot acquire an S4U execution token even when its endpoint is enabled for protocol debugging. Do not enable the production path until the isolated Windows Server two-user SID/ACL, token-release, concurrency, and service-restart matrix has passed.
 
 ## Linux release installation
 

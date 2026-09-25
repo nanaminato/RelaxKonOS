@@ -164,6 +164,20 @@ vm.RenameDraft = "report.txt";
 Check(await vm.CommitRenameAsync() && vm.EditingEntry is null && fake.RenamedSource == "/a/note.txt"
     && fake.RenamedName == "report.txt" && vm.CutEntryPaths.SequenceEqual(["/a/report.txt"]),
     "Inline rename commits through the existing file API and updates a pending cut");
+await vm.NavigateToAsync("/a");
+renameEntry = vm.Entries.Single(e => e.Name == "note.txt");
+vm.SelectedEntry = renameEntry;
+vm.UpdatePickerSelection([renameEntry]);
+await vm.RenameCommand.ExecuteAsync(null);
+vm.RenameDraft = "pending.txt";
+fake.PendingRename = new TaskCompletionSource<FileSystemEntryDto>(TaskCreationOptions.RunContinuationsAsynchronously);
+var pendingRenameCommit = vm.CommitRenameAsync();
+Check(vm.IsRenameCommitInProgress && !await vm.CommitRenameAsync(),
+    "Inline rename exposes an in-progress commit so losing focus cannot start or reclaim a second edit");
+fake.PendingRename.SetResult(renameEntry with { Path = "/a/pending.txt", Name = "pending.txt" });
+Check(await pendingRenameCommit && !vm.IsRenameCommitInProgress && vm.EditingEntry is null,
+    "Inline rename clears its in-progress state after the request completes");
+fake.PendingRename = null;
 var windowsEntry = sortEntries[2] with { Path = @"C:\data\folder", Name = "folder" };
 Check(!vm.CanMoveEntryToDirectory(windowsEntry, @"c:\DATA\FOLDER\child"), "Drag validation rejects case-varied Windows descendants");
 vm.SelectedEntry = windowsEntry;
@@ -201,6 +215,7 @@ public class ExplorerFake : DispatchProxy
     public string? ProtectedDirectory { get; set; }
     public string? ElevatedDirectory { get; set; }
     public TaskCompletionSource<DirectoryDto>? Pending { get; set; }
+    public TaskCompletionSource<FileSystemEntryDto>? PendingRename { get; set; }
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         if (method!.Name == nameof(IExplorerClient.GetDirectoryAsync))
@@ -222,6 +237,7 @@ public class ExplorerFake : DispatchProxy
         {
             RenamedSource = (string)args![0]!;
             RenamedName = (string)args[1]!;
+            if (PendingRename is not null) return PendingRename.Task;
             var renamedPath = ExplorerPath.Combine(ExplorerBreadcrumb.ParentPath(RenamedSource)!, RenamedName);
             return Task.FromResult(new FileSystemEntryDto(renamedPath, RenamedName, 100, FileSystemEntryType.File,
                 null, null, null, false, false, null));

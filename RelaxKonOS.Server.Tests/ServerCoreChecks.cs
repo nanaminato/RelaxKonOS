@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Http;
+using RelaxKonOS.Server.Files;
+
 internal static class ServerCoreChecks
 {
 internal static void VerifyWorkspacePreferencesJsonContract()
@@ -66,6 +69,681 @@ internal static void VerifyFileElevationSessionScope(string root)
     var json = JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
     TestAssert.Assert(json.Contains("includeDescendants", StringComparison.Ordinal) && json.Contains("relatedPaths", StringComparison.Ordinal),
         "File elevation request lost its multi-directory grant contract.");
+}
+
+internal static void VerifyUserExecutionContextContract()
+{
+    var account = new PlatformUserInfo("1001", "nanami", RelaxKonOS.Protocol.Common.PlatformKind.Linux,
+        "Nanami", "/home/nanami");
+    var identities = new UserExecutionIdentityProvider(account);
+    var users = new InMemoryUserRepository();
+    var user = users.Add(new User
+    {
+        Id = Guid.NewGuid(), Username = "nanami", Platform = RelaxKonOS.Protocol.Common.PlatformKind.Linux,
+        PlatformIdentity = "1001", CreatedAt = DateTimeOffset.UtcNow,
+    });
+    var resolver = new UserExecutionContextResolver(users,
+        new CanonicalUserResolver(identities, users, new InMemoryAliasCredentialRepository(), new AuthSessionStore()),
+        new UserExecutionMode(ServerMode.System));
+    var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString())], "test"));
+    var context = resolver.Resolve(principal);
+    TestAssert.Assert(context.Identity.StableIdentity == "1001" && context.Identity.CanonicalAccount == "nanami"
+        && context.Identity.HomeDirectory == "/home/nanami", "User execution context is derived from the canonical server-side identity.");
+    TestAssert.Assert(!typeof(UserExecutionRequest).GetProperties().Select(x => x.Name).Intersect(
+        ["Password", "Token", "Jwt", "Executable", "Arguments", "Environment"], StringComparer.OrdinalIgnoreCase).Any(),
+        "The user-execution contract exposes no credential or generic-command fields.");
+    TestAssert.Assert(UserExecutionProtocol.MaximumRequestBytes > UserExecutionProtocol.MaximumFileContentBytes * 4L / 3
+        && UserExecutionProtocol.MaximumResponseBytes > UserExecutionProtocol.MaximumResultBytes * 4L / 3,
+        "User-execution envelope limits must accommodate their bounded base64 payloads.");
+    TestAssert.Assert(UserExecutionProtocol.IsEligibleLinuxUserId(1000)
+        && !UserExecutionProtocol.IsEligibleLinuxUserId(0)
+        && !UserExecutionProtocol.IsEligibleLinuxUserId(999)
+        && !UserExecutionProtocol.IsEligibleLinuxUserId(65534),
+        "Linux user execution did not reject root, system, or nobody identities.");
+    TestAssert.Assert(UserExecutionProtocol.WindowsPipeName("relaxkonos-privileged-helper")
+            == "relaxkonos-privileged-helper-user"
+        && UserExecutionProtocol.MaximumAuthenticatedPipeFrameBytes > UserExecutionProtocol.MaximumResponseBytes * 4L / 3,
+        "The Windows user-execution pipe is distinct and large enough for its authenticated envelope.");
+    TestAssert.Assert(!new PrivilegedHelperOptions().EnableWindowsUserExecution,
+        "Windows user execution must stay disabled until its target-host acceptance matrix passes.");
+
+    var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.FileListDirectory,
+        Path: "/home/nanami", OperationId: Guid.NewGuid());
+    TestAssert.Assert(UserExecutionRequestPolicy.IsValid(request, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(request with { FileName = "ignored.txt" }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(request with { Overwrite = true }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(request with { OperationId = Guid.Empty }, terminal: false),
+        "User-execution request policy accepted an unrelated field, overwrite flag, or empty operation id.");
+    var systemResult = new DirectUserExecutionService(new UserExecutionMode(ServerMode.System)).Validate(context, request);
+    TestAssert.Assert(!systemResult.Success && systemResult.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
+        "System Mode user execution fails closed until its dedicated Helper is available.");
+    var mismatched = new DirectUserExecutionService(new UserExecutionMode(ServerMode.System)).Validate(context,
+        request with { Identity = context.Identity with { StableIdentity = "1002" } });
+    TestAssert.Assert(!mismatched.Success && mismatched.ProblemCode == UserExecutionProblemCode.IdentityMismatch,
+        "User execution refuses a caller-substituted stable OS identity.");
+
+    using var terminalFrames = new MemoryStream();
+    UserTerminalStreamProtocol.WriteInput(terminalFrames, "hello"u8);
+    UserTerminalStreamProtocol.WriteResize(terminalFrames, 120, 40, 1440, 900);
+    UserTerminalStreamProtocol.WriteClose(terminalFrames);
+    terminalFrames.Position = 0;
+    var inputFrame = UserTerminalStreamProtocol.ReadAsync(terminalFrames).AsTask().GetAwaiter().GetResult();
+    var resizeFrame = UserTerminalStreamProtocol.ReadAsync(terminalFrames).AsTask().GetAwaiter().GetResult();
+    var closeFrame = UserTerminalStreamProtocol.ReadAsync(terminalFrames).AsTask().GetAwaiter().GetResult();
+    TestAssert.Assert(inputFrame is { Kind: UserTerminalFrameKind.Input, Input: not null }
+        && Encoding.UTF8.GetString(inputFrame.Input) == "hello", "Terminal input framing changed user bytes.");
+    TestAssert.Assert(resizeFrame is { Kind: UserTerminalFrameKind.Resize, Columns: 120, Rows: 40,
+            WidthPixels: 1440, HeightPixels: 900 }, "Terminal resize framing lost PTY dimensions.");
+    TestAssert.Assert(closeFrame?.Kind == UserTerminalFrameKind.Close,
+        "Terminal close framing did not preserve the closed control operation.");
+
+    TestAssert.Assert(UserExecutionGitPolicy.IsAllowed(["status", "--porcelain=v2"])
+        && UserExecutionGitPolicy.IsAllowed(["--literal-pathspecs", "add", "--", "file.txt"])
+        && UserExecutionGitPolicy.IsAllowed(["config", "--get", "branch.main.remote"]),
+        "Helper Git policy rejected a command used by the Server Git domain.");
+    string[] gitDomainCommands = ["add", "branch", "cat-file", "checkout", "cherry-pick", "commit", "diff",
+        "diff-tree", "fetch", "for-each-ref", "init", "log", "ls-files", "merge", "merge-base", "pull", "push", "rebase",
+        "remote", "reset", "restore", "revert", "rev-parse", "rm", "show", "show-ref", "status", "symbolic-ref", "update-ref"];
+    TestAssert.Assert(gitDomainCommands.All(command => UserExecutionGitPolicy.IsAllowed([command])),
+        "Helper Git policy is missing a Server Git domain subcommand.");
+    TestAssert.Assert(!UserExecutionGitPolicy.IsAllowed(["-c", "alias.run=!sh", "run"])
+        && !UserExecutionGitPolicy.IsAllowed(["config", "core.sshCommand", "sh"])
+        && !UserExecutionGitPolicy.IsAllowed(["fetch", "--upload-pack=/tmp/run", "origin"])
+        && !UserExecutionGitPolicy.IsAllowed(["diff", "--ext-diff"])
+        && !UserExecutionGitPolicy.IsAllowed(["remote", "add", "origin", "ext::sh -c run"]),
+        "Helper Git policy accepted configuration or options that can name an external command.");
+}
+
+/// <summary>
+/// The whole request-scoped file API must fail closed while the effective-user channel has no
+/// Helper: no operation may fall back to the Server service account. Windows ships with the
+/// impersonation capability gate closed, so this is the production path on that host.
+/// </summary>
+internal static async Task VerifyUserExecutionFailsClosedAsync()
+{
+    var platform = OperatingSystem.IsWindows() ? PlatformKind.Windows : PlatformKind.Linux;
+    var account = platform == PlatformKind.Windows
+        ? new PlatformUserInfo("S-1-5-21-100-100-100-1001", Environment.MachineName + "\\nanami", platform, "Nanami", @"C:\Users\nanami")
+        : new PlatformUserInfo("1001", "nanami", platform, "Nanami", "/home/nanami");
+    var identities = new UserExecutionIdentityProvider(account);
+    var users = new InMemoryUserRepository();
+    var user = users.Add(new User
+    {
+        Id = Guid.NewGuid(), Username = account.Username, Platform = platform,
+        PlatformIdentity = account.Uid, CreatedAt = DateTimeOffset.UtcNow,
+    });
+    var mode = new UserExecutionMode(ServerMode.System);
+    var resolver = new UserExecutionContextResolver(users,
+        new CanonicalUserResolver(identities, users, new InMemoryAliasCredentialRepository(), new AuthSessionStore()), mode);
+    var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString())], "test"));
+    var files = new UserExecutionFileService(new LocalFileService(mode), resolver,
+        new DisabledUserExecutionTransport(), mode,
+        new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } });
+
+    var home = account.HomeDirectory!;
+    (string Name, Func<object?> Invoke)[] operations =
+    [
+        ("listing", () => files.GetDirectory(home)),
+        ("special locations", () => files.GetSpecialLocations()),
+        ("metadata", () => files.GetInfo(home)),
+        ("read", () => files.OpenRead(Path.Combine(home, "file.txt"))),
+        ("create directory", () => { files.CreateDirectory(Path.Combine(home, "new")); return null; }),
+        ("delete", () => { files.Delete(Path.Combine(home, "file.txt")); return null; }),
+    ];
+    var accepted = new List<string>();
+    foreach (var operation in operations)
+    {
+        try { operation.Invoke(); accepted.Add(operation.Name); }
+        catch (InvalidOperationException) { }
+    }
+    TestAssert.Assert(accepted.Count == 0,
+        "Every file operation must fail closed while the effective-user channel has no Helper, but these were served: "
+        + string.Join(", ", accepted));
+
+    var disabled = await new DisabledUserExecutionTransport().ExecuteAsync(new UserExecutionRequest(
+        new UserExecutionIdentity(platform, account.Uid, account.Username, home),
+        UserExecutionOperationKind.FileListDirectory, Path: home, OperationId: Guid.NewGuid()));
+    TestAssert.Assert(!disabled.Success && disabled.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
+        "A disabled user-execution channel must report HelperUnavailable instead of succeeding.");
+}
+
+/// <summary>
+/// Windows ships a dedicated, ACL-restricted user-execution pipe that must stay separate from the
+/// administrator pipe and refuse to run when the Helper, the pipe name or the machine secret is
+/// unusable. None of these paths may reach the privileged channel.
+/// </summary>
+internal static async Task VerifyWindowsUserExecutionTransportAsync()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    var pipeName = "relaxkonos-user-execution-test-" + Guid.NewGuid().ToString("N");
+    var secret = Convert.ToBase64String(new byte[32]);
+    var identity = new UserExecutionIdentity(PlatformKind.Windows, "S-1-5-21-100-100-100-1001",
+        Environment.MachineName + "\\nanami", @"C:\Users\nanami");
+    var request = new UserExecutionRequest(identity, UserExecutionOperationKind.FileListDirectory,
+        Path: identity.HomeDirectory, OperationId: Guid.NewGuid());
+
+    var missingHelper = await ExecuteAsync(new PrivilegedHelperOptions
+    { PipeName = pipeName, SharedSecret = secret, TimeoutSeconds = 2 }, request);
+    TestAssert.Assert(!missingHelper.Success
+        && missingHelper.ProblemCode is UserExecutionProblemCode.HelperUnavailable or UserExecutionProblemCode.TimedOut,
+        $"A missing Windows user-execution Helper must fail closed on the user pipe; got {missingHelper.ProblemCode}.");
+
+    var unusableSecret = await ExecuteAsync(new PrivilegedHelperOptions
+    { PipeName = pipeName, SharedSecret = Convert.ToBase64String(new byte[8]), TimeoutSeconds = 2 },
+        request with { OperationId = Guid.NewGuid() });
+    TestAssert.Assert(!unusableSecret.Success && unusableSecret.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
+        "An unusable machine secret must fail closed before the Server opens a user-execution pipe.");
+
+    var unconfiguredPipe = await ExecuteAsync(new PrivilegedHelperOptions
+    { PipeName = " ", SharedSecret = secret, TimeoutSeconds = 2 }, request with { OperationId = Guid.NewGuid() });
+    TestAssert.Assert(!unconfiguredPipe.Success && unconfiguredPipe.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
+        "An unconfigured pipe name must fail closed instead of probing another pipe.");
+
+    static Task<UserExecutionResult> ExecuteAsync(PrivilegedHelperOptions options, UserExecutionRequest request)
+        => new WindowsNamedPipeUserExecutionTransport(options,
+            NullLogger<WindowsNamedPipeUserExecutionTransport>.Instance).ExecuteAsync(request);
+}
+
+internal static async Task VerifyUserExecutionTransportLifecycleAsync(string root)
+{
+    if (!OperatingSystem.IsLinux()) return;
+    var fakeSudo = Path.Combine(root, "fake-user-execution-sudo");
+    var fakeHelper = Path.Combine(root, "fake-user-execution-helper");
+    await File.WriteAllTextAsync(fakeSudo, "#!/bin/sh\nexec /bin/sleep 30\n");
+    await File.WriteAllTextAsync(fakeHelper, "placeholder");
+    File.SetUnixFileMode(fakeSudo, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    var identity = new UserExecutionIdentity(PlatformKind.Linux, "1001", "nanami", "/home/nanami");
+    var request = new UserExecutionRequest(identity, UserExecutionOperationKind.FileGetSpecialLocations,
+        OperationId: Guid.NewGuid());
+
+    var cancelledTransport = new LinuxUserExecutionTransport(new PrivilegedHelperOptions
+    {
+        SudoPath = fakeSudo,
+        HelperPath = fakeHelper,
+        TimeoutSeconds = 30,
+    }, NullLogger<LinuxUserExecutionTransport>.Instance);
+    using (var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+    {
+        var cancelled = false;
+        try { await cancelledTransport.ExecuteAsync(request, cancellation.Token); }
+        catch (OperationCanceledException) { cancelled = true; }
+        TestAssert.Assert(cancelled, "User-execution cancellation did not stop and surface the cancelled Helper request.");
+    }
+
+    var timeoutTransport = new LinuxUserExecutionTransport(new PrivilegedHelperOptions
+    {
+        SudoPath = fakeSudo,
+        HelperPath = fakeHelper,
+        TimeoutSeconds = 1,
+    }, NullLogger<LinuxUserExecutionTransport>.Instance);
+    var timedOut = await timeoutTransport.ExecuteAsync(request with { OperationId = Guid.NewGuid() });
+    TestAssert.Assert(!timedOut.Success && timedOut.ProblemCode == UserExecutionProblemCode.TimedOut,
+        "User-execution timeout did not terminate the Helper with the stable TimedOut result.");
+}
+
+internal static void VerifyLinuxUserFileOperationCommit(string root)
+{
+    if (!OperatingSystem.IsLinux()) return;
+    var operationRoot = Path.Combine(root, "linux-user-file-operations");
+    Directory.CreateDirectory(operationRoot);
+
+    var sourceFile = Path.Combine(operationRoot, "source.txt");
+    var targetFile = Path.Combine(operationRoot, "target.txt");
+    File.WriteAllText(sourceFile, "new");
+    File.WriteAllText(targetFile, "old");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(sourceFile, targetFile, overwrite: true);
+    TestAssert.Assert(File.ReadAllText(targetFile) == "new" && File.Exists(sourceFile),
+        "Linux user file copy did not atomically replace the destination while retaining its source.");
+
+    var sourceDirectory = Path.Combine(operationRoot, "source-directory");
+    var targetDirectory = Path.Combine(operationRoot, "target-directory");
+    Directory.CreateDirectory(sourceDirectory);
+    Directory.CreateDirectory(targetDirectory);
+    File.WriteAllText(Path.Combine(sourceDirectory, "new.txt"), "new");
+    File.WriteAllText(Path.Combine(targetDirectory, "old.txt"), "old");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Move(sourceDirectory, targetDirectory, overwrite: true);
+    TestAssert.Assert(!Directory.Exists(sourceDirectory)
+        && File.ReadAllText(Path.Combine(targetDirectory, "new.txt")) == "new"
+        && !File.Exists(Path.Combine(targetDirectory, "old.txt")),
+        "Linux user directory move did not replace the destination only after staging completed.");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Move(targetDirectory, targetDirectory, overwrite: true);
+    TestAssert.Assert(File.Exists(Path.Combine(targetDirectory, "new.txt")),
+        "A same-path Linux user move removed its own destination.");
+    var descendantRejected = false;
+    try
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(targetDirectory,
+            Path.Combine(targetDirectory, "nested-copy"), overwrite: false);
+    }
+    catch (ArgumentException) { descendantRejected = true; }
+    TestAssert.Assert(descendantRejected, "Linux user directory copy accepted its own descendant as the destination.");
+
+    var externalDirectory = Path.Combine(operationRoot, "external-directory");
+    var linkedSource = Path.Combine(operationRoot, "linked-source");
+    var linkedTarget = Path.Combine(operationRoot, "linked-target");
+    Directory.CreateDirectory(externalDirectory);
+    Directory.CreateDirectory(linkedSource);
+    File.WriteAllText(Path.Combine(externalDirectory, "outside.txt"), "outside");
+    Directory.CreateSymbolicLink(Path.Combine(linkedSource, "external-link"), externalDirectory);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(linkedSource, linkedTarget, overwrite: false);
+    var copiedLink = new DirectoryInfo(Path.Combine(linkedTarget, "external-link"));
+    TestAssert.Assert(copiedLink.LinkTarget == externalDirectory
+        && copiedLink.Attributes.HasFlag(FileAttributes.ReparsePoint),
+        "Linux user directory copy traversed a symbolic link instead of copying the link itself.");
+    TestAssert.Assert(!Directory.EnumerateFileSystemEntries(operationRoot, ".relaxkonos-*", SearchOption.TopDirectoryOnly).Any(),
+        "Linux user file operations left a staging or backup artifact after a successful commit.");
+
+    var renameSource = Path.Combine(operationRoot, "rename-source.txt");
+    var renameTarget = Path.Combine(operationRoot, "rename-target.txt");
+    File.WriteAllText(renameSource, "rename");
+    TestAssert.Assert(!RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Rename(renameSource,
+            Path.GetFileName(renameTarget))
+        && !File.Exists(renameSource) && File.ReadAllText(renameTarget) == "rename",
+        "Linux user file rename did not operate relative to its opened parent directory.");
+    var overwriteRenameRejected = false;
+    File.WriteAllText(renameSource, "replacement");
+    try
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Rename(renameSource,
+            Path.GetFileName(renameTarget));
+    }
+    catch (IOException) { overwriteRenameRejected = true; }
+    TestAssert.Assert(overwriteRenameRejected && File.ReadAllText(renameTarget) == "rename",
+        "Linux user file rename replaced an existing destination.");
+
+    var deleteExternal = Path.Combine(operationRoot, "delete-external");
+    var deleteTree = Path.Combine(operationRoot, "delete-tree");
+    Directory.CreateDirectory(deleteExternal);
+    Directory.CreateDirectory(deleteTree);
+    File.WriteAllText(Path.Combine(deleteExternal, "keep.txt"), "keep");
+    Directory.CreateSymbolicLink(Path.Combine(deleteTree, "external-link"), deleteExternal);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Delete(deleteTree);
+    TestAssert.Assert(!Directory.Exists(deleteTree)
+        && File.ReadAllText(Path.Combine(deleteExternal, "keep.txt")) == "keep",
+        "Descriptor-relative recursive delete followed a symbolic link outside its tree.");
+
+    var readParent = Path.Combine(operationRoot, "read-parent");
+    var movedReadParent = Path.Combine(operationRoot, "read-parent-moved");
+    var readPath = Path.Combine(readParent, "value.txt");
+    Directory.CreateDirectory(readParent);
+    File.WriteAllText(readPath, "original-read");
+    using (var openedRead = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.OpenRead(readPath))
+    {
+        Directory.Move(readParent, movedReadParent);
+        Directory.CreateDirectory(readParent);
+        File.WriteAllText(readPath, "replacement-read");
+        using var reader = new StreamReader(openedRead, Encoding.UTF8);
+        TestAssert.Assert(reader.ReadToEnd() == "original-read",
+            "An opened user-execution read followed a replaced lexical parent path.");
+    }
+
+    var createdRoot = Path.Combine(operationRoot, "descriptor-created");
+    var createdTarget = Path.Combine(createdRoot, "one", "two", "three");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateDirectory(createdTarget);
+    TestAssert.Assert(Directory.Exists(createdTarget),
+        "Descriptor-relative recursive directory creation did not create the requested tree.");
+    var createLinkTarget = Path.Combine(operationRoot, "create-link-target");
+    var createLink = Path.Combine(operationRoot, "create-link");
+    Directory.CreateDirectory(createLinkTarget);
+    Directory.CreateSymbolicLink(createLink, createLinkTarget);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateDirectory(
+        Path.Combine(createLink, "nested"));
+    TestAssert.Assert(Directory.Exists(Path.Combine(createLinkTarget, "nested")),
+        "Descriptor-relative directory creation did not preserve existing symlink semantics.");
+
+    var modeTarget = Path.Combine(operationRoot, "mode-target.txt");
+    var modeLink = Path.Combine(operationRoot, "mode-link.txt");
+    File.WriteAllText(modeTarget, "mode");
+    File.CreateSymbolicLink(modeLink, modeTarget);
+    File.SetUnixFileMode(modeTarget, UnixFileMode.None);
+    var modeMetadata = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixFileMode(modeLink,
+        UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    TestAssert.Assert(File.GetUnixFileMode(modeTarget)
+            == (UnixFileMode.UserRead | UnixFileMode.UserWrite)
+        && modeMetadata.Attributes.HasFlag(FileAttributes.ReparsePoint)
+        && modeMetadata.UnixMode == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+        "Descriptor-anchored POSIX mode update did not bind and report the symlink target correctly.");
+    var targetMetadata = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.GetMetadata(modeLink);
+    TestAssert.Assert(targetMetadata is { IsDirectory: false }
+        && targetMetadata.Attributes.HasFlag(FileAttributes.ReparsePoint)
+        && targetMetadata.Size == 4,
+        "Descriptor-relative metadata did not preserve the user-visible symlink target semantics.");
+
+    var atomicWrite = Path.Combine(operationRoot, "atomic-write.txt");
+    File.WriteAllText(atomicWrite, "old-content");
+    File.SetUnixFileMode(atomicWrite, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.WriteAllBytes(atomicWrite, Encoding.UTF8.GetBytes("new-content"));
+    TestAssert.Assert(File.ReadAllText(atomicWrite) == "new-content"
+        && File.GetUnixFileMode(atomicWrite) == (UnixFileMode.UserRead | UnixFileMode.UserWrite),
+        "Linux user file write did not atomically replace content while preserving the existing mode.");
+
+    // Simulate a Helper killed after moving the old destination into its transaction directory.
+    // A later directory listing/new operation must restore the old destination before discarding
+    // the incomplete staged replacement.
+    var interruptedDestination = Path.Combine(operationRoot, "interrupted-write.txt");
+    var interruptedTransaction = TransactionRoot(operationRoot, int.MaxValue, 1);
+    Directory.CreateDirectory(interruptedTransaction);
+    File.WriteAllText(Path.Combine(interruptedTransaction, "backup"), "old");
+    File.WriteAllText(Path.Combine(interruptedTransaction, "staged"), "partial-new");
+    WriteTransactionManifest(interruptedTransaction, interruptedDestination, int.MaxValue, 1);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(interruptedDestination) == "old" && !Directory.Exists(interruptedTransaction),
+        "Abandoned Linux user file transaction did not restore its pre-commit destination.");
+
+    // If the final destination is already present, the rename committed before termination and
+    // recovery must keep it while removing only the obsolete backup.
+    var committedDestination = Path.Combine(operationRoot, "committed-write.txt");
+    var committedTransaction = TransactionRoot(operationRoot, int.MaxValue, 1);
+    File.WriteAllText(committedDestination, "new");
+    Directory.CreateDirectory(committedTransaction);
+    File.WriteAllText(Path.Combine(committedTransaction, "backup"), "old");
+    WriteTransactionManifest(committedTransaction, committedDestination, int.MaxValue, 1);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(committedDestination) == "new" && !Directory.Exists(committedTransaction),
+        "Abandoned Linux user file transaction rolled back an already committed destination.");
+
+    var recoveryParent = Path.Combine(operationRoot, "recovery-parent");
+    var movedRecoveryParent = Path.Combine(operationRoot, "recovery-parent-moved");
+    Directory.CreateDirectory(recoveryParent);
+    var recoveryDestination = Path.Combine(recoveryParent, "recovered.txt");
+    var movedRecoveryDestination = Path.Combine(movedRecoveryParent, "recovered.txt");
+    var anchoredRecoveryTransaction = TransactionRoot(recoveryParent, int.MaxValue, 1);
+    Directory.CreateDirectory(anchoredRecoveryTransaction);
+    File.WriteAllText(Path.Combine(anchoredRecoveryTransaction, "backup"), "anchored-old");
+    WriteTransactionManifest(anchoredRecoveryTransaction, recoveryDestination, int.MaxValue, 1);
+    Directory.Move(recoveryParent, movedRecoveryParent);
+    Directory.CreateDirectory(recoveryParent);
+    File.WriteAllText(Path.Combine(recoveryParent, "replacement.txt"), "replacement");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(movedRecoveryParent);
+    TestAssert.Assert(File.ReadAllText(movedRecoveryDestination) == "anchored-old"
+        && File.ReadAllText(Path.Combine(recoveryParent, "replacement.txt")) == "replacement"
+        && !Directory.Exists(Path.Combine(movedRecoveryParent,
+            Path.GetFileName(anchoredRecoveryTransaction))),
+        "Transaction recovery did not remain valid and anchored after its parent directory was renamed.");
+
+    var legacyTransaction = TransactionRoot(operationRoot, int.MaxValue, 1);
+    Directory.CreateDirectory(legacyTransaction);
+    File.WriteAllText(Path.Combine(legacyTransaction, "staged"), "keep-unrecognized");
+    File.WriteAllText(Path.Combine(legacyTransaction, "manifest"), string.Join('\n',
+        "1", int.MaxValue.ToString(), "1",
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.Combine(operationRoot, "legacy.txt"))),
+        string.Empty));
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(Path.Combine(legacyTransaction, "staged")) == "keep-unrecognized",
+        "User-execution recovery accepted or deleted a legacy transaction format.");
+    Directory.Delete(legacyTransaction, recursive: true);
+
+    // Recovery must not race a second live one-shot Helper operating in the same directory.
+    var liveDestination = Path.Combine(operationRoot, "live-write.txt");
+    using (var current = System.Diagnostics.Process.GetCurrentProcess())
+    {
+        var liveTransaction = TransactionRoot(operationRoot, current.Id,
+            current.StartTime.ToUniversalTime().Ticks);
+        Directory.CreateDirectory(liveTransaction);
+        WriteTransactionManifest(liveTransaction, liveDestination, current.Id,
+            current.StartTime.ToUniversalTime().Ticks);
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+        TestAssert.Assert(Directory.Exists(liveTransaction),
+            "Linux user file recovery removed a live concurrent transaction.");
+        Directory.Delete(liveTransaction, recursive: true);
+    }
+
+    var incompleteTransaction = Path.Combine(operationRoot,
+        $".relaxkonos-stage-v1-{int.MaxValue}-1-{Guid.NewGuid():N}.tmp");
+    Directory.CreateDirectory(incompleteTransaction);
+    File.WriteAllText(Path.Combine(incompleteTransaction, "manifest.pending"), "partial");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(!Directory.Exists(incompleteTransaction),
+        "Linux user file recovery left a verifiably abandoned manifest initialization behind.");
+
+    var unrelatedHiddenDirectory = Path.Combine(operationRoot, ".relaxkonos-stage-v1-untrusted.tmp");
+    Directory.CreateDirectory(unrelatedHiddenDirectory);
+    File.WriteAllText(Path.Combine(unrelatedHiddenDirectory, "user-data.txt"), "keep");
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(Path.Combine(unrelatedHiddenDirectory, "user-data.txt")) == "keep",
+        "Linux user file recovery removed an unverified lookalike directory.");
+    Directory.Delete(unrelatedHiddenDirectory, recursive: true);
+
+    // Exercise an actual forced process termination. The FIFO makes the child block only after
+    // its durable manifest and staging directory exist, so the parent can deterministically kill
+    // it at the same boundary used by a timed-out one-shot Helper.
+    var killedSource = Path.Combine(operationRoot, "killed-source");
+    var killedDestination = Path.Combine(operationRoot, "killed-destination");
+    Directory.CreateDirectory(killedSource);
+    Directory.CreateDirectory(killedDestination);
+    File.WriteAllText(Path.Combine(killedDestination, "old.txt"), "old");
+    var fifo = Path.Combine(killedSource, "blocked-input");
+    if (MkFifo(fifo, Convert.ToUInt32("600", 8)) != 0)
+        throw new IOException($"Could not create the user-execution test FIFO (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}).");
+    using (var child = StartCopyWorker(killedSource, killedDestination))
+    {
+        try
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            string? transaction = null;
+            while (DateTime.UtcNow < deadline && !child.HasExited)
+            {
+                transaction = Directory.EnumerateDirectories(operationRoot, ".relaxkonos-stage-v1-*.tmp",
+                    SearchOption.TopDirectoryOnly).FirstOrDefault(path => Directory.Exists(Path.Combine(path, "staged")));
+                if (transaction is not null) break;
+                Thread.Sleep(5);
+            }
+            TestAssert.Assert(transaction is not null && !child.HasExited,
+                "The forced-termination worker did not reach its staged copy boundary.");
+            TestAssert.Assert(File.GetUnixFileMode(transaction!)
+                == (UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute),
+                "The user-execution transaction directory was not restricted to its target OS user.");
+            child.Kill(entireProcessTree: true);
+            child.WaitForExit();
+            TestAssert.Assert(Directory.Exists(transaction!),
+                "The forced-termination worker unexpectedly removed its interrupted transaction.");
+        }
+        finally
+        {
+            TerminateWorker(child, resume: false);
+        }
+    }
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(File.ReadAllText(Path.Combine(killedDestination, "old.txt")) == "old"
+        && !Directory.EnumerateDirectories(operationRoot, ".relaxkonos-stage-v1-*.tmp",
+            SearchOption.TopDirectoryOnly).Any(),
+        "A real forced process termination was not recovered without changing the old destination.");
+
+    // Verify the commit remains attached to the parent directory opened at transaction start.
+    // Replacing the lexical parent path while the copy is blocked must not redirect the rename.
+    var anchoredSource = Path.Combine(operationRoot, "anchored-source");
+    var anchoredParent = Path.Combine(operationRoot, "anchored-parent");
+    var movedAnchoredParent = Path.Combine(operationRoot, "anchored-parent-moved");
+    var anchoredDestination = Path.Combine(anchoredParent, "destination");
+    Directory.CreateDirectory(anchoredSource);
+    Directory.CreateDirectory(anchoredDestination);
+    File.WriteAllText(Path.Combine(anchoredDestination, "old.txt"), "old");
+    for (var index = 0; index < 2_000; index++)
+        File.WriteAllText(Path.Combine(anchoredSource, $"payload-{index:D4}.txt"), index.ToString());
+    using (var child = StartCopyWorker(anchoredSource, anchoredDestination))
+    {
+        var stopped = false;
+        try
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            string? transaction = null;
+            while (DateTime.UtcNow < deadline && !child.HasExited)
+            {
+                transaction = Directory.EnumerateDirectories(anchoredParent, ".relaxkonos-stage-v1-*.tmp",
+                    SearchOption.TopDirectoryOnly).FirstOrDefault(path => Directory.Exists(Path.Combine(path, "staged")));
+                if (transaction is not null) break;
+                Thread.Sleep(5);
+            }
+            TestAssert.Assert(transaction is not null && !child.HasExited,
+                "The anchored-commit worker did not reach its staged copy boundary.");
+            TestAssert.Assert(Kill(child.Id, 19) == 0,
+                "The anchored-commit worker could not be suspended before its commit.");
+            stopped = true;
+            var stopDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (DateTime.UtcNow < stopDeadline && !IsStopped(child.Id)) Thread.Sleep(1);
+            TestAssert.Assert(IsStopped(child.Id) && Directory.Exists(transaction)
+                && File.Exists(Path.Combine(anchoredDestination, "old.txt")),
+                "The anchored-commit worker was not suspended before replacing its destination.");
+            Directory.Move(anchoredParent, movedAnchoredParent);
+            Directory.CreateDirectory(anchoredDestination);
+            File.WriteAllText(Path.Combine(anchoredDestination, "replacement.txt"), "replacement");
+            TestAssert.Assert(Kill(child.Id, 18) == 0,
+                "The anchored-commit worker could not be resumed.");
+            stopped = false;
+            var exited = child.WaitForExit(10_000);
+            var diagnostics = exited ? child.StandardError.ReadToEnd() : "worker timeout";
+            TestAssert.Assert(exited && child.ExitCode == 0,
+                $"The anchored-commit worker did not complete successfully: {diagnostics}");
+        }
+        finally
+        {
+            TerminateWorker(child, stopped);
+        }
+    }
+    TestAssert.Assert(File.ReadAllText(Path.Combine(anchoredDestination, "replacement.txt")) == "replacement"
+        && !File.Exists(Path.Combine(anchoredDestination, "payload-0000.txt"))
+        && File.ReadAllText(Path.Combine(movedAnchoredParent, "destination", "payload-0000.txt")) == "0"
+        && File.ReadAllText(Path.Combine(movedAnchoredParent, "destination", "payload-1999.txt")) == "1999"
+        && !File.Exists(Path.Combine(movedAnchoredParent, "destination", "old.txt")),
+        "A parent path replacement redirected the user-execution transaction commit.");
+
+    // Keep the source tree open across a lexical parent replacement. The FIFO blocks the copy
+    // after the source directory descriptor has been acquired; after the parent is moved, the
+    // worker must continue reading the original tree instead of the replacement path.
+    var sourceAnchorParent = Path.Combine(operationRoot, "source-anchor-parent");
+    var movedSourceAnchorParent = Path.Combine(operationRoot, "source-anchor-parent-moved");
+    var sourceAnchor = Path.Combine(sourceAnchorParent, "source");
+    var sourceAnchorDestination = Path.Combine(operationRoot, "source-anchor-destination");
+    Directory.CreateDirectory(sourceAnchor);
+    File.WriteAllText(Path.Combine(sourceAnchor, "payload.txt"), "original");
+    var sourceAnchorFifo = Path.Combine(sourceAnchor, "000-blocked-input");
+    if (MkFifo(sourceAnchorFifo, Convert.ToUInt32("600", 8)) != 0)
+        throw new IOException($"Could not create the source-anchor test FIFO (errno {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}).");
+    using (var child = StartCopyWorker(sourceAnchor, sourceAnchorDestination))
+    {
+        try
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (DateTime.UtcNow < deadline && !child.HasExited
+                && !Directory.EnumerateDirectories(operationRoot, ".relaxkonos-stage-v1-*.tmp",
+                    SearchOption.TopDirectoryOnly).Any(path => Directory.Exists(Path.Combine(path, "staged"))))
+                Thread.Sleep(5);
+            TestAssert.Assert(!child.HasExited,
+                "The source-anchor worker exited before its source parent could be replaced.");
+            Directory.Move(sourceAnchorParent, movedSourceAnchorParent);
+            Directory.CreateDirectory(sourceAnchor);
+            File.WriteAllText(Path.Combine(sourceAnchor, "payload.txt"), "replacement");
+            using (var writer = new FileStream(Path.Combine(movedSourceAnchorParent, "source",
+                       "000-blocked-input"), FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+                writer.WriteByte(1);
+            var exited = child.WaitForExit(10_000);
+            var diagnostics = exited ? child.StandardError.ReadToEnd() : "worker timeout";
+            TestAssert.Assert(exited && child.ExitCode == 0,
+                $"The source-anchor worker did not complete successfully: {diagnostics}");
+        }
+        finally
+        {
+            TerminateWorker(child, resume: false);
+        }
+    }
+    TestAssert.Assert(File.ReadAllText(Path.Combine(sourceAnchorDestination, "payload.txt")) == "original"
+        && File.ReadAllText(Path.Combine(sourceAnchor, "payload.txt")) == "replacement",
+        "A source parent path replacement redirected descriptor-anchored recursive copy.");
+
+    TestAssert.Assert(!Directory.EnumerateFileSystemEntries(operationRoot, ".relaxkonos-*", SearchOption.TopDirectoryOnly).Any(),
+        "Linux user file write or recovery left a staging artifact behind.");
+
+    if (Environment.GetEnvironmentVariable("RELAXKONOS_USER_EXECUTION_SECONDARY_ROOT") is { Length: > 0 } secondaryRoot)
+    {
+        var secondary = Path.Combine(secondaryRoot, "user-execution-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(secondary);
+        try
+        {
+            var crossSource = Path.Combine(operationRoot, "cross-source.txt");
+            var crossTarget = Path.Combine(secondary, "cross-target.txt");
+            File.WriteAllText(crossSource, "cross-filesystem");
+            RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Move(crossSource, crossTarget, overwrite: false);
+            TestAssert.Assert(!File.Exists(crossSource) && File.ReadAllText(crossTarget) == "cross-filesystem",
+                "Linux user file move did not complete its staged cross-filesystem fallback.");
+        }
+        finally { Directory.Delete(secondary, recursive: true); }
+    }
+
+    static void WriteTransactionManifest(string transactionRoot, string destination, int processId,
+        long processStartUtcTicks)
+    {
+        File.WriteAllText(Path.Combine(transactionRoot, "manifest"), string.Join('\n',
+            "2", processId.ToString(), processStartUtcTicks.ToString(),
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFileName(destination))), string.Empty));
+    }
+
+    static string TransactionRoot(string parent, int processId, long processStartUtcTicks)
+        => Path.Combine(parent,
+            $".relaxkonos-stage-v1-{processId}-{processStartUtcTicks}-{Guid.NewGuid():N}.tmp");
+
+    static System.Diagnostics.Process StartCopyWorker(string source, string destination)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("dotnet")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        start.ArgumentList.Add(typeof(ServerCoreChecks).Assembly.Location);
+        start.ArgumentList.Add("--user-execution-copy-worker");
+        start.ArgumentList.Add(source);
+        start.ArgumentList.Add(destination);
+        return System.Diagnostics.Process.Start(start)
+            ?? throw new InvalidOperationException("Could not start the user-execution test worker.");
+    }
+
+    static bool IsStopped(int processId)
+    {
+        try
+        {
+            return File.ReadLines($"/proc/{processId}/status")
+                .Any(line => line.StartsWith("State:", StringComparison.Ordinal)
+                    && line.Contains("T (stopped)", StringComparison.Ordinal));
+        }
+        catch (IOException) { return false; }
+    }
+
+    static void TerminateWorker(System.Diagnostics.Process child, bool resume)
+    {
+        try
+        {
+            if (child.HasExited) return;
+            if (resume) _ = Kill(child.Id, 18);
+            child.Kill(entireProcessTree: true);
+            child.WaitForExit();
+        }
+        catch { }
+    }
+}
+
+[System.Runtime.InteropServices.DllImport("libc.so.6", EntryPoint = "mkfifo", SetLastError = true)]
+private static extern int MkFifo(string path, uint mode);
+
+[System.Runtime.InteropServices.DllImport("libc.so.6", EntryPoint = "kill", SetLastError = true)]
+private static extern int Kill(int processId, int signal);
+
+private sealed class UserExecutionMode(ServerMode mode) : IServerModeResolver
+{
+    public ServerMode Mode { get; } = mode;
+    public ServerCapabilitiesDto Describe() => throw new NotSupportedException();
+    public bool Supports(ServerHostFeature feature) => false;
+}
+
+private sealed class UserExecutionIdentityProvider(PlatformUserInfo account) : IIdentityProvider
+{
+    public CredentialVerifyResult Verify(string username, string password) => CredentialVerifyResult.Failed("not used", CredentialError.Unknown);
+    public PlatformUserInfo GetUserInfo(string username) => account;
+    public IdentityLookup Lookup(string identifier) => identifier == account.Username
+        ? new(IdentityLookupStatus.Found, account) : new(IdentityLookupStatus.NotFound);
+    public IdentityLookup LookupIdentity(string identity) => identity == account.Uid
+        ? new(IdentityLookupStatus.Found, account) : new(IdentityLookupStatus.NotFound);
+    public AliasEligibility CheckAliasEligibility(PlatformUserInfo identity) => new(true);
 }
 
 internal static void VerifyHostElevationCapabilityScope(string root)

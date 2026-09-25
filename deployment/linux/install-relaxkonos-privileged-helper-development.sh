@@ -118,18 +118,37 @@ install -d -o root -g "$DEVELOPMENT_GROUP" -m 0710 /var/log/relaxkonos
 install -d -o "$DEVELOPMENT_USER" -g "$DEVELOPMENT_GROUP" -m 0700 /var/log/relaxkonos/proxy
 
 # Copy the complete .NET output (apphost, runtimeconfig, deps, assemblies and PDB) before
-# granting sudo. The development account cannot modify this target after installation.
-install -d -o root -g root -m 0755 /usr/local/lib/relaxkonos "$INSTALL_DIRECTORY"
-cp -a "$(dirname -- "$SOURCE_HELPER")/." "$INSTALL_DIRECTORY/"
-chown -R root:root "$INSTALL_DIRECTORY"
-chmod -R go-w "$INSTALL_DIRECTORY"
+# granting sudo. Replace a staged directory snapshot so rebuilt output cannot retain DLLs that
+# disappeared from the current build. The development account cannot modify the target.
+install -d -o root -g root -m 0755 /usr/local/lib/relaxkonos
+INSTALL_BACKUP=/usr/local/lib/relaxkonos/.privileged-helper-development.previous
+if [[ -e "$INSTALL_BACKUP" ]]; then
+  [[ ! -e "$INSTALL_DIRECTORY" ]] || rm -rf -- "$INSTALL_DIRECTORY"
+  mv -T -- "$INSTALL_BACKUP" "$INSTALL_DIRECTORY"
+fi
+for stale_stage in /usr/local/lib/relaxkonos/.privileged-helper-development.installing.*; do
+  [[ -d "$stale_stage" && ! -L "$stale_stage" ]] || continue
+  rm -rf -- "$stale_stage"
+done
+INSTALL_STAGING="$(mktemp -d /usr/local/lib/relaxkonos/.privileged-helper-development.installing.XXXXXX)"
+chmod 0755 "$INSTALL_STAGING"
+cp -a "$(dirname -- "$SOURCE_HELPER")/." "$INSTALL_STAGING/"
+chown -R root:root "$INSTALL_STAGING"
+chmod -R go-w "$INSTALL_STAGING"
+[[ -f "$INSTALL_STAGING/RelaxKonOS.PrivilegedHelper" ]] || { echo 'Staged development Helper is incomplete.' >&2; exit 65; }
+if [[ -e "$INSTALL_DIRECTORY" ]]; then mv -T -- "$INSTALL_DIRECTORY" "$INSTALL_BACKUP"; fi
+if ! mv -T -- "$INSTALL_STAGING" "$INSTALL_DIRECTORY"; then
+  [[ ! -e "$INSTALL_BACKUP" ]] || mv -T -- "$INSTALL_BACKUP" "$INSTALL_DIRECTORY"
+  exit 1
+fi
+rm -rf -- "$INSTALL_BACKUP"
 chmod 0755 "$INSTALLED_HELPER"
 
 SUDOERS_TEMP="$(mktemp /etc/sudoers.d/relaxkonos-privileged-helper-development.XXXXXX)"
 trap 'rm -f "$SUDOERS_TEMP"' EXIT
 cat >"$SUDOERS_TEMP" <<EOF
 # Managed by RelaxKonOS development setup. Re-run this script after rebuilding the Helper.
-$DEVELOPMENT_USER ALL=(root) NOPASSWD: $INSTALLED_HELPER
+$DEVELOPMENT_USER ALL=(root) NOPASSWD: $INSTALLED_HELPER "", $INSTALLED_HELPER --user-execution, $INSTALLED_HELPER --user-terminal
 EOF
 chmod 0440 "$SUDOERS_TEMP"
 visudo -cf "$SUDOERS_TEMP"
@@ -142,6 +161,18 @@ sudo -u "$DEVELOPMENT_USER" "$(command -v sudo)" -n "$INSTALLED_HELPER" </dev/nu
 STATUS=$?
 set -e
 [[ $STATUS -eq 64 ]] || { echo "The sudoers rule did not start the Helper as expected (exit $STATUS)." >&2; exit 1; }
+
+set +e
+sudo -u "$DEVELOPMENT_USER" "$(command -v sudo)" -n "$INSTALLED_HELPER" --user-execution </dev/null >/dev/null 2>&1
+EXECUTION_STATUS=$?
+sudo -u "$DEVELOPMENT_USER" "$(command -v sudo)" -n "$INSTALLED_HELPER" --user-terminal </dev/null >/dev/null 2>&1
+TERMINAL_STATUS=$?
+sudo -u "$DEVELOPMENT_USER" "$(command -v sudo)" -n "$INSTALLED_HELPER" --not-allowed </dev/null >/dev/null 2>&1
+REJECTED_STATUS=$?
+set -e
+[[ $EXECUTION_STATUS -eq 1 ]] || { echo "The sudoers rule did not allow the fixed user-execution entry point (exit $EXECUTION_STATUS)." >&2; exit 1; }
+[[ $TERMINAL_STATUS -eq 64 ]] || { echo "The sudoers rule did not allow the fixed user-terminal entry point (exit $TERMINAL_STATUS)." >&2; exit 1; }
+[[ $REJECTED_STATUS -ne 64 ]] || { echo "The sudoers rule unexpectedly allowed an unlisted Helper argument." >&2; exit 1; }
 
 echo "Unified privileged Helper development access is ready for $DEVELOPMENT_USER."
 echo "Use PrivilegedHelper__HelperPath=$INSTALLED_HELPER in the Server launch profile."

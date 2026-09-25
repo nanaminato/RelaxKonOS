@@ -48,6 +48,12 @@ dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxK
 仍必须在隔离 Windows VM 以 LocalSystem 服务模式至少验证一次，以覆盖 Session 0、HKCU、用户
 profile、DPAPI、网络凭据、映射盘和环境变量差异。
 
+Windows 有效用户文件执行另用 `<pipeName>-user` 管道。代码只接受本机账户，并由 LocalSystem Helper
+通过一次性 S4U token impersonate；管理员控制台模式不是 LocalSystem，不能执行该路径。Server 与
+Helper 配置的 `EnableWindowsUserExecution` 默认都为 `false`，当前安装器也固定关闭。只有在隔离
+Windows Server 中准备两个普通本地用户并执行 SID/NTFS ACL、并发、token 释放与服务重启矩阵时，
+才可临时在两侧同时改为 `true`；域账户、Git 与 Terminal 仍不在此次测试范围内。
+
 ### 1. 创建调试用户
 
 以**管理员身份**打开 PowerShell，创建用于调试的本地用户：

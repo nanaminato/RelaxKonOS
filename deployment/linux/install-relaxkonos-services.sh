@@ -167,7 +167,7 @@ EOF
   mv -f -- "$temporary_pam" "$pam_service"
 }
 
-PRIVILEGED_HELPER_SOURCE_DIR="$(dirname -- "$PRIVILEGED_HELPER_EXECUTABLE")"
+PRIVILEGED_HELPER_SOURCE_DIR="$(realpath -e -- "$(dirname -- "$PRIVILEGED_HELPER_EXECUTABLE")")"
 PRIVILEGED_HELPER_INSTALL_DIR=/usr/local/lib/relaxkonos/privileged-helper
 PRIVILEGED_HELPER="$PRIVILEGED_HELPER_INSTALL_DIR/$(basename -- "$PRIVILEGED_HELPER_EXECUTABLE")"
 SUDOERS_FILE=/etc/sudoers.d/relaxkonos-helpers
@@ -321,24 +321,46 @@ EOF
 chown root:root /etc/relaxkonos/privileged-services
 chmod 0600 /etc/relaxkonos/privileged-services
 
-# Helpers are root-owned and have no writable parent for the service account. The only
-# sudo rule permits the published apphost with no caller-supplied arguments; the .NET Helper
-# independently accepts only its versioned, structured operation protocol.
+# Helpers are root-owned and have no writable parent for the service account. Sudo permits only
+# the three actual entry points: the no-argument privileged-operation protocol and the two exact
+# user-execution modes. It does not permit arbitrary arguments or option combinations.
 install -d -o root -g root -m 0755 /usr/local/lib/relaxkonos
 # The published .NET helper has a companion runtimeconfig/deps file (and may have managed
-# assemblies). Copy its whole publish directory, then make it root-owned and immutable to the
-# Server account. The fourth installer argument must therefore point at the helper apphost from
-# `dotnet publish`, not merely the .dll produced by `dotnet build`.
-install -d -o root -g root -m 0755 "$PRIVILEGED_HELPER_INSTALL_DIR"
-cp -a "$PRIVILEGED_HELPER_SOURCE_DIR/." "$PRIVILEGED_HELPER_INSTALL_DIR/"
-chown -R root:root "$PRIVILEGED_HELPER_INSTALL_DIR"
-chmod -R go-w "$PRIVILEGED_HELPER_INSTALL_DIR"
+# assemblies). Stage its whole publish directory and rename the complete snapshot into place;
+# copying over the prior version would retain deleted DLLs. The fourth installer argument must
+# therefore point at the helper apphost from `dotnet publish`, not merely the build .dll.
+if [[ "$(realpath -m -- "$PRIVILEGED_HELPER_INSTALL_DIR")" != "$PRIVILEGED_HELPER_SOURCE_DIR" ]]; then
+  HELPER_BACKUP_DIRECTORY=/usr/local/lib/relaxkonos/.privileged-helper.previous
+  if [[ -e "$HELPER_BACKUP_DIRECTORY" ]]; then
+    [[ ! -e "$PRIVILEGED_HELPER_INSTALL_DIR" ]] || rm -rf -- "$PRIVILEGED_HELPER_INSTALL_DIR"
+    mv -T -- "$HELPER_BACKUP_DIRECTORY" "$PRIVILEGED_HELPER_INSTALL_DIR"
+  fi
+  for stale_stage in /usr/local/lib/relaxkonos/.privileged-helper.installing.*; do
+    [[ -d "$stale_stage" && ! -L "$stale_stage" ]] || continue
+    rm -rf -- "$stale_stage"
+  done
+  HELPER_STAGING_DIRECTORY="$(mktemp -d /usr/local/lib/relaxkonos/.privileged-helper.installing.XXXXXX)"
+  chmod 0755 "$HELPER_STAGING_DIRECTORY"
+  cp -a "$PRIVILEGED_HELPER_SOURCE_DIR/." "$HELPER_STAGING_DIRECTORY/"
+  chown -R root:root "$HELPER_STAGING_DIRECTORY"
+  chmod -R go-w "$HELPER_STAGING_DIRECTORY"
+  [[ -f "$HELPER_STAGING_DIRECTORY/$(basename -- "$PRIVILEGED_HELPER_EXECUTABLE")" ]] || { echo 'Staged privileged Helper is incomplete.' >&2; exit 65; }
+  if [[ -e "$PRIVILEGED_HELPER_INSTALL_DIR" ]]; then mv -T -- "$PRIVILEGED_HELPER_INSTALL_DIR" "$HELPER_BACKUP_DIRECTORY"; fi
+  if ! mv -T -- "$HELPER_STAGING_DIRECTORY" "$PRIVILEGED_HELPER_INSTALL_DIR"; then
+    [[ ! -e "$HELPER_BACKUP_DIRECTORY" ]] || mv -T -- "$HELPER_BACKUP_DIRECTORY" "$PRIVILEGED_HELPER_INSTALL_DIR"
+    exit 1
+  fi
+  rm -rf -- "$HELPER_BACKUP_DIRECTORY"
+else
+  chown -R root:root "$PRIVILEGED_HELPER_INSTALL_DIR"
+  chmod -R go-w "$PRIVILEGED_HELPER_INSTALL_DIR"
+fi
 chmod 0755 "$PRIVILEGED_HELPER"
 SUDOERS_TEMP="$(mktemp /etc/sudoers.d/relaxkonos-helpers.XXXXXX)"
 trap 'rm -f "$SUDOERS_TEMP"' EXIT
 cat >"$SUDOERS_TEMP" <<EOF
 # Managed by RelaxKonOS. Do not edit: reinstall to regenerate.
-$SERVICE_USER ALL=(root) NOPASSWD: $PRIVILEGED_HELPER
+$SERVICE_USER ALL=(root) NOPASSWD: $PRIVILEGED_HELPER "", $PRIVILEGED_HELPER --user-execution, $PRIVILEGED_HELPER --user-terminal
 EOF
 chmod 0440 "$SUDOERS_TEMP"
 visudo -cf "$SUDOERS_TEMP"

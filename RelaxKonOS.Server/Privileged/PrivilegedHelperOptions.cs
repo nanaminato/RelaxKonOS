@@ -12,4 +12,9 @@ public sealed class PrivilegedHelperOptions
     public string PipeName { get; init; } = "relaxkonos-privileged-helper";
     /// <summary>Installation-generated machine secret, readable only by Server and Helper.</summary>
     public string SharedSecret { get; init; } = string.Empty;
+    /// <summary>
+    /// Windows file impersonation remains opt-in until the LocalSystem/two-user integration
+    /// matrix has passed on a supported Windows Server host.
+    /// </summary>
+    public bool EnableWindowsUserExecution { get; init; }
 }

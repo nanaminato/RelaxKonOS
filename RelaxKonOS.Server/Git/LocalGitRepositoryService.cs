@@ -8,8 +8,11 @@ using Microsoft.EntityFrameworkCore;
 using RelaxKonOS.Protocol.AppSettings;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.Domain;
 using RelaxKonOS.Server.Storage.Sqlite;
+using RelaxKonOS.Server.UserExecution;
+using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Git;
 
@@ -20,7 +23,11 @@ public sealed partial class LocalGitRepositoryService(
     IDbContextFactory<RelaxKonOSDbContext> dbFactory,
     IHostGitCli gitCli,
     IDataProtectionProvider dataProtection,
-    ILogger<LocalGitRepositoryService> logger) : IGitRepositoryService
+    ILogger<LocalGitRepositoryService> logger,
+    IServiceScopeFactory executionScopes,
+    IUserExecutionTransport executionTransport,
+    IServerModeResolver serverMode,
+    IHttpContextAccessor http) : IGitRepositoryService
 {
     private const int MaxDiffPatchSize = 200 * 1024; // 200KB
     private static readonly TimeSpan SemaphoreTimeout = TimeSpan.FromSeconds(3);
@@ -1430,6 +1437,29 @@ public sealed partial class LocalGitRepositoryService(
         GitCredentialRequest? credentials = null)
     {
         var operation = arguments.FirstOrDefault() ?? "unknown";
+        if (!UserExecutionGitPolicy.IsAllowed(arguments))
+            return new CommandResult(false, "", "git_domain_arguments_rejected");
+        if (serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System)
+        {
+            if (credentials is not null)
+                return new CommandResult(false, "", "credentialed_user_execution_not_supported");
+            var principal = http.HttpContext?.User;
+            if (principal is null) return new CommandResult(false, "", "user_execution_context_unavailable");
+            try
+            {
+                UserExecutionContext context;
+                using (var scope = executionScopes.CreateScope())
+                    context = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
+                var response = await executionTransport.ExecuteAsync(new RelaxKonOS.Protocol.UserExecution.UserExecutionRequest(
+                    context.Identity, RelaxKonOS.Protocol.UserExecution.UserExecutionOperationKind.GitExecute, Path: workingDir,
+                    GitArguments: arguments, OperationId: Guid.NewGuid()), cancellationToken);
+                if (!response.Success || string.IsNullOrWhiteSpace(response.OutputBase64)) return new CommandResult(false, "", "user_execution_unavailable");
+                var result = JsonSerializer.Deserialize<GitExecutionResult>(Convert.FromBase64String(response.OutputBase64), RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default);
+                return result is null ? new CommandResult(false, "", "user_execution_invalid_result") : new CommandResult(result.Success, result.Output, result.Error);
+            }
+            catch (Exception exception) when (exception is UserExecutionException or InvalidOperationException or JsonException or FormatException)
+            { return new CommandResult(false, "", "user_execution_unavailable"); }
+        }
         try
         {
             logger.LogDebug("Starting git operation {GitOperation}.", operation);
@@ -1450,9 +1480,7 @@ public sealed partial class LocalGitRepositoryService(
             // A remote server has no interactive terminal to hand over to the desktop client.
             // Fail promptly when no saved/supplied credential exists; when one is available,
             // Git obtains it from the temporary askpass process below.
-            process.StartInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
-            process.StartInfo.Environment["GIT_EDITOR"] = "true";
-            process.StartInfo.Environment["GIT_SEQUENCE_EDITOR"] = "true";
+            UserExecutionGitPolicy.ApplySafeEnvironment(process.StartInfo);
             if (askPass is not null)
             {
                 process.StartInfo.Environment["GIT_ASKPASS"] = askPass.Path;
@@ -1528,4 +1556,5 @@ public sealed partial class LocalGitRepositoryService(
     }
 
     private sealed record CommandResult(bool Success, string Output, string Error);
+    private sealed record GitExecutionResult(bool Success, int ExitCode, string Output, string Error);
 }

@@ -334,7 +334,8 @@ public partial class ExplorerMainView : UserControl
     private async void RenameBox_LostFocus(object? sender, RoutedEventArgs e)
     {
         if (sender is TextBox { DataContext: FileSystemEntryDto entry } editor
-            && ViewModel is { } vm && ReferenceEquals(vm.EditingEntry, entry))
+            && ViewModel is { IsRenameCommitInProgress: false } vm
+            && ReferenceEquals(vm.EditingEntry, entry))
             await CommitRenameFromEditorAsync(vm, entry, editor);
     }
 

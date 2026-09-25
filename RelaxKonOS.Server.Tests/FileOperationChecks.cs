@@ -10,8 +10,13 @@ public static class FileOperationChecks
     {
         var directory = Path.Combine(root, "file-jobs");
         Directory.CreateDirectory(directory);
+        using var executionScopeProvider = new ServiceCollection()
+            .AddSingleton(DispatchProxy.Create<IUserExecutionContextResolver, RejectProxy>())
+            .BuildServiceProvider();
         using var service = new FileOperationService(DispatchProxy.Create<IPrivilegedFileService, RejectProxy>(),
-            DispatchProxy.Create<IFileElevationSessionStore, RejectProxy>());
+            DispatchProxy.Create<IFileElevationSessionStore, RejectProxy>(), new TestUserModeResolver(),
+            executionScopeProvider.GetRequiredService<IServiceScopeFactory>(),
+            DispatchProxy.Create<IUserExecutionTransport, RejectProxy>());
         var principal = new ClaimsPrincipal(new ClaimsIdentity());
         const string owner = "one";
         var count = 0;
@@ -223,4 +228,11 @@ public class RejectProxy : DispatchProxy
         if (method?.ReturnType == typeof(bool)) return false;
         throw new NotSupportedException("Privileged operations must not be used in ordinary-file checks.");
     }
+}
+
+public sealed class TestUserModeResolver : IServerModeResolver
+{
+    public ServerMode Mode => ServerMode.User;
+    public ServerCapabilitiesDto Describe() => throw new NotSupportedException();
+    public bool Supports(ServerHostFeature feature) => false;
 }

@@ -36,7 +36,9 @@ public sealed record ProcessDefinitionDto(
     int StopTimeoutSeconds = 15,
     int MaxRestartAttempts = 3,
     GuardianHealthCheckDto? HealthCheck = null,
-    string? RunAs = null);
+    string? RunAs = null,
+    /// <summary>Stable OS identity (Linux UID or Windows SID) bound when RunAs is authorized.</summary>
+    string? RunAsIdentity = null);
 
 /// <summary>One-time administrator credential used only to approve a cross-account RunAs change.</summary>
 public sealed record RunAsAdministratorApproval(string Username, string Password);

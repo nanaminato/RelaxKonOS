@@ -27,6 +27,18 @@ if (OperatingSystem.IsWindows() && args.Contains("--console", StringComparer.Ord
     }
 }
 
+if (args is ["--user-execution"])
+    return await UserExecutionExecutor.RunOneShotAsync();
+
+if (args is ["--user-terminal"])
+    return await UserExecutionExecutor.RunTerminalAsync();
+
+if (args.Length != 0)
+{
+    Console.Error.WriteLine("Unsupported Privileged Helper entry point.");
+    return 64;
+}
+
 return await PrivilegedOperationExecutor.RunOneShotAsync();
 
 /// <summary>
