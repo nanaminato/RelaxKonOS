@@ -42,8 +42,11 @@ public sealed partial class ObservabilitySanitizer : IObservabilitySanitizer
     public string SanitizeSummary(string? value, int maximumLength = 1024)
     {
         if (string.IsNullOrWhiteSpace(value)) return "";
-        var result = SensitiveAssignment().Replace(value, "$1=[redacted]");
-        result = BearerToken().Replace(result, "Bearer [redacted]");
+        // Bearer tokens must be redacted before the assignment rule runs: the assignment rule
+        // consumes the scheme word ("Authorization: Bearer"), which would otherwise leave the
+        // raw token behind when the bearer rule can no longer match.
+        var result = BearerToken().Replace(value, "Bearer [redacted]");
+        result = SensitiveAssignment().Replace(result, "$1=[redacted]");
         result = UrlCredentials().Replace(result, "[url-redacted]");
         result = result.Replace('\r', ' ').Replace('\n', ' ').Trim();
         return result.Length <= maximumLength ? result : result[..maximumLength];
