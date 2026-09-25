@@ -1,6 +1,6 @@
 # RelaxKonOS 有效 OS 执行身份（Effective OS User Execution）Goal
 
-> 状态：实施中（2026-09-24：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Linux 文件操作与事务恢复已收紧到目录/文件描述符；Windows 本地账户文件 impersonation 代码已接入但默认关闭，真实多用户集成验证仍未完成。）
+> 状态：实施中（2026-09-25：在 Windows 开发宿主上完成全解决方案构建、`RelaxKonOS.Server.Tests` 全部专项与完整套件、客户端/Framework 测试工程实测；据此修复两处只在 Windows 宿主暴露的问题——身份资格校验误用宿主路径语义、应用部署验证宿主缺少 `IFileService` 注册；Windows 契约检查与用户执行通道关闭态行为已可在 Windows 上执行。2026-09-24：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Linux 文件操作与事务恢复已收紧到目录/文件描述符；Windows 本地账户文件 impersonation 代码已接入但默认关闭，真实多用户集成验证仍未完成。）
 >
 > 建立日期：2026-09-22
 >
@@ -216,9 +216,21 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - Windows user execution 仍由 Server 与 Helper 两侧的 `EnableWindowsUserExecution` 开关共同 fail closed，默认值及安装器写入值均为 `false`。这不是兼容开关，而是尚未通过目标平台验收前的能力门；通过真实 Windows Server 验证后应直接移除门控并更新安装器，不保留双行为。
 - 添加 contract/context 单元检查，覆盖 canonical identity、请求身份替换拒绝、System Mode fail-closed 以及无敏感/通用命令字段。
 
+### 2026-09-25：Windows 宿主实测与随之修复的两处问题
+
+本轮把此前只在 Linux 上跑过的验证搬到 Windows 宿主（win32 + .NET SDK 10.0.400），逐项执行构建、专项与完整套件。实测暴露两个只在 Windows 宿主出现的问题，均已修复：
+
+- **身份资格校验误用宿主路径语义。** `UserExecutionContextResolver` 用 `Path.IsPathFullyQualified` 判断家目录是否为绝对路径，而该 API 按**宿主**规则判定：Windows 上 `"/home/nanami"` 被判为非完全限定，Linux 身份因此在 Windows 宿主上被误拒为 `IdentityNotExecutable`，使 `--user-execution-only` 在 Windows 上直接抛异常。改为 `UserExecutionProtocol.IsEligibleHomeDirectory(platform, home)`，按**身份所属平台**的规则校验（POSIX 家目录以 `/` 开头、Windows 侧才用 Win32 完全限定判定）。资格判定不再取决于 Server 恰好运行在哪个宿主。同时把 `User Mode` 的 `geteuid()` 调用包进 `IsServerEffectiveUnixUser`：Server 的有效 Unix 用户只在 Linux 上存在，非 Linux 宿主对 Linux 身份直接拒绝，不再触碰不存在的 libc。
+- **应用部署验证宿主缺少 `IFileService` 注册。** 文件引用路由在本轮改为经 `IFileService` 以登录用户读取源文件，`ApplicationDeploymentProgressVerification` 映射了生产路由却未注册该服务，导致 ASP.NET 端点参数推断失败、进程在 `app.Build()` 阶段崩溃（完整套件因此在应用部署验证处终止）。宿主现注册显式的 `SourceReferenceFileService` 替身（只暴露一条可读路径，绝不回退到 Server 服务账号），并新增两项真实 HTTP 断言：可读源文件必须被**复制**进 deployment-owned staging（而不是登记路径），登录用户读不到的源文件必须返回 404 `file-reference-unavailable`。该失败与宿主平台无关，只是此前 Linux 完整套件停在更早的代理 GEO 落盘步骤、从未走到这里。
+
+同时补上此前缺失的两项 Windows 侧检查：
+
+- `DisabledUserExecutionTransport` 与真实请求作用域的 `UserExecutionFileService` 组合下的 fail-closed 行为：列举、特殊位置、metadata、读取、创建目录、删除六类操作全部必须失败，不得有任何一次以 Server 服务账号被服务；这正是 Windows 当前发布默认路径（能力门关闭）。
+- Windows 用户执行管道本身的关闭态：Helper 未监听、机器密钥不可用、管道名未配置三种情况下，`WindowsNamedPipeUserExecutionTransport` 必须返回关闭态失败且不得转向管理员管道。
+
 ### 尚未实施（明确不跳过）
 
-- Windows LocalSystem named-pipe/SID impersonation 的代码路径已完成首个文件垂直切片，但尚未在真实 Windows Server 验证 S4U logon type、NTFS deny/allow、UAC/管理员本地账户语义、token 释放、并发、取消、服务重启、profile/known-folder 与网络/映射盘行为；验收前保持默认关闭，不能标记 Goal 3/4 完成。
+- Windows LocalSystem named-pipe/SID impersonation 的代码路径已完成首个文件垂直切片，但尚未在真实 Windows Server 验证 S4U logon type、NTFS deny/allow、UAC/管理员本地账户语义、token 释放、并发、取消、服务重启、profile/known-folder 与网络/映射盘行为；验收前保持默认关闭，不能标记 Goal 3/4 完成。（2026-09-25 补充：Windows 开发宿主上的构建、身份契约与用户执行通道关闭态已实测通过，见文末 Windows 宿主验证；上述多用户项仍未验证。）
 - Git 的临时 AskPass 远程凭据路径；Windows terminal impersonation。
 - 应用部署的完整用户工作负载 owner model：当前只保证从文件选择器导入源 archive 时按登录用户读取、随后由 deployment-owned staging 使用；Docker Engine 容器本身仍是宿主级资源。
 - Linux user-execution 的文件代码路径已完成本轮 descriptor-relative 收尾；仍需安装为 root-owned Helper 后的真实多用户残留演练。代码已用真实子进程 SIGKILL 验证 staging 恢复与清单初始化窗口回收，并用源/目标/恢复父路径替换验证 descriptor anchoring；隔离环境仍须验证 root Helper、`relaxkon-server`/`nanami`/`alice` 三账户、共享目录、supplementary groups 与 owner/group 结果。
@@ -239,3 +251,21 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |
 | Windows impersonation 代码 | 首个文件切片完成、默认关闭 | 独立认证管道、本地 SID/account/profile 二次验证、一次性 MSV1_0 S4U token、同步 impersonation 文件操作和 replay/大小限制已接入；域账户、Git、Terminal 与 POSIX mode fail closed。 |
 | Windows impersonation 集成 | 暂缓 | 安装器明确写入 `EnableWindowsUserExecution=false`；需真实 Windows Server + LocalSystem Helper + 两个普通本地账户完成 NTFS ACL、owner、token、并发、取消与重启验收后才可启用。 |
+
+### 2026-09-25 Windows 宿主验证
+
+宿主：Windows（win32）、.NET SDK 10.0.400、Debug 配置。
+
+| 项目 | 状态 | 说明 |
+| --- | --- | --- |
+| `dotnet build RelaxKonOS.sln -c Debug -m:1 -p:MSBuildEnableWorkloadResolver=false` | 通过 | 0 错误；3 个既存告警（`Program.cs` 两处 CA1416 平台注册、`DockerImageMirrorsView.axaml` 的 AVLN3001），均与本 Goal 无关。 |
+| `RelaxKonOS.Server.Tests`（普通 project-reference 还原图） | 通过 | Windows 上可直接按项目引用构建（0 警告 0 错误），无需 `-p:UsePrebuiltServerAssembly=true`。 |
+| `RelaxKonOS.Server.Tests --user-execution-only` | 通过 | 身份契约、System Mode fail-closed、请求形状拒绝、Git allowlist、Terminal 帧、helper 取消/超时之外，本机新增执行：真实 `UserExecutionFileService` + `DisabledUserExecutionTransport` 的六类操作 fail-closed，以及 Windows 用户执行管道在 Helper 缺失/密钥不可用/管道名未配置下的关闭态。 |
+| `RelaxKonOS.Server.Tests --deployment-progress-only` | 通过 | 含新增的文件引用路由断言：可读源文件被复制进 staging、不可读源文件返回 404。 |
+| `--file-operations-only`（34 项）/ `--git-conflicts-only`（47 项）/ `--settings-only` / `--alias-only`（51 项）/ `--file-services-only` / `--helper-allowlist-only` / `--proxy-geodata-only` / `--proxy-tun-only` | 通过 | 全部通过。`--alias-only` 附带 Windows 本机账户只读资格判定：可用、本地账户合规，未改动任何 OS 账户。文件作业 34 项（少于 Linux 的 35 项，差异是本机跳过的符号链接用例，属既有平台分支）。 |
+| `RelaxKonOS.Server.Tests`（无参数完整套件） | 通过 | 输出 `RelaxKonOS.Server backend verification passed.`；Linux 上曾停在代理 GEO 落盘步骤，Windows 上该步骤及之后的应用部署、WebServer、Docker、代理隧道检查全部通过。 |
+| `Client/RelaxKonOS.Settings.Tests` / `Client/RelaxKonOS.Installation.Tests` / `Client/RelaxKonOS.Explorer.Tests` | 通过 | Explorer 回归 137 项，含本分支新增的「重命名提交进行中」两项断言。 |
+| `Framework/RelaxKonOS.Core.Tests` | 环境受限 | 失败于 `Directory.CreateSymbolicLink`：本机未开启开发者模式/未提升权限，无符号链接创建特权。与本 Goal 无关（该工程未被本分支修改）。 |
+| `Client/RelaxKonOS.FileServices.Tests` | 无法构建 | 既存破损：该工程仅以 `Compile Include` 链接 `FileServicesViewModel.cs`，而该 VM 依赖未链接的 `LocalizedStatus`/`LocalizedObservableObject`/`RelaxKonOS.Client.Services`/`InstallationTaskViewModel`；master 上同样如此，与本 Goal 无关。 |
+| `deployment/windows/Install-RelaxKonOSServices.ps1` | 通过 | `Parser::ParseFile` 语法检查通过；安装器在 Server 段写入 `EnableWindowsUserExecution = $false`，在 Helper 段写入 `enableWindowsUserExecution = $false` 与 `userExecutionTimeoutSeconds = 25`，能力门默认关闭与代码默认值一致。 |
+| Windows impersonation 真实多用户集成 | 仍未验证 | 本轮只在 Windows 开发宿主上验证了构建、契约与关闭态；S4U logon type、NTFS ACL/owner、token 释放、并发、取消、服务重启、profile/known-folder 与网络盘行为仍需隔离 Windows Server + LocalSystem Helper + 两个本地账户，能力门在此期间保持 `false`。 |

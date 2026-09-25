@@ -42,6 +42,8 @@ try
         ServerCoreChecks.VerifyUserExecutionContextContract();
         await ServerCoreChecks.VerifyUserExecutionTransportLifecycleAsync(root);
         ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
+        await ServerCoreChecks.VerifyUserExecutionFailsClosedAsync();
+        await ServerCoreChecks.VerifyWindowsUserExecutionTransportAsync();
         Console.WriteLine("User-execution contract checks passed.");
         return;
     }
@@ -109,6 +111,8 @@ try
     ServerCoreChecks.VerifyUserExecutionContextContract();
     await ServerCoreChecks.VerifyUserExecutionTransportLifecycleAsync(root);
     ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
+    await ServerCoreChecks.VerifyUserExecutionFailsClosedAsync();
+    await ServerCoreChecks.VerifyWindowsUserExecutionTransportAsync();
     ServerCoreChecks.VerifyHostElevationCapabilityScope(root);
     ServerCoreChecks.VerifyAppPermissionEvaluator();
     Console.WriteLine("RelaxKonOS.Server backend verification passed.");

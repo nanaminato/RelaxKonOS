@@ -19,6 +19,23 @@ public static class UserExecutionProtocol
 
     public static bool IsEligibleLinuxUserId(uint uid) => uid >= 1000 && uid != 65534;
 
+    /// <summary>
+    /// A home directory is judged by the rules of the platform that owns the identity, never by the
+    /// host's: a POSIX home is absolute only when it starts with <c>/</c>, which Win32 path rules
+    /// reject, and a drive-qualified Windows profile is not absolute under POSIX rules. Judging a
+    /// foreign platform's path with host rules would make eligibility depend on where the Server runs.
+    /// </summary>
+    public static bool IsEligibleHomeDirectory(PlatformKind platform, string? homeDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(homeDirectory) || homeDirectory.Contains('\0')) return false;
+        return platform switch
+        {
+            PlatformKind.Linux => homeDirectory[0] == '/',
+            PlatformKind.Windows => Path.IsPathFullyQualified(homeDirectory),
+            _ => false,
+        };
+    }
+
     public static string WindowsPipeName(string privilegedPipeName) => privilegedPipeName + WindowsPipeSuffix;
 }
 

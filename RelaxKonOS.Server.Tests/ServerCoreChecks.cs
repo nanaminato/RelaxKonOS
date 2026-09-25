@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Http;
+using RelaxKonOS.Server.Files;
+
 internal static class ServerCoreChecks
 {
 internal static void VerifyWorkspacePreferencesJsonContract()
@@ -149,6 +152,96 @@ internal static void VerifyUserExecutionContextContract()
         && !UserExecutionGitPolicy.IsAllowed(["diff", "--ext-diff"])
         && !UserExecutionGitPolicy.IsAllowed(["remote", "add", "origin", "ext::sh -c run"]),
         "Helper Git policy accepted configuration or options that can name an external command.");
+}
+
+/// <summary>
+/// The whole request-scoped file API must fail closed while the effective-user channel has no
+/// Helper: no operation may fall back to the Server service account. Windows ships with the
+/// impersonation capability gate closed, so this is the production path on that host.
+/// </summary>
+internal static async Task VerifyUserExecutionFailsClosedAsync()
+{
+    var platform = OperatingSystem.IsWindows() ? PlatformKind.Windows : PlatformKind.Linux;
+    var account = platform == PlatformKind.Windows
+        ? new PlatformUserInfo("S-1-5-21-100-100-100-1001", Environment.MachineName + "\\nanami", platform, "Nanami", @"C:\Users\nanami")
+        : new PlatformUserInfo("1001", "nanami", platform, "Nanami", "/home/nanami");
+    var identities = new UserExecutionIdentityProvider(account);
+    var users = new InMemoryUserRepository();
+    var user = users.Add(new User
+    {
+        Id = Guid.NewGuid(), Username = account.Username, Platform = platform,
+        PlatformIdentity = account.Uid, CreatedAt = DateTimeOffset.UtcNow,
+    });
+    var mode = new UserExecutionMode(ServerMode.System);
+    var resolver = new UserExecutionContextResolver(users,
+        new CanonicalUserResolver(identities, users, new InMemoryAliasCredentialRepository(), new AuthSessionStore()), mode);
+    var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString())], "test"));
+    var files = new UserExecutionFileService(new LocalFileService(mode), resolver,
+        new DisabledUserExecutionTransport(), mode,
+        new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } });
+
+    var home = account.HomeDirectory!;
+    (string Name, Func<object?> Invoke)[] operations =
+    [
+        ("listing", () => files.GetDirectory(home)),
+        ("special locations", () => files.GetSpecialLocations()),
+        ("metadata", () => files.GetInfo(home)),
+        ("read", () => files.OpenRead(Path.Combine(home, "file.txt"))),
+        ("create directory", () => { files.CreateDirectory(Path.Combine(home, "new")); return null; }),
+        ("delete", () => { files.Delete(Path.Combine(home, "file.txt")); return null; }),
+    ];
+    var accepted = new List<string>();
+    foreach (var operation in operations)
+    {
+        try { operation.Invoke(); accepted.Add(operation.Name); }
+        catch (InvalidOperationException) { }
+    }
+    TestAssert.Assert(accepted.Count == 0,
+        "Every file operation must fail closed while the effective-user channel has no Helper, but these were served: "
+        + string.Join(", ", accepted));
+
+    var disabled = await new DisabledUserExecutionTransport().ExecuteAsync(new UserExecutionRequest(
+        new UserExecutionIdentity(platform, account.Uid, account.Username, home),
+        UserExecutionOperationKind.FileListDirectory, Path: home, OperationId: Guid.NewGuid()));
+    TestAssert.Assert(!disabled.Success && disabled.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
+        "A disabled user-execution channel must report HelperUnavailable instead of succeeding.");
+}
+
+/// <summary>
+/// Windows ships a dedicated, ACL-restricted user-execution pipe that must stay separate from the
+/// administrator pipe and refuse to run when the Helper, the pipe name or the machine secret is
+/// unusable. None of these paths may reach the privileged channel.
+/// </summary>
+internal static async Task VerifyWindowsUserExecutionTransportAsync()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    var pipeName = "relaxkonos-user-execution-test-" + Guid.NewGuid().ToString("N");
+    var secret = Convert.ToBase64String(new byte[32]);
+    var identity = new UserExecutionIdentity(PlatformKind.Windows, "S-1-5-21-100-100-100-1001",
+        Environment.MachineName + "\\nanami", @"C:\Users\nanami");
+    var request = new UserExecutionRequest(identity, UserExecutionOperationKind.FileListDirectory,
+        Path: identity.HomeDirectory, OperationId: Guid.NewGuid());
+
+    var missingHelper = await ExecuteAsync(new PrivilegedHelperOptions
+    { PipeName = pipeName, SharedSecret = secret, TimeoutSeconds = 2 }, request);
+    TestAssert.Assert(!missingHelper.Success
+        && missingHelper.ProblemCode is UserExecutionProblemCode.HelperUnavailable or UserExecutionProblemCode.TimedOut,
+        $"A missing Windows user-execution Helper must fail closed on the user pipe; got {missingHelper.ProblemCode}.");
+
+    var unusableSecret = await ExecuteAsync(new PrivilegedHelperOptions
+    { PipeName = pipeName, SharedSecret = Convert.ToBase64String(new byte[8]), TimeoutSeconds = 2 },
+        request with { OperationId = Guid.NewGuid() });
+    TestAssert.Assert(!unusableSecret.Success && unusableSecret.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
+        "An unusable machine secret must fail closed before the Server opens a user-execution pipe.");
+
+    var unconfiguredPipe = await ExecuteAsync(new PrivilegedHelperOptions
+    { PipeName = " ", SharedSecret = secret, TimeoutSeconds = 2 }, request with { OperationId = Guid.NewGuid() });
+    TestAssert.Assert(!unconfiguredPipe.Success && unconfiguredPipe.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
+        "An unconfigured pipe name must fail closed instead of probing another pipe.");
+
+    static Task<UserExecutionResult> ExecuteAsync(PrivilegedHelperOptions options, UserExecutionRequest request)
+        => new WindowsNamedPipeUserExecutionTransport(options,
+            NullLogger<WindowsNamedPipeUserExecutionTransport>.Instance).ExecuteAsync(request);
 }
 
 internal static async Task VerifyUserExecutionTransportLifecycleAsync(string root)

@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.IO.Pipelines;
+using System.Reflection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -20,6 +21,7 @@ using RelaxKonOS.Protocol.Hubs;
 using RelaxKonOS.Server.ApplicationDeployments;
 using RelaxKonOS.Server.Docker;
 using RelaxKonOS.Server.Endpoints;
+using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.HostMode;
 
 internal static class ApplicationDeploymentProgressVerification
@@ -52,6 +54,16 @@ internal static class ApplicationDeploymentProgressVerification
         builder.Services.AddSingleton<ApplicationDeploymentManager>();
         builder.Services.AddSingleton<ApplicationDeploymentCoordinator>();
         builder.Services.AddSingleton<ApplicationDeploymentDefinitionMutationStore>();
+        // The production file-reference route reads a user-selected source through IFileService and
+        // stages a copy, so this host must register that boundary. The stand-in exposes exactly one
+        // readable path and never falls back to the Server service account.
+        var userSourcePath = Path.Combine(directory, "user-owned-source.zip");
+        builder.Services.AddScoped<IFileService>(_ =>
+        {
+            var files = DispatchProxy.Create<IFileService, SourceReferenceFileService>();
+            ((SourceReferenceFileService)(object)files).ReadablePath = userSourcePath;
+            return files;
+        });
         await using var app = builder.Build();
         app.UseAuthentication();
         app.UseAuthorization();
@@ -99,6 +111,24 @@ internal static class ApplicationDeploymentProgressVerification
         malformedRequest.Content.Headers.ContentType = new("multipart/form-data");
         using var malformed = await http.SendAsync(malformedRequest);
         Check(malformed.StatusCode == HttpStatusCode.BadRequest, "Malformed boundary must produce a controlled error.");
+
+        // A user-selected source must be read through the authenticated file boundary and staged as a
+        // copy; the deployment pipeline never receives (or retains) a path inside a user home.
+        using (var referenced = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.FileReferences,
+            new CreateDeploymentFileReferenceRequest(userSourcePath)))
+        {
+            Check(referenced.IsSuccessStatusCode,
+                $"A source the user can read must be staged through the file boundary: {referenced.StatusCode} {await referenced.Content.ReadAsStringAsync()}");
+            var reference = (await referenced.Content.ReadFromJsonAsync<DeploymentStagedFileDto>())!;
+            using var copy = staging.Open(reference.ReferenceId, "progress-test");
+            using var reader = new StreamReader(copy.Stream);
+            Check(await reader.ReadToEndAsync() == "user-owned source" && reference.FileName == "user-owned-source.zip",
+                "A file reference must stage a copy of the user-owned source instead of registering its path.");
+        }
+        using (var unavailable = await http.PostAsJsonAsync(ApplicationDeploymentApiRoutes.FileReferences,
+            new CreateDeploymentFileReferenceRequest(Path.Combine(directory, "private", "not-readable.zip"))))
+            Check(unavailable.StatusCode == HttpStatusCode.NotFound,
+                "A source the authenticated user cannot read must be reported as unavailable.");
 
         using var forbiddenRequest = new HttpRequestMessage(HttpMethod.Post,
             RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath + "/negotiate?negotiateVersion=1");
@@ -216,6 +246,26 @@ internal static class ApplicationDeploymentProgressVerification
             await Task.Delay(110, cancellationToken);
             await base.WriteAsync(buffer, cancellationToken);
         }
+    }
+}
+
+/// <summary>
+/// Stands in for the request-scoped <c>IFileService</c>: it reports one readable user-owned path
+/// and refuses everything else, so a route that skipped the user boundary would either fail or
+/// stage nothing.
+/// </summary>
+class SourceReferenceFileService : DispatchProxy
+{
+    public string? ReadablePath { get; set; }
+
+    protected override object? Invoke(MethodInfo? method, object?[]? args)
+    {
+        if (method!.Name != nameof(IFileService.OpenRead))
+            throw new NotSupportedException("The deployment progress host reads only the selected source.");
+        if ((string?)args![0] != ReadablePath) return null;
+        // The proxy returns the declared shape exactly; a narrower stream type would fail the cast.
+        Stream content = new MemoryStream("user-owned source"u8.ToArray());
+        return (content, "application/zip", "user-owned-source.zip");
     }
 }
 
