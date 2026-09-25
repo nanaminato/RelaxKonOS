@@ -1,0 +1,13 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+        x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.SshFileDeleteDialog"
+        Width="430" Height="160" WindowStartupLocation="CenterOwner">
+    <StackPanel Margin="14" Spacing="16">
+        <TextBlock x:Name="PromptText" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{loc:Loc ssh_files.cancel}" Click="Cancel_Click" />
+            <Button Content="{loc:Loc ssh_files.delete}" Click="Delete_Click" />
+        </StackPanel>
+    </StackPanel>
+</Window>

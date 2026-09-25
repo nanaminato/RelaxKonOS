@@ -1,0 +1,23 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+        x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.SshFilePropertiesDialog"
+        Width="460" Height="280" WindowStartupLocation="CenterOwner">
+    <StackPanel Margin="16" Spacing="9">
+        <TextBlock x:Name="NameText" FontWeight="SemiBold" />
+        <TextBlock x:Name="PathText" TextWrapping="Wrap" />
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <TextBlock Text="{loc:Loc ssh_files.type}" />
+            <TextBlock x:Name="TypeText" Grid.Column="1" />
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <TextBlock Text="{loc:Loc ssh_files.size}" />
+            <TextBlock x:Name="SizeText" Grid.Column="1" />
+        </Grid>
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <TextBlock Text="{loc:Loc ssh_files.modified}" />
+            <TextBlock x:Name="ModifiedText" Grid.Column="1" />
+        </Grid>
+        <Button Content="{loc:Loc ssh_files.ok}" HorizontalAlignment="Right" Click="Close_Click" />
+    </StackPanel>
+</Window>
