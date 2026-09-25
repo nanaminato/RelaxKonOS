@@ -8,6 +8,7 @@
 > - 用户 Workspace 模型见 [`RelaxKonOS.Workspace.md`](./architecture/RelaxKonOS.Workspace.md)
 > - 注册表与配置同步架构见 [`RelaxKonOS.Registry.md`](./architecture/RelaxKonOS.Registry.md)（设计中）
 > - 登录与身份模型见 [`RelaxKonOS.Authentication.md`](./platform/RelaxKonOS.Authentication.md)
+> - 桌面与 Android 客户端的一体化服务端安装、更新、卸载流程见 [`RelaxKonOS.ServerCenter.Goal.md`](./platform/RelaxKonOS.ServerCenter.Goal.md)（设计完成，待实施）
 > - 独立登录别名与关闭系统账号直接登录的 Goal 设计见 [`RelaxKonOS.AliasLogin.Goal.md`](./platform/RelaxKonOS.AliasLogin.Goal.md)（待实施）
 > - 认证限流与登录防护建议见 [`RelaxKonOS.Authentication.Hardening.md`](./platform/RelaxKonOS.Authentication.Hardening.md)
 > - 安全设计见 [`RelaxKonOS.Security.md`](./platform/RelaxKonOS.Security.md)
@@ -434,6 +435,7 @@ RelaxKonOS.Server     = Cloud Backend
 | [`Login`](./platform/RelaxKonOS.Login.md) | 登录窗口、auth 端点、JWT 与错误处理 |
 | [`Security`](./platform/RelaxKonOS.Security.md) | 安全设计、权限提升与危险操作确认 |
 | [`PrivilegedOperations Goal`](./platform/RelaxKonOS.PrivilegedOperations.Goal.md) | 跨平台受限 Helper、Windows Server LocalSystem 服务与特权操作迁移执行计划 |
+| [`ServerCenter Goal`](./platform/RelaxKonOS.ServerCenter.Goal.md) | 桌面与 Android 的服务器中心、内置 SSH 部署及生命周期验收 |
 | [`Storage`](./platform/RelaxKonOS.Storage.md) | EF Core + SQLite、持久化范围与表结构 |
 
 ### 桌面体验
