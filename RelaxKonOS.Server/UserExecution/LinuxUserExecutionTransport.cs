@@ -71,7 +71,12 @@ public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options,
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 Kill(process);
-                Audit(request, new(false, Error: "user-execution operation was cancelled", ProblemCode: UserExecutionProblemCode.Cancelled));
+                var cancelled = new UserExecutionResult(false, Error: "user-execution operation was cancelled",
+                    ProblemCode: UserExecutionProblemCode.Cancelled);
+                // The accepted audit record must always have a terminal outcome, including when
+                // the HTTP caller cancels while the Helper is running.
+                WriteSecurityAudit(request, cancelled, ObservabilityOutcome.Cancelled);
+                Audit(request, cancelled);
                 throw;
             }
             catch (OperationCanceledException)

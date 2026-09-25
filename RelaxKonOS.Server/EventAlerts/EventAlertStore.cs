@@ -54,9 +54,15 @@ public sealed class EventAlertStore
             var alert = await ReadAlertByKeyAsync(connection, transaction, dedupeKey, ct);
             if (request.IsRecovery)
             {
-                if (alert is not null && alert.Status is OperationalAlertStatus.Open or OperationalAlertStatus.Acknowledged)
+                if (alert is not null && alert.Status is OperationalAlertStatus.Open or OperationalAlertStatus.Acknowledged or OperationalAlertStatus.Suppressed)
+                {
                     changed = await UpdateAlertAsync(connection, transaction, alert with { Status = OperationalAlertStatus.Resolved, LastEventId = eventId,
-                        LastOccurredAt = request.OccurredAt, ProblemCode = request.ProblemCode, ResolutionReason = "source-recovered" }, ct);
+                        LastOccurredAt = request.OccurredAt, ProblemCode = request.ProblemCode, ResolutionReason = "source-recovered",
+                        Version = alert.Version + 1 }, ct);
+                    // A verified recovery supersedes any temporary suppression. Leaving its row
+                    // behind is misleading and can make later state transitions depend on stale data.
+                    await ExecuteAsync(connection, transaction, "DELETE FROM alert_suppressions WHERE alert_id=$alert;", ct, ("$alert", alert.AlertId));
+                }
             }
             else if (alert is null)
             {

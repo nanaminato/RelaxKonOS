@@ -185,7 +185,11 @@ internal sealed class ApplicationDeploymentCoordinator(
         {
             eventPublisher.PublishAsync(new OperationalEventSignal(
                 $"deployment-terminal:{terminal.OperationId:D}:{terminal.State}",
-                "deployment.operation_failed", terminal.OperationId, Guid.NewGuid(),
+                // Alerts aggregate the health of one application. A later successful operation
+                // has a different operation ID, so using that ID as the resource key would leave
+                // every previous failure permanently open. The operation ID remains separately
+                // recorded for timeline and remediation detail.
+                "deployment.operation_failed", terminal.ApplicationId, Guid.NewGuid(),
                 terminal.ProblemCode ?? terminal.RecoveryProblemCode ?? "deployment.recovered",
                 terminal.OperationId, IsRecovery: terminal.State == DeploymentOperationState.Succeeded)).GetAwaiter().GetResult();
         }

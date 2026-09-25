@@ -16,6 +16,7 @@ public enum OperationalEventOutcome { Failed, Recovered }
 public enum RemediationTargetKind
 {
     None,
+    ApplicationDeployment,
     ApplicationDeploymentOperation,
     Certificate,
     GuardianOverview,

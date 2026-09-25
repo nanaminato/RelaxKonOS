@@ -39,5 +39,35 @@ internal static class EventAlertChecks
             "A recovery signal did not resolve the matching open alert.");
         var events = await store.ListEventsAsync(10, null, null, null, null, CancellationToken.None);
         TestAssert.Assert(events.Items.Count == 3, "The immutable event timeline lost a projected signal.");
+
+        // A deployment recovery is a later operation, so it has a different operation ID but
+        // must target the same application-level alert.
+        var applicationId = Guid.NewGuid();
+        await publisher.PublishAsync(new("deployment-application-failure", "deployment.operation_failed", applicationId, correlationId,
+            "deployment.build_failed", OperationId: Guid.NewGuid()));
+        var applicationAlert = (await store.ListAlertsAsync(10, null, null, null, CancellationToken.None)).Items
+            .Single(item => item.RemediationTarget.ResourceId == applicationId);
+        await publisher.PublishAsync(new("deployment-application-recovery", "deployment.operation_failed", applicationId, correlationId,
+            "deployment.recovered", OperationId: Guid.NewGuid(), IsRecovery: true));
+        var recoveredApplicationAlert = await store.GetDetailAsync(applicationAlert.AlertId, CancellationToken.None)
+            ?? throw new InvalidOperationException("Application-level alert disappeared.");
+        TestAssert.Assert(recoveredApplicationAlert.Alert.Status == OperationalAlertStatus.Resolved,
+            "A later successful deployment did not resolve the failed application's alert.");
+
+        // Suppression only hides a still-active condition. A verified recovery must close it
+        // instead of letting the expiry task reopen a stale alert.
+        var suppressedResourceId = Guid.NewGuid();
+        await publisher.PublishAsync(new("suppressed-failure", "deployment.operation_failed", suppressedResourceId, correlationId,
+            "deployment.build_failed"));
+        var suppressedAlert = (await store.ListAlertsAsync(10, null, null, null, CancellationToken.None)).Items
+            .Single(item => item.RemediationTarget.ResourceId == suppressedResourceId);
+        await store.SuppressAsync(suppressedAlert.AlertId, "test-actor", "known maintenance", DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
+        await publisher.PublishAsync(new("suppressed-recovery", "deployment.operation_failed", suppressedResourceId, correlationId,
+            "deployment.recovered", IsRecovery: true));
+        var recoveredSuppressedAlert = await store.GetDetailAsync(suppressedAlert.AlertId, CancellationToken.None)
+            ?? throw new InvalidOperationException("Suppressed alert disappeared.");
+        TestAssert.Assert(recoveredSuppressedAlert.Alert.Status == OperationalAlertStatus.Resolved
+            && recoveredSuppressedAlert.Alert.ResolutionReason == "source-recovered",
+            "A recovery signal did not close a suppressed alert.");
     }
 }

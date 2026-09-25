@@ -9,7 +9,7 @@ internal static class EventAlertCatalog
         string ResourceType, RemediationTargetKind TargetKind, bool AllowsManualResolution);
 
     internal static readonly Definition DeploymentOperationFailed = new("deployment.operation_failed", OperationalEventSource.Deployment,
-        EventAlertSeverity.Error, "deployment-operation", RemediationTargetKind.ApplicationDeploymentOperation, true);
+        EventAlertSeverity.Error, "deployment-application", RemediationTargetKind.ApplicationDeployment, true);
     internal static readonly Definition CertificateRenewalFailed = new("certificate.renewal_failed", OperationalEventSource.Certificate,
         EventAlertSeverity.Error, "certificate", RemediationTargetKind.Certificate, false);
     internal static readonly Definition CertificateRenewalExhausted = new("certificate.renewal_exhausted", OperationalEventSource.Certificate,

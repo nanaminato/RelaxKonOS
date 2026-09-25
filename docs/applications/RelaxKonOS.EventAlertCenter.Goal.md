@@ -78,7 +78,7 @@
 `DedupeKey` 由中心按照封闭类型与安全资源引用生成，例如：
 
 ```text
-deployment.operation_failed : deployment-operation:<operationId>
+deployment.operation_failed : deployment-application:<applicationId>
 certificate.renewal_failed  : certificate:<certificateId>
 guardian.agent_unavailable  : guardian-agent:<instanceId>
 guardian.workload_unhealthy : guardian-workload:<workloadId>
@@ -174,7 +174,7 @@ Client/RelaxKonOS.Client/Apps/EventAlerts/
 
 ### 8.1 应用部署
 
-`ApplicationDeploymentCoordinator` 在持久操作已转为 `Failed`、或 `RecoveryProblemCode` 非空时发布事件；在相同应用/操作的成功或已验证恢复时发布恢复信号。`ApplicationDeploymentOperationStore` 仍是操作权威，中心仅保存 `operationId`、应用 ID 引用、阶段和问题码，不复制诊断数组或应用名称。
+`ApplicationDeploymentCoordinator` 在持久操作已转为 `Failed`、或 `RecoveryProblemCode` 非空时发布事件；在同一应用的后续成功或已验证恢复时发布恢复信号。告警按应用 ID 聚合，单个事件仍保留 `operationId` 以供时间线和操作详情跳转。`ApplicationDeploymentOperationStore` 仍是操作权威，中心仅保存 `operationId`、应用 ID 引用、阶段和问题码，不复制诊断数组或应用名称。
 
 因写入顺序需要恢复，事件包含操作 ID，启动重放器扫描保留的 terminal operation，并以 `(source, operationId, terminal state)` 作为幂等来源键。重放器不重新执行部署。
 
@@ -235,7 +235,7 @@ Guardian 自身崩溃/管道断开由 Server 的 `GuardianAvailabilityMonitor` �
 - 处理操作：确认、受权限保护的手动关闭和临时抑制；执行前显示影响、期限和审计提示，失败不乐观更新。
 - 壳级入口：状态栏/通知区域显示**未确认**的最高级别计数。首次打开或严重性升级可显示一个本地 toast；同一告警在冷却时间内不重复弹出，且 `Acknowledged` 不因普通重复事件再 toast。
 
-跳转使用 `RemediationTargetKind` 枚举和严格 DTO（如 `ApplicationDeploymentOperation`, `Certificate`, `GuardianWorkload`, `DockerOverview`, `TunnelDefinition`、`EventAlertDetail`），由客户端映射到本地 `relaxkonos://` URI 并调用 Shell 的 `IAppActivationService`。目标 ID 必须是 GUID 或经验证的本地 ID；客户端不解析来自 Server 的 URI、路径、命令或 display text。相关领域应用实现最小 `IAppActivationHandler`：导航到详情/日志/操作，而不绕过原有登录、能力检查、凭据确认或危险操作对话框。
+跳转使用 `RemediationTargetKind` 枚举和严格 DTO（如 `ApplicationDeployment`、`ApplicationDeploymentOperation`、`Certificate`、`GuardianWorkload`、`DockerOverview`、`TunnelDefinition`、`EventAlertDetail`），由客户端映射到本地 `relaxkonos://` URI 并调用 Shell 的 `IAppActivationService`。目标 ID 必须是 GUID 或经验证的本地 ID；客户端不解析来自 Server 的 URI、路径、命令或 display text。相关领域应用实现最小 `IAppActivationHandler`：导航到详情/日志/操作，而不绕过原有登录、能力检查、凭据确认或危险操作对话框。
 
 若目标应用不存在、Server capability 关闭或用户没有权限，中心显示原因和可复制 correlation/operation ID；不降级为启动终端或展示原始日志。
 
