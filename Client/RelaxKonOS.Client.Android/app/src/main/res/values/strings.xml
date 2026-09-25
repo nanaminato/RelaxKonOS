@@ -42,6 +42,14 @@
     <string name="login_server_found">Server found. The preferred endpoint will be used.</string>
     <string name="login_server_invalid">Enter a host name or an HTTP(S) address, for example: host:port.</string>
     <string name="login_server_unavailable">No RelaxKonOS login endpoint could be reached at this address.</string>
+    <!--
+      Managed-host logins. A login whose stable identity is an installation id has no persistable server
+      address: its local tunnel address only exists once the SSH tunnel is open. The form therefore names
+      the host instead of inventing an address, and says where the tunnel is established.
+    -->
+    <string name="login_managed_host_field">Managed host: %1$s</string>
+    <string name="login_managed_tunnel_required">%1$s is a managed host. Establish its SSH tunnel in the server centre, then sign in.</string>
+    <string name="login_managed_host_missing">This login belongs to a managed installation with no host record on this device. Add the host in the server centre.</string>
     <string name="login_identifier">Account</string>
     <string name="login_password">Password</string>
     <string name="login_remember_hint">Save the password on this device and unlock it with the fingerprint</string>

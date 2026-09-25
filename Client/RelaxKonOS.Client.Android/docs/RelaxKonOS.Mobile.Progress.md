@@ -70,7 +70,8 @@
 - 新增无界面部署操作层：上传前验证签名 ZIP、RID、架构和逐文件摘要，经内置 SFTP 写入远端私有暂存目录，调用固定启动器，并按 `operationId` 查询权威回执。该层尚未接入 Compose 页面或应用级恢复协调器。
 - 登录身份与传输地址已拆分。`SelectedLogin` / `SavedLogin` / `ConnectionProfileStore` / 连接与 debug 凭据都按 `(serviceId, identifier)`；`AuthSession` 另持有可重绑定的 `effectiveBaseUrl`，文件、指标、提权和上传等 API 调用读取当前地址。隧道换端口只更新传输地址，不改变登录记录、保险箱 AAD 或上传恢复归属。
 - `RKC2` / `RKV2` 的二进制布局未改变：直连记录原先保存的 URL 本身就是 URL 型 `serviceId`；未增加旧端口键兼容分支。受管安装记录只允许保存安装 ID，不保存临时 loopback 地址。
-- 已补 JVM 单元检查，覆盖受管登录档案持久化、隧道换端口后登录/凭据键不变、会话改用新端口，以及部署操作的上传、执行、回执与拒绝路径。本环境缺少 JDK、可执行 Gradle wrapper 及 Android SDK 接线，新增检查尚未在本轮执行；真机与真实 Windows/Linux 宿主验收仍未完成。
+- 受管登录选择已接入隧道解析：新增 `servercenter/ManagedLoginTunnelResolution.kt`。`ManagedLoginTunnelRules.hostFor` 只按安装标识在宿主仓库中找宿主（相同 IP、URL 文本或 DNS 解析都不足以合并），`bind` 要求宿主与隧道解析结果属于同一安装，否则拒绝跨安装身份；`StoreManagedLoginResolver` 由 `AppContainer.managedLogins` 持有。`LoginViewModel.select` 对受管登录不再回填地址，而是显示宿主名称与「通过 SSH 连接」说明，宿主资料缺失时明确报「缺宿主资料」；`LoginScreen` 增加对应的字段说明行，三份 `strings.xml` 同步新增 `login_managed_host_field` / `login_managed_tunnel_required` / `login_managed_host_missing`。建立隧道本身需要 SSH 凭据与用户确认，仍属宿主详情页与保险箱。
+- 已补 JVM 单元检查，覆盖受管登录档案持久化、隧道换端口后登录/凭据键不变、会话改用新端口、受管登录按安装标识找宿主、跨安装绑定与直连解析被拒，以及部署操作的上传、执行、回执与拒绝路径。本轮已在本地 Gradle/JDK 环境执行 `:app:compileDebugKotlin` 与 `:app:testDebugUnitTest`，均 BUILD SUCCESSFUL；真机与真实 Windows/Linux 宿主验收仍未完成。
 
 ## 界面现代化（2026-09-23）
 

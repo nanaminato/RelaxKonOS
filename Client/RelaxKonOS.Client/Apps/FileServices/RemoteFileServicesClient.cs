@@ -24,8 +24,8 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
     public Task<FileServiceOperationResultDto> SetSambaPasswordAsync(string username, SetSambaPasswordRequest request, CancellationToken ct = default) => Send<FileServiceOperationResultDto>(HttpMethod.Put, FileServiceApiRoutes.UserPassword.Replace("{username}", Uri.EscapeDataString(username), StringComparison.Ordinal), ct, request);
     public async Task<bool> ElevateAsync(string password, CancellationToken ct = default)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.ServerUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
         { Content = JsonContent.Create(new HostElevationRequest(HostElevationCapability.SmbManage, "smb:managed", password), options: RelaxKonOSJsonOptions.Default) };
         using var response = await http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode) throw await CreateApiExceptionAsync(response, ct);
@@ -33,8 +33,8 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
     }
     private async Task<T> Send<T>(HttpMethod method, string route, CancellationToken ct, object? body = null)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')))
         { Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default) };
         using var response = await http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode) throw await CreateApiExceptionAsync(response, ct);

@@ -32,6 +32,14 @@
     <string name="login_server_found">サーバーが見つかりました。優先エンドポイントを使用します。</string>
     <string name="login_server_invalid">ホスト名または HTTP(S) アドレスを入力してください。例: host:port</string>
     <string name="login_server_unavailable">このアドレスで RelaxKonOS のログインエンドポイントに到達できません。</string>
+    <!--
+      管理対象ホストのログイン。安定した識別子がインストール ID のログインには、永続化できる
+      サーバーアドレスがありません。ローカルのトンネルアドレスは SSH トンネル確立後にのみ存在します。
+      そのためフォームはアドレスを捏造せずホスト名を表示し、トンネルの確立場所を案内します。
+    -->
+    <string name="login_managed_host_field">管理対象ホスト: %1$s</string>
+    <string name="login_managed_tunnel_required">%1$s は管理対象ホストです。サーバーセンターで SSH トンネルを確立してからサインインしてください。</string>
+    <string name="login_managed_host_missing">このログインは管理対象インストールに属しますが、この端末に対応するホスト情報がありません。サーバーセンターでホストを追加してください。</string>
     <string name="login_identifier">アカウント</string>
     <string name="login_password">パスワード</string>
     <string name="login_remember_hint">この端末にパスワードを保存し、指紋で解錠する</string>

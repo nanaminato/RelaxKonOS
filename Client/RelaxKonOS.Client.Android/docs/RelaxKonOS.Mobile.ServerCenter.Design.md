@@ -1,6 +1,6 @@
 # Android 服务器中心接入设计
 
-> 状态：接入中。Android 已有独立宿主资料、SSH 凭据域、主机密钥固定、JSch 传输、隧道基础件、签名 ZIP 逐文件验证、远端操作层，以及稳定 `serviceId` / 动态 `effectiveBaseUrl` 的登录与会话模型；登录前后入口、应用级部署协调器、受管登录的隧道解析与远端操作恢复及真机验收尚未完成。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
+> 状态：接入中。Android 已有独立宿主资料、SSH 凭据域、主机密钥固定、JSch 传输、隧道基础件、签名 ZIP 逐文件验证、远端操作层，以及稳定 `serviceId` / 动态 `effectiveBaseUrl` 的登录与会话模型；受管登录选择已接入按安装标识查找宿主的隧道解析，并把隧道解析结果绑定回登录身份。登录前后入口、应用级部署协调器、远端操作恢复及真机验收尚未完成。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
 >
 > 基线：独立 Kotlin / Jetpack Compose / Material 3 工程；`MainActivity` 在未认证时显示 `LoginScreen`，认证后显示五类导航的 `ShellScaffold`。已有内置 SSH/SFTP 与无界面操作层，尚无服务器部署页面。
 
@@ -49,10 +49,11 @@
 
 ### 3.1 稳定身份与动态隧道端口
 
-Android 本地模型已将**稳定身份**与**请求地址**拆开：`SelectedLogin`、`SavedLogin`、`ConnectionProfileStore`、`CredentialVault` 和 debug 凭据存储只用 `serviceId` 建立身份；`AuthSession` 同时持有 `serviceId` 与 `effectiveBaseUrl`，所有已认证 API 调用使用后者。隧道绑定的本地端口变化不再创建新的 `SavedLogin`，也不会改变保险箱 AAD。后续接入受管隧道时必须保持这些边界：
+Android 本地模型已将**稳定身份**与**请求地址**拆开：`SelectedLogin`、`SavedLogin`、`ConnectionProfileStore`、`CredentialVault` 和 debug 凭据存储只用 `serviceId` 建立身份；`AuthSession` 同时持有 `serviceId` 与 `effectiveBaseUrl`，所有已认证 API 调用使用后者。隧道绑定的本地端口变化不再创建新的 `SavedLogin`，也不会改变保险箱 AAD。受管隧道接入已保持这些边界：
 
 - 直连的 `serviceId` 为规范化的持久服务器 URL；受管隧道的 `serviceId` 为 SSH 主机密钥与安装清单共同验证过的安装 ID。登录与保险箱以 `(serviceId, identifier)` 为键，不以当前端口为键。
 - `effectiveBaseUrl` 是当前会话的实际 HTTP 地址。直连时等于持久 URL；隧道时由连接解析器建立并持有。`AuthSession.updateConnection` 只接受不改变 `kind + serviceId` 的重绑定；文件、指标、提权和上传等调用都从会话取得当前地址。隧道断开时先重建并核对主机身份，换端口后只更新传输地址。
+- 受管登录选择经 `servercenter/ManagedLoginTunnelResolution.kt` 接入隧道解析：`ManagedLoginTunnelRules.hostFor` 只按安装标识在 `ServerHostTargetStore` 中找宿主（相同 IP、URL 文本或 DNS 解析都不足以合并），`bind` 要求宿主与隧道解析结果都属于同一安装，否则拒绝——宿主重装后安装标识会变，旧登录绝不能被静默接到新安装上，否则会复用错误的保险箱记录。宿主资料缺失时登录表单说明「缺宿主资料」，不回落到猜测地址。建立隧道本身需要 SSH 凭据与一次用户确认，仍属宿主详情页与保险箱。
 - 登录表单的“服务器”字段在直连模式仍可编辑原 URL；选择受管隧道时显示宿主名称和「通过 SSH 连接」说明，编辑入口回到宿主详情。不能把临时 loopback 地址伪装为用户应保存的服务器地址。
 - 这是发布前的本地接口演进，已直接更新 `SelectedLogin`、档案存储、保险箱 AAD、登录决策、会话、API 调用和 JVM 测试；没有增设依赖旧端口键的兼容分支。`RKC2` / `RKV2` 的二进制布局未改变，原先保存的直连 URL 在新语义下就是直连 `serviceId`；受管安装 ID 只由后续经过验证的服务器中心流程写入。
 

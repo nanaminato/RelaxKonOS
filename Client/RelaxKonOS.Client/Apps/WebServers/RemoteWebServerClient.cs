@@ -37,11 +37,11 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
         SendAsync<WebServerInstallDownloadDto?>(HttpMethod.Get, WebServerApiRoutes.ManagedInstallDownload + "?version=" + Uri.EscapeDataString(version), null, null, cancellationToken);
     public async Task<InstallationFileReferenceDto?> UploadManagedPackageAsync(string fileName, Stream content, CancellationToken cancellationToken = default)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var form = new MultipartFormDataContent();
         using var file = new StreamContent(content);
         form.Add(file, "package", Path.GetFileName(fileName));
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.ServerUrl), WebServerApiRoutes.ManagedInstallPackage.TrimStart('/'))) { Content = form };
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), WebServerApiRoutes.ManagedInstallPackage.TrimStart('/'))) { Content = form };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode) throw new WebServerApiException(await ReadProblemCodeAsync(response, cancellationToken) ?? FallbackProblemCode(response.StatusCode), response.StatusCode);
@@ -82,9 +82,9 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
 
     public async Task DeleteSiteAsync(string id, string siteId, CancellationToken cancellationToken = default)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(new Uri(session.ServerUrl), WebServerApiRoutes.SiteById.Replace("{id}", WebUtility.UrlEncode(id)).Replace("{siteId}", WebUtility.UrlEncode(siteId)).TrimStart('/')));
+        using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(new Uri(session.EffectiveBaseUrl), WebServerApiRoutes.SiteById.Replace("{id}", WebUtility.UrlEncode(id)).Replace("{siteId}", WebUtility.UrlEncode(siteId)).TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Unable to delete site ({(int)response.StatusCode}).", null, response.StatusCode);
@@ -94,9 +94,9 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
 
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, string? idempotencyKey, CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')))
         {
             Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default),
         };

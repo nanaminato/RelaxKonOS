@@ -17,11 +17,11 @@ public sealed class PerformanceStream(IAuthSession session) : IAsyncDisposable
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        if (session.ServerUrl is null || session.Tokens is null)
+        if (session.EffectiveBaseUrl is null || session.Tokens is null)
             throw new InvalidOperationException("Not signed in.");
         if (_connection is not null) return;
 
-        var hubUrl = new Uri(new Uri(session.ServerUrl), RelaxKonOSEndpoints.PerformanceHubPath.TrimStart('/')).ToString();
+        var hubUrl = new Uri(new Uri(session.EffectiveBaseUrl), RelaxKonOSEndpoints.PerformanceHubPath.TrimStart('/')).ToString();
         var connection = new HubConnectionBuilder()
             .WithUrl(hubUrl, options => options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1)))
             .WithAutomaticReconnect()

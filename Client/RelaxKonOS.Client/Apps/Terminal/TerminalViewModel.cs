@@ -109,7 +109,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
         var dimensions = new TerminalSessionDimensions(Columns, Rows, WidthPixels: 800, HeightPixels: 480);
         ITerminalTransportOptions options;
 
-        if (_session is { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } })
+        if (_session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } })
         {
             Status = LocalizedText.Ref("terminal.status.connecting");
             options = new SignalRTransportOptions(
@@ -157,7 +157,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
 
     private async Task LoadAppearanceAsync()
     {
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
 
         try
@@ -197,7 +197,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
 
     private async Task SaveAppearanceAsync(TerminalSettingsDto settings)
     {
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
 
         try { await _settingsClient.SaveAsync(url, tokens.AccessToken, workspace.Id, settings); }

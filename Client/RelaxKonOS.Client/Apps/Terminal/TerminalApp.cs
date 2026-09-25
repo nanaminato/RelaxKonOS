@@ -60,7 +60,7 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
             var diagnostics = context.Services.GetService<NetworkDiagnosticsService>();
             var sessionIds = Array.Empty<string>();
 
-            if (session is { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens })
+            if (session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens })
             {
                 try
                 {

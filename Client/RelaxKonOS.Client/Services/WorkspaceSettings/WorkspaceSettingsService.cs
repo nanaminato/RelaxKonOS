@@ -29,7 +29,7 @@ public sealed class WorkspaceSettingsService : IWorkspaceSettingsService
     public async Task<WorkspacePreferencesDto> SaveAsync(string serverUrl, string accessToken, Guid workspaceId, WorkspacePreferencesDto preferences, CancellationToken ct = default)
     {
         var saved = await SendAsync<WorkspacePreferencesDto>(HttpMethod.Put, serverUrl, accessToken, workspaceId, preferences, ct);
-        if (_session.State == AuthSessionState.Authenticated && _session.ServerUrl == serverUrl
+        if (_session.State == AuthSessionState.Authenticated && _session.EffectiveBaseUrl == serverUrl
             && _session.CurrentWorkspace?.Id == workspaceId && _session.Tokens?.AccessToken == accessToken)
             _settings.AcknowledgePreferences(preferences.Revision, saved.Revision);
         return saved;

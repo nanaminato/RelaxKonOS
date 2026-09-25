@@ -67,7 +67,8 @@ public class SessionStub : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
     {
         "get_State" => AuthSessionState.Authenticated,
-        "get_ServerUrl" => "http://localhost/",
+        "get_ServiceId" => "http://localhost",
+        "get_EffectiveBaseUrl" => "http://localhost/",
         "GetAccessTokenAsync" => Task.FromResult<string?>("test"),
         _ => throw new NotSupportedException(method?.Name)
     };

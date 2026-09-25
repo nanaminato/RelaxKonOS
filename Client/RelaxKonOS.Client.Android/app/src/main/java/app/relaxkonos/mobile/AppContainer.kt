@@ -47,10 +47,12 @@ import app.relaxkonos.mobile.servercenter.DefaultServerCenterConnectionResolver
 import app.relaxkonos.mobile.servercenter.FileHostKeyStorage
 import app.relaxkonos.mobile.servercenter.FileHostTargetStorage
 import app.relaxkonos.mobile.servercenter.JschServerCenterSshTransportFactory
+import app.relaxkonos.mobile.servercenter.ManagedLoginResolver
 import app.relaxkonos.mobile.servercenter.ServerCenterConnectionResolver
 import app.relaxkonos.mobile.servercenter.ServerCenterSshCredentialStore
 import app.relaxkonos.mobile.servercenter.ServerHostKeyTrustStore
 import app.relaxkonos.mobile.servercenter.ServerHostTargetStore
+import app.relaxkonos.mobile.servercenter.StoreManagedLoginResolver
 import app.relaxkonos.mobile.ui.theme.AppearancePreferences
 import app.relaxkonos.mobile.ui.theme.AppearanceState
 import app.relaxkonos.mobile.ui.common.UiMessage
@@ -119,6 +121,14 @@ class AppContainer(context: Context) {
         hostTargets = serverHostTargets,
         transportFactory = JschServerCenterSshTransportFactory(),
     )
+
+    /**
+     * 受管登录的连接解析入口：把登录记录里的安装标识接到本机宿主资料。
+     *
+     * 与 [serverCenterConnections] 共用同一份宿主仓库，因此两端对「哪台宿主负责这条登录」的
+     * 判断只有一个来源。它不建立隧道：那需要 SSH 凭据与一次用户确认，属于宿主详情页。
+     */
+    val managedLogins: ManagedLoginResolver = StoreManagedLoginResolver(serverHostTargets)
 
     /**
      * Plaintext fallback for a device that cannot host a Keystore key at all.

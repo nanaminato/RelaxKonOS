@@ -55,9 +55,9 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
     /// </summary>
     private async Task<DockerProxyStatusDto> SendProxyAsync(HttpMethod method, object? body, CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("docker.error.not_signed_in"));
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), DockerProxyApiRoutes.Proxy.TrimStart('/')));
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), DockerProxyApiRoutes.Proxy.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, cancellationToken);
@@ -87,9 +87,9 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
     private Task<T> SendAsync<T>(string route, CancellationToken cancellationToken) => SendAsync<T>(HttpMethod.Get, route, null, cancellationToken);
     private async Task<T?> TrySendAsync<T>(string route, CancellationToken cancellationToken) where T : class
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("docker.error.not_signed_in"));
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')));
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
@@ -98,9 +98,9 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
     }
     private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("docker.error.not_signed_in"));
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')));
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, cancellationToken);

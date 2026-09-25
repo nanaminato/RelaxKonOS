@@ -1,5 +1,6 @@
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Services.Auth;
@@ -9,7 +10,19 @@ namespace RelaxKonOS.Client.Services.Auth;
 public interface IAuthSession
 {
     AuthSessionState State { get; }
-    string? ServerUrl { get; }
+
+    /// <summary>
+    /// 稳定登录身份：直连为规范化的服务器 URL，受管 SSH 隧道为安装标识。
+    /// 登录记录、凭据保险箱与客户端偏好都以它为键，换隧道端口不改变它。
+    /// </summary>
+    string? ServiceId { get; }
+
+    /// <summary>
+    /// 本次会话实际使用的 HTTP 地址。受管隧道换端口只更新它，绝不改变 <see cref="ServiceId"/>；
+    /// 它不是身份，也不得作为长期保存的服务器地址或凭据键。
+    /// </summary>
+    string? EffectiveBaseUrl { get; }
+
     AuthTokens? Tokens { get; }
     UserDto? CurrentUser { get; }
     ServerDescriptorDto? CurrentServer { get; }
@@ -21,13 +34,18 @@ public interface IAuthSession
     /// <summary>状态变化（Connecting / Authenticated / Unauthenticated）。</summary>
     event EventHandler<AuthSessionStateChangedEventArgs>? StateChanged;
 
-    /// <summary>登录。成功后可分别记住服务器/用户名，或额外加密保存密码。</summary>
+    /// <summary>登录。请求发往 <see cref="ServerConnectionIdentity.EffectiveBaseUrl"/>，凭据以稳定身份保存。</summary>
     Task<LoginResponse> LoginAsync(
-        string serverUrl,
+        ServerConnectionIdentity identity,
         LoginRequest request,
         bool rememberServer,
         bool rememberPassword,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// 隧道重建或换端口后只更新传输地址。身份必须保持不变，否则会制造新的登录记录并丢掉保险箱关联。
+    /// </summary>
+    void UpdateConnection(ServerConnectionIdentity identity);
 
     /// <summary>Returns all connections remembered for the current operating-system user.</summary>
     Task<IReadOnlyList<SavedLoginProfile>> GetSavedProfilesAsync(CancellationToken ct = default);

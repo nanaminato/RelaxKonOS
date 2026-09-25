@@ -120,7 +120,7 @@ public sealed class NetworkDiagnosticsService : IDisposable
         if (uri.AbsolutePath.Contains("/auth/", StringComparison.OrdinalIgnoreCase)) return false;
         if (uri.IsLoopback && uri.Port == DeveloperModeService.BridgePort)
             return true;
-        var serverUrl = GetSession().ServerUrl;
+        var serverUrl = GetSession().EffectiveBaseUrl;
         if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var server))
             return false;
         return Uri.Compare(uri, server, UriComponents.SchemeAndServer, UriFormat.Unescaped,

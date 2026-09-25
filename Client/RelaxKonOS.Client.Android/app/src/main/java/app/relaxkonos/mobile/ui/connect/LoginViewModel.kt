@@ -75,6 +75,17 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     var isLoggingIn by mutableStateOf(false)
     var message by mutableStateOf<UiMessage?>(null)
     var connectionsOpen by mutableStateOf(false)
+
+    /**
+     * The host name of the managed login currently in the form, or `null` for a direct one.
+     *
+     * A managed login's stable identity is an installation id, so there is no server address to fill in:
+     * its local tunnel address exists only once the SSH tunnel is open. The form therefore names the host
+     * and says where the tunnel is established, instead of showing an invented address or a blank field.
+     */
+    var managedHostName by mutableStateOf<String?>(null)
+        private set
+
     var endpointDiscoveryState by mutableStateOf(EndpointDiscoveryState.Idle)
         private set
 
@@ -162,6 +173,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changeServer(value: String) {
         discoveryJob?.cancel()
+        // Typing an address means the form now describes a direct server, so it stops being a managed
+        // selection: the host name and the "establish a tunnel" notice must not outlive that.
+        managedHostName = null
         serverUrl = value
         endpointDiscoveryState = EndpointDiscoveryState.Idle
     }
@@ -200,11 +214,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     fun select(login: SavedLogin) {
         val directUrl = login.directServerUrl
         if (directUrl == null) {
-            // Managed profiles require the server-centre flow to establish and verify a fresh tunnel.
-            message = UiMessage(R.string.login_server_unavailable)
-            connectionsOpen = false
+            selectManaged(login)
             return
         }
+        managedHostName = null
         serverUrl = directUrl
         identifier = login.identifier
         passwordText = ""
@@ -212,6 +225,33 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         connectionsOpen = false
         focusRequest = null
         windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
+    }
+
+    /**
+     * Selects a managed login: resolves its host through the server centre and explains what comes next.
+     *
+     * The host lookup is by installation id, never by address text, so two installations that happen to
+     * share an IP are never merged. Nothing is filled into the address field on purpose — a managed login
+     * has no persistable server address, and its loopback address only exists after
+     * [app.relaxkonos.mobile.servercenter.ManagedLoginTunnelRules.bind] has a tunnel to bind.
+     *
+     * A missing host record is reported as exactly that, rather than as a generic "address unavailable",
+     * which would misread "this device has no host record" as a network problem.
+     */
+    private fun selectManaged(login: SavedLogin) {
+        val host = container.managedLogins.hostFor(login.serviceId)
+        managedHostName = host?.displayName
+        serverUrl = ""
+        identifier = login.identifier
+        passwordText = ""
+        connectionsOpen = false
+        focusRequest = null
+        windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
+        message = if (host == null) {
+            UiMessage(R.string.login_managed_host_missing)
+        } else {
+            UiMessage(R.string.login_managed_tunnel_required, listOf(host.displayName))
+        }
     }
 
     /** "Forget the password": drops the credential, keeps the login (§6.3). */

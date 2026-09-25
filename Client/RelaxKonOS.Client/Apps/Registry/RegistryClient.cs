@@ -24,7 +24,7 @@ public sealed class RegistryClient(HttpClient http, IAuthSession session) : IReg
 
     private async Task<T> GetAsync<T>(string route, CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("registry.error.sign_in", "Sign in to browse the configuration registry."));
         using var request = CreateRequest(HttpMethod.Get, route);
         using var response = await http.SendAsync(request, cancellationToken);
@@ -44,9 +44,9 @@ public sealed class RegistryClient(HttpClient http, IAuthSession session) : IReg
     }
     private HttpRequestMessage CreateRequest(HttpMethod method, string route)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("registry.error.sign_in", "Sign in to browse the configuration registry."));
-        var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')));
+        var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         return request;
     }

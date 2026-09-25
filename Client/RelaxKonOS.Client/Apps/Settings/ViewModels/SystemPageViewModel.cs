@@ -25,7 +25,7 @@ public sealed partial class SystemPageViewModel : SettingsPageViewModel, IDispos
     public override string DisplayName => T("settings.page.system", "System");
 
     public string AppVersion => "RelaxKonOS 0.1";
-    public string ServerUrl => _session.ServerUrl ?? T("settings.value.not_connected", "Not connected");
+    public string ServerUrl => _session.EffectiveBaseUrl ?? T("settings.value.not_connected", "Not connected");
     public string UserName => _session.CurrentUser?.Username ?? "—";
     public string Platform => _session.CurrentUser?.Platform switch
     {

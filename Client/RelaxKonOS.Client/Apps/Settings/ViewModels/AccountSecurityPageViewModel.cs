@@ -80,11 +80,11 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
             if (config.Alias is not null && request is RenameAliasRequest or ChangeAliasPasswordRequest or DeleteAliasRequest)
             {
                 var profiles = await remembered.LoadAsync(current.Token);
-                var old = profiles.FirstOrDefault(p => SavedLoginProfile.SameProfile(p.ServerUrl, p.Username, connection.ServerUrl, config.Alias));
-                var save = await remembered.RemoveAsync(connection.ServerUrl, config.Alias, current.Token);
+                var old = profiles.FirstOrDefault(p => SavedLoginProfile.SameProfile(p.ServiceId, p.Identifier, connection.ServiceId, config.Alias));
+                var save = await remembered.RemoveAsync(connection.ServiceId, config.Alias, current.Token);
                 if (save != RememberedProfileSaveResult.Saved) Status = T("settings.account.saved_cleanup_failed", "Update the saved login for this server manually.");
                 if (old is not null && request is RenameAliasRequest rename)
-                    await remembered.UpsertAsync(old with { Username = rename.Alias }, current.Token);
+                    await remembered.UpsertAsync(old with { Identifier = rename.Alias }, current.Token);
             }
             if (request is ChangeAliasPasswordRequest or DeleteAliasRequest)
             {

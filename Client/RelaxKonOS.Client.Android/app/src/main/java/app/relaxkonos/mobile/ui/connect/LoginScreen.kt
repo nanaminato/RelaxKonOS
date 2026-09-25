@@ -137,9 +137,12 @@ fun LoginScreen(modifier: Modifier = Modifier) {
                             if (!it.isFocused) viewModel.discoverServerEndpoint()
                         },
                         label = { Text(stringResource(R.string.login_server_address)) },
-                        supportingText = { endpointDiscoveryStatus(viewModel.endpointDiscoveryState) },
+                        supportingText = { serverFieldSupport(viewModel.managedHostName, viewModel.endpointDiscoveryState) },
                         singleLine = true,
-                        enabled = !viewModel.isLoggingIn,
+                        // A managed login has no address to edit: its transport address is the tunnel's,
+                        // which only exists once the SSH tunnel is open. Editing the field is how the form
+                        // returns to a direct server, so it is disabled only while a host is named.
+                        enabled = !viewModel.isLoggingIn && viewModel.managedHostName == null,
                         shape = MaterialTheme.shapes.medium,
                     )
                     OutlinedTextField(
@@ -268,6 +271,25 @@ private fun credentialStatusLine(status: CredentialStatus): (@Composable () -> U
             Text(label, style = MaterialTheme.typography.bodySmall, color = color)
         }
     }
+}
+
+/**
+ * The line under the address field.
+ *
+ * A managed login has no address to report, so the field names its host instead; everything else keeps
+ * the endpoint-probe feedback, which is only ever an early hint and never a precondition for the request.
+ */
+@Composable
+private fun serverFieldSupport(managedHostName: String?, state: EndpointDiscoveryState) {
+    if (managedHostName != null) {
+        Text(
+            stringResource(R.string.login_managed_host_field, managedHostName),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    endpointDiscoveryStatus(state)
 }
 
 @Composable

@@ -68,9 +68,9 @@ public sealed class RemoteTunnelClient(HttpClient http, IAuthSession session) : 
     }
     private async Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string path, object? payload, CancellationToken ct)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), path.TrimStart('/')));
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), path.TrimStart('/')));
         if (payload is not null) request.Content = JsonContent.Create(payload, options: RelaxKonOSJsonOptions.Default);
         return await http.SendAsync(request, ct);
     }

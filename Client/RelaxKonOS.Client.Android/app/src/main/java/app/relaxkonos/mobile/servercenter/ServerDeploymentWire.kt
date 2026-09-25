@@ -107,7 +107,7 @@ internal object ServerDeploymentWire {
     private fun readResult(fields: Map<String, ServerCenterJsonValue>): ServerDeploymentResult =
         ServerDeploymentResult(
             installationId = fields.nullableString("installationId"),
-            mode = fields.optionalEnum("mode"),
+            mode = fields.optionalEnum("mode", ServerInstallMode::class.java),
             version = fields.nullableString("version"),
             previousVersion = fields.nullableString("previousVersion"),
             installRoot = fields.nullableString("installRoot"),
@@ -125,7 +125,7 @@ internal object ServerDeploymentWire {
             installed = fields.required("installed").asBoolean(),
             verifiedAtUtc = fields.required("verifiedAtUtc").asString(),
             installationId = fields.nullableString("installationId"),
-            mode = fields.optionalEnum("mode"),
+            mode = fields.optionalEnum("mode", ServerInstallMode::class.java),
             version = fields.nullableString("version"),
             previousVersion = fields.nullableString("previousVersion"),
             installRoot = fields.nullableString("installRoot"),
@@ -140,7 +140,7 @@ internal object ServerDeploymentWire {
         ServerHostProbe(
             hostPlatform = fields.required("hostPlatform").asString(),
             architecture = fields.required("architecture").asString(),
-            runtimeIdentifier = fields.optionalEnum("runtimeIdentifier"),
+            runtimeIdentifier = fields.optionalEnum("runtimeIdentifier", ServerRuntimeIdentifier::class.java),
             osId = fields.nullableString("osId"),
             osVersion = fields.nullableString("osVersion"),
             osSupported = fields.required("osSupported").asBoolean(),
@@ -151,7 +151,7 @@ internal object ServerDeploymentWire {
             requestedPort = fields.nullableLong("requestedPort")?.toIntExact(),
             requestedPortAvailable = fields.nullableBoolean("requestedPortAvailable"),
             existingInstallationId = fields.nullableString("existingInstallationId"),
-            existingMode = fields.optionalEnum("existingMode"),
+            existingMode = fields.optionalEnum("existingMode", ServerInstallMode::class.java),
             existingVersion = fields.nullableString("existingVersion"),
             existingInstalled = fields.required("existingInstalled").asBoolean(),
             missingDependencies = fields.stringList("missingDependencies"),
@@ -185,10 +185,11 @@ private fun Map<String, ServerCenterJsonValue>.optionalObject(name: String): Map
         else -> value.asObject()
     }
 
-private inline fun <reified T : Enum<T>> Map<String, ServerCenterJsonValue>.optionalEnum(name: String): T? =
+private fun <T : Enum<T>> Map<String, ServerCenterJsonValue>.optionalEnum(name: String, type: Class<T>): T? =
     when (val value = this[name]) {
         null, ServerCenterJsonValue.NullValue -> null
-        else -> value.enumValue()
+        else -> type.enumConstants.orEmpty().firstOrNull { it.wireName() == value.asString() }
+            ?: throw IllegalArgumentException("Unknown ${type.simpleName} value.")
     }
 
 private fun Map<String, ServerCenterJsonValue>.stringList(name: String): List<String> =

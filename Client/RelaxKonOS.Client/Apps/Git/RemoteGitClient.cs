@@ -161,9 +161,9 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
 
     private async Task<T?> TrySendAsync<T>(string route, CancellationToken cancellationToken) where T : class
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')));
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
@@ -181,9 +181,9 @@ public sealed class RemoteGitClient(HttpClient http, IAuthSession session) : IRe
 
     private async Task<HttpResponseMessage> SendRawAsync(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')))
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')))
         {
             Content = body is null ? null : JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default),
         };

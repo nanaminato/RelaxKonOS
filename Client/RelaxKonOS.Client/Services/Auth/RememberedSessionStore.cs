@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
+using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Services.Auth;
@@ -12,7 +13,7 @@ namespace RelaxKonOS.Client.Services.Auth;
 public interface IRememberedSessionStore
 {
     Task<IReadOnlyList<SavedLoginProfile>> LoadAsync(CancellationToken ct = default);
-    Task<RememberedProfileSaveResult> RemoveAsync(string serverUrl, string identifier, CancellationToken ct = default);
+    Task<RememberedProfileSaveResult> RemoveAsync(string serviceId, string identifier, CancellationToken ct = default);
     Task<RememberedProfileSaveResult> UpsertAsync(SavedLoginProfile profile, CancellationToken ct = default);
     Task ClearAsync(CancellationToken ct = default);
 }
@@ -28,25 +29,39 @@ public enum RememberedProfileSaveResult
     LocalStorageWriteFailed,
 }
 
-/// <summary>A saved server/user pair. Password, when opted into, only ever exists in encrypted OS credential storage.</summary>
-public sealed record SavedLoginProfile(string ServerUrl, string Username, string? Password, DateTimeOffset LastUsedAt)
+/// <summary>
+/// A saved login addressed by its stable <c>(serviceId, identifier)</c> pair.
+/// <para><see cref="ServiceId"/> is the canonical server URL for a direct login and the verified
+/// installation id for a managed tunnel. A temporary loopback address is never persisted, so changing a
+/// tunnel's local port cannot create a second record or orphan the credential.</para>
+/// <para>Password, when opted into, only ever exists in encrypted OS credential storage.</para>
+/// </summary>
+public sealed record SavedLoginProfile(string ServiceId, string Identifier, string? Password, DateTimeOffset LastUsedAt)
 {
     public bool HasPassword => !string.IsNullOrWhiteSpace(Password);
 
-    /// <summary>ComboBox uses this value for editable selection text; never expose credentials there.</summary>
-    public override string ToString() => ServerUrl;
+    public ServerServiceIdKind ServiceIdKind => ServerInstallationId.IsValid(ServiceId)
+        ? ServerServiceIdKind.ManagedInstallation
+        : ServerServiceIdKind.DirectUrl;
 
-    public static bool SameServer(string left, string right)
-        => string.Equals(NormalizeServer(left), NormalizeServer(right), StringComparison.OrdinalIgnoreCase);
+    /// <summary>Direct profiles may refill the address field; managed profiles must first resolve an SSH tunnel.</summary>
+    public string? DirectServerUrl => ServiceIdKind == ServerServiceIdKind.DirectUrl ? ServiceId : null;
 
-    public static bool SameProfile(string leftServer, string leftUsername, string rightServer, string rightUsername)
-        => SameServer(leftServer, rightServer)
-           && string.Equals(leftUsername, rightUsername, StringComparison.Ordinal);
+    /// <summary>The key shared by the login record and its credential-vault entry; a tunnel rebind never changes it.</summary>
+    public string CredentialKey => ServerConnectionIdentityRules.CredentialKey(ServiceId, Identifier);
 
-    private static string NormalizeServer(string serverUrl)
-        => Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri)
-            ? uri.GetLeftPart(UriPartial.Authority).TrimEnd('/')
-            : serverUrl.Trim().TrimEnd('/');
+    /// <summary>
+    /// Text the editable server picker shows for this profile. A direct profile shows its canonical URL;
+    /// a managed profile has no address to show until its SSH tunnel is resolved, so it falls back to the
+    /// verified installation id rather than rendering an empty row. Never exposes credentials.
+    /// </summary>
+    public string DisplayText => DirectServerUrl ?? ServiceId;
+
+    public override string ToString() => DisplayText;
+
+    public static bool SameProfile(string leftServiceId, string leftIdentifier, string rightServiceId, string rightIdentifier)
+        => string.Equals(leftServiceId, rightServiceId, StringComparison.Ordinal)
+           && string.Equals(leftIdentifier, rightIdentifier, StringComparison.Ordinal);
 }
 
 internal sealed record SavedLoginProfileCollection(IReadOnlyList<SavedLoginProfile> Profiles);
@@ -112,8 +127,8 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
     {
         ct.ThrowIfCancellationRequested();
         var profiles = (await LoadAsync(ct)).ToList();
-        profiles.RemoveAll(item => SavedLoginProfile.SameProfile(item.ServerUrl, item.Username, profile.ServerUrl, profile.Username));
-        profiles.Add(profile with { ServerUrl = profile.ServerUrl.Trim(), Username = profile.Username });
+        profiles.RemoveAll(item => SavedLoginProfile.SameProfile(item.ServiceId, item.Identifier, profile.ServiceId, profile.Identifier));
+        profiles.Add(profile with { ServiceId = profile.ServiceId.Trim(), Identifier = profile.Identifier.Trim() });
         return await SaveProfilesAsync(profiles, ct);
     }
 
@@ -156,10 +171,10 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         return RememberedProfileSaveResult.CredentialStoreUnavailable;
     }
 
-    public async Task<RememberedProfileSaveResult> RemoveAsync(string serverUrl, string identifier, CancellationToken ct = default)
+    public async Task<RememberedProfileSaveResult> RemoveAsync(string serviceId, string identifier, CancellationToken ct = default)
     {
         var profiles = (await LoadAsync(ct)).ToList();
-        profiles.RemoveAll(item => SavedLoginProfile.SameProfile(item.ServerUrl, item.Username, serverUrl, identifier));
+        profiles.RemoveAll(item => SavedLoginProfile.SameProfile(item.ServiceId, item.Identifier, serviceId, identifier));
         return await SaveProfilesAsync(profiles, ct);
     }
 
@@ -236,13 +251,13 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         var merged = metadata.Profiles.Select(profile =>
         {
             var secret = protectedProfiles.FirstOrDefault(candidate => SavedLoginProfile.SameProfile(
-                candidate.ServerUrl, candidate.Username, profile.ServerUrl, profile.Username));
+                candidate.ServiceId, candidate.Identifier, profile.ServiceId, profile.Identifier));
             return profile with { Password = secret?.Password };
         }).ToList();
 
         foreach (var secret in protectedProfiles.Where(secret =>
                      merged.All(profile => !SavedLoginProfile.SameProfile(
-                         profile.ServerUrl, profile.Username, secret.ServerUrl, secret.Username))))
+                         profile.ServiceId, profile.Identifier, secret.ServiceId, secret.Identifier))))
             merged.Add(secret);
 
         return Serialize(new SavedLoginProfileCollection(
@@ -284,12 +299,24 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         var bytes = Convert.FromBase64String(payload);
         using var document = JsonDocument.Parse(bytes);
         if (document.RootElement.TryGetProperty("profiles", out _))
-            return JsonSerializer.Deserialize<SavedLoginProfileCollection>(bytes, RelaxKonOSJsonOptions.Default)?.Profiles
+        {
+            var profiles = JsonSerializer.Deserialize<SavedLoginProfileCollection>(bytes, RelaxKonOSJsonOptions.Default)?.Profiles
                 ?? Array.Empty<SavedLoginProfile>();
+            // A record without a stable identity cannot address any login; drop it instead of surfacing
+            // an entry whose credential key would be empty.
+            return profiles.Where(profile => !string.IsNullOrWhiteSpace(profile.ServiceId)).ToArray();
+        }
 
         var legacy = JsonSerializer.Deserialize<LegacyRememberedSession>(bytes, RelaxKonOSJsonOptions.Default);
         return legacy is null
             ? Array.Empty<SavedLoginProfile>()
-            : [new SavedLoginProfile(legacy.ServerUrl, legacy.User.Username, legacy.Password, DateTimeOffset.UtcNow)];
+            : [new SavedLoginProfile(CanonicalServiceId(legacy.ServerUrl), legacy.User.Username, legacy.Password, DateTimeOffset.UtcNow)];
+    }
+
+    /// <summary>A legacy record only carries a URL, so its canonical form becomes the stable service id.</summary>
+    private static string CanonicalServiceId(string serverUrl)
+    {
+        try { return ServerConnectionIdentityRules.NormalizeServerUrl(serverUrl); }
+        catch (ArgumentException) { return serverUrl.Trim(); }
     }
 }

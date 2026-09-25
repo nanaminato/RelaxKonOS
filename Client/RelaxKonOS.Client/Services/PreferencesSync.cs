@@ -66,7 +66,7 @@ public sealed class PreferencesSync : IDisposable
     /// </summary>
     public Task EnsureCurrentWorkspacePreferencesAsync()
     {
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } ws })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } ws })
             return Task.CompletedTask;
 
         var scope = $"{url}\n{ws.Id}\n{tokens.AccessToken}";
@@ -108,7 +108,7 @@ public sealed class PreferencesSync : IDisposable
                 await Dispatcher.UIThread.InvokeAsync(async () =>
                 {
                     if (cancellationToken.IsCancellationRequested || _session.State != AuthSessionState.Authenticated
-                        || _session.ServerUrl != url || _session.CurrentWorkspace?.Id != workspaceId
+                        || _session.EffectiveBaseUrl != url || _session.CurrentWorkspace?.Id != workspaceId
                         || _session.Tokens?.AccessToken != accessToken) return;
                     if (_editor.HasDraft)
                     {

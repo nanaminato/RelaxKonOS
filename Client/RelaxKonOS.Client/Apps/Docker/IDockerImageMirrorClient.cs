@@ -54,9 +54,9 @@ public sealed class DockerImageMirrorClient(HttpClient http, IAuthSession sessio
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string route)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null || session.Tokens is null)
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null || session.Tokens is null)
             throw new InvalidOperationException("Sign in before managing image mirrors.");
-        var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl, UriKind.Absolute), route.TrimStart('/')));
+        var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl, UriKind.Absolute), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         return request;
     }

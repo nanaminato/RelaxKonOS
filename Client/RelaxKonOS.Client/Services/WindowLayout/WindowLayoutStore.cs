@@ -78,7 +78,7 @@ public sealed class WindowLayoutStore : IWindowLayoutStore, IDisposable
 
         try
         {
-            var layouts = await _client.GetAsync(connection.ServerUrl, connection.AccessToken, connection.WorkspaceId);
+            var layouts = await _client.GetAsync(connection.EffectiveBaseUrl, connection.AccessToken, connection.WorkspaceId);
             lock (_gate)
             {
                 _lastConnection = connection;
@@ -150,7 +150,7 @@ public sealed class WindowLayoutStore : IWindowLayoutStore, IDisposable
                 snapshot = _sizes.Select(x => new WindowSizeDto(x.Key, x.Value.Width, x.Value.Height)).ToArray();
             }
 
-            await _client.SaveAsync(connection.ServerUrl, connection.AccessToken, connection.WorkspaceId,
+            await _client.SaveAsync(connection.EffectiveBaseUrl, connection.AccessToken, connection.WorkspaceId,
                 new WorkspaceWindowLayoutDto(snapshot), ct);
 
             lock (_gate)
@@ -167,7 +167,7 @@ public sealed class WindowLayoutStore : IWindowLayoutStore, IDisposable
     }
 
     private Connection? CurrentConnection()
-        => _session is { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace }
+        => _session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace }
             ? new Connection(url, tokens.AccessToken, workspace.Id)
             : null;
 
@@ -179,5 +179,5 @@ public sealed class WindowLayoutStore : IWindowLayoutStore, IDisposable
         _saveGate.Dispose();
     }
 
-    private sealed record Connection(string ServerUrl, string AccessToken, Guid WorkspaceId);
+    private sealed record Connection(string EffectiveBaseUrl, string AccessToken, Guid WorkspaceId);
 }

@@ -8,7 +8,7 @@ using RelaxKonOS.Protocol.SystemMonitor;
 namespace RelaxKonOS.Client.Apps.TaskManager;
 
 /// <summary>ITaskManagerClient 的 typed HttpClient 实现（与 BrowserClient / ExplorerClient 同源模式）。
-/// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.ServerUrl"/> 构造绝对 URI。
+/// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.EffectiveBaseUrl"/> 构造绝对 URI。
 /// Authorization 头从 <see cref="IAuthSession.Tokens"/> 取；未登录抛 <see cref="InvalidOperationException"/>。
 /// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>。</summary>
 public sealed class TaskManagerClient : ITaskManagerClient
@@ -83,9 +83,9 @@ public sealed class TaskManagerClient : ITaskManagerClient
 
     private string RequireSession()
     {
-        if (_session.State != AuthSessionState.Authenticated || _session.Tokens is null || _session.ServerUrl is null)
+        if (_session.State != AuthSessionState.Authenticated || _session.Tokens is null || _session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("task_manager.error.not_signed_in"));
-        return _session.ServerUrl;
+        return _session.EffectiveBaseUrl;
     }
 
     private static Uri BuildUri(string serverUrl, string route, (string Key, string? Value)? query = null)

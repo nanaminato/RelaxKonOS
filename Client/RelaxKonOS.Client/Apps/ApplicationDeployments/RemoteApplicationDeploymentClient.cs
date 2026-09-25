@@ -129,9 +129,9 @@ public sealed class RemoteApplicationDeploymentClient(HttpClient http, IAuthSess
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string route, string? idempotencyKey = null)
     {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("application_deployments.error.not_signed_in"));
-        var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')));
+        var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         if (!string.IsNullOrWhiteSpace(idempotencyKey)) request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
         return request;

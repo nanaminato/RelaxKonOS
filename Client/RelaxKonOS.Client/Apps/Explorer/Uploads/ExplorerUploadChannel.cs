@@ -93,9 +93,9 @@ public sealed class ExplorerUploadChannel(HttpClient http, IAuthSession session)
 
     private Uri BuildUri(string route)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("explorer.error.not_signed_in"));
-        return new Uri(new Uri(session.ServerUrl, UriKind.Absolute), route.TrimStart('/'));
+        return new Uri(new Uri(session.EffectiveBaseUrl, UriKind.Absolute), route.TrimStart('/'));
     }
 
     private static long? ReadOffset(HttpResponseMessage response)

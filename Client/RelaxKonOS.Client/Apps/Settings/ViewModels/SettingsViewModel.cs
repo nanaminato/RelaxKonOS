@@ -114,7 +114,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _ = RefreshCatalogAsync();
         _ = Pages.OfType<AccountSecurityPageViewModel>().Single().LoadAsync();
 
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } ws })
+        if (_session is not { State: AuthSessionState.Authenticated, ServiceId: { } serviceId, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } ws })
             return;
 
         if (Pages.OfType<NetworkPageViewModel>().FirstOrDefault() is { } networkPage)
@@ -126,7 +126,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         {
             if (_editor.HasDraft) return;
             var prefs = await _client.GetAsync(url, tokens.AccessToken, ws.Id);
-            if (_editor.HasDraft || _session.ServerUrl != url || _session.CurrentWorkspace?.Id != ws.Id || _session.Tokens?.AccessToken != tokens.AccessToken) return;
+            if (_editor.HasDraft || _session.ServiceId != serviceId || _session.CurrentWorkspace?.Id != ws.Id || _session.Tokens?.AccessToken != tokens.AccessToken) return;
             if (_wallpapers is not null)
                 await _wallpapers.ApplyAsync(prefs);
             else
@@ -167,11 +167,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task DiscardDraftAsync()
     {
-        var url = _session.ServerUrl;
+        var serviceId = _session.ServiceId;
         var sessionId = _session.CurrentSession?.Id;
         var workspaceId = _session.CurrentWorkspace?.Id;
         var snapshot = await _editor.DiscardAndReloadAsync();
-        if (snapshot is null || _session.ServerUrl != url || _session.CurrentSession?.Id != sessionId
+        if (snapshot is null || _session.ServiceId != serviceId || _session.CurrentSession?.Id != sessionId
             || _session.CurrentWorkspace?.Id != workspaceId) return;
         if (_wallpapers is not null) await _wallpapers.ApplyAsync(snapshot);
         else _settings.Apply(snapshot);

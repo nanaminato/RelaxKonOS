@@ -127,12 +127,12 @@ public partial class DesktopShellViewModel : ObservableObject
         await EnsureWorkspacePreferencesAsync();
         if (_session.State != AuthSessionState.Authenticated) return;
         if (_settings.HasCompletedFirstTimeSetup) return;
-        if (_desktopWelcomePreferences.HasCompleted(_session.ServerUrl, _session.CurrentUser?.Username)) return;
+        if (_desktopWelcomePreferences.HasCompleted(_session.ServiceId, _session.CurrentUser?.Username)) return;
         if (RequestFirstTimeDesktopSetupAsync is null) return;
 
         await RequestFirstTimeDesktopSetupAsync();
         _settings.HasCompletedFirstTimeSetup = true;
-        _desktopWelcomePreferences.MarkCompleted(_session.ServerUrl, _session.CurrentUser?.Username);
+        _desktopWelcomePreferences.MarkCompleted(_session.ServiceId, _session.CurrentUser?.Username);
         _ = SavePreferencesFireAndForgetAsync();
         Dispatcher.UIThread.Post(PopulateDesktop);
     }
@@ -142,7 +142,7 @@ public partial class DesktopShellViewModel : ObservableObject
 
     public WindowManagerService WindowManager => _windowManager;
     public ShellSettings Settings => _settings;
-    public string ConnectionServer => _session.ServerUrl ?? T("shell.connection.not_connected", "Not connected");
+    public string ConnectionServer => _session.EffectiveBaseUrl ?? T("shell.connection.not_connected", "Not connected");
     public string ConnectionUser => _session.CurrentUser?.Username ?? T("shell.connection.unknown_user", "Unknown user");
     public string ConnectionWorkspace => _session.CurrentWorkspace?.Name ?? T("shell.connection.default_workspace", "Default workspace");
 
@@ -866,7 +866,7 @@ public partial class DesktopShellViewModel : ObservableObject
     /// <summary>保存桌面显示配置到服务端（fire-and-forget，忽略瞬时错误）。</summary>
     public async Task SavePreferencesFireAndForgetAsync()
     {
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
         try
         {
@@ -931,7 +931,7 @@ public partial class DesktopShellViewModel : ObservableObject
             .ToArray();
         _defaultApps.SetMappings(mappings);
 
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
         await _settingsClient.SaveAsync(url, tokens.AccessToken, workspace.Id, _settings.ToPreferences(mappings));
     }

@@ -32,6 +32,13 @@
     <string name="login_server_found">已找到服务器，将使用首选端点。</string>
     <string name="login_server_invalid">请输入主机名或 HTTP(S) 地址，例如：host:port。</string>
     <string name="login_server_unavailable">此地址没有可访问的 RelaxKonOS 登录端点。</string>
+    <!--
+      受管宿主登录。稳定身份是安装标识的登录没有可持久化的服务器地址：它的本地隧道地址只在
+      SSH 隧道建立后才存在。因此表单显示宿主名称而不是编造地址，并说明隧道在哪里建立。
+    -->
+    <string name="login_managed_host_field">受管宿主：%1$s</string>
+    <string name="login_managed_tunnel_required">%1$s 是受管宿主。请先在服务器中心通过 SSH 建立隧道，再登录。</string>
+    <string name="login_managed_host_missing">这条登录属于一个受管安装，但本机没有对应的宿主资料。请在服务器中心重新添加该宿主。</string>
     <string name="login_identifier">登录标识</string>
     <string name="login_password">密码</string>
     <string name="login_remember_hint">在本机保存密码，用指纹解封</string>

@@ -120,7 +120,7 @@ public static class Bootstrapper
             var center = new RelaxKonOS.Client.Apps.Explorer.Models.ExplorerOperationCenter(sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.IExplorerClient>())
             {
                 SessionKey = () => session.State == AuthSessionState.Authenticated
-                    ? $"{session.ServerUrl}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null,
+                    ? $"{session.ServiceId}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null,
             };
             session.StateChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(center.SessionChanged);
             return center;
@@ -148,8 +148,9 @@ public static class Bootstrapper
                 sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.Uploads.IExplorerUploadChannel>(),
                 sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.Uploads.UploadResumeJournal>(),
                 // 与 ExplorerOperationCenter.SessionKey 同口径：换服务器/账号/工作区/设备后不得拿旧日志去续传。
+                // 用稳定身份而非传输地址：受管隧道换端口不应改变上传恢复归属。
                 () => session.State == AuthSessionState.Authenticated
-                    ? $"{session.ServerUrl}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null);
+                    ? $"{session.ServiceId}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null);
         });
 
         // Browser（浏览器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。

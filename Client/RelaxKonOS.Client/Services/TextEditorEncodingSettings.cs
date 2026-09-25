@@ -37,7 +37,7 @@ public sealed class TextEditorEncodingSettings
         if (isNotepad) _settings.NotepadDefaultEncoding = encoding;
         else _settings.CodeEditorDefaultEncoding = encoding;
 
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
 
         try

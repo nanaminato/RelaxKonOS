@@ -141,7 +141,7 @@ public sealed class PortForwardingService : IPortForwardingService
         var user = _settings.SshUser;
         if (string.IsNullOrWhiteSpace(host))
         {
-            if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } serverUrl }
+            if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } serverUrl }
                 || !Uri.TryCreate(serverUrl, UriKind.Absolute, out var serverUri))
                 throw new InvalidOperationException(LocalizedText.Get("port_forwarding.error.ssh_host_required"));
             host = serverUri.Host;

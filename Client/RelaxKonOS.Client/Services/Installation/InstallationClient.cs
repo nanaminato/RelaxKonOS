@@ -38,8 +38,8 @@ public sealed class InstallationClient(HttpClient http, IAuthSession session)
     }
     private async Task<T?> SendAsync<T>(HttpMethod method, string route, object? body, string? key, CancellationToken ct)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null) throw new InstallationApiException("installation.signed_out", HttpStatusCode.Unauthorized);
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl), route.TrimStart('/')));
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null) throw new InstallationApiException("installation.signed_out", HttpStatusCode.Unauthorized);
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct));
         if (key is not null) request.Headers.Add("Idempotency-Key", key);
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);

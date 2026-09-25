@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
+using RelaxKonOS.Protocol.ServerCenter;
 
 namespace RelaxKonOS.Client.ViewModels.Login;
 
@@ -172,7 +173,10 @@ public partial class LoginViewModel : ObservableObject
                 ClientPlatform: DetectClientPlatform(),
                 DeviceName: Environment.MachineName,
                 ClientVersion: Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
-            await _session.LoginAsync(serverUrl, request, RememberServer, RememberPassword, ct);
+            // A hand-entered address is always a direct login: its canonical URL is the stable identity,
+            // while the resolved endpoint is only this session's transport address.
+            await _session.LoginAsync(
+                ServerConnectionIdentityRules.Direct(serverUrl), request, RememberServer, RememberPassword, ct);
             StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
         }
         catch (RelaxKonOSAuthException ex)
@@ -246,8 +250,10 @@ public partial class LoginViewModel : ObservableObject
 
     private void ApplySelectedProfile(SavedLoginProfile profile)
     {
-        ServerUrl = profile.ServerUrl;
-        Identifier = profile.Username;
+        // A managed-tunnel profile has no address to refill until its SSH tunnel is resolved; only a
+        // direct profile carries the canonical URL that belongs in this field.
+        ServerUrl = profile.DirectServerUrl ?? string.Empty;
+        Identifier = profile.Identifier;
 #if DEBUG
         // Keep the debug credential authoritative even when a remembered profile has no password.
         Password = _debugPassword ?? profile.Password ?? string.Empty;

@@ -49,12 +49,12 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
     private async Task<HostElevationResult> GrantAsync(HostElevationCapability capability, string target, string? password,
         CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null)
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null)
             throw new RelaxKonOSAuthException(new ProblemDetails("https://relaxkonos.app/problems/elevation-session-unavailable", "Elevation", 401, null, null));
         var token = await session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
             throw new RelaxKonOSAuthException(new ProblemDetails("https://relaxkonos.app/problems/elevation-session-unavailable", "Elevation", 401, null, null));
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.ServerUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
         {
             Content = JsonContent.Create(new HostElevationRequest(capability, target, password), options: RelaxKonOSJsonOptions.Default),
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) },

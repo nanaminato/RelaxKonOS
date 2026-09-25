@@ -216,14 +216,14 @@ public sealed class ExternalAppContextFactory
             }
             if (scopes.Count == 0)
                 return new FileApiAccessResult(AppCapabilityResult.PermissionDenied, null, null, null);
-            if (session.ServerUrl is null)
+            if (session.EffectiveBaseUrl is null)
                 return new FileApiAccessResult(AppCapabilityResult.Unavailable, null, null, null);
 
             try
             {
                 var token = await capabilities.IssueFileTokenAsync(appId.Value, scopes, cancellationToken);
                 return new FileApiAccessResult(AppCapabilityResult.Succeeded,
-                    new Uri(session.ServerUrl, UriKind.Absolute), token.AccessToken, token.ExpiresAt);
+                    new Uri(session.EffectiveBaseUrl, UriKind.Absolute), token.AccessToken, token.ExpiresAt);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -248,13 +248,13 @@ public sealed class ExternalAppContextFactory
                 return new ExternalMediaLeaseResult(AppCapabilityResult.PermissionDenied, null);
             if (string.IsNullOrWhiteSpace(path))
                 return new ExternalMediaLeaseResult(AppCapabilityResult.InvalidArgument, null);
-            if (session.ServerUrl is null)
+            if (session.EffectiveBaseUrl is null)
                 return new ExternalMediaLeaseResult(AppCapabilityResult.Unavailable, null);
 
             try
             {
                 var created = await capabilities.CreateMediaLeaseAsync(appId.Value, path, cancellationToken);
-                var playbackUri = new Uri(new Uri(session.ServerUrl, UriKind.Absolute),
+                var playbackUri = new Uri(new Uri(session.EffectiveBaseUrl, UriKind.Absolute),
                     AppCapabilityRoutes.MediaStream(created.LeaseId).TrimStart('/'));
                 return new ExternalMediaLeaseResult(AppCapabilityResult.Succeeded,
                     new HostMediaLease(playbackUri, created, capabilities,
@@ -395,7 +395,7 @@ public sealed class ExternalAppContextFactory
             if (!settings.TrySetWallpaperKey(wallpaperKey))
                 return AppCapabilityResult.InvalidArgument;
 
-            if (session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+            if (session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
                 return AppCapabilityResult.Succeeded;
 
             try

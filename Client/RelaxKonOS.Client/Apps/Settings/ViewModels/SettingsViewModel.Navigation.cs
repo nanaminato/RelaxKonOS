@@ -26,7 +26,7 @@ public sealed partial class SettingsViewModel
     public bool HasNoResults => HasSearch && SearchResults.Count == 0;
     public string Breadcrumb => _navigationLocalization.Get("settings.title", "Settings") + " / " + SelectedPage?.LocalizedDisplayName;
     public string ConnectionSummary => _session.State == AuthSessionState.Authenticated
-        ? $"{_session.ServerUrl} · {_session.CurrentUser?.Username} · {_session.CurrentWorkspace?.Name}"
+        ? $"{_session.EffectiveBaseUrl} · {_session.CurrentUser?.Username} · {_session.CurrentWorkspace?.Name}"
         : _navigationLocalization.Get("settings.value.not_connected", "Not connected");
 
     private void InitializeNavigation(LocalizationService localization, IHostTimeService catalog)

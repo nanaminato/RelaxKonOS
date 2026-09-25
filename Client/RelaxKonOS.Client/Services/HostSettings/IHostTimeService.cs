@@ -3,8 +3,10 @@ using RelaxKonOS.Protocol.Settings;
 
 namespace RelaxKonOS.Client.Services.HostSettings;
 
-/// <summary>A frozen connection identity: callers cannot carry a plan into another login or host.</summary>
-public sealed record HostSettingsConnection(string ServerUrl, Guid SessionId, Guid UserId);
+/// <summary>A frozen connection identity: callers cannot carry a plan into another login or host.
+/// <paramref name="ServiceId"/> is the stable login identity; the transport address is read from the
+/// session at call time so a verified tunnel rebind does not invalidate the connection.</summary>
+public sealed record HostSettingsConnection(string ServiceId, Guid SessionId, Guid UserId);
 
 public interface IHostTimeService
 {
