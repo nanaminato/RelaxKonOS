@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
 
 namespace RelaxKonOS.Client.ViewModels.ServerCenter;
@@ -18,6 +19,8 @@ public partial class ServerCenterViewModel : ObservableObject
     private readonly IServerCenterConnectionResolver _connections;
     private readonly ISshHostKeyTrustStore _hostKeys;
     private readonly ISshCredentialStore _sshCredentials;
+    private readonly IServerCenterReleaseSource _releaseSource;
+    private readonly IServerCenterOperationJournal _operationJournal;
     private readonly LoginLocalizationService _localization;
     private ServerCenterHostKeyObservation? _pendingHostKey;
 
@@ -26,18 +29,29 @@ public partial class ServerCenterViewModel : ObservableObject
         IServerCenterConnectionResolver connections,
         ISshHostKeyTrustStore hostKeys,
         ISshCredentialStore sshCredentials,
+        IServerCenterReleaseSource releaseSource,
+        IServerCenterOperationJournal operationJournal,
         LoginLocalizationService localization)
     {
         _targets = targets;
         _connections = connections;
         _hostKeys = hostKeys;
         _sshCredentials = sshCredentials;
+        _releaseSource = releaseSource;
+        _operationJournal = operationJournal;
         _localization = localization;
         _localization.LanguageChanged += (_, _) => OnPropertyChanged(string.Empty);
     }
 
     public ObservableCollection<ServerHostTarget> Hosts { get; } = [];
+    public ObservableCollection<ServerCenterOperationRecord> Operations { get; } = [];
+    public IReadOnlyList<HostPlatformOption> Platforms { get; } =
+    [
+        new(HostPlatformKind.Windows, "Windows"),
+        new(HostPlatformKind.Linux, "Linux")
+    ];
     public bool HasHosts => Hosts.Count > 0;
+    public bool HasOperations => Operations.Count > 0;
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
 
     [ObservableProperty] private string _host = string.Empty;
@@ -53,6 +67,12 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private bool _needsHostKeyConfirmation;
     [ObservableProperty] private bool _hostKeyChanged;
     [ObservableProperty] private bool _saveSshPassword;
+    [ObservableProperty] private HostPlatformOption? _selectedPlatform;
+    [ObservableProperty] private string _verifiedStateText = string.Empty;
+    [ObservableProperty] private string _lastProbeText = string.Empty;
+    [ObservableProperty] private bool _deploymentConfirmed;
+    [ObservableProperty] private bool _deleteServerData;
+    [ObservableProperty] private string _uninstallNameConfirmation = string.Empty;
 
     public string Title => T("server_center.title", "Server centre");
     public string Subtitle => T("server_center.subtitle", "Manage the SSH hosts used to install and maintain RelaxKonOS servers.");
@@ -73,6 +93,22 @@ public partial class ServerCenterViewModel : ObservableObject
     public string HostKeyReviewText => T("server_center.host_key_review", "Verify this SSH host-key fingerprint with the host administrator before trusting it:");
     public string HostKeyChangedText => T("server_center.host_key_changed", "The SSH host key changed. Deployment is blocked until an administrator confirms it.");
     public string SaveSshPasswordText => T("server_center.save_ssh_password", "Save this SSH password securely on this device");
+    public string PlatformLabel => T("server_center.host_platform", "Host platform");
+    public string ProbeText => T("server_center.probe", "Run host preflight");
+    public string ProbeHelpText => T("server_center.probe_help", "Preflight uploads the fixed deployment launcher, reads OS, architecture, permissions and current installation status, then saves a timestamped SSH verification.");
+    public string DeployText => SelectedHost?.LastVerified?.Installed == true
+        ? T("server_center.update", "Install update")
+        : T("server_center.install", "Install RelaxKonOS");
+    public string DeployConfirmationText => T("server_center.deploy_confirmation", "I understand that this operation changes this host; update, repair, and rollback may interrupt the service.");
+    public string RepairText => T("server_center.repair", "Repair current installation");
+    public string RollbackText => T("server_center.rollback", "Restore previous version");
+    public string UninstallText => T("server_center.uninstall", "Uninstall server");
+    public string DeleteServerDataText => T("server_center.delete_data", "Also permanently delete managed data");
+    public string UninstallNameLabel => T("server_center.uninstall_name", "Type the server name to delete data");
+    public string OperationHistoryText => T("server_center.operation_history", "Operation history");
+    public string LoadOperationHistoryText => T("server_center.load_operation_history", "Load operation history");
+    public bool HasVerifiedState => !string.IsNullOrWhiteSpace(VerifiedStateText);
+    public bool HasLastProbe => !string.IsNullOrWhiteSpace(LastProbeText);
 
     [RelayCommand]
     public async Task LoadAsync(CancellationToken cancellationToken = default)
@@ -163,6 +199,205 @@ public partial class ServerCenterViewModel : ObservableObject
     }
 
     private bool CanRemoveHost() => !IsBusy && SelectedHost is not null;
+
+    [RelayCommand(CanExecute = nameof(CanDeploy))]
+    private async Task DeployRecommendedAsync(CancellationToken cancellationToken = default)
+    {
+        var target = SelectedHost;
+        var platform = SelectedPlatform;
+        if (target is null || platform is null || string.IsNullOrEmpty(SshPassword) || !DeploymentConfirmed) return;
+
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        StatusMessage = string.Empty;
+        try
+        {
+            var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
+            if (tools is null)
+            {
+                ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
+                return;
+            }
+
+            await using var session = await _connections.ConnectAsync(
+                target.HostId,
+                new ServerCenterSshCredential.Password(SshPassword),
+                DateTimeOffset.UtcNow,
+                cancellationToken).ConfigureAwait(true);
+            var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
+            var probe = probeReceipt.Probe;
+            if (probe is null || !probe.OsSupported || probe.RuntimeIdentifier is null ||
+                !PlatformMatches(platform.Platform, probe.HostPlatform))
+            {
+                ErrorMessage = T("server_center.unsupported_host", "The selected platform does not match a supported target reported by the host preflight.");
+                return;
+            }
+
+            var mode = RecommendedMode(platform.Platform, probe);
+            if (mode is null)
+            {
+                ErrorMessage = T("server_center.elevation_required", "The selected installation mode requires an elevated SSH session or approved sudo access.");
+                return;
+            }
+
+            var kind = probe.ExistingInstalled ? ServerDeploymentKind.Upgrade : ServerDeploymentKind.Install;
+            if (kind == ServerDeploymentKind.Upgrade && !ServerInstallationId.IsValid(probe.ExistingInstallationId))
+            {
+                ErrorMessage = T("server_center.installation_identity_missing", "The existing installation did not report a valid managed installation identity. Update is blocked.");
+                return;
+            }
+
+            var release = await _releaseSource.ResolveReleaseAsync(platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, cancellationToken)
+                .ConfigureAwait(true);
+            if (release is null)
+            {
+                ErrorMessage = T("server_center.release_unavailable", "No trusted signed release is available for this host architecture and installation mode.");
+                return;
+            }
+
+            var request = new ServerDeploymentRequest(
+                ServerDeploymentProtocol.Version,
+                Guid.NewGuid(),
+                kind,
+                new ServerDeploymentOptions(
+                    ServerPackageSourceKind.OfficialStable,
+                    ServerNetworkProfile.Loopback,
+                    ServerDataRetention.Retain,
+                    mode,
+                    release.Version,
+                    null,
+                    release.StagedPackageName,
+                    release.PackageDigest,
+                    kind == ServerDeploymentKind.Upgrade ? probe.ExistingInstallationId : null,
+                    null,
+                    Confirmed: true));
+            await using var launcher = release.Tools.OpenLauncher();
+            await using var verifier = release.Tools.OpenVerifier();
+            await using var archive = release.OpenSignedArchive();
+            var client = new ServerCenterDeploymentClient(session.Transport);
+            var staged = await client.StageAsync(
+                request, platform.Platform, launcher, verifier, archive, release.Runtime,
+                release.KeyId, release.PublicKeyPem, cancellationToken).ConfigureAwait(true);
+            var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+            await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
+                .ConfigureAwait(true);
+
+            // A successful launcher process is only a transport result.  Read a separate SSH-side
+            // status receipt before declaring success or refreshing the local cached state.
+            var status = await ExecuteReadOnlyAsync(
+                session, tools, ServerDeploymentKind.Status, StatusOptions(mode.Value), cancellationToken).ConfigureAwait(true);
+            if (status.Snapshot is null)
+            {
+                ErrorMessage = T("server_center.status_missing", "The deployment finished, but no authoritative SSH-side status receipt was returned.");
+                return;
+            }
+            var verified = ServerHostTargetRules.ApplyVerifiedState(
+                target, ServerHostTargetRules.VerifiedStateFrom(status.Snapshot), DateTimeOffset.UtcNow);
+            var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
+            ReplaceHost(saved);
+            SelectedHost = saved;
+            VerifiedStateText = FormatSnapshot(saved.LastVerified!);
+            LastProbeText = FormatProbe(probe);
+            StatusMessage = kind == ServerDeploymentKind.Install
+                ? T("server_center.install_succeeded", "RelaxKonOS was installed and verified through SSH. Return to the login window to sign in.")
+                : T("server_center.update_succeeded", "RelaxKonOS was updated and verified through SSH. Sign in again if the existing session was interrupted.");
+        }
+        catch (ServerCenterHostKeyRejectedException rejected)
+        {
+            _pendingHostKey = rejected.Observation;
+            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
+            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
+            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = string.Empty;
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.deploy_failed", "The server operation could not be completed. Its SSH-side receipt can be checked from this host later.");
+        }
+        finally
+        {
+            SshPassword = string.Empty;
+            DeploymentConfirmed = false;
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanProbeHost))]
+    private async Task ProbeHostAsync(CancellationToken cancellationToken = default)
+    {
+        var target = SelectedHost;
+        var platform = SelectedPlatform;
+        if (target is null || platform is null || string.IsNullOrEmpty(SshPassword)) return;
+
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        StatusMessage = string.Empty;
+        LastProbeText = string.Empty;
+        try
+        {
+            var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
+            if (tools is null)
+            {
+                ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
+                return;
+            }
+
+            await using var session = await _connections.ConnectAsync(
+                target.HostId,
+                new ServerCenterSshCredential.Password(SshPassword),
+                DateTimeOffset.UtcNow,
+                cancellationToken).ConfigureAwait(true);
+            var probe = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
+
+            // Status is separate from reachability/preflight.  Query it in the same trusted session
+            // so a host with a stopped API is not incorrectly offered a reinstall.
+            var probeFacts = probe.Probe;
+            var statusMode = probeFacts is null ? null : StatusMode(platform.Platform, probeFacts);
+            if (statusMode is null)
+            {
+                ErrorMessage = T("server_center.status_mode_missing", "The host did not report an installation mode that can be checked safely.");
+                return;
+            }
+            var status = await ExecuteReadOnlyAsync(
+                session, tools, ServerDeploymentKind.Status, StatusOptions(statusMode.Value), cancellationToken).ConfigureAwait(true);
+            if (status.Snapshot is not null)
+            {
+                var verified = ServerHostTargetRules.ApplyVerifiedState(
+                    target, ServerHostTargetRules.VerifiedStateFrom(status.Snapshot), DateTimeOffset.UtcNow);
+                var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
+                ReplaceHost(saved);
+                SelectedHost = saved;
+                VerifiedStateText = FormatSnapshot(saved.LastVerified!);
+            }
+            if (probe.Probe is not null)
+                LastProbeText = FormatProbe(probe.Probe);
+            StatusMessage = T("server_center.probe_succeeded", "Host preflight and SSH-side status check completed.");
+        }
+        catch (ServerCenterHostKeyRejectedException rejected)
+        {
+            _pendingHostKey = rejected.Observation;
+            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
+            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
+            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = string.Empty;
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.probe_failed", "Host preflight could not be completed. Check SSH access and the selected host platform.");
+        }
+        finally
+        {
+            SshPassword = string.Empty;
+            SaveSshPassword = false;
+            IsBusy = false;
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanVerifySsh))]
     private async Task VerifySshAsync(CancellationToken cancellationToken = default)
@@ -262,6 +497,10 @@ public partial class ServerCenterViewModel : ObservableObject
     }
 
     private bool CanVerifySsh() => !IsBusy && SelectedHost is not null && !string.IsNullOrEmpty(SshPassword);
+    private bool CanProbeHost() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null &&
+                                   !string.IsNullOrEmpty(SshPassword) && !HostKeyChanged;
+    private bool CanDeploy() => CanProbeHost() && DeploymentConfirmed &&
+                                SelectedHost?.LastVerified is not null && HasLastProbe;
     private bool CanConfirmHostKey() => !IsBusy && SelectedHost is not null && NeedsHostKeyConfirmation && _pendingHostKey is not null;
 
     partial void OnSelectedHostChanged(ServerHostTarget? value)
@@ -272,19 +511,106 @@ public partial class ServerCenterViewModel : ObservableObject
         HostKeyFingerprint = string.Empty;
         SshPassword = string.Empty;
         SaveSshPassword = false;
+        VerifiedStateText = value?.LastVerified is { } verified ? FormatSnapshot(verified) : string.Empty;
+        LastProbeText = string.Empty;
+        DeploymentConfirmed = false;
+        OnPropertyChanged(nameof(DeployText));
         RemoveHostCommand.NotifyCanExecuteChanged();
         VerifySshCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
+        ProbeHostCommand.NotifyCanExecuteChanged();
+        DeployRecommendedCommand.NotifyCanExecuteChanged();
     }
     partial void OnIsBusyChanged(bool value)
     {
         RemoveHostCommand.NotifyCanExecuteChanged();
         VerifySshCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
+        ProbeHostCommand.NotifyCanExecuteChanged();
+        DeployRecommendedCommand.NotifyCanExecuteChanged();
     }
     partial void OnErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasError));
-    partial void OnSshPasswordChanged(string value) => VerifySshCommand.NotifyCanExecuteChanged();
+    partial void OnSshPasswordChanged(string value)
+    {
+        VerifySshCommand.NotifyCanExecuteChanged();
+        ProbeHostCommand.NotifyCanExecuteChanged();
+        DeployRecommendedCommand.NotifyCanExecuteChanged();
+    }
     partial void OnNeedsHostKeyConfirmationChanged(bool value) => ConfirmHostKeyCommand.NotifyCanExecuteChanged();
+    partial void OnHostKeyChangedChanged(bool value)
+    {
+        ProbeHostCommand.NotifyCanExecuteChanged();
+        DeployRecommendedCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnSelectedPlatformChanged(HostPlatformOption? value)
+    {
+        ProbeHostCommand.NotifyCanExecuteChanged();
+        DeployRecommendedCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnDeploymentConfirmedChanged(bool value) => DeployRecommendedCommand.NotifyCanExecuteChanged();
+    partial void OnLastProbeTextChanged(string value) => DeployRecommendedCommand.NotifyCanExecuteChanged();
+
+    private async Task<ServerDeploymentOperationDto> ExecuteReadOnlyAsync(
+        ServerCenterHostSession session,
+        ServerCenterDeploymentTools tools,
+        ServerDeploymentKind kind,
+        ServerDeploymentOptions? options,
+        CancellationToken cancellationToken)
+    {
+        var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, Guid.NewGuid(), kind, options);
+        await using var launcher = tools.OpenLauncher();
+        await using var verifier = tools.OpenVerifier();
+        var client = new ServerCenterDeploymentClient(session.Transport);
+        var staged = await client.StageAsync(
+            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
+        var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+        await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
+            .ConfigureAwait(true);
+        return receipt;
+    }
+
+    private void ReplaceHost(ServerHostTarget host)
+    {
+        var incumbent = Hosts.FirstOrDefault(item => item.HostId == host.HostId);
+        if (incumbent is not null) Hosts.Remove(incumbent);
+        Hosts.Insert(0, host);
+        OnPropertyChanged(nameof(HasHosts));
+    }
+
+    private string FormatProbe(ServerHostProbeDto probe) => string.Format(
+        T("server_center.probe_summary", "{0} · {1} · {2}"),
+        probe.HostPlatform, probe.Architecture,
+        probe.Elevated ? T("server_center.elevated", "elevated") : T("server_center.not_elevated", "not elevated"));
+
+    private string FormatSnapshot(ServerHostVerifiedState state) => string.Format(
+        T("server_center.verified_state", "Verified through SSH at {0}: {1}"),
+        state.VerifiedAtUtc.LocalDateTime.ToString("g"),
+        !state.Installed ? T("server_center.not_installed", "RelaxKonOS is not installed") :
+        state.Healthy ? string.Format(T("server_center.healthy_version", "Healthy · {0}"), state.Version ?? "?") :
+        string.Format(T("server_center.unhealthy_version", "Installed but unhealthy · {0}"), state.Version ?? "?"));
+
+    private static bool PlatformMatches(HostPlatformKind platform, HostPlatformKind observed) => platform == observed;
+
+    private static ServerInstallMode? RecommendedMode(HostPlatformKind platform, ServerHostProbeDto probe) =>
+        platform switch
+        {
+            HostPlatformKind.Windows when probe.Elevated => ServerInstallMode.WindowsSystem,
+            HostPlatformKind.Windows => null,
+            HostPlatformKind.Linux when probe.Elevated || probe.SudoAvailable => ServerInstallMode.LinuxSystem,
+            HostPlatformKind.Linux => ServerInstallMode.LinuxUser,
+            _ => null
+        };
+
+    private static ServerInstallMode? StatusMode(HostPlatformKind platform, ServerHostProbeDto probe) =>
+        probe.ExistingMode ?? RecommendedMode(platform, probe);
+
+    private static ServerDeploymentOptions StatusOptions(ServerInstallMode mode) => new(
+        ServerPackageSourceKind.OfficialStable,
+        ServerNetworkProfile.Loopback,
+        ServerDataRetention.Retain,
+        mode);
 
     private string T(string key, string fallback) => _localization.Get(key, fallback);
 }
+
+public sealed record HostPlatformOption(HostPlatformKind Platform, string DisplayName);

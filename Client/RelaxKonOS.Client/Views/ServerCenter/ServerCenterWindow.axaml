@@ -29,6 +29,8 @@
                 <StackPanel IsVisible="{Binding SelectedHost}" Spacing="8">
                     <TextBlock Text="{Binding SelectedHost.DisplayName}" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding SelectedHost.SshUserName}" />
+                    <TextBlock Text="{Binding SelectedHost.SshHost}" />
+                    <TextBlock Text="{Binding VerifiedStateText}" IsVisible="{Binding HasVerifiedState}" TextWrapping="Wrap" />
                     <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding SshPasswordLabel}" />
                     <CheckBox IsChecked="{Binding SaveSshPassword}" Content="{Binding SaveSshPasswordText}" />
                     <Button Command="{Binding VerifySshCommand}" Content="{Binding VerifySshText}" HorizontalAlignment="Left" />
@@ -38,6 +40,19 @@
                         <Button Command="{Binding ConfirmHostKeyCommand}" Content="{Binding ConfirmHostKeyText}" HorizontalAlignment="Left" />
                     </StackPanel>
                     <TextBlock Text="{Binding HostKeyChangedText}" IsVisible="{Binding HostKeyChanged}" TextWrapping="Wrap" Classes="error" />
+                    <Separator Margin="0,4" />
+                    <TextBlock Text="{Binding ProbeHelpText}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding SelectedPlatform}" PlaceholderText="{Binding PlatformLabel}" HorizontalAlignment="Left" MinWidth="180">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Command="{Binding ProbeHostCommand}" Content="{Binding ProbeText}" HorizontalAlignment="Left" />
+                    <TextBlock Text="{Binding LastProbeText}" IsVisible="{Binding HasLastProbe}" TextWrapping="Wrap" />
+                    <CheckBox IsChecked="{Binding DeploymentConfirmed}" Content="{Binding DeployConfirmationText}" />
+                    <Button Command="{Binding DeployRecommendedCommand}" Content="{Binding DeployText}" HorizontalAlignment="Left" />
                 </StackPanel>
                 <TextBlock Text="{Binding CachedStateText}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <Button Command="{Binding RemoveHostCommand}" Content="{Binding RemoveText}" HorizontalAlignment="Left" />
