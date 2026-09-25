@@ -3,6 +3,11 @@
   "Strings": {
     "server_center.open": "安装或管理服务器",
     "server_center.title": "服务器中心",
+    "server_center.page.hosts": "主机",
+    "server_center.page.connection": "SSH 连接",
+    "server_center.page.deployment": "安装与维护",
+    "server_center.page.history": "操作记录",
+    "server_center.select_host_hint": "请先在“主机”页选择一台主机。",
     "server_center.subtitle": "管理 SSH 主机和 RelaxKonOS 服务器安装。",
     "server_center.hosts": "受管主机",
     "server_center.empty": "此设备尚未添加受管主机。",

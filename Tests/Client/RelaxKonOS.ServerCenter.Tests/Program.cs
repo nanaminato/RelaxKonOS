@@ -3,6 +3,8 @@ using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Client.Apps.Terminal;
 using RoyalTerminal.Terminal;
+using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
+using RoyalTerminal.Terminal.Transport.Ssh;
 
 static void Check(bool condition, string message)
 {
@@ -10,12 +12,23 @@ static void Check(bool condition, string message)
     Console.WriteLine("PASS: " + message);
 }
 
-var sshTransport = new SignalRTransportFactory().Create(new SshTransportOptions(
-    new SshEndpointOptions("example.com", 22, "alice"), true, "xterm-256color", null,
+var sshOptions = new SshTransportOptions(
+    new SshEndpointOptions("127.0.0.1", 1, "alice"), true, "xterm-256color", null,
     new SshAuthenticationOptions(true, "session", Array.Empty<string>(), false),
-    new TerminalSessionDimensions(80, 24, 800, 480)));
+    new TerminalSessionDimensions(80, 24, 800, 480));
+var sshTransport = new SignalRTransportFactory(new TestSshCredentials(),
+    new KnownHostsSshHostKeyValidator()).Create(sshOptions);
 Check(sshTransport.GetType().Name.Contains("Ssh", StringComparison.OrdinalIgnoreCase),
     "桌面终端工厂为 SSH 登录创建 SSH 传输");
+using (var startTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
+{
+    string? startError = null;
+    try { await sshTransport.StartAsync(sshOptions, startTimeout.Token); }
+    catch (Exception error) { startError = error.ToString(); }
+    Check(startError is not null &&
+          !startError.Contains("No SSH credential provider was configured", StringComparison.Ordinal),
+        "SSH 启动已注入凭据提供器");
+}
 sshTransport.Dispose();
 
 var transport = new FakeTransport();
@@ -84,6 +97,13 @@ Check(recovered.OperationId == recoveryId && recovery.Commands.Any(command =>
     "断线恢复按原操作 ID 读取权威回执");
 
 Console.WriteLine("桌面服务器中心传输检查通过。");
+
+sealed class TestSshCredentials : ISshCredentialProvider
+{
+    public ValueTask<SshResolvedCredentials> ResolveAsync(
+        SshCredentialRequest request, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new SshResolvedCredentials("test-password", Array.Empty<string>(), false));
+}
 
 sealed class FakeTransport : IServerCenterSshTransport
 {

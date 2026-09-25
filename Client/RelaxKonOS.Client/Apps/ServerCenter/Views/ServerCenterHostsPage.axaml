@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterHostsPage"
+             x:DataType="vm:ServerCenterViewModel">
+    <StackPanel Spacing="18">
+        <TextBlock Text="{Binding HostsPageTitle}" FontSize="21" FontWeight="SemiBold" />
+        <Border Classes="card" Padding="20">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding HostsLabel}" FontWeight="SemiBold" />
+                <ListBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" MinHeight="170" MaxHeight="270">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnDefinitions="*,Auto" Margin="6" ColumnSpacing="16">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SshHost}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding SshUserName}" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="{Binding EmptyHostsText}" IsVisible="{Binding !HasHosts}" />
+                <StackPanel IsVisible="{Binding SelectedHost}" Spacing="7">
+                    <TextBlock Text="{Binding VerifiedStateText}" IsVisible="{Binding HasVerifiedState}" TextWrapping="Wrap" />
+                    <Button Command="{Binding RemoveHostCommand}" Content="{Binding RemoveText}" HorizontalAlignment="Left" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+        <Border Classes="card" Padding="20">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding AddHostLabel}" FontSize="17" FontWeight="SemiBold" />
+                <Grid ColumnDefinitions="*,110,*" ColumnSpacing="10" RowDefinitions="Auto,Auto" RowSpacing="10">
+                    <TextBox Text="{Binding Host}" PlaceholderText="{Binding HostLabel}" />
+                    <TextBox Grid.Column="1" Text="{Binding Port}" PlaceholderText="{Binding PortLabel}" />
+                    <TextBox Grid.Column="2" Text="{Binding UserName}" PlaceholderText="{Binding UserLabel}" />
+                    <TextBox Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding DisplayName}" PlaceholderText="{Binding DisplayNameLabel}" />
+                </Grid>
+                <Button Command="{Binding AddHostCommand}" Content="{Binding AddText}" HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

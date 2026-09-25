@@ -19,6 +19,7 @@ public partial class ServerCenterViewModel : ObservableObject
     private readonly IServerCenterConnectionResolver _connections;
     private readonly ISshHostKeyTrustStore _hostKeys;
     private readonly ISshCredentialStore _sshCredentials;
+    private readonly SshDesktopSession _sshDesktop;
     private readonly IServerCenterReleaseSource _releaseSource;
     private readonly IServerCenterOperationJournal _operationJournal;
     private readonly LoginLocalizationService _localization;
@@ -29,6 +30,7 @@ public partial class ServerCenterViewModel : ObservableObject
         IServerCenterConnectionResolver connections,
         ISshHostKeyTrustStore hostKeys,
         ISshCredentialStore sshCredentials,
+        SshDesktopSession sshDesktop,
         IServerCenterReleaseSource releaseSource,
         IServerCenterOperationJournal operationJournal,
         LoginLocalizationService localization)
@@ -37,6 +39,7 @@ public partial class ServerCenterViewModel : ObservableObject
         _connections = connections;
         _hostKeys = hostKeys;
         _sshCredentials = sshCredentials;
+        _sshDesktop = sshDesktop;
         _releaseSource = releaseSource;
         _operationJournal = operationJournal;
         _localization = localization;
@@ -77,6 +80,11 @@ public partial class ServerCenterViewModel : ObservableObject
 
     public string Title => T("server_center.title", "Server centre");
     public string Subtitle => T("server_center.subtitle", "Manage SSH hosts and RelaxKonOS server installations.");
+    public string HostsPageTitle => T("server_center.page.hosts", "Hosts");
+    public string ConnectionPageTitle => T("server_center.page.connection", "SSH connection");
+    public string DeploymentPageTitle => T("server_center.page.deployment", "Installation and maintenance");
+    public string HistoryPageTitle => T("server_center.page.history", "Operation history");
+    public string SelectHostHint => T("server_center.select_host_hint", "Select a host on the Hosts page first.");
     public string HostsLabel => T("server_center.hosts", "Managed hosts");
     public string EmptyHostsText => T("server_center.empty", "No managed hosts have been added on this device.");
     public string AddHostLabel => T("server_center.add_host", "Add host");
@@ -123,6 +131,11 @@ public partial class ServerCenterViewModel : ObservableObject
             Hosts.Clear();
             foreach (var target in loaded.OrderByDescending(target => target.LastUsedAtUtc))
                 Hosts.Add(target);
+            var connected = _sshDesktop.Endpoint;
+            SelectedHost = Hosts.FirstOrDefault(host => connected is not null &&
+                string.Equals(host.SshHost, connected.Host, StringComparison.OrdinalIgnoreCase) &&
+                host.SshPort == connected.Port && host.SshUserName == connected.UserName)
+                ?? Hosts.FirstOrDefault();
             OnPropertyChanged(nameof(HasHosts));
         }
         catch (Exception)
