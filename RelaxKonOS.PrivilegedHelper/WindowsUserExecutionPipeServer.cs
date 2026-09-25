@@ -91,6 +91,14 @@ internal sealed class WindowsUserExecutionPipeServer(WindowsHelperPipeConfigurat
                 "invalid user-execution request"), cancellationToken);
             return;
         }
+        // Correlation metadata is required, exactly as on the elevated pipe: a request that cannot
+        // be correlated must not start work whose audit trail cannot be joined up.
+        if (request.Correlation is not { } correlation || !correlation.IsValid())
+        {
+            await WriteResultAsync(pipe, secret, Fail(UserExecutionProblemCode.InvalidRequest,
+                "valid correlation metadata is required"), cancellationToken);
+            return;
+        }
 
         var operationId = request.OperationId!.Value;
         PruneRecentOperationIds();

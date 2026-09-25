@@ -16,6 +16,8 @@ public static class ObservabilityEventCatalog
     public static readonly Definition PrivilegedRequestAccepted = new(1300, "privileged.request.accepted");
     public static readonly Definition PrivilegedTransportRejected = new(1301, "privileged.transport.rejected");
     public static readonly Definition PrivilegedRequestCompleted = new(1302, "privileged.request.completed");
+    public static readonly Definition UserExecutionRequestAccepted = new(1310, "user.execution.request.accepted");
+    public static readonly Definition UserExecutionRequestCompleted = new(1311, "user.execution.request.completed");
     public static readonly Definition ConfigurationChanged = new(1400, "configuration.changed");
     public static readonly Definition ServiceRestart = new(1401, "service.restart");
     public static readonly Definition CertificateDeployed = new(1402, "certificate.deployed");
@@ -43,7 +45,7 @@ public static class ObservabilityEventCatalog
     {
         "certificate.deploy", "configuration.change", "service.restart", "file.delete", "file.write",
         "firewall.change", "proxy.change", "tunnel.change", "docker.change", "guardian.workload.change",
-        "privileged.operation", "authentication.login", "authorization.check"
+        "privileged.operation", "user.execution", "authentication.login", "authorization.check"
     };
 
     public static bool IsKnownAction(string action) => Actions.Contains(action);

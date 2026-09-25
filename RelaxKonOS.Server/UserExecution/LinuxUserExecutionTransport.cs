@@ -2,18 +2,46 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Server.Observability;
 using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.UserExecution;
 
 /// <summary>Starts the installed one-shot Helper in its dedicated user-execution mode.</summary>
-public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options, ILogger<LinuxUserExecutionTransport> logger) : IUserExecutionTransport
+public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options, ILogger<LinuxUserExecutionTransport> logger,
+    ICorrelationContextAccessor? correlation = null, ISecurityAuditWriter? securityAudit = null,
+    ObservabilityOptions? observability = null) : IUserExecutionTransport
 {
+    private const string DiagnosticPrefix = "relaxkonos-diagnostic:";
+    // Only these Helper-emitted diagnostics may reach the runtime log. Anything else is discarded
+    // instead of being written as un-sanitized external process output.
+    private static readonly HashSet<string> KnownDiagnostics = new(StringComparer.Ordinal)
+    {
+        "user-execution-identity-mismatch", "user-execution-identity-transition-failed"
+    };
+
     public async Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request, CancellationToken cancellationToken = default)
     {
-        request = request with { OperationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid(), Version = UserExecutionProtocol.Version };
+        var operationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid();
+        var ambient = correlation?.Current;
+        request = request with
+        {
+            OperationId = operationId,
+            // The Helper re-establishes its own local scope from this metadata. Only safe
+            // correlation fields cross the process boundary; never a credential or account name.
+            Correlation = request.Correlation ?? (ambient is null
+                ? CorrelationContext.Create(operationId, "user.execution")
+                : new CorrelationContext(ambient.CorrelationId, operationId, "user.execution")),
+            Version = UserExecutionProtocol.Version
+        };
+        if (!WriteSecurityAudit(request, null, ObservabilityOutcome.Started))
+        {
+            logger.LogError("User-execution Helper operation was not started because security audit persistence is unavailable. Operation={Operation}", request.Operation);
+            return new(false, Error: "security audit is unavailable", ProblemCode: UserExecutionProblemCode.HelperUnavailable);
+        }
         if (!OperatingSystem.IsLinux() || string.IsNullOrWhiteSpace(options.HelperPath) || !File.Exists(options.HelperPath))
             return Complete(request, new(false, Error: "the Linux user-execution Helper is unavailable", ProblemCode: UserExecutionProblemCode.HelperUnavailable));
         var start = new ProcessStartInfo(options.SudoPath);
@@ -63,10 +91,28 @@ public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options,
 
     private UserExecutionResult Complete(UserExecutionRequest request, UserExecutionResult result)
     {
+        WriteSecurityAudit(request, result, result.Success ? ObservabilityOutcome.Succeeded : ObservabilityOutcome.Failed);
         Audit(request, result);
         return result;
     }
 
+    private bool WriteSecurityAudit(UserExecutionRequest request, UserExecutionResult? result, ObservabilityOutcome outcome)
+    {
+        if (securityAudit is null) return true;
+        var context = request.Correlation!;
+        return securityAudit.TryWriteAsync(new SecurityAuditEvent(
+            outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.UserExecutionRequestAccepted.Id : ObservabilityEventCatalog.UserExecutionRequestCompleted.Id,
+            outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.UserExecutionRequestAccepted.Name : ObservabilityEventCatalog.UserExecutionRequestCompleted.Name,
+            outcome, "server", context.CorrelationId, DateTimeOffset.UtcNow, observability?.InstanceId ?? "unconfigured",
+            "user.execution", request.OperationId, ActorReference: request.Identity.CanonicalAccount,
+            ResourceType: "user-execution-operation", ResourceReference: request.Path ?? request.DestinationPath,
+            ProblemCode: result?.ProblemCode.ToString())).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// The runtime log records only hashes of the identity and the resource, never the account
+    /// name or a caller-controlled path.
+    /// </summary>
     private void Audit(UserExecutionRequest request, UserExecutionResult result)
     {
         var identityHash = request.Identity is null ? "invalid" : Hash($"{request.Identity.Platform}:{request.Identity.StableIdentity}");
@@ -96,6 +142,10 @@ public sealed class LinuxUserExecutionTransport(PrivilegedHelperOptions options,
         return Encoding.UTF8.GetString(content.GetBuffer(), 0, checked((int)content.Length));
     }
 
+    /// <summary>
+    /// Always drains stderr so the Helper can exit, but never returns its content: the structured,
+    /// versioned result on stdout is the only channel the Server reads.
+    /// </summary>
     private static async Task<bool> DrainDiagnosticsAsync(Stream stream, CancellationToken cancellationToken)
     {
         var buffer = new byte[4096];

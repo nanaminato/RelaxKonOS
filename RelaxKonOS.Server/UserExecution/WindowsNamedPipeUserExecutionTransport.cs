@@ -2,7 +2,9 @@ using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Server.Observability;
 using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.UserExecution;
@@ -13,16 +15,29 @@ namespace RelaxKonOS.Server.UserExecution;
 /// are distinct so normal user I/O can never be parsed as an administrator operation.
 /// </summary>
 public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptions options,
-    ILogger<WindowsNamedPipeUserExecutionTransport> logger) : IUserExecutionTransport
+    ILogger<WindowsNamedPipeUserExecutionTransport> logger, ICorrelationContextAccessor? correlation = null,
+    ISecurityAuditWriter? securityAudit = null, ObservabilityOptions? observability = null) : IUserExecutionTransport
 {
     public async Task<UserExecutionResult> ExecuteAsync(UserExecutionRequest request,
         CancellationToken cancellationToken = default)
     {
+        var operationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid();
+        var ambient = correlation?.Current;
         request = request with
         {
-            OperationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid(),
+            OperationId = operationId,
+            // The Helper re-establishes its own local scope from this metadata. Only safe
+            // correlation fields cross the process boundary; never a credential or account name.
+            Correlation = request.Correlation ?? (ambient is null
+                ? CorrelationContext.Create(operationId, "user.execution")
+                : new CorrelationContext(ambient.CorrelationId, operationId, "user.execution")),
             Version = UserExecutionProtocol.Version,
         };
+        if (!WriteSecurityAudit(request, null, ObservabilityOutcome.Started))
+        {
+            logger.LogError("Windows user-execution operation was not started because security audit persistence is unavailable. Operation={Operation}", request.Operation);
+            return new(false, Error: "security audit is unavailable", ProblemCode: UserExecutionProblemCode.HelperUnavailable);
+        }
         if (!OperatingSystem.IsWindows())
             return Complete(request, Unavailable(UserExecutionProblemCode.UnsupportedPlatform));
         if (string.IsNullOrWhiteSpace(options.PipeName) || !TryGetSecret(out var secret))
@@ -62,6 +77,10 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
         }
         catch (OperationCanceledException)
         {
+            // The request was never submitted, so no Helper result can arrive. Close the accepted
+            // audit record instead of leaving it dangling, then preserve the caller's cancellation.
+            WriteSecurityAudit(request, new(false, Error: "user-execution operation was cancelled",
+                ProblemCode: UserExecutionProblemCode.Cancelled), ObservabilityOutcome.Cancelled);
             cancellationToken.ThrowIfCancellationRequested();
             throw;
         }
@@ -133,11 +152,34 @@ public sealed class WindowsNamedPipeUserExecutionTransport(PrivilegedHelperOptio
 
     private UserExecutionResult Complete(UserExecutionRequest request, UserExecutionResult result)
     {
+        WriteSecurityAudit(request, result, result.Success ? ObservabilityOutcome.Succeeded : ObservabilityOutcome.Failed);
+        Audit(request, result);
+        return result;
+    }
+
+    /// <summary>
+    /// The runtime log records only hashes of the identity and the resource, never the account
+    /// name or a caller-controlled path.
+    /// </summary>
+    private void Audit(UserExecutionRequest request, UserExecutionResult result)
+    {
         logger.LogInformation(
             "User execution completed. OperationId={OperationId} Operation={Operation} IdentityHash={IdentityHash} ResourceHash={ResourceHash} Success={Success} Problem={Problem}",
             request.OperationId, request.Operation, Hash(request.Identity.StableIdentity), Hash(request.Path ?? request.DestinationPath),
             result.Success, result.ProblemCode);
-        return result;
+    }
+
+    private bool WriteSecurityAudit(UserExecutionRequest request, UserExecutionResult? result, ObservabilityOutcome outcome)
+    {
+        if (securityAudit is null) return true;
+        var context = request.Correlation!;
+        return securityAudit.TryWriteAsync(new SecurityAuditEvent(
+            outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.UserExecutionRequestAccepted.Id : ObservabilityEventCatalog.UserExecutionRequestCompleted.Id,
+            outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.UserExecutionRequestAccepted.Name : ObservabilityEventCatalog.UserExecutionRequestCompleted.Name,
+            outcome, "server", context.CorrelationId, DateTimeOffset.UtcNow, observability?.InstanceId ?? "unconfigured",
+            "user.execution", request.OperationId, ActorReference: request.Identity.CanonicalAccount,
+            ResourceType: "user-execution-operation", ResourceReference: request.Path ?? request.DestinationPath,
+            ProblemCode: result?.ProblemCode.ToString())).GetAwaiter().GetResult();
     }
 
     private static string Hash(string? value) => string.IsNullOrEmpty(value) ? "none"

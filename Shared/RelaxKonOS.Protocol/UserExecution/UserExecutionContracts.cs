@@ -1,12 +1,13 @@
 using System.Text.Json.Serialization;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Observability;
 
 namespace RelaxKonOS.Protocol.UserExecution;
 
 /// <summary>Protocol constants for the dedicated, local-only user-execution channel.</summary>
 public static class UserExecutionProtocol
 {
-    public const string Version = "1.1";
+    public const string Version = "1.2";
     // A 12 MiB payload expands to 16 MiB in base64; leave bounded room for the JSON envelope.
     public const int MaximumRequestBytes = 17 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
@@ -92,6 +93,7 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("terminalWidthPixels")] int? TerminalWidthPixels = null,
     [property: JsonPropertyName("terminalHeightPixels")] int? TerminalHeightPixels = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
+    [property: JsonPropertyName("correlation")] CorrelationContext? Correlation = null,
     [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version);
 
 [JsonConverter(typeof(JsonStringEnumConverter<UserExecutionProblemCode>))]
