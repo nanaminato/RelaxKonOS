@@ -437,8 +437,112 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         EnsureUserModePath(targetDirectoryPath);
         if (!Directory.Exists(targetDirectoryPath))
             throw new DirectoryNotFoundException($"目标目录不存在: {targetDirectoryPath}");
+        // The name comes from Content-Disposition or a phone's document picker, so it is untrusted: a name
+        // containing a separator or ".." would leave the destination directory. Validating here as well as
+        // at the endpoint keeps the guarantee attached to the write itself.
+        if (!FileUploadNamePolicy.IsValidFileName(fileName))
+            throw new ArgumentException($"文件名必须是单一成分: {FileUploadNamePolicy.DescribeForLog(fileName)}", nameof(fileName));
         var dest = System.IO.Path.Combine(targetDirectoryPath, fileName);
         return await WriteAtomicallyAsync(dest, content, cancellationToken);
+    }
+
+    public void CreateStagingFile(string stagingPath)
+    {
+        EnsureUserModePath(stagingPath);
+        if (!FileUploadNamePolicy.TryParseStagingFileName(System.IO.Path.GetFileName(stagingPath), out _))
+            throw new ArgumentException("暂存文件名不符合会话命名规则。", nameof(stagingPath));
+        var directory = System.IO.Path.GetDirectoryName(stagingPath);
+        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            throw new DirectoryNotFoundException($"目标目录不存在: {directory}");
+        // CreateNew: a leftover file at this exact path means the session id was reused or the index lost an
+        // entry. Refusing is safer than appending to bytes whose origin is unknown.
+        using var created = new FileStream(stagingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.None);
+    }
+
+    public async Task<long> AppendStagingAsync(string stagingPath, long offset, long expectedBytes, Stream content, CancellationToken cancellationToken = default)
+    {
+        EnsureUserModePath(stagingPath);
+        if (expectedBytes < 0) throw new ArgumentOutOfRangeException(nameof(expectedBytes));
+        await using var file = new FileStream(stagingPath, FileMode.Open, FileAccess.Write, FileShare.None, 81920,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        // A process can stop after writing some bytes but before the session index is advanced. Those
+        // unconfirmed bytes must be discarded so a restarted client can resend from the indexed offset.
+        if (file.Length > offset)
+        {
+            file.SetLength(offset);
+            await file.FlushAsync(cancellationToken);
+        }
+        if (file.Length != offset)
+            throw new IOException($"暂存文件长度 {file.Length} 与声明的偏移 {offset} 不一致。");
+        file.Position = offset;
+        try
+        {
+            var buffer = new byte[81920];
+            long written = 0;
+            while (written < expectedBytes)
+            {
+                var read = await content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, expectedBytes - written)), cancellationToken);
+                if (read == 0) throw new IOException("请求正文短于其声明的长度。");
+                await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                written += read;
+            }
+            await file.FlushAsync(cancellationToken);
+            // Only a flush that returned without error may be reported as confirmed: the caller advances the
+            // session offset on the strength of this value alone.
+            return file.Length;
+        }
+        catch
+        {
+            // Never leave a half-written chunk behind: the next attempt must start from the offset the
+            // session still reports, not from the bytes an interrupted attempt happened to leave.
+            try { file.SetLength(offset); await file.FlushAsync(CancellationToken.None); }
+            catch (IOException) { }
+            throw;
+        }
+    }
+
+    public long StagingLength(string stagingPath)
+    {
+        try
+        {
+            EnsureUserModePath(stagingPath);
+            var info = new FileInfo(stagingPath);
+            return info.Exists ? info.Length : -1;
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or ArgumentException)
+        {
+            return -1;
+        }
+    }
+
+    public void DeleteStagingFile(string stagingPath)
+    {
+        try
+        {
+            EnsureUserModePath(stagingPath);
+            if (File.Exists(stagingPath)) File.Delete(stagingPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // A cleanup that fails is retried by the session sweep. It must not fail the operation that
+            // asked for it, which has already reached its own terminal state.
+        }
+    }
+
+    public FileEntryDto CommitStagingFile(string stagingPath, string destinationPath)
+    {
+        EnsureUserModePath(stagingPath);
+        EnsureUserModePath(destinationPath);
+        if (!File.Exists(stagingPath))
+            throw new FileNotFoundException($"暂存文件不存在: {stagingPath}", stagingPath);
+        var directory = System.IO.Path.GetDirectoryName(destinationPath);
+        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            throw new DirectoryNotFoundException($"目标目录不存在: {directory}");
+        // Same-directory rename: the destination is either the old file or the new one, never a partial
+        // copy of the new one. This is the same terminal step WriteAtomicallyAsync performs after a
+        // single-shot upload, which is why the two routes cannot disagree about overwrite semantics.
+        File.Move(stagingPath, destinationPath, overwrite: true);
+        return ToFileEntry(new FileInfo(destinationPath));
     }
 
     private string UserRoot => Path.TrimEndingDirectorySeparator(Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));

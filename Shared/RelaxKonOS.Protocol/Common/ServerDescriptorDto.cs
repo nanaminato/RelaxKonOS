@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.Common;
 /// This describes the server process host, never the connecting client or the authenticated user.
 /// </summary>
 public sealed record ServerDescriptorDto(
-    [property: JsonPropertyName("platform")] PlatformKind Platform,
+    [property: JsonPropertyName("platform")] HostPlatformKind Platform,
     [property: JsonPropertyName("capabilities")] IReadOnlyList<string> Capabilities,
     [property: JsonPropertyName("host")] ServerCapabilitiesDto? Host = null);
 

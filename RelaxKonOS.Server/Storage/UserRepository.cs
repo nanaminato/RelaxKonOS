@@ -7,9 +7,9 @@ namespace RelaxKonOS.Server.Storage;
 /// <summary>用户仓储。按 (username, platform) 与 Id 索引。</summary>
 public interface IUserRepository
 {
-    User? FindByUsername(string username, PlatformKind platform);
+    User? FindByUsername(string username, HostPlatformKind platform);
     User? FindById(Guid id);
-    User? FindByIdentity(string identity, PlatformKind platform);
+    User? FindByIdentity(string identity, HostPlatformKind platform);
     void Update(User user);
     User Add(User user);
     void UpdateLastLogin(Guid id, DateTimeOffset at);
@@ -19,14 +19,14 @@ public interface IUserRepository
 public sealed class InMemoryUserRepository : IUserRepository
 {
     private readonly ConcurrentDictionary<Guid, User> _byId = new();
-    private readonly ConcurrentDictionary<(string username, PlatformKind platform), Guid> _byName = new();
+    private readonly ConcurrentDictionary<(string username, HostPlatformKind platform), Guid> _byName = new();
 
-    public User? FindByUsername(string username, PlatformKind platform)
+    public User? FindByUsername(string username, HostPlatformKind platform)
         => _byName.TryGetValue((username, platform), out var id) && _byId.TryGetValue(id, out var u) ? u : null;
 
     public User? FindById(Guid id) => _byId.TryGetValue(id, out var u) ? u : null;
 
-    public User? FindByIdentity(string identity, PlatformKind platform) => _byId.Values.SingleOrDefault(u => u.PlatformIdentity == identity && u.Platform == platform);
+    public User? FindByIdentity(string identity, HostPlatformKind platform) => _byId.Values.SingleOrDefault(u => u.PlatformIdentity == identity && u.Platform == platform);
     public void Update(User user) => _byId[user.Id] = user;
     public User Add(User user)
     {

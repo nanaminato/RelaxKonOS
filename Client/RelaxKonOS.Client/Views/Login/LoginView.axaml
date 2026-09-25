@@ -82,7 +82,8 @@
                                   Text="{Binding ServerUrl}"
                                   HorizontalAlignment="Stretch"
                                   MinWidth="440"
-                                  PlaceholderText="http://host:port">
+                                  PlaceholderText="host:port"
+                                  LostFocus="ServerAddress_LostFocus">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding ServerUrl}" MinHeight="32"

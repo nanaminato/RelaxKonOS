@@ -30,7 +30,9 @@ Windows/Linux 文件移动优先使用不允许跨卷隐式复制的原生 renam
 
 共享操作中心协调服务端任务与卡片。提交固定选择与目标快照；完成后按实际成功源更新剪切剪贴板（仍检查剪贴板版本），并刷新当前仍位于受影响目录且未忙碌的浏览器。结果中部分完成目录不从剪切剪贴板移除。保留旧批处理路径供未注入操作中心的选择器/无桌面状态回归使用，普通浏览器全部接入新服务。
 
-本次核心覆盖远端复制、移动、删除；本机上传/下载使用现有传输接口，后续需要专门的流式上传/下载任务适配，不伪装成服务端可恢复任务。
+本次核心覆盖远端复制、移动、删除；本机**上传**已改为分块会话（> 4 MiB 的走 `RelaxKonOS.FileUpload.Design.md` 的编排器，进度与取消仍由操作中心的卡片承载），**下载**使用现有传输接口，后续需要专门的流式下载任务适配，不伪装成服务端可恢复任务。
+
+上传条目进入操作中心时，编排器上报的是"已确认字节 + 在途字节 + 是否在核对"三元组；条目行只有"路径 + 字节数"两栏，因此在与服务器核对偏移期间它**只表现为计数停住**，不显示任何文字状态（`RelaxKonOS.FileUpload.Design.md` §5.6）。
 
 ## 参考
 
@@ -61,7 +63,7 @@ Windows/Linux 文件移动优先使用不允许跨卷隐式复制的原生 renam
 
 ```bash
 dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false -v minimal
-dotnet run --project Client/RelaxKonOS.Explorer.Tests -p:MSBuildEnableWorkloadResolver=false -m:1 --verbosity quiet
+dotnet run --project Tests/Client/RelaxKonOS.Explorer.Tests -p:MSBuildEnableWorkloadResolver=false -m:1 --verbosity quiet
 dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false -v minimal
 dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false -p:UsePrebuiltServerAssembly=true -v minimal
 RELAXKONOS_FILE_JOB_SECONDARY_ROOT="$PWD/.codex-scratch" dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --file-operations-only

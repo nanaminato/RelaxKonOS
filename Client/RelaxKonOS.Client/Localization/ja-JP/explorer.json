@@ -71,6 +71,7 @@
         "explorer.status.uploading_folders": "フォルダーをアップロードしています…",
         "explorer.status.no_uploadable_files": "選択された項目にアップロード可能なファイルがありません。",
         "explorer.status.uploading_item": "{0} をアップロード中（{1}/{2}）…",
+        "explorer.status.upload_reconciling": "{0} の進捗をサーバーと確認しています（{1}/{2}）…",
         "explorer.status.creating_folder": "{0} を作成中（{1}/{2}）…",
         "explorer.status.upload_completed": "{0} 個のファイルをアップロードしました。",
         "explorer.status.upload_completed_with_folders": "{0} 個のファイルと {1} 個のフォルダーをアップロードしました。",

@@ -26,6 +26,11 @@ public static class FileApiRoutes
     /// <summary>下载文件（GET，需 JWT）。query: path。返回字节流。</summary>
     public const string Download = $"/{V1}/files/download";
 
+    /// <summary>生成并返回文件的缩略图（GET，需 JWT）。query: path、maxEdge（可选，最长边像素，默认 256，须在 16–1024 之间）。
+    /// 返回 image/jpeg 或 image/png 字节流（有 alpha 通道时用 PNG，否则用 JPEG）；内容不是本服务能解码的图像时返回
+    /// 415 thumbnail-unsupported。客户端可用它先出小图，再拉原图。</summary>
+    public const string Thumbnail = $"/{V1}/files/thumbnail";
+
     /// <summary>读取或覆盖保存单个文件内容（GET/PUT，需 JWT）。Query: path。</summary>
     public const string Content = $"/{V1}/files/content";
 
@@ -53,6 +58,24 @@ public static class FileApiRoutes
     /// <summary>复制（POST，需 JWT）。body: CopyRequest。</summary>
     public const string Copy = $"/{V1}/files/copy";
 
-    /// <summary>上传文件（POST，需 JWT）。query: path（目标目录）。body: multipart/form-data。</summary>
+    /// <summary>Small-file upload (POST, JWT required). query: path (target directory). body: multipart/form-data.
+    /// Declared ceiling: <see cref="FileUploadProtocol.SingleShotMaximumBytes"/>; anything larger uses
+    /// <see cref="Uploads"/>, which carries the length in its body instead of in a form part.</summary>
     public const string Upload = $"/{V1}/files/upload";
+
+    /// <summary>Opens a resumable upload session (POST, JWT required). body: CreateUploadRequest,
+    /// header: Idempotency-Key. Answers 201 with <see cref="UploadSessionDto"/>.</summary>
+    public const string Uploads = $"/{V1}/files/uploads";
+
+    /// <summary>Session sub-resource (GET reads the authoritative offset, DELETE abandons it).
+    /// path parameter: uploadId. Both answer <c>upload-session-not-found</c> for an unknown session.</summary>
+    public const string UploadPattern = $"/{V1}/files/uploads/{{uploadId}}";
+
+    /// <summary>Appends one chunk (PATCH, JWT required). path parameter: uploadId.
+    /// headers: <see cref="FileUploadProtocol.OffsetHeader"/> and Content-Length; body: application/octet-stream.</summary>
+    public const string UploadChunkPattern = $"/{V1}/files/uploads/{{uploadId}}";
+
+    /// <summary>Publishes a fully received session as the destination file (POST, JWT required).
+    /// path parameter: uploadId. body: CommitUploadRequest.</summary>
+    public const string UploadCommitPattern = $"{UploadPattern}/commit";
 }

@@ -42,6 +42,27 @@ System Mode 安装时请选择 `*-server.zip` 或对应的 Server 发布目录�
 
 安装器默认从 `https://downloads.relaxkon.com/relaxkonos/stable/latest/{rid}.json` 读取当前稳定版，其中 `{rid}` 是 `win-x64`、`win-arm64`、`linux-x64` 或 `linux-arm64`。该描述文件包含 ZIP 的 HTTPS 地址和 SHA-256；将通过验证的版本描述文件同步为 `latest/{rid}.json`，即可完成稳定版切换，无需修改安装器。
 
+## 反向代理与分块上传
+
+大文件上传走**分块会话**（`POST`/`PATCH`/`GET`/`DELETE /api/v1.0/files/uploads...`），设计与实现规格见 [RelaxKonOS.FileUpload.Design.md](../docs/architecture/RelaxKonOS.FileUpload.Design.md)。每个请求只承载一个分片，所以对中间层反而友好；但**必须显式放宽下面这几个值**，否则代理的默认上限会以新的形式替代服务端原本的上限：
+
+```nginx
+location /api/v1.0/files/uploads/ {
+    client_max_body_size 12m;        # ≥ 服务端下发的 chunkSize（普通 8 MiB / 提权 6 MiB，提权路径还会被 base64 放大 4/3）+ 信封余量
+    client_body_timeout 120s;        # 单分片内两次写入之间的间隔，不是整个文件的耗时
+    proxy_request_buffering off;     # 关键：不要先把整个分片缓冲下来再转发
+    proxy_buffering off;
+    proxy_read_timeout 120s;         # 与客户端的 60 秒分片停滞看门狗同一量级
+    proxy_send_timeout 120s;
+}
+```
+
+- 只对 `files/uploads` 前缀放宽，其余 API 保持既有严格值。
+- 仓库自带的 Nginx 管理器对 `DisableBuffering` 路由已输出 `proxy_request_buffering off`（`RelaxKonOS.Server/WebServer/NginxWebServerManager.cs`），所以"关闭缓冲"是既有能力，不是为上传新加的概念。
+- 用 IIS/ARR、Caddy、Traefik 或云负载均衡时按同一组语义配置。**任何把单请求上限设得低于一个分片（8 MiB）的中间层都必须检查**：它的失败模式不是"传不了大文件"，而是"每个分片都被拒，上传永远停在第一片"。
+- 单发快路径（`POST /api/v1.0/files/upload`）在服务端显式声明了 16 MiB 上限，客户端只在 ≤ 4 MiB 时才走它，因此上面的 `12m` 不影响小文件。
+- **User Mode 不需要这组配置**：Server 只绑定 `127.0.0.1`，控制套接字不经代理；远程连接走 SSH 本地转发时转发的是原始 TCP，也不存在代理缓冲。
+
 ## Windows
 
 管理员 PowerShell 中运行：

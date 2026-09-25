@@ -25,7 +25,7 @@
 - [x] 文本框编辑时，窗口级 Delete / Ctrl+C / Ctrl+X / Ctrl+V 不再触发远端文件操作。
 - [x] 面包屑与向上导航按远端路径解析，支持 POSIX、Windows 盘符和 UNC 分享根目录，不依赖客户端操作系统。
 - [x] 保留文件/文件夹/保存选择器；新增中文、英文、日文本地化资源。
-- [x] 独立无桌面回归项目 `Client/RelaxKonOS.Explorer.Tests`，覆盖生产 ViewModel 与路径解析逻辑。
+- [x] 独立无桌面回归项目 `Tests/Client/RelaxKonOS.Explorer.Tests`，覆盖生产 ViewModel 与路径解析逻辑。
 
 ## 第二轮完成（2026-09-06）
 
@@ -89,17 +89,35 @@
 - [x] 完成后刷新仍打开的受影响目录；剪切剪贴板只移除已完成来源。关闭进度窗/来源窗不取消任务，“更多操作 → 文件操作”可重新打开；切换登录上下文停止旧请求并清理旧视图。
 - [x] 中文、英文、日文资源及客户端/服务端自动化回归。
 
-本轮核心覆盖远端操作；本机上传/下载保持原流程。暂不支持暂停/恢复、回收站、撤销、服务端重启后续传、递归跟随链接。不可列举的受保护目录、特殊文件元数据保留及真实提权助手限制见设计文档。
+本轮核心覆盖远端操作；本机上传改为分块会话（> 4 MiB）后，**上传**已支持"服务端重启后续传"与"客户端重启后从权威偏移继续"（会话索引 + 续传日志，见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md)），**下载**保持原流程。暂不支持暂停/恢复（取消是终态，协议已具备支持暂停的全部条件）、回收站、撤销、递归跟随链接。不可列举的受保护目录、特殊文件元数据保留及真实提权助手限制见设计文档。
+
+## 第七轮完成（2026-09-24）：大文件分块上传与断点续传
+
+设计规格见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md)（服务端协议、桌面客户端、提权路径与部署要求），Android 侧见 [Android 大文件上传设计](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.BulkUpload.Design.md)。
+
+- [x] 服务端新增可续传会话路由 `POST/PATCH/GET/DELETE /api/v1.0/files/uploads`（`Upload-Offset` 权威偏移、`Idempotency-Key` 幂等、会话索引跨重启恢复、TTL 清理、暂存文件同卷原子提交）。
+- [x] 单发路由 `POST /api/v1.0/files/upload` 重新声明为"≤ 4 MiB 快路径"，显式上限 16 MiB，超限返回 `413 upload-too-large-for-single-shot` 而不依赖框架默认值。
+- [x] 修掉既有缺陷：`file.FileName` 未净化导致的路径穿越（服务端拒绝分隔符、`..`、保留设备名、结尾点/空格/冒号、控制字符与超长名）。
+- [x] 桌面端上传通道使用**独立** `HttpClient`：不缓冲正文（`AuthenticatedHttpHandler` 的 401 重放缓冲是整包进内存的根因）、整请求无超时（改用 60 秒分片停滞看门狗）、401 交给编排器刷新后从权威偏移继续而不重放正文。
+- [x] 编排器（`Apps/Explorer/Uploads/`）：任何对"服务端收到多少"的疑问都向服务端询问；服务端给出的偏移即使更小也采纳；核对期间上报 `Reconciling` 让界面显示"正在与服务器核对进度"而不是把 `0` 当进度。
+- [x] 续传日志与应用私有配置同存亡：仅创建会话后、分片确认后、提交失败后写入；越龄 7 天淘汰、上限 64 条、`serverKey`（服务器/账号/工作区/设备）变化不续传、本地文件被改过不续传、损坏文件视为空。
+- [x] 重试预算覆盖两类活锁：传输失败与服务端反复回答同一偏移（共用 10 次预算），耗尽后**保留会话与日志条目**，用户点重试即从权威偏移继续。
+- [x] 分片长度始终 ≤ 服务端下发的 `chunkSize`，自适应缩小的下限同样被该值夹住（避免"服务端只允许 32 KiB"的会话被永久拒绝）。
+- [x] 提权在会话创建时一次解决（12 MiB 单请求天花板消失），传输中途不再询问。
+
+本轮核心覆盖**上传**；下载仍使用原流程。暂停/恢复仍未提供（取消是终态，协议已具备支持暂停的全部条件）。第六轮那段列出的既有边界不变。
 
 ## 验证记录
 
 ```bash
 dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -m:1 -p:MSBuildEnableWorkloadResolver=false -v minimal
-dotnet run --project Client/RelaxKonOS.Explorer.Tests -p:MSBuildEnableWorkloadResolver=false -m:1 --verbosity quiet
+dotnet run --project Tests/Client/RelaxKonOS.Explorer.Tests -p:MSBuildEnableWorkloadResolver=false -m:1 --verbosity quiet
+dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug -o <独立输出目录>
+<独立输出目录>/RelaxKonOS.Server.Tests.exe --uploads-only
 git diff --check
 ```
 
-客户端编译（含 AXAML）通过，零警告、零错误；120 项 Explorer 自动化回归检查通过（第六轮新增 10 项），另有 36 项服务端真实文件专项检查通过，`git diff --check` 通过。Explorer 自动化使用假客户端与本地化键替身；服务端专项使用真实临时文件验证执行器，但未连接真实桌面与已部署服务器。新增接口构建和专项命令见设计文档。SDK 默认构建曾无诊断退出；使用上述单进程构建并关闭 workload resolver 后通过。
+客户端编译（含 AXAML）通过，零警告、零错误；**196 项** Explorer 自动化回归检查通过（第六轮记录为 120 项，本轮为分块上传新增 10 项），另有 36 项服务端真实文件专项检查与 `--uploads-only` 86 项会话检查通过，`git diff --check` 通过。Explorer 自动化使用假客户端与本地化键替身；服务端专项使用真实临时文件验证执行器，但未连接真实桌面与已部署服务器。新增接口构建和专项命令见设计文档。SDK 默认构建曾无诊断退出；使用上述单进程构建并关闭 workload resolver 后通过。上传相关测试的判定口径与真机验收清单见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md) §9.2/§9.4。
 
 尚未在真实桌面会话中做截图、鼠标、键盘、主题及真实服务端传输验收，因此下列项目不能视为已验证：
 

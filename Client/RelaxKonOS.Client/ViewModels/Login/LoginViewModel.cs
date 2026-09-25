@@ -22,12 +22,14 @@ public partial class LoginViewModel : ObservableObject
 
     private readonly IAuthSession _session;
     private readonly LoginLocalizationService _localization;
+    private readonly ServerEndpointResolver _endpointResolver;
     private bool _loadingSavedProfiles;
 
-    public LoginViewModel(IAuthSession session, LoginLocalizationService localization)
+    public LoginViewModel(IAuthSession session, LoginLocalizationService localization, ServerEndpointResolver endpointResolver)
     {
         _session = session;
         _localization = localization;
+        _endpointResolver = endpointResolver;
         SavedProfiles = new ObservableCollection<SavedLoginProfile>();
 #if DEBUG
         // Development-only convenience for local integration testing. This is deliberately
@@ -43,7 +45,7 @@ public partial class LoginViewModel : ObservableObject
     // 此前缺少通知，导致填写完账号密码后按钮仍处于禁用状态（无法点击）。
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
-    private string _serverUrl = "http://localhost:5090";
+    private string _serverUrl = "localhost:5090";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
@@ -56,6 +58,10 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     private bool _isConnecting;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
+    private bool _isDiscoveringServer;
 
     [ObservableProperty]
     // Debug 和生产版本都默认启用；用户可在共享设备上取消勾选。
@@ -112,7 +118,11 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _hasError;
 
-    partial void OnServerUrlChanged(string value) => ClearError();
+    partial void OnServerUrlChanged(string value)
+    {
+        ClearError();
+        if (!IsDiscoveringServer) StatusMessage = string.Empty;
+    }
     partial void OnIdentifierChanged(string value) => ClearError();
     partial void OnPasswordChanged(string value) => ClearError();
     partial void OnSelectedProfileChanged(SavedLoginProfile? value)
@@ -138,13 +148,18 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync(CancellationToken ct)
     {
-        if (!TryGetServerUrl(out var serverUrl))
+        var resolution = await ResolveServerEndpointAsync(ct);
+        if (!resolution.IsResolved)
         {
-            ErrorMessage = T("login.error.invalid_server", "The server address is invalid. Enter a complete address, for example: http://host:port.");
+            ErrorMessage = resolution.IsValidInput
+                ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
+                : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port.");
             HasError = true;
             StatusMessage = string.Empty;
             return;
         }
+
+        var serverUrl = resolution.Endpoint!;
 
         IsConnecting = true;
         StatusMessage = T("login.status.connecting", "Connecting...");
@@ -174,7 +189,7 @@ public partial class LoginViewModel : ObservableObject
         }
         catch (UriFormatException)
         {
-            ErrorMessage = T("login.error.invalid_server", "The server address is invalid. Enter a complete address, for example: http://host:port.");
+            ErrorMessage = T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port.");
             HasError = true;
             StatusMessage = string.Empty;
         }
@@ -189,7 +204,7 @@ public partial class LoginViewModel : ObservableObject
     }
 
     private bool CanConnect()
-        => !IsConnecting
+        => !IsConnecting && !IsDiscoveringServer
            && !string.IsNullOrWhiteSpace(ServerUrl)
            && !string.IsNullOrWhiteSpace(Identifier)
            && !string.IsNullOrWhiteSpace(Password);
@@ -251,17 +266,52 @@ public partial class LoginViewModel : ObservableObject
     private void TogglePasswordVisibility()
         => IsPasswordVisible = !IsPasswordVisible;
 
-    private bool TryGetServerUrl(out string serverUrl)
+    /// <summary>Invoked by the address control when focus leaves it, before credentials are sent.</summary>
+    public async Task DiscoverServerEndpointAsync(CancellationToken ct = default)
     {
-        serverUrl = ServerUrl.Trim();
-        return Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri)
-               && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
-               && !string.IsNullOrWhiteSpace(uri.Host);
+        if (string.IsNullOrWhiteSpace(ServerUrl)) return;
+
+        var enteredValue = ServerUrl;
+        var resolution = await ResolveServerEndpointAsync(ct);
+        if (resolution.IsResolved || !string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal)) return;
+
+        ErrorMessage = resolution.IsValidInput
+            ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
+            : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port.");
+        HasError = true;
     }
 
-    /// <summary>运行时探测客户端宿主平台，而非硬编码。PlatformKind 目前仅 Linux/Windows。</summary>
-    private static PlatformKind DetectClientPlatform()
-        => OperatingSystem.IsWindows() ? PlatformKind.Windows : PlatformKind.Linux;
+    private async Task<ServerEndpointResolution> ResolveServerEndpointAsync(CancellationToken ct)
+    {
+        var enteredValue = ServerUrl;
+        IsDiscoveringServer = true;
+        StatusMessage = T("login.status.discovering_server", "Checking secure and standard server endpoints...");
+        ClearError();
+        try
+        {
+            var resolution = await _endpointResolver.ResolveAsync(enteredValue, ct);
+            // A later edit wins over this asynchronous result.
+            if (string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal) && resolution.Endpoint is { } endpoint)
+            {
+                ServerUrl = endpoint;
+                StatusMessage = string.Format(
+                    T("login.status.server_found", "Server found. Using {0}."), endpoint);
+            }
+            else if (string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal) && !resolution.IsResolved)
+            {
+                StatusMessage = string.Empty;
+            }
+            return resolution;
+        }
+        finally
+        {
+            IsDiscoveringServer = false;
+        }
+    }
+
+    /// <summary>运行时探测客户端平台；它与 Server 宿主平台是不同的 Protocol 语义。</summary>
+    private static ClientPlatformKind DetectClientPlatform()
+        => OperatingSystem.IsWindows() ? ClientPlatformKind.Windows : ClientPlatformKind.Linux;
 
     /// <summary>HttpRequestException → 可操作的 UI 文案。重点区分连接拒绝/重置/超时，
     /// 这些通常对应服务器未启动、地址端口不对，或 HTTP/HTTPS 协议不匹配（最易踩坑）。</summary>

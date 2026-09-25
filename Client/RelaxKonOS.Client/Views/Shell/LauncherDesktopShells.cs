@@ -123,6 +123,16 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
     {
         var workspace = new Grid { ClipToBounds = true };
         _backdrop.ContextMenu = CreateDesktopContextMenu(vm);
+        _backdrop.Focusable = true;
+        _backdrop.PointerPressed += (_, args) =>
+        {
+            if (args.GetCurrentPoint(_backdrop).Properties.IsLeftButtonPressed) _backdrop.Focus();
+        };
+        _backdrop.KeyBindings.Add(new KeyBinding
+        {
+            Command = vm.PasteDesktopCommand,
+            Gesture = KeyGesture.Parse("Ctrl+V"),
+        });
         workspace.KeyBindings.Add(new KeyBinding
         {
             Command = vm.OpenDesktopDisplaySettingsCommand,
@@ -157,7 +167,7 @@ public abstract class LauncherDesktopShellBase : IDesktopShell
             {
                 view,
                 new MenuItem { Header = LocalizedText.Get("common.refresh", "Refresh"), Command = vm.RefreshDesktopCommand },
-                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand },
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
                 new Separator(),
                 new MenuItem
                 {
@@ -716,7 +726,7 @@ public sealed class MacosLikeDesktopShell() : LauncherDesktopShellBase(BuiltInSh
             {
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.macos.view_options", "Show View Options..."), Command = vm.OpenDesktopDisplaySettingsCommand },
                 DesktopIconsToggle(vm),
-                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand },
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
                 new Separator(),
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_folder", "Open desktop folder"), Command = vm.OpenDesktopFolderCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.context.open_explorer", "Open File Explorer"), Command = vm.OpenFileExplorerCommand },
@@ -1028,7 +1038,7 @@ public sealed class UbuntuLikeDesktopShell() : LauncherDesktopShellBase(BuiltInS
             {
                 DesktopIconsToggle(vm),
                 new MenuItem { Header = LocalizedText.Get("common.refresh", "Refresh"), Command = vm.RefreshDesktopCommand },
-                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand },
+                new MenuItem { Header = LocalizedText.Get("common.paste", "Paste"), Command = vm.PasteDesktopCommand, InputGesture = KeyGesture.Parse("Ctrl+V") },
                 new Separator(),
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.ubuntu.display_settings", "Display Settings"), Command = vm.OpenDesktopDisplaySettingsCommand },
                 new MenuItem { Header = LocalizedText.Get("shell.desktop.ubuntu.change_background", "Change Background..."), Command = vm.OpenPersonalizationCommand },

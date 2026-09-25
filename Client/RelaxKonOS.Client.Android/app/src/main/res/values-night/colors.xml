@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Mirrors the top stop of the dark RelaxKonOS backdrop gradient
+      (ui/theme/Palette.kt, RelaxKonDarkColors.backdropStart); selected by the AppCompat DayNight theme.
+    -->
+    <color name="window_background">#080C13</color>
+</resources>

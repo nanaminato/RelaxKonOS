@@ -459,7 +459,7 @@ WorkspacePreferencesDto
 | 客户端 · 删 | `Services/Theming/ThemeService.cs` |
 | 客户端 · 改 | `Services/ShellSettings.cs`（`Appearance` + `SystemStyleId`，`IsDarkTheme` 取自 `Appearance.Mode`，`HasUnavailableSystemStyle` / `AppliedSystemStyleId`）、`Services/Bootstrapper.cs`、`App.axaml.cs`、`Apps/Settings/**` |
 | Server | `Settings/WorkspacePreferencesValidator.cs` |
-| 测试 | `Client/RelaxKonOS.Settings.Tests/SystemStyleChecks.cs`（新增）、`RelaxKonOS.Server.Tests/Program.cs`、`RelaxKonOS.Server.Tests/SettingsSystemVerification.cs` |
+| 测试 | `Tests/Client/RelaxKonOS.Settings.Tests/SystemStyleChecks.cs`（新增）、`RelaxKonOS.Server.Tests/Program.cs`、`RelaxKonOS.Server.Tests/SettingsSystemVerification.cs` |
 
 ### 10.1 测试覆盖（`SystemStyleChecks`）
 
@@ -497,11 +497,11 @@ WorkspacePreferencesDto
 运行：
 
 ```bash
-dotnet run --project Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false
+dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false
 dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only
 ```
 
-> 注意：`Client/RelaxKonOS.Settings.Tests` **不在** `RelaxKonOS.sln` 中，
+> 注意：`Tests/Client/RelaxKonOS.Settings.Tests` **不在** `RelaxKonOS.sln` 中，
 > 因此 `dotnet build RelaxKonOS.sln` 不会编译它，上述命令必须显式执行。
 > 仓库目前没有 `.github/` 工作流；这套校验是「可执行的 CI 规则」，需要由流水线显式调用。
 

@@ -226,7 +226,7 @@ public sealed partial class ProcessGuardianViewModel(IProcessGuardianClient clie
         SelectedWorkload = null;
     }
 
-    private bool RequiresAdministratorApproval() => session.CurrentServer?.Platform == PlatformKind.Windows
+    private bool RequiresAdministratorApproval() => session.CurrentServer?.Platform == HostPlatformKind.Windows
         ? !string.Equals(session.CurrentUser?.Username?.Trim(), RunAs.Trim(), StringComparison.OrdinalIgnoreCase)
         : !string.Equals(session.CurrentUser?.Username?.Trim(), RunAs.Trim(), StringComparison.Ordinal);
 }

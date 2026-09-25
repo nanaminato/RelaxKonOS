@@ -8,7 +8,7 @@ public sealed class User
 {
     public Guid Id { get; set; }
     public string Username { get; set; } = string.Empty;
-    public PlatformKind Platform { get; set; }
+    public HostPlatformKind Platform { get; set; }
     public string PlatformIdentity { get; set; } = string.Empty;
     public long SecurityVersion { get; set; }
     public bool IdentityReviewRequired { get; set; }

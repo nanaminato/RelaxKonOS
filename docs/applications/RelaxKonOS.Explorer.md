@@ -99,7 +99,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 
 1. **请求/响应天然契合**目录列举（一次请求返回完整 `DirectoryDto`）。
 2. 与 Auth 端点同构（`Results.Ok` / `Results.Problem`），错误处理复用 `RelaxKonOSAuthException`。
-3. 文件下载用 `Results.File(stream, ...)` 流式返回；上传用 `multipart/form-data`。
+3. 文件下载用 `Results.File(stream, ...)` 流式返回；上传按声明长度分派：≤ 4 MiB 走 `POST /api/v1.0/files/upload`（`multipart/form-data`），更大的走可续传的分块会话 `POST/PATCH/GET /api/v1.0/files/uploads`（体为原始字节，不是 multipart）。
 4. SignalR 仅未来 watch（目录变化推送）/大文件分块流式才需要，当前不引入。
 
 ### 3.3 认证复用 IAuthSession
@@ -144,6 +144,7 @@ Jaya 原架构通过 `ServiceLocator` 反射扫描 `Jaya.Provider.*.dll` 加载�
 | `GET /files/list?path=` | `string? path`（空=盘符根） | `DirectoryDto` | `not-found` / `access-denied` / `invalid-path` |
 | `GET /files/info?path=` | `string path` | `FileSystemEntryDto`（404 if 缺） | `not-found` / `access-denied` |
 | `GET /files/download?path=` | `string path` | `Results.File(stream, contentType, fileName)` | `not-found` / `access-denied` |
+| `GET /files/thumbnail?path=&maxEdge=` | `string path`、`int? maxEdge`（16–1024，缺省 256） | `Results.File(bytes, "image/jpeg")`（含 alpha 通道时 `image/png`） | `not-found` / `access-denied` / `invalid-path` / `invalid-size`(400) / `thumbnail-unsupported`(415) |
 | `GET /files/content?path=` | `string path` | 原始文件字节流 | `not-found` / `access-denied` / `invalid-path` |
 | `PUT /files/content?path=` | `string path` + 请求体字节流 | `FileEntryDto` | `not-found` / `access-denied` / `io-error` / `invalid-path` |
 | `GET /files/properties?path=` | `string path` | `FilePropertiesDto`（404 if 缺） | `not-found` / `access-denied` / `invalid-path` |
@@ -206,7 +207,7 @@ Client/RelaxKonOS.Client/Apps/Explorer/
 - **打开方式与默认关联**：右键菜单提供 `Open` / `Open with...` / `Properties`。“打开方式”仅列出同时实现 `IFileOpenApplication` 且在 manifest 声明当前扩展名的应用；可将所选应用设为该扩展名的默认程序，映射即时写入注册表并持久化到当前 Workspace。
 - **属性与权限**：属性对话框展示类型、大小、时间、属性和宿主 OS 权限摘要；Linux 返回 `UnixMode` 时可编辑并保存 POSIX 权限位。Windows 等不支持的平台仅展示只读属性。
 - **文件操作命令**：`Open` / `OpenWithSelected` / `Properties` / `NewFolder` / `Delete` / `Rename` / `Copy` / `Cut` / `Paste` / `Move` / `Upload` / `UploadFolder` / `Download` / `About` / `Close`，均通过 `[RelayCommand]` 生成；会改变目录内容的操作后调 `RefreshAsync` 刷新视图。
-- **Windows 式剪贴板与进度**：远端条目复制/剪切仅保存短暂客户端会话引用，粘贴时才调用 Server 的 `Copy`/`Move`；当没有远端剪贴板内容时，“粘贴”读取宿主机系统剪贴板的文件/文件夹并上传。多文件、文件夹和剪贴板导入按项目顺序执行，状态栏显示项目数进度；上传还显示已发送字节百分比。宿主机路径只在 Client 读取，绝不发送给 Server。
+- **Windows 式剪贴板与进度**：远端条目复制/剪切保存客户端会话引用，并在系统剪贴板写入应用标记；随后宿主机复制文件会替换标记。普通“粘贴”据此选择最近一次复制的来源：远端条目调用 Server 的 `Copy`/`Move`，宿主机文件/文件夹则上传；“从宿主机剪贴板粘贴”始终使用宿主机来源。桌面空白处的“粘贴”也遵循同一规则，上传至远端桌面目录。多文件、文件夹和剪贴板导入按项目顺序执行，文件管理器状态栏显示项目数进度；上传还显示已发送字节百分比。宿主机路径只在 Client 读取，绝不发送给 Server。
 - **可复用远端文件选择器**：`ExplorerPickerOptions` 将同一导航和条目视图嵌入应用的模态对话框；支持单/多文件选择、扩展名通配符过滤及目录选择。Notebook 与 Code Editor 用它选择远端文件，不会绕过 `IExplorerClient` 直接访问服务端文件系统。
 
 #### 多根导航树（参考 Windows File Explorer Navigation Pane）
@@ -253,7 +254,7 @@ Nodes
 | `RequestConfirmAsync` | 删除确认 | `AppContext.ShowDialogAsync<bool?>` + `ConfirmDialogView` |
 | `ShowMessageAsync` | About 消息 | `ConfirmDialogView`（单按钮） |
 | `RequestLocalUploadFilesAsync` / `RequestLocalUploadFoldersAsync` | 上传本地文件（多选）/ 文件夹（多选） | `StorageProvider.OpenFilePickerAsync` / `OpenFolderPickerAsync`（TopLevel = MainWindow） |
-| `RequestClipboardUploadSourcesAsync` | 导入宿主机剪贴板文件/文件夹 | Avalonia 跨平台 `IClipboard.TryGetDataAsync` + `TryGetFilesAsync` |
+| `ReadHostFileClipboardAsync` / `MarkRemoteFileCopyAsync` | 判定最近复制来源并读取宿主机文件/文件夹 | Avalonia 跨平台 `IClipboard.SetDataAsync` / `TryGetDataAsync` + 应用专用格式标记 |
 | `RequestLocalSaveFileAsync` | 下载本地保存路径 | `StorageProvider.SaveFilePickerAsync` |
 | `OpenFileAsync` | 根据默认关联或兼容应用打开远端文件 | `ApplicationManager.OpenFile` |
 | `RequestOpenWithAsync` | 显式选择兼容应用并可保存默认关联 | `OpenWithDialogView` + `DefaultAppRegistry` |
@@ -303,7 +304,7 @@ services.AddSingleton<IRemoteApplication, RelaxKonOS.Client.Apps.Explorer.Explor
 - **视图模式切换**：Details/Icons/List/Tiles/Content（Jaya `PaneConfigModel.ViewMode`）。
 - **权限提升**：危险操作（如删除系统目录）委托宿主 OS（Linux: sudo / Windows: UAC、RunAs）——project_memory 硬约束。
 - **目录 watch**：SignalR Hub 推送目录变化（`FileSystemWatcher` → Hub → Client 刷新）。
-- **大文件流式**：分块上传/断点续传（替代当前一次性 `multipart/form-data`）。
+- **大文件流式**：分块上传/断点续传，设计与实现规格见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md)。已实现：声明长度 ≤ 4 MiB 的文件仍走单发 `multipart/form-data`；更大的走分块会话（`POST/PATCH/GET /api/v1.0/files/uploads`），只发送尚未确认的字节，失败/重启后从服务端权威偏移继续。上传通道使用独立的 `HttpClient`（不缓冲正文、整请求无超时、由 60 秒分片停滞看门狗负责），因此不再受客户端整包缓冲、整请求超时与服务端请求体上限的三重限制。反向代理需要放宽 `/api/v1.0/files/uploads` 前缀的请求体与超时，见 [`deployment/README.md`](../../deployment/README.md)。
 - **配置持久化**：Jaya `PaneConfigModel` / `ToolbarConfigModel` / `ApplicationConfigModel` 本地保存（保留 Newtonsoft 序列化）。
 - **快速访问**：Windows File Explorer 的"快速访问"（Quick Access）需要持久化最近访问记录 + 用户固定项，当前"主目录"组节点仅枚举标准特殊位置，不含最近访问；后续接入。
 

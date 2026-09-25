@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Canonical strings. Every user-visible sentence lives here; the Kotlin sources contain no literals
+  (`RelaxKonOS.Mobile.V1.Design.md` §8).
+
+  Locales shipped: en (this file, the fallback for anything that is not Chinese or Japanese), zh, ja.
+  The Chinese folder is language-level on purpose — see `values-zh/strings.xml`.
+-->
+<resources>
+    <string name="app_name">RelaxKonOS</string>
+
+    <!-- Top-level destinations -->
+    <string name="nav_home">Home</string>
+    <string name="nav_files">Files</string>
+    <string name="nav_terminal">Terminal</string>
+    <string name="nav_manage">Manage</string>
+    <string name="nav_more">More</string>
+
+    <!-- Shared actions -->
+    <string name="common_back">Back</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_close">Close</string>
+    <string name="common_collapse">Hide details</string>
+    <string name="common_create">Create</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_dismiss">Dismiss</string>
+    <string name="common_expand">Show details</string>
+    <string name="common_loading">Loading…</string>
+    <string name="common_refresh">Refresh</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_save">Save</string>
+    <string name="common_search">Search</string>
+    <!-- The eye on a password field: what pressing it does, never what the field currently shows. -->
+    <string name="password_show">Show the password</string>
+    <string name="password_hide">Hide the password</string>
+
+    <!-- Sign-in -->
+    <string name="login_title">Sign in</string>
+    <string name="login_subtitle">Connect to a RelaxKonOS server. The password is used to open a session on this device and is sent nowhere else.</string>
+    <string name="login_server_address">Server address</string>
+    <string name="login_server_checking">Checking HTTPS and HTTP endpoints…</string>
+    <string name="login_server_found">Server found. The preferred endpoint will be used.</string>
+    <string name="login_server_invalid">Enter a host name or an HTTP(S) address, for example: host:port.</string>
+    <string name="login_server_unavailable">No RelaxKonOS login endpoint could be reached at this address.</string>
+    <string name="login_identifier">Account</string>
+    <string name="login_password">Password</string>
+    <string name="login_remember_hint">Save the password on this device and unlock it with the fingerprint</string>
+    <string name="login_remember_hint_debug">Save the password on this device (debug build: stored unencrypted)</string>
+    <string name="login_no_fingerprint">No usable fingerprint or screen lock was found, so a password cannot be saved on this device.</string>
+    <string name="login_no_lock_screen_debug">This device has no screen lock, so a password can only be stored unencrypted here. Debug builds allow that; release builds never do.</string>
+    <string name="login_action_connect">Connect</string>
+    <string name="login_action_sign_in">Sign in</string>
+    <string name="login_action_connecting">Connecting…</string>
+    <!--
+      The saved-password state line. It is rendered beside the password field and reports only that a
+      credential exists and what unlocks it; producing it never reads the password.
+    -->
+    <string name="login_saved_password_fingerprint">Saved password · leave the field empty to sign in with the fingerprint</string>
+    <string name="login_saved_password_screen_lock">Saved password · leave the field empty to unlock it with the screen lock</string>
+    <!--
+      Debug-only: the plaintext fallback of last resort, used when the device has no lock screen and so
+      cannot host a Keystore key at all. The wording has to say "not encrypted" out loud — a line that
+      read like the two above would imply protection that does not exist.
+    -->
+    <string name="login_saved_password_debug">Saved password (debug build, not encrypted) · leave the field empty to sign in with it</string>
+    <string name="login_saved_password_unavailable">The saved password cannot be unlocked on this device right now. Enter the password to sign in.</string>
+    <string name="login_saved_password_invalidated">The saved password is no longer valid. Enter the password and save it again to replace it.</string>
+    <string name="login_password_required">Enter the password to sign in.</string>
+    <string name="login_credential_not_saved">Signed in, but the password was not saved.</string>
+    <string name="login_credential_not_saved_reason">Signed in, but the password was not saved: %1$s</string>
+    <string name="login_credential_saved_debug">Signed in. The password was saved unencrypted, because this is a debug build and the device has no screen lock.</string>
+    <string name="login_missing_fields">Enter the server address and account.</string>
+
+    <!-- Credential vault -->
+    <string name="vault_unlock_title">Unlock the saved password</string>
+    <string name="vault_unlock_subtitle">%1$s</string>
+    <string name="vault_save_connection_title">Save this password</string>
+    <string name="vault_save_connection_subtitle">Confirm with your fingerprint to store the password for %1$s on this device.</string>
+    <string name="vault_save_elevation_title">Save the administrator password</string>
+    <string name="vault_save_elevation_subtitle">Confirm with your fingerprint to store the administrator password on this device.</string>
+    <string name="vault_device_window_notice">This device has no strong fingerprint sensor, so the saved password is protected by the screen lock and can be used for five minutes after you unlock the device.</string>
+    <string name="vault_failure_locked_out">Too many failed attempts. Try again later, or enter the password.</string>
+    <string name="vault_failure_locked_out_permanent">Fingerprint unlocking is locked. Unlock the device with its screen lock, then try again.</string>
+    <string name="vault_failure_key_invalidated">The saved password can no longer be unlocked because the device fingerprints changed. It stays on this device until you delete it; sign in with the password and save it again to replace it.</string>
+    <string name="vault_failure_unavailable">Fingerprint unlocking is not available on this device right now. The saved password is not affected.</string>
+    <string name="vault_failure_tampered">The saved password could not be verified. It stays on this device; enter the password and save it again to replace it.</string>
+    <string name="vault_failure_unknown">Fingerprint unlocking failed.</string>
+
+    <!-- Elevation -->
+    <string name="elevation_title">Administrator confirmation</string>
+    <string name="elevation_body">This action needs permission to %1$s:\n%2$s</string>
+    <string name="elevation_account_label">Administrator account</string>
+    <string name="elevation_password_label">Administrator password</string>
+    <string name="elevation_confirm">Authorize</string>
+    <string name="elevation_use_fingerprint">Use fingerprint</string>
+    <string name="elevation_save_credential">Save the administrator password on this device</string>
+    <string name="elevation_vault_unavailable">Saving an administrator password needs a strong fingerprint sensor, so it is unavailable on this device.</string>
+    <string name="elevation_missing_fields">Enter the administrator account and password.</string>
+    <string name="elevation_credential_not_stored">The administrator password was not saved. Press Authorize again to continue without saving it.</string>
+
+    <!-- Elevation capabilities -->
+    <string name="capability_read">read</string>
+    <string name="capability_write">write</string>
+    <string name="capability_create_directory">create folders</string>
+    <string name="capability_delete">delete</string>
+    <string name="capability_rename">rename</string>
+    <string name="capability_move">move</string>
+    <string name="capability_copy">copy</string>
+    <string name="capability_upload">upload</string>
+    <string name="capability_native_service_action">control services</string>
+    <string name="capability_unknown">perform a restricted operation</string>
+
+    <!-- Errors -->
+    <string name="error_generic">The server refused the request.</string>
+    <string name="error_connectivity">Could not reach the server. Check the network and the server address.</string>
+    <string name="debug_detail">Debug: %1$s</string>
+    <string name="error_invalid_credential">The account or password is incorrect.</string>
+    <string name="error_login_rate_limited">Too many sign-in attempts. Wait a moment and try again.</string>
+    <string name="error_account_disabled">This account is disabled.</string>
+    <string name="error_account_locked">This account is locked.</string>
+    <string name="error_account_expired">This account has expired.</string>
+    <string name="error_account_restriction">This account may not sign in from here.</string>
+    <string name="error_elevation_required">This operation needs the administrator password.</string>
+    <string name="error_elevation_password_required">This operation needs the administrator password.</string>
+    <string name="error_elevation_password_invalid">The administrator password was rejected. The saved one has been deleted.</string>
+    <string name="error_elevation_not_administrator">That account is not an administrator on this server.</string>
+    <string name="error_performance_not_ready">Host metrics are not ready yet.</string>
+    <string name="error_unauthorized">The session expired. Sign in again.</string>
+    <string name="error_capability_missing">This server does not offer that feature.</string>
+
+    <!-- Connections -->
+    <string name="connections_title">Connections</string>
+    <string name="connections_empty">No server has been saved yet.</string>
+    <string name="connections_saved_password">Password saved, unlocked by fingerprint</string>
+    <string name="connections_saved_password_screen_lock">Password saved, unlocked by the screen lock</string>
+    <string name="connections_saved_password_debug">Password saved unencrypted (debug build, no screen lock)</string>
+    <string name="connections_password_unavailable">A password is saved but cannot be unlocked on this device right now</string>
+    <string name="connections_password_invalidated">The saved password is no longer valid</string>
+    <string name="connections_no_password">No password saved</string>
+    <string name="connections_use">Use</string>
+    <string name="connections_active">Current connection</string>
+    <string name="connections_sign_out_note">Signing out keeps the saved connections and their passwords.</string>
+    <string name="connections_forget_password">Forget the password</string>
+    <string name="connections_forget_title">Forget this password</string>
+    <string name="connections_forget_message">Delete the password saved for %1$s (%2$s)? The connection stays, and the password will have to be typed again.</string>
+    <string name="connections_delete_title">Delete this login</string>
+    <string name="connections_delete_message">Delete the saved login for %1$s (%2$s) together with the password stored for it?</string>
+
+    <!-- Home -->
+    <string name="home_session_title">Session</string>
+    <string name="home_label_server">Server</string>
+    <string name="home_label_user">Account</string>
+    <string name="home_label_workspace">Workspace</string>
+    <string name="home_label_platform">Platform</string>
+    <string name="home_label_cpu">CPU</string>
+    <string name="home_label_memory">Memory</string>
+    <string name="home_label_uptime">Uptime</string>
+    <string name="home_value_percent">%1$.1f%%</string>
+    <string name="home_value_seconds">%1$d s</string>
+    <string name="home_value_used_of_total">%1$s of %2$s</string>
+    <string name="home_system_title">System status</string>
+    <string name="home_metrics_absent">This server does not report host metrics.</string>
+    <string name="home_metrics_empty">No reading has been taken yet.</string>
+    <string name="home_metrics_stale">The last reading is out of date (%1$s).</string>
+    <string name="home_filesystems_title">Disks</string>
+    <string name="home_capabilities_title">Server capabilities</string>
+    <string name="home_capabilities_empty">The server reported no capabilities.</string>
+    <string name="home_open_files">Open files</string>
+    <string name="home_recent_title">Recent activity</string>
+    <string name="home_recent_empty">Successful operations from this app session will appear here.</string>
+    <string name="home_recent_item">%1$s · %2$s · %3$s</string>
+    <string name="home_recent_create_directory">Created folder</string>
+    <string name="home_recent_rename">Renamed</string>
+    <string name="home_recent_delete">Deleted</string>
+    <string name="home_recent_copy">Copied</string>
+    <string name="home_recent_move">Moved</string>
+    <string name="home_recent_upload">Uploaded</string>
+    <string name="home_recent_download">Downloaded</string>
+    <string name="home_recent_end_process">Ended process</string>
+
+    <!-- Files -->
+    <string name="files_root">Roots</string>
+    <string name="files_empty">This folder is empty.</string>
+    <string name="files_kind_directory">Folder</string>
+    <string name="files_kind_file">File</string>
+    <string name="files_action_up">Go up</string>
+    <string name="files_action_more">More actions</string>
+    <string name="files_action_new_directory">New folder</string>
+    <string name="files_action_rename">Rename</string>
+    <string name="files_action_download">Download</string>
+    <string name="files_action_upload">Upload</string>
+    <string name="files_action_copy">Copy</string>
+    <string name="files_action_move">Move</string>
+    <string name="files_new_directory_title">New folder</string>
+    <string name="files_new_directory_body">Create a folder in %1$s</string>
+    <string name="files_rename_title">Rename</string>
+    <string name="files_copy_title">Copy</string>
+    <string name="files_move_title">Move</string>
+    <string name="files_transfer_body">Choose the full remote destination path for %1$s.</string>
+    <string name="files_destination_path">Destination path</string>
+    <string name="files_delete_title">Delete</string>
+    <string name="files_delete_message">Delete %1$s? This cannot be undone.</string>
+    <string name="files_created">Created %1$s</string>
+    <string name="files_downloading">Downloading</string>
+    <string name="files_uploading">Uploading</string>
+    <string name="files_copying">Copying</string>
+    <string name="files_moving">Moving</string>
+    <string name="files_uploaded">Uploaded %1$s</string>
+    <string name="files_upload_unreadable">Could not read the selected file.</string>
+    <string name="files_upload_needs_folder">Open a folder to upload into.</string>
+    <string name="files_downloaded">Saved to %1$s</string>
+    <string name="files_download_failed">Could not save to this device.</string>
+    <string name="files_download_default_name">download</string>
+    <string name="files_upload_default_name">upload</string>
+    <!--
+      Resumable upload. Staging and finishing are stages of their own and never a fraction of the bar:
+      the version the desktop client shows and this one must describe the same situation the same way.
+    -->
+    <string name="files_upload_preparing">Preparing…</string>
+    <string name="files_upload_committing">Finishing…</string>
+    <string name="files_upload_reconciling">Checking progress with the server…</string>
+    <string name="files_upload_channel">Uploads</string>
+    <string name="files_upload_progress">%1$s of %2$s</string>
+    <string name="files_upload_resumable">Unfinished upload</string>
+    <string name="files_upload_resume">Continue</string>
+    <string name="files_upload_discard">Discard</string>
+    <!-- Failures are worded as what the user can do about them, never as an I/O message. -->
+    <string name="files_upload_failed_network">The connection was interrupted. Progress is kept, so you can continue.</string>
+    <string name="files_upload_failed_server_storage">The server has no room for this file.</string>
+    <string name="files_upload_failed_local_cache">This device has no room to prepare the file.</string>
+    <string name="files_upload_failed_source_changed">The file changed while it was being sent. Start again.</string>
+    <string name="files_upload_failed_source_unreadable">The selected file can no longer be read. Pick it again.</string>
+    <string name="files_upload_failed_elevation">This folder needs an administrator password.</string>
+    <string name="files_upload_failed_name">The server cannot use this file name. Rename the file and try again.</string>
+    <string name="files_upload_failed_session">The upload session was refused. Sign in again and retry.</string>
+    <string name="files_upload_failed_server">The server refused the upload.</string>
+    <string name="files_detail_title">Properties</string>
+    <string name="files_preview_title">Preview</string>
+    <string name="files_preview_open">Open</string>
+    <string name="files_preview_loading">Loading the image…</string>
+    <string name="files_preview_progress">%1$s of %2$s</string>
+    <string name="files_preview_failed">This file could not be shown as an image.</string>
+    <string name="files_preview_elevation">Reading this file needs an administrator password.</string>
+    <string name="files_preview_authorize">Authorize and preview</string>
+    <string name="files_detail_none">Select a file or folder to see its properties.</string>
+    <string name="files_detail_unavailable">The server did not return properties for this entry.</string>
+    <string name="files_label_name">Name</string>
+    <string name="files_label_path">Path</string>
+    <string name="files_label_kind">Type</string>
+    <string name="files_label_size">Size</string>
+    <string name="files_label_created">Created</string>
+    <string name="files_label_modified">Modified</string>
+    <string name="files_label_permissions">Permissions</string>
+
+    <!-- Manage -->
+    <string name="manage_title">Manage</string>
+    <string name="manage_select_domain">Select a section on the left.</string>
+    <string name="manage_monitor_title">Performance</string>
+    <string name="manage_monitor_subtitle">CPU, memory and disk usage</string>
+    <string name="manage_monitor_empty">No reading has been taken yet.</string>
+    <string name="manage_monitor_stale">The last reading is out of date (%1$s).</string>
+    <string name="manage_monitor_no_history">History is not available yet: this server exposes a single reading, not a time series.</string>
+    <string name="manage_processes_title">Processes</string>
+    <string name="manage_processes_subtitle">Browse and end processes</string>
+    <string name="manage_processes_filter">Filter by name</string>
+    <string name="manage_processes_empty">No process matched.</string>
+    <string name="manage_processes_pid">pid %1$d</string>
+    <string name="manage_processes_cpu">%1$.1f%% CPU</string>
+    <string name="manage_processes_page">Page %1$d · %2$d in total</string>
+    <string name="manage_processes_previous">Previous</string>
+    <string name="manage_processes_next">Next</string>
+    <string name="manage_processes_kill">End</string>
+    <string name="manage_processes_kill_title">End process</string>
+    <string name="manage_processes_kill_message">End %1$s (pid %2$d)?</string>
+    <string name="manage_processes_kill_force">Terminate immediately instead of asking it to stop</string>
+
+    <!-- More -->
+    <string name="more_title">More</string>
+    <string name="more_select_section">Select a section on the left.</string>
+    <string name="more_account_security">Account and security</string>
+    <string name="more_account_security_subtitle">Fingerprint switch, saved passwords, device capability</string>
+    <string name="more_connections">Connections</string>
+    <string name="more_connections_subtitle">Saved servers and their passwords</string>
+    <string name="more_appearance">Appearance and language</string>
+    <string name="more_appearance_subtitle">Colour mode, high contrast, language</string>
+    <string name="more_diagnostics">Diagnostics</string>
+    <string name="more_diagnostics_subtitle">Connection self-check and a redacted report</string>
+    <string name="more_about">About</string>
+    <string name="more_about_subtitle">Version, server, licences</string>
+    <string name="more_sign_out">Sign out</string>
+    <string name="more_sign_out_message">Sign out of this server? The saved connection and its password stay on this device.</string>
+
+    <!-- Account and security -->
+    <string name="account_security_title">Account and security</string>
+    <string name="account_security_fingerprint">Fingerprint</string>
+    <string name="account_security_fingerprint_subtitle">Save passwords on this device and unlock them with a fingerprint.</string>
+    <string name="account_security_disable_title">Turn off fingerprint saving</string>
+    <string name="account_security_disable_message">Every saved password will be deleted from this device and its unlock keys destroyed. Saved connections stay.</string>
+    <string name="account_security_disable_confirm">Delete and turn off</string>
+    <string name="account_security_device_title">Device capability</string>
+    <string name="account_security_device_strength">Authenticator</string>
+    <string name="account_security_vault_disabled">Not available</string>
+    <string name="account_security_vault_mode_strong">Strong fingerprint, confirmed for every use</string>
+    <string name="account_security_vault_mode_window">Screen lock, valid for five minutes after unlocking the device</string>
+    <string name="account_security_reduced_strength">This device authenticator is weaker than a strong fingerprint, so a host administrator password is not offered here.</string>
+    <string name="account_security_elevation_unavailable">Not available on this device, which needs a strong fingerprint</string>
+    <string name="account_security_connection_vault">Saved server passwords</string>
+    <string name="account_security_connection_vault_empty">No server password is saved.</string>
+    <string name="account_security_elevation_vault">Saved administrator passwords</string>
+    <string name="account_security_elevation_vault_empty">No administrator password is saved.</string>
+    <string name="account_security_elevation_note">An administrator password is deleted as soon as the server rejects it, and it is never used for anything other than the operation you authorized.</string>
+    <string name="account_security_clear_all">Delete all saved passwords</string>
+    <string name="account_security_clear_all_title">Delete all saved passwords</string>
+    <string name="account_security_clear_all_message">Delete every saved password from this device? Saved connections stay, and you will have to type the passwords again.</string>
+    <string name="account_security_record_invalidated">No longer valid: the device fingerprints changed. Delete it, and save the password again if you still need it.</string>
+    <!-- Debug-only: the one plaintext record, listed so this page never under-reports what is stored. -->
+    <string name="account_security_debug_record_note">Saved unencrypted: debug build, and this device has no screen lock.</string>
+    <string name="account_security_delete_title">Delete this password</string>
+    <string name="account_security_delete_message">Delete the saved password for %1$s on %2$s?</string>
+
+    <string name="biometric_strength_strong">Strong fingerprint (Class 3)</string>
+    <string name="biometric_strength_weak">Weak biometric (Class 2)</string>
+    <string name="biometric_strength_device_credential">Screen lock only</string>
+    <string name="biometric_strength_none">No screen lock</string>
+
+    <!-- Appearance and language -->
+    <string name="appearance_title">Appearance and language</string>
+    <string name="appearance_color_mode">Colour mode</string>
+    <string name="appearance_color_follow_system">Follow the system</string>
+    <string name="appearance_color_light">Light</string>
+    <string name="appearance_color_dark">Dark</string>
+    <string name="appearance_high_contrast">High contrast</string>
+    <string name="appearance_language">Language</string>
+    <string name="appearance_language_follow_system">Follow the system</string>
+    <string name="appearance_language_english">English</string>
+    <string name="appearance_language_chinese">简体中文</string>
+    <string name="appearance_language_japanese">日本語</string>
+    <string name="appearance_language_note">Changing the language restarts the screen. You stay signed in and saved passwords are untouched. Following the system uses Chinese or Japanese when the device is set to either, and English for every other language.</string>
+
+    <!-- Diagnostics -->
+    <string name="diagnostics_title">Diagnostics</string>
+    <string name="diagnostics_self_check">Connection self-check</string>
+    <string name="diagnostics_run">Run</string>
+    <string name="diagnostics_not_run">The self-check has not been run yet.</string>
+    <string name="diagnostics_session_ok">Session: %1$s</string>
+    <string name="diagnostics_no_session">Session: not signed in</string>
+    <string name="diagnostics_token_held">Access token: held in memory</string>
+    <string name="diagnostics_token_absent">Access token: none</string>
+    <string name="diagnostics_capabilities">Capabilities reported by the server: %1$d</string>
+    <string name="diagnostics_metrics_ok">Host metrics: reachable</string>
+    <string name="diagnostics_metrics_problem">Host metrics: refused by the server</string>
+    <string name="diagnostics_metrics_transport">Host metrics: unreachable</string>
+    <string name="diagnostics_files_ok">File roots: reachable, %1$d entries</string>
+    <string name="diagnostics_files_problem">File roots: refused by the server</string>
+    <string name="diagnostics_files_transport">File roots: unreachable</string>
+    <string name="diagnostics_export_title">Redacted report</string>
+    <string name="diagnostics_export_note">The report contains server addresses, capability names, record counts and the self-check result. It never contains a password, a token or stored ciphertext.</string>
+    <string name="diagnostics_export">Show report</string>
+    <string name="diagnostics_vault_summary">Stored records: %1$d server password(s) and %2$d administrator password(s).</string>
+
+    <!-- About -->
+    <string name="about_title">About</string>
+    <string name="about_client_title">Client</string>
+    <string name="about_client_version">Version</string>
+    <string name="about_client_platform">Platform</string>
+    <string name="about_client_platform_value">Android</string>
+    <string name="about_server_title">Server</string>
+    <string name="about_server_unavailable">Not signed in.</string>
+    <string name="about_server_capabilities">Capabilities</string>
+    <string name="about_licenses_title">Licences</string>
+    <string name="about_licenses_body">RelaxKonOS includes third-party components. Their notices are listed in THIRD_PARTY_NOTICES.md in the repository root.</string>
+</resources>

@@ -103,6 +103,9 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
     if (request.Operation != PrivilegedOperationKind.DockerEngineServiceAction && request.DockerServiceAction is not null)
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "docker service action fields require their dedicated operation");
 
+    if (request.Operation != PrivilegedOperationKind.FileUploadChunk && request.Offset is not null)
+        return Fail(64, PrivilegedProblemCode.InvalidRequest, "an offset requires the upload chunk operation");
+
     try
     {
         return request.Operation switch
@@ -122,6 +125,8 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
             PrivilegedOperationKind.FileMove => Move(request.Path, request.DestinationPath, request.Overwrite, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileCopy => Copy(request.Path, request.DestinationPath, request.Overwrite, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileUpload => await UploadAsync(request.Path, request.FileName, request.ContentBase64, policy.FileAllowedRoots),
+            PrivilegedOperationKind.FileUploadChunk => await AppendUploadChunkAsync(request.Path, request.Offset, request.ContentBase64, policy.FileAllowedRoots),
+            PrivilegedOperationKind.FileUploadCommit => CommitUpload(request.Path, request.FileName, policy.FileAllowedRoots),
             PrivilegedOperationKind.FileCreateDirectory => CreateDirectory(request.Path, policy.FileAllowedRoots),
             PrivilegedOperationKind.NativeServiceAction => await ApplyNativeServiceActionAsync(request.ServiceId, request.ServiceAction, policy.AllowedServiceIds),
             PrivilegedOperationKind.NginxSystemServiceAction => await ApplyNginxSystemServiceActionAsync(request.NginxServiceAction),
@@ -255,6 +260,83 @@ static PrivilegedOperationResult CreateDirectory(string? path, IReadOnlyList<str
     if (Directory.Exists(canonical)) return Fail(17, PrivilegedProblemCode.Conflict, "directory already exists");
     Directory.CreateDirectory(canonical);
     return new(true);
+}
+
+// ---- Resumable upload staging --------------------------------------------------------------------
+// These two operations exist so a large upload into a protected directory does not need a request that
+// carries the whole file: the single-request route is capped by MaximumFileContentBytes. Their shapes are
+// deliberately narrower than FileWrite/FileMove, so they cannot become a "write any path as
+// administrator" primitive even if the Server side is compromised:
+//   * the target of a chunk must be a staging file, recognisable by its own name;
+//   * the destination of a commit is a file-name component inside the staging file's own directory.
+
+/// <summary>Suffix of a session staging file. Mirrors the shared protocol constant; the Helper does not
+/// reference the protocol project's file-upload types.</summary>
+const string StagingExtension = ".rkup";
+
+/// <summary>Hex length of the session id embedded in a staging file name.</summary>
+const int StagingSessionIdLength = 32;
+
+static async Task<PrivilegedOperationResult> AppendUploadChunkAsync(string? stagingPath, long? offset, string? contentBase64, IReadOnlyList<string> roots)
+{
+    var canonical = ValidateStagingPath(stagingPath, roots);
+    if (offset is null or < 0) throw new ArgumentException("a non-negative offset is required");
+    var content = DecodeContent(contentBase64);
+    await using (var file = new FileStream(canonical, FileMode.Open, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
+    {
+        // The offset is verified rather than trusted: a mismatch must not silently corrupt the file,
+        // because the Server advances its session offset from the value returned here.
+        if (file.Length > offset.Value)
+        {
+            // The Server may have stopped after a chunk write but before persisting its offset.
+            // Discard only those unconfirmed bytes; a shorter file still signals lost confirmed data.
+            file.SetLength(offset.Value);
+            await file.FlushAsync();
+        }
+        if (file.Length != offset.Value) return Fail(74, PrivilegedProblemCode.Conflict, "staging length does not match the requested offset");
+        file.Position = offset.Value;
+        await file.WriteAsync(content);
+        await file.FlushAsync();
+        return new(true, Offset: file.Length);
+    }
+}
+
+static PrivilegedOperationResult CommitUpload(string? stagingPath, string? fileName, IReadOnlyList<string> roots)
+{
+    var staging = ValidateStagingPath(stagingPath, roots);
+    if (string.IsNullOrWhiteSpace(fileName) || fileName is "." or ".."
+        || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+        || fileName.Contains(Path.DirectorySeparatorChar) || fileName.Contains(Path.AltDirectorySeparatorChar))
+        throw new ArgumentException("invalid file name");
+    var directory = Path.GetDirectoryName(staging);
+    if (string.IsNullOrEmpty(directory)) throw new ArgumentException("staging path has no directory");
+    if (!File.Exists(staging)) throw new FileNotFoundException();
+    // The destination is derived from the staging file's own directory, never accepted as a path, so a
+    // caller cannot aim the rename somewhere the staging file does not already live.
+    var destination = ValidatePath(Path.Combine(directory, fileName), roots);
+    File.Move(staging, destination, overwrite: true);
+    return new(true);
+}
+
+static string ValidateStagingPath(string? path, IReadOnlyList<string> roots)
+{
+    var canonical = ValidatePath(path, roots);
+    if (!IsStagingFileName(Path.GetFileName(canonical))) throw new UnauthorizedAccessException();
+    return canonical;
+}
+
+static bool IsStagingFileName(string fileName)
+{
+    if (fileName.Length <= StagingSessionIdLength + 1 || fileName[0] != '.'
+        || !fileName.EndsWith(StagingExtension, StringComparison.Ordinal)) return false;
+    var body = fileName.AsSpan(1, fileName.Length - 1 - StagingExtension.Length);
+    var dot = body.LastIndexOf('.');
+    if (dot < 0) return false;
+    var candidate = body[(dot + 1)..];
+    if (candidate.Length != StagingSessionIdLength) return false;
+    foreach (var character in candidate)
+        if (!Uri.IsHexDigit(character) || char.IsUpper(character)) return false;
+    return true;
 }
 
 static byte[] DecodeContent(string? contentBase64)

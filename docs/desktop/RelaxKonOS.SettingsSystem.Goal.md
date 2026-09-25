@@ -349,7 +349,7 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 - 新增纯本地不可变 `SettingsSearchIndex`：按标题/分类/范围/settingId/关键词进行多词匹配，前缀结果优先。本地已实现条目立即可搜索，Server 目录独立异步加载、按稳定 settingId 合并；结果保留能力原因，不把远程返回的任意 URI 交给激活器。语言变化重建索引，连接变化清除旧目录并重新读取。
 - 搜索 UI 展示分类、范围和能力原因；Ctrl+F、方向键、Enter/双击、Escape 均有处理。三语言同步。修正服务端时区目录仍引用已删除的旧只读说明资源键。
 - 编译：首次 Client 构建发现当前 Avalonia 不允许 DataTemplate 内声明 xmlns，移至根节点后，`dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -p:UsedAvaloniaProducts= -v quiet` 通过，0 warning / 0 error。`git diff --check` 通过。
-- 新增可独立复跑的 `Client/RelaxKonOS.Settings.Tests` 控制台验证程序（必须 `dotnet run`，不是 `dotnet test`）。从本地 NuGet 缓存恢复后运行 `dotnet run --project Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false`，退出 0；英文大小写、中/日文同义词、多关键词、不可用项仍可发现及空结果检查通过。200 项**合成目录**、50 次预热、1000 次查询测量 p95=0.075ms / max=1.132ms；只测生产索引查询，不测网络、UI 调度或渲染，不能据此验收“150ms 内呈现”或声称存在 200 项真实设置。
+- 新增可独立复跑的 `Tests/Client/RelaxKonOS.Settings.Tests` 控制台验证程序（必须 `dotnet run`，不是 `dotnet test`）。从本地 NuGet 缓存恢复后运行 `dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false`，退出 0；英文大小写、中/日文同义词、多关键词、不可用项仍可发现及空结果检查通过。200 项**合成目录**、50 次预热、1000 次查询测量 p95=0.075ms / max=1.132ms；只测生产索引查询，不测网络、UI 调度或渲染，不能据此验收“150ms 内呈现”或声称存在 200 项真实设置。
 - **未测试/未完成**：首页、账户、辅助功能、子页分组及关联入口；settingId 定位到具体控件（目前只打开所属页面）；离开草稿保留/放弃确认；页面内部窄布局整改；真实 UI 的 640×480、1024×768、1440×900、200% 缩放，亮暗主题、三语言、键盘/屏幕阅读器与焦点截图；远程目录加载/连接切换竞态测试。G1 及 G3–G6 的既有剩余工作全部保留，未标记任何阶段完成。
 
 ### 2026-09-09 / G3 环境契约与 Linux 受限文档核心（阶段未完成）
@@ -359,7 +359,7 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 - 新增纯数据展开器，支持 Windows `%NAME%` 与 Linux `$NAME`/`${NAME}` 的显示预览；循环、16 层深度、128KiB 输出及全局工作量限制，不读取本进程环境、不执行命令替换。PATH 分项保留空项、重复项及顺序，并提供当前目录搜索/重复提示。此展开器尚未接入工作负载构造；Linux 原始持久值不会因这个预览工具自动获得 shell 展开语义。
 - Helper 新增 `LinuxEnvironmentDocument`，实现受限 `/etc/environment` 文档的全量先解析/验证、纯内存编辑与结果重解析；保留未修改行、注释、顺序、缩进及 LF/CRLF。拒绝重复变量、export 声明、等号附近歧义空白、转义、换行值及无法无损表达的数据。失败不产出部分文件，也不执行任何文件写入。
 - 官方实现核对：[Linux-PAM pam_env.c](https://github.com/linux-pam/linux-pam/blob/master/modules/pam_env/pam_env.c) 的 `_parse_env_file` 在引号处理前截断 `#`。据此拒绝包含 `#` 的变量值，避免错误地把引号当作通用 shell 转义。不同构建/发行版消费者仍需在目标 Ubuntu 上核验；此解析器不宣称支持任意 PAM/systemd/shell 语法。
-- 验证：`dotnet run --project Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false` 退出 0，新增环境检查覆盖保真行/CRLF、空值与删除、拒绝语法、失败保留源对象、平台名称、高影响确认、NUL/删除载荷、命令文本保持数据、展开循环/资源界限、PATH 顺序；原搜索验证也通过。全部使用内存字符串，未读取或修改开发机宿主配置。Helper 构建通过结果见本批收尾；`git diff --check` 通过。
+- 验证：`dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false` 退出 0，新增环境检查覆盖保真行/CRLF、空值与删除、拒绝语法、失败保留源对象、平台名称、高影响确认、NUL/删除载荷、命令文本保持数据、展开循环/资源界限、PATH 顺序；原搜索验证也通过。全部使用内存字符串，未读取或修改开发机宿主配置。Helper 构建通过结果见本批收尾；`git diff --check` 通过。
 - **仍未实现/未测试**：Helper 环境封闭操作及 actor/UID/SID 绑定、真实 Linux 文件元数据/ACL 保留与原子替换、Windows 注册表 provider、受保护恢复材料、Server 环境协调器/授权/审计、Workspace 环境存储、工作负载传播、敏感值揭示授权、环境 UI/SDK/CLI；远程 Ubuntu/Windows 的真实写入/读回/回滚全部未测试。当前交付是生产契约/解析核心，不是 mock provider，也不能算完整 G3 纵向切片。继续完成这些实际落点，G0–G6 均按既有未完成验收继续推进。
 - 收尾构建：`dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` 通过，0 warning / 0 error（包含新 Protocol 核心）；未启动 Helper。
 
@@ -393,7 +393,7 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 - 环境变更通过 `--changes <file>` 或 `--changes -` 读取 UTF-8 JSON，支持 BOM，2 MiB 输入上限、16 层 JSON 深度、拒绝未知属性和空/超量批次；远程平台详细语义和 256 KiB 数据上限仍由 Server/Helper 校验，不拿客户端 OS 猜测远程规则。解析失败仅给固定提示，不回显输入秘密。空值与显式 Delete 保持区别。
 - 默认读取掩码，`--reveal` 是独立显式选项且要求现有揭示授权；授权不足直接保留 Server 错误。同步 CLI help、中英文 README 和 Settings 实现说明，给出本地变更文件/预览/应用/查询/回滚用法。
 - DevCli 与 Settings.Tests 首次构建因缺少 project.assets.json 失败，已从 `C:/Users/Administrator/.nuget/packages` 本地缓存 restore。`dotnet build Tools/RelaxKonOS.DevCli/RelaxKonOS.DevCli.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` 通过，0 warning / 0 error。
-- `dotnet run --project Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false` 退出 0：新增实际 CLI 解析器的 BOM/空值/Delete/超限/无效 JSON/秘密不回显/错误参数检查，原环境与搜索检查通过；仅临时文件，无 HTTP 或宿主修改。合成搜索 p95=0.122ms / max=4.786ms 只记录索引性能，不作为 UI 验收。`git diff --check` 通过。
+- `dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/RelaxKonOS.Settings.Tests.csproj --no-restore -c Release -p:UseSharedCompilation=false` 退出 0：新增实际 CLI 解析器的 BOM/空值/Delete/超限/无效 JSON/秘密不回显/错误参数检查，原环境与搜索检查通过；仅临时文件，无 HTTP 或宿主修改。合成搜索 p95=0.122ms / max=4.786ms 只记录索引性能，不作为 UI 验收。`git diff --check` 通过。
 - **本批跳过测试**：CLI 真实 HTTPS/JWT/grant 到期、标准输入管线端到端、网络中断/幂等/远程读回回滚；Windows 注册表与 Linux provider 实机效果；UI 和 SDK 行为。按用户要求暂缓复杂测试，未使用开发机做宿主配置实验。
 - **继续必做**：环境 UI/SDK/终端、Linux 文件 provider、Workspace/工作负载传播及宿主恢复/通知；G2/G4/G6 既有剩余项均保留。CLI 接入只推进窗口外入口，G3/G5 与总目标未完成。
 
@@ -436,7 +436,7 @@ Windows 只作为信息架构与交互依据，RelaxKonOS 的路由、权限与�
 | `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 通过，0 error；2 个 CA1416 警告来自起始 commit 已有的 `WindowsLogonProvider`/`LinuxPamProvider` 注册，仅在 Windows 宿主上构建时出现，与本批无关 |
 | `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -p:UsedAvaloniaProducts= -v quiet` | 通过，0 warning / 0 error |
 | `dotnet build Tools/RelaxKonOS.DevCli/RelaxKonOS.DevCli.csproj --no-restore -m:1 -p:UseSharedCompilation=false -v quiet` | 通过，0 warning / 0 error |
-| `dotnet run --project Client/RelaxKonOS.Settings.Tests --no-restore -c Release -p:UseSharedCompilation=false` | 退出 0；新增主机名标签/平台上限/远程上限检查与 CLI `hostname` 选项归属检查通过，原搜索、环境、Linux provider、CLI 检查全部通过。合成搜索 p95=0.066ms / max=0.769ms 只记录索引本身 |
+| `dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests --no-restore -c Release -p:UseSharedCompilation=false` | 退出 0；新增主机名标签/平台上限/远程上限检查与 CLI `hostname` 选项归属检查通过，原搜索、环境、Linux provider、CLI 检查全部通过。合成搜索 p95=0.066ms / max=0.769ms 只记录索引本身 |
 | `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only` | 退出 0；新增 `Settings identity passed`（名称规则、幂等 planId、revision 冲突、授权前置、暂存读回、`HostRestart` 生效方式、外部编辑阻止回滚、Unknown 不重放、确定性拒绝为 Failed），原时区协调器、通知、HTTP 428/409/越权、存储并发与 SQLite 重启用例全部通过 |
 | Windows/Ubuntu 真实主机名读写、重启后生效、域策略拒绝、`hostnamectl` 写后读回 | **未测试**；未提供指定远程测试目标，未在开发机执行系统配置修改 |
 | 三语言/亮暗主题/640×480、1024×768、1440×900/200% 缩放与键盘截图 | **未测试**；本批只做到 C#/XAML 可编译 |

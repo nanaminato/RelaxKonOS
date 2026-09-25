@@ -58,5 +58,8 @@
     <Reference Include="System.IdentityModel.Tokens.Jwt" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/System.IdentityModel.Tokens.Jwt.dll</HintPath>
     </Reference>
+    <Reference Include="SixLabors.ImageSharp" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/SixLabors.ImageSharp.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

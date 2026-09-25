@@ -45,6 +45,8 @@ wallpapers/
 RelaxKonOS.Server/data/docker-compose/
 RelaxKonOS.Server/data/
 .workbuddy/
+Client/RelaxKonOS.Client.Android/.gradle/
+Client/RelaxKonOS.Client.Android/**/build/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

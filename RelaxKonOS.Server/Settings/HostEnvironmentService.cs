@@ -36,7 +36,7 @@ public sealed class HostEnvironmentService(IUserRepository users, IHostElevation
         var platformIdentity = user.PlatformIdentity;
         if (OperatingSystem.IsWindows())
         {
-            if (user.Platform != PlatformKind.Windows) throw new SettingsException(403, "settings.environment.identity_mismatch");
+        if (user.Platform != HostPlatformKind.Windows) throw new SettingsException(403, "settings.environment.identity_mismatch");
             try
             {
                 var mappedSid = (SecurityIdentifier)new NTAccount(user.Username).Translate(typeof(SecurityIdentifier));
@@ -49,7 +49,7 @@ public sealed class HostEnvironmentService(IUserRepository users, IHostElevation
         }
         else if (OperatingSystem.IsLinux())
         {
-            if (user.Platform != PlatformKind.Linux || !uint.TryParse(user.PlatformIdentity, out _)
+        if (user.Platform != HostPlatformKind.Linux || !uint.TryParse(user.PlatformIdentity, out _)
                 || identities.GetUserInfo(user.Username).Uid != user.PlatformIdentity)
                 throw new SettingsException(403, "settings.environment.identity_mismatch");
         }

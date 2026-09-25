@@ -15,6 +15,12 @@ public static class SystemMonitorEndpoints
 {
     private const string ProblemBase = "https://relaxkonos.app/problems/";
 
+    /// <summary>
+    /// 一次性快照读取为自己申请的采样窗口长度。只有 demand 的采集需要两个采样周期才会产出有效样本
+    /// （第一次原始读取只建立差分基线），所以窗口覆盖两个周期并留出余量；仍取不到样本才返回 503。
+    /// </summary>
+    private static readonly TimeSpan SnapshotWait = TimeSpan.FromSeconds(3);
+
     public static IEndpointRouteBuilder MapSystemMonitorEndpoints(this IEndpointRouteBuilder app)
     {
         // 新性能链路：静态信息、有效快照和 60 秒内存历史分离；客户端通过 PerformanceHub 获取实时更新。
@@ -23,11 +29,13 @@ public static class SystemMonitorEndpoints
            .RequireAuthorization()
            .WithTags("System Performance");
 
+        // 快照是首进、重连与无实时订阅客户端的降级路径，因此读取本身构成 demand：取不到样本才 503。
         app.MapGet(SystemMonitorApiRoutes.PerformanceSnapshot,
-            (IPerformanceSampler sampler) => sampler.GetLatest() is { } snapshot
-                ? Results.Ok(snapshot)
-                : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
-                    title: "Performance sample is not ready.", type: ProblemBase + "performance-not-ready"))
+            async (IPerformanceSampler sampler, CancellationToken ct) =>
+                await sampler.ReadSnapshotAsync(SnapshotWait, ct) is { } snapshot
+                    ? Results.Ok(snapshot)
+                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                        title: "Performance sample is not ready.", type: ProblemBase + "performance-not-ready"))
            .RequireAuthorization()
            .WithTags("System Performance");
 

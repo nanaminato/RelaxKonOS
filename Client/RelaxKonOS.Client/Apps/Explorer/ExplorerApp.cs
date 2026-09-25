@@ -92,6 +92,8 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 
         var clipboard = context.Services.GetService(typeof(IRemoteFileClipboard)) as IRemoteFileClipboard;
         var viewModel = new ExplorerViewModel(client, fileClipboard: clipboard);
+        // 大文件走分块上传会话；未注册时全部退回单发路由（仍可传，只是传不了大文件）。
+        viewModel.LargeFileUploader = context.Services.GetService(typeof(Uploads.ILargeFileUploader)) as Uploads.ILargeFileUploader;
         WireDialogs(context, viewModel, client);
         var operations = context.Services.GetService(typeof(ExplorerOperationCenter)) as ExplorerOperationCenter;
         if (operations is not null)
@@ -358,25 +360,8 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 .OfType<string>().Select(path => new Models.LocalUploadSource(path)).ToArray();
         };
 
-        vm.RequestClipboardUploadSourcesAsync = async () =>
-        {
-            var topLevel = GetTopLevel(context, vm);
-            if (topLevel?.Clipboard is null) return [];
-            var transfer = await topLevel.Clipboard.TryGetDataAsync();
-            if (transfer is null) return [];
-            try
-            {
-                var items = await transfer.TryGetFilesAsync();
-                return items?.Select(item => item.TryGetLocalPath()).OfType<string>()
-                    .Select(path => new Models.LocalUploadSource(path)).ToArray()
-                    ?? [];
-            }
-            finally
-            {
-                if (transfer is IAsyncDisposable asynchronous) await asynchronous.DisposeAsync();
-                else (transfer as IDisposable)?.Dispose();
-            }
-        };
+        vm.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(GetTopLevel(context, vm)?.Clipboard);
+        vm.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(GetTopLevel(context, vm)?.Clipboard);
 
         vm.RequestLocalSaveFileAsync = async defaultName =>
         {
