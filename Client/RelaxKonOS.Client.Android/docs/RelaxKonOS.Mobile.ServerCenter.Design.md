@@ -1,6 +1,6 @@
 # Android 服务器中心接入设计
 
-> 状态：接入中。Android 已有独立宿主资料、SSH 凭据域、主机密钥固定、JSch 传输、隧道基础件、签名 ZIP 逐文件验证、远端操作层，以及稳定 `serviceId` / 动态 `effectiveBaseUrl` 的登录与会话模型；受管登录选择已接入按安装标识查找宿主的隧道解析，并把隧道解析结果绑定回登录身份。登录前后入口、应用级部署协调器、远端操作恢复及真机验收尚未完成。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
+> 状态：接入中。Android 已有独立宿主资料、SSH 凭据域、主机密钥固定、JSch 传输、隧道基础件、签名 ZIP 逐文件验证、远端操作层，以及稳定 `serviceId` / 动态 `effectiveBaseUrl` 的登录与会话模型；受管登录选择已接入按安装标识查找宿主的隧道解析，并把隧道解析结果绑定回登录身份。登录前的次级入口、已登录「更多 → 连接」入口和应用级服务器中心导航已接入，用户可添加独立 SSH 宿主资料并以本次输入的 SSH 密码完成无命令握手；首次主机密钥必须显式核对后固定，变化会阻断。权威 SSH 状态回执可以写回带核验时间的宿主缓存，但详情步骤、远端操作恢复及真机验收尚未完成。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
 >
 > 基线：独立 Kotlin / Jetpack Compose / Material 3 工程；`MainActivity` 在未认证时显示 `LoginScreen`，认证后显示五类导航的 `ShellScaffold`。已有内置 SSH/SFTP 与无界面操作层，尚无服务器部署页面。
 

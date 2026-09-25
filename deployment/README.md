@@ -27,6 +27,8 @@ dotnet run --project ./deployment/packaging/RelaxKonOS.ReleaseSigner -- verify .
 
 服务器中心远端安装/升级的暂存目录须包含部署启动器、`request.json`、已签名 ZIP、`release-public.pem`、`release-key-id.txt`，以及按目标 RID 自包含的单文件验证器（Windows 名为 `release-verifier.exe`，Linux 名为可执行的 `release-verifier`）。验证器可用 `dotnet publish ./deployment/packaging/RelaxKonOS.ReleaseSigner -c Release -r <目标RID> --self-contained true -p:PublishSingleFile=true` 构建。Linux 启动器也用它严格校验请求 JSON 的字段、类型与重复键。客户端从独立固定的发布信任配置提供公钥；远端启动器核对 ZIP 摘要后调用验证器，验证签名、RID、包类型和每个文件，再把签名文件解到仅本次操作使用的目录。部署引擎只读取该目录。`install` 与 `upgrade` 的 `stagedPackageName` 和 `packageDigest` 均为必填；官方来源和指定 URL 来源也由客户端先取得 ZIP 并暂存，启动器不直接执行一个仅由 URL 指向的包。
 
+`New-RelaxKonOSRelease.ps1` 与 `package-relaxkonos.sh` 都会为其指定 RID 同时生成客户端可用的工具目录：`artifacts/launcher/RelaxKonOS-Deploy.ps1`、`artifacts/launcher/relaxkonos-deploy.sh`，以及该 RID 的 `release-verifier`（Windows 为 `.exe`）。这不是服务端 ZIP 的一部分；客户端将工具作为受控暂存资产上传，再由启动器用验证器校验请求。发布目录在移动给桌面或移动客户端前必须保留该 `launcher/` 目录。
+
 操作记录和独占锁保存在暂存目录之外，因而不同客户端和断线后的新暂存目录仍会读取同一回执：Windows 已提升管理员操作为 `%ProgramData%\RelaxKonOS-Deployment`（未提升账号的只读探测使用 `%LOCALAPPDATA%\RelaxKonOS-Deployment`），Linux System Mode 为 `/var/lib/relaxkonos-deployment`，Linux User Mode 为 `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos-deployment`。卸载数据时也保留该操作日志，以便查询卸载回执。
 
 维护者用下列命令制作一个自包含的单平台发布包（会同时生成 ZIP、`.sha256`、签名清单与签名下载描述符）：

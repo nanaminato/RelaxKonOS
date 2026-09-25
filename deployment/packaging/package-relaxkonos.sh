@@ -36,6 +36,23 @@ publish_component() {
   [[ -f "$destination/$executable" ]] || { echo "Publish output does not contain $executable." >&2; exit 1; }
 }
 
+publish_deployment_tools() {
+  # `probe` uses the same strict JSON request validation as mutations, so the verifier is a required
+  # client-controlled staging asset for every launcher action, not an optional install-only helper.
+  local tools="$OUTPUT_DIRECTORY/launcher" temporary="$OUTPUT_DIRECTORY/launcher/.release-verifier-publish"
+  mkdir -p -- "$tools"
+  cp -- "$PROJECT_ROOT/deployment/launcher/relaxkonos-deploy.sh" "$tools/relaxkonos-deploy.sh"
+  cp -- "$PROJECT_ROOT/deployment/launcher/RelaxKonOS-Deploy.ps1" "$tools/RelaxKonOS-Deploy.ps1"
+  # Packaging may run from a Windows-mounted working tree; launchers uploaded to Linux must be LF.
+  sed -i 's/\r$//' "$tools/relaxkonos-deploy.sh"
+  rm -rf -- "$temporary"
+  dotnet publish "$SIGNER_PROJECT" --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained true \
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output "$temporary"
+  [[ -f "$temporary/RelaxKonOS.ReleaseSigner" ]] || { echo 'Verifier publish output did not contain RelaxKonOS.ReleaseSigner.' >&2; exit 1; }
+  install -m 700 "$temporary/RelaxKonOS.ReleaseSigner" "$tools/release-verifier"
+  rm -rf -- "$temporary"
+}
+
 complete_package() {
   local kind="$1" payload="$2" hash files line path length digest separator=
   # A bundle is never trusted based on its top-level archive checksum alone: installers also
@@ -68,6 +85,10 @@ complete_package() {
   dotnet run --project "$SIGNER_PROJECT" --configuration Release -- sign "$ARCHIVE.json" "$SIGNING_KEY_PATH" "$SIGNING_KEY_ID" >/dev/null
   printf '%s bundle: %s\nSHA-256: %s\n' "$kind" "$ARCHIVE" "$hash"
 }
+
+# This directory accompanies the signed release packages. It is uploaded by the client as fixed
+# deployment tooling and is deliberately not extracted from a host-selected package.
+publish_deployment_tools
 
 if [[ $PACKAGE_KIND == all || $PACKAGE_KIND == client ]]; then
   new_package client

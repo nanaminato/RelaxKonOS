@@ -19,6 +19,7 @@ if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') { throw 'Version may
 if ([string]::IsNullOrWhiteSpace($SigningKeyPath) -or -not (Test-Path -LiteralPath $SigningKeyPath -PathType Leaf) -or
     [string]::IsNullOrWhiteSpace($SigningKeyId)) { throw 'A release signing key and key ID are required.' }
 $signerProject = Join-Path $PSScriptRoot 'RelaxKonOS.ReleaseSigner\RelaxKonOS.ReleaseSigner.csproj'
+$launcherSource = Join-Path $projectRoot 'deployment\launcher'
 
 function Sign-ReleaseFile([string] $Path) {
     & dotnet run --project $signerProject --configuration Release -- sign $Path $SigningKeyPath $SigningKeyId | Out-Null
@@ -46,6 +47,33 @@ function Publish-Component([string] $Project, [string] $Destination, [string] $E
     & dotnet publish (Join-Path $projectRoot $Project) --configuration $Configuration --runtime $Runtime --self-contained true --output $Destination
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $Project." }
     if (-not (Test-Path -LiteralPath (Join-Path $Destination $Executable) -PathType Leaf)) { throw "Publish output did not contain $Executable." }
+}
+
+function Publish-DeploymentTools() {
+    # The remote launcher validates every JSON request before it acts.  It therefore needs the
+    # self-contained verifier even for probe/status operations; shipping only the scripts would
+    # tempt a client to bypass that boundary.  Tools sit beside packages, never inside a package
+    # selected by the host, so they are a client-controlled input to the staging flow.
+    $launcherDirectory = Join-Path $OutputDirectory 'launcher'
+    New-Item -ItemType Directory -Path $launcherDirectory -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $launcherSource 'RelaxKonOS-Deploy.ps1') -Destination (Join-Path $launcherDirectory 'RelaxKonOS-Deploy.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $launcherSource 'relaxkonos-deploy.sh') -Destination (Join-Path $launcherDirectory 'relaxkonos-deploy.sh') -Force
+
+    $verifierOutput = Join-Path $launcherDirectory '.release-verifier-publish'
+    if (Test-Path -LiteralPath $verifierOutput) { Remove-Item -LiteralPath $verifierOutput -Recurse -Force }
+    & dotnet publish $signerProject --configuration $Configuration --runtime $Runtime --self-contained true `
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output $verifierOutput
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed for the deployment request verifier.' }
+
+    $publishedName = if ($platform -eq 'windows') { 'RelaxKonOS.ReleaseSigner.exe' } else { 'RelaxKonOS.ReleaseSigner' }
+    $verifierName = if ($platform -eq 'windows') { 'release-verifier.exe' } else { 'release-verifier' }
+    $publishedVerifier = Join-Path $verifierOutput $publishedName
+    if (-not (Test-Path -LiteralPath $publishedVerifier -PathType Leaf)) {
+        throw 'Verifier publish output did not contain the expected executable.'
+    }
+    Copy-Item -LiteralPath $publishedVerifier -Destination (Join-Path $launcherDirectory $verifierName) -Force
+    Remove-Item -LiteralPath $verifierOutput -Recurse -Force
+    if ($platform -eq 'linux') { Convert-LinuxShellScriptsToLf $launcherDirectory }
 }
 
 function Convert-LinuxShellScriptsToLf([string] $Root) {
@@ -107,6 +135,10 @@ function Complete-Package($Package, [hashtable] $Payload) {
     Write-Host "$($Package.Kind) bundle: $($Package.Archive)"
     Write-Host "SHA-256: $hash"
 }
+
+# Publish deployment tools once per RID. The desktop and Android server-centre release sources use
+# this stable output layout for every fixed launcher action, including the read-only probe.
+Publish-DeploymentTools
 
 $clientPackage = New-PackageDirectory 'client'
 $clientDestination = Join-Path $clientPackage.Directory "payload\$platform\client"

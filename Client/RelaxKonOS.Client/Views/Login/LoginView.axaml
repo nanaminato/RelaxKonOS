@@ -165,8 +165,10 @@
                            FontSize="12" Margin="0,0,0,8" TextWrapping="Wrap" />
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding ClientNameText}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12"
                            VerticalAlignment="Center" />
-                <Button Grid.Row="1" Grid.Column="1" Classes="primary connect-button" Content="{Binding ConnectText}"
-                        Command="{Binding ConnectCommand}" />
+                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <Button Content="{Binding ServerCenterText}" Click="OpenServerCenter_Click" />
+                    <Button Classes="primary connect-button" Content="{Binding ConnectText}" Command="{Binding ConnectCommand}" />
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

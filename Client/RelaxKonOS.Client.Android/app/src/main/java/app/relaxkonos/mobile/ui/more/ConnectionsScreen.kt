@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionGroup
+import app.relaxkonos.mobile.ui.common.SectionLabel
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.connect.credentialStatusLabel
@@ -107,6 +109,20 @@ fun ConnectionsScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // Host lifecycle is intentionally adjacent to saved logins, but remains a separate record
+        // type: removing a login above never removes this device's SSH host information.
+        SectionLabel(stringResource(R.string.server_center_title))
+        SectionGroup {
+            Text(
+                stringResource(R.string.server_center_connections_hint),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedButton(onClick = container.serverCenter::open, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.server_center_open))
             }
         }
 

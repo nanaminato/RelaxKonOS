@@ -23,6 +23,7 @@ using VirtualSystemDriveService = RelaxKonOS.Client.Services.VirtualSystemDrive.
 using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Client.Services.SystemUi;
 using RelaxKonOS.Client.ViewModels.Login;
+using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Client.ViewModels.Shell;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
@@ -108,6 +109,10 @@ public static class Bootstrapper
         services.AddSingleton<ISshCredentialStore, SshCredentialStore>();
         services.AddSingleton<IServerCenterSshTransportFactory, SshNetServerCenterTransportFactory>();
         services.AddSingleton<IServerCenterConnectionResolver, ServerCenterConnectionResolver>();
+        services.AddSingleton<IServerCenterOperationJournal, ServerCenterOperationJournal>();
+        services.AddSingleton<IServerCenterReleaseTrustStore, FileServerCenterReleaseTrustStore>();
+        services.AddSingleton<IServerCenterReleaseSource, FileServerCenterReleaseSource>();
+        services.AddTransient<ServerCenterViewModel>();
 
         // Explorer（文件管理器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。
         services.AddHttpClient<RelaxKonOS.Client.Apps.Explorer.IExplorerClient, RelaxKonOS.Client.Apps.Explorer.ExplorerClient>()

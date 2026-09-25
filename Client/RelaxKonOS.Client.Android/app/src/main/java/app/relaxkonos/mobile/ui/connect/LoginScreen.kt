@@ -64,7 +64,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * surface holding exactly the three fields and the action, with nothing decorative competing with them.
  */
 @Composable
-fun LoginScreen(modifier: Modifier = Modifier) {
+fun LoginScreen(modifier: Modifier = Modifier, onOpenServerCenter: () -> Unit = {}) {
     val activity = LocalContext.current as? FragmentActivity ?: return
     val viewModel: LoginViewModel = viewModel()
 
@@ -207,6 +207,10 @@ fun LoginScreen(modifier: Modifier = Modifier) {
                         enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(actionLabel)) }
+
+                    OutlinedButton(onClick = onOpenServerCenter, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.server_center_open))
+                    }
 
                     if (viewModel.hasLogins) {
                         OutlinedButton(onClick = { viewModel.openConnections() }, modifier = Modifier.fillMaxWidth()) {

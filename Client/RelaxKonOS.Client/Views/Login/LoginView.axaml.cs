@@ -1,6 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.ViewModels.Login;
+using RelaxKonOS.Client.ViewModels.ServerCenter;
+using RelaxKonOS.Client.Views.ServerCenter;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace RelaxKonOS.Client.Views.Login;
 
@@ -12,5 +16,16 @@ public partial class LoginView : UserControl
     {
         if (DataContext is LoginViewModel viewModel && !viewModel.IsConnecting)
             await viewModel.DiscoverServerEndpointAsync();
+    }
+
+    private async void OpenServerCenter_Click(object? sender, RoutedEventArgs e)
+    {
+        var viewModel = App.Services.GetRequiredService<ServerCenterViewModel>();
+        await viewModel.LoadAsync();
+        var window = new ServerCenterWindow { DataContext = viewModel };
+        if (TopLevel.GetTopLevel(this) is Window owner)
+            await window.ShowDialog(owner);
+        else
+            window.Show();
     }
 }

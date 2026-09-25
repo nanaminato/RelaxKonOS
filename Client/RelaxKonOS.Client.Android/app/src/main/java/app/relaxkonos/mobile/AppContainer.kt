@@ -49,6 +49,7 @@ import app.relaxkonos.mobile.servercenter.FileHostTargetStorage
 import app.relaxkonos.mobile.servercenter.JschServerCenterSshTransportFactory
 import app.relaxkonos.mobile.servercenter.ManagedLoginResolver
 import app.relaxkonos.mobile.servercenter.ServerCenterConnectionResolver
+import app.relaxkonos.mobile.servercenter.ServerCenterCoordinator
 import app.relaxkonos.mobile.servercenter.ServerCenterSshCredentialStore
 import app.relaxkonos.mobile.servercenter.ServerHostKeyTrustStore
 import app.relaxkonos.mobile.servercenter.ServerHostTargetStore
@@ -121,6 +122,9 @@ class AppContainer(context: Context) {
         hostTargets = serverHostTargets,
         transportFactory = JschServerCenterSshTransportFactory(),
     )
+
+    /** App-owned server-centre navigation; it remains available before and after authentication. */
+    val serverCenter = ServerCenterCoordinator(serverHostTargets, serverCenterConnections, sshHostKeyTrust)
 
     /**
      * 受管登录的连接解析入口：把登录记录里的安装标识接到本机宿主资料。

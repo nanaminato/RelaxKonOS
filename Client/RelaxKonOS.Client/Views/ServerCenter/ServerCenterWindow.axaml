@@ -1,0 +1,63 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+        x:Class="RelaxKonOS.Client.Views.ServerCenter.ServerCenterWindow"
+        x:DataType="vm:ServerCenterViewModel"
+        Title="Server centre" Width="720" Height="650" MinWidth="560" MinHeight="480"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource AppBackgroundBrush}"
+        FontFamily="{DynamicResource ContentFont}">
+    <Grid Margin="28" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
+        <StackPanel Spacing="4">
+            <TextBlock Text="{Binding Title}" FontSize="24" FontWeight="Light" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <TextBlock Text="{Binding Subtitle}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </StackPanel>
+        <Border Grid.Row="1" Padding="14" CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{Binding HostsLabel}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <ListBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" MaxHeight="130">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="6" Spacing="2">
+                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SshUserName}" />
+                                <TextBlock Text="{Binding SshHost}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="{Binding EmptyHostsText}" IsVisible="{Binding !HasHosts}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <StackPanel IsVisible="{Binding SelectedHost}" Spacing="8">
+                    <TextBlock Text="{Binding SelectedHost.DisplayName}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding SelectedHost.SshUserName}" />
+                    <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding SshPasswordLabel}" />
+                    <CheckBox IsChecked="{Binding SaveSshPassword}" Content="{Binding SaveSshPasswordText}" />
+                    <Button Command="{Binding VerifySshCommand}" Content="{Binding VerifySshText}" HorizontalAlignment="Left" />
+                    <StackPanel IsVisible="{Binding NeedsHostKeyConfirmation}" Spacing="6">
+                        <TextBlock Text="{Binding HostKeyReviewText}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding HostKeyFingerprint}" FontFamily="Consolas" TextWrapping="Wrap" />
+                        <Button Command="{Binding ConfirmHostKeyCommand}" Content="{Binding ConfirmHostKeyText}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding HostKeyChangedText}" IsVisible="{Binding HostKeyChanged}" TextWrapping="Wrap" Classes="error" />
+                </StackPanel>
+                <TextBlock Text="{Binding CachedStateText}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <Button Command="{Binding RemoveHostCommand}" Content="{Binding RemoveText}" HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+        <Border Grid.Row="2" Padding="14" CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{Binding AddHostLabel}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <Grid ColumnDefinitions="*,110,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                    <TextBox Text="{Binding Host}" PlaceholderText="{Binding HostLabel}" />
+                    <TextBox Grid.Column="1" Text="{Binding Port}" PlaceholderText="{Binding PortLabel}" />
+                    <TextBox Grid.Column="2" Text="{Binding UserName}" PlaceholderText="{Binding UserLabel}" />
+                    <TextBox Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding DisplayName}" PlaceholderText="{Binding DisplayNameLabel}" />
+                </Grid>
+                <Button Command="{Binding AddHostCommand}" Content="{Binding AddText}" HorizontalAlignment="Left" />
+                <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsBusy}" />
+                <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding !HasError}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Classes="error" />
+            </StackPanel>
+        </Border>
+        <Button Grid.Row="3" Content="{Binding CloseText}" HorizontalAlignment="Right" Click="Close_Click" MinWidth="88" />
+    </Grid>
+</Window>

@@ -20,6 +20,7 @@ import app.relaxkonos.mobile.ui.common.LocalAppContainer
 import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.connect.LoginScreen
+import app.relaxkonos.mobile.ui.servercenter.ServerCenterScreen
 import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.nav.ShellScaffold
 import app.relaxkonos.mobile.ui.nav.ShellViewModel
@@ -80,7 +81,9 @@ private fun RelaxKonApp(container: AppContainer) {
         }
 
         AppBackdrop {
-            when (sessionState) {
+            if (container.serverCenter.isOpen) {
+                ServerCenterScreen(coordinator = container.serverCenter, onClose = container.serverCenter::close)
+            } else when (sessionState) {
                 is SessionState.Active -> ShellScaffold(
                     container = container,
                     navigator = shell.navigator,
@@ -88,7 +91,7 @@ private fun RelaxKonApp(container: AppContainer) {
                     onSignOut = { scope.launch { container.session.logout() } },
                 )
 
-                else -> LoginScreen()
+                else -> LoginScreen(onOpenServerCenter = container.serverCenter::open)
             }
 
             container.pendingNotice?.let { notice ->

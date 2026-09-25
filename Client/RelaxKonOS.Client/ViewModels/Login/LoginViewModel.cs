@@ -114,6 +114,7 @@ public partial class LoginViewModel : ObservableObject
     public string ConnectionSettingsDescription => T("login.connection_settings_description", "RelaxKonOS will open the workspace using this computer's name and local display settings.");
     public string ClientNameText => T("login.client_name", "RelaxKonOS Remote Desktop Client");
     public string ConnectText => T("common.connect", "Connect");
+    public string ServerCenterText => T("server_center.open", "Install or manage a server");
 
     [ObservableProperty] private string _statusMessage = string.Empty;
     [ObservableProperty] private string _errorMessage = string.Empty;

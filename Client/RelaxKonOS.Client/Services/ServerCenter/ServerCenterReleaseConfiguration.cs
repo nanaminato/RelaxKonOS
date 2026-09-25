@@ -71,7 +71,7 @@ public sealed class FileServerCenterReleaseTrustStore : IServerCenterReleaseTrus
             if (payload is null) return ServerCenterReleaseTrust.Unconfigured;
 
             var keys = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var (id, pem) in payload.PublicKeys ?? [])
+            foreach (var (id, pem) in payload.PublicKeys ?? new Dictionary<string, string>())
             {
                 if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(pem)) continue;
                 keys[id.Trim()] = pem;
