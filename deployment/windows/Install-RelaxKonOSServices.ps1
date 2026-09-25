@@ -104,6 +104,7 @@ $composeData = Join-Path $DataRoot 'docker-compose'
 $serverData = Join-Path $DataRoot 'server'
 $certificateData = Join-Path $serverData 'certificates'
 $proxyData = Join-Path $env:ProgramData 'RelaxKonOS\Proxy'
+$observabilityLogData = Join-Path $DataRoot 'logs\runtime'
 $guardianConfig = Join-Path $guardianData 'guardian.json'
 $serverHostConfig = Join-Path (Split-Path -Parent $ServerExecutable) 'appsettings.host.json'
 $privilegedData = Join-Path $DataRoot 'privileged-helper'
@@ -112,6 +113,7 @@ New-Item -ItemType Directory -Force -Path $guardianData | Out-Null
 New-Item -ItemType Directory -Force -Path $composeData | Out-Null
 New-Item -ItemType Directory -Force -Path $serverData | Out-Null
 New-Item -ItemType Directory -Force -Path $proxyData | Out-Null
+New-Item -ItemType Directory -Force -Path $observabilityLogData | Out-Null
 New-Item -ItemType Directory -Force -Path $privilegedData | Out-Null
 
 function Install-BootstrapCertificate {
@@ -159,11 +161,24 @@ $helperSecret = [Convert]::ToBase64String($helperSecretBytes)
 # Keep a valid production token key over an in-place repair or upgrade. Replacing it would
 # immediately invalidate every active client session for no security benefit.
 $jwtSecret = $null
+$observabilityInstanceId = $null
+$observabilityAuditHmacKey = $null
+$parsedObservabilityInstanceId = [guid]::Empty
 if (Test-Path -LiteralPath $serverHostConfig -PathType Leaf) {
     try {
         $existingServerSettings = Get-Content -LiteralPath $serverHostConfig -Raw | ConvertFrom-Json
         if ($existingServerSettings.Jwt.Secret -is [string] -and $existingServerSettings.Jwt.Secret.Length -ge 32) {
             $jwtSecret = $existingServerSettings.Jwt.Secret
+        }
+        if ($existingServerSettings.Observability.InstanceId -is [string] -and [guid]::TryParse($existingServerSettings.Observability.InstanceId, [ref]$parsedObservabilityInstanceId)) {
+            $observabilityInstanceId = $existingServerSettings.Observability.InstanceId
+        }
+        if ($existingServerSettings.Observability.AuditHmacKey -is [string]) {
+            try {
+                if ([Convert]::FromBase64String($existingServerSettings.Observability.AuditHmacKey).Length -ge 32) {
+                    $observabilityAuditHmacKey = $existingServerSettings.Observability.AuditHmacKey
+                }
+            } catch { }
         }
     } catch { }
 }
@@ -171,6 +186,12 @@ if ([string]::IsNullOrWhiteSpace($jwtSecret)) {
     $jwtSecretBytes = New-Object byte[] 48
     [Security.Cryptography.RandomNumberGenerator]::Fill($jwtSecretBytes)
     $jwtSecret = [Convert]::ToBase64String($jwtSecretBytes)
+}
+if ([string]::IsNullOrWhiteSpace($observabilityInstanceId)) { $observabilityInstanceId = [guid]::NewGuid().ToString() }
+if ([string]::IsNullOrWhiteSpace($observabilityAuditHmacKey)) {
+    $observabilityKeyBytes = New-Object byte[] 48
+    [Security.Cryptography.RandomNumberGenerator]::Fill($observabilityKeyBytes)
+    $observabilityAuditHmacKey = [Convert]::ToBase64String($observabilityKeyBytes)
 }
 
 $agentSettings = [ordered]@{
@@ -204,6 +225,12 @@ $serverSettings = [ordered]@{
         SharedSecret = $helperSecret
         TimeoutSeconds = 30
         EnableWindowsUserExecution = $false
+    }
+    Observability = [ordered]@{
+        InstanceId = $observabilityInstanceId
+        LogDirectory = $observabilityLogData
+        AuditDatabasePath = (Join-Path $serverData 'security-audit.db')
+        AuditHmacKey = $observabilityAuditHmacKey
     }
 }
 if ($bootstrapCertificate) {
@@ -258,6 +285,7 @@ if ($bootstrapCertificate) {
     & icacls $bootstrapCertificate.Path /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' ("*" + $serverServiceSid + ':R') | Out-Null
 }
 & icacls $serverData /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' ("*" + $serverServiceSid + ':(OI)(CI)M') | Out-Null
+& icacls $observabilityLogData /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' ("*" + $serverServiceSid + ':(OI)(CI)M') | Out-Null
 # The Server owns the verified Mihomo runtime, controller configuration, GEO data, state, and
 # diagnostics below this fixed root.  The LocalSystem Helper retains service-management rights;
 # the Server service SID needs Modify so first installation does not fail before that boundary.

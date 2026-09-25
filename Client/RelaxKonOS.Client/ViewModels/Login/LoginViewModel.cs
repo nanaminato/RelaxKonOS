@@ -304,8 +304,10 @@ public partial class LoginViewModel : ObservableObject
         "https://relaxkonos.app/problems/account-expired"     => T("api.auth.account_expired", "This account has expired."),
         "https://relaxkonos.app/problems/account-restriction" => T("api.auth.account_restriction", "This account is restricted from signing in."),
         "https://relaxkonos.app/problems/invalid-input"       => T("api.auth.invalid_input", "Enter all required information."),
+        "https://relaxkonos.app/problems/authentication-unavailable" => T("api.auth.authentication_unavailable", "System account authentication is temporarily unavailable. Check the server authentication configuration and try again."),
+        "https://relaxkonos.app/problems/login-rate-limited"   => T("api.auth.login_rate_limited", "Too many sign-in attempts. Wait a few minutes and try again."),
         "https://relaxkonos.app/problems/auth-failed"         => T("api.auth.failed", "Sign-in failed. Try again later."),
-        _ => string.IsNullOrEmpty(ex.Detail) ? T("api.auth.failed_short", "Sign-in failed.") : ex.Detail,
+        _ => T("api.auth.failed_short", "Sign-in failed."),
     };
 
     private string T(string key, string englishFallback) => _localization.Get(key, englishFallback);

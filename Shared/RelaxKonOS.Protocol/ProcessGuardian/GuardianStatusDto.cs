@@ -1,4 +1,5 @@
 namespace RelaxKonOS.Protocol.ProcessGuardian;
+using RelaxKonOS.Protocol.Observability;
 
 /// <summary>Reports only the independently installed Guardian Agent, never an in-process substitute.</summary>
 public sealed record GuardianStatusDto(bool IsInstalled, bool IsRunning, string ProblemCode, string? Version);
@@ -49,5 +50,6 @@ public sealed record UpsertGuardianWorkloadRequest(
     RunAsAdministratorApproval? RunAsApproval = null);
 
 /// <summary>Private local IPC envelope. It is never exposed through RelaxKonOS HTTP endpoints.</summary>
-public sealed record GuardianAgentRequest(string SharedSecret, string Command, string? WorkloadId = null, ProcessDefinitionDto? Definition = null);
+public sealed record GuardianAgentRequest(string SharedSecret, string Command, string? WorkloadId = null,
+    ProcessDefinitionDto? Definition = null, CorrelationContext? Correlation = null);
 public sealed record GuardianAgentResponse(bool Success, string ProblemCode, GuardianStatusDto? Status = null, IReadOnlyList<GuardianWorkloadDto>? Workloads = null, IReadOnlyList<GuardianLogEntryDto>? Logs = null, IReadOnlyList<GuardianAuditEntryDto>? Audits = null, ProcessDefinitionDto? Definition = null);

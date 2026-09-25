@@ -62,6 +62,10 @@
         "permission.server.tunnels.read.display_name": "Read tunnel configuration",
         "permission.server.tunnels.read.description": "View safe tunnel, FRP server profile, runtime, and sanitized log state on the server.",
         "permission.server.tunnels.manage.display_name": "Manage tunnels",
-        "permission.server.tunnels.manage.description": "Create, change, apply, stop, and delete server tunnel configuration and FRP runtime settings."
+        "permission.server.tunnels.manage.description": "Create, change, apply, stop, and delete server tunnel configuration and FRP runtime settings.",
+        "permission.server.event-alerts.read.display_name": "Read operational alerts",
+        "permission.server.event-alerts.read.description": "View safe operational event history, alert state, and remediation references on the server.",
+        "permission.server.event-alerts.manage.display_name": "Manage operational alerts",
+        "permission.server.event-alerts.manage.description": "Acknowledge, manually resolve permitted alerts, and create time-limited suppressions."
     }
 }

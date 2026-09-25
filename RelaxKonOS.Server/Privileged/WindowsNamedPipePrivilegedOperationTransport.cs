@@ -3,6 +3,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Protocol.Observability;
+using RelaxKonOS.Server.Observability;
 
 namespace RelaxKonOS.Server.Privileged;
 
@@ -11,11 +13,23 @@ namespace RelaxKonOS.Server.Privileged;
 /// executable: missing, unauthenticated, or incompatible Helper services fail closed.
 /// </summary>
 public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelperOptions options,
-    ILogger<WindowsNamedPipePrivilegedOperationTransport> logger) : IPrivilegedOperationTransport
+    ILogger<WindowsNamedPipePrivilegedOperationTransport> logger, ICorrelationContextAccessor? correlation = null,
+    ISecurityAuditWriter? securityAudit = null, ObservabilityOptions? observability = null) : IPrivilegedOperationTransport
 {
     public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
     {
-        request = request with { OperationId = request.OperationId is { } id && id != Guid.Empty ? id : Guid.NewGuid(), Version = PrivilegedOperationProtocol.Version };
+        var operationId = request.OperationId is { } requestedId && requestedId != Guid.Empty ? requestedId : Guid.NewGuid();
+        var ambient = correlation?.Current;
+        request = request with
+        {
+            OperationId = operationId,
+            Correlation = request.Correlation ?? (ambient is null
+                ? CorrelationContext.Create(operationId, "privileged.operation")
+                : new CorrelationContext(ambient.CorrelationId, operationId, "privileged.operation")),
+            Version = PrivilegedOperationProtocol.Version
+        };
+        if (!WriteSecurityAudit(request, null, ObservabilityOutcome.Started))
+            return new(false, 69, Error: "security audit is unavailable", ProblemCode: PrivilegedProblemCode.HelperUnavailable);
         if (!OperatingSystem.IsWindows())
             return Complete(request, Unavailable("the Windows privileged helper transport is unavailable on this platform"));
         if (string.IsNullOrWhiteSpace(options.PipeName) || !TryGetSecret(out var secret))
@@ -61,7 +75,7 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
             // In a Windows development session the most common cause is that the Server's
             // launch profile did not supply the console Helper's pipe name and HMAC secret.
             // Keep the secret out of logs, but make the selected pipe and failure class visible.
-            logger.LogWarning(exception, "Could not communicate with the local privileged Helper service. PipeName={PipeName}", options.PipeName);
+            logger.LogWarning("Could not communicate with the local privileged Helper service. FailureType={FailureType}", exception.GetType().Name);
             return Complete(request, Unavailable("privileged helper service is unavailable"));
         }
     }
@@ -124,11 +138,24 @@ public sealed class WindowsNamedPipePrivilegedOperationTransport(PrivilegedHelpe
 
     private PrivilegedOperationResult Complete(PrivilegedOperationRequest request, PrivilegedOperationResult result)
     {
-        Audit(request, result);
+        WriteSecurityAudit(request, result, result.Success ? ObservabilityOutcome.Succeeded : ObservabilityOutcome.Failed);
+        AuditRuntime(request, result);
         return result;
     }
 
-    private void Audit(PrivilegedOperationRequest request, PrivilegedOperationResult result)
+    private bool WriteSecurityAudit(PrivilegedOperationRequest request, PrivilegedOperationResult? result, ObservabilityOutcome outcome)
+    {
+        if (securityAudit is null) return true;
+        var context = request.Correlation!;
+        return securityAudit.TryWriteAsync(new SecurityAuditEvent(
+            outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Id : ObservabilityEventCatalog.PrivilegedRequestCompleted.Id,
+            outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Name : ObservabilityEventCatalog.PrivilegedRequestCompleted.Name,
+            outcome, "server", context.CorrelationId, DateTimeOffset.UtcNow, observability?.InstanceId ?? "unconfigured",
+            "privileged.operation", request.OperationId, ResourceType: "privileged-operation", ResourceReference: request.Path ?? request.ServiceId ?? request.DestinationPath,
+            ProblemCode: result?.ProblemCode.ToString())).GetAwaiter().GetResult();
+    }
+
+    private void AuditRuntime(PrivilegedOperationRequest request, PrivilegedOperationResult result)
     {
         var resource = string.Join("\n", new[] { request.Path, request.DestinationPath, request.ServiceId, request.EnvironmentTarget?.ResourceId }.Where(value => !string.IsNullOrWhiteSpace(value))!);
         var resourceHash = resource.Length == 0 ? "none" : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(resource)))[..16];

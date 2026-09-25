@@ -53,6 +53,8 @@ System Mode 安装时请选择 `*-server.zip` 或对应的 Server 发布目录�
 
 直接运行安装器即可获取官方稳定版。也可以传入 `-ReleaseUri` 与必须的 `-ReleaseSha256` 安装指定 ZIP，或用 `-BundlePath` 进行离线安装。`-NonInteractive` 会同样使用官方稳定版；默认仅监听 `127.0.0.1:5000`、只允许权限助手访问 RelaxKonOS 数据目录。
 
+安装器会自动准备安全审计：生成安装实例编号和审计完整性密钥、创建受保护的审计数据库与运行日志目录，并在修复或升级时保留它们。无需输入或保存任何审计密钥；只有需要接入企业日志平台或改变默认保留策略时才需要高级部署配置。
+
 离线介质可直接是发布目录或 ZIP 文件，例如：`Install-RelaxKonOS.ps1 -BundlePath E:\media\RelaxKonOS-0.1.0-win-x64.zip`。安装前会校验 Windows 架构与包内 `runtime` 是否相符。
 
 ## Linux
@@ -64,6 +66,8 @@ sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/Re
 ```
 
 直接运行安装器即可获取官方稳定版。也可传入 `--release-uri URL --release-sha256 SHA256` 安装指定 ZIP，或用 `--bundle` 进行离线安装。Linux 权限助手不是常驻服务：Server 账户只能通过固定的 sudo 规则执行 root-owned Helper；Server 和 Guardian 则是 systemd 服务。
+
+System Mode 安装会自动创建 `/var/log/relaxkonos/runtime` 和审计数据库，并在 root-only systemd 配置中生成、保存审计完整性密钥。管理员不需要手工设置 `InstanceId`、路径或 HMAC 密钥；重装和升级会保留已有值。
 
 离线介质可直接是发布目录或 ZIP，例如：`sudo ./install-relaxkonos.sh --bundle /media/usb/RelaxKonOS-0.1.0-linux-x64.zip`。安装器会验证包的架构、systemd、`sudo`/`visudo`/`openssl`，并仅默认接受 Debian 12、Ubuntu 22.04/24.04/26.04；其他系统必须明确传入 `--allow-unsupported-system`。
 
@@ -82,3 +86,5 @@ Docker 管理默认关闭，因为 Docker socket 等同高权限主机控制。�
 ```
 
 User Mode 仅写入该账号的 XDG 数据、配置、状态和缓存目录；它只绑定 `127.0.0.1`，不创建 systemd system unit、不修改 PAM、sudoers、防火墙或 `/etc`。远程连接请使用 SSH 本地转发。`relaxkon upgrade`、`stop` 和 `uninstall` 使用相同的用户态目录；没有 user systemd 或 linger 也可以使用这些命令。
+
+User Mode 也会在该账号私有的 XDG 配置目录自动生成并保存审计实例编号和密钥；用户无需执行额外步骤。

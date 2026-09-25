@@ -276,14 +276,31 @@ install_bootstrap_certificate
 # contract, so they remain stable even if the general data root is customized.
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 /var/lib/relaxkonos/proxy /etc/relaxkonos/proxy
 install -d -o root -g "$SERVICE_GROUP" -m 0710 /var/log/relaxkonos
+install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 /var/log/relaxkonos/runtime
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 /var/log/relaxkonos/proxy
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$INSTALL_ROOT/data"
 SECRET="$(openssl rand -base64 48)"
 JWT_SECRET=
+OBSERVABILITY_INSTANCE_ID=
+OBSERVABILITY_AUDIT_HMAC_KEY=
 if [[ -f /etc/relaxkonos/server.env ]]; then
   JWT_SECRET="$(grep -m1 '^Jwt__Secret=' /etc/relaxkonos/server.env | cut -d= -f2- || true)"
+  OBSERVABILITY_INSTANCE_ID="$(grep -m1 '^Observability__InstanceId=' /etc/relaxkonos/server.env | cut -d= -f2- || true)"
+  OBSERVABILITY_AUDIT_HMAC_KEY="$(grep -m1 '^Observability__AuditHmacKey=' /etc/relaxkonos/server.env | cut -d= -f2- || true)"
 fi
 if [[ ${#JWT_SECRET} -lt 32 ]]; then JWT_SECRET="$(openssl rand -base64 48)"; fi
+if ! [[ "$OBSERVABILITY_INSTANCE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+  OBSERVABILITY_INSTANCE_ID="$(cat /proc/sys/kernel/random/uuid)"
+fi
+# This secret is installation-owned: it is neither printed nor requested from an operator.
+# Preserve it across repairs/upgrades so the audit integrity chain remains verifiable.
+OBSERVABILITY_KEY_LENGTH=0
+if [[ -n "$OBSERVABILITY_AUDIT_HMAC_KEY" ]]; then
+  OBSERVABILITY_KEY_LENGTH="$(printf '%s' "$OBSERVABILITY_AUDIT_HMAC_KEY" | base64 -d 2>/dev/null | wc -c || true)"
+fi
+if [[ "$OBSERVABILITY_KEY_LENGTH" -lt 32 ]]; then
+  OBSERVABILITY_AUDIT_HMAC_KEY="$(openssl rand -base64 48)"
+fi
 
 cat >/etc/relaxkonos/guardian.env <<EOF
 RELAXKONOS_GUARDIAN_SHARED_SECRET=$SECRET
@@ -300,6 +317,10 @@ Storage__DatabasePath=$SERVER_DATA/relaxkonos.db
 DockerCompose__DataDirectory=$COMPOSE_DATA
 PrivilegedHelper__HelperPath=$PRIVILEGED_HELPER
 PrivilegedHelper__SudoPath=$(command -v sudo)
+Observability__InstanceId=$OBSERVABILITY_INSTANCE_ID
+Observability__LogDirectory=/var/log/relaxkonos/runtime
+Observability__AuditDatabasePath=$SERVER_DATA/security-audit.db
+Observability__AuditHmacKey=$OBSERVABILITY_AUDIT_HMAC_KEY
 EOF
 if [[ "$CERTIFICATE_MODE" != none ]]; then
   cat >>/etc/relaxkonos/server.env <<EOF

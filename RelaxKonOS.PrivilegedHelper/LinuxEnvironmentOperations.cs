@@ -24,7 +24,8 @@ internal static class LinuxEnvironmentOperations
     internal static PrivilegedOperationResult ExecuteForPath(PrivilegedOperationRequest request, string environmentPath, bool pamEnvironmentEnabled)
     {
         var allowed = new PrivilegedOperationRequest(request.Operation, EnvironmentTarget: request.EnvironmentTarget,
-            EnvironmentChange: request.EnvironmentChange, ExpectedRevision: request.ExpectedRevision, OperationId: request.OperationId);
+            EnvironmentChange: request.EnvironmentChange, ExpectedRevision: request.ExpectedRevision, OperationId: request.OperationId,
+            Correlation: request.Correlation);
         if (request != allowed || request.EnvironmentTarget is not { } target) return Failure(PrivilegedProblemCode.InvalidRequest);
         if (target.Scope != SettingsScope.HostMachine || target.ResourceId != "host/environment/machine" || target.PlatformIdentity is not null)
             return Failure(PrivilegedProblemCode.ResourceNotAllowed);

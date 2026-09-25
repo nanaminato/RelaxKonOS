@@ -130,10 +130,10 @@ download_bundle() {
   unzip -q "$archive" -d "$extracted"; printf '%s\n' "$extracted"
 }
 start() {
-  local foreground=${1:-false} pid binary guardian
+  local foreground=${1:-false} pid binary guardian observability_instance_id observability_key observability_key_length
   acquire_lifecycle_lock
   if pid=$(read_pid); then echo "RelaxKonOS is already running (pid $pid)."; return; fi
-  binary=$(server_binary); guardian=$(guardian_binary); ensure_private_dir "$state_root/run"; ensure_private_dir "$state_root/logs"; ensure_private_dir "$state_root/guardian"; write_config
+  binary=$(server_binary); guardian=$(guardian_binary); ensure_private_dir "$state_root/run"; ensure_private_dir "$state_root/logs"; ensure_private_dir "$state_root/logs/runtime"; ensure_private_dir "$state_root/guardian"; write_config
   export ASPNETCORE_URLS="http://127.0.0.1:$port"
   rm -f -- "$state_root/run/server.sock"
   export Server__Mode=user Identity__LinuxPamTransport=in-process Identity__LinuxPamService=login Privileges__Backend=disabled UserMode__ControlSocketPath="$state_root/run/server.sock"
@@ -141,6 +141,21 @@ start() {
   export RELAXKONOS_GUARDIAN_MODE=user RELAXKONOS_GUARDIAN_DATA_DIR="$state_root/guardian" RELAXKONOS_GUARDIAN_PIPE="relaxkonos-guardian-$UID"
   export RELAXKONOS_GUARDIAN_SHARED_SECRET="$(<"$config_root/secrets/guardian.secret" 2>/dev/null || true)"
   if [[ -z ${RELAXKONOS_GUARDIAN_SHARED_SECRET} ]]; then umask 077; head -c 32 /dev/urandom | base64 > "$config_root/secrets/guardian.secret"; export RELAXKONOS_GUARDIAN_SHARED_SECRET=$(<"$config_root/secrets/guardian.secret"); fi
+  observability_instance_id="$(<"$config_root/secrets/observability.instance-id" 2>/dev/null || true)"
+  if ! [[ "$observability_instance_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+    observability_instance_id="$(cat /proc/sys/kernel/random/uuid)"
+    printf '%s\n' "$observability_instance_id" > "$config_root/secrets/observability.instance-id"
+    chmod 600 "$config_root/secrets/observability.instance-id"
+  fi
+  observability_key="$(<"$config_root/secrets/observability-audit-hmac.key" 2>/dev/null || true)"
+  observability_key_length=0
+  if [[ -n "$observability_key" ]]; then observability_key_length="$(printf '%s' "$observability_key" | base64 -d 2>/dev/null | wc -c || true)"; fi
+  if [[ "$observability_key_length" -lt 32 ]]; then
+    umask 077; head -c 48 /dev/urandom | base64 > "$config_root/secrets/observability-audit-hmac.key"
+    observability_key="$(<"$config_root/secrets/observability-audit-hmac.key")"
+    chmod 600 "$config_root/secrets/observability-audit-hmac.key"
+  fi
+  export Observability__InstanceId="$observability_instance_id" Observability__LogDirectory="$state_root/logs/runtime" Observability__AuditDatabasePath="$state_root/server/security-audit.db" Observability__AuditHmacKey="$observability_key"
   export GuardianAgent__PipeName="$RELAXKONOS_GUARDIAN_PIPE" GuardianAgent__SharedSecret="$RELAXKONOS_GUARDIAN_SHARED_SECRET"
   nohup "$guardian" >> "$state_root/logs/guardian.log" 2>&1 &
   local guardian_pid=$!

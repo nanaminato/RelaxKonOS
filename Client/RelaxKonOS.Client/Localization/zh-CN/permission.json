@@ -62,6 +62,10 @@
         "permission.server.tunnels.read.display_name": "读取隧道配置",
         "permission.server.tunnels.read.description": "查看服务器上安全的隧道、FRP 服务器配置、运行时和已脱敏日志状态。",
         "permission.server.tunnels.manage.display_name": "管理隧道",
-        "permission.server.tunnels.manage.description": "创建、更改、应用、停止和删除服务器隧道配置及 FRP 运行时设置。"
+        "permission.server.tunnels.manage.description": "创建、更改、应用、停止和删除服务器隧道配置及 FRP 运行时设置。",
+        "permission.server.event-alerts.read.display_name": "读取运维告警",
+        "permission.server.event-alerts.read.description": "查看服务器上的安全运维事件历史、告警状态和处理引用。",
+        "permission.server.event-alerts.manage.display_name": "管理运维告警",
+        "permission.server.event-alerts.manage.description": "确认告警、手动关闭允许的告警，并创建有时限的抑制。"
     }
 }

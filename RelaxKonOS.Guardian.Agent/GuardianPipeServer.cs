@@ -1,12 +1,14 @@
 using System.IO.Pipes;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ProcessGuardian;
+using RelaxKonOS.Protocol.Observability;
 
 namespace RelaxKonOS.Guardian.Agent;
 
 /// <summary>Local, authenticated IPC server. Named pipes map to Unix domain sockets on Unix.</summary>
-internal sealed class GuardianPipeServer(GuardianAgentOptions options, WorkloadSupervisor supervisor)
+internal sealed class GuardianPipeServer(GuardianAgentOptions options, WorkloadSupervisor supervisor, ILogger<GuardianPipeServer> logger)
 {
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -27,9 +29,27 @@ internal sealed class GuardianPipeServer(GuardianAgentOptions options, WorkloadS
         try
         {
             var request = JsonSerializer.Deserialize<GuardianAgentRequest>(line ?? string.Empty, RelaxKonOSJsonOptions.Default);
-            response = request is null || !CryptographicEquals(request.SharedSecret, options.SharedSecret)
-                ? new GuardianAgentResponse(false, "guardian.ipc_unauthorized")
-                : await supervisor.HandleAsync(request, cancellationToken);
+            if (request is null || !CryptographicEquals(request.SharedSecret, options.SharedSecret))
+            {
+                logger.LogWarning(new EventId(1301, "privileged.transport.rejected"), "Guardian IPC authentication was rejected. CorrelationId={CorrelationId}", Guid.NewGuid());
+                response = new GuardianAgentResponse(false, "guardian.ipc_unauthorized");
+            }
+            else if (request.Correlation is null || !request.Correlation.IsValid())
+            {
+                logger.LogWarning(new EventId(1301, "privileged.transport.rejected"), "Guardian IPC correlation metadata was rejected. CorrelationId={CorrelationId}", Guid.NewGuid());
+                response = new GuardianAgentResponse(false, "guardian.ipc_invalid_correlation");
+            }
+            else
+            {
+                using var scope = logger.BeginScope(new Dictionary<string, object?>
+                {
+                    ["correlationId"] = request.Correlation.CorrelationId,
+                    ["operationId"] = request.Correlation.OperationId,
+                    ["action"] = request.Correlation.Action,
+                    ["component"] = "guardian"
+                });
+                response = await supervisor.HandleAsync(request, cancellationToken);
+            }
         }
         catch (JsonException) { response = new GuardianAgentResponse(false, "guardian.ipc_invalid_request"); }
         await writer.WriteLineAsync(JsonSerializer.Serialize(response, RelaxKonOSJsonOptions.Default));

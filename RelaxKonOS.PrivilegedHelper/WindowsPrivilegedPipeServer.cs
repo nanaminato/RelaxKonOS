@@ -82,6 +82,11 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
             await WriteResultAsync(pipe, secret, new(false, 64, Error: "operation id is required", ProblemCode: PrivilegedProblemCode.InvalidRequest), cancellationToken);
             return;
         }
+        if (request.Correlation is not { } correlation || !correlation.IsValid())
+        {
+            await WriteResultAsync(pipe, secret, new(false, 64, Error: "valid correlation metadata is required", ProblemCode: PrivilegedProblemCode.InvalidRequest), cancellationToken);
+            return;
+        }
         PruneRecentOperationIds();
         if (_recentOperationIds.Count >= MaximumRecentOperationIds)
         {

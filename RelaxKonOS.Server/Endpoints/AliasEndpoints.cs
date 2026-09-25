@@ -5,16 +5,38 @@ using RelaxKonOS.Server.Identity;
 
 namespace RelaxKonOS.Server.Endpoints;
 
-public sealed class AuthenticationEndpointFilter(AuthenticationGate gate) : IEndpointFilter
+public sealed class AuthenticationEndpointFilter(AuthenticationGate gate, ILogger<AuthenticationEndpointFilter> logger) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         context.HttpContext.Response.Headers.CacheControl = "no-store";
         try { using var lease = gate.Enter(); return await next(context); }
-        catch (AliasAuthenticationException exception) { return Failure(context.HttpContext, exception.Status, exception.Code); }
-        catch (DbException) { return Failure(context.HttpContext, 503, "authentication-unavailable"); }
-        catch (DbUpdateException) { return Failure(context.HttpContext, 503, "authentication-unavailable"); }
+        catch (AliasAuthenticationException exception)
+        {
+            LogFailure(context.HttpContext, exception.Status, exception.Code);
+            return Failure(context.HttpContext, exception.Status, exception.Code);
+        }
+        catch (DbException exception)
+        {
+            logger.LogError("Authentication database operation failed. ExceptionType={ExceptionType} Route={Route}",
+                exception.GetType().Name, context.HttpContext.Request.Path.Value);
+            LogFailure(context.HttpContext, 503, "authentication-unavailable");
+            return Failure(context.HttpContext, 503, "authentication-unavailable");
+        }
+        catch (DbUpdateException exception)
+        {
+            logger.LogError("Authentication database update failed. ExceptionType={ExceptionType} Route={Route}",
+                exception.GetType().Name, context.HttpContext.Request.Path.Value);
+            LogFailure(context.HttpContext, 503, "authentication-unavailable");
+            return Failure(context.HttpContext, 503, "authentication-unavailable");
+        }
     }
+
+    private void LogFailure(HttpContext http, int status, string code)
+        => logger.Log(status >= 500 ? LogLevel.Error : LogLevel.Warning,
+            "Authentication request rejected. StatusCode={StatusCode} ProblemCode={ProblemCode} Route={Route} TraceIdentifier={TraceIdentifier}",
+            status, code, http.Request.Path.Value, http.TraceIdentifier);
+
     private static IResult Failure(HttpContext http, int status, string code)
     {
         if (status == 429) http.Response.Headers.RetryAfter = "5";

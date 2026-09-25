@@ -25,7 +25,7 @@ internal static class HostIdentityOperations
     public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request)
     {
         var allowed = new PrivilegedOperationRequest(request.Operation, HostName: request.HostName,
-            ExpectedRevision: request.ExpectedRevision, OperationId: request.OperationId);
+            ExpectedRevision: request.ExpectedRevision, OperationId: request.OperationId, Correlation: request.Correlation);
         if (request != allowed || (request.Operation == PrivilegedOperationKind.HostIdentityRead
             && (request.HostName is not null || request.ExpectedRevision is not null)))
             return Failure(PrivilegedProblemCode.InvalidRequest);

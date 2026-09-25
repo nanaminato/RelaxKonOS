@@ -8,6 +8,8 @@
         "api.auth.account_expired": "このアカウントは有効期限が切れています。",
         "api.auth.account_restriction": "このアカウントはサインインが制限されています。",
         "api.auth.invalid_input": "すべての必須情報を入力してください。",
+        "api.auth.authentication_unavailable": "システム アカウント認証は一時的に利用できません。サーバーの認証設定を確認してから、もう一度お試しください。",
+        "api.auth.login_rate_limited": "サインイン試行が多すぎます。数分待ってから、もう一度お試しください。",
         "api.auth.failed": "サインインに失敗しました。後でもう一度お試しください。",
         "api.auth.failed_short": "サインインに失敗しました。"
     }

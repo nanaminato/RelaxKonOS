@@ -53,6 +53,7 @@ global using RelaxKonOS.Server.UserExecution;
 global using RelaxKonOS.Protocol.UserExecution;
 global using RelaxKonOS.Protocol.Common;
 global using RelaxKonOS.Server.HostMode;
+global using RelaxKonOS.Server.Observability;
 global using System.Security.Claims;
 global using System.IdentityModel.Tokens.Jwt;
 global using RelaxKonOS.Core.Applications;

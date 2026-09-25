@@ -44,6 +44,11 @@
         "application.relaxkonos.proxy.display_name": "代理管理器",
         "application.relaxkonos.proxy.description": "管理主机代理运行时、流量与网络恢复状态",
         "application.relaxkonos.application-deployments.display_name": "应用部署",
-        "application.relaxkonos.application-deployments.description": "在 RelaxKonOS Server 上部署和管理容器化应用"
+        "application.relaxkonos.application-deployments.description": "在 RelaxKonOS Server 上部署和管理容器化应用",
+        "application.relaxkonos.event-alerts.display_name": "事件与告警中心",
+        "application.relaxkonos.event-alerts.description": "浏览 RelaxKonOS Server 上的安全运维事件和当前告警",
+        "event_alerts.sign_in": "登录后即可查看运维告警。",
+        "event_alerts.empty": "当前视图没有匹配的告警。",
+        "event_alerts.load_failed": "告警数据暂时不可用，请稍后重试。"
     }
 }

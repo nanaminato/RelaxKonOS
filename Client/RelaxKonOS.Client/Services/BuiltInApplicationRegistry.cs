@@ -42,6 +42,7 @@ public sealed class BuiltInApplicationRegistry : IBuiltInApplicationFactoryRegis
             Define<RelaxKonOS.Client.Apps.AppInstaller.AppInstallerApp>("appinstaller", "relaxkonos.appinstaller", services),
             Define<RelaxKonOS.Client.Apps.Registry.RegistryApp>("registry", "relaxkonos.registry", services),
             Define<RelaxKonOS.Client.Apps.ApplicationDeployments.ApplicationDeploymentsApp>("application-deployments", "relaxkonos.application-deployments", services),
+            Define<RelaxKonOS.Client.Apps.EventAlerts.EventAlertCenterApp>("event-alerts", "relaxkonos.event-alerts", services),
         });
     }
 

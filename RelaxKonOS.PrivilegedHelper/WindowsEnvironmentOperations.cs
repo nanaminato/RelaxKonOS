@@ -18,7 +18,8 @@ internal static class WindowsEnvironmentOperations
     public static PrivilegedOperationResult Execute(PrivilegedOperationRequest request)
     {
         var allowed = new PrivilegedOperationRequest(request.Operation, EnvironmentTarget: request.EnvironmentTarget,
-            EnvironmentChange: request.EnvironmentChange, ExpectedRevision: request.ExpectedRevision, OperationId: request.OperationId);
+            EnvironmentChange: request.EnvironmentChange, ExpectedRevision: request.ExpectedRevision, OperationId: request.OperationId,
+            Correlation: request.Correlation);
         if (request != allowed || request.EnvironmentTarget is not { } target) return Failure(PrivilegedProblemCode.InvalidRequest);
         var machine = target.Scope == SettingsScope.HostMachine;
         if (machine ? target.ResourceId != "host/environment/machine" || target.PlatformIdentity is not null
