@@ -23,14 +23,26 @@ public static class ServerReleaseValidation
         if (manifest.SchemaVersion != ServerDeploymentProtocol.Version) return ServerDeploymentProblemCodes.PackageManifestInvalid;
         if (!ServerDeploymentInputRules.IsVersion(manifest.Version)) return ServerDeploymentProblemCodes.PackageManifestInvalid;
         if (manifest.Runtime != expectedRuntime) return ServerDeploymentProblemCodes.PackageRuntimeMismatch;
-        if (manifest.SupportedSystems.Count == 0) return ServerDeploymentProblemCodes.PackageManifestInvalid;
-        if (manifest.Files.Count == 0) return ServerDeploymentProblemCodes.PackageManifestInvalid;
+        if (manifest.SupportedSystems is null || manifest.SupportedSystems.Count == 0)
+            return ServerDeploymentProblemCodes.PackageManifestInvalid;
+        if (manifest.Files is null || manifest.Files.Count == 0 || manifest.Payload is null)
+            return ServerDeploymentProblemCodes.PackageManifestInvalid;
 
+        var platform = expectedRuntime is ServerRuntimeIdentifier.WinX64 or ServerRuntimeIdentifier.WinArm64
+            ? "windows" : "linux";
+        if (!manifest.Payload.TryGetValue(platform, out var payload) || payload.Count == 0)
+            return ServerDeploymentProblemCodes.PackageManifestInvalid;
+
+        var paths = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in manifest.Files)
         {
             var problem = ValidateFile(file);
             if (problem is not null) return problem;
+            if (!paths.Add(file.Path)) return ServerDeploymentProblemCodes.PackageManifestInvalid;
         }
+        foreach (var path in payload.Values)
+            if (!IsSafeManifestPath(path) || !paths.Contains(path))
+                return ServerDeploymentProblemCodes.PackageManifestInvalid;
         return null;
     }
 
@@ -118,6 +130,8 @@ public static class ServerReleaseSignatureVerifier
         if (signature is null) return ServerDeploymentProblemCodes.PackageSignatureInvalid;
         if (signature.SchemaVersion != ServerDeploymentProtocol.Version) return ServerDeploymentProblemCodes.PackageSignatureInvalid;
         if (signature.Algorithm != ServerReleaseSignatureAlgorithms.RsaPssSha256)
+            return ServerDeploymentProblemCodes.PackageSignatureInvalid;
+        if (string.IsNullOrWhiteSpace(signature.KeyId) || string.IsNullOrWhiteSpace(signature.Signature))
             return ServerDeploymentProblemCodes.PackageSignatureInvalid;
         if (string.IsNullOrWhiteSpace(publicKeyPem)) return ServerDeploymentProblemCodes.PackageTrustRootMissing;
         if (!trustPolicy.IsTrustedKey(signature.KeyId) && !trustPolicy.AcceptsUntrustedSource)

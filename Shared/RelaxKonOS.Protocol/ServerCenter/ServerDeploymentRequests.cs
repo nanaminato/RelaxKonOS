@@ -19,7 +19,7 @@ public sealed record ServerDeploymentRequest(
 /// 动作参数。所有字段都是固定枚举或受限字符串；本地离线包先经 SFTP 上传到受控暂存目录，
 /// 请求里只携带受约束的文件名与摘要，绝不携带宿主路径。
 /// </summary>
-/// <param name="StagedPackageName">暂存目录内的裸文件名，由启动器按安全模式校验；不得包含路径分隔符或符号链接。</param>
+/// <param name="StagedPackageName">安装/升级必需的已签名 ZIP 裸文件名。客户端先取得并验证 ZIP，再上传到私有暂存目录；不得包含路径分隔符或符号链接。</param>
 /// <param name="PackageDigest">包 ZIP 的 SHA-256（十六进制）。签名与摘要都必须通过才能执行。</param>
 /// <param name="ExpectedInstallationId">升级/修复/卸载/回滚必须与宿主实际安装标识一致，否则拒绝执行。</param>
 /// <param name="Confirmed">破坏性动作（卸载删除数据、升级中断服务）的显式确认。</param>

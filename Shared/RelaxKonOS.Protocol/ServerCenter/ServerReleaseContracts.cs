@@ -21,7 +21,7 @@ public sealed record ServerReleaseManifestDto(
     [property: JsonPropertyName("version")] string Version,
     [property: JsonPropertyName("runtime")] ServerRuntimeIdentifier Runtime,
     [property: JsonPropertyName("supportedSystems")] IReadOnlyList<string> SupportedSystems,
-    [property: JsonPropertyName("payloadRoot")] string? PayloadRoot,
+    [property: JsonPropertyName("payload")] IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Payload,
     [property: JsonPropertyName("createdAtUtc")] DateTimeOffset? CreatedAtUtc,
     [property: JsonPropertyName("files")] IReadOnlyList<ServerReleaseFileDto> Files);
 

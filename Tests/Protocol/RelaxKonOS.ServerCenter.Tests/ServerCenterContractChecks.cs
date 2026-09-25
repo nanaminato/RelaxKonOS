@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -19,6 +21,7 @@ internal static class ServerCenterContractChecks
         VerifyRetentionPolicy();
         VerifyModeMatrix();
         VerifyReleaseTrust();
+        VerifySignedArchive();
         VerifyJsonContract();
         VerifyOperationRecovery();
         VerifyProblemCodes();
@@ -32,7 +35,9 @@ internal static class ServerCenterContractChecks
     {
         var valid = new ServerReleaseManifestDto(
             ServerDeploymentProtocol.Version, ServerReleasePackageKind.Server, "0.1.0",
-            ServerRuntimeIdentifier.LinuxX64, ["debian-12", "ubuntu-24.04"], "payload",
+            ServerRuntimeIdentifier.LinuxX64, ["debian-12", "ubuntu-24.04"],
+            new Dictionary<string, IReadOnlyDictionary<string, string>>
+            { ["linux"] = new Dictionary<string, string> { ["server"] = "payload/linux/server/RelaxKonOS.Server" } },
             DateTimeOffset.UnixEpoch,
             [new ServerReleaseFileDto("payload/linux/server/RelaxKonOS.Server", 1024, new string('a', 64))]);
 
@@ -47,6 +52,14 @@ internal static class ServerCenterContractChecks
         Check(ServerReleaseValidation.ValidateManifest(valid with { Files = [] }, ServerRuntimeIdentifier.LinuxX64)
                 == ServerDeploymentProblemCodes.PackageManifestInvalid,
             "空文件清单被拒绝");
+        Check(ServerReleaseValidation.ValidateManifest(valid with
+                { Payload = new Dictionary<string, IReadOnlyDictionary<string, string>>() },
+                ServerRuntimeIdentifier.LinuxX64) == ServerDeploymentProblemCodes.PackageManifestInvalid,
+            "缺失目标平台 payload 被拒绝");
+        Check(ServerReleaseValidation.ValidateManifest(valid with
+                { Files = [valid.Files[0], valid.Files[0]] }, ServerRuntimeIdentifier.LinuxX64)
+                == ServerDeploymentProblemCodes.PackageManifestInvalid,
+            "重复清单路径被拒绝");
         Check(ServerReleaseValidation.ValidateManifest(valid with { Version = "not a version!" }, ServerRuntimeIdentifier.LinuxX64)
                 == ServerDeploymentProblemCodes.PackageManifestInvalid,
             "非法版本号被拒绝");
@@ -226,7 +239,10 @@ internal static class ServerCenterContractChecks
 
         var manifest = new ServerReleaseManifestDto(
             ServerDeploymentProtocol.Version, ServerReleasePackageKind.Server, "0.1.0",
-            ServerRuntimeIdentifier.LinuxX64, ["debian-12"], "payload", DateTimeOffset.UnixEpoch,
+            ServerRuntimeIdentifier.LinuxX64, ["debian-12"],
+            new Dictionary<string, IReadOnlyDictionary<string, string>>
+            { ["linux"] = new Dictionary<string, string> { ["server"] = "payload/linux/server/RelaxKonOS.Server" } },
+            DateTimeOffset.UnixEpoch,
             [new ServerReleaseFileDto("payload/linux/server/RelaxKonOS.Server", 1024, new string('c', 64))]);
         var manifestBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(manifest, RelaxKonOSJsonOptions.Default);
         var manifestSignature = Sign(manifestBytes, rsa, keyId);
@@ -245,6 +261,85 @@ internal static class ServerCenterContractChecks
             "被篡改的 manifest 字节签名校验失败");
     }
 
+    private static void VerifySignedArchive()
+    {
+        using var rsa = RSA.Create(2048);
+        const string keyId = "test-release-key";
+        const string path = "payload/linux/server/RelaxKonOS.Server";
+        var payload = "signed server payload"u8.ToArray();
+        var digest = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
+        var manifest = new ServerReleaseManifestDto(
+            ServerDeploymentProtocol.Version, ServerReleasePackageKind.Server, "0.1.0",
+            ServerRuntimeIdentifier.LinuxX64, ["debian-12"],
+            new Dictionary<string, IReadOnlyDictionary<string, string>>
+            { ["linux"] = new Dictionary<string, string> { ["server"] = path } },
+            DateTimeOffset.UnixEpoch, [new ServerReleaseFileDto(path, payload.Length, digest)]);
+        var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, RelaxKonOSJsonOptions.Default);
+        var signatureBytes = JsonSerializer.SerializeToUtf8Bytes(Sign(manifestBytes, rsa, keyId),
+            RelaxKonOSJsonOptions.Default);
+        var keys = new Dictionary<string, string> { [keyId] = rsa.ExportSubjectPublicKeyInfoPem() };
+
+        static MemoryStream Archive(byte[] manifestBytes, byte[] signatureBytes, byte[] payload,
+            string path, bool extra = false)
+        {
+            var stream = new MemoryStream();
+            using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                foreach (var (name, bytes) in new[]
+                {
+                    ("manifest.json", manifestBytes), ("manifest.json.sig", signatureBytes), (path, payload)
+                })
+                {
+                    using var entry = zip.CreateEntry(name).Open();
+                    entry.Write(bytes);
+                }
+                if (extra)
+                {
+                    using var entry = zip.CreateEntry("unlisted.txt").Open();
+                    entry.Write("unlisted"u8);
+                }
+            }
+            stream.Position = 0;
+            return stream;
+        }
+
+        using var valid = Archive(manifestBytes, signatureBytes, payload, path);
+        var verified = ServerReleaseArchiveVerifier.Verify(
+            valid, ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxX64, keys);
+        Check(verified.Verified && verified.Manifest?.Version == "0.1.0", "已签名 ZIP 的逐文件校验通过");
+        var extractParent = Path.Combine(Path.GetTempPath(), "relaxkonos-release-check-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var target = Path.Combine(extractParent, "package");
+            var extracted = ServerReleaseArchiveVerifier.VerifyAndExtract(valid, target,
+                ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxX64, keys);
+            Check(extracted.Verified && File.ReadAllBytes(Path.Combine(target, path.Replace('/', Path.DirectorySeparatorChar)))
+                .AsSpan().SequenceEqual(payload), "启动器只解出已签名 ZIP 中的文件");
+            var rejectedTarget = Path.Combine(extractParent, "rejected");
+            var rejected = ServerReleaseArchiveVerifier.VerifyAndExtract(valid, rejectedTarget,
+                ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxArm64, keys);
+            Check(!rejected.Verified && !Directory.Exists(rejectedTarget), "错误架构在解包前被拒绝");
+        }
+        finally
+        {
+            if (Directory.Exists(extractParent)) Directory.Delete(extractParent, recursive: true);
+        }
+        Check(ServerReleaseArchiveVerifier.Verify(valid, ServerReleasePackageKind.Server,
+                ServerRuntimeIdentifier.LinuxArm64, keys).ProblemCode
+              == ServerDeploymentProblemCodes.PackageRuntimeMismatch, "错误 RID 的 ZIP 被拒绝");
+        Check(ServerReleaseArchiveVerifier.Verify(valid, ServerReleasePackageKind.Server,
+                ServerRuntimeIdentifier.LinuxX64, new Dictionary<string, string>()).ProblemCode
+              == ServerDeploymentProblemCodes.PackageTrustRootMissing, "缺少固定信任根时拒绝 ZIP");
+        using var altered = Archive(manifestBytes, signatureBytes, "altered"u8.ToArray(), path);
+        Check(ServerReleaseArchiveVerifier.Verify(altered, ServerReleasePackageKind.Server,
+                ServerRuntimeIdentifier.LinuxX64, keys).ProblemCode
+              == ServerDeploymentProblemCodes.PackageManifestInvalid, "包内文件长度变化被拒绝");
+        using var extra = Archive(manifestBytes, signatureBytes, payload, path, extra: true);
+        Check(ServerReleaseArchiveVerifier.Verify(extra, ServerReleasePackageKind.Server,
+                ServerRuntimeIdentifier.LinuxX64, keys).ProblemCode
+              == ServerDeploymentProblemCodes.PackageLayoutUnsafe, "未列入签名清单的文件被拒绝");
+    }
+
     private static void VerifyJsonContract()
     {
         var request = new ServerDeploymentRequest(
@@ -252,6 +347,17 @@ internal static class ServerCenterContractChecks
             new ServerDeploymentOptions(ServerPackageSourceKind.OfficialStable, ServerNetworkProfile.Loopback));
 
         var json = JsonSerializer.Serialize(request, RelaxKonOSJsonOptions.Default);
+        Check(ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(json)),
+            "Linux 启动器接受规范请求字节");
+        Check(!ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(
+            "{\"schemaVersion\":1,\"schemaVersion\":1,\"operationId\":\"" + request.OperationId + "\",\"kind\":\"probe\"}")),
+            "Linux 启动器拒绝重复字段");
+        Check(!ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(
+            "{\"schemaVersion\":1,\"operationId\":\"" + request.OperationId + "\",\"kind\":\"probe\",\"options\":{\"mode\":{\"kind\":\"install\"}}}")),
+            "Linux 启动器拒绝嵌套字段伪装");
+        Check(!ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(
+            "{\"schemaVersion\":1,\"operationId\":\"" + request.OperationId + "\",\"kind\":\"probe\",\"options\":{\"source\":0,\"network\":\"loopback\"}}")),
+            "Linux 启动器拒绝数字枚举伪装");
         Check(json.Contains("\"kind\":\"probe\"", StringComparison.Ordinal), "枚举以 camelCase 字符串序列化");
         Check(json.Contains("\"network\":\"loopback\"", StringComparison.Ordinal), "网络选项以字符串序列化");
 
@@ -276,8 +382,11 @@ internal static class ServerCenterContractChecks
         var opJson = JsonSerializer.Serialize(operation, RelaxKonOSJsonOptions.Default);
         Check(JsonSerializer.Deserialize<ServerDeploymentOperationDto>(opJson, RelaxKonOSJsonOptions.Default) == operation,
             "操作记录可无损往返序列化");
-        Check(JsonSerializer.Deserialize<ServerRuntimeIdentifier>("\"winX64\"", RelaxKonOSJsonOptions.Default)
-              == ServerRuntimeIdentifier.WinX64, "Windows 启动器的 RID 与线协议一致");
+        Check(JsonSerializer.Serialize(ServerRuntimeIdentifier.WinX64, RelaxKonOSJsonOptions.Default) == "\"win-x64\""
+              && JsonSerializer.Deserialize<ServerRuntimeIdentifier>("\"win-x64\"", RelaxKonOSJsonOptions.Default)
+              == ServerRuntimeIdentifier.WinX64, "Windows 启动器的 RID 与发布包一致");
+        Check(JsonSerializer.Serialize(ServerReleasePackageKind.UserServer, RelaxKonOSJsonOptions.Default)
+              == "\"user-server\"", "User Mode 包类型与发布包一致");
     }
 
     private static void VerifyOperationRecovery()

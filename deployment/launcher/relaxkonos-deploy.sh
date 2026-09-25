@@ -4,7 +4,8 @@
 # This is the only thing a client executes over SSH. It accepts a fixed action set and a
 # structured request; it never accepts an arbitrary command, script path, service name or
 # delete path. The package and this launcher are uploaded into one private staging directory,
-# and every path the launcher reads or removes is derived from its own location.
+# and package paths are derived from its own location. The journal has a fixed account-wide path
+# so reconnects and two separately staged clients see the same operation records and write lock.
 #
 # It validates the request, takes a per-installation write lock, keeps a persistent operation
 # record and event stream, invokes the existing deployment engine, and prints machine-readable
@@ -16,7 +17,11 @@ script_raw=${BASH_SOURCE[0]}
 staging_root=$(cd -- "$(dirname -- "$script_raw")" && pwd -P)
 request_path=$staging_root/request.json
 package_root=$staging_root/package
-journal_root=$staging_root/journal
+if (( EUID == 0 )); then
+  journal_root=/var/lib/relaxkonos-deployment
+else
+  journal_root=${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos-deployment
+fi
 operations_root=$journal_root/operations
 lock_path=$journal_root/deploy.lock
 
@@ -25,9 +30,9 @@ lock_path=$journal_root/deploy.lock
 # parse the stream without filtering engine noise.
 launcher_stdout() { printf '%s\n' "$1"; }
 launcher_note() { printf '%s\n' "$*" >&2; }
-launcher_fail() { # problemCode safeMessage exitCode
-  local code=$1 message=$2 code_exit=${3:-2}
-  emit_rejection "$code" "$message"
+launcher_fail() { # problemCode safeMessage exitCode persist
+  local code=$1 message=$2 code_exit=${3:-2} persist=${4:-true}
+  emit_rejection "$code" "$message" "$persist"
   exit "$code_exit"
 }
 
@@ -52,6 +57,7 @@ record_snapshot=
 record_probe=
 started_at=
 completed_at=
+journal_ready=false
 
 ensure_journal() {
   [[ ! -L $staging_root ]] || launcher_fail invalid_request "staging directory must not be a symbolic link"
@@ -59,8 +65,12 @@ ensure_journal() {
   local mode
   mode=$(stat -c %a -- "$staging_root")
   (( mode % 100 / 10 == 0 && mode % 10 == 0 )) || launcher_fail invalid_request "staging directory must not be group- or world-writable"
-  mkdir -p -- "$operations_root"
-  chmod 700 -- "$journal_root" "$operations_root" 2>/dev/null || true
+  [[ ! -L $journal_root ]] || launcher_fail invalid_request "deployment journal must not be a symbolic link"
+  (umask 077; mkdir -p -- "$operations_root")
+  [[ -O $journal_root && -O $operations_root && ! -L $operations_root ]] \
+    || launcher_fail invalid_request "deployment journal must be owned by the invoking account"
+  chmod 700 -- "$journal_root" "$operations_root"
+  journal_ready=true
 }
 events_path() { printf '%s/%s.jsonl' "$operations_root" "$operation_id"; }
 record_path() { printf '%s/%s.json' "$operations_root" "$operation_id"; }
@@ -88,6 +98,7 @@ phase_is_cancellable() {
 # even when it missed intermediate events.
 emit_event() { # phase state progress problemCode safeMessage
   local phase=$1 state=$2 progress=$3 problem=$4 message=$5
+  [[ -z $problem || $problem == server-deployment.* ]] || problem=server-deployment.$problem
   sequence=$((sequence + 1))
   record_phase=$phase; record_state=$state; record_progress=$progress; record_problem=$problem; record_message=$message
   record_cancellable=$(phase_is_cancellable "$phase")
@@ -101,8 +112,14 @@ emit_event() { # phase state progress problemCode safeMessage
   launcher_stdout "$line"
   write_record
 }
-emit_rejection() { # problemCode safeMessage
-  record_phase=failed; record_state=failed; record_problem=$1; record_message=$2; record_cancellable=false
+emit_rejection() { # problemCode safeMessage persist
+  local problem=$1
+  [[ $problem == server-deployment.* ]] || problem=server-deployment.$problem
+  record_phase=failed; record_state=failed; record_problem=$problem; record_message=$2; record_cancellable=false
+  completed_at=$(now_utc)
+  if [[ ${3:-true} == true && $journal_ready == true && $operation_id =~ ^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$ ]]; then
+    write_record
+  fi
   launcher_stdout "$(record_json_only)"
 }
 record_json_only() {
@@ -124,6 +141,10 @@ read_request() {
   request_text=$(<"$request_path")
   [[ $request_text != *$'\n'* ]] || launcher_fail invalid_request "request must be a single line of JSON"
   [[ $request_text == \{*\} ]] || launcher_fail invalid_request "request must be a JSON object"
+  local verifier=$staging_root/release-verifier
+  [[ -f $verifier && ! -L $verifier && -x $verifier ]] || launcher_fail package_unavailable "the strict request verifier is missing"
+  "$verifier" validate-request "$request_path" >/dev/null 2>&1 \
+    || launcher_fail invalid_request "request fields, types or JSON structure are invalid"
 }
 json_token() {
   local key=$1
@@ -219,10 +240,7 @@ parse_request() {
   case "$operation_kind" in
     install|upgrade)
       [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required"
-      case "$options_source" in
-        localBundle) [[ -n $options_staged_name && -n $options_package_digest ]] || launcher_fail invalid_request "a local bundle needs stagedPackageName and packageDigest";;
-        directUrl) [[ -n $options_package_uri && -n $options_package_digest ]] || launcher_fail invalid_request "a direct URL package needs packageUri and packageDigest";;
-      esac
+      [[ -n $options_staged_name && -n $options_package_digest ]] || launcher_fail invalid_request "install and upgrade need a staged signed archive and SHA-256"
       ;;
     repair|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
   esac
@@ -318,7 +336,7 @@ existing_installation_state() {
 probe_json() {
   local machine runtime os_id= os_version= os_supported=false
   machine=$(uname -m)
-  case "$machine" in x86_64|amd64) runtime=linuxX64;; aarch64|arm64) runtime=linuxArm64;; *) runtime=;; esac
+  case "$machine" in x86_64|amd64) runtime=linux-x64;; aarch64|arm64) runtime=linux-arm64;; *) runtime=;; esac
   if [[ -r /etc/os-release ]]; then
     os_id=$(sed -nE 's/^ID="?([^"]*)"?$/\1/p' /etc/os-release | head -n1)
     os_version=$(sed -nE 's/^VERSION_ID="?([^"]*)"?$/\1/p' /etc/os-release | head -n1)
@@ -374,8 +392,8 @@ probe_json() {
 }
 
 # --- lock and idempotency ----------------------------------------------------------------------
-# One write operation per installation instance at a time. The lock lives in the staging journal
-# so an interrupted client leaves it behind for the next connection to observe.
+# One write operation per account at a time. The lock and records live outside ephemeral staging
+# and survive uninstall, so another client and a reconnect observe the same state.
 acquire_write_lock() {
   command -v flock >/dev/null || launcher_fail not_supported "flock is required for safe deployment operations"
   exec 8>"$lock_path"
@@ -388,8 +406,9 @@ check_idempotency() {
   local existing_digest current_digest
   existing_digest=$(<"$digest_file")
   current_digest=$(request_digest)
-  [[ $existing_digest == "$current_digest" ]] || launcher_fail idempotency_conflict "operationId was already used for a different request"
+  [[ $existing_digest == "$current_digest" ]] || launcher_fail idempotency_conflict "operationId was already used for a different request" 2 false
   # Same operation, same request: replay the recorded outcome instead of acting twice.
+  [[ -f $(record_path) ]] || launcher_fail recovery_unknown "the earlier operation has no durable receipt; inspect host state before retrying"
   cat -- "$(record_path)"
   exit 0
 }
@@ -399,18 +418,30 @@ persist_digest() { umask 077; request_digest > "$(digest_path)"; chmod 600 -- "$
 # The launcher maps a fixed action onto the existing deployment engine. It never passes a caller
 # supplied path, service name or command; only the package directory it staged itself.
 require_package() {
-  [[ -d $package_root && ! -L $package_root ]] || launcher_fail package_unavailable "the staged package directory is missing"
-  [[ -f $package_root/manifest.json ]] || launcher_fail package_manifest_invalid "the staged package has no manifest"
-  if [[ -n $options_staged_name ]]; then
-    local archive=$staging_root/$options_staged_name
-    [[ -f $archive && ! -L $archive ]] || launcher_fail package_unavailable "the staged archive is missing"
-    if [[ -n $options_package_digest ]]; then
-      local actual; actual=$(sha256sum -- "$archive" | cut -d' ' -f1)
-      [[ $actual == "$options_package_digest" ]] || launcher_fail package_digest_mismatch "the staged archive digest does not match the request"
-    fi
-  fi
-  [[ $(sed -nE 's/.*"schemaVersion"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$package_root/manifest.json" | head -n1) == 1 ]] \
-    || launcher_fail package_manifest_invalid "the staged manifest schema version is unsupported"
+  local archive=$staging_root/$options_staged_name
+  local verifier=$staging_root/release-verifier
+  local public_key=$staging_root/release-public.pem
+  local key_id_file=$staging_root/release-key-id.txt
+  local path actual key_id architecture kind
+  for path in "$archive" "$verifier" "$public_key" "$key_id_file"; do
+    [[ -f $path && ! -L $path ]] || launcher_fail package_unavailable "a required staged release file is missing or unsafe"
+  done
+  [[ -x $verifier ]] || launcher_fail package_unavailable "the staged release verifier is not executable"
+  actual=$(sha256sum -- "$archive" | cut -d' ' -f1)
+  [[ $actual == "$options_package_digest" ]] || launcher_fail package_digest_mismatch "the staged archive digest does not match the request"
+  key_id=$(<"$key_id_file")
+  [[ $key_id =~ ^[A-Za-z0-9._-]{1,128}$ ]] || launcher_fail package_trust_root_missing "the release key id is invalid"
+  case "$(uname -m)" in
+    x86_64) architecture=linux-x64;;
+    aarch64) architecture=linux-arm64;;
+    *) launcher_fail package_runtime_mismatch "this Linux architecture is unsupported";;
+  esac
+  case "$options_mode" in linuxUser) kind=user-server;; *) kind=server;; esac
+  package_root=$staging_root/package-$operation_id
+  [[ ! -e $package_root && ! -L $package_root ]] || launcher_fail package_unavailable "the operation package directory already exists"
+  "$verifier" extract "$archive" "$public_key" "$key_id" "$kind" "$architecture" "$package_root" >/dev/null 2>&1 \
+    || launcher_fail package_signature_invalid "the staged release could not be verified and extracted"
+  [[ -d $package_root && ! -L $package_root ]] || launcher_fail package_signature_invalid "the staged release could not be extracted"
 }
 user_engine_path() {
   [[ -x $package_root/deployment/user/relaxkon ]] && { printf '%s/deployment/user/relaxkon' "$package_root"; return; }
@@ -513,8 +544,12 @@ action_install_like() {
   require_expected_installation_id
   # Only install and upgrade consume a staged package; repair and rollback replay the payload the
   # engine already published on the host.
-  case "$operation_kind" in install|upgrade) require_package;; esac
-  emit_event verifyingPackage running "" "" "正在校验暂存包"
+  case "$operation_kind" in
+    install|upgrade)
+      emit_event verifyingPackage running "" "" "正在校验暂存包"
+      require_package
+      ;;
+  esac
   emit_event activating running "" "" "正在执行部署动作"
 
   local status=0 engine arguments

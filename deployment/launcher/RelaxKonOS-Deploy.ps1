@@ -3,7 +3,8 @@
 # This is the only thing a client executes over SSH. It accepts a fixed action set and a
 # structured request; it never accepts an arbitrary command, script path, service name or
 # delete path. The package and this launcher are uploaded into one private staging directory,
-# and every path the launcher reads or removes is derived from its own location.
+# and package paths are derived from its own location. The journal has a fixed host-wide path so
+# reconnects and separately staged clients see the same records and write lock.
 #
 # It validates the request, takes a per-installation write lock, keeps a persistent operation
 # record and event stream, invokes the existing deployment engine, and prints machine-readable
@@ -31,11 +32,19 @@ if ([string]::IsNullOrWhiteSpace($stagingRoot)) { throw 'The launcher must run f
 $stagingRoot = [IO.Path]::GetFullPath($stagingRoot)
 $requestPath = Join-Path $stagingRoot 'request.json'
 $packageRoot = Join-Path $stagingRoot 'package'
-$journalRoot = Join-Path $stagingRoot 'journal'
+$journalRoot = if ((New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Join-Path $env:ProgramData 'RelaxKonOS-Deployment'
+} else {
+    # A non-elevated SSH account must still be able to run probe and receive an elevation finding.
+    # It cannot run a write action; elevated accounts share the host-wide journal above.
+    Join-Path $env:LOCALAPPDATA 'RelaxKonOS-Deployment'
+}
 $operationsRoot = Join-Path $journalRoot 'operations'
 $lockPath = Join-Path $journalRoot 'deploy.lock'
 
 $script:lockStream = $null
+$script:journalReady = $false
 
 # --- journal -------------------------------------------------------------------------------------
 # stdout carries only JSON Lines; every human-readable message goes to stderr so a client can
@@ -80,13 +89,18 @@ function Save-Record {
     Move-Item -LiteralPath $temporary -Destination (Get-OperationRecordPath) -Force
 }
 
-function Stop-Launcher([string] $ProblemCode, [string] $SafeMessage, [int] $ExitCode = 2) {
+function Stop-Launcher([string] $ProblemCode, [string] $SafeMessage, [int] $ExitCode = 2, [bool] $Persist = $true) {
     $script:record.phase = 'failed'
     $script:record.state = 'failed'
     $script:record.problemCode = $ProblemCode
     $script:record.safeMessage = $SafeMessage
     $script:record.cancellable = $false
     $script:record.timestampUtc = Get-NowUtc
+    $script:record.completedAtUtc = $script:record.timestampUtc
+    if ($Persist -and $script:journalReady -and
+        $script:record.operationId -match '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$') {
+        Save-Record
+    }
     Write-JsonLine (Get-RecordJson)
     exit $ExitCode
 }
@@ -146,9 +160,20 @@ function Assert-StagingRoot {
 
 function Initialize-Journal {
     Assert-StagingRoot
+    if (Test-Path -LiteralPath $journalRoot) {
+        $journal = Get-Item -LiteralPath $journalRoot -Force
+        if (-not $journal.PSIsContainer -or ($journal.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Stop-Launcher 'server-deployment.invalid_request' 'deployment journal must be a real directory'
+        }
+    }
     New-Item -ItemType Directory -Force -Path $operationsRoot | Out-Null
+    $operations = Get-Item -LiteralPath $operationsRoot -Force
+    if (-not $operations.PSIsContainer -or ($operations.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Stop-Launcher 'server-deployment.invalid_request' 'operation journal must be a real directory'
+    }
     Set-RestrictedDirectoryAcl $journalRoot
     Set-RestrictedDirectoryAcl $operationsRoot
+    $script:journalReady = $true
 }
 
 # --- strict JSON ---------------------------------------------------------------------------------
@@ -427,11 +452,8 @@ function Parse-Request {
     }
     if ($kind -in @('install', 'upgrade')) {
         if (-not $script:optionsMode) { Stop-Launcher 'server-deployment.invalid_request' 'installation mode is required' }
-        if ($script:optionsSource -eq 'localBundle' -and (-not $script:optionsStagedName -or -not $script:optionsPackageDigest)) {
-            Stop-Launcher 'server-deployment.invalid_request' 'a local bundle needs stagedPackageName and packageDigest'
-        }
-        if ($script:optionsSource -eq 'directUrl' -and (-not $script:optionsPackageUri -or -not $script:optionsPackageDigest)) {
-            Stop-Launcher 'server-deployment.invalid_request' 'a direct URL package needs packageUri and packageDigest'
+        if (-not $script:optionsStagedName -or -not $script:optionsPackageDigest) {
+            Stop-Launcher 'server-deployment.invalid_request' 'install and upgrade need a staged signed archive and SHA-256'
         }
     }
     if ($kind -in @('repair', 'rollback', 'uninstall', 'status') -and -not $script:optionsMode) {
@@ -579,8 +601,8 @@ function Test-LoopbackPortOpen([int] $Port) {
 
 function Get-CurrentRuntime {
     $architecture = $env:PROCESSOR_ARCHITECTURE
-    if ($architecture -eq 'ARM64') { return 'winArm64' }
-    if ($architecture -eq 'AMD64') { return 'winX64' }
+    if ($architecture -eq 'ARM64') { return 'win-arm64' }
+    if ($architecture -eq 'AMD64') { return 'win-x64' }
     return ''
 }
 
@@ -647,8 +669,8 @@ function Test-Administrator {
 }
 
 # --- lock and idempotency ------------------------------------------------------------------------
-# One write operation per installation instance at a time. The lock lives in the staging journal
-# so an interrupted client leaves it behind for the next connection to observe.
+# One write operation per host at a time. The lock and records live outside ephemeral staging and
+# survive uninstall, so another client and a reconnect observe the same state.
 function Enter-WriteLock {
     try {
         $script:lockStream = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
@@ -662,14 +684,14 @@ function Test-Idempotency {
     if (-not (Test-Path -LiteralPath $digestPath -PathType Leaf)) { return }
     $existing = ([IO.File]::ReadAllText($digestPath)).Trim()
     if ($existing -ne (Get-RequestDigest)) {
-        Stop-Launcher 'server-deployment.idempotency_conflict' 'operationId was already used for a different request'
+        Stop-Launcher 'server-deployment.idempotency_conflict' 'operationId was already used for a different request' 2 $false
     }
     # Same operation, same request: replay the recorded outcome instead of acting twice.
     $recordPath = Get-OperationRecordPath
     if (Test-Path -LiteralPath $recordPath -PathType Leaf) {
         Write-JsonLine ([IO.File]::ReadAllText($recordPath).TrimEnd("`r", "`n"))
     } else {
-        Write-JsonLine (Get-RecordJson)
+        Stop-Launcher 'server-deployment.recovery_unknown' 'the earlier operation has no durable receipt; inspect host state before retrying'
     }
     exit 0
 }
@@ -682,34 +704,37 @@ function Save-RequestDigest {
 # The launcher maps a fixed action onto the existing deployment engine. It never passes a caller
 # supplied path, service name or command; only the package directory it staged itself.
 function Test-PackageAvailable {
-    if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) {
-        Stop-Launcher 'server-deployment.package_unavailable' 'the staged package directory is missing'
-    }
-    $item = Get-Item -LiteralPath $packageRoot -Force
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        Stop-Launcher 'server-deployment.package_unavailable' 'the staged package directory must not be a reparse point'
-    }
-    $manifestPath = Join-Path $packageRoot 'manifest.json'
-    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-        Stop-Launcher 'server-deployment.package_manifest_invalid' 'the staged package has no manifest'
-    }
-    if ($script:optionsStagedName) {
-        $archive = Join-Path $stagingRoot $script:optionsStagedName
-        if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
-            Stop-Launcher 'server-deployment.package_unavailable' 'the staged archive is missing'
-        }
-        if ($script:optionsPackageDigest) {
-            $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $script:optionsPackageDigest) {
-                Stop-Launcher 'server-deployment.package_digest_mismatch' 'the staged archive digest does not match the request'
-            }
+    # The engine consumes only bytes extracted here from the signed archive. A separately uploaded
+    # package/ directory is never an acceptable source, even if it has a plausible manifest.
+    $archive = Join-Path $stagingRoot $script:optionsStagedName
+    $verifier = Join-Path $stagingRoot 'release-verifier.exe'
+    $publicKey = Join-Path $stagingRoot 'release-public.pem'
+    $keyIdFile = Join-Path $stagingRoot 'release-key-id.txt'
+    foreach ($path in @($archive, $verifier, $publicKey, $keyIdFile)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+            ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Stop-Launcher 'server-deployment.package_unavailable' 'a required staged release file is missing or unsafe'
         }
     }
-    try { $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json } catch {
-        Stop-Launcher 'server-deployment.package_manifest_invalid' 'the staged manifest is not valid JSON'
+    $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $script:optionsPackageDigest) {
+        Stop-Launcher 'server-deployment.package_digest_mismatch' 'the staged archive digest does not match the request'
     }
-    if ([int](Get-StateField $manifest 'schemaVersion') -ne 1) {
-        Stop-Launcher 'server-deployment.package_manifest_invalid' 'the staged manifest schema version is unsupported'
+    $keyId = [IO.File]::ReadAllText($keyIdFile).Trim()
+    if ($keyId -notmatch '^[A-Za-z0-9._-]{1,128}$') {
+        Stop-Launcher 'server-deployment.package_trust_root_missing' 'the release key id is invalid'
+    }
+    $architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+    if ($architecture -notin @('x64', 'arm64')) {
+        Stop-Launcher 'server-deployment.package_runtime_mismatch' 'this Windows architecture is unsupported'
+    }
+    $script:packageRoot = Join-Path $stagingRoot ('package-' + $script:record.operationId)
+    if (Test-Path -LiteralPath $script:packageRoot) {
+        Stop-Launcher 'server-deployment.package_unavailable' 'the operation package directory already exists'
+    }
+    & $verifier extract $archive $publicKey $keyId server "win-$architecture" $script:packageRoot *> $null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $script:packageRoot -PathType Container)) {
+        Stop-Launcher 'server-deployment.package_signature_invalid' 'the staged release could not be verified and extracted'
     }
 }
 
@@ -823,8 +848,8 @@ function Invoke-InstallLikeAction {
     # engine already published on the host.
     $needsPackage = ($script:record.kind -in @('install', 'upgrade'))
     if ($needsPackage) {
-        Test-PackageAvailable
         Write-Event 'verifyingPackage' 'running' $null '' '正在校验暂存包'
+        Test-PackageAvailable
     }
     Write-Event 'activating' 'running' $null '' '正在执行部署动作'
 

@@ -6,6 +6,9 @@ RUNTIME=${2:-linux-x64}
 CONFIGURATION=${3:-Release}
 OUTPUT_DIRECTORY=${4:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/artifacts"}
 PACKAGE_KIND=${5:-all}
+SIGNING_KEY_PATH=${RELAXKONOS_RELEASE_SIGNING_KEY:-}
+SIGNING_KEY_ID=${RELAXKONOS_RELEASE_KEY_ID:-}
+[[ -f $SIGNING_KEY_PATH && -n $SIGNING_KEY_ID ]] || { echo 'RELAXKONOS_RELEASE_SIGNING_KEY and RELAXKONOS_RELEASE_KEY_ID are required.' >&2; exit 64; }
 case "$RUNTIME" in linux-x64|linux-arm64) ;; *) echo 'Linux package script supports linux-x64 and linux-arm64.' >&2; exit 64 ;; esac
 case "$CONFIGURATION" in Release|Debug) ;; *) echo 'Configuration must be Release or Debug.' >&2; exit 64 ;; esac
 case "$PACKAGE_KIND" in all|client|server|user-server) ;; *) echo 'Package kind must be all, client, server, or user-server.' >&2; exit 64 ;; esac
@@ -13,6 +16,7 @@ case "$PACKAGE_KIND" in all|client|server|user-server) ;; *) echo 'Package kind 
 
 SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIRECTORY/../.." && pwd)"
+SIGNER_PROJECT="$SCRIPT_DIRECTORY/RelaxKonOS.ReleaseSigner/RelaxKonOS.ReleaseSigner.csproj"
 OUTPUT_DIRECTORY="$(mkdir -p -- "$OUTPUT_DIRECTORY" && cd -- "$OUTPUT_DIRECTORY" && pwd)"
 
 new_package() {
@@ -21,7 +25,7 @@ new_package() {
   BUNDLE="$OUTPUT_DIRECTORY/$name"
   ARCHIVE="$OUTPUT_DIRECTORY/$name.zip"
   rm -rf -- "$BUNDLE"
-  rm -f -- "$ARCHIVE" "$ARCHIVE.sha256" "$ARCHIVE.json"
+  rm -f -- "$ARCHIVE" "$ARCHIVE.sha256" "$ARCHIVE.json" "$ARCHIVE.json.sig"
   mkdir -p -- "$BUNDLE"
 }
 
@@ -33,19 +37,35 @@ publish_component() {
 }
 
 complete_package() {
-  local kind="$1" payload="$2" hash files
+  local kind="$1" payload="$2" hash files line path length digest separator=
   # A bundle is never trusted based on its top-level archive checksum alone: installers also
   # verify this deterministic inventory after extraction, so a partially copied local bundle is
   # rejected before it can become the active version.
   (cd "$BUNDLE" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$BUNDLE/manifest.sha256"
-  files="$(awk 'BEGIN { printf "[" } { if (NR > 1) printf ","; printf "{\"path\":\"%s\",\"sha256\":\"%s\"}", substr($0, 67), substr($0, 1, 64) } END { printf "]" }' "$BUNDLE/manifest.sha256")"
+  files='['
+  while IFS= read -r line; do
+    digest=${line:0:64}
+    path=${line:66}
+    path=${path#./}
+    [[ $digest =~ ^[0-9a-f]{64}$ && $path =~ ^[A-Za-z0-9._/+\-]+$ && $path != *..* ]] \
+      || { echo 'The release contains a path that cannot be represented safely in the manifest.' >&2; exit 65; }
+    length=$(stat -c %s -- "$BUNDLE/$path")
+    files+="${separator}{\"path\":\"$path\",\"length\":$length,\"sha256\":\"$digest\"}"
+    separator=,
+  done < "$BUNDLE/manifest.sha256"
+  digest=$(sha256sum -- "$BUNDLE/manifest.sha256" | cut -d' ' -f1)
+  length=$(stat -c %s -- "$BUNDLE/manifest.sha256")
+  files+="${separator}{\"path\":\"manifest.sha256\",\"length\":$length,\"sha256\":\"$digest\"}"
+  files+=']'
   printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","supportedSystems":["debian-12","ubuntu-22.04","ubuntu-24.04","ubuntu-26.04"],"payload":{"linux":{%s}},"files":%s}\n' \
     "$kind" "$VERSION" "$RUNTIME" "$payload" "$files" > "$BUNDLE/manifest.json"
+  dotnet run --project "$SIGNER_PROJECT" --configuration Release -- sign "$BUNDLE/manifest.json" "$SIGNING_KEY_PATH" "$SIGNING_KEY_ID" >/dev/null
   (cd "$BUNDLE" && zip -qr "$ARCHIVE" .)
   hash="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
   printf '%s  %s\n' "$hash" "$(basename -- "$ARCHIVE")" > "$ARCHIVE.sha256"
   printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","url":"https://downloads.relaxkon.com/relaxkonos/stable/%s/%s/%s/%s","sha256":"%s"}\n' \
     "$kind" "$VERSION" "$RUNTIME" "$VERSION" "$RUNTIME" "$kind" "$(basename -- "$ARCHIVE")" "$hash" > "$ARCHIVE.json"
+  dotnet run --project "$SIGNER_PROJECT" --configuration Release -- sign "$ARCHIVE.json" "$SIGNING_KEY_PATH" "$SIGNING_KEY_ID" >/dev/null
   printf '%s bundle: %s\nSHA-256: %s\n' "$kind" "$ARCHIVE" "$hash"
 }
 

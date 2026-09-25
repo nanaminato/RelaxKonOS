@@ -29,6 +29,33 @@ class ServerDeploymentRecordRulesTest {
     )
 
     @Test
+    fun `release wire values match the package builders`() {
+        assertEquals("win-x64", ServerRuntimeIdentifier.WinX64.wireName())
+        assertEquals("linux-arm64", ServerRuntimeIdentifier.LinuxArm64.wireName())
+        assertEquals("user-server", ServerReleasePackageKind.UserServer.wireName())
+        assertEquals(ServerRuntimeIdentifier.WinX64, enumFromWire<ServerRuntimeIdentifier>("win-x64"))
+    }
+
+    @Test
+    fun `signed manifest payload must be present in its file inventory`() {
+        val path = "payload/linux/server/RelaxKonOS.Server"
+        val manifest = ServerReleaseManifest(
+            schemaVersion = ServerDeploymentProtocol.VERSION,
+            packageKind = ServerReleasePackageKind.UserServer,
+            version = "0.1.0",
+            runtime = ServerRuntimeIdentifier.LinuxX64,
+            supportedSystems = listOf("debian-12"),
+            payload = mapOf("linux" to mapOf("server" to path)),
+            files = listOf(ServerReleaseFile(path, 12, "a".repeat(64))),
+        )
+        assertNull(ServerReleaseValidation.validateManifest(manifest, ServerRuntimeIdentifier.LinuxX64))
+        assertEquals(ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID,
+            ServerReleaseValidation.validateManifest(
+                manifest.copy(payload = mapOf("linux" to mapOf("server" to "payload/linux/missing"))),
+                ServerRuntimeIdentifier.LinuxX64))
+    }
+
+    @Test
     fun `successful install needs matching id and verified health`() {
         assertNull(ServerDeploymentRecordRules.validateRecord(completed, operationId))
         assertEquals(ServerDeploymentProblemCodes.INVALID_REQUEST,

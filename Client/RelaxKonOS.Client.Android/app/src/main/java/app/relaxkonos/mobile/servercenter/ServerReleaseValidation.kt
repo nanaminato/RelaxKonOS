@@ -30,9 +30,21 @@ object ServerReleaseValidation {
         if (manifest.runtime != expectedRuntime) return ServerDeploymentProblemCodes.PACKAGE_RUNTIME_MISMATCH
         if (manifest.supportedSystems.isEmpty()) return ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID
         if (manifest.files.isEmpty()) return ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID
+        val platform = when (expectedRuntime) {
+            ServerRuntimeIdentifier.WinX64, ServerRuntimeIdentifier.WinArm64 -> "windows"
+            ServerRuntimeIdentifier.LinuxX64, ServerRuntimeIdentifier.LinuxArm64 -> "linux"
+        }
+        val payload = manifest.payload[platform]
+            ?: return ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID
+        if (payload.isEmpty()) return ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID
+        val paths = mutableSetOf<String>()
         for (file in manifest.files) {
             val problem = validateFile(file)
             if (problem != null) return problem
+            if (!paths.add(file.path)) return ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID
+        }
+        if (payload.values.any { !isSafeManifestPath(it) || it !in paths }) {
+            return ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID
         }
         return null
     }

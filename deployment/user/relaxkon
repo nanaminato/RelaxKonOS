@@ -164,7 +164,7 @@ verify_bundle() {
   # The checksum file must represent exactly the extracted payload rather than merely a subset.
   local listed actual
   listed=$(awk '{ print substr($0, 67) }' "$bundle/manifest.sha256" | LC_ALL=C sort)
-  actual=$(cd "$bundle" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print | LC_ALL=C sort)
+  actual=$(cd "$bundle" && find . -type f ! -name manifest.json ! -name manifest.json.sig ! -name manifest.sha256 -print | LC_ALL=C sort)
   [[ $listed == "$actual" ]] || fail "bundle file inventory does not match its contents"
 }
 # Stage the new version beside the active one and switch the current symlink atomically, so an

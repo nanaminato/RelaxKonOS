@@ -66,10 +66,17 @@ enum class ServerReleasePackageKind { Server, UserServer }
 enum class ServerRuntimeIdentifier { WinX64, WinArm64, LinuxX64, LinuxArm64 }
 
 /**
- * 枚举与线协议的 camelCase 字符串互转，与 C# `JsonStringEnumConverter(JsonNamingPolicy.CamelCase)` 对齐。
- * 例：`Probe -> "probe"`、`LinuxSystem -> "linuxSystem"`。
+ * 枚举与线协议字符串互转：操作及安装模式使用 camelCase；RID 与发布包类型
+ * 使用发布格式的连字符名称，例如 `win-x64` 与 `user-server`。
  */
-internal fun Enum<*>.wireName(): String = name.replaceFirstChar { it.lowercase(Locale.ROOT) }
+internal fun Enum<*>.wireName(): String = when (this) {
+    ServerReleasePackageKind.UserServer -> "user-server"
+    ServerRuntimeIdentifier.WinX64 -> "win-x64"
+    ServerRuntimeIdentifier.WinArm64 -> "win-arm64"
+    ServerRuntimeIdentifier.LinuxX64 -> "linux-x64"
+    ServerRuntimeIdentifier.LinuxArm64 -> "linux-arm64"
+    else -> name.replaceFirstChar { it.lowercase(Locale.ROOT) }
+}
 
 internal inline fun <reified T : Enum<T>> enumFromWire(value: String?): T? {
     if (value == null) return null
@@ -219,8 +226,8 @@ data class ServerReleaseManifest(
     val version: String,
     val runtime: ServerRuntimeIdentifier,
     val supportedSystems: List<String>,
+    val payload: Map<String, Map<String, String>>,
     val files: List<ServerReleaseFile>,
-    val payloadRoot: String? = null,
     val createdAtUtc: String? = null,
 )
 

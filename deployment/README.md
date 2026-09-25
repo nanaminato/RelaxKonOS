@@ -8,15 +8,28 @@
 
 ```text
 manifest.json
+manifest.json.sig
 payload/windows/{server,guardian,privileged-helper}/...
 payload/linux/{server,guardian,privileged-helper}/...
 deployment/windows/Install-RelaxKonOSServices.ps1
 deployment/linux/install-relaxkonos-services.sh
 ```
 
-`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client` 或 `server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。线上安装必须由发布页同时提供 ZIP 的 SHA-256，安装器会在解压前验证它。正式发行应在此基础上对 ZIP 使用代码签名或签名的发布清单。
+`manifest.json` 和下载描述文件使用 `schemaVersion: 1`，并明确标记 `packageKind`（`client`、`server` 或 `user-server`）；示例见 [release-manifest.example.json](./release-manifest.example.json)。打包器使用 RSA-PSS/SHA-256 对清单原始字节生成 `manifest.json.sig`，对下载描述文件生成同名 `.sig`。清单列出每个包内文件的长度和 SHA-256；ZIP 的 SHA-256 用于传输核对，不能代替发布签名。服务器中心客户端在上传离线 ZIP 前核对签名、RID、清单和逐文件摘要。
 
-维护者用下列命令制作一个自包含的单平台发布包（会同时生成 ZIP 与同名 `.sha256` 文件）：
+打包前设置 `RELAXKONOS_RELEASE_SIGNING_KEY` 为发布私钥 PEM 路径，`RELAXKONOS_RELEASE_KEY_ID` 为该公钥的稳定标识；加密 PEM 的口令通过 `RELAXKONOS_RELEASE_KEY_PASSPHRASE` 环境变量传入。打包器缺少签名配置时直接失败。发布公钥必须以独立可信渠道固定在客户端；包内公钥不能成为自身的信任根。正式密钥轮换和撤销规则仍需按 [服务器中心目标](../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 锁定。
+
+发布前可用仓库内的验证工具复核服务器 ZIP；`KEY_ID` 必须与签名记录一致，公钥 PEM 必须来自独立的发布信任配置：
+
+```powershell
+dotnet run --project ./deployment/packaging/RelaxKonOS.ReleaseSigner -- verify ./artifacts/RelaxKonOS-0.1.0-win-x64-server.zip ./release-public.pem KEY_ID server win-x64
+```
+
+服务器中心远端安装/升级的暂存目录须包含部署启动器、`request.json`、已签名 ZIP、`release-public.pem`、`release-key-id.txt`，以及按目标 RID 自包含的单文件验证器（Windows 名为 `release-verifier.exe`，Linux 名为可执行的 `release-verifier`）。验证器可用 `dotnet publish ./deployment/packaging/RelaxKonOS.ReleaseSigner -c Release -r <目标RID> --self-contained true -p:PublishSingleFile=true` 构建。Linux 启动器也用它严格校验请求 JSON 的字段、类型与重复键。客户端从独立固定的发布信任配置提供公钥；远端启动器核对 ZIP 摘要后调用验证器，验证签名、RID、包类型和每个文件，再把签名文件解到仅本次操作使用的目录。部署引擎只读取该目录。`install` 与 `upgrade` 的 `stagedPackageName` 和 `packageDigest` 均为必填；官方来源和指定 URL 来源也由客户端先取得 ZIP 并暂存，启动器不直接执行一个仅由 URL 指向的包。
+
+操作记录和独占锁保存在暂存目录之外，因而不同客户端和断线后的新暂存目录仍会读取同一回执：Windows 已提升管理员操作为 `%ProgramData%\RelaxKonOS-Deployment`（未提升账号的只读探测使用 `%LOCALAPPDATA%\RelaxKonOS-Deployment`），Linux System Mode 为 `/var/lib/relaxkonos-deployment`，Linux User Mode 为 `${XDG_STATE_HOME:-$HOME/.local/state}/relaxkonos-deployment`。卸载数据时也保留该操作日志，以便查询卸载回执。
+
+维护者用下列命令制作一个自包含的单平台发布包（会同时生成 ZIP、`.sha256`、签名清单与签名下载描述符）：
 
 ```powershell
 ./deployment/packaging/New-RelaxKonOSRelease.ps1 -Version 0.1.0 -Runtime win-x64
@@ -28,9 +41,11 @@ Linux System Mode 则运行：
 ./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release
 ```
 
+Linux 打包宿主还需提供 `zip`、`sha256sum` 与 `stat`。
+
 客户端的便携 ZIP 与 Windows MSIX 打包和升级流程见 [ClientDistribution.md](./ClientDistribution.md)。Linux 客户端通过便携 ZIP 分发；不提供 Debian/Ubuntu APT 仓库或 `.deb` 包。
 
-两者都会分别产出 Client 与 Server ZIP、`.sha256` 与同名 `.json` 下载描述文件。用户态 Linux 包可单独生成：
+两者都会分别产出 Client 与 Server ZIP、`.sha256`、同名 `.json` 下载描述文件及 `.json.sig`。用户态 Linux 包可单独生成：
 
 ```bash
 ./deployment/packaging/package-relaxkonos.sh 0.1.0 linux-x64 Release ./artifacts user-server

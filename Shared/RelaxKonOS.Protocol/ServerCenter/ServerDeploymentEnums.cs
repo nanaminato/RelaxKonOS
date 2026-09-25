@@ -96,11 +96,21 @@ public enum ServerServiceIdKind { DirectUrl, ManagedInstallation }
 
 /// <summary>发布包的种类。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerReleasePackageKind>))]
-public enum ServerReleasePackageKind { Server, UserServer }
+public enum ServerReleasePackageKind
+{
+    Server,
+    [JsonStringEnumMemberName("user-server")] UserServer
+}
 
 /// <summary>发布制品的运行时标识（RID）。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerRuntimeIdentifier>))]
-public enum ServerRuntimeIdentifier { WinX64, WinArm64, LinuxX64, LinuxArm64 }
+public enum ServerRuntimeIdentifier
+{
+    [JsonStringEnumMemberName("win-x64")] WinX64,
+    [JsonStringEnumMemberName("win-arm64")] WinArm64,
+    [JsonStringEnumMemberName("linux-x64")] LinuxX64,
+    [JsonStringEnumMemberName("linux-arm64")] LinuxArm64
+}
 
 /// <summary>宿主操作系统，复用 <see cref="HostPlatformKind"/> 以保持协议一致。</summary>
 public static class ServerDeploymentHostPlatform
