@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.ServerCenter;
+using RelaxKonOS.Client.Services.ServerCenter;
 
 namespace RelaxKonOS.Client.ViewModels.Login;
 
@@ -24,13 +25,18 @@ public partial class LoginViewModel : ObservableObject
     private readonly IAuthSession _session;
     private readonly LoginLocalizationService _localization;
     private readonly ServerEndpointResolver _endpointResolver;
+    private readonly SshDesktopSession _sshDesktop;
+    private readonly IHostTargetStore _sshTargets;
     private bool _loadingSavedProfiles;
 
-    public LoginViewModel(IAuthSession session, LoginLocalizationService localization, ServerEndpointResolver endpointResolver)
+    public LoginViewModel(IAuthSession session, LoginLocalizationService localization, ServerEndpointResolver endpointResolver,
+        SshDesktopSession sshDesktop, IHostTargetStore sshTargets)
     {
         _session = session;
         _localization = localization;
         _endpointResolver = endpointResolver;
+        _sshDesktop = sshDesktop;
+        _sshTargets = sshTargets;
         SavedProfiles = new ObservableCollection<SavedLoginProfile>();
 #if DEBUG
         // Development-only convenience for local integration testing. This is deliberately
@@ -41,6 +47,33 @@ public partial class LoginViewModel : ObservableObject
     }
 
     public ObservableCollection<SavedLoginProfile> SavedProfiles { get; }
+    public ServerHostTarget? SshTarget { get; private set; }
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
+    [NotifyPropertyChangedFor(nameof(ConnectionInstructions))]
+    [NotifyPropertyChangedFor(nameof(ConnectionSettingsDescription))]
+    private bool _useSshLogin;
+
+    public void SelectLoginMode(bool ssh, ServerHostTarget? target)
+    {
+        UseSshLogin = ssh;
+        SshTarget = ssh ? target : null;
+        if (ssh) ShowOptions = true;
+        if (ssh && target is not null)
+        {
+            ServerUrl = $"{target.SshHost}:{target.SshPort}";
+            Identifier = target.SshUserName;
+            Password = string.Empty;
+        }
+        else if (ssh)
+        {
+            ServerUrl = "localhost:22";
+            Identifier = string.Empty;
+            Password = string.Empty;
+        }
+        ClearError();
+        ConnectCommand.NotifyCanExecuteChanged();
+    }
 
     // 输入与连接状态变化时，自动通知 ConnectCommand 重新评估 CanExecute。
     // 此前缺少通知，导致填写完账号密码后按钮仍处于禁用状态（无法点击）。
@@ -100,7 +133,9 @@ public partial class LoginViewModel : ObservableObject
     public string PasswordVisibilityText => T(IsPasswordVisible ? "login.password.hide" : "login.password.show", IsPasswordVisible ? "Hide" : "Show");
     public string RemoteDesktopConnectionText => T("login.title", "RelaxKonOS");
     public string DisplayLanguageText => T("login.display_language", "Display language:");
-    public string ConnectionInstructions => T("login.connection_instructions", "Enter the name of the remote computer you want to connect to.");
+    public string ConnectionInstructions => UseSshLogin
+        ? T("login.ssh_instructions", "Enter the SSH host name and credentials.")
+        : T("login.connection_instructions", "Enter the name of the remote computer you want to connect to.");
     public string CredentialsInstructions => T("login.credentials_instructions", "The credentials below will be used when connecting.");
     public string ComputerLabel => T("login.computer", "Computer:");
     public string IdentifierLabel => T("login.username", "Identifier:");
@@ -111,7 +146,9 @@ public partial class LoginViewModel : ObservableObject
     public string RememberPasswordText => T("login.remember_password", "Save password securely; selecting this computer next time will sign in automatically");
     public string IdentityNotice => T("login.identity_notice", "You will be prompted to verify the identity of the remote computer.");
     public string ConnectionSettingsText => T("login.connection_settings", "Connection settings");
-    public string ConnectionSettingsDescription => T("login.connection_settings_description", "RelaxKonOS will open the workspace using this computer's name and local display settings.");
+    public string ConnectionSettingsDescription => UseSshLogin
+        ? T("login.ssh_connection_description", "SSH opens a desktop with a terminal and Server centre. Verify the host key in Server centre first.")
+        : T("login.connection_settings_description", "RelaxKonOS will open the workspace using this computer's name and local display settings.");
     public string ClientNameText => T("login.client_name", "RelaxKonOS Remote Desktop Client");
     public string ConnectText => T("common.connect", "Connect");
     public string ServerCenterText => T("server_center.open", "Install or manage a server");
@@ -150,6 +187,11 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync(CancellationToken ct)
     {
+        if (UseSshLogin)
+        {
+            await ConnectSshAsync(ct);
+            return;
+        }
         var resolution = await ResolveServerEndpointAsync(ct);
         if (!resolution.IsResolved)
         {
@@ -276,6 +318,7 @@ public partial class LoginViewModel : ObservableObject
     /// <summary>Invoked by the address control when focus leaves it, before credentials are sent.</summary>
     public async Task DiscoverServerEndpointAsync(CancellationToken ct = default)
     {
+        if (UseSshLogin) return;
         if (string.IsNullOrWhiteSpace(ServerUrl)) return;
 
         var enteredValue = ServerUrl;
@@ -286,6 +329,57 @@ public partial class LoginViewModel : ObservableObject
             ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
             : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port.");
         HasError = true;
+    }
+
+    private async Task ConnectSshAsync(CancellationToken ct)
+    {
+        if (!Uri.TryCreate("ssh://" + ServerUrl.Trim(), UriKind.Absolute, out var uri) ||
+            uri.Scheme != "ssh" || uri.Host.Length == 0 || uri.Port is <= 0 or > 65535 ||
+            uri.AbsolutePath != "/" || uri.Query.Length != 0 || uri.Fragment.Length != 0 ||
+            uri.UserInfo.Length != 0 || !ServerHostTargetRules.IsValidEndpoint(uri.Host, uri.Port, Identifier))
+        {
+            ErrorMessage = T("login.ssh_target_changed", "Enter a valid SSH host, port and username.");
+            HasError = true;
+            return;
+        }
+        IsConnecting = true;
+        ClearError();
+        StatusMessage = T("login.status.connecting", "Connecting...");
+        try
+        {
+            var target = SshTarget;
+            if (target is null || !string.Equals(target.SshHost, uri.Host, StringComparison.OrdinalIgnoreCase) ||
+                target.SshPort != uri.Port || !string.Equals(target.SshUserName, Identifier.Trim(), StringComparison.Ordinal))
+            {
+                var existing = await _sshTargets.FindByEndpointAsync(uri.Host, uri.Port, ct);
+                target = existing is null
+                    ? await _sshTargets.UpsertAsync(ServerHostTargetRules.Create(
+                        uri.Host, uri.Port, Identifier, null, DateTimeOffset.UtcNow), ct)
+                    : string.Equals(existing.SshUserName, Identifier.Trim(), StringComparison.Ordinal)
+                        ? existing
+                        : await _sshTargets.UpsertAsync(existing with { SshUserName = Identifier.Trim() }, ct);
+                SshTarget = target;
+            }
+            await _sshDesktop.ConnectAsync(target, Password, ct);
+            Password = string.Empty;
+            StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
+        }
+        catch (ServerCenterHostKeyRejectedException rejected)
+        {
+            ErrorMessage = rejected.Trust == ServerHostKeyTrust.Changed
+                ? T("login.ssh_host_key_changed", "The SSH host key changed. Connection blocked.")
+                : string.Format(T("login.ssh_host_key_unknown", "Verify this SSH host key in Server centre: {0}"), rejected.Observation.GroupedFingerprint);
+            HasError = true;
+            StatusMessage = string.Empty;
+        }
+        catch (OperationCanceledException) { StatusMessage = string.Empty; }
+        catch (Exception)
+        {
+            ErrorMessage = T("login.ssh_failed", "SSH connection failed. Check the host, username and password.");
+            HasError = true;
+            StatusMessage = string.Empty;
+        }
+        finally { IsConnecting = false; }
     }
 
     private async Task<ServerEndpointResolution> ResolveServerEndpointAsync(CancellationToken ct)

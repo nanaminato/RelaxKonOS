@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.Protocol.Workspace;
 using RoyalTerminal.Avalonia.Controls;
 using RoyalTerminal.Terminal;
+using RelaxKonOS.Client.Services.ServerCenter;
 
 namespace RelaxKonOS.Client.Apps.Terminal;
 
@@ -24,6 +25,7 @@ public partial class TerminalViewModel : LocalizedObservableObject
     private readonly string? _initialSessionId;
     private readonly string? _initialWorkingDirectory;
     private readonly NetworkDiagnosticsService? _diagnostics;
+    private readonly SshDesktopSession? _sshDesktop;
     private TerminalControl? _terminal;
     private SignalRTransportFactory? _transportFactory;
     private bool _loadingAppearance;
@@ -45,12 +47,14 @@ public partial class TerminalViewModel : LocalizedObservableObject
         IAuthSession? session,
         ITerminalSettingsClient settingsClient,
         NetworkDiagnosticsService? diagnostics,
+        SshDesktopSession? sshDesktop = null,
         string? initialSessionId = null,
         string? initialWorkingDirectory = null)
     {
         _session = session;
         _settingsClient = settingsClient;
         _diagnostics = diagnostics;
+        _sshDesktop = sshDesktop;
         _initialSessionId = initialSessionId;
         _initialWorkingDirectory = initialWorkingDirectory;
     }
@@ -109,7 +113,23 @@ public partial class TerminalViewModel : LocalizedObservableObject
         var dimensions = new TerminalSessionDimensions(Columns, Rows, WidthPixels: 800, HeightPixels: 480);
         ITerminalTransportOptions options;
 
-        if (_session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } })
+        if (_sshDesktop is { IsConnected: true, Endpoint: { } endpoint, HostKeyFingerprint: { } fingerprint })
+        {
+            Status = LocalizedText.Ref("terminal.status.connecting");
+            options = new SshTransportOptions(
+                Endpoint: new SshEndpointOptions(endpoint.Host, endpoint.Port, endpoint.UserName),
+                RequestPty: true,
+                TerminalType: "xterm-256color",
+                InitialCommand: null,
+                Authentication: new SshAuthenticationOptions(
+                    UsePassword: true,
+                    PasswordSecretId: "ssh-desktop-session",
+                    PrivateKeySecretIds: Array.Empty<string>(),
+                    UseAgent: false),
+                Dimensions: dimensions)
+            { ExpectedHostKeyFingerprintSha256 = fingerprint };
+        }
+        else if (_session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } })
         {
             Status = LocalizedText.Ref("terminal.status.connecting");
             options = new SignalRTransportOptions(

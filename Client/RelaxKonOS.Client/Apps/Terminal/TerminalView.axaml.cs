@@ -10,6 +10,8 @@ using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Services;
 using RoyalTerminal.Terminal.Transport.Ssh;
 using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
+using RelaxKonOS.Client.Services.ServerCenter;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Apps.Terminal;
@@ -45,7 +47,7 @@ public partial class TerminalView : UserControl
             new DefaultTerminalScrollService(),
             new DefaultVtProcessorFactory(),
             new DefaultPtyFactory(),
-            new NullSshCredentialProvider(),
+            new SshDesktopCredentialProvider(App.Services.GetRequiredService<SshDesktopSession>()),
             new KnownHostsSshHostKeyValidator(),
             transportFactory);
 
@@ -218,5 +220,17 @@ public partial class TerminalView : UserControl
                 property.SetValue(target, parse.Invoke(null, [value]));
         }
         catch { /* unsupported renderer palette value */ }
+    }
+}
+
+internal sealed class SshDesktopCredentialProvider(SshDesktopSession session) : ISshCredentialProvider
+{
+    public ValueTask<SshResolvedCredentials> ResolveAsync(SshCredentialRequest request, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new SshResolvedCredentials(
+            Password: session.Password,
+            PrivateKeyPemOrPath: Array.Empty<string>(),
+            UseAgent: false));
     }
 }

@@ -22,10 +22,17 @@ public partial class LoginView : UserControl
     {
         var viewModel = App.Services.GetRequiredService<ServerCenterViewModel>();
         await viewModel.LoadAsync();
+        if (DataContext is LoginViewModel currentLogin)
+        {
+            viewModel.UseSshLogin = currentLogin.UseSshLogin;
+            viewModel.SelectedHost = viewModel.Hosts.FirstOrDefault(host => host.HostId == currentLogin.SshTarget?.HostId);
+        }
         var window = new ServerCenterWindow { DataContext = viewModel };
         if (TopLevel.GetTopLevel(this) is Window owner)
             await window.ShowDialog(owner);
         else
             window.Show();
+        if (DataContext is LoginViewModel login)
+            login.SelectLoginMode(viewModel.UseSshLogin, viewModel.SelectedHost);
     }
 }

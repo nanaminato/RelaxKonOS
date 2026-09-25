@@ -9,6 +9,7 @@ using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services.DesktopRestore;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -36,6 +37,7 @@ public partial class DesktopShellViewModel : ObservableObject
     private readonly LocalizationService _localization;
     private readonly Action _shutdown;
     private readonly IAuthSession _session;
+    private readonly SshDesktopSession _sshDesktop;
     private readonly DesktopRestoreOrchestrator _desktopRestore;
     private readonly IExplorerClient _files;
     private readonly IRemoteFileClipboard _fileClipboard;
@@ -64,6 +66,7 @@ public partial class DesktopShellViewModel : ObservableObject
         ShellSettings settings,
         LocalizationService localization,
         IAuthSession session,
+        SshDesktopSession sshDesktop,
         Action shutdown,
         DesktopRestoreOrchestrator desktopRestore,
         IExplorerClient files,
@@ -82,6 +85,7 @@ public partial class DesktopShellViewModel : ObservableObject
         _settings = settings;
         _localization = localization;
         _session = session;
+        _sshDesktop = sshDesktop;
         _shutdown = shutdown;
         _desktopRestore = desktopRestore;
         _files = files;
@@ -138,17 +142,18 @@ public partial class DesktopShellViewModel : ObservableObject
     }
 
     /// <summary>Loads the workspace-owned shell preference before a desktop shell is selected.</summary>
-    public Task EnsureWorkspacePreferencesAsync() => _preferencesSync.EnsureCurrentWorkspacePreferencesAsync();
+    public Task EnsureWorkspacePreferencesAsync() => _sshDesktop.IsConnected
+        ? Task.CompletedTask : _preferencesSync.EnsureCurrentWorkspacePreferencesAsync();
 
     public WindowManagerService WindowManager => _windowManager;
     public ShellSettings Settings => _settings;
-    public string ConnectionServer => _session.EffectiveBaseUrl ?? T("shell.connection.not_connected", "Not connected");
-    public string ConnectionUser => _session.CurrentUser?.Username ?? T("shell.connection.unknown_user", "Unknown user");
-    public string ConnectionWorkspace => _session.CurrentWorkspace?.Name ?? T("shell.connection.default_workspace", "Default workspace");
+    public string ConnectionServer => _sshDesktop.Endpoint?.DisplayName ?? _session.EffectiveBaseUrl ?? T("shell.connection.not_connected", "Not connected");
+    public string ConnectionUser => _sshDesktop.Endpoint?.UserName ?? _session.CurrentUser?.Username ?? T("shell.connection.unknown_user", "Unknown user");
+    public string ConnectionWorkspace => _sshDesktop.IsConnected ? "SSH" : _session.CurrentWorkspace?.Name ?? T("shell.connection.default_workspace", "Default workspace");
 
     /// <summary>Called by the view after WindowManager has attached the desktop window host.</summary>
     public Task RestoreDesktopStateAsync(CancellationToken cancellationToken = default) =>
-        _desktopRestore.RestoreAsync(cancellationToken);
+        _sshDesktop.IsConnected ? Task.CompletedTask : _desktopRestore.RestoreAsync(cancellationToken);
 
     /// <summary>Live, application-grouped taskbar items.</summary>
     public ObservableCollection<TaskbarGroupViewModel> TaskbarGroups { get; } = new();
@@ -198,7 +203,10 @@ public partial class DesktopShellViewModel : ObservableObject
             // An app that needs a connected Linux Server must not be advertised on a Windows
             // Server desktop or Start menu. Launch still performs the same check for defense in depth.
             .Where(application => _applications.GetManifest(application.Id) is { } manifest
-                && _applications.EvaluateCompatibility(manifest).IsCompatible)
+                && _applications.EvaluateCompatibility(manifest).IsCompatible
+                && (_sshDesktop.IsConnected
+                    ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
+                    : application.Id.Value != "relaxkonos.ssh-files"))
             .Select(i => new AppEntryViewModel(Localize(i), _applications))
             .ToList();
 
@@ -223,7 +231,8 @@ public partial class DesktopShellViewModel : ObservableObject
         }
 
         RefreshDesktopItems();
-        _ = RefreshDesktopShortcutsAsync();
+        if (_sshDesktop.IsConnected) DesktopShortcuts.Clear();
+        else _ = RefreshDesktopShortcutsAsync();
         RefreshTaskbarGroups();
         _ = LoadDesktopFilesAsync();
     }
@@ -249,6 +258,7 @@ public partial class DesktopShellViewModel : ObservableObject
     [RelayCommand]
     private void Launch(AppId id)
     {
+        if (_sshDesktop.IsConnected && id.Value is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files")) return;
         _applications.Launch(id);
         IsStartOpen = false;
     }
@@ -780,6 +790,7 @@ public partial class DesktopShellViewModel : ObservableObject
 
     private void LaunchApplication(string id)
     {
+        if (_sshDesktop.IsConnected && id is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files")) return;
         _applications.Launch(new AppId(id));
         IsStartOpen = false;
         OpenTaskbarGroup = null;

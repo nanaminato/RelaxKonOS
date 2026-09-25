@@ -10,6 +10,7 @@
         <StackPanel Spacing="4">
             <TextBlock Text="{Binding Title}" FontSize="24" FontWeight="Light" Foreground="{DynamicResource TextPrimaryBrush}" />
             <TextBlock Text="{Binding Subtitle}" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <ToggleSwitch IsChecked="{Binding UseSshLogin}" Content="{Binding LoginModeLabel}" Margin="0,8,0,0" />
         </StackPanel>
         <Border Grid.Row="1" Padding="14" CornerRadius="3" Background="{DynamicResource SurfaceBrush}">
             <StackPanel Spacing="10">

@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.ViewModels.Login;
 using RelaxKonOS.Client.ViewModels.Shell;
 using RelaxKonOS.Client.Views;
@@ -109,6 +110,20 @@ public partial class App : Application
                     };
                 });
             };
+
+            Services.GetRequiredService<SshDesktopSession>().Connected += (_, _) =>
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (shutdownRequested || mainWindow is not null) return;
+                    var shell = Services.GetRequiredService<DesktopShellViewModel>();
+                    shell.PopulateDesktop();
+                    mainWindow = new MainWindow { DataContext = shell };
+                    mainWindow.DesktopReady += (_, _) => shell.OpenTerminalCommand.Execute(null);
+                    desktop.MainWindow = mainWindow;
+                    mainWindow.Show();
+                    loginWindow.Close();
+                    mainWindow.Closed += (_, _) => desktop.Shutdown();
+                });
 
             // Keep the login window visible so the user can choose one of several remembered servers.
             // Selecting an entry with a saved password logs in without asking for it.

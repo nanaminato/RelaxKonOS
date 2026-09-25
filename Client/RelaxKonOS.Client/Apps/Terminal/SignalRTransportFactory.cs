@@ -1,5 +1,6 @@
 using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Transport.Pty;
+using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
 
 namespace RelaxKonOS.Client.Apps.Terminal;
 
@@ -23,7 +24,7 @@ public sealed class SignalRTransportFactory : ITerminalTransportFactory
     {
         // Local PTY 回退：仅需 PtyTerminalTransportProvider（平台 ConPTY/forkpty 由传递依赖提供）。
         _inner = new CompositeTerminalTransportFactory(
-            new ITerminalTransportProvider[] { new PtyTerminalTransportProvider() });
+            new ITerminalTransportProvider[] { new PtyTerminalTransportProvider(), new SshNetTerminalTransportProvider() });
     }
 
     public ITerminalTransport Create(ITerminalTransportOptions options)

@@ -44,7 +44,6 @@
                    Stretch="Uniform" />
             <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
                 <TextBlock Text="RelaxKonOS" FontSize="24" FontWeight="Light" Foreground="{DynamicResource TextPrimaryBrush}" />
-                <TextBlock Text="{Binding RemoteDesktopConnectionText}" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" />
             </StackPanel>
         </Grid>
 
@@ -130,9 +129,9 @@
                         Padding="0" Background="Transparent" BorderThickness="0"
                         Foreground="{DynamicResource AccentBrush}" />
 
-                <CheckBox IsVisible="{Binding ShowOptions}" IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
+                <CheckBox IsVisible="{Binding !UseSshLogin}" IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,12,0,0" />
-                <CheckBox IsVisible="{Binding ShowOptions}" IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"
+                <CheckBox IsVisible="{Binding !UseSshLogin}" IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"
                           Content="{Binding RememberPasswordText}"
                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,6,0,0" />
 

@@ -1,12 +1,22 @@
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
+using RelaxKonOS.Client.Apps.Terminal;
+using RoyalTerminal.Terminal;
 
 static void Check(bool condition, string message)
 {
     if (!condition) throw new Exception(message);
     Console.WriteLine("PASS: " + message);
 }
+
+var sshTransport = new SignalRTransportFactory().Create(new SshTransportOptions(
+    new SshEndpointOptions("example.com", 22, "alice"), true, "xterm-256color", null,
+    new SshAuthenticationOptions(true, "session", Array.Empty<string>(), false),
+    new TerminalSessionDimensions(80, 24, 800, 480)));
+Check(sshTransport.GetType().Name.Contains("Ssh", StringComparison.OrdinalIgnoreCase),
+    "桌面终端工厂为 SSH 登录创建 SSH 传输");
+sshTransport.Dispose();
 
 var transport = new FakeTransport();
 var client = new ServerCenterDeploymentClient(transport);

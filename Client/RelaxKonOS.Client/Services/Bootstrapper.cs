@@ -109,6 +109,7 @@ public static class Bootstrapper
         services.AddSingleton<ISshCredentialStore, SshCredentialStore>();
         services.AddSingleton<IServerCenterSshTransportFactory, SshNetServerCenterTransportFactory>();
         services.AddSingleton<IServerCenterConnectionResolver, ServerCenterConnectionResolver>();
+        services.AddSingleton<SshDesktopSession>();
         services.AddSingleton<IServerCenterOperationJournal, ServerCenterOperationJournal>();
         services.AddSingleton<IServerCenterReleaseTrustStore, FileServerCenterReleaseTrustStore>();
         services.AddSingleton<IServerCenterReleaseSource, FileServerCenterReleaseSource>();
@@ -299,6 +300,8 @@ public static class Bootstrapper
         services.AddSingleton<ImageViewerApp>();
         services.AddSingleton<SettingsApp>();
         services.AddSingleton<TerminalApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.SshFileBrowserApp>();
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Browser.BrowserApp>();
@@ -330,7 +333,8 @@ public static class Bootstrapper
                     desktop.Shutdown();
             };
             return new DesktopShellViewModel(
-                wm, apps, settings, localization, session, shutdown,
+                wm, apps, settings, localization, session,
+                sp.GetRequiredService<SshDesktopSession>(), shutdown,
                 sp.GetRequiredService<DesktopRestoreOrchestrator>(),
                 sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.IExplorerClient>(),
                 sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.IRemoteFileClipboard>(),
