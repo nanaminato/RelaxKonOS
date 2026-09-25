@@ -53,6 +53,29 @@
                     <TextBlock Text="{Binding LastProbeText}" IsVisible="{Binding HasLastProbe}" TextWrapping="Wrap" />
                     <CheckBox IsChecked="{Binding DeploymentConfirmed}" Content="{Binding DeployConfirmationText}" />
                     <Button Command="{Binding DeployRecommendedCommand}" Content="{Binding DeployText}" HorizontalAlignment="Left" />
+                    <StackPanel IsVisible="{Binding SelectedHost.LastVerified.Installed}" Spacing="8">
+                        <Button Command="{Binding RepairCommand}" Content="{Binding RepairText}" HorizontalAlignment="Left" />
+                        <Button Command="{Binding RollbackCommand}" Content="{Binding RollbackText}" HorizontalAlignment="Left" />
+                        <Separator Margin="0,4" />
+                        <CheckBox IsChecked="{Binding DeleteServerData}" Content="{Binding DeleteServerDataText}" />
+                        <TextBox Text="{Binding UninstallNameConfirmation}" IsVisible="{Binding DeleteServerData}" PlaceholderText="{Binding UninstallNameLabel}" />
+                        <Button Command="{Binding UninstallCommand}" Content="{Binding UninstallText}" HorizontalAlignment="Left" Classes="danger" />
+                    </StackPanel>
+                    <Separator Margin="0,4" />
+                    <TextBlock Text="{Binding OperationHistoryText}" FontWeight="SemiBold" />
+                    <Button Command="{Binding LoadOperationHistoryCommand}" Content="{Binding LoadOperationHistoryText}" HorizontalAlignment="Left" />
+                    <ListBox ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation}" IsVisible="{Binding HasOperations}" MaxHeight="120">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4" Spacing="1">
+                                    <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding State}" />
+                                    <TextBlock Text="{Binding SafeMessage}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button Command="{Binding RefreshOperationCommand}" Content="{Binding RefreshOperationText}" HorizontalAlignment="Left" />
                 </StackPanel>
                 <TextBlock Text="{Binding CachedStateText}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <Button Command="{Binding RemoveHostCommand}" Content="{Binding RemoveText}" HorizontalAlignment="Left" />

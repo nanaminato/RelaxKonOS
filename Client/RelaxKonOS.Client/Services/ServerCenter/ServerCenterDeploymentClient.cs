@@ -96,6 +96,40 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         return staged;
     }
 
+    /// <summary>
+    /// Stages only the fixed query tools for reconnecting to an existing operation receipt.  It does
+    /// not create a deployment request, upload a package, or start a new operation: the supplied ID
+    /// is solely the immutable key of a previously recorded remote operation.
+    /// </summary>
+    public async Task<ServerCenterStagedOperation> StageQueryAsync(
+        Guid operationId,
+        HostPlatformKind platform,
+        Stream launcher,
+        Stream verifier,
+        CancellationToken cancellationToken)
+    {
+        if (operationId == Guid.Empty) throw new ArgumentException("An operation id is required.", nameof(operationId));
+        ArgumentNullException.ThrowIfNull(launcher);
+        ArgumentNullException.ThrowIfNull(verifier);
+        if (!transport.IsConnected) throw new InvalidOperationException("A trusted SSH session is required.");
+        if (!launcher.CanRead || !verifier.CanRead || !launcher.CanSeek || !verifier.CanSeek)
+            throw new ArgumentException("Seekable launcher and verifier streams are required.");
+
+        var directory = await CreatePrivateDirectoryAsync(platform, cancellationToken).ConfigureAwait(false);
+        var staged = new ServerCenterStagedOperation(operationId, platform, directory);
+        await UploadFromStartAsync(verifier, staged, platform == HostPlatformKind.Windows
+            ? "release-verifier.exe" : "release-verifier", cancellationToken).ConfigureAwait(false);
+        await UploadFromStartAsync(launcher, staged, platform == HostPlatformKind.Windows
+            ? "RelaxKonOS-Deploy.ps1" : "relaxkonos-deploy.sh", cancellationToken).ConfigureAwait(false);
+        if (platform == HostPlatformKind.Linux)
+        {
+            var chmod = await transport.RunAsync("chmod 700 '" + directory + "/release-verifier' '" +
+                directory + "/relaxkonos-deploy.sh'", cancellationToken).ConfigureAwait(false);
+            if (!chmod.Succeeded) throw new IOException("Unable to mark the staged deployment tools executable.");
+        }
+        return staged;
+    }
+
     public async Task<ServerDeploymentOperationDto> ExecuteAsync(
         ServerCenterStagedOperation staged, CancellationToken cancellationToken)
     {

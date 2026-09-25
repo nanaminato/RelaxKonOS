@@ -73,6 +73,7 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private bool _deploymentConfirmed;
     [ObservableProperty] private bool _deleteServerData;
     [ObservableProperty] private string _uninstallNameConfirmation = string.Empty;
+    [ObservableProperty] private ServerCenterOperationRecord? _selectedOperation;
 
     public string Title => T("server_center.title", "Server centre");
     public string Subtitle => T("server_center.subtitle", "Manage the SSH hosts used to install and maintain RelaxKonOS servers.");
@@ -107,6 +108,7 @@ public partial class ServerCenterViewModel : ObservableObject
     public string UninstallNameLabel => T("server_center.uninstall_name", "Type the server name to delete data");
     public string OperationHistoryText => T("server_center.operation_history", "Operation history");
     public string LoadOperationHistoryText => T("server_center.load_operation_history", "Load operation history");
+    public string RefreshOperationText => T("server_center.refresh_operation", "Refresh selected operation from host");
     public bool HasVerifiedState => !string.IsNullOrWhiteSpace(VerifiedStateText);
     public bool HasLastProbe => !string.IsNullOrWhiteSpace(LastProbeText);
 
@@ -199,6 +201,203 @@ public partial class ServerCenterViewModel : ObservableObject
     }
 
     private bool CanRemoveHost() => !IsBusy && SelectedHost is not null;
+
+    [RelayCommand(CanExecute = nameof(CanMaintain))]
+    private Task RepairAsync(CancellationToken cancellationToken = default) =>
+        PerformInstalledOperationAsync(ServerDeploymentKind.Repair, ServerDataRetention.Retain, cancellationToken);
+
+    [RelayCommand(CanExecute = nameof(CanMaintain))]
+    private Task RollbackAsync(CancellationToken cancellationToken = default) =>
+        PerformInstalledOperationAsync(ServerDeploymentKind.Rollback, ServerDataRetention.Retain, cancellationToken);
+
+    [RelayCommand(CanExecute = nameof(CanUninstall))]
+    private Task UninstallAsync(CancellationToken cancellationToken = default) =>
+        PerformInstalledOperationAsync(
+            ServerDeploymentKind.Uninstall,
+            DeleteServerData ? ServerDataRetention.Delete : ServerDataRetention.Retain,
+            cancellationToken);
+
+    [RelayCommand(CanExecute = nameof(CanLoadOperationHistory))]
+    private async Task LoadOperationHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        var target = SelectedHost;
+        if (target is null) return;
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            await ReloadOperationHistoryAsync(target.HostId, cancellationToken).ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.history_load_failed", "Unable to read the local operation history.");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRefreshOperation))]
+    private async Task RefreshOperationAsync(CancellationToken cancellationToken = default)
+    {
+        var target = SelectedHost;
+        var platform = SelectedPlatform;
+        var record = SelectedOperation;
+        if (target is null || platform is null || record is null || string.IsNullOrEmpty(SshPassword)) return;
+
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
+            if (tools is null)
+            {
+                ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
+                return;
+            }
+            await using var session = await _connections.ConnectAsync(
+                target.HostId,
+                new ServerCenterSshCredential.Password(SshPassword),
+                DateTimeOffset.UtcNow,
+                cancellationToken).ConfigureAwait(true);
+            await using var launcher = tools.OpenLauncher();
+            await using var verifier = tools.OpenVerifier();
+            var client = new ServerCenterDeploymentClient(session.Transport);
+            var staged = await client.StageQueryAsync(record.OperationId, platform.Platform, launcher, verifier, cancellationToken)
+                .ConfigureAwait(true);
+            var receipt = await client.QueryAsync(staged, cancellationToken).ConfigureAwait(true);
+            await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
+                .ConfigureAwait(true);
+
+            if (receipt.Snapshot is not null)
+                await ApplySnapshotAsync(target, receipt.Snapshot, cancellationToken).ConfigureAwait(true);
+            StatusMessage = T("server_center.operation_refreshed", "The selected operation receipt was refreshed from the host.");
+            await ReloadOperationHistoryAsync(target.HostId, cancellationToken).ConfigureAwait(true);
+        }
+        catch (ServerCenterHostKeyRejectedException rejected)
+        {
+            _pendingHostKey = rejected.Observation;
+            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
+            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
+            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = string.Empty;
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.operation_refresh_failed", "The remote operation receipt could not be refreshed. Check SSH access and try again.");
+        }
+        finally
+        {
+            SshPassword = string.Empty;
+            IsBusy = false;
+        }
+    }
+
+    private async Task PerformInstalledOperationAsync(
+        ServerDeploymentKind kind,
+        ServerDataRetention retention,
+        CancellationToken cancellationToken)
+    {
+        var target = SelectedHost;
+        var platform = SelectedPlatform;
+        if (target is null || platform is null || string.IsNullOrEmpty(SshPassword) || !DeploymentConfirmed) return;
+        if (retention == ServerDataRetention.Delete &&
+            !string.Equals(UninstallNameConfirmation.Trim(), target.DisplayName, StringComparison.Ordinal)) return;
+
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        StatusMessage = string.Empty;
+        try
+        {
+            var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
+            if (tools is null)
+            {
+                ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
+                return;
+            }
+
+            await using var session = await _connections.ConnectAsync(
+                target.HostId,
+                new ServerCenterSshCredential.Password(SshPassword),
+                DateTimeOffset.UtcNow,
+                cancellationToken).ConfigureAwait(true);
+            var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
+            var probe = probeReceipt.Probe;
+            if (probe is null || !probe.OsSupported || !PlatformMatches(platform.Platform, probe.HostPlatform) ||
+                !probe.ExistingInstalled || probe.ExistingMode is null ||
+                !ServerInstallationId.IsValid(probe.ExistingInstallationId))
+            {
+                ErrorMessage = T("server_center.maintenance_preflight_failed", "The host no longer reports a supported managed installation. This operation is blocked.");
+                return;
+            }
+
+            var request = new ServerDeploymentRequest(
+                ServerDeploymentProtocol.Version,
+                Guid.NewGuid(),
+                kind,
+                new ServerDeploymentOptions(
+                    ServerPackageSourceKind.OfficialStable,
+                    ServerNetworkProfile.Loopback,
+                    retention,
+                    probe.ExistingMode,
+                    null,
+                    null,
+                    null,
+                    null,
+                    probe.ExistingInstallationId,
+                    null,
+                    Confirmed: true));
+            var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken).ConfigureAwait(true);
+
+            // Read the separate status receipt even after uninstall. The install identity is retained
+            // locally only as a stable association for preserved data; it is never treated as live API health.
+            var status = await ExecuteReadOnlyAsync(
+                session, tools, ServerDeploymentKind.Status, StatusOptions(probe.ExistingMode.Value), cancellationToken).ConfigureAwait(true);
+            if (status.Snapshot is null)
+            {
+                ErrorMessage = T("server_center.status_missing", "The deployment finished, but no authoritative SSH-side status receipt was returned.");
+                return;
+            }
+
+            await ApplySnapshotAsync(target, status.Snapshot, cancellationToken).ConfigureAwait(true);
+            LastProbeText = FormatProbe(probe);
+            StatusMessage = kind switch
+            {
+                ServerDeploymentKind.Repair => T("server_center.repair_succeeded", "The current installation was repaired and verified through SSH."),
+                ServerDeploymentKind.Rollback => T("server_center.rollback_succeeded", "The previous program version was restored and verified through SSH."),
+                ServerDeploymentKind.Uninstall when retention == ServerDataRetention.Retain => T("server_center.uninstall_retained_succeeded", "The server was uninstalled. Managed data was retained on the host."),
+                ServerDeploymentKind.Uninstall => T("server_center.uninstall_deleted_succeeded", "The server and managed data were uninstalled."),
+                _ => receipt.SafeMessage ?? T("server_center.operation_succeeded", "The server operation completed.")
+            };
+        }
+        catch (ServerCenterHostKeyRejectedException rejected)
+        {
+            _pendingHostKey = rejected.Observation;
+            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
+            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
+            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = string.Empty;
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.maintenance_failed", "The server operation could not be completed. Its SSH-side receipt can be checked from this host later.");
+        }
+        finally
+        {
+            SshPassword = string.Empty;
+            DeploymentConfirmed = false;
+            DeleteServerData = false;
+            UninstallNameConfirmation = string.Empty;
+            IsBusy = false;
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanDeploy))]
     private async Task DeployRecommendedAsync(CancellationToken cancellationToken = default)
@@ -501,6 +700,13 @@ public partial class ServerCenterViewModel : ObservableObject
                                    !string.IsNullOrEmpty(SshPassword) && !HostKeyChanged;
     private bool CanDeploy() => CanProbeHost() && DeploymentConfirmed &&
                                 SelectedHost?.LastVerified is not null && HasLastProbe;
+    private bool CanMaintain() => CanDeploy() && SelectedHost?.LastVerified?.Installed == true;
+    private bool CanUninstall() => CanMaintain() &&
+                                   (!DeleteServerData || string.Equals(
+                                       UninstallNameConfirmation.Trim(), SelectedHost?.DisplayName, StringComparison.Ordinal));
+    private bool CanLoadOperationHistory() => !IsBusy && SelectedHost is not null;
+    private bool CanRefreshOperation() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null &&
+                                          SelectedOperation is not null && !string.IsNullOrEmpty(SshPassword) && !HostKeyChanged;
     private bool CanConfirmHostKey() => !IsBusy && SelectedHost is not null && NeedsHostKeyConfirmation && _pendingHostKey is not null;
 
     partial void OnSelectedHostChanged(ServerHostTarget? value)
@@ -514,12 +720,22 @@ public partial class ServerCenterViewModel : ObservableObject
         VerifiedStateText = value?.LastVerified is { } verified ? FormatSnapshot(verified) : string.Empty;
         LastProbeText = string.Empty;
         DeploymentConfirmed = false;
+        DeleteServerData = false;
+        UninstallNameConfirmation = string.Empty;
+        Operations.Clear();
+        SelectedOperation = null;
+        OnPropertyChanged(nameof(HasOperations));
         OnPropertyChanged(nameof(DeployText));
         RemoveHostCommand.NotifyCanExecuteChanged();
         VerifySshCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
         DeployRecommendedCommand.NotifyCanExecuteChanged();
+        RepairCommand.NotifyCanExecuteChanged();
+        RollbackCommand.NotifyCanExecuteChanged();
+        UninstallCommand.NotifyCanExecuteChanged();
+        LoadOperationHistoryCommand.NotifyCanExecuteChanged();
+        RefreshOperationCommand.NotifyCanExecuteChanged();
     }
     partial void OnIsBusyChanged(bool value)
     {
@@ -528,6 +744,11 @@ public partial class ServerCenterViewModel : ObservableObject
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
         DeployRecommendedCommand.NotifyCanExecuteChanged();
+        RepairCommand.NotifyCanExecuteChanged();
+        RollbackCommand.NotifyCanExecuteChanged();
+        UninstallCommand.NotifyCanExecuteChanged();
+        LoadOperationHistoryCommand.NotifyCanExecuteChanged();
+        RefreshOperationCommand.NotifyCanExecuteChanged();
     }
     partial void OnErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasError));
     partial void OnSshPasswordChanged(string value)
@@ -535,20 +756,48 @@ public partial class ServerCenterViewModel : ObservableObject
         VerifySshCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
         DeployRecommendedCommand.NotifyCanExecuteChanged();
+        RepairCommand.NotifyCanExecuteChanged();
+        RollbackCommand.NotifyCanExecuteChanged();
+        UninstallCommand.NotifyCanExecuteChanged();
+        RefreshOperationCommand.NotifyCanExecuteChanged();
     }
     partial void OnNeedsHostKeyConfirmationChanged(bool value) => ConfirmHostKeyCommand.NotifyCanExecuteChanged();
     partial void OnHostKeyChangedChanged(bool value)
     {
         ProbeHostCommand.NotifyCanExecuteChanged();
         DeployRecommendedCommand.NotifyCanExecuteChanged();
+        RepairCommand.NotifyCanExecuteChanged();
+        RollbackCommand.NotifyCanExecuteChanged();
+        UninstallCommand.NotifyCanExecuteChanged();
+        RefreshOperationCommand.NotifyCanExecuteChanged();
     }
     partial void OnSelectedPlatformChanged(HostPlatformOption? value)
     {
         ProbeHostCommand.NotifyCanExecuteChanged();
         DeployRecommendedCommand.NotifyCanExecuteChanged();
+        RepairCommand.NotifyCanExecuteChanged();
+        RollbackCommand.NotifyCanExecuteChanged();
+        UninstallCommand.NotifyCanExecuteChanged();
+        RefreshOperationCommand.NotifyCanExecuteChanged();
     }
-    partial void OnDeploymentConfirmedChanged(bool value) => DeployRecommendedCommand.NotifyCanExecuteChanged();
-    partial void OnLastProbeTextChanged(string value) => DeployRecommendedCommand.NotifyCanExecuteChanged();
+    partial void OnDeploymentConfirmedChanged(bool value)
+    {
+        DeployRecommendedCommand.NotifyCanExecuteChanged();
+        RepairCommand.NotifyCanExecuteChanged();
+        RollbackCommand.NotifyCanExecuteChanged();
+        UninstallCommand.NotifyCanExecuteChanged();
+        RefreshOperationCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnLastProbeTextChanged(string value)
+    {
+        DeployRecommendedCommand.NotifyCanExecuteChanged();
+        RepairCommand.NotifyCanExecuteChanged();
+        RollbackCommand.NotifyCanExecuteChanged();
+        UninstallCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnDeleteServerDataChanged(bool value) => UninstallCommand.NotifyCanExecuteChanged();
+    partial void OnUninstallNameConfirmationChanged(string value) => UninstallCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedOperationChanged(ServerCenterOperationRecord? value) => RefreshOperationCommand.NotifyCanExecuteChanged();
 
     private async Task<ServerDeploymentOperationDto> ExecuteReadOnlyAsync(
         ServerCenterHostSession session,
@@ -567,6 +816,44 @@ public partial class ServerCenterViewModel : ObservableObject
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
         return receipt;
+    }
+
+    private async Task<ServerDeploymentOperationDto> ExecuteFixedOperationAsync(
+        ServerCenterHostSession session,
+        ServerCenterDeploymentTools tools,
+        ServerDeploymentRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var launcher = tools.OpenLauncher();
+        await using var verifier = tools.OpenVerifier();
+        var client = new ServerCenterDeploymentClient(session.Transport);
+        var staged = await client.StageAsync(
+            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
+        var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+        await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
+            .ConfigureAwait(true);
+        return receipt;
+    }
+
+    private async Task ApplySnapshotAsync(
+        ServerHostTarget target,
+        ServerHostSnapshotDto snapshot,
+        CancellationToken cancellationToken)
+    {
+        var verified = ServerHostTargetRules.ApplyVerifiedState(
+            target, ServerHostTargetRules.VerifiedStateFrom(snapshot), DateTimeOffset.UtcNow);
+        var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
+        ReplaceHost(saved);
+        SelectedHost = saved;
+        VerifiedStateText = FormatSnapshot(saved.LastVerified!);
+    }
+
+    private async Task ReloadOperationHistoryAsync(string hostId, CancellationToken cancellationToken)
+    {
+        var records = await _operationJournal.LoadAsync(hostId, cancellationToken).ConfigureAwait(true);
+        Operations.Clear();
+        foreach (var item in records) Operations.Add(item);
+        OnPropertyChanged(nameof(HasOperations));
     }
 
     private void ReplaceHost(ServerHostTarget host)
@@ -596,7 +883,10 @@ public partial class ServerCenterViewModel : ObservableObject
         {
             HostPlatformKind.Windows when probe.Elevated => ServerInstallMode.WindowsSystem,
             HostPlatformKind.Windows => null,
-            HostPlatformKind.Linux when probe.Elevated || probe.SudoAvailable => ServerInstallMode.LinuxSystem,
+            // The fixed Linux launcher deliberately never accepts an interactive sudo password over
+            // this channel. Until a separately authenticated sudo elevation flow exists, only an
+            // already-root SSH session may select System Mode; otherwise use User Mode.
+            HostPlatformKind.Linux when probe.Elevated => ServerInstallMode.LinuxSystem,
             HostPlatformKind.Linux => ServerInstallMode.LinuxUser,
             _ => null
         };
