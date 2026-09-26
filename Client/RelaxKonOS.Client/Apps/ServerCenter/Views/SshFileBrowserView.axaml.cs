@@ -1,8 +1,10 @@
+using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using Avalonia.Interactivity;
+using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.ServerCenter;
@@ -15,6 +17,8 @@ internal partial class SshFileBrowserView : UserControl
     private readonly SshDesktopSession _session;
     private readonly List<string> _history = [];
     private readonly List<SshFileEntry> _clipboard = [];
+    private readonly ObservableCollection<TreeNodeModel> _navigationNodes = [];
+    private readonly Dictionary<TreeNodeModel, Task> _treeLoads = [];
     private SshFileEntry[] _entries = [];
     private int _historyIndex = -1;
     private bool _showHidden;
@@ -25,11 +29,16 @@ internal partial class SshFileBrowserView : UserControl
     private bool _busy;
     private bool _initialized;
     private bool _viewReady;
+    private bool _syncingTreeSelection;
+    private int _treeRevision;
+    private TreeNodeModel? _homeNode;
+    private TreeNodeModel? _rootNode;
 
     public SshFileBrowserView(SshDesktopSession session)
     {
         _session = session;
         InitializeComponent();
+        NavigationTree.ItemsSource = _navigationNodes;
         _viewReady = true;
         KeyDown += View_KeyDown;
         AttachedToVisualTree += async (_, _) =>
@@ -45,7 +54,7 @@ internal partial class SshFileBrowserView : UserControl
     private async void Forward_Click(object? sender, RoutedEventArgs e) => await ForwardAsync();
     private async void Up_Click(object? sender, RoutedEventArgs e) => await NavigateAsync(ParentPath(_path));
     private async void Home_Click(object? sender, RoutedEventArgs e) => await NavigateAsync(".");
-    private async void Refresh_Click(object? sender, RoutedEventArgs e) => await NavigateAsync(_path, false);
+    private async void Refresh_Click(object? sender, RoutedEventArgs e) => await RefreshAsync();
     private async void NewFolder_Click(object? sender, RoutedEventArgs e) => await CreateDirectoryAsync();
     private void Copy_Click(object? sender, RoutedEventArgs e) => CopySelection(false);
     private void Cut_Click(object? sender, RoutedEventArgs e) => CopySelection(true);
@@ -94,6 +103,14 @@ internal partial class SshFileBrowserView : UserControl
         if (!_viewReady) return;
         _showHidden = HiddenBox.IsChecked == true;
         ApplyView();
+        _ = RebuildNavigationTreeAsync();
+    }
+
+    private async void NavigationTree_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingTreeSelection || _busy || NavigationTree.SelectedItem is not TreeNodeModel { Path: { } path } node
+            || node.IsPlaceholder) return;
+        await NavigateAsync(path);
     }
 
     private void FilesList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -129,7 +146,7 @@ internal partial class SshFileBrowserView : UserControl
     private async void View_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Source is TextBox && e.Key is not Key.F5) return;
-        if (e.Key == Key.F5) { e.Handled = true; await NavigateAsync(_path, false); }
+        if (e.Key == Key.F5) { e.Handled = true; await RefreshAsync(); }
         else if (e.Key == Key.F2) { e.Handled = true; await RenameAsync(); }
         else if (e.Key == Key.Delete) { e.Handled = true; await DeleteAsync(); }
         else if (e.Key == Key.Up && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
@@ -196,6 +213,8 @@ internal partial class SshFileBrowserView : UserControl
                 _historyIndex = _history.Count - 1;
             }
             ApplyView();
+            InitializeNavigationTree();
+            await SyncNavigationTreeAsync();
             StatusText.Text = "";
         }
         catch (Exception ex)
@@ -204,6 +223,103 @@ internal partial class SshFileBrowserView : UserControl
             StatusText.Text = $"{T("ssh_files.open_failed", "Unable to open folder")}: {ex.Message}";
         }
         finally { _busy = false; UpdateControls(); }
+    }
+
+    private async Task RefreshAsync()
+    {
+        await NavigateAsync(_path, false);
+        await RebuildNavigationTreeAsync();
+    }
+
+    private void InitializeNavigationTree()
+    {
+        if (_homeNode is not null) return;
+        _homeNode = CreateTreeNode(T("ssh_files.home", "Home"), _path, TreeNodeIconKind.Home);
+        _rootNode = CreateTreeNode(T("ssh_files.root", "Root"), "/", TreeNodeIconKind.Drive);
+        _navigationNodes.Add(_homeNode);
+        _navigationNodes.Add(_rootNode);
+    }
+
+    private TreeNodeModel CreateTreeNode(string label, string path, TreeNodeIconKind iconKind)
+    {
+        var node = new TreeNodeModel(label, path, iconKind);
+        node.AddDummyChild();
+        node.ExpandRequested = LoadTreeChildrenAsync;
+        return node;
+    }
+
+    private async Task RebuildNavigationTreeAsync()
+    {
+        if (_homeNode is null) return;
+        _treeRevision++;
+        _treeLoads.Clear();
+        _navigationNodes.Clear();
+        _homeNode = null;
+        _rootNode = null;
+        InitializeNavigationTree();
+        await SyncNavigationTreeAsync();
+    }
+
+    private async Task SyncNavigationTreeAsync()
+    {
+        if (_homeNode is null || _rootNode is null) return;
+        _syncingTreeSelection = true;
+        try
+        {
+            var current = IsAtOrWithin(_homeNode.Path!, _path) ? _homeNode : _rootNode;
+            var remainingPath = _path[current.Path!.Length..].Trim('/');
+            foreach (var segment in remainingPath.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                await LoadTreeChildrenAsync(current);
+                current.IsExpanded = true;
+                var child = current.Children.FirstOrDefault(item => string.Equals(item.Label, segment,
+                    StringComparison.Ordinal) && !item.IsPlaceholder);
+                if (child is null) break;
+                current = child;
+            }
+            NavigationTree.SelectedItem = current;
+        }
+        finally { _syncingTreeSelection = false; }
+    }
+
+    private async Task LoadTreeChildrenAsync(TreeNodeModel node)
+    {
+        if (node.HasLoadedChildren || node.Path is null) return;
+        if (_treeLoads.TryGetValue(node, out var existing))
+        {
+            await existing;
+            return;
+        }
+
+        var load = LoadTreeChildrenCoreAsync(node, _treeRevision);
+        _treeLoads[node] = load;
+        try { await load; }
+        finally { _treeLoads.Remove(node); }
+    }
+
+    private async Task LoadTreeChildrenCoreAsync(TreeNodeModel node, int revision)
+    {
+        node.IsLoading = true;
+        try
+        {
+            var directories = await ExecuteAsync(client => client.ListDirectory(node.Path!)
+                .Where(file => file.Name is not ("." or "..") && file.IsDirectory && !file.IsSymbolicLink
+                    && (_showHidden || !file.Name.StartsWith('.')))
+                .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(file => (file.Name, file.FullName))
+                .ToArray());
+            if (revision != _treeRevision) return;
+
+            node.MarkChildrenLoaded();
+            foreach (var directory in directories)
+                node.Children.Add(CreateTreeNode(directory.Name, directory.FullName, TreeNodeIconKind.Folder));
+        }
+        catch (Exception ex)
+        {
+            if (revision == _treeRevision)
+                StatusText.Text = $"{T("ssh_files.tree_load_failed", "Unable to load folder tree")}: {ex.Message}";
+        }
+        finally { node.IsLoading = false; }
     }
 
     private async Task BackAsync()
@@ -267,6 +383,7 @@ internal partial class SshFileBrowserView : UserControl
         DownloadButton.IsEnabled = !_busy && selected.Length > 0;
         CopyButton.IsEnabled = CutButton.IsEnabled = !_busy && selected.Length > 0;
         PasteButton.IsEnabled = !_busy && _clipboard.Count > 0;
+        NavigationTree.IsEnabled = !_busy;
     }
 
     private async Task ShowPropertiesAsync()
@@ -286,6 +403,9 @@ internal partial class SshFileBrowserView : UserControl
 
     private static string Child(string directory, string name) =>
         directory.TrimEnd('/') + "/" + name;
+
+    private static bool IsAtOrWithin(string parent, string candidate) => candidate == parent ||
+        candidate.StartsWith(parent.TrimEnd('/') + "/", StringComparison.Ordinal);
 
     private async Task<string?> PromptAsync(string title, string initial = "")
     {

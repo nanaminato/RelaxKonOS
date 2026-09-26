@@ -2,6 +2,8 @@
   "Culture": "zh-CN",
   "Strings": {
     "ssh_files.home": "主目录",
+    "ssh_files.root": "根目录",
+    "ssh_files.quick_access": "快速访问",
     "ssh_files.address": "远端路径",
     "ssh_files.search": "筛选当前文件夹",
     "ssh_files.new_folder": "新建文件夹",
@@ -31,6 +33,7 @@
     "ssh_files.open": "打开",
     "ssh_files.refresh": "刷新",
     "ssh_files.open_failed": "无法打开文件夹",
+    "ssh_files.tree_load_failed": "无法加载目录树",
     "ssh_files.exists": "目标已存在",
     "ssh_files.confirm_delete": "确认删除",
     "ssh_files.cancel": "取消",

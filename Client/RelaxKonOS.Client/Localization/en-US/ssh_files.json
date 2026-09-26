@@ -2,6 +2,8 @@
   "Culture": "en-US",
   "Strings": {
     "ssh_files.home": "Home",
+    "ssh_files.root": "Root",
+    "ssh_files.quick_access": "Quick access",
     "ssh_files.address": "Remote path",
     "ssh_files.search": "Filter this folder",
     "ssh_files.new_folder": "New folder",
@@ -31,6 +33,7 @@
     "ssh_files.open": "Open",
     "ssh_files.refresh": "Refresh",
     "ssh_files.open_failed": "Unable to open folder",
+    "ssh_files.tree_load_failed": "Unable to load folder tree",
     "ssh_files.exists": "Destination already exists",
     "ssh_files.confirm_delete": "Confirm delete",
     "ssh_files.cancel": "Cancel",

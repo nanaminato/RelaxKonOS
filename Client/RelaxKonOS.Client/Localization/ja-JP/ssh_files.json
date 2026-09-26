@@ -2,6 +2,8 @@
   "Culture": "ja-JP",
   "Strings": {
     "ssh_files.home": "ホーム",
+    "ssh_files.root": "ルート",
+    "ssh_files.quick_access": "クイック アクセス",
     "ssh_files.address": "リモートパス",
     "ssh_files.search": "このフォルダーを絞り込む",
     "ssh_files.new_folder": "新しいフォルダー",
@@ -31,6 +33,7 @@
     "ssh_files.open": "開く",
     "ssh_files.refresh": "更新",
     "ssh_files.open_failed": "フォルダーを開けません",
+    "ssh_files.tree_load_failed": "フォルダー ツリーを読み込めません",
     "ssh_files.exists": "保存先は既に存在します",
     "ssh_files.confirm_delete": "削除の確認",
     "ssh_files.cancel": "キャンセル",
