@@ -232,14 +232,19 @@ internal static async Task VerifyUserExecutionFailsClosedAsync()
             Path.Combine(home, "big.iso"))),
     ];
     var accepted = new List<string>();
+    var unexpectedProblems = new List<string>();
     foreach (var operation in operations)
     {
         try { operation.Invoke(); accepted.Add(operation.Name); }
-        catch (InvalidOperationException) { }
+        catch (UserExecutionException exception) when (exception.ProblemCode == UserExecutionProblemCode.HelperUnavailable) { }
+        catch (UserExecutionException exception) { unexpectedProblems.Add($"{operation.Name}: {exception.ProblemCode}"); }
     }
     TestAssert.Assert(accepted.Count == 0,
         "Every file operation must fail closed while the effective-user channel has no Helper, but these were served: "
         + string.Join(", ", accepted));
+    TestAssert.Assert(unexpectedProblems.Count == 0,
+        "A disabled user-execution channel must preserve HelperUnavailable, but received: "
+        + string.Join(", ", unexpectedProblems));
 
     var disabled = await new DisabledUserExecutionTransport().ExecuteAsync(new UserExecutionRequest(
         new UserExecutionIdentity(platform, account.Uid, account.Username, home),
@@ -283,6 +288,42 @@ internal static async Task VerifyWindowsUserExecutionTransportAsync()
     static Task<UserExecutionResult> ExecuteAsync(PrivilegedHelperOptions options, UserExecutionRequest request)
         => new WindowsNamedPipeUserExecutionTransport(options,
             NullLogger<WindowsNamedPipeUserExecutionTransport>.Instance).ExecuteAsync(request);
+}
+
+/// <summary>
+/// Exercises the installed LocalSystem Helper's user pipe with an ordinary local account. The
+/// caller must be an administrator solely to read the machine-secret configuration; the request
+/// itself executes under the supplied account's fresh S4U token.
+/// </summary>
+internal static async Task VerifyInstalledWindowsUserExecutionAsync(string helperConfigPath,
+    UserExecutionIdentity identity)
+{
+    TestAssert.Assert(OperatingSystem.IsWindows(), "Installed Windows user-execution verification requires Windows.");
+    using var document = JsonDocument.Parse(await File.ReadAllTextAsync(helperConfigPath));
+    var config = document.RootElement;
+    TestAssert.Assert(config.TryGetProperty("enableWindowsUserExecution", out var enabled) && enabled.GetBoolean(),
+        "The installed Helper did not enable Windows user execution.");
+    var options = new PrivilegedHelperOptions
+    {
+        PipeName = config.GetProperty("pipeName").GetString()!,
+        SharedSecret = config.GetProperty("sharedSecret").GetString()!,
+        TimeoutSeconds = 30,
+        EnableWindowsUserExecution = true,
+    };
+    var transport = new WindowsNamedPipeUserExecutionTransport(options,
+        NullLogger<WindowsNamedPipeUserExecutionTransport>.Instance);
+    var special = await transport.ExecuteAsync(new UserExecutionRequest(identity,
+        UserExecutionOperationKind.FileGetSpecialLocations, OperationId: Guid.NewGuid()));
+    TestAssert.Assert(special.Success, $"Installed user-execution Helper rejected special-location enumeration: {special.ProblemCode}.");
+    var locations = JsonSerializer.Deserialize<IReadOnlyList<SpecialLocationDto>>(
+        Convert.FromBase64String(special.OutputBase64!), RelaxKonOSJsonOptions.Default);
+    TestAssert.Assert(locations?.Any(location => location.Kind == SpecialFolderKind.Home
+        && string.Equals(location.Path, identity.HomeDirectory, StringComparison.OrdinalIgnoreCase)) == true,
+        "Installed user-execution Helper did not return the impersonated account's home directory.");
+
+    var listing = await transport.ExecuteAsync(new UserExecutionRequest(identity,
+        UserExecutionOperationKind.FileListDirectory, Path: identity.HomeDirectory, OperationId: Guid.NewGuid()));
+    TestAssert.Assert(listing.Success, $"Installed user-execution Helper rejected home-directory enumeration: {listing.ProblemCode}.");
 }
 
 internal static async Task VerifyUserExecutionTransportLifecycleAsync(string root)

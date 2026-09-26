@@ -48,14 +48,14 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     {
         try { return Run<long>(UserExecutionOperationKind.FileGetStagingLength, path: stagingPath); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
-            or InvalidOperationException or TimeoutException or ArgumentException)
+            or UserExecutionException or InvalidOperationException or TimeoutException or ArgumentException)
         { return -1; }
     }
     public bool DeleteStagingFile(string stagingPath)
     {
         try { return Run<bool>(UserExecutionOperationKind.FileDeleteStaging, path: stagingPath); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
-            or InvalidOperationException or TimeoutException or ArgumentException)
+            or UserExecutionException or InvalidOperationException or TimeoutException or ArgumentException)
         {
             return false;
         }
@@ -138,15 +138,32 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     private static void Throw(UserExecutionResult result)
     {
         if (result.Success) return;
-        throw result.ProblemCode switch
+        var message = result.ProblemCode switch
         {
-            UserExecutionProblemCode.AccessDenied => new UnauthorizedAccessException("Access denied for the authenticated OS user."),
-            UserExecutionProblemCode.NotFound => new FileNotFoundException("User-execution path not found."),
-            UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => new ArgumentException("Invalid user-execution file request."),
-            UserExecutionProblemCode.Conflict => new IOException("User-execution file operation failed."),
-            UserExecutionProblemCode.TimedOut => new TimeoutException("User-execution file operation timed out."),
-            _ => new InvalidOperationException("User-execution Helper is unavailable."),
+            UserExecutionProblemCode.AccessDenied => "Access denied for the authenticated OS user.",
+            UserExecutionProblemCode.NotFound => "User-execution path not found.",
+            UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => "Invalid user-execution file request.",
+            UserExecutionProblemCode.Conflict => "User-execution file operation failed.",
+            UserExecutionProblemCode.TimedOut => "User-execution file operation timed out.",
+            _ => "User-execution Helper is unavailable.",
         };
+        // Access, path and conflict failures describe the effective OS user's file operation.
+        // Preserve their ordinary IFileService exception contracts so FileEndpoints can issue the
+        // scoped elevation challenge (or its normal 404/409 response). Only a failed execution
+        // boundary itself remains a UserExecutionException and therefore a 503.
+        switch (result.ProblemCode)
+        {
+            case UserExecutionProblemCode.AccessDenied:
+                throw new UnauthorizedAccessException(message);
+            case UserExecutionProblemCode.NotFound:
+                throw new FileNotFoundException(message);
+            case UserExecutionProblemCode.InvalidRequest:
+            case UserExecutionProblemCode.ContentTooLarge:
+                throw new ArgumentException(message);
+            case UserExecutionProblemCode.Conflict:
+                throw new IOException(message);
+        }
+        throw new UserExecutionException(result.ProblemCode, message);
     }
     private sealed record FileReadResult(string ContentBase64, string FileName, string ContentType);
 }

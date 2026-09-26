@@ -267,7 +267,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | `Client/RelaxKonOS.Settings.Tests` / `Client/RelaxKonOS.Installation.Tests` / `Client/RelaxKonOS.Explorer.Tests` | 通过 | Explorer 回归 137 项，含本分支新增的「重命名提交进行中」两项断言。 |
 | `Framework/RelaxKonOS.Core.Tests` | 环境受限 | 失败于 `Directory.CreateSymbolicLink`：本机未开启开发者模式/未提升权限，无符号链接创建特权。与本 Goal 无关（该工程未被本分支修改）。 |
 | `Client/RelaxKonOS.FileServices.Tests` | 无法构建 | 既存破损：该工程仅以 `Compile Include` 链接 `FileServicesViewModel.cs`，而该 VM 依赖未链接的 `LocalizedStatus`/`LocalizedObservableObject`/`RelaxKonOS.Client.Services`/`InstallationTaskViewModel`；master 上同样如此，与本 Goal 无关。 |
-| `deployment/windows/Install-RelaxKonOSServices.ps1` | 通过 | `Parser::ParseFile` 语法检查通过；安装器在 Server 段写入 `EnableWindowsUserExecution = $false`，在 Helper 段写入 `enableWindowsUserExecution = $false` 与 `userExecutionTimeoutSeconds = 25`，能力门默认关闭与代码默认值一致。 |
+| `deployment/windows/Install-RelaxKonOSServices.ps1` | 通过 | `Parser::ParseFile` 语法检查通过；安装器仅在显式传入 `-EnableWindowsUserExecution` 时才会同时在 Server 与 Helper 段写入启用值；省略该参数时能力门保持关闭。 |
 | Windows impersonation 真实多用户集成 | 仍未验证 | 本轮只在 Windows 开发宿主上验证了构建、契约与关闭态；S4U logon type、NTFS ACL/owner、token 释放、并发、取消、服务重启、profile/known-folder 与网络盘行为仍需隔离 Windows Server + LocalSystem Helper + 两个本地账户，能力门在此期间保持 `false`。 |
 
 ### 2026-09-25：用户执行通道接入统一可观测性

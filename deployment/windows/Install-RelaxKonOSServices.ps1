@@ -17,7 +17,9 @@ param(
     [string] $PrivilegedHelperServiceName = 'RelaxKonOSPrivilegedHelper',
     [ValidateSet('restricted', 'full', 'whitelist')]
     [string] $FileAccess = 'restricted',
-    [string] $FileRootsFile
+    [string] $FileRootsFile,
+    # This remains opt-in until Windows LocalSystem/S4U acceptance has passed on the target host.
+    [switch] $EnableWindowsUserExecution
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,6 +54,12 @@ if (($CertificateMode -eq 'none' -and $serverListenUri.Scheme -ne 'http') -or ($
     throw 'Certificate mode and ServerListenUrl scheme must agree: none uses HTTP; custom and self-signed use HTTPS.'
 }
 $DataRoot = [IO.Path]::GetFullPath($DataRoot)
+
+function Fill-CryptographicRandomBytes([byte[]] $Bytes) {
+    $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $generator.GetBytes($Bytes) }
+    finally { $generator.Dispose() }
+}
 
 function Test-FullyQualifiedWindowsPath([string] $Path) {
     return (-not [string]::IsNullOrWhiteSpace($Path) -and $Path -match '^[a-zA-Z]:[\\/]|^\\\\')
@@ -140,7 +148,7 @@ function Install-BootstrapCertificate {
         if ($identity -notmatch '^[A-Za-z0-9][A-Za-z0-9.-]*$') { throw "Invalid self-signed certificate DNS name: $identity" }
     }
     $passwordBytes = New-Object byte[] 48
-    [Security.Cryptography.RandomNumberGenerator]::Fill($passwordBytes)
+    Fill-CryptographicRandomBytes $passwordBytes
     $password = [Convert]::ToBase64String($passwordBytes)
     $securePassword = ConvertTo-SecureString -String $password -AsPlainText -Force
     $temporaryCertificate = New-SelfSignedCertificate -DnsName $identities -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -NotAfter ([DateTime]::UtcNow.AddYears(5))
@@ -153,10 +161,10 @@ function Install-BootstrapCertificate {
 }
 $bootstrapCertificate = Install-BootstrapCertificate
 $secretBytes = New-Object byte[] 48
-[Security.Cryptography.RandomNumberGenerator]::Fill($secretBytes)
+Fill-CryptographicRandomBytes $secretBytes
 $sharedSecret = [Convert]::ToBase64String($secretBytes)
 $helperSecretBytes = New-Object byte[] 48
-[Security.Cryptography.RandomNumberGenerator]::Fill($helperSecretBytes)
+Fill-CryptographicRandomBytes $helperSecretBytes
 $helperSecret = [Convert]::ToBase64String($helperSecretBytes)
 # Keep a valid production token key over an in-place repair or upgrade. Replacing it would
 # immediately invalidate every active client session for no security benefit.
@@ -184,13 +192,13 @@ if (Test-Path -LiteralPath $serverHostConfig -PathType Leaf) {
 }
 if ([string]::IsNullOrWhiteSpace($jwtSecret)) {
     $jwtSecretBytes = New-Object byte[] 48
-    [Security.Cryptography.RandomNumberGenerator]::Fill($jwtSecretBytes)
+    Fill-CryptographicRandomBytes $jwtSecretBytes
     $jwtSecret = [Convert]::ToBase64String($jwtSecretBytes)
 }
 if ([string]::IsNullOrWhiteSpace($observabilityInstanceId)) { $observabilityInstanceId = [guid]::NewGuid().ToString() }
 if ([string]::IsNullOrWhiteSpace($observabilityAuditHmacKey)) {
     $observabilityKeyBytes = New-Object byte[] 48
-    [Security.Cryptography.RandomNumberGenerator]::Fill($observabilityKeyBytes)
+    Fill-CryptographicRandomBytes $observabilityKeyBytes
     $observabilityAuditHmacKey = [Convert]::ToBase64String($observabilityKeyBytes)
 }
 
@@ -224,7 +232,7 @@ $serverSettings = [ordered]@{
         PipeName = 'relaxkonos-privileged-helper'
         SharedSecret = $helperSecret
         TimeoutSeconds = 30
-        EnableWindowsUserExecution = $false
+        EnableWindowsUserExecution = $EnableWindowsUserExecution.IsPresent
     }
     Observability = [ordered]@{
         InstanceId = $observabilityInstanceId
@@ -250,11 +258,13 @@ if ($bootstrapCertificate) {
 
 function Install-OrUpdateService([string] $Name, [string] $BinaryPath) {
     if (Get-Service -Name $Name -ErrorAction SilentlyContinue) {
-        & sc.exe config $Name ("binPath= " + $BinaryPath) start= auto | Out-Null
+        & sc.exe config $Name binPath= $BinaryPath start= auto | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not configure service '$Name' (sc.exe exit code $LASTEXITCODE)." }
     } else {
         New-Service -Name $Name -DisplayName $Name -BinaryPathName $BinaryPath -StartupType Automatic | Out-Null
     }
     & sc.exe failure $Name reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not configure recovery for service '$Name' (sc.exe exit code $LASTEXITCODE)." }
 }
 
 Install-OrUpdateService $GuardianServiceName ('"' + $GuardianExecutable + '" --config "' + $guardianConfig + '"')
@@ -263,10 +273,12 @@ Install-OrUpdateService $ServerServiceName ('"' + $ServerExecutable + '" --urls 
 # The Server keeps a service SID even while running as LocalService. It is the sole non-admin
 # identity allowed to connect to the Helper pipe and read its machine secret.
 & sc.exe sidtype $ServerServiceName unrestricted | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Could not enable the service SID for '$ServerServiceName' (sc.exe exit code $LASTEXITCODE)." }
 $sidOutput = (& sc.exe showsid $ServerServiceName) -join "`n"
 $serverServiceSid = [regex]::Match($sidOutput, 'S-1-5-80-(?:\d+-){3,}\d+').Value
 if ([string]::IsNullOrWhiteSpace($serverServiceSid)) { throw "Could not resolve service SID for $ServerServiceName." }
-& sc.exe config $ServerServiceName obj= 'NT AUTHORITY\LocalService' password= '' | Out-Null
+& sc.exe config $ServerServiceName obj= 'NT AUTHORITY\LocalService' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Could not set '$ServerServiceName' to run as LocalService (sc.exe exit code $LASTEXITCODE)." }
 
 $helperSettings = [ordered]@{
     pipeName = 'relaxkonos-privileged-helper'
@@ -275,7 +287,7 @@ $helperSettings = [ordered]@{
     fileAllowedRoots = $fileAllowedRoots
     allowedServiceIds = @($ServerServiceName, $GuardianServiceName)
     helperExecutableSha256 = (Get-FileHash -LiteralPath $PrivilegedHelperExecutable -Algorithm SHA256).Hash
-    enableWindowsUserExecution = $false
+    enableWindowsUserExecution = $EnableWindowsUserExecution.IsPresent
     userExecutionTimeoutSeconds = 25
 }
 [IO.File]::WriteAllText($serverHostConfig, ($serverSettings | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))

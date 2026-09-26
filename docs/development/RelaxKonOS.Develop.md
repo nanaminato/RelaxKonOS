@@ -19,7 +19,9 @@
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
   "allowConsoleDebug": true,
-  "developerUserSids": ["S-1-5-21-1111111111-2222222222-3333333333-1005"]
+  "developerUserSids": [
+    "S-1-5-21-2333115902-1181188794-1498531570-1005",
+    "S-1-5-21-518898542-3752080965-3168045265-1005"]
 }
 ```
 

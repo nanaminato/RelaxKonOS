@@ -8,6 +8,7 @@ using RelaxKonOS.Server.Storage;
 using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.UserExecution;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -21,15 +22,25 @@ public static class FileEndpoints
     public static IEndpointRouteBuilder MapFileEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapFileOperationEndpoints();
+        var files = app.MapGroup("")
+            .AddEndpointFilter(async (EndpointFilterInvocationContext context, EndpointFilterDelegate next) =>
+            {
+                try { return await next(context); }
+                catch (UserExecutionException exception)
+                {
+                    return (object)Problem(StatusCodes.Status503ServiceUnavailable,
+                        "user-execution-unavailable", "用户执行服务不可用", exception.Message);
+                }
+            });
 
         // GET drives
-        app.MapGet(FileApiRoutes.Drives, (IFileService fs) =>
+        files.MapGet(FileApiRoutes.Drives, (IFileService fs) =>
             Results.Ok(fs.GetDrives()))
            .RequireAuthorization(FileAuthorizationPolicies.List)
            .WithTags("Files");
 
         // GET special — 跨平台枚举家目录/桌面/文档/下载/图片/音乐/视频（已 Directory.Exists 过滤）
-        app.MapGet(FileApiRoutes.Special, (HttpContext http, IFileService fs, IUserRepository users, IIdentityProvider identity) =>
+        files.MapGet(FileApiRoutes.Special, (HttpContext http, IFileService fs, IUserRepository users, IIdentityProvider identity) =>
         {
             var subject = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
                 ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -43,7 +54,7 @@ public static class FileEndpoints
            .WithTags("Files");
 
         // GET list?path=
-        app.MapGet(FileApiRoutes.List, async (string? path, HttpContext http, IFileService fs, IPrivilegedFileService privileged,
+        files.MapGet(FileApiRoutes.List, async (string? path, HttpContext http, IFileService fs, IPrivilegedFileService privileged,
             IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             try { return Results.Ok(fs.GetDirectory(path)); }
@@ -65,7 +76,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // GET info?path=
-        app.MapGet(FileApiRoutes.Info, (string path, IFileService fs) =>
+        files.MapGet(FileApiRoutes.Info, (string path, IFileService fs) =>
         {
             try
             {
@@ -79,7 +90,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // GET download?path=
-        app.MapGet(FileApiRoutes.Download, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapGet(FileApiRoutes.Download, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             try
             {
@@ -107,7 +118,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // GET thumbnail?path=&maxEdge=
-        app.MapGet(FileApiRoutes.Thumbnail, async (string path, int? maxEdge, HttpContext http, IFileService fs,
+        files.MapGet(FileApiRoutes.Thumbnail, async (string path, int? maxEdge, HttpContext http, IFileService fs,
             IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             var edge = maxEdge ?? ImageThumbnailRenderer.DefaultMaxEdge;
@@ -139,7 +150,7 @@ public static class FileEndpoints
         .RequireAuthorization(FileAuthorizationPolicies.Read)
         .WithTags("Files");
 
-        app.MapGet(FileApiRoutes.Content, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapGet(FileApiRoutes.Content, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             try
             {
@@ -166,7 +177,7 @@ public static class FileEndpoints
         .RequireAuthorization(FileAuthorizationPolicies.Read)
         .WithTags("Files");
 
-        app.MapPut(FileApiRoutes.Content, async (string path, HttpRequest request, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations) =>
+        files.MapPut(FileApiRoutes.Content, async (string path, HttpRequest request, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations) =>
         {
             // A denied atomic write may happen after the incoming body has already been consumed.
             // Keep a replayable copy so the elevated retry writes the exact same bytes.
@@ -197,7 +208,7 @@ public static class FileEndpoints
         // First call without a password merely probes direct access. When it is denied, the
         // desktop prompts and repeats with the login user's host password. A successful grant
         // is constrained to this JWT and exact path for five minutes.
-        app.MapPost(FileApiRoutes.Elevation, (FileElevationRequest request, HttpContext http, IFileService fs,
+        files.MapPost(FileApiRoutes.Elevation, (FileElevationRequest request, HttpContext http, IFileService fs,
             IHostAdministratorAuthenticator administrators, IFileElevationSessionStore elevations) =>
         {
             if (string.IsNullOrWhiteSpace(request.Path))
@@ -234,7 +245,7 @@ public static class FileEndpoints
         .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.PrivilegedOperations))
         .WithTags("Files");
 
-        app.MapGet(FileApiRoutes.Properties, (string path, IFileService fs) =>
+        files.MapGet(FileApiRoutes.Properties, (string path, IFileService fs) =>
         {
             try
             {
@@ -247,7 +258,7 @@ public static class FileEndpoints
         .RequireAuthorization(FileAuthorizationPolicies.List)
         .WithTags("Files");
 
-        app.MapPut(FileApiRoutes.Permissions, (UpdateUnixPermissionsRequest request, IFileService fs) =>
+        files.MapPut(FileApiRoutes.Permissions, (UpdateUnixPermissionsRequest request, IFileService fs) =>
         {
             if (string.IsNullOrWhiteSpace(request.Path))
                 return Problem(400, "invalid-path", "Invalid path", "Path cannot be empty.");
@@ -262,7 +273,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST directory?path=
-        app.MapPost(FileApiRoutes.Directory, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Directory, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             try
             {
@@ -288,7 +299,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // DELETE files?path=
-        app.MapDelete(FileApiRoutes.Delete, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapDelete(FileApiRoutes.Delete, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             try
             {
@@ -312,7 +323,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST rename
-        app.MapPost(FileApiRoutes.Rename, async (RenameRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Rename, async (RenameRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.SourcePath) || string.IsNullOrWhiteSpace(req.NewName))
                 return Problem(400, "invalid-input", "输入无效", "sourcePath 与 newName 不能为空");
@@ -334,7 +345,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST move
-        app.MapPost(FileApiRoutes.Move, async (MoveRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Move, async (MoveRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.SourcePath) || string.IsNullOrWhiteSpace(req.DestinationPath))
                 return Problem(400, "invalid-input", "输入无效", "sourcePath 与 destinationPath 不能为空");
@@ -355,7 +366,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST copy
-        app.MapPost(FileApiRoutes.Copy, async (CopyRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Copy, async (CopyRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.SourcePath) || string.IsNullOrWhiteSpace(req.DestinationPath))
                 return Problem(400, "invalid-input", "输入无效", "sourcePath 与 destinationPath 不能为空");
@@ -378,7 +389,7 @@ public static class FileEndpoints
         // POST upload?path= — the small-file fast path. Its ceiling is declared here rather than inherited
         // from Kestrel's 30 MB default and the form reader's 128 MiB default, so a client that overruns it
         // gets a named answer instead of an opaque 413 from an unrelated layer.
-        app.MapPost(FileApiRoutes.Upload, async (HttpContext ctx, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations) =>
+        files.MapPost(FileApiRoutes.Upload, async (HttpContext ctx, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations) =>
         {
             var path = ctx.Request.Query["path"].ToString();
             if (string.IsNullOrWhiteSpace(path))
@@ -448,7 +459,7 @@ public static class FileEndpoints
         // client declares, and only then confirms that offset.
 
         // POST uploads — open a session.
-        app.MapPost(FileApiRoutes.Uploads, async (CreateUploadRequest req, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Uploads, async (CreateUploadRequest req, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
         {
             try
             {
@@ -462,7 +473,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // GET uploads/{uploadId} — the authoritative offset, and the only way to resolve doubt.
-        app.MapGet(FileApiRoutes.UploadPattern, (string uploadId, HttpContext ctx, UploadSessionService sessions) =>
+        files.MapGet(FileApiRoutes.UploadPattern, (string uploadId, HttpContext ctx, UploadSessionService sessions) =>
         {
             try { return Results.Ok(sessions.Get(ctx.User, uploadId)); }
             catch (UploadSessionException ex) { return UploadProblem(ctx, ex); }
@@ -471,7 +482,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // PATCH uploads/{uploadId} — append one chunk of raw bytes.
-        app.MapPatch(FileApiRoutes.UploadChunkPattern, async (string uploadId, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
+        files.MapPatch(FileApiRoutes.UploadChunkPattern, async (string uploadId, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
         {
             // Declared for the same reason as the single-shot ceiling: the largest legal chunk must be
             // reachable, and anything larger must be rejected by name.
@@ -491,7 +502,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST uploads/{uploadId}/commit — the only step that creates or replaces the destination file.
-        app.MapPost(FileApiRoutes.UploadCommitPattern, async (string uploadId, CommitUploadRequest? req, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.UploadCommitPattern, async (string uploadId, CommitUploadRequest? req, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
         {
             try
             {
@@ -504,7 +515,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // DELETE uploads/{uploadId} — abandon. Always 204: the caller's goal is "it is not there".
-        app.MapDelete(FileApiRoutes.UploadPattern, async (string uploadId, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
+        files.MapDelete(FileApiRoutes.UploadPattern, async (string uploadId, HttpContext ctx, UploadSessionService sessions, CancellationToken ct) =>
         {
             await sessions.AbortAsync(ctx.User, uploadId, ct);
             return Results.NoContent();

@@ -3,6 +3,13 @@ if (args.Length == 3 && args[0] == "--user-execution-copy-worker")
     RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(args[1], args[2], overwrite: true);
     return;
 }
+if (args.Length == 5 && args[0] == "--installed-windows-user-execution")
+{
+    await ServerCoreChecks.VerifyInstalledWindowsUserExecutionAsync(args[1],
+        new UserExecutionIdentity(HostPlatformKind.Windows, args[2], args[3], args[4]));
+    Console.WriteLine("Installed Windows user-execution check passed.");
+    return;
+}
 
 Batteries_V2.Init();
 

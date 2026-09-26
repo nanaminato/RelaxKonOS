@@ -116,7 +116,9 @@ function Select-CertificateMode {
 # repairs, rollbacks and a reinstall over retained data.
 function New-InstallationId {
     $bytes = New-Object byte[] 16
-    [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $generator.GetBytes($bytes) }
+    finally { $generator.Dispose() }
     return 'rki-' + (($bytes | ForEach-Object { $_.ToString('x2') }) -join '')
 }
 
