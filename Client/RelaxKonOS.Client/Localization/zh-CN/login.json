@@ -8,6 +8,8 @@
         "login.display_language": "显示语言：",
         "login.connection_instructions": "输入要连接的远程计算机名称。",
         "login.ssh_instructions": "输入 SSH 主机名称和登录凭据。",
+        "login.ssh_password_required": "请输入 SSH 密码，或使用此主机已保存的密码。",
+        "login.ssh_password_not_saved": "已连接，但无法安全保存 SSH 密码。",
         "login.ssh_connection_description": "SSH 登录后打开仅包含终端、服务器中心和 SFTP 文件浏览器的桌面。",
         "login.ssh_target_changed": "请输入有效的 SSH 主机、端口和用户名。",
         "login.ssh_identity_notice": "新主机的 SSH 密钥指纹需核对后才能信任。",

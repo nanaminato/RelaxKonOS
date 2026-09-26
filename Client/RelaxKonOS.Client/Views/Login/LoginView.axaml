@@ -141,9 +141,9 @@
                         Padding="0" Background="Transparent" BorderThickness="0"
                         Foreground="{DynamicResource AccentBrush}" />
 
-                <CheckBox IsVisible="{Binding !UseSshLogin}" IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
+                <CheckBox IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,12,0,0" />
-                <CheckBox IsVisible="{Binding !UseSshLogin}" IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"
+                <CheckBox IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"
                           Content="{Binding RememberPasswordText}"
                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,6,0,0" />
 

@@ -2,6 +2,8 @@
     "Culture": "en-US",
     "Strings": {
         "login.title": "RelaxKonOS",
+        "login.ssh_password_required": "Enter the SSH password or use the saved password for this host.",
+        "login.ssh_password_not_saved": "Connected, but the SSH password could not be saved securely.",
         "login.display_language": "Display language:",
         "login.connection_instructions": "Enter the name of the remote computer you want to connect to.",
         "login.credentials_instructions": "The credentials below will be used when connecting.",

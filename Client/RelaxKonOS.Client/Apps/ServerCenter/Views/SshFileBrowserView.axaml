@@ -7,7 +7,10 @@
              x:Name="Root"
              Background="{DynamicResource SurfaceBrush}">
     <Grid RowDefinitions="Auto,Auto,*,Auto">
-        <Grid ColumnDefinitions="Auto,*,180" ColumnSpacing="8" Margin="8,8,8,4">
+        <!-- Keep SSH browsing visually aligned with the Server desktop Explorer: navigation,
+             breadcrumbs, and filtering share the same compact top bar. -->
+        <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8">
+        <Grid ColumnDefinitions="Auto,*,180" ColumnSpacing="8">
             <StackPanel Orientation="Horizontal" Spacing="4">
                 <StackPanel.Styles>
                     <Style Selector="Button">
@@ -26,25 +29,38 @@
                     <Image Width="18" Height="18"
                            Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-up.png" />
                 </Button>
-                <Button x:Name="HomeButton" ToolTip.Tip="{loc:Loc ssh_files.home}" Click="Home_Click">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/navigation-home.png" />
-                </Button>
                 <Button x:Name="RefreshButton" ToolTip.Tip="F5" Click="Refresh_Click">
                     <Image Width="18" Height="18"
                            Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-refresh.png" />
                 </Button>
             </StackPanel>
-            <TextBox x:Name="AddressBox" Grid.Column="1" PlaceholderText="{loc:Loc ssh_files.address}"
-                     KeyDown="AddressBox_KeyDown" />
+            <Grid Grid.Column="1" MinWidth="100">
+                <TextBox x:Name="AddressBox" IsVisible="False" PlaceholderText="{loc:Loc ssh_files.address}"
+                         KeyDown="AddressBox_KeyDown" LostFocus="AddressBox_LostFocus" />
+                <Border x:Name="AddressDisplay" CornerRadius="5" BorderThickness="1"
+                        BorderBrush="{DynamicResource BorderDefaultBrush}" Padding="4,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="BreadcrumbsHost" Orientation="Horizontal" />
+                        </ScrollViewer>
+                        <Button Grid.Column="1" Click="EditAddress_Click" ToolTip.Tip="{loc:Loc ssh_files.address}"
+                                Background="Transparent" BorderThickness="0">
+                            <Image Width="16" Height="16"
+                                   Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" />
+                        </Button>
+                    </Grid>
+                </Border>
+            </Grid>
             <TextBox x:Name="SearchBox" Grid.Column="2" PlaceholderText="{loc:Loc ssh_files.search}"
                      TextChanged="SearchBox_TextChanged" />
         </Grid>
+        </Border>
 
-        <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="8,0,8,5">
+        <Border Grid.Row="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+        <WrapPanel Orientation="Horizontal">
             <WrapPanel.Styles>
                 <Style Selector="Button">
-                    <Setter Property="Margin" Value="0,0,4,3" />
+                    <Setter Property="Margin" Value="0,0,4,0" />
                 </Style>
                 <Style Selector="Button TextBlock">
                     <Setter Property="VerticalAlignment" Value="Center" />
@@ -58,25 +74,16 @@
                 </StackPanel>
             </Button>
             <Button x:Name="CopyButton" Click="Copy_Click" ToolTip.Tip="Ctrl+C">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.copy}" VerticalAlignment="Center" />
-                </StackPanel>
+                <Image Width="18" Height="18"
+                       Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" />
             </Button>
             <Button x:Name="CutButton" Click="Cut_Click" ToolTip.Tip="Ctrl+X">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-cut.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.cut}" VerticalAlignment="Center" />
-                </StackPanel>
+                <Image Width="18" Height="18"
+                       Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-cut.png" />
             </Button>
             <Button x:Name="PasteButton" Click="Paste_Click" ToolTip.Tip="Ctrl+V">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-paste.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.paste}" VerticalAlignment="Center" />
-                </StackPanel>
+                <Image Width="18" Height="18"
+                       Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-paste.png" />
             </Button>
             <Button x:Name="RenameButton" Click="Rename_Click" ToolTip.Tip="F2">
                 <StackPanel Orientation="Horizontal" Spacing="5">
@@ -92,44 +99,37 @@
                     <TextBlock Text="{loc:Loc ssh_files.delete}" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
-            <Button x:Name="UploadButton" Click="Upload_Click">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-upload.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.upload}" VerticalAlignment="Center" />
-                </StackPanel>
+            <Button ToolTip.Tip="{loc:Loc explorer.more}">
+                <Image Width="18" Height="18"
+                       Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-more.png" />
+                <Button.Flyout>
+                    <MenuFlyout>
+                        <MenuItem x:Name="UploadButton" Header="{loc:Loc ssh_files.upload}" Click="Upload_Click" />
+                        <MenuItem x:Name="UploadFolderButton" Header="{loc:Loc ssh_files.upload_folder}" Click="UploadFolder_Click" />
+                        <MenuItem x:Name="DownloadButton" Header="{loc:Loc ssh_files.download}" Click="Download_Click" />
+                        <Separator />
+                        <MenuItem Header="{loc:Loc ssh_files.properties}" Click="Properties_Click" />
+                    </MenuFlyout>
+                </Button.Flyout>
             </Button>
-            <Button x:Name="UploadFolderButton" Click="UploadFolder_Click">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-upload-folder.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.upload_folder}" VerticalAlignment="Center" />
-                </StackPanel>
-            </Button>
-            <Button x:Name="DownloadButton" Click="Download_Click">
-                <StackPanel Orientation="Horizontal" Spacing="5">
-                    <Image Width="18" Height="18"
-                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-download.png" />
-                    <TextBlock Text="{loc:Loc ssh_files.download}" VerticalAlignment="Center" />
-                </StackPanel>
-            </Button>
-            <ComboBox x:Name="SortBox" Width="120" SelectedIndex="0" Margin="8,0,4,0"
+            <TextBlock Text="{loc:Loc explorer.sort}" VerticalAlignment="Center" Margin="8,0,6,0" />
+            <ComboBox x:Name="SortBox" Width="112" SelectedIndex="0" Margin="0,0,10,0"
                       SelectionChanged="SortBox_SelectionChanged">
                 <ComboBoxItem Content="{loc:Loc ssh_files.name}" />
                 <ComboBoxItem Content="{loc:Loc ssh_files.modified}" />
                 <ComboBoxItem Content="{loc:Loc ssh_files.type}" />
                 <ComboBoxItem Content="{loc:Loc ssh_files.size}" />
             </ComboBox>
-            <CheckBox x:Name="DescendingBox" Content="{loc:Loc ssh_files.descending}" Margin="4,0"
+            <CheckBox x:Name="DescendingBox" Content="{loc:Loc ssh_files.descending}" Margin="0,0,12,0"
                       IsCheckedChanged="DescendingBox_Changed" />
-            <CheckBox x:Name="HiddenBox" Content="{loc:Loc ssh_files.show_hidden}" Margin="4,0"
+            <CheckBox x:Name="HiddenBox" Content="{loc:Loc ssh_files.show_hidden}"
                       IsCheckedChanged="HiddenBox_Changed" />
         </WrapPanel>
+        </Border>
 
         <Grid Grid.Row="2" ColumnDefinitions="210,Auto,*">
-            <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="8,4,4,4">
-                <TextBlock Text="{loc:Loc ssh_files.quick_access}" FontWeight="SemiBold" Margin="6,0,0,6" />
-                <TreeView x:Name="NavigationTree" Grid.Row="1" SelectionChanged="NavigationTree_SelectionChanged"
+            <Grid Grid.Column="0" Margin="8,4,4,4">
+                <TreeView x:Name="NavigationTree" SelectionChanged="NavigationTree_SelectionChanged"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                           ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <TreeView.Styles>
@@ -204,7 +204,13 @@
                     </Style>
                 </DataGrid.Styles>
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="{loc:Loc ssh_files.name}" Width="300" MinWidth="180">
+                    <DataGridTemplateColumn Width="300" MinWidth="180">
+                        <DataGridTemplateColumn.Header>
+                            <Grid Tag="name" ColumnDefinitions="*,Auto">
+                                <TextBlock Text="{loc:Loc ssh_files.name}" />
+                                <TextBlock Grid.Column="1" Text="{Binding #Root.NameSortGlyph}" Margin="6,0,0,0" />
+                            </Grid>
+                        </DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:CompileBindings="False">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="12,2">
@@ -217,7 +223,13 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{loc:Loc ssh_files.modified}" Width="164" MinWidth="150">
+                    <DataGridTemplateColumn Width="164" MinWidth="150">
+                        <DataGridTemplateColumn.Header>
+                            <Grid Tag="modified" ColumnDefinitions="*,Auto">
+                                <TextBlock Text="{loc:Loc ssh_files.modified}" />
+                                <TextBlock Grid.Column="1" Text="{Binding #Root.ModifiedSortGlyph}" Margin="6,0,0,0" />
+                            </Grid>
+                        </DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:CompileBindings="False">
                                 <TextBlock Text="{Binding ModifiedText}" TextTrimming="CharacterEllipsis"
@@ -225,7 +237,13 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{loc:Loc ssh_files.type}" Width="120" MinWidth="96">
+                    <DataGridTemplateColumn Width="120" MinWidth="96">
+                        <DataGridTemplateColumn.Header>
+                            <Grid Tag="type" ColumnDefinitions="*,Auto">
+                                <TextBlock Text="{loc:Loc ssh_files.type}" />
+                                <TextBlock Grid.Column="1" Text="{Binding #Root.TypeSortGlyph}" Margin="6,0,0,0" />
+                            </Grid>
+                        </DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:CompileBindings="False">
                                 <TextBlock Text="{Binding Kind}" TextTrimming="CharacterEllipsis"
@@ -233,7 +251,13 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{loc:Loc ssh_files.size}" Width="112" MinWidth="96">
+                    <DataGridTemplateColumn Width="112" MinWidth="96">
+                        <DataGridTemplateColumn.Header>
+                            <Grid Tag="size" ColumnDefinitions="*,Auto">
+                                <TextBlock Text="{loc:Loc ssh_files.size}" />
+                                <TextBlock Grid.Column="1" Text="{Binding #Root.SizeSortGlyph}" Margin="6,0,0,0" />
+                            </Grid>
+                        </DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:CompileBindings="False">
                                 <TextBlock Text="{Binding SizeText}" TextTrimming="CharacterEllipsis"
@@ -262,9 +286,13 @@
             </DataGrid>
         </Grid>
 
-        <StackPanel Grid.Row="3" Margin="8,4" Spacing="2">
-            <TextBlock x:Name="SummaryText" FontSize="12" />
-            <TextBlock x:Name="StatusText" FontSize="11" />
-        </StackPanel>
+        <Border Grid.Row="3" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"
+                BorderThickness="0,1,0,0" Padding="12,5">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock x:Name="SummaryText" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock x:Name="StatusText" Grid.Column="1" FontSize="11" Opacity="0.7"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

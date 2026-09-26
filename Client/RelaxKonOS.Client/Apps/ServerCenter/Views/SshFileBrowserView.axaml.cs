@@ -17,6 +17,14 @@ internal partial class SshFileBrowserView : UserControl
 {
     public static readonly StyledProperty<double> EntriesTableWidthProperty =
         AvaloniaProperty.Register<SshFileBrowserView, double>(nameof(EntriesTableWidth));
+    public static readonly StyledProperty<string> NameSortGlyphProperty =
+        AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(NameSortGlyph));
+    public static readonly StyledProperty<string> ModifiedSortGlyphProperty =
+        AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(ModifiedSortGlyph));
+    public static readonly StyledProperty<string> TypeSortGlyphProperty =
+        AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(TypeSortGlyph));
+    public static readonly StyledProperty<string> SizeSortGlyphProperty =
+        AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(SizeSortGlyph));
 
     private readonly SshDesktopSession _session;
     private readonly List<string> _history = [];
@@ -35,8 +43,11 @@ internal partial class SshFileBrowserView : UserControl
     private bool _viewReady;
     private bool _syncingTreeSelection;
     private int _treeRevision;
+    private string? _homePath;
     private TreeNodeModel? _homeNode;
     private TreeNodeModel? _rootNode;
+    private DataGridColumnHeader? _pressedSortHeader;
+    private double _pressedSortHeaderWidth;
 
     /// <summary>Combined live width of the details columns, used to constrain row layout.</summary>
     public double EntriesTableWidth
@@ -44,6 +55,11 @@ internal partial class SshFileBrowserView : UserControl
         get => GetValue(EntriesTableWidthProperty);
         private set => SetValue(EntriesTableWidthProperty, value);
     }
+
+    public string NameSortGlyph { get => GetValue(NameSortGlyphProperty); private set => SetValue(NameSortGlyphProperty, value); }
+    public string ModifiedSortGlyph { get => GetValue(ModifiedSortGlyphProperty); private set => SetValue(ModifiedSortGlyphProperty, value); }
+    public string TypeSortGlyph { get => GetValue(TypeSortGlyphProperty); private set => SetValue(TypeSortGlyphProperty, value); }
+    public string SizeSortGlyph { get => GetValue(SizeSortGlyphProperty); private set => SetValue(SizeSortGlyphProperty, value); }
 
     public SshFileBrowserView(SshDesktopSession session)
     {
@@ -54,11 +70,14 @@ internal partial class SshFileBrowserView : UserControl
         // The grid marks pointer presses as handled while it updates the selection, so the
         // right-click handler has to run in the tunnel phase (same as ExplorerMainView).
         EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
+        EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_SortHeaderPointerPressed, RoutingStrategies.Tunnel);
+        EntriesGrid.AddHandler(PointerReleasedEvent, EntriesGrid_SortHeaderPointerReleased, RoutingStrategies.Tunnel);
         EntriesGrid.LayoutUpdated += EntriesGrid_LayoutUpdated;
         // The details grid consumes a few keys itself (F2 starts an edit, Ctrl+C copies cell text).
         // Registering with handledEventsToo keeps the browser shortcuts — F5, F2, Delete,
         // Alt+arrows, Ctrl+C/X/V/A/F and Escape — working while the list has focus.
         AddHandler(KeyDownEvent, View_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
+        UpdateSortGlyphs();
         AttachedToVisualTree += async (_, _) =>
         {
             if (_initialized) return;
@@ -78,7 +97,6 @@ internal partial class SshFileBrowserView : UserControl
     private async void Back_Click(object? sender, RoutedEventArgs e) => await BackAsync();
     private async void Forward_Click(object? sender, RoutedEventArgs e) => await ForwardAsync();
     private async void Up_Click(object? sender, RoutedEventArgs e) => await NavigateAsync(ParentPath(_path));
-    private async void Home_Click(object? sender, RoutedEventArgs e) => await NavigateAsync(".");
     private async void Refresh_Click(object? sender, RoutedEventArgs e) => await RefreshAsync();
     private async void NewFolder_Click(object? sender, RoutedEventArgs e) => await CreateDirectoryAsync();
     private void Copy_Click(object? sender, RoutedEventArgs e) => CopySelection(false);
@@ -101,7 +119,28 @@ internal partial class SshFileBrowserView : UserControl
     {
         if (e.Key != Key.Enter) return;
         e.Handled = true;
-        await NavigateAsync(AddressBox.Text ?? ".");
+        var requestedPath = AddressBox.Text ?? ".";
+        SetAddressEditing(false);
+        await NavigateAsync(requestedPath);
+    }
+
+    private void EditAddress_Click(object? sender, RoutedEventArgs e) => SetAddressEditing(true);
+
+    private void AddressBox_LostFocus(object? sender, RoutedEventArgs e) => SetAddressEditing(false);
+
+    private void SetAddressEditing(bool editing)
+    {
+        AddressBox.IsVisible = editing;
+        AddressDisplay.IsVisible = !editing;
+        if (!editing) return;
+        AddressBox.Text = _path;
+        AddressBox.Focus();
+        AddressBox.SelectAll();
+    }
+
+    private async void Breadcrumb_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string path }) await NavigateAsync(path);
     }
 
     private void SearchBox_TextChanged(object? sender, TextChangedEventArgs e)
@@ -113,6 +152,7 @@ internal partial class SshFileBrowserView : UserControl
     {
         if (!_viewReady) return;
         _sortIndex = Math.Max(0, SortBox.SelectedIndex);
+        UpdateSortGlyphs();
         ApplyView();
     }
 
@@ -120,6 +160,7 @@ internal partial class SshFileBrowserView : UserControl
     {
         if (!_viewReady) return;
         _descending = DescendingBox.IsChecked == true;
+        UpdateSortGlyphs();
         ApplyView();
     }
 
@@ -150,6 +191,35 @@ internal partial class SshFileBrowserView : UserControl
             EntriesGrid.SelectedItem = entry;
     }
 
+    private void EntriesGrid_SortHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _pressedSortHeader = null;
+        if (!e.GetCurrentPoint(EntriesGrid).Properties.IsLeftButtonPressed) return;
+        var header = FindVisualAncestor<DataGridColumnHeader>(e.Source);
+        if (header is not null && SortIndexForHeader(header).HasValue)
+        {
+            _pressedSortHeader = header;
+            _pressedSortHeaderWidth = header.Bounds.Width;
+        }
+    }
+
+    private void EntriesGrid_SortHeaderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        var pressedHeader = _pressedSortHeader;
+        _pressedSortHeader = null;
+        if (_busy || pressedHeader is null || !ReferenceEquals(pressedHeader, FindVisualAncestor<DataGridColumnHeader>(e.Source))) return;
+        // Resizing a column must not also switch its sort order.
+        if (Math.Abs(pressedHeader.Bounds.Width - _pressedSortHeaderWidth) >= 0.1) return;
+        if (SortIndexForHeader(pressedHeader) is not { } sortIndex) return;
+
+        _descending = _sortIndex == sortIndex ? !_descending : false;
+        _sortIndex = sortIndex;
+        SortBox.SelectedIndex = sortIndex;
+        DescendingBox.IsChecked = _descending;
+        UpdateSortGlyphs();
+        ApplyView();
+    }
+
     private async void EntriesGrid_DoubleTapped(object? sender, TappedEventArgs e)
     {
         // Activate the row under the pointer rather than the previous selection.
@@ -165,6 +235,35 @@ internal partial class SshFileBrowserView : UserControl
         return null;
     }
 
+    private static T? FindVisualAncestor<T>(object? source) where T : Control
+    {
+        for (var control = source as Control; control is not null; control = control.GetVisualParent() as Control)
+            if (control is T value)
+                return value;
+        return null;
+    }
+
+    private int? SortIndexForHeader(DataGridColumnHeader header)
+    {
+        return ((header.Content as Control)?.Tag as string) switch
+        {
+            "name" => 0,
+            "modified" => 1,
+            "type" => 2,
+            "size" => 3,
+            _ => null
+        };
+    }
+
+    private void UpdateSortGlyphs()
+    {
+        var glyph = _descending ? "↓" : "↑";
+        NameSortGlyph = _sortIndex == 0 ? glyph : string.Empty;
+        ModifiedSortGlyph = _sortIndex == 1 ? glyph : string.Empty;
+        TypeSortGlyph = _sortIndex == 2 ? glyph : string.Empty;
+        SizeSortGlyph = _sortIndex == 3 ? glyph : string.Empty;
+    }
+
     private void FileMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         var selected = Selection();
@@ -178,7 +277,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async void View_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Source is TextBox && e.Key is not Key.F5) return;
+        if (e.Source is TextBox && e.Key is not (Key.F5 or Key.L)) return;
         if (e.Key == Key.F5) { e.Handled = true; await RefreshAsync(); }
         else if (e.Key == Key.F2) { e.Handled = true; await RenameAsync(); }
         else if (e.Key == Key.Delete) { e.Handled = true; await DeleteAsync(); }
@@ -195,6 +294,7 @@ internal partial class SshFileBrowserView : UserControl
             EntriesGrid.SelectAll();
         }
         else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.F) { e.Handled = true; SearchBox.Focus(); }
+        else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.L) { e.Handled = true; SetAddressEditing(true); }
         else if (e.Key == Key.Escape) { e.Handled = true; EntriesGrid.SelectedItems.Clear(); }
     }
 
@@ -236,7 +336,9 @@ internal partial class SshFileBrowserView : UserControl
                 return (absolute, entries);
             });
             _path = result.absolute;
+            _homePath ??= _path;
             AddressBox.Text = _path;
+            BuildBreadcrumbs();
             _entries = result.entries;
             if (addHistory && (_historyIndex < 0 || _history[_historyIndex] != _path))
             {
@@ -266,7 +368,7 @@ internal partial class SshFileBrowserView : UserControl
     private void InitializeNavigationTree()
     {
         if (_homeNode is not null) return;
-        _homeNode = CreateTreeNode(T("ssh_files.home", "Home"), _path, TreeNodeIconKind.Home);
+        _homeNode = CreateTreeNode(T("ssh_files.home", "Home"), _homePath ?? _path, TreeNodeIconKind.Home);
         _rootNode = CreateTreeNode(T("ssh_files.root", "Root"), "/", TreeNodeIconKind.Drive);
         _navigationNodes.Add(_homeNode);
         _navigationNodes.Add(_rootNode);
@@ -278,6 +380,38 @@ internal partial class SshFileBrowserView : UserControl
         node.AddDummyChild();
         node.ExpandRequested = LoadTreeChildrenAsync;
         return node;
+    }
+
+    private void BuildBreadcrumbs()
+    {
+        BreadcrumbsHost.Children.Clear();
+        var basePath = _homePath;
+        var label = T("ssh_files.root", "Root");
+        var path = "/";
+        var remaining = _path.Trim('/');
+
+        if (basePath is not null && IsAtOrWithin(basePath, _path))
+        {
+            label = T("ssh_files.home", "Home");
+            path = basePath;
+            remaining = _path[basePath.Length..].Trim('/');
+        }
+
+        AddBreadcrumb(label, path);
+        foreach (var segment in remaining.Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            path = path == "/" ? "/" + segment : path.TrimEnd('/') + "/" + segment;
+            AddBreadcrumb(segment, path);
+        }
+    }
+
+    private void AddBreadcrumb(string label, string path)
+    {
+        if (BreadcrumbsHost.Children.Count > 0)
+            BreadcrumbsHost.Children.Add(new TextBlock { Text = "›", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Opacity = 0.5 });
+        var button = new Button { Content = label, Tag = path, Padding = new Thickness(8, 5), Background = null, BorderThickness = new Thickness(0) };
+        button.Click += Breadcrumb_Click;
+        BreadcrumbsHost.Children.Add(button);
     }
 
     private async Task RebuildNavigationTreeAsync()
@@ -408,7 +542,7 @@ internal partial class SshFileBrowserView : UserControl
         BackButton.IsEnabled = !_busy && _historyIndex > 0;
         ForwardButton.IsEnabled = !_busy && _historyIndex < _history.Count - 1;
         UpButton.IsEnabled = !_busy && _path != "/";
-        HomeButton.IsEnabled = RefreshButton.IsEnabled = NewFolderButton.IsEnabled = !_busy;
+        RefreshButton.IsEnabled = NewFolderButton.IsEnabled = !_busy;
         UploadButton.IsEnabled = UploadFolderButton.IsEnabled = !_busy;
         RenameButton.IsEnabled = !_busy && selected.Length == 1;
         DeleteButton.IsEnabled = !_busy && selected.Length > 0;
@@ -731,6 +865,3 @@ internal partial class SshFileBrowserView : UserControl
         return completed;
     }
 }
-
-
-

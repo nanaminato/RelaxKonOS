@@ -27,6 +27,7 @@ public partial class LoginViewModel : ObservableObject
     private readonly SshDesktopSession _sshDesktop;
     private readonly IHostTargetStore _sshTargets;
     private readonly ISshHostKeyTrustStore _hostKeys;
+    private readonly ISshCredentialStore _sshCredentials;
     private ServerCenterHostKeyObservation? _pendingHostKey;
     private ServerHostTarget? _pendingHost;
     private string _relaxServerUrl = "localhost:5090";
@@ -36,7 +37,8 @@ public partial class LoginViewModel : ObservableObject
     private bool _loadingSavedProfiles;
 
     public LoginViewModel(IAuthSession session, LoginLocalizationService localization, ServerEndpointResolver endpointResolver,
-        SshDesktopSession sshDesktop, IHostTargetStore sshTargets, ISshHostKeyTrustStore hostKeys)
+        SshDesktopSession sshDesktop, IHostTargetStore sshTargets, ISshHostKeyTrustStore hostKeys,
+        ISshCredentialStore sshCredentials)
     {
         _session = session;
         _localization = localization;
@@ -44,6 +46,7 @@ public partial class LoginViewModel : ObservableObject
         _sshDesktop = sshDesktop;
         _sshTargets = sshTargets;
         _hostKeys = hostKeys;
+        _sshCredentials = sshCredentials;
         SavedProfiles = new ObservableCollection<SavedLoginProfile>();
 #if DEBUG
         // Development-only convenience for local integration testing. This is deliberately
@@ -186,6 +189,10 @@ public partial class LoginViewModel : ObservableObject
         ClearError();
     }
     partial void OnPasswordChanged(string value) => ClearError();
+    partial void OnRememberServerChanged(bool value)
+    {
+        if (!value) RememberPassword = false;
+    }
     partial void OnSelectedProfileChanged(SavedLoginProfile? value)
     {
         if (value is not null && !_loadingSavedProfiles)
@@ -276,7 +283,7 @@ public partial class LoginViewModel : ObservableObject
         => !IsConnecting && !IsDiscoveringServer
            && !string.IsNullOrWhiteSpace(ServerUrl)
            && !string.IsNullOrWhiteSpace(Identifier)
-           && !string.IsNullOrWhiteSpace(Password);
+           && (UseSshLogin || !string.IsNullOrWhiteSpace(Password));
 
     public async Task LoadSavedProfilesAsync(CancellationToken ct = default)
     {
@@ -382,16 +389,42 @@ public partial class LoginViewModel : ObservableObject
         ServerHostTarget? target = null;
         try
         {
-            var existing = await _sshTargets.FindByEndpointAsync(uri.Host, uri.Port, ct);
-            target = existing is null
-                ? await _sshTargets.UpsertAsync(ServerHostTargetRules.Create(
-                    uri.Host, uri.Port, Identifier, null, DateTimeOffset.UtcNow), ct)
-                : string.Equals(existing.SshUserName, Identifier.Trim(), StringComparison.Ordinal)
-                    ? existing
-                    : await _sshTargets.UpsertAsync(existing with { SshUserName = Identifier.Trim() }, ct);
-            await _sshDesktop.ConnectAsync(target, Password, ct);
+            var endpoint = ServerCenterSshEndpoint.Create(uri.Host, uri.Port, Identifier);
+            var password = Password;
+            if (string.IsNullOrEmpty(password))
+            {
+                var savedCredential = await _sshCredentials.FindAsync(endpoint, ct);
+                password = savedCredential is { Kind: SshCredentialKind.Password } ? savedCredential.Secret : string.Empty;
+                if (string.IsNullOrEmpty(password))
+                {
+                    ErrorMessage = T("login.ssh_password_required", "Enter the SSH password or use the saved password for this host.");
+                    HasError = true;
+                    StatusMessage = string.Empty;
+                    return;
+                }
+            }
+
+            target = ServerHostTargetRules.Create(uri.Host, uri.Port, Identifier, null, DateTimeOffset.UtcNow);
+            await _sshDesktop.ConnectAsync(target, password, ct);
+            if (RememberServer)
+            {
+                var existing = await _sshTargets.FindByEndpointAsync(uri.Host, uri.Port, ct);
+                target = existing is null
+                    ? await _sshTargets.UpsertAsync(target, ct)
+                    : string.Equals(existing.SshUserName, Identifier.Trim(), StringComparison.Ordinal)
+                        ? existing
+                        : await _sshTargets.UpsertAsync(existing with { SshUserName = Identifier.Trim() }, ct);
+            }
+            if (RememberServer && RememberPassword)
+            {
+                var saved = await _sshCredentials.SaveAsync(
+                    SshCredentialRecord.From(endpoint, new ServerCenterSshCredential.Password(password), DateTimeOffset.UtcNow), ct);
+                if (saved != SshCredentialSaveResult.Saved)
+                    StatusMessage = T("login.ssh_password_not_saved", "Connected, but the SSH password could not be saved securely.");
+            }
             Password = string.Empty;
-            StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
+            if (string.IsNullOrEmpty(StatusMessage))
+                StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
