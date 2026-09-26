@@ -63,7 +63,9 @@ fun ElevationDialog(container: AppContainer) {
         }
     }
 
-    var account by remember { mutableStateOf(savedAccount.orEmpty()) }
+    var account by remember {
+        mutableStateOf(savedAccount ?: if (container.activeSession?.serverPlatform.equals("linux", ignoreCase = true)) "root" else "")
+    }
     var password by remember { mutableStateOf("") }
     var storeRequested by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }

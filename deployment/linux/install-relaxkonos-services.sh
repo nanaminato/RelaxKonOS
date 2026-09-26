@@ -9,7 +9,7 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 usage() {
-  echo "usage: install-relaxkonos-services.sh INSTALL_ROOT SERVER_EXECUTABLE GUARDIAN_EXECUTABLE PRIVILEGED_HELPER_EXECUTABLE SERVER_PORT SERVER_LISTEN_URL [SERVICE_USER] [--data-root PATH] [--certificate-mode none|custom|self-signed] [--certificate-path PFX_PATH] [--certificate-password-file PATH] [--self-signed-identities NAMES] [--file-access restricted|full|whitelist] [--file-roots PATH] [--docker-access]" >&2
+  echo "usage: install-relaxkonos-services.sh INSTALL_ROOT SERVER_EXECUTABLE GUARDIAN_EXECUTABLE PRIVILEGED_HELPER_EXECUTABLE SERVER_PORT SERVER_LISTEN_URL [SERVICE_USER] [--data-root PATH] [--certificate-mode none|custom|self-signed] [--certificate-path PFX_PATH] [--certificate-password-file PATH] [--self-signed-identities NAMES] [--file-access restricted|full|whitelist] [--file-roots PATH] [--administrator-file-access restricted|full|whitelist] [--administrator-file-roots PATH] [--root-file-access restricted|full|whitelist] [--root-file-roots PATH] [--docker-access]" >&2
   exit 1
 }
 
@@ -29,6 +29,10 @@ if [[ $# -gt 0 && "$1" != --* ]]; then
 fi
 FILE_ACCESS=restricted
 FILE_ROOTS_FILE=
+ADMINISTRATOR_FILE_ACCESS=restricted
+ADMINISTRATOR_FILE_ROOTS_FILE=
+ROOT_FILE_ACCESS=restricted
+ROOT_FILE_ROOTS_FILE=
 DATA_ROOT=/var/lib/relaxkonos
 CERTIFICATE_MODE=none
 CERTIFICATE_PATH=
@@ -45,6 +49,26 @@ while [[ $# -gt 0 ]]; do
     --file-roots)
       [[ $# -ge 2 ]] || usage
       FILE_ROOTS_FILE="$2"
+      shift 2
+      ;;
+    --administrator-file-access)
+      [[ $# -ge 2 ]] || usage
+      ADMINISTRATOR_FILE_ACCESS="$2"
+      shift 2
+      ;;
+    --administrator-file-roots)
+      [[ $# -ge 2 ]] || usage
+      ADMINISTRATOR_FILE_ROOTS_FILE="$2"
+      shift 2
+      ;;
+    --root-file-access)
+      [[ $# -ge 2 ]] || usage
+      ROOT_FILE_ACCESS="$2"
+      shift 2
+      ;;
+    --root-file-roots)
+      [[ $# -ge 2 ]] || usage
+      ROOT_FILE_ROOTS_FILE="$2"
       shift 2
       ;;
     --data-root)
@@ -83,10 +107,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-case "$FILE_ACCESS" in
-  restricted|full|whitelist) ;;
-  *) echo "Invalid --file-access value: $FILE_ACCESS" >&2; usage ;;
-esac
+for access in "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS"; do
+  case "$access" in restricted|full|whitelist) ;; *) echo "Invalid file access value: $access" >&2; usage ;; esac
+done
 case "$CERTIFICATE_MODE" in
   none|custom|self-signed) ;;
   *) echo "Invalid --certificate-mode value: $CERTIFICATE_MODE" >&2; usage ;;
@@ -103,12 +126,18 @@ case "$CERTIFICATE_MODE" in
     [[ -z "$CERTIFICATE_PATH$CERTIFICATE_PASSWORD_FILE$SELF_SIGNED_IDENTITIES" ]] || { echo 'Certificate options require --certificate-mode custom or self-signed.' >&2; usage; }
     ;;
 esac
-if [[ "$FILE_ACCESS" == whitelist ]]; then
-  [[ -n "$FILE_ROOTS_FILE" && -f "$FILE_ROOTS_FILE" ]] || { echo "--file-access whitelist requires an existing --file-roots file." >&2; exit 1; }
-elif [[ -n "$FILE_ROOTS_FILE" ]]; then
-  echo "--file-roots is valid only with --file-access whitelist." >&2
-  usage
-fi
+validate_mode_roots() {
+  local access="$1" roots="$2" label="$3"
+  if [[ "$access" == whitelist ]]; then
+    [[ -n "$roots" && -f "$roots" ]] || { echo "$label whitelist requires an existing roots file." >&2; exit 1; }
+  elif [[ -n "$roots" ]]; then
+    echo "$label roots file is valid only with whitelist access." >&2
+    usage
+  fi
+}
+validate_mode_roots "$FILE_ACCESS" "$FILE_ROOTS_FILE" manual
+validate_mode_roots "$ADMINISTRATOR_FILE_ACCESS" "$ADMINISTRATOR_FILE_ROOTS_FILE" administrator
+validate_mode_roots "$ROOT_FILE_ACCESS" "$ROOT_FILE_ROOTS_FILE" root
 
 validate_file_roots() {
   local roots_file="$1" raw root count=0
@@ -122,15 +151,18 @@ validate_file_roots() {
   (( count > 0 )) || { echo "Whitelist contains no paths." >&2; exit 1; }
 }
 
-install_file_root_policy() {
-  local temporary_policy
+write_file_root_policy() {
+  local access="$1" roots_file="$2" destination="$3" temporary_policy
   temporary_policy="$(mktemp /etc/relaxkonos/privileged-helper-roots.XXXXXX)"
-  case "$FILE_ACCESS" in
+  case "$access" in
     restricted)
       cat >"$temporary_policy" <<EOF
 /etc/relaxkonos
 $DATA_ROOT
 EOF
+      if [[ "$destination" == /etc/relaxkonos/privileged-helper-roots-root ]]; then
+        printf '/root\n' >>"$temporary_policy"
+      fi
       ;;
     full)
       # '/' is intentional and means every absolute Linux path. This profile is unsafe for
@@ -138,13 +170,19 @@ EOF
       printf '/\n' >"$temporary_policy"
       ;;
     whitelist)
-      validate_file_roots "$FILE_ROOTS_FILE"
-      cp -- "$FILE_ROOTS_FILE" "$temporary_policy"
+      validate_file_roots "$roots_file"
+      cp -- "$roots_file" "$temporary_policy"
       ;;
   esac
   chown root:root "$temporary_policy"
   chmod 0600 "$temporary_policy"
-  mv -f -- "$temporary_policy" /etc/relaxkonos/privileged-helper-roots
+  mv -f -- "$temporary_policy" "$destination"
+}
+
+install_file_root_policy() {
+  write_file_root_policy "$FILE_ACCESS" "$FILE_ROOTS_FILE" /etc/relaxkonos/privileged-helper-roots
+  write_file_root_policy "$ADMINISTRATOR_FILE_ACCESS" "$ADMINISTRATOR_FILE_ROOTS_FILE" /etc/relaxkonos/privileged-helper-roots-administrator
+  write_file_root_policy "$ROOT_FILE_ACCESS" "$ROOT_FILE_ROOTS_FILE" /etc/relaxkonos/privileged-helper-roots-root
 }
 
 install_pam_service() {

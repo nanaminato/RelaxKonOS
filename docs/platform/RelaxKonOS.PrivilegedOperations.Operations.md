@@ -10,8 +10,9 @@ LocalSystem 或 Administrator 身份运行；所有成功的宿主特权操作�
 
 - 创建 `relaxkonos-server` 系统账户；
 - 将 Helper 发布目录、sudoers 与策略文件设为 root 所有且 Server 用户不可写；
-- 将受管文件根和服务 ID 写入 `/etc/relaxkonos/privileged-helper-roots` 与
-  `/etc/relaxkonos/privileged-services`；
+- 将手动 grant、管理员自动路由、root 会话的文件根分别写入
+  `/etc/relaxkonos/privileged-helper-roots`、`privileged-helper-roots-administrator`、
+  `privileged-helper-roots-root`；服务 ID 写入 `/etc/relaxkonos/privileged-services`；
 - 仅允许 Server 用户以 `sudo -n` 调用 Helper apphost 的三个精确入口：无参数特权协议、`--user-execution` 和 `--user-terminal`。
 
 ### Docker 访问（显式选择）
@@ -42,12 +43,15 @@ sudo -u relaxkonos-server sudo -n /usr/local/lib/relaxkonos/privileged-helper/<a
 
 ### 文件访问配置
 
-安装器默认使用 `--file-access restricted`，仅允许：
+安装器对三类授权来源默认都使用 `restricted`。手动 grant 与管理员来源默认仅允许：
 
 ```text
 /etc/relaxkonos
 /var/lib/relaxkonos
 ```
+
+root 会话范围在此基础上增加 `/root`。实际第二个根以安装时的 `--data-root` 为准。
+Linux System Mode 文件路由规则见 [宿主管理员身份与执行路由 Goal](./RelaxKonOS.HostPrivilegeRouting.Goal.md)。
 
 可在常规安装参数之后明确选择下列模式：
 
@@ -60,8 +64,13 @@ sudo deployment/linux/install-relaxkonos-services.sh ... \
   --file-access whitelist \
   --file-roots deployment/linux/privileged-helper-roots.example
 
-# 允许所有绝对路径；仅限隔离的、所有 RelaxKonOS 使用者均可信的测试主机。
-sudo deployment/linux/install-relaxkonos-services.sh ... --file-access full
+# 仅将 root 会话范围设为整机；不会扩大标准用户临时 grant。
+sudo deployment/linux/install-relaxkonos-services.sh ... --root-file-access full
+
+# 管理员会话使用独立白名单。
+sudo deployment/linux/install-relaxkonos-services.sh ... \
+  --administrator-file-access whitelist \
+  --administrator-file-roots /path/to/admin-roots
 ```
 
 `whitelist` 文件每行一个绝对目录；空行和以 `#` 开头的注释会被忽略。可从
@@ -70,8 +79,12 @@ sudo deployment/linux/install-relaxkonos-services.sh ... --file-access full
 因此不要将 `/`、`/etc`、`/home` 或 `/tmp` 写入生产白名单；尤其不要把 `/etc/ssh` 加入通用文件操作，
 否则有权限使用文件功能的用户可读取 SSH 主机私钥。
 
-`full` 模式会将 `/` 写入策略文件，等价于所有路径均可经 root Helper 处理。它不是对单个管理员的临时提升，
-而是扩大整个 RelaxKonOS 文件接口的能力；生产环境应使用 `restricted` 或经过审查的 `whitelist`。
+三个来源各有 `--file-access`、`--administrator-file-access`、`--root-file-access` 参数，均可取
+`restricted|whitelist|full`，白名单文件分别用 `--file-roots`、`--administrator-file-roots`、`--root-file-roots` 指定。
+只扩大一个来源不会自动扩大另两个来源。`full` 将 `/` 写入对应策略；尤其 `--root-file-access full`
+意味着信任 Server 进程提交的 root 会话来源标签。Helper 目前不能独立验证会话证明，已被攻陷的
+Server 可伪造来源并获得该策略范围内的封闭文件能力。只有接受这项部署风险时才可启用整机范围，
+并继续保持 Server 服务账户没有通用 sudo 或 shell 授权。
 
 开发安装脚本也支持相同参数。例如，调试受保护文件流程时可以使用独立夹具：
 
@@ -81,7 +94,8 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
   --file-roots deployment/linux/privileged-helper-roots.example
 ```
 
-该开发脚本会写入同一份系统策略文件；不要在同时运行生产 Server 的主机上将它切换为 `full`。
+该开发脚本会写入同三份系统策略文件，也支持上述管理员和 root 的独立参数；不要在同时运行生产
+Server 的主机上将任何来源切换为 `full`。
 
 若增加受保护文件根或可控制服务，修改前必须进行安全审查；策略文件必须保持
 `root:root`、`0600`。重装服务会根据所选模式重建文件策略。

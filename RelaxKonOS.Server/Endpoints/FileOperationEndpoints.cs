@@ -31,6 +31,7 @@ public static class FileOperationEndpoints
         try { return action($"{userId:N}/{workspaceId:N}/{deviceId:N}"); }
         catch (KeyNotFoundException) { return Results.NotFound(); }
         catch (UserExecutionException exception) { return UserExecutionProblemResult.From(exception); }
+        catch (UnauthorizedAccessException) { return Results.Problem(statusCode: 403, title: "Host identity changed", type: "https://relaxkonos.app/problems/identity-changed"); }
         catch (ArgumentException ex) { return Results.Problem(statusCode: 400, title: "Invalid operation", detail: ex.Message); }
         catch (InvalidOperationException ex) { return Results.Problem(statusCode: 409, title: "Operation unavailable", detail: ex.Message); }
     }

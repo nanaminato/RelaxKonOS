@@ -125,13 +125,16 @@ else
     listen_url="$(state_field listenUrl)"
     certificate_mode="$(state_field certificateMode)"
     file_access="$(state_field fileAccess)"
+    administrator_file_access="$(state_field administratorFileAccess)"
+    root_file_access="$(state_field rootFileAccess)"
     docker_access="$(state_flag dockerAccess)"; docker_access="${docker_access:-false}"
     temporary="$state_file.new"
     umask 077
-    printf '{"schemaVersion":1,"installed":false,"mode":"%s","installationId":"%s","version":"%s","previousVersion":null,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":%s,"listenUrl":%s,"certificateMode":%s,"fileAccess":%s,"dockerAccess":%s}\n' \
+    printf '{"schemaVersion":2,"installed":false,"mode":"%s","installationId":"%s","version":"%s","previousVersion":null,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":%s,"listenUrl":%s,"certificateMode":%s,"fileAccess":%s,"administratorFileAccess":%s,"rootFileAccess":%s,"dockerAccess":%s}\n' \
       "$mode" "$installation_id" "$version" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" \
       "$(json_string_or_null "$network_profile")" "$(json_string_or_null "$listen_url")" \
-      "$(json_string_or_null "$certificate_mode")" "$(json_string_or_null "$file_access")" "$docker_access" > "$temporary"
+      "$(json_string_or_null "$certificate_mode")" "$(json_string_or_null "$file_access")" \
+      "$(json_string_or_null "$administrator_file_access")" "$(json_string_or_null "$root_file_access")" "$docker_access" > "$temporary"
     chmod 0600 "$temporary"; mv -f -- "$temporary" "$state_file"
   fi
   echo "RelaxKonOS services and program files were removed. Data was kept at: $DATA_ROOT"

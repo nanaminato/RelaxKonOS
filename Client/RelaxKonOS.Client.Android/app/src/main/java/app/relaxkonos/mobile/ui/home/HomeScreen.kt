@@ -159,7 +159,10 @@ fun HomeScreen(
         // so here — on the landing screen, before the user reaches for a folder — is the difference
         // between a session that is partially usable and one that looks broken.
         if (!session.executionEligibility.available) {
-            ExecutionEligibilityNotice(reason = session.executionEligibility.reason)
+            ExecutionEligibilityNotice(
+                reason = session.executionEligibility.reason,
+                privilegedFilesAvailable = session.executionEligibility.privilegedFilesAvailable,
+            )
         }
 
         SectionCard(

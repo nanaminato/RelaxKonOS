@@ -32,8 +32,8 @@
 能力可见性由**登录后拿到的 `ServerDescriptorDto.capabilities`** 决定：能力缺失时入口不出现，不用灰色占位。
 
 能力是**部署事实**，回答"这台服务器有没有这个域"。它与**登录身份**是否被允许执行普通操作是两件事：`LoginResponse.executionEligibility`
-（`ServerExecutionEligibilityDto`）回答后者，同一台服务器对 root 与对普通账户的答案不同。所以 `server.files` 存在并不代表当前身份能用它——
-入口照常出现，但首页必须先把服务端给的原因说出来（`ExecutionEligibilityNotice`），而不是让用户在第一次打开目录时收到 503。
+（`ServerExecutionEligibilityDto`）回答后者，同一台服务器对 root 与对普通账户的答案不同。Linux System Mode 的 root 会话普通 worker 不可用，但 `privilegedFilesAvailable=true` 表示受管文件操作直接走 Helper；不能因此把文件入口判为不可用。Terminal 与 Git 仍须分别判断普通执行资格。`server.files` 存在并不代表当前身份能用它——
+入口照常出现；当普通执行和特权文件路由都不可用时，首页先显示服务端给的原因（`ExecutionEligibilityNotice`）。
 客户端只消费服务端给的稳定原因码（`ExecutionEligibilityReasons`），文案一律取自本工程自己的 `strings.xml`。
 
 | 域 | 初版内容 | 门控能力标识 | 优先级 |
@@ -249,7 +249,7 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 5. **AAD 绑定记录身份。** AES-GCM 的附加认证数据绑定 `vault | serviceId | account`，防止把 A 服务身份的密文挪到 B 服务身份条目下复用；临时隧道端口不参与 AAD。
 6. **不做跨设备迁移。** 不导出、不云同步、不随系统备份恢复。卸载即失效（Keystore 密钥随应用卸载销毁）。
 7. **首次保存必须先验证一次指纹。** 保存动作本身要过一次 `BiometricPrompt`，确保密钥确实受用户生物特征保护、且用户当场能通过；不允许"先存着，等用的时候再说"。
-8. **禁止静默提权。** 任何拿到管理员密码后自动重试的操作，都必须由用户在这次交互中点过按钮（指纹或输密码）。不做"失败自动弹指纹"的后台循环。
+8. **标准用户禁止静默认证。** StandardUser 的受保护操作必须由用户在这次交互中确认管理员凭据（指纹或输密码），不做"失败自动弹指纹"的后台循环。Linux HostAdministrator 的文件操作遇到结构化 `AccessDenied` 时可由服务端自动路由 Helper；HostRoot 文件操作直接走 Helper，均不要求客户端保存或发送密码。
 
 ### 5.4 Android 实现
 
@@ -404,7 +404,7 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
 | 服务端信任模型 | 密码只在验证瞬间持有，不落库/不日志 | 不因移动端保存密码而改变 |
 | 能力门控 | `ServerDescriptorDto.capabilities` + `ServerCapabilities` 常量 | 直接复用，不新增发现端点 |
 
-一个待确认的**行为差异**（不需要改契约，但需要产品决定）：桌面端 `HostElevationBroker` 只发送 `password`，不发送 `administratorUsername`；移动端为了"保存管理员账户 + 密码"这一对记录，建议**始终发送 `administratorUsername`**，让服务端按显式账户验证，而不是依赖默认账户推断。
+桌面端与移动端的手动认证均发送 `administratorUsername`；Linux 默认建议 `root`，其 PAM 密码被锁定时可改用其他经宿主 sudo 策略认可的管理员账户。移动端保存管理员账户与密码时继续把账户名作为保险箱记录键。
 
 ### 5.8 决策记录
 

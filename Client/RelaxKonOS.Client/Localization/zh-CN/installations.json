@@ -20,7 +20,7 @@
     "installation.stage.Interrupted": "已中断",
     "installation.cancel": "取消安装任务",
     "installation.elevation_title": "服务器管理员密码",
-    "installation.elevation_message": "此操作会更改运行 RelaxKonOS Server 的服务器。请输入当前登录服务器账户的密码；Windows 账户必须具有管理员权限。",
+    "installation.elevation_message": "此操作会更改运行 RelaxKonOS Server 的服务器。请输入宿主管理员账户及密码；Linux 可使用 root 或其他已获认可的管理员账户。",
     "installation.connection_unavailable": "连接暂不可用，服务器任务仍在继续，正在重连…",
     "installation.workspace_save_failed": "工作区状态保存失败，服务器任务仍在继续。",
     "installation.operation_unavailable": "任务不可用。",

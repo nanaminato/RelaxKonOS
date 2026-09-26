@@ -302,7 +302,8 @@ internal static async Task VerifyUserExecutionFailsClosedAsync()
     var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString())], "test"));
     var files = new UserExecutionFileService(new LocalFileService(mode), resolver,
         new DisabledUserExecutionTransport(), mode,
-        new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } });
+        new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } },
+        new TestHostFileAuthorizationService(), null!);
 
     var home = account.HomeDirectory!;
     (string Name, Func<object?> Invoke)[] operations =
@@ -633,6 +634,64 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateDirectory(createdTarget);
     TestAssert.Assert(Directory.Exists(createdTarget),
         "Descriptor-relative recursive directory creation did not create the requested tree.");
+
+    // Privileged file roots are capability boundaries. Once their root descriptor is pinned, a
+    // caller must not be able to swap an as-yet-unopened child directory for a symlink and steer
+    // a root-owned write outside the approved tree.
+    var privilegedRoot = Path.Combine(operationRoot, "privileged-root");
+    var privilegedChild = Path.Combine(privilegedRoot, "child");
+    var outsidePrivilegedRoot = Path.Combine(operationRoot, "outside-privileged-root");
+    Directory.CreateDirectory(privilegedChild);
+    Directory.CreateDirectory(outsidePrivilegedRoot);
+    using (RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.AnchorAllowedRoots([privilegedRoot]))
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.WriteAllBytes(
+            Path.Combine(privilegedChild, "inside.txt"), Encoding.UTF8.GetBytes("inside"));
+        var outsideFile = Path.Combine(outsidePrivilegedRoot, "outside-source.txt");
+        var leafLink = Path.Combine(privilegedChild, "outside-link.txt");
+        File.WriteAllText(outsideFile, "outside-source");
+        File.CreateSymbolicLink(leafLink, outsideFile);
+        var leafReadRejected = false;
+        try { using var _ = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.OpenRead(leafLink); }
+        catch (UnauthorizedAccessException) { leafReadRejected = true; }
+        TestAssert.Assert(leafReadRejected,
+            "A leaf symlink inside a privileged root was followed for a root-owned read.");
+        Directory.Delete(privilegedChild, recursive: true);
+        Directory.CreateSymbolicLink(privilegedChild, outsidePrivilegedRoot);
+        var escapedWriteRejected = false;
+        try
+        {
+            RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.WriteAllBytes(
+                Path.Combine(privilegedChild, "outside.txt"), Encoding.UTF8.GetBytes("outside"));
+        }
+        catch (UnauthorizedAccessException) { escapedWriteRejected = true; }
+        TestAssert.Assert(escapedWriteRejected && !File.Exists(Path.Combine(outsidePrivilegedRoot, "outside.txt")),
+            "A replaced privileged-root child redirected a descriptor-relative write outside its policy.");
+    }
+
+    // The Server routes an administrator to the privileged file path only for a structured
+    // AccessDenied result.  Verify that openat's EACCES result is not downgraded to Conflict
+    // while descending an existing directory. Root intentionally bypasses this POSIX check, so
+    // a root-run test process cannot exercise this kernel refusal.
+    if (GetEffectiveUserId() != 0)
+    {
+        var deniedParent = Path.Combine(operationRoot, "permission-denied-parent");
+        Directory.CreateDirectory(deniedParent);
+        File.SetUnixFileMode(deniedParent, UnixFileMode.None);
+        try
+        {
+            var accessDenied = false;
+            try { RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateDirectory(Path.Combine(deniedParent, "child")); }
+            catch (UnauthorizedAccessException) { accessDenied = true; }
+            TestAssert.Assert(accessDenied,
+                "A native EACCES while opening a directory was not surfaced as AccessDenied.");
+        }
+        finally
+        {
+            File.SetUnixFileMode(deniedParent, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
     var createLinkTarget = Path.Combine(operationRoot, "create-link-target");
     var createLink = Path.Combine(operationRoot, "create-link");
     Directory.CreateDirectory(createLinkTarget);
@@ -692,6 +751,18 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
     TestAssert.Assert(File.ReadAllText(committedDestination) == "new" && !Directory.Exists(committedTransaction),
         "Abandoned Linux user file transaction rolled back an already committed destination.");
+
+    // A delete commits when the source is atomically moved into the transaction directory. If
+    // cleanup is interrupted, the source must remain absent and recovery must finish deleting
+    // the hidden staged tree rather than exposing a partially deleted directory at its old path.
+    var deletedDestination = Path.Combine(operationRoot, "deleted-tree");
+    var interruptedDelete = TransactionRoot(operationRoot, int.MaxValue, 1);
+    Directory.CreateDirectory(Path.Combine(interruptedDelete, "staged"));
+    File.WriteAllText(Path.Combine(interruptedDelete, "staged", "partially-removed.txt"), "remaining");
+    WriteTransactionManifest(interruptedDelete, deletedDestination, int.MaxValue, 1);
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.RecoverAbandonedInDirectory(operationRoot);
+    TestAssert.Assert(!Directory.Exists(deletedDestination) && !Directory.Exists(interruptedDelete),
+        "Abandoned Linux delete transaction did not complete its hidden cleanup.");
 
     var recoveryParent = Path.Combine(operationRoot, "recovery-parent");
     var movedRecoveryParent = Path.Combine(operationRoot, "recovery-parent-moved");
@@ -1030,6 +1101,8 @@ internal static void VerifyLinuxUserStagingOperations(string root)
 private static extern int MkFifo(string path, uint mode);
 [System.Runtime.InteropServices.DllImport("libc.so.6", EntryPoint = "kill", SetLastError = true)]
 private static extern int Kill(int processId, int signal);
+[System.Runtime.InteropServices.DllImport("libc.so.6", EntryPoint = "geteuid")]
+private static extern uint GetEffectiveUserId();
 
 private sealed class UserExecutionMode(ServerMode mode) : IServerModeResolver
 {

@@ -39,14 +39,15 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
 
     private async Task<bool> EnsureGrantAsync(HostElevationCapability capability, string target, CancellationToken cancellationToken)
     {
-        try { return (await GrantAsync(capability, target, null, cancellationToken)).Elevated; }
+        try { return (await GrantAsync(capability, target, null, null, cancellationToken)).Elevated; }
         catch (RelaxKonOSAuthException exception) when (HasProblem(exception, "elevation-password-required"))
         {
-            return await RequestPasswordAsync(password => GrantAsync(capability, target, password, cancellationToken));
+            return await RequestPasswordAsync((account, password) => GrantAsync(capability, target, password, account, cancellationToken));
         }
     }
 
     private async Task<HostElevationResult> GrantAsync(HostElevationCapability capability, string target, string? password,
+        string? administratorUsername,
         CancellationToken cancellationToken)
     {
         if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null)
@@ -56,7 +57,7 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
             throw new RelaxKonOSAuthException(new ProblemDetails("https://relaxkonos.app/problems/elevation-session-unavailable", "Elevation", 401, null, null));
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
         {
-            Content = JsonContent.Create(new HostElevationRequest(capability, target, password), options: RelaxKonOSJsonOptions.Default),
+            Content = JsonContent.Create(new HostElevationRequest(capability, target, password, administratorUsername), options: RelaxKonOSJsonOptions.Default),
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) },
         };
         using var response = await http.SendAsync(request, cancellationToken);
@@ -71,10 +72,15 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
             ?? throw new RelaxKonOSAuthException(new ProblemDetails("https://relaxkonos.app/problems/elevation-empty-response", "Elevation", 502, null, null));
     }
 
-    private async Task<bool> RequestPasswordAsync(Func<string, Task<HostElevationResult>> authorize)
+    private async Task<bool> RequestPasswordAsync(Func<string, string, Task<HostElevationResult>> authorize)
     {
         return await windows.ShowSystemDialogAsync<bool>(LocalizedText.Get("installation.elevation_title"), dialog =>
         {
+            var account = new TextBox
+            {
+                Text = session.CurrentServer?.Platform == HostPlatformKind.Linux ? "root" : session.CurrentUser?.Username,
+                PlaceholderText = LocalizedText.Get("explorer.operations.elevation_account"),
+            };
             var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("settings.host_time.password") };
             var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
             RelaxKonOS.UI.Themes.ThemeResources.Bind(error, TextBlock.ForegroundProperty, "DangerBrush");
@@ -89,7 +95,7 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
                 confirm.IsEnabled = cancel.IsEnabled = false;
                 try
                 {
-                    if ((await authorize(secret)).Elevated) { dialog.Close(true); return; }
+                    if ((await authorize(account.Text?.Trim() ?? string.Empty, secret)).Elevated) { dialog.Close(true); return; }
                     error.Text = LocalizedText.Get("settings.host_time.password_invalid");
                 }
                 catch (RelaxKonOSAuthException exception) when (HasProblem(exception, "elevation-password-invalid"))
@@ -109,11 +115,11 @@ public sealed class HostElevationBroker(HttpClient http, IAuthSession session, I
                 Children =
                 {
                     new TextBlock { Text = LocalizedText.Get("installation.elevation_message"), TextWrapping = TextWrapping.Wrap },
-                    password, error,
+                    account, password, error,
                     new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, confirm } },
                 },
             };
-        }, new RelaxKonOS.Core.Primitives.Size(460, 230));
+        }, new RelaxKonOS.Core.Primitives.Size(460, 260));
     }
 
     private static bool IsGrantRequired(Exception exception) => exception switch

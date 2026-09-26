@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Files;
@@ -45,7 +46,7 @@ public sealed class UploadSessionConcurrency
 public sealed class UploadSessionService(
     IFileService files,
     IPrivilegedFileService privileged,
-    IFileElevationSessionStore elevations,
+    IHostFileAuthorizationService authorizations,
     UploadSessionStore store,
     UploadSessionOptions options,
     UploadSessionConcurrency concurrency,
@@ -113,30 +114,28 @@ public sealed class UploadSessionService(
         var stagingPath = Path.Combine(request.TargetDirectoryPath,
             FileUploadNamePolicy.BuildStagingFileName(request.FileName, sessionId));
 
-        var elevated = false;
+        PrivilegedFileAuthorizationSource? authorization = null;
         try
         {
-            files.CreateStagingFile(stagingPath);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            if (!elevations.IsElevated(user, FileElevationCapability.Upload, request.TargetDirectoryPath))
-                throw new UploadSessionException(FileUploadProblemCodes.ElevationRequired, 403,
-                    "目标目录需要管理员授权才能写入。");
-            try
+            if (authorizations.IsRoot(user))
             {
-                await privileged.CreateStagingAsync(stagingPath, cancellationToken);
-                elevated = true;
+                authorization = RequireAuthorization(user, request.TargetDirectoryPath);
+                await privileged.CreateStagingAsync(authorization.Value, stagingPath, cancellationToken);
             }
-            catch (UnauthorizedAccessException ex)
+            else
             {
-                throw new UploadSessionException("access-denied", 403, ex.Message);
-            }
-            catch (InvalidOperationException ex)
-            {
-                throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message);
+                try { files.CreateStagingFile(stagingPath); }
+                catch (UnauthorizedAccessException)
+                {
+                    authorization = RequireAuthorization(user, request.TargetDirectoryPath);
+                    await privileged.CreateStagingAsync(authorization.Value, stagingPath, cancellationToken);
+                }
             }
         }
+        catch (UnauthorizedAccessException ex)
+        { throw new UploadSessionException("access-denied", 403, ex.Message); }
+        catch (InvalidOperationException ex)
+        { throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message); }
         catch (Exception ex) when (ex is DirectoryNotFoundException or FileNotFoundException)
         {
             throw new UploadSessionException("not-found", 404, ex.Message);
@@ -145,15 +144,15 @@ public sealed class UploadSessionService(
         var now = DateTimeOffset.UtcNow;
         // The chunk size is a property of the session, not of the request: an elevated session must fit its
         // base64 form into one Helper message, so the server, not the client, decides the ceiling.
-        var chunkSize = elevated ? FileUploadProtocol.ElevatedChunkSize : FileUploadProtocol.DefaultChunkSize;
+        var chunkSize = authorization is not null ? FileUploadProtocol.ElevatedChunkSize : FileUploadProtocol.DefaultChunkSize;
         var record = new UploadSessionRecord(sessionId, identityKey, request.TargetDirectoryPath, request.FileName,
-            stagingPath, request.Length, 0, chunkSize, elevated, idempotencyKey, digest, now, now);
+            stagingPath, request.Length, 0, chunkSize, authorization, idempotencyKey, digest, now, now);
         try { store.Add(record); }
         catch
         {
-            if (elevated)
+            if (authorization is { } source)
             {
-                try { await privileged.DeleteAsync(stagingPath, CancellationToken.None); }
+                try { await privileged.DeleteStagingAsync(source, stagingPath, CancellationToken.None); }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
                 {
                     logger.LogWarning(exception, "Failed to clean up an unindexed staging file. SessionId={SessionId}", sessionId);
@@ -164,7 +163,7 @@ public sealed class UploadSessionService(
         }
         logger.LogInformation(
             "File upload session opened. SessionId={SessionId}, Length={Length}, ChunkSize={ChunkSize}, Elevated={Elevated}, TargetDirectoryHash={TargetDirectoryHash}",
-            sessionId, request.Length, chunkSize, elevated, Hash(request.TargetDirectoryPath));
+            sessionId, request.Length, chunkSize, authorization is not null, Hash(request.TargetDirectoryPath));
         return ToDto(record);
     }
 
@@ -213,7 +212,9 @@ public sealed class UploadSessionService(
             long newOffset;
             if (session.Elevated)
             {
-                var appended = await privileged.AppendChunkAsync(session.StagingPath, offset.Value, body, cancellationToken);
+                var source = RequireSessionAuthorization(user, session);
+                var appended = await PrivilegedAsync(() => privileged.AppendChunkAsync(
+                    source, session.StagingPath, offset.Value, body, cancellationToken));
                 if (appended != offset.Value + contentLength.Value)
                 {
                     // An inconsistent staging file cannot be repaired through the shape-constrained Helper
@@ -265,13 +266,14 @@ public sealed class UploadSessionService(
                 $"会话仅收到 {session.Offset}/{session.Length} 字节。")
             { AuthoritativeOffset = session.Offset };
 
+        var source = session.Elevated ? RequireSessionAuthorization(user, session) : (PrivilegedFileAuthorizationSource?)null;
         if (!string.IsNullOrWhiteSpace(contentHash))
             await VerifyHashAsync(session, contentHash, cancellationToken);
 
         FileEntryDto dto;
         if (session.Elevated)
         {
-            dto = await CommitPrivilegedAsync(session, cancellationToken);
+            dto = await CommitPrivilegedAsync(session, source!.Value, cancellationToken);
         }
         else
         {
@@ -282,10 +284,7 @@ public sealed class UploadSessionService(
             }
             catch (UnauthorizedAccessException)
             {
-                if (!elevations.IsElevated(user, FileElevationCapability.Upload, session.TargetDirectoryPath))
-                    throw new UploadSessionException(FileUploadProblemCodes.ElevationRequired, 403,
-                        "目标目录需要管理员授权才能写入。");
-                dto = await CommitPrivilegedAsync(session, cancellationToken);
+                dto = await CommitPrivilegedAsync(session, RequireAuthorization(user, session.TargetDirectoryPath), cancellationToken);
             }
             catch (DirectoryNotFoundException ex)
             {
@@ -329,22 +328,16 @@ public sealed class UploadSessionService(
     public async Task<bool> SweepAsync(string sessionId, CancellationToken cancellationToken)
     {
         if (!store.TryGet(sessionId, out var session) || !session.IsExpired(options, DateTimeOffset.UtcNow)) return false;
+        using var auditActor = PrivilegedAuditActorScope.Enter(session.IdentityKey);
         if (!await AbandonAsync(session, cancellationToken)) return false;
         logger.LogInformation("File upload session expired and was removed. SessionId={SessionId}, Bytes={Bytes}, CreatedAt={CreatedAt}",
             session.SessionId, session.Offset, session.CreatedAt);
         return true;
     }
 
-    private async Task<FileEntryDto> CommitPrivilegedAsync(UploadSessionRecord session, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await privileged.CommitAsync(session.StagingPath, session.FileName, cancellationToken);
-        }
-        catch (FileNotFoundException ex) { throw new UploadSessionException("not-found", 404, ex.Message); }
-        catch (UnauthorizedAccessException ex) { throw new UploadSessionException("access-denied", 403, ex.Message); }
-        catch (InvalidOperationException ex) { throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message); }
-    }
+    private async Task<FileEntryDto> CommitPrivilegedAsync(UploadSessionRecord session, PrivilegedFileAuthorizationSource source, CancellationToken cancellationToken)
+        => await PrivilegedAsync(() => privileged.CommitAsync(
+            source, session.StagingPath, session.FileName, cancellationToken));
 
     /// <summary>Drops the session and its staging file. Delegates deletion of a protected file to the Helper.</summary>
     private async Task<bool> AbandonAsync(UploadSessionRecord session, CancellationToken cancellationToken)
@@ -356,11 +349,11 @@ public sealed class UploadSessionService(
             return false;
         }
         var removed = false;
-        if (session.Elevated)
+        if (session.AuthorizationSource is { } source)
         {
             try
             {
-                await privileged.DeleteAsync(session.StagingPath, cancellationToken);
+                await privileged.DeleteStagingAsync(source, session.StagingPath, cancellationToken);
                 removed = true;
             }
             catch (FileNotFoundException) { removed = true; }
@@ -405,8 +398,11 @@ public sealed class UploadSessionService(
         var expected = contentHash.StartsWith("sha256-", StringComparison.OrdinalIgnoreCase)
             ? contentHash["sha256-".Length..] : contentHash;
         string actual;
-        await using (var stream = new FileStream(session.StagingPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
-            FileOptions.Asynchronous | FileOptions.SequentialScan))
+        var opened = session.AuthorizationSource is { } source
+            ? await PrivilegedAsync(() => privileged.OpenReadAsync(source, session.StagingPath, cancellationToken))
+            : ((Stream)new FileStream(session.StagingPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
+                FileOptions.Asynchronous | FileOptions.SequentialScan), string.Empty);
+        await using (var stream = opened.Item1)
         {
             actual = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
         }
@@ -427,6 +423,40 @@ public sealed class UploadSessionService(
 
     private static bool OwnedBy(UploadSessionRecord session, ClaimsPrincipal user)
         => string.Equals(session.IdentityKey, IdentityKey(user), StringComparison.Ordinal);
+
+    private PrivilegedFileAuthorizationSource RequireAuthorization(ClaimsPrincipal user, string target)
+    {
+        try
+        {
+            return authorizations.Authorize(user, FileElevationCapability.Upload, target)
+                ?? throw new UploadSessionException(FileUploadProblemCodes.ElevationRequired, 403,
+                    "目标目录需要管理员授权才能写入。");
+        }
+        catch (InvalidOperationException ex)
+        { throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message); }
+        catch (UnauthorizedAccessException ex)
+        { throw new UploadSessionException("access-denied", 403, ex.Message); }
+    }
+
+    private static async Task<T> PrivilegedAsync<T>(Func<Task<T>> action)
+    {
+        try { return await action(); }
+        catch (FileNotFoundException ex) { throw new UploadSessionException("not-found", 404, ex.Message); }
+        catch (DirectoryNotFoundException ex) { throw new UploadSessionException("not-found", 404, ex.Message); }
+        catch (UnauthorizedAccessException ex) { throw new UploadSessionException("access-denied", 403, ex.Message); }
+        catch (InvalidOperationException ex) { throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message); }
+        catch (ArgumentException ex) { throw new UploadSessionException("invalid-path", 400, ex.Message); }
+        catch (IOException ex) { throw new UploadSessionException("io-error", 500, ex.Message); }
+    }
+
+    private PrivilegedFileAuthorizationSource RequireSessionAuthorization(ClaimsPrincipal user, UploadSessionRecord session)
+    {
+        var source = RequireAuthorization(user, session.TargetDirectoryPath);
+        if (source != session.AuthorizationSource)
+            throw new UploadSessionException(FileUploadProblemCodes.ElevationRequired, 403,
+                "上传会话的管理员授权已失效，请重新认证。");
+        return source;
+    }
 
     /// <summary>
     /// The identity a session is bound to. The server knows the authenticated subject; sessions are

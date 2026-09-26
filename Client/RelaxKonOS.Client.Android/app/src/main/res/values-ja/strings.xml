@@ -140,6 +140,7 @@
     <string name="error_performance_not_ready">ホスト指標はまだ準備できていません。</string>
     <string name="error_unauthorized">セッションが期限切れです。もう一度サインインしてください。</string>
     <string name="error_identity_not_eligible">ログイン中のホストアカウントは通常のファイル・ターミナル・Git 操作に使用できません。root、UID 1000 未満のシステムアカウント、nobody、有効なホームディレクトリを持たないアカウントは、このサーバーでは許可されません。通常のホストアカウントでサインインしてください。</string>
+    <string name="execution_root_files_available">ファイル操作は制限付きの特権 Helper で使用できます。このアカウントでは通常のターミナルと Git 操作は使用できません。</string>
     <string name="error_identity_not_executable">サーバーは現在このホストアカウントとして通常操作を実行できません。User Mode ではサーバー自身のホストアカウントとしてのみ実行され、その他の構成では特権ヘルパーのインストールと稼働が必要です。</string>
     <string name="error_capability_missing">このサーバーはその機能を提供していません。</string>
 

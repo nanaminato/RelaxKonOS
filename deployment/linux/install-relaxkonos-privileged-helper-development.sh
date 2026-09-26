@@ -17,9 +17,13 @@ INSTALLED_HELPER="$INSTALL_DIRECTORY/RelaxKonOS.PrivilegedHelper"
 SUDOERS_FILE=/etc/sudoers.d/relaxkonos-privileged-helper-development
 FILE_ACCESS=restricted
 FILE_ROOTS_FILE=
+ADMINISTRATOR_FILE_ACCESS=restricted
+ADMINISTRATOR_FILE_ROOTS_FILE=
+ROOT_FILE_ACCESS=restricted
+ROOT_FILE_ROOTS_FILE=
 
 usage() {
-  echo "usage: sudo $0 DEVELOPMENT_USER [HELPER_APPHOST] [--file-access restricted|full|whitelist] [--file-roots PATH]" >&2
+  echo "usage: sudo $0 DEVELOPMENT_USER [HELPER_APPHOST] [--file-access restricted|full|whitelist] [--file-roots PATH] [--administrator-file-access restricted|full|whitelist] [--administrator-file-roots PATH] [--root-file-access restricted|full|whitelist] [--root-file-roots PATH]" >&2
   exit 1
 }
 
@@ -41,22 +45,45 @@ while [[ $# -gt 0 ]]; do
       FILE_ROOTS_FILE="$2"
       shift 2
       ;;
+    --administrator-file-access)
+      [[ $# -ge 2 ]] || usage
+      ADMINISTRATOR_FILE_ACCESS="$2"
+      shift 2
+      ;;
+    --administrator-file-roots)
+      [[ $# -ge 2 ]] || usage
+      ADMINISTRATOR_FILE_ROOTS_FILE="$2"
+      shift 2
+      ;;
+    --root-file-access)
+      [[ $# -ge 2 ]] || usage
+      ROOT_FILE_ACCESS="$2"
+      shift 2
+      ;;
+    --root-file-roots)
+      [[ $# -ge 2 ]] || usage
+      ROOT_FILE_ROOTS_FILE="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1" >&2
       usage
       ;;
   esac
 done
-case "$FILE_ACCESS" in
-  restricted|full|whitelist) ;;
-  *) echo "Invalid --file-access value: $FILE_ACCESS" >&2; usage ;;
-esac
-if [[ "$FILE_ACCESS" == whitelist ]]; then
-  [[ -n "$FILE_ROOTS_FILE" && -f "$FILE_ROOTS_FILE" ]] || { echo "--file-access whitelist requires an existing --file-roots file." >&2; exit 1; }
-elif [[ -n "$FILE_ROOTS_FILE" ]]; then
-  echo "--file-roots is valid only with --file-access whitelist." >&2
-  usage
-fi
+validate_mode_roots() {
+  local access="$1" roots="$2" label="$3"
+  case "$access" in restricted|full|whitelist) ;; *) echo "Invalid $label file-access value: $access" >&2; usage ;; esac
+  if [[ "$access" == whitelist ]]; then
+    [[ -n "$roots" && -f "$roots" ]] || { echo "$label whitelist requires an existing roots file." >&2; exit 1; }
+  elif [[ -n "$roots" ]]; then
+    echo "$label roots file is valid only with whitelist access." >&2
+    usage
+  fi
+}
+validate_mode_roots "$FILE_ACCESS" "$FILE_ROOTS_FILE" manual
+validate_mode_roots "$ADMINISTRATOR_FILE_ACCESS" "$ADMINISTRATOR_FILE_ROOTS_FILE" administrator
+validate_mode_roots "$ROOT_FILE_ACCESS" "$ROOT_FILE_ROOTS_FILE" root
 
 validate_file_roots() {
   local roots_file="$1" raw root count=0
@@ -71,27 +98,30 @@ validate_file_roots() {
 }
 
 install_file_root_policy() {
-  local temporary_policy
+  local access="$1" roots_file="$2" destination="$3" temporary_policy
   install -d -m 0700 /etc/relaxkonos
   temporary_policy="$(mktemp /etc/relaxkonos/privileged-helper-roots.XXXXXX)"
-  case "$FILE_ACCESS" in
+  case "$access" in
     restricted)
       cat >"$temporary_policy" <<EOF
 /etc/relaxkonos
 /var/lib/relaxkonos
 EOF
+      if [[ "$destination" == /etc/relaxkonos/privileged-helper-roots-root ]]; then
+        printf '/root\n' >>"$temporary_policy"
+      fi
       ;;
     full)
       printf '/\n' >"$temporary_policy"
       ;;
     whitelist)
-      validate_file_roots "$FILE_ROOTS_FILE"
-      cp -- "$FILE_ROOTS_FILE" "$temporary_policy"
+      validate_file_roots "$roots_file"
+      cp -- "$roots_file" "$temporary_policy"
       ;;
   esac
   chown root:root "$temporary_policy"
   chmod 0600 "$temporary_policy"
-  mv -f -- "$temporary_policy" /etc/relaxkonos/privileged-helper-roots
+  mv -f -- "$temporary_policy" "$destination"
 }
 
 # The Helper deliberately uses its own PAM service instead of the host's login stack.  Keep
@@ -127,7 +157,9 @@ command -v visudo >/dev/null || { echo "visudo is required for validating the su
 
 # sudo's env_reset intentionally prevents the development Server from providing a file policy.
 # Install the selected root-owned policy before granting it access to the fixed apphost.
-install_file_root_policy
+install_file_root_policy "$FILE_ACCESS" "$FILE_ROOTS_FILE" /etc/relaxkonos/privileged-helper-roots
+install_file_root_policy "$ADMINISTRATOR_FILE_ACCESS" "$ADMINISTRATOR_FILE_ROOTS_FILE" /etc/relaxkonos/privileged-helper-roots-administrator
+install_file_root_policy "$ROOT_FILE_ACCESS" "$ROOT_FILE_ROOTS_FILE" /etc/relaxkonos/privileged-helper-roots-root
 install_pam_service
 
 # Match the production ownership boundary so the development Server can stage the verified

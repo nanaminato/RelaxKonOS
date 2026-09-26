@@ -8,7 +8,8 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Server.Privileged;
 
 /// <summary>Platform host-admin verifier. Passwords and Windows tokens exist only for this call.</summary>
-public sealed class HostAdministratorAuthenticator(IIdentityProvider identities, IServerModeResolver serverMode) : IHostAdministratorAuthenticator
+public sealed class HostAdministratorAuthenticator(IIdentityProvider identities, IServerModeResolver serverMode,
+    IHostAccountPrivilegeService privileges) : IHostAdministratorAuthenticator
 {
     public HostAdministratorAuthenticationResult Authenticate(string currentUsername, string? administratorUsername, string? password)
     {
@@ -19,11 +20,22 @@ public sealed class HostAdministratorAuthenticator(IIdentityProvider identities,
             return AuthenticateWindows(administratorUsername ?? currentUsername, password);
         if (!OperatingSystem.IsLinux()) return new(false, "host-administrator-authentication-unsupported", "none");
 
-        // The established Linux policy intentionally authenticates only the current RelaxKonOS
-        // host account. Supporting another sudo identity requires a separate policy decision.
-        return identities.Verify(currentUsername, password).Success
-            ? new(true, string.Empty, "linux-pam-current-user")
-            : new(false, "elevation-password-invalid", "none");
+        var administrator = string.IsNullOrWhiteSpace(administratorUsername) ? "root" : administratorUsername.Trim();
+        var verification = identities.Verify(administrator, password);
+        if (verification.Error == CredentialError.Unknown)
+            return new(false, "host-administrator-authentication-unavailable", "none");
+        if (!verification.Success || verification.Identity is not { } identity)
+            return new(false, "elevation-password-invalid", "none");
+        try
+        {
+            return privileges.Classify(identity) is HostAccountPrivilege.HostAdministrator or HostAccountPrivilege.HostRoot
+                ? new(true, string.Empty, "linux-pam-administrator")
+                : new(false, "elevation-account-not-administrator", "none");
+        }
+        catch (InvalidOperationException)
+        {
+            return new(false, "host-administrator-authentication-unavailable", "none");
+        }
     }
 
     [SupportedOSPlatform("windows")]

@@ -271,7 +271,7 @@
         "settings.host_time.password_required": "Enter the administrator password.",
         "settings.host_time.password_invalid": "The password is incorrect. Try again.",
         "settings.host_time.password_check_failed": "The password could not be verified. Try again.",
-        "settings.host_time.administrator_required": "The current system account is not an administrator. Sign in with an administrator account and try again.",
+        "settings.host_time.administrator_required": "The selected account is not currently a host administrator. Enter an authorized administrator account.",
         "settings.operation.prepared": "Prepared; authorization and apply are still required.",
         "settings.operation.applying": "Applying",
         "settings.operation.applied": "Applied and read back from the remote OS.",

@@ -38,6 +38,26 @@ public static class LinuxUserFileOperations
     private const string PendingManifestName = "manifest.pending";
     private const string StagedName = "staged";
     private const string BackupName = "backup";
+    // The user-execution worker deliberately preserves ordinary POSIX symlink semantics.  The
+    // root-owned file Helper has a different boundary: its configured roots are the capability
+    // boundary, so every component below them must stay bound to the directory handles opened
+    // from those roots.  The scope is AsyncLocal because a Helper request is one async flow and
+    // must never leak its roots to another request.
+    private static readonly AsyncLocal<AllowedRootScope?> AllowedRoots = new();
+
+    /// <summary>
+    /// Pins the configured root directories for privileged file work. Existing and subsequently
+    /// opened child directories are resolved with <c>openat(O_NOFOLLOW)</c>; replacing a checked
+    /// parent with a symlink therefore cannot redirect a root-owned operation outside its policy.
+    /// </summary>
+    public static IDisposable AnchorAllowedRoots(IReadOnlyList<string> roots)
+    {
+        ArgumentNullException.ThrowIfNull(roots);
+        var previous = AllowedRoots.Value;
+        var scope = new AllowedRootScope(roots);
+        AllowedRoots.Value = scope;
+        return new AllowedRootRestore(previous, scope);
+    }
 
     /// <summary>
     /// Atomically replaces a file after its full content has been written beside the destination.
@@ -261,7 +281,9 @@ public static class LinuxUserFileOperations
         if (sourceIsDirectory && destinationExists)
         {
             var copiedIdentity = CopyReferenced(sourceReference, destination, overwrite: true);
-            DeleteReferencedIfUnchanged(sourceReference, copiedIdentity);
+            try { DeleteReferencedIfUnchanged(sourceReference, copiedIdentity); }
+            catch (UnauthorizedAccessException error)
+            { throw new IOException("The destination was committed before the source deletion failed.", error); }
             return true;
         }
 
@@ -274,7 +296,9 @@ public static class LinuxUserFileOperations
         catch (NativeFileIOException exception) when (exception.Errno == CrossDeviceLink)
         {
             var copiedIdentity = CopyReferenced(sourceReference, destination, overwrite);
-            DeleteReferencedIfUnchanged(sourceReference, copiedIdentity);
+            try { DeleteReferencedIfUnchanged(sourceReference, copiedIdentity); }
+            catch (UnauthorizedAccessException error)
+            { throw new IOException("The destination was committed before the source deletion failed.", error); }
             return sourceIsDirectory;
         }
     }
@@ -282,8 +306,20 @@ public static class LinuxUserFileOperations
     public static bool Delete(string path)
     {
         using var reference = OpenPathReference(path);
-        DeleteEntryAt(reference.ParentHandle, reference.Name, reference.Stat);
-        return true;
+        // A recursive unlink can fail after it has removed some descendants. First atomically
+        // move the entry into the same-parent transaction directory: from that rename onward the
+        // delete is committed from the caller's point of view, while any interrupted cleanup is
+        // hidden and recovered by the existing transaction sweeper.
+        using var transaction = BeginTransaction(path);
+        try
+        {
+            RenameAt(reference.ParentHandle, reference.Name, transaction.RootHandle, StagedName);
+            return true;
+        }
+        finally
+        {
+            FinishTransaction(transaction);
+        }
     }
 
     public static bool Rename(string path, string newName)
@@ -307,6 +343,8 @@ public static class LinuxUserFileOperations
         using var parent = OpenParentDirectory(path, out var name);
         if (!TryStatAt(parent, name, out var linkStat)) return null;
         var reparsePoint = IsSymbolicLink(linkStat);
+        if (AllowedRoots.Value is not null && reparsePoint)
+            return Metadata(path, linkStat, reparsePoint: true);
         if (!TryStatAtFollowing(parent, name, out var targetStat)) return null;
         return Metadata(path, targetStat, reparsePoint);
     }
@@ -314,7 +352,9 @@ public static class LinuxUserFileOperations
     public static FileStream OpenRead(string path)
     {
         using var parent = OpenParentDirectory(path, out var name);
-        var handle = OpenFileHandleAtFollowing(parent, name);
+        var handle = AllowedRoots.Value is null
+            ? OpenFileHandleAtFollowing(parent, name)
+            : OpenFileWithinRoot(parent, name);
         try { return new FileStream(handle, FileAccess.Read, 64 * 1024, isAsync: false); }
         catch
         {
@@ -326,6 +366,8 @@ public static class LinuxUserFileOperations
     public static bool CreateDirectory(string path)
     {
         path = NormalizePath(path);
+        if (AllowedRoots.Value is { } scopedRoots)
+            return scopedRoots.CreateDirectory(path);
         var root = Path.GetPathRoot(path)
             ?? throw new ArgumentException("An absolute path is required.", nameof(path));
         using var rootHandle = OpenDirectoryHandle(root);
@@ -333,6 +375,7 @@ public static class LinuxUserFileOperations
 
         SafeFileHandle current = rootHandle;
         var ownsCurrent = false;
+        var created = false;
         try
         {
             foreach (var component in path[root.Length..].Split(Path.DirectorySeparatorChar,
@@ -345,11 +388,15 @@ public static class LinuxUserFileOperations
                     {
                         var error = Marshal.GetLastPInvokeError();
                         if (error != 17)
-                            throw new NativeFileIOException("Could not create a user-execution directory", error);
+                            // mkdirat reports EACCES/EPERM as native errno values.  Preserve the
+                            // permission classification so the Server can distinguish a safe
+                            // administrator fallback from an ordinary I/O conflict.
+                            throw NativeException("Could not create a user-execution directory", error);
                         next = OpenDirectoryHandleAtFollowing(current, component);
                     }
                     else
                     {
+                        created = true;
                         next = OpenDirectoryHandleAt(current, component);
                     }
                 }
@@ -359,6 +406,8 @@ public static class LinuxUserFileOperations
             }
             return true;
         }
+        catch (UnauthorizedAccessException error) when (created)
+        { throw new IOException("Directory creation stopped after a parent was created.", error); }
         finally
         {
             if (ownsCurrent) current.Dispose();
@@ -376,7 +425,11 @@ public static class LinuxUserFileOperations
         }
         using var parent = OpenParentDirectory(path, out var name);
         var reparsePoint = IsSymbolicLink(StatAt(parent, name));
-        using var handle = OpenPathHandleAtFollowing(parent, name);
+        if (AllowedRoots.Value is not null && reparsePoint)
+            throw new UnauthorizedAccessException("A symbolic link cannot be changed through a privileged file root.");
+        using var handle = AllowedRoots.Value is null
+            ? OpenPathHandleAtFollowing(parent, name)
+            : OpenPathWithinRoot(parent, name);
         ChangeMode(DescriptorPath(handle), mode);
         return Metadata(path, StatHandle(handle), reparsePoint);
     }
@@ -384,6 +437,11 @@ public static class LinuxUserFileOperations
     internal static T WithAnchoredDirectory<T>(string path, Func<string, T> action)
     {
         ArgumentNullException.ThrowIfNull(action);
+        if (AllowedRoots.Value is { } scopedRoots)
+        {
+            using var scopedHandle = scopedRoots.OpenDirectory(path);
+            return action(DescriptorPath(scopedHandle));
+        }
         using var handle = OpenDirectoryHandle(NormalizePath(path));
         return action(DescriptorPath(handle));
     }
@@ -708,14 +766,16 @@ public static class LinuxUserFileOperations
         if (!TryStatAt(source.ParentHandle, source.Name, out var current)
             || Identity(current) != copiedIdentity)
             throw new IOException("Source changed while the move was in progress.");
-        DeleteEntryAt(source.ParentHandle, source.Name, current);
+        var changed = false;
+        DeleteEntryAt(source.ParentHandle, source.Name, current, ref changed);
     }
 
-    private static void DeleteEntryAt(SafeFileHandle parent, string name, StatxBuffer stat)
+    private static void DeleteEntryAt(SafeFileHandle parent, string name, StatxBuffer stat, ref bool changed)
     {
         if (!IsDirectory(stat))
         {
             UnlinkAt(parent, name, removeDirectory: false);
+            changed = true;
             return;
         }
 
@@ -723,9 +783,10 @@ public static class LinuxUserFileOperations
         foreach (var entry in Directory.EnumerateFileSystemEntries(DescriptorPath(directory)))
         {
             var childName = Path.GetFileName(entry);
-            DeleteEntryAt(directory, childName, StatAt(directory, childName));
+            DeleteEntryAt(directory, childName, StatAt(directory, childName), ref changed);
         }
         UnlinkAt(parent, name, removeDirectory: true);
+        changed = true;
     }
 
     private static void DeleteIfPresent(string path)
@@ -760,6 +821,13 @@ public static class LinuxUserFileOperations
     }
 
     private static SafeFileHandle OpenDirectoryHandle(string path)
+    {
+        if (AllowedRoots.Value is { } scopedRoots)
+            return scopedRoots.OpenDirectory(path);
+        return OpenDirectoryHandleUnrestricted(path);
+    }
+
+    private static SafeFileHandle OpenDirectoryHandleUnrestricted(string path)
     {
         var descriptor = open(path, OpenReadOnly | OpenDirectory | OpenCloseOnExec);
         return descriptor < 0
@@ -804,7 +872,10 @@ public static class LinuxUserFileOperations
         var error = Marshal.GetLastPInvokeError();
         handle = null!;
         if (error == 2) return false;
-        throw new NativeFileIOException("Could not open a user-execution directory", error);
+        // Do not collapse EACCES/EPERM into IOException here.  This is a normal path for a
+        // host administrator entering a protected directory, and it must reach the routing
+        // boundary as AccessDenied rather than being mistaken for a conflict.
+        throw NativeException("Could not open a user-execution directory", error);
     }
 
     private static SafeFileHandle OpenFileHandleAt(SafeFileHandle parent, string name)
@@ -824,6 +895,15 @@ public static class LinuxUserFileOperations
             : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
     }
 
+    private static SafeFileHandle OpenFileWithinRoot(SafeFileHandle parent, string name)
+    {
+        var descriptor = openat(Descriptor(parent), name, OpenReadOnly | OpenNoFollow | OpenCloseOnExec);
+        if (descriptor >= 0) return new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+        var error = Marshal.GetLastPInvokeError();
+        if (error is 20 or 40) throw new UnauthorizedAccessException("A symbolic link cannot be read through a privileged file root.");
+        throw NativeException("Could not open a privileged file", error);
+    }
+
     private static SafeFileHandle OpenPathHandleAtFollowing(SafeFileHandle parent, string name)
     {
         var descriptor = openat(Descriptor(parent), name, OpenPathOnly | OpenCloseOnExec);
@@ -832,9 +912,20 @@ public static class LinuxUserFileOperations
             : new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
     }
 
+    private static SafeFileHandle OpenPathWithinRoot(SafeFileHandle parent, string name)
+    {
+        var descriptor = openat(Descriptor(parent), name, OpenPathOnly | OpenNoFollow | OpenCloseOnExec);
+        if (descriptor >= 0) return new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+        var error = Marshal.GetLastPInvokeError();
+        if (error is 20 or 40) throw new UnauthorizedAccessException("A symbolic link cannot be changed through a privileged file root.");
+        throw NativeException("Could not open a privileged path", error);
+    }
+
     private static SafeFileHandle OpenParentDirectory(string path, out string name)
     {
         path = NormalizePath(path);
+        if (AllowedRoots.Value is { } scopedRoots)
+            return scopedRoots.OpenParent(path, out name);
         var parent = Path.GetDirectoryName(path);
         name = Path.GetFileName(path);
         if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(name))
@@ -845,7 +936,13 @@ public static class LinuxUserFileOperations
     private static PathReference OpenPathReference(string path)
     {
         var handle = OpenParentDirectory(path, out var name);
-        try { return new PathReference(handle, name, StatAt(handle, name)); }
+        try
+        {
+            var stat = StatAt(handle, name);
+            if (AllowedRoots.Value is not null && IsSymbolicLink(stat))
+                throw new UnauthorizedAccessException("A symbolic link cannot be used through a privileged file root.");
+            return new PathReference(handle, name, stat);
+        }
         catch
         {
             handle.Dispose();
@@ -900,7 +997,7 @@ public static class LinuxUserFileOperations
             return true;
         var error = Marshal.GetLastPInvokeError();
         if (error is 2 or 20) return false;
-        throw new NativeFileIOException("Could not inspect a user-execution path", error);
+        throw NativeException("Could not inspect a user-execution path", error);
     }
 
     private static bool TryStatAtFollowing(SafeFileHandle parent, string name,
@@ -910,7 +1007,7 @@ public static class LinuxUserFileOperations
             return true;
         var error = Marshal.GetLastPInvokeError();
         if (error is 2 or 20 or 40) return false;
-        throw new NativeFileIOException("Could not inspect a user-execution path", error);
+        throw NativeException("Could not inspect a user-execution path", error);
     }
 
     private static StatxBuffer StatHandle(SafeFileHandle handle)
@@ -966,13 +1063,218 @@ public static class LinuxUserFileOperations
             throw NativeIOException("Could not change user-execution path permissions");
     }
 
-    private static NativeFileIOException NativeIOException(string message)
-        => new(message, Marshal.GetLastPInvokeError());
+    private static Exception NativeIOException(string message)
+        => NativeException(message, Marshal.GetLastPInvokeError());
+
+    private static Exception NativeException(string message, int errno)
+        => errno is 1 or 13 ? new UnauthorizedAccessException(message)
+            : new NativeFileIOException(message, errno);
 
     private sealed class NativeFileIOException(string message, int errno)
         : IOException($"{message} (errno {errno}).")
     {
         public int Errno { get; } = errno;
+    }
+
+    private sealed class AllowedRootRestore(AllowedRootScope? previous, AllowedRootScope scope) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (AllowedRoots.Value == scope) AllowedRoots.Value = previous;
+            scope.Dispose();
+        }
+    }
+
+    /// <summary>Per-request capability roots held open for the lifetime of a privileged operation.</summary>
+    private sealed class AllowedRootScope : IDisposable
+    {
+        private readonly Root[] _roots;
+
+        public AllowedRootScope(IReadOnlyList<string> configuredRoots)
+        {
+            var paths = configuredRoots
+                .Where(path => !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path))
+                .Select(NormalizePath)
+                .Distinct(StringComparer.Ordinal)
+                .OrderByDescending(path => path.Length)
+                .ToArray();
+            if (paths.Length == 0) throw new UnauthorizedAccessException("No privileged file root is configured.");
+            var opened = new List<Root>(paths.Length);
+            try
+            {
+                foreach (var path in paths) opened.Add(new Root(path, OpenAbsoluteDirectoryNoFollow(path)));
+                _roots = opened.ToArray();
+            }
+            catch
+            {
+                foreach (var root in opened) root.Handle.Dispose();
+                throw;
+            }
+        }
+
+        public SafeFileHandle OpenParent(string path, out string name)
+        {
+            var (root, components) = Split(path);
+            if (components.Length == 0)
+                throw new UnauthorizedAccessException("The configured file root itself is not mutable.");
+            name = components[^1];
+            var current = DuplicateHandle(root.Handle);
+            try
+            {
+                for (var index = 0; index < components.Length - 1; index++)
+                {
+                    var next = OpenDirectoryWithinRoot(current, components[index]);
+                    current.Dispose();
+                    current = next;
+                }
+                return current;
+            }
+            catch
+            {
+                current.Dispose();
+                throw;
+            }
+        }
+
+        public SafeFileHandle OpenDirectory(string path)
+        {
+            var (root, components) = Split(path);
+            var current = DuplicateHandle(root.Handle);
+            try
+            {
+                foreach (var component in components)
+                {
+                    var next = OpenDirectoryWithinRoot(current, component);
+                    current.Dispose();
+                    current = next;
+                }
+                return current;
+            }
+            catch
+            {
+                current.Dispose();
+                throw;
+            }
+        }
+
+        public bool CreateDirectory(string path)
+        {
+            var (root, components) = Split(path);
+            if (components.Length == 0) return true;
+            var current = DuplicateHandle(root.Handle);
+            var created = false;
+            try
+            {
+                foreach (var component in components)
+                {
+                    SafeFileHandle next;
+                    if (!TryOpenDirectoryWithinRoot(current, component, out next))
+                    {
+                        if (mkdirat(Descriptor(current), component, Convert.ToUInt32("777", 8)) != 0)
+                        {
+                            var error = Marshal.GetLastPInvokeError();
+                            if (error != 17)
+                                throw NativeException("Could not create a privileged directory", error);
+                            next = OpenDirectoryWithinRoot(current, component);
+                        }
+                        else
+                        {
+                            created = true;
+                            next = OpenDirectoryWithinRoot(current, component);
+                        }
+                    }
+                    current.Dispose();
+                    current = next;
+                }
+                return true;
+            }
+            catch (UnauthorizedAccessException error) when (created)
+            {
+                throw new IOException("Directory creation stopped after a parent was created.", error);
+            }
+            finally { current.Dispose(); }
+        }
+
+        private (Root Root, string[] Components) Split(string path)
+        {
+            path = NormalizePath(path);
+            var root = _roots.FirstOrDefault(candidate => IsWithinRoot(path, candidate.Path));
+            if (root is null) throw new UnauthorizedAccessException("Path is outside the configured privileged roots.");
+            var relative = Path.GetRelativePath(root.Path, path);
+            if (relative == ".") return (root, []);
+            if (relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                || relative == "..") throw new UnauthorizedAccessException("Path is outside the configured privileged root.");
+            return (root, relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        public void Dispose()
+        {
+            foreach (var root in _roots) root.Handle.Dispose();
+        }
+
+        private static bool IsWithinRoot(string path, string root)
+            => path == root || path.StartsWith(root == Path.DirectorySeparatorChar.ToString()
+                ? root : root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+    }
+
+    private sealed class Root(string path, SafeFileHandle handle)
+    {
+        public string Path { get; } = path;
+        public SafeFileHandle Handle { get; } = handle;
+    }
+
+    private static SafeFileHandle OpenAbsoluteDirectoryNoFollow(string path)
+    {
+        path = NormalizePath(path);
+        var filesystemRoot = Path.GetPathRoot(path)
+            ?? throw new ArgumentException("An absolute path is required.", nameof(path));
+        var current = OpenDirectoryHandleUnrestricted(filesystemRoot);
+        try
+        {
+            foreach (var component in path[filesystemRoot.Length..].Split(Path.DirectorySeparatorChar,
+                         StringSplitOptions.RemoveEmptyEntries))
+            {
+                var next = OpenDirectoryWithinRoot(current, component);
+                current.Dispose();
+                current = next;
+            }
+            return current;
+        }
+        catch
+        {
+            current.Dispose();
+            throw;
+        }
+    }
+
+    private static SafeFileHandle OpenDirectoryWithinRoot(SafeFileHandle parent, string name)
+    {
+        var descriptor = openat(Descriptor(parent), name,
+            OpenReadOnly | OpenDirectory | OpenNoFollow | OpenCloseOnExec);
+        if (descriptor >= 0) return new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+        var error = Marshal.GetLastPInvokeError();
+        // O_NOFOLLOW commonly surfaces a swapped symlink as ELOOP, while O_DIRECTORY can
+        // surface it as ENOTDIR. Both mean the path has left the descriptor-anchored directory
+        // chain and must be a policy denial, not a retryable filesystem conflict.
+        if (error is 20 or 40) throw new UnauthorizedAccessException("A privileged path component is not a real directory.");
+        throw NativeException("Could not open a privileged directory", error);
+    }
+
+    private static bool TryOpenDirectoryWithinRoot(SafeFileHandle parent, string name,
+        out SafeFileHandle handle)
+    {
+        var descriptor = openat(Descriptor(parent), name,
+            OpenReadOnly | OpenDirectory | OpenNoFollow | OpenCloseOnExec);
+        if (descriptor >= 0)
+        {
+            handle = new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+            return true;
+        }
+        var error = Marshal.GetLastPInvokeError();
+        handle = null!;
+        if (error == 2) return false;
+        if (error is 20 or 40) throw new UnauthorizedAccessException("A privileged path component is not a real directory.");
+        throw NativeException("Could not open a privileged directory", error);
     }
 
     private sealed class PathReference(SafeFileHandle parentHandle, string name, StatxBuffer stat)

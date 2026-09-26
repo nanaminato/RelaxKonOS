@@ -14,7 +14,7 @@ public static class FileOperationChecks
             .AddSingleton(DispatchProxy.Create<IUserExecutionContextResolver, RejectProxy>())
             .BuildServiceProvider();
         using var service = new FileOperationService(DispatchProxy.Create<IPrivilegedFileService, RejectProxy>(),
-            DispatchProxy.Create<IFileElevationSessionStore, RejectProxy>(), new TestUserModeResolver(),
+            new TestUserModeResolver(),
             executionScopeProvider.GetRequiredService<IServiceScopeFactory>(),
             DispatchProxy.Create<IUserExecutionTransport, RejectProxy>());
         var principal = new ClaimsPrincipal(new ClaimsIdentity());

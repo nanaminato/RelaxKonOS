@@ -21,13 +21,16 @@ public sealed record ServerAuthenticationDto(string Kind, string PamTransport);
 /// <summary>
 /// Whether this Server may execute ordinary operations (files, terminal, Git) as the authenticated
 /// identity. It is a per-login fact, not a deployment fact: the same Server answers differently for
-/// root than for a regular account. When <see cref="Available"/> is false the client must say so up
-/// front instead of letting the first folder open fail. <see cref="Reason"/> is a stable kebab-case
+/// root than for a regular account. A false <see cref="Available"/> does not close the file UI when
+/// <see cref="PrivilegedFilesAvailable"/> is true. <see cref="Reason"/> is a stable kebab-case
 /// code, never a description: text belongs to the client's localization packs.
 /// </summary>
 public sealed record ServerExecutionEligibilityDto(
     [property: JsonPropertyName("available")] bool Available,
-    [property: JsonPropertyName("reason")] string? Reason = null);
+    [property: JsonPropertyName("reason")] string? Reason,
+    /// <summary>Root System Mode uses closed privileged file operations without entering the
+    /// ordinary user-execution worker. This is false for alias and User Mode sessions.</summary>
+    [property: JsonPropertyName("privilegedFilesAvailable")] bool PrivilegedFilesAvailable);
 
 /// <summary>
 /// Stable reason codes for <see cref="ServerExecutionEligibilityDto"/>. A client localizes from these

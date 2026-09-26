@@ -102,7 +102,8 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
         // The executable was integrity-checked before the production service starts. Keeping
         // the executor in-process also avoids a second, debugger-hostile worker process.
         var result = await PrivilegedOperationExecutor.ExecuteAsync(request,
-            new PrivilegedOperationPolicy(configuration.FileAllowedRoots, configuration.AllowedServiceIds),
+            new PrivilegedOperationPolicy(configuration.FileAllowedRoots, configuration.FileAllowedRoots,
+                configuration.FileAllowedRoots, configuration.AllowedServiceIds),
             progress => WriteProtocolFrameAsync(pipe, secret, progress, CancellationToken.None));
         await WriteResultAsync(pipe, secret, result, cancellationToken);
     }

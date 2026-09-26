@@ -102,7 +102,9 @@ public static class AuthEndpoints
 
                 return Results.Ok(new LoginResponse(
                     user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role, CreateServerDescriptor(serverMode),
-                    new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available, login.ExecutionEligibility.ReasonCode)));
+                    new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available, login.ExecutionEligibility.ReasonCode,
+                        serverMode.Mode == ServerMode.System && login.Method == "system"
+                        && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));
             })
             .RequireRateLimiting("login")
             .WithTags("Auth");

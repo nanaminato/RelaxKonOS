@@ -655,6 +655,7 @@ class RelaxKonApi(
                 available = eligibility.getBoolean("available"),
                 // Null when the identity is usable, so the absent-reason case is the normal one.
                 reason = eligibility.optNullableString("reason"),
+                privilegedFilesAvailable = eligibility.getBoolean("privilegedFilesAvailable"),
             ),
         )
     }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed login response.") })

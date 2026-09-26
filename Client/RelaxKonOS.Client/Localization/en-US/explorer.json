@@ -202,7 +202,7 @@
         "explorer.operations.outcome.cleanup-failed": "Temporary file cleanup failed",
         "explorer.operations.current_file": "Current file progress (preparation, queueing and atomic steps have no percentage)",
         "explorer.operations.elevation_title": "Administrator authentication",
-        "explorer.operations.elevation_account": "Administrator account (for example .\\Administrator)",
+        "explorer.operations.elevation_account": "Host administrator account (Linux: root or another authorized account)",
         "explorer.operations.elevation_password": "Administrator password",
         "explorer.operations.elevation_prompt": "This operation requires administrator access. Authorization lasts 5 minutes in this session.",
         "explorer.operations.elevation_access_prompt": "This location requires administrator access.",
