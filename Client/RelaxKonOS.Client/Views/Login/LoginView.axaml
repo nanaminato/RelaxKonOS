@@ -163,16 +163,6 @@
                 <TextBlock Text="{Binding IdentityNotice}"
                            Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="88,11,0,0" />
 
-                <Border IsVisible="{Binding NeedsHostKeyConfirmation}" Margin="0,12,0,0" Padding="12"
-                        BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1">
-                    <StackPanel Spacing="7">
-                        <TextBlock Text="{Binding HostKeyMessage}" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding HostKeyFingerprint}" FontFamily="Consolas" TextWrapping="Wrap" />
-                        <Button Content="{Binding ConfirmHostKeyText}" Command="{Binding ConfirmHostKeyCommand}"
-                                IsEnabled="{Binding !IsConnecting}" HorizontalAlignment="Left" />
-                    </StackPanel>
-                </Border>
-
                 <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1"
                         CornerRadius="2" Margin="0,24,0,0" Padding="13,11">
                     <StackPanel Spacing="4">

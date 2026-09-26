@@ -176,6 +176,8 @@ public partial class LoginViewModel : ObservableObject
     public string ClientNameText => T("login.client_name", "RelaxKonOS Remote Desktop Client");
     public string ConnectText => T("common.connect", "Connect");
     public string ConfirmHostKeyText => T("login.ssh_confirm_host_key", "I verified this fingerprint; trust and connect");
+    public string HostKeyDialogTitle => T("login.ssh_host_key_title", "Verify SSH host key");
+    public string CancelText => T("common.cancel", "Cancel");
 
     [ObservableProperty] private string _statusMessage = string.Empty;
     [ObservableProperty] private string _errorMessage = string.Empty;
@@ -404,6 +406,13 @@ public partial class LoginViewModel : ObservableObject
         HostKeyMessage = string.Empty;
     }
 
+    /// <summary>Cancels a pending host-key decision without changing the trusted-host store.</summary>
+    public void CancelHostKeyConfirmation()
+    {
+        ClearPendingHostKey();
+        StatusMessage = string.Empty;
+    }
+
     private async Task ConnectSshAsync(CancellationToken ct)
     {
         if (!Uri.TryCreate("ssh://" + ServerUrl.Trim(), UriKind.Absolute, out var uri) ||
@@ -510,6 +519,9 @@ public partial class LoginViewModel : ObservableObject
         finally { IsConnecting = false; }
         await ConnectSshAsync(ct);
     }
+
+    /// <summary>Confirms the host key after the modal login prompt has been accepted.</summary>
+    public Task ConfirmHostKeyFromDialogAsync() => ConfirmHostKeyAsync(CancellationToken.None);
 
     private async Task<ServerEndpointResolution> ResolveServerEndpointAsync(CancellationToken ct)
     {

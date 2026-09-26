@@ -4,6 +4,7 @@
         "login.title": "RelaxKonOS",
         "login.ssh_password_required": "SSH パスワードを入力するか、このホスト用に保存されたパスワードを使用してください。",
         "login.ssh_password_not_saved": "接続しましたが、SSH パスワードを安全に保存できませんでした。",
+        "login.ssh_host_key_title": "SSH ホスト鍵を検証",
         "login.display_language": "表示言語:",
         "login.connection_instructions": "接続するリモート コンピューターの名前を入力してください。",
         "login.credentials_instructions": "接続時に以下の資格情報が使用されます。",
