@@ -27,6 +27,8 @@ internal partial class SshFileBrowserView : UserControl
         AvaloniaProperty.Register<SshFileBrowserView, string>(nameof(SizeSortGlyph));
 
     private readonly SshDesktopSession _session;
+    private readonly Func<string, bool> _canOpenFile;
+    private readonly Func<string, bool> _openFile;
     private readonly List<string> _history = [];
     private readonly List<SshFileEntry> _clipboard = [];
     private readonly ObservableCollection<TreeNodeModel> _navigationNodes = [];
@@ -61,9 +63,11 @@ internal partial class SshFileBrowserView : UserControl
     public string TypeSortGlyph { get => GetValue(TypeSortGlyphProperty); private set => SetValue(TypeSortGlyphProperty, value); }
     public string SizeSortGlyph { get => GetValue(SizeSortGlyphProperty); private set => SetValue(SizeSortGlyphProperty, value); }
 
-    public SshFileBrowserView(SshDesktopSession session)
+    public SshFileBrowserView(SshDesktopSession session, Func<string, bool>? canOpenFile = null, Func<string, bool>? openFile = null)
     {
         _session = session;
+        _canOpenFile = canOpenFile ?? (_ => false);
+        _openFile = openFile ?? (_ => false);
         InitializeComponent();
         NavigationTree.ItemsSource = _navigationNodes;
         _viewReady = true;
@@ -111,8 +115,8 @@ internal partial class SshFileBrowserView : UserControl
 
     private async void Open_Click(object? sender, RoutedEventArgs e)
     {
-        if (EntriesGrid.SelectedItem is SshFileEntry { IsDirectory: true } entry)
-            await NavigateAsync(entry.Path);
+        if (EntriesGrid.SelectedItem is SshFileEntry entry)
+            await OpenEntryAsync(entry);
     }
 
     private async void AddressBox_KeyDown(object? sender, KeyEventArgs e)
@@ -224,7 +228,7 @@ internal partial class SshFileBrowserView : UserControl
     {
         // Activate the row under the pointer rather than the previous selection.
         var entry = FindDataContext<SshFileEntry>(e.Source) ?? EntriesGrid.SelectedItem as SshFileEntry;
-        if (entry is { IsDirectory: true }) await NavigateAsync(entry.Path);
+        if (entry is not null) await OpenEntryAsync(entry);
     }
 
     private static T? FindDataContext<T>(object? source) where T : class
@@ -267,7 +271,8 @@ internal partial class SshFileBrowserView : UserControl
     private void FileMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         var selected = Selection();
-        OpenMenuItem.IsEnabled = !_busy && selected.Length == 1 && selected[0].IsDirectory;
+        OpenMenuItem.IsEnabled = !_busy && selected.Length == 1
+            && (selected[0].IsDirectory || _canOpenFile(selected[0].Path));
         CopyMenuItem.IsEnabled = CutMenuItem.IsEnabled = DeleteMenuItem.IsEnabled = !_busy && selected.Length > 0;
         PasteMenuItem.IsEnabled = !_busy && _clipboard.Count > 0;
         RenameMenuItem.IsEnabled = PropertiesMenuItem.IsEnabled = !_busy && selected.Length == 1;
@@ -314,6 +319,17 @@ internal partial class SshFileBrowserView : UserControl
     {
         using var client = await Task.Run(OpenClient);
         return await Task.Run(() => action(client));
+    }
+
+    private async Task OpenEntryAsync(SshFileEntry entry)
+    {
+        if (_busy) return;
+        if (entry.IsDirectory)
+        {
+            await NavigateAsync(entry.Path);
+            return;
+        }
+        if (_canOpenFile(entry.Path)) _openFile(entry.Path);
     }
 
     private async Task NavigateAsync(string path, bool addHistory = true)

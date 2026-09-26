@@ -171,7 +171,7 @@ public partial class LoginViewModel : ObservableObject
         : T("login.identity_notice", "You will be prompted to verify the identity of the remote computer.");
     public string ConnectionSettingsText => T("login.connection_settings", "Connection settings");
     public string ConnectionSettingsDescription => UseSshLogin
-        ? T("login.ssh_connection_description", "SSH opens a desktop with Terminal, Server centre and SFTP files.")
+        ? T("login.ssh_connection_description", "SSH opens a desktop with Terminal, Server Centre, SFTP files, Code Editor, and Image Viewer.")
         : T("login.connection_settings_description", "RelaxKonOS will open the workspace using this computer's name and local display settings.");
     public string ClientNameText => T("login.client_name", "RelaxKonOS Remote Desktop Client");
     public string ConnectText => T("common.connect", "Connect");

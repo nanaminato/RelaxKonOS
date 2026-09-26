@@ -208,6 +208,7 @@ public partial class DesktopShellViewModel : ObservableObject
                 && _applications.EvaluateCompatibility(manifest).IsCompatible
                 && (_sshDesktop.IsConnected
                     ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
+                        or "relaxkonos.codeeditor" or "relaxkonos.imageviewer"
                     : application.Id.Value is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
             .Select(i => new AppEntryViewModel(Localize(i), _applications))
             .ToList();
@@ -266,7 +267,8 @@ public partial class DesktopShellViewModel : ObservableObject
     [RelayCommand]
     private void Launch(AppId id)
     {
-        if (_sshDesktop.IsConnected && id.Value is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files")) return;
+        if (_sshDesktop.IsConnected && id.Value is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
+            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer")) return;
         _applications.Launch(id);
         IsStartOpen = false;
     }
@@ -798,7 +800,8 @@ public partial class DesktopShellViewModel : ObservableObject
 
     private void LaunchApplication(string id)
     {
-        if (_sshDesktop.IsConnected && id is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files")) return;
+        if (_sshDesktop.IsConnected && id is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
+            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer")) return;
         _applications.Launch(new AppId(id));
         IsStartOpen = false;
         OpenTaskbarGroup = null;

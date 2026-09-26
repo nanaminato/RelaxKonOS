@@ -2,6 +2,7 @@ using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.ImageViewer.ViewModels;
 using RelaxKonOS.Client.Apps.ImageViewer.Views;
 using RelaxKonOS.Client.Services;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
@@ -31,7 +32,10 @@ public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
 
     private void OpenViewer(AppContext context, string? path)
     {
-        var files = context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
+        var sshDesktop = context.Services.GetService(typeof(SshDesktopSession)) as SshDesktopSession;
+        IExplorerClient? files = sshDesktop?.IsConnected == true
+            ? context.Services.GetService(typeof(SshExplorerClient)) as SshExplorerClient
+            : context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
         var viewModel = new ImageViewerViewModel(files);
         var view = new ImageViewerView { DataContext = viewModel };
         var window = context.ShowWindow("Image Viewer", view,
