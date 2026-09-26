@@ -39,8 +39,14 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
             if (document.RootElement.EnumerateObject().Any(property =>
                     property.Name.Equals("developerUserSids", StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("developerUserSids is a console debugging option and cannot be configured for the deployed Helper service.");
-        }
-        var configuration = JsonSerializer.Deserialize<WindowsHelperServiceConfiguration>(json,
+            // The Server picks which process serves ordinary user operations; the Helper only decides
+            // whether it listens at all, through enableWindowsUserExecution. Seeing the Server's key
+            // here means a Server configuration leaked into a Helper configuration, and ignoring it
+            // would leave the two sides disagreeing about who executes.
+            if (document.RootElement.EnumerateObject().Any(property =>
+                    property.Name.Equals("userExecutionBackend", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("userExecutionBackend is a Server option; the Helper selects its user-execution pipe with enableWindowsUserExecution.");
+        }        var configuration = JsonSerializer.Deserialize<WindowsHelperServiceConfiguration>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidOperationException("Windows Helper configuration is invalid.");
         configuration.Validate();

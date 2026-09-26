@@ -27,6 +27,7 @@ public sealed partial class LocalGitRepositoryService(
     IServiceScopeFactory executionScopes,
     IUserExecutionTransport executionTransport,
     IServerModeResolver serverMode,
+    RelaxKonOS.Server.UserExecution.UserExecutionBackendSelection userExecution,
     IHttpContextAccessor http) : IGitRepositoryService
 {
     private const int MaxDiffPatchSize = 200 * 1024; // 200KB
@@ -1439,7 +1440,12 @@ public sealed partial class LocalGitRepositoryService(
         var operation = arguments.FirstOrDefault() ?? "unknown";
         if (!UserExecutionGitPolicy.IsAllowed(arguments))
             return new CommandResult(false, "", "git_domain_arguments_rejected");
-        if (serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System)
+        // Only the Helper can run Git as another account. Under the local-identity backend the
+        // process already is the effective user, so the ordinary in-process path below is used
+        // instead of borrowing the Helper contract — which also keeps credentialed operations
+        // available to a developer working as themselves.
+        if (serverMode.Mode == RelaxKonOS.Protocol.Common.ServerMode.System
+            && userExecution.Backend == RelaxKonOS.Server.UserExecution.UserExecutionBackend.Helper)
         {
             if (credentials is not null)
                 return new CommandResult(false, "", "credentialed_user_execution_not_supported");

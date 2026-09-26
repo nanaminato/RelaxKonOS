@@ -18,7 +18,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     public FileSystemEntryDto? GetInfo(string path) => Run<FileSystemEntryDto?>(UserExecutionOperationKind.FileGetInfo, path: path);
     public (Stream Stream, string ContentType, string FileName)? OpenRead(string path)
     {
-        var result = Run<FileReadResult>(UserExecutionOperationKind.FileRead, path: path);
+        var result = Run<DirectUserExecutionOperations.FileReadResult>(UserExecutionOperationKind.FileRead, path: path);
         return new MemoryStream(Convert.FromBase64String(result.ContentBase64), writable: false) is { } stream
             ? (stream, result.ContentType, result.FileName) : null;
     }
@@ -79,7 +79,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         {
             var validation = new DirectUserExecutionService(mode).Validate(context, request);
             Throw(validation);
-            return await DirectAsync<T>(operation, path, destinationPath, newName, fileName, overwrite, content, unixMode, offset, expectedBytes);
+            return await DirectAsync<T>(request);
         }
         var result = await transport.ExecuteAsync(request, http.HttpContext?.RequestAborted ?? CancellationToken.None);
         Throw(result);
@@ -88,51 +88,14 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         { throw new InvalidOperationException("User-execution Helper returned an invalid result."); }
     }
 
-    private async Task<T> DirectAsync<T>(UserExecutionOperationKind operation, string? path, string? destinationPath, string? newName,
-        string? fileName, bool overwrite, string? content, int? unixMode, long? offset, long? expectedBytes)
-    {
-        object? value = operation switch
-        {
-            UserExecutionOperationKind.FileGetSpecialLocations => direct.GetSpecialLocations(),
-            UserExecutionOperationKind.FileListDirectory => direct.GetDirectory(path),
-            UserExecutionOperationKind.FileGetInfo => direct.GetInfo(path!),
-            UserExecutionOperationKind.FileRead => ReadDirect(path!),
-            UserExecutionOperationKind.FileWrite => await direct.WriteFileAsync(path!, Bytes(content!)),
-            UserExecutionOperationKind.FileGetProperties => direct.GetProperties(path!),
-            UserExecutionOperationKind.FileSetUnixPermissions => direct.SetUnixPermissions(path!, unixMode!.Value),
-            UserExecutionOperationKind.FileDelete => DeleteDirect(path!),
-            UserExecutionOperationKind.FileRename => direct.Rename(path!, newName!),
-            UserExecutionOperationKind.FileMove => direct.Move(path!, destinationPath!, overwrite),
-            UserExecutionOperationKind.FileCopy => direct.Copy(path!, destinationPath!, overwrite),
-            UserExecutionOperationKind.FileUpload => await direct.UploadAsync(path!, fileName!, Bytes(content!)),
-            UserExecutionOperationKind.FileCreateDirectory => CreateDirect(path!),
-            UserExecutionOperationKind.FileCreateStaging => CreateStagingDirect(path!),
-            UserExecutionOperationKind.FileAppendStaging => await direct.AppendStagingAsync(path!, offset!.Value,
-                expectedBytes!.Value, Bytes(content!)),
-            UserExecutionOperationKind.FileGetStagingLength => direct.StagingLength(path!),
-            UserExecutionOperationKind.FileDeleteStaging => DeleteStagingDirect(path!),
-            UserExecutionOperationKind.FileCommitStaging => direct.CommitStagingFile(path!, destinationPath!),
-            _ => throw new ArgumentException("Unsupported user-execution operation."),
-        };
-        return (T)value!;
-    }
+    /// <summary>
+    /// User Mode has always executed in the Server's own process, where the process <em>is</em> the
+    /// effective user. The operation mapping is shared with the local-identity backend so the two
+    /// cannot drift; this path stays otherwise unchanged.
+    /// </summary>
+    private async Task<T> DirectAsync<T>(UserExecutionRequest request)
+        => (T)(await DirectUserExecutionOperations.ExecuteAsync(direct, request))!;
 
-    private FileReadResult ReadDirect(string path)
-    {
-        var read = direct.OpenRead(path) ?? throw new FileNotFoundException("User-execution path not found.", path);
-        using (read.Stream)
-        using (var copy = new MemoryStream())
-        {
-            read.Stream.CopyTo(copy);
-            if (copy.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new IOException("File content is too large.");
-            return new(Convert.ToBase64String(copy.ToArray()), read.FileName, read.ContentType);
-        }
-    }
-    private bool DeleteDirect(string path) { direct.Delete(path); return true; }
-    private bool CreateDirect(string path) { direct.CreateDirectory(path); return true; }
-    private bool CreateStagingDirect(string path) { direct.CreateStagingFile(path); return true; }
-    private bool DeleteStagingDirect(string path) => direct.DeleteStagingFile(path);
-    private static MemoryStream Bytes(string content) => new(Convert.FromBase64String(content), writable: false);
     private static async Task<string> ReadContentAsync(Stream content, CancellationToken cancellationToken)
     { await using var copy = new MemoryStream(); await content.CopyToAsync(copy, cancellationToken); if (copy.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new IOException("File content is too large."); return Convert.ToBase64String(copy.ToArray()); }
     private static void Throw(UserExecutionResult result)
@@ -145,6 +108,10 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => "Invalid user-execution file request.",
             UserExecutionProblemCode.Conflict => "User-execution file operation failed.",
             UserExecutionProblemCode.TimedOut => "User-execution file operation timed out.",
+            // In-process execution is restricted to the Server's own account. That refusal is a
+            // deployment choice the operator can fix, so it says so instead of sharing the generic
+            // "unavailable" text with a missing Helper.
+            UserExecutionProblemCode.IdentityNotExecutable => "This Server executes ordinary user operations only as its own OS account; run them as another account through the Helper.",
             _ => "User-execution Helper is unavailable.",
         };
         // Access, path and conflict failures describe the effective OS user's file operation.
@@ -165,5 +132,4 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         }
         throw new UserExecutionException(result.ProblemCode, message);
     }
-    private sealed record FileReadResult(string ContentBase64, string FileName, string ContentType);
 }

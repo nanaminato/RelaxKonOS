@@ -53,6 +53,7 @@ try
         ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
         ServerCoreChecks.VerifyLinuxUserStagingOperations(root);
         await ServerCoreChecks.VerifyUserExecutionFailsClosedAsync();
+        await ServerCoreChecks.VerifyUserExecutionBackendSelectionAsync();
         await ServerCoreChecks.VerifyWindowsUserExecutionTransportAsync();
         Console.WriteLine("User-execution contract checks passed.");
         return;
@@ -128,6 +129,7 @@ try
     ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
     ServerCoreChecks.VerifyLinuxUserStagingOperations(root);
     await ServerCoreChecks.VerifyUserExecutionFailsClosedAsync();
+    await ServerCoreChecks.VerifyUserExecutionBackendSelectionAsync();
     await ServerCoreChecks.VerifyWindowsUserExecutionTransportAsync();
     ServerCoreChecks.VerifyHostElevationCapabilityScope(root);
     ServerCoreChecks.VerifyAppPermissionEvaluator();

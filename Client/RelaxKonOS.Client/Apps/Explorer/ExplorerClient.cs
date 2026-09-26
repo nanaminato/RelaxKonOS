@@ -76,15 +76,18 @@ public sealed class ExplorerClient : IExplorerClient
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 
-    public Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null, CancellationToken ct = default)
+    public Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null,
+        string? administratorUsername = null, CancellationToken ct = default)
         => SendAsync<FileElevationResult>(HttpMethod.Post, FileApiRoutes.Elevation,
-            body: new FileElevationRequest(path, password, Capability: capability), ct: ct);
+            body: new FileElevationRequest(path, password, Capability: capability, AdministratorUsername: administratorUsername), ct: ct);
 
-    public Task<FileElevationResult> ElevateFileOperationAsync(IReadOnlyList<string> directoryPaths, FileElevationCapability capability, string? password = null, CancellationToken ct = default)
+    public Task<FileElevationResult> ElevateFileOperationAsync(IReadOnlyList<string> directoryPaths, FileElevationCapability capability, string? password = null,
+        string? administratorUsername = null, CancellationToken ct = default)
     {
         if (directoryPaths.Count == 0) throw new ArgumentException("At least one directory path is required.", nameof(directoryPaths));
         return SendAsync<FileElevationResult>(HttpMethod.Post, FileApiRoutes.Elevation,
-            body: new FileElevationRequest(directoryPaths[0], password, directoryPaths.Skip(1).ToArray(), IncludeDescendants: true, Capability: capability), ct: ct);
+            body: new FileElevationRequest(directoryPaths[0], password, directoryPaths.Skip(1).ToArray(), IncludeDescendants: true,
+                Capability: capability, AdministratorUsername: administratorUsername), ct: ct);
     }
 
     public async Task<FileEntryDto> WriteFileAsync(string path, byte[] content, CancellationToken ct = default)

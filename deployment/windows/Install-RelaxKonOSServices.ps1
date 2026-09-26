@@ -19,6 +19,8 @@ param(
     [string] $FileAccess = 'restricted',
     [string] $FileRootsFile,
     # This remains opt-in until Windows LocalSystem/S4U acceptance has passed on the target host.
+    # It drives both sides of the same capability gate: the Helper's user-execution pipe and the
+    # Server's choice of backend.
     [switch] $EnableWindowsUserExecution
 )
 
@@ -232,7 +234,10 @@ $serverSettings = [ordered]@{
         PipeName = 'relaxkonos-privileged-helper'
         SharedSecret = $helperSecret
         TimeoutSeconds = 30
-        EnableWindowsUserExecution = $EnableWindowsUserExecution.IsPresent
+        # The deployment never selects the in-process debugging backend, and only asks for the Helper
+        # backend while the LocalSystem/S4U gate above is open. Writing 'disabled' otherwise keeps the
+        # Server from dialling a pipe the Helper was told not to create.
+        UserExecutionBackend = $(if ($EnableWindowsUserExecution.IsPresent) { 'helper' } else { 'disabled' })
     }
     Observability = [ordered]@{
         InstanceId = $observabilityInstanceId

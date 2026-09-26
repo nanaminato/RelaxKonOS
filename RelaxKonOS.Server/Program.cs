@@ -95,7 +95,10 @@ if (eventAlertsOptions.Enabled)
     builder.Services.AddHostedService<RelaxKonOS.Server.EventAlerts.EventAlertRetentionService>();
 // Deployment mode is an explicit security contract. In particular, Development must not turn a
 // system installation into User Mode or enable its in-process PAM path.
-var serverModeResolver = new ServerModeResolver(builder.Configuration);
+// The ordinary-user execution backend is the same kind of decision, so it is resolved and
+// validated once, next to the mode, and passed along rather than re-read per call site.
+var userExecutionBackend = RelaxKonOS.Server.UserExecution.UserExecutionBackendResolver.Resolve(builder.Configuration, builder.Environment);
+var serverModeResolver = new ServerModeResolver(builder.Configuration, userExecutionBackend);
 builder.Services.AddSingleton<IServerModeResolver>(serverModeResolver);
 // The deployment installer registers this executable with the Windows Service
 // Control Manager. Opt in to its lifetime protocol so SCM receives the start
@@ -499,6 +502,9 @@ else
 var privilegedHelperOptions = builder.Configuration.GetSection("PrivilegedHelper").Get<RelaxKonOS.Server.Privileged.PrivilegedHelperOptions>()
                              ?? new RelaxKonOS.Server.Privileged.PrivilegedHelperOptions();
 builder.Services.AddSingleton(privilegedHelperOptions);
+// The terminal factory and the Git domain both need the same deployment decision, so the resolved
+// value is published once instead of each of them re-reading configuration.
+builder.Services.AddSingleton(new RelaxKonOS.Server.UserExecution.UserExecutionBackendSelection(userExecutionBackend));
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationTransport>(sp =>
     serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User
@@ -508,14 +514,25 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedOperationT
         : sp.GetRequiredService<RelaxKonOS.Server.Privileged.LocalPrivilegedOperationRunner>());
 builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>();
 builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>();
+builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.LocalIdentityUserExecutionTransport>();
+// User Mode keeps the semantics it has always had: the process is the effective user, so it
+// executes in-process and never crosses a Helper boundary. The backend selector therefore only
+// applies to System Mode, where the effective user is somebody other than the Server account.
 builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionTransport>(sp =>
     serverModeResolver.Mode == RelaxKonOS.Protocol.Common.ServerMode.User
         ? new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport()
-        : OperatingSystem.IsLinux()
-            ? sp.GetRequiredService<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>()
-            : OperatingSystem.IsWindows() && privilegedHelperOptions.EnableWindowsUserExecution
-                ? sp.GetRequiredService<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>()
-                : new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport());
+        : userExecutionBackend switch
+        {
+            RelaxKonOS.Server.UserExecution.UserExecutionBackend.LocalIdentity =>
+                sp.GetRequiredService<RelaxKonOS.Server.UserExecution.LocalIdentityUserExecutionTransport>(),
+            RelaxKonOS.Server.UserExecution.UserExecutionBackend.Disabled =>
+                new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport(),
+            _ => OperatingSystem.IsLinux()
+                ? sp.GetRequiredService<RelaxKonOS.Server.UserExecution.LinuxUserExecutionTransport>()
+                : OperatingSystem.IsWindows()
+                    ? sp.GetRequiredService<RelaxKonOS.Server.UserExecution.WindowsNamedPipeUserExecutionTransport>()
+                    : new RelaxKonOS.Server.UserExecution.DisabledUserExecutionTransport(),
+        });
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedFileService, RelaxKonOS.Server.Privileged.PrivilegedFileService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IFileElevationSessionStore, RelaxKonOS.Server.Privileged.FileElevationSessionStore>();
@@ -778,8 +795,9 @@ builder.Services.AddCors(opts => opts.AddDefaultPolicy(p =>
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
-app.Logger.LogInformation("Authentication configuration loaded. ServerMode={ServerMode} LinuxPamTransport={LinuxPamTransport} PrivilegedHelperPathConfigured={PrivilegedHelperPathConfigured}",
-    serverModeResolver.Mode, linuxPamTransport, !string.IsNullOrWhiteSpace(builder.Configuration["PrivilegedHelper:HelperPath"]));
+app.Logger.LogInformation("Authentication configuration loaded. ServerMode={ServerMode} LinuxPamTransport={LinuxPamTransport} PrivilegedHelperPathConfigured={PrivilegedHelperPathConfigured} UserExecutionBackend={UserExecutionBackend}",
+    serverModeResolver.Mode, linuxPamTransport, !string.IsNullOrWhiteSpace(builder.Configuration["PrivilegedHelper:HelperPath"]), userExecutionBackend);
+ReportUserExecutionBackend(app.Logger, userExecutionBackend, serverModeResolver.Mode, privilegedHelperOptions);
 if (eventAlertsOptions.Enabled)
     app.Services.GetRequiredService<RelaxKonOS.Server.Hubs.EventAlertNotificationHub>().Attach();
 
@@ -1030,4 +1048,58 @@ static FileStream AcquireIdentityHostLock(string path)
 {
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
     return AuthMaintenanceCommand.AcquireLock(path);
+}
+
+/// <summary>
+/// Says which process performs ordinary user operations, and — when that is a Helper that is not
+/// reachable — names both ways out. Without it the only symptom is a bare "user-execution Helper is
+/// unavailable" on every file listing, which reads like a wrong secret even when the real cause is
+/// that the same request would have worked under another backend.
+/// </summary>
+static void ReportUserExecutionBackend(ILogger logger, RelaxKonOS.Server.UserExecution.UserExecutionBackend backend,
+    RelaxKonOS.Protocol.Common.ServerMode mode, RelaxKonOS.Server.Privileged.PrivilegedHelperOptions options)
+{
+    if (mode == RelaxKonOS.Protocol.Common.ServerMode.User)
+    {
+        logger.LogInformation("Ordinary user operations execute in-process as the User Mode account.");
+        return;
+    }
+    switch (backend)
+    {
+        case RelaxKonOS.Server.UserExecution.UserExecutionBackend.LocalIdentity:
+            logger.LogWarning("Ordinary user operations execute in-process and are limited to the Server's own OS "
+                + "identity ({Identity}); any other authenticated account is refused. This backend is for local "
+                + "debugging and must not be enabled in Production.", RelaxKonOS.Server.UserExecution.ServerProcessIdentity.Describe());
+            return;
+        case RelaxKonOS.Server.UserExecution.UserExecutionBackend.Disabled:
+            logger.LogWarning("Ordinary user operations are disabled: every file, Git and terminal request that needs "
+                + "the effective user fails closed instead of running as the Server account.");
+            return;
+    }
+    if (OperatingSystem.IsWindows() && !NamedPipeExists(RelaxKonOS.Protocol.UserExecution.UserExecutionProtocol.WindowsPipeName(options.PipeName)))
+        logger.LogWarning("The user-execution Helper pipe '{PipeName}' is not listening, so file and terminal requests "
+            + "will fail with 'user-execution Helper is unavailable'. Start the Helper (deployment service, or "
+            + "'--console --config <dev config>'), or set PrivilegedHelper:UserExecutionBackend=local-identity to "
+            + "execute in-process as this account while debugging.",
+            RelaxKonOS.Protocol.UserExecution.UserExecutionProtocol.WindowsPipeName(options.PipeName));
+    else if (OperatingSystem.IsLinux() && (string.IsNullOrWhiteSpace(options.HelperPath) || !File.Exists(options.HelperPath)))
+        logger.LogWarning("PrivilegedHelper:HelperPath does not name an installed Helper (HelperPathConfigured={HelperPathConfigured}), "
+            + "so file and terminal requests will fail with 'user-execution Helper is unavailable'. Install the "
+            + "development Helper (deployment/linux/install-relaxkonos-privileged-helper-development.sh), or set "
+            + "PrivilegedHelper:UserExecutionBackend=local-identity to execute in-process as this account while debugging.",
+            !string.IsNullOrWhiteSpace(options.HelperPath));
+}
+
+static bool NamedPipeExists(string pipeName)
+{
+    try
+    {
+        return Directory.GetFiles(@"\\.\pipe\")
+            .Any(path => string.Equals(Path.GetFileName(path), pipeName, StringComparison.OrdinalIgnoreCase));
+    }
+    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+    {
+        // A probe failure is not a reason to fail startup; the request path still fails closed.
+        return true;
+    }
 }

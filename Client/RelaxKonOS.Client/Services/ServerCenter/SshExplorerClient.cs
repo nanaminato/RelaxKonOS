@@ -121,8 +121,8 @@ public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClie
     public Task<FileOperationDto> GetOperationAsync(Guid id, CancellationToken ct = default) => Unsupported<FileOperationDto>();
     public Task<FileOperationDto> CancelOperationAsync(Guid id, CancellationToken ct = default) => Unsupported<FileOperationDto>();
     public Task<FileOperationDto> DecideOperationAsync(Guid id, FileOperationDecisionRequest request, CancellationToken ct = default) => Unsupported<FileOperationDto>();
-    public Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null, CancellationToken ct = default) => Unsupported<FileElevationResult>();
-    public Task<FileElevationResult> ElevateFileOperationAsync(IReadOnlyList<string> directoryPaths, FileElevationCapability capability, string? password = null, CancellationToken ct = default) => Unsupported<FileElevationResult>();
+    public Task<FileElevationResult> ElevateFileAccessAsync(string path, FileElevationCapability capability, string? password = null, string? administratorUsername = null, CancellationToken ct = default) => Unsupported<FileElevationResult>();
+    public Task<FileElevationResult> ElevateFileOperationAsync(IReadOnlyList<string> directoryPaths, FileElevationCapability capability, string? password = null, string? administratorUsername = null, CancellationToken ct = default) => Unsupported<FileElevationResult>();
     public Task<FilePropertiesDto?> GetPropertiesAsync(string path, CancellationToken ct = default) => Unsupported<FilePropertiesDto?>();
     public Task<FilePropertiesDto> SetUnixPermissionsAsync(string path, int unixMode, CancellationToken ct = default) => Unsupported<FilePropertiesDto>();
     public Task<FileSystemEntryDto> CopyAsync(string sourcePath, string destinationPath, bool overwrite = false, CancellationToken ct = default) => Unsupported<FileSystemEntryDto>();

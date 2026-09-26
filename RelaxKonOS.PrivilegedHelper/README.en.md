@@ -39,9 +39,17 @@ private keys below `/etc/ssh` through the file explorer.
 
 ## Windows development
 
-Run the Helper directly from the IDE with `--console`; do not install a Windows service for daily
-development. Create a development-only configuration outside the deployment directory, using a
-new random Base64 secret (at least 32 bytes) and only disposable file roots:
+**Daily file, terminal, and Git debugging does not need this Helper.** The development profile sets
+the Server's `PrivilegedHelper:UserExecutionBackend` to `local-identity`, so ordinary user operations
+run in-process under the developer's own account; the semantics, hard guards, and limits are in
+[RelaxKonOS.LocalDebugging.md](../docs/development/RelaxKonOS.LocalDebugging.md). The elevated Helper
+below is needed only when testing **elevation** operations (SMB, system services, host settings,
+packages).
+
+When debugging the Helper itself, run it directly from the IDE with `--console`; do not install a
+Windows service for daily development. Create a development-only configuration outside the
+deployment directory, using a new random Base64 secret (at least 32 bytes) and only disposable file
+roots:
 
 ```json
 {
@@ -85,11 +93,21 @@ SIDs, so compare it with `whoami /user` first when a connection fails. Run the I
 testing operations that genuinely require Administrator rights. The configuration requires
 `allowConsoleDebug: true`; the production `helper.json` does not use this schema and cannot enable
 console mode accidentally (conversely, service mode rejects a deployed configuration containing
-`developerUserSids` instead of silently ignoring it). Before release, test once through the
-LocalSystem service to cover Session 0, profile, DPAPI, network-credential and mapped-drive
-differences.
+`developerUserSids` instead of silently ignoring it). Server-side keys (including
+`userExecutionBackend`) appearing in a Helper configuration likewise fail Helper startup: they can
+only come from a copied configuration, and ignoring them silently would let the two sides disagree
+about who executes. Before release, test once through the LocalSystem service to cover Session 0,
+profile, DPAPI, network-credential and mapped-drive differences.
 
-Ordinary Windows file execution uses the derived `<pipeName>-user` endpoint and a fresh local-account S4U token. Domain accounts, Git, Terminal, and POSIX mode remain fail-closed. This path is enabled only when both the Server and the LocalSystem Helper explicitly set `EnableWindowsUserExecution=true`; the installer currently writes `false`. The elevated console host is not LocalSystem and therefore cannot acquire an S4U execution token even when its endpoint is enabled for protocol debugging. Do not enable the production path until the isolated Windows Server two-user SID/ACL, token-release, concurrency, and service-restart matrix has passed.
+Ordinary Windows user file execution uses the derived `<pipeName>-user` endpoint and a fresh
+local-account S4U token. Domain accounts, Git, Terminal, and POSIX mode remain fail-closed. This path
+requires a LocalSystem Helper listening on that pipe (Helper configuration
+`enableWindowsUserExecution: true`) **and** the Server selecting the `helper` backend; the installer
+enables both sides only when `-EnableWindowsUserExecution` is passed explicitly, and otherwise writes
+`disabled` — it never writes `local-identity`. The elevated console host is not LocalSystem and
+therefore cannot acquire an S4U execution token even when its endpoint is enabled for protocol
+debugging. Do not enable the production path until the isolated Windows Server two-user SID/ACL,
+token-release, concurrency, and service-restart matrix has passed.
 
 ## Linux release installation
 

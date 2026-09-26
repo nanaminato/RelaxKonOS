@@ -64,7 +64,7 @@ internal static class AliasLoginVerification
         // Auth endpoints and the login service resolve the deployment mode boundary; the host must
         // register the same contract the production Program does, or endpoint inference fails.
         services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver>(
-            new RelaxKonOS.Server.HostMode.ServerModeResolver(builder.Configuration));
+            new RelaxKonOS.Server.HostMode.ServerModeResolver(builder.Configuration, UserExecutionBackend.Helper));
         services.AddSingleton<AuthenticationGate>();
         services.AddSingleton<AuthSessionStore>();
         services.AddSingleton<AliasPasswordService>();

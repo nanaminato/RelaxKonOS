@@ -1,6 +1,7 @@
 using System.Net;
 using System.Runtime.InteropServices;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Server.UserExecution;
 
 namespace RelaxKonOS.Server.HostMode;
 
@@ -26,9 +27,11 @@ public sealed class ServerModeResolver : IServerModeResolver
     private readonly string _pamTransport;
     private readonly string _listenerScope;
     private readonly ServerExecutionIdentityDto _identity;
+    private readonly UserExecutionBackend _userExecutionBackend;
 
-    public ServerModeResolver(IConfiguration configuration)
+    public ServerModeResolver(IConfiguration configuration, UserExecutionBackend userExecutionBackend)
     {
+        _userExecutionBackend = userExecutionBackend;
         var configured = configuration["Server:Mode"]?.Trim().ToLowerInvariant() ?? "system";
         Mode = configured switch
         {
@@ -76,9 +79,11 @@ public sealed class ServerModeResolver : IServerModeResolver
             Files: true, Terminal: true, Git: true, Metrics: true, Processes: true, Guardian: true,
             Docker: !user, Firewall: !user, FileServices: !user, WebServer: !user, Certificates: !user,
             Tunnels: !user, Proxy: !user, PrivilegedOperations: !user, ApplicationDeployments: !user);
-        var limitations = user
-            ? new[] { "user-mode-loopback-required", "privileged-feature-unavailable", "root-equivalent-docker-access", "guardian.cross_user_unavailable" }
-            : Array.Empty<string>();
+        var limitations = new List<string>();
+        if (user)
+            limitations.AddRange(["user-mode-loopback-required", "privileged-feature-unavailable", "root-equivalent-docker-access", "guardian.cross_user_unavailable"]);
+        else if (_userExecutionBackend == UserExecutionBackend.LocalIdentity)
+            limitations.Add("user-execution-local-identity");
         return new ServerCapabilitiesDto(Mode, _identity, new ServerListenerDto(_listenerScope),
             new ServerAuthenticationDto(user ? "currentUnixUser" : "hostAccount", _pamTransport), capabilities, limitations);
     }

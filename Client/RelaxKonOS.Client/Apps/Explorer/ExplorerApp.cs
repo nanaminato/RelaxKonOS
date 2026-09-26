@@ -38,6 +38,7 @@ namespace RelaxKonOS.Client.Apps.Explorer;
 public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 {
     private readonly Dictionary<ManagedWindow, ExplorerViewModel> _windows = [];
+    private sealed record AdministratorCredentials(string Username, string Password);
     // Activation is dispatched after Activate creates a multi-window app. Keep the startup
     // task so an activation path cannot be overtaken by the default "Computer" navigation.
     private readonly Dictionary<ManagedWindow, Task> _initializations = [];
@@ -183,29 +184,42 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         }
         catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
         {
-            var password = await context.WindowManager.ShowSystemDialogAsync<string?>(LocalizedText.Get("explorer.operations.elevation_title"), dialog =>
-            {
-                var input = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("explorer.operations.elevation_password") };
-                var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
-                cancel.Click += (_, _) => dialog.Cancel();
-                var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
-                confirm.Click += (_, _) => dialog.Close(input.Text);
-                return new StackPanel
-                {
-                    Margin = new Thickness(20), Spacing = 12,
-                    Children =
-                    {
-                        new TextBlock { Text = LocalizedText.Get("explorer.operations.elevation_prompt"), TextWrapping = TextWrapping.Wrap },
-                        input,
-                        new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
-                    },
-                };
-            }, new Size(420, 190));
-            if (password is null) return false;
-            await client.ElevateFileOperationAsync(paths, capability, password);
+            var credentials = await RequestAdministratorCredentialsAsync(context,
+                LocalizedText.Get("explorer.operations.elevation_title"),
+                LocalizedText.Get("explorer.operations.elevation_prompt"));
+            if (credentials is null) return false;
+            await client.ElevateFileOperationAsync(paths, capability, credentials.Password, credentials.Username);
             return true;
         }
     }
+
+    private static Task<AdministratorCredentials?> RequestAdministratorCredentialsAsync(AppContext context, string title, string prompt)
+        => context.WindowManager.ShowSystemDialogAsync<AdministratorCredentials?>(title, dialog =>
+        {
+            // 服务端把"账户框留空"解释为"本次会话登录所用的宿主账户"（FileEndpoints.GrantElevation
+            // 取 JWT name 声明交给 HostAdministratorAuthenticator）。因此把同一个规范宿主账户预填进去
+            // 只是把这个隐式默认值显性化、可编辑，不改变被校验的账户。
+            // 不能默认填 ".\Administrator"：常见情形下宿主管理员就是登录账户本人，而且一旦框里非空，
+            // 服务端会**直接采用**它而不再回退，等于替用户指定错了账户。
+            var defaultAccount = (context.Services.GetService(typeof(IAuthSession)) as IAuthSession)?.CurrentUser?.Username;
+            var username = new TextBox { Text = defaultAccount ?? string.Empty, PlaceholderText = "管理员账户（例如 .\\Administrator）" };
+            var password = new TextBox { PasswordChar = '•', PlaceholderText = "管理员密码" };
+            var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
+            cancel.Click += (_, _) => dialog.Cancel();
+            var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
+            confirm.Click += (_, _) => dialog.Close(new AdministratorCredentials(username.Text ?? string.Empty, password.Text ?? string.Empty));
+            return new StackPanel
+            {
+                Margin = new Thickness(20), Spacing = 12,
+                Children =
+                {
+                    new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap },
+                    username,
+                    password,
+                    new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
+                },
+            };
+        }, new Size(420, 230));
 
     private static void ConfigureOperationsWindow(AppContext context, ExplorerOperationCenter center)
     {
@@ -384,33 +398,16 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             }
             catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
             {
-                var password = await context.WindowManager.ShowSystemDialogAsync<string?>("管理员认证", dialog =>
-                {
-                    var input = new TextBox { PasswordChar = '•', PlaceholderText = "请输入当前管理员密码" };
-                    var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
-                    cancel.Click += (_, _) => dialog.Cancel();
-                    var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
-                    confirm.Click += (_, _) => dialog.Close(input.Text);
-                    return new StackPanel
-                    {
-                        Margin = new Thickness(20), Spacing = 12,
-                        Children =
-                        {
-                            new TextBlock { Text = "此位置需要管理员权限才能访问。", TextWrapping = TextWrapping.Wrap },
-                            input,
-                            new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
-                        },
-                    };
-                }, new Size(420, 180));
-                if (password is null) return false;
+                var credentials = await RequestAdministratorCredentialsAsync(context, "管理员认证", "此位置需要管理员权限才能访问。");
+                if (credentials is null) return false;
                 try
                 {
-                    await client.ElevateFileAccessAsync(path, capability, password);
+                    await client.ElevateFileAccessAsync(path, capability, credentials.Password, credentials.Username);
                     return true;
                 }
                 catch (RelaxKonOSAuthException retry) when (retry.Type.EndsWith("/elevation-password-invalid", StringComparison.Ordinal))
                 {
-                    await (vm.ShowMessageAsync?.Invoke("管理员认证", "密码不正确。") ?? Task.CompletedTask);
+                    await (vm.ShowMessageAsync?.Invoke("管理员认证", "管理员账户或密码不正确。") ?? Task.CompletedTask);
                     return false;
                 }
             }

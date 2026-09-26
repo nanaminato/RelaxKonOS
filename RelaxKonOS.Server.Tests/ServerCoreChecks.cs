@@ -104,8 +104,6 @@ internal static void VerifyUserExecutionContextContract()
             == "relaxkonos-privileged-helper-user"
         && UserExecutionProtocol.MaximumAuthenticatedPipeFrameBytes > UserExecutionProtocol.MaximumResponseBytes * 4L / 3,
         "The Windows user-execution pipe is distinct and large enough for its authenticated envelope.");
-    TestAssert.Assert(!new PrivilegedHelperOptions().EnableWindowsUserExecution,
-        "Windows user execution must stay disabled until its target-host acceptance matrix passes.");
 
     var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.FileListDirectory,
         Path: "/home/nanami", OperationId: Guid.NewGuid());
@@ -254,7 +252,86 @@ internal static async Task VerifyUserExecutionFailsClosedAsync()
 }
 
 /// <summary>
-/// Windows ships a dedicated, ACL-restricted user-execution pipe that must stay separate from the
+/// The local-identity backend lets a workstation run ordinary user operations without installing the
+/// platform service, and it is allowed to act only as the account the Server already runs as. Both
+/// halves are asserted here: the configuration may not select it silently or in Production, and the
+/// identity guard must refuse a different account rather than degrade into running as the Server.
+/// </summary>
+internal static async Task VerifyUserExecutionBackendSelectionAsync()
+{
+    var development = new TestHostEnvironment(Directory.GetCurrentDirectory());
+    var production = new TestHostEnvironment(Directory.GetCurrentDirectory()) { EnvironmentName = Environments.Production };
+    UserExecutionBackend Read(string? configured, IHostEnvironment environment) => UserExecutionBackendResolver.Resolve(
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [UserExecutionBackendResolver.ConfigurationKey] = configured,
+        }).Build(), environment);
+
+    TestAssert.Assert(Read(null, development) == UserExecutionBackend.Helper,
+        "Ordinary user operations must default to the installed Helper rather than to an in-process fallback.");
+    TestAssert.Assert(Read("helper", production) == UserExecutionBackend.Helper
+        && Read("disabled", production) == UserExecutionBackend.Disabled,
+        "The Helper and disabled backends must stay valid deployment choices in every environment.");
+    TestAssert.Assert(Read("local-identity", development) == UserExecutionBackend.LocalIdentity,
+        "The local-identity backend must be selectable for local debugging.");
+    TestAssert.Assert(Throws(() => Read("local-identity", production)),
+        "The local-identity backend must be refused in Production instead of quietly running without the boundary.");
+    TestAssert.Assert(Throws(() => Read("passthrough", development)),
+        "An unknown user-execution backend must fail at startup instead of falling back to a default.");
+
+    var mode = new UserExecutionMode(ServerMode.System);
+    var transport = new LocalIdentityUserExecutionTransport(new LocalFileService(mode),
+        NullLogger<LocalIdentityUserExecutionTransport>.Instance);
+
+    // A silent skip here would leave the positive half of the guard unverified on exactly the host
+    // that matters. Both platforms this Server supports must expose a readable process identity.
+    var stableIdentity = ServerProcessIdentity.CurrentStableIdentity()
+        ?? throw new InvalidOperationException("Backend selection checks require a readable process identity.");
+    var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    TestAssert.Assert(home.Length > 0, "Backend selection checks require a resolved user profile path.");
+    var platform = OperatingSystem.IsWindows() ? HostPlatformKind.Windows : HostPlatformKind.Linux;
+    var self = new UserExecutionIdentity(platform, stableIdentity, Environment.UserName, home);
+    var accepted = await transport.ExecuteAsync(new UserExecutionRequest(self,
+        UserExecutionOperationKind.FileGetSpecialLocations, OperationId: Guid.NewGuid()));
+    TestAssert.Assert(accepted.Success && !string.IsNullOrWhiteSpace(accepted.OutputBase64),
+        $"The local-identity backend must serve the Server's own account, but returned {accepted.ProblemCode}.");
+
+    // Every operation the in-process backend can serve must pass the same guard, so a different
+    // account is refused by the transport itself rather than by one endpoint's own check.
+    var foreignHome = OperatingSystem.IsWindows() ? @"C:\Users\nanami" : "/home/nanami";
+    var foreign = OperatingSystem.IsWindows()
+        ? new UserExecutionIdentity(HostPlatformKind.Windows, "S-1-5-21-1111111111-2222222222-3333333333-1001",
+            Environment.MachineName + "\\nanami", foreignHome)
+        : new UserExecutionIdentity(HostPlatformKind.Linux, "4294967294", "nanami", foreignHome);
+    var foreignFile = Path.Combine(foreignHome, "file.txt");
+    (string Name, Func<Task<UserExecutionResult>> Invoke)[] refused =
+    [
+        ("special locations", () => transport.ExecuteAsync(new UserExecutionRequest(foreign,
+            UserExecutionOperationKind.FileGetSpecialLocations, OperationId: Guid.NewGuid()))),
+        ("listing", () => transport.ExecuteAsync(new UserExecutionRequest(foreign,
+            UserExecutionOperationKind.FileListDirectory, Path: foreignHome, OperationId: Guid.NewGuid()))),
+        ("read", () => transport.ExecuteAsync(new UserExecutionRequest(foreign,
+            UserExecutionOperationKind.FileRead, Path: foreignFile, OperationId: Guid.NewGuid()))),
+        ("write", () => transport.ExecuteAsync(new UserExecutionRequest(foreign,
+            UserExecutionOperationKind.FileWrite, Path: foreignFile,
+            ContentBase64: Convert.ToBase64String([1, 2, 3]), OperationId: Guid.NewGuid()))),
+        ("delete", () => transport.ExecuteAsync(new UserExecutionRequest(foreign,
+            UserExecutionOperationKind.FileDelete, Path: foreignFile, OperationId: Guid.NewGuid()))),
+    ];
+    var served = new List<string>();
+    foreach (var operation in refused)
+    {
+        var result = await operation.Invoke();
+        if (result.Success) served.Add(operation.Name);
+        else if (result.ProblemCode != UserExecutionProblemCode.IdentityNotExecutable)
+            served.Add($"{operation.Name}:{result.ProblemCode}");
+    }
+    TestAssert.Assert(served.Count == 0,
+        "The local-identity backend must refuse another account with IdentityNotExecutable, but these ran or reported "
+        + "something else: " + string.Join(", ", served));
+}
+
+/// <summary>Windows ships a dedicated, ACL-restricted user-execution pipe that must stay separate from the
 /// administrator pipe and refuse to run when the Helper, the pipe name or the machine secret is
 /// unusable. None of these paths may reach the privileged channel.
 /// </summary>
@@ -308,7 +385,6 @@ internal static async Task VerifyInstalledWindowsUserExecutionAsync(string helpe
         PipeName = config.GetProperty("pipeName").GetString()!,
         SharedSecret = config.GetProperty("sharedSecret").GetString()!,
         TimeoutSeconds = 30,
-        EnableWindowsUserExecution = true,
     };
     var transport = new WindowsNamedPipeUserExecutionTransport(options,
         NullLogger<WindowsNamedPipeUserExecutionTransport>.Instance);
@@ -867,6 +943,13 @@ private sealed class UserExecutionMode(ServerMode mode) : IServerModeResolver
     public ServerMode Mode { get; } = mode;
     public ServerCapabilitiesDto Describe() => throw new NotSupportedException();
     public bool Supports(ServerHostFeature feature) => false;
+}
+
+/// <summary>True when the configuration was rejected outright, as opposed to silently defaulted.</summary>
+private static bool Throws(Action action)
+{
+    try { action(); return false; }
+    catch (InvalidOperationException) { return true; }
 }
 
 private sealed class UserExecutionIdentityProvider(PlatformUserInfo account) : IIdentityProvider

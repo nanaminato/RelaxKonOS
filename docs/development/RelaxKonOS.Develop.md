@@ -2,6 +2,11 @@
 
 常规开发调试时**不要**运行部署脚本，也**不需要**注册 Windows 服务。直接在 Rider 中同时启动 Agent 和 Server 即可。仅当需要测试真实 Linux UFW 变更时，按下节完成一次特权 helper 配置。
 
+> 日常调试时的「有效用户执行」（文件浏览器、终端、Git、媒体、上传）**不需要安装任何服务**：
+> 开发 profile 已把 `PrivilegedHelper:UserExecutionBackend` 设为 `local-identity`，以你自己的账户在
+> Server 进程内执行。完整的执行后端语义、硬守卫与限制见
+> [RelaxKonOS.LocalDebugging.md](RelaxKonOS.LocalDebugging.md)；下文是特权（提权）通道的调试方式。
+
 ---
 
 ## 常规桌面系统（Windows 10/11）
@@ -51,10 +56,13 @@ dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxK
 profile、DPAPI、网络凭据、映射盘和环境变量差异。
 
 Windows 有效用户文件执行另用 `<pipeName>-user` 管道。代码只接受本机账户，并由 LocalSystem Helper
-通过一次性 S4U token impersonate；管理员控制台模式不是 LocalSystem，不能执行该路径。Server 与
-Helper 配置的 `EnableWindowsUserExecution` 默认都为 `false`，当前安装器也固定关闭。只有在隔离
-Windows Server 中准备两个普通本地用户并执行 SID/NTFS ACL、并发、token 释放与服务重启矩阵时，
-才可临时在两侧同时改为 `true`；域账户、Git 与 Terminal 仍不在此次测试范围内。
+通过一次性 S4U token impersonate；管理员控制台模式不是 LocalSystem，不能执行该路径。Helper 侧的
+`enableWindowsUserExecution` 默认为 `false`；Server 侧则由 `PrivilegedHelper:UserExecutionBackend`
+（`helper` / `local-identity` / `disabled`）选择执行后端，默认 `helper`，安装器在省略
+`-EnableWindowsUserExecution` 时写入 `disabled`。只有在隔离 Windows Server 中准备两个普通本地用户并执行
+SID/NTFS ACL、并发、token 释放与服务重启矩阵时，才可临时把 Helper 侧开关打开并把 Server 侧改为
+`helper`；`local-identity` 只是开发机后端（Production 下启动期拒绝），域账户、Git 与 Terminal
+仍不在此次测试范围内。
 
 ### 1. 创建调试用户
 

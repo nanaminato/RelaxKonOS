@@ -21,10 +21,18 @@ public static class WindowsPrivilegedHelperConsoleHost
         var configPath = FindConfigPath(args);
         var configJson = File.ReadAllText(configPath);
         using var document = JsonDocument.Parse(configJson);
-        if (document.RootElement.EnumerateObject().Any(property =>
-                property.Name.Equals("serverServiceSid", StringComparison.OrdinalIgnoreCase)
-                || property.Name.Equals("helperExecutableSha256", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("A deployed Helper service configuration cannot be used for console debugging.");
+        // Keys that belong to the deployed service or to the Server, never to a console host. Naming
+        // them is what turns "the Helper started but ignored my settings" into a startup error.
+        var foreignKeys = document.RootElement.EnumerateObject()
+            .Select(property => property.Name)
+            .Where(name => name.Equals("serverServiceSid", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("helperExecutableSha256", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("userExecutionBackend", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (foreignKeys.Length > 0)
+            throw new InvalidOperationException(
+                $"A deployed Helper service configuration cannot be used for console debugging (found: {string.Join(", ", foreignKeys)}).");
         var configuration = JsonSerializer.Deserialize<WindowsHelperConsoleConfiguration>(configJson,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidOperationException("Windows Helper console configuration is invalid.");

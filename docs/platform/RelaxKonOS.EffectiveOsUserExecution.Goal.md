@@ -1,6 +1,6 @@
 # RelaxKonOS 有效 OS 执行身份（Effective OS User Execution）Goal
 
-> 状态：实施中（2026-09-25：在 Windows 开发宿主上完成全解决方案构建、`RelaxKonOS.Server.Tests` 全部专项与完整套件、客户端/Framework 测试工程实测；据此修复两处只在 Windows 宿主暴露的问题——身份资格校验误用宿主路径语义、应用部署验证宿主缺少 `IFileService` 注册；Windows 契约检查与用户执行通道关闭态行为已可在 Windows 上执行。2026-09-24：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Linux 文件操作与事务恢复已收紧到目录/文件描述符；Windows 本地账户文件 impersonation 代码已接入但默认关闭，真实多用户集成验证仍未完成。）
+> 状态：实施中（2026-09-26：把「User Mode 只能以自己的身份执行」补齐到 Windows，Server 侧的 `EnableWindowsUserExecution` 布尔升级为 `PrivilegedHelper:UserExecutionBackend`（`helper` / `local-identity` / `disabled`，默认 `helper`），新增仅限开发机的 `local-identity` 后端（承重守卫＝目标身份必须等于 Server 进程自身 OS 身份；Production 或特权进程启动期拒绝），安装器永不写入该值；User Mode 已验证路径与 Windows 有效用户执行验收结论均未改变。2026-09-25：在 Windows 开发宿主上完成全解决方案构建、`RelaxKonOS.Server.Tests` 全部专项与完整套件、客户端/Framework 测试工程实测；据此修复两处只在 Windows 宿主暴露的问题——身份资格校验误用宿主路径语义、应用部署验证宿主缺少 `IFileService` 注册；Windows 契约检查与用户执行通道关闭态行为已可在 Windows 上执行。2026-09-24：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Linux 文件操作与事务恢复已收紧到目录/文件描述符；Windows 本地账户文件 impersonation 代码已接入但默认关闭，真实多用户集成验证仍未完成。）
 >
 > 建立日期：2026-09-22
 >
@@ -213,7 +213,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - 应用部署的本地文件引用现在通过 `IFileService` 以当前登录用户读取，并立刻复制到 deployment-owned staging；后续 Docker build 只使用 staging 副本，不会在后台以 Server 服务账号重新读取用户项目文件。
 - 媒体播放 lease 在创建时冻结 Server 派生的有效 OS identity 与文件修改时间；后续 bearer lease URL 没有 JWT 时，仍通过该 identity 的 user-execution 通道读取，而不是因为缺少 HTTP 主体回退到 Server 服务账号。
 - Windows System Mode 已增加与管理员操作分离的 `<privileged-pipe>-user` 本机管道。LocalSystem Helper 会重新把 SID 解析为规范 `MACHINE\\user`、拒绝域/系统账户并复核 Profile 路径，然后通过 MSV1_0 S4U 创建不含密码的一次性 network logon token；只有 SID 匹配、impersonation level 精确为 Impersonation 且管理员组未在 token 中启用时才接受。token 仅在同步 `WindowsIdentity.RunImpersonated` 文件操作作用域内存在，操作后立即释放，不进入协议、缓存或日志。文件列表、元数据、特殊位置、读写、上传、创建、删除、重命名、移动和 staged copy 已接入；Git、Terminal 与 POSIX mode 明确返回 unsupported。
-- Windows user execution 仍由 Server 与 Helper 两侧的 `EnableWindowsUserExecution` 开关共同 fail closed，默认值及安装器写入值均为 `false`。这不是兼容开关，而是尚未通过目标平台验收前的能力门；通过真实 Windows Server 验证后应直接移除门控并更新安装器，不保留双行为。
+- Windows user execution 仍由 Helper 侧的能力门与 Server 侧的执行后端共同 fail closed：Helper 侧保留布尔 `enableWindowsUserExecution`（默认 `false`），Server 侧由 `PrivilegedHelper:UserExecutionBackend`（`helper` / `local-identity` / `disabled`，默认 `helper`）选择执行者，安装器只在显式传入 `-EnableWindowsUserExecution` 时两侧同开，否则写入 `disabled`（见 2026-09-26 条）。这不是兼容开关，而是尚未通过目标平台验收前的能力门；通过真实 Windows Server 验证后应直接移除门控并更新安装器，不保留双行为。
 - 添加 contract/context 单元检查，覆盖 canonical identity、请求身份替换拒绝、System Mode fail-closed 以及无敏感/通用命令字段。
 
 ### 2026-09-25：Windows 宿主实测与随之修复的两处问题
@@ -250,7 +250,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | Linux installer / sudoers | 通过 | 四个受影响的安装/卸载脚本均通过 `bash -n`；三个精确命令形状组成的 sudoers 条目通过 `visudo -cf -`。发布 inventory 的缺失、篡改与多余文件拒绝以及 runtime 快照清理使用临时目录 smoke test 验证。 |
 | Linux System Mode 集成 | 暂缓 | 需要安装 root-owned Helper 与 sudoers 规则，以及 `relaxkon-server`、`nanami`、`alice` 三账户隔离环境；当前工作区不应修改宿主账户或 sudoers。 |
 | Windows impersonation 代码 | 首个文件切片完成、默认关闭 | 独立认证管道、本地 SID/account/profile 二次验证、一次性 MSV1_0 S4U token、同步 impersonation 文件操作和 replay/大小限制已接入；域账户、Git、Terminal 与 POSIX mode fail closed。 |
-| Windows impersonation 集成 | 暂缓 | 安装器明确写入 `EnableWindowsUserExecution=false`；需真实 Windows Server + LocalSystem Helper + 两个普通本地账户完成 NTFS ACL、owner、token、并发、取消与重启验收后才可启用。 |
+| Windows impersonation 集成 | 暂缓 | 安装器省略 `-EnableWindowsUserExecution` 时写入 `UserExecutionBackend=disabled`（Helper 侧能力门同时为 `false`）；需真实 Windows Server + LocalSystem Helper + 两个普通本地账户完成 NTFS ACL、owner、token、并发、取消与重启验收后才可启用。 |
 
 ### 2026-09-25 Windows 宿主验证
 
@@ -267,7 +267,7 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 | `Client/RelaxKonOS.Settings.Tests` / `Client/RelaxKonOS.Installation.Tests` / `Client/RelaxKonOS.Explorer.Tests` | 通过 | Explorer 回归 137 项，含本分支新增的「重命名提交进行中」两项断言。 |
 | `Framework/RelaxKonOS.Core.Tests` | 环境受限 | 失败于 `Directory.CreateSymbolicLink`：本机未开启开发者模式/未提升权限，无符号链接创建特权。与本 Goal 无关（该工程未被本分支修改）。 |
 | `Client/RelaxKonOS.FileServices.Tests` | 无法构建 | 既存破损：该工程仅以 `Compile Include` 链接 `FileServicesViewModel.cs`，而该 VM 依赖未链接的 `LocalizedStatus`/`LocalizedObservableObject`/`RelaxKonOS.Client.Services`/`InstallationTaskViewModel`；master 上同样如此，与本 Goal 无关。 |
-| `deployment/windows/Install-RelaxKonOSServices.ps1` | 通过 | `Parser::ParseFile` 语法检查通过；安装器仅在显式传入 `-EnableWindowsUserExecution` 时才会同时在 Server 与 Helper 段写入启用值；省略该参数时能力门保持关闭。 |
+| `deployment/windows/Install-RelaxKonOSServices.ps1` | 通过 | `Parser::ParseFile` 语法检查通过；安装器仅在显式传入 `-EnableWindowsUserExecution` 时才会同时在 Server 段写入 `UserExecutionBackend=helper` 并在 Helper 段写入 `enableWindowsUserExecution=true`；省略该参数时 Server 段写 `disabled`、Helper 段保持关闭，且任何情况下都不会写入 `local-identity`。 |
 | Windows impersonation 真实多用户集成 | 仍未验证 | 本轮只在 Windows 开发宿主上验证了构建、契约与关闭态；S4U logon type、NTFS ACL/owner、token 释放、并发、取消、服务重启、profile/known-folder 与网络盘行为仍需隔离 Windows Server + LocalSystem Helper + 两个本地账户，能力门在此期间保持 `false`。 |
 
 ### 2026-09-25：用户执行通道接入统一可观测性
@@ -281,4 +281,14 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 - 审计因此可区分 user execution 与 administrator elevation，满足本 Goal 完成标准中「审计可区分两类通道但不记录敏感路径/凭据」的要求。
 
 尚未覆盖，明确记录为后续工作：Guardian 的 `RunAsAuthorizationService` 跨账户授权决定目前只返回结果、不写审计；`DisabledUserExecutionTransport`（Windows 能力门关闭时的发布默认路径）对每次被拒绝的请求不写审计；媒体 lease 读取路径未单独埋点。三项都需要各自的 operation/correlation 上下文与可失败关闭策略，不在本次范围内。
+
+### 2026-09-26：本地调试执行方式（已实施）
+
+在 Windows 开发宿主上，`Server.Mode=system` + `EnableWindowsUserExecution=false`（默认且安装器固定写入）使日常功能不可用：文件操作返回 `HelperUnavailable`（客户端显示「加载失败: User-execution Helper is unavailable.」），Terminal 在 `PlatformPtyFactory` 上直接 `PlatformNotSupportedException`。根因是 Windows 侧的有效用户通道必须由常驻 LocalSystem Helper 提供——非 SYSTEM 进程无法为其他本地账户取得令牌（S4U 需要 `SeTcbPrivilege`），而 Linux 侧同一条通道只是按请求派生的一次性降权 worker，因此 Linux 本地调试不需要常驻服务。
+
+实施（**未改变任何冻结原则**）：把本 Goal 原则 3 已承认的「User Mode 只能以自己的身份执行」规则（`IsServerEffectiveUnixUser`）补齐到 Windows，并提升为一个可选择的执行后端 `PrivilegedHelper:UserExecutionBackend = helper | local-identity | disabled`。`local-identity` 的承重守卫是**目标身份必须等于 Server 进程自身的 OS 身份**（Windows 比 SID，Linux 比 `geteuid()`），因此访问控制仍由目标账户裁决，不构成「回退到 Server 服务账号」。守卫在 transport 层实现，故 `UserExecutionFileService`、后台文件任务、媒体 lease、上传暂存清理、Git 与 Terminal 共用同一道判定。
+
+本次落地的边界：`helper` 仍为默认；安装器只在显式传入 `-EnableWindowsUserExecution` 时两侧同开，否则写入 `disabled`，**永不写入 `local-identity`**；`local-identity` 在 Production 环境或 Server 进程本身为特权（root/SYSTEM/管理员）时拒绝启动（`UserExecutionBackend.Resolve` 抛错），因此它只可能出现在开发机。Windows 首版 user execution 仍不启用，本文 Goal 3/4 的验收项不受影响。
+
+详见 [RelaxKonOS.LocalDebugging.md](../development/RelaxKonOS.LocalDebugging.md)。
 
