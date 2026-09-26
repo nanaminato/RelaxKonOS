@@ -122,6 +122,10 @@ internal static class AliasLoginVerification
             return (await response.Content.ReadFromJsonAsync<AliasConfigurationDto>(Json))!;
         }
         var system = await Login("nanami", OsPassword);
+        // 登录不因身份不合格而失败，但必须**声明**该身份能否执行普通操作：这是把"打开文件夹才发现
+        // 503"前移到登录期的唯一手段，缺了它客户端只能事后解释。
+        Check(system.ExecutionEligibility is { } declared && declared.Available == (declared.Reason is null),
+            "login declares whether this identity may execute ordinary operations");
         var otherPlatform = await Login("HOST\\nanami", OsPassword, ClientPlatformKind.Android);
         Check(system.User.Id == otherPlatform.User.Id && system.Workspace.Id == otherPlatform.Workspace.Id, "equivalent OS identity and client platforms preserve workspace");
         Check(system.User.Platform == HostPlatformKind.Windows, "User uses host platform");

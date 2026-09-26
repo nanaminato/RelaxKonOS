@@ -23,5 +23,6 @@
     <Compile Include="../../../Client/RelaxKonOS.Client/Localization/LocalizedStatus.cs" Link="LocalizedStatus.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/Auth/RelaxKonOSAuthException.cs" Link="RelaxKonOSAuthException.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/Privileged/PrivilegedHelperProblemText.cs" Link="PrivilegedHelperProblemText.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Services/UserExecution/UserExecutionProblemText.cs" Link="UserExecutionProblemText.cs" />
   </ItemGroup>
 </Project>

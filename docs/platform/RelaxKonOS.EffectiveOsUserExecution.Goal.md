@@ -292,3 +292,33 @@ Windows Helper 以 LocalSystem 运行不代表普通操作拥有管理员语义�
 
 详见 [RelaxKonOS.LocalDebugging.md](../development/RelaxKonOS.LocalDebugging.md)。
 
+### 2026-09-26：身份不适用的结论与文案前移（root 登录体验）
+
+Linux 上用 root（或任何 UID < 1000 的账户、nobody）登录时，认证按宿主 PAM 委派成功、桌面正常，
+但第一个普通操作就被身份解析拒绝，返回 503（`/api/v1.0/files/special` 即此路径），
+客户端状态栏只显示 `The OS identity is not eligible for user execution.`。
+**拒绝本身是既定规则**（本文 Linux System Mode 只接受非 root、UID ≥ 1000 账户；root/LocalSystem 只留给明确授权后的提权），
+问题在上下文：登录端不校验资格、`ServerCapabilitiesDto.limitations` 也没有标记，
+用户只能从一次失败的文件夹打开里倒推，而那句话既不点明原因也不给出路。
+
+本次**未改动任何资格规则**，只把结论与文案前移：
+
+- **规则唯一化**：`UserExecutionEligibilityRules.Evaluate(identity, mode)` 是「该身份能否以有效用户执行」的唯一实现，
+  `UserExecutionContextResolver` 与登录（`LoginAuthenticationService`）共用，两侧不可能再给出不同答案。
+- **一码一义**：新增 `UserExecutionProblemCode.IdentityNotEligible`（身份本身不适用：root / 保留身份 / 系统账户 /
+  无法验证的家目录 / 非本地 Windows 账户）；`IdentityNotExecutable` 只保留「身份合格但执行边界拒绝」
+  （`local-identity` 后端账户不匹配、Helper 无法切换身份）。类型 URI 由 `UserExecutionProblemTypes` 统一定义为
+  kebab-case，文件 / 文件操作 / 媒体租约端点共用 `UserExecutionProblemResult`——此前同一码在不同路由会得到两种拼法。
+- **登录期声明**：`LoginResponse.executionEligibility` 返回该身份能否执行普通操作及稳定原因码
+  （`ServerExecutionEligibilityReasons`）。登录**不因不合格而失败**：这是刻意保留的行为，宿主管理类功能仍然可用。
+  客户端把它存进 `IAuthSession.ExecutionEligibility`，Explorer 打开窗口时即显示本地化的原因与出路。
+- **文案归属**：客户端按问题类型 / 原因码映射到 `common.problem.identity_not_eligible` 与
+  `common.problem.identity_not_executable`（三语包齐备，`verify-localization.py` 转绿）；服务端 `detail` 仍点明出路，
+  但不再被直接拼进中文状态栏。
+- **断言**：`--user-execution-only` 新增 `VerifyUserExecutionEligibility`（原因与码一一对应、文案点明 uid 1000 的出路、
+  解析器对 root 抛 `IdentityNotEligible`）；`--alias-only` 断言登录响应带资格声明；
+  `RelaxKonOS.Explorer.Tests` 断言问题类型 / 原因码到本地化键的映射，未知原因保留服务端 detail。
+
+仍未实施（明确记录）：登录期**不**记录该身份不可执行的审计事件——资格声明随响应返回，
+真正被拒的操作仍按既有 `authorization.check` 审计；若将来要求"登录即审计"需单独决定。
+

@@ -118,6 +118,11 @@ public enum UserExecutionProblemCode
     AuthenticationInvalid,
     IdentityUnavailable,
     IdentityMismatch,
+    /// <summary>The addressed identity is not one this Server may execute ordinary operations as
+    /// (root, a reserved/system account, nobody, or an account without a usable home directory).</summary>
+    IdentityNotEligible,
+    /// <summary>The identity is eligible, but the execution boundary refused to run as it: the
+    /// deployment has no channel to become that account (missing or mismatched Helper).</summary>
     IdentityNotExecutable,
     UnsupportedPlatform,
     HelperUnavailable,
@@ -130,6 +135,30 @@ public enum UserExecutionProblemCode
     Cancelled,
     TimedOut,
     InternalError,
+}
+
+/// <summary>
+/// Stable, kebab-case ProblemDetails type suffixes for the user-execution boundary. A client localizes
+/// from the suffix, so each code keeps exactly one name, and each name keeps exactly one meaning.
+/// </summary>
+public static class UserExecutionProblemTypes
+{
+    public const string Base = "https://relaxkonos.app/problems/";
+    public const string IdentityNotEligible = "identity-not-eligible";
+    public const string IdentityNotExecutable = "identity-not-executable";
+    public const string HelperUnavailable = "user-execution-helper-unavailable";
+    public const string Unavailable = "user-execution-unavailable";
+
+    public static string Suffix(UserExecutionProblemCode code) => code switch
+    {
+        UserExecutionProblemCode.IdentityNotEligible => IdentityNotEligible,
+        UserExecutionProblemCode.IdentityNotExecutable => IdentityNotExecutable,
+        UserExecutionProblemCode.HelperUnavailable => HelperUnavailable,
+        _ => Unavailable,
+    };
+
+    /// <summary>Full type URI for a code, as every endpoint that reports the boundary must write it.</summary>
+    public static string Uri(UserExecutionProblemCode code) => Base + Suffix(code);
 }
 
 /// <summary>Non-secret, versioned result for the dedicated local user-execution channel.</summary>

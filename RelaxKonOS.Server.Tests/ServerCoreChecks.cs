@@ -3,6 +3,77 @@ using RelaxKonOS.Server.Files;
 
 internal static class ServerCoreChecks
 {
+/// <summary>
+/// Eligibility is one shared rule: login reports the same answer the first folder open would
+/// otherwise be the first to reveal. Every refusal keeps its own reason and says what to do instead.
+/// </summary>
+internal static void VerifyUserExecutionEligibility()
+{
+    // Reason and code are one-to-one, so a client localizes from a name it can trust.
+    var root = new PlatformUserInfo("0", "root", HostPlatformKind.Linux, "root", "/root");
+    var rootRule = UserExecutionEligibilityRules.Evaluate(root, ServerMode.System);
+    TestAssert.Assert(!rootRule.Available && rootRule.Reason == UserExecutionIneligibleReason.ReservedIdentity
+        && rootRule.ReasonCode == ServerExecutionEligibilityReasons.ReservedIdentity,
+        $"root must be refused as a reserved identity, but was reported as {rootRule.Reason}.");
+    TestAssert.Assert(rootRule.Describe(root).Contains("uid is 1000", StringComparison.Ordinal),
+        "A refused identity must be told how to proceed, not only that it was refused.");
+
+    var nobody = new PlatformUserInfo("65534", "nobody", HostPlatformKind.Linux, "nobody", "/nonexistent");
+    TestAssert.Assert(UserExecutionEligibilityRules.Evaluate(nobody, ServerMode.System).Reason
+        == UserExecutionIneligibleReason.ReservedIdentity, "nobody must be refused as a reserved identity.");
+
+    // The floor is the Server mode's, not the host's: below 1000 is refused in System Mode...
+    var service = new PlatformUserInfo("999", "sshd", HostPlatformKind.Linux, "sshd", "/var/run/sshd");
+    var serviceRule = UserExecutionEligibilityRules.Evaluate(service, ServerMode.System);
+    TestAssert.Assert(serviceRule.Reason == UserExecutionIneligibleReason.SystemAccount
+        && serviceRule.Describe(service).Contains("1000", StringComparison.Ordinal),
+        $"A system account must be refused for the UID floor, but was reported as {serviceRule.Reason}.");
+
+    // ...while a regular account on the same host stays eligible in System Mode.
+    var regular = new PlatformUserInfo("1001", "nanami", HostPlatformKind.Linux, "Nanami", "/home/nanami");
+    TestAssert.Assert(UserExecutionEligibilityRules.Evaluate(regular, ServerMode.System).Available,
+        "A regular UID >= 1000 account must stay eligible in System Mode.");
+
+    // A profile-less account has nowhere to execute, even though its UID is fine.
+    var relativeHome = new PlatformUserInfo("1001", "nanami", HostPlatformKind.Linux, "Nanami", "home/nanami");
+    TestAssert.Assert(UserExecutionEligibilityRules.Evaluate(relativeHome, ServerMode.System).Reason
+        == UserExecutionIneligibleReason.UnverifiedHomeDirectory,
+        "A home directory that is not absolute must be refused as unverifiable.");
+
+    // Windows System Mode never accepts a domain account in place of a local profile.
+    var domain = new PlatformUserInfo("S-1-5-21-1111111111-2222222222-3333333333-1001", @"CONTOSO\nanami",
+        HostPlatformKind.Windows, "Nanami", @"C:\Users\nanami");
+    TestAssert.Assert(UserExecutionEligibilityRules.Evaluate(domain, ServerMode.System).Reason
+        == UserExecutionIneligibleReason.WindowsProfileRequired,
+        "A non-local Windows account must be refused for the local-profile rule.");
+
+    // The refusal a client actually receives: resolution throws its own code, never the boundary's.
+    var users = new InMemoryUserRepository();
+    var user = users.Add(new User
+    {
+        Id = Guid.NewGuid(), Username = "root", Platform = HostPlatformKind.Linux,
+        PlatformIdentity = "0", CreatedAt = DateTimeOffset.UtcNow,
+    });
+    var events = new CapturingEventLogger();
+    var resolver = new UserExecutionContextResolver(users,
+        new CanonicalUserResolver(new UserExecutionIdentityProvider(root), users, new InMemoryAliasCredentialRepository(),
+            new AuthSessionStore()), new UserExecutionMode(ServerMode.System), events);
+    var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString())], "test"));
+    UserExecutionProblemCode? refusal = null;
+    string? detail = null;
+    try { resolver.Resolve(principal); }
+    catch (UserExecutionException exception) { refusal = exception.ProblemCode; detail = exception.Message; }
+    TestAssert.Assert(refusal == UserExecutionProblemCode.IdentityNotEligible && detail is not null
+        && detail.Contains("root", StringComparison.Ordinal),
+        $"An ineligible identity must be refused with IdentityNotEligible and a named account, but got {refusal}.");
+    // The client-facing message names the account so the user knows what was refused; the audit record
+    // must not, and identifies the refusal by its stable code instead.
+    TestAssert.Assert(events.Events.Count == 1 && events.Events[0].ProblemCode == "IdentityNotEligible"
+        && events.Events[0].Action == "authorization.check"
+        && !events.Events[0].Message.Contains("root", StringComparison.Ordinal),
+        "A refused identity must be audited by code without writing the account name.");
+}
+
 internal static void VerifyWorkspacePreferencesJsonContract()
 {
     var preferences = new WorkspacePreferencesDto(
@@ -943,6 +1014,13 @@ private sealed class UserExecutionMode(ServerMode mode) : IServerModeResolver
     public ServerMode Mode { get; } = mode;
     public ServerCapabilitiesDto Describe() => throw new NotSupportedException();
     public bool Supports(ServerHostFeature feature) => false;
+}
+
+/// <summary>Captures audit events so a test can assert on what the record does and does not contain.</summary>
+private sealed class CapturingEventLogger : IEventLogger
+{
+    public List<ObservabilityEvent> Events { get; } = [];
+    public void Write(ObservabilityEvent entry) => Events.Add(entry);
 }
 
 /// <summary>True when the configuration was rejected outright, as opposed to silently defaulted.</summary>

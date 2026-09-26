@@ -3,11 +3,15 @@ using Microsoft.AspNetCore.Identity;
 using RelaxKonOS.Server.Domain;
 using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Storage;
+using RelaxKonOS.Server.UserExecution;
 using RelaxKonOS.Protocol.Common;
 
 namespace RelaxKonOS.Server.Identity;
 
-public sealed record AuthenticatedLogin(User User, string Method, long Revision, long SecurityVersion, string ProtectionKey);
+public sealed record AuthenticatedLogin(User User, string Method, long Revision, long SecurityVersion, string ProtectionKey,
+    /// <summary>Whether this identity may execute ordinary operations on this Server. Login itself never
+    /// depends on it: the session is issued either way, and the client is told the answer up front.</summary>
+    UserExecutionEligibility ExecutionEligibility);
 
 public sealed class LoginAuthenticationService(IIdentityProvider identities, IUserRepository users,
     IAliasCredentialRepository credentials, AliasPasswordService passwords, CanonicalUserResolver resolver,
@@ -35,8 +39,9 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
             {
                 if (system.Identity is not null || user is null) throw Invalid();
                 if (passwords.Verify(alias, password) == PasswordVerificationResult.Failed) throw Invalid();
-                resolver.RequireBinding(user, true);
-                return new(user, "alias", alias.Revision, version, key);
+                var bound = resolver.RequireBinding(user, true);
+                return new(user, "alias", alias.Revision, version, key,
+                    UserExecutionEligibilityRules.Evaluate(bound, serverMode.Mode));
             }
             if (system.Identity is null) { passwords.Dummy(password); throw Invalid(); }
             if (policy?.SystemLoginEnabled == false || user?.IdentityReviewRequired == true) { passwords.Dummy(password); throw Invalid(); }
@@ -45,7 +50,8 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
             if (!verified.Success || verified.Identity is not { } trusted || trusted.Uid != system.Identity.Uid || trusted.Platform != system.Identity.Platform)
                 throw Invalid();
             user = resolver.ResolveSystem(trusted);
-            return new(user, "system", policy?.Revision ?? 0, version, user.Id.ToString("D"));
+            return new(user, "system", policy?.Revision ?? 0, version, user.Id.ToString("D"),
+                UserExecutionEligibilityRules.Evaluate(trusted, serverMode.Mode));
         }
         catch (AliasAuthenticationException exception) when (exception.Status == 401)
         {
@@ -92,7 +98,8 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
                 throw Invalid();
             var user = resolver.ResolveSystem(trusted);
             var policy = credentials.Find(user.Id);
-            return new(user, "system", policy?.Revision ?? 0, user.SecurityVersion, user.Id.ToString("D"));
+            return new(user, "system", policy?.Revision ?? 0, user.SecurityVersion, user.Id.ToString("D"),
+                UserExecutionEligibilityRules.Evaluate(trusted, serverMode.Mode));
         }
         catch (AliasAuthenticationException exception) when (exception.Status == 401)
         {

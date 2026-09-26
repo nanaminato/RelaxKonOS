@@ -71,9 +71,7 @@ public static class AppCapabilityEndpoints
             catch (UnauthorizedAccessException) { return Results.Forbid(); }
             catch (UserExecutionException exception)
             {
-                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
-                    title: "User execution unavailable",
-                    type: "https://relaxkonos.app/problems/" + exception.ProblemCode.ToString().ToLowerInvariant());
+                return UserExecutionProblemResult.From(exception);
             }
             catch (InvalidOperationException)
             {

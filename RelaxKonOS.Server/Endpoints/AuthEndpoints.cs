@@ -101,7 +101,8 @@ public static class AuthEndpoints
                 await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
 
                 return Results.Ok(new LoginResponse(
-                    user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role, CreateServerDescriptor(serverMode)));
+                    user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role, CreateServerDescriptor(serverMode),
+                    new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available, login.ExecutionEligibility.ReasonCode)));
             })
             .RequireRateLimiting("login")
             .WithTags("Auth");

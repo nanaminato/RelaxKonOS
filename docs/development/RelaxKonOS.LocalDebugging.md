@@ -126,7 +126,7 @@ Server 侧 `PrivilegedHelper` 段用**后端选择**取代今天的布尔能力�
    - 平台不匹配（在 Windows 上声称自己是 Linux 身份，或反之）一律不匹配；
    - 读不到自身令牌（异常）时返回"不匹配"而**不是**放行。
    不相等 → `IdentityNotExecutable`，客户端消息点明"本 Server 只能以自己的 OS 账户执行，
-   要管理其他账户请走 Helper"。
+   要管理其他账户请走 Helper"。（身份**本身**不适用是另一码：`IdentityNotEligible`，见 3.5。）
 4. **可观测**（本次刻意不做逐请求区分）：
    - `Describe()` 的 `limitations` 增加 `user-execution-local-identity`，客户端可据此提示
      "当前未验证有效用户边界"；
@@ -173,6 +173,28 @@ Server 侧 `PrivilegedHelper` 段用**后端选择**取代今天的布尔能力�
 `local-identity` **不能**被当作"Windows 有效用户执行的验收替代"：
 Goal 里 Goal 3/4 的验收项（NTFS ACL、token 释放、并发、服务重启、profile/known-folder）
 仍然只由 `helper` + LocalSystem 服务路径满足。
+
+### 3.5 身份资格与执行边界分属两码，且资格结论在登录期就给出
+
+`IdentityNotExecutable` 容易被当成"身份不适用"的通用码，但两者语义不同，混用会让客户端只能靠猜：
+
+- `IdentityNotEligible`（**身份本身**不适用）：root、UID < 1000 的系统账户、nobody、
+  家目录无法验证、非本地 Windows 账户。规则唯一实现在
+  [UserExecutionEligibilityRules](../../RelaxKonOS.Server/UserExecution/UserExecutionEligibility.cs)，
+  `UserExecutionContextResolver` 与登录共用它；文案按原因生成并点明出路（例如 uid 1000 以上）。
+- `IdentityNotExecutable`（身份合格，但**执行边界**拒绝）：`local-identity` 后端的目标账户不是本进程账户、
+  Helper 无法切换身份。
+
+两码在 `UserExecutionProblemTypes` 里各有 kebab-case 类型（`identity-not-eligible` /
+`identity-not-executable`），所有端点经 `UserExecutionProblemResult` 统一产出，客户端
+`UserExecutionProblemText` 据此映射到 `common.problem.identity_not_eligible` /
+`..._identity_not_executable`（三语包齐备）——服务端 `detail` 不再被直接拼进中文状态栏。
+
+资格结论同时随登录返回（`LoginResponse.executionEligibility`，原因码见 `ServerExecutionEligibilityReasons`），
+因为**登录本身不因身份不合格而失败**：宿主管理类功能仍然可用。客户端把它存进
+`IAuthSession.ExecutionEligibility`，Explorer 在打开窗口时就把原因与出路显示出来，
+不再让用户从第一次 503 里倒推。这也是 Linux 上用 root 登录时看到
+`identity-not-eligible` 的完整链路。
 
 ---
 
@@ -262,6 +284,11 @@ dotnet run --project RelaxKonOS.Server
 
 尚未断言的（明确记录，不声称已覆盖）：媒体租约读取、后台文件作业与 Git 在 `local-identity` 下的
 端到端行为。它们共用同一个 transport 守卫，但本次只做了代码级路由改动，没有构造对应集成断言。
+
+同一开关下另有 `VerifyUserExecutionEligibility`（3.5 的规则），覆盖 root / nobody / UID < 1000 /
+非绝对家目录 / 非本地 Windows 账户各自的原因与码，以及解析器对 root 抛 `IdentityNotEligible`；
+`--alias-only` 断言登录响应携带资格声明；`RelaxKonOS.Explorer.Tests` 断言问题类型与原因码到
+本地化键的映射（未知原因保留服务端 detail）。
 
 ## 7. 本次决策与仍然开放的问题
 

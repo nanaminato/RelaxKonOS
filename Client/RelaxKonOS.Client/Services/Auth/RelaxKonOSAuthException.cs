@@ -1,5 +1,6 @@
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Client.Services.Privileged;
+using RelaxKonOS.Client.Services.UserExecution;
 
 namespace RelaxKonOS.Client.Services.Auth;
 
@@ -21,6 +22,9 @@ public sealed class RelaxKonOSAuthException : Exception
     public int Status { get; }
     public string? Detail { get; }
 
-    /// <summary>Uses repair guidance for a missing local privilege boundary while preserving all other server details.</summary>
-    public override string Message => PrivilegedHelperProblemText.TryFormat(Type, out var message) ? message : base.Message;
+    /// <summary>Uses repair guidance for a missing local privilege boundary, or for an identity this
+    /// Server cannot execute ordinary operations as, while preserving all other server details.</summary>
+    public override string Message => PrivilegedHelperProblemText.TryFormat(Type, out var helper) ? helper
+        : UserExecutionProblemText.TryFormat(Type, out var userExecution) ? userExecution
+        : base.Message;
 }

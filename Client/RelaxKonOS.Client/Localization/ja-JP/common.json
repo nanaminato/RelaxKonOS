@@ -22,6 +22,8 @@
         "common.error.empty_response_detail": "サーバーから空のレスポンス本文が返されました。",
         "common.problem.privileged_helper_unavailable.title": "特権ヘルパーを利用できません",
         "common.problem.privileged_helper_unavailable": "サーバーの特権ヘルパーを利用できません。サーバー管理者にインストールまたは修復を依頼してください。Linux では RelaxKonOS.PrivilegedHelper、root 所有の公開ディレクトリ、sudoers ルールを確認してください。NoNewPrivileges を設定するサンドボックスから Server を起動した場合は、その外部で起動してください。そのプロセスから sudo は昇格できません。Windows では RelaxKonOSPrivilegedHelper サービス、名前付きパイプ ACL、共有シークレットを確認してください。昇格したコンソール Helper でデバッグする場合、Server の PrivilegedHelper__PipeName と PrivilegedHelper__SharedSecret は構成ファイルの pipeName と sharedSecret に完全に一致する必要があります。Server.exe を直接起動しても launchSettings.json は読み込まれません。修復後に再試行してください。",
+        "common.problem.identity_not_eligible": "ログイン中のホストアカウントは通常のファイル・ターミナル・Git 操作に使用できません。root、UID 1000 未満のシステムアカウント、nobody、および有効なホームディレクトリを持たないアカウントは、このサーバーでは許可されません。UID 1000 以上の通常のホストアカウントでログインしてください。保護された場所には管理者昇格で引き続きアクセスできます。",
+        "common.problem.identity_not_executable": "サーバーは現在、ログイン中のホストアカウントとして通常操作を実行できません。このホストでは通常操作は特権ヘルパーを通じて対象アカウントとして実行されます。User Mode では Server 自身のホストアカウントとしてのみ実行できるため、そのアカウントでログインしてください。その他の構成では、管理者に特権ヘルパーのインストールと稼働状況を確認してもらってください。",
         "common.done": "完了",
         "common.file": "ファイル",
         "common.new": "新規",

@@ -22,6 +22,8 @@
         "common.error.empty_response_detail": "服务器返回了空的响应体。",
         "common.problem.privileged_helper_unavailable.title": "特权助手不可用",
         "common.problem.privileged_helper_unavailable": "服务器的特权助手不可用。请让服务器管理员完成安装或修复：Linux 请检查 RelaxKonOS.PrivilegedHelper、root:root 发布目录和 sudoers 规则。若 Server 从设置了 NoNewPrivileges 的沙箱启动，必须在沙箱外启动；该进程无法通过 sudo 提权。Windows 请检查 RelaxKonOSPrivilegedHelper 服务、命名管道 ACL 与共享密钥。使用管理员控制台调试助手时，Server 的 PrivilegedHelper__PipeName 与 PrivilegedHelper__SharedSecret 必须和助手配置文件的 pipeName、sharedSecret 完全一致；直接启动 Server.exe 不会读取 launchSettings.json。修复后重试。",
+        "common.problem.identity_not_eligible": "当前登录的宿主账户不能用于普通文件、终端或 Git 操作：root、UID 小于 1000 的系统账户、nobody，以及没有可用家目录的账户都不在本服务器允许的范围内。请改用 UID ≥ 1000 的常规宿主账户登录；受保护的位置仍可通过管理员提权访问。",
+        "common.problem.identity_not_executable": "服务器当前无法以登录的宿主账户执行普通操作：本机普通操作只通过特权助手以目标账户执行。User Mode 下只能以 Server 自身的宿主账户操作，请改用该账户登录；其他部署请让管理员确认特权助手已安装并运行。",
         "common.done": "完成",
         "common.file": "文件",
         "common.new": "新建",

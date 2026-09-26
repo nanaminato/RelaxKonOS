@@ -31,6 +31,12 @@ public interface IAuthSession
     DeviceDto? CurrentDevice { get; }
     DeviceRole AssignedRole { get; }
 
+    /// <summary>
+    /// 本登录身份能否在本 Server 上执行普通文件/终端/Git 操作（登录响应声明）。为 null 表示当次
+    /// 登录没有拿到该声明。入口应在被打开前先读它，而不是等第一次操作以 503 失败后再解释原因。
+    /// </summary>
+    ServerExecutionEligibilityDto? ExecutionEligibility { get; }
+
     /// <summary>状态变化（Connecting / Authenticated / Unauthenticated）。</summary>
     event EventHandler<AuthSessionStateChangedEventArgs>? StateChanged;
 

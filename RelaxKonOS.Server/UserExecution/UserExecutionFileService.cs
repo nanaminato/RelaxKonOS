@@ -108,9 +108,12 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             UserExecutionProblemCode.InvalidRequest or UserExecutionProblemCode.ContentTooLarge => "Invalid user-execution file request.",
             UserExecutionProblemCode.Conflict => "User-execution file operation failed.",
             UserExecutionProblemCode.TimedOut => "User-execution file operation timed out.",
-            // In-process execution is restricted to the Server's own account. That refusal is a
-            // deployment choice the operator can fix, so it says so instead of sharing the generic
-            // "unavailable" text with a missing Helper.
+            // The identity itself may not be used for ordinary operations (root, a system account, an
+            // unverifiable profile). Resolution reports the precise cause; this is the fallback text for
+            // a transport that refuses the same code, so both say the same thing and both name the way out.
+            UserExecutionProblemCode.IdentityNotEligible => "This Server cannot execute ordinary file, terminal or Git operations as the authenticated OS account. Sign in with a regular host account (uid 1000 or higher).",
+            // Eligible identity, refused boundary: in-process execution is restricted to the Server's own
+            // account, and that refusal is a deployment choice the operator can fix or work around.
             UserExecutionProblemCode.IdentityNotExecutable => "This Server executes ordinary user operations only as its own OS account; run them as another account through the Helper.",
             _ => "User-execution Helper is unavailable.",
         };

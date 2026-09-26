@@ -28,8 +28,7 @@ public static class FileEndpoints
                 try { return await next(context); }
                 catch (UserExecutionException exception)
                 {
-                    return (object)Problem(StatusCodes.Status503ServiceUnavailable,
-                        "user-execution-unavailable", "用户执行服务不可用", exception.Message);
+                    return (object)UserExecutionProblemResult.From(exception);
                 }
             });
 

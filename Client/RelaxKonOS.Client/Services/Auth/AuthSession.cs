@@ -36,6 +36,7 @@ public sealed class AuthSession : IAuthSession
     public SessionDto? CurrentSession { get; private set; }
     public DeviceDto? CurrentDevice { get; private set; }
     public DeviceRole AssignedRole { get; private set; } = DeviceRole.Observer;
+    public ServerExecutionEligibilityDto? ExecutionEligibility { get; private set; }
 
     public event EventHandler<AuthSessionStateChangedEventArgs>? StateChanged;
 
@@ -207,6 +208,7 @@ public sealed class AuthSession : IAuthSession
         CurrentSession = response.Session;
         CurrentDevice = response.Device;
         AssignedRole = response.AssignedRole;
+        ExecutionEligibility = response.ExecutionEligibility;
     }
 
     private void Reset(AuthSessionEndReason endReason = AuthSessionEndReason.None)
@@ -219,6 +221,7 @@ public sealed class AuthSession : IAuthSession
         CurrentSession = null;
         CurrentDevice = null;
         AssignedRole = DeviceRole.Observer;
+        ExecutionEligibility = null;
         State = AuthSessionState.Unauthenticated;
         RaiseStateChanged(endReason: endReason);
     }

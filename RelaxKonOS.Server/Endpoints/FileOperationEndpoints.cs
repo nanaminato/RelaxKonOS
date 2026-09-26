@@ -30,8 +30,7 @@ public static class FileOperationEndpoints
             || !Guid.TryParse(device, out var deviceId)) return Results.Unauthorized();
         try { return action($"{userId:N}/{workspaceId:N}/{deviceId:N}"); }
         catch (KeyNotFoundException) { return Results.NotFound(); }
-        catch (UserExecutionException exception) { return Results.Problem(statusCode: 503, title: "User execution unavailable",
-            type: "https://relaxkonos.app/problems/" + exception.ProblemCode.ToString().ToLowerInvariant()); }
+        catch (UserExecutionException exception) { return UserExecutionProblemResult.From(exception); }
         catch (ArgumentException ex) { return Results.Problem(statusCode: 400, title: "Invalid operation", detail: ex.Message); }
         catch (InvalidOperationException ex) { return Results.Problem(statusCode: 409, title: "Operation unavailable", detail: ex.Message); }
     }

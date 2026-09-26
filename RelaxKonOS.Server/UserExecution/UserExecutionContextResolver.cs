@@ -1,7 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
-using System.Runtime.InteropServices;
 using System.Security.Claims;
-using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.HostMode;
@@ -31,28 +29,17 @@ public sealed class UserExecutionContextResolver(IUserRepository users, Canonica
             throw Reject(code, "The authenticated OS identity could not be verified.");
         }
 
-        if (identity.Platform == HostPlatformKind.Linux)
+        // Eligibility is one shared rule, and login reports the same answer: a refused identity is
+        // known to the client before it opens anything instead of surfacing at the first folder.
+        var eligibility = UserExecutionEligibilityRules.Evaluate(identity, serverMode.Mode);
+        if (!eligibility.Available)
         {
-            if (!uint.TryParse(identity.Uid, out var uid) || uid is 0 or 65534
-                || (serverMode.Mode == ServerMode.System && !UserExecutionProtocol.IsEligibleLinuxUserId(uid))
-                || !UserExecutionProtocol.IsEligibleHomeDirectory(HostPlatformKind.Linux, identity.HomeDirectory))
-                throw Reject(UserExecutionProblemCode.IdentityNotExecutable, "The OS identity is not eligible for user execution.");
-            if (serverMode.Mode == ServerMode.User && !IsServerEffectiveUnixUser(uid))
-                throw Reject(UserExecutionProblemCode.IdentityNotExecutable, "User Mode can execute only as the Server's effective Unix user.");
-        }
-        else if (identity.Platform == HostPlatformKind.Windows)
-        {
-            var account = identity.Username.Split('\\', 2);
-            if (serverMode.Mode != ServerMode.System || account.Length != 2
-                || !account[0].Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(identity.Uid) || !identity.Uid.StartsWith("S-1-5-", StringComparison.Ordinal)
-                || !UserExecutionProtocol.IsEligibleHomeDirectory(HostPlatformKind.Windows, identity.HomeDirectory))
-                throw Reject(UserExecutionProblemCode.IdentityNotExecutable,
-                    "Only local Windows accounts with a verified profile are eligible for System Mode user execution.");
-        }
-        else
-        {
-            throw Reject(UserExecutionProblemCode.UnsupportedPlatform, "The OS identity is not supported for user execution.");
+            var unsupported = eligibility.Reason == UserExecutionIneligibleReason.UnsupportedPlatform;
+            throw Reject(unsupported ? UserExecutionProblemCode.UnsupportedPlatform
+                    : UserExecutionProblemCode.IdentityNotEligible,
+                eligibility.Describe(identity),
+                unsupported ? "The OS identity is not supported for user execution."
+                    : "The OS identity is not eligible for user execution.");
         }
 
         return new UserExecutionContext(userId, new UserExecutionIdentity(identity.Platform, identity.Uid,
@@ -61,23 +48,16 @@ public sealed class UserExecutionContextResolver(IUserRepository users, Canonica
 
     /// <summary>
     /// A refused identity resolution is an authorization denial: it must leave a correlatable
-    /// record even though no OS operation runs. The account and the raw subject are never written;
-    /// only the stable identity-resolution problem code is.
+    /// record even though no OS operation runs. The record carries <paramref name="auditMessage"/>,
+    /// never the client-facing <paramref name="message"/>: the latter names the account so the signed-in
+    /// user knows which identity was refused, and the audit record never may. The stable problem code
+    /// is what identifies the refusal there.
     /// </summary>
-    private UserExecutionException Reject(UserExecutionProblemCode code, string message)
+    private UserExecutionException Reject(UserExecutionProblemCode code, string message, string? auditMessage = null)
     {
         eventLogger?.Write(new ObservabilityEvent(ObservabilityEventCatalog.AuthorizationDenied,
-            ObservabilitySeverity.Information, ObservabilityOutcome.Denied, "server", message,
+            ObservabilitySeverity.Information, ObservabilityOutcome.Denied, "server", auditMessage ?? message,
             ProblemCode: code.ToString(), Action: "authorization.check"));
         return new UserExecutionException(code, message);
     }
-
-    /// <summary>
-    /// The Server's effective Unix user exists only on Linux. On any other host a Linux identity can
-    /// never be it, so User Mode refuses it instead of probing libc on a platform that has none.
-    /// </summary>
-    private static bool IsServerEffectiveUnixUser(uint uid) => OperatingSystem.IsLinux() && uid == geteuid();
-
-    [DllImport("libc", CallingConvention = CallingConvention.Cdecl)]
-    private static extern uint geteuid();
 }

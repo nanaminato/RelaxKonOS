@@ -17,6 +17,7 @@ using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.UserExecution;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
@@ -165,7 +166,12 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
 
         // 窗口打开后异步加载根；内部路由指定位置时直接导航到该目录。
         var settings = context.Services.GetService(typeof(IAppSettingsClient)) as IAppSettingsClient;
-        _initializations[window] = OpenInitialLocationAsync(viewModel, initialPath, settings);
+        // 登录响应已经声明本身份能否执行普通操作。不合格时不再让用户从第一次 503 里推断原因：
+        // 打开的这一刻就把本地化后的原因与出路显示出来（服务端仍会拒绝，这里只是提前说清楚）。
+        var eligibilityNotice = session.ExecutionEligibility is { Available: false } eligibility
+            ? UserExecutionProblemText.ForReason(eligibility.Reason)
+            : null;
+        _initializations[window] = OpenInitialLocationAsync(viewModel, initialPath, settings, eligibilityNotice);
     }
 
     private static async Task NavigateAfterInitializationAsync(ExplorerViewModel viewModel, Task? initialization, string? path)
@@ -266,7 +272,8 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         };
     }
 
-    private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath, IAppSettingsClient? settings)
+    private static async Task OpenInitialLocationAsync(ExplorerViewModel viewModel, string? initialPath,
+        IAppSettingsClient? settings, string? eligibilityNotice = null)
     {
         const string appId = "relaxkonos.explorer";
         const string key = "view";
@@ -303,6 +310,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         await viewModel.LoadRootAsync();
         await viewModel.NavigateToAsync(string.IsNullOrWhiteSpace(initialPath) ? null : initialPath);
         if (settingsError is not null) viewModel.StatusText = settingsError;
+        else if (eligibilityNotice is not null) viewModel.StatusText = eligibilityNotice;
     }
 
     private static string? QueryValue(Uri uri, string key) => uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)

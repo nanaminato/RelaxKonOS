@@ -2,7 +2,10 @@ using System.Reflection;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Apps.Explorer.ViewModels;
+using RelaxKonOS.Client.Services.UserExecution;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.UserExecution;
 
 var passed = 0;
 void Check(bool condition, string label)
@@ -18,6 +21,24 @@ Check(ExplorerBreadcrumb.ParentPath(@"C:\") is null, "Drive root goes to Compute
 Check(ExplorerBreadcrumb.ParentPath(@"\\host\share\folder") == @"\\host\share", "UNC share parent");
 Check(ExplorerBreadcrumb.ParentPath(@"\\host\share") is null, "UNC share is a root");
 Check(ExplorerBreadcrumb.FromPath("/a/back\\slash")[^1].Path == "/a/back\\slash", "POSIX filenames can contain backslashes");
+
+// 用户执行被拒时，用户看到的必须是本地化的原因与出路，而不是服务端的英文 detail。
+// 这里只断言映射决策（键），文案由三语包与 verify-localization.py 保证。
+Check(UserExecutionProblemText.TryResolveKey(
+        UserExecutionProblemTypes.Uri(UserExecutionProblemCode.IdentityNotEligible), out var ineligibleKey)
+    && ineligibleKey == "common.problem.identity_not_eligible",
+    "An ineligible identity resolves to its localized explanation");
+Check(UserExecutionProblemText.TryResolveKey(UserExecutionProblemTypes.IdentityNotExecutable, out var notExecutableKey)
+    && notExecutableKey == "common.problem.identity_not_executable",
+    "A bare problem code resolves like the full problem type URI");
+Check(UserExecutionProblemText.ResolveKeyForReason(ServerExecutionEligibilityReasons.ReservedIdentity)
+        == "common.problem.identity_not_eligible"
+    && UserExecutionProblemText.ResolveKeyForReason(ServerExecutionEligibilityReasons.ServerAccountRequired)
+        == "common.problem.identity_not_executable",
+    "Login-time eligibility reasons map onto the same explanations");
+Check(!UserExecutionProblemText.TryResolveKey("https://relaxkonos.app/problems/device-unavailable", out _)
+    && UserExecutionProblemText.ResolveKeyForReason(ServerExecutionEligibilityReasons.UnsupportedPlatform) is null,
+    "An unknown cause keeps the server detail instead of a wrong explanation");
 
 var client = DispatchProxy.Create<IExplorerClient, ExplorerFake>();
 var fake = (ExplorerFake)(object)client;

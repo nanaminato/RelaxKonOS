@@ -218,8 +218,16 @@ InMemory*Repository (Singleton, ConcurrentDictionary, 重启丢失)
 5. 成功后清除该账号的冷却状态、记录成功事件
 6. GetUserInfo → 查/建 User、Workspace、Device、Session
 7. 设 Workspace Controller（Grace Period 5min，见 Workspace.md §19）并签发 JWT
-8. 返回 LoginResponse(user, workspace, session, device, tokens, role)
+8. 返回 LoginResponse(user, workspace, session, device, tokens, role, server, executionEligibility)
 ```
+
+第 8 步的 `executionEligibility` 声明**本登录身份能否执行普通文件/终端/Git 操作**，与登录是否成功无关：
+root、UID < 1000 的系统账户、nobody、家目录无法验证的账户、非本地 Windows 账户会拿到
+`available=false` 与一个稳定原因码（`ServerExecutionEligibilityReasons`），但**仍然登录成功**——
+宿主管理类功能照常可用，只有普通操作会以 `identity-not-eligible` 被拒。规则唯一实现在
+[UserExecutionEligibilityRules](../../RelaxKonOS.Server/UserExecution/UserExecutionEligibility.cs)，
+客户端据此在打开文件浏览器等入口前就把原因与出路告诉用户，而不是等第一次 503
+（见 [EffectiveOsUserExecution.Goal.md](RelaxKonOS.EffectiveOsUserExecution.Goal.md) 2026-09-26 条）。
 
 ### 4.6 登录防暴力破解与反向代理
 

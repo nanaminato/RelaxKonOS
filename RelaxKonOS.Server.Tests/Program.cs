@@ -49,6 +49,7 @@ try
     if (args.Contains("--user-execution-only"))
     {
         ServerCoreChecks.VerifyUserExecutionContextContract();
+        ServerCoreChecks.VerifyUserExecutionEligibility();
         await ServerCoreChecks.VerifyUserExecutionTransportLifecycleAsync(root);
         ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
         ServerCoreChecks.VerifyLinuxUserStagingOperations(root);
@@ -125,6 +126,7 @@ try
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();
     ServerCoreChecks.VerifyFileElevationSessionScope(root);
     ServerCoreChecks.VerifyUserExecutionContextContract();
+    ServerCoreChecks.VerifyUserExecutionEligibility();
     await ServerCoreChecks.VerifyUserExecutionTransportLifecycleAsync(root);
     ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
     ServerCoreChecks.VerifyLinuxUserStagingOperations(root);
