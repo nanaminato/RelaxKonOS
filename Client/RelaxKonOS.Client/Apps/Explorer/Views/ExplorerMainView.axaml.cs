@@ -152,6 +152,12 @@ public partial class ExplorerMainView : UserControl
             ViewModel?.UpdatePickerSelection(grid.SelectedItems?.Cast<object>() ?? []);
     }
 
+    private void SortHeader_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: ExplorerSortField field } && ViewModel is { IsBusy: false } vm)
+            vm.SortBy(field);
+    }
+
     private void EntriesGrid_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         ClearPendingDrag();
