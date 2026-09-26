@@ -100,8 +100,21 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
-                        <TextBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding UseSshLogin}"
-                                 Text="{Binding ServerUrl}" MinWidth="440" PlaceholderText="host:22" />
+                        <ComboBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding UseSshLogin}"
+                                  ItemsSource="{Binding SavedSshHosts}" SelectedItem="{Binding SelectedSshHost}"
+                                  IsEditable="True" Text="{Binding ServerUrl, Mode=TwoWay}" MinWidth="440" PlaceholderText="host:22">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding SshUserName}" />
+                                        <TextBlock Text="@" />
+                                        <TextBlock Text="{Binding SshHost}" />
+                                        <TextBlock Text=":" />
+                                        <TextBlock Text="{Binding SshPort}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </Grid>
 
                     <Grid>

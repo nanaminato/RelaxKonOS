@@ -35,6 +35,7 @@ public partial class LoginViewModel : ObservableObject
     private string _sshServerUrl = "localhost:22";
     private string _sshIdentifier = string.Empty;
     private bool _loadingSavedProfiles;
+    private bool _loadingSavedSshHosts;
 
     public LoginViewModel(IAuthSession session, LoginLocalizationService localization, ServerEndpointResolver endpointResolver,
         SshDesktopSession sshDesktop, IHostTargetStore sshTargets, ISshHostKeyTrustStore hostKeys,
@@ -57,6 +58,7 @@ public partial class LoginViewModel : ObservableObject
     }
 
     public ObservableCollection<SavedLoginProfile> SavedProfiles { get; }
+    public ObservableCollection<ServerHostTarget> SavedSshHosts { get; } = [];
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     [NotifyPropertyChangedFor(nameof(ConnectionInstructions))]
@@ -73,6 +75,8 @@ public partial class LoginViewModel : ObservableObject
             ServerUrl = _sshServerUrl;
             Identifier = _sshIdentifier;
             ShowOptions = true;
+            if (string.IsNullOrWhiteSpace(Identifier) && SavedSshHosts.FirstOrDefault() is { } lastSshHost)
+                SelectedSshHost = lastSshHost;
         }
         else
         {
@@ -118,6 +122,9 @@ public partial class LoginViewModel : ObservableObject
 
     [ObservableProperty]
     private SavedLoginProfile? _selectedProfile;
+
+    [ObservableProperty]
+    private ServerHostTarget? _selectedSshHost;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OptionsToggleText))]
@@ -197,6 +204,11 @@ public partial class LoginViewModel : ObservableObject
     {
         if (value is not null && !_loadingSavedProfiles)
             ApplySelectedProfile(value);
+    }
+    partial void OnSelectedSshHostChanged(ServerHostTarget? value)
+    {
+        if (value is not null && !_loadingSavedSshHosts)
+            _ = ApplySelectedSshHostAsync(value);
     }
 
     private void ClearError()
@@ -288,9 +300,11 @@ public partial class LoginViewModel : ObservableObject
     public async Task LoadSavedProfilesAsync(CancellationToken ct = default)
     {
         _loadingSavedProfiles = true;
+        _loadingSavedSshHosts = true;
         try
         {
             var profiles = await _session.GetSavedProfilesAsync(ct);
+            var sshHosts = await _sshTargets.LoadAsync(ct);
             SavedProfiles.Clear();
             // Keep an empty, normal-height item in the editable server picker when there is no history.
             // Without it Avalonia renders the drop-down as a nearly invisible separator.
@@ -313,9 +327,15 @@ public partial class LoginViewModel : ObservableObject
                 SelectedProfile = lastProfile;
                 ApplySelectedProfile(lastProfile);
             }
+
+            SavedSshHosts.Clear();
+            foreach (var host in sshHosts.OrderByDescending(host => host.LastUsedAtUtc))
+                SavedSshHosts.Add(host);
+            SelectedSshHost = null;
         }
         finally
         {
+            _loadingSavedSshHosts = false;
             _loadingSavedProfiles = false;
         }
     }
@@ -335,6 +355,19 @@ public partial class LoginViewModel : ObservableObject
 #endif
         RememberServer = true;
         RememberPassword = profile.HasPassword;
+    }
+
+    private async Task ApplySelectedSshHostAsync(ServerHostTarget host)
+    {
+        Password = string.Empty;
+        ServerUrl = $"{host.SshHost}:{host.SshPort}";
+        Identifier = host.SshUserName;
+        RememberServer = true;
+        var credential = await _sshCredentials.FindAsync(
+            ServerCenterSshEndpoint.Create(host.SshHost, host.SshPort, host.SshUserName));
+        if (!UseSshLogin || !ReferenceEquals(SelectedSshHost, host)) return;
+        Password = credential is { Kind: SshCredentialKind.Password } ? credential.Secret : string.Empty;
+        RememberPassword = !string.IsNullOrEmpty(Password);
     }
 
     [RelayCommand]
