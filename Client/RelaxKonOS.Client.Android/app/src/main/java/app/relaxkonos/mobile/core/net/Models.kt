@@ -22,14 +22,14 @@ data class ServerDescriptor(val platform: String, val capabilities: Set<String>)
  * [reason] is a stable kebab-case code ([ExecutionEligibilityReasons]), never a sentence: the text
  * belongs to `strings.xml`, and this class never renders it.
  */
-data class ExecutionEligibility(val available: Boolean, val reason: String?) {
+data class ExecutionEligibility(val available: Boolean, val reason: String?, val privilegedFilesAvailable: Boolean) {
     companion object {
         /**
          * What a session reads as when the server did not state it — a synthesised session in a test or
          * a preview. Every wire parse sets the field explicitly, so this is never a substitute for the
          * server's answer on a real connection.
          */
-        val Available = ExecutionEligibility(available = true, reason = null)
+        val Available = ExecutionEligibility(available = true, reason = null, privilegedFilesAvailable = false)
     }
 }
 

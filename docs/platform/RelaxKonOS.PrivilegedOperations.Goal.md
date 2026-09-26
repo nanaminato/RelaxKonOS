@@ -1,6 +1,6 @@
 # RelaxKonOS 跨平台特权操作与 Helper（Goal 执行版）
 
-> Linux 管理员认证与自动文件路由的后续改造见 [宿主管理员身份与执行路由 Goal](./RelaxKonOS.HostPrivilegeRouting.Goal.md)。本文“Linux 只验证当前登录账户密码”的表述仍描述当前实现；新 Goal 实施时须同步更新。
+> Linux System Mode 的管理员认证与文件路由以 [宿主管理员身份与执行路由 Goal](./RelaxKonOS.HostPrivilegeRouting.Goal.md) 为准。本文下方“Linux 只验证当前登录账户密码”的表述是原阶段实施记录，已不再描述当前文件提权接口；其他 Host capability 不因文件路由改造而自动获得管理员权限。
 
 > 2026-09-07 设置能力补充：[`SettingsSystem.Goal`](../desktop/RelaxKonOS.SettingsSystem.Goal.md) 允许新增结构化宿主环境变量、时区、主机名与 DNS 操作。环境配置数据与特权进程启动环境必须隔离；禁止通用执行的原则保持不变。本文部分“当前状态”为早期基线，实施前应核对已存在的 Windows 管道与封闭操作实现。
 

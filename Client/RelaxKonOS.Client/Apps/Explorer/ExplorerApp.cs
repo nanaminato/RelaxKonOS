@@ -168,7 +168,7 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
         var settings = context.Services.GetService(typeof(IAppSettingsClient)) as IAppSettingsClient;
         // 登录响应已经声明本身份能否执行普通操作。不合格时不再让用户从第一次 503 里推断原因：
         // 打开的这一刻就把本地化后的原因与出路显示出来（服务端仍会拒绝，这里只是提前说清楚）。
-        var eligibilityNotice = session.ExecutionEligibility is { Available: false } eligibility
+        var eligibilityNotice = session.ExecutionEligibility is { Available: false, PrivilegedFilesAvailable: false } eligibility
             ? UserExecutionProblemText.ForReason(eligibility.Reason)
             : null;
         _initializations[window] = OpenInitialLocationAsync(viewModel, initialPath, settings, eligibilityNotice);
@@ -203,36 +203,23 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
     private static Task<AdministratorCredentials?> RequestAdministratorCredentialsAsync(AppContext context, string title, string prompt)
     {
         var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
-        // 服务端把"账户框留空"解释为"本次会话登录所用的宿主账户"（FileEndpoints.GrantElevation
-        // 取 JWT name 声明交给 HostAdministratorAuthenticator）。因此把同一个规范宿主账户预填进去
-        // 只是把这个隐式默认值显性化、可编辑，不改变被校验的账户。
-        // 不能默认填 ".\Administrator"：常见情形下宿主管理员就是登录账户本人，而且一旦框里非空，
-        // 服务端会**直接采用**它而不再回退，等于替用户指定错了账户。
-        var defaultAccount = session?.CurrentUser?.Username;
-        // 账户框只对 Windows 宿主有意义：HostAdministratorAuthenticator 在 Windows 用 LogonUser
-        // 校验指定账户是否属于 Administrators，而在 Linux 上它只校验"当前登录宿主账户"的 PAM 密码，
-        // 传进来的账户名被完全忽略。所以 Linux 宿主不显示这个必然空转的输入框。
-        // 判据取**服务端**平台而不是客户端进程所在的 OS：Windows 客户端连 Linux 时同样不该出现。
-        // 平台未知时保守显示——在 Linux 上多一个无副作用的输入框，好过让 Windows 无法指定账户。
-        var showAccount = session?.CurrentServer?.Platform is not HostPlatformKind.Linux;
+        var defaultAccount = session?.CurrentServer?.Platform == HostPlatformKind.Linux
+            ? "root" : session?.CurrentUser?.Username;
         return context.WindowManager.ShowSystemDialogAsync<AdministratorCredentials?>(title, dialog =>
         {
-            var account = showAccount
-                ? new TextBox
-                {
-                    Text = defaultAccount ?? string.Empty,
-                    PlaceholderText = LocalizedText.Get("explorer.operations.elevation_account"),
-                }
-                : null;
+            var account = new TextBox
+            {
+                Text = defaultAccount ?? string.Empty,
+                PlaceholderText = LocalizedText.Get("explorer.operations.elevation_account"),
+            };
             var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("explorer.operations.elevation_password") };
             var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
             cancel.Click += (_, _) => dialog.Cancel();
             var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
             confirm.Click += (_, _) =>
             {
-                // 账户框被清空时回退到登录账户：服务端只在收到 null 时才回退，空串会被判为
-                // "elevation-administrator-username-required"。
-                var typed = account?.Text?.Trim();
+                // Linux 默认建议 root；密码被锁定时可改用其他已获认可的管理员账户。
+                var typed = account.Text?.Trim();
                 dialog.Close(new AdministratorCredentials(
                     string.IsNullOrEmpty(typed) ? defaultAccount ?? string.Empty : typed,
                     password.Text ?? string.Empty));
@@ -242,11 +229,11 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 Margin = new Thickness(20), Spacing = 12,
                 Children = { new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap } },
             };
-            if (account is not null) content.Children.Add(account);
+            content.Children.Add(account);
             content.Children.Add(password);
             content.Children.Add(new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } });
             return content;
-        }, new Size(420, showAccount ? 230 : 200));
+        }, new Size(420, 230));
     }
 
     private static void ConfigureOperationsWindow(AppContext context, ExplorerOperationCenter center)

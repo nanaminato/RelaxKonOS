@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.UserExecution;
 using RelaxKonOS.Server.Privileged;
@@ -11,7 +12,7 @@ namespace RelaxKonOS.Server.Files;
 
 /// <summary>In-memory, identity-scoped file jobs. Never replays jobs after a server restart.</summary>
 public sealed class FileOperationService(IPrivilegedFileService privileged,
-    IFileElevationSessionStore elevations, IServerModeResolver mode,
+    IServerModeResolver mode,
     IServiceScopeFactory executionScopes, IUserExecutionTransport executionTransport) : IDisposable
 {
     private readonly object _gate = new();
@@ -28,12 +29,16 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         // A job outlives its HTTP request. Resolve and freeze the authenticated OS identity now;
         // background work must never fall back to the Server service account later.
         UserExecutionContext? executionContext = null;
+        var rootExecution = false;
         if (mode.Mode == ServerMode.System)
         {
             // A file job outlives the request. Resolve the identity in a short-lived scope and
             // retain only the immutable execution context, never the scoped resolver itself.
             using var scope = executionScopes.CreateScope();
-            executionContext = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
+            var authorization = scope.ServiceProvider.GetRequiredService<IHostFileAuthorizationService>();
+            rootExecution = authorization.IsRoot(principal);
+            if (!rootExecution)
+                executionContext = scope.ServiceProvider.GetRequiredService<IUserExecutionContextResolver>().Resolve(principal);
         }
         if (request.RequestId == Guid.Empty || !Enum.IsDefined(request.Kind) || request.Items is null
             || request.Items.Count is < 1 or > 1000 || request.Items.Any(item => item is null)) throw new ArgumentException("Invalid operation request (1–1000 items required).");
@@ -76,7 +81,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             }
             if (_jobs.Count >= 256 || _jobs.Values.Count(j => !j.Snapshot().IsTerminal) >= 32)
                 throw new InvalidOperationException("Operation capacity reached. Clear or wait for existing operations.");
-            var job = new Job(owner, new ClaimsPrincipal(principal), request, executionContext);
+            var job = new Job(owner, new ClaimsPrincipal(principal), request, executionContext, rootExecution);
             _jobs.Add(job.Id, job);
             _ = Task.Run(() => RunAsync(job));
             return job.Snapshot();
@@ -177,7 +182,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
 
     private async Task<bool> ProcessAsync(Job job, string source, string? destination)
     {
-        if (job.ExecutionContext is not null)
+        if (job.ExecutionContext is not null || job.RootExecution)
             return await ProcessUserExecutionAsync(job, source, destination);
 
         var ct = job.Cancellation.Token;
@@ -247,13 +252,13 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
                 // Existing privileged helper calls are opaque: no invented byte progress or forced interruption.
-                if (ex is UnauthorizedAccessException && identifiedFile && IsElevated(job, source, destination))
+                if (ex is UnauthorizedAccessException && identifiedFile && TryAuthorize(job, source, destination) is { } authorized)
                 {
                     try
                     {
                         // Never let the legacy helper recursively replace a directory or overwrite an unconfirmed file.
                         if (destination is not null && Directory.Exists(destination)) throw new IOException("Destination is a directory.");
-                        await ExecutePrivilegedAsync(job, source, destination, replace);
+                        await ExecutePrivilegedAsync(job, authorized, source, destination, replace);
                         job.ProcessedOne(source);
                         return true;
                     }
@@ -293,13 +298,11 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             FileSystemEntryDto? sourceInfo = null;
             FileSystemEntryDto? destinationInfo = null;
             var directory = false;
-            var identifiedFile = false;
             try
             {
                 sourceInfo = await GetUserInfoAsync(job, source, ct) ?? throw new FileNotFoundException("Source path was not found.", source);
                 directory = sourceInfo.Type == FileSystemEntryType.Directory;
                 destinationInfo = destination is null ? null : await GetUserInfoAsync(job, destination, ct);
-                identifiedFile = !directory;
                 if (destinationInfo is not null && !(directory && destinationInfo.Type == FileSystemEntryType.Directory) && !replace)
                 {
                     var choices = !directory && destinationInfo.Type != FileSystemEntryType.Directory
@@ -343,18 +346,6 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or TimeoutException)
             {
-                if (ex is UnauthorizedAccessException && identifiedFile && IsElevated(job, source, destination))
-                {
-                    try
-                    {
-                        if (destination is not null && destinationInfo?.Type == FileSystemEntryType.Directory)
-                            throw new IOException("Destination is a directory.");
-                        await ExecutePrivilegedAsync(job, source, destination, replace);
-                        job.ProcessedOne(source);
-                        return true;
-                    }
-                    catch (Exception elevatedError) { ex = elevatedError; }
-                }
                 var code = ex switch
                 {
                     UnauthorizedAccessException => "access-denied",
@@ -394,9 +385,17 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
     private async Task<T> ExecuteUserAsync<T>(Job job, UserExecutionOperationKind operation, string? path = null,
         string? destinationPath = null, bool overwrite = false, CancellationToken cancellationToken = default)
     {
+        if (job.RootExecution)
+            return await ExecutePrivilegedOperationAsync<T>(
+                TryAuthorize(job, path!, destinationPath, Capability(operation)) == PrivilegedFileAuthorizationSource.HostRoot
+                    ? PrivilegedFileAuthorizationSource.HostRoot : throw new UnauthorizedAccessException("Root session is no longer authorized."),
+                operation, path, destinationPath, overwrite, cancellationToken);
         var context = job.ExecutionContext ?? throw new InvalidOperationException("A user-execution context is required.");
         var response = await executionTransport.ExecuteAsync(new UserExecutionRequest(context.Identity, operation,
             Path: path, DestinationPath: destinationPath, Overwrite: overwrite, OperationId: Guid.NewGuid()), cancellationToken);
+        if (!response.Success && response.ProblemCode == UserExecutionProblemCode.AccessDenied
+            && TryAuthorize(job, path!, destinationPath, Capability(operation)) is { } authorized)
+            return await ExecutePrivilegedOperationAsync<T>(authorized, operation, path, destinationPath, overwrite, cancellationToken);
         if (!response.Success)
             throw response.ProblemCode switch
             {
@@ -508,26 +507,54 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             catch (Exception ex) { job.Detail(temporary, "cleanup-failed", ex.Message); }
         }
     }
-    private bool IsElevated(Job job, string source, string? destination) => elevations.IsElevated(job.Principal,
-        Capability(job.Request.Kind), destination is null ? [source] : [source, destination]);
+    private PrivilegedFileAuthorizationSource? TryAuthorize(Job job, string source, string? destination,
+        FileElevationCapability? capability = null)
+    {
+        using var scope = executionScopes.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<IHostFileAuthorizationService>().Authorize(job.Principal,
+            capability ?? Capability(job.Request.Kind), destination is null ? [source] : [source, destination]);
+    }
+    private static FileElevationCapability Capability(UserExecutionOperationKind kind) => kind switch
+    {
+        UserExecutionOperationKind.FileCopy => FileElevationCapability.Copy,
+        UserExecutionOperationKind.FileMove => FileElevationCapability.Move,
+        UserExecutionOperationKind.FileDelete => FileElevationCapability.Delete,
+        _ => FileElevationCapability.Read,
+    };
     private static FileElevationCapability Capability(FileOperationKind kind) => kind switch
     {
         FileOperationKind.Copy => FileElevationCapability.Copy,
         FileOperationKind.Move => FileElevationCapability.Move,
         _ => FileElevationCapability.Delete,
     };
-    private async Task ExecutePrivilegedAsync(Job job, string source, string? destination, bool replace)
+    private async Task ExecutePrivilegedAsync(Job job, PrivilegedFileAuthorizationSource authorization, string source, string? destination, bool replace)
     {
         // Cancellation is honored after the opaque helper finishes; passing a cancelled token would
         // only abandon the IPC response and could falsely report that its mutation was cancelled.
         lock (job.Gate) { job.Bytes = 0; job.TotalBytes = 0; }
         switch (job.Request.Kind)
         {
-            case FileOperationKind.Copy: await privileged.CopyAsync(source, destination!, replace); break;
-            case FileOperationKind.Move: await privileged.MoveAsync(source, destination!, replace); break;
-            default: await privileged.DeleteAsync(source); break;
+            case FileOperationKind.Copy: await privileged.CopyAsync(authorization, source, destination!, replace); break;
+            case FileOperationKind.Move: await privileged.MoveAsync(authorization, source, destination!, replace); break;
+            default: await privileged.DeleteAsync(authorization, source); break;
         }
     }
+    private async Task<T> ExecutePrivilegedOperationAsync<T>(PrivilegedFileAuthorizationSource source,
+        UserExecutionOperationKind operation, string? path, string? destination, bool overwrite, CancellationToken ct)
+    {
+        object? result = operation switch
+        {
+            UserExecutionOperationKind.FileGetInfo => await privileged.GetInfoAsync(source, path!, ct),
+            UserExecutionOperationKind.FileListDirectory => await privileged.ListDirectoryAsync(source, path!, ct),
+            UserExecutionOperationKind.FileCopy => await privileged.CopyAsync(source, path!, destination!, overwrite, ct),
+            UserExecutionOperationKind.FileMove => await privileged.MoveAsync(source, path!, destination!, overwrite, ct),
+            UserExecutionOperationKind.FileDelete => await DeletePrivilegedAsync(source, path!, ct),
+            _ => throw new InvalidOperationException("Unsupported file job operation."),
+        };
+        return (T)result!;
+    }
+    private async Task<bool> DeletePrivilegedAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken ct)
+    { await privileged.DeleteAsync(source, path, ct); return true; }
     public void Dispose()
     {
         lock (_gate)
@@ -536,7 +563,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
             foreach (var job in _jobs.Values) job.Cancellation.Cancel();
         }
     }
-    private sealed class Job(string owner, ClaimsPrincipal principal, StartFileOperationRequest request, UserExecutionContext? executionContext)
+    private sealed class Job(string owner, ClaimsPrincipal principal, StartFileOperationRequest request, UserExecutionContext? executionContext, bool rootExecution)
     {
         public readonly object Gate = new();
         public Guid Id { get; } = Guid.NewGuid();
@@ -545,6 +572,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
         public ClaimsPrincipal Principal { get; set; } = principal;
         public StartFileOperationRequest Request { get; } = request;
         public UserExecutionContext? ExecutionContext { get; } = executionContext;
+        public bool RootExecution { get; } = rootExecution;
         public CancellationTokenSource Cancellation { get; } = new();
         public FileOperationState State = FileOperationState.Queued;
         public string? CurrentPath;

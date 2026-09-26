@@ -16,6 +16,12 @@ SERVER_PORT_SET=false
 FILE_ACCESS=restricted
 FILE_ACCESS_SET=false
 FILE_ROOTS_FILE=
+ADMINISTRATOR_FILE_ACCESS=restricted
+ADMINISTRATOR_FILE_ACCESS_SET=false
+ADMINISTRATOR_FILE_ROOTS_FILE=
+ROOT_FILE_ACCESS=restricted
+ROOT_FILE_ACCESS_SET=false
+ROOT_FILE_ROOTS_FILE=
 CERTIFICATE_MODE=none
 CERTIFICATE_MODE_SET=false
 CERTIFICATE_PATH=
@@ -54,6 +60,10 @@ while [[ $# -gt 0 ]]; do
     --self-signed-identities) SELF_SIGNED_IDENTITIES="${2:-}"; shift 2 ;;
     --file-access) FILE_ACCESS="${2:-}"; FILE_ACCESS_SET=true; shift 2 ;;
     --file-roots) FILE_ROOTS_FILE="${2:-}"; shift 2 ;;
+    --administrator-file-access) ADMINISTRATOR_FILE_ACCESS="${2:-}"; ADMINISTRATOR_FILE_ACCESS_SET=true; shift 2 ;;
+    --administrator-file-roots) ADMINISTRATOR_FILE_ROOTS_FILE="${2:-}"; shift 2 ;;
+    --root-file-access) ROOT_FILE_ACCESS="${2:-}"; ROOT_FILE_ACCESS_SET=true; shift 2 ;;
+    --root-file-roots) ROOT_FILE_ROOTS_FILE="${2:-}"; shift 2 ;;
     --expected-installation-id) EXPECTED_INSTALLATION_ID="${2:-}"; shift 2 ;;
     --docker-access) DOCKER_ACCESS=true; DOCKER_ACCESS_SET=true; shift ;;
     --allow-unsupported-system) ALLOW_UNSUPPORTED_SYSTEM=true; shift ;;
@@ -187,9 +197,9 @@ write_install_state() { # version previousVersion
   install -d -o root -g root -m 0755 "$DATA_ROOT"
   temporary="$(state_file).new"
   umask 077
-  printf '{"schemaVersion":1,"installed":true,"mode":"linuxSystem","installationId":"%s","version":"%s","previousVersion":%s,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s","certificateMode":"%s","fileAccess":"%s","dockerAccess":%s}\n' \
+  printf '{"schemaVersion":2,"installed":true,"mode":"linuxSystem","installationId":"%s","version":"%s","previousVersion":%s,"installedAtUtc":"%s","installRoot":"%s","dataRoot":"%s","networkProfile":"%s","listenUrl":"%s","certificateMode":"%s","fileAccess":"%s","administratorFileAccess":"%s","rootFileAccess":"%s","dockerAccess":%s}\n' \
     "$INSTALLATION_ID" "$version" "$(json_string_or_null "$previous")" "$(date -u +%FT%TZ)" "$INSTALL_ROOT" "$DATA_ROOT" \
-    "$NETWORK_PROFILE" "$LISTEN_URL" "$CERTIFICATE_MODE" "$FILE_ACCESS" "$DOCKER_ACCESS" > "$temporary"
+    "$NETWORK_PROFILE" "$LISTEN_URL" "$CERTIFICATE_MODE" "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS" "$DOCKER_ACCESS" > "$temporary"
   chmod 0600 "$temporary"; mv -f -- "$temporary" "$(state_file)"
 }
 
@@ -250,6 +260,10 @@ fi
 NETWORK_PROFILE="${NETWORK_PROFILE:-local}"
 [[ "$FILE_ACCESS_SET" == true ]] || FILE_ACCESS="$(state_field fileAccess)"
 FILE_ACCESS="${FILE_ACCESS:-restricted}"
+[[ "$ADMINISTRATOR_FILE_ACCESS_SET" == true ]] || ADMINISTRATOR_FILE_ACCESS="$(state_field administratorFileAccess)"
+ADMINISTRATOR_FILE_ACCESS="${ADMINISTRATOR_FILE_ACCESS:-restricted}"
+[[ "$ROOT_FILE_ACCESS_SET" == true ]] || ROOT_FILE_ACCESS="$(state_field rootFileAccess)"
+ROOT_FILE_ACCESS="${ROOT_FILE_ACCESS:-restricted}"
 [[ "$CERTIFICATE_MODE_SET" == true ]] || CERTIFICATE_MODE="$(state_field certificateMode)"
 CERTIFICATE_MODE="${CERTIFICATE_MODE:-none}"
 if [[ "$SERVER_PORT_SET" != true ]]; then
@@ -261,13 +275,23 @@ if [[ "$DOCKER_ACCESS_SET" != true ]]; then
 fi
 
 case "$NETWORK_PROFILE" in local|lan|reverse-proxy) ;; *) usage ;; esac
-case "$FILE_ACCESS" in restricted|full|whitelist) ;; *) usage ;; esac
+for access in "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS"; do
+  case "$access" in restricted|full|whitelist) ;; *) usage ;; esac
+done
 case "$CERTIFICATE_MODE" in none|custom|self-signed) ;; *) usage ;; esac
 if [[ "$FILE_ACCESS" == whitelist && -z "$FILE_ROOTS_FILE" && ( "$ACTION" == repair || "$ACTION" == rollback ) ]]; then
   # The effective whitelist is already installed; reuse it instead of asking for the source file.
   FILE_ROOTS_FILE=/etc/relaxkonos/privileged-helper-roots
 fi
 [[ "$FILE_ACCESS" != whitelist || -f "$FILE_ROOTS_FILE" ]] || { echo '--file-roots is required for whitelist access.' >&2; exit 64; }
+if [[ "$ADMINISTRATOR_FILE_ACCESS" == whitelist && -z "$ADMINISTRATOR_FILE_ROOTS_FILE" ]]; then
+  ADMINISTRATOR_FILE_ROOTS_FILE=/etc/relaxkonos/privileged-helper-roots-administrator
+fi
+if [[ "$ROOT_FILE_ACCESS" == whitelist && -z "$ROOT_FILE_ROOTS_FILE" ]]; then
+  ROOT_FILE_ROOTS_FILE=/etc/relaxkonos/privileged-helper-roots-root
+fi
+[[ "$ADMINISTRATOR_FILE_ACCESS" != whitelist || -f "$ADMINISTRATOR_FILE_ROOTS_FILE" ]] || { echo '--administrator-file-roots is required for whitelist access.' >&2; exit 64; }
+[[ "$ROOT_FILE_ACCESS" != whitelist || -f "$ROOT_FILE_ROOTS_FILE" ]] || { echo '--root-file-roots is required for whitelist access.' >&2; exit 64; }
 if [[ "$CERTIFICATE_MODE" == custom ]]; then
   [[ -f "$CERTIFICATE_PATH" ]] || { echo '--certificate-path must be an existing PFX file for custom certificates.' >&2; exit 64; }
   if [[ -n "$CERTIFICATE_PASSWORD_FILE" ]]; then
@@ -409,9 +433,11 @@ run_services_installer() { # version listenUrl
   for file in "$server" "$guardian" "$helper"; do
     [[ -f "$file" ]] || { echo "The payload for version $version is incomplete: $file" >&2; exit 65; }
   done
-  local arguments=("$INSTALL_ROOT" "$server" "$guardian" "$helper" "$SERVER_PORT" "$listen" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --certificate-mode "$SERVICES_CERTIFICATE_MODE")
+  local arguments=("$INSTALL_ROOT" "$server" "$guardian" "$helper" "$SERVER_PORT" "$listen" relaxkonos-server --data-root "$DATA_ROOT" --file-access "$FILE_ACCESS" --administrator-file-access "$ADMINISTRATOR_FILE_ACCESS" --root-file-access "$ROOT_FILE_ACCESS" --certificate-mode "$SERVICES_CERTIFICATE_MODE")
   [[ "$DOCKER_ACCESS" == true ]] && arguments+=(--docker-access)
   [[ -n "$FILE_ROOTS_FILE" ]] && arguments+=(--file-roots "$FILE_ROOTS_FILE")
+  [[ -n "$ADMINISTRATOR_FILE_ROOTS_FILE" ]] && arguments+=(--administrator-file-roots "$ADMINISTRATOR_FILE_ROOTS_FILE")
+  [[ -n "$ROOT_FILE_ROOTS_FILE" ]] && arguments+=(--root-file-roots "$ROOT_FILE_ROOTS_FILE")
   case "$SERVICES_CERTIFICATE_MODE" in
     custom) arguments+=(--certificate-path "$CERTIFICATE_PATH" --certificate-password-file "$CERTIFICATE_PASSWORD_FILE") ;;
     self-signed) arguments+=(--self-signed-identities "$SELF_SIGNED_IDENTITIES") ;;

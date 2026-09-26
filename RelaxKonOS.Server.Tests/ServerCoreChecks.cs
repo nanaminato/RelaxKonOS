@@ -280,7 +280,8 @@ internal static async Task VerifyUserExecutionFailsClosedAsync()
     var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString())], "test"));
     var files = new UserExecutionFileService(new LocalFileService(mode), resolver,
         new DisabledUserExecutionTransport(), mode,
-        new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } });
+        new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = principal } },
+        new TestHostFileAuthorizationService(), null!);
 
     var home = account.HomeDirectory!;
     (string Name, Func<object?> Invoke)[] operations =

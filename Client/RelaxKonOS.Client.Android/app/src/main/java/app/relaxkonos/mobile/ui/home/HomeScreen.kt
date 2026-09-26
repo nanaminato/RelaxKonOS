@@ -158,7 +158,7 @@ fun HomeScreen(
         // The login response already answered whether this identity may open anything at all. Saying
         // so here — on the landing screen, before the user reaches for a folder — is the difference
         // between a session that is partially usable and one that looks broken.
-        if (!session.executionEligibility.available) {
+        if (!session.executionEligibility.available && !session.executionEligibility.privilegedFilesAvailable) {
             ExecutionEligibilityNotice(reason = session.executionEligibility.reason)
         }
 

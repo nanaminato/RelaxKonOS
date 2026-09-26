@@ -536,7 +536,9 @@ builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionTran
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IPrivilegedFileService, RelaxKonOS.Server.Privileged.PrivilegedFileService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostElevationSessionStore, RelaxKonOS.Server.Privileged.HostElevationSessionStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IFileElevationSessionStore, RelaxKonOS.Server.Privileged.FileElevationSessionStore>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.IHostAdministratorAuthenticator, RelaxKonOS.Server.Privileged.HostAdministratorAuthenticator>();
+builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostAdministratorAuthenticator, RelaxKonOS.Server.Privileged.HostAdministratorAuthenticator>();
+builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeService, RelaxKonOS.Server.Privileged.HostAccountPrivilegeService>();
+builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostFileAuthorizationService, RelaxKonOS.Server.Privileged.HostFileAuthorizationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IPrivilegedNativeServiceOperations, RelaxKonOS.Server.ProcessGuardian.PrivilegedNativeServiceOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IPrivilegedNginxOperations, RelaxKonOS.Server.WebServer.PrivilegedNginxOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IPrivilegedSmbOperations, RelaxKonOS.Server.FileServices.PrivilegedSmbOperations>();

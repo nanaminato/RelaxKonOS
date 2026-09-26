@@ -1,6 +1,6 @@
 # RelaxKonOS 宿主管理员身份与执行路由改造（Goal 执行版）
 
-> 状态：方案已确认，待实施；本文不表示自动提权或 root 文件访问已经可用。
+> 状态：实施中。Linux 路由、三类文件根策略及客户端契约已接入代码；Linux 多账户实机、安全重试与发布验收尚未完成，不能据此宣称目标全部可用。
 >
 > 建立日期：2026-09-26。范围：Linux System Mode 的登录身份、文件执行路由与特权文件策略；Windows 仅统一产品语义，具体启用仍受既有 Windows Helper 验收门约束。
 >
@@ -120,3 +120,10 @@ Explorer 对 Standard 显示可修改管理员账户和密码；对 Administrato
 - 标准用户无法因为任何管理员会话扩大文件根而获得同范围权限；每个 Helper 文件请求可追溯 actor、授权来源、capability、目标引用、operation ID、结果和 problem code，日志不含密码、JWT、文件内容或完整敏感路径。
 - 无剩余“Linux 管理员账户字段被忽略”“root 登录成功但文件功能不可用”“权限不足直接以 Server 身份重试”路径。
 - 现有文档、桌面与 Android 文案、协议、测试和安装器对实际能力的描述一致；所有发布级平台验收完成后，才将本 Goal 状态改为已完成。
+
+## 7. 2026-09-26 实施记录与待验收项
+
+- 已接入 canonical UID 复核、PAM 管理员账户认证、root 与非 root 管理员分类。非 root 资格由 root Helper 对指定 NSS 用户及 UID 查询当前 sudoers 是否允许运行安装好的固定 Helper；不凭组名推断。账户或策略查询失败时拒绝授权。
+- Server 文件 API、后台任务和续传路径已接入标准用户短期 grant、管理员结构化 `AccessDenied` 回退及 root 直达。受保护续传会话记录授权来源，分片与提交重新校验；清理仅对索引拥有的暂存名执行。Helper 文件操作按来源读取独立 root-owned 范围。桌面与 Android 客户端已接入 Linux 管理员账户输入和 root 文件可用标记。
+- `/etc/relaxkonos/privileged-helper-roots`、`-administrator`、`-root` 分别约束三类来源。默认均为 restricted，root 额外包含 `/root`；三个 `full` 配置互不继承。显式启用 `--root-file-access full` 表示信任低权限 Server 进程的会话判断：现有 Helper 接收 Server 提供的授权来源，无法抵抗已被攻陷的 Server 伪造来源。该选项只适用于接受此信任边界的部署。
+- 尚须在 Linux 隔离环境验证 PAM 锁定 root、sudoers 直接用户项和撤权、UID 漂移、多账户 owner、Helper 停止及路径竞争。当前文件 Helper 仍使用路径校验后再执行 I/O，缺少 descriptor-relative 锚定；目录复制/删除的部分副作用也尚未具备完整操作日记。上述安全重试与 TOCTOU 验收前，不应将本 Goal 标为完成或在生产启用广泛 `/` 文件范围。

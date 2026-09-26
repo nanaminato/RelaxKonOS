@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.Files;
 
@@ -55,12 +56,13 @@ public sealed record UploadSessionRecord(
     long Length,
     long Offset,
     int ChunkSize,
-    bool Elevated,
+    PrivilegedFileAuthorizationSource? AuthorizationSource,
     string? IdempotencyKey,
     string? IdempotencyDigest,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastActivityAt)
 {
+    public bool Elevated => AuthorizationSource is not null;
     public DateTimeOffset ExpiresAt(UploadSessionOptions options)
     {
         var idle = LastActivityAt + options.IdleLifetime;

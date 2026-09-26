@@ -124,7 +124,7 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 文件不是 RelaxKonOS 受管文件，脚本会拒绝覆盖。它不会创建或启动 systemd 服务，也不会启动 Server、Guardian
 或 Client。每次改动 Helper 后，重新执行构建和该脚本以部署新副本。
 
-该脚本默认安装 `restricted` 文件策略（`/etc/relaxkonos` 和 `/var/lib/relaxkonos`）。如需调试由
+该脚本默认安装三份独立的 `restricted` 文件策略（手动 grant、管理员、root；root 额外允许 `/root`）。如需调试由
 Helper 访问的受保护文件，请使用单独的无敏感数据夹具，并通过白名单显式授权：
 
 ```bash
@@ -133,8 +133,9 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
   --file-roots deployment/linux/privileged-helper-roots.example
 ```
 
-可复制示例文件后只保留所需的绝对目录。`--file-access full` 会授权 `/` 下所有路径，仅适合隔离、
-所有使用者均可信的测试机；不得用它读取或测试导出 `/etc/ssh` 的主机私钥。完整说明见
+可复制示例文件后只保留所需的绝对目录。管理员和 root 范围分别使用
+`--administrator-file-access`/`--administrator-file-roots` 与 `--root-file-access`/`--root-file-roots`。
+任何来源的 `full` 都会授权 `/` 下所有路径；不得用它读取或测试导出 `/etc/ssh` 的主机私钥。完整说明见
 [`RelaxKonOS.PrivilegedOperations.Operations.md`](../platform/RelaxKonOS.PrivilegedOperations.Operations.md#文件访问配置)。
 
 然后选择 Server 的 `http-linux-privileged` 启动配置。该配置的

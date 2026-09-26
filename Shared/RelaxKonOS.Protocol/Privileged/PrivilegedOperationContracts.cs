@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.Privileged;
 /// <summary>Versioning and size limits for the local Helper protocol.</summary>
 public static class PrivilegedOperationProtocol
 {
-    public const string Version = "1.0";
+    public const string Version = "1.1";
     public const int MaximumRequestBytes = 16 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
 }
@@ -35,6 +35,13 @@ public enum PrivilegedOperationKind
     /// is named by a single file-name component, never by a full path.</summary>
     FileUploadCommit,
     FileCreateDirectory,
+    FileGetSpecialLocations,
+    FileGetInfo,
+    FileGetProperties,
+    FileSetUnixPermissions,
+    FileGetStagingLength,
+    FileDeleteStaging,
+    FileCreateStaging,
     NativeServiceAction,
     NginxSystemServiceAction,
     NginxPackageInstall,
@@ -74,6 +81,9 @@ public enum PrivilegedOperationKind
     SmbSetUserEnabled,
     SmbSetUserPassword,
     AuthenticateSystemUser,
+    /// <summary>Checks the current host sudo policy for a canonical Linux account. This is a
+    /// classification query, never an authorization grant.</summary>
+    CheckHostAdministrator,
     /// <summary>Writes the fixed Linux docker.service proxy drop-in and restarts the daemon.</summary>
     DockerEngineConfigureProxy,
     /// <summary>Starts, stops, or restarts the fixed Linux <c>docker.service</c> unit.</summary>
@@ -97,6 +107,9 @@ public enum SystemAuthenticationResult
     PamError,
     InternalError,
 }
+
+[JsonConverter(typeof(JsonStringEnumConverter<PrivilegedFileAuthorizationSource>))]
+public enum PrivilegedFileAuthorizationSource { ManualGrant, HostAdministrator, HostRoot }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PrivilegedServiceAction>))]
 public enum PrivilegedServiceAction
@@ -202,6 +215,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("fileName")] string? FileName = null,
     [property: JsonPropertyName("overwrite")] bool Overwrite = false,
     [property: JsonPropertyName("contentBase64")] string? ContentBase64 = null,
+    [property: JsonPropertyName("fileAuthorizationSource")] PrivilegedFileAuthorizationSource? FileAuthorizationSource = null,
+    [property: JsonPropertyName("unixMode")] int? UnixMode = null,
     /// <summary>Byte offset inside the staging file an upload chunk is appended at. Only read by
     /// <see cref="PrivilegedOperationKind.FileUploadChunk"/>; unrelated operations must leave it null.</summary>
     [property: JsonPropertyName("offset")] long? Offset = null,
@@ -236,6 +251,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("smbExpectedSnapshot")] string? SmbExpectedSnapshot = null,
     [property: JsonPropertyName("systemAuthenticationUsername")] string? SystemAuthenticationUsername = null,
     [property: JsonPropertyName("systemAuthenticationPassword")] string? SystemAuthenticationPassword = null,
+    [property: JsonPropertyName("hostAdministratorUsername")] string? HostAdministratorUsername = null,
+    [property: JsonPropertyName("hostAdministratorUid")] string? HostAdministratorUid = null,
     [property: JsonPropertyName("environmentTarget")] SettingsTarget? EnvironmentTarget = null,
     [property: JsonPropertyName("environmentChange")] EnvironmentChangeSet? EnvironmentChange = null,
     [property: JsonPropertyName("timeZoneId")] string? TimeZoneId = null,
@@ -259,5 +276,6 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("hostTime")] HostTimeState? HostTime = null,
     [property: JsonPropertyName("hostIdentity")] HostIdentityState? HostIdentity = null,
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
+    [property: JsonPropertyName("hostAdministratorEligible")] bool? HostAdministratorEligible = null,
     [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);

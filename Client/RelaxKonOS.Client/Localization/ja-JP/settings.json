@@ -271,7 +271,7 @@
         "settings.host_time.password_required": "管理者パスワードを入力してください。",
         "settings.host_time.password_invalid": "パスワードが正しくありません。もう一度入力してください。",
         "settings.host_time.password_check_failed": "パスワードを確認できませんでした。もう一度お試しください。",
-        "settings.host_time.administrator_required": "現在のシステムアカウントは管理者ではありません。管理者アカウントでサインインしてからもう一度お試しください。",
+        "settings.host_time.administrator_required": "入力したアカウントには現在ホスト管理者権限がありません。許可された管理者アカウントを入力してください。",
         "settings.operation.prepared": "準備済み。認証と適用が必要です。",
         "settings.operation.applying": "適用中",
         "settings.operation.applied": "適用し、リモート OS から読み戻して確認しました。",

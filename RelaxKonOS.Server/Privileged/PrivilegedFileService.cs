@@ -7,128 +7,130 @@ namespace RelaxKonOS.Server.Privileged;
 
 public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) : IPrivilegedFileService
 {
-    public async Task<DirectoryDto> ListDirectoryAsync(string path, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<SpecialLocationDto>> GetSpecialLocationsAsync(PrivilegedFileAuthorizationSource source, string home, CancellationToken cancellationToken = default)
+        => await SendAsync<SpecialLocationDto[]>(new(PrivilegedOperationKind.FileGetSpecialLocations,
+            Path: home, FileAuthorizationSource: source), home, cancellationToken);
+
+    public Task<FileSystemEntryDto?> GetInfoAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default)
+        => SendAsync<FileSystemEntryDto?>(new(PrivilegedOperationKind.FileGetInfo,
+            Path: path, FileAuthorizationSource: source), path, cancellationToken);
+
+    public Task<FilePropertiesDto?> GetPropertiesAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default)
+        => SendAsync<FilePropertiesDto?>(new(PrivilegedOperationKind.FileGetProperties,
+            Path: path, FileAuthorizationSource: source), path, cancellationToken);
+
+    public Task<FilePropertiesDto> SetUnixPermissionsAsync(PrivilegedFileAuthorizationSource source, string path, int unixMode, CancellationToken cancellationToken = default)
+        => SendAsync<FilePropertiesDto>(new(PrivilegedOperationKind.FileSetUnixPermissions,
+            Path: path, FileAuthorizationSource: source, UnixMode: unixMode), path, cancellationToken);
+
+    public async Task<DirectoryDto> ListDirectoryAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default)
     {
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileListDirectory, Path: path), cancellationToken);
-        if (!result.Success) throw ToException(result, path);
-        var bytes = Convert.FromBase64String(result.OutputBase64 ?? string.Empty);
-        return JsonSerializer.Deserialize<DirectoryDto>(bytes, RelaxKonOSJsonOptions.Default)
-            ?? throw new IOException("Privileged directory listing returned no data.");
+        return await SendAsync<DirectoryDto>(new(PrivilegedOperationKind.FileListDirectory,
+            Path: path, FileAuthorizationSource: source), path, cancellationToken);
     }
 
-    public async Task<(Stream Stream, string FileName)> OpenReadAsync(string path, CancellationToken cancellationToken = default)
+    public async Task<(Stream Stream, string FileName)> OpenReadAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default)
     {
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileRead, Path: path), cancellationToken);
+        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileRead,
+            Path: path, FileAuthorizationSource: source), cancellationToken);
         if (!result.Success) throw ToException(result, path);
         var bytes = Convert.FromBase64String(result.OutputBase64 ?? string.Empty);
         return (new MemoryStream(bytes, writable: false), Path.GetFileName(path));
     }
 
-    public async Task<FileEntryDto> WriteAsync(string path, Stream content, CancellationToken cancellationToken = default)
+    public async Task<FileEntryDto> WriteAsync(PrivilegedFileAuthorizationSource source, string path, Stream content, CancellationToken cancellationToken = default)
     {
         using var bytes = await ReadContentAsync(content, cancellationToken);
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileWrite, Path: path,
-            ContentBase64: Convert.ToBase64String(bytes.ToArray())), cancellationToken);
-        if (!result.Success) throw ToException(result, path);
-        var file = new FileInfo(path);
-        return new FileEntryDto(path, file.Name, file.Extension, file.Length, file.CreationTimeUtc,
-            file.LastWriteTimeUtc, file.LastAccessTimeUtc, file.Attributes.HasFlag(FileAttributes.Hidden),
-            file.Attributes.HasFlag(FileAttributes.System), "application/octet-stream");
+        return await SendAsync<FileEntryDto>(new(PrivilegedOperationKind.FileWrite, Path: path,
+            ContentBase64: Convert.ToBase64String(bytes.ToArray()), FileAuthorizationSource: source), path, cancellationToken);
     }
 
-    public async Task DeleteAsync(string path, CancellationToken cancellationToken = default)
-        => EnsureSuccess(await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileDelete, Path: path), cancellationToken), path);
+    public async Task DeleteAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default)
+        => EnsureSuccess(await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileDelete,
+            Path: path, FileAuthorizationSource: source), cancellationToken), path);
 
-    public async Task<FileSystemEntryDto> RenameAsync(string sourcePath, string newName, CancellationToken cancellationToken = default)
+    public async Task<FileSystemEntryDto> RenameAsync(PrivilegedFileAuthorizationSource source, string sourcePath, string newName, CancellationToken cancellationToken = default)
     {
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileRename, Path: sourcePath, NewName: newName), cancellationToken);
-        EnsureSuccess(result, sourcePath);
-        var parent = Path.GetDirectoryName(sourcePath);
-        return ToSystemEntry(Path.Combine(parent ?? string.Empty, newName));
+        return await SendAsync<FileSystemEntryDto>(new(PrivilegedOperationKind.FileRename,
+            Path: sourcePath, NewName: newName, FileAuthorizationSource: source), sourcePath, cancellationToken);
     }
 
-    public async Task<FileSystemEntryDto> MoveAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken = default)
+    public async Task<FileSystemEntryDto> MoveAsync(PrivilegedFileAuthorizationSource source, string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken = default)
     {
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileMove, Path: sourcePath, DestinationPath: destinationPath, Overwrite: overwrite), cancellationToken);
-        EnsureSuccess(result, sourcePath);
-        return ToSystemEntry(destinationPath);
+        return await SendAsync<FileSystemEntryDto>(new(PrivilegedOperationKind.FileMove, Path: sourcePath,
+            DestinationPath: destinationPath, Overwrite: overwrite, FileAuthorizationSource: source), sourcePath, cancellationToken);
     }
 
-    public async Task<FileSystemEntryDto> CopyAsync(string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken = default)
+    public async Task<FileSystemEntryDto> CopyAsync(PrivilegedFileAuthorizationSource source, string sourcePath, string destinationPath, bool overwrite, CancellationToken cancellationToken = default)
     {
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileCopy, Path: sourcePath, DestinationPath: destinationPath, Overwrite: overwrite), cancellationToken);
-        EnsureSuccess(result, sourcePath);
-        return ToSystemEntry(destinationPath);
+        return await SendAsync<FileSystemEntryDto>(new(PrivilegedOperationKind.FileCopy, Path: sourcePath,
+            DestinationPath: destinationPath, Overwrite: overwrite, FileAuthorizationSource: source), sourcePath, cancellationToken);
     }
 
-    public async Task<FileEntryDto> UploadAsync(string targetDirectoryPath, string fileName, Stream content, CancellationToken cancellationToken = default)
+    public async Task<FileEntryDto> UploadAsync(PrivilegedFileAuthorizationSource source, string targetDirectoryPath, string fileName, Stream content, CancellationToken cancellationToken = default)
     {
         using var bytes = await ReadContentAsync(content, cancellationToken);
         var path = Path.Combine(targetDirectoryPath, fileName);
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileUpload, Path: targetDirectoryPath,
-            FileName: fileName, ContentBase64: Convert.ToBase64String(bytes.ToArray())), cancellationToken);
-        EnsureSuccess(result, path);
-        return ToFileEntry(path);
+        return await SendAsync<FileEntryDto>(new(PrivilegedOperationKind.FileUpload, Path: targetDirectoryPath,
+            FileName: fileName, ContentBase64: Convert.ToBase64String(bytes.ToArray()),
+            FileAuthorizationSource: source), path, cancellationToken);
     }
 
-    public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken = default)
-        => EnsureSuccess(await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileCreateDirectory, Path: path), cancellationToken), path);
+    public async Task CreateDirectoryAsync(PrivilegedFileAuthorizationSource source, string path, CancellationToken cancellationToken = default)
+        => EnsureSuccess(await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileCreateDirectory,
+            Path: path, FileAuthorizationSource: source), cancellationToken), path);
 
-    public async Task CreateStagingAsync(string stagingPath, CancellationToken cancellationToken = default)
+    public async Task CreateStagingAsync(PrivilegedFileAuthorizationSource source, string stagingPath, CancellationToken cancellationToken = default)
     {
-        // An empty FileWrite is the cheapest honest probe: it creates the exact file the session will
-        // append to, so a directory this account may not write to fails here rather than silently later.
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileWrite,
-            Path: stagingPath, ContentBase64: string.Empty), cancellationToken);
+        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileCreateStaging,
+            Path: stagingPath, FileAuthorizationSource: source), cancellationToken);
         EnsureSuccess(result, stagingPath);
     }
 
-    public async Task<long> AppendChunkAsync(string stagingPath, long offset, Stream content, CancellationToken cancellationToken = default)
+    public async Task<long> AppendChunkAsync(PrivilegedFileAuthorizationSource source, string stagingPath, long offset, Stream content, CancellationToken cancellationToken = default)
     {
         using var bytes = await ReadContentAsync(content, cancellationToken);
         var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileUploadChunk,
-            Path: stagingPath, Offset: offset, ContentBase64: Convert.ToBase64String(bytes.ToArray())), cancellationToken);
+            Path: stagingPath, Offset: offset, ContentBase64: Convert.ToBase64String(bytes.ToArray()),
+            FileAuthorizationSource: source), cancellationToken);
         if (!result.Success) throw ToException(result, stagingPath);
         // The Helper reports the length it actually flushed; failing back to arithmetic would let the
         // server confirm bytes that were never written.
         return result.Offset ?? offset + bytes.Length;
     }
 
-    public async Task<FileEntryDto> CommitAsync(string stagingPath, string destinationFileName, CancellationToken cancellationToken = default)
+    public async Task<FileEntryDto> CommitAsync(PrivilegedFileAuthorizationSource source, string stagingPath, string destinationFileName, CancellationToken cancellationToken = default)
     {
-        var result = await runner.ExecuteAsync(new PrivilegedOperationRequest(PrivilegedOperationKind.FileUploadCommit,
-            Path: stagingPath, FileName: destinationFileName), cancellationToken);
-        EnsureSuccess(result, stagingPath);
-        var directory = Path.GetDirectoryName(stagingPath) ?? string.Empty;
-        return ToFileEntry(Path.Combine(directory, destinationFileName));
+        return await SendAsync<FileEntryDto>(new(PrivilegedOperationKind.FileUploadCommit,
+            Path: stagingPath, FileName: destinationFileName, FileAuthorizationSource: source), stagingPath, cancellationToken);
     }
+
+    public Task<long> StagingLengthAsync(PrivilegedFileAuthorizationSource source, string stagingPath, CancellationToken cancellationToken = default)
+        => SendAsync<long>(new(PrivilegedOperationKind.FileGetStagingLength,
+            Path: stagingPath, FileAuthorizationSource: source), stagingPath, cancellationToken);
+
+    public Task<bool> DeleteStagingAsync(PrivilegedFileAuthorizationSource source, string stagingPath, CancellationToken cancellationToken = default)
+        => SendAsync<bool>(new(PrivilegedOperationKind.FileDeleteStaging,
+            Path: stagingPath, FileAuthorizationSource: source), stagingPath, cancellationToken);
 
     private static void EnsureSuccess(RelaxKonOS.Protocol.Privileged.PrivilegedOperationResult result, string path)
     {
         if (!result.Success) throw ToException(result, path);
     }
 
-    private static FileSystemEntryDto ToSystemEntry(string path)
+    private async Task<T> SendAsync<T>(PrivilegedOperationRequest request, string path, CancellationToken cancellationToken)
     {
-        if (Directory.Exists(path))
+        var result = await runner.ExecuteAsync(request, cancellationToken);
+        EnsureSuccess(result, path);
+        try
         {
-            var directory = new DirectoryInfo(path);
-            return new FileSystemEntryDto(path, directory.Name, null, FileSystemEntryType.Directory,
-                directory.CreationTimeUtc, directory.LastWriteTimeUtc, directory.LastAccessTimeUtc,
-                directory.Attributes.HasFlag(FileAttributes.Hidden), directory.Attributes.HasFlag(FileAttributes.System), "inode/directory");
+            return JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64
+                ?? throw new IOException("Privileged Helper returned no file result.")), RelaxKonOSJsonOptions.Default)!;
         }
-        var file = ToFileEntry(path);
-        return new FileSystemEntryDto(file.Path, file.Name, file.Size, FileSystemEntryType.File,
-            file.Created, file.Modified, file.Accessed, file.IsHidden, file.IsSystem, file.MimeType);
-    }
-
-    private static FileEntryDto ToFileEntry(string path)
-    {
-        var file = new FileInfo(path);
-        var extension = string.IsNullOrEmpty(file.Extension) ? null : file.Extension[1..].ToLowerInvariant();
-        return new FileEntryDto(path, file.Name, extension, file.Length, file.CreationTimeUtc,
-            file.LastWriteTimeUtc, file.LastAccessTimeUtc, file.Attributes.HasFlag(FileAttributes.Hidden),
-            file.Attributes.HasFlag(FileAttributes.System), "application/octet-stream");
+        catch (Exception error) when (error is FormatException or JsonException)
+        {
+            throw new IOException("Privileged Helper returned an invalid file result.", error);
+        }
     }
 
     private static Exception ToException(PrivilegedOperationResult result, string path) => result.ExitCode switch

@@ -202,7 +202,7 @@
         "explorer.operations.outcome.cleanup-failed": "一時ファイルの削除に失敗しました",
         "explorer.operations.current_file": "現在のファイルの進行状況（準備・待機・原子的操作は割合を計算できません）",
         "explorer.operations.elevation_title": "管理者認証",
-        "explorer.operations.elevation_account": "管理者アカウント（例: .\\Administrator）",
+        "explorer.operations.elevation_account": "ホスト管理者アカウント（Linux: root または許可されたアカウント）",
         "explorer.operations.elevation_password": "管理者パスワード",
         "explorer.operations.elevation_prompt": "この操作には管理者権限が必要です。認証は現在のセッションで5分間有効です。",
         "explorer.operations.elevation_access_prompt": "この場所にアクセスするには管理者権限が必要です。",

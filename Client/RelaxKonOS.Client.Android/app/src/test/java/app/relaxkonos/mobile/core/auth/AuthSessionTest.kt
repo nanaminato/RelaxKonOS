@@ -73,6 +73,7 @@ class AuthSessionTest {
                     executionEligibility = ExecutionEligibility(
                         available = false,
                         reason = ExecutionEligibilityReasons.RESERVED_IDENTITY,
+                        privilegedFilesAvailable = true,
                     ),
                 ),
             )
@@ -85,6 +86,7 @@ class AuthSessionTest {
         assertTrue(state is SessionState.Active)
         state as SessionState.Active
         assertFalse(state.executionEligibility.available)
+        assertTrue(state.executionEligibility.privilegedFilesAvailable)
         assertEquals(ExecutionEligibilityReasons.RESERVED_IDENTITY, state.executionEligibility.reason)
     }
 

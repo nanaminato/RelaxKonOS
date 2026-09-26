@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Files;
 using RelaxKonOS.Server.HostMode;
 
@@ -28,6 +29,7 @@ public static class UploadSessionChecks
         await VerifyExpiredIdempotencyKeyAsync(root, Check);
         await VerifyElevatedSessionAsync(root, Check);
         await VerifyElevationRequiredAsync(root, Check);
+        await VerifyRootSessionAsync(root, Check);
         Check(FileUploadProtocol.ElevatedChunkSize < PrivilegedOperationProtocol.MaximumFileContentBytes,
             "Elevated chunk size stays below the Helper content ceiling");
         Check(FileUploadProtocol.ElevatedChunkSize * 4 / 3 < PrivilegedOperationProtocol.MaximumRequestBytes,
@@ -79,7 +81,7 @@ public static class UploadSessionChecks
         var privilegedProxy = DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>();
         var elevations = new RecordingElevationStore();
         var store = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
-        var service = new UploadSessionService(files, privilegedProxy, elevations, store, options, new UploadSessionConcurrency(),
+        var service = new UploadSessionService(files, privilegedProxy, new TestHostFileAuthorizationService(elevations), store, options, new UploadSessionConcurrency(),
             NullLogger<UploadSessionService>.Instance);
         return (service, store, elevations, (RecordingPrivilegedFileService)(object)privilegedProxy, files);
     }
@@ -137,7 +139,7 @@ public static class UploadSessionChecks
             BuildOptions(), NullLogger<UploadSessionStore>.Instance);
         var opaqueFiles = DispatchProxy.Create<IFileService, OpaqueStagingFileService>();
         var opaqueService = new UploadSessionService(opaqueFiles,
-            DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(), new RecordingElevationStore(),
+            DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(), new TestHostFileAuthorizationService(new RecordingElevationStore()),
             opaqueStore, BuildOptions(), new UploadSessionConcurrency(), NullLogger<UploadSessionService>.Instance);
         var opaquePath = Path.Combine(root, "process-account-cannot-see-this-directory");
         var opaqueSession = await opaqueService.CreateAsync(user,
@@ -243,7 +245,7 @@ public static class UploadSessionChecks
         // Age the record past its idle lifetime, then sweep.
         store.Remove(expired.UploadId);
         store.Add(new UploadSessionRecord(expired.UploadId, "bob", directory, "gone.bin", expiredStaging, 20, 0,
-            FileUploadProtocol.DefaultChunkSize, false, "sweep-2", null,
+            FileUploadProtocol.DefaultChunkSize, null, "sweep-2", null,
             DateTimeOffset.UtcNow.AddDays(-30), DateTimeOffset.UtcNow.AddDays(-30)));
         var removed = await service.SweepAsync(default);
         check(removed == 1, "The sweep removes exactly the expired session");
@@ -263,7 +265,7 @@ public static class UploadSessionChecks
         var retryStore = new UploadSessionStore(new TestHostEnvironment(retryContentRoot), retryOptions,
             NullLogger<UploadSessionStore>.Instance);
         var retryService = new UploadSessionService(failedDeleteProxy,
-            DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(), new RecordingElevationStore(),
+            DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(), new TestHostFileAuthorizationService(new RecordingElevationStore()),
             retryStore, retryOptions, new UploadSessionConcurrency(), NullLogger<UploadSessionService>.Instance);
         var retrySession = await retryService.CreateAsync(user,
             new CreateUploadRequest(retryDirectory, "retry.bin", 20), "sweep-retry", default);
@@ -271,7 +273,7 @@ public static class UploadSessionChecks
             FileUploadNamePolicy.BuildStagingFileName("retry.bin", retrySession.UploadId));
         retryStore.Remove(retrySession.UploadId);
         retryStore.Add(new UploadSessionRecord(retrySession.UploadId, "bob", retryDirectory, "retry.bin", retryStaging,
-            20, 0, FileUploadProtocol.DefaultChunkSize, false, "sweep-retry", null,
+            20, 0, FileUploadProtocol.DefaultChunkSize, null, "sweep-retry", null,
             DateTimeOffset.UtcNow.AddDays(-30), DateTimeOffset.UtcNow.AddDays(-30)));
         check(await retryService.SweepAsync(default) == 0 && retryStore.TryGet(retrySession.UploadId, out _),
             "A failed staging cleanup retains its session record for retry");
@@ -300,7 +302,7 @@ public static class UploadSessionChecks
         var store = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
         var concurrency = new UploadSessionConcurrency();
         var service = new UploadSessionService(files, DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(),
-            new RecordingElevationStore(), store, options, concurrency, NullLogger<UploadSessionService>.Instance);
+            new TestHostFileAuthorizationService(new RecordingElevationStore()), store, options, concurrency, NullLogger<UploadSessionService>.Instance);
         var session = await service.CreateAsync(user, new CreateUploadRequest(directory, "resume.bin", 60), "restart-1", default);
         await service.AppendAsync(user, session.UploadId, 0, 25, Content(25, 21), default);
         var staging = Path.Combine(directory, FileUploadNamePolicy.BuildStagingFileName("resume.bin", session.UploadId));
@@ -309,7 +311,7 @@ public static class UploadSessionChecks
         // A second store over the same directory is what a server restart looks like here.
         var restartedStore = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
         var restarted = new UploadSessionService(files, DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(),
-            new RecordingElevationStore(), restartedStore, options, concurrency, NullLogger<UploadSessionService>.Instance);
+            new TestHostFileAuthorizationService(new RecordingElevationStore()), restartedStore, options, concurrency, NullLogger<UploadSessionService>.Instance);
         check(restartedStore.Count == 1, "The session index survives a restart");
         var resumed = restarted.Get(user, session.UploadId);
         check(resumed.Offset == 25, "The confirmed offset survives a restart");
@@ -379,7 +381,7 @@ public static class UploadSessionChecks
         files.CreateStagingFile(oldStaging);
         var oldTime = DateTimeOffset.UtcNow.AddDays(-8);
         store.Add(new UploadSessionRecord(oldId, "expired-user", directory, "file.bin", oldStaging, 5, 0,
-            FileUploadProtocol.DefaultChunkSize, false, "stable-key", "old-digest", oldTime, oldTime));
+            FileUploadProtocol.DefaultChunkSize, null, "stable-key", "old-digest", oldTime, oldTime));
 
         var fresh = await service.CreateAsync(Principal("expired-user"),
             new CreateUploadRequest(directory, "file.bin", 5), "stable-key", default);
@@ -402,22 +404,28 @@ public static class UploadSessionChecks
         var elevated = session.UploadId;
         File.WriteAllBytes(staging, []);
         store.Add(new UploadSessionRecord(elevated, "dave", directory, "secure.bin", staging, 12, 0,
-            FileUploadProtocol.ElevatedChunkSize, true, "elev-1", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+            FileUploadProtocol.ElevatedChunkSize, PrivilegedFileAuthorizationSource.ManualGrant, "elev-1", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
         check(store.TryGet(elevated, out var promoted) && promoted.Elevated, "The elevated session is in the index");
 
+        elevations.Granted = true;
         var checksBefore = elevations.Checks;
         var offset = await service.AppendAsync(user, elevated, 0, 12, Content(12, 31), default);
         check(offset == 12, "An elevated chunk reaches the Helper");
         check(privileged.Calls.Contains(nameof(IPrivilegedFileService.AppendChunkAsync)),
             "An elevated chunk is appended through the Helper, not directly");
-        check(elevations.Checks == checksBefore,
-            "An elevated chunk does not consult the elevation store: the session's decision is fixed at create time");
+        check(elevations.Checks > checksBefore,
+            "An elevated chunk revalidates the five-minute grant");
         check(new FileInfo(staging).Length == 12, "The elevated append wrote the bytes through the Helper");
 
+        elevations.Granted = false;
+        var revoked = await ThrowsAsync(() => service.CommitAsync(user, elevated, null, default));
+        check(revoked?.ProblemCode == FileUploadProblemCodes.ElevationRequired,
+            "A revoked grant cannot commit an existing protected session");
+        elevations.Granted = true;
         var committed = await service.CommitAsync(user, elevated, null, default);
         check(privileged.Calls.Contains(nameof(IPrivilegedFileService.CommitAsync)),
             "An elevated commit goes through the Helper");
-        check(elevations.Checks == checksBefore, "An elevated commit does not re-ask for elevation");
+        check(elevations.Checks > checksBefore + 1, "An elevated commit revalidates the grant");
         check(committed.Name == "secure.bin", "The elevated commit names the destination");
         check(!File.Exists(staging), "The elevated commit consumed the staging file");
 
@@ -441,7 +449,7 @@ public static class UploadSessionChecks
         var elevations = new RecordingElevationStore { Granted = false };
         var store = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
         var service = new UploadSessionService(proxy, DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(),
-            elevations, store, options, new UploadSessionConcurrency(), NullLogger<UploadSessionService>.Instance);
+            new TestHostFileAuthorizationService(elevations), store, options, new UploadSessionConcurrency(), NullLogger<UploadSessionService>.Instance);
         var user = Principal("erin");
 
         var refused = await ThrowsAsync(() => service.CreateAsync(user,
@@ -454,6 +462,31 @@ public static class UploadSessionChecks
         var created = await service.CreateAsync(user, new CreateUploadRequest(directory, "locked.bin", 8), "ereq-2", default);
         check(created.Elevated, "After authorization the session is created through the Helper");
         check(store.Count == 1, "The authorized session is recorded");
+    }
+
+    private static async Task VerifyRootSessionAsync(string root, Action<bool, string> check)
+    {
+        var contentRoot = Path.Combine(root, "root-session");
+        var target = Path.Combine(root, "root-session-target");
+        Directory.CreateDirectory(contentRoot);
+        Directory.CreateDirectory(target);
+        var options = BuildOptions();
+        var store = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
+        var proxy = DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>();
+        var authorization = new TestHostFileAuthorizationService { Root = true };
+        var service = new UploadSessionService(new LocalFileService(new SystemMode()), proxy, authorization,
+            store, options, new UploadSessionConcurrency(), NullLogger<UploadSessionService>.Instance);
+        var user = Principal("root");
+        var opened = await service.CreateAsync(user, new CreateUploadRequest(target, "root.bin", 4), "root-key", default);
+        check(opened.Elevated && store.TryGet(opened.UploadId, out var record)
+            && record.AuthorizationSource == PrivilegedFileAuthorizationSource.HostRoot,
+            "A root session creates staging through the root Helper route");
+        authorization.Root = false;
+        var revoked = await ThrowsAsync(() => service.AppendAsync(user, opened.UploadId, 0, 4, Content(4, 9), default));
+        check(revoked?.ProblemCode == FileUploadProblemCodes.ElevationRequired,
+            "A downgraded root session cannot append to privileged staging");
+        authorization.Root = true;
+        await service.AbortAsync(user, opened.UploadId, default);
     }
 
     private static byte[] Bytes(int length, byte value)
@@ -538,13 +571,13 @@ public static class UploadSessionChecks
             switch (method.Name)
             {
                 case nameof(IPrivilegedFileService.CreateStagingAsync):
-                    File.WriteAllBytes((string)args![0]!, []);
+                    File.WriteAllBytes((string)args![1]!, []);
                     return Task.CompletedTask;
                 case nameof(IPrivilegedFileService.AppendChunkAsync):
                 {
-                    var path = (string)args![0]!;
-                    var offset = (long)args[1]!;
-                    var content = (Stream)args[2]!;
+                    var path = (string)args![1]!;
+                    var offset = (long)args[2]!;
+                    var content = (Stream)args[3]!;
                     long length;
                     using (var output = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None))
                     {
@@ -557,16 +590,16 @@ public static class UploadSessionChecks
                 }
                 case nameof(IPrivilegedFileService.CommitAsync):
                 {
-                    var staging = (string)args![0]!;
-                    var destination = Path.Combine(Path.GetDirectoryName(staging)!, (string)args[1]!);
+                    var staging = (string)args![1]!;
+                    var destination = Path.Combine(Path.GetDirectoryName(staging)!, (string)args[2]!);
                     File.Move(staging, destination, overwrite: true);
                     var info = new FileInfo(destination);
                     return Task.FromResult(new FileEntryDto(destination, info.Name, null, info.Length, null, null, null,
                         false, false, "application/octet-stream"));
                 }
-                case nameof(IPrivilegedFileService.DeleteAsync):
-                    if (File.Exists((string)args![0]!)) File.Delete((string)args![0]!);
-                    return Task.CompletedTask;
+                case nameof(IPrivilegedFileService.DeleteStagingAsync):
+                    if (File.Exists((string)args![1]!)) File.Delete((string)args![1]!);
+                    return Task.FromResult(true);
                 default:
                     throw new NotSupportedException($"Unexpected privileged call in upload checks: {method.Name}");
             }

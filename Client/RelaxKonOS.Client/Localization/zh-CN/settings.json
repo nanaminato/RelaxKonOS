@@ -271,7 +271,7 @@
         "settings.host_time.password_required": "请输入管理员密码。",
         "settings.host_time.password_invalid": "密码不正确，请重试。",
         "settings.host_time.password_check_failed": "暂时无法验证密码，请重试。",
-        "settings.host_time.administrator_required": "当前系统账户不是管理员。请使用管理员账户登录后重试。",
+        "settings.host_time.administrator_required": "所填账户目前不具备宿主管理员资格，请改用已获授权的管理员账户。",
         "settings.operation.prepared": "已准备，尚需授权并应用。",
         "settings.operation.applying": "正在应用",
         "settings.operation.applied": "已应用并从远程 OS 读回确认。",

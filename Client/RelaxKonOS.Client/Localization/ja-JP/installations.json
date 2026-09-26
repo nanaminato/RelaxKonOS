@@ -20,7 +20,7 @@
     "installation.stage.Interrupted": "中断",
     "installation.cancel": "インストールをキャンセル",
     "installation.elevation_title": "サーバー管理者パスワード",
-    "installation.elevation_message": "この操作は RelaxKonOS Server が動作するサーバーを変更します。現在サーバーにログインしているアカウントのパスワードを入力してください。Windows では管理者権限が必要です。",
+    "installation.elevation_message": "この操作は RelaxKonOS Server が動作するサーバーを変更します。ホスト管理者のアカウントとパスワードを入力してください。Linux では root または許可された管理者を使用できます。",
     "installation.connection_unavailable": "接続できません。サーバーのタスクは継続しています。再接続中…",
     "installation.workspace_save_failed": "ワークスペースの保存に失敗しました。サーバーのタスクは継続しています。",
     "installation.operation_unavailable": "タスクを取得できません。",

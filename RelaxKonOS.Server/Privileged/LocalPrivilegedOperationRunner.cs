@@ -11,7 +11,7 @@ namespace RelaxKonOS.Server.Privileged;
 /// <summary>Runs the installed helper. Linux uses its dedicated passwordless sudoers rule.</summary>
 public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions options, ILogger<LocalPrivilegedOperationRunner> logger,
     ICorrelationContextAccessor? correlation = null, ISecurityAuditWriter? securityAudit = null,
-    ObservabilityOptions? observability = null) : IPrivilegedOperationTransport
+    ObservabilityOptions? observability = null, IHttpContextAccessor? http = null) : IPrivilegedOperationTransport
 {
     public async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOperationRequest request, CancellationToken cancellationToken = default)
     {
@@ -76,11 +76,18 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
     {
         if (securityAudit is null) return true;
         var context = request.Correlation!;
+        var fileSource = request.FileAuthorizationSource;
+        var resource = string.Join("\n", new[] { request.Path, request.DestinationPath }
+            .Where(value => !string.IsNullOrWhiteSpace(value))!);
+        var reference = fileSource is null ? request.Path ?? request.ServiceId ?? request.DestinationPath
+            : resource.Length == 0 ? null : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(resource)))[..16];
+        var actor = http?.HttpContext?.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
         return securityAudit.TryWriteAsync(new SecurityAuditEvent(
             outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Id : ObservabilityEventCatalog.PrivilegedRequestCompleted.Id,
             outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Name : ObservabilityEventCatalog.PrivilegedRequestCompleted.Name,
             outcome, "server", context.CorrelationId, DateTimeOffset.UtcNow, observability?.InstanceId ?? "unconfigured",
-            "privileged.operation", request.OperationId, ResourceType: "privileged-operation", ResourceReference: request.Path ?? request.ServiceId ?? request.DestinationPath,
+            fileSource is null ? "privileged.operation" : $"privileged.file.{fileSource}.{request.Operation}", request.OperationId,
+            ActorReference: actor, ResourceType: "privileged-operation", ResourceReference: reference,
             ProblemCode: result?.ProblemCode.ToString())).GetAwaiter().GetResult();
     }
 
