@@ -352,9 +352,10 @@ public sealed class ApplicationManager : IAppActivationService
     private AppActivationResult ActivateFileOpen(AppActivationRequest request)
     {
         // Host paths are intentionally not an inter-package protocol. Only the first-party
-        // Explorer and the Shell (SourceAppId is null) may use this route; package applications
-        // must use their file capability APIs.
-        if (request.SourceAppId is { Value: not "relaxkonos.explorer" })
+        // file browsers and the Shell (SourceAppId is null) may use this route; package
+        // applications must use their file capability APIs. The SSH browser owns SFTP paths in
+        // an SSH-only desktop, so it needs the same host-routed handoff as Explorer.
+        if (request.SourceAppId is { Value: not ("relaxkonos.explorer" or "relaxkonos.ssh-files") })
             return new AppActivationResult(AppActivationStatus.Unavailable);
 
         var values = ParseQuery(request.Uri);

@@ -33,6 +33,7 @@
     "ssh_files.open": "開く",
     "ssh_files.refresh": "更新",
     "ssh_files.open_failed": "フォルダーを開けません",
+    "ssh_files.file_open_failed": "関連付けられたアプリでこのファイルを開けません",
     "ssh_files.tree_load_failed": "フォルダー ツリーを読み込めません",
     "ssh_files.exists": "保存先は既に存在します",
     "ssh_files.confirm_delete": "削除の確認",

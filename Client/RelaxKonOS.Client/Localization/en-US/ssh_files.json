@@ -33,6 +33,7 @@
     "ssh_files.open": "Open",
     "ssh_files.refresh": "Refresh",
     "ssh_files.open_failed": "Unable to open folder",
+    "ssh_files.file_open_failed": "Unable to open this file with an associated application",
     "ssh_files.tree_load_failed": "Unable to load folder tree",
     "ssh_files.exists": "Destination already exists",
     "ssh_files.confirm_delete": "Confirm delete",

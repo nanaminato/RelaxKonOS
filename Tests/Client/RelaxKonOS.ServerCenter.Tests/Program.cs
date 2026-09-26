@@ -2,6 +2,10 @@ using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Client.Apps.Terminal;
+using RelaxKonOS.AppSDK;
+using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Runtime;
+using RelaxKonOS.WindowManager;
 using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
 using RoyalTerminal.Terminal.Transport.Ssh;
@@ -30,6 +34,23 @@ using (var startTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
         "SSH 启动已注入凭据提供器");
 }
 sshTransport.Dispose();
+
+var windowManager = new WindowManager();
+var activationServices = new ActivationServiceProvider();
+var applicationManager = new ApplicationManager(windowManager, activationServices);
+activationServices.Activations = applicationManager;
+var recordingFileApp = new RecordingFileApp();
+applicationManager.RegisterBuiltIn(recordingFileApp);
+var sshFileOpenResult = applicationManager.Activate(new AppActivationRequest(
+    RelaxKonOSActivationUris.OpenFile(recordingFileApp.Manifest.Id, "/home/alice/note.txt"),
+    new AppId("relaxkonos.ssh-files")));
+Check(sshFileOpenResult.Succeeded && recordingFileApp.OpenedPath == "/home/alice/note.txt",
+    "SSH 文件浏览器可将 SFTP 路径交给关联的内置应用");
+var untrustedFileOpenResult = applicationManager.Activate(new AppActivationRequest(
+    RelaxKonOSActivationUris.OpenFile(recordingFileApp.Manifest.Id, "/home/alice/note.txt"),
+    new AppId("example.package")));
+Check(!untrustedFileOpenResult.Succeeded,
+    "普通应用仍不能把主机路径注入文件打开路由");
 
 var transport = new FakeTransport();
 var client = new ServerCenterDeploymentClient(transport);
@@ -105,6 +126,28 @@ sealed class TestSshCredentials : ISshCredentialProvider
     public ValueTask<SshResolvedCredentials> ResolveAsync(
         SshCredentialRequest request, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(new SshResolvedCredentials("test-password", Array.Empty<string>(), false));
+}
+
+sealed class ActivationServiceProvider : IServiceProvider
+{
+    public IAppActivationService? Activations { get; set; }
+
+    public object? GetService(Type serviceType) => serviceType == typeof(IAppActivationService)
+        ? Activations
+        : null;
+}
+
+sealed class RecordingFileApp : RemoteApplicationBase, IFileOpenApplication
+{
+    public override ApplicationManifest Manifest { get; } = new(
+        new AppId("relaxkonos.test-text-viewer"), "Test text viewer", "1.0.0", "T", null,
+        SupportedFileExtensions: [".txt"]);
+
+    public string? OpenedPath { get; private set; }
+
+    public override void Activate(RelaxKonOS.AppSDK.AppContext context) { }
+
+    public void OpenFile(RelaxKonOS.AppSDK.AppContext context, string path) => OpenedPath = path;
 }
 
 sealed class FakeTransport : IServerCenterSshTransport

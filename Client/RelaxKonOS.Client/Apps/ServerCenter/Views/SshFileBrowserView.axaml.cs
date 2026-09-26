@@ -329,7 +329,8 @@ internal partial class SshFileBrowserView : UserControl
             await NavigateAsync(entry.Path);
             return;
         }
-        if (_canOpenFile(entry.Path)) _openFile(entry.Path);
+        if (_canOpenFile(entry.Path) && !_openFile(entry.Path))
+            StatusText.Text = T("ssh_files.file_open_failed", "Unable to open this file with an associated application");
     }
 
     private async Task NavigateAsync(string path, bool addHistory = true)

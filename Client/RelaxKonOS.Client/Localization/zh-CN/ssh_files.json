@@ -33,6 +33,7 @@
     "ssh_files.open": "打开",
     "ssh_files.refresh": "刷新",
     "ssh_files.open_failed": "无法打开文件夹",
+    "ssh_files.file_open_failed": "无法使用关联的应用打开此文件",
     "ssh_files.tree_load_failed": "无法加载目录树",
     "ssh_files.exists": "目标已存在",
     "ssh_files.confirm_delete": "确认删除",
