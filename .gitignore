@@ -48,6 +48,9 @@ RelaxKonOS.Server/data/
 .workbuddy/
 Client/RelaxKonOS.Client.Android/.gradle/
 Client/RelaxKonOS.Client.Android/**/build/
+Client/RelaxKonOS.Client.Android/release-signing.properties
+Client/RelaxKonOS.Client.Android/*.jks
+Client/RelaxKonOS.Client.Android/*.keystore
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

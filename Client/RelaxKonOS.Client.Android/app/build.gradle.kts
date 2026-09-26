@@ -1,7 +1,20 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val releaseSigningPropertiesPath = providers.gradleProperty("relaxkonSigningProperties").orNull
+val releaseSigningProperties = releaseSigningPropertiesPath?.let { path ->
+    val file = file(path)
+    require(file.isFile) { "The local Android signing properties file does not exist." }
+    Properties().also { properties -> file.inputStream().use(properties::load) }
+}
+
+fun Properties.requiredSigningValue(name: String): String =
+    getProperty(name)?.takeIf(String::isNotBlank)
+        ?: error("The local Android signing properties file is missing '$name'.")
 
 android {
     namespace = "app.relaxkonos.mobile"
@@ -26,12 +39,28 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (releaseSigningProperties != null) {
+                signingConfig = signingConfigs.create("release") {
+                    storeFile = project.file(releaseSigningProperties.requiredSigningValue("storeFile"))
+                    storePassword = releaseSigningProperties.requiredSigningValue("storePassword")
+                    keyAlias = releaseSigningProperties.requiredSigningValue("keyAlias")
+                    keyPassword = releaseSigningProperties.requiredSigningValue("keyPassword")
+                }
+            }
         }
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        check(releaseSigningProperties != null) {
+            "Release artifacts must be signed. Supply -PrelaxkonSigningProperties=<local, untracked properties file>."
+        }
     }
 }
 
