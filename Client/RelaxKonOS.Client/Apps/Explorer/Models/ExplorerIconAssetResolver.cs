@@ -5,8 +5,17 @@ namespace RelaxKonOS.Client.Apps.Explorer.Models;
 /// <summary>Resolves Explorer entries to the generated PNG asset that best describes them.</summary>
 public static class ExplorerIconAssetResolver
 {
-    public static string ForEntry(FileSystemEntryType type, string? name)
+    /// <summary>Symbolic links have no extension identity; they always draw this asset.</summary>
+    public const string LinkAssetName = "file-link";
+
+    /// <summary>
+    /// The single entry point for entry artwork. <paramref name="isLink"/> wins over the name,
+    /// because a symbolic link's target — and therefore its extension — is unknown until the
+    /// link is followed, so guessing a file-type icon from the link name would be misleading.
+    /// </summary>
+    public static string ForEntry(FileSystemEntryType type, string? name, bool isLink = false)
     {
+        if (isLink) return LinkAssetName;
         if (type == FileSystemEntryType.Drive) return "navigation-drive";
         if (type == FileSystemEntryType.Directory) return "file-folder";
 

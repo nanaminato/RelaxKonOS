@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:RelaxKonOS.Client.Localization"
+             xmlns:explorer="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.SshFileBrowserView"
              Background="{DynamicResource SurfaceBrush}">
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
@@ -11,11 +12,26 @@
                         <Setter Property="MinWidth" Value="42" />
                     </Style>
                 </StackPanel.Styles>
-                <Button x:Name="BackButton" Content="←" ToolTip.Tip="Alt+Left" Click="Back_Click" />
-                <Button x:Name="ForwardButton" Content="→" ToolTip.Tip="Alt+Right" Click="Forward_Click" />
-                <Button x:Name="UpButton" Content="↑" ToolTip.Tip="Alt+Up" Click="Up_Click" />
-                <Button x:Name="HomeButton" Content="⌂" ToolTip.Tip="{loc:Loc ssh_files.home}" Click="Home_Click" />
-                <Button x:Name="RefreshButton" Content="⟳" ToolTip.Tip="F5" Click="Refresh_Click" />
+                <Button x:Name="BackButton" ToolTip.Tip="Alt+Left" Click="Back_Click">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-back.png" />
+                </Button>
+                <Button x:Name="ForwardButton" ToolTip.Tip="Alt+Right" Click="Forward_Click">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-forward.png" />
+                </Button>
+                <Button x:Name="UpButton" ToolTip.Tip="Alt+Up" Click="Up_Click">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-up.png" />
+                </Button>
+                <Button x:Name="HomeButton" ToolTip.Tip="{loc:Loc ssh_files.home}" Click="Home_Click">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/navigation-home.png" />
+                </Button>
+                <Button x:Name="RefreshButton" ToolTip.Tip="F5" Click="Refresh_Click">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-refresh.png" />
+                </Button>
             </StackPanel>
             <TextBox x:Name="AddressBox" Grid.Column="1" PlaceholderText="{loc:Loc ssh_files.address}"
                      KeyDown="AddressBox_KeyDown" />
@@ -26,19 +42,75 @@
         <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="8,0,8,5">
             <WrapPanel.Styles>
                 <Style Selector="Button">
-                    <Setter Property="MinWidth" Value="42" />
                     <Setter Property="Margin" Value="0,0,4,3" />
                 </Style>
+                <Style Selector="Button TextBlock">
+                    <Setter Property="VerticalAlignment" Value="Center" />
+                </Style>
             </WrapPanel.Styles>
-            <Button x:Name="NewFolderButton" Content="{loc:Loc ssh_files.new_folder}" Click="NewFolder_Click" />
-            <Button x:Name="CopyButton" Content="{loc:Loc ssh_files.copy}" ToolTip.Tip="Ctrl+C" Click="Copy_Click" />
-            <Button x:Name="CutButton" Content="{loc:Loc ssh_files.cut}" ToolTip.Tip="Ctrl+X" Click="Cut_Click" />
-            <Button x:Name="PasteButton" Content="{loc:Loc ssh_files.paste}" ToolTip.Tip="Ctrl+V" Click="Paste_Click" />
-            <Button x:Name="RenameButton" Content="{loc:Loc ssh_files.rename}" ToolTip.Tip="F2" Click="Rename_Click" />
-            <Button x:Name="DeleteButton" Content="{loc:Loc ssh_files.delete}" ToolTip.Tip="Delete" Click="Delete_Click" />
-            <Button x:Name="UploadButton" Content="{loc:Loc ssh_files.upload}" Click="Upload_Click" />
-            <Button x:Name="UploadFolderButton" Content="{loc:Loc ssh_files.upload_folder}" Click="UploadFolder_Click" />
-            <Button x:Name="DownloadButton" Content="{loc:Loc ssh_files.download}" Click="Download_Click" />
+            <Button x:Name="NewFolderButton" Click="NewFolder_Click" ToolTip.Tip="{loc:Loc ssh_files.new_folder}">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-new-folder.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.new_folder}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="CopyButton" Click="Copy_Click" ToolTip.Tip="Ctrl+C">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.copy}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="CutButton" Click="Cut_Click" ToolTip.Tip="Ctrl+X">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-cut.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.cut}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="PasteButton" Click="Paste_Click" ToolTip.Tip="Ctrl+V">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-paste.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.paste}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="RenameButton" Click="Rename_Click" ToolTip.Tip="F2">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-rename.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.rename}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="DeleteButton" Click="Delete_Click" ToolTip.Tip="Delete">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-delete.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.delete}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="UploadButton" Click="Upload_Click">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-upload.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.upload}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="UploadFolderButton" Click="UploadFolder_Click">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-upload-folder.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.upload_folder}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="DownloadButton" Click="Download_Click">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Image Width="18" Height="18"
+                           Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-download.png" />
+                    <TextBlock Text="{loc:Loc ssh_files.download}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
             <ComboBox x:Name="SortBox" Width="120" SelectedIndex="0" Margin="8,0,4,0"
                       SelectionChanged="SortBox_SelectionChanged">
                 <ComboBoxItem Content="{loc:Loc ssh_files.name}" />
@@ -71,8 +143,11 @@
                 <DataTemplate x:CompileBindings="False">
                     <Grid ColumnDefinitions="2*,140,100,100" ColumnSpacing="8" Margin="5,3">
                         <StackPanel Orientation="Horizontal" Spacing="7">
-                            <TextBlock Text="{Binding Icon}" />
-                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                            <explorer:ExplorerIcon EntryType="{Binding EntryType}" FileName="{Binding Name}"
+                                                   Link="{Binding IsLink}" Width="20" Height="20"
+                                                   VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" />
                         </StackPanel>
                         <TextBlock Grid.Column="1" Text="{Binding ModifiedText}" TextTrimming="CharacterEllipsis" />
                         <TextBlock Grid.Column="2" Text="{Binding Kind}" TextTrimming="CharacterEllipsis" />

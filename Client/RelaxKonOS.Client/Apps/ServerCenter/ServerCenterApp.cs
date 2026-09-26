@@ -25,7 +25,7 @@ public sealed class ServerCenterApp : RemoteApplicationBase
         if (!context.Services.GetRequiredService<SshDesktopSession>().IsConnected) return;
         var viewModel = context.Services.GetRequiredService<ServerCenterViewModel>();
         context.ShowWindow(viewModel.Title, new ServerCenterWorkspace { DataContext = viewModel },
-            new Rect(70, 50, 1120, 760), "🖧");
+            new Rect(70, 50, 1120, 760), Manifest.IconGlyph);
         _ = viewModel.LoadAsync();
     }
 }

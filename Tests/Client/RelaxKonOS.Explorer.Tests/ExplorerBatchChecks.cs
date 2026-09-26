@@ -25,6 +25,12 @@ public static class ExplorerBatchChecks
             && ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.File, "Dockerfile") == "file-dockerfile"
             && ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.File, ".env") == "file-env",
             "Code and configuration files select their dedicated generated icon assets");
+        check(ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.File, "notes.txt", isLink: true)
+                == ExplorerIconAssetResolver.LinkAssetName
+            && ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.Directory, "www", isLink: true)
+                == ExplorerIconAssetResolver.LinkAssetName
+            && ExplorerIconAssetResolver.ForEntry(FileSystemEntryType.File, "notes.txt") == "file-document",
+            "Symbolic links keep the link asset instead of guessing a file type from the link name");
         var files = new[] { FileEntry("/source/a.txt"), FileEntry("/source/b.txt"), FileEntry("/source/c.txt") };
         var client = DispatchProxy.Create<IExplorerClient, BatchClientFake>();
         var fake = (BatchClientFake)(object)client;
