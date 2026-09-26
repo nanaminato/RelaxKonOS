@@ -10,9 +10,16 @@ namespace RelaxKonOS.Client.Apps.ImageViewer.ViewModels;
 public sealed partial class ImageViewerViewModel : LocalizedObservableObject, IDisposable
 {
     private readonly IExplorerClient? _files;
+    private readonly bool _isSshSession;
     private CancellationTokenSource? _loadCts;
+    private double _viewportWidth;
+    private double _viewportHeight;
 
-    public ImageViewerViewModel(IExplorerClient? files) => _files = files;
+    public ImageViewerViewModel(IExplorerClient? files, bool isSshSession = false)
+    {
+        _files = files;
+        _isSshSession = isSshSession;
+    }
 
     [ObservableProperty] private Bitmap? _imageSource;
     [ObservableProperty] private string? _currentPath;
@@ -22,14 +29,27 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
     [ObservableProperty] private int _zoomPercent = 100;
     [ObservableProperty] private double _displayWidth;
     [ObservableProperty] private double _displayHeight;
+    [ObservableProperty] private bool _isLoading;
 
     public string DocumentName => string.IsNullOrWhiteSpace(CurrentPath) ? LocalizedText.Get("image_viewer.title") : Path.GetFileName(CurrentPath);
     public string DimensionsText => PixelWidth > 0 ? LocalizedText.Format("image_viewer.dimensions", PixelWidth, PixelHeight) : string.Empty;
+    public string ImageFormatText => string.IsNullOrWhiteSpace(CurrentPath)
+        ? string.Empty
+        : Path.GetExtension(CurrentPath).TrimStart('.').ToUpperInvariant();
+    public string SessionText => _isSshSession
+        ? T("image_viewer.session.ssh", "SSH desktop")
+        : T("image_viewer.session.server", "RelaxKonOS Server");
+    public bool HasImage => ImageSource is not null;
 
-    partial void OnCurrentPathChanged(string? value) => OnPropertyChanged(nameof(DocumentName));
+    partial void OnCurrentPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(DocumentName));
+        OnPropertyChanged(nameof(ImageFormatText));
+    }
     partial void OnPixelWidthChanged(int value) => OnPropertyChanged(nameof(DimensionsText));
     partial void OnPixelHeightChanged(int value) => OnPropertyChanged(nameof(DimensionsText));
     partial void OnZoomPercentChanged(int value) => UpdateDisplaySize();
+    partial void OnImageSourceChanged(Bitmap? value) => OnPropertyChanged(nameof(HasImage));
 
     [RelayCommand]
     private void ZoomIn() => ZoomPercent = Math.Min(400, ZoomPercent + 25);
@@ -39,6 +59,23 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
 
     [RelayCommand]
     private void ResetZoom() => ZoomPercent = 100;
+
+    [RelayCommand]
+    private void FitToView()
+    {
+        if (PixelWidth <= 0 || PixelHeight <= 0 || _viewportWidth <= 0 || _viewportHeight <= 0) return;
+
+        // Keep breathing room around the image so it reads as an object on the canvas,
+        // rather than as content pressed directly against the scroll viewer edges.
+        var scale = Math.Min((_viewportWidth - 72) / PixelWidth, (_viewportHeight - 72) / PixelHeight);
+        ZoomPercent = Math.Clamp((int)Math.Floor(scale * 100), 10, 400);
+    }
+
+    public void SetViewportSize(double width, double height)
+    {
+        _viewportWidth = width;
+        _viewportHeight = height;
+    }
 
     public async Task OpenPathAsync(string path)
     {
@@ -52,6 +89,7 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
         _loadCts?.Dispose();
         _loadCts = new CancellationTokenSource();
         var ct = _loadCts.Token;
+        IsLoading = true;
         StatusText = LocalizedText.Ref("image_viewer.status.loading");
 
         try
@@ -79,7 +117,7 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
             PixelWidth = bitmap.PixelSize.Width;
             PixelHeight = bitmap.PixelSize.Height;
             ZoomPercent = 100;
-            UpdateDisplaySize();
+            FitToView();
             StatusText = LocalizedText.Ref("image_viewer.status.opened", Path.GetFileName(path), DimensionsText);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -89,6 +127,11 @@ public sealed partial class ImageViewerViewModel : LocalizedObservableObject, ID
         catch (Exception exception)
         {
             StatusText = LocalizedText.Ref("image_viewer.status.open_failed", exception.Message);
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested)
+                IsLoading = false;
         }
     }
 

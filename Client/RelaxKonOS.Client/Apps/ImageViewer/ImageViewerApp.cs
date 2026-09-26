@@ -36,7 +36,7 @@ public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
         IExplorerClient? files = sshDesktop?.IsConnected == true
             ? context.Services.GetService(typeof(SshExplorerClient)) as SshExplorerClient
             : context.Services.GetService(typeof(IExplorerClient)) as IExplorerClient;
-        var viewModel = new ImageViewerViewModel(files);
+        var viewModel = new ImageViewerViewModel(files, sshDesktop?.IsConnected == true);
         var view = new ImageViewerView { DataContext = viewModel };
         var window = context.ShowWindow("Image Viewer", view,
             bounds: new Rect(180, 100, 880, 640),
@@ -47,6 +47,8 @@ public sealed class ImageViewerApp : RemoteApplicationBase, IFileOpenApplication
                 WindowShortcut.TryExecute(e, e.Key, RemoteKeyModifiers.Control, viewModel.ZoomInCommand);
             else if (e.Modifiers == RemoteKeyModifiers.Control && e.Key.Value is "Subtract" or "OemMinus")
                 WindowShortcut.TryExecute(e, e.Key, RemoteKeyModifiers.Control, viewModel.ZoomOutCommand);
+            else if (e.Key == RemoteKey.Letter('F'))
+                WindowShortcut.TryExecute(e, RemoteKey.Letter('F'), RemoteKeyModifiers.None, viewModel.FitToViewCommand);
             else
                 WindowShortcut.TryExecute(e, RemoteKey.Digit(0), RemoteKeyModifiers.Control, viewModel.ResetZoomCommand);
         };
