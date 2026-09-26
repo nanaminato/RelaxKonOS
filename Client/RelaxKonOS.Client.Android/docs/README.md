@@ -13,4 +13,3 @@
 | [`android-release.md`](./android-release.md)                                                     | Android 本地环境、构建、调试、签名和发布要求。                                     |
 
 除面向所有客户端的架构或 Protocol 契约外，新的 Android 专属设计和实施文档必须放在这里。
-

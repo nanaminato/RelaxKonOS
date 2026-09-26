@@ -20,6 +20,15 @@ public sealed class UploadSessionException(string problemCode, int statusCode, s
     public long? AuthoritativeOffset { get; init; }
 }
 
+/// <summary>Process-wide gates shared by every request scope that operates on upload sessions.</summary>
+public sealed class UploadSessionConcurrency
+{
+    public System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> SessionGates { get; } =
+        new(StringComparer.Ordinal);
+
+    public SemaphoreSlim CreationGate { get; } = new(1, 1);
+}
+
 /// <summary>
 /// The resumable upload path: open a session, append raw chunks at explicit offsets, commit once.
 /// </summary>
@@ -39,11 +48,9 @@ public sealed class UploadSessionService(
     IFileElevationSessionStore elevations,
     UploadSessionStore store,
     UploadSessionOptions options,
+    UploadSessionConcurrency concurrency,
     ILogger<UploadSessionService> logger)
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> gates = new(StringComparer.Ordinal);
-    private readonly SemaphoreSlim creationGate = new(1, 1);
-
     /// <summary>Opens a session, or returns the one the same idempotency key already opened.</summary>
     public async Task<UploadSessionDto> CreateAsync(ClaimsPrincipal user, CreateUploadRequest request,
         string idempotencyKey, CancellationToken cancellationToken)
@@ -66,9 +73,9 @@ public sealed class UploadSessionService(
 
         // The key check, quota check, and insertion are one operation. Two concurrent retries of the
         // same POST must not open two staging files before either request reaches the index.
-        await creationGate.WaitAsync(cancellationToken);
+        await concurrency.CreationGate.WaitAsync(cancellationToken);
         try { return await CreateUnderGateAsync(user, request, idempotencyKey, identityKey, cancellationToken); }
-        finally { creationGate.Release(); }
+        finally { concurrency.CreationGate.Release(); }
     }
 
     private async Task<UploadSessionDto> CreateUnderGateAsync(ClaimsPrincipal user, CreateUploadRequest request,
@@ -81,7 +88,9 @@ public sealed class UploadSessionService(
             {
                 // A deterministic client key may be used again after the session lifetime. Expired
                 // records must not make a fresh attempt resume a session that GET would reject with 410.
-                await AbandonAsync(existing, cancellationToken);
+                if (!await AbandonAsync(existing, cancellationToken))
+                    throw new UploadSessionException("cleanup-unavailable", 503,
+                        "过期上传会话的暂存文件暂时无法清理，请稍后重试。");
             }
             else
             {
@@ -93,9 +102,6 @@ public sealed class UploadSessionService(
                 return ToDto(existing);
             }
         }
-
-        if (!Directory.Exists(request.TargetDirectoryPath))
-            throw new UploadSessionException("not-found", 404, $"目标目录不存在: {request.TargetDirectoryPath}");
 
         if (store.CountFor(identityKey) >= options.MaximumSessionsPerIdentity || store.Count >= options.MaximumSessions)
             throw new UploadSessionException(FileUploadProblemCodes.TooManyUploads, 429,
@@ -131,7 +137,7 @@ public sealed class UploadSessionService(
                 throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message);
             }
         }
-        catch (DirectoryNotFoundException ex)
+        catch (Exception ex) when (ex is DirectoryNotFoundException or FileNotFoundException)
         {
             throw new UploadSessionException("not-found", 404, ex.Message);
         }
@@ -153,7 +159,7 @@ public sealed class UploadSessionService(
                     logger.LogWarning(exception, "Failed to clean up an unindexed staging file. SessionId={SessionId}", sessionId);
                 }
             }
-            else files.DeleteStagingFile(stagingPath);
+            else _ = files.DeleteStagingFile(stagingPath);
             throw;
         }
         logger.LogInformation(
@@ -189,7 +195,7 @@ public sealed class UploadSessionService(
 
         // A session-level latch, not just an offset comparison: two chunks racing on the same offset would
         // both pass the check above and then interleave their writes into one file.
-        var gate = gates.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
+        var gate = concurrency.SessionGates.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
         if (!await gate.WaitAsync(TimeSpan.Zero, cancellationToken))
             throw new UploadSessionException(FileUploadProblemCodes.ConcurrentChunk, 409,
                 "同一会话已有分片正在写入。")
@@ -288,7 +294,7 @@ public sealed class UploadSessionService(
         }
 
         store.Remove(sessionId);
-        gates.TryRemove(sessionId, out _);
+        concurrency.SessionGates.TryRemove(sessionId, out _);
         logger.LogInformation(
             "File upload session committed. SessionId={SessionId}, Bytes={Bytes}, Elevated={Elevated}, TargetDirectoryHash={TargetDirectoryHash}",
             sessionId, session.Length, session.Elevated, Hash(session.TargetDirectoryPath));
@@ -300,8 +306,8 @@ public sealed class UploadSessionService(
     public async Task AbortAsync(ClaimsPrincipal user, string sessionId, CancellationToken cancellationToken)
     {
         if (!store.TryGet(sessionId, out var session) || !OwnedBy(session, user)) return;
-        await AbandonAsync(session, cancellationToken);
-        logger.LogInformation("File upload session abandoned. SessionId={SessionId}, Bytes={Bytes}", sessionId, session.Offset);
+        if (await AbandonAsync(session, cancellationToken))
+            logger.LogInformation("File upload session abandoned. SessionId={SessionId}, Bytes={Bytes}", sessionId, session.Offset);
     }
 
     /// <summary>Removes sessions past their lifetime. Runs from the index only.</summary>
@@ -313,12 +319,20 @@ public sealed class UploadSessionService(
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!session.IsExpired(options, now)) continue;
-            await AbandonAsync(session, cancellationToken);
-            removed++;
-            logger.LogInformation("File upload session expired and was removed. SessionId={SessionId}, Bytes={Bytes}, CreatedAt={CreatedAt}",
-                session.SessionId, session.Offset, session.CreatedAt);
+            if (await SweepAsync(session.SessionId, cancellationToken)) removed++;
         }
         return removed;
+    }
+
+    /// <summary>Attempts to remove one expired session. A failed file cleanup retains the index record so
+    /// the hosted sweep can retry instead of permanently orphaning the staging file.</summary>
+    public async Task<bool> SweepAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        if (!store.TryGet(sessionId, out var session) || !session.IsExpired(options, DateTimeOffset.UtcNow)) return false;
+        if (!await AbandonAsync(session, cancellationToken)) return false;
+        logger.LogInformation("File upload session expired and was removed. SessionId={SessionId}, Bytes={Bytes}, CreatedAt={CreatedAt}",
+            session.SessionId, session.Offset, session.CreatedAt);
+        return true;
     }
 
     private async Task<FileEntryDto> CommitPrivilegedAsync(UploadSessionRecord session, CancellationToken cancellationToken)
@@ -333,22 +347,56 @@ public sealed class UploadSessionService(
     }
 
     /// <summary>Drops the session and its staging file. Delegates deletion of a protected file to the Helper.</summary>
-    private async Task AbandonAsync(UploadSessionRecord session, CancellationToken cancellationToken)
+    private async Task<bool> AbandonAsync(UploadSessionRecord session, CancellationToken cancellationToken)
     {
-        store.Remove(session.SessionId);
-        gates.TryRemove(session.SessionId, out _);
+        if (!IsOwnedStagingPath(session))
+        {
+            logger.LogError("Refusing to clean an upload session whose staging path is not attributable to its record. SessionId={SessionId}",
+                session.SessionId);
+            return false;
+        }
+        var removed = false;
         if (session.Elevated)
         {
-            try { await privileged.DeleteAsync(session.StagingPath, cancellationToken); }
+            try
+            {
+                await privileged.DeleteAsync(session.StagingPath, cancellationToken);
+                removed = true;
+            }
+            catch (FileNotFoundException) { removed = true; }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
-                // The host may already have removed it, or the Helper may be down. Nothing to report: the
-                // record is gone, so the client is told the session does not exist.
+                logger.LogWarning(exception, "Failed to clean up upload staging file. SessionId={SessionId}", session.SessionId);
             }
         }
         else
         {
-            files.DeleteStagingFile(session.StagingPath);
+            removed = files.DeleteStagingFile(session.StagingPath);
+        }
+        if (!removed) return false;
+        store.Remove(session.SessionId);
+        concurrency.SessionGates.TryRemove(session.SessionId, out _);
+        return true;
+    }
+
+    internal static bool IsOwnedStagingPath(UploadSessionRecord session)
+    {
+        try
+        {
+            var target = Path.TrimEndingDirectorySeparator(Path.GetFullPath(session.TargetDirectoryPath));
+            var staging = Path.GetFullPath(session.StagingPath);
+            var parent = Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(staging) ?? string.Empty);
+            var stagingName = Path.GetFileName(staging);
+            return string.Equals(target, parent, OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
+                && string.Equals(stagingName,
+                    FileUploadNamePolicy.BuildStagingFileName(session.FileName, session.SessionId), StringComparison.Ordinal)
+                && FileUploadNamePolicy.TryParseStagingFileName(stagingName, out var parsed)
+                && string.Equals(parsed, session.SessionId, StringComparison.Ordinal);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
         }
     }
 

@@ -755,7 +755,8 @@ builder.Services.AddSingleton(sp =>
         .Get<RelaxKonOS.Server.Files.UploadSessionOptions>()
     ?? new RelaxKonOS.Server.Files.UploadSessionOptions());
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.UploadSessionStore>();
-builder.Services.AddSingleton<RelaxKonOS.Server.Files.UploadSessionService>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Files.UploadSessionConcurrency>();
+builder.Services.AddScoped<RelaxKonOS.Server.Files.UploadSessionService>();
 builder.Services.AddHostedService<RelaxKonOS.Server.Files.UploadSessionSweeper>();
 builder.Services.AddSingleton<WorkspaceWallpaperStore>();
 // The service only depends on the singleton runtime registry, so the singleton lifetime lets

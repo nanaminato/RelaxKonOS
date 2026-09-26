@@ -38,6 +38,7 @@ DATA_ROOT="$(realpath -m -- "$DATA_ROOT")"
 [[ "$INSTALL_ROOT" != "$DATA_ROOT" && "$INSTALL_ROOT" != "$DATA_ROOT"/* && "$DATA_ROOT" != "$INSTALL_ROOT"/* ]] || { echo 'Install and data paths must not overlap.' >&2; exit 64; }
 
 state_file="$DATA_ROOT/install-state.json"
+VERIFIED_INSTALL_STATE=false
 state_field() { [[ -r $state_file ]] || return 0; sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$state_file" | head -n1; }
 state_flag() { [[ -r $state_file ]] || return 0; sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" "$state_file" | head -n1; }
 json_string_or_null() { [[ -n ${1:-} ]] && printf '"%s"' "$1" || printf 'null'; }
@@ -52,10 +53,38 @@ if [[ -f $state_file ]]; then
     [[ -n "$recorded_id" ]] || { echo 'The host has no managed installation id to compare against.' >&2; exit 65; }
     [[ "$recorded_id" == "$EXPECTED_INSTALLATION_ID" ]] || { echo 'The host installation id does not match the request.' >&2; exit 65; }
   fi
+  VERIFIED_INSTALL_STATE=true
 elif [[ "$REMOVE_DATA" == true && -e "$DATA_ROOT" ]]; then
   echo "Refusing to remove data without install-state.json: $DATA_ROOT" >&2
   exit 65
 fi
+
+# Resolve program-directory ownership before stopping services or deleting unit files. A generic
+# directory named "versions" or a generic "current" symlink is not an ownership marker.
+RECOGNISED_INSTALL_ROOT=false
+if [[ "$VERIFIED_INSTALL_STATE" == true ]]; then
+  RECOGNISED_INSTALL_ROOT=true
+elif [[ -L "$INSTALL_ROOT/current" ]]; then
+  current_target="$(readlink -- "$INSTALL_ROOT/current")"
+  if [[ "$current_target" =~ ^versions/[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]]; then
+    current_root="$INSTALL_ROOT/$current_target"
+    if [[ -f "$current_root/server/RelaxKonOS.Server" \
+      && -f "$current_root/guardian/RelaxKonOS.Guardian.Agent" \
+      && -f "$current_root/privileged-helper/RelaxKonOS.PrivilegedHelper" \
+      && -f "$current_root/deployment/linux/install-relaxkonos-services.sh" ]]; then
+      RECOGNISED_INSTALL_ROOT=true
+    fi
+  fi
+elif [[ -f "$INSTALL_ROOT/runtime/server/RelaxKonOS.Server" \
+  && -f "$INSTALL_ROOT/runtime/guardian/RelaxKonOS.Guardian.Agent" \
+  && -f "$INSTALL_ROOT/runtime/privileged-helper/RelaxKonOS.PrivilegedHelper" ]]; then
+  RECOGNISED_INSTALL_ROOT=true
+elif [[ -f "$INSTALL_ROOT/server/RelaxKonOS.Server" \
+  && -f "$INSTALL_ROOT/guardian/RelaxKonOS.Guardian.Agent" \
+  && -f "$INSTALL_ROOT/privileged-helper/RelaxKonOS.PrivilegedHelper" ]]; then
+  RECOGNISED_INSTALL_ROOT=true
+fi
+[[ "$RECOGNISED_INSTALL_ROOT" == true ]] || { echo "Refusing to remove an unrecognised installation directory: $INSTALL_ROOT" >&2; exit 65; }
 
 if [[ "$NON_INTERACTIVE" == false ]]; then
   echo 'This removes RelaxKonOS services and program files.'
@@ -68,16 +97,7 @@ systemctl disable --now relaxkonos-server.service relaxkonos-guardian.service 2>
 rm -f -- /etc/systemd/system/relaxkonos-server.service /etc/systemd/system/relaxkonos-guardian.service
 systemctl daemon-reload
 
-# Only a recognised RelaxKonOS installation may be removed. The versioned payload directory is the
-# ownership marker, so an arbitrary directory at this path is preserved rather than deleted. Hosts
-# installed by the earlier runtime-snapshot layout carry their payload under runtime/, and the
-# component layout that predates both is recognised by its server payload.
-if [[ -d "$INSTALL_ROOT/versions" || -L "$INSTALL_ROOT/current" || -f "$INSTALL_ROOT/server/RelaxKonOS.Server" \
-  || ( -f "$INSTALL_ROOT/runtime/server/RelaxKonOS.Server" && -f "$INSTALL_ROOT/runtime/guardian/RelaxKonOS.Guardian.Agent" && -f "$INSTALL_ROOT/runtime/privileged-helper/RelaxKonOS.PrivilegedHelper" ) ]]; then
-  rm -rf -- "$INSTALL_ROOT"
-elif [[ -e "$INSTALL_ROOT" ]]; then
-  echo "Refusing to remove an unrecognised installation directory: $INSTALL_ROOT" >&2
-fi
+[[ ! -e "$INSTALL_ROOT" ]] || rm -rf -- "$INSTALL_ROOT"
 
 rm -rf -- /usr/local/lib/relaxkonos
 rm -f -- /etc/sudoers.d/relaxkonos-helpers

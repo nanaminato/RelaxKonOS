@@ -222,17 +222,13 @@ publish_payload() { # bundle version
   cp -a "$bundle/payload/linux/server/." "$root/server/"
   cp -a "$bundle/payload/linux/guardian/." "$root/guardian/"
   cp -a "$bundle/payload/linux/privileged-helper/." "$root/privileged-helper/"
+  # Deployment logic is versioned with the payload it understands. A rollback must never run an old
+  # binary set through the installer from the release that just failed.
+  [[ -d "$bundle/deployment" ]] || { echo 'The release bundle has no deployment engine.' >&2; exit 65; }
+  cp -a "$bundle/deployment" "$root/deployment"
   chown -R root:root "$root"
   chmod -R go-w "$root"
   chmod 0755 "$root/server/RelaxKonOS.Server" "$root/guardian/RelaxKonOS.Guardian.Agent" "$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
-  # Keep the deployment scripts beside the installation so repair and rollback work over SSH
-  # without re-uploading a package.
-  if [[ -d "$bundle/deployment" ]]; then
-    rm -rf -- "$INSTALL_ROOT/deployment"
-    cp -a "$bundle/deployment" "$INSTALL_ROOT/deployment"
-    chown -R root:root "$INSTALL_ROOT/deployment"
-    chmod -R go-w "$INSTALL_ROOT/deployment"
-  fi
 }
 
 # --- action eligibility --------------------------------------------------------------------------
@@ -406,7 +402,7 @@ INSTALLATION_ID="$(state_field installationId)"
 run_services_installer() { # version listenUrl
   local version=$1 listen=$2 root engine status=0
   root="$(version_root "$version")"
-  engine="$INSTALL_ROOT/deployment/linux/install-relaxkonos-services.sh"
+  engine="$root/deployment/linux/install-relaxkonos-services.sh"
   [[ -f "$engine" ]] || { echo 'The installed RelaxKonOS deployment scripts are missing; reinstall or repair is required.' >&2; exit 65; }
   local server="$root/server/RelaxKonOS.Server" guardian="$root/guardian/RelaxKonOS.Guardian.Agent" helper="$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
   local file
@@ -430,16 +426,17 @@ verify_health() {
   systemctl is-active --quiet relaxkonos-server.service
 }
 
-systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
 case "$ACTION" in
   install)
     publish_payload "$BUNDLE_PATH" "$TARGET_VERSION"
+    systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
     activate_version "$TARGET_VERSION"
     run_services_installer "$TARGET_VERSION" "$LISTEN_URL"
     verify_health || { echo 'The server did not pass its health check.' >&2; exit 70; }
     ;;
   upgrade)
     publish_payload "$BUNDLE_PATH" "$TARGET_VERSION"
+    systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
     activate_version "$TARGET_VERSION"
     if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
       # A failed activation must not leave the host on a half-published version.
@@ -453,11 +450,13 @@ case "$ACTION" in
     fi
     ;;
   repair)
+    systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
     activate_version "$TARGET_VERSION"
     run_services_installer "$TARGET_VERSION" "$LISTEN_URL"
     verify_health || { echo 'The repaired installation did not pass its health check.' >&2; exit 70; }
     ;;
   rollback)
+    systemctl stop relaxkonos-server.service relaxkonos-guardian.service 2>/dev/null || true
     activate_version "$TARGET_VERSION"
     if ! { run_services_installer "$TARGET_VERSION" "$LISTEN_URL" && verify_health; }; then
       echo "Rollback to version $TARGET_VERSION failed; restoring version $FROM_VERSION." >&2

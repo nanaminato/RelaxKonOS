@@ -73,9 +73,10 @@ public interface IFileService
     /// <summary>Current length of the staging file, or -1 when it does not exist.</summary>
     long StagingLength(string stagingPath);
 
-    /// <summary>Removes the staging file. A missing file, a permission failure, or a sharing violation is
-    /// not an error: the session's expiry sweep retries, and a cleanup failure must never fail the caller.</summary>
-    void DeleteStagingFile(string stagingPath);
+    /// <summary>Removes the staging file. Returns <see langword="true"/> when the file is absent after the
+    /// attempt. Permission and sharing failures return <see langword="false"/> so the persistent session
+    /// remains available to the expiry sweep for a later retry.</summary>
+    bool DeleteStagingFile(string stagingPath);
 
     /// <summary>Publishes a fully received staging file as the destination file by renaming it within its
     /// directory. Existing destinations are replaced silently, matching <see cref="UploadAsync"/>.</summary>

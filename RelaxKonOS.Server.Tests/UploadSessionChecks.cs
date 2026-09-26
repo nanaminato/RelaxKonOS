@@ -79,7 +79,7 @@ public static class UploadSessionChecks
         var privilegedProxy = DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>();
         var elevations = new RecordingElevationStore();
         var store = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
-        var service = new UploadSessionService(files, privilegedProxy, elevations, store, options,
+        var service = new UploadSessionService(files, privilegedProxy, elevations, store, options, new UploadSessionConcurrency(),
             NullLogger<UploadSessionService>.Instance);
         return (service, store, elevations, (RecordingPrivilegedFileService)(object)privilegedProxy, files);
     }
@@ -127,6 +127,24 @@ public static class UploadSessionChecks
         var missingDirectory = await ThrowsAsync(() => service.CreateAsync(user,
             new CreateUploadRequest(Path.Combine(directory, "nope"), "a.bin", 1), "key-3", default));
         check(missingDirectory?.ProblemCode == "not-found", "A missing target directory is not-found");
+
+        // System Mode may not be able to traverse a user's private subdirectory even though the
+        // effective-user Helper can. The upload service must trust its file abstraction instead of
+        // rejecting the path with a process-account Directory.Exists probe first.
+        var opaqueContentRoot = Path.Combine(root, "opaque-store");
+        Directory.CreateDirectory(opaqueContentRoot);
+        var opaqueStore = new UploadSessionStore(new TestHostEnvironment(opaqueContentRoot),
+            BuildOptions(), NullLogger<UploadSessionStore>.Instance);
+        var opaqueFiles = DispatchProxy.Create<IFileService, OpaqueStagingFileService>();
+        var opaqueService = new UploadSessionService(opaqueFiles,
+            DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(), new RecordingElevationStore(),
+            opaqueStore, BuildOptions(), new UploadSessionConcurrency(), NullLogger<UploadSessionService>.Instance);
+        var opaquePath = Path.Combine(root, "process-account-cannot-see-this-directory");
+        var opaqueSession = await opaqueService.CreateAsync(user,
+            new CreateUploadRequest(opaquePath, "private.bin", 1), "opaque-key", default);
+        check(!Directory.Exists(opaquePath) && opaqueSession.Offset == 0,
+            "Target-directory validation is delegated to the effective-user file service");
+        await opaqueService.AbortAsync(user, opaqueSession.UploadId, default);
         var tooLong = await ThrowsAsync(() => service.CreateAsync(user,
             new CreateUploadRequest(directory, "a.bin", 65L * 1024 * 1024), "key-4", default));
         check(tooLong?.ProblemCode == "invalid-input", "A length above the configured ceiling is refused");
@@ -232,6 +250,34 @@ public static class UploadSessionChecks
         check(!File.Exists(expiredStaging), "The sweep removes the staging file it owns");
         check(File.Exists(decoy), "The sweep leaves a user file that only looks like a staging file");
 
+        // Losing the record after a failed delete would make the file permanently unattributable. Keep
+        // both until a later sweep can prove the staging file is gone.
+        var retryContentRoot = Path.Combine(root, "sweep-retry");
+        var retryDirectory = Path.Combine(root, "sweep-retry-target");
+        Directory.CreateDirectory(retryContentRoot);
+        Directory.CreateDirectory(retryDirectory);
+        var retryOptions = BuildOptions();
+        var retryFiles = new LocalFileService(new SystemMode());
+        var failedDeleteProxy = DispatchProxy.Create<IFileService, FailedDeleteFileService>();
+        ((FailedDeleteFileService)(object)failedDeleteProxy).Inner = retryFiles;
+        var retryStore = new UploadSessionStore(new TestHostEnvironment(retryContentRoot), retryOptions,
+            NullLogger<UploadSessionStore>.Instance);
+        var retryService = new UploadSessionService(failedDeleteProxy,
+            DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(), new RecordingElevationStore(),
+            retryStore, retryOptions, new UploadSessionConcurrency(), NullLogger<UploadSessionService>.Instance);
+        var retrySession = await retryService.CreateAsync(user,
+            new CreateUploadRequest(retryDirectory, "retry.bin", 20), "sweep-retry", default);
+        var retryStaging = Path.Combine(retryDirectory,
+            FileUploadNamePolicy.BuildStagingFileName("retry.bin", retrySession.UploadId));
+        retryStore.Remove(retrySession.UploadId);
+        retryStore.Add(new UploadSessionRecord(retrySession.UploadId, "bob", retryDirectory, "retry.bin", retryStaging,
+            20, 0, FileUploadProtocol.DefaultChunkSize, false, "sweep-retry", null,
+            DateTimeOffset.UtcNow.AddDays(-30), DateTimeOffset.UtcNow.AddDays(-30)));
+        check(await retryService.SweepAsync(default) == 0 && retryStore.TryGet(retrySession.UploadId, out _),
+            "A failed staging cleanup retains its session record for retry");
+        check(File.Exists(retryStaging), "A failed staging cleanup does not claim the file was removed");
+        retryFiles.DeleteStagingFile(retryStaging);
+
         // A corrupt index must not cause any deletion: an unreadable ledger cannot attribute files.
         var indexPath = store.IndexPath;
         File.WriteAllText(indexPath, "{ this is not a session index");
@@ -252,8 +298,9 @@ public static class UploadSessionChecks
         var files = new LocalFileService(new SystemMode());
         var user = Principal("carol");
         var store = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
+        var concurrency = new UploadSessionConcurrency();
         var service = new UploadSessionService(files, DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(),
-            new RecordingElevationStore(), store, options, NullLogger<UploadSessionService>.Instance);
+            new RecordingElevationStore(), store, options, concurrency, NullLogger<UploadSessionService>.Instance);
         var session = await service.CreateAsync(user, new CreateUploadRequest(directory, "resume.bin", 60), "restart-1", default);
         await service.AppendAsync(user, session.UploadId, 0, 25, Content(25, 21), default);
         var staging = Path.Combine(directory, FileUploadNamePolicy.BuildStagingFileName("resume.bin", session.UploadId));
@@ -262,7 +309,7 @@ public static class UploadSessionChecks
         // A second store over the same directory is what a server restart looks like here.
         var restartedStore = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
         var restarted = new UploadSessionService(files, DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(),
-            new RecordingElevationStore(), restartedStore, options, NullLogger<UploadSessionService>.Instance);
+            new RecordingElevationStore(), restartedStore, options, concurrency, NullLogger<UploadSessionService>.Instance);
         check(restartedStore.Count == 1, "The session index survives a restart");
         var resumed = restarted.Get(user, session.UploadId);
         check(resumed.Offset == 25, "The confirmed offset survives a restart");
@@ -394,7 +441,7 @@ public static class UploadSessionChecks
         var elevations = new RecordingElevationStore { Granted = false };
         var store = new UploadSessionStore(new TestHostEnvironment(contentRoot), options, NullLogger<UploadSessionStore>.Instance);
         var service = new UploadSessionService(proxy, DispatchProxy.Create<IPrivilegedFileService, RecordingPrivilegedFileService>(),
-            elevations, store, options, NullLogger<UploadSessionService>.Instance);
+            elevations, store, options, new UploadSessionConcurrency(), NullLogger<UploadSessionService>.Instance);
         var user = Principal("erin");
 
         var refused = await ThrowsAsync(() => service.CreateAsync(user,
@@ -459,6 +506,24 @@ public static class UploadSessionChecks
                 throw new UnauthorizedAccessException("staging creation denied");
             return method!.Invoke(Inner, args);
         }
+    }
+
+    public class FailedDeleteFileService : DispatchProxy
+    {
+        public IFileService? Inner { get; set; }
+
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+            => method?.Name == nameof(IFileService.DeleteStagingFile) ? false : method!.Invoke(Inner, args);
+    }
+
+    public class OpaqueStagingFileService : DispatchProxy
+    {
+        protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+        {
+            nameof(IFileService.CreateStagingFile) => null,
+            nameof(IFileService.DeleteStagingFile) => true,
+            _ => throw new NotSupportedException($"Unexpected operation for opaque staging directory: {method?.Name}"),
+        };
     }
 
     /// <summary>Stands in for the privileged Helper: performs the same file work locally and records which

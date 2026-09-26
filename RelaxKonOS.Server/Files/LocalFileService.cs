@@ -515,17 +515,17 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         }
     }
 
-    public void DeleteStagingFile(string stagingPath)
+    public bool DeleteStagingFile(string stagingPath)
     {
         try
         {
             EnsureUserModePath(stagingPath);
             if (File.Exists(stagingPath)) File.Delete(stagingPath);
+            return !File.Exists(stagingPath);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            // A cleanup that fails is retried by the session sweep. It must not fail the operation that
-            // asked for it, which has already reached its own terminal state.
+            return false;
         }
     }
 

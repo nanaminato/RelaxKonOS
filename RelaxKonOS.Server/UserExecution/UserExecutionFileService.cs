@@ -51,14 +51,13 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             or InvalidOperationException or TimeoutException or ArgumentException)
         { return -1; }
     }
-    public void DeleteStagingFile(string stagingPath)
+    public bool DeleteStagingFile(string stagingPath)
     {
-        try { Run<bool>(UserExecutionOperationKind.FileDeleteStaging, path: stagingPath); }
+        try { return Run<bool>(UserExecutionOperationKind.FileDeleteStaging, path: stagingPath); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
             or InvalidOperationException or TimeoutException or ArgumentException)
         {
-            // Cleanup is retried by the session sweep; it must never fail the operation that asked for it,
-            // which has already reached its own terminal state.
+            return false;
         }
     }
     public FileEntryDto CommitStagingFile(string stagingPath, string destinationPath)
@@ -132,7 +131,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     private bool DeleteDirect(string path) { direct.Delete(path); return true; }
     private bool CreateDirect(string path) { direct.CreateDirectory(path); return true; }
     private bool CreateStagingDirect(string path) { direct.CreateStagingFile(path); return true; }
-    private bool DeleteStagingDirect(string path) { direct.DeleteStagingFile(path); return true; }
+    private bool DeleteStagingDirect(string path) => direct.DeleteStagingFile(path);
     private static MemoryStream Bytes(string content) => new(Convert.FromBase64String(content), writable: false);
     private static async Task<string> ReadContentAsync(Stream content, CancellationToken cancellationToken)
     { await using var copy = new MemoryStream(); await content.CopyToAsync(copy, cancellationToken); if (copy.Length > UserExecutionProtocol.MaximumFileContentBytes) throw new IOException("File content is too large."); return Convert.ToBase64String(copy.ToArray()); }
