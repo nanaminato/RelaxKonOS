@@ -1,5 +1,13 @@
 # RelaxKonOS Mobile 实施进展
 
+## 无电脑部署规划（2026-09-26）
+
+新增 [总路线图](./RelaxKonOS.Mobile.Deployment.Roadmap.md) 及 AD01–AD08 独立计划，覆盖服务器初始化、应用部署、模板应用库、Docker/Compose、网站发布、Git/轻量编辑、终端/守护和运维恢复。
+
+本次仅建立文档与导航，没有实现上述新功能、运行设备测试或新增功能验收证据。现有基础件状态仍以下文及各领域 Progress 为准，不将“计划已建立”记为“功能已完成”。
+
+后续实施以 `ADxx-Mn` 记录阶段、`ADxx-Tn` 记录验收；进度和证据只在本文件维护。首轮 R1 交付 AD01 首次安装、AD02 镜像部署、AD05 基本发布及 AD08 任务恢复。应用部署的真实 Docker 验收和服务器中心的真实宿主安装仍是必要条件，见各计划前置要求。
+
 ## M0：Kotlin / Jetpack Compose 基线（已完成）
 
 - 移除 `RelaxKonOS.Client.Mobile`、Avalonia Mobile、.NET for Android Host、其 XAML 页面、NuGet 包与 `.sln` 项目条目。

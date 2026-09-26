@@ -12,4 +12,20 @@
 | [`RelaxKonOS.Mobile.BulkUpload.Design.md`](./RelaxKonOS.Mobile.BulkUpload.Design.md)             | 大文件上传（分块与续传）的 Android 侧设计：源可寻址策略与缓存落盘、前台服务、分片循环、续传日志、状态归属与验收。 |
 | [`android-release.md`](./android-release.md)                                                     | Android 本地环境、构建、调试、签名和发布要求。                                     |
 
+## 无电脑部署计划
+
+这组文档规划“只有手机与远端主机”的首次安装、部署和维护体验；状态为规划，不能据此认定功能已实现或验收。总路线图定义分期与共同约束，各计划定义具体交付和验收；实际进度仍统一记入 `RelaxKonOS.Mobile.Progress.md`。
+
+| 文档 | 用途 |
+| --- | --- |
+| [总路线图](./RelaxKonOS.Mobile.Deployment.Roadmap.md) | 产品范围、已有基础、八项依赖、R0–R3 发布阶段与共同验收要求。 |
+| [AD01：服务器初始化](./RelaxKonOS.Mobile.ServerBootstrap.Plan.md) | SSH 接入、可信包、首次安装、健康确认与服务器生命周期。 |
+| [AD02：应用部署向导](./RelaxKonOS.Mobile.ApplicationDeployment.Plan.md) | 镜像与 Java/.NET/Python 包、部署任务、日志、更新与版本回滚。 |
+| [AD03：模板应用库](./RelaxKonOS.Mobile.ApplicationCatalog.Plan.md) | 受维护应用模板、动态配置表单、兼容检查与模板版本管理。 |
+| [AD04：Docker 与 Compose](./RelaxKonOS.Mobile.DockerCompose.Plan.md) | 容器资源管理、组合应用导入、资源归属与部分失败恢复。 |
+| [AD05：网站发布与网络配置](./RelaxKonOS.Mobile.WebPublishing.Plan.md) | 域名、证书、站点、访问验证及后续内网发布。 |
+| [AD06：Git 部署与轻量编辑](./RelaxKonOS.Mobile.GitDeployment.Plan.md) | 仓库到隔离构建再到发布，配置编辑、差异和提交。 |
+| [AD07：终端、脚本与进程守护](./RelaxKonOS.Mobile.TerminalAutomation.Plan.md) | 移动终端、SSH 排障、一次性任务与持续工作负载。 |
+| [AD08：运维与恢复中心](./RelaxKonOS.Mobile.OperationsRecovery.Plan.md) | 任务观察、断线核实、备份恢复、事件与通知。 |
+
 除面向所有客户端的架构或 Protocol 契约外，新的 Android 专属设计和实施文档必须放在这里。
