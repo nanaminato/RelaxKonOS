@@ -213,7 +213,8 @@ public sealed class UploadSessionService(
             if (session.Elevated)
             {
                 var source = RequireSessionAuthorization(user, session);
-                var appended = await privileged.AppendChunkAsync(source, session.StagingPath, offset.Value, body, cancellationToken);
+                var appended = await PrivilegedAsync(() => privileged.AppendChunkAsync(
+                    source, session.StagingPath, offset.Value, body, cancellationToken));
                 if (appended != offset.Value + contentLength.Value)
                 {
                     // An inconsistent staging file cannot be repaired through the shape-constrained Helper
@@ -265,13 +266,14 @@ public sealed class UploadSessionService(
                 $"会话仅收到 {session.Offset}/{session.Length} 字节。")
             { AuthoritativeOffset = session.Offset };
 
+        var source = session.Elevated ? RequireSessionAuthorization(user, session) : (PrivilegedFileAuthorizationSource?)null;
         if (!string.IsNullOrWhiteSpace(contentHash))
             await VerifyHashAsync(session, contentHash, cancellationToken);
 
         FileEntryDto dto;
         if (session.Elevated)
         {
-            dto = await CommitPrivilegedAsync(session, RequireSessionAuthorization(user, session), cancellationToken);
+            dto = await CommitPrivilegedAsync(session, source!.Value, cancellationToken);
         }
         else
         {
@@ -326,6 +328,7 @@ public sealed class UploadSessionService(
     public async Task<bool> SweepAsync(string sessionId, CancellationToken cancellationToken)
     {
         if (!store.TryGet(sessionId, out var session) || !session.IsExpired(options, DateTimeOffset.UtcNow)) return false;
+        using var auditActor = PrivilegedAuditActorScope.Enter(session.IdentityKey);
         if (!await AbandonAsync(session, cancellationToken)) return false;
         logger.LogInformation("File upload session expired and was removed. SessionId={SessionId}, Bytes={Bytes}, CreatedAt={CreatedAt}",
             session.SessionId, session.Offset, session.CreatedAt);
@@ -333,15 +336,8 @@ public sealed class UploadSessionService(
     }
 
     private async Task<FileEntryDto> CommitPrivilegedAsync(UploadSessionRecord session, PrivilegedFileAuthorizationSource source, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await privileged.CommitAsync(source, session.StagingPath, session.FileName, cancellationToken);
-        }
-        catch (FileNotFoundException ex) { throw new UploadSessionException("not-found", 404, ex.Message); }
-        catch (UnauthorizedAccessException ex) { throw new UploadSessionException("access-denied", 403, ex.Message); }
-        catch (InvalidOperationException ex) { throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message); }
-    }
+        => await PrivilegedAsync(() => privileged.CommitAsync(
+            source, session.StagingPath, session.FileName, cancellationToken));
 
     /// <summary>Drops the session and its staging file. Delegates deletion of a protected file to the Helper.</summary>
     private async Task<bool> AbandonAsync(UploadSessionRecord session, CancellationToken cancellationToken)
@@ -403,7 +399,7 @@ public sealed class UploadSessionService(
             ? contentHash["sha256-".Length..] : contentHash;
         string actual;
         var opened = session.AuthorizationSource is { } source
-            ? await privileged.OpenReadAsync(source, session.StagingPath, cancellationToken)
+            ? await PrivilegedAsync(() => privileged.OpenReadAsync(source, session.StagingPath, cancellationToken))
             : ((Stream)new FileStream(session.StagingPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
                 FileOptions.Asynchronous | FileOptions.SequentialScan), string.Empty);
         await using (var stream = opened.Item1)
@@ -429,9 +425,29 @@ public sealed class UploadSessionService(
         => string.Equals(session.IdentityKey, IdentityKey(user), StringComparison.Ordinal);
 
     private PrivilegedFileAuthorizationSource RequireAuthorization(ClaimsPrincipal user, string target)
-        => authorizations.Authorize(user, FileElevationCapability.Upload, target)
-            ?? throw new UploadSessionException(FileUploadProblemCodes.ElevationRequired, 403,
-                "目标目录需要管理员授权才能写入。");
+    {
+        try
+        {
+            return authorizations.Authorize(user, FileElevationCapability.Upload, target)
+                ?? throw new UploadSessionException(FileUploadProblemCodes.ElevationRequired, 403,
+                    "目标目录需要管理员授权才能写入。");
+        }
+        catch (InvalidOperationException ex)
+        { throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message); }
+        catch (UnauthorizedAccessException ex)
+        { throw new UploadSessionException("access-denied", 403, ex.Message); }
+    }
+
+    private static async Task<T> PrivilegedAsync<T>(Func<Task<T>> action)
+    {
+        try { return await action(); }
+        catch (FileNotFoundException ex) { throw new UploadSessionException("not-found", 404, ex.Message); }
+        catch (DirectoryNotFoundException ex) { throw new UploadSessionException("not-found", 404, ex.Message); }
+        catch (UnauthorizedAccessException ex) { throw new UploadSessionException("access-denied", 403, ex.Message); }
+        catch (InvalidOperationException ex) { throw new UploadSessionException("privileged-helper-unavailable", 503, ex.Message); }
+        catch (ArgumentException ex) { throw new UploadSessionException("invalid-path", 400, ex.Message); }
+        catch (IOException ex) { throw new UploadSessionException("io-error", 500, ex.Message); }
+    }
 
     private PrivilegedFileAuthorizationSource RequireSessionAuthorization(ClaimsPrincipal user, UploadSessionRecord session)
     {

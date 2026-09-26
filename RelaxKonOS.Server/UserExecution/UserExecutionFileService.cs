@@ -18,14 +18,12 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     public IReadOnlyList<SpecialLocationDto> GetSpecialLocations(string? userHomeDirectory = null)
     {
         var principal = http.HttpContext?.User ?? throw new InvalidOperationException("An authenticated HTTP request is required.");
-        if (mode.Mode == ServerMode.System && authorizations.IsRoot(principal))
+        if (mode.Mode == ServerMode.System && IsRootSession(principal))
         {
             try
             {
                 var home = userHomeDirectory ?? "/root";
-                if (authorizations.Authorize(principal, FileElevationCapability.Read, home)
-                    != PrivilegedFileAuthorizationSource.HostRoot)
-                    throw new UnauthorizedAccessException("Root file authorization is unavailable.");
+                RequireRootAuthorization(principal, FileElevationCapability.Read, [home]);
                 return privileged.GetSpecialLocationsAsync(PrivilegedFileAuthorizationSource.HostRoot,
                     home, http.HttpContext?.RequestAborted ?? CancellationToken.None).GetAwaiter().GetResult();
             }
@@ -93,12 +91,10 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         long? offset = null, long? expectedBytes = null)
     {
         var principal = http.HttpContext?.User ?? throw new InvalidOperationException("User execution requires an authenticated HTTP request.");
-        if (mode.Mode == ServerMode.System && authorizations.IsRoot(principal))
+        if (mode.Mode == ServerMode.System && IsRootSession(principal))
             return await RunPrivilegedAsync<T>(
-                authorizations.Authorize(principal, Capability(operation), TargetPaths(operation, path, destinationPath, newName))
-                    == PrivilegedFileAuthorizationSource.HostRoot ? PrivilegedFileAuthorizationSource.HostRoot
-                    : throw new UnauthorizedAccessException("Root file authorization is unavailable."), operation, path,
-                destinationPath, newName, fileName, overwrite, content, unixMode, offset);
+                RequireRootAuthorization(principal, Capability(operation), TargetPaths(operation, path, destinationPath, newName)), operation, path,
+                destinationPath, newName, fileName, overwrite, content, unixMode, offset, expectedBytes);
         var context = contexts.Resolve(principal);
         var request = new UserExecutionRequest(context.Identity, operation, path, destinationPath, newName, fileName, overwrite,
             content, unixMode, offset, expectedBytes, OperationId: Guid.NewGuid());
@@ -115,9 +111,10 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             try { source = authorizations.Authorize(principal, Capability(operation),
                 TargetPaths(operation, path, destinationPath, newName)); }
             catch (InvalidOperationException error) { throw HostFileExecutionException.From(error); }
+            catch (UnauthorizedAccessException) { throw new HostFileExecutionException(403, "identity-changed", "Host identity is no longer valid."); }
             if (source is { } granted)
                 return await RunPrivilegedAsync<T>(granted, operation, path, destinationPath,
-                    newName, fileName, overwrite, content, unixMode, offset);
+                    newName, fileName, overwrite, content, unixMode, offset, expectedBytes);
         }
         Throw(result);
         try { return JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64!), RelaxKonOSJsonOptions.Default)!; }
@@ -139,6 +136,26 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         _ => FileElevationCapability.Read,
     };
 
+    private bool IsRootSession(System.Security.Claims.ClaimsPrincipal principal)
+    {
+        try { return authorizations.IsRoot(principal); }
+        catch (UnauthorizedAccessException)
+        { throw new HostFileExecutionException(403, "identity-changed", "Host identity is no longer valid."); }
+    }
+
+    private PrivilegedFileAuthorizationSource RequireRootAuthorization(
+        System.Security.Claims.ClaimsPrincipal principal, FileElevationCapability capability, string[] paths)
+    {
+        try
+        {
+            return authorizations.Authorize(principal, capability, paths) == PrivilegedFileAuthorizationSource.HostRoot
+                ? PrivilegedFileAuthorizationSource.HostRoot
+                : throw new HostFileExecutionException(403, "access-denied", "Root file authorization is unavailable.");
+        }
+        catch (InvalidOperationException error) { throw HostFileExecutionException.From(error); }
+        catch (UnauthorizedAccessException) { throw new HostFileExecutionException(403, "identity-changed", "Host identity is no longer valid."); }
+    }
+
     private static string[] TargetPaths(UserExecutionOperationKind operation, string? path,
         string? destinationPath, string? newName)
     {
@@ -150,12 +167,14 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
 
     private async Task<T> RunPrivilegedAsync<T>(PrivilegedFileAuthorizationSource source,
         UserExecutionOperationKind operation, string? path, string? destinationPath, string? newName,
-        string? fileName, bool overwrite, string? content, int? unixMode, long? offset)
+        string? fileName, bool overwrite, string? content, int? unixMode, long? offset, long? expectedBytes)
     {
         var ct = http.HttpContext?.RequestAborted ?? CancellationToken.None;
         using var bytes = content is null ? null : new MemoryStream(Convert.FromBase64String(content), writable: false);
         try
         {
+            if (operation == UserExecutionOperationKind.FileAppendStaging && bytes?.Length != expectedBytes)
+                throw new ArgumentException("Staging chunk length does not match the declared length.");
             object? result = operation switch
             {
             UserExecutionOperationKind.FileListDirectory => await privileged.ListDirectoryAsync(source, path!, ct),

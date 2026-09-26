@@ -21,8 +21,8 @@ public sealed record ServerAuthenticationDto(string Kind, string PamTransport);
 /// <summary>
 /// Whether this Server may execute ordinary operations (files, terminal, Git) as the authenticated
 /// identity. It is a per-login fact, not a deployment fact: the same Server answers differently for
-/// root than for a regular account. When <see cref="Available"/> is false the client must say so up
-/// front instead of letting the first folder open fail. <see cref="Reason"/> is a stable kebab-case
+/// root than for a regular account. A false <see cref="Available"/> does not close the file UI when
+/// <see cref="PrivilegedFilesAvailable"/> is true. <see cref="Reason"/> is a stable kebab-case
 /// code, never a description: text belongs to the client's localization packs.
 /// </summary>
 public sealed record ServerExecutionEligibilityDto(

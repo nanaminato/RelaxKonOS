@@ -16,8 +16,8 @@ data class ServerDescriptor(val platform: String, val capabilities: Set<String>)
 /**
  * Whether the identity that just signed in may run ordinary operations (files, terminal, Git) on the
  * host. A per-login fact, not a deployment fact: the same server answers differently for root than for
- * a regular account. When [available] is false the shell must say so instead of letting the first
- * folder open fail with a 503.
+ * a regular account. A root session may have [privilegedFilesAvailable] even when [available]
+ * is false because its file operations use the closed privileged Helper route.
  *
  * [reason] is a stable kebab-case code ([ExecutionEligibilityReasons]), never a sentence: the text
  * belongs to `strings.xml`, and this class never renders it.

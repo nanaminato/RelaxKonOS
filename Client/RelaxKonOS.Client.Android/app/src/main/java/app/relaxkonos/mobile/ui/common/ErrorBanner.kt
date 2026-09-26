@@ -97,7 +97,7 @@ fun CapabilityMissingNotice(modifier: Modifier = Modifier) {
  * own packs through [executionEligibilityMessage].
  */
 @Composable
-fun ExecutionEligibilityNotice(reason: String?, modifier: Modifier = Modifier) {
+fun ExecutionEligibilityNotice(reason: String?, privilegedFilesAvailable: Boolean = false, modifier: Modifier = Modifier) {
     val tone = StatusTone.Warning
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -110,7 +110,11 @@ fun ExecutionEligibilityNotice(reason: String?, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             DesktopIcon(icon = DesktopIcons.notice, size = 22.dp)
-            Text(executionEligibilityMessage(reason).text(), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                (if (privilegedFilesAvailable) UiMessage(R.string.execution_root_files_available)
+                 else executionEligibilityMessage(reason)).text(),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }

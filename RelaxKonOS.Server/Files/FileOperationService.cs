@@ -133,6 +133,7 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
 
     private async Task RunAsync(Job job)
     {
+        using var auditActor = PrivilegedAuditActorScope.Enter(job.Principal.FindFirstValue("sub") ?? job.Owner);
         var ct = job.Cancellation.Token;
         var outcome = FileOperationState.Failed;
         try
@@ -156,7 +157,8 @@ public sealed class FileOperationService(IPrivilegedFileService privileged,
                 ct.ThrowIfCancellationRequested();
                 var destination = item.DestinationPath;
                 if (destination is not null && string.Equals(item.SourcePath, destination, Comparison))
-                    destination = CopyName(destination);
+                    destination = job.ExecutionContext is not null || job.RootExecution
+                        ? await CopyNameUserAsync(job, destination, ct) : CopyName(destination);
                 if (await ProcessAsync(job, item.SourcePath, destination))
                     lock (job.Gate) job.Completed.Add(item.SourcePath);
             }

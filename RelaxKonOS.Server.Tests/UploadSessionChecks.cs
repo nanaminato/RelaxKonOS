@@ -486,6 +486,13 @@ public static class UploadSessionChecks
         check(revoked?.ProblemCode == FileUploadProblemCodes.ElevationRequired,
             "A downgraded root session cannot append to privileged staging");
         authorization.Root = true;
+        var privileged = (RecordingPrivilegedFileService)(object)proxy;
+        privileged.ThrowOnAppend = true;
+        var unavailable = await ThrowsAsync(() => service.AppendAsync(user, opened.UploadId, 0, 4, Content(4, 9), default));
+        check(unavailable?.ProblemCode == "privileged-helper-unavailable" && unavailable.StatusCode == 503
+            && service.Get(user, opened.UploadId).Offset == 0,
+            "An unavailable Helper reports a stable error without confirming bytes");
+        privileged.ThrowOnAppend = false;
         await service.AbortAsync(user, opened.UploadId, default);
     }
 
@@ -564,6 +571,7 @@ public static class UploadSessionChecks
     public class RecordingPrivilegedFileService : DispatchProxy
     {
         public List<string> Calls { get; } = [];
+        public bool ThrowOnAppend { get; set; }
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
@@ -575,6 +583,7 @@ public static class UploadSessionChecks
                     return Task.CompletedTask;
                 case nameof(IPrivilegedFileService.AppendChunkAsync):
                 {
+                    if (ThrowOnAppend) throw new InvalidOperationException("Helper is unavailable");
                     var path = (string)args![1]!;
                     var offset = (long)args[2]!;
                     var content = (Stream)args[3]!;

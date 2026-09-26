@@ -261,7 +261,9 @@ public static class LinuxUserFileOperations
         if (sourceIsDirectory && destinationExists)
         {
             var copiedIdentity = CopyReferenced(sourceReference, destination, overwrite: true);
-            DeleteReferencedIfUnchanged(sourceReference, copiedIdentity);
+            try { DeleteReferencedIfUnchanged(sourceReference, copiedIdentity); }
+            catch (UnauthorizedAccessException error)
+            { throw new IOException("The destination was committed before the source deletion failed.", error); }
             return true;
         }
 
@@ -274,7 +276,9 @@ public static class LinuxUserFileOperations
         catch (NativeFileIOException exception) when (exception.Errno == CrossDeviceLink)
         {
             var copiedIdentity = CopyReferenced(sourceReference, destination, overwrite);
-            DeleteReferencedIfUnchanged(sourceReference, copiedIdentity);
+            try { DeleteReferencedIfUnchanged(sourceReference, copiedIdentity); }
+            catch (UnauthorizedAccessException error)
+            { throw new IOException("The destination was committed before the source deletion failed.", error); }
             return sourceIsDirectory;
         }
     }
@@ -282,7 +286,10 @@ public static class LinuxUserFileOperations
     public static bool Delete(string path)
     {
         using var reference = OpenPathReference(path);
-        DeleteEntryAt(reference.ParentHandle, reference.Name, reference.Stat);
+        var changed = false;
+        try { DeleteEntryAt(reference.ParentHandle, reference.Name, reference.Stat, ref changed); }
+        catch (UnauthorizedAccessException error) when (changed)
+        { throw new IOException("Deletion stopped after some entries were removed.", error); }
         return true;
     }
 
@@ -333,6 +340,7 @@ public static class LinuxUserFileOperations
 
         SafeFileHandle current = rootHandle;
         var ownsCurrent = false;
+        var created = false;
         try
         {
             foreach (var component in path[root.Length..].Split(Path.DirectorySeparatorChar,
@@ -350,6 +358,7 @@ public static class LinuxUserFileOperations
                     }
                     else
                     {
+                        created = true;
                         next = OpenDirectoryHandleAt(current, component);
                     }
                 }
@@ -359,6 +368,8 @@ public static class LinuxUserFileOperations
             }
             return true;
         }
+        catch (UnauthorizedAccessException error) when (created)
+        { throw new IOException("Directory creation stopped after a parent was created.", error); }
         finally
         {
             if (ownsCurrent) current.Dispose();
@@ -708,14 +719,16 @@ public static class LinuxUserFileOperations
         if (!TryStatAt(source.ParentHandle, source.Name, out var current)
             || Identity(current) != copiedIdentity)
             throw new IOException("Source changed while the move was in progress.");
-        DeleteEntryAt(source.ParentHandle, source.Name, current);
+        var changed = false;
+        DeleteEntryAt(source.ParentHandle, source.Name, current, ref changed);
     }
 
-    private static void DeleteEntryAt(SafeFileHandle parent, string name, StatxBuffer stat)
+    private static void DeleteEntryAt(SafeFileHandle parent, string name, StatxBuffer stat, ref bool changed)
     {
         if (!IsDirectory(stat))
         {
             UnlinkAt(parent, name, removeDirectory: false);
+            changed = true;
             return;
         }
 
@@ -723,9 +736,10 @@ public static class LinuxUserFileOperations
         foreach (var entry in Directory.EnumerateFileSystemEntries(DescriptorPath(directory)))
         {
             var childName = Path.GetFileName(entry);
-            DeleteEntryAt(directory, childName, StatAt(directory, childName));
+            DeleteEntryAt(directory, childName, StatAt(directory, childName), ref changed);
         }
         UnlinkAt(parent, name, removeDirectory: true);
+        changed = true;
     }
 
     private static void DeleteIfPresent(string path)
@@ -900,7 +914,7 @@ public static class LinuxUserFileOperations
             return true;
         var error = Marshal.GetLastPInvokeError();
         if (error is 2 or 20) return false;
-        throw new NativeFileIOException("Could not inspect a user-execution path", error);
+        throw NativeException("Could not inspect a user-execution path", error);
     }
 
     private static bool TryStatAtFollowing(SafeFileHandle parent, string name,
@@ -910,7 +924,7 @@ public static class LinuxUserFileOperations
             return true;
         var error = Marshal.GetLastPInvokeError();
         if (error is 2 or 20 or 40) return false;
-        throw new NativeFileIOException("Could not inspect a user-execution path", error);
+        throw NativeException("Could not inspect a user-execution path", error);
     }
 
     private static StatxBuffer StatHandle(SafeFileHandle handle)
@@ -966,8 +980,12 @@ public static class LinuxUserFileOperations
             throw NativeIOException("Could not change user-execution path permissions");
     }
 
-    private static NativeFileIOException NativeIOException(string message)
-        => new(message, Marshal.GetLastPInvokeError());
+    private static Exception NativeIOException(string message)
+        => NativeException(message, Marshal.GetLastPInvokeError());
+
+    private static Exception NativeException(string message, int errno)
+        => errno is 1 or 13 ? new UnauthorizedAccessException(message)
+            : new NativeFileIOException(message, errno);
 
     private sealed class NativeFileIOException(string message, int errno)
         : IOException($"{message} (errno {errno}).")

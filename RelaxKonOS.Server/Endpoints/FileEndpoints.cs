@@ -59,21 +59,11 @@ public static class FileEndpoints
            .WithTags("Files");
 
         // GET list?path=
-        files.MapGet(FileApiRoutes.List, async (string? path, HttpContext http, IFileService fs, IPrivilegedFileService privileged,
-            IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapGet(FileApiRoutes.List, (string? path, IFileService fs) =>
         {
             try { return Results.Ok(fs.GetDirectory(path)); }
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "路径不存在", ex.Message); }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (string.IsNullOrWhiteSpace(path) || !elevations.IsElevated(http.User, FileElevationCapability.Read, path))
-                    return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try { return Results.Ok(await privileged.ListDirectoryAsync(PrivilegedFileAuthorizationSource.ManualGrant, path, ct)); }
-                catch (DirectoryNotFoundException privilegedEx) { return Problem(404, "not-found", "路径不存在", privilegedEx.Message); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(500, "io-error", "I/O 错误", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (IOException ex) { return Problem(503, "device-unavailable", "设备不可用", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
@@ -88,14 +78,14 @@ public static class FileEndpoints
                 var dto = fs.GetInfo(path);
                 return dto is null ? Problem(404, "not-found", "路径不存在", $"找不到: {path}") : Results.Ok(dto);
             }
-            catch (UnauthorizedAccessException ex) { return Problem(403, "access-denied", "访问被拒", ex.Message); }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
         .RequireAuthorization(FileAuthorizationPolicies.List)
         .WithTags("Files");
 
         // GET download?path=
-        files.MapGet(FileApiRoutes.Download, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapGet(FileApiRoutes.Download, (string path, IFileService fs) =>
         {
             try
             {
@@ -104,27 +94,14 @@ public static class FileEndpoints
                     return Problem(404, "not-found", "文件不存在", $"找不到: {path}");
                 return Results.File(stream, contentType, fileName);
             }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(http.User, FileElevationCapability.Read, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try
-                {
-                    var r = await privileged.OpenReadAsync(PrivilegedFileAuthorizationSource.ManualGrant, path, ct);
-                    return Results.File(r.Stream, "application/octet-stream", r.FileName);
-                }
-                catch (FileNotFoundException) { return Problem(404, "not-found", "文件不存在", $"找不到: {path}"); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(500, "io-error", "I/O 错误", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
         .RequireAuthorization(FileAuthorizationPolicies.Read)
         .WithTags("Files");
 
         // GET thumbnail?path=&maxEdge=
-        files.MapGet(FileApiRoutes.Thumbnail, async (string path, int? maxEdge, HttpContext http, IFileService fs,
-            IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapGet(FileApiRoutes.Thumbnail, (string path, int? maxEdge, IFileService fs) =>
         {
             var edge = maxEdge ?? ImageThumbnailRenderer.DefaultMaxEdge;
             if (edge is < ImageThumbnailRenderer.MinimumMaxEdge or > ImageThumbnailRenderer.MaximumMaxEdge)
@@ -137,25 +114,13 @@ public static class FileEndpoints
                     return Problem(404, "not-found", "文件不存在", $"找不到: {path}");
                 using (stream) return Thumbnail(stream, edge, path);
             }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(http.User, FileElevationCapability.Read, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try
-                {
-                    var r = await privileged.OpenReadAsync(PrivilegedFileAuthorizationSource.ManualGrant, path, ct);
-                    using (r.Stream) return Thumbnail(r.Stream, edge, path);
-                }
-                catch (FileNotFoundException) { return Problem(404, "not-found", "文件不存在", $"找不到: {path}"); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(500, "io-error", "I/O 错误", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
         .RequireAuthorization(FileAuthorizationPolicies.Read)
         .WithTags("Files");
 
-        files.MapGet(FileApiRoutes.Content, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapGet(FileApiRoutes.Content, (string path, IFileService fs) =>
         {
             try
             {
@@ -164,46 +129,21 @@ public static class FileEndpoints
                     return Problem(404, "not-found", "Not found", $"Cannot find {path}");
                 return Results.File(stream, contentType);
             }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(http.User, FileElevationCapability.Read, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try
-                {
-                    var r = await privileged.OpenReadAsync(PrivilegedFileAuthorizationSource.ManualGrant, path, ct);
-                    return Results.File(r.Stream, "application/octet-stream");
-                }
-                catch (FileNotFoundException) { return Problem(404, "not-found", "Not found", $"Cannot find {path}"); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "Access denied", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "Privileged helper unavailable", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(500, "io-error", "I/O error", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "Invalid path", ex.Message); }
         })
         .RequireAuthorization(FileAuthorizationPolicies.Read)
         .WithTags("Files");
 
-        files.MapPut(FileApiRoutes.Content, async (string path, HttpRequest request, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations) =>
+        files.MapPut(FileApiRoutes.Content, async (string path, HttpRequest request, IFileService fs) =>
         {
-            // A denied atomic write may happen after the incoming body has already been consumed.
-            // Keep a replayable copy so the elevated retry writes the exact same bytes.
+            // The file service owns the one permitted Helper fallback, so the body is consumed once.
             await using var content = new MemoryStream();
             await request.Body.CopyToAsync(content, request.HttpContext.RequestAborted);
             content.Position = 0;
             try { return Results.Ok(await fs.WriteFileAsync(path, content, request.HttpContext.RequestAborted)); }
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "Target directory not found", ex.Message); }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(request.HttpContext.User, FileElevationCapability.Write, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try
-                {
-                    content.Position = 0;
-                    return Results.Ok(await privileged.WriteAsync(PrivilegedFileAuthorizationSource.ManualGrant, path, content, request.HttpContext.RequestAborted));
-                }
-                catch (DirectoryNotFoundException directoryEx) { return Problem(404, "not-found", "Target directory not found", directoryEx.Message); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "Access denied", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "Privileged helper unavailable", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(500, "io-error", "I/O error", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (IOException ex) { return Problem(500, "io-error", "I/O error", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "Invalid path", ex.Message); }
         })
@@ -257,7 +197,7 @@ public static class FileEndpoints
                 var properties = fs.GetProperties(path);
                 return properties is null ? Problem(404, "not-found", "Not found", $"Cannot find {path}") : Results.Ok(properties);
             }
-            catch (UnauthorizedAccessException ex) { return Problem(403, "access-denied", "Access denied", ex.Message); }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "Invalid path", ex.Message); }
         })
         .RequireAuthorization(FileAuthorizationPolicies.List)
@@ -270,7 +210,7 @@ public static class FileEndpoints
             try { return Results.Ok(fs.SetUnixPermissions(request.Path, request.UnixMode)); }
             catch (PlatformNotSupportedException ex) { return Problem(409, "unsupported-operation", "Unsupported operation", ex.Message); }
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "Not found", ex.Message); }
-            catch (UnauthorizedAccessException ex) { return Problem(403, "access-denied", "Access denied", ex.Message); }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (ArgumentOutOfRangeException ex) { return Problem(400, "invalid-mode", "Invalid permissions", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "Invalid path", ex.Message); }
         })
@@ -278,7 +218,7 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST directory?path=
-        files.MapPost(FileApiRoutes.Directory, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Directory, (string path, IFileService fs) =>
         {
             try
             {
@@ -286,25 +226,14 @@ public static class FileEndpoints
                 return Results.Created(GetInfoLocation(path), fs.GetInfo(path));
             }
             catch (IOException ex) { return Problem(409, "already-exists", "已存在", ex.Message); }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(http.User, FileElevationCapability.CreateDirectory, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try
-                {
-                    await privileged.CreateDirectoryAsync(PrivilegedFileAuthorizationSource.ManualGrant, path, ct);
-                    return Results.Created(GetInfoLocation(path), fs.GetInfo(path));
-                }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(409, "already-exists", "已存在", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
         .RequireAuthorization(FileAuthorizationPolicies.Write)
         .WithTags("Files");
 
         // DELETE files?path=
-        files.MapDelete(FileApiRoutes.Delete, async (string path, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapDelete(FileApiRoutes.Delete, (string path, IFileService fs) =>
         {
             try
             {
@@ -313,14 +242,7 @@ public static class FileEndpoints
             }
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "路径不存在", ex.Message); }
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "路径不存在", ex.Message); }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(http.User, FileElevationCapability.Delete, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try { await privileged.DeleteAsync(PrivilegedFileAuthorizationSource.ManualGrant, path, ct); return Results.NoContent(); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(500, "io-error", "IO 错误", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (IOException ex) { return Problem(500, "io-error", "IO 错误", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
@@ -328,21 +250,13 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST rename
-        files.MapPost(FileApiRoutes.Rename, async (RenameRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Rename, (RenameRequest req, IFileService fs) =>
         {
             if (string.IsNullOrWhiteSpace(req.SourcePath) || string.IsNullOrWhiteSpace(req.NewName))
                 return Problem(400, "invalid-input", "输入无效", "sourcePath 与 newName 不能为空");
             try { return Results.Ok(fs.Rename(req.SourcePath, req.NewName)); }
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "源路径不存在", ex.Message); }
-            catch (UnauthorizedAccessException ex)
-            {
-                var target = RenameTarget(req.SourcePath, req.NewName);
-                if (!elevations.IsElevated(http.User, FileElevationCapability.Rename, req.SourcePath, target)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try { return Results.Ok(await privileged.RenameAsync(PrivilegedFileAuthorizationSource.ManualGrant, req.SourcePath, req.NewName, ct)); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(409, "already-exists", "目标已存在", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (IOException ex) { return Problem(409, "already-exists", "目标已存在", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
@@ -350,20 +264,13 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST move
-        files.MapPost(FileApiRoutes.Move, async (MoveRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Move, (MoveRequest req, IFileService fs) =>
         {
             if (string.IsNullOrWhiteSpace(req.SourcePath) || string.IsNullOrWhiteSpace(req.DestinationPath))
                 return Problem(400, "invalid-input", "输入无效", "sourcePath 与 destinationPath 不能为空");
             try { return Results.Ok(fs.Move(req.SourcePath, req.DestinationPath, req.Overwrite)); }
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "源路径不存在", ex.Message); }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(http.User, FileElevationCapability.Move, req.SourcePath, req.DestinationPath)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try { return Results.Ok(await privileged.MoveAsync(PrivilegedFileAuthorizationSource.ManualGrant, req.SourcePath, req.DestinationPath, req.Overwrite, ct)); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(409, "already-exists", "目标已存在", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (IOException ex) { return Problem(409, "already-exists", "目标已存在", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
@@ -371,20 +278,13 @@ public static class FileEndpoints
         .WithTags("Files");
 
         // POST copy
-        files.MapPost(FileApiRoutes.Copy, async (CopyRequest req, HttpContext http, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations, CancellationToken ct) =>
+        files.MapPost(FileApiRoutes.Copy, (CopyRequest req, IFileService fs) =>
         {
             if (string.IsNullOrWhiteSpace(req.SourcePath) || string.IsNullOrWhiteSpace(req.DestinationPath))
                 return Problem(400, "invalid-input", "输入无效", "sourcePath 与 destinationPath 不能为空");
             try { return Results.Ok(fs.Copy(req.SourcePath, req.DestinationPath, req.Overwrite)); }
             catch (FileNotFoundException ex) { return Problem(404, "not-found", "源路径不存在", ex.Message); }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(http.User, FileElevationCapability.Copy, req.SourcePath, req.DestinationPath)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try { return Results.Ok(await privileged.CopyAsync(PrivilegedFileAuthorizationSource.ManualGrant, req.SourcePath, req.DestinationPath, req.Overwrite, ct)); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(409, "already-exists", "目标已存在", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (IOException ex) { return Problem(409, "already-exists", "目标已存在", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
@@ -394,7 +294,7 @@ public static class FileEndpoints
         // POST upload?path= — the small-file fast path. Its ceiling is declared here rather than inherited
         // from Kestrel's 30 MB default and the form reader's 128 MiB default, so a client that overruns it
         // gets a named answer instead of an opaque 413 from an unrelated layer.
-        files.MapPost(FileApiRoutes.Upload, async (HttpContext ctx, IFileService fs, IPrivilegedFileService privileged, IFileElevationSessionStore elevations) =>
+        files.MapPost(FileApiRoutes.Upload, async (HttpContext ctx, IFileService fs) =>
         {
             var path = ctx.Request.Query["path"].ToString();
             if (string.IsNullOrWhiteSpace(path))
@@ -438,20 +338,7 @@ public static class FileEndpoints
                 return Results.Created(GetInfoLocation(dto.Path), dto);
             }
             catch (DirectoryNotFoundException ex) { return Problem(404, "not-found", "目标目录不存在", ex.Message); }
-            catch (UnauthorizedAccessException ex)
-            {
-                if (!elevations.IsElevated(ctx.User, FileElevationCapability.Upload, path)) return Problem(403, "elevation-required", "需要管理员权限", ex.Message);
-                try
-                {
-                    await using var retryStream = file.OpenReadStream();
-                    var dto = await privileged.UploadAsync(PrivilegedFileAuthorizationSource.ManualGrant, path, file.FileName, retryStream, ctx.RequestAborted);
-                    return Results.Created(GetInfoLocation(dto.Path), dto);
-                }
-                catch (DirectoryNotFoundException directoryEx) { return Problem(404, "not-found", "目标目录不存在", directoryEx.Message); }
-                catch (UnauthorizedAccessException privilegedEx) { return Problem(403, "access-denied", "访问被拒", privilegedEx.Message); }
-                catch (InvalidOperationException helperEx) { return Problem(503, "privileged-helper-unavailable", "特权助手不可用", helperEx.Message); }
-                catch (IOException helperEx) { return Problem(500, "io-error", "IO 错误", helperEx.Message); }
-            }
+            catch (UnauthorizedAccessException ex) { return Problem(403, "elevation-required", "需要管理员权限", ex.Message); }
             catch (IOException ex) { return Problem(500, "io-error", "IO 错误", ex.Message); }
             catch (ArgumentException ex) { return Problem(400, "invalid-path", "路径无效", ex.Message); }
         })
@@ -577,9 +464,6 @@ public static class FileEndpoints
             authentication.AuthenticationMethod, http.TraceIdentifier)).Max();
         return Results.Ok(new FileElevationResult(true, true, expires));
     }
-
-    private static string RenameTarget(string sourcePath, string newName)
-        => Path.Combine(Path.GetDirectoryName(sourcePath) ?? string.Empty, newName);
 
     /// <summary>
     /// Builds an ASCII-safe resource URI for a created file-system entry. Host paths may contain

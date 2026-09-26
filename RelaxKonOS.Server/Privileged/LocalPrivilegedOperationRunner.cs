@@ -81,7 +81,8 @@ public sealed class LocalPrivilegedOperationRunner(PrivilegedHelperOptions optio
             .Where(value => !string.IsNullOrWhiteSpace(value))!);
         var reference = fileSource is null ? request.Path ?? request.ServiceId ?? request.DestinationPath
             : resource.Length == 0 ? null : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(resource)))[..16];
-        var actor = http?.HttpContext?.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+        var actor = PrivilegedAuditActorScope.Current
+            ?? http?.HttpContext?.User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
         return securityAudit.TryWriteAsync(new SecurityAuditEvent(
             outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Id : ObservabilityEventCatalog.PrivilegedRequestCompleted.Id,
             outcome == ObservabilityOutcome.Started ? ObservabilityEventCatalog.PrivilegedRequestAccepted.Name : ObservabilityEventCatalog.PrivilegedRequestCompleted.Name,

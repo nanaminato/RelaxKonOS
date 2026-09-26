@@ -163,6 +163,7 @@
     <string name="error_performance_not_ready">Host metrics are not ready yet.</string>
     <string name="error_unauthorized">The session expired. Sign in again.</string>
     <string name="error_identity_not_eligible">This host account cannot be used for ordinary file, terminal, or Git operations: root, system accounts below UID 1000, nobody, and accounts without a usable home directory are outside what this server allows. Sign in with a regular host account instead.</string>
+    <string name="execution_root_files_available">File operations are available through the privileged Helper. Ordinary terminal and Git operations are unavailable for this account.</string>
     <string name="error_identity_not_executable">The server cannot run ordinary operations as this host account right now: in User Mode it runs only as its own host account, and any other deployment needs the privileged helper installed and running.</string>
     <string name="error_capability_missing">This server does not offer that feature.</string>
 

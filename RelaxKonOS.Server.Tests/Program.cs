@@ -64,6 +64,7 @@ try
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--thumbnails-only")) { ImageThumbnailChecks.Run(root); Console.WriteLine("Thumbnail checks passed."); return; }
     if (args.Contains("--uploads-only")) { await UploadSessionChecks.RunAsync(root); Console.WriteLine("File upload session checks passed."); return; }
+    if (args.Contains("--host-file-routing-only")) { HostFileRoutingChecks.Run(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
@@ -90,6 +91,7 @@ try
     await FileServiceChecks.RunAsync();
     ImageThumbnailChecks.Run(root);
     await UploadSessionChecks.RunAsync(root);
+    HostFileRoutingChecks.Run();
     await CertificateChecks.VerifyCertificateStoreAndSniAsync(root);
     CertificateChecks.VerifyCertificateApiRoutes();
     await HostStorageChecks.VerifyRenewalRetryAsync(root);

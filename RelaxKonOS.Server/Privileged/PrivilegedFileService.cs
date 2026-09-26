@@ -96,7 +96,7 @@ public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) 
         if (!result.Success) throw ToException(result, stagingPath);
         // The Helper reports the length it actually flushed; failing back to arithmetic would let the
         // server confirm bytes that were never written.
-        return result.Offset ?? offset + bytes.Length;
+        return result.Offset ?? throw new IOException("Privileged Helper did not confirm the flushed staging length.");
     }
 
     public async Task<FileEntryDto> CommitAsync(PrivilegedFileAuthorizationSource source, string stagingPath, string destinationFileName, CancellationToken cancellationToken = default)
@@ -133,11 +133,15 @@ public sealed class PrivilegedFileService(IPrivilegedOperationTransport runner) 
         }
     }
 
-    private static Exception ToException(PrivilegedOperationResult result, string path) => result.ExitCode switch
+    private static Exception ToException(PrivilegedOperationResult result, string path) => result.ProblemCode switch
     {
-        2 => new FileNotFoundException(result.Error ?? "File not found", path),
-        69 => new InvalidOperationException(result.Error ?? "Privileged helper unavailable"),
-        77 => new UnauthorizedAccessException(result.Error),
+        PrivilegedProblemCode.NotFound => new FileNotFoundException(result.Error ?? "File not found", path),
+        PrivilegedProblemCode.HelperUnavailable or PrivilegedProblemCode.TimedOut
+            => new InvalidOperationException(result.Error ?? "Privileged helper unavailable"),
+        PrivilegedProblemCode.AccessDenied or PrivilegedProblemCode.ResourceNotAllowed
+            => new UnauthorizedAccessException(result.Error),
+        PrivilegedProblemCode.InvalidRequest or PrivilegedProblemCode.InvalidProtocol
+            => new ArgumentException(result.Error ?? "Invalid privileged file request"),
         _ => new IOException(result.Error ?? "Privileged file operation failed"),
     };
 
