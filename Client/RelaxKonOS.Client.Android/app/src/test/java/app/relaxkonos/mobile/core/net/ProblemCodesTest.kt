@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.core.net
 
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.ui.common.executionEligibilityMessage
 import app.relaxkonos.mobile.ui.common.problemMessage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -119,5 +120,71 @@ class ProblemCodesTest {
         // A 429 says the attempt was too soon, not that the password is wrong: dropping a stored
         // password over it would punish the user for retrying (`…LoginCredentials.Design.md` §7.3).
         assertFalse(ApiResult.Problem(429, ProblemCodes.LOGIN_RATE_LIMITED, null).isCredentialRejection())
+    }
+
+    @Test
+    fun `the execution codes keep the wire spelling the server writes`() {
+        // Mirror of `UserExecutionProblemTypes`: the client branches on these exact suffixes, so a
+        // rename on either side has to fail a test rather than a user.
+        assertEquals("identity-not-eligible", ProblemCodes.IDENTITY_NOT_ELIGIBLE)
+        assertEquals("identity-not-executable", ProblemCodes.IDENTITY_NOT_EXECUTABLE)
+        assertEquals(
+            ProblemCodes.IDENTITY_NOT_ELIGIBLE,
+            ProblemCodes.from("https://relaxkonos.app/problems/identity-not-eligible", null),
+        )
+        assertEquals(
+            ProblemCodes.IDENTITY_NOT_EXECUTABLE,
+            ProblemCodes.from("https://relaxkonos.app/problems/identity-not-executable", null),
+        )
+    }
+
+    @Test
+    fun `an identity the server refuses is explained rather than shown as a generic refusal`() {
+        assertEquals(
+            R.string.error_identity_not_eligible,
+            problemMessage(ProblemCodes.IDENTITY_NOT_ELIGIBLE).resId,
+        )
+    }
+
+    @Test
+    fun `a missing execution channel is not told as an ineligible identity`() {
+        // Two remedies, so two sentences: change the host account, or fix the deployment. One
+        // sentence for both would send the user looking for the wrong fix.
+        assertEquals(
+            R.string.error_identity_not_executable,
+            problemMessage(ProblemCodes.IDENTITY_NOT_EXECUTABLE).resId,
+        )
+    }
+
+    @Test
+    fun `the login reason picks the sentence its problem code would`() {
+        assertEquals(
+            R.string.error_identity_not_executable,
+            executionEligibilityMessage(ExecutionEligibilityReasons.SERVER_ACCOUNT_REQUIRED).resId,
+        )
+        assertEquals(
+            R.string.error_identity_not_eligible,
+            executionEligibilityMessage(ExecutionEligibilityReasons.RESERVED_IDENTITY).resId,
+        )
+    }
+
+    @Test
+    fun `an unusable identity is never explained with silence`() {
+        // `available = false` is authoritative even for a reason this build has never seen: a session
+        // that says nothing is the half-broken file browser this notice exists to remove.
+        listOf(
+            ExecutionEligibilityReasons.SYSTEM_ACCOUNT,
+            ExecutionEligibilityReasons.UNVERIFIED_HOME_DIRECTORY,
+            ExecutionEligibilityReasons.WINDOWS_PROFILE_REQUIRED,
+            ExecutionEligibilityReasons.UNSUPPORTED_PLATFORM,
+            "a-reason-from-a-newer-server",
+            null,
+        ).forEach { reason ->
+            assertEquals(
+                "reason=$reason must still be explained",
+                R.string.error_identity_not_eligible,
+                executionEligibilityMessage(reason).resId,
+            )
+        }
     }
 }

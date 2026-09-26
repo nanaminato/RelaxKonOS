@@ -47,6 +47,7 @@ import app.relaxkonos.mobile.data.RecentOperationKind
 import app.relaxkonos.mobile.ui.common.DiskRow
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.ErrorBanner
+import app.relaxkonos.mobile.ui.common.ExecutionEligibilityNotice
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.ListRow
@@ -153,6 +154,13 @@ fun HomeScreen(
         }
 
         IdentityCard(session)
+
+        // The login response already answered whether this identity may open anything at all. Saying
+        // so here — on the landing screen, before the user reaches for a folder — is the difference
+        // between a session that is partially usable and one that looks broken.
+        if (!session.executionEligibility.available) {
+            ExecutionEligibilityNotice(reason = session.executionEligibility.reason)
+        }
 
         SectionCard(
             title = stringResource(R.string.home_system_title),

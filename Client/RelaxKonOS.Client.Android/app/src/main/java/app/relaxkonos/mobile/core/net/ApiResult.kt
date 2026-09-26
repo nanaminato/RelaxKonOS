@@ -39,6 +39,23 @@ object ProblemCodes {
     const val UNAUTHORIZED = "unauthorized"
 
     /**
+     * The signed-in host identity is not one this server may run ordinary operations as (503,
+     * `UserExecutionProblemTypes.IdentityNotEligible`). The identity is the problem, not the
+     * deployment: root, a system account below UID 1000, nobody, or an account without a usable home
+     * directory. The login response says the same thing through
+     * [ExecutionEligibilityReasons], which is why this code must not be read as a rejected credential.
+     */
+    const val IDENTITY_NOT_ELIGIBLE = "identity-not-eligible"
+
+    /**
+     * The identity is fine, but this deployment has no channel to become it (503,
+     * `UserExecutionProblemTypes.IdentityNotExecutable`): a missing or mismatched privileged helper, or
+     * a User Mode server that runs only as its own account. A fixable deployment fault, and never a
+     * rejected credential.
+     */
+    const val IDENTITY_NOT_EXECUTABLE = "identity-not-executable"
+
+    /**
      * The server holds the file but cannot draw it (415, `FileApiRoutes.Thumbnail`).
      *
      * A normal answer rather than a failure: it means there is no small copy to show — the file is not

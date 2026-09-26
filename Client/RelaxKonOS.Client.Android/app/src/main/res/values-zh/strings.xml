@@ -138,6 +138,8 @@
     <string name="error_elevation_not_administrator">该账户不是此服务器的管理员。</string>
     <string name="error_performance_not_ready">主机指标尚未就绪。</string>
     <string name="error_unauthorized">会话已过期，请重新登录。</string>
+    <string name="error_identity_not_eligible">当前登录的宿主账户不能用于普通文件、终端或 Git 操作：root、UID 小于 1000 的系统账户、nobody，以及没有可用家目录的账户都不在本服务器允许的范围内。请改用常规宿主账户登录。</string>
+    <string name="error_identity_not_executable">服务器当前无法以该宿主账户执行普通操作：User Mode 下它只能以自身的宿主账户执行，其他部署需要先让管理员确认特权助手已安装并运行。</string>
     <string name="error_capability_missing">该服务器不提供此功能。</string>
 
     <string name="connections_title">连接管理</string>

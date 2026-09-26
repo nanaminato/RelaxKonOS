@@ -632,6 +632,9 @@ class RelaxKonApi(
         val json = JSONObject(payload)
         val server = json.getJSONObject("server")
         val capabilities = server.optJSONArray("capabilities") ?: JSONArray()
+        // Required, not optional: the answer decides whether the shell warns before the first folder
+        // open, and a missing one is a contract break rather than "assume usable".
+        val eligibility = json.getJSONObject("executionEligibility")
         LoginSession(
             // `UserDto` names the field `username`; reading `name` left the account blank on the home page.
             userName = json.getJSONObject("user").optString("username"),
@@ -648,6 +651,11 @@ class RelaxKonApi(
                     refreshTokenExpiresAtMillis = IsoInstant.toEpochMillis(tokens.optString("refreshTokenExpiresAt")),
                 )
             },
+            executionEligibility = ExecutionEligibility(
+                available = eligibility.getBoolean("available"),
+                // Null when the identity is usable, so the absent-reason case is the normal one.
+                reason = eligibility.optNullableString("reason"),
+            ),
         )
     }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed login response.") })
 

@@ -31,6 +31,11 @@
 
 能力可见性由**登录后拿到的 `ServerDescriptorDto.capabilities`** 决定：能力缺失时入口不出现，不用灰色占位。
 
+能力是**部署事实**，回答"这台服务器有没有这个域"。它与**登录身份**是否被允许执行普通操作是两件事：`LoginResponse.executionEligibility`
+（`ServerExecutionEligibilityDto`）回答后者，同一台服务器对 root 与对普通账户的答案不同。所以 `server.files` 存在并不代表当前身份能用它——
+入口照常出现，但首页必须先把服务端给的原因说出来（`ExecutionEligibilityNotice`），而不是让用户在第一次打开目录时收到 503。
+客户端只消费服务端给的稳定原因码（`ExecutionEligibilityReasons`），文案一律取自本工程自己的 `strings.xml`。
+
 | 域 | 初版内容 | 门控能力标识 | 优先级 |
 | --- | --- | --- | --- |
 | 连接与认证 | 多服务器连接档案；指纹免密登录；token 刷新；登出；会话过期回到登录页 | —（`/auth/*` 恒可用） | P0 |

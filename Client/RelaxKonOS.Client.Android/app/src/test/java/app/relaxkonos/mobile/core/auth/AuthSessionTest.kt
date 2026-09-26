@@ -3,7 +3,11 @@ package app.relaxkonos.mobile.core.auth
 import app.relaxkonos.mobile.FakeGateway
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.AuthTokens
+import app.relaxkonos.mobile.core.net.ExecutionEligibility
+import app.relaxkonos.mobile.core.net.ExecutionEligibilityReasons
+import app.relaxkonos.mobile.core.net.LoginSession
 import app.relaxkonos.mobile.core.net.ProblemCodes
+import app.relaxkonos.mobile.core.net.ServerDescriptor
 import app.relaxkonos.mobile.loginSession
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.CancellationException
@@ -48,6 +52,51 @@ class AuthSessionTest {
         assertEquals(server, session.serviceId)
         assertEquals(server, session.effectiveBaseUrl)
         assertEquals("access-1", session.accessToken)
+    }
+
+    @Test
+    fun `the login eligibility reaches the active session instead of a default`() = runTest {
+        // The home screen reads this off the session, so what lands there has to be the server's
+        // answer: an identity the server refused that still looks usable is the whole bug.
+        gateway.onLogin = { _, _, _ ->
+            ApiResult.Success(
+                LoginSession(
+                    userName = "root",
+                    workspaceName = "studio",
+                    server = ServerDescriptor(platform = "linux", capabilities = setOf("server.files")),
+                    tokens = AuthTokens(
+                        accessToken = "access-1",
+                        refreshToken = "refresh-1",
+                        accessTokenExpiresAtMillis = null,
+                        refreshTokenExpiresAtMillis = null,
+                    ),
+                    executionEligibility = ExecutionEligibility(
+                        available = false,
+                        reason = ExecutionEligibilityReasons.RESERVED_IDENTITY,
+                    ),
+                ),
+            )
+        }
+
+        val result = session.login(direct(), "root", "pw".toCharArray()) {}
+
+        assertTrue(result is ApiResult.Success)
+        val state = session.state.value
+        assertTrue(state is SessionState.Active)
+        state as SessionState.Active
+        assertFalse(state.executionEligibility.available)
+        assertEquals(ExecutionEligibilityReasons.RESERVED_IDENTITY, state.executionEligibility.reason)
+    }
+
+    @Test
+    fun `a session the server said nothing about reads as usable`() = runTest {
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
+
+        session.login(direct(), "nana", "pw".toCharArray()) {}
+
+        val state = session.state.value as SessionState.Active
+        assertTrue(state.executionEligibility.available)
+        assertNull(state.executionEligibility.reason)
     }
 
     @Test

@@ -277,6 +277,33 @@ release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、�
   Windows 服务端上属主恒为空，要让那里也显示属主要求服务端补 WMI / P/Invoke（TaskManager 文档 §334）。
 - 未新增字符串键，三份 `strings.xml` 仍 295 键且键集一致。
 
+## 登录身份的执行资格（2026-09-26）
+
+- **背景**：服务端现在把"这个登录身份能否执行普通文件/终端/Git 操作"作为登录响应的一部分下发
+  （`LoginResponse.executionEligibility` → `ServerExecutionEligibilityDto { available, reason }`），桌面端已按同一契约落地。
+  Android 在此之前既不消费这个字段，也不认识随之新增的两个问题码，于是用 root 登录后打开文件只会看到通用的一句
+  「服务器拒绝了该请求」——看不出原因，也看不出出路。
+- **契约镜像**：`core/net/Models.kt` 新增 `ExecutionEligibility` 与 `ExecutionEligibilityReasons`（六个原因码逐字对齐
+  `ServerExecutionEligibilityReasons`）；`LoginSession` 增加 `executionEligibility`；`ProblemCodes` 增加
+  `identity-not-eligible` / `identity-not-executable`，与 `UserExecutionProblemTypes` 的后缀逐字对齐（拼写由断言钉住）。
+- **解析**：`RelaxKonApi.parseLogin` 里 `executionEligibility` 是**必填对象**（与 `server`、`tokens` 同级）。这个答案决定首页
+  要不要提前告知，缺字段属契约破坏，不能退化成"默认可执行"；`available` 用 `getBoolean` 严格读，`reason` 走
+  `optNullableString`（身份可用时服务端下发的就是 null）。
+- **状态**：由 `SessionState.Active.executionEligibility` 承接，`AuthSession.adopt` 原样透传；两条登录路径（手输密码、
+  已存密码）都经过 `adopt`，因此不存在"只有一条路径拿得到答案"。
+- **呈现**：首页 `IdentityCard` 之下新增 `ExecutionEligibilityNotice`（`ui/common/ErrorBanner.kt`）。它刻意**不是** `ErrorBanner`：
+  还没有失败，没有可重试的动作，而这是会话事实、不该被「忽略」掉；用 Warning 而非 Danger 色调，因为会话本身可用——
+  指标、进程照常，只有用户接下来最可能点的文件/终端/Git 不可用。
+- **文案**：`problemMessage` 增加两码映射（第一次 503 也说得清楚），新增 `executionEligibilityMessage(reason)`。原因码只区分
+  两种出路（换账户 vs 修部署），其余（含客户端不认识的新码与 `unsupported-platform`）一律落到"该身份不可用"那一句：
+  `available = false` 是权威结论，静默才是要修的那个 bug。
+- **字符串**：三份 `strings.xml` 各新增 `error_identity_not_eligible`、`error_identity_not_executable`，344 → **346 键**，键集一致。
+  英文条目不含撇号，沿用该文件既有约定（全文件零撇号），避免转义分歧。
+- **测试**：`ProblemCodesTest` 新增 4 组（wire 拼写、两码各对应哪一句、原因码→句子、未知原因不得静默）；`AuthSessionTest`
+  新增 2 个（服务端答案原样进入 `Active`、服务端未声明时读作可用）。
+- **既有限制**：`parseLogin` 本身仍无单元测试——本工程单测跑在被 stub 的 `org.json` 上（见
+  [`RelaxKonOS.Mobile.BulkUpload.Design.md`](./RelaxKonOS.Mobile.BulkUpload.Design.md) 的说明），JSON 解析只能在真机上验证。
+
 ## 已知限制
 
 - 连接保险箱的密码被服务端拒绝时**不**删除（§7.3）。代价是：用户已在服务端改密后，本机那条旧密码会一直失败，直到手动输入新密码并在成功后保存覆盖它。这是有意选择——删除只在用户显式「忘记密码」或「删除登录记录」时发生。
@@ -397,6 +424,22 @@ release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、�
   只有 Android 的 `JSON.toString(JSONObject.NULL)` 才给出 `"null"`，因此 JVM 单测区分不了修复前后（写出来是一个恒过的
   断言）。防护放在唯一入口 `optNullableString` 与其注释上：可空字符串不再有第二种读法。
 - **待真机确认**：进程行的属主段消失（Windows 服务端恒无属主）、文件详情的 MIME 不再显示 `null`。
+
+最近一次校验（2026-09-26，登录身份执行资格落地后）：
+
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL：**357 个用例、36 个测试类，0 失败 / 0 错误 / 0 跳过**。
+  本轮新增的 6 个（`ProblemCodesTest` +4、`AuthSessionTest` +2）全部通过。三份 `strings.xml` 均为 **346 键**且键集一致。
+- **顺带修掉一个既存编译中断**（与本次需求无关，但会让整仓 Android 无法构建）：`ui/servercenter/ServerCenterScreen.kt`
+  显式 `import androidx.compose.foundation.layout.weight`，在 Kotlin 2.2.10 + 当前 Compose BOM 下解析到
+  `RowColumnParentData.weight` 这个 **internal** 声明，报
+  `Cannot access 'val RowColumnParentData?.weight: Float': it is internal in file.`。该文件由 2026-09-25 的提交
+  `f0696d5f` 引入，晚于上一次校验记录，因此从未编译过。修法是删掉这行 import——两处 `Modifier.weight(1f)`
+  都在 `Row { }` 内，本来就该走 `RowScope.weight` 这个成员。**这是本模块目前唯一的编译阻断点，已解除。**
+- 环境说明：本次用 Gradle 9.6.0 + JDK 21（`C:\Program Files\Android\openjdk\jdk-21.0.8`）+ SDK `E:\environments\Android\Sdk`。
+  仓库**跟踪**了 `local.properties`，其 `sdk.dir` 仍指向已不存在的 `D:\environments\Android\Sdk`，跑之前需临时改成实际路径、
+  跑完还原（`gradle-wrapper.properties` 的 `distributionUrl` 同样指向 D:，只有用 wrapper 启动时才受影响）。
+  另：**不要加 `--offline`**，Android Gradle Plugin 不在本机 Gradle 缓存里，离线会直接解析失败。
+- **未覆盖**：`parseLogin` 无法单测（单测跑在被 stub 的 `org.json` 上），`executionEligibility` 的解析路径只能在真机验证。
 
 ## 后续步骤
 

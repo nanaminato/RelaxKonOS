@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.core.auth
 
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.AuthTokens
+import app.relaxkonos.mobile.core.net.ExecutionEligibility
 import app.relaxkonos.mobile.core.net.LoginSession
 import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
@@ -26,6 +27,11 @@ sealed interface SessionState {
         val workspaceName: String,
         val capabilities: Set<String>,
         val serverPlatform: String,
+        /**
+         * Whether this identity may run ordinary operations on the host, as the login response stated
+         * it. Screens read it to say so up front; the server still refuses on its own.
+         */
+        val executionEligibility: ExecutionEligibility,
     ) : SessionState
 }
 
@@ -217,6 +223,7 @@ class AuthSession(
             workspaceName = session.workspaceName,
             capabilities = session.server.capabilities,
             serverPlatform = session.server.platform,
+            executionEligibility = session.executionEligibility,
         )
     }
 }

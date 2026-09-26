@@ -5,6 +5,7 @@ import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.BuildConfig
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.net.ApiResult
+import app.relaxkonos.mobile.core.net.ExecutionEligibilityReasons
 import app.relaxkonos.mobile.core.net.ProblemCodes
 
 /** A localised message: a resource id plus optional format arguments. */
@@ -69,7 +70,28 @@ fun problemMessage(code: String): UiMessage = UiMessage(
         ProblemCodes.ELEVATION_ACCOUNT_NOT_ADMINISTRATOR -> R.string.error_elevation_not_administrator
         ProblemCodes.PERFORMANCE_NOT_READY -> R.string.error_performance_not_ready
         ProblemCodes.UNAUTHORIZED -> R.string.error_unauthorized
+        ProblemCodes.IDENTITY_NOT_ELIGIBLE -> R.string.error_identity_not_eligible
+        ProblemCodes.IDENTITY_NOT_EXECUTABLE -> R.string.error_identity_not_executable
         else -> R.string.error_generic
+    },
+)
+
+/**
+ * The sentence for an identity the server has already declared unusable, from the reason code the login
+ * response carried.
+ *
+ * The server owns the reason, the client owns the wording — the same split as [problemMessage], and for
+ * the same reason: appending the server's English detail to a Chinese screen is not a translation.
+ *
+ * Every reason falls back to the "not eligible" sentence rather than to nothing. `available = false` is
+ * authoritative even for a reason this build has never heard of, and a session that silently loses its
+ * file browser is exactly the outcome this notice exists to prevent. A reason the client does not know
+ * only costs it the sharper of the two sentences.
+ */
+fun executionEligibilityMessage(reason: String?): UiMessage = UiMessage(
+    when (reason) {
+        ExecutionEligibilityReasons.SERVER_ACCOUNT_REQUIRED -> R.string.error_identity_not_executable
+        else -> R.string.error_identity_not_eligible
     },
 )
 

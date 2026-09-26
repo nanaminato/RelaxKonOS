@@ -13,11 +13,42 @@ data class AuthTokens(
 
 data class ServerDescriptor(val platform: String, val capabilities: Set<String>)
 
+/**
+ * Whether the identity that just signed in may run ordinary operations (files, terminal, Git) on the
+ * host. A per-login fact, not a deployment fact: the same server answers differently for root than for
+ * a regular account. When [available] is false the shell must say so instead of letting the first
+ * folder open fail with a 503.
+ *
+ * [reason] is a stable kebab-case code ([ExecutionEligibilityReasons]), never a sentence: the text
+ * belongs to `strings.xml`, and this class never renders it.
+ */
+data class ExecutionEligibility(val available: Boolean, val reason: String?) {
+    companion object {
+        /**
+         * What a session reads as when the server did not state it — a synthesised session in a test or
+         * a preview. Every wire parse sets the field explicitly, so this is never a substitute for the
+         * server's answer on a real connection.
+         */
+        val Available = ExecutionEligibility(available = true, reason = null)
+    }
+}
+
+/** Stable reason codes for [ExecutionEligibility.reason], mirroring `ServerExecutionEligibilityReasons`. */
+object ExecutionEligibilityReasons {
+    const val RESERVED_IDENTITY = "reserved-identity"
+    const val SYSTEM_ACCOUNT = "system-account"
+    const val UNVERIFIED_HOME_DIRECTORY = "unverified-home-directory"
+    const val SERVER_ACCOUNT_REQUIRED = "server-account-required"
+    const val WINDOWS_PROFILE_REQUIRED = "windows-profile-required"
+    const val UNSUPPORTED_PLATFORM = "unsupported-platform"
+}
+
 data class LoginSession(
     val userName: String,
     val workspaceName: String,
     val server: ServerDescriptor,
     val tokens: AuthTokens,
+    val executionEligibility: ExecutionEligibility = ExecutionEligibility.Available,
 )
 
 /** `HostElevationResult` / result of the one-shot elevation call. */

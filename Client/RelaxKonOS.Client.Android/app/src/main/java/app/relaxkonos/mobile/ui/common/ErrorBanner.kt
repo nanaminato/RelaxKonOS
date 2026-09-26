@@ -83,3 +83,34 @@ fun CapabilityMissingNotice(modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.bodyMedium,
     )
 }
+
+/**
+ * The standing notice a session carries when the server has already said this identity may not run
+ * ordinary operations.
+ *
+ * It is deliberately not an [ErrorBanner]: nothing has failed yet, there is nothing to retry, and a
+ * fact about the session cannot be dismissed away. It wears the warning tone rather than the danger
+ * one because the session itself is perfectly usable — metrics, processes and the rest keep working;
+ * only the file, terminal and Git surfaces the user is most likely to reach for next do not.
+ *
+ * [reason] is the server's stable reason code, never its text; the sentence comes from the client's
+ * own packs through [executionEligibilityMessage].
+ */
+@Composable
+fun ExecutionEligibilityNotice(reason: String?, modifier: Modifier = Modifier) {
+    val tone = StatusTone.Warning
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Radius.md),
+        color = toneContainer(tone),
+        contentColor = toneContent(tone),
+    ) {
+        Row(
+            Modifier.padding(Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            DesktopIcon(icon = DesktopIcons.notice, size = 22.dp)
+            Text(executionEligibilityMessage(reason).text(), style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
