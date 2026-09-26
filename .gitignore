@@ -13,6 +13,7 @@
 *.Production.json
 # 调试日志
 *operations.json
+.jschprobe
 
 
 dataSources.xml
@@ -45,6 +46,8 @@ wallpapers/
 RelaxKonOS.Server/data/docker-compose/
 RelaxKonOS.Server/data/
 .workbuddy/
+Client/RelaxKonOS.Client.Android/.gradle/
+Client/RelaxKonOS.Client.Android/**/build/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

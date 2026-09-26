@@ -16,12 +16,14 @@ using RelaxKonOS.Client.Services.AppPackages;
 using RelaxKonOS.Client.Services.Developer;
 using RelaxKonOS.Client.Services.DesktopRestore;
 using RelaxKonOS.Client.Services.Diagnostics;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services.WindowLayout;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using VirtualSystemDriveService = RelaxKonOS.Client.Services.VirtualSystemDrive.VirtualSystemDrive;
 using RelaxKonOS.Client.Services.Theming;
 using RelaxKonOS.Client.Services.SystemUi;
 using RelaxKonOS.Client.ViewModels.Login;
+using RelaxKonOS.Client.ViewModels.ServerCenter;
 using RelaxKonOS.Client.ViewModels.Shell;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
@@ -84,6 +86,8 @@ public static class Bootstrapper
         services.AddHttpClient<IRelaxKonOSClient, RelaxKonOSClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "auth"))
             .AddHttpMessageHandler<AcceptLanguageHandler>();
+        services.AddHttpClient<ServerEndpointResolver>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<ITerminalSettingsClient, TerminalSettingsClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "terminal-settings"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()
@@ -98,6 +102,20 @@ public static class Bootstrapper
         services.AddSingleton<IApplicationCompatibilityNotifier>(sp => sp.GetRequiredService<ApplicationCompatibilityService>());
         services.AddSingleton<LoginViewModel>();
 
+        // 服务器中心：宿主管理资料、主机密钥固定、SSH 凭据与内置 SSH/SFTP 传输。
+        // 这些存储都只写本机，且 SSH 凭据使用独立于登录凭据的安全存储槽。
+        services.AddSingleton<IHostTargetStore, HostTargetStore>();
+        services.AddSingleton<ISshHostKeyTrustStore, SshHostKeyTrustStore>();
+        services.AddSingleton<ISshCredentialStore, SshCredentialStore>();
+        services.AddSingleton<IServerCenterSshTransportFactory, SshNetServerCenterTransportFactory>();
+        services.AddSingleton<IServerCenterConnectionResolver, ServerCenterConnectionResolver>();
+        services.AddSingleton<SshDesktopSession>();
+        services.AddSingleton<SshExplorerClient>();
+        services.AddSingleton<IServerCenterOperationJournal, ServerCenterOperationJournal>();
+        services.AddSingleton<IServerCenterReleaseTrustStore, FileServerCenterReleaseTrustStore>();
+        services.AddSingleton<IServerCenterReleaseSource, FileServerCenterReleaseSource>();
+        services.AddTransient<ServerCenterViewModel>();
+
         // Explorer（文件管理器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。
         services.AddHttpClient<RelaxKonOS.Client.Apps.Explorer.IExplorerClient, RelaxKonOS.Client.Apps.Explorer.ExplorerClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "explorer"))
@@ -109,12 +127,38 @@ public static class Bootstrapper
             var center = new RelaxKonOS.Client.Apps.Explorer.Models.ExplorerOperationCenter(sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.IExplorerClient>())
             {
                 SessionKey = () => session.State == AuthSessionState.Authenticated
-                    ? $"{session.ServerUrl}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null,
+                    ? $"{session.ServiceId}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null,
             };
             session.StateChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(center.SessionChanged);
             return center;
         });
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.IRemoteFileClipboard, RelaxKonOS.Client.Apps.Explorer.RemoteFileClipboard>();
+
+        // 大文件上传数据面：独立 HttpClient，不经 AuthenticatedHttpHandler（它会为 401 重放而整包缓冲正文）。
+        // 整请求超时关闭（一个分片在慢链路上合法地耗时数分钟），停滞由编排器的分片看门狗负责；
+        // 401 原样返回给编排器：分块协议靠重新读取偏移续传，不需要正文副本。
+        services.AddTransient<RelaxKonOS.Client.Services.Auth.UploadAuthenticationHandler>();
+        services.AddHttpClient<RelaxKonOS.Client.Apps.Explorer.Uploads.IExplorerUploadChannel,
+                RelaxKonOS.Client.Apps.Explorer.Uploads.ExplorerUploadChannel>(http => http.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                ConnectTimeout = TimeSpan.FromSeconds(15),
+                AllowAutoRedirect = false,
+            })
+            .AddHttpMessageHandler<RelaxKonOS.Client.Services.Auth.UploadAuthenticationHandler>()
+            .AddHttpMessageHandler<AcceptLanguageHandler>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.Uploads.UploadResumeJournal>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.Uploads.ILargeFileUploader>(sp =>
+        {
+            var session = sp.GetRequiredService<IAuthSession>();
+            return new RelaxKonOS.Client.Apps.Explorer.Uploads.LargeFileUploader(
+                sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.Uploads.IExplorerUploadChannel>(),
+                sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.Uploads.UploadResumeJournal>(),
+                // 与 ExplorerOperationCenter.SessionKey 同口径：换服务器/账号/工作区/设备后不得拿旧日志去续传。
+                // 用稳定身份而非传输地址：受管隧道换端口不应改变上传恢复归属。
+                () => session.State == AuthSessionState.Authenticated
+                    ? $"{session.ServiceId}/{session.CurrentUser?.Id}/{session.CurrentWorkspace?.Id}/{session.CurrentDevice?.Id}" : null);
+        });
 
         // Browser（浏览器）：typed HttpClient（JWT from IAuthSession）+ 应用注册。
         // NativeWebView 用平台原生引擎（Win=WebView2/macOS=WKWebView/Linux=WebKitGTK），网页内容走客户端网络；
@@ -261,6 +305,8 @@ public static class Bootstrapper
         services.AddSingleton<ImageViewerApp>();
         services.AddSingleton<SettingsApp>();
         services.AddSingleton<TerminalApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.ServerCenterApp>();
+        services.AddSingleton<RelaxKonOS.Client.Apps.ServerCenter.SshFileBrowserApp>();
         services.AddSingleton<IDesktopRestoreParticipant, TerminalDesktopRestoreParticipant>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Explorer.ExplorerApp>();
         services.AddSingleton<RelaxKonOS.Client.Apps.Browser.BrowserApp>();
@@ -293,7 +339,8 @@ public static class Bootstrapper
                     desktop.Shutdown();
             };
             return new DesktopShellViewModel(
-                wm, apps, settings, localization, session, shutdown,
+                wm, apps, settings, localization, session,
+                sp.GetRequiredService<SshDesktopSession>(), shutdown,
                 sp.GetRequiredService<DesktopRestoreOrchestrator>(),
                 sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.IExplorerClient>(),
                 sp.GetRequiredService<RelaxKonOS.Client.Apps.Explorer.IRemoteFileClipboard>(),

@@ -391,7 +391,7 @@ MainWindow
 | `dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -t:Rebuild` | 通过，0 error；**2 个 CA1416 警告**（`Program.cs:413` `WindowsLogonProvider` / `Program.cs:415` `LinuxPamProvider`，起点既有，非本次引入） |
 | `dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj` | 通过，0 warning / 0 error |
 | `dotnet build Tools/RelaxKonOS.DevCli/RelaxKonOS.DevCli.csproj` | 通过，0 warning / 0 error |
-| `dotnet run --project Client/RelaxKonOS.Settings.Tests/... -c Release` | 全通过，含新增 `SystemStyleChecks` |
+| `dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/... -c Release` | 全通过，含新增 `SystemStyleChecks` |
 | `dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --settings-only` | 全通过 |
 | `git diff --check` | clean |
 
@@ -445,7 +445,7 @@ MainWindow
 | `dotnet build RelaxKonOS.sln -c Debug -m:1` | 通过，0 warning / 0 error |
 | `dotnet build Framework/RelaxKonOS.WindowManager/... -c Debug` | 通过，0 warning / 0 error |
 | `dotnet build Client/RelaxKonOS.Client/... -c Debug` | 通过，含新视图的**编译绑定校验**（`x:CompileBindings="True"`），0 error |
-| `dotnet run --project Client/RelaxKonOS.Settings.Tests/... -c Debug --no-build` | 全通过；新增输出：`… external-package gate, recipe coverage, no hardcoded colours in product UI.` |
+| `dotnet run --project Tests/Client/RelaxKonOS.Settings.Tests/... -c Debug --no-build` | 全通过；新增输出：`… external-package gate, recipe coverage, no hardcoded colours in product UI.` |
 | 产品 UI 十六进制颜色复扫（§10.2 口径） | **46** 处，全部在豁免表内（Phase 0 基线 154） |
 | `dotnet build RelaxKonOS.Server/... -t:Rebuild` | 通过，0 error；2 个 CA1416 警告（起点既有） |
 | `dotnet run --project RelaxKonOS.Server.Tests -c Debug` | **未通过，但为起点既有失败**：停在 `VerifyMihomoGeoDataStagingAsync` 的 `Bundled GEO data could not be staged.`。已用 `git worktree add ... 8cd4147f` 做干净检出复现，**同一条断言、同一调用路径**同样失败，故与本次改动无关（本阶段对该文件只改了 Workspace 偏好 / Appearance / SystemStyle 契约部分） |
@@ -469,5 +469,5 @@ MainWindow
   该失败会中断进程，**其后的用例根本没跑**，因此本阶段新增的 Workspace 偏好 / Appearance / SystemStyle
   服务端契约断言**未取得运行时证据**——只证明了可编译、且与既有失败无因果关系。修复该系统级失败前，
   不应把 `Server.Tests` 当作 System Style 的验证依据。
-- `Client/RelaxKonOS.Settings.Tests` 不在 `RelaxKonOS.sln` 中，且仓库无 `.github/` 工作流，
+- `Tests/Client/RelaxKonOS.Settings.Tests` 不在 `RelaxKonOS.sln` 中，且仓库无 `.github/` 工作流，
   因此新增的 CI 规则需要流水线显式调用该命令才会执行。

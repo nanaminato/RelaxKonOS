@@ -150,7 +150,7 @@ Linux 适配器必须过滤或标记 loop、ram、zram、重复的 device-mapper
 | 通道 | 路由/事件 | 目的 |
 |---|---|---|
 | REST | `GET /api/v1.0/system/performance/info` | 静态信息与能力 |
-| REST | `GET /api/v1.0/system/performance/snapshot` | 当前有效快照；首次进入、重连和测试的降级路径 |
+| REST | `GET /api/v1.0/system/performance/snapshot` | 当前有效快照；首次进入、重连和测试的降级路径。读取即申请一次有界 demand，因此没有实时订阅者时也会就地产出样本 |
 | REST | `GET /api/v1.0/system/performance/history?seconds=60` | 最近有效点；上限 60，不能作长期查询 |
 | SignalR | `/hubs/performance` | 性能实时订阅 Hub |
 | Server → Client | `performanceSnapshot` | `PerformanceRealtimeSnapshotDto` |

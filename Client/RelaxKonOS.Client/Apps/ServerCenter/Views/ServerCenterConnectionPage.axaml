@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterConnectionPage"
+             x:DataType="vm:ServerCenterViewModel">
+    <StackPanel Spacing="18">
+        <TextBlock Text="{Binding ConnectionPageTitle}" FontSize="21" FontWeight="SemiBold" />
+        <TextBlock Text="{Binding SelectHostHint}" IsVisible="{Binding !SelectedHost}" TextWrapping="Wrap" />
+        <Border Classes="card" Padding="20" IsVisible="{Binding SelectedHost}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding SelectedHost.SshHost}" />
+                <TextBlock Text="{Binding SelectedHost.SshUserName}" />
+                <TextBlock Text="{Binding VerifiedStateText}" IsVisible="{Binding HasVerifiedState}" TextWrapping="Wrap" />
+                <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding SshPasswordLabel}" />
+                <CheckBox IsChecked="{Binding SaveSshPassword}" Content="{Binding SaveSshPasswordText}" />
+                <Button Command="{Binding VerifySshCommand}" Content="{Binding VerifySshText}" HorizontalAlignment="Left" />
+                <Border IsVisible="{Binding NeedsHostKeyConfirmation}" BorderBrush="{DynamicResource BorderDefaultBrush}"
+                        BorderThickness="1" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{Binding HostKeyReviewText}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding HostKeyFingerprint}" FontFamily="Consolas" TextWrapping="Wrap" />
+                        <Button Command="{Binding ConfirmHostKeyCommand}" Content="{Binding ConfirmHostKeyText}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+                <TextBlock Text="{Binding HostKeyChangedText}" IsVisible="{Binding HostKeyChanged}" Classes="error" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding CachedStateText}" FontSize="12" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

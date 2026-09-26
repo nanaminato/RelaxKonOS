@@ -20,13 +20,13 @@ public sealed partial class GuardianLogWindowViewModel(IAuthSession session, Gua
 
     public async Task StartAsync()
     {
-        if (session.ServerUrl is null || session.Tokens is null)
+        if (session.EffectiveBaseUrl is null || session.Tokens is null)
         {
             StatusText = LocalizedText.Ref("guardian.logs.disconnected");
             return;
         }
 
-        var hubUrl = new Uri(new Uri(session.ServerUrl), RelaxKonOSEndpoints.GuardianLogsHubPath.TrimStart('/')).ToString();
+        var hubUrl = new Uri(new Uri(session.EffectiveBaseUrl), RelaxKonOSEndpoints.GuardianLogsHubPath.TrimStart('/')).ToString();
         var connection = _connection = new HubConnectionBuilder()
             .WithUrl(hubUrl, options => options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1)))
             .WithAutomaticReconnect()

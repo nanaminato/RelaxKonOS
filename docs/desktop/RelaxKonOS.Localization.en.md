@@ -6,7 +6,7 @@ RelaxKonOS uses BCP-47 language names (`en-US`, `zh-CN`, `ja-JP`) and English so
 
 `LocalizationService` owns the active language, loads JSON language packs from `Client/RelaxKonOS.Client/Localization`, and raises `LanguageChanged`. The required migration pattern is a stable key plus an English fallback through `LocalizationService.Get(key, englishFallback)`; AXAML binds to a localized view-model property and code-created controls use the same method. There is no visual-tree scan or source-sentence lookup, so a language change is handled only by the owner of each displayed value.
 
-The login view uses the local language before authentication. `LocalLanguageStore` writes only that BCP-47 name below local application data. After authentication, `PreferencesSync` loads `WorkspacePreferencesDto.Language` for the current user-workspace; Settings writes subsequent changes to that workspace preference. Logging out restores the local login language.
+The login view uses the local language before authentication. `LocalLanguageStore` writes only that BCP-47 name below local application data. After authentication, `PreferencesSync` loads `WorkspacePreferencesDto.Language` for the current user-workspace; Settings writes subsequent changes to that workspace preference. Alongside the three explicit languages, Settings offers the synchronized `follow-system` value: Chinese system languages resolve to `zh-CN`, Japanese to `ja-JP`, and all other languages to `en-US`. SSH desktops always use that same device-local mapping and never read or write a workspace preference. Logging out restores the local login language.
 
 ## API text
 

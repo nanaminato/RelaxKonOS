@@ -12,6 +12,9 @@ namespace RelaxKonOS.Client.Apps.Explorer.Views;
 
 public partial class ExplorerMainView : UserControl
 {
+    public static readonly StyledProperty<double> EntriesTableWidthProperty =
+        AvaloniaProperty.Register<ExplorerMainView, double>(nameof(EntriesTableWidth));
+
     private sealed record ExplorerDragPayload(ExplorerViewModel Source, IReadOnlyList<FileSystemEntryDto> Entries);
     private static readonly DataFormat<ExplorerDragPayload> ExplorerEntriesFormat =
         DataFormat.CreateInProcessFormat<ExplorerDragPayload>("relaxkonos/explorer-entries");
@@ -24,13 +27,32 @@ public partial class ExplorerMainView : UserControl
     private Point _dragStart;
     private readonly ContextMenu? _entryContextMenu;
     private ExplorerViewModel? _attachedViewModel;
+    private DataGridColumnHeader? _pressedSortHeader;
+    private double _pressedSortHeaderWidth;
+
+    /// <summary>Combined live width of the details columns, used to constrain row layout.</summary>
+    public double EntriesTableWidth
+    {
+        get => GetValue(EntriesTableWidthProperty);
+        private set => SetValue(EntriesTableWidthProperty, value);
+    }
 
     public ExplorerMainView()
     {
         InitializeComponent();
         _entryContextMenu = EntriesGrid.ContextMenu;
         EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
+        EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_SortHeaderPointerPressed, RoutingStrategies.Tunnel);
+        EntriesGrid.AddHandler(PointerReleasedEvent, EntriesGrid_SortHeaderPointerReleased, RoutingStrategies.Tunnel);
+        EntriesGrid.LayoutUpdated += EntriesGrid_LayoutUpdated;
         DataContextChanged += ExplorerMainView_DataContextChanged;
+    }
+
+    private void EntriesGrid_LayoutUpdated(object? sender, EventArgs e)
+    {
+        var width = EntriesGrid.Columns.Sum(column => column.ActualWidth);
+        if (width <= 0 || Math.Abs(width - EntriesTableWidth) < 0.1) return;
+        EntriesTableWidth = width;
     }
 
     private void ExplorerMainView_DataContextChanged(object? sender, EventArgs e)
@@ -128,17 +150,33 @@ public partial class ExplorerMainView : UserControl
             _ = vm.InvokeEntryAsync(entry);
     }
 
-    private void EntriesGrid_Sorting(object? sender, DataGridColumnEventArgs e)
-    {
-        e.Handled = true; // One folder-first ordering for column headers and the command bar.
-        if (ViewModel is not { IsBusy: false } vm) return;
-        if (Enum.TryParse<ExplorerSortField>(e.Column.SortMemberPath, out var field)) vm.SortBy(field);
-    }
-
     private void EntriesGrid_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (sender is DataGrid grid)
             ViewModel?.UpdatePickerSelection(grid.SelectedItems?.Cast<object>() ?? []);
+    }
+
+    private void EntriesGrid_SortHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _pressedSortHeader = null;
+        if (!e.GetCurrentPoint(EntriesGrid).Properties.IsLeftButtonPressed) return;
+        var header = FindVisualAncestor<DataGridColumnHeader>(e.Source);
+        if (header is not null && SortFieldForHeader(header).HasValue)
+        {
+            _pressedSortHeader = header;
+            _pressedSortHeaderWidth = header.Bounds.Width;
+        }
+    }
+
+    private void EntriesGrid_SortHeaderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        var pressedHeader = _pressedSortHeader;
+        _pressedSortHeader = null;
+        if (pressedHeader is null || !ReferenceEquals(pressedHeader, FindVisualAncestor<DataGridColumnHeader>(e.Source))) return;
+        // A drag on the column divider changes the column width; it must not also sort.
+        if (Math.Abs(pressedHeader.Bounds.Width - _pressedSortHeaderWidth) >= 0.1) return;
+        if (SortFieldForHeader(pressedHeader) is { } field && ViewModel is { IsBusy: false } vm)
+            vm.SortBy(field);
     }
 
     private void EntriesGrid_PointerPressed(object? sender, PointerPressedEventArgs e)
@@ -283,6 +321,22 @@ public partial class ExplorerMainView : UserControl
             if (control.DataContext is T value)
                 return value;
         return null;
+    }
+
+    private static T? FindVisualAncestor<T>(object? source) where T : Control
+    {
+        for (var control = source as Control; control is not null; control = control.GetVisualParent() as Control)
+            if (control is T value) return value;
+        return null;
+    }
+
+    private ExplorerSortField? SortFieldForHeader(DataGridColumnHeader header)
+    {
+        if (ViewModel is not { } vm || header.Content is not string text) return null;
+        if (text == vm.NameColumnHeader) return ExplorerSortField.Name;
+        if (text == vm.ModifiedColumnHeader) return ExplorerSortField.Modified;
+        if (text == vm.TypeColumnHeader) return ExplorerSortField.Type;
+        return text == vm.SizeColumnHeader ? ExplorerSortField.Size : null;
     }
 
     private static bool IsWithinTextBox(object? source)

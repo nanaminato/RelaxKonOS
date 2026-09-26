@@ -63,7 +63,7 @@ Shares uses localized columns, including permissions, ownership and configuratio
 
 The Samba users page exists only when the server advertises Samba credential support. Select an eligible system account to change credentials. Windows uses its native security principals and has no Samba password page. Mutations remain locked throughout administrator authorization and refresh the server state after completion. Chinese, English and Japanese resources cover columns, runtime states and SMB problem codes.
 
-Run desktop control-plane regression checks with `dotnet run --project Client/RelaxKonOS.FileServices.Tests`.
+Run desktop control-plane regression checks with `dotnet run --project Tests/Client/RelaxKonOS.FileServices.Tests`.
 
 ### Guest and authenticated write access
 

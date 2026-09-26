@@ -9,11 +9,23 @@
       "server": "payload/windows/server/RelaxKonOS.Server.exe",
       "guardian": "payload/windows/guardian/RelaxKonOS.Guardian.Agent.exe",
       "privilegedHelper": "payload/windows/privileged-helper/RelaxKonOS.PrivilegedHelper.exe"
-    },
-    "linux": {
-      "server": "payload/linux/server/RelaxKonOS.Server",
-      "guardian": "payload/linux/guardian/RelaxKonOS.Guardian.Agent",
-      "privilegedHelper": "payload/linux/privileged-helper/RelaxKonOS.PrivilegedHelper"
     }
-  }
+  },
+  "files": [
+    {
+      "path": "payload/windows/server/RelaxKonOS.Server.exe",
+      "length": 1,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "path": "payload/windows/guardian/RelaxKonOS.Guardian.Agent.exe",
+      "length": 1,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "path": "payload/windows/privileged-helper/RelaxKonOS.PrivilegedHelper.exe",
+      "length": 1,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
 }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The activity is a platform AppCompatActivity host so per-app language selection keeps working
+      below API 33 (RelaxKonOS.Mobile.V1.Design.md §3.3, `more/appearance`). All visible styling comes
+      from the Compose theme in ui/theme/RelaxKonTheme.kt; this theme only owns the window frame that
+      is drawn before the first Compose frame.
+    -->
+    <style name="Theme.RelaxKonOS" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Apps.Explorer.Models;
+using RelaxKonOS.Client.Apps.Explorer.Uploads;
 using RelaxKonOS.Protocol.Files;
 
 namespace RelaxKonOS.Client.Apps.Explorer.ViewModels;
@@ -124,6 +125,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         SortEntries();
     }
     partial void OnSortDescendingChanged(bool value) => SortEntries();
+    [RelayCommand]
     public void SortBy(ExplorerSortField field)
     {
         if (SortField == field) SortDescending = !SortDescending;
@@ -131,13 +133,25 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     }
     private void SortEntries()
     {
+        var previouslySelected = GetSelectedEntries().ToHashSet();
+        var previouslySelectedEntry = SelectedEntry;
         var sorted = Entries.OrderBy(e => e, new ExplorerEntryComparer(SortField, SortDescending)).ToArray();
-        // Collection moves preserve DataGrid selection; filtering deliberately clears it.
-        for (var i = 0; i < sorted.Length; i++)
-        {
-            var index = Entries.IndexOf(sorted[i]);
-            if (index != i) Entries.Move(index, i);
-        }
+        // A Reset-style rebuild is required here. Avalonia's DataGrid can retain its visual
+        // row order after a series of collection Move events, especially after resizing a
+        // details column. Replacing the visible entries forces it to realize the new order.
+        Entries.Clear();
+        foreach (var entry in sorted) Entries.Add(entry);
+
+        // Restore selection by entry identity after the grid receives the rebuilt list.
+        SelectedEntries.Clear();
+        foreach (var entry in sorted.Where(previouslySelected.Contains)) SelectedEntries.Add(entry);
+        SelectedEntry = null;
+        SelectedEntry = previouslySelectedEntry is not null && Entries.Contains(previouslySelectedEntry)
+            ? previouslySelectedEntry
+            : SelectedEntries.FirstOrDefault();
+        NotifySelectionCommands();
+        OnPropertyChanged(nameof(SelectionSummary));
+        UpdatePickerEntryName();
         OnPropertyChanged(nameof(NameColumnHeader));
         OnPropertyChanged(nameof(ModifiedColumnHeader));
         OnPropertyChanged(nameof(TypeColumnHeader));
@@ -228,8 +242,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public Func<Task<IReadOnlyList<LocalUploadSource>>>? RequestLocalUploadFilesAsync { get; set; }
     /// <summary>请求选择客户端宿主机文件夹（可多选）。</summary>
     public Func<Task<IReadOnlyList<LocalUploadSource>>>? RequestLocalUploadFoldersAsync { get; set; }
-    /// <summary>读取宿主机剪贴板中的文件/文件夹。</summary>
-    public Func<Task<IReadOnlyList<LocalUploadSource>>>? RequestClipboardUploadSourcesAsync { get; set; }
+    /// <summary>读取宿主机剪贴板及最近一次远端复制的标记。</summary>
+    public Func<Task<HostFileClipboardSnapshot>>? ReadHostFileClipboardAsync { get; set; }
+    public Func<Task>? MarkRemoteFileCopyAsync { get; set; }
     /// <summary>请求本地保存路径（用于下载目标）。参数：默认文件名。返回本地路径或 null。</summary>
     public Func<string, Task<string?>>? RequestLocalSaveFileAsync { get; set; }
     /// <summary>Ensures direct or short-lived elevated access before a protected file is opened or downloaded.</summary>
@@ -238,6 +253,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     public Func<IReadOnlyList<string>, FileElevationCapability, Task<bool>>? RequestFileOperationElevationAsync { get; set; }
     public Func<StartFileOperationRequest, Action<FileOperationDto>, Task>? QueueOperationAsync { get; set; }
     public Action<IReadOnlyList<FileOperationItem>, long, Func<Action<string, long, int>, CancellationToken, Task>>? QueueUpload { get; set; }
+    /// <summary>Resumable uploader for files past the single-shot threshold. When it is absent every file
+    /// stays on the single-shot route, which is correct but cannot carry a large one.</summary>
+    public ILargeFileUploader? LargeFileUploader { get; set; }
     public Action? ShowFileOperations { get; set; }
     [RelayCommand] private void ShowOperations() => ShowFileOperations?.Invoke();
 
@@ -1191,16 +1209,18 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void Copy()
+    private async Task CopyAsync()
     {
+        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
         _fileClipboard.Set(GetSelectedEntries(), RemoteFileClipboardOperation.Copy);
         PasteCommand.NotifyCanExecuteChanged();
         StatusText = LocalizedText.Ref("explorer.status.copied_to_clipboard", _fileClipboard.Entries.Count);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void Cut()
+    private async Task CutAsync()
     {
+        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
         _fileClipboard.Set(GetSelectedEntries(), RemoteFileClipboardOperation.Cut);
         PasteCommand.NotifyCanExecuteChanged();
         StatusText = LocalizedText.Ref("explorer.status.cut_to_clipboard", _fileClipboard.Entries.Count);
@@ -1215,13 +1235,15 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (_fileClipboard.HasEntries)
+        var snapshot = await (ReadHostFileClipboardAsync?.Invoke()
+            ?? Task.FromResult(new HostFileClipboardSnapshot(false, Array.Empty<LocalUploadSource>())));
+        if (_fileClipboard.HasEntries && (snapshot.IsRemoteCopy || snapshot.Files.Count == 0))
         {
             await PasteRemoteClipboardAsync(AddressbarPath);
             return;
         }
 
-        await PasteHostClipboardAsync();
+        await PasteHostClipboardAsync(snapshot);
     }
 
     [RelayCommand(CanExecute = nameof(CanPaste))]
@@ -1245,14 +1267,16 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         PasteCommand.NotifyCanExecuteChanged();
     }
 
-    private async Task PasteHostClipboardAsync()
+    private async Task PasteHostClipboardAsync(HostFileClipboardSnapshot? snapshot = null)
     {
         if (string.IsNullOrWhiteSpace(AddressbarPath))
         {
             StatusText = LocalizedText.Ref("explorer.status.enter_target_directory_first");
             return;
         }
-        var sources = await (RequestClipboardUploadSourcesAsync?.Invoke() ?? Task.FromResult<IReadOnlyList<LocalUploadSource>>([]));
+        snapshot ??= await (ReadHostFileClipboardAsync?.Invoke()
+            ?? Task.FromResult(new HostFileClipboardSnapshot(false, Array.Empty<LocalUploadSource>())));
+        var sources = snapshot.Files;
         if (sources.Count == 0)
         {
             StatusText = LocalizedText.Ref("explorer.status.clipboard_no_files");
@@ -1336,8 +1360,8 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             return;
         }
 
-        UploadPlan plan;
-        try { plan = BuildUploadPlan(sources); }
+        LocalUploadPlan plan;
+        try { plan = LocalUploadPlan.Build(sources); }
         catch (Exception ex) { StatusText = LocalizedText.Ref("explorer.status.upload_failed", ex.Message); return; }
         if (plan.Files.Count == 0 && plan.Directories.Count == 0)
         {
@@ -1348,8 +1372,8 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         var destination = AddressbarPath;
         if (QueueUpload is not null)
         {
-            var items = plan.Directories.Select(path => new FileOperationItem(path, CombineRemoteRelativePath(destination, path)))
-                .Concat(plan.Files.Select(file => new FileOperationItem(file.SourcePath, CombineRemoteRelativePath(destination, file.RelativePath)))).ToArray();
+            var items = plan.Directories.Select(path => new FileOperationItem(path, LocalUploadPlan.CombineRemotePath(destination, path)))
+                .Concat(plan.Files.Select(file => new FileOperationItem(file.SourcePath, LocalUploadPlan.CombineRemotePath(destination, file.RelativePath)))).ToArray();
             QueueUpload(items, plan.TotalBytes, async (report, ct) =>
             {
                 var count = 0;
@@ -1357,7 +1381,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 foreach (var directory in plan.Directories)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var path = CombineRemoteRelativePath(destination, directory);
+                    var path = LocalUploadPlan.CombineRemotePath(destination, directory);
                     report(path, bytes, count);
                     if (!await RetryWithOperationElevationAsync(async () =>
                         {
@@ -1370,18 +1394,26 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 foreach (var file in plan.Files)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var path = CombineRemoteRelativePath(destination, file.RelativePath);
+                    var path = LocalUploadPlan.CombineRemotePath(destination, file.RelativePath);
                     var start = bytes;
                     var processed = count;
-                    var progress = new Progress<long>(uploaded => report(path, start + uploaded, processed));
+                    // Progress comes from the server's confirmed offset plus the current chunk in flight, and
+                    // it never moves backwards: a resynchronisation may discover fewer bytes than the estimate
+                    // showed, and the honest answer to that is to hold the bar, not to rewind it.
+                    long shown = 0;
+                    void Report(long confirmed, long inFlight, bool reconciling)
+                    {
+                        // The operation centre's per-item row carries a path and a byte count and no status
+                        // line, so a check in flight is expressed by holding the counter — which is what the
+                        // absence of a new number already does. Nothing here may claim bytes it cannot prove.
+                        if (reconciling) return;
+                        var value = Math.Min(confirmed + inFlight, file.Length);
+                        if (value < shown) return;
+                        shown = value;
+                        report(path, start + value, processed);
+                    }
                     report(path, bytes, count);
-                    if (!await RetryWithOperationElevationAsync(async () =>
-                        {
-                            ct.ThrowIfCancellationRequested();
-                            // Open a fresh stream on retry so an elevation response cannot truncate the upload.
-                            using var stream = File.OpenRead(file.SourcePath);
-                            await _client.UploadAsync(ExplorerPath.Parent(path)!, GetRelativeFileName(file.RelativePath), stream, progress, ct);
-                        }, FileElevationCapability.Upload, destination))
+                    if (!await UploadPlannedFileAsync(destination, file, Report, ct))
                         throw new InvalidOperationException(LocalizedText.Get("explorer.status.elevation_required"));
                     bytes += file.Length;
                     report(path, bytes, ++count);
@@ -1399,7 +1431,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             {
                 var directory = plan.Directories[index];
                 TransferText = LocalizedText.Format("explorer.status.creating_folder", directory, index + 1, TransferItemTotal);
-                var remoteDirectory = CombineRemoteRelativePath(AddressbarPath, directory);
+                var remoteDirectory = LocalUploadPlan.CombineRemotePath(AddressbarPath, directory);
                 if (!await RetryWithOperationElevationAsync(
                         async () => { await _client.CreateDirectoryAsync(remoteDirectory); }, FileElevationCapability.CreateDirectory, AddressbarPath)) return;
                 TransferItemCompleted = index + 1;
@@ -1412,18 +1444,23 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
                 var operationIndex = plan.Directories.Count + index + 1;
                 TransferText = LocalizedText.Format("explorer.status.uploading_item", file.RelativePath, operationIndex, TransferItemTotal);
                 var currentFileStart = completedBytes;
-                var progress = new Progress<long>(uploaded =>
+                long shown = 0;
+                void Report(long confirmed, long inFlight, bool reconciling)
                 {
-                    TransferBytesCompleted = currentFileStart + uploaded;
-                    TransferText = LocalizedText.Format("explorer.status.uploading_item", file.RelativePath, operationIndex, TransferItemTotal);
-                });
-                var destinationDirectory = GetRelativeDirectory(file.RelativePath);
-                var targetDirectory = string.IsNullOrEmpty(destinationDirectory)
-                    ? AddressbarPath
-                    : CombineRemoteRelativePath(AddressbarPath, destinationDirectory);
-                using var stream = File.OpenRead(file.SourcePath);
-                if (!await RetryWithOperationElevationAsync(
-                        async () => { await _client.UploadAsync(targetDirectory, GetRelativeFileName(file.RelativePath), stream, progress); }, FileElevationCapability.Upload, AddressbarPath)) return;
+                    // While the authoritative offset is being re-read there is no number worth showing, so
+                    // the line says what is happening instead and the bar holds where it is
+                    // (`RelaxKonOS.FileUpload.Design.md` §5.4). A bar that moved on a guess would be the
+                    // same lie as one that fills before the socket does.
+                    TransferText = LocalizedText.Format(
+                        reconciling ? "explorer.status.upload_reconciling" : "explorer.status.uploading_item",
+                        file.RelativePath, operationIndex, TransferItemTotal);
+                    if (reconciling) return;
+                    var value = Math.Min(confirmed + inFlight, file.Length);
+                    if (value < shown) return;
+                    shown = value;
+                    TransferBytesCompleted = currentFileStart + value;
+                }
+                if (!await UploadPlannedFileAsync(AddressbarPath, file, Report)) return;
                 completedBytes += file.Length;
                 TransferBytesCompleted = completedBytes;
                 TransferItemCompleted = operationIndex;
@@ -1441,6 +1478,40 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             IsBusy = false;
             PasteCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    /// <summary>
+    /// Uploads one planned file, choosing the route by its declared length. Both routes are wired to the
+    /// same elevation prompt, so which one a file takes never changes what the user is asked. Returns false
+    /// only when the destination needs authorization that was refused or unavailable.
+    /// </summary>
+    private async Task<bool> UploadPlannedFileAsync(string destination, LocalUploadFile file,
+        Action<long, long, bool> onProgress, CancellationToken ct = default)
+    {
+        var targetDirectory = GetRelativeDirectory(file.RelativePath) is { Length: > 0 } relative
+            ? LocalUploadPlan.CombineRemotePath(destination, relative)
+            : destination;
+        var fileName = GetRelativeFileName(file.RelativePath);
+        if (LargeFileUploader is { } uploader && file.Length > FileUploadProtocol.SingleShotThresholdBytes)
+        {
+            await uploader.UploadAsync(
+                new LargeFileUploadRequest(file.SourcePath, targetDirectory, fileName, file.Length,
+                    File.GetLastWriteTimeUtc(file.SourcePath)),
+                (paths, capability) => RequestFileOperationElevationAsync?.Invoke(paths, capability) ?? Task.FromResult(false),
+                update => onProgress(update.ConfirmedBytes, update.InFlightBytes, update.Reconciling), ct);
+            return true;
+        }
+
+        // A single request has one number and no doubts about it: nothing is ever re-read, so the third
+        // piece of the report is always false on this route.
+        var progress = new Progress<long>(sent => onProgress(sent, 0, false));
+        return await RetryWithOperationElevationAsync(async () =>
+        {
+            ct.ThrowIfCancellationRequested();
+            // A fresh stream for each attempt: an elevation retry must not reuse a partially consumed one.
+            using var stream = File.OpenRead(file.SourcePath);
+            await _client.UploadAsync(targetDirectory, fileName, stream, progress, ct);
+        }, FileElevationCapability.Upload, destination);
     }
 
     private IReadOnlyList<FileSystemEntryDto> GetSelectedEntries()
@@ -1501,60 +1572,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         TransferTotalBytes = totalBytes;
         TransferBytesCompleted = 0;
         IsTransferActive = true;
-    }
-
-    private static UploadPlan BuildUploadPlan(IEnumerable<LocalUploadSource> sources)
-    {
-        var directories = new HashSet<string>(StringComparer.Ordinal);
-        var files = new List<UploadFile>();
-        foreach (var source in sources.Select(item => item.Path).Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.Ordinal))
-        {
-            if (File.Exists(source))
-            {
-                var info = new FileInfo(source);
-                files.Add(new UploadFile(source, info.Name, info.Length));
-                continue;
-            }
-            if (!Directory.Exists(source)) continue;
-
-            var root = Path.TrimEndingDirectorySeparator(source);
-            if (string.Equals(root, Path.GetPathRoot(root), OperatingSystem.IsWindows()
-                    ? StringComparison.OrdinalIgnoreCase
-                    : StringComparison.Ordinal))
-                throw new ArgumentException("Selecting a filesystem root for upload is not supported.");
-            var parent = Path.GetDirectoryName(root) ?? root;
-            directories.Add(Path.GetRelativePath(parent, root));
-            foreach (var directory in Directory.EnumerateDirectories(root, "*", new EnumerationOptions
-                     {
-                         RecurseSubdirectories = true,
-                         IgnoreInaccessible = true,
-                         AttributesToSkip = FileAttributes.ReparsePoint,
-                     }))
-                directories.Add(Path.GetRelativePath(parent, directory));
-
-            foreach (var file in Directory.EnumerateFiles(root, "*", new EnumerationOptions
-                     {
-                         RecurseSubdirectories = true,
-                         IgnoreInaccessible = true,
-                         AttributesToSkip = FileAttributes.ReparsePoint,
-                     }))
-            {
-                var info = new FileInfo(file);
-                files.Add(new UploadFile(file, Path.GetRelativePath(parent, file), info.Length));
-            }
-        }
-
-        return new UploadPlan(directories.OrderBy(path => path.Length).ToArray(), files, files.Sum(file => file.Length));
-    }
-
-    private sealed record UploadPlan(IReadOnlyList<string> Directories, IReadOnlyList<UploadFile> Files, long TotalBytes);
-    private sealed record UploadFile(string SourcePath, string RelativePath, long Length);
-    private static string CombineRemoteRelativePath(string directory, string relativePath)
-    {
-        var result = directory;
-        foreach (var segment in relativePath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
-            result = CombineRemotePath(result, segment);
-        return result;
     }
 
     // These paths originate in the client's upload plan, so System.IO.Path is intentional here.

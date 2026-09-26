@@ -15,7 +15,7 @@ public interface IIdentityProvider
 }
 
 /// <summary>宿主 OS 用户元信息。Uid 用于建立 User.PlatformIdentity 映射。</summary>
-public sealed record PlatformUserInfo(string Uid, string Username, RelaxKonOS.Protocol.Common.PlatformKind Platform,
+public sealed record PlatformUserInfo(string Uid, string Username, RelaxKonOS.Protocol.Common.HostPlatformKind Platform,
     string DisplayName, string? HomeDirectory);
 
 public enum IdentityLookupStatus { Found, NotFound, Unavailable }

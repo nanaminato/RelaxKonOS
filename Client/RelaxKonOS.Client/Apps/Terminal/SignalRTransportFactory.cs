@@ -1,5 +1,7 @@
 using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Transport.Pty;
+using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
+using RoyalTerminal.Terminal.Transport.Ssh;
 
 namespace RelaxKonOS.Client.Apps.Terminal;
 
@@ -19,11 +21,13 @@ public sealed class SignalRTransportFactory : ITerminalTransportFactory
     private readonly ITerminalTransportFactory _inner;
     private SignalRTerminalTransport? _current;
 
-    public SignalRTransportFactory()
+    public SignalRTransportFactory(ISshCredentialProvider credentials, ISshHostKeyValidator hostKeys)
     {
-        // Local PTY 回退：仅需 PtyTerminalTransportProvider（平台 ConPTY/forkpty 由传递依赖提供）。
+        // The SSH provider must receive the same credentials and host-key validator as the
+        // TerminalControl. Supplying them only to the control leaves this custom factory empty.
         _inner = new CompositeTerminalTransportFactory(
-            new ITerminalTransportProvider[] { new PtyTerminalTransportProvider() });
+            new ITerminalTransportProvider[] { new PtyTerminalTransportProvider(),
+                new SshNetTerminalTransportProvider(credentials, hostKeys, null) });
     }
 
     public ITerminalTransport Create(ITerminalTransportOptions options)

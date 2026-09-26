@@ -16,6 +16,8 @@
         <!-- EF Core + SQLite 持久化（User/Workspace/Device，含 TerminalSettings JSON 列） -->
         <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite"/>
         <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+        <!-- 文件缩略图渲染（GET /files/thumbnail）；许可证判定见 Directory.Packages.props。 -->
+        <PackageReference Include="SixLabors.ImageSharp" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

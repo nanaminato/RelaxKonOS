@@ -50,7 +50,7 @@ public sealed partial class EnvironmentPageViewModel : SettingsPageViewModel, ID
     public bool CanLoad => !IsBusy && _draft.Count == 0 && !_submitted;
     public bool CanChangeScope => CanLoad;
     public bool CanApply => CanEdit && _draft.Count > 0;
-    public string TargetText => _connection is null ? "" : _connection.ServerUrl + " · " + _session.CurrentUser?.Username + " · " + _snapshot?.Target.ResourceId;
+    public string TargetText => _connection is null ? "" : _connection.ServiceId + " · " + _session.CurrentUser?.Username + " · " + _snapshot?.Target.ResourceId;
     public string ScopeHeading => MachineScope
         ? IsLinuxPamEnvironment
             ? T("settings.environment.pam_login_environment", "PAM login environment")

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# RelaxKonOS User Mode lifecycle command. It deliberately has no sudo, su, pkexec, systemctl
+# RelaxKonOS User Mode lifecycle engine. It deliberately has no sudo, su, pkexec, systemctl
 # (system manager), or arbitrary-command option. All persistent state stays below XDG roots.
+#
+# This is the single deployment engine for User Mode: the remote deployment launcher only
+# transports and starts it, it never reimplements replacement, service or data policy.
 set -euo pipefail
 
 command_name=${0##*/}
@@ -15,6 +18,13 @@ fail() { echo "$command_name: $*" >&2; exit 64; }
 [[ $EUID -ne 0 ]] || fail "User Mode must not run as root"
 require_absolute() { [[ $1 == /* && $1 != / ]] || fail "directory overrides must be absolute, non-root paths"; }
 canonical_root() { realpath -m -- "$1"; }
+# Lifecycle commands that do not accept root overrides must canonicalize the environment roots the
+# same way install does, otherwise the recorded install manifest would look out of scope.
+canonicalize_roots() {
+  for root in "$data_root" "$config_root" "$state_root" "$cache_root"; do require_absolute "$root"; done
+  data_root=$(canonical_root "$data_root"); config_root=$(canonical_root "$config_root")
+  state_root=$(canonical_root "$state_root"); cache_root=$(canonical_root "$cache_root"); assert_distinct_roots
+}
 ensure_private_dir() {
   local path=$1
   [[ ! -L $path ]] || fail "refusing symbolic-link directory: $path"
@@ -70,11 +80,69 @@ write_config() {
 EOF
   chmod 600 "$config_root/appsettings.user.json"
 }
-write_install_state() {
-  local version=$1
-  printf '{"mode":"user","version":"%s","dataRoot":"%s","configRoot":"%s","stateRoot":"%s"}\n' "$version" "$data_root" "$config_root" "$state_root" > "$state_root/install-state.json"
-  chmod 600 "$state_root/install-state.json"
+
+# --- installation identity ---------------------------------------------------------------------
+# The installation id is signed at first install and never derived from an address or port.
+# A reinstall over retained data must reuse it so that managed tunnels keep their login identity.
+new_installation_id() { printf 'rki-%s\n' "$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"; }
+recorded_installation_id() {
+  [[ -r $state_root/install-state.json ]] || return 1
+  local id
+  id=$(sed -nE 's/.*"installationId"[[:space:]]*:[[:space:]]*"(rki-[0-9a-f]{32})".*/\1/p' "$state_root/install-state.json" | head -n1)
+  [[ -n $id ]] || return 1
+  printf '%s\n' "$id"
 }
+installation_id() { recorded_installation_id 2>/dev/null || new_installation_id; }
+
+read_state_field() {
+  local key=$1
+  [[ -r $state_root/install-state.json ]] || return 0
+  sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$state_root/install-state.json" | head -n1
+}
+read_state_flag() {
+  local key=$1
+  [[ -r $state_root/install-state.json ]] || return 0
+  sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*(true|false).*/\1/p" "$state_root/install-state.json" | head -n1
+}
+json_string_or_null() { [[ -n ${1:-} ]] && printf '"%s"' "$1" || printf 'null'; }
+
+write_install_state() {
+  local version=$1 previous_version=$2 installed=$3 id temporary
+  id=$(installation_id)
+  ensure_private_dir "$state_root"
+  temporary="$state_root/install-state.json.new"
+  umask 077
+  printf '{"schemaVersion":1,"installed":%s,"mode":"user","installationId":"%s","version":"%s","previousVersion":%s,"installRoot":"%s","dataRoot":"%s","configRoot":"%s","stateRoot":"%s","cacheRoot":"%s","listenUrl":"http://127.0.0.1:%s","installedAtUtc":"%s"}\n' \
+    "$installed" "$id" "$version" "$(json_string_or_null "$previous_version")" "$data_root" "$data_root" "$config_root" "$state_root" "$cache_root" "$port" "$(date -u +%FT%TZ)" > "$temporary"
+  chmod 600 "$temporary"; mv -f -- "$temporary" "$state_root/install-state.json"
+}
+# The install manifest is the only authority for what an uninstall may remove. The engine
+# re-derives it from its own roots rather than accepting any path from the caller.
+write_install_manifest() {
+  local version=$1 id temporary
+  id=$(installation_id)
+  ensure_private_dir "$state_root"
+  temporary="$state_root/install-manifest.json.new"
+  umask 077
+  printf '{"schemaVersion":1,"mode":"user","installationId":"%s","version":"%s","programRoot":"%s/server","configurationRoot":"%s","databaseRoot":"%s/server","secretsRoot":"%s/secrets","logsRoot":"%s/logs","cacheRoot":"%s","stateRoot":"%s"}\n' \
+    "$id" "$version" "$data_root" "$config_root" "$state_root" "$config_root" "$state_root" "$cache_root" "$state_root" > "$temporary"
+  chmod 600 "$temporary"; mv -f -- "$temporary" "$state_root/install-manifest.json"
+}
+# Every managed root recorded in the manifest must be inside the roots this invocation uses,
+# so a tampered manifest can never redirect deletion outside the XDG tree.
+assert_manifest_scope() {
+  local manifest=$state_root/install-manifest.json key recorded
+  [[ -r $manifest ]] || fail "install manifest is missing"
+  for key in programRoot configurationRoot databaseRoot secretsRoot logsRoot cacheRoot stateRoot; do
+    recorded=$(sed -nE "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$manifest" | head -n1)
+    [[ -n $recorded ]] || fail "install manifest is missing $key"
+    case "$recorded" in
+      "$data_root"|"$data_root"/*|"$config_root"|"$config_root"/*|"$state_root"|"$state_root"/*|"$cache_root"|"$cache_root"/*) ;;
+      *) fail "install manifest scope escaped the managed roots: $key" ;;
+    esac
+  done
+}
+
 activate_version() {
   local version=$1
   [[ $version =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ && -d $data_root/server/versions/$version ]] || fail "installed version is invalid: $version"
@@ -85,7 +153,6 @@ activate_version() {
   ensure_private_dir "$data_root/bin"
   ln -sfn -- "../server/current/user/relaxkon" "$data_root/bin/relaxkon.new"
   mv -Tf -- "$data_root/bin/relaxkon.new" "$data_root/bin/relaxkon"
-  write_install_state "$version"
 }
 verify_bundle() {
   local bundle=$1 manifest=$1/manifest.json
@@ -97,27 +164,27 @@ verify_bundle() {
   # The checksum file must represent exactly the extracted payload rather than merely a subset.
   local listed actual
   listed=$(awk '{ print substr($0, 67) }' "$bundle/manifest.sha256" | LC_ALL=C sort)
-  actual=$(cd "$bundle" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print | LC_ALL=C sort)
+  actual=$(cd "$bundle" && find . -type f ! -name manifest.json ! -name manifest.json.sig ! -name manifest.sha256 -print | LC_ALL=C sort)
   [[ $listed == "$actual" ]] || fail "bundle file inventory does not match its contents"
 }
+# Stage the new version beside the active one and switch the current symlink atomically, so an
+# interrupted upgrade leaves either the old or the new version active but never a partial one.
 install_bundle() {
   local bundle=$1 version stage destination
   verify_bundle "$bundle"
   version=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$bundle/manifest.json" | head -n1)
   [[ $version =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || fail "manifest version is invalid"
   ensure_private_dir "$data_root"; ensure_private_dir "$state_root"; ensure_private_dir "$cache_root"; ensure_private_dir "$data_root/server"; ensure_private_dir "$data_root/server/versions"; ensure_private_dir "$state_root/run"; ensure_private_dir "$state_root/logs"
+  destination=$data_root/server/versions/$version
+  if [[ -e $destination ]]; then fail "version already installed: $version"; fi
   stage=$(mktemp -d "$data_root/server/versions/.staging.XXXXXX")
   trap 'rm -rf -- "$stage"' RETURN
   cp -a -- "$bundle/payload/linux/server" "$stage/server"
   cp -a -- "$bundle/payload/linux/guardian" "$stage/guardian"
   cp -a -- "$bundle/deployment/user" "$stage/user"
   chmod -R go-rwx -- "$stage"
-  destination=$data_root/server/versions/$version
-  [[ ! -e $destination ]] || fail "version already installed: $version"
   mv -- "$stage" "$destination"
-  activate_version "$version"
-  write_config
-  echo "Installed RelaxKonOS User Mode $version. It listens only on 127.0.0.1; connect through SSH local forwarding."
+  printf '%s\n' "$version"
 }
 download_bundle() {
   local uri=$1 sha=$2 archive=$cache_root/release.zip extracted=$cache_root/extracted
@@ -187,7 +254,7 @@ stop() {
 }
 status() {
   local pid
-  pid=$(read_pid) || { echo "RelaxKonOS User Mode is stopped."; return; }
+  pid=$(read_pid) || { echo "RelaxKonOS User Mode is stopped."; return 1; }
   if [[ -S $state_root/run/server.sock ]] && command -v curl >/dev/null && curl --unix-socket "$state_root/run/server.sock" --fail --silent --show-error --max-time 2 http://localhost/ready >/dev/null 2>&1; then
     echo "RelaxKonOS User Mode is running (pid $pid, loopback 127.0.0.1:$port)."
   else
@@ -196,41 +263,137 @@ status() {
   fi
 }
 
+# Start the currently activated version and verify it. Returns non-zero when the version did not
+# become ready, so callers can restore the previous version instead of leaving a broken install.
+start_and_verify() {
+  start >/dev/null || return 1
+  wait_ready
+}
+
+install_or_upgrade() {
+  local mode=$1 bundle=$2 uri=$3 sha=$4 version previous_version=
+  canonicalize_roots
+  [[ -n $bundle && -z $uri || -z $bundle && -n $uri ]] || fail "specify exactly one of --bundle or --release-uri"
+  [[ -n $bundle ]] || bundle=$(download_bundle "$uri" "$sha")
+  acquire_lifecycle_lock
+  local already_installed=false
+  [[ -L $data_root/server/current ]] && already_installed=true
+  if [[ $mode == upgrade ]]; then
+    [[ $already_installed == true ]] || fail "cannot upgrade without an active User Mode installation"
+    previous_version=$(readlink "$data_root/server/current"); previous_version=${previous_version#versions/}
+    [[ $previous_version =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || fail "current version link is invalid"
+    stop >/dev/null
+  fi
+  version=$(install_bundle "$bundle")
+  activate_version "$version"
+  write_config
+  write_install_state "$version" "$previous_version" true
+  write_install_manifest "$version"
+  if start_and_verify; then
+    if [[ $mode == upgrade ]]; then echo "Upgrade completed and the new Server is ready."; else echo "Installed RelaxKonOS User Mode $version. It listens only on 127.0.0.1; connect through SSH local forwarding."; fi
+    return
+  fi
+  # The activated version never became ready. Restore the previous version when there is one;
+  # otherwise leave the host without an active version rather than reporting a false success.
+  echo "Readiness check failed for $version." >&2
+  stop >/dev/null || true
+  if [[ -n $previous_version ]]; then
+    echo "Restoring $previous_version." >&2
+    activate_version "$previous_version"
+    write_install_state "$previous_version" "$version" true
+    write_install_manifest "$previous_version"
+    start_and_verify >/dev/null || true
+  else
+    rm -f -- "$data_root/server/current" "$data_root/bin/relaxkon"
+    write_install_state "$version" "" false
+  fi
+  exit 70
+}
+
+# Replay the verified active version and configuration without touching host resources.
+repair() {
+  local version previous_version
+  canonicalize_roots
+  acquire_lifecycle_lock
+  [[ -f $state_root/install-state.json ]] || fail "cannot repair without an installation"
+  version=$(read_state_field version)
+  [[ -n $version && -d $data_root/server/versions/$version ]] || fail "the active version payload is missing"
+  previous_version=$(read_state_field previousVersion)
+  stop >/dev/null || true
+  activate_version "$version"
+  write_config
+  write_install_state "$version" "$previous_version" true
+  write_install_manifest "$version"
+  start_and_verify || fail "the repaired installation did not become ready"
+  echo "Repaired RelaxKonOS User Mode $version."
+}
+
+rollback() {
+  local current previous_version
+  canonicalize_roots
+  acquire_lifecycle_lock
+  [[ -f $state_root/install-state.json ]] || fail "cannot roll back without an installation"
+  current=$(read_state_field version)
+  previous_version=$(read_state_field previousVersion)
+  [[ -n $previous_version ]] || fail "no previous version is recorded"
+  [[ -d $data_root/server/versions/$previous_version ]] || fail "the previous version payload is missing"
+  stop >/dev/null || true
+  activate_version "$previous_version"
+  write_install_state "$previous_version" "$current" true
+  write_install_manifest "$previous_version"
+  if start_and_verify; then
+    echo "Rolled back to RelaxKonOS User Mode $previous_version."
+  else
+    echo "Rollback readiness check failed; restoring $current." >&2
+    stop >/dev/null || true
+    activate_version "$current"
+    write_install_state "$current" "$previous_version" true
+    write_install_manifest "$current"
+    start_and_verify >/dev/null || true
+    exit 70
+  fi
+}
+
+# Uninstall defaults to keeping data: only program files are removed, and the installation id and
+# configuration/database/secrets/logs/state roots stay so a reinstall can recognise and reuse them.
+uninstall() {
+  local retention=$1 confirmed=$2 version
+  canonicalize_roots
+  acquire_lifecycle_lock
+  [[ -f $state_root/install-state.json ]] || fail "install state is missing"
+  version=$(read_state_field version)
+  if [[ $retention == delete ]]; then
+    [[ $confirmed == true ]] || fail "deleting data requires explicit confirmation"
+    assert_manifest_scope
+  fi
+  stop >/dev/null || true
+  rm -rf -- "$data_root/server" "$data_root/bin"
+  if [[ $retention == delete ]]; then
+    rm -rf -- "$config_root" "$state_root" "$cache_root"
+    echo "Uninstalled RelaxKonOS User Mode and removed its data."
+  else
+    write_install_state "$version" "" false
+    echo "Uninstalled RelaxKonOS User Mode. Data was retained and can be reused by a reinstall."
+  fi
+}
+
 subcommand=${1:-}; shift || true
 case "$subcommand" in
   install|upgrade)
     bundle= uri= sha=
-    while [[ $# -gt 0 ]]; do case "$1" in --bundle) bundle=${2:-}; shift 2;; --release-uri) uri=${2:-}; shift 2;; --release-sha256) sha=${2:-}; shift 2;; --data-root) data_root=${2:-}; shift 2;; --config-root) config_root=${2:-}; shift 2;; --state-root) state_root=${2:-}; shift 2;; --cache-root) cache_root=${2:-}; shift 2;; *) fail "unknown option: $1";; esac; done
-    for root in "$data_root" "$config_root" "$state_root" "$cache_root"; do require_absolute "$root"; done
-    data_root=$(canonical_root "$data_root"); config_root=$(canonical_root "$config_root"); state_root=$(canonical_root "$state_root"); cache_root=$(canonical_root "$cache_root"); assert_distinct_roots
-    [[ -n $bundle && -z $uri || -z $bundle && -n $uri ]] || fail "specify exactly one of --bundle or --release-uri"
-    [[ -n $bundle ]] || bundle=$(download_bundle "$uri" "$sha")
-    acquire_lifecycle_lock
-    previous_version=
-    if [[ $subcommand == upgrade ]]; then
-      [[ -L $data_root/server/current ]] || fail "cannot upgrade without an active User Mode installation"
-      previous_version=$(readlink "$data_root/server/current")
-      previous_version=${previous_version#versions/}
-      [[ $previous_version =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || fail "current version link is invalid"
-      stop
-    fi
-    install_bundle "$bundle"
-    if [[ $subcommand == upgrade ]]; then
-      if start && wait_ready; then
-        echo "Upgrade completed and the new Server is ready."
-      else
-        echo "Upgrade readiness check failed; restoring $previous_version." >&2
-        stop
-        activate_version "$previous_version"
-        start || true
-        wait_ready || true
-        exit 70
-      fi
-    fi
+    while [[ $# -gt 0 ]]; do case "$1" in --bundle) bundle=${2:-}; shift 2;; --release-uri) uri=${2:-}; shift 2;; --release-sha256) sha=${2:-}; shift 2;; --data-root) data_root=${2:-}; shift 2;; --config-root) config_root=${2:-}; shift 2;; --state-root) state_root=${2:-}; shift 2;; --cache-root) cache_root=${2:-}; shift 2;; --port) port=${2:-}; shift 2;; *) fail "unknown option: $1";; esac; done
+    [[ $port =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || fail "invalid port"
+    install_or_upgrade "$subcommand" "$bundle" "$uri" "$sha"
     ;;
   start) [[ ${1:-} == --foreground || -z ${1:-} ]] || fail "unknown option: ${1:-}"; start "$([[ ${1:-} == --foreground ]] && echo true || echo false)";;
   stop) [[ $# == 0 ]] || fail "stop accepts no options"; acquire_lifecycle_lock; stop;;
-  status) [[ $# == 0 ]] || fail "status accepts no options"; status;;
-  uninstall) [[ $# == 0 ]] || fail "uninstall accepts no options"; acquire_lifecycle_lock; stop; [[ -f $state_root/install-state.json ]] || fail "install state is missing"; rm -rf -- "$data_root" "$config_root" "$state_root" "$cache_root"; echo "Uninstalled RelaxKonOS User Mode.";;
-  *) fail "usage: relaxkon {install|start|stop|status|upgrade|uninstall}";;
+  status) [[ $# == 0 ]] || fail "status accepts no options"; canonicalize_roots; status;;
+  repair) [[ $# == 0 ]] || fail "repair accepts no options"; repair;;
+  rollback) [[ $# == 0 ]] || fail "rollback accepts no options"; rollback;;
+  uninstall)
+    retention=retain confirmed=false
+    while [[ $# -gt 0 ]]; do case "$1" in --retain-data) retention=retain; shift;; --delete-data) retention=delete; shift;; --confirm-delete-data) confirmed=true; shift;; *) fail "unknown option: $1";; esac; done
+    uninstall "$retention" "$confirmed"
+    ;;
+  *) fail "usage: relaxkon {install|start|stop|status|upgrade|repair|rollback|uninstall}";;
 esac

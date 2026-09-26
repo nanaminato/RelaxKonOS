@@ -106,7 +106,7 @@ public sealed class ApplicationCompatibilityService : IApplicationCompatibilityE
         ? ApplicationPlatformNames.Windows
         : ApplicationPlatformNames.Linux;
 
-    private static string ToManifestPlatform(PlatformKind platform) => platform == PlatformKind.Windows
+    private static string ToManifestPlatform(HostPlatformKind platform) => platform == HostPlatformKind.Windows
         ? ApplicationPlatformNames.Windows
         : ApplicationPlatformNames.Linux;
 

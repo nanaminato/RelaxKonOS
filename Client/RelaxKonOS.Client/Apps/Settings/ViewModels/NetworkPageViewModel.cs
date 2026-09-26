@@ -44,7 +44,7 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
         _ => T("settings.value.not_connected", "Not connected"),
     };
 
-    public string ServerUrl => _session.ServerUrl ?? "—";
+    public string ServerUrl => _session.EffectiveBaseUrl ?? "—";
     public string UserName => _session.CurrentUser?.Username ?? "—";
     public string WorkspaceName => _session.CurrentWorkspace?.Name ?? "—";
     public bool IsConnected => _session.State == AuthSessionState.Authenticated;
@@ -131,7 +131,7 @@ public sealed partial class NetworkPageViewModel : SettingsPageViewModel
     [RelayCommand(CanExecute = nameof(CanTest))]
     private async Task TestConnectionAsync()
     {
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens })
         {
             _latencyState = LatencyState.CannotTest;
             OnPropertyChanged(nameof(LatencyText));

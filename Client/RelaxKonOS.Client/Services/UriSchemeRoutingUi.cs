@@ -49,7 +49,7 @@ public sealed class UriSchemeRoutingUi(
             .ToArray();
         defaults.SetMappings(mappings);
 
-        if (session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
         {
             Record("Default handler saved locally; workspace preference sync skipped because no authenticated workspace is available.");
             return;

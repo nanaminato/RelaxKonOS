@@ -8,6 +8,6 @@ namespace RelaxKonOS.Protocol.Identity;
 public sealed record LoginRequest(
     [property: JsonPropertyName("identifier")] string Identifier,
     [property: JsonPropertyName("password")] string Password,
-    [property: JsonPropertyName("clientPlatform")] PlatformKind ClientPlatform,
+    [property: JsonPropertyName("clientPlatform")] ClientPlatformKind ClientPlatform,
     [property: JsonPropertyName("deviceName")] string DeviceName,
     [property: JsonPropertyName("clientVersion")] string ClientVersion);

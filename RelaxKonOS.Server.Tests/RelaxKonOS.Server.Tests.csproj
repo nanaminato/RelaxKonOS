@@ -71,5 +71,8 @@
     <Reference Include="Microsoft.IdentityModel.Tokens" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
       <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/Microsoft.IdentityModel.Tokens.dll</HintPath>
     </Reference>
+    <Reference Include="SixLabors.ImageSharp" Condition="'$(UsePrebuiltServerAssembly)' == 'true'">
+      <HintPath>../RelaxKonOS.Server/bin/Debug/net10.0/SixLabors.ImageSharp.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

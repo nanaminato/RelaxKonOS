@@ -54,10 +54,10 @@ public sealed class AppCapabilityClient(HttpClient http, IAuthSession session) :
 
     private Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string route, CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null || session.Tokens is null)
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null || session.Tokens is null)
             throw new InvalidOperationException("Sign in before requesting application capabilities.");
 
-        var uri = new Uri(new Uri(session.ServerUrl, UriKind.Absolute), route.TrimStart('/'));
+        var uri = new Uri(new Uri(session.EffectiveBaseUrl, UriKind.Absolute), route.TrimStart('/'));
         var request = new HttpRequestMessage(method, uri);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         return Task.FromResult(request);

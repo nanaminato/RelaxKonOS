@@ -35,6 +35,8 @@
         <PackageReference Include="Newtonsoft.Json"/>
         <!-- Browser: NativeWebView 控件 -->
         <PackageReference Include="Avalonia.Controls.WebView"/>
+        <!-- 服务器中心：内置 SSH/SFTP 传输，替代对系统 ssh/scp/sftp 命令的依赖 -->
+        <PackageReference Include="SSH.NET"/>
     </ItemGroup>
 
     <ItemGroup>

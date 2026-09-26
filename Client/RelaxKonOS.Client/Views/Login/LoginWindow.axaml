@@ -4,7 +4,7 @@
         x:Class="RelaxKonOS.Client.Views.Login.LoginWindow"
         Icon="/Assets/RelaxKonOS-client-icon.ico"
         Title="RelaxKonOS"
-        Width="680" Height="700"
+        Width="680" Height="740"
         WindowStartupLocation="CenterScreen"
         CanResize="True"
         ShowInTaskbar="True"

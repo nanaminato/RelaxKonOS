@@ -1,5 +1,6 @@
 using RelaxKonOS.Protocol.Identity;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.ServerCenter;
 using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Services.Auth;
@@ -12,6 +13,8 @@ public sealed class AuthSession : IAuthSession
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
+    private ServerConnectionIdentity? _identity;
+
     public AuthSession(IRelaxKonOSClient client, IRememberedSessionStore rememberedSessionStore)
     {
         _client = client;
@@ -19,7 +22,13 @@ public sealed class AuthSession : IAuthSession
     }
 
     public AuthSessionState State { get; private set; } = AuthSessionState.Unauthenticated;
-    public string? ServerUrl { get; private set; }
+
+    /// <summary>稳定登录身份。换隧道端口不改变它，因此不会制造新的登录记录。</summary>
+    public string? ServiceId => _identity?.ServiceId;
+
+    /// <summary>本次会话的实际 HTTP 地址；受管隧道换端口只更新它。</summary>
+    public string? EffectiveBaseUrl => _identity?.EffectiveBaseUrl;
+
     public AuthTokens? Tokens { get; private set; }
     public UserDto? CurrentUser { get; private set; }
     public ServerDescriptorDto? CurrentServer { get; private set; }
@@ -31,12 +40,13 @@ public sealed class AuthSession : IAuthSession
     public event EventHandler<AuthSessionStateChangedEventArgs>? StateChanged;
 
     public async Task<LoginResponse> LoginAsync(
-        string serverUrl,
+        ServerConnectionIdentity identity,
         LoginRequest request,
         bool rememberServer,
         bool rememberPassword,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(identity);
         lock (_gate)
         {
             if (State == AuthSessionState.Connecting)
@@ -47,14 +57,16 @@ public sealed class AuthSession : IAuthSession
 
         try
         {
-            var response = await _client.LoginAsync(serverUrl, request, ct);
-            Apply(response, serverUrl);
+            // Requests always go to the resolved transport address; the credential key never does.
+            var response = await _client.LoginAsync(identity.EffectiveBaseUrl, request, ct);
+            Apply(response, identity);
 
             RememberedProfileSaveResult? saveResult = null;
             if (rememberServer)
             {
                 saveResult = await _rememberedSessionStore.UpsertAsync(
-                    new SavedLoginProfile(serverUrl, request.Identifier, rememberPassword ? request.Password : null, DateTimeOffset.UtcNow), ct);
+                    new SavedLoginProfile(identity.ServiceId, request.Identifier,
+                        rememberPassword ? request.Password : null, DateTimeOffset.UtcNow), ct);
             }
 
             State = AuthSessionState.Authenticated;
@@ -71,6 +83,20 @@ public sealed class AuthSession : IAuthSession
         }
     }
 
+    public void UpdateConnection(ServerConnectionIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        lock (_gate)
+        {
+            var previous = _identity
+                ?? throw new InvalidOperationException("No server has been selected.");
+            if (!ServerConnectionIdentityRules.PreservesIdentity(previous, identity))
+                throw new InvalidOperationException("A transport rebind must not change the service identity.");
+            _identity = identity;
+        }
+        RaiseStateChanged();
+    }
+
     public async Task<IReadOnlyList<SavedLoginProfile>> GetSavedProfilesAsync(CancellationToken ct = default)
         => await _rememberedSessionStore.LoadAsync(ct);
 
@@ -79,7 +105,7 @@ public sealed class AuthSession : IAuthSession
         await _refreshGate.WaitAsync(ct);
         try
         {
-            var url = ServerUrl;
+            var url = EffectiveBaseUrl;
             var tokens = Tokens;
             if (url is null || tokens is null)
             {
@@ -122,14 +148,16 @@ public sealed class AuthSession : IAuthSession
         await _refreshGate.WaitAsync(ct);
         try
         {
-            string? serverUrl;
+            string? url;
+            string? serviceId;
             AuthTokens? tokens;
             lock (_gate)
             {
-                serverUrl = ServerUrl;
+                url = EffectiveBaseUrl;
+                serviceId = ServiceId;
                 tokens = State == AuthSessionState.Authenticated ? Tokens : null;
             }
-            if (serverUrl is null || tokens is null)
+            if (url is null || serviceId is null || tokens is null)
                 return false;
 
             // Another request may have completed a refresh while this caller waited.
@@ -142,12 +170,13 @@ public sealed class AuthSession : IAuthSession
             else if (!force && tokens.AccessTokenExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1))
                 return true;
 
-            var refreshed = (await _client.RefreshAsync(serverUrl, tokens.RefreshToken, ct)).Tokens;
+            var refreshed = (await _client.RefreshAsync(url, tokens.RefreshToken, ct)).Tokens;
             lock (_gate)
             {
-                // Logout or a new login wins over an in-flight refresh.
+                // Logout or a new login wins over an in-flight refresh. A tunnel rebind keeps the same
+                // login identity, so it must not discard a refresh the server already accepted.
                 if (State != AuthSessionState.Authenticated
-                    || !string.Equals(ServerUrl, serverUrl, StringComparison.Ordinal)
+                    || !string.Equals(ServiceId, serviceId, StringComparison.Ordinal)
                     || !string.Equals(Tokens?.RefreshToken, tokens.RefreshToken, StringComparison.Ordinal))
                     return false;
                 Tokens = refreshed;
@@ -168,9 +197,9 @@ public sealed class AuthSession : IAuthSession
         finally { _refreshGate.Release(); }
     }
 
-    private void Apply(LoginResponse response, string serverUrl)
+    private void Apply(LoginResponse response, ServerConnectionIdentity identity)
     {
-        ServerUrl = serverUrl;
+        _identity = identity;
         Tokens = response.Tokens;
         CurrentUser = response.User;
         CurrentServer = response.Server;
@@ -182,7 +211,7 @@ public sealed class AuthSession : IAuthSession
 
     private void Reset(AuthSessionEndReason endReason = AuthSessionEndReason.None)
     {
-        ServerUrl = null;
+        _identity = null;
         Tokens = null;
         CurrentUser = null;
         CurrentServer = null;

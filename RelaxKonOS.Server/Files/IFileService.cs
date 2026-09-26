@@ -50,6 +50,34 @@ public interface IFileService
     /// <summary>复制（可跨目录）。目标存在且 overwrite=false 时抛 <see cref="IOException"/>（端点映射 409）。</summary>
     FileSystemEntryDto Copy(string sourcePath, string destinationPath, bool overwrite);
 
-    /// <summary>上传文件到目标目录。返回新建文件条目。</summary>
+    /// <summary>上传文件到目标目录。返回新建文件条目。
+    /// <paramref name="fileName"/> 必须是单一文件名成分（见 <see cref="FileUploadNamePolicy"/>），否则抛
+    /// <see cref="ArgumentException"/>——旧实现在此处直接 <c>Path.Combine</c>，含 <c>..\</c> 的名字可以逃出目标目录。</summary>
     Task<FileEntryDto> UploadAsync(string targetDirectoryPath, string fileName, Stream content, CancellationToken cancellationToken = default);
+
+    // ---- Resumable upload staging ---------------------------------------------------------------
+    // A session's staging file lives in its destination directory, so publishing it is a same-volume
+    // rename rather than a cross-volume copy, and it is created under the same permission context as the
+    // file it will become. These four members are the only way the upload service touches that file;
+    // each one re-applies the same path guards as the ordinary file operations.
+
+    /// <summary>Creates the zero-length staging file for a session. It must not exist yet.
+    /// Throws <see cref="UnauthorizedAccessException"/> when the destination directory is protected.</summary>
+    void CreateStagingFile(string stagingPath);
+
+    /// <summary>Appends exactly <paramref name="expectedBytes"/> bytes at <paramref name="offset"/> and flushes.
+    /// Any shortfall, excess, or I/O failure truncates the file back to <paramref name="offset"/>, so the
+    /// returned length is the only length a caller may treat as confirmed.</summary>
+    Task<long> AppendStagingAsync(string stagingPath, long offset, long expectedBytes, Stream content, CancellationToken cancellationToken = default);
+
+    /// <summary>Current length of the staging file, or -1 when it does not exist.</summary>
+    long StagingLength(string stagingPath);
+
+    /// <summary>Removes the staging file. A missing file, a permission failure, or a sharing violation is
+    /// not an error: the session's expiry sweep retries, and a cleanup failure must never fail the caller.</summary>
+    void DeleteStagingFile(string stagingPath);
+
+    /// <summary>Publishes a fully received staging file as the destination file by renaming it within its
+    /// directory. Existing destinations are replaced silently, matching <see cref="UploadAsync"/>.</summary>
+    FileEntryDto CommitStagingFile(string stagingPath, string destinationPath);
 }

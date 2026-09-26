@@ -44,9 +44,9 @@ public sealed class AppSettingsClient(HttpClient http, IAuthSession session) : I
 
     public async Task ClearAsync(string appId, CancellationToken cancellationToken = default)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null || session.Tokens is null)
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null || session.Tokens is null)
             throw new InvalidOperationException("Sign in before clearing application data.");
-        using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(new Uri(session.ServerUrl, UriKind.Absolute),
+        using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(new Uri(session.EffectiveBaseUrl, UriKind.Absolute),
             AppSettingsApiRoutes.Application.Replace("{appId}", Uri.EscapeDataString(appId)).TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
@@ -55,13 +55,13 @@ public sealed class AppSettingsClient(HttpClient http, IAuthSession session) : I
 
     private Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string appId, AppSettingsScope scope, string key, CancellationToken cancellationToken)
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is null || session.Tokens is null)
+        if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null || session.Tokens is null)
             throw new InvalidOperationException("Sign in before using application settings.");
         var route = AppSettingsApiRoutes.Document
             .Replace("{appId}", Uri.EscapeDataString(appId))
             .Replace("{scope}", scope.ToString().ToLowerInvariant())
             .Replace("{key}", Uri.EscapeDataString(key));
-        var request = new HttpRequestMessage(method, new Uri(new Uri(session.ServerUrl, UriKind.Absolute), route.TrimStart('/')));
+        var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl, UriKind.Absolute), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         return Task.FromResult(request);
     }

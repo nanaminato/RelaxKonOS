@@ -89,7 +89,7 @@ public sealed class WindowsLogonProvider : IIdentityProvider
             if (use != SidNameUse.User) return new(IdentityLookupStatus.NotFound);
             var sid = new SecurityIdentifier(buffer);
             var canonical = ((NTAccount)sid.Translate(typeof(NTAccount))).Value;
-            return new(IdentityLookupStatus.Found, new(sid.Value, canonical, PlatformKind.Windows, canonical, GetProfileDirectory(canonical)));
+        return new(IdentityLookupStatus.Found, new(sid.Value, canonical, HostPlatformKind.Windows, canonical, GetProfileDirectory(canonical)));
         }
         catch { return new(IdentityLookupStatus.Unavailable); }
         finally { Marshal.FreeHGlobal(buffer); }

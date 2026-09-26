@@ -10,6 +10,8 @@ using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Services;
 using RoyalTerminal.Terminal.Transport.Ssh;
 using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
+using RelaxKonOS.Client.Services.ServerCenter;
+using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Apps.Terminal;
@@ -27,8 +29,10 @@ public partial class TerminalView : UserControl
     public TerminalView()
     {
         InitializeComponent();
-        _transportFactory = new SignalRTransportFactory();
-        _terminal = CreateTerminalControl(_transportFactory);
+        var credentials = new SshDesktopCredentialProvider(App.Services.GetRequiredService<SshDesktopSession>());
+        var hostKeys = new KnownHostsSshHostKeyValidator();
+        _transportFactory = new SignalRTransportFactory(credentials, hostKeys);
+        _terminal = CreateTerminalControl(_transportFactory, credentials, hostKeys);
         TerminalHost.Children.Add(_terminal);
         _terminal.PointerPressed += OnTerminalPressed;
         _copyItem = new MenuItem { Header = LocalizedText.Get("terminal.context.copy"), IsEnabled = false };
@@ -36,7 +40,8 @@ public partial class TerminalView : UserControl
         _terminal.SelectionFinalized += OnSelectionFinalized;
     }
 
-    private static TerminalControl CreateTerminalControl(ITerminalTransportFactory transportFactory)
+    private static TerminalControl CreateTerminalControl(ITerminalTransportFactory transportFactory,
+        ISshCredentialProvider credentials, ISshHostKeyValidator hostKeys)
     {
         var control = new TerminalControl(
             new TerminalSessionService(),
@@ -45,8 +50,8 @@ public partial class TerminalView : UserControl
             new DefaultTerminalScrollService(),
             new DefaultVtProcessorFactory(),
             new DefaultPtyFactory(),
-            new NullSshCredentialProvider(),
-            new KnownHostsSshHostKeyValidator(),
+            credentials,
+            hostKeys,
             transportFactory);
 
         control.Focusable = true;
@@ -218,5 +223,17 @@ public partial class TerminalView : UserControl
                 property.SetValue(target, parse.Invoke(null, [value]));
         }
         catch { /* unsupported renderer palette value */ }
+    }
+}
+
+internal sealed class SshDesktopCredentialProvider(SshDesktopSession session) : ISshCredentialProvider
+{
+    public ValueTask<SshResolvedCredentials> ResolveAsync(SshCredentialRequest request, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new SshResolvedCredentials(
+            Password: session.Password,
+            PrivateKeyPemOrPath: Array.Empty<string>(),
+            UseAgent: false));
     }
 }

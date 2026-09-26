@@ -10,23 +10,23 @@ public abstract class HostSettingsService(HttpClient http, IAuthSession session)
 {
     public HostSettingsConnection CaptureConnection()
     {
-        if (session.State != AuthSessionState.Authenticated || session.ServerUrl is not { } url
+        if (session.State != AuthSessionState.Authenticated || session.ServiceId is not { } serviceId
             || session.CurrentSession is not { } login || session.CurrentUser is not { } user)
             throw Problem(401, "settings.unauthenticated");
-        return new(url, login.Id, user.Id);
+        return new(serviceId, login.Id, user.Id);
     }
 
     public bool IsCurrent(HostSettingsConnection connection) => session.State == AuthSessionState.Authenticated
-        && session.ServerUrl == connection.ServerUrl && session.CurrentSession?.Id == connection.SessionId
+        && session.ServiceId == connection.ServiceId && session.CurrentSession?.Id == connection.SessionId
         && session.CurrentUser?.Id == connection.UserId;
 
     protected async Task<T> SendAsync<T>(HostSettingsConnection connection, HttpMethod method, string route, object? body, CancellationToken ct)
     {
-        CheckConnection(connection);
+        var baseUrl = CurrentBaseUrl(connection);
         var token = await session.GetAccessTokenAsync(TimeSpan.FromSeconds(30), ct: ct);
-        CheckConnection(connection);
+        baseUrl = CurrentBaseUrl(connection);
         if (string.IsNullOrEmpty(token)) throw Problem(401, "settings.unauthenticated");
-        using var request = new HttpRequestMessage(method, new Uri(new Uri(connection.ServerUrl), route))
+        using var request = new HttpRequestMessage(method, new Uri(new Uri(baseUrl), route))
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", token) }
         };
@@ -50,6 +50,17 @@ public abstract class HostSettingsService(HttpClient http, IAuthSession session)
     {
         if (!IsCurrent(connection)) throw Problem(409, "settings.connection_changed");
     }
+
+    /// <summary>
+    /// Reads the transport address at call time. The stable identity decides whether the write still
+    /// belongs to the same login; a verified tunnel rebind changes only this address.
+    /// </summary>
+    private string CurrentBaseUrl(HostSettingsConnection connection)
+    {
+        CheckConnection(connection);
+        return session.EffectiveBaseUrl ?? throw Problem(409, "settings.connection_changed");
+    }
+
     private static RelaxKonOSAuthException Problem(int status, string code)
         => new(new ProblemDetails("https://relaxkonos.app/problems/" + code, code, status, null, null));
 }

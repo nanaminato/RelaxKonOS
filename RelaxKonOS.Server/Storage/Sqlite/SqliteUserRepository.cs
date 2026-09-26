@@ -11,13 +11,13 @@ public sealed class SqliteUserRepository : IUserRepository
 
     public SqliteUserRepository(RelaxKonOSDbContext db) => _db = db;
 
-    public User? FindByUsername(string username, PlatformKind platform)
+    public User? FindByUsername(string username, HostPlatformKind platform)
         => _db.Users.AsNoTracking().FirstOrDefault(u => u.Username == username && u.Platform == platform);
 
     public User? FindById(Guid id)
         => _db.Users.AsNoTracking().FirstOrDefault(u => u.Id == id);
 
-    public User? FindByIdentity(string identity, PlatformKind platform)
+    public User? FindByIdentity(string identity, HostPlatformKind platform)
         => _db.Users.AsNoTracking().SingleOrDefault(u => u.PlatformIdentity == identity && u.Platform == platform);
     public void Update(User user)
     {

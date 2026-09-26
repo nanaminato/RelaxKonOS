@@ -87,7 +87,7 @@ public sealed class LinuxPamProvider(IPrivilegedOperationTransport? helper = nul
             var gecos = Utf8(entry.Gecos);
             var displayName = gecos?.Split(',', 2)[0];
             if (string.IsNullOrWhiteSpace(displayName)) displayName = canonicalName;
-            return new PlatformUserInfo(entry.Uid.ToString(), canonicalName, RelaxKonOS.Protocol.Common.PlatformKind.Linux, displayName, Utf8(entry.Directory));
+        return new PlatformUserInfo(entry.Uid.ToString(), canonicalName, RelaxKonOS.Protocol.Common.HostPlatformKind.Linux, displayName, Utf8(entry.Directory));
         }
         finally
         {

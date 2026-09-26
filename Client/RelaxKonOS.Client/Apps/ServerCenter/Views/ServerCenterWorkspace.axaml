@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterWorkspace"
+             x:DataType="vm:ServerCenterViewModel"
+             Background="{DynamicResource AppBackgroundBrush}">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0" Background="{DynamicResource SurfaceSunkenBrush}" Padding="28,18">
+            <Grid ColumnDefinitions="Auto,*">
+                <Image Width="46" Height="46" Stretch="Uniform"
+                       Source="avares://RelaxKonOS.Client/Assets/AppIcons/server-center.png" />
+                <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding Subtitle}" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" ColumnDefinitions="190,*">
+            <Border Background="{DynamicResource SurfaceSunkenBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+                <StackPanel Margin="14,22" Spacing="4">
+                    <Button x:Name="HostsButton" Classes="workspace-nav" Tag="hosts" Click="NavigationButton_Click"
+                            Content="{Binding HostsPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="connection" Click="NavigationButton_Click"
+                            Content="{Binding ConnectionPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="deployment" Click="NavigationButton_Click"
+                            Content="{Binding DeploymentPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
+                    <Button Classes="workspace-nav" Tag="history" Click="NavigationButton_Click"
+                            Content="{Binding HistoryPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
+                </StackPanel>
+            </Border>
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ContentControl x:Name="ContentHost" Margin="30,24" HorizontalAlignment="Stretch" />
+            </ScrollViewer>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"
+                BorderThickness="0,1,0,0" Padding="18,9">
+            <StackPanel Spacing="5">
+                <ProgressBar IsIndeterminate="True" Height="3" IsVisible="{Binding IsBusy}" />
+                <TextBlock Text="{Binding StatusMessage}" IsVisible="{Binding !HasError}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

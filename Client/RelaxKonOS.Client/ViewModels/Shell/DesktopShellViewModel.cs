@@ -4,16 +4,19 @@ using System.Globalization;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Apps.Explorer.Dialogs;
+using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Apps.Settings;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Services.DesktopRestore;
 using RelaxKonOS.Client.Services.VirtualSystemDrive;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
+using RelaxKonOS.Core.VirtualSystemDrive;
 using RelaxKonOS.Core.Windows;
 using RelaxKonOS.Runtime;
 using RelaxKonOS.WindowManager;
@@ -35,6 +38,7 @@ public partial class DesktopShellViewModel : ObservableObject
     private readonly LocalizationService _localization;
     private readonly Action _shutdown;
     private readonly IAuthSession _session;
+    private readonly SshDesktopSession _sshDesktop;
     private readonly DesktopRestoreOrchestrator _desktopRestore;
     private readonly IExplorerClient _files;
     private readonly IRemoteFileClipboard _fileClipboard;
@@ -47,6 +51,7 @@ public partial class DesktopShellViewModel : ObservableObject
     private readonly ShortcutStore _shortcuts;
     private readonly ShortcutActivationRouter _shortcutRouter;
     private int _desktopFileLoadGeneration;
+    private int _shortcutLoadGeneration;
 
     /// <summary>打开桌面显示配置窗口的回调。由 View 层设置。</summary>
     public Func<Task>? RequestOpenDesktopDisplaySettingsAsync { get; set; }
@@ -63,6 +68,7 @@ public partial class DesktopShellViewModel : ObservableObject
         ShellSettings settings,
         LocalizationService localization,
         IAuthSession session,
+        SshDesktopSession sshDesktop,
         Action shutdown,
         DesktopRestoreOrchestrator desktopRestore,
         IExplorerClient files,
@@ -81,6 +87,7 @@ public partial class DesktopShellViewModel : ObservableObject
         _settings = settings;
         _localization = localization;
         _session = session;
+        _sshDesktop = sshDesktop;
         _shutdown = shutdown;
         _desktopRestore = desktopRestore;
         _files = files;
@@ -126,28 +133,29 @@ public partial class DesktopShellViewModel : ObservableObject
         await EnsureWorkspacePreferencesAsync();
         if (_session.State != AuthSessionState.Authenticated) return;
         if (_settings.HasCompletedFirstTimeSetup) return;
-        if (_desktopWelcomePreferences.HasCompleted(_session.ServerUrl, _session.CurrentUser?.Username)) return;
+        if (_desktopWelcomePreferences.HasCompleted(_session.ServiceId, _session.CurrentUser?.Username)) return;
         if (RequestFirstTimeDesktopSetupAsync is null) return;
 
         await RequestFirstTimeDesktopSetupAsync();
         _settings.HasCompletedFirstTimeSetup = true;
-        _desktopWelcomePreferences.MarkCompleted(_session.ServerUrl, _session.CurrentUser?.Username);
+        _desktopWelcomePreferences.MarkCompleted(_session.ServiceId, _session.CurrentUser?.Username);
         _ = SavePreferencesFireAndForgetAsync();
         Dispatcher.UIThread.Post(PopulateDesktop);
     }
 
     /// <summary>Loads the workspace-owned shell preference before a desktop shell is selected.</summary>
-    public Task EnsureWorkspacePreferencesAsync() => _preferencesSync.EnsureCurrentWorkspacePreferencesAsync();
+    public Task EnsureWorkspacePreferencesAsync() => _sshDesktop.IsConnected
+        ? Task.CompletedTask : _preferencesSync.EnsureCurrentWorkspacePreferencesAsync();
 
     public WindowManagerService WindowManager => _windowManager;
     public ShellSettings Settings => _settings;
-    public string ConnectionServer => _session.ServerUrl ?? T("shell.connection.not_connected", "Not connected");
-    public string ConnectionUser => _session.CurrentUser?.Username ?? T("shell.connection.unknown_user", "Unknown user");
-    public string ConnectionWorkspace => _session.CurrentWorkspace?.Name ?? T("shell.connection.default_workspace", "Default workspace");
+    public string ConnectionServer => _sshDesktop.Endpoint?.DisplayName ?? _session.EffectiveBaseUrl ?? T("shell.connection.not_connected", "Not connected");
+    public string ConnectionUser => _sshDesktop.Endpoint?.UserName ?? _session.CurrentUser?.Username ?? T("shell.connection.unknown_user", "Unknown user");
+    public string ConnectionWorkspace => _sshDesktop.IsConnected ? "SSH" : _session.CurrentWorkspace?.Name ?? T("shell.connection.default_workspace", "Default workspace");
 
     /// <summary>Called by the view after WindowManager has attached the desktop window host.</summary>
     public Task RestoreDesktopStateAsync(CancellationToken cancellationToken = default) =>
-        _desktopRestore.RestoreAsync(cancellationToken);
+        _sshDesktop.IsConnected ? Task.CompletedTask : _desktopRestore.RestoreAsync(cancellationToken);
 
     /// <summary>Live, application-grouped taskbar items.</summary>
     public ObservableCollection<TaskbarGroupViewModel> TaskbarGroups { get; } = new();
@@ -169,6 +177,9 @@ public partial class DesktopShellViewModel : ObservableObject
     public Func<string, string, string, Task<string?>>? RequestDesktopTextInputAsync { get; set; }
     public Func<IReadOnlyList<ApplicationInfo>, string, Task<OpenWithChoice?>>? RequestDesktopOpenWithAsync { get; set; }
     public Func<FilePropertiesDto, Task>? ShowDesktopPropertiesAsync { get; set; }
+    public Func<Task<HostFileClipboardSnapshot>>? ReadHostFileClipboardAsync { get; set; }
+    public Func<Task>? MarkRemoteFileCopyAsync { get; set; }
+    public Func<string, Task>? ShowDesktopPasteErrorAsync { get; set; }
 
     [ObservableProperty] private bool _isStartOpen;
     [ObservableProperty] private string _startSearchQuery = string.Empty;
@@ -194,7 +205,11 @@ public partial class DesktopShellViewModel : ObservableObject
             // An app that needs a connected Linux Server must not be advertised on a Windows
             // Server desktop or Start menu. Launch still performs the same check for defense in depth.
             .Where(application => _applications.GetManifest(application.Id) is { } manifest
-                && _applications.EvaluateCompatibility(manifest).IsCompatible)
+                && _applications.EvaluateCompatibility(manifest).IsCompatible
+                && (_sshDesktop.IsConnected
+                    ? application.Id.Value is "relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
+                        or "relaxkonos.codeeditor" or "relaxkonos.imageviewer"
+                    : application.Id.Value is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
             .Select(i => new AppEntryViewModel(Localize(i), _applications))
             .ToList();
 
@@ -206,7 +221,12 @@ public partial class DesktopShellViewModel : ObservableObject
 
         // ── 桌面图标：根据桌面显示配置过滤 ──
         DesktopIcons.Clear();
-        if (_settings.ShowBuiltInApps)
+        if (_sshDesktop.IsConnected)
+        {
+            foreach (var entry in compatibleEntries)
+                DesktopIcons.Add(entry);
+        }
+        else if (_settings.ShowBuiltInApps)
         {
             // 当 VisibleAppIds 为空时显示全部；否则仅显示列表中的
             var visibleSet = new HashSet<string>(_settings.VisibleAppIds, StringComparer.Ordinal);
@@ -219,7 +239,9 @@ public partial class DesktopShellViewModel : ObservableObject
         }
 
         RefreshDesktopItems();
-        _ = RefreshDesktopShortcutsAsync();
+        var shortcutGeneration = ++_shortcutLoadGeneration;
+        if (_sshDesktop.IsConnected) DesktopShortcuts.Clear();
+        else _ = RefreshDesktopShortcutsAsync(shortcutGeneration);
         RefreshTaskbarGroups();
         _ = LoadDesktopFilesAsync();
     }
@@ -245,6 +267,8 @@ public partial class DesktopShellViewModel : ObservableObject
     [RelayCommand]
     private void Launch(AppId id)
     {
+        if (_sshDesktop.IsConnected && id.Value is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
+            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer")) return;
         _applications.Launch(id);
         IsStartOpen = false;
     }
@@ -467,17 +491,19 @@ public partial class DesktopShellViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void CopyDesktopEntry(DesktopFileEntryViewModel? item)
+    private async Task CopyDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         if (item is null) return;
+        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
         _fileClipboard.Set([item.Entry], RemoteFileClipboardOperation.Copy);
         RecordDesktopFileMenuDiagnostic($"copy stored in desktop clipboard: entry={item.DisplayName}.");
     }
 
     [RelayCommand]
-    private void CutDesktopEntry(DesktopFileEntryViewModel? item)
+    private async Task CutDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         if (item is null) return;
+        if (MarkRemoteFileCopyAsync is not null) await MarkRemoteFileCopyAsync();
         _fileClipboard.Set([item.Entry], RemoteFileClipboardOperation.Cut);
         RecordDesktopFileMenuDiagnostic($"cut stored in desktop clipboard: entry={item.DisplayName}.");
     }
@@ -488,12 +514,38 @@ public partial class DesktopShellViewModel : ObservableObject
     private async Task PasteDesktopEntryAsync(DesktopFileEntryViewModel? item)
     {
         var targetDirectory = item is { IsDirectory: true } ? item.Entry.Path : _desktopPath;
-        if (string.IsNullOrWhiteSpace(targetDirectory) || !_fileClipboard.HasEntries)
+        if (string.IsNullOrWhiteSpace(targetDirectory))
         {
-            RecordDesktopFileMenuDiagnostic($"desktop paste stopped: targetAvailable={!string.IsNullOrWhiteSpace(targetDirectory)}, clipboardItems={_fileClipboard.Entries.Count}.");
+            RecordDesktopFileMenuDiagnostic("desktop paste stopped: target directory unavailable.");
             return;
         }
 
+        try
+        {
+            var snapshot = await (ReadHostFileClipboardAsync?.Invoke()
+                ?? Task.FromResult(new HostFileClipboardSnapshot(false, Array.Empty<LocalUploadSource>())));
+            if (snapshot.Files.Count > 0 && !snapshot.IsRemoteCopy)
+            {
+                await PasteHostFilesToDesktopAsync(targetDirectory, snapshot.Files);
+                return;
+            }
+            if (!_fileClipboard.HasEntries)
+            {
+                RecordDesktopFileMenuDiagnostic("desktop paste stopped: clipboard has no files.");
+                return;
+            }
+            await PasteRemoteDesktopEntryAsync(targetDirectory);
+        }
+        catch (Exception ex)
+        {
+            RecordDesktopFileMenuDiagnostic($"desktop paste failed: {ex.GetType().Name}: {ex.Message}");
+            if (ShowDesktopPasteErrorAsync is not null)
+                await ShowDesktopPasteErrorAsync(LocalizedText.Format("explorer.status.upload_failed", ex.Message));
+        }
+    }
+
+    private async Task PasteRemoteDesktopEntryAsync(string targetDirectory)
+    {
         RecordDesktopFileMenuDiagnostic($"desktop paste started: clipboardItems={_fileClipboard.Entries.Count}, operation={_fileClipboard.Operation}.");
 
         try
@@ -524,6 +576,29 @@ public partial class DesktopShellViewModel : ObservableObject
         {
             RecordDesktopFileMenuDiagnostic($"desktop paste failed: {ex.GetType().Name}: {ex.Message}");
         }
+    }
+
+    private async Task PasteHostFilesToDesktopAsync(string targetDirectory, IReadOnlyList<LocalUploadSource> sources)
+    {
+        var plan = LocalUploadPlan.Build(sources);
+        var changed = false;
+        try
+        {
+            foreach (var directory in plan.Directories)
+            {
+                await _files.CreateDirectoryAsync(LocalUploadPlan.CombineRemotePath(targetDirectory, directory));
+                changed = true;
+            }
+            foreach (var file in plan.Files)
+            {
+                var destination = LocalUploadPlan.CombineRemotePath(targetDirectory, file.RelativePath);
+                using var stream = File.OpenRead(file.SourcePath);
+                await _files.UploadAsync(ExplorerPath.Parent(destination)!, Path.GetFileName(file.RelativePath), stream);
+                changed = true;
+            }
+            RecordDesktopFileMenuDiagnostic($"desktop host paste completed: files={plan.Files.Count}, folders={plan.Directories.Count}.");
+        }
+        finally { if (changed) RefreshDesktop(); }
     }
 
     [RelayCommand]
@@ -725,6 +800,8 @@ public partial class DesktopShellViewModel : ObservableObject
 
     private void LaunchApplication(string id)
     {
+        if (_sshDesktop.IsConnected && id is not ("relaxkonos.terminal" or "relaxkonos.server-center" or "relaxkonos.ssh-files"
+            or "relaxkonos.codeeditor" or "relaxkonos.imageviewer")) return;
         _applications.Launch(new AppId(id));
         IsStartOpen = false;
         OpenTaskbarGroup = null;
@@ -811,7 +888,7 @@ public partial class DesktopShellViewModel : ObservableObject
     /// <summary>保存桌面显示配置到服务端（fire-and-forget，忽略瞬时错误）。</summary>
     public async Task SavePreferencesFireAndForgetAsync()
     {
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
         try
         {
@@ -832,13 +909,16 @@ public partial class DesktopShellViewModel : ObservableObject
         foreach (var file in DesktopFiles) DesktopItems.Add(file);
     }
 
-    private async Task RefreshDesktopShortcutsAsync()
+    private async Task RefreshDesktopShortcutsAsync(int generation)
     {
         var shortcuts = await _shortcuts.ListAsync();
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            if (generation != _shortcutLoadGeneration || _sshDesktop.IsConnected) return;
             DesktopShortcuts.Clear();
-            foreach (var shortcut in shortcuts)
+            foreach (var shortcut in shortcuts.Where(item =>
+                item.Kind != RelaxKonOSShortcutKind.Application ||
+                item.Target is not ("relaxkonos.server-center" or "relaxkonos.ssh-files")))
                 DesktopShortcuts.Add(new ShortcutEntryViewModel(shortcut, _shortcutRouter));
             RefreshDesktopItems();
         });
@@ -876,7 +956,7 @@ public partial class DesktopShellViewModel : ObservableObject
             .ToArray();
         _defaultApps.SetMappings(mappings);
 
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (_session is not { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
         await _settingsClient.SaveAsync(url, tokens.AccessToken, workspace.Id, _settings.ToPreferences(mappings));
     }

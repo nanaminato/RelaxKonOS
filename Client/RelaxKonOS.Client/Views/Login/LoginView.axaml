@@ -44,17 +44,26 @@
                    Stretch="Uniform" />
             <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
                 <TextBlock Text="RelaxKonOS" FontSize="24" FontWeight="Light" Foreground="{DynamicResource TextPrimaryBrush}" />
-                <TextBlock Text="{Binding RemoteDesktopConnectionText}" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" />
             </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="1">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
             <Border Classes="login-divider" />
             <Grid Margin="32,22,32,18" IsSharedSizeScope="True">
                 <StackPanel Spacing="0">
+                <Grid Margin="0,0,0,14" ColumnDefinitions="Auto,*">
+                    <TextBlock Classes="login-label" Text="{Binding LoginModeLabel}" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="22">
+                        <RadioButton GroupName="LoginMode" Content="{Binding RelaxLoginText}"
+                                     IsChecked="{Binding !UseSshLogin, Mode=OneWay}" IsEnabled="{Binding !IsConnecting}" Click="RelaxLogin_Click" />
+                        <RadioButton GroupName="LoginMode" Content="{Binding SshLoginText}"
+                                     IsChecked="{Binding UseSshLogin, Mode=OneWay}" IsEnabled="{Binding !IsConnecting}" Click="SshLogin_Click" />
+                    </StackPanel>
+                </Grid>
                 <TextBlock Text="{Binding ConnectionInstructions}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" />
                 <TextBlock Text="{Binding CredentialsInstructions}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" Margin="0,3,0,12" />
-                <Grid Margin="0,0,0,10">
+                <Grid Margin="0,0,0,10" IsVisible="{Binding !UseSshLogin}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
                         <ColumnDefinition Width="*" />
@@ -75,18 +84,28 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Classes="login-label" Text="{Binding ComputerLabel}" />
-                        <ComboBox Classes="connection-input" Grid.Column="1"
+                        <ComboBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding !UseSshLogin}"
                                   ItemsSource="{Binding SavedProfiles}"
                                   SelectedItem="{Binding SelectedProfile}"
                                   IsEditable="True"
                                   Text="{Binding ServerUrl}"
                                   HorizontalAlignment="Stretch"
                                   MinWidth="440"
-                                  PlaceholderText="http://host:port">
+                                  PlaceholderText="host:port"
+                                  LostFocus="ServerAddress_LostFocus">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding ServerUrl}" MinHeight="32"
+                                    <TextBlock Text="{Binding DisplayText}" MinHeight="32"
                                                VerticalAlignment="Center" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <ComboBox Classes="connection-input" Grid.Column="1" IsVisible="{Binding UseSshLogin}"
+                                  ItemsSource="{Binding SavedSshHosts}" SelectedItem="{Binding SelectedSshHost}"
+                                  IsEditable="True" Text="{Binding ServerUrl, Mode=TwoWay}" MinWidth="440" PlaceholderText="host:22">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayText}" />
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
@@ -129,9 +148,9 @@
                         Padding="0" Background="Transparent" BorderThickness="0"
                         Foreground="{DynamicResource AccentBrush}" />
 
-                <CheckBox IsVisible="{Binding ShowOptions}" IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
+                <CheckBox IsChecked="{Binding RememberServer}" Content="{Binding RememberServerText}"
                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,12,0,0" />
-                <CheckBox IsVisible="{Binding ShowOptions}" IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"
+                <CheckBox IsChecked="{Binding RememberPassword}" IsEnabled="{Binding RememberServer}"
                           Content="{Binding RememberPasswordText}"
                           Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="0,6,0,0" />
 
@@ -153,6 +172,7 @@
                 </StackPanel>
             </Grid>
         </StackPanel>
+        </ScrollViewer>
 
         <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0"
                 Padding="32,14">
@@ -164,8 +184,9 @@
                            FontSize="12" Margin="0,0,0,8" TextWrapping="Wrap" />
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding ClientNameText}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12"
                            VerticalAlignment="Center" />
-                <Button Grid.Row="1" Grid.Column="1" Classes="primary connect-button" Content="{Binding ConnectText}"
-                        Command="{Binding ConnectCommand}" />
+                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <Button Classes="primary connect-button" Content="{Binding ConnectText}" Command="{Binding ConnectCommand}" />
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

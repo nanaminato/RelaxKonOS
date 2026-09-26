@@ -11,10 +11,10 @@ public sealed class WallpaperService(IAuthSession session, IWallpaperClient clie
 {
     public async Task UploadAndApplyAsync(Stream image, string fileName, CancellationToken ct = default)
     {
-        if (session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (session is not { State: AuthSessionState.Authenticated, ServiceId: { } serviceId, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             throw new InvalidOperationException("Sign in before setting a synchronized wallpaper.");
         var preferences = await client.UploadAsync(url, tokens.AccessToken, workspace.Id, image, fileName, ct);
-        if (!IsCurrent(url, tokens.AccessToken, workspace.Id) || ct.IsCancellationRequested) return;
+        if (!IsCurrent(serviceId, tokens.AccessToken, workspace.Id) || ct.IsCancellationRequested) return;
         await ApplyAsync(preferences, ct);
     }
 
@@ -26,12 +26,12 @@ public sealed class WallpaperService(IAuthSession session, IWallpaperClient clie
         // Wallpaper blobs are immutable. A live image for this key remains valid across
         // settings-stream refreshes, so avoid both a redundant download and a visual reset.
         if (settings.HasLoadedCustomWallpaper(preferences.WallpaperKey)) return;
-        if (session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (session is not { State: AuthSessionState.Authenticated, ServiceId: { } serviceId, EffectiveBaseUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
             return;
         try
         {
             var bytes = await client.DownloadAsync(url, tokens.AccessToken, workspace.Id, blobId, ct);
-            if (ct.IsCancellationRequested || !IsCurrent(url, tokens.AccessToken, workspace.Id)
+            if (ct.IsCancellationRequested || !IsCurrent(serviceId, tokens.AccessToken, workspace.Id)
                 || settings.CurrentWallpaperKey != preferences.WallpaperKey) return;
             using var stream = new MemoryStream(bytes, writable: false);
             settings.SetCustomWallpaper(preferences.WallpaperKey, new Bitmap(stream));
@@ -42,8 +42,9 @@ public sealed class WallpaperService(IAuthSession session, IWallpaperClient clie
         }
     }
 
-    private bool IsCurrent(string url, string token, Guid workspaceId) =>
-        session.State == AuthSessionState.Authenticated && session.ServerUrl == url
+    /// <summary>The login identity, not the transport address, decides whether the result still applies.</summary>
+    private bool IsCurrent(string serviceId, string token, Guid workspaceId) =>
+        session.State == AuthSessionState.Authenticated && session.ServiceId == serviceId
         && session.Tokens?.AccessToken == token && session.CurrentWorkspace?.Id == workspaceId;
 
     private static bool TryGetBlobId(string? key, out string blobId)

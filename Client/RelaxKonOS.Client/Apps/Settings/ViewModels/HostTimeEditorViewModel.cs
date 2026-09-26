@@ -62,7 +62,7 @@ public sealed partial class HostTimeEditorViewModel : ObservableObject, IDisposa
     {
         var connection = _service.CaptureConnection();
         _connection = connection;
-        TargetText = connection.ServerUrl + " · " + _session.CurrentUser?.Username;
+        TargetText = connection.ServiceId + " · " + _session.CurrentUser?.Username;
         var snapshot = await _service.ReadAsync(connection, ct);
         if (_disposed) return;
         _connection = connection;

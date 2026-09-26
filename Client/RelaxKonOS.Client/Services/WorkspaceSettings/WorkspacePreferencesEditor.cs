@@ -31,7 +31,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
     public void Schedule(WorkspacePreferencesDto preferences)
     {
         _pending?.Cancel();
-        if (_session is not { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens, CurrentWorkspace: { } workspace })
+        if (_session is not { State: AuthSessionState.Authenticated, ServiceId: { } serviceId, EffectiveBaseUrl: not null, CurrentWorkspace: { } workspace })
         {
             State = PreferencesSaveState.Offline;
             return;
@@ -39,7 +39,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         // Shell owns mutable lists: freeze the edit and its target before the debounce delay.
         var frozen = JsonSerializer.Deserialize<WorkspacePreferencesDto>(
             JsonSerializer.Serialize(preferences, RelaxKonOSJsonOptions.Default), RelaxKonOSJsonOptions.Default)!;
-        _draft = new(url, _session.CurrentSession?.Id, workspace.Id, frozen);
+        _draft = new(serviceId, _session.CurrentSession?.Id, workspace.Id, frozen);
         OnPropertyChanged(nameof(HasDraft));
         _registry.SetMappings(frozen.DefaultApps);
         BeginSave(_draft, debounce: true);
@@ -58,7 +58,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         if (_draft is not { } draft || !IsCurrent(draft) || State == PreferencesSaveState.Saving) return null;
         try
         {
-            var snapshot = await _service.GetAsync(draft.Url, _session.Tokens!.AccessToken, draft.WorkspaceId, cancellationToken);
+            var snapshot = await _service.GetAsync(CurrentBaseUrl(), _session.Tokens!.AccessToken, draft.WorkspaceId, cancellationToken);
             if (!ReferenceEquals(_draft, draft) || !IsCurrent(draft)) return null;
             _pending?.Cancel();
             _draft = null;
@@ -96,7 +96,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         {
             if (debounce) await Task.Delay(300, pending.Token);
             if (!IsCurrent(draft)) return;
-            var saved = await _service.SaveAsync(draft.Url, _session.Tokens!.AccessToken, draft.WorkspaceId, draft.Value, pending.Token);
+            var saved = await _service.SaveAsync(CurrentBaseUrl(), _session.Tokens!.AccessToken, draft.WorkspaceId, draft.Value, pending.Token);
             if (!ReferenceEquals(_draft, draft) || !IsCurrent(draft)) return;
             _draft = null;
             OnPropertyChanged(nameof(HasDraft));
@@ -106,7 +106,7 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
             {
                 await Task.Delay(1000, pending.Token);
                 if (!IsCurrent(draft) || !ReferenceEquals(_pending, pending)) return;
-                var observed = await _service.GetAsync(draft.Url, _session.Tokens!.AccessToken, draft.WorkspaceId, pending.Token);
+                var observed = await _service.GetAsync(CurrentBaseUrl(), _session.Tokens!.AccessToken, draft.WorkspaceId, pending.Token);
                 if (!IsCurrent(draft) || !ReferenceEquals(_pending, pending)) return;
                 if (observed.Revision != saved.Revision) return;
                 if (observed.PersistedRevision == saved.Revision) State = PreferencesSaveState.Saved;
@@ -129,9 +129,16 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// The draft stays bound to the login's stable identity, so a verified tunnel rebind keeps it valid.
+    /// The address is only read when a request is actually sent.
+    /// </summary>
     private bool IsCurrent(Draft draft) => _session.State == AuthSessionState.Authenticated
-        && _session.ServerUrl == draft.Url && _session.CurrentWorkspace?.Id == draft.WorkspaceId
+        && _session.ServiceId == draft.ServiceId && _session.CurrentWorkspace?.Id == draft.WorkspaceId
         && _session.CurrentSession?.Id == draft.SessionId;
+
+    private string CurrentBaseUrl() => _session.EffectiveBaseUrl
+        ?? throw new InvalidOperationException("The session has no transport address.");
 
     private void OnSessionChanged(object? sender, AuthSessionStateChangedEventArgs args)
     {
@@ -157,5 +164,5 @@ public sealed class WorkspacePreferencesEditor : ObservableObject, IDisposable
         _pending?.Cancel();
     }
 
-    private sealed record Draft(string Url, Guid? SessionId, Guid WorkspaceId, WorkspacePreferencesDto Value);
+    private sealed record Draft(string ServiceId, Guid? SessionId, Guid WorkspaceId, WorkspacePreferencesDto Value);
 }

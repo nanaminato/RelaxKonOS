@@ -8,7 +8,7 @@ using RelaxKonOS.Protocol.Common;
 namespace RelaxKonOS.Client.Apps.Browser;
 
 /// <summary>IBrowserClient 的 typed HttpClient 实现。
-/// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.ServerUrl"/> 构造绝对 URI（避免共享实例并发竞态）。
+/// 不 mutate HttpClient.BaseAddress，每个请求用 <see cref="IAuthSession.EffectiveBaseUrl"/> 构造绝对 URI（避免共享实例并发竞态）。
 /// Authorization 头从 <see cref="IAuthSession.Tokens"/> 取；未登录抛 <see cref="InvalidOperationException"/>。
 /// 失败读 ProblemDetails 抛 <see cref="RelaxKonOSAuthException"/>（与 <see cref="RelaxKonOSClient"/> / ExplorerClient 同源）。</summary>
 public sealed class BrowserClient : IBrowserClient
@@ -98,9 +98,9 @@ public sealed class BrowserClient : IBrowserClient
 
     private string RequireSession()
     {
-        if (_session.State != AuthSessionState.Authenticated || _session.Tokens is null || _session.ServerUrl is null)
+        if (_session.State != AuthSessionState.Authenticated || _session.Tokens is null || _session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("browser.error.not_signed_in"));
-        return _session.ServerUrl;
+        return _session.EffectiveBaseUrl;
     }
 
     private static Uri BuildUri(string serverUrl, string route, (string Key, string? Value)? query = null)

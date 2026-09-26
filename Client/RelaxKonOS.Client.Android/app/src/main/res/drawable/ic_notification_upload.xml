@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The notification small icon.
+
+  Deliberately drawn here instead of mirrored from the desktop set: the platform renders a small icon as
+  an alpha-only silhouette, so a coloured bitmap from `drawable-nodpi` would show as a solid white blob.
+  The desktop has no asset that satisfies that constraint, which makes this the second intentional
+  exception to "Android never draws its own icons" (the first is the password reveal control).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M11,16V9.83L7.41,13.41L6,12l6,-6l6,6l-1.41,1.41L13,9.83V16H11zM5,18h14v2H5V18z" />
+</vector>

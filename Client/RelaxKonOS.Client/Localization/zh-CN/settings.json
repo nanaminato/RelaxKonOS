@@ -97,6 +97,7 @@
         "settings.time_zone": "时区",
         "settings.language_region.section": "语言和区域",
         "settings.display_language": "显示语言",
+        "settings.language.follow_system": "跟随系统",
         "settings.region_format": "区域格式",
         "settings.wallpaper": "壁纸",
         "settings.theme": "主题",

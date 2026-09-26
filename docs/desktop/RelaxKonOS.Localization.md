@@ -6,7 +6,7 @@ RelaxKonOS 使用 BCP-47 语言名称（`en-US`、`zh-CN`、`ja-JP`），并以�
 
 `LocalizationService` 负责当前语言，从 `Client/RelaxKonOS.Client/Localization` 加载 JSON 语言包，并触发 `LanguageChanged`。规定的迁移方式是稳定键加上通过 `LocalizationService.Get(key, englishFallback)` 提供的英文回退值；AXAML 绑定本地化视图模型属性，代码创建的控件也使用同一方法。系统不会扫描可视树或按源句子查找，因此语言变更只能由各显示值的所有者处理。
 
-登录视图在认证前使用本机语言。`LocalLanguageStore` 仅将该 BCP-47 名称写入本地应用数据。认证后，`PreferencesSync` 会加载当前用户工作区的 `WorkspacePreferencesDto.Language`；设置页将后续变更写入该工作区偏好。退出登录后恢复本地登录语言。
+登录视图在认证前使用本机语言。`LocalLanguageStore` 仅将该 BCP-47 名称写入本地应用数据。认证后，`PreferencesSync` 会加载当前用户工作区的 `WorkspacePreferencesDto.Language`；设置页将后续变更写入该工作区偏好。除三个显式语言外，设置页提供可同步的 `follow-system`：系统中文映射为 `zh-CN`，系统日文映射为 `ja-JP`，其余系统语言映射为 `en-US`。SSH 桌面始终使用同一套设备本地映射，不读取或写入工作区偏好。退出登录后恢复本地登录语言。
 
 ## API 文本
 

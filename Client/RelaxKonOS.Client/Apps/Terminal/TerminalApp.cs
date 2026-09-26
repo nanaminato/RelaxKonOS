@@ -1,5 +1,6 @@
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Diagnostics;
+using RelaxKonOS.Client.Services.ServerCenter;
 using RelaxKonOS.Client.Localization;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
@@ -57,10 +58,16 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         try
         {
             var session = context.Services.GetService<IAuthSession>();
+            var sshDesktop = context.Services.GetService<SshDesktopSession>();
             var diagnostics = context.Services.GetService<NetworkDiagnosticsService>();
+            if (sshDesktop?.IsConnected == true)
+            {
+                if (!restoreOnly) OpenWindow(context, session, diagnostics, null);
+                return;
+            }
             var sessionIds = Array.Empty<string>();
 
-            if (session is { State: AuthSessionState.Authenticated, ServerUrl: { } url, Tokens: { } tokens })
+            if (session is { State: AuthSessionState.Authenticated, EffectiveBaseUrl: { } url, Tokens: { } tokens })
             {
                 try
                 {
@@ -127,7 +134,8 @@ public sealed class TerminalApp : RemoteApplicationBase, IOpenTerminalApplicatio
         string? workingDirectory = null)
     {
         var settingsClient = context.Services.GetRequiredService<ITerminalSettingsClient>();
-        var viewModel = new TerminalViewModel(session, settingsClient, diagnostics, sessionId, workingDirectory);
+        var viewModel = new TerminalViewModel(session, settingsClient, diagnostics,
+            context.Services.GetService<SshDesktopSession>(), sessionId, workingDirectory);
         var view = new TerminalView
         {
             DataContext = viewModel,

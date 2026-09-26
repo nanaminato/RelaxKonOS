@@ -28,6 +28,12 @@ public enum PrivilegedOperationKind
     FileMove,
     FileCopy,
     FileUpload,
+    /// <summary>Appends one chunk of an upload session's staging file at an explicit offset. The Helper
+    /// re-validates the staging name shape, so this can never address an arbitrary file.</summary>
+    FileUploadChunk,
+    /// <summary>Publishes a staging file as its destination inside the same directory. The destination
+    /// is named by a single file-name component, never by a full path.</summary>
+    FileUploadCommit,
     FileCreateDirectory,
     NativeServiceAction,
     NginxSystemServiceAction,
@@ -196,6 +202,9 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("fileName")] string? FileName = null,
     [property: JsonPropertyName("overwrite")] bool Overwrite = false,
     [property: JsonPropertyName("contentBase64")] string? ContentBase64 = null,
+    /// <summary>Byte offset inside the staging file an upload chunk is appended at. Only read by
+    /// <see cref="PrivilegedOperationKind.FileUploadChunk"/>; unrelated operations must leave it null.</summary>
+    [property: JsonPropertyName("offset")] long? Offset = null,
     [property: JsonPropertyName("serviceId")] string? ServiceId = null,
     [property: JsonPropertyName("serviceAction")] PrivilegedServiceAction? ServiceAction = null,
     [property: JsonPropertyName("nginxServiceAction")] NginxSystemServiceAction? NginxServiceAction = null,
@@ -241,6 +250,9 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("success")] bool Success,
     [property: JsonPropertyName("exitCode")] int ExitCode = 0,
     [property: JsonPropertyName("outputBase64")] string? OutputBase64 = null,
+    /// <summary>Resulting length of an upload-session staging file after an append. Only
+    /// <see cref="PrivilegedOperationKind.FileUploadChunk"/> sets it.</summary>
+    [property: JsonPropertyName("offset")] long? Offset = null,
     [property: JsonPropertyName("error")] string? Error = null,
     [property: JsonPropertyName("problemCode")] PrivilegedProblemCode ProblemCode = PrivilegedProblemCode.None,
     [property: JsonPropertyName("hostEnvironment")] PrivilegedEnvironmentState? HostEnvironment = null,

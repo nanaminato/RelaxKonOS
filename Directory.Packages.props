@@ -17,13 +17,17 @@
         <!-- MVVM / DI -->
         <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
         <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
 
         <!-- Server -->
         <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
         <!-- ASP.NET Core OpenAPI 10.0.x requires Microsoft.OpenApi < 3.0. -->
         <PackageVersion Include="Microsoft.OpenApi" Version="2.12.0" />
         <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+        <!-- Server 端缩略图渲染。Six Labors Split License v1.0 第 2 条把「用于 Source Available 许可的软件」
+             明确划入 Apache-2.0 分支，本项目即 Source-Available（见 THIRD_PARTY_NOTICES.md）。
+             3.1.x 是首个提供 DecoderOptions.MaxFrames 的稳定线：动画图片只解一帧，内存上界才守得住。
+             纯托管、无原生依赖，Windows/Linux/macOS 行为一致。 -->
+        <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
 
         <!-- Server Persistence: EF Core + SQLite（User/Workspace/Device 持久化，含 TerminalSettings） -->
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
@@ -43,8 +47,6 @@
         <!-- RoyalTerminal 0.5.2 requires the .NET 10 package family. -->
         <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
 
-        <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.15" />
-
         <!-- Terminal: RoyalTerminal 终端栈（Managed Avalonia terminal，含 TerminalControl + 默认会话组合） -->
         <!-- 0.4.0 → 0.5.2：修复 Tab/光标渲染缺陷（0.4.1 PR #106 "Clear terminal selection when typing"） -->
         <PackageVersion Include="RoyalApps.RoyalTerminal.Avalonia" Version="0.5.2" />
@@ -57,6 +59,10 @@
 
         <!-- Browser: 官方 Avalonia WebView 组件（NativeWebView），平台原生引擎（Win=WebView2/macOS=WKWebView/Linux=WebKitGTK） -->
         <PackageVersion Include="Avalonia.Controls.WebView" Version="12.1.0" />
+
+        <!-- 服务器中心：客户端内置 SSH/SFTP 传输（主机密钥核对、SFTP 暂存上传、loopback 隧道）。
+             不依赖系统 ssh/scp/sftp 命令。RoyalTerminal 已传递引用同一版本，这里显式声明以便直接使用。 -->
+        <PackageVersion Include="SSH.NET" Version="2026.0.0" />
 
         <!-- Video Player example: managed Avalonia control + Windows native VLC runtime. -->
         <PackageVersion Include="LibVLCSharp.Avalonia" Version="3.10.1" />

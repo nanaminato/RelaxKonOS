@@ -214,11 +214,10 @@
                       SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
                       SelectionMode="{Binding EntrySelectionMode}"
                       SelectionChanged="EntriesGrid_SelectionChanged"
-                      Sorting="EntriesGrid_Sorting"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"
                       CanUserResizeColumns="True"
-                      CanUserSortColumns="True"
+                      CanUserSortColumns="False"
                       HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto"
                       GridLinesVisibility="None"
@@ -252,11 +251,36 @@
                 <DataGrid.Styles>
                     <Style Selector="DataGridColumnHeader">
                         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                        <Setter Property="Padding" Value="8,0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Left" />
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
                         <Setter Property="FontWeight" Value="SemiBold" />
                         <Setter Property="FontSize" Value="12" />
                     </Style>
                     <Style Selector="DataGridCell">
                         <Setter Property="BorderThickness" Value="0" />
+                    </Style>
+                    <!-- The DataGrid fills the viewport so its scrollbar stays at the far
+                         edge.  Rows are explicitly constrained to the live sum of their
+                         columns, leaving the remaining viewport as genuine directory space. -->
+                    <Style Selector="DataGridRow">
+                        <Setter Property="Width" Value="{Binding #Root.EntriesTableWidth}" />
+                        <Setter Property="HorizontalAlignment" Value="Left" />
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                    <Style Selector="DataGridRow:pointerover">
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                    <Style Selector="DataGridRow:selected">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
+                    </Style>
+                    <Style Selector="DataGridRow:pointerover DataGridCell">
+                        <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+                    </Style>
+                    <Style Selector="DataGridRow:selected DataGridCell">
+                        <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
                     </Style>
                 </DataGrid.Styles>
                 <DataGrid.Columns>

@@ -15,8 +15,8 @@ public static class ExplorerIconAssetLoader
     private static readonly Dictionary<string, Bitmap> BitmapCache = new(StringComparer.Ordinal);
     private static readonly object BitmapCacheLock = new();
 
-    public static IImage? LoadEntry(FileSystemEntryType type, string? name) =>
-        Load(ExplorerIconAssetResolver.ForEntry(type, name));
+    public static IImage? LoadEntry(FileSystemEntryType type, string? name, bool isLink = false) =>
+        Load(ExplorerIconAssetResolver.ForEntry(type, name, isLink));
 
     public static IImage? LoadTreeNode(TreeNodeIconKind kind) =>
         Load(ExplorerIconAssetResolver.ForTreeNode(kind));

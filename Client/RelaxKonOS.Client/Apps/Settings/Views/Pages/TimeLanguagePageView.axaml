@@ -55,7 +55,7 @@
                 <TextBlock Text="{loc:Loc settings.language_region.section}" Classes="title" />
                 <Grid ColumnDefinitions="180,*">
                     <TextBlock Grid.Column="0" Text="{loc:Loc settings.display_language}" Opacity="0.7" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" ItemsSource="{Binding Languages}"
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding LanguageOptions}"
                               SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}"
                               MinWidth="160">
                         <ComboBox.ItemTemplate>

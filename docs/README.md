@@ -3,17 +3,20 @@
 > 本文档描述 RelaxKonOS 当前实现状态：Solution 结构、项目列表、代码地图、当前实现进度、开发状态。
 >
 > - 架构设计原则见 [`RelaxKonOS.Architecture.md`](./architecture/RelaxKonOS.Architecture.md)
+> - Android 手机与平板 Mobile Shell 的详细设计、代码位置与实施阶段见 [`Client/RelaxKonOS.Client.Android/docs`](../Client/RelaxKonOS.Client.Android/docs/README.md)；本目录只保留 [移动端入口](./mobile/README.md)。
 > - 应用启动 URI 与窗口实例策略见 [`RelaxKonOS.ApplicationActivation.md`](./architecture/RelaxKonOS.ApplicationActivation.md)
 > - 虚拟系统盘、Catalog、Shell 与受限自动化执行基线见 [`RelaxKonOS.VirtualSystemDrive.Goal.md`](./architecture/RelaxKonOS.VirtualSystemDrive.Goal.md)，已冻结的 V1 目录/schema/迁移契约见 [`RelaxKonOS.VirtualSystemDrive.Contracts.md`](./architecture/RelaxKonOS.VirtualSystemDrive.Contracts.md)
 > - 用户 Workspace 模型见 [`RelaxKonOS.Workspace.md`](./architecture/RelaxKonOS.Workspace.md)
 > - 注册表与配置同步架构见 [`RelaxKonOS.Registry.md`](./architecture/RelaxKonOS.Registry.md)（设计中）
 > - 登录与身份模型见 [`RelaxKonOS.Authentication.md`](./platform/RelaxKonOS.Authentication.md)
+> - 桌面与 Android 客户端的一体化服务端安装、更新、卸载流程见 [`RelaxKonOS.ServerCenter.Goal.md`](./platform/RelaxKonOS.ServerCenter.Goal.md)（设计完成，待实施）
 > - 独立登录别名与关闭系统账号直接登录的 Goal 设计见 [`RelaxKonOS.AliasLogin.Goal.md`](./platform/RelaxKonOS.AliasLogin.Goal.md)（待实施）
 > - 认证限流与登录防护建议见 [`RelaxKonOS.Authentication.Hardening.md`](./platform/RelaxKonOS.Authentication.Hardening.md)
 > - 安全设计见 [`RelaxKonOS.Security.md`](./platform/RelaxKonOS.Security.md)
 > - 权限模型与项目重构规范见 [`RelaxKonOS.PermissionModel.Refactor.md`](./platform/RelaxKonOS.PermissionModel.Refactor.md)
 > - 桌面外壳与模态对话框见 [`RelaxKonOS.Desktop.md`](./desktop/RelaxKonOS.Desktop.md)
 > - 文件管理器见 [`RelaxKonOS.Explorer.md`](./applications/RelaxKonOS.Explorer.md)；Windows 11 体验优化进度与后续 API 清单见 [`RelaxKonOS.Explorer.Progress.md`](./applications/RelaxKonOS.Explorer.Progress.md)
+> - 大文件上传（分块会话、断点续传、受保护目录）的设计与实现规格见 [`RelaxKonOS.FileUpload.Design.md`](./architecture/RelaxKonOS.FileUpload.Design.md)（已实现：服务端 86 项、桌面端 196 项、Android 41 项自动化检查全绿，真机验收清单见其 §9.4）；Android 客户端细节见 [Android 文档](../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.BulkUpload.Design.md)
 > - 受管安装服务（SMB、Nginx、FRP、Mihomo、Docker）的统一任务、进度与恢复基线见 [`RelaxKonOS.InstallationServices.Goal.md`](./services/RelaxKonOS.InstallationServices.Goal.md)。File Services 首轮 SMB（Linux Samba + Windows SMB Server）Goal 执行基线见 [`RelaxKonOS.FileServices.Smb.Goal.md`](./services/file-services/RelaxKonOS.FileServices.Smb.Goal.md)；长期设计规格见 [`RelaxKonOS.FileServices.Specification.md`](./services/file-services/RelaxKonOS.FileServices.Specification.md)
 > - 无 sudo Linux 用户账号（大学 / HPC / 共享 GPU 服务器）部署的双模式设计、PAM 调试边界和实施验收见 [`RelaxKonOS.UserModeServer.Goal.md`](./services/RelaxKonOS.UserModeServer.Goal.md)（提案，尚未实现）
 > - 浏览器见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md)
@@ -49,6 +52,7 @@
 | [`applications/`](./applications/) | 各内置应用的设计与实现说明 |
 | [`services/`](./services/) | 受管宿主服务的安装计划与 File Services 文档 |
 | [`development/`](./development/) | 开发调试、开发者模式与应用扩展规范 |
+| [`mobile/`](./mobile/) | Android 手机/平板 Mobile Shell 的设计、进度与发布文档 |
 
 ---
 
@@ -274,7 +278,7 @@ Application Package
 | **Image Viewer** | 常见远端图片文件浏览（缩放与滚动） | 已实现 |
 | **Settings** | 系统设置中心（5+ 分类页，偏好持久化到 Workspace：壁纸/主题调色板/时间格式/语言/区域/默认程序/桌面显示配置/开发者/应用权限） | 已实现（壁纸/主题/调色板/时间格式/语言/区域/默认程序/桌面图标/首次配置 + 服务端同步；应用能力/AppSettings 页面已对接） |
 | **Terminal** | 远端终端（RoyalTerminal + SignalR Remote Mode，持久 PTY 会话） | 已实现（Remote Mode + Local 回退 + Attach 缓冲回放） |
-| **Explorer** | 远端文件管理器（Jaya UI 移植 + REST API + 宿主 OS 权限复用） | 已实现（浏览、基本操作、文件打开方式、属性与 Linux 权限编辑） |
+| **Explorer** | 远端文件管理器（Jaya UI 移植 + REST API + 宿主 OS 权限复用） | 已实现（浏览、基本操作、文件打开方式、属性与 Linux 权限编辑；大文件上传走可续传分块会话，见 [设计](./architecture/RelaxKonOS.FileUpload.Design.md)） |
 | **Browser** | 内置浏览器（Avalonia.Controls.WebView + 书签/历史持久化到 Server） | 已实现（导航 + 书签 + 历史 + 浏览器偏好） |
 | **TaskManager** | 远端宿主 OS 任务管理器（CPU/内存/文件系统/网络/磁盘 I/O/GPU 占用 + 进程列表，可结束任务） | 已实现（性能页订阅期间 SignalR 1Hz 推送、60s 历史、跨平台采集；进程页按需低频采样与分页） |
 | **DockerManager** | 本机 Docker Engine 的检测/安装引导、容器/镜像/镜像源/Stack/网络/卷管理 | 已实现（状态检测、资源只读列表、容器启停重启/拉取镜像/镜像源选择/Compose 校验部署停止/网络与卷管理；详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)） |
@@ -434,6 +438,7 @@ RelaxKonOS.Server     = Cloud Backend
 | [`Login`](./platform/RelaxKonOS.Login.md) | 登录窗口、auth 端点、JWT 与错误处理 |
 | [`Security`](./platform/RelaxKonOS.Security.md) | 安全设计、权限提升与危险操作确认 |
 | [`PrivilegedOperations Goal`](./platform/RelaxKonOS.PrivilegedOperations.Goal.md) | 跨平台受限 Helper、Windows Server LocalSystem 服务与特权操作迁移执行计划 |
+| [`ServerCenter Goal`](./platform/RelaxKonOS.ServerCenter.Goal.md) | 桌面与 Android 的服务器中心、内置 SSH 部署及生命周期验收 |
 | [`Storage`](./platform/RelaxKonOS.Storage.md) | EF Core + SQLite、持久化范围与表结构 |
 
 ### 桌面体验

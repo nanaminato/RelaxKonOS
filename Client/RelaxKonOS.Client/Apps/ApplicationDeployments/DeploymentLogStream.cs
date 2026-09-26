@@ -29,9 +29,9 @@ internal sealed class DeploymentLogStream : IAsyncDisposable
             while (!token.IsCancellationRequested)
             {
                 connectionChanged(false);
-                if (session.ServerUrl is null) return;
+                if (session.EffectiveBaseUrl is null) return;
                 await using var hub = new HubConnectionBuilder()
-                    .WithUrl(new Uri(new Uri(session.ServerUrl), RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath.TrimStart('/')),
+                    .WithUrl(new Uri(new Uri(session.EffectiveBaseUrl), RelaxKonOSEndpoints.ApplicationDeploymentLogsHubPath.TrimStart('/')),
                         options => options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: token))
                     .Build();
                 connection = hub;

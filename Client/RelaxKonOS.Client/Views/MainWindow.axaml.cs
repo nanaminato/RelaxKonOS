@@ -6,6 +6,8 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Client.Apps.Explorer;
 using RelaxKonOS.Client.Services.WindowLayout;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Developer;
@@ -18,6 +20,7 @@ namespace RelaxKonOS.Client.Views;
 
 public partial class MainWindow : Window
 {
+    public event EventHandler? DesktopReady;
     private readonly DispatcherTimer _hideBarTimer;
     private bool _isPinned;
     private bool _isFullScreen;
@@ -70,6 +73,8 @@ public partial class MainWindow : Window
         var started = DateTime.UtcNow;
         DesktopLoadingOverlay.IsVisible = true;
         shell.RequestToggleHostFullScreen = () => SetFullScreen(!_isFullScreen);
+        shell.ReadHostFileClipboardAsync = () => HostFileClipboard.ReadAsync(Clipboard);
+        shell.MarkRemoteFileCopyAsync = () => HostFileClipboard.MarkRemoteCopyAsync(Clipboard);
         shell.IsHostFullScreen = _isFullScreen;
         await App.Services.GetRequiredService<ShellRuntime>().AttachAsync(ShellHost, shell);
 
@@ -82,6 +87,7 @@ public partial class MainWindow : Window
             // First-time setup shows a modal dialog. It must run only after the loading
             // overlay is hidden, otherwise the dialog is unreachable behind it.
             await shell.TryTriggerFirstTimeSetupAsync();
+            DesktopReady?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -150,7 +156,10 @@ public partial class MainWindow : Window
         try
         {
             await App.Services.GetRequiredService<WindowLayoutStore>().FlushAsync();
-            await App.Services.GetRequiredService<IAuthSession>().LogoutAsync();
+            if (App.Services.GetRequiredService<SshDesktopSession>().IsConnected)
+                App.Services.GetRequiredService<SshDesktopSession>().Disconnect();
+            else
+                await App.Services.GetRequiredService<IAuthSession>().LogoutAsync();
         }
         finally
         {

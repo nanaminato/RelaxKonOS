@@ -1089,6 +1089,15 @@ internal static async Task VerifyPerformanceSamplerAsync()
         await Task.Delay(TimeSpan.FromMilliseconds(1200));
         TestAssert.Assert(source.SampleCount == readsBeforeIdle, "Performance sampler continued reading system data without subscribers.");
         TestAssert.Assert(sampler.GetHistory(60).Count == 0, "Performance history was retained after the last subscriber left.");
+
+        // 一次性 REST 读取本身也是 demand：没有订阅者时它仍必须取到样本，拿到答案后采样立即回到空闲。
+        var demanded = await sampler.ReadSnapshotAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+        TestAssert.Assert(demanded is not null, "A one-shot snapshot read produced no sample without a subscriber.");
+        TestAssert.Assert(demanded is { Sequence: 2 }, "The demand sample did not continue the sampler sequence.");
+        var readsAfterDemand = source.SampleCount;
+        await Task.Delay(TimeSpan.FromMilliseconds(1200));
+        TestAssert.Assert(source.SampleCount == readsAfterDemand, "Performance sampler kept reading system data after the demand lease was released.");
+        TestAssert.Assert(sampler.GetHistory(60).Count == 0, "Performance history was retained after the demand lease was released.");
     }
     finally
     {

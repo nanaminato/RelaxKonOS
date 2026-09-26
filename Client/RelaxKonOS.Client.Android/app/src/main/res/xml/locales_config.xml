@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Languages this app ships. Declared for the system "App languages" screen on API 33+; below that the
+  in-app switch in more/appearance drives AppCompatDelegate.setApplicationLocales directly.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <!-- Language-level, matching res/values-zh: the app ships one Chinese translation that also
+         serves Traditional-script and regional variants, so claiming zh-CN here would understate it. -->
+    <locale android:name="zh" />
+    <locale android:name="ja" />
+</locale-config>

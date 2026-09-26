@@ -749,6 +749,14 @@ builder.Services.AddSingleton<RelaxKonOS.Server.UserExecution.IUserExecutionServ
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.FileOperationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Files.MediaLeaseFileReader>();
+// 大文件分块上传：会话索引是唯一可重启恢复的偏移来源，扫描器只从索引出发（绝不全盘扫描暂存文件）。
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>().GetSection("FileUploads")
+        .Get<RelaxKonOS.Server.Files.UploadSessionOptions>()
+    ?? new RelaxKonOS.Server.Files.UploadSessionOptions());
+builder.Services.AddSingleton<RelaxKonOS.Server.Files.UploadSessionStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Files.UploadSessionService>();
+builder.Services.AddHostedService<RelaxKonOS.Server.Files.UploadSessionSweeper>();
 builder.Services.AddSingleton<WorkspaceWallpaperStore>();
 // The service only depends on the singleton runtime registry, so the singleton lifetime lets
 // background notification delivery read the cache without creating a database scope.
