@@ -197,8 +197,8 @@ private data class ManageDomain(
  * Manage.
  *
  * Only domains with a working mobile workflow are listed. The design forbids adding an entry just
- * because the desktop has one (`RelaxKonOS.Mobile.V1.Design.md` §8), so Docker, Guardian, deployments
- * and web servers simply do not appear until V1-E implements them.
+ * because the desktop has one (`RelaxKonOS.Mobile.V1.Design.md` §8). Application deployments now
+ * has a read-only browser; Docker management, Guardian and web servers remain unimplemented.
  *
  * The domains sit in one group rather than in one card each: they are alternatives at the same level,
  * and stacking them made a two-item list look like a dashboard.
@@ -207,11 +207,16 @@ private data class ManageDomain(
 fun ManageScreen(
     onOpenMonitor: () -> Unit,
     onOpenProcesses: () -> Unit,
+    onOpenDeployments: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val container = app.relaxkonos.mobile.ui.common.appContainer()
 
     val domains = buildList {
+        if (container.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) {
+            add(ManageDomain(R.string.deployments_title, R.string.deployments_subtitle,
+                DesktopIcons.deployments, onOpenDeployments))
+        }
         if (container.capabilities.contains(ServerCapabilities.METRICS)) {
             add(
                 ManageDomain(

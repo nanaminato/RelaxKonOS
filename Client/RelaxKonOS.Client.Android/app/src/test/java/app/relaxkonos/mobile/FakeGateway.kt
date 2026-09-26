@@ -1,6 +1,9 @@
 package app.relaxkonos.mobile
 
 import app.relaxkonos.mobile.core.net.ApiResult
+import app.relaxkonos.mobile.core.net.DeploymentApplication
+import app.relaxkonos.mobile.core.net.DeploymentSnapshot
+import app.relaxkonos.mobile.core.net.DeploymentRuntime
 import app.relaxkonos.mobile.core.net.AuthTokens
 import app.relaxkonos.mobile.core.net.DirectoryListing
 import app.relaxkonos.mobile.core.net.DownloadSink
@@ -24,6 +27,17 @@ import java.io.InputStream
  * returned a default.
  */
 class FakeGateway : RelaxKonGateway {
+    var onDeploymentApplications: (suspend (String, String) -> ApiResult<List<DeploymentApplication>>)? = null
+    var onDeploymentSnapshot: (suspend (String, String, String) -> ApiResult<DeploymentSnapshot>)? = null
+    var onDeploymentRuntime: (suspend (String, String) -> ApiResult<DeploymentRuntime>)? = null
+
+    override suspend fun deploymentApplications(serverUrl: String, accessToken: String) =
+        requireNotNull(onDeploymentApplications)(serverUrl, accessToken)
+    override suspend fun deploymentSnapshot(serverUrl: String, accessToken: String, applicationId: String) =
+        requireNotNull(onDeploymentSnapshot)(serverUrl, accessToken, applicationId)
+    override suspend fun deploymentRuntime(serverUrl: String, accessToken: String) =
+        requireNotNull(onDeploymentRuntime)(serverUrl, accessToken)
+
     var onLogin: (suspend (String, String, CharArray) -> ApiResult<LoginSession>)? = null
     var onRefresh: (suspend (String, String) -> ApiResult<AuthTokens>)? = null
     var onLogout: (suspend (String, String, String) -> ApiResult<Unit>)? = null

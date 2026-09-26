@@ -76,6 +76,9 @@ object DesktopIcons {
     val system = R.drawable.ic_sys_navigation_computer
 
     @DrawableRes
+    val deployments = R.drawable.ic_app_application_deployments
+
+    @DrawableRes
     val storage = R.drawable.ic_sys_navigation_drive
 
     @DrawableRes

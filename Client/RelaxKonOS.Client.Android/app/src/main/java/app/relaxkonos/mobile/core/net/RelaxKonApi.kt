@@ -24,6 +24,23 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun deploymentApplications(serverUrl: String, accessToken: String): ApiResult<List<DeploymentApplication>> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.APPLICATIONS, ApplicationDeploymentWire::applications)
+
+    override suspend fun deploymentSnapshot(serverUrl: String, accessToken: String, applicationId: String): ApiResult<DeploymentSnapshot> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.application(applicationId), ApplicationDeploymentWire::snapshot)
+
+    override suspend fun deploymentRuntime(serverUrl: String, accessToken: String): ApiResult<DeploymentRuntime> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.RUNTIME, ApplicationDeploymentWire::runtime)
+
+    private suspend fun <T> deploymentRead(serverUrl: String, accessToken: String, route: String, parse: (String) -> T): ApiResult<T> =
+        when (val result = execute("GET", serverUrl, route, accessToken, null)) {
+            is ApiResult.Success -> runCatching { parse(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed deployment response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
     override suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession> {
         val body = JsonBody()
             .string("identifier", identifier.trim())
@@ -590,12 +607,15 @@ class RelaxKonApi(
      * Turns a non-2xx response into a verdict.
      *
      * The 4xx/5xx split is decided by [readsAsProblem]: a 4xx body is always a Problem, a 5xx body only
-     * when the server named a RelaxKonOS problem code. A body that is not JSON at all is never a verdict
-     * — it is the transport failure it looks like.
+     * when the server named a RelaxKonOS problem code. Bodyless or non-JSON 4xx responses still carry
+     * their HTTP verdict, including authorization middleware responses.
      */
     private fun readProblem(connection: HttpURLConnection, code: Int): ApiResult<Nothing> {
         val problem = readProblemBody(connection, code)
-            ?: return ApiResult.Transport("Server returned HTTP $code.")
+            // Authorization middleware may answer without a ProblemDetails body. Preserve the
+            // HTTP verdict so a 401 refreshes the session and a 403 is shown as a permission error.
+            ?: return if (code in 400..499) ApiResult.Problem(code, "", null)
+                else ApiResult.Transport("Server returned HTTP $code.")
         return ApiResult.Problem(status = code, code = problem.code, traceId = problem.traceId)
     }
 

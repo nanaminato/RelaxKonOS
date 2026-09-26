@@ -206,6 +206,7 @@ class AppContainer(context: Context) {
     val imageDecoder: ImageDecoder = BitmapFactoryImageDecoder()
 
     val system = SystemRepository(gateway, session)
+    val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session)
 
     /**
      * Where an unfinished upload is remembered.
