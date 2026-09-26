@@ -14,6 +14,10 @@ public static class LinuxUserFileOperations
 {
     private const int CrossDeviceLink = 18;
     private const int OpenReadOnly = 0;
+    private const int OpenWriteOnly = 1;
+    private const int OpenReadWrite = 2;
+    private const int OpenCreate = 0x40;
+    private const int OpenExclusive = 0x80;
     private const int OpenDirectory = 0x10000;
     private const int OpenNoFollow = 0x20000;
     private const int OpenCloseOnExec = 0x80000;
@@ -57,6 +61,113 @@ public static class LinuxUserFileOperations
         {
             FinishTransaction(transaction);
         }
+    }
+
+    /// <summary>
+    /// Creates the zero-length staging file for a resumable upload. A leftover file at the same path
+    /// means the session id was reused or an index entry was lost, so refusing is safer than appending
+    /// to bytes whose origin is unknown.
+    /// </summary>
+    public static bool CreateStagingFile(string path)
+    {
+        using var parent = OpenParentDirectory(path, out var name);
+        if (TryStatAt(parent, name, out _)) throw new IOException("Destination already exists.");
+        var descriptor = openat(Descriptor(parent), name,
+            OpenWriteOnly | OpenCreate | OpenExclusive | OpenNoFollow | OpenCloseOnExec,
+            Convert.ToUInt32("666", 8));
+        if (descriptor < 0)
+            throw NativeIOException("Could not create the user-execution staging file");
+        using var handle = new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+        return true;
+    }
+
+    /// <summary>
+    /// Appends exactly <paramref name="content"/> at <paramref name="offset"/> in the staging file and
+    /// returns the length the file now has. Bytes beyond the confirmed offset are discarded first, and
+    /// any failure truncates back to it, so a caller that only trusts this return value can never
+    /// resume from a partially written chunk.
+    /// </summary>
+    public static long AppendStaging(string path, long offset, long expectedBytes, byte[] content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (offset < 0 || expectedBytes < 0 || content.Length != expectedBytes)
+            throw new ArgumentException("The staging chunk does not match the declared offset arithmetic.", nameof(content));
+        using var parent = OpenParentDirectory(path, out var name);
+        if (!TryStatAt(parent, name, out var stat)) throw new FileNotFoundException();
+        if (IsDirectory(stat) || IsSymbolicLink(stat))
+            throw new IOException("A staging file must be a regular file.");
+        var descriptor = openat(Descriptor(parent), name, OpenReadWrite | OpenNoFollow | OpenCloseOnExec);
+        if (descriptor < 0)
+            throw NativeIOException("Could not open the user-execution staging file");
+        using var handle = new SafeFileHandle((IntPtr)descriptor, ownsHandle: true);
+        using var file = new FileStream(handle, FileAccess.ReadWrite, 81920, isAsync: false);
+        if (file.Length > offset) file.SetLength(offset);
+        if (file.Length != offset)
+            throw new IOException("The staging file length does not match the confirmed offset.");
+        long written;
+        try
+        {
+            file.Position = offset;
+            file.Write(content, 0, content.Length);
+            file.Flush(flushToDisk: true);
+            written = file.Length;
+        }
+        catch
+        {
+            try { file.SetLength(offset); }
+            catch (IOException) { }
+            throw;
+        }
+        return written;
+    }
+
+    /// <summary>Current length of the staging file, or -1 when it is absent or unreadable.</summary>
+    public static long StagingLength(string path)
+    {
+        try
+        {
+            using var parent = OpenParentDirectory(path, out var name);
+            if (!TryStatAt(parent, name, out var stat) || IsDirectory(stat) || IsSymbolicLink(stat))
+                return -1;
+            return checked((long)stat.Size);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or ArgumentException)
+        {
+            return -1;
+        }
+    }
+
+    /// <summary>
+    /// Removes the staging file. A missing file, a permission failure or a busy file is not an error:
+    /// the session sweep retries, and cleanup must never fail the caller's already-final operation.
+    /// </summary>
+    public static void DeleteStagingFile(string path)
+    {
+        try
+        {
+            using var parent = OpenParentDirectory(path, out var name);
+            if (!TryStatAt(parent, name, out var stat) || IsDirectory(stat)) return;
+            UnlinkAt(parent, name, removeDirectory: false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or ArgumentException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Publishes the fully received staging file as its destination by renaming it inside the same
+    /// directory, so the destination is either the old file or the new one and never a partial copy.
+    /// </summary>
+    public static LinuxPathMetadata CommitStagingFile(string path, string destination)
+    {
+        using var staging = OpenPathReference(path);
+        if (IsDirectory(staging.Stat))
+            throw new IOException("A staging file must be a regular file.");
+        using var destinationParent = OpenParentDirectory(destination, out var destinationName);
+        RenameAt(staging.ParentHandle, staging.Name, destinationParent, destinationName);
+        return GetMetadata(destination) ?? throw new FileNotFoundException();
     }
 
     public static bool Copy(string source, string destination, bool overwrite)
@@ -929,6 +1040,7 @@ public static class LinuxUserFileOperations
     [DllImport("libc.so.6", SetLastError = true)] private static extern int dup(int descriptor);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int chmod(string path, uint mode);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int openat(int directory, string path, int flags);
+    [DllImport("libc.so.6", SetLastError = true)] private static extern int openat(int directory, string path, int flags, uint mode);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int mkdirat(int directory, string path, uint mode);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int renameat(int oldDirectory, string oldPath, int newDirectory, string newPath);
     [DllImport("libc.so.6", SetLastError = true)] private static extern int renameat2(int oldDirectory, string oldPath, int newDirectory, string newPath, uint flags);

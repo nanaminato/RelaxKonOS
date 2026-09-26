@@ -31,22 +31,22 @@ public sealed class UserExecutionContextResolver(IUserRepository users, Canonica
             throw Reject(code, "The authenticated OS identity could not be verified.");
         }
 
-        if (identity.Platform == PlatformKind.Linux)
+        if (identity.Platform == HostPlatformKind.Linux)
         {
             if (!uint.TryParse(identity.Uid, out var uid) || uid is 0 or 65534
                 || (serverMode.Mode == ServerMode.System && !UserExecutionProtocol.IsEligibleLinuxUserId(uid))
-                || !UserExecutionProtocol.IsEligibleHomeDirectory(PlatformKind.Linux, identity.HomeDirectory))
+                || !UserExecutionProtocol.IsEligibleHomeDirectory(HostPlatformKind.Linux, identity.HomeDirectory))
                 throw Reject(UserExecutionProblemCode.IdentityNotExecutable, "The OS identity is not eligible for user execution.");
             if (serverMode.Mode == ServerMode.User && !IsServerEffectiveUnixUser(uid))
                 throw Reject(UserExecutionProblemCode.IdentityNotExecutable, "User Mode can execute only as the Server's effective Unix user.");
         }
-        else if (identity.Platform == PlatformKind.Windows)
+        else if (identity.Platform == HostPlatformKind.Windows)
         {
             var account = identity.Username.Split('\\', 2);
             if (serverMode.Mode != ServerMode.System || account.Length != 2
                 || !account[0].Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(identity.Uid) || !identity.Uid.StartsWith("S-1-5-", StringComparison.Ordinal)
-                || !UserExecutionProtocol.IsEligibleHomeDirectory(PlatformKind.Windows, identity.HomeDirectory))
+                || !UserExecutionProtocol.IsEligibleHomeDirectory(HostPlatformKind.Windows, identity.HomeDirectory))
                 throw Reject(UserExecutionProblemCode.IdentityNotExecutable,
                     "Only local Windows accounts with a verified profile are eligible for System Mode user execution.");
         }

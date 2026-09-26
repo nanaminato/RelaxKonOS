@@ -73,13 +73,13 @@ internal static void VerifyFileElevationSessionScope(string root)
 
 internal static void VerifyUserExecutionContextContract()
 {
-    var account = new PlatformUserInfo("1001", "nanami", RelaxKonOS.Protocol.Common.PlatformKind.Linux,
+    var account = new PlatformUserInfo("1001", "nanami", RelaxKonOS.Protocol.Common.HostPlatformKind.Linux,
         "Nanami", "/home/nanami");
     var identities = new UserExecutionIdentityProvider(account);
     var users = new InMemoryUserRepository();
     var user = users.Add(new User
     {
-        Id = Guid.NewGuid(), Username = "nanami", Platform = RelaxKonOS.Protocol.Common.PlatformKind.Linux,
+        Id = Guid.NewGuid(), Username = "nanami", Platform = RelaxKonOS.Protocol.Common.HostPlatformKind.Linux,
         PlatformIdentity = "1001", CreatedAt = DateTimeOffset.UtcNow,
     });
     var resolver = new UserExecutionContextResolver(users,
@@ -114,6 +114,39 @@ internal static void VerifyUserExecutionContextContract()
         && !UserExecutionRequestPolicy.IsValid(request with { Overwrite = true }, terminal: false)
         && !UserExecutionRequestPolicy.IsValid(request with { OperationId = Guid.Empty }, terminal: false),
         "User-execution request policy accepted an unrelated field, overwrite flag, or empty operation id.");
+
+    // Resumable upload staging reaches the effective user through the same closed channel: an append
+    // must state the confirmed offset and the exact byte count, and no other operation may carry them.
+    var stagingPath = "/home/nanami/.big.iso.9f2c1a.rkup";
+    var stagingAppend = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.FileAppendStaging,
+        Path: stagingPath, Offset: 0, ExpectedBytes: 4, ContentBase64: "AAAA", OperationId: Guid.NewGuid());
+    TestAssert.Assert(UserExecutionRequestPolicy.IsValid(stagingAppend, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingAppend with { Offset = null }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingAppend with { Offset = -1 }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingAppend with { ExpectedBytes = null }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingAppend with { ExpectedBytes = -1 }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingAppend with { ContentBase64 = null }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingAppend with { DestinationPath = "/home/nanami/big.iso" }, terminal: false),
+        "A staging append must require its confirmed offset, exact byte count, and chunk, and nothing else.");
+    TestAssert.Assert(!UserExecutionRequestPolicy.IsValid(request with { Offset = 0, ExpectedBytes = 4 }, terminal: false),
+        "Offset arithmetic must be rejected on operations that do not append a staging chunk.");
+    var stagingCreate = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.FileCreateStaging,
+        Path: stagingPath, OperationId: Guid.NewGuid());
+    var stagingCommit = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.FileCommitStaging,
+        Path: stagingPath, DestinationPath: "/home/nanami/big.iso", OperationId: Guid.NewGuid());
+    TestAssert.Assert(UserExecutionRequestPolicy.IsValid(stagingCreate, terminal: false)
+        && UserExecutionRequestPolicy.IsValid(new UserExecutionRequest(context.Identity,
+            UserExecutionOperationKind.FileGetStagingLength, Path: stagingPath, OperationId: Guid.NewGuid()),
+            terminal: false)
+        && UserExecutionRequestPolicy.IsValid(new UserExecutionRequest(context.Identity,
+            UserExecutionOperationKind.FileDeleteStaging, Path: stagingPath, OperationId: Guid.NewGuid()),
+            terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingCreate with { Offset = 0 }, terminal: false),
+        "Staging operations other than an append must not carry offset arithmetic.");
+    TestAssert.Assert(UserExecutionRequestPolicy.IsValid(stagingCommit, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingCommit with { DestinationPath = null }, terminal: false)
+        && !UserExecutionRequestPolicy.IsValid(stagingCommit with { ContentBase64 = "AAAA" }, terminal: false),
+        "A staging commit must name its destination and must not carry content.");
     var systemResult = new DirectUserExecutionService(new UserExecutionMode(ServerMode.System)).Validate(context, request);
     TestAssert.Assert(!systemResult.Success && systemResult.ProblemCode == UserExecutionProblemCode.HelperUnavailable,
         "System Mode user execution fails closed until its dedicated Helper is available.");
@@ -161,8 +194,8 @@ internal static void VerifyUserExecutionContextContract()
 /// </summary>
 internal static async Task VerifyUserExecutionFailsClosedAsync()
 {
-    var platform = OperatingSystem.IsWindows() ? PlatformKind.Windows : PlatformKind.Linux;
-    var account = platform == PlatformKind.Windows
+    var platform = OperatingSystem.IsWindows() ? HostPlatformKind.Windows : HostPlatformKind.Linux;
+    var account = platform == HostPlatformKind.Windows
         ? new PlatformUserInfo("S-1-5-21-100-100-100-1001", Environment.MachineName + "\\nanami", platform, "Nanami", @"C:\Users\nanami")
         : new PlatformUserInfo("1001", "nanami", platform, "Nanami", "/home/nanami");
     var identities = new UserExecutionIdentityProvider(account);
@@ -189,6 +222,14 @@ internal static async Task VerifyUserExecutionFailsClosedAsync()
         ("read", () => files.OpenRead(Path.Combine(home, "file.txt"))),
         ("create directory", () => { files.CreateDirectory(Path.Combine(home, "new")); return null; }),
         ("delete", () => { files.Delete(Path.Combine(home, "file.txt")); return null; }),
+        // Staging is the resumable-upload route into the same channel, so it must fail closed too. The
+        // two members that are best-effort by contract (length, cleanup) are covered by their own
+        // assertions instead of this list.
+        ("create staging", () => { files.CreateStagingFile(Path.Combine(home, ".big.iso.9f2c1a.rkup")); return null; }),
+        ("append staging", () => files.AppendStagingAsync(Path.Combine(home, ".big.iso.9f2c1a.rkup"), 0, 4,
+            new MemoryStream([1, 2, 3, 4])).GetAwaiter().GetResult()),
+        ("commit staging", () => files.CommitStagingFile(Path.Combine(home, ".big.iso.9f2c1a.rkup"),
+            Path.Combine(home, "big.iso"))),
     ];
     var accepted = new List<string>();
     foreach (var operation in operations)
@@ -217,7 +258,7 @@ internal static async Task VerifyWindowsUserExecutionTransportAsync()
     if (!OperatingSystem.IsWindows()) return;
     var pipeName = "relaxkonos-user-execution-test-" + Guid.NewGuid().ToString("N");
     var secret = Convert.ToBase64String(new byte[32]);
-    var identity = new UserExecutionIdentity(PlatformKind.Windows, "S-1-5-21-100-100-100-1001",
+    var identity = new UserExecutionIdentity(HostPlatformKind.Windows, "S-1-5-21-100-100-100-1001",
         Environment.MachineName + "\\nanami", @"C:\Users\nanami");
     var request = new UserExecutionRequest(identity, UserExecutionOperationKind.FileListDirectory,
         Path: identity.HomeDirectory, OperationId: Guid.NewGuid());
@@ -252,7 +293,7 @@ internal static async Task VerifyUserExecutionTransportLifecycleAsync(string roo
     await File.WriteAllTextAsync(fakeSudo, "#!/bin/sh\nexec /bin/sleep 30\n");
     await File.WriteAllTextAsync(fakeHelper, "placeholder");
     File.SetUnixFileMode(fakeSudo, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-    var identity = new UserExecutionIdentity(PlatformKind.Linux, "1001", "nanami", "/home/nanami");
+    var identity = new UserExecutionIdentity(HostPlatformKind.Linux, "1001", "nanami", "/home/nanami");
     var request = new UserExecutionRequest(identity, UserExecutionOperationKind.FileGetSpecialLocations,
         OperationId: Guid.NewGuid());
 
@@ -722,9 +763,61 @@ internal static void VerifyLinuxUserFileOperationCommit(string root)
     }
 }
 
+/// <summary>
+/// The staging primitives a resumable upload depends on: an append must confirm exactly the declared
+/// bytes and must never keep a partial chunk, and the commit must stay a same-directory rename.
+/// </summary>
+internal static void VerifyLinuxUserStagingOperations(string root)
+{
+    if (!OperatingSystem.IsLinux()) return;
+    var operationRoot = Path.Combine(root, "linux-user-staging");
+    Directory.CreateDirectory(operationRoot);
+    var staging = Path.Combine(operationRoot, ".big.iso.9f2c1a.rkup");
+    var destination = Path.Combine(operationRoot, "big.iso");
+
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateStagingFile(staging);
+    TestAssert.Assert(File.Exists(staging) && new FileInfo(staging).Length == 0,
+        "Creating a staging file did not produce an empty file.");
+    var reusedRejected = false;
+    try { RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateStagingFile(staging); }
+    catch (IOException) { reusedRejected = true; }
+    TestAssert.Assert(reusedRejected, "An existing staging file must not be reused silently.");
+
+    TestAssert.Assert(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.AppendStaging(staging, 0, 4,
+            [1, 2, 3, 4]) == 4,
+        "Appending the first staging chunk did not report the confirmed length.");
+    // An attempt interrupted before the session index advanced leaves unconfirmed bytes behind. The next
+    // append must discard them rather than write after them, or a resumed upload would corrupt the file.
+    File.AppendAllText(staging, "stale");
+    TestAssert.Assert(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.AppendStaging(staging, 4, 2,
+                [5, 6]) == 6
+        && File.ReadAllBytes(staging).SequenceEqual<byte>([1, 2, 3, 4, 5, 6]),
+        "A staging append did not discard unconfirmed bytes beyond the confirmed offset.");
+    TestAssert.Assert(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.StagingLength(staging) == 6,
+        "Staging length did not report the confirmed length.");
+    TestAssert.Assert(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.StagingLength(destination) == -1,
+        "Staging length must report -1 for a file that does not exist.");
+    var mismatchRejected = false;
+    try { RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.AppendStaging(staging, 6, 4, [1, 2]); }
+    catch (ArgumentException) { mismatchRejected = true; }
+    TestAssert.Assert(mismatchRejected,
+        "A staging chunk whose size disagrees with its declaration was accepted.");
+
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CommitStagingFile(staging, destination);
+    TestAssert.Assert(!File.Exists(staging)
+        && File.ReadAllBytes(destination).SequenceEqual<byte>([1, 2, 3, 4, 5, 6]),
+        "Committing a staging file did not rename it onto its destination.");
+
+    RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.DeleteStagingFile(destination);
+    var secondDeleteThrew = false;
+    try { RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.DeleteStagingFile(destination); }
+    catch { secondDeleteThrew = true; }
+    TestAssert.Assert(!File.Exists(destination) && !secondDeleteThrew,
+        "Deleting a staging file must remove it and must not fail when it is already gone.");
+}
+
 [System.Runtime.InteropServices.DllImport("libc.so.6", EntryPoint = "mkfifo", SetLastError = true)]
 private static extern int MkFifo(string path, uint mode);
-
 [System.Runtime.InteropServices.DllImport("libc.so.6", EntryPoint = "kill", SetLastError = true)]
 private static extern int Kill(int processId, int signal);
 

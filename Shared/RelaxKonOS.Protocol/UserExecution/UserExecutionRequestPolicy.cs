@@ -22,36 +22,52 @@ public static class UserExecutionRequestPolicy
         var noTerminal = request.TerminalShell is null && request.TerminalColumns is null
             && request.TerminalRows is null && request.TerminalWidthPixels is null
             && request.TerminalHeightPixels is null;
+        var noStaging = request.Offset is null && request.ExpectedBytes is null;
 
         return request.Operation switch
         {
             UserExecutionOperationKind.FileGetSpecialLocations => !terminal && request.Path is null
-                && noDestination && noName && noContent && noMode && noGit && noTerminal && !request.Overwrite,
+                && noDestination && noName && noContent && noMode && noGit && noTerminal && noStaging
+                && !request.Overwrite,
             UserExecutionOperationKind.FileListDirectory or UserExecutionOperationKind.FileGetInfo
                 or UserExecutionOperationKind.FileRead or UserExecutionOperationKind.FileDelete
                 or UserExecutionOperationKind.FileCreateDirectory or UserExecutionOperationKind.FileGetProperties
                 => !terminal && request.Path is not null && noDestination && noName && noContent
-                    && noMode && noGit && noTerminal && !request.Overwrite,
+                    && noMode && noGit && noTerminal && noStaging && !request.Overwrite,
             UserExecutionOperationKind.FileWrite => !terminal && request.Path is not null
                 && noDestination && noName && request.ContentBase64 is not null && noMode
-                && noGit && noTerminal && !request.Overwrite,
+                && noGit && noTerminal && noStaging && !request.Overwrite,
             UserExecutionOperationKind.FileRename => !terminal && request.Path is not null
                 && noDestination && request.NewName is not null && request.FileName is null
-                && noContent && noMode && noGit && noTerminal && !request.Overwrite,
+                && noContent && noMode && noGit && noTerminal && noStaging && !request.Overwrite,
             UserExecutionOperationKind.FileMove or UserExecutionOperationKind.FileCopy => !terminal
                 && request.Path is not null && request.DestinationPath is not null && noName
-                && noContent && noMode && noGit && noTerminal,
+                && noContent && noMode && noGit && noTerminal && noStaging,
             UserExecutionOperationKind.FileUpload => !terminal && request.Path is not null
                 && noDestination && request.NewName is null && request.FileName is not null
-                && request.ContentBase64 is not null && noMode && noGit && noTerminal && !request.Overwrite,
+                && request.ContentBase64 is not null && noMode && noGit && noTerminal && noStaging
+                && !request.Overwrite,
             UserExecutionOperationKind.FileSetUnixPermissions => !terminal && request.Path is not null
                 && noDestination && noName && noContent && request.UnixMode is not null
-                && noGit && noTerminal && !request.Overwrite,
+                && noGit && noTerminal && noStaging && !request.Overwrite,
+            // Staging operations act on one path beside which the destination already lives, except the
+            // commit that publishes a fully received staging file under its destination name.
+            UserExecutionOperationKind.FileCreateStaging or UserExecutionOperationKind.FileGetStagingLength
+                or UserExecutionOperationKind.FileDeleteStaging => !terminal && request.Path is not null
+                    && noDestination && noName && noContent && noMode && noGit && noTerminal && noStaging
+                    && !request.Overwrite,
+            UserExecutionOperationKind.FileAppendStaging => !terminal && request.Path is not null
+                && noDestination && noName && request.ContentBase64 is not null && noMode && noGit
+                && noTerminal && request.Offset is >= 0 && request.ExpectedBytes is >= 0
+                && !request.Overwrite,
+            UserExecutionOperationKind.FileCommitStaging => !terminal && request.Path is not null
+                && request.DestinationPath is not null && noName && noContent && noMode && noGit
+                && noTerminal && noStaging && !request.Overwrite,
             UserExecutionOperationKind.GitExecute => !terminal && request.Path is not null
                 && noDestination && noName && noContent && noMode && request.GitArguments is not null
-                && noTerminal && !request.Overwrite,
+                && noTerminal && noStaging && !request.Overwrite,
             UserExecutionOperationKind.TerminalStart => terminal && request.Path is not null
-                && noDestination && noName && noContent && noMode && noGit
+                && noDestination && noName && noContent && noMode && noGit && noStaging
                 && request.TerminalColumns is not null && request.TerminalRows is not null
                 && request.TerminalWidthPixels is not null && request.TerminalHeightPixels is not null
                 && !request.Overwrite,

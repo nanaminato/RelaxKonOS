@@ -17,7 +17,7 @@ public sealed class DirectUserExecutionService(IServerModeResolver serverMode) :
             return new(false, Error: "unsupported user-execution operation", ProblemCode: UserExecutionProblemCode.InvalidRequest);
         if (serverMode.Mode == ServerMode.System)
             return new(false, Error: "the System Mode user-execution Helper is not installed", ProblemCode: UserExecutionProblemCode.HelperUnavailable);
-        if (context.Identity.Platform != PlatformKind.Linux)
+        if (context.Identity.Platform != HostPlatformKind.Linux)
             return new(false, Error: "User Mode execution is supported only on Linux", ProblemCode: UserExecutionProblemCode.UnsupportedPlatform);
         return new(true);
     }

@@ -92,6 +92,13 @@ internal static class WindowsUserExecutionExecutor
             UserExecutionOperationKind.FileCreateDirectory => CreateDirectory(ValidatePath(request.Path!)),
             UserExecutionOperationKind.FileGetProperties => GetProperties(ValidatePath(request.Path!)),
             UserExecutionOperationKind.FileSetUnixPermissions => throw new UserExecutionUnsupportedException(),
+            UserExecutionOperationKind.FileCreateStaging => CreateStaging(ValidatePath(request.Path!)),
+            UserExecutionOperationKind.FileAppendStaging => AppendStaging(ValidatePath(request.Path!),
+                request.Offset!.Value, request.ExpectedBytes!.Value, Decode(request.ContentBase64!)),
+            UserExecutionOperationKind.FileGetStagingLength => StagingLength(ValidatePath(request.Path!)),
+            UserExecutionOperationKind.FileDeleteStaging => DeleteStaging(ValidatePath(request.Path!)),
+            UserExecutionOperationKind.FileCommitStaging => CommitStaging(ValidatePath(request.Path!),
+                ValidatePath(request.DestinationPath!)),
             // Git and Terminal require separate executable/PTY lifecycle work and stay fail-closed.
             UserExecutionOperationKind.GitExecute or UserExecutionOperationKind.TerminalStart
                 => throw new UserExecutionUnsupportedException(),
@@ -106,7 +113,7 @@ internal static class WindowsUserExecutionExecutor
     private static bool TryResolveLocalIdentity(UserExecutionIdentity expected, out LocalAccount account)
     {
         account = default;
-        if (expected.Platform != PlatformKind.Windows || string.IsNullOrWhiteSpace(expected.StableIdentity)
+        if (expected.Platform != HostPlatformKind.Windows || string.IsNullOrWhiteSpace(expected.StableIdentity)
             || string.IsNullOrWhiteSpace(expected.CanonicalAccount) || string.IsNullOrWhiteSpace(expected.HomeDirectory))
             return false;
         try
@@ -285,6 +292,69 @@ internal static class WindowsUserExecutionExecutor
         if (Exists(path)) throw new IOException();
         Directory.CreateDirectory(path);
         return true;
+    }
+
+    private static bool CreateStaging(string path)
+    {
+        if (Exists(path)) throw new IOException();
+        var parent = Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(parent) || !Directory.Exists(parent)) throw new DirectoryNotFoundException();
+        using var created = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1,
+            FileOptions.None);
+        return true;
+    }
+
+    private static long AppendStaging(string path, long offset, long expectedBytes, byte[] content)
+    {
+        if (offset < 0 || expectedBytes < 0 || content.Length != expectedBytes)
+            throw new ArgumentException("The staging chunk does not match the declared offset arithmetic.");
+        using var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 64 * 1024,
+            FileOptions.None);
+        // Bytes beyond the confirmed offset may be the tail of an attempt that was interrupted before the
+        // session index was advanced. They are discarded so a restarted client resumes from the index.
+        if (file.Length > offset) file.SetLength(offset);
+        if (file.Length != offset) throw new IOException("The staging file length does not match the confirmed offset.");
+        try
+        {
+            file.Position = offset;
+            file.Write(content, 0, content.Length);
+            file.Flush(flushToDisk: true);
+            return file.Length;
+        }
+        catch
+        {
+            try { file.SetLength(offset); file.Flush(flushToDisk: true); }
+            catch (IOException) { }
+            throw;
+        }
+    }
+
+    private static long StagingLength(string path)
+    {
+        try { return Exists(path) ? new FileInfo(path).Length : -1; }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or ArgumentException)
+        { return -1; }
+    }
+
+    private static bool DeleteStaging(string path)
+    {
+        try { if (Exists(path)) DeletePath(path); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or ArgumentException)
+        {
+            // Cleanup is retried by the session sweep and must never fail the caller's final operation.
+        }
+        return true;
+    }
+
+    private static FileEntryDto CommitStaging(string path, string destination)
+    {
+        if (!Exists(path)) throw new FileNotFoundException();
+        var parent = Path.GetDirectoryName(destination);
+        if (string.IsNullOrWhiteSpace(parent) || !Directory.Exists(parent)) throw new DirectoryNotFoundException();
+        CommitMove(path, destination, overwrite: true);
+        return ToFileEntry(new FileInfo(destination));
     }
 
     private static FilePropertiesDto? GetProperties(string path)

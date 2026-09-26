@@ -26,13 +26,13 @@ public static class UserExecutionProtocol
     /// reject, and a drive-qualified Windows profile is not absolute under POSIX rules. Judging a
     /// foreign platform's path with host rules would make eligibility depend on where the Server runs.
     /// </summary>
-    public static bool IsEligibleHomeDirectory(PlatformKind platform, string? homeDirectory)
+    public static bool IsEligibleHomeDirectory(HostPlatformKind platform, string? homeDirectory)
     {
         if (string.IsNullOrWhiteSpace(homeDirectory) || homeDirectory.Contains('\0')) return false;
         return platform switch
         {
-            PlatformKind.Linux => homeDirectory[0] == '/',
-            PlatformKind.Windows => Path.IsPathFullyQualified(homeDirectory),
+            HostPlatformKind.Linux => homeDirectory[0] == '/',
+            HostPlatformKind.Windows => Path.IsPathFullyQualified(homeDirectory),
             _ => false,
         };
     }
@@ -61,6 +61,14 @@ public enum UserExecutionOperationKind
     FileCreateDirectory,
     FileGetProperties,
     FileSetUnixPermissions,
+    // Resumable upload staging. A staging file lives in its destination directory, so committing it is
+    // a same-directory rename rather than a cross-volume copy, and it is created under the same
+    // permission context as the file it will become.
+    FileCreateStaging,
+    FileAppendStaging,
+    FileGetStagingLength,
+    FileDeleteStaging,
+    FileCommitStaging,
     GitExecute,
     TerminalStart,
 }
@@ -70,7 +78,7 @@ public enum UserExecutionOperationKind
 /// the canonical NSS UID and Windows uses a canonical SID.
 /// </summary>
 public sealed record UserExecutionIdentity(
-    [property: JsonPropertyName("platform")] PlatformKind Platform,
+    [property: JsonPropertyName("platform")] HostPlatformKind Platform,
     [property: JsonPropertyName("stableIdentity")] string StableIdentity,
     [property: JsonPropertyName("canonicalAccount")] string CanonicalAccount,
     [property: JsonPropertyName("homeDirectory")] string HomeDirectory);
@@ -86,6 +94,13 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("overwrite")] bool Overwrite = false,
     [property: JsonPropertyName("contentBase64")] string? ContentBase64 = null,
     [property: JsonPropertyName("unixMode")] int? UnixMode = null,
+    // Confirmed length of the staging file a chunk is appended at. It is never an offset the caller may
+    // pick: the server derives it from the session index and the Helper verifies the file really is that
+    // long before writing.
+    [property: JsonPropertyName("offset")] long? Offset = null,
+    // Exact number of bytes the chunk must contribute. A shortfall is discarded rather than partially
+    // kept, so the returned length stays the only offset a caller may treat as confirmed.
+    [property: JsonPropertyName("expectedBytes")] long? ExpectedBytes = null,
     [property: JsonPropertyName("gitArguments")] IReadOnlyList<string>? GitArguments = null,
     [property: JsonPropertyName("terminalShell")] string? TerminalShell = null,
     [property: JsonPropertyName("terminalColumns")] int? TerminalColumns = null,

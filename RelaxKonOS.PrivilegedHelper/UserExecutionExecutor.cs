@@ -160,6 +160,12 @@ public static class UserExecutionExecutor
             UserExecutionOperationKind.FileCreateDirectory => Create(path!),
             UserExecutionOperationKind.FileGetProperties => Properties(path!),
             UserExecutionOperationKind.FileSetUnixPermissions => SetMode(path!, request.UnixMode),
+            UserExecutionOperationKind.FileCreateStaging => CreateStaging(path!),
+            UserExecutionOperationKind.FileAppendStaging => AppendStaging(path!, request.Offset!.Value,
+                request.ExpectedBytes!.Value, request.ContentBase64!),
+            UserExecutionOperationKind.FileGetStagingLength => LinuxUserFileOperations.StagingLength(path!),
+            UserExecutionOperationKind.FileDeleteStaging => DeleteStaging(path!),
+            UserExecutionOperationKind.FileCommitStaging => ToFileEntry(LinuxUserFileOperations.CommitStagingFile(path!, destination!)),
             UserExecutionOperationKind.GitExecute => await GitAsync(path!, request.GitArguments),
             _ => throw new ArgumentException(),
         };
@@ -220,6 +226,10 @@ public static class UserExecutionExecutor
         return Task.FromResult(ToFileEntry(RequiredMetadata(path)));
     }
     private static bool Create(string path) => LinuxUserFileOperations.CreateDirectory(path);
+    private static bool CreateStaging(string path) => LinuxUserFileOperations.CreateStagingFile(path);
+    private static long AppendStaging(string path, long offset, long expectedBytes, string content)
+        => LinuxUserFileOperations.AppendStaging(path, offset, expectedBytes, Decode(content));
+    private static bool DeleteStaging(string path) { LinuxUserFileOperations.DeleteStagingFile(path); return true; }
     private static async Task<GitResult> GitAsync(string workingDirectory, IReadOnlyList<string>? arguments)
     {
         if (!UserExecutionGitPolicy.IsAllowed(arguments)) throw new ArgumentException();
@@ -344,7 +354,7 @@ public static class UserExecutionExecutor
     private static UserExecutionResult Fail(UserExecutionProblemCode code, string message) => new(false, Error: message, ProblemCode: code);
     private static bool TryResolve(UserExecutionIdentity expected, out Account account)
     {
-        account = default; if (expected.Platform != PlatformKind.Linux || !uint.TryParse(expected.StableIdentity, out var uid)
+        account = default; if (expected.Platform != HostPlatformKind.Linux || !uint.TryParse(expected.StableIdentity, out var uid)
             || !UserExecutionProtocol.IsEligibleLinuxUserId(uid)) return false;
         var buffer = Marshal.AllocHGlobal(1_048_576); try { if (getpwuid_r(uid, out var entry, buffer, 1_048_576, out var found) != 0 || found == IntPtr.Zero) return false; var name = Text(entry.Name); var home = Text(entry.Home); if (name != expected.CanonicalAccount || home != expected.HomeDirectory || !Path.IsPathFullyQualified(home!)) return false; account = new(name!, home!, entry.Uid, entry.Gid); return true; } finally { Marshal.FreeHGlobal(buffer); }
     }
