@@ -219,6 +219,9 @@ Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑�
 - **状态不靠颜色单独表达**：`StatusChip` 始终携带文字，图标只是补充。主机指标的阈值只在一处定义（`loadTone`）：<70% 正常、70–90% 需要留意、≥90% 视为问题。
 - **页面构成**：每个目的地以同一个 `ScreenHeader` 开头（标题 + 可选副标题 + 可选返回圆钮）；`onBack` 为 `null` 时是平板分栏形态，此时不渲染返回钮——分栏没有「返回」可退。设置类页面用「分组标题 + 分组卡」（`SectionLabel` + `SectionGroup`），页面标题不在卡内重复。列表项统一为「图标徽章 + 标题 + 两行细节 + 尾部动作」，不再把多个事实用分隔符拼成一行。
 - **图标与桌面端同源**：Android 不自绘图标集。桌面端 `Client/RelaxKonOS.Client/Assets` 是唯一来源，`Tools/Mobile/sync-desktop-icons.py` 把它镜像到 `res/drawable-nodpi/`，`ui/icons/DesktopIcons.kt` 是按语义寻址的唯一映射点。改图标必须走这个脚本，不得在 `res/drawable/` 里另画一套。
+  - **启动图标也走这条链路**：`android:icon` / `android:roundIcon` 指向 `@mipmap/ic_launcher` / `@mipmap/ic_launcher_round`，由同一脚本从 `RelaxKonOS-client-icon.png` 派生——`mipmap-*dpi/` 是 API 25 及以下的整块位图（圆角方形与圆形各一套），`mipmap-anydpi-v26/` 是自适应图标。
+  - **桌面端图标是透明背景的标记，自适应图标必须有一层背景**，因此背景取应用自己的背景渐变（`Palette.kt` 的 `backdropStart`/`backdropEnd`，即 `res/drawable/ic_launcher_background.xml`）：桌面端也把标记画在这层浅色表面上（标题栏、登录页横幅），两边因此是同一观感，而不是另起一个品牌底色。主色作底会让标记中段的深蓝糊进背景，这是刻意避开的。
+  - 标记在自适应画布上占 0.48，使其墨迹落在 72dp 遮罩圆内约 1dp 处，圆形遮罩也不会裁到它；整块位图没有遮罩，方形取 0.70、圆形取 0.68。
   - 镜像分两组，职责与桌面端一致（桌面 Dock 用应用图标，Explorer 工具栏与文件类型用字形）：`ic_app_*` 是自带上色的圆角方形应用图标，只用于顶层目的地与产品标识（底部导航、rail 头部、登录页品牌标记、首页 hero）；`ic_sys_*` 是透明彩色字形，用于页面内的表头、列表行、按钮与文件类型。
   - 位图**不做主题染色**：素材自带配色与形状，套上主题色会被压成剪影。`IconBadge` 因此用中性底色而不是 `primaryContainer`——蓝底衬黄文件夹就是染色徽章的典型坏结果。
   - 素材为 128px 见方、放在 `drawable-nodpi`（不带密度，最大 32dp 槽位在 xxxhdpi 上仍 1:1 采样）；192px 原件会多出约两兆谁也用不到的像素。

@@ -277,6 +277,53 @@ release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、�
   Windows 服务端上属主恒为空，要让那里也显示属主要求服务端补 WMI / P/Invoke（TaskManager 文档 §334）。
 - 未新增字符串键，三份 `strings.xml` 仍 295 键且键集一致。
 
+## 启动图标与桌面端一致（2026-09-26）
+
+对应要求：「将 Android 应用的图标也修改为和桌面一致」。此前 `AndroidManifest.xml` 没有声明 `android:icon`，桌面与
+任务栏用品牌标记、手机上却是系统默认图标。业务逻辑、导航与资源键未改动。
+
+- **声明图标**：`android:icon="@mipmap/ic_launcher"` 与 `android:roundIcon="@mipmap/ic_launcher_round"`。API 26
+  及以上解析到 `mipmap-anydpi-v26/` 的自适应图标，API 23–25 解析到 `mipmap-*dpi/` 的整块位图，与 minSdk 23 对齐。
+- **仍然只有一个来源**：启动图标同样由 [`Tools/Mobile/sync-desktop-icons.py`](../../../Tools/Mobile/sync-desktop-icons.py)
+  从桌面端 `Assets/RelaxKonOS-client-icon.png` 派生（`ic_app_brand` 用的就是同一张图），不会出现「应用内是品牌标记、
+  桌面图标是另一张图」。脚本按 mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi 生成三套 PNG（`ic_launcher`、`ic_launcher_round`、
+  `ic_launcher_foreground`）与两个自适应图标 XML，`--check` 一并覆盖这些文件。
+- **透明背景的标记必须自带一层背景**：桌面图标是透明背景的标记，而自适应图标的前景与背景是两层。背景取应用自己的
+  背景渐变（`ui/theme/Palette.kt` 的 `backdropStart` `#F7F9FE` → `backdropEnd` `#E7EEFA`，落在
+  `res/drawable/ic_launcher_background.xml`）——桌面端也正是把标记画在这层浅色表面上（标题栏 26dp 槽位、登录页
+  58×48 横幅），两边观感因此一致。用主色 `#1F5FA9` 作底会让标记中段的深蓝 `#103EBA` 糊进背景，这是刻意避开的。
+- **标记按遮罩反推尺寸**：标记的墨迹从中心最远到自身边长的 0.67 处，所以「占画布多少」实际是「哪个遮罩装得下」。
+  自适应图标是 108dp 画布、72dp 遮罩，取 0.48（墨迹落在遮罩圆内约 1dp）；API 25 及以下的圆角方形整块位图没有
+  遮罩，取 0.70；圆形整块位图丢掉方形能留的角，取 0.68 才与方形读起来一样满。取 0.58 时紫色尖角会被圆形遮罩切平，
+  已修正。圆角方形位图的圆角半径取边长 0.22，与设计文档 §6「圆角四档」的 10dp 档同一量级。
+- **顺带补齐 6 个此前未被镜像的图标**（`ic_app_server_center`、`ic_app_ssh_files`、`ic_sys_file_link`、
+  `ic_sys_toolbar_download`、`ic_sys_toolbar_upload`、`ic_sys_toolbar_upload_folder`）：桌面端在 SSH 合并里加了这些
+  素材，Android 侧漏跑脚本。Kotlin 目前尚未引用它们，但补齐前 `--check` 是失败的。
+
+校验：完整跑通 `:app:assembleDebug`（Gradle 9.7.1、JDK 21、`--offline`）产出 `app-debug.apk`；
+`aapt2 dump badging` 输出 `application: icon='res/mipmap-anydpi-v26/ic_launcher.xml'`（120–640 dpi 六档一致），
+`aapt2 dump resources` 确认 `mipmap/ic_launcher`、`mipmap/ic_launcher_round`、`mipmap/ic_launcher_foreground`
+与 `drawable/ic_launcher_background` 均已登记。
+
+**尚未真机确认**：圆形 / 圆角方形 / 圆角矩形三种启动器形状下的实际观感，以及深色壁纸上近白底图标是否过淡。
+
+## 编译阻塞修复：ServerCenterScreen 的 weight 导入（2026-09-26）
+
+`:app:assembleDebug` 此前编译失败：
+
+```
+e: ServerCenterScreen.kt:10:43 Cannot access 'val RowColumnParentData?.weight: Float': it is internal in file.
+```
+
+`ServerCenterScreen.kt` 第 10 行写了 `import androidx.compose.foundation.layout.weight`。Compose 里 `Modifier.weight()`
+是 `RowScope` / `ColumnScope` 的作用域成员，没有可导入的顶层同名函数；该包中确实存在一个名为 `weight` 的声明，但它是
+`RowColumnParentData` 的 internal 扩展属性（布局内部用的数据槽），于是这一行导入解析到了它，报「internal in file」。
+全模块只有这一个文件这么写，其余文件都在 `Row` / `Column` 内部直接用 `Modifier.weight(...)`。
+
+修法是删掉该导入：两处调用点（第 135、136 行）本来就在 `Row` 的 lambda 里，`weight` 由隐式 `RowScope` 接收者提供。
+这与仓库 API 演进策略一致——不留兼容垫片，直接把当前接口用对。该文件是 SSH 合并提交 `f0696d5f` 带进来的，
+与启动图标改动无关。
+
 ## 已知限制
 
 - 连接保险箱的密码被服务端拒绝时**不**删除（§7.3）。代价是：用户已在服务端改密后，本机那条旧密码会一直失败，直到手动输入新密码并在成功后保存覆盖它。这是有意选择——删除只在用户显式「忘记密码」或「删除登录记录」时发生。
@@ -301,7 +348,8 @@ release 下 sink 不安装即 no-op）：`login.decision`（走哪条路径、�
   认证状态机、保险箱加解密与 AAD 绑定、提权单次重试、生物识别能力映射、wire 时间戳解析、导航栈、能力门控、
   桌面端文件图标判定顺序、应用语言归属。
 - 图标资源来自桌面端，不手工维护：改了 `Client/RelaxKonOS.Client/Assets` 下的图标后，运行
-  [`Tools/Mobile/sync-desktop-icons.py`](../../../Tools/Mobile/sync-desktop-icons.py) 重新镜像到 `app/src/main/res/drawable-nodpi/`；
+  [`Tools/Mobile/sync-desktop-icons.py`](../../../Tools/Mobile/sync-desktop-icons.py) 重新镜像到 `app/src/main/res/drawable-nodpi/`，
+  并重新派生 `app/src/main/res/mipmap-*dpi/`、`mipmap-anydpi-v26/` 与 `drawable/ic_launcher_background.xml` 的启动图标；
   提交前可用 `--check` 让它只报差异而不写文件（有差异时返回非零退出码）。
 
 最近一次校验（2026-09-23）：
