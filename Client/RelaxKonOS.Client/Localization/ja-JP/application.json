@@ -3,6 +3,10 @@
     "Strings": {
         "application.relaxkonos.welcome.display_name": "ようこそ",
         "application.relaxkonos.terminal.display_name": "ターミナル",
+        "application.relaxkonos.server-center.display_name": "サーバーをインストールまたは管理",
+        "application.relaxkonos.ssh-files.display_name": "SSH ファイル",
+        "application.relaxkonos.server-center.description": "SSH ホストと RelaxKonOS のインストールを管理します",
+        "application.relaxkonos.ssh-files.description": "SFTP でファイルを閲覧および転送します",
         "application.relaxkonos.notepad.display_name": "メモ帳",
         "application.relaxkonos.settings.display_name": "設定",
         "application.relaxkonos.codeeditor.display_name": "コード エディター",

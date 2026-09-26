@@ -21,6 +21,7 @@ using RelaxKonOS.AppSDK;
 using RelaxKonOS.Core.Applications;
 using RelaxKonOS.Core.Input;
 using RelaxKonOS.Core.Primitives;
+using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Workspace;
 using RelaxKonOS.Runtime;
@@ -194,32 +195,53 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
     }
 
     private static Task<AdministratorCredentials?> RequestAdministratorCredentialsAsync(AppContext context, string title, string prompt)
-        => context.WindowManager.ShowSystemDialogAsync<AdministratorCredentials?>(title, dialog =>
+    {
+        var session = context.Services.GetService(typeof(IAuthSession)) as IAuthSession;
+        // 服务端把"账户框留空"解释为"本次会话登录所用的宿主账户"（FileEndpoints.GrantElevation
+        // 取 JWT name 声明交给 HostAdministratorAuthenticator）。因此把同一个规范宿主账户预填进去
+        // 只是把这个隐式默认值显性化、可编辑，不改变被校验的账户。
+        // 不能默认填 ".\Administrator"：常见情形下宿主管理员就是登录账户本人，而且一旦框里非空，
+        // 服务端会**直接采用**它而不再回退，等于替用户指定错了账户。
+        var defaultAccount = session?.CurrentUser?.Username;
+        // 账户框只对 Windows 宿主有意义：HostAdministratorAuthenticator 在 Windows 用 LogonUser
+        // 校验指定账户是否属于 Administrators，而在 Linux 上它只校验"当前登录宿主账户"的 PAM 密码，
+        // 传进来的账户名被完全忽略。所以 Linux 宿主不显示这个必然空转的输入框。
+        // 判据取**服务端**平台而不是客户端进程所在的 OS：Windows 客户端连 Linux 时同样不该出现。
+        // 平台未知时保守显示——在 Linux 上多一个无副作用的输入框，好过让 Windows 无法指定账户。
+        var showAccount = session?.CurrentServer?.Platform is not HostPlatformKind.Linux;
+        return context.WindowManager.ShowSystemDialogAsync<AdministratorCredentials?>(title, dialog =>
         {
-            // 服务端把"账户框留空"解释为"本次会话登录所用的宿主账户"（FileEndpoints.GrantElevation
-            // 取 JWT name 声明交给 HostAdministratorAuthenticator）。因此把同一个规范宿主账户预填进去
-            // 只是把这个隐式默认值显性化、可编辑，不改变被校验的账户。
-            // 不能默认填 ".\Administrator"：常见情形下宿主管理员就是登录账户本人，而且一旦框里非空，
-            // 服务端会**直接采用**它而不再回退，等于替用户指定错了账户。
-            var defaultAccount = (context.Services.GetService(typeof(IAuthSession)) as IAuthSession)?.CurrentUser?.Username;
-            var username = new TextBox { Text = defaultAccount ?? string.Empty, PlaceholderText = "管理员账户（例如 .\\Administrator）" };
-            var password = new TextBox { PasswordChar = '•', PlaceholderText = "管理员密码" };
+            var account = showAccount
+                ? new TextBox
+                {
+                    Text = defaultAccount ?? string.Empty,
+                    PlaceholderText = LocalizedText.Get("explorer.operations.elevation_account"),
+                }
+                : null;
+            var password = new TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("explorer.operations.elevation_password") };
             var cancel = new Button { Content = LocalizedText.Get("common.cancel") };
             cancel.Click += (_, _) => dialog.Cancel();
             var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
-            confirm.Click += (_, _) => dialog.Close(new AdministratorCredentials(username.Text ?? string.Empty, password.Text ?? string.Empty));
-            return new StackPanel
+            confirm.Click += (_, _) =>
+            {
+                // 账户框被清空时回退到登录账户：服务端只在收到 null 时才回退，空串会被判为
+                // "elevation-administrator-username-required"。
+                var typed = account?.Text?.Trim();
+                dialog.Close(new AdministratorCredentials(
+                    string.IsNullOrEmpty(typed) ? defaultAccount ?? string.Empty : typed,
+                    password.Text ?? string.Empty));
+            };
+            var content = new StackPanel
             {
                 Margin = new Thickness(20), Spacing = 12,
-                Children =
-                {
-                    new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap },
-                    username,
-                    password,
-                    new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } },
-                },
+                Children = { new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap } },
             };
-        }, new Size(420, 230));
+            if (account is not null) content.Children.Add(account);
+            content.Children.Add(password);
+            content.Children.Add(new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, confirm } });
+            return content;
+        }, new Size(420, showAccount ? 230 : 200));
+    }
 
     private static void ConfigureOperationsWindow(AppContext context, ExplorerOperationCenter center)
     {
@@ -398,7 +420,9 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
             }
             catch (RelaxKonOSAuthException ex) when (ex.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
             {
-                var credentials = await RequestAdministratorCredentialsAsync(context, "管理员认证", "此位置需要管理员权限才能访问。");
+                var credentials = await RequestAdministratorCredentialsAsync(context,
+                    LocalizedText.Get("explorer.operations.elevation_title"),
+                    LocalizedText.Get("explorer.operations.elevation_access_prompt"));
                 if (credentials is null) return false;
                 try
                 {
@@ -407,7 +431,9 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 }
                 catch (RelaxKonOSAuthException retry) when (retry.Type.EndsWith("/elevation-password-invalid", StringComparison.Ordinal))
                 {
-                    await (vm.ShowMessageAsync?.Invoke("管理员认证", "管理员账户或密码不正确。") ?? Task.CompletedTask);
+                    await (vm.ShowMessageAsync?.Invoke(
+                        LocalizedText.Get("explorer.operations.elevation_title"),
+                        LocalizedText.Get("explorer.operations.elevation_failed")) ?? Task.CompletedTask);
                     return false;
                 }
             }

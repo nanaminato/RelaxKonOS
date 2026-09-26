@@ -3,6 +3,11 @@
   "Strings": {
     "server_center.open": "Install or manage a server",
     "server_center.title": "Server centre",
+    "server_center.page.hosts": "Hosts",
+    "server_center.page.connection": "SSH connection",
+    "server_center.page.deployment": "Installation and maintenance",
+    "server_center.page.history": "Operation history",
+    "server_center.select_host_hint": "Select a host on the Hosts page first.",
     "server_center.subtitle": "Manage the SSH hosts used to install and maintain RelaxKonOS servers.",
     "server_center.hosts": "Managed hosts",
     "server_center.empty": "No managed hosts have been added on this device.",

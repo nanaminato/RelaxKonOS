@@ -202,7 +202,10 @@
         "explorer.operations.outcome.cleanup-failed": "临时文件清理失败",
         "explorer.operations.current_file": "当前文件进度（准备、排队或原子操作时无法计算百分比）",
         "explorer.operations.elevation_title": "管理员认证",
-        "explorer.operations.elevation_password": "请输入当前管理员密码",
-        "explorer.operations.elevation_prompt": "此操作需要管理员权限。授权在当前会话中保留 5 分钟。"
+        "explorer.operations.elevation_account": "管理员账户（例如 .\\Administrator）",
+        "explorer.operations.elevation_password": "管理员密码",
+        "explorer.operations.elevation_prompt": "此操作需要管理员权限。授权在当前会话中保留 5 分钟。",
+        "explorer.operations.elevation_access_prompt": "此位置需要管理员权限才能访问。",
+        "explorer.operations.elevation_failed": "管理员账户或密码不正确。"
     }
 }

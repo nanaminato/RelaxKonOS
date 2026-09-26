@@ -3,6 +3,10 @@
     "Strings": {
         "application.relaxkonos.welcome.display_name": "Welcome",
         "application.relaxkonos.terminal.display_name": "Terminal",
+        "application.relaxkonos.server-center.display_name": "Install or manage server",
+        "application.relaxkonos.ssh-files.display_name": "SSH files",
+        "application.relaxkonos.server-center.description": "SSH hosts and RelaxKonOS installation",
+        "application.relaxkonos.ssh-files.description": "Browse and transfer files over SFTP",
         "application.relaxkonos.notepad.display_name": "Notebook",
         "application.relaxkonos.settings.display_name": "Settings",
         "application.relaxkonos.codeeditor.display_name": "Code Editor",

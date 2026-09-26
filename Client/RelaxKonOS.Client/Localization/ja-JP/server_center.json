@@ -3,6 +3,11 @@
   "Strings": {
     "server_center.open": "サーバーをインストールまたは管理",
     "server_center.title": "サーバーセンター",
+    "server_center.page.hosts": "ホスト",
+    "server_center.page.connection": "SSH 接続",
+    "server_center.page.deployment": "インストールと保守",
+    "server_center.page.history": "操作履歴",
+    "server_center.select_host_hint": "まず「ホスト」ページでホストを選択してください。",
     "server_center.subtitle": "RelaxKonOS サーバーのインストールと保守に使用する SSH ホストを管理します。",
     "server_center.hosts": "管理対象ホスト",
     "server_center.empty": "このデバイスには管理対象ホストがまだ追加されていません。",
