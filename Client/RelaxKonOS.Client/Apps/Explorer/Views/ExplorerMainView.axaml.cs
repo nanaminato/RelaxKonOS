@@ -12,6 +12,9 @@ namespace RelaxKonOS.Client.Apps.Explorer.Views;
 
 public partial class ExplorerMainView : UserControl
 {
+    public static readonly StyledProperty<double> EntriesTableWidthProperty =
+        AvaloniaProperty.Register<ExplorerMainView, double>(nameof(EntriesTableWidth));
+
     private sealed record ExplorerDragPayload(ExplorerViewModel Source, IReadOnlyList<FileSystemEntryDto> Entries);
     private static readonly DataFormat<ExplorerDragPayload> ExplorerEntriesFormat =
         DataFormat.CreateInProcessFormat<ExplorerDragPayload>("relaxkonos/explorer-entries");
@@ -25,12 +28,27 @@ public partial class ExplorerMainView : UserControl
     private readonly ContextMenu? _entryContextMenu;
     private ExplorerViewModel? _attachedViewModel;
 
+    /// <summary>Combined live width of the details columns, used to constrain row layout.</summary>
+    public double EntriesTableWidth
+    {
+        get => GetValue(EntriesTableWidthProperty);
+        private set => SetValue(EntriesTableWidthProperty, value);
+    }
+
     public ExplorerMainView()
     {
         InitializeComponent();
         _entryContextMenu = EntriesGrid.ContextMenu;
         EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
+        EntriesGrid.LayoutUpdated += EntriesGrid_LayoutUpdated;
         DataContextChanged += ExplorerMainView_DataContextChanged;
+    }
+
+    private void EntriesGrid_LayoutUpdated(object? sender, EventArgs e)
+    {
+        var width = EntriesGrid.Columns.Sum(column => column.ActualWidth);
+        if (width <= 0 || Math.Abs(width - EntriesTableWidth) < 0.1) return;
+        EntriesTableWidth = width;
     }
 
     private void ExplorerMainView_DataContextChanged(object? sender, EventArgs e)
@@ -126,13 +144,6 @@ public partial class ExplorerMainView : UserControl
         if (IsWithinTextBox(e.Source)) return;
         if (FindDataContext<FileSystemEntryDto>(e.Source) is { } entry && ViewModel is { IsBusy: false } vm)
             _ = vm.InvokeEntryAsync(entry);
-    }
-
-    private void EntriesGrid_Sorting(object? sender, DataGridColumnEventArgs e)
-    {
-        e.Handled = true; // One folder-first ordering for column headers and the command bar.
-        if (ViewModel is not { IsBusy: false } vm) return;
-        if (Enum.TryParse<ExplorerSortField>(e.Column.SortMemberPath, out var field)) vm.SortBy(field);
     }
 
     private void EntriesGrid_SelectionChanged(object? sender, SelectionChangedEventArgs e)

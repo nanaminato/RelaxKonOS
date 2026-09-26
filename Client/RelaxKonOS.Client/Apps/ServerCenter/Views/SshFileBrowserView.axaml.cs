@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using RelaxKonOS.Client.Apps.Explorer.Models;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.ServerCenter;
@@ -14,6 +15,9 @@ namespace RelaxKonOS.Client.Apps.ServerCenter.Views;
 
 internal partial class SshFileBrowserView : UserControl
 {
+    public static readonly StyledProperty<double> EntriesTableWidthProperty =
+        AvaloniaProperty.Register<SshFileBrowserView, double>(nameof(EntriesTableWidth));
+
     private readonly SshDesktopSession _session;
     private readonly List<string> _history = [];
     private readonly List<SshFileEntry> _clipboard = [];
@@ -34,13 +38,27 @@ internal partial class SshFileBrowserView : UserControl
     private TreeNodeModel? _homeNode;
     private TreeNodeModel? _rootNode;
 
+    /// <summary>Combined live width of the details columns, used to constrain row layout.</summary>
+    public double EntriesTableWidth
+    {
+        get => GetValue(EntriesTableWidthProperty);
+        private set => SetValue(EntriesTableWidthProperty, value);
+    }
+
     public SshFileBrowserView(SshDesktopSession session)
     {
         _session = session;
         InitializeComponent();
         NavigationTree.ItemsSource = _navigationNodes;
         _viewReady = true;
-        KeyDown += View_KeyDown;
+        // The grid marks pointer presses as handled while it updates the selection, so the
+        // right-click handler has to run in the tunnel phase (same as ExplorerMainView).
+        EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
+        EntriesGrid.LayoutUpdated += EntriesGrid_LayoutUpdated;
+        // The details grid consumes a few keys itself (F2 starts an edit, Ctrl+C copies cell text).
+        // Registering with handledEventsToo keeps the browser shortcuts — F5, F2, Delete,
+        // Alt+arrows, Ctrl+C/X/V/A/F and Escape — working while the list has focus.
+        AddHandler(KeyDownEvent, View_KeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
         AttachedToVisualTree += async (_, _) =>
         {
             if (_initialized) return;
@@ -48,6 +66,13 @@ internal partial class SshFileBrowserView : UserControl
             await NavigateAsync(".");
         };
         UpdateControls();
+    }
+
+    private void EntriesGrid_LayoutUpdated(object? sender, EventArgs e)
+    {
+        var width = EntriesGrid.Columns.Sum(column => column.ActualWidth);
+        if (width <= 0 || Math.Abs(width - EntriesTableWidth) < 0.1) return;
+        EntriesTableWidth = width;
     }
 
     private async void Back_Click(object? sender, RoutedEventArgs e) => await BackAsync();
@@ -68,7 +93,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async void Open_Click(object? sender, RoutedEventArgs e)
     {
-        if (FilesList.SelectedItem is SshFileEntry { IsDirectory: true } entry)
+        if (EntriesGrid.SelectedItem is SshFileEntry { IsDirectory: true } entry)
             await NavigateAsync(entry.Path);
     }
 
@@ -113,23 +138,31 @@ internal partial class SshFileBrowserView : UserControl
         await NavigateAsync(path);
     }
 
-    private void FilesList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private void EntriesGrid_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_viewReady) UpdateControls();
     }
 
-    private void FilesList_PointerPressed(object? sender, PointerPressedEventArgs e)
+    private void EntriesGrid_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(FilesList).Properties.IsRightButtonPressed || e.Source is not Control control) return;
-        while (control is not ListBoxItem && control.Parent is Control parent) control = parent;
-        if (control is ListBoxItem { DataContext: SshFileEntry entry } && !Selection().Contains(entry))
-            FilesList.SelectedItem = entry;
+        if (!e.GetCurrentPoint(EntriesGrid).Properties.IsRightButtonPressed) return;
+        if (FindDataContext<SshFileEntry>(e.Source) is { } entry && !Selection().Contains(entry))
+            EntriesGrid.SelectedItem = entry;
     }
 
-    private async void FilesList_DoubleTapped(object? sender, TappedEventArgs e)
+    private async void EntriesGrid_DoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (FilesList.SelectedItem is SshFileEntry { IsDirectory: true } entry)
-            await NavigateAsync(entry.Path);
+        // Activate the row under the pointer rather than the previous selection.
+        var entry = FindDataContext<SshFileEntry>(e.Source) ?? EntriesGrid.SelectedItem as SshFileEntry;
+        if (entry is { IsDirectory: true }) await NavigateAsync(entry.Path);
+    }
+
+    private static T? FindDataContext<T>(object? source) where T : class
+    {
+        for (var control = source as Control; control is not null; control = control.GetVisualParent() as Control)
+            if (control.DataContext is T value)
+                return value;
+        return null;
     }
 
     private void FileMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -159,11 +192,10 @@ internal partial class SshFileBrowserView : UserControl
         else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.A)
         {
             e.Handled = true;
-            foreach (var item in FilesList.ItemsSource?.OfType<SshFileEntry>() ?? [])
-                if (FilesList.SelectedItems?.Contains(item) == false) FilesList.SelectedItems.Add(item);
+            EntriesGrid.SelectAll();
         }
         else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.F) { e.Handled = true; SearchBox.Focus(); }
-        else if (e.Key == Key.Escape) { e.Handled = true; FilesList.SelectedItems?.Clear(); }
+        else if (e.Key == Key.Escape) { e.Handled = true; EntriesGrid.SelectedItems.Clear(); }
     }
 
     private SftpClient OpenClient()
@@ -340,7 +372,7 @@ internal partial class SshFileBrowserView : UserControl
         UpdateControls();
     }
 
-    private SshFileEntry[] Selection() => FilesList.SelectedItems?.OfType<SshFileEntry>().ToArray() ?? [];
+    private SshFileEntry[] Selection() => EntriesGrid.SelectedItems.OfType<SshFileEntry>().ToArray();
 
     private void ApplyView()
     {
@@ -362,14 +394,14 @@ internal partial class SshFileBrowserView : UserControl
             3 => file.Size,
             _ => file.Name,
         }, Comparer<IComparable>.Default);
-        FilesList.ItemsSource = entries.ToArray();
+        EntriesGrid.ItemsSource = entries.ToArray();
         UpdateControls();
     }
 
     private void UpdateControls()
     {
         var selected = Selection();
-        var count = (FilesList.ItemsSource as SshFileEntry[])?.Length ?? 0;
+        var count = (EntriesGrid.ItemsSource as SshFileEntry[])?.Length ?? 0;
         SummaryText.Text = selected.Length == 0
             ? string.Format(T("ssh_files.count", "{0} items"), count)
             : string.Format(T("ssh_files.selected_count", "{0} selected · {1} items"), selected.Length, count);
@@ -388,7 +420,7 @@ internal partial class SshFileBrowserView : UserControl
 
     private async Task ShowPropertiesAsync()
     {
-        if (FilesList.SelectedItem is not SshFileEntry entry || TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (EntriesGrid.SelectedItem is not SshFileEntry entry || TopLevel.GetTopLevel(this) is not Window owner) return;
         await new SshFilePropertiesDialog(entry).ShowDialog(owner);
     }
 
@@ -699,7 +731,6 @@ internal partial class SshFileBrowserView : UserControl
         return completed;
     }
 }
-
 
 
 

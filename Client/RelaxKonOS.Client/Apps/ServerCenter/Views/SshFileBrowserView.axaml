@@ -4,6 +4,7 @@
              xmlns:explorer="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Controls"
              xmlns:explorerModels="clr-namespace:RelaxKonOS.Client.Apps.Explorer.Models"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.SshFileBrowserView"
+             x:Name="Root"
              Background="{DynamicResource SurfaceBrush}">
     <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Grid ColumnDefinitions="Auto,*,180" ColumnSpacing="8" Margin="8,8,8,4">
@@ -152,56 +153,113 @@
             <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource SurfaceBrush}"
                           ResizeDirection="Columns" />
 
-            <Grid Grid.Column="2" RowDefinitions="Auto,*">
-                <Grid ColumnDefinitions="2*,140,100,100" ColumnSpacing="8" Margin="14,3">
-                    <TextBlock Text="{loc:Loc ssh_files.name}" />
-                    <TextBlock Grid.Column="1" Text="{loc:Loc ssh_files.modified}" />
-                    <TextBlock Grid.Column="2" Text="{loc:Loc ssh_files.type}" />
-                    <TextBlock Grid.Column="3" Text="{loc:Loc ssh_files.size}" />
-                </Grid>
-
-                <ListBox x:Name="FilesList" Grid.Row="1" SelectionMode="Multiple"
-                         SelectionChanged="FilesList_SelectionChanged" PointerPressed="FilesList_PointerPressed"
-                         DoubleTapped="FilesList_DoubleTapped">
-                    <ListBox.Styles>
-                        <Style Selector="ListBoxItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        </Style>
-                    </ListBox.Styles>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate x:CompileBindings="False">
-                            <Grid ColumnDefinitions="2*,140,100,100" ColumnSpacing="8" Margin="5,3">
-                                <StackPanel Orientation="Horizontal" Spacing="7">
+            <!-- 与 Windows 资源管理器一致的详细信息列表：列使用固定像素宽度，视口剩余的宽度
+                 保持空白而不是被某一列拉伸；横向滚动由 DataGrid 自身承担，纵向滚动条始终贴在
+                 整个区域的最右侧；列头分隔线可拖动调整任意列宽。 -->
+            <DataGrid Grid.Column="2"
+                      x:Name="EntriesGrid"
+                      SelectionMode="Extended"
+                      SelectionChanged="EntriesGrid_SelectionChanged"
+                      DoubleTapped="EntriesGrid_DoubleTapped"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      CanUserResizeColumns="True"
+                      CanUserSortColumns="False"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      GridLinesVisibility="None"
+                      RowHeight="28"
+                      ColumnHeaderHeight="30"
+                      Background="{DynamicResource SurfaceBrush}"
+                      BorderThickness="0">
+                <DataGrid.Styles>
+                    <Style Selector="DataGridColumnHeader">
+                        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                        <Setter Property="FontSize" Value="12" />
+                    </Style>
+                    <Style Selector="DataGridCell">
+                        <Setter Property="BorderThickness" Value="0" />
+                    </Style>
+                    <!-- Keep rows to the combined column width while the DataGrid itself
+                         fills the viewport, leaving a non-item area beside the details table. -->
+                    <Style Selector="DataGridRow">
+                        <Setter Property="Width" Value="{Binding #Root.EntriesTableWidth}" />
+                        <Setter Property="HorizontalAlignment" Value="Left" />
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                    <Style Selector="DataGridRow:pointerover">
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                    <Style Selector="DataGridRow:selected">
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
+                    </Style>
+                    <Style Selector="DataGridRow:pointerover DataGridCell">
+                        <Setter Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
+                    </Style>
+                    <Style Selector="DataGridRow:selected DataGridCell">
+                        <Setter Property="Background" Value="{DynamicResource SelectionBackgroundBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource SelectionForegroundBrush}" />
+                    </Style>
+                </DataGrid.Styles>
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="{loc:Loc ssh_files.name}" Width="300" MinWidth="180">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:CompileBindings="False">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="12,2">
                                     <explorer:ExplorerIcon EntryType="{Binding EntryType}" FileName="{Binding Name}"
                                                            Link="{Binding IsLink}" Width="20" Height="20"
                                                            VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
-                                               VerticalAlignment="Center" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="1" Text="{Binding ModifiedText}" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Grid.Column="2" Text="{Binding Kind}" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Grid.Column="3" Text="{Binding SizeText}" TextTrimming="CharacterEllipsis" />
-                            </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                    <ListBox.ContextMenu>
-                        <ContextMenu Opening="FileMenu_Opening">
-                            <MenuItem x:Name="OpenMenuItem" Header="{loc:Loc ssh_files.open}" Click="Open_Click" />
-                            <MenuItem x:Name="CopyMenuItem" Header="{loc:Loc ssh_files.copy}" Click="Copy_Click" />
-                            <MenuItem x:Name="CutMenuItem" Header="{loc:Loc ssh_files.cut}" Click="Cut_Click" />
-                            <MenuItem x:Name="PasteMenuItem" Header="{loc:Loc ssh_files.paste}" Click="Paste_Click" />
-                            <MenuItem x:Name="RenameMenuItem" Header="{loc:Loc ssh_files.rename}" Click="Rename_Click" />
-                            <MenuItem x:Name="DeleteMenuItem" Header="{loc:Loc ssh_files.delete}" Click="Delete_Click" />
-                            <MenuItem x:Name="DownloadMenuItem" Header="{loc:Loc ssh_files.download}" Click="Download_Click" />
-                            <MenuItem x:Name="PropertiesMenuItem" Header="{loc:Loc ssh_files.properties}" Click="Properties_Click" />
-                            <Separator />
-                            <MenuItem x:Name="NewFolderMenuItem" Header="{loc:Loc ssh_files.new_folder}" Click="NewFolder_Click" />
-                            <MenuItem x:Name="UploadMenuItem" Header="{loc:Loc ssh_files.upload}" Click="Upload_Click" />
-                            <MenuItem x:Name="RefreshMenuItem" Header="{loc:Loc ssh_files.refresh}" Click="Refresh_Click" />
-                        </ContextMenu>
-                    </ListBox.ContextMenu>
-                </ListBox>
-            </Grid>
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                               MaxLines="1" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="{loc:Loc ssh_files.modified}" Width="164" MinWidth="150">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:CompileBindings="False">
+                                <TextBlock Text="{Binding ModifiedText}" TextTrimming="CharacterEllipsis"
+                                           Padding="8,0" FontSize="12" VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="{loc:Loc ssh_files.type}" Width="120" MinWidth="96">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:CompileBindings="False">
+                                <TextBlock Text="{Binding Kind}" TextTrimming="CharacterEllipsis"
+                                           Padding="8,0" FontSize="12" VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="{loc:Loc ssh_files.size}" Width="112" MinWidth="96">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate x:CompileBindings="False">
+                                <TextBlock Text="{Binding SizeText}" TextTrimming="CharacterEllipsis"
+                                           Padding="8,0" FontSize="12" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+                <DataGrid.ContextMenu>
+                    <ContextMenu Opening="FileMenu_Opening">
+                        <MenuItem x:Name="OpenMenuItem" Header="{loc:Loc ssh_files.open}" Click="Open_Click" />
+                        <MenuItem x:Name="CopyMenuItem" Header="{loc:Loc ssh_files.copy}" Click="Copy_Click" />
+                        <MenuItem x:Name="CutMenuItem" Header="{loc:Loc ssh_files.cut}" Click="Cut_Click" />
+                        <MenuItem x:Name="PasteMenuItem" Header="{loc:Loc ssh_files.paste}" Click="Paste_Click" />
+                        <MenuItem x:Name="RenameMenuItem" Header="{loc:Loc ssh_files.rename}" Click="Rename_Click" />
+                        <MenuItem x:Name="DeleteMenuItem" Header="{loc:Loc ssh_files.delete}" Click="Delete_Click" />
+                        <MenuItem x:Name="DownloadMenuItem" Header="{loc:Loc ssh_files.download}" Click="Download_Click" />
+                        <MenuItem x:Name="PropertiesMenuItem" Header="{loc:Loc ssh_files.properties}" Click="Properties_Click" />
+                        <Separator />
+                        <MenuItem x:Name="NewFolderMenuItem" Header="{loc:Loc ssh_files.new_folder}" Click="NewFolder_Click" />
+                        <MenuItem x:Name="UploadMenuItem" Header="{loc:Loc ssh_files.upload}" Click="Upload_Click" />
+                        <MenuItem x:Name="RefreshMenuItem" Header="{loc:Loc ssh_files.refresh}" Click="Refresh_Click" />
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
+            </DataGrid>
         </Grid>
 
         <StackPanel Grid.Row="3" Margin="8,4" Spacing="2">

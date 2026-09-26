@@ -123,6 +123,10 @@ vm.SortBy(ExplorerSortField.Size);
 Check(vm.SortDescending && vm.Entries[1].Size == 10, "Clicking same header reverses value order");
 vm.SortBy(ExplorerSortField.Name);
 Check(!vm.SortDescending && vm.Entries[1].Name == "file2.txt", "New sort column starts ascending with natural order");
+vm.SortByCommand.Execute(ExplorerSortField.Modified);
+Check(vm.SortField == ExplorerSortField.Modified && vm.Entries[1].Modified < vm.Entries[2].Modified,
+    "Header sort command selects the requested field and reorders entries");
+vm.SortBy(ExplorerSortField.Name);
 ExplorerViewPreferences? savedView = null;
 vm.SaveViewPreferencesAsync = preferences => { savedView = preferences; return Task.CompletedTask; };
 vm.IsCompactView = true;

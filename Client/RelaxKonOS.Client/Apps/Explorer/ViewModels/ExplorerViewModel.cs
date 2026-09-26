@@ -124,6 +124,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         SortEntries();
     }
     partial void OnSortDescendingChanged(bool value) => SortEntries();
+    [RelayCommand]
     public void SortBy(ExplorerSortField field)
     {
         if (SortField == field) SortDescending = !SortDescending;
