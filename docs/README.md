@@ -86,13 +86,13 @@ RelaxKonOS 采用状态同步模式（非像素流）：Client 本地渲染 UI�
 
 内置任务管理器正在重写（RemoteTaskManager）：性能页改由 Server 端在存在订阅时运行的统一 1 秒采样器、60 秒内存历史与 SignalR（`/hubs/performance`）推送驱动；CPU/内存/文件系统/网络/磁盘 I/O 跨 Windows/Linux 统一建模，宿主机或服务身份不支持的能力会明确降级而非显示伪造数值。进程页使用查询驱动的低频采样缓存与分页查询；结束进程仍不自动提权。旧 REST metrics 契约已移除。详见 [`RelaxKonOS.TaskManager.Rewrite.md`](./applications/RelaxKonOS.TaskManager.Rewrite.md)。
 
-内置 Docker 管理器已部分落地（RemoteDocker）：本机 Docker Engine 检测与状态展示、容器启停重启、Compose 校验/部署/停止；镜像、网络、卷管理功能设计中。Server 端通过 `IDockerEngineService` 调用 `docker` CLI，`IDockerComposeService` 处理 Compose 编排。详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)。
+内置 Docker 管理器已落地（RemoteDocker）：本机 Docker Engine 检测与状态展示、容器启停重启、镜像拉取与镜像源、Compose 校验/部署/停止，以及网络与卷管理。Server 端通过 `IDockerEngineService` 调用 `docker` CLI，`IDockerComposeService` 处理 Compose 编排。详见 [`RelaxKonOS.DockerManager.md`](./applications/RelaxKonOS.DockerManager.md)。
 
-内置进程守护已部分落地（ProcessGuardian）：独立 Guardian Agent 进程、本机认证 IPC（命名管道）、工作负载的声明持久化与启停重启；健康检查、日志广播、systemd/SCM 服务适配设计中。Client 端通过 SignalR Hub 订阅守护日志。详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)。
+内置进程守护已落地（ProcessGuardian）：独立 Guardian Agent 进程、本机认证 IPC（命名管道）、工作负载声明持久化、启停重启与 SignalR 日志广播。健康检查及 systemd/SCM 服务适配仍在设计中。详见 [`RelaxKonOS.ProcessGuardian.md`](./applications/RelaxKonOS.ProcessGuardian.md)。
 
 内置防火墙应用已落地（Firewall）：仅 Linux Server + UFW，支持读取状态与编号规则、修改启用状态和默认策略、添加或删除经过结构化校验的规则。root 会话无需再次验证；其他用户每次变更均以其自身密码通过 PAM 一次性确认。Windows Server 不显示此应用。详见 [`RelaxKonOS.Firewall.md`](./applications/RelaxKonOS.Firewall.md)。
 
-内置证书管理器已落地基础闭环：ACME 证书列表、申请前预检、异步申请/取消、续期、Kestrel 部署、吊销和删除；客户端使用概览/证书列表多页工作区，申请操作在可滚动的模态对话框中完成。DNS-01、Wildcard 与 IIS/Nginx/Apache 部署仍属后续阶段。Web Server 管理器仍为**设计中**，规划 Nginx 的发现、最小侵入集成和托管模式。
+内置证书管理器已落地基础闭环：ACME 证书列表、申请前预检、异步申请/取消、续期、Kestrel 部署、吊销和删除；客户端使用概览/证书列表多页工作区，申请操作在可滚动的模态对话框中完成。DNS-01、Wildcard 与 IIS/Nginx/Apache 部署仍属后续阶段。Web Server 管理器已实现 Nginx MVP：实例与站点发现、配置快照、操作流水及管理员确认后的最小集成；更多 Provider 仍在设计中。
 
 系统采用**渐进式开发**——在本地 Shell 基础上逐步完善服务端能力：登录与身份、Workspace、安全、云同步、Storage、Remote Runtime 等。各能力的当前状态见 §8。
 
@@ -289,7 +289,7 @@ Application Package
 | **WebServerManager** | Nginx 发现、最小侵入集成与托管 | 已实现 MVP（实例/站点/配置快照/操作流水、已安装 Nginx 确认、审计落 HostGlobal；更多 Provider 设计中，详见 [`RelaxKonOS.WebServerManager.Design.md`](./applications/RelaxKonOS.WebServerManager.Design.md)） |
 | **GitClient** | 远端宿主机 Git 仓库版本控制（仓库登记、分支、提交、拉取含冲突解决、推送、历史 Log、Remotes） | 已实现 MVP（跨平台 `git` CLI 调用、凭据委托宿主 OS；详见 [`RelaxKonOS.GitClient.md`](./applications/RelaxKonOS.GitClient.md)） |
 | **TunnelManager** | FRP 内网穿透（Server Profile / 隧道定义 / Secrets / 审计） | 已实现 MVP（配置持久化 + 审计，FRP 运行时诊断与日志；替代旧 PortForwarding 桌面图标位） |
-| **Registry** | 受 schema 约束的配置注册表（键/值浏览、desired/applied 状态机、审计） | 已实现 MVP（第一阶段只读+写入，服务端落表 registry_keys/registry_entries） |
+| **Registry** | 受 schema 约束的配置注册表（键/值浏览、受控写入、desired/applied 状态机、审计） | 已实现 MVP（服务端落表 `registry_keys` / `registry_entries`） |
 | **App Installer** | 应用包（`.roapp`）安装与管理 | 已实现 |
 | **Text Encoding Support** | 记事本/代码编辑器的多编码打开与保存（UTF-8/GBK/Shift-JIS 等） | 已实现（`TextFileEncodings` 枚举 + 编码对话框，跨 Notepad/CodeEditor 复用） |
 | **Port Forwarding** | Client 本机 SSH loopback 隧道（不经 Server 同步） | 已实现（SSH 本地转发、仅监听 127.0.0.1，Client 本地配置持久化） |
@@ -439,6 +439,7 @@ RelaxKonOS.Server     = Cloud Backend
 | [`Security`](./platform/RelaxKonOS.Security.md) | 安全设计、权限提升与危险操作确认 |
 | [`PrivilegedOperations Goal`](./platform/RelaxKonOS.PrivilegedOperations.Goal.md) | 跨平台受限 Helper、Windows Server LocalSystem 服务与特权操作迁移执行计划 |
 | [`ServerCenter Goal`](./platform/RelaxKonOS.ServerCenter.Goal.md) | 桌面与 Android 的服务器中心、内置 SSH 部署及生命周期验收 |
+| [`UserModeServer Goal`](./services/RelaxKonOS.UserModeServer.Goal.md) | 无 sudo 的 Linux 用户模式服务端、SSH 隧道与能力边界 |
 | [`Storage`](./platform/RelaxKonOS.Storage.md) | EF Core + SQLite、持久化范围与表结构 |
 
 ### 桌面体验
@@ -466,10 +467,10 @@ RelaxKonOS.Server     = Cloud Backend
 | [`NetworkInspector`](./applications/RelaxKonOS.NetworkInspector.md) | 网络诊断与分析 |
 | [`PortForwarding`](./applications/RelaxKonOS.PortForwarding.md) | 本机 SSH loopback 隧道 |
 | [`ProcessGuardian`](./applications/RelaxKonOS.ProcessGuardian.md) | 守护工作负载、健康检查与服务管理 |
-| [`Registry`](./applications/RelaxKonOS.RegistryApp.md) | 配置注册表浏览与隔离边界（第一阶段只读） |
+| [`Registry`](./applications/RelaxKonOS.RegistryApp.md) | 配置注册表的浏览、受控写入与隔离边界 |
 | [`TaskManager`](./applications/RelaxKonOS.TaskManager.md) | 系统指标、进程查看与管理 |
 | [`Terminal`](./applications/RelaxKonOS.Terminal.md) | PTY、SignalR 与终端会话管理 |
-| [`WebServerManager`](./applications/RelaxKonOS.WebServerManager.Design.md) | Web Server Provider、Nginx 集成与站点管理（设计中） |
+| [`WebServerManager`](./applications/RelaxKonOS.WebServerManager.Design.md) | Nginx MVP 的发现、最小集成、站点/快照/审计；其他 Provider 仍在设计中 |
 
 ### 开发与扩展
 

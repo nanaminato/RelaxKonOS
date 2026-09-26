@@ -461,6 +461,8 @@ dotnet run
 | [RelaxKonOS.Login.md](./docs/platform/RelaxKonOS.Login.md) | 登录模块实现细节、mstsc 风格登录窗 |
 | [RelaxKonOS.Security.md](./docs/platform/RelaxKonOS.Security.md) | 安全设计、权限提升、危险操作 |
 | [RelaxKonOS.PrivilegedOperations.Goal.md](./docs/platform/RelaxKonOS.PrivilegedOperations.Goal.md) | 跨平台受限 Helper、Windows Server 支持与特权操作迁移执行计划 |
+| [RelaxKonOS.ServerCenter.Goal.md](./docs/platform/RelaxKonOS.ServerCenter.Goal.md) | 服务器中心、受信任 SSH 部署与生命周期验收 |
+| [RelaxKonOS.UserModeServer.Goal.md](./docs/services/RelaxKonOS.UserModeServer.Goal.md) | 无 sudo 的 Linux 用户模式服务端、SSH 隧道与能力边界 |
 | [RelaxKonOS.Storage.md](./docs/platform/RelaxKonOS.Storage.md) | 服务端持久化、EF Core + SQLite |
 
 ### 桌面体验
