@@ -193,11 +193,25 @@ public static class UserExecutionExecutor
                 d.CreationTimeUtc, d.LastWriteTimeUtc);
         });
     }
-    private static IReadOnlyList<SpecialLocationDto> Special(string home) => new[] { (SpecialFolderKind.Home, "主目录", home), (SpecialFolderKind.Desktop, "桌面", Path.Combine(home, "Desktop")),
-        (SpecialFolderKind.Documents, "文档", Path.Combine(home, "Documents")), (SpecialFolderKind.Downloads, "下载", Path.Combine(home, "Downloads")),
-        (SpecialFolderKind.Pictures, "图片", Path.Combine(home, "Pictures")), (SpecialFolderKind.Music, "音乐", Path.Combine(home, "Music")), (SpecialFolderKind.Videos, "视频", Path.Combine(home, "Videos")) }
-        .Where(x => LinuxUserFileOperations.GetMetadata(x.Item3) is { IsDirectory: true })
-        .Select(x => new SpecialLocationDto(x.Item1, x.Item2, x.Item3)).ToArray();
+    private static IReadOnlyList<SpecialLocationDto> Special(string home)
+    {
+        var xdgDirectories = XdgUserDirectories.Read(home);
+        string UserDirectory(string xdgName, string fallback) =>
+            xdgDirectories.TryGetValue(xdgName, out var configured) ? configured : Path.Combine(home, fallback);
+
+        return new[]
+        {
+            (SpecialFolderKind.Home, "主目录", home),
+            (SpecialFolderKind.Desktop, "桌面", UserDirectory("XDG_DESKTOP_DIR", "Desktop")),
+            (SpecialFolderKind.Documents, "文档", UserDirectory("XDG_DOCUMENTS_DIR", "Documents")),
+            (SpecialFolderKind.Downloads, "下载", UserDirectory("XDG_DOWNLOAD_DIR", "Downloads")),
+            (SpecialFolderKind.Pictures, "图片", UserDirectory("XDG_PICTURES_DIR", "Pictures")),
+            (SpecialFolderKind.Music, "音乐", UserDirectory("XDG_MUSIC_DIR", "Music")),
+            (SpecialFolderKind.Videos, "视频", UserDirectory("XDG_VIDEOS_DIR", "Videos")),
+        }.Where(x => LinuxUserFileOperations.GetMetadata(x.Item3) is { IsDirectory: true })
+            .Select(x => new SpecialLocationDto(x.Item1, x.Item2, x.Item3)).ToArray();
+    }
+
     private static FileSystemEntryDto? Info(string? path)
         => path is null ? null : LinuxUserFileOperations.GetMetadata(path) is { } metadata
             ? ToInfo(metadata)

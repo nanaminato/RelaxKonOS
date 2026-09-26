@@ -50,6 +50,7 @@ try
     {
         ServerCoreChecks.VerifyUserExecutionContextContract();
         ServerCoreChecks.VerifyUserExecutionEligibility();
+        ServerCoreChecks.VerifyXdgUserDirectoryResolution(root);
         await ServerCoreChecks.VerifyUserExecutionTransportLifecycleAsync(root);
         ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
         ServerCoreChecks.VerifyLinuxUserStagingOperations(root);
@@ -127,6 +128,7 @@ try
     ServerCoreChecks.VerifyFileElevationSessionScope(root);
     ServerCoreChecks.VerifyUserExecutionContextContract();
     ServerCoreChecks.VerifyUserExecutionEligibility();
+    ServerCoreChecks.VerifyXdgUserDirectoryResolution(root);
     await ServerCoreChecks.VerifyUserExecutionTransportLifecycleAsync(root);
     ServerCoreChecks.VerifyLinuxUserFileOperationCommit(root);
     ServerCoreChecks.VerifyLinuxUserStagingOperations(root);

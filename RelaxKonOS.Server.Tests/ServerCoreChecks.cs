@@ -116,6 +116,28 @@ internal static void VerifyWorkspacePreferencesJsonContract()
         "Structured shell package identity changed during JSON round-trip.");
 }
 
+internal static void VerifyXdgUserDirectoryResolution(string root)
+{
+    var home = Path.Combine(root, "localized-xdg-home");
+    var configDirectory = Path.Combine(home, ".config");
+    Directory.CreateDirectory(configDirectory);
+    File.WriteAllText(Path.Combine(configDirectory, "user-dirs.dirs"), """
+        XDG_DESKTOP_DIR="$HOME/桌面"
+        XDG_DOWNLOAD_DIR="$HOME/下载"
+        XDG_DOCUMENTS_DIR="$HOME/文档"
+        XDG_PICTURES_DIR="/srv/相册"
+        invalid=value
+        """);
+
+    var directories = RelaxKonOS.PrivilegedHelper.XdgUserDirectories.Read(home);
+    TestAssert.Assert(directories["XDG_DESKTOP_DIR"] == Path.Combine(home, "桌面")
+        && directories["XDG_DOWNLOAD_DIR"] == Path.Combine(home, "下载")
+        && directories["XDG_DOCUMENTS_DIR"] == Path.Combine(home, "文档")
+        && directories["XDG_PICTURES_DIR"] == "/srv/相册"
+        && !directories.ContainsKey("invalid"),
+        "XDG special-folder resolution must preserve localized and absolute user directory paths.");
+}
+
 internal static void VerifyFileElevationSessionScope(string root)
 {
     var directory = Path.Combine(root, "protected");
