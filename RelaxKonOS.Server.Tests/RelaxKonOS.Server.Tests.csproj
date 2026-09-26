@@ -14,6 +14,7 @@
     <Compile Include="../RelaxKonOS.PrivilegedHelper/SambaCredentialCommand.cs" Link="SambaCredentialCommand.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/SambaUserStatus.cs" Link="SambaUserStatus.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxDistributionSupport.cs" Link="LinuxDistributionSupport.cs" />
+    <Compile Include="../RelaxKonOS.PrivilegedHelper/XdgUserDirectories.cs" Link="XdgUserDirectories.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/LinuxUserFileOperations.cs" Link="LinuxUserFileOperations.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/WindowsSmbShareSecurity.cs" Link="WindowsSmbShareSecurity.cs" />
     <Compile Include="../RelaxKonOS.PrivilegedHelper/DeveloperUserSidAllowList.cs" Link="DeveloperUserSidAllowList.cs" />
