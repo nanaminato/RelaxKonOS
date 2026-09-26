@@ -37,11 +37,13 @@ public static class InstallationApiRoutes
     public const string CancelPattern = OperationPattern + "/cancel";
     public const string ActivePattern = "/active";
     public const string FileReferencePattern = "/{service}/file-reference";
+    public const string PackagePattern = "/{service}/package";
     public static string Start(InstallationServiceId service, InstallationOperationKind kind) => $"{Root}/{service}/{kind}";
     public static string Operation(Guid id) => $"{Root}/{id:D}";
     public static string Cancel(Guid id) => Operation(id) + "/cancel";
     public static string Active(InstallationServiceId service) => $"{Root}/active?service={service}";
     public static string FileReference(InstallationServiceId service) => $"{Root}/{service}/file-reference";
+    public static string Package(InstallationServiceId service) => $"{Root}/{service}/package";
 }
 
 // Reject unknown properties: none of these contracts can carry shell inputs or server paths.

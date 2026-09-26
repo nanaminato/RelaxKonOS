@@ -78,6 +78,7 @@
     "webservers.version_catalog.unavailable": "Nginx Windows のバージョン一覧を読み込めません。更新して再試行するか、ローカル ZIP パッケージを選択してください。",
     "webservers.managed.linux_version_hint": "Linux: 空欄の場合はリポジトリの既定版を使用します。指定する場合は apt-cache policy nginx で確認できる完全な APT パッケージ版を入力してください。",
     "webservers.managed.select_package": "ローカル ZIP を選択",
+    "webservers.managed.install_through_host": "ホストでダウンロードしてインストール",
     "webservers.managed.download": "自分でダウンロード",
     "webservers.managed.download_title": "Nginx パッケージをダウンロード",
     "webservers.managed.download_unavailable": "このバージョンでは、手動ダウンロード用の信頼済み Nginx パッケージを利用できません。",

@@ -199,6 +199,11 @@ public static class Bootstrapper
             .AddHttpMessageHandler<AcceptLanguageHandler>();
         services.AddHttpClient<RelaxKonOS.Client.Services.Installation.InstallationClient>()
             .AddHttpMessageHandler<AcceptLanguageHandler>().AddRelaxKonOSAuthentication();
+        // Package downloads deliberately use the desktop host's network path rather than the
+        // authenticated Server API client. The downloaded bytes are then uploaded to the server's
+        // short-lived installation staging area.
+        services.AddHttpClient("InstallationHostDownload", http => http.Timeout = TimeSpan.FromMinutes(15))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<RelaxKonOS.Client.Apps.FileServices.IRemoteFileServicesClient, RelaxKonOS.Client.Apps.FileServices.RemoteFileServicesClient>()
             .AddHttpMessageHandler(sp => new NetworkDiagnosticsHandler(sp.GetRequiredService<NetworkDiagnosticsService>(), "file-services"))
             .AddHttpMessageHandler<AcceptLanguageHandler>()

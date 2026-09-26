@@ -98,6 +98,44 @@ public sealed partial class InstallationTaskViewModel(InstallationClient client,
         return null;
     }
 
+    /// <summary>Fetches a fixed publisher URL through the desktop host, then uploads the finished
+    /// archive to the server's actor-bound installation staging area.</summary>
+    public async Task<string?> DownloadAndUploadPackageAsync(string url, string fileName)
+    {
+        try
+        {
+            var reference = await client.DownloadAndUploadPackageAsync(service, url, fileName, lifetime.Token);
+            ConnectionText = string.Empty;
+            return reference?.Id;
+        }
+        catch (InstallationApiException error)
+        {
+            ConnectionText = FormatProblemCode(error.ProblemCode);
+            await ShowHelperFailureAsync(error.ProblemCode);
+        }
+        catch (OperationCanceledException) { }
+        catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+        return null;
+    }
+
+    public async Task<string?> UploadPackageAsync(string fileName, Stream content)
+    {
+        try
+        {
+            var reference = await client.UploadPackageAsync(service, fileName, content, lifetime.Token);
+            ConnectionText = string.Empty;
+            return reference?.Id;
+        }
+        catch (InstallationApiException error)
+        {
+            ConnectionText = FormatProblemCode(error.ProblemCode);
+            await ShowHelperFailureAsync(error.ProblemCode);
+        }
+        catch (OperationCanceledException) { }
+        catch { ConnectionText = LocalizedText.Get("installation.connection_unavailable"); }
+        return null;
+    }
+
     public async Task RestoreAsync()
     {
         if (observation is { IsCompleted: false }) return;

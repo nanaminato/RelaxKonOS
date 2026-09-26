@@ -14,14 +14,6 @@ public static class WebServerEndpoints
         group.MapGet(WebServerApiRoutes.ManagedInstallCatalogPattern, (RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) => manager.GetManagedInstallCatalogAsync(ct));
         group.MapGet(WebServerApiRoutes.ManagedInstallDownloadPattern, async (string? version, RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) =>
             await manager.GetManagedInstallDownloadAsync(version, ct) is { } download ? Results.Ok(download) : Results.NotFound());
-        group.MapPost(WebServerApiRoutes.ManagedInstallPackagePattern, async (IFormFile package, HttpContext context,
-            RelaxKonOS.Server.WebServer.NginxWebServerManager manager, CancellationToken ct) =>
-        {
-            if (!InstallationEndpoints.CanInstall(context.User, InstallationServiceId.Nginx)) return Results.Forbid();
-            await using var stream = package.OpenReadStream();
-            return await manager.StageManagedPackageAsync(package.FileName, stream, InstallationEndpoints.Actor(context.User), ct) is { } reference
-                ? Results.Ok(reference) : Results.BadRequest(new { problemCode = "webserver.package_invalid" });
-        });
         group.MapPost(WebServerApiRoutes.DiscoverPattern, (RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) => manager.DiscoverAsync(ct));
         group.MapGet(WebServerApiRoutes.CollectionPattern, (RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) => manager.ListAsync(ct));
         group.MapGet(WebServerApiRoutes.IntegrationCandidatesPattern, (RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) => manager.ListIntegrationCandidatesAsync(ct));

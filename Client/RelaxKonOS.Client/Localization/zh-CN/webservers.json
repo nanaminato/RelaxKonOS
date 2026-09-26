@@ -78,6 +78,7 @@
     "webservers.version_catalog.unavailable": "无法加载 Nginx Windows 版本列表。请刷新后重试，或选择本地 ZIP 包。",
     "webservers.managed.linux_version_hint": "Linux：留空安装软件源默认版本；指定时请输入 APT 的完整包版本（可用 apt-cache policy nginx 查看）。",
     "webservers.managed.select_package": "选择本地 ZIP",
+    "webservers.managed.install_through_host": "宿主机下载并传送安装",
     "webservers.managed.download": "我要自行下载",
     "webservers.managed.download_title": "下载 Nginx 安装包",
     "webservers.managed.download_unavailable": "当前版本没有可自行下载的受信任 Nginx 安装包。",

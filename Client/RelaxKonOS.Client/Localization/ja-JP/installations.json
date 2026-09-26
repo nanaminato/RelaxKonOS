@@ -41,6 +41,7 @@
     "installation.problem.failed": "インストール タスクに失敗しました。",
     "installation.problem.recovery_unknown": "サーバーは中断されたインストール タスクの結果を確認できませんでした。",
     "installation.problem.health_check_failed": "インストールされたサービスがヘルスチェックに合格しませんでした。",
-    "installation.problem.file_reference_unavailable": "選択したサーバー ファイルは利用できなくなりました。もう一度選択して再試行してください。"
+    "installation.problem.file_reference_unavailable": "選択したサーバー ファイルは利用できなくなりました。もう一度選択して再試行してください。",
+    "installation.problem.host_download_failed": "ホストでインストールパッケージをダウンロードできませんでした。ホストのネットワークを確認して再試行してください。"
   }
 }

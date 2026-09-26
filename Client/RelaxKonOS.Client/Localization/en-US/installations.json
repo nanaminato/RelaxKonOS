@@ -41,6 +41,7 @@
     "installation.problem.failed": "The installation task failed.",
     "installation.problem.recovery_unknown": "The server could not verify the outcome of an interrupted installation task.",
     "installation.problem.health_check_failed": "The installed service did not pass its health check.",
-    "installation.problem.file_reference_unavailable": "The selected server file is no longer available. Select it again and retry."
+    "installation.problem.file_reference_unavailable": "The selected server file is no longer available. Select it again and retry.",
+    "installation.problem.host_download_failed": "The host could not download the installation package. Check the host network and try again."
   }
 }

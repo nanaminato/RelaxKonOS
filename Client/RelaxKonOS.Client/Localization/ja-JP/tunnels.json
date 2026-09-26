@@ -29,6 +29,7 @@
     "tunnels.runtime_download_title": "FRP パッケージをダウンロード",
     "tunnels.runtime_download_unavailable": "このバージョンまたはプラットフォームでは、信頼済み FRP パッケージを利用できません。",
     "tunnels.runtime.install_from_server_file": "サーバー上のファイルからインストール",
+    "tunnels.runtime.install_through_host": "ホストでダウンロードしてインストール",
     "tunnels.runtime.server_file_hint": "選択したバージョンと現在のプラットフォームに完全一致し、検証に通った公式アーカイブだけを受け付けます。",
     "tunnels.runtime.select_server_package": "サーバー上の FRP アーカイブを選択",
     "tunnels.runtime.package_filter": "FRP アーカイブ (*.zip, *.tar.gz)",
