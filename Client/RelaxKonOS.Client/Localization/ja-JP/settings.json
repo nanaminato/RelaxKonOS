@@ -97,6 +97,7 @@
         "settings.time_zone": "タイム ゾーン",
         "settings.language_region.section": "言語と地域",
         "settings.display_language": "表示言語",
+        "settings.language.follow_system": "システムに従う",
         "settings.region_format": "地域形式",
         "settings.wallpaper": "壁紙",
         "settings.theme": "テーマ",

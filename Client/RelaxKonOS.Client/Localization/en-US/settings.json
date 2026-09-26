@@ -97,6 +97,7 @@
         "settings.time_zone": "Time zone",
         "settings.language_region.section": "Language & region",
         "settings.display_language": "Display language",
+        "settings.language.follow_system": "Follow system",
         "settings.region_format": "Regional format",
         "settings.wallpaper": "Wallpaper",
         "settings.theme": "Theme",

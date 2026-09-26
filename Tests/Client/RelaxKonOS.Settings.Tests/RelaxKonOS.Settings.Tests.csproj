@@ -10,6 +10,7 @@
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentDocument.cs" Link="LinuxEnvironmentDocument.cs" />
     <Compile Include="../../../RelaxKonOS.PrivilegedHelper/LinuxEnvironmentOperations.cs" Link="LinuxEnvironmentOperations.cs" />
     <Compile Include="../../../Client/RelaxKonOS.Client/Services/SettingsSearchIndex.cs" Link="SettingsSearchIndex.cs" />
+    <Compile Include="../../../Client/RelaxKonOS.Client/Services/SystemLanguageResolver.cs" Link="SystemLanguageResolver.cs" />
     <Compile Include="../../../Tools/RelaxKonOS.DevCli/SettingsCommands.cs" Link="SettingsCommands.cs" />
   </ItemGroup>
 </Project>

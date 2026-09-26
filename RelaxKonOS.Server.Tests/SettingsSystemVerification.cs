@@ -163,6 +163,9 @@ internal static class SettingsSystemVerification
         Check(service.Save(workspace, initial with { Language = "ja-JP" }, "stale") is null,
             "A stale draft must not overwrite another client's theme.");
         Check(ModeOf(service.Read(workspace)) == ThemeKind.Dark, "Conflict handling lost the committed theme.");
+        changed = service.Save(workspace, changed with { Language = WorkspacePreferencesDto.LanguageFollowSystem }, "language")!;
+        Check(changed.Language == WorkspacePreferencesDto.LanguageFollowSystem,
+            "The follow-system language preference was not retained.");
         var other = new Workspace { Id = workspace.Id, UserId = Guid.NewGuid() };
         Check(ModeOf(service.Read(other)) == ThemeKind.Light, "User keys must isolate the same workspace id.");
 

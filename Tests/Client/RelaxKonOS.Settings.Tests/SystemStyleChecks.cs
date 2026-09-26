@@ -192,7 +192,7 @@ internal static class SystemStyleChecks
         var options = RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default;
         var preferences = new WorkspacePreferencesDto(
             WorkspacePreferencesDto.BuiltInWallpaperPrefix + "bloom",
-            WorkspacePreferencesDto.TimeFormat24H, "yyyy/M/d", "en-US", "en-US", [],
+            WorkspacePreferencesDto.TimeFormat24H, "yyyy/M/d", WorkspacePreferencesDto.LanguageFollowSystem, "en-US", [],
             DesktopExperience: new DesktopExperiencePreferencesDto
             {
                 Appearance = new AppearancePreferencesDto { Mode = ThemeKind.Dark, PaletteId = "builtin:nord" },
@@ -212,6 +212,7 @@ internal static class SystemStyleChecks
               && restored.DesktopExperience?.Appearance.PaletteId == "builtin:nord",
             "The appearance payload was lost on the wire.");
         Check(restored.DesktopExperience?.Shell.ShellId == "relaxkonos.ubuntu-like", "The shell selection was lost on the wire.");
+        Check(restored.Language == WorkspacePreferencesDto.LanguageFollowSystem, "The follow-system language choice was lost on the wire.");
     }
 
     /// <summary>

@@ -94,6 +94,12 @@ public sealed record WorkspacePreferencesDto
     /// <summary>12 小时制标识。</summary>
     public const string TimeFormat12H = "12h";
 
+    /// <summary>
+    /// Use the client device's UI language. Clients map Chinese to <c>zh-CN</c>, Japanese to
+    /// <c>ja-JP</c>, and every other system language to <c>en-US</c>.
+    /// </summary>
+    public const string LanguageFollowSystem = "follow-system";
+
     /// <summary>内置壁纸 key 前缀（客户端预设目录使用）。</summary>
     public const string BuiltInWallpaperPrefix = "builtin:";
 

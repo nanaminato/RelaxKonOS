@@ -1,5 +1,12 @@
 using RelaxKonOS.Client.Services;
 using System.Diagnostics;
+using System.Globalization;
+using RelaxKonOS.Protocol.Workspace;
+if (SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("zh-TW")) != "zh-CN"
+    || SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("ja-JP")) != "ja-JP"
+    || SystemLanguageResolver.Resolve(CultureInfo.GetCultureInfo("fr-FR")) != "en-US"
+    || !SystemLanguageResolver.IsFollowSystem(WorkspacePreferencesDto.LanguageFollowSystem))
+    throw new Exception("Follow-system language mapping failed.");
 var entries = Enumerable.Range(0, 200).Select(i => new SettingsSearchEntry($"setting.{i}", "system",
     $"Environment {i}", "System", "HostMachine", i % 2 == 0 ? "HelperUnavailable" : "",
     $"environment {i} PATH 路径 环境变量 パス 環境変数")).ToArray();

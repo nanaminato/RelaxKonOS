@@ -1,6 +1,7 @@
 using System.Globalization;
 using RelaxKonOS.Client.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
@@ -14,6 +15,7 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, I
     {
         HostTime = hostTime;
         _localization = localization;
+        LanguageOptions = BuildLanguageOptions();
         Settings.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(TimeFormat) or nameof(Language))
@@ -22,6 +24,13 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, I
                 OnPropertyChanged(nameof(DateSample));
             if (e.PropertyName == nameof(Language))
                 OnPropertyChanged(nameof(SelectedLanguage));
+        };
+        _localization.LanguageChanged += (_, _) =>
+        {
+            LanguageOptions = BuildLanguageOptions();
+            OnPropertyChanged(nameof(SelectedLanguage));
+            OnPropertyChanged(nameof(TimeSample));
+            OnPropertyChanged(nameof(DateSample));
         };
     }
 
@@ -39,7 +48,7 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, I
         "dddd, M/d",
     };
 
-    public IReadOnlyList<SystemLanguageOption> Languages => _localization.AvailableLanguages;
+    public IReadOnlyList<SystemLanguageOption> LanguageOptions { get; private set; }
 
     public static IReadOnlyList<string> Regions { get; } = new[] { "zh-CN", "en-US", "ja-JP" };
 
@@ -63,7 +72,7 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, I
 
     public SystemLanguageOption? SelectedLanguage
     {
-        get => Languages.FirstOrDefault(option => string.Equals(option.Culture, Language, StringComparison.OrdinalIgnoreCase));
+        get => LanguageOptions.FirstOrDefault(option => string.Equals(option.Culture, Language, StringComparison.OrdinalIgnoreCase));
         set
         {
             if (value is not null)
@@ -86,14 +95,21 @@ public sealed partial class TimeLanguagePageViewModel : SettingsPageViewModel, I
     /// <summary>供桌面外壳时钟复用的格式化：按当前语言 culture + 12/24h 制。</summary>
     public string FormatTime(DateTime t)
     {
-        var culture = SafeCulture(Language);
+        var culture = SafeCulture(_localization.CurrentLanguage);
         var fmt = TimeFormat == "12h" ? "h:mm tt" : "HH:mm";
         return t.ToString(fmt, culture);
     }
 
     /// <summary>供桌面外壳时钟复用的格式化：按当前语言 culture + 日期格式。</summary>
     public string FormatDate(DateTime t)
-        => t.ToString(string.IsNullOrWhiteSpace(DateFormat) ? "yyyy/M/d" : DateFormat, SafeCulture(Language));
+        => t.ToString(string.IsNullOrWhiteSpace(DateFormat) ? "yyyy/M/d" : DateFormat, SafeCulture(_localization.CurrentLanguage));
+
+    private IReadOnlyList<SystemLanguageOption> BuildLanguageOptions() =>
+    [
+        new SystemLanguageOption(WorkspacePreferencesDto.LanguageFollowSystem,
+            _localization.Get("settings.language.follow_system", "Follow system")),
+        .. _localization.AvailableLanguages,
+    ];
 
     private static CultureInfo SafeCulture(string name)
     {

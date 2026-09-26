@@ -10,6 +10,7 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
     public string? HostKeyFingerprint { get; private set; }
     public bool IsConnected => Endpoint is not null;
     public event EventHandler? Connected;
+    public event EventHandler? Disconnected;
 
     public async Task ConnectAsync(ServerHostTarget target, string password, CancellationToken cancellationToken)
     {
@@ -27,8 +28,10 @@ public sealed class SshDesktopSession(IServerCenterConnectionResolver connection
 
     public void Disconnect()
     {
+        if (Endpoint is null) return;
         Endpoint = null;
         Password = null;
         HostKeyFingerprint = null;
+        Disconnected?.Invoke(this, EventArgs.Empty);
     }
 }

@@ -3,6 +3,8 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.Services.Auth;
+using RelaxKonOS.Client.Services.ServerCenter;
+using RelaxKonOS.Protocol.Workspace;
 
 namespace RelaxKonOS.Client.Services;
 
@@ -15,14 +17,16 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
 {
     private const string DefaultLanguage = "en-US";
     private readonly ShellSettings _settings;
+    private readonly SshDesktopSession _sshDesktop;
     private readonly Dictionary<string, LanguageFile> _languages;
     private string _currentLanguage;
 
-    public LocalizationService(ShellSettings settings)
+    public LocalizationService(ShellSettings settings, SshDesktopSession sshDesktop)
     {
         _settings = settings;
+        _sshDesktop = sshDesktop;
         _languages = LoadLanguageFiles();
-        _currentLanguage = ResolveLanguage(settings.Language);
+        _currentLanguage = ResolveLanguage(EffectiveRequestedLanguage);
         AvailableLanguages = _languages.Values
             .OrderBy(language => language.SortOrder)
             .Select(language => new SystemLanguageOption(language.Culture, language.DisplayName ?? language.Culture))
@@ -31,8 +35,10 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
         _settings.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(ShellSettings.Language))
-                SetLanguage(_settings.Language);
+                SetLanguage(EffectiveRequestedLanguage);
         };
+        _sshDesktop.Connected += (_, _) => SetLanguage(WorkspacePreferencesDto.LanguageFollowSystem);
+        _sshDesktop.Disconnected += (_, _) => SetLanguage(EffectiveRequestedLanguage);
     }
 
     public string CurrentLanguage => _currentLanguage;
@@ -81,11 +87,18 @@ public sealed class LocalizationService : ObservableObject, ISystemLanguage
 
     private string ResolveLanguage(string requestedLanguage)
     {
+        if (SystemLanguageResolver.IsFollowSystem(requestedLanguage))
+            requestedLanguage = SystemLanguageResolver.Resolve();
         if (_languages.ContainsKey(requestedLanguage)) return requestedLanguage;
         var neutral = requestedLanguage.Split('-', 2)[0];
         return _languages.Keys.FirstOrDefault(language => language.StartsWith(neutral + "-", StringComparison.OrdinalIgnoreCase))
             ?? (_languages.ContainsKey(DefaultLanguage) ? DefaultLanguage : _languages.Keys.First());
     }
+
+    /// <summary>SSH desktops always use the client device language and never write a workspace preference.</summary>
+    private string EffectiveRequestedLanguage => _sshDesktop.IsConnected
+        ? WorkspacePreferencesDto.LanguageFollowSystem
+        : _settings.Language;
 
     private static Dictionary<string, LanguageFile> LoadLanguageFiles()
     {
