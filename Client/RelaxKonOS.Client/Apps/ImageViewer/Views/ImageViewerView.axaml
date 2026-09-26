@@ -5,36 +5,90 @@
              x:Class="RelaxKonOS.Client.Apps.ImageViewer.Views.ImageViewerView"
              x:DataType="vm:ImageViewerViewModel"
              Background="{DynamicResource SurfaceBrush}">
+    <UserControl.Styles>
+        <Style Selector="Button.viewer-tool">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="MinWidth" Value="32" />
+        </Style>
+        <Style Selector="Button.viewer-tool:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceSunkenBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
+        </Style>
+        <Style Selector="Border.viewer-card">
+            <Setter Property="BoxShadow" Value="{DynamicResource ElevationShadow}" />
+        </Style>
+        <Style Selector="Border.loading-pulse">
+            <Style.Animations>
+                <Animation Duration="0:0:1.2" IterationCount="INFINITE">
+                    <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.18" /></KeyFrame>
+                    <KeyFrame Cue="50%"><Setter Property="Opacity" Value="0.8" /></KeyFrame>
+                    <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.18" /></KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+    </UserControl.Styles>
+
     <Grid RowDefinitions="Auto,*,Auto">
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="14,10">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                <StackPanel Spacing="2">
-                    <TextBlock Text="{Binding DocumentName}" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding DimensionsText}" FontSize="12" Opacity="0.62" />
+        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="18,12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Border Width="38" Height="38" Background="{DynamicResource AccentMutedBrush}" CornerRadius="11">
+                        <TextBlock Text="▧" FontSize="21" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DocumentName}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <TextBlock Text="{Binding SessionText}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                            <TextBlock Text="•" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+                            <TextBlock Text="{Binding DimensionsText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding ImageFormatText}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" IsVisible="{Binding HasImage}" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Content="−" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Command="{Binding ZoomOutCommand}" ToolTip.Tip="{loc:Loc image_viewer.zoom_out}" Width="32" Padding="0" />
-                    <Slider Minimum="25" Maximum="400" Width="130" Value="{Binding ZoomPercent, Mode=TwoWay}" />
-                    <TextBlock Text="{Binding ZoomPercent, StringFormat={}{0}%}" MinWidth="42" VerticalAlignment="Center" />
-                    <Button Content="{loc:Loc image_viewer.reset_zoom}" Command="{Binding ResetZoomCommand}" />
-                    <Button Content="+" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Command="{Binding ZoomInCommand}" ToolTip.Tip="{loc:Loc image_viewer.zoom_in}" Width="32" Padding="0" />
-                </StackPanel>
+
+                <Border Grid.Column="1" Classes="viewer-card" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="10" Padding="4">
+                    <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                        <Button Classes="viewer-tool" Content="−" Command="{Binding ZoomOutCommand}" ToolTip.Tip="{loc:Loc image_viewer.zoom_out}" />
+                        <TextBlock Text="{Binding ZoomPercent, StringFormat={}{0}%}" MinWidth="43" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" />
+                        <Button Classes="viewer-tool" Content="+" Command="{Binding ZoomInCommand}" ToolTip.Tip="{loc:Loc image_viewer.zoom_in}" />
+                        <Border Width="1" Height="20" Background="{DynamicResource BorderDefaultBrush}" Margin="4,0" />
+                        <Button Classes="viewer-tool" Content="{loc:Loc image_viewer.fit_to_view}" Command="{Binding FitToViewCommand}" ToolTip.Tip="{loc:Loc image_viewer.fit_to_view_hint}" />
+                        <Button Classes="viewer-tool" Content="1:1" Command="{Binding ResetZoomCommand}" ToolTip.Tip="{loc:Loc image_viewer.reset_zoom}" />
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+        <Grid Grid.Row="1" Background="{DynamicResource SurfaceSunkenBrush}" ClipToBounds="True">
+            <Border Background="{DynamicResource AccentMutedBrush}" Width="420" Height="420" CornerRadius="210" Opacity="0.20" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-230,-250,0,0" />
+            <Border Background="{DynamicResource AccentMutedBrush}" Width="360" Height="360" CornerRadius="180" Opacity="0.12" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-180,-210" />
+            <ScrollViewer x:Name="ImageViewport" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="36">
                 <Grid MinWidth="100" MinHeight="100">
-                    <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.8"
-                               IsVisible="{Binding !ImageSource}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <Image Source="{Binding ImageSource}" Width="{Binding DisplayWidth}" Height="{Binding DisplayHeight}"
-                           Stretch="Fill" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                    <StackPanel IsVisible="{Binding !HasImage}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                        <Grid Width="60" Height="60" HorizontalAlignment="Center">
+                            <Border Classes="loading-pulse" Background="{DynamicResource AccentMutedBrush}" CornerRadius="30" IsVisible="{Binding IsLoading}" />
+                            <Border Width="46" Height="46" Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="23" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="▧" FontSize="25" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                        <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="340" />
+                    </StackPanel>
+                    <Border Classes="viewer-card" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True" HorizontalAlignment="Left" VerticalAlignment="Top" IsVisible="{Binding HasImage}">
+                        <Image Source="{Binding ImageSource}" Width="{Binding DisplayWidth}" Height="{Binding DisplayHeight}" Stretch="Fill" />
+                    </Border>
                 </Grid>
             </ScrollViewer>
-        </Border>
+        </Grid>
 
-        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="14,7">
-            <TextBlock Text="{Binding StatusText}" FontSize="12" Opacity="0.68" TextTrimming="CharacterEllipsis" />
+        <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="18,8">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="{loc:Loc image_viewer.shortcuts}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" />
+            </Grid>
         </Border>
     </Grid>
 </UserControl>
