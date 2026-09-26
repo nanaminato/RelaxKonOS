@@ -206,6 +206,7 @@
         "explorer.operations.elevation_password": "Administrator password",
         "explorer.operations.elevation_prompt": "This operation requires administrator access. Authorization lasts 5 minutes in this session.",
         "explorer.operations.elevation_access_prompt": "This location requires administrator access.",
-        "explorer.operations.elevation_failed": "The administrator account or password is incorrect."
+        "explorer.operations.elevation_failed": "The administrator account or password is incorrect.",
+        "explorer.operations.elevation_not_administrator": "That account exists on the server but is not an administrator. Enter an administrator account and try again."
     }
 }

@@ -195,9 +195,45 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                 LocalizedText.Get("explorer.operations.elevation_title"),
                 LocalizedText.Get("explorer.operations.elevation_prompt"));
             if (credentials is null) return false;
-            await client.ElevateFileOperationAsync(paths, capability, credentials.Password, credentials.Username);
-            return true;
+            try
+            {
+                await client.ElevateFileOperationAsync(paths, capability, credentials.Password, credentials.Username);
+                return true;
+            }
+            catch (RelaxKonOSAuthException retry)
+            {
+                if (!await ReportElevationRefusalAsync(context, retry)) throw;
+                return false;
+            }
         }
+    }
+
+    private static async Task<bool> ReportElevationRefusalAsync(AppContext context, RelaxKonOSAuthException exception)
+    {
+        var messageKey = exception.Type switch
+        {
+            var type when type.EndsWith("/elevation-account-not-administrator", StringComparison.Ordinal)
+                => "explorer.operations.elevation_not_administrator",
+            var type when type.EndsWith("/elevation-password-invalid", StringComparison.Ordinal)
+                => "explorer.operations.elevation_failed",
+            _ => null,
+        };
+        if (messageKey is null) return false;
+        await context.WindowManager.ShowSystemDialogAsync<bool>(LocalizedText.Get("explorer.operations.elevation_title"), dialog =>
+        {
+            var confirm = new Button { Content = LocalizedText.Get("common.ok"), Classes = { "primary" } };
+            confirm.Click += (_, _) => dialog.Close(true);
+            return new StackPanel
+            {
+                Margin = new Thickness(20), Spacing = 12,
+                Children =
+                {
+                    new TextBlock { Text = LocalizedText.Get(messageKey), TextWrapping = TextWrapping.Wrap },
+                    new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { confirm } },
+                },
+            };
+        }, new Size(420, 180));
+        return true;
     }
 
     private static Task<AdministratorCredentials?> RequestAdministratorCredentialsAsync(AppContext context, string title, string prompt)
@@ -424,11 +460,9 @@ public sealed class ExplorerApp : RemoteApplicationBase, IAppActivationHandler
                     await client.ElevateFileAccessAsync(path, capability, credentials.Password, credentials.Username);
                     return true;
                 }
-                catch (RelaxKonOSAuthException retry) when (retry.Type.EndsWith("/elevation-password-invalid", StringComparison.Ordinal))
+                catch (RelaxKonOSAuthException retry)
                 {
-                    await (vm.ShowMessageAsync?.Invoke(
-                        LocalizedText.Get("explorer.operations.elevation_title"),
-                        LocalizedText.Get("explorer.operations.elevation_failed")) ?? Task.CompletedTask);
+                    if (!await ReportElevationRefusalAsync(context, retry)) throw;
                     return false;
                 }
             }

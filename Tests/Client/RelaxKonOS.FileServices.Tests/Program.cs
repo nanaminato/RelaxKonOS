@@ -5,7 +5,7 @@ using System.Net;
 
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 var client = new FakeClient();
-var vm = new FileServicesViewModel(client, new Permissions()) { RequestHostAdministratorPasswordAsync = _ => Task.FromResult<string?>("test") };
+var vm = new FileServicesViewModel(client, new Permissions()) { RequestHostAdministratorCredentialsAsync = _ => Task.FromResult<HostAdministratorCredentials?>(new("host-admin", "test")) };
 Check(!vm.NewShareCommand.CanExecute(null), "No mutations before discovery");
 await vm.StartAsync();
 Check(!vm.SupportsSambaCredentials && !vm.InstallCommand.CanExecute(null) && client.UserReads == 0, "Windows capabilities");
@@ -42,12 +42,12 @@ vm.ShareName = "test"; vm.SharePath = "/srv/relaxkonos-shares/test"; vm.SharePer
 Check(!await vm.SaveShareAsync(false) && client.Writes == 1, "Empty permission rejected");
 vm.SharePermissions[0].Principal = "user"; vm.ShareGuestAllowed = true;
 vm.SharePermissions[0].SelectedAccess = FileShareAccessOption.All.Single(x => x.Value == FileShareAccess.ReadWrite);
-var authorization = new TaskCompletionSource<string?>();
-vm.RequestHostAdministratorPasswordAsync = _ => authorization.Task;
+var authorization = new TaskCompletionSource<HostAdministratorCredentials?>();
+vm.RequestHostAdministratorCredentialsAsync = _ => authorization.Task;
 var save = vm.SaveShareAsync(false);
 Check(vm.IsBusy && !vm.NewShareCommand.CanExecute(null), "Busy during authorization");
 Check(!await vm.SaveShareAsync(false), "Concurrent save blocked");
-authorization.SetResult("test");
+authorization.SetResult(new("host-admin", "test"));
 Check(await save && client.Writes == 2, "Guest-enabled writable share saves without global read-only");
 vm.SelectedShare = new("id", "test", "/test", null, true, true, false, [], true);
 vm.ConfirmDeleteAsync = _ => Task.FromResult(false);
@@ -81,7 +81,7 @@ foreach (var linux in new[] { false, true })
     await warningVm.StartAsync();
     warningVm.ShareName = "共享"; warningVm.SharePath = linux ? "/mnt/data" : @"E:\Test";
     var passwordRequests = 0;
-    warningVm.RequestHostAdministratorPasswordAsync = _ => { passwordRequests++; return Task.FromResult<string?>("test"); };
+    warningVm.RequestHostAdministratorCredentialsAsync = _ => { passwordRequests++; return Task.FromResult<HostAdministratorCredentials?>(new("host-admin", "test")); };
     var confirmation = new TaskCompletionSource<bool>();
     warningVm.ConfirmSharePathAsync = _ => confirmation.Task;
     var pendingSave = warningVm.SaveShareAsync(false);
@@ -96,15 +96,28 @@ var retryClient = new FakeClient { InvalidElevationAttempts = 1 };
 var retryVm = new FileServicesViewModel(retryClient, new Permissions());
 await retryVm.StartAsync();
 var promptErrors = new List<string?>();
-retryVm.RequestHostAdministratorPasswordAsync = error =>
+retryVm.RequestHostAdministratorCredentialsAsync = error =>
 {
     promptErrors.Add(error);
-    return Task.FromResult<string?>(error is null ? "incorrect" : "correct");
+    return Task.FromResult<HostAdministratorCredentials?>(new("host-admin", error is null ? "incorrect" : "correct"));
 };
 await retryVm.StopCommand.ExecuteAsync(null);
 Check(promptErrors.Count == 2 && promptErrors[0] is null && !string.IsNullOrWhiteSpace(promptErrors[1])
-    && retryClient.ElevationPasswords.SequenceEqual(["incorrect", "correct"]) && retryClient.Writes == 1,
-    "An invalid host administrator password shows an error and requests a replacement before the operation runs");
+    && retryClient.ElevationCredentials.SequenceEqual([new("host-admin", "incorrect"), new("host-admin", "correct")]) && retryClient.Writes == 1,
+    "An invalid host administrator credential shows an error and requests a replacement before the operation runs");
+var nonAdministratorClient = new FakeClient { NonAdministratorElevationAttempts = 1 };
+var nonAdministratorVm = new FileServicesViewModel(nonAdministratorClient, new Permissions());
+await nonAdministratorVm.StartAsync();
+var nonAdministratorErrors = new List<string?>();
+nonAdministratorVm.RequestHostAdministratorCredentialsAsync = error =>
+{
+    nonAdministratorErrors.Add(error);
+    return Task.FromResult<HostAdministratorCredentials?>(new(error is null ? "standard-user" : "host-admin", "correct"));
+};
+await nonAdministratorVm.StopCommand.ExecuteAsync(null);
+Check(nonAdministratorErrors.Count == 2 && nonAdministratorErrors[0] is null && !string.IsNullOrWhiteSpace(nonAdministratorErrors[1])
+    && nonAdministratorClient.ElevationCredentials.SequenceEqual([new("standard-user", "correct"), new("host-admin", "correct")]) && nonAdministratorClient.Writes == 1,
+    "A non-administrator account asks for a different administrator credential before the operation runs");
 Console.WriteLine("Passed: platform discovery, lifecycle refresh, user eligibility, validation, authorization serialization, password retry, delete cancellation, install state, API problem localization.");
 
 sealed class Permissions : IAppPermissionScope
@@ -116,8 +129,8 @@ sealed class Permissions : IAppPermissionScope
 }
 sealed class FakeClient : IRemoteFileServicesClient
 {
- public bool Linux; public bool Supported = true; public int StatusReads, UserReads, Writes, InvalidElevationAttempts;
- public List<string> ElevationPasswords { get; } = [];
+ public bool Linux; public bool Supported = true; public int StatusReads, UserReads, Writes, InvalidElevationAttempts, NonAdministratorElevationAttempts;
+ public List<HostAdministratorCredentials> ElevationCredentials { get; } = [];
  public string? InstallProblem;
  public TaskCompletionSource<FileServiceOperationResultDto>? PendingInstallation;
  public FileServiceRuntimeState State = FileServiceRuntimeState.Running;
@@ -136,10 +149,11 @@ sealed class FakeClient : IRemoteFileServicesClient
  public Task<FileServiceOperationResultDto> DeleteShareAsync(string id,CancellationToken ct = default) => Result();
  public Task<FileServiceOperationResultDto> SetUserEnabledAsync(string username,bool enabled,CancellationToken ct = default) => Result();
  public Task<FileServiceOperationResultDto> SetSambaPasswordAsync(string username,SetSambaPasswordRequest r,CancellationToken ct = default) => Result();
- public Task<bool> ElevateAsync(string password,CancellationToken ct = default)
+ public Task<bool> ElevateAsync(HostAdministratorCredentials credentials,CancellationToken ct = default)
  {
-     ElevationPasswords.Add(password);
+     ElevationCredentials.Add(credentials);
      if (InvalidElevationAttempts-- > 0) throw new HttpRequestException("elevation-password-invalid", null, HttpStatusCode.Forbidden);
+     if (NonAdministratorElevationAttempts-- > 0) throw new HttpRequestException("elevation-account-not-administrator", null, HttpStatusCode.Forbidden);
      return Task.FromResult(true);
  }
 }

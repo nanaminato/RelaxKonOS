@@ -116,9 +116,15 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
             try { return (await authorize(null, null)).Elevated; }
             catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/elevation-password-required", StringComparison.Ordinal))
             {
+                var defaultAdministrator = session.CurrentServer?.Platform == HostPlatformKind.Linux ? "root" : session.CurrentUser?.Username ?? string.Empty;
                 var authorized = await context.WindowManager.ShowSystemDialogAsync<bool>(
                     LocalizedText.Get(titleKey), dialog =>
                     {
+                        var account = new Avalonia.Controls.TextBox
+                        {
+                            Text = defaultAdministrator,
+                            PlaceholderText = LocalizedText.Get("settings.host_time.account"),
+                        };
                         var password = new Avalonia.Controls.TextBox { PasswordChar = '•', PlaceholderText = LocalizedText.Get("settings.host_time.password") };
                         var errorText = new Avalonia.Controls.TextBlock
                         {
@@ -157,7 +163,9 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                             confirm.IsEnabled = cancel.IsEnabled = false;
                             try
                             {
-                                var result = await authorize(secret, null);
+                                var selectedAdministrator = account.Text?.Trim();
+                                var result = await authorize(secret,
+                                    string.IsNullOrWhiteSpace(selectedAdministrator) ? defaultAdministrator : selectedAdministrator);
                                 if (!isCurrent(connection)) { dialog.Cancel(); return; }
                                 if (result.Elevated) { dialog.Close(true); return; }
                                 errorText.Text = LocalizedText.Get("settings.host_time.password_invalid");
@@ -187,7 +195,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                             Children =
                             {
                                 new Avalonia.Controls.TextBlock { Text = LocalizedText.Get("settings.host_time.password_prompt"), TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                                password, errorText,
+                                account, password, errorText,
                                 new Avalonia.Controls.StackPanel
                                 {
                                     Orientation = Avalonia.Layout.Orientation.Horizontal,
@@ -197,7 +205,7 @@ public sealed class SettingsApp : RemoteApplicationBase, IAppActivationHandler
                                 }
                             }
                         };
-                    }, new Size(420, 210));
+                    }, new Size(420, 260));
                 return authorized && isCurrent(connection);
             }
         }

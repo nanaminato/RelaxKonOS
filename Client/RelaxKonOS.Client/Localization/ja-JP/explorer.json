@@ -206,6 +206,7 @@
         "explorer.operations.elevation_password": "管理者パスワード",
         "explorer.operations.elevation_prompt": "この操作には管理者権限が必要です。認証は現在のセッションで5分間有効です。",
         "explorer.operations.elevation_access_prompt": "この場所にアクセスするには管理者権限が必要です。",
-        "explorer.operations.elevation_failed": "管理者アカウントまたはパスワードが正しくありません。"
+        "explorer.operations.elevation_failed": "管理者アカウントまたはパスワードが正しくありません。",
+        "explorer.operations.elevation_not_administrator": "そのアカウントはサーバーに存在しますが管理者ではありません。管理者アカウントで再試行してください。"
     }
 }

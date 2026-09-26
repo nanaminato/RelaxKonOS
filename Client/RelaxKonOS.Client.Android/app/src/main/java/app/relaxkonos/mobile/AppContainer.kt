@@ -278,13 +278,18 @@ class AppContainer(context: Context) {
     fun biometricCapability(): BiometricCapability = biometrics.detect()
 
     /**
-     * The account name of the stored host administrator credential, if any.
+     * The administrator account suggested by the elevation prompt.
      *
-     * It is only ever an account name; the password itself stays sealed inside the elevation vault and
-     * is released exclusively through an authorized [VaultAccess.load].
+     * A saved account takes precedence. Otherwise, use the host platform convention while leaving the
+     * field editable; the password itself stays sealed inside the elevation vault and is released
+     * exclusively through an authorized [VaultAccess.load].
      */
-    fun savedAdministratorAccount(): String? =
-        vault.records(VaultKind.Elevation).firstOrNull()?.account
+    fun suggestedAdministratorAccount(): String =
+        vault.records(VaultKind.Elevation).firstOrNull()?.account ?: when (session.server.platform.lowercase()) {
+            "windows" -> "Administrator"
+            "linux" -> "root"
+            else -> ""
+        }
 
     /**
      * The debug-only plaintext credential for one identity, or `null` when there is none.
@@ -312,7 +317,7 @@ class AppContainer(context: Context) {
      * (`RelaxKonOS.Mobile.V1.Design.md` §5.3.8).
      */
     val elevationAnswers = ElevationAnswerProvider { capability, target ->
-        elevationPrompts.request(capability, target, savedAdministratorAccount())
+        elevationPrompts.request(capability, target, suggestedAdministratorAccount())
     }
 
     /**

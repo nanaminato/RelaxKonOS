@@ -22,11 +22,11 @@ public sealed class RemoteFileServicesClient(HttpClient http, IAuthSession sessi
     public Task<IReadOnlyList<FileServiceUserDto>> ListUsersAsync(CancellationToken ct = default) => Send<IReadOnlyList<FileServiceUserDto>>(HttpMethod.Get, FileServiceApiRoutes.Users, ct);
     public Task<FileServiceOperationResultDto> SetUserEnabledAsync(string username, bool enabled, CancellationToken ct = default) => Send<FileServiceOperationResultDto>(HttpMethod.Post, (enabled ? FileServiceApiRoutes.EnableUser : FileServiceApiRoutes.DisableUser).Replace("{username}", Uri.EscapeDataString(username), StringComparison.Ordinal), ct);
     public Task<FileServiceOperationResultDto> SetSambaPasswordAsync(string username, SetSambaPasswordRequest request, CancellationToken ct = default) => Send<FileServiceOperationResultDto>(HttpMethod.Put, FileServiceApiRoutes.UserPassword.Replace("{username}", Uri.EscapeDataString(username), StringComparison.Ordinal), ct, request);
-    public async Task<bool> ElevateAsync(string password, CancellationToken ct = default)
+    public async Task<bool> ElevateAsync(HostAdministratorCredentials credentials, CancellationToken ct = default)
     {
         if (session.State != AuthSessionState.Authenticated || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), PrivilegedApiRoutes.Elevation.TrimStart('/')))
-        { Content = JsonContent.Create(new HostElevationRequest(HostElevationCapability.SmbManage, "smb:managed", password), options: RelaxKonOSJsonOptions.Default) };
+        { Content = JsonContent.Create(new HostElevationRequest(HostElevationCapability.SmbManage, "smb:managed", credentials.Password, credentials.Username), options: RelaxKonOSJsonOptions.Default) };
         using var response = await http.SendAsync(request, ct);
         if (!response.IsSuccessStatusCode) throw await CreateApiExceptionAsync(response, ct);
         return (await response.Content.ReadFromJsonAsync<HostElevationResult>(RelaxKonOSJsonOptions.Default, ct))?.Elevated == true;
