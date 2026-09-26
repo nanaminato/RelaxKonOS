@@ -75,8 +75,8 @@ public partial class LoginViewModel : ObservableObject
             ServerUrl = _sshServerUrl;
             Identifier = _sshIdentifier;
             ShowOptions = true;
-            if (string.IsNullOrWhiteSpace(Identifier) && SavedSshHosts.FirstOrDefault() is { } lastSshHost)
-                SelectedSshHost = lastSshHost;
+            // Settle the picker last: it decides whether the cached pair above or a saved record wins.
+            SettleSshHostSelection();
         }
         else
         {
@@ -307,6 +307,7 @@ public partial class LoginViewModel : ObservableObject
         {
             var profiles = await _session.GetSavedProfilesAsync(ct);
             var sshHosts = await _sshTargets.LoadAsync(ct);
+            var sshCredentials = await _sshCredentials.LoadAsync(ct);
             SavedProfiles.Clear();
             // Keep an empty, normal-height item in the editable server picker when there is no history.
             // Without it Avalonia renders the drop-down as a nearly invisible separator.
@@ -331,14 +332,27 @@ public partial class LoginViewModel : ObservableObject
             }
 
             SavedSshHosts.Clear();
-            foreach (var host in sshHosts.OrderByDescending(host => host.LastUsedAtUtc))
-                SavedSshHosts.Add(new SavedSshLoginProfile(host));
+            // Host targets keep deployment metadata, while SSH credentials are keyed by host,
+            // port and user.  A login picker must merge both sources so a securely saved password
+            // always carries its matching user name instead of borrowing a host's last manager.
+            var savedSshLogins = sshHosts
+                .Select(host => new SavedSshLoginProfile(host.SshHost, host.SshPort, host.SshUserName, host.LastUsedAtUtc))
+                .Concat(sshCredentials.Select(credential => new SavedSshLoginProfile(
+                    credential.Host, credential.Port, credential.UserName, credential.SavedAtUtc)))
+                .GroupBy(profile => profile.IdentityKey, StringComparer.Ordinal)
+                .Select(group => group.OrderByDescending(profile => profile.LastUsedAtUtc).First())
+                .OrderByDescending(profile => profile.LastUsedAtUtc);
+            foreach (var profile in savedSshLogins)
+                SavedSshHosts.Add(profile);
             SelectedSshHost = null;
         }
         finally
         {
             _loadingSavedSshHosts = false;
             _loadingSavedProfiles = false;
+            // The login window may switch to SSH before its asynchronous local host list finishes
+            // loading. Re-evaluate after the list is ready so the selected record fills every field.
+            SettleSshHostSelection();
         }
     }
 
@@ -361,16 +375,37 @@ public partial class LoginViewModel : ObservableObject
 
     private async Task ApplySelectedSshHostAsync(SavedSshLoginProfile profile)
     {
-        var host = profile.Host;
         Password = string.Empty;
-        ServerUrl = $"{host.SshHost}:{host.SshPort}";
-        Identifier = host.SshUserName;
+        ServerUrl = profile.Address;
+        Identifier = profile.UserName;
         RememberServer = true;
         var credential = await _sshCredentials.FindAsync(
-            ServerCenterSshEndpoint.Create(host.SshHost, host.SshPort, host.SshUserName));
+            ServerCenterSshEndpoint.Create(profile.Host, profile.Port, profile.UserName));
         if (!UseSshLogin || !ReferenceEquals(SelectedSshHost, profile)) return;
         Password = credential is { Kind: SshCredentialKind.Password } ? credential.Secret : string.Empty;
         RememberPassword = !string.IsNullOrEmpty(Password);
+    }
+
+    /// <summary>
+    /// Settles which saved record owns the SSH form. In SSH mode a record owns both the address and
+    /// the user name, so this must run <em>after</em> a mode switch has restored the cached inputs:
+    /// writing the address makes the editable picker re-select the matching record, and the cached
+    /// user name of the earlier SSH session is written after that selection. Re-asserting the record
+    /// here keeps the selected record's user name from being overwritten by that stale cache, and
+    /// also covers the window where the local record list finishes loading after the SSH switch.
+    /// </summary>
+    private void SettleSshHostSelection()
+    {
+        if (!UseSshLogin) return;
+        var address = ServerUrl.Trim();
+        var selected = SavedSshHosts.FirstOrDefault(profile => profile.MatchesAddress(address))
+            // Nothing named in the field yet: the most recent record is the one-click default.
+            ?? (string.IsNullOrWhiteSpace(Identifier) ? SavedSshHosts.FirstOrDefault() : null);
+        if (selected is null) return;
+        if (ReferenceEquals(SelectedSshHost, selected))
+            _ = ApplySelectedSshHostAsync(selected);
+        else
+            SelectedSshHost = selected;
     }
 
     [RelayCommand]
@@ -610,9 +645,15 @@ public partial class LoginViewModel : ObservableObject
 /// editable ComboBox selection through <see cref="object.ToString"/>, so exposing the full host
 /// target record here would corrupt the address field and expand the login layout.
 /// </summary>
-public sealed record SavedSshLoginProfile(ServerHostTarget Host)
+public sealed record SavedSshLoginProfile(string Host, int Port, string UserName, DateTimeOffset LastUsedAtUtc)
 {
-    public string Address => $"{Host.SshHost}:{Host.SshPort}";
-    public string DisplayText => $"{Host.SshUserName}@{Address}";
+    public string IdentityKey => SshCredentialRecord.CredentialIdentity(Host, Port, UserName);
+    public string Address => $"{Host}:{Port}";
+    public string DisplayText => $"{UserName}@{Address}";
+
+    /// <summary>Whether the address field currently names this record, comparing what <see cref="ToString"/> publishes.</summary>
+    public bool MatchesAddress(string address) =>
+        !string.IsNullOrWhiteSpace(address) && string.Equals(Address, address.Trim(), StringComparison.OrdinalIgnoreCase);
+
     public override string ToString() => Address;
 }
