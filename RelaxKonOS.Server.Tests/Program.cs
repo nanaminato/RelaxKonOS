@@ -64,6 +64,9 @@ try
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--thumbnails-only")) { ImageThumbnailChecks.Run(root); Console.WriteLine("Thumbnail checks passed."); return; }
     if (args.Contains("--uploads-only")) { await UploadSessionChecks.RunAsync(root); Console.WriteLine("File upload session checks passed."); return; }
+    // This verifies the in-memory authorization decision only. Keep it ahead of the Alias HTTP
+    // suite so a routing regression can run in constrained environments where opening a loopback
+    // listener is deliberately disallowed.
     if (args.Contains("--host-file-routing-only")) { HostFileRoutingChecks.Run(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);

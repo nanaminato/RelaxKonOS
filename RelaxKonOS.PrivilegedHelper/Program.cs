@@ -135,9 +135,16 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
         || request.UnixMode is not null && request.Operation != PrivilegedOperationKind.FileSetUnixPermissions)
         return Fail(64, PrivilegedProblemCode.InvalidRequest, "file authorization shape is invalid");
     var fileRoots = isFileOperation ? policy.FileRoots(request.FileAuthorizationSource!.Value) : Array.Empty<string>();
-
     try
     {
+        // File roots are a privilege boundary, not merely an input filter. Keep their directory
+        // descriptors open throughout the operation so a path component replaced after validation
+        // cannot redirect root-owned I/O through a symlink. Construction is inside this guarded
+        // boundary: a missing or unreadable policy must be a stable AccessDenied result, never a
+        // Helper process crash.
+        using var fileRootAnchors = isFileOperation && OperatingSystem.IsLinux()
+            ? RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.AnchorAllowedRoots(fileRoots)
+            : null;
         return request.Operation switch
         {
             PrivilegedOperationKind.HostEnvironmentRead or PrivilegedOperationKind.HostEnvironmentApply => OperatingSystem.IsWindows()
@@ -216,6 +223,15 @@ public static async Task<PrivilegedOperationResult> ExecuteAsync(PrivilegedOpera
 static async Task<PrivilegedOperationResult> ReadFileAsync(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidatePath(path, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        await using var file = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.OpenRead(canonical);
+        if (file.Length > PrivilegedOperationProtocol.MaximumFileContentBytes)
+            return Fail(75, PrivilegedProblemCode.ContentTooLarge, "file content is too large");
+        using var content = new MemoryStream();
+        await file.CopyToAsync(content);
+        return new(true, OutputBase64: Convert.ToBase64String(content.ToArray()));
+    }
     var bytes = await File.ReadAllBytesAsync(canonical);
     if (bytes.Length > PrivilegedOperationProtocol.MaximumFileContentBytes)
         return Fail(75, PrivilegedProblemCode.ContentTooLarge, "file content is too large");
@@ -226,6 +242,11 @@ static async Task<PrivilegedOperationResult> WriteFileAsync(string? path, string
 {
     var canonical = ValidatePath(path, roots);
     var content = DecodeContent(contentBase64);
+    if (OperatingSystem.IsLinux())
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.WriteAllBytes(canonical, content);
+        return FileOutput(FileEntry(RequiredLinuxMetadata(canonical)));
+    }
     var directory = Path.GetDirectoryName(canonical);
     if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) throw new DirectoryNotFoundException();
     await File.WriteAllBytesAsync(canonical, content);
@@ -235,6 +256,11 @@ static async Task<PrivilegedOperationResult> WriteFileAsync(string? path, string
 static PrivilegedOperationResult Delete(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidatePath(path, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Delete(canonical);
+        return new(true);
+    }
     if (Directory.Exists(canonical)) Directory.Delete(canonical, recursive: true);
     else if (File.Exists(canonical)) File.Delete(canonical);
     else throw new FileNotFoundException();
@@ -248,6 +274,11 @@ static PrivilegedOperationResult Rename(string? sourcePath, string? newName, IRe
         || newName.Contains(Path.DirectorySeparatorChar) || newName.Contains(Path.AltDirectorySeparatorChar))
         throw new ArgumentException("invalid file name");
     var destination = ValidatePath(Path.Combine(Path.GetDirectoryName(source)!, newName), roots);
+    if (OperatingSystem.IsLinux())
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Rename(source, newName);
+        return FileOutput(SystemEntry(RequiredLinuxMetadata(destination)));
+    }
     if (Directory.Exists(source)) new DirectoryInfo(source).MoveTo(destination);
     else if (File.Exists(source)) File.Move(source, destination);
     else throw new FileNotFoundException();
@@ -258,6 +289,11 @@ static PrivilegedOperationResult Move(string? sourcePath, string? destinationPat
 {
     var source = ValidatePath(sourcePath, roots);
     var destination = ValidatePath(destinationPath, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Move(source, destination, overwrite);
+        return FileOutput(SystemEntry(RequiredLinuxMetadata(destination)));
+    }
     if (Directory.Exists(source))
     {
         if (Directory.Exists(destination) && overwrite) Directory.Delete(destination, recursive: true);
@@ -272,6 +308,11 @@ static PrivilegedOperationResult Copy(string? sourcePath, string? destinationPat
 {
     var source = ValidatePath(sourcePath, roots);
     var destination = ValidatePath(destinationPath, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.Copy(source, destination, overwrite);
+        return FileOutput(SystemEntry(RequiredLinuxMetadata(destination)));
+    }
     if (Directory.Exists(source))
     {
         if (Directory.Exists(destination) && overwrite) Directory.Delete(destination, recursive: true);
@@ -288,8 +329,13 @@ static async Task<PrivilegedOperationResult> UploadAsync(string? targetDirectory
     if (string.IsNullOrWhiteSpace(fileName) || fileName is "." or ".." || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
         || fileName.Contains(Path.DirectorySeparatorChar) || fileName.Contains(Path.AltDirectorySeparatorChar))
         throw new ArgumentException("invalid file name");
-    if (!Directory.Exists(directory)) throw new DirectoryNotFoundException();
     var target = ValidatePath(Path.Combine(directory, fileName), roots);
+    if (OperatingSystem.IsLinux())
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.WriteAllBytes(target, DecodeContent(contentBase64));
+        return FileOutput(FileEntry(RequiredLinuxMetadata(target)));
+    }
+    if (!Directory.Exists(directory)) throw new DirectoryNotFoundException();
     await File.WriteAllBytesAsync(target, DecodeContent(contentBase64));
     return FileOutput(FileEntry(target));
 }
@@ -297,6 +343,13 @@ static async Task<PrivilegedOperationResult> UploadAsync(string? targetDirectory
 static PrivilegedOperationResult CreateDirectory(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidatePath(path, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        if (RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.GetMetadata(canonical) is not null)
+            return Fail(17, PrivilegedProblemCode.Conflict, "directory already exists");
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateDirectory(canonical);
+        return new(true);
+    }
     if (Directory.Exists(canonical)) return Fail(17, PrivilegedProblemCode.Conflict, "directory already exists");
     Directory.CreateDirectory(canonical);
     return new(true);
@@ -322,6 +375,12 @@ static async Task<PrivilegedOperationResult> AppendUploadChunkAsync(string? stag
     var canonical = ValidateStagingPath(stagingPath, roots);
     if (offset is null or < 0) throw new ArgumentException("a non-negative offset is required");
     var content = DecodeContent(contentBase64);
+    if (OperatingSystem.IsLinux())
+    {
+        var length = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.AppendStaging(canonical,
+            offset.Value, content.Length, content);
+        return new(true, Offset: length);
+    }
     await using (var file = new FileStream(canonical, FileMode.Open, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
     {
         // The offset is verified rather than trusted: a mismatch must not silently corrupt the file,
@@ -350,10 +409,12 @@ static PrivilegedOperationResult CommitUpload(string? stagingPath, string? fileN
         throw new ArgumentException("invalid file name");
     var directory = Path.GetDirectoryName(staging);
     if (string.IsNullOrEmpty(directory)) throw new ArgumentException("staging path has no directory");
-    if (!File.Exists(staging)) throw new FileNotFoundException();
     // The destination is derived from the staging file's own directory, never accepted as a path, so a
     // caller cannot aim the rename somewhere the staging file does not already live.
     var destination = ValidatePath(Path.Combine(directory, fileName), roots);
+    if (OperatingSystem.IsLinux())
+        return FileOutput(FileEntry(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CommitStagingFile(staging, destination)));
+    if (!File.Exists(staging)) throw new FileNotFoundException();
     File.Move(staging, destination, overwrite: true);
     return FileOutput(FileEntry(destination));
 }
@@ -624,6 +685,19 @@ static async Task<PrivilegedOperationResult> WriteNginxManagedFileAsync(string? 
 static PrivilegedOperationResult ListDirectory(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidatePath(path, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        var anchoredResult = RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.WithAnchoredDirectory(canonical, anchored =>
+        {
+            var directory = new DirectoryInfo(anchored);
+            var directories = directory.EnumerateDirectories().Select(item => SystemEntry(RequiredLinuxMetadata(Path.Combine(canonical, item.Name)))).ToArray();
+            var files = directory.EnumerateFiles().Select(item => FileEntry(RequiredLinuxMetadata(Path.Combine(canonical, item.Name)))).ToArray();
+            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(canonical));
+            return new DirectoryDto(canonical, string.IsNullOrEmpty(name) ? canonical : name, FileSystemEntryType.Directory,
+                directories, files, directory.CreationTimeUtc, directory.LastWriteTimeUtc);
+        });
+        return FileOutput(anchoredResult);
+    }
     var directory = new DirectoryInfo(canonical);
     if (!directory.Exists) throw new DirectoryNotFoundException(canonical);
     var directories = directory.EnumerateDirectories().Select(item => new FileSystemEntryDto(
@@ -641,6 +715,20 @@ static PrivilegedOperationResult ListDirectory(string? path, IReadOnlyList<strin
 static PrivilegedOperationResult GetSpecialLocations(string? home, IReadOnlyList<string> roots)
 {
     var canonical = ValidatePath(home, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        if (RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.GetMetadata(canonical) is not { IsDirectory: true })
+            throw new DirectoryNotFoundException();
+        var anchoredCandidates = new[]
+        {
+            (SpecialFolderKind.Home, "主目录", canonical), (SpecialFolderKind.Desktop, "桌面", Path.Combine(canonical, "Desktop")),
+            (SpecialFolderKind.Documents, "文档", Path.Combine(canonical, "Documents")), (SpecialFolderKind.Downloads, "下载", Path.Combine(canonical, "Downloads")),
+            (SpecialFolderKind.Pictures, "图片", Path.Combine(canonical, "Pictures")), (SpecialFolderKind.Music, "音乐", Path.Combine(canonical, "Music")),
+            (SpecialFolderKind.Videos, "视频", Path.Combine(canonical, "Videos")),
+        };
+        return FileOutput(anchoredCandidates.Where(item => RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.GetMetadata(item.Item3) is { IsDirectory: true })
+            .Select(item => new SpecialLocationDto(item.Item1, item.Item2, item.Item3)).ToArray());
+    }
     if (!Directory.Exists(canonical)) throw new DirectoryNotFoundException();
     var candidates = new[]
     {
@@ -659,12 +747,18 @@ static PrivilegedOperationResult GetSpecialLocations(string? home, IReadOnlyList
 static PrivilegedOperationResult GetInfo(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidatePath(path, roots);
+    if (OperatingSystem.IsLinux())
+        return FileOutput(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.GetMetadata(canonical) is { } metadata
+            ? SystemEntry(metadata) : null);
     return FileOutput(File.Exists(canonical) || Directory.Exists(canonical) ? SystemEntry(canonical) : null);
 }
 
 static PrivilegedOperationResult GetProperties(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidatePath(path, roots);
+    if (OperatingSystem.IsLinux())
+        return FileOutput(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.GetMetadata(canonical) is { } metadata
+            ? Properties(metadata) : null);
     if (!File.Exists(canonical) && !Directory.Exists(canonical)) return FileOutput<FilePropertiesDto?>(null);
     var info = new FileInfo(canonical);
     var attributes = File.GetAttributes(canonical);
@@ -681,6 +775,9 @@ static PrivilegedOperationResult SetUnixPermissions(string? path, int? unixMode,
     if (!OperatingSystem.IsLinux() || unixMode is null or < 0 or > 0xFFF)
         throw new ArgumentException("invalid Unix mode");
     var canonical = ValidatePath(path, roots);
+    if (OperatingSystem.IsLinux())
+        return FileOutput(Properties(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.SetUnixFileMode(canonical,
+            (UnixFileMode)unixMode.Value)));
     if (!File.Exists(canonical) && !Directory.Exists(canonical)) throw new FileNotFoundException();
     File.SetUnixFileMode(canonical, (UnixFileMode)unixMode.Value);
     return GetProperties(canonical, roots);
@@ -689,12 +786,19 @@ static PrivilegedOperationResult SetUnixPermissions(string? path, int? unixMode,
 static PrivilegedOperationResult GetStagingLength(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidateStagingPath(path, roots);
+    if (OperatingSystem.IsLinux())
+        return FileOutput(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.StagingLength(canonical));
     return FileOutput(File.Exists(canonical) ? new FileInfo(canonical).Length : -1L);
 }
 
 static PrivilegedOperationResult DeleteStaging(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidateStagingPath(path, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.DeleteStagingFile(canonical);
+        return FileOutput(true);
+    }
     if (File.Exists(canonical)) File.Delete(canonical);
     return FileOutput(true);
 }
@@ -702,6 +806,11 @@ static PrivilegedOperationResult DeleteStaging(string? path, IReadOnlyList<strin
 static PrivilegedOperationResult CreateStaging(string? path, IReadOnlyList<string> roots)
 {
     var canonical = ValidateStagingPath(path, roots);
+    if (OperatingSystem.IsLinux())
+    {
+        RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.CreateStagingFile(canonical);
+        return new(true);
+    }
     if (!Directory.Exists(Path.GetDirectoryName(canonical))) throw new DirectoryNotFoundException();
     using var created = new FileStream(canonical, FileMode.CreateNew, FileAccess.Write, FileShare.None);
     return new(true);
@@ -720,6 +829,16 @@ static FileEntryDto FileEntry(string path)
         "application/octet-stream");
 }
 
+static FileEntryDto FileEntry(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.LinuxPathMetadata metadata)
+    => new(metadata.Path, metadata.Name,
+        string.IsNullOrEmpty(Path.GetExtension(metadata.Name)) ? null : Path.GetExtension(metadata.Name)[1..].ToLowerInvariant(),
+        checked((long)metadata.Size), metadata.CreatedUtc, metadata.ModifiedUtc, metadata.AccessedUtc,
+        metadata.Attributes.HasFlag(FileAttributes.Hidden), metadata.Attributes.HasFlag(FileAttributes.System),
+        "application/octet-stream");
+
+static RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.LinuxPathMetadata RequiredLinuxMetadata(string path)
+    => RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.GetMetadata(path) ?? throw new FileNotFoundException();
+
 static FileSystemEntryDto SystemEntry(string path)
 {
     if (Directory.Exists(path))
@@ -732,6 +851,21 @@ static FileSystemEntryDto SystemEntry(string path)
     var file = FileEntry(path);
     return new FileSystemEntryDto(file.Path, file.Name, file.Size, FileSystemEntryType.File,
         file.Created, file.Modified, file.Accessed, file.IsHidden, file.IsSystem, file.MimeType);
+}
+
+static FileSystemEntryDto SystemEntry(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.LinuxPathMetadata metadata)
+    => new(metadata.Path, metadata.Name, metadata.IsDirectory ? null : checked((long)metadata.Size),
+        metadata.IsDirectory ? FileSystemEntryType.Directory : FileSystemEntryType.File,
+        metadata.CreatedUtc, metadata.ModifiedUtc, metadata.AccessedUtc,
+        metadata.Attributes.HasFlag(FileAttributes.Hidden), metadata.Attributes.HasFlag(FileAttributes.System),
+        metadata.IsDirectory ? "inode/directory" : "application/octet-stream");
+
+static FilePropertiesDto Properties(RelaxKonOS.PrivilegedHelper.LinuxUserFileOperations.LinuxPathMetadata metadata)
+{
+    var info = SystemEntry(metadata);
+    var mode = (int)metadata.UnixMode;
+    return new FilePropertiesDto(info.Path, info.Name, info.Type, info.Size, info.Created, info.Modified, info.Accessed,
+        Convert.ToString(mode, 8).PadLeft(4, '0'), metadata.Attributes.ToString(), mode);
 }
 
 static void EnsureNginxCanTraverseStaticSiteRoot(string destination)

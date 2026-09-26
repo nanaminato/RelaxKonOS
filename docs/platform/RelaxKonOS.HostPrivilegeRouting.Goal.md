@@ -126,4 +126,5 @@ Explorer 对 Standard 显示可修改管理员账户和密码；对 Administrato
 - 已接入 canonical UID 复核、PAM 管理员账户认证、root 与非 root 管理员分类。非 root 资格由 root Helper 对指定 NSS 用户及 UID 查询当前 sudoers 是否允许运行安装好的固定 Helper；不凭组名推断。账户或策略查询失败时拒绝授权。
 - Server 文件 API、后台任务和续传路径已接入标准用户短期 grant、管理员结构化 `AccessDenied` 回退及 root 直达。受保护续传会话记录授权来源，分片与提交重新校验；清理仅对索引拥有的暂存名执行。Helper 文件操作按来源读取独立 root-owned 范围。桌面与 Android 客户端已接入 Linux 管理员账户输入和 root 文件可用标记。
 - `/etc/relaxkonos/privileged-helper-roots`、`-administrator`、`-root` 分别约束三类来源。默认均为 restricted，root 额外包含 `/root`；三个 `full` 配置互不继承。显式启用 `--root-file-access full` 表示信任低权限 Server 进程的会话判断：现有 Helper 接收 Server 提供的授权来源，无法抵抗已被攻陷的 Server 伪造来源。该选项只适用于接受此信任边界的部署。
-- 尚须在 Linux 隔离环境验证 PAM 锁定 root、sudoers 直接用户项和撤权、UID 漂移、多账户 owner、Helper 停止及路径竞争。当前文件 Helper 仍使用路径校验后再执行 I/O，缺少 descriptor-relative 锚定；目录复制/删除的部分副作用也尚未具备完整操作日记。上述安全重试与 TOCTOU 验收前，不应将本 Goal 标为完成或在生产启用广泛 `/` 文件范围。
+- 特权文件 Helper 现会在每次 Linux 文件请求开始时以 `openat(O_NOFOLLOW)` 固定授权根目录，并以其目录描述符逐层解析后续组件；父目录替换、叶子链接读取和链接 chmod 均拒绝，不能在路径验证后被改写到策略范围外。写入、复制与删除使用同父目录事务；删除一经移入隐藏事务即为逻辑提交，异常后的递归清理由恢复流程完成。跨文件系统移动在目标复制提交后若源删除失败，仍以冲突失败且绝不自动重放。
+- 尚须在 Linux 隔离环境验证 PAM 锁定 root、sudoers 直接用户项和撤权、UID 漂移、多账户 owner、Helper 停止及并发重试。上述实机安全验收前，不应将本 Goal 标为完成或在生产启用广泛 `/` 文件范围。
