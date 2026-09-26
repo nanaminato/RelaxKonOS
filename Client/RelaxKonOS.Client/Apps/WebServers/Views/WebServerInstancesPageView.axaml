@@ -64,6 +64,7 @@
                                 <Button Content="{loc:Loc webservers.managed.refresh_versions}" Command="{Binding RefreshWindowsVersionsCommand}" />
                                 <Button Content="{loc:Loc webservers.managed.download}" Command="{Binding ShowManagedDownloadCommand}" />
                                 <Button Content="{loc:Loc webservers.managed.select_package}" Command="{Binding SelectLocalPackageCommand}" />
+                                <Button Content="{loc:Loc webservers.managed.install_through_host}" Command="{Binding InstallManagedThroughHostCommand}" />
                             </StackPanel>
                             <TextBlock Text="{Binding LocalPackageName}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>

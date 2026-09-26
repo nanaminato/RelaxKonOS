@@ -35,19 +35,6 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
         SendAsync<WebServerInstallCatalogDto?>(HttpMethod.Get, WebServerApiRoutes.ManagedInstallCatalog, null, null, cancellationToken);
     public Task<WebServerInstallDownloadDto?> GetManagedInstallDownloadAsync(string version, CancellationToken cancellationToken = default) =>
         SendAsync<WebServerInstallDownloadDto?>(HttpMethod.Get, WebServerApiRoutes.ManagedInstallDownload + "?version=" + Uri.EscapeDataString(version), null, null, cancellationToken);
-    public async Task<InstallationFileReferenceDto?> UploadManagedPackageAsync(string fileName, Stream content, CancellationToken cancellationToken = default)
-    {
-        if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null) throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var form = new MultipartFormDataContent();
-        using var file = new StreamContent(content);
-        form.Add(file, "package", Path.GetFileName(fileName));
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(session.EffectiveBaseUrl), WebServerApiRoutes.ManagedInstallPackage.TrimStart('/'))) { Content = form };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
-        using var response = await http.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode) throw new WebServerApiException(await ReadProblemCodeAsync(response, cancellationToken) ?? FallbackProblemCode(response.StatusCode), response.StatusCode);
-        return await response.Content.ReadFromJsonAsync<InstallationFileReferenceDto>(RelaxKonOSJsonOptions.Default, cancellationToken);
-    }
-
     public Task<WebServerOperationDto?> IntegrateCandidateAsync(string candidateId, IntegrateWebServerRequest request, CancellationToken cancellationToken = default)
         => SendAsync<WebServerOperationDto?>(HttpMethod.Post, WebServerApiRoutes.IntegrateCandidate.Replace("{candidateId}", WebUtility.UrlEncode(candidateId)), request, NewKey(), cancellationToken);
 

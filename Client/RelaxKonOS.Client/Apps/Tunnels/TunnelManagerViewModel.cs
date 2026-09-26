@@ -124,6 +124,20 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
         await Installation.SubmitAsync(InstallationOperationKind.Install, new FrpInstallationRequest(true, RuntimeVersion));
     }
     [RelayCommand(CanExecute = nameof(CanInstallRuntime))]
+    private async Task InstallRuntimeThroughHostAsync()
+    {
+        try
+        {
+            var download = await client.GetManagedRuntimeDownloadAsync(RuntimeVersion, _lifetime.Token);
+            if (download is null) { StatusText = LocalizedText.Ref("tunnels.runtime_download_unavailable"); return; }
+            if (!await ConfirmAsync("common.install", "tunnels.runtime.install_confirmation", RuntimeVersion)) return;
+            var reference = await Installation.DownloadAndUploadPackageAsync(download.Url, FrpArchiveName(RuntimeVersion));
+            if (reference is not null)
+                await Installation.SubmitAsync(InstallationOperationKind.Install, new FrpInstallationRequest(true, RuntimeVersion, FileReferenceId: reference));
+        }
+        catch (Exception exception) { StatusText = ProblemText(exception); }
+    }
+    [RelayCommand(CanExecute = nameof(CanInstallRuntime))]
     private async Task InstallRuntimeFromServerFileAsync()
     {
         if (RequestServerRuntimePackageAsync is not { } request) return;
@@ -144,6 +158,7 @@ public sealed partial class TunnelManagerViewModel(IRemoteTunnelClient client, b
         }
         catch (Exception exception) { StatusText = ProblemText(exception); }
     }
+    private static string FrpArchiveName(string version) => "frp-" + version.Trim().TrimStart('v') + ".archive";
     [RelayCommand(CanExecute = nameof(CanUninstallRuntime))]
     private async Task UninstallRuntimeAsync()
     {

@@ -1,5 +1,8 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Net.Http.Headers;
 using RelaxKonOS.Protocol.Installations;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Installations;
@@ -30,6 +33,37 @@ public static class InstallationEndpoints
                 return Problem("installation.permission_denied", 403);
             return Results.Ok(references.Create(id, Actor(http.User), request.Path));
         }));
+        group.MapPost(InstallationApiRoutes.PackagePattern, async (string service, HttpContext http,
+            InstallationFileReferenceStore references) =>
+        {
+            if (!TryEnum(service, out InstallationServiceId id) || !CanInstall(http.User, id))
+                return Problem("installation.permission_denied", 403);
+            if (!http.Request.HasFormContentType)
+                return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+            var maximumRequestBytes = InstallationFileReferenceStore.MaximumUploadedPackageBytes + 65536;
+            if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+                limit.MaxRequestBodySize = maximumRequestBytes;
+            if (http.Request.ContentLength > maximumRequestBytes || !MediaTypeHeaderValue.TryParse(http.Request.ContentType, out var mediaType))
+                return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+            var boundary = HeaderUtilities.RemoveQuotes(mediaType.Boundary).Value;
+            if (string.IsNullOrEmpty(boundary) || boundary.Length > 128)
+                return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+            try
+            {
+                var reader = new MultipartReader(boundary, http.Request.Body);
+                var section = await reader.ReadNextSectionAsync(http.RequestAborted);
+                if (section is null || !ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition)
+                    || HeaderUtilities.RemoveQuotes(disposition.Name).Value != "package")
+                    return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+                var fileName = HeaderUtilities.RemoveQuotes(disposition.FileNameStar.HasValue ? disposition.FileNameStar : disposition.FileName).Value;
+                if (string.IsNullOrWhiteSpace(fileName))
+                    return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400);
+                return Results.Ok(await references.StageUploadAsync(id, Actor(http.User), fileName, section.Body,
+                    declaredLength: null, cancellationToken: http.RequestAborted));
+            }
+            catch (InstallationException error) { return Problem(error.ProblemCode, error.StatusCode); }
+            catch (InvalidDataException) { return Problem(InstallationProblemCodes.FileReferenceUnavailable, 400); }
+        });
         group.MapGet(InstallationApiRoutes.ActivePattern, (string service, HttpContext http, InstallationCoordinator coordinator) => Handle(() =>
         {
             if (!TryEnum(service, out InstallationServiceId id)) return Problem(InstallationProblemCodes.InvalidRequest, 400);

@@ -29,6 +29,7 @@
     "tunnels.runtime_download_title": "下载 FRP 安装包",
     "tunnels.runtime_download_unavailable": "当前版本或平台没有可自行下载的受信任 FRP 安装包。",
     "tunnels.runtime.install_from_server_file": "从服务器选择文件安装",
+    "tunnels.runtime.install_through_host": "宿主机下载并传送安装",
     "tunnels.runtime.server_file_hint": "仅接受与所选版本和当前平台完全匹配、校验通过的官方归档。",
     "tunnels.runtime.select_server_package": "选择服务器上的 FRP 安装包",
     "tunnels.runtime.package_filter": "FRP 安装包 (*.zip, *.tar.gz)",

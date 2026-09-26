@@ -29,6 +29,7 @@
     "tunnels.runtime_download_title": "Download FRP package",
     "tunnels.runtime_download_unavailable": "No trusted FRP package is available for this version or platform.",
     "tunnels.runtime.install_from_server_file": "Install from server file",
+    "tunnels.runtime.install_through_host": "Download on host and install",
     "tunnels.runtime.server_file_hint": "Only an official archive that exactly matches the selected version and current platform, and passes verification, is accepted.",
     "tunnels.runtime.select_server_package": "Select an FRP archive on the server",
     "tunnels.runtime.package_filter": "FRP archives (*.zip, *.tar.gz)",

@@ -78,6 +78,7 @@
     "webservers.version_catalog.unavailable": "Unable to load the Nginx Windows version list. Refresh and try again, or choose a local ZIP package.",
     "webservers.managed.linux_version_hint": "Linux: leave empty for the repository default, or enter the full APT package version (see apt-cache policy nginx).",
     "webservers.managed.select_package": "Choose local ZIP",
+    "webservers.managed.install_through_host": "Download on host and install",
     "webservers.managed.download": "Download it myself",
     "webservers.managed.download_title": "Download Nginx package",
     "webservers.managed.download_unavailable": "No trusted Nginx package is available for manual download for this version.",

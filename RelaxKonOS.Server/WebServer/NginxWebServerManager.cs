@@ -29,7 +29,6 @@ internal sealed partial class NginxWebServerManager(
     IHostApplicationLifetime lifetime,
     NginxManagedOptions managedOptions,
     NginxInstallPackageStore packages,
-    InstallationFileReferenceStore fileReferences,
     ICertificateStore certificates,
     FileHttp01ChallengeStore webRootChallenges,
     IOutboundProxyHttpClientFactory outboundProxyClients,
@@ -51,13 +50,6 @@ internal sealed partial class NginxWebServerManager(
     private static readonly SemaphoreSlim ManagedInstallGate = new(1, 1);
 
     public string ProviderId => ProviderKey;
-
-    public async Task<InstallationFileReferenceDto?> StageManagedPackageAsync(string fileName, Stream content, string actor, CancellationToken cancellationToken)
-    {
-        var packageId = await packages.SaveAsync(fileName, content, cancellationToken: cancellationToken);
-        if (packageId is null || packages.GetPath(packageId) is not { } path) return null;
-        return fileReferences.RegisterStaged(InstallationServiceId.Nginx, actor, path, Path.GetFileName(fileName), () => packages.Delete(packageId));
-    }
 
     public async Task<WebServerInstallCatalogDto> GetManagedInstallCatalogAsync(CancellationToken cancellationToken)
     {

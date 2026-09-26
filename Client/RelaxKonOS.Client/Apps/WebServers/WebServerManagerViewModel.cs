@@ -355,10 +355,28 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         try
         {
             await using var package = File.OpenRead(path);
-            var reference = await _client.UploadManagedPackageAsync(Path.GetFileName(path), package);
+            var reference = await Installation.UploadPackageAsync(Path.GetFileName(path), package);
             if (reference is null) { StatusText = LocalizedText.Ref("webservers.package.invalid"); return; }
             localPackageReference = reference.Id;
             LocalPackageName = reference.FileName;
+        }
+        catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanInstallManaged))]
+    private async Task InstallManagedThroughHostAsync()
+    {
+        if (string.IsNullOrWhiteSpace(InstallVersion)) { StatusText = LocalizedText.Ref("webservers.problem.version_required"); return; }
+        try
+        {
+            var version = InstallVersion.Trim();
+            var download = await _client.GetManagedInstallDownloadAsync(version);
+            if (download is null) { StatusText = LocalizedText.Ref("webservers.managed.download_unavailable"); return; }
+            if (RequestManagedInstallConfirmationAsync is null || !await RequestManagedInstallConfirmationAsync()) return;
+            var reference = await Installation.DownloadAndUploadPackageAsync(download.Url, $"nginx-{download.Version}.zip");
+            if (reference is null) return;
+            await Installation.SubmitAsync(InstallationOperationKind.Install,
+                new NginxInstallationRequest(true, download.Version, reference));
         }
         catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
     }
