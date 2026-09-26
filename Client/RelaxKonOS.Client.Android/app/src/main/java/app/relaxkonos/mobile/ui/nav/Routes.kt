@@ -23,6 +23,8 @@ object Routes {
     const val FILES_DETAIL = "files/detail"
     const val MANAGE_MONITOR = "manage/monitor"
     const val MANAGE_PROCESSES = "manage/processes"
+    const val MANAGE_DEPLOYMENTS = "manage/deployments"
+    const val MANAGE_DEPLOYMENT_DETAIL = "manage/deployments/detail"
     const val MORE_ACCOUNT_SECURITY = "more/account-security"
     const val MORE_CONNECTIONS = "more/connections"
     const val MORE_APPEARANCE = "more/appearance"

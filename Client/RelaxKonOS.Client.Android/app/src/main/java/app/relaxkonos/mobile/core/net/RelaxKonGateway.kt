@@ -22,6 +22,10 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun deploymentApplications(serverUrl: String, accessToken: String): ApiResult<List<DeploymentApplication>>
+    suspend fun deploymentSnapshot(serverUrl: String, accessToken: String, applicationId: String): ApiResult<DeploymentSnapshot>
+    suspend fun deploymentRuntime(serverUrl: String, accessToken: String): ApiResult<DeploymentRuntime>
+
     suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession>
 
     suspend fun refresh(serverUrl: String, refreshToken: String): ApiResult<AuthTokens>
