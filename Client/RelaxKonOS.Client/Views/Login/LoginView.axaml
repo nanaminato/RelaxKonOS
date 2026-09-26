@@ -105,13 +105,7 @@
                                   IsEditable="True" Text="{Binding ServerUrl, Mode=TwoWay}" MinWidth="440" PlaceholderText="host:22">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding SshUserName}" />
-                                        <TextBlock Text="@" />
-                                        <TextBlock Text="{Binding SshHost}" />
-                                        <TextBlock Text=":" />
-                                        <TextBlock Text="{Binding SshPort}" />
-                                    </StackPanel>
+                                    <TextBlock Text="{Binding DisplayText}" />
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>

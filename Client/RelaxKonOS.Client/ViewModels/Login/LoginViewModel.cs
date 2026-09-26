@@ -58,7 +58,7 @@ public partial class LoginViewModel : ObservableObject
     }
 
     public ObservableCollection<SavedLoginProfile> SavedProfiles { get; }
-    public ObservableCollection<ServerHostTarget> SavedSshHosts { get; } = [];
+    public ObservableCollection<SavedSshLoginProfile> SavedSshHosts { get; } = [];
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     [NotifyPropertyChangedFor(nameof(ConnectionInstructions))]
@@ -124,7 +124,7 @@ public partial class LoginViewModel : ObservableObject
     private SavedLoginProfile? _selectedProfile;
 
     [ObservableProperty]
-    private ServerHostTarget? _selectedSshHost;
+    private SavedSshLoginProfile? _selectedSshHost;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OptionsToggleText))]
@@ -207,7 +207,7 @@ public partial class LoginViewModel : ObservableObject
         if (value is not null && !_loadingSavedProfiles)
             ApplySelectedProfile(value);
     }
-    partial void OnSelectedSshHostChanged(ServerHostTarget? value)
+    partial void OnSelectedSshHostChanged(SavedSshLoginProfile? value)
     {
         if (value is not null && !_loadingSavedSshHosts)
             _ = ApplySelectedSshHostAsync(value);
@@ -332,7 +332,7 @@ public partial class LoginViewModel : ObservableObject
 
             SavedSshHosts.Clear();
             foreach (var host in sshHosts.OrderByDescending(host => host.LastUsedAtUtc))
-                SavedSshHosts.Add(host);
+                SavedSshHosts.Add(new SavedSshLoginProfile(host));
             SelectedSshHost = null;
         }
         finally
@@ -359,15 +359,16 @@ public partial class LoginViewModel : ObservableObject
         RememberPassword = profile.HasPassword;
     }
 
-    private async Task ApplySelectedSshHostAsync(ServerHostTarget host)
+    private async Task ApplySelectedSshHostAsync(SavedSshLoginProfile profile)
     {
+        var host = profile.Host;
         Password = string.Empty;
         ServerUrl = $"{host.SshHost}:{host.SshPort}";
         Identifier = host.SshUserName;
         RememberServer = true;
         var credential = await _sshCredentials.FindAsync(
             ServerCenterSshEndpoint.Create(host.SshHost, host.SshPort, host.SshUserName));
-        if (!UseSshLogin || !ReferenceEquals(SelectedSshHost, host)) return;
+        if (!UseSshLogin || !ReferenceEquals(SelectedSshHost, profile)) return;
         Password = credential is { Kind: SshCredentialKind.Password } ? credential.Secret : string.Empty;
         RememberPassword = !string.IsNullOrEmpty(Password);
     }
@@ -602,4 +603,16 @@ public partial class LoginViewModel : ObservableObject
     };
 
     private string T(string key, string englishFallback) => _localization.Get(key, englishFallback);
+}
+
+/// <summary>
+/// An SSH login picker item deliberately has a compact text representation. Avalonia writes an
+/// editable ComboBox selection through <see cref="object.ToString"/>, so exposing the full host
+/// target record here would corrupt the address field and expand the login layout.
+/// </summary>
+public sealed record SavedSshLoginProfile(ServerHostTarget Host)
+{
+    public string Address => $"{Host.SshHost}:{Host.SshPort}";
+    public string DisplayText => $"{Host.SshUserName}@{Address}";
+    public override string ToString() => Address;
 }
