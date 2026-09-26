@@ -251,15 +251,7 @@
                 <DataGrid.Styles>
                     <Style Selector="DataGridColumnHeader">
                         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-                        <Setter Property="FontWeight" Value="SemiBold" />
-                        <Setter Property="FontSize" Value="12" />
-                    </Style>
-                    <Style Selector="Button.explorer-sort-header">
-                        <Setter Property="Background" Value="Transparent" />
-                        <Setter Property="BorderThickness" Value="0" />
-                        <Setter Property="MinHeight" Value="0" />
                         <Setter Property="Padding" Value="8,0" />
-                        <Setter Property="VerticalAlignment" Value="Stretch" />
                         <Setter Property="HorizontalContentAlignment" Value="Left" />
                         <Setter Property="VerticalContentAlignment" Value="Center" />
                         <Setter Property="FontWeight" Value="SemiBold" />
@@ -292,14 +284,7 @@
                     </Style>
                 </DataGrid.Styles>
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.NameColumnHeader}" Width="300" MinWidth="180">
-                        <DataGridTemplateColumn.HeaderTemplate>
-                            <DataTemplate x:CompileBindings="False">
-                                <Button Classes="explorer-sort-header" Content="{Binding}"
-                                        Tag="{x:Static models:ExplorerSortField.Name}"
-                                        Click="SortHeader_Click" />
-                            </DataTemplate>
-                        </DataGridTemplateColumn.HeaderTemplate>
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.NameColumnHeader}" Width="300" MinWidth="180" SortMemberPath="Name">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="12,2">
@@ -332,14 +317,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.ModifiedColumnHeader}" Width="164" MinWidth="150">
-                        <DataGridTemplateColumn.HeaderTemplate>
-                            <DataTemplate x:CompileBindings="False">
-                                <Button Classes="explorer-sort-header" Content="{Binding}"
-                                        Tag="{x:Static models:ExplorerSortField.Modified}"
-                                        Click="SortHeader_Click" />
-                            </DataTemplate>
-                        </DataGridTemplateColumn.HeaderTemplate>
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.ModifiedColumnHeader}" Width="164" MinWidth="150" SortMemberPath="Modified">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
                                 <TextBlock Text="{Binding Modified, StringFormat='{}{0:yyyy/MM/dd HH:mm}'}" Padding="8,0"
@@ -354,14 +332,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.TypeColumnHeader}" Width="120" MinWidth="96">
-                        <DataGridTemplateColumn.HeaderTemplate>
-                            <DataTemplate x:CompileBindings="False">
-                                <Button Classes="explorer-sort-header" Content="{Binding}"
-                                        Tag="{x:Static models:ExplorerSortField.Type}"
-                                        Click="SortHeader_Click" />
-                            </DataTemplate>
-                        </DataGridTemplateColumn.HeaderTemplate>
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.TypeColumnHeader}" Width="120" MinWidth="96" SortMemberPath="Type">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
                                 <TextBlock Text="{Binding ., Converter={StaticResource TypeTextConverter}}" Padding="8,0"
@@ -376,14 +347,7 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.SizeColumnHeader}" Width="112" MinWidth="96">
-                        <DataGridTemplateColumn.HeaderTemplate>
-                            <DataTemplate x:CompileBindings="False">
-                                <Button Classes="explorer-sort-header" Content="{Binding}"
-                                        Tag="{x:Static models:ExplorerSortField.Size}"
-                                        Click="SortHeader_Click" />
-                            </DataTemplate>
-                        </DataGridTemplateColumn.HeaderTemplate>
+                    <DataGridTemplateColumn Header="{Binding #Root.DataContext.SizeColumnHeader}" Width="112" MinWidth="96" SortMemberPath="Size">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate x:DataType="d:FileSystemEntryDto">
                                 <TextBlock Text="{Binding Size, Converter={StaticResource SizeConverter}}" Padding="8,0"

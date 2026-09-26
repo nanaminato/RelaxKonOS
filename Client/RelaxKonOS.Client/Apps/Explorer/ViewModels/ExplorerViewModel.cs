@@ -132,13 +132,25 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     }
     private void SortEntries()
     {
+        var previouslySelected = GetSelectedEntries().ToHashSet();
+        var previouslySelectedEntry = SelectedEntry;
         var sorted = Entries.OrderBy(e => e, new ExplorerEntryComparer(SortField, SortDescending)).ToArray();
-        // Collection moves preserve DataGrid selection; filtering deliberately clears it.
-        for (var i = 0; i < sorted.Length; i++)
-        {
-            var index = Entries.IndexOf(sorted[i]);
-            if (index != i) Entries.Move(index, i);
-        }
+        // A Reset-style rebuild is required here. Avalonia's DataGrid can retain its visual
+        // row order after a series of collection Move events, especially after resizing a
+        // details column. Replacing the visible entries forces it to realize the new order.
+        Entries.Clear();
+        foreach (var entry in sorted) Entries.Add(entry);
+
+        // Restore selection by entry identity after the grid receives the rebuilt list.
+        SelectedEntries.Clear();
+        foreach (var entry in sorted.Where(previouslySelected.Contains)) SelectedEntries.Add(entry);
+        SelectedEntry = null;
+        SelectedEntry = previouslySelectedEntry is not null && Entries.Contains(previouslySelectedEntry)
+            ? previouslySelectedEntry
+            : SelectedEntries.FirstOrDefault();
+        NotifySelectionCommands();
+        OnPropertyChanged(nameof(SelectionSummary));
+        UpdatePickerEntryName();
         OnPropertyChanged(nameof(NameColumnHeader));
         OnPropertyChanged(nameof(ModifiedColumnHeader));
         OnPropertyChanged(nameof(TypeColumnHeader));

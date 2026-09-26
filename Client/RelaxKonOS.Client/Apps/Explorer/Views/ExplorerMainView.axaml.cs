@@ -27,6 +27,8 @@ public partial class ExplorerMainView : UserControl
     private Point _dragStart;
     private readonly ContextMenu? _entryContextMenu;
     private ExplorerViewModel? _attachedViewModel;
+    private DataGridColumnHeader? _pressedSortHeader;
+    private double _pressedSortHeaderWidth;
 
     /// <summary>Combined live width of the details columns, used to constrain row layout.</summary>
     public double EntriesTableWidth
@@ -40,6 +42,8 @@ public partial class ExplorerMainView : UserControl
         InitializeComponent();
         _entryContextMenu = EntriesGrid.ContextMenu;
         EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_PointerPressed, RoutingStrategies.Tunnel);
+        EntriesGrid.AddHandler(PointerPressedEvent, EntriesGrid_SortHeaderPointerPressed, RoutingStrategies.Tunnel);
+        EntriesGrid.AddHandler(PointerReleasedEvent, EntriesGrid_SortHeaderPointerReleased, RoutingStrategies.Tunnel);
         EntriesGrid.LayoutUpdated += EntriesGrid_LayoutUpdated;
         DataContextChanged += ExplorerMainView_DataContextChanged;
     }
@@ -152,9 +156,26 @@ public partial class ExplorerMainView : UserControl
             ViewModel?.UpdatePickerSelection(grid.SelectedItems?.Cast<object>() ?? []);
     }
 
-    private void SortHeader_Click(object? sender, RoutedEventArgs e)
+    private void EntriesGrid_SortHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is Button { Tag: ExplorerSortField field } && ViewModel is { IsBusy: false } vm)
+        _pressedSortHeader = null;
+        if (!e.GetCurrentPoint(EntriesGrid).Properties.IsLeftButtonPressed) return;
+        var header = FindVisualAncestor<DataGridColumnHeader>(e.Source);
+        if (header is not null && SortFieldForHeader(header).HasValue)
+        {
+            _pressedSortHeader = header;
+            _pressedSortHeaderWidth = header.Bounds.Width;
+        }
+    }
+
+    private void EntriesGrid_SortHeaderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        var pressedHeader = _pressedSortHeader;
+        _pressedSortHeader = null;
+        if (pressedHeader is null || !ReferenceEquals(pressedHeader, FindVisualAncestor<DataGridColumnHeader>(e.Source))) return;
+        // A drag on the column divider changes the column width; it must not also sort.
+        if (Math.Abs(pressedHeader.Bounds.Width - _pressedSortHeaderWidth) >= 0.1) return;
+        if (SortFieldForHeader(pressedHeader) is { } field && ViewModel is { IsBusy: false } vm)
             vm.SortBy(field);
     }
 
@@ -300,6 +321,22 @@ public partial class ExplorerMainView : UserControl
             if (control.DataContext is T value)
                 return value;
         return null;
+    }
+
+    private static T? FindVisualAncestor<T>(object? source) where T : Control
+    {
+        for (var control = source as Control; control is not null; control = control.GetVisualParent() as Control)
+            if (control is T value) return value;
+        return null;
+    }
+
+    private ExplorerSortField? SortFieldForHeader(DataGridColumnHeader header)
+    {
+        if (ViewModel is not { } vm || header.Content is not string text) return null;
+        if (text == vm.NameColumnHeader) return ExplorerSortField.Name;
+        if (text == vm.ModifiedColumnHeader) return ExplorerSortField.Modified;
+        if (text == vm.TypeColumnHeader) return ExplorerSortField.Type;
+        return text == vm.SizeColumnHeader ? ExplorerSortField.Size : null;
     }
 
     private static bool IsWithinTextBox(object? source)
