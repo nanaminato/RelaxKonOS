@@ -438,6 +438,8 @@ RelaxKonOS.Server     = Cloud Backend
 | [`Login`](./platform/RelaxKonOS.Login.md) | 登录窗口、auth 端点、JWT 与错误处理 |
 | [`Security`](./platform/RelaxKonOS.Security.md) | 安全设计、权限提升与危险操作确认 |
 | [`PrivilegedOperations Goal`](./platform/RelaxKonOS.PrivilegedOperations.Goal.md) | 跨平台受限 Helper、Windows Server LocalSystem 服务与特权操作迁移执行计划 |
+| [`HostPrivilegeRouting Goal`](./platform/RelaxKonOS.HostPrivilegeRouting.Goal.md) | Linux root 与宿主管理员会话的文件执行路由、自动提权和分层 Helper 策略改造计划（待实施） |
+| [`EffectiveOsUserExecution Goal`](./platform/RelaxKonOS.EffectiveOsUserExecution.Goal.md) | 当前有效 OS 用户执行模型、实现进度与平台验收边界 |
 | [`ServerCenter Goal`](./platform/RelaxKonOS.ServerCenter.Goal.md) | 桌面与 Android 的服务器中心、内置 SSH 部署及生命周期验收 |
 | [`UserModeServer Goal`](./services/RelaxKonOS.UserModeServer.Goal.md) | 无 sudo 的 Linux 用户模式服务端、SSH 隧道与能力边界 |
 | [`Storage`](./platform/RelaxKonOS.Storage.md) | EF Core + SQLite、持久化范围与表结构 |

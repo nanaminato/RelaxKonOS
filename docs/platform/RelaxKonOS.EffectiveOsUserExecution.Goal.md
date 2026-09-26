@@ -1,5 +1,7 @@
 # RelaxKonOS 有效 OS 执行身份（Effective OS User Execution）Goal
 
+> 后续已确认的改造方向见 [宿主管理员身份与执行路由 Goal](./RelaxKonOS.HostPrivilegeRouting.Goal.md)。本文关于 root 被拒绝和权限不足不自动提权的内容仍描述当前已实现行为；新 Goal 实施时须同步更新本文件。
+
 > 状态：实施中（2026-09-26：把「User Mode 只能以自己的身份执行」补齐到 Windows，Server 侧的 `EnableWindowsUserExecution` 布尔升级为 `PrivilegedHelper:UserExecutionBackend`（`helper` / `local-identity` / `disabled`，默认 `helper`），新增仅限开发机的 `local-identity` 后端（承重守卫＝目标身份必须等于 Server 进程自身 OS 身份；Production 或特权进程启动期拒绝），安装器永不写入该值；User Mode 已验证路径与 Windows 有效用户执行验收结论均未改变。2026-09-25：在 Windows 开发宿主上完成全解决方案构建、`RelaxKonOS.Server.Tests` 全部专项与完整套件、客户端/Framework 测试工程实测；据此修复两处只在 Windows 宿主暴露的问题——身份资格校验误用宿主路径语义、应用部署验证宿主缺少 `IFileService` 注册；Windows 契约检查与用户执行通道关闭态行为已可在 Windows 上执行。2026-09-24：Linux 文件、批处理文件作业、Git、Terminal（含 resize）、Guardian 与部署源文件已接入有效用户执行；Linux 文件操作与事务恢复已收紧到目录/文件描述符；Windows 本地账户文件 impersonation 代码已接入但默认关闭，真实多用户集成验证仍未完成。）
 >
 > 建立日期：2026-09-22
