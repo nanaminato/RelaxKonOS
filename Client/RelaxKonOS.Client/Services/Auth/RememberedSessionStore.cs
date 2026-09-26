@@ -81,7 +81,8 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
         new MacKeychainStore(PlatformSecretSlot.MacKeychain("RelaxKonOS.Client.RememberedSession"));
     private static readonly IPlatformSecretStore LinuxSecretStore =
         new LinuxSecretServiceStore(PlatformSecretSlot.LinuxSecret(
-            "com.relaxkonos.client.remembered-session", "application", "RelaxKonOS.Client"));
+            "com.relaxkonos.client.remembered-session", "application", "RelaxKonOS.Client",
+            "RelaxKonOS saved connection"));
 
     private readonly string _windowsFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

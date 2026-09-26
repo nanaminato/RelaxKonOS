@@ -100,7 +100,8 @@ public sealed class SshCredentialStore : ISshCredentialStore
         new MacKeychainStore(PlatformSecretSlot.MacKeychain("RelaxKonOS.Client.SshCredentials"));
     private static readonly IPlatformSecretStore LinuxSecretStore =
         new LinuxSecretServiceStore(PlatformSecretSlot.LinuxSecret(
-            "com.relaxkonos.client.ssh-credentials", "application", "RelaxKonOS.Client.SshCredentials"));
+            "com.relaxkonos.client.ssh-credentials", "application", "RelaxKonOS.Client.SshCredentials",
+            "RelaxKonOS server center SSH credential"));
 
     private readonly string _windowsFilePath;
     private readonly SemaphoreSlim _gate = new(1, 1);

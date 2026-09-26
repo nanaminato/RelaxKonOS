@@ -118,6 +118,7 @@ Check(recovered.OperationId == recoveryId && recovery.Commands.Any(command =>
     "断线恢复按原操作 ID 读取权威回执");
 
 await LoginPickerChecks.RunAsync();
+SecretStoreChecks.Run();
 
 Console.WriteLine("桌面服务器中心传输检查通过。");
 

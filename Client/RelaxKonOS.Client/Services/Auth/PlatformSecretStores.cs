@@ -12,15 +12,17 @@ internal sealed record PlatformSecretSlot(
     string AccountName,
     string SchemaName,
     string SchemaAttributeName,
-    string SchemaAttributeValue)
+    string SchemaAttributeValue,
+    string Label)
 {
     /// <summary>macOS Keychain 通用密码条目。</summary>
     public static PlatformSecretSlot MacKeychain(string serviceName, string accountName = "default") =>
-        new(serviceName, accountName, serviceName, "application", serviceName);
+        new(serviceName, accountName, serviceName, "application", serviceName, serviceName);
 
-    /// <summary>Linux Secret Service 条目。</summary>
-    public static PlatformSecretSlot LinuxSecret(string schemaName, string attributeName, string attributeValue) =>
-        new(schemaName, attributeName, schemaName, attributeName, attributeValue);
+    /// <summary>Linux Secret Service 条目。<paramref name="label"/> 只用于密钥环界面显示，不参与匹配。</summary>
+    public static PlatformSecretSlot LinuxSecret(
+        string schemaName, string attributeName, string attributeValue, string label) =>
+        new(schemaName, attributeName, schemaName, attributeName, attributeValue, label);
 }
 
 /// <summary>平台安全存储的读写结果。返回 false 表示平台存储不可用，而不是「没有值」。</summary>
@@ -200,9 +202,10 @@ internal sealed class LinuxSecretServiceStore : IPlatformSecretStore
         try
         {
             using var attributes = new SecretAttributes(_slot.SchemaAttributeName, _slot.SchemaAttributeValue);
+            if (attributes.Handle == IntPtr.Zero) return false;
             var saved = secret_password_storev_sync(
-                ref _schema, IntPtr.Zero, "RelaxKonOS server center SSH credential", value,
-                attributes.Handle, IntPtr.Zero, out var error);
+                ref _schema, attributes.Handle, IntPtr.Zero, _slot.Label, value,
+                IntPtr.Zero, out var error);
             var hasError = error != IntPtr.Zero;
             FreeError(error);
             return saved && !hasError;
@@ -308,10 +311,18 @@ internal sealed class LinuxSecretServiceStore : IPlatformSecretStore
     private static extern IntPtr secret_password_lookupv_sync(
         ref SecretSchema schema, IntPtr attributes, IntPtr cancellable, out IntPtr error);
 
+    // The whole `*v_sync` family takes the attribute table directly after the schema:
+    // (schema, attributes, collection, label, password, cancellable, error).  It is NOT the
+    // varargs `secret_password_store_sync` order, which has no attributes parameter at all
+    // (schema, collection, label, password, cancellable, error, ...attributes).  Passing
+    // collection first therefore hands libsecret a NULL attributes table, which trips its
+    // `g_return_val_if_fail (attributes != NULL)` guard: a GLib CRITICAL on stderr reading
+    // `secret_password_storev_sync: assertion 'attributes != NULL' failed`, and a FALSE return
+    // that surfaces as "secure storage unavailable" for every single Linux write.
     [DllImport("libsecret-1.so.0", CallingConvention = CallingConvention.Cdecl)]
     private static extern bool secret_password_storev_sync(
-        ref SecretSchema schema, IntPtr collection, string label, string password,
-        IntPtr attributes, IntPtr cancellable, out IntPtr error);
+        ref SecretSchema schema, IntPtr attributes, IntPtr collection, string label,
+        string password, IntPtr cancellable, out IntPtr error);
 
     [DllImport("libsecret-1.so.0", CallingConvention = CallingConvention.Cdecl)]
     private static extern bool secret_password_clearv_sync(
