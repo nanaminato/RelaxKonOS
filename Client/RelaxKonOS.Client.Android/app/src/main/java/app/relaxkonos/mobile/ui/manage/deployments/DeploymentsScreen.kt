@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -124,6 +126,7 @@ fun DeploymentsScreen(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun DeploymentCreateDialog(
     templates: List<DeploymentTemplate>,
     submitting: Boolean,
@@ -175,78 +178,110 @@ private fun DeploymentCreateDialog(
             configuration = configuration.toList(),
         )
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.deployments_create_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(stringResource(R.string.deployments_create_note), style = MaterialTheme.typography.bodySmall)
-                templates.forEach { option ->
-                    FilterChip(selected = sourceKind == option.sourceKind, onClick = { sourceKind = option.sourceKind }, label = {
-                        Text(label(option.sourceKind))
-                    })
-                }
-                OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true)
-                if (template?.requiresImageReference == true) {
-                    OutlinedTextField(image, { image = it }, label = { Text(stringResource(R.string.deployments_image_reference)) }, singleLine = true)
-                }
-                OutlinedTextField(
-                    port, { port = it }, label = { Text(stringResource(R.string.deployments_container_port)) }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = port.isNotEmpty() && parsedPort == null,
-                )
-                if (archive) {
-                    Text(stringResource(R.string.deployments_archive_note), style = MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(baseImage, { baseImage = it }, label = { Text(stringResource(R.string.deployments_base_image)) }, singleLine = true)
-                    if (template?.sourceKind in setOf("JavaJar", "DotNetPublish", "PythonProject")) {
-                        OutlinedTextField(runtimeVersion, { runtimeVersion = it }, label = { Text(stringResource(R.string.deployments_runtime_version)) }, singleLine = true)
+    ModalBottomSheet(
+        onDismissRequest = { if (!submitting) onDismiss() },
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .padding(horizontal = Spacing.lg)
+                .padding(bottom = Spacing.lg)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            Text(stringResource(R.string.deployments_create_title), style = MaterialTheme.typography.headlineSmall)
+            Text(
+                stringResource(R.string.deployments_create_note),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Column(Modifier.padding(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Text(stringResource(R.string.deployments_source), style = MaterialTheme.typography.labelLarge)
+                    templates.forEach { option ->
+                        FilterChip(
+                            selected = sourceKind == option.sourceKind,
+                            onClick = { sourceKind = option.sourceKind },
+                            label = { Text(label(option.sourceKind)) },
+                        )
                     }
-                    if (template?.sourceKind == "PythonProject") {
-                        OutlinedTextField(programEntry, { programEntry = it }, label = { Text(stringResource(R.string.deployments_python_entry)) }, singleLine = true)
-                    }
-                    if (template?.supportsSelfContained == true) {
-                        Row {
-                            Checkbox(checked = selfContained, onCheckedChange = { selfContained = it })
-                            Text(stringResource(R.string.deployments_self_contained))
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        FilterChip(selected = workload == "Web", onClick = { workload = "Web" }, label = { Text(stringResource(R.string.deployment_web)) })
-                        FilterChip(selected = workload == "Worker", onClick = { workload = "Worker" }, label = { Text(stringResource(R.string.deployment_worker)) })
-                    }
-                }
-                Text(stringResource(R.string.deployments_configuration), style = MaterialTheme.typography.titleSmall)
-                configuration.forEach { entry ->
-                    Text(if (entry.isSecret) stringResource(R.string.deployments_secret_configured, entry.name) else "${entry.name}=${entry.value}",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-                OutlinedTextField(configurationName, { configurationName = it }, label = { Text(stringResource(R.string.deployments_configuration_name)) }, singleLine = true)
-                OutlinedTextField(
-                    configurationValue, { configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) }, singleLine = true,
-                    visualTransformation = if (configurationSecret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-                )
-                Row {
-                    Checkbox(checked = configurationSecret, onCheckedChange = { configurationSecret = it })
-                    Text(stringResource(R.string.deployments_configuration_secret))
-                    TextButton(onClick = {
-                        if (configurationName.isNotBlank()) {
-                            configuration.removeAll { it.name == configurationName.trim() }
-                            configuration += DeploymentConfigEntry(configurationName.trim(), configurationValue, configurationSecret)
-                            configurationName = ""; configurationValue = ""; configurationSecret = false
-                        }
-                    }, enabled = configurationName.isNotBlank()) { Text(stringResource(R.string.deployments_configuration_add)) }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                if (archive) onArchiveSubmit(archiveDefinition!!)
-                else onImageSubmit(name.trim(), image.trim(), parsedPort!!, configuration.toList())
-            }, enabled = valid && !submitting) {
-                Text(stringResource(if (archive) R.string.deployments_choose_archive else R.string.deployments_create_and_deploy))
+            Surface(shape = MaterialTheme.shapes.medium, tonalElevation = Spacing.xs) {
+                Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true)
+                    if (template?.requiresImageReference == true) {
+                        OutlinedTextField(image, { image = it }, label = { Text(stringResource(R.string.deployments_image_reference)) }, singleLine = true)
+                    }
+                    OutlinedTextField(
+                        port, { port = it }, label = { Text(stringResource(R.string.deployments_container_port)) }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = port.isNotEmpty() && parsedPort == null,
+                    )
+                    if (archive) {
+                        OutlinedTextField(baseImage, { baseImage = it }, label = { Text(stringResource(R.string.deployments_base_image)) }, singleLine = true)
+                        if (template?.sourceKind in setOf("JavaJar", "DotNetPublish", "PythonProject")) {
+                            OutlinedTextField(runtimeVersion, { runtimeVersion = it }, label = { Text(stringResource(R.string.deployments_runtime_version)) }, singleLine = true)
+                        }
+                        if (template?.sourceKind == "PythonProject") {
+                            OutlinedTextField(programEntry, { programEntry = it }, label = { Text(stringResource(R.string.deployments_python_entry)) }, singleLine = true)
+                        }
+                        if (template?.supportsSelfContained == true) {
+                            Row {
+                                Checkbox(checked = selfContained, onCheckedChange = { selfContained = it })
+                                Text(stringResource(R.string.deployments_self_contained))
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                            FilterChip(selected = workload == "Web", onClick = { workload = "Web" }, label = { Text(stringResource(R.string.deployment_web)) })
+                            FilterChip(selected = workload == "Worker", onClick = { workload = "Worker" }, label = { Text(stringResource(R.string.deployment_worker)) })
+                        }
+                    }
+                    Text(stringResource(R.string.deployments_configuration), style = MaterialTheme.typography.titleSmall)
+                    configuration.forEach { entry ->
+                        Text(if (entry.isSecret) stringResource(R.string.deployments_secret_configured, entry.name) else "${entry.name}=${entry.value}",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedTextField(configurationName, { configurationName = it }, label = { Text(stringResource(R.string.deployments_configuration_name)) }, singleLine = true)
+                    OutlinedTextField(
+                        configurationValue, { configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) }, singleLine = true,
+                        visualTransformation = if (configurationSecret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                    )
+                    Row {
+                        Checkbox(checked = configurationSecret, onCheckedChange = { configurationSecret = it })
+                        Text(stringResource(R.string.deployments_configuration_secret))
+                        TextButton(onClick = {
+                            if (configurationName.isNotBlank()) {
+                                configuration.removeAll { it.name == configurationName.trim() }
+                                configuration += DeploymentConfigEntry(configurationName.trim(), configurationValue, configurationSecret)
+                                configurationName = ""; configurationValue = ""; configurationSecret = false
+                            }
+                        }, enabled = configurationName.isNotBlank()) { Text(stringResource(R.string.deployments_configuration_add)) }
+                    }
+                }
             }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) } },
-    )
+            if (archive) {
+                Text(
+                    stringResource(R.string.deployments_archive_note),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
+                Button(
+                    onClick = {
+                        if (archive) onArchiveSubmit(archiveDefinition!!)
+                        else onImageSubmit(name.trim(), image.trim(), parsedPort!!, configuration.toList())
+                    },
+                    enabled = valid && !submitting,
+                ) {
+                    Text(stringResource(if (archive) R.string.deployments_choose_archive else R.string.deployments_create_and_deploy))
+                }
+            }
+        }
+    }
 }
 
 @Composable

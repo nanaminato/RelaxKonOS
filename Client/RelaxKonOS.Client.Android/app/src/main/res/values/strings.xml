@@ -64,12 +64,14 @@
     <string name="server_center_subtitle">Add an SSH host to install, update or repair RelaxKonOS. SSH credentials are kept separate from your server login.</string>
     <string name="server_center_empty">No managed hosts have been added on this device.</string>
     <string name="server_center_add_host">Add host</string>
+    <string name="server_center_add_host_hint">Enter the SSH connection once. RelaxKonOS adds the host and verifies it in the same step.</string>
     <string name="server_center_ssh_host">SSH host</string>
     <string name="server_center_ssh_port">Port</string>
     <string name="server_center_ssh_user">SSH user</string>
     <string name="server_center_host_name_optional">Name (optional)</string>
-    <string name="server_center_invalid_host">Enter a valid SSH host, port and user.</string>
+    <string name="server_center_invalid_host">Enter a valid SSH host, port, user and password.</string>
     <string name="server_center_add">Add host</string>
+    <string name="server_center_add_and_verify">Add and verify SSH</string>
     <string name="server_center_host_summary">%1$s@%2$s:%3$d · %4$s</string>
     <string name="server_center_connections_hint">SSH host records are managed separately from saved server logins.</string>
     <string name="server_center_status_unverified">Not yet verified</string>
@@ -83,6 +85,7 @@
     <string name="server_center_ssh_verified">SSH host identity verified: %1$s</string>
     <string name="server_center_host_key_review">Verify this SSH host-key fingerprint with the host administrator before trusting it: %1$s</string>
     <string name="server_center_trust_host_key">I verified this fingerprint</string>
+    <string name="server_center_trust_and_verify">Trust and verify connection</string>
     <string name="server_center_host_key_changed">The SSH host key changed. Deployment is blocked. Expected administrator confirmation is required: %1$s</string>
     <string name="server_center_ssh_failed">Could not verify the SSH connection. Check the host, account, password and network.</string>
     <string name="server_center_remove_host">Remove host record</string>

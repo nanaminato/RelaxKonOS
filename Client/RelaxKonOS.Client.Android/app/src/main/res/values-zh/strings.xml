@@ -53,12 +53,14 @@
     <string name="server_center_subtitle">添加 SSH 主机以安装、更新或修复 RelaxKonOS。SSH 凭据与服务器登录凭据分开保存。</string>
     <string name="server_center_empty">此设备尚未添加受管主机。</string>
     <string name="server_center_add_host">添加主机</string>
+    <string name="server_center_add_host_hint">一次输入 SSH 连接信息；RelaxKonOS 会在添加主机时立即验证。</string>
     <string name="server_center_ssh_host">SSH 主机</string>
     <string name="server_center_ssh_port">端口</string>
     <string name="server_center_ssh_user">SSH 用户</string>
     <string name="server_center_host_name_optional">名称（可选）</string>
-    <string name="server_center_invalid_host">请输入有效的 SSH 主机、端口和用户。</string>
+    <string name="server_center_invalid_host">请输入有效的 SSH 主机、端口、用户和密码。</string>
     <string name="server_center_add">添加主机</string>
+    <string name="server_center_add_and_verify">添加并验证 SSH</string>
     <string name="server_center_host_summary">%1$s@%2$s:%3$d · %4$s</string>
     <string name="server_center_connections_hint">SSH 主机记录与保存的服务器登录资料分开管理。</string>
     <string name="server_center_status_unverified">尚未验证</string>
@@ -72,6 +74,7 @@
     <string name="server_center_ssh_verified">SSH 主机身份已验证：%1$s</string>
     <string name="server_center_host_key_review">信任前请向宿主管理员核对此 SSH 主机密钥指纹：%1$s</string>
     <string name="server_center_trust_host_key">我已核对此指纹</string>
+    <string name="server_center_trust_and_verify">信任并验证连接</string>
     <string name="server_center_host_key_changed">SSH 主机密钥已变化，部署已被阻断。需要管理员确认：%1$s</string>
     <string name="server_center_ssh_failed">无法验证 SSH 连接。请检查主机、账号、密码和网络。</string>
     <string name="server_center_remove_host">删除主机记录</string>

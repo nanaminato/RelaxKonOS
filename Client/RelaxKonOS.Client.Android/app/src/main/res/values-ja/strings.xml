@@ -54,12 +54,14 @@
     <string name="server_center_subtitle">SSH ホストを追加して RelaxKonOS をインストール、更新、修復します。SSH 資格情報はサーバーログインとは別に保管されます。</string>
     <string name="server_center_empty">このデバイスには管理対象ホストがまだ追加されていません。</string>
     <string name="server_center_add_host">ホストを追加</string>
+    <string name="server_center_add_host_hint">SSH 接続情報を一度入力すると、RelaxKonOS が追加と検証を同じ手順で行います。</string>
     <string name="server_center_ssh_host">SSH ホスト</string>
     <string name="server_center_ssh_port">ポート</string>
     <string name="server_center_ssh_user">SSH ユーザー</string>
     <string name="server_center_host_name_optional">名前（任意）</string>
-    <string name="server_center_invalid_host">有効な SSH ホスト、ポート、ユーザーを入力してください。</string>
+    <string name="server_center_invalid_host">有効な SSH ホスト、ポート、ユーザー、パスワードを入力してください。</string>
     <string name="server_center_add">ホストを追加</string>
+    <string name="server_center_add_and_verify">追加して SSH を検証</string>
     <string name="server_center_host_summary">%1$s@%2$s:%3$d · %4$s</string>
     <string name="server_center_connections_hint">SSH ホストの記録は、保存済みサーバーログインとは別に管理されます。</string>
     <string name="server_center_status_unverified">未検証</string>
@@ -73,6 +75,7 @@
     <string name="server_center_ssh_verified">SSH ホストの識別情報を検証しました：%1$s</string>
     <string name="server_center_host_key_review">信頼する前に、ホスト管理者へこの SSH ホストキー指紋を確認してください：%1$s</string>
     <string name="server_center_trust_host_key">この指紋を確認しました</string>
+    <string name="server_center_trust_and_verify">信頼して接続を検証</string>
     <string name="server_center_host_key_changed">SSH ホストキーが変更されました。デプロイはブロックされています。管理者の確認が必要です：%1$s</string>
     <string name="server_center_ssh_failed">SSH 接続を検証できませんでした。ホスト、アカウント、パスワード、ネットワークを確認してください。</string>
     <string name="server_center_remove_host">ホスト記録を削除</string>

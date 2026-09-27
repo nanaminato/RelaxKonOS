@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -42,10 +45,13 @@ fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit
     var port by remember { mutableStateOf("22") }
     var user by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+    var addPassword by remember { mutableStateOf("") }
     var inputError by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<ServerHostTarget?>(null) }
     var sshPassword by remember { mutableStateOf("") }
+    var pendingPassword by remember { mutableStateOf("") }
     var verification by remember { mutableStateOf<ServerCenterSshVerification?>(null) }
+    var isVerifying by remember { mutableStateOf(false) }
     var deleteRequested by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val hosts = coordinator.hosts()
@@ -57,6 +63,61 @@ fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit
         Text(stringResource(R.string.server_center_title), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.server_center_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+        ElevatedCard(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier.padding(Spacing.md),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                Text(stringResource(R.string.server_center_add_host), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(R.string.server_center_add_host_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(host, { host = it; inputError = false }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_center_ssh_host)) }, isError = inputError, singleLine = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    OutlinedTextField(port, { port = it; inputError = false }, Modifier.weight(1f), label = { Text(stringResource(R.string.server_center_ssh_port)) }, isError = inputError, singleLine = true)
+                    OutlinedTextField(user, { user = it; inputError = false }, Modifier.weight(1f), label = { Text(stringResource(R.string.server_center_ssh_user)) }, isError = inputError, singleLine = true)
+                }
+                PasswordTextField(
+                    value = addPassword,
+                    onValueChange = { addPassword = it; inputError = false },
+                    label = stringResource(R.string.server_center_ssh_password),
+                    enabled = !isVerifying,
+                )
+                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_center_host_name_optional)) }, singleLine = true)
+                if (inputError) Text(stringResource(R.string.server_center_invalid_host), color = MaterialTheme.colorScheme.error)
+                Button(
+                    onClick = {
+                        val number = port.toIntOrNull()
+                        if (number == null || !ServerHostTargetRules.isValidEndpoint(host, number, user) || addPassword.isEmpty()) {
+                            inputError = true
+                        } else {
+                            val target = coordinator.addHost(host, number, user, name.ifBlank { null })
+                            selected = target
+                            pendingPassword = addPassword
+                            verification = null
+                            scope.launch {
+                                isVerifying = true
+                                verification = coordinator.verifySsh(
+                                    target.hostId,
+                                    SshCredential(SshCredentialKind.Password, addPassword.toCharArray(), null),
+                                )
+                                isVerifying = false
+                                if (verification is ServerCenterSshVerification.Trusted) {
+                                    host = ""; port = "22"; user = ""; name = ""; addPassword = ""; pendingPassword = ""
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isVerifying,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (isVerifying) CircularProgressIndicator() else Text(stringResource(R.string.server_center_add_and_verify))
+                }
+            }
+        }
+
         if (hosts.isEmpty()) {
             Text(stringResource(R.string.server_center_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
@@ -67,15 +128,22 @@ fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit
                     target.lastVerified.installed -> stringResource(R.string.server_center_status_unhealthy_cached)
                     else -> stringResource(R.string.server_center_status_not_installed_cached)
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    Text(target.displayName, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        stringResource(R.string.server_center_host_summary, target.sshUserName, target.sshHost, target.sshPort, status),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    TextButton(onClick = { selected = target; verification = null }) {
-                        Text(stringResource(R.string.server_center_manage_host))
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        Text(target.displayName, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(R.string.server_center_host_summary, target.sshUserName, target.sshHost, target.sshPort, status),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(onClick = {
+                            selected = target
+                            verification = null
+                            pendingPassword = ""
+                            sshPassword = ""
+                        }) {
+                            Text(stringResource(R.string.server_center_manage_host))
+                        }
                     }
                 }
             }
@@ -92,15 +160,17 @@ fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit
                 onClick = {
                     val secret = sshPassword.toCharArray()
                     scope.launch {
+                        isVerifying = true
                         verification = coordinator.verifySsh(
                             target.hostId,
                             SshCredential(SshCredentialKind.Password, secret, null),
                         )
+                        isVerifying = false
                     }
                 },
-                enabled = sshPassword.isNotEmpty(),
+                enabled = sshPassword.isNotEmpty() && !isVerifying,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(R.string.server_center_verify_ssh)) }
+            ) { if (isVerifying) CircularProgressIndicator() else Text(stringResource(R.string.server_center_verify_ssh)) }
             when (val result = verification) {
                 is ServerCenterSshVerification.Trusted -> Text(
                     stringResource(R.string.server_center_ssh_verified, result.fingerprint.orEmpty()),
@@ -109,9 +179,28 @@ fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit
                 is ServerCenterSshVerification.NeedsTrust -> {
                     Text(stringResource(R.string.server_center_host_key_review, result.observation.groupedFingerprint))
                     Button(
-                        onClick = { coordinator.trustHostKey(target, result.observation); verification = null },
+                        onClick = {
+                            coordinator.trustHostKey(target, result.observation)
+                            val password = pendingPassword.ifEmpty { sshPassword }
+                            if (password.isNotEmpty()) {
+                                scope.launch {
+                                    isVerifying = true
+                                    verification = coordinator.verifySsh(
+                                        target.hostId,
+                                        SshCredential(SshCredentialKind.Password, password.toCharArray(), null),
+                                    )
+                                    isVerifying = false
+                                    if (verification is ServerCenterSshVerification.Trusted && pendingPassword.isNotEmpty()) {
+                                        host = ""; port = "22"; user = ""; name = ""; addPassword = ""; pendingPassword = ""
+                                    }
+                                }
+                            } else {
+                                verification = null
+                            }
+                        },
+                        enabled = !isVerifying,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(R.string.server_center_trust_host_key)) }
+                    ) { Text(stringResource(R.string.server_center_trust_and_verify)) }
                 }
                 is ServerCenterSshVerification.KeyChanged -> Text(
                     stringResource(R.string.server_center_host_key_changed, result.observation.groupedFingerprint),
@@ -128,25 +217,6 @@ fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit
             }
         }
 
-        Text(stringResource(R.string.server_center_add_host), style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(host, { host = it; inputError = false }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_center_ssh_host)) }, isError = inputError, singleLine = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            OutlinedTextField(port, { port = it; inputError = false }, Modifier.weight(1f), label = { Text(stringResource(R.string.server_center_ssh_port)) }, isError = inputError, singleLine = true)
-            OutlinedTextField(user, { user = it; inputError = false }, Modifier.weight(1f), label = { Text(stringResource(R.string.server_center_ssh_user)) }, isError = inputError, singleLine = true)
-        }
-        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_center_host_name_optional)) }, singleLine = true)
-        if (inputError) Text(stringResource(R.string.server_center_invalid_host), color = MaterialTheme.colorScheme.error)
-        Button(
-            onClick = {
-                val number = port.toIntOrNull()
-                if (number == null || !ServerHostTargetRules.isValidEndpoint(host, number, user)) inputError = true
-                else {
-                    coordinator.addHost(host, number, user, name.ifBlank { null })
-                    host = ""; port = "22"; user = ""; name = ""
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(stringResource(R.string.server_center_add)) }
         OutlinedButton(onClose, Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_back)) }
     }
 
@@ -161,6 +231,7 @@ fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit
                     coordinator.removeHost(target.hostId)
                     selected = null
                     sshPassword = ""
+                    pendingPassword = ""
                     verification = null
                     deleteRequested = false
                 },

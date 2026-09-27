@@ -38,9 +38,10 @@ class ServerCenterCoordinator(
         return targets.all()
     }
 
-    fun addHost(host: String, port: Int, userName: String, displayName: String?) {
-        targets.upsert(ServerHostTargetRules.create(host, port, userName, displayName, System.currentTimeMillis()))
+    fun addHost(host: String, port: Int, userName: String, displayName: String?): ServerHostTarget {
+        val target = targets.upsert(ServerHostTargetRules.create(host, port, userName, displayName, System.currentTimeMillis()))
         revision++
+        return target
     }
 
     /**
