@@ -11,13 +11,15 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     private readonly ServerCenterViewModel _serverCenter;
     private readonly Action _close;
     private readonly Func<Task<string?>> _chooseServerBundle;
+    private readonly Func<Task> _showHostAddresses;
 
     public ServerInstallationWizardViewModel(ServerCenterViewModel serverCenter, Action close,
-        Func<Task<string?>> chooseServerBundle)
+        Func<Task<string?>> chooseServerBundle, Func<Task> showHostAddresses)
     {
         _serverCenter = serverCenter;
         _close = close;
         _chooseServerBundle = chooseServerBundle;
+        _showHostAddresses = showHostAddresses;
         Sources =
         [
             new(ServerPackageSourceKind.OfficialStable, Text("server_center.wizard.source_official", "Trusted official release")),
@@ -37,15 +39,17 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         Networks =
         [
             new(ServerNetworkProfile.Loopback, Text("server_center.wizard.network_loopback", "Local only (recommended)")),
-            new(ServerNetworkProfile.Lan, Text("server_center.wizard.network_lan", "LAN HTTP"))
+            new(ServerNetworkProfile.Lan, Text("server_center.wizard.network_lan", "0.0.0.0 (all network interfaces)"))
         ];
         SelectedNetwork = Networks[0];
         CertificateModes =
         [
             new(ServerCertificateMode.None, Text("server_center.wizard.certificate_none", "No TLS certificate")),
-            new(ServerCertificateMode.Custom, Text("server_center.wizard.certificate_custom", "Use a PFX certificate"))
+            new(ServerCertificateMode.Custom, Text("server_center.wizard.certificate_custom", "Use a custom certificate")),
+            new(ServerCertificateMode.SelfSigned, Text("server_center.wizard.certificate_self_signed", "Generate a self-signed certificate"))
         ];
         SelectedCertificateMode = CertificateModes[0];
+        SelectedCertificateFormat = CertificateFormats[0];
     }
 
     public IReadOnlyList<InstallationSourceOption> Sources { get; }
@@ -53,6 +57,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public IReadOnlyList<FileAccessOption> FileAccesses { get; }
     public IReadOnlyList<NetworkOption> Networks { get; }
     public IReadOnlyList<CertificateModeOption> CertificateModes { get; }
+    public IReadOnlyList<CertificateFormatOption> CertificateFormats { get; } =
+    [
+        new(ServerCertificateFormat.Pfx, "PFX / P12"),
+        new(ServerCertificateFormat.Pem, "PEM certificate chain + private key")
+    ];
 
     [ObservableProperty] private int _stepIndex;
     [ObservableProperty] private InstallationSourceOption? _selectedSource;
@@ -62,8 +71,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private FileAccessOption? _selectedFileAccess;
     [ObservableProperty] private NetworkOption? _selectedNetwork;
     [ObservableProperty] private CertificateModeOption? _selectedCertificateMode;
+    [ObservableProperty] private CertificateFormatOption? _selectedCertificateFormat;
     [ObservableProperty] private string? _certificatePath;
+    [ObservableProperty] private string? _certificatePrivateKeyPath;
     [ObservableProperty] private string _certificatePassword = string.Empty;
+    [ObservableProperty] private string _selfSignedIdentities = "localhost,127.0.0.1";
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
 
@@ -91,11 +103,22 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string ModeText => Text("server_center.wizard.mode", "Mode");
     public string FileAccessText => Text("server_center.wizard.file_access", "Privileged file access");
     public string NetworkText => Text("server_center.wizard.network", "Network access");
+    public string ShowHostAddressesText => Text("server_center.wizard.show_host_addresses", "View this host's IP addresses");
     public string CertificateText => Text("server_center.wizard.certificate", "TLS certificate");
-    public string ChooseCertificateText => Text("server_center.wizard.choose_certificate", "Choose PFX certificate");
+    public string CertificateFormatText => Text("server_center.wizard.certificate_format", "Certificate format");
+    public string ChooseCertificateText => IsPemCertificate
+        ? Text("server_center.wizard.choose_pem_certificate", "Choose PEM certificate chain")
+        : Text("server_center.wizard.choose_certificate", "Choose PFX certificate");
+    public string ChoosePrivateKeyText => Text("server_center.wizard.choose_private_key", "Choose PEM private key");
     public bool IsCustomCertificate => SelectedCertificateMode?.Mode == ServerCertificateMode.Custom;
-    public bool HasCertificate => !string.IsNullOrWhiteSpace(CertificatePath);
+    public bool IsSelfSignedCertificate => SelectedCertificateMode?.Mode == ServerCertificateMode.SelfSigned;
+    public bool IsPemCertificate => SelectedCertificateFormat?.Format == ServerCertificateFormat.Pem;
+    public string SelfSignedNamesText => Text("server_center.wizard.certificate_names", "Certificate names (comma-separated)");
+    public bool HasCertificate => !string.IsNullOrWhiteSpace(CertificatePath) &&
+        (!IsPemCertificate || !string.IsNullOrWhiteSpace(CertificatePrivateKeyPath));
     public string CertificateFileName => string.IsNullOrWhiteSpace(CertificatePath) ? string.Empty : Path.GetFileName(CertificatePath);
+    public string CertificatePrivateKeyFileName => string.IsNullOrWhiteSpace(CertificatePrivateKeyPath)
+        ? string.Empty : Path.GetFileName(CertificatePrivateKeyPath);
     public string LocalBundleText => Text("server_center.wizard.local_bundle", "Signed local release bundle");
     public string ChooseBundleText => Text("server_center.wizard.choose_bundle", "Choose bundle");
     public string ChooseServerBundleText => Text("server_center.wizard.choose_server_bundle", "Browse server files");
@@ -119,6 +142,12 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         ErrorMessage = string.Empty;
     }
 
+    public void SetCertificatePrivateKey(string? path)
+    {
+        CertificatePrivateKeyPath = string.IsNullOrWhiteSpace(path) ? null : path;
+        ErrorMessage = string.Empty;
+    }
+
     [RelayCommand]
     private async Task ChooseServerBundleAsync()
     {
@@ -127,6 +156,9 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         RemoteBundlePath = path;
         ErrorMessage = string.Empty;
     }
+
+    [RelayCommand]
+    private Task ShowHostAddressesAsync() => _showHostAddresses();
 
     [RelayCommand(CanExecute = nameof(CanMoveNext))]
     private void MoveNext()
@@ -158,7 +190,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         }
         if (IsCustomCertificate && !HasCertificate)
         {
-            ErrorMessage = Text("server_center.wizard.certificate_required", "Choose a PFX certificate to continue.");
+            ErrorMessage = Text("server_center.wizard.certificate_required", "Choose the certificate files to continue.");
             return;
         }
 
@@ -174,8 +206,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 SelectedFileAccess?.Scope ?? ServerFileAccessScope.Restricted,
                 SelectedNetwork?.Profile ?? ServerNetworkProfile.Loopback,
                 SelectedCertificateMode?.Mode ?? ServerCertificateMode.None,
+                SelectedCertificateFormat?.Format ?? ServerCertificateFormat.Pfx,
                 CertificatePath,
-                CertificatePassword));
+                CertificatePrivateKeyPath,
+                CertificatePassword,
+                SelfSignedIdentities));
             if (succeeded)
                 _close();
             else
@@ -214,12 +249,26 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     partial void OnSelectedCertificateModeChanged(CertificateModeOption? value)
     {
         OnPropertyChanged(nameof(IsCustomCertificate));
+        OnPropertyChanged(nameof(IsSelfSignedCertificate));
     }
 
     partial void OnCertificatePathChanged(string? value)
     {
         OnPropertyChanged(nameof(HasCertificate));
         OnPropertyChanged(nameof(CertificateFileName));
+    }
+
+    partial void OnCertificatePrivateKeyPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasCertificate));
+        OnPropertyChanged(nameof(CertificatePrivateKeyFileName));
+    }
+
+    partial void OnSelectedCertificateFormatChanged(CertificateFormatOption? value)
+    {
+        OnPropertyChanged(nameof(IsPemCertificate));
+        OnPropertyChanged(nameof(ChooseCertificateText));
+        OnPropertyChanged(nameof(HasCertificate));
     }
 
     partial void OnLocalBundlePathChanged(string? value)
@@ -262,3 +311,5 @@ public sealed record InstallationModeOption(ServerInstallMode? Mode, string Labe
 public sealed record FileAccessOption(ServerFileAccessScope Scope, string Label);
 public sealed record NetworkOption(ServerNetworkProfile Profile, string Label);
 public sealed record CertificateModeOption(ServerCertificateMode Mode, string Label);
+public enum ServerCertificateFormat { Pfx, Pem }
+public sealed record CertificateFormatOption(ServerCertificateFormat Format, string Label);

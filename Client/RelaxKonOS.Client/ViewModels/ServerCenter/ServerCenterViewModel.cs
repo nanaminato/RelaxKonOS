@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Services;
@@ -23,6 +25,7 @@ public partial class ServerCenterViewModel : ObservableObject
     private readonly IServerCenterOperationJournal _operationJournal;
     private readonly LoginLocalizationService _localization;
     private ServerCenterHostKeyObservation? _pendingHostKey;
+    private string? _selectedPlatformHostId;
 
     public ServerCenterViewModel(
         IHostTargetStore targets,
@@ -121,6 +124,8 @@ public partial class ServerCenterViewModel : ObservableObject
     public string RefreshOperationText => T("server_center.refresh_operation", "Refresh selected operation from host");
     public bool HasVerifiedState => !string.IsNullOrWhiteSpace(VerifiedStateText);
     public bool HasLastProbe => !string.IsNullOrWhiteSpace(LastProbeText);
+    public string SelectedPlatformText => SelectedPlatform?.DisplayName ??
+        T("server_center.platform_detecting", "Detecting host platform…");
 
     [RelayCommand]
     public async Task LoadAsync(CancellationToken cancellationToken = default)
@@ -456,6 +461,7 @@ public partial class ServerCenterViewModel : ObservableObject
         ErrorMessage = string.Empty;
         StatusMessage = string.Empty;
         string? downloadedRemoteBundle = null;
+        string? convertedCertificate = null;
         try
         {
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
@@ -540,12 +546,15 @@ public partial class ServerCenterViewModel : ObservableObject
                     : T("server_center.release_unavailable", "No trusted signed release is available for this host architecture and installation mode.");
                 return false;
             }
-            if (installation.CertificateMode == ServerCertificateMode.Custom &&
-                (string.IsNullOrWhiteSpace(installation.CertificatePath) || !File.Exists(installation.CertificatePath)))
+            if (!HasUsableCertificate(installation))
             {
-                ErrorMessage = T("server_center.certificate_unavailable", "The selected PFX certificate is unavailable.");
+                ErrorMessage = T("server_center.certificate_unavailable", "The selected certificate files are unavailable.");
                 return false;
             }
+
+            if (installation.CertificateMode == ServerCertificateMode.Custom &&
+                installation.CertificateFormat == ServerCertificateFormat.Pem)
+                convertedCertificate = await ConvertPemCertificateAsync(installation, cancellationToken).ConfigureAwait(true);
 
             var request = new ServerDeploymentRequest(
                 ServerDeploymentProtocol.Version,
@@ -564,13 +573,14 @@ public partial class ServerCenterViewModel : ObservableObject
                     null,
                     installation.FileAccess,
                     installation.CertificateMode,
+                    installation.SelfSignedIdentities,
                     Confirmed: true));
             await using var launcher = release.Tools.OpenLauncher();
             await using var verifier = release.Tools.OpenVerifier();
             await using var archive = release.OpenSignedArchive();
             var client = new ServerCenterDeploymentClient(session.Transport);
             await using var certificate = installation.CertificateMode == ServerCertificateMode.Custom
-                ? File.OpenRead(installation.CertificatePath!) : null;
+                ? File.OpenRead(convertedCertificate ?? installation.CertificatePath!) : null;
             var staged = await client.StageAsync(
                 request, platform.Platform, launcher, verifier, archive, release.Runtime,
                 release.KeyId, release.PublicKeyPem, certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
@@ -624,6 +634,11 @@ public partial class ServerCenterViewModel : ObservableObject
                 try { File.Delete(downloadedRemoteBundle); }
                 catch (IOException) { }
             }
+            if (convertedCertificate is not null)
+            {
+                try { File.Delete(convertedCertificate); }
+                catch (IOException) { }
+            }
             SshPassword = string.Empty;
             IsBusy = false;
         }
@@ -633,8 +648,11 @@ public partial class ServerCenterViewModel : ObservableObject
     private async Task ProbeHostAsync(CancellationToken cancellationToken = default)
     {
         var target = SelectedHost;
+        if (target is null) return;
+        if (SelectedPlatform is null)
+            await EnsureSelectedHostPlatformAsync(cancellationToken).ConfigureAwait(true);
         var platform = SelectedPlatform;
-        if (target is null || platform is null) return;
+        if (platform is null) return;
 
         IsBusy = true;
         ErrorMessage = string.Empty;
@@ -704,6 +722,107 @@ public partial class ServerCenterViewModel : ObservableObject
         }
     }
 
+    /// <summary>Detects the selected SSH host's OS when the installation page becomes active.</summary>
+    public async Task EnsureSelectedHostPlatformAsync(CancellationToken cancellationToken = default)
+    {
+        if (IsBusy || SelectedHost is null || SelectedPlatform is not null || HostKeyChanged) return;
+
+        var target = SelectedHost;
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            var credential = await ResolveCredentialAsync(target, cancellationToken).ConfigureAwait(true);
+            if (credential is null) return;
+            await using var session = await _connections.ConnectAsync(
+                target.HostId, credential, DateTimeOffset.UtcNow, cancellationToken).ConfigureAwait(true);
+            var platform = await DetectHostPlatformAsync(session, cancellationToken).ConfigureAwait(true);
+            if (platform is null)
+            {
+                ErrorMessage = T("server_center.platform_detection_failed", "The SSH host did not identify itself as a supported Linux or Windows host.");
+                return;
+            }
+            SelectedPlatform = Platforms.Single(option => option.Platform == platform.Value);
+            StatusMessage = string.Format(T("server_center.platform_detected", "Detected host platform: {0}."), SelectedPlatform.DisplayName);
+        }
+        catch (ServerCenterHostKeyRejectedException rejected)
+        {
+            _pendingHostKey = rejected.Observation;
+            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
+            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
+            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = string.Empty;
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.platform_detection_failed", "The SSH host did not identify itself as a supported Linux or Windows host.");
+        }
+        finally
+        {
+            SshPassword = string.Empty;
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Returns only parsed IP addresses from the selected, trusted SSH host.</summary>
+    public async Task<IReadOnlyList<string>?> GetHostIpAddressesAsync(CancellationToken cancellationToken = default)
+    {
+        var target = SelectedHost;
+        if (target is null || IsBusy) return null;
+
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            var credential = await ResolveCredentialAsync(target, cancellationToken).ConfigureAwait(true);
+            if (credential is null) return null;
+            await using var session = await _connections.ConnectAsync(
+                target.HostId, credential, DateTimeOffset.UtcNow, cancellationToken).ConfigureAwait(true);
+            var platform = SelectedPlatform?.Platform ?? await DetectHostPlatformAsync(session, cancellationToken).ConfigureAwait(true);
+            if (platform is null)
+            {
+                ErrorMessage = T("server_center.platform_detection_failed", "The SSH host did not identify itself as a supported Linux or Windows host.");
+                return null;
+            }
+            SelectedPlatform ??= Platforms.Single(option => option.Platform == platform.Value);
+            var command = platform == HostPlatformKind.Windows
+                ? "powershell.exe -NoProfile -NonInteractive -Command \"Get-NetIPAddress -AddressFamily IPv4,IPv6 | ForEach-Object { $_.IPAddress }\""
+                : "hostname -I";
+            var result = await session.Transport.RunAsync(command, cancellationToken).ConfigureAwait(true);
+            if (!result.Succeeded)
+            {
+                ErrorMessage = T("server_center.host_addresses_failed", "Unable to read IP addresses from this SSH host.");
+                return null;
+            }
+            return result.StandardOutput.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                .Where(address => IPAddress.TryParse(address, out _))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(address => address, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (ServerCenterHostKeyRejectedException rejected)
+        {
+            _pendingHostKey = rejected.Observation;
+            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
+            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
+            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            return null;
+        }
+        catch (Exception)
+        {
+            ErrorMessage = T("server_center.host_addresses_failed", "Unable to read IP addresses from this SSH host.");
+            return null;
+        }
+        finally
+        {
+            SshPassword = string.Empty;
+            IsBusy = false;
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(CanConfirmHostKey))]
     private async Task ConfirmHostKeyAsync(CancellationToken cancellationToken = default)
     {
@@ -739,9 +858,9 @@ public partial class ServerCenterViewModel : ObservableObject
         }
     }
 
-    private bool CanProbeHost() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null && !HostKeyChanged;
+    private bool CanProbeHost() => !IsBusy && SelectedHost is not null && !HostKeyChanged;
     private bool CanOpenInstallationWizard() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null && !HostKeyChanged;
-    private bool CanMaintain() => CanProbeHost() && HasLastProbe && SelectedHost?.LastVerified?.Installed == true;
+    private bool CanMaintain() => CanProbeHost() && SelectedPlatform is not null && HasLastProbe && SelectedHost?.LastVerified?.Installed == true;
     private bool CanUninstall() => CanMaintain() &&
                                    (!DeleteServerData || string.Equals(
                                        UninstallNameConfirmation.Trim(), SelectedHost?.DisplayName, StringComparison.Ordinal));
@@ -766,11 +885,14 @@ public partial class ServerCenterViewModel : ObservableObject
 
     partial void OnSelectedHostChanged(ServerHostTarget? value)
     {
+        var changedTarget = !string.Equals(_selectedPlatformHostId, value?.HostId, StringComparison.Ordinal);
+        _selectedPlatformHostId = value?.HostId;
         _pendingHostKey = null;
         NeedsHostKeyConfirmation = false;
         HostKeyChanged = false;
         HostKeyFingerprint = string.Empty;
         SshPassword = string.Empty;
+        if (changedTarget) SelectedPlatform = null;
         VerifiedStateText = value?.LastVerified is { } verified ? FormatSnapshot(verified) : string.Empty;
         LastProbeText = string.Empty;
         DeleteServerData = false;
@@ -814,6 +936,7 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnSelectedPlatformChanged(HostPlatformOption? value)
     {
+        OnPropertyChanged(nameof(SelectedPlatformText));
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
@@ -910,6 +1033,53 @@ public partial class ServerCenterViewModel : ObservableObject
 
     private static bool PlatformMatches(HostPlatformKind platform, HostPlatformKind observed) => platform == observed;
 
+    private static async Task<HostPlatformKind?> DetectHostPlatformAsync(
+        ServerCenterHostSession session, CancellationToken cancellationToken)
+    {
+        var linux = await session.Transport.RunAsync("uname -s", cancellationToken).ConfigureAwait(true);
+        if (linux.Succeeded && string.Equals(linux.StandardOutput.Trim(), "Linux", StringComparison.OrdinalIgnoreCase))
+            return HostPlatformKind.Linux;
+
+        var windows = await session.Transport.RunAsync(
+            "powershell.exe -NoProfile -NonInteractive -Command \"[Console]::Out.Write('Windows')\"", cancellationToken).ConfigureAwait(true);
+        return windows.Succeeded && string.Equals(windows.StandardOutput.Trim(), "Windows", StringComparison.OrdinalIgnoreCase)
+            ? HostPlatformKind.Windows
+            : null;
+    }
+
+    private static bool HasUsableCertificate(ServerInstallationOptions installation) =>
+        installation.CertificateMode != ServerCertificateMode.Custom ||
+        (!string.IsNullOrWhiteSpace(installation.CertificatePath) && File.Exists(installation.CertificatePath) &&
+         (installation.CertificateFormat != ServerCertificateFormat.Pem ||
+          (!string.IsNullOrWhiteSpace(installation.CertificatePrivateKeyPath) && File.Exists(installation.CertificatePrivateKeyPath))));
+
+    private static async Task<string> ConvertPemCertificateAsync(
+        ServerInstallationOptions installation, CancellationToken cancellationToken)
+    {
+        var output = Path.Combine(Path.GetTempPath(), "relaxkonos-certificate-" + Guid.NewGuid().ToString("N") + ".pfx");
+        try
+        {
+            var certificates = new X509Certificate2Collection();
+            certificates.ImportFromPemFile(installation.CertificatePath!);
+            using var leaf = X509Certificate2.CreateFromPemFile(
+                installation.CertificatePath!, installation.CertificatePrivateKeyPath!);
+            foreach (var existing in certificates.Cast<X509Certificate2>()
+                         .Where(certificate => string.Equals(certificate.Thumbprint, leaf.Thumbprint, StringComparison.OrdinalIgnoreCase))
+                         .ToArray())
+                certificates.Remove(existing);
+            certificates.Add(leaf);
+            var bytes = certificates.Export(X509ContentType.Pkcs12, installation.CertificatePassword);
+            await File.WriteAllBytesAsync(output, bytes, cancellationToken).ConfigureAwait(true);
+            return output;
+        }
+        catch
+        {
+            try { File.Delete(output); }
+            catch (IOException) { }
+            throw;
+        }
+    }
+
     private static ServerInstallMode? RecommendedMode(HostPlatformKind platform, ServerHostProbeDto probe) =>
         platform switch
         {
@@ -957,5 +1127,8 @@ public sealed record ServerInstallationOptions(
     ServerFileAccessScope FileAccess,
     ServerNetworkProfile Network,
     ServerCertificateMode CertificateMode,
+    ServerCertificateFormat CertificateFormat,
     string? CertificatePath,
-    string CertificatePassword);
+    string? CertificatePrivateKeyPath,
+    string CertificatePassword,
+    string SelfSignedIdentities);

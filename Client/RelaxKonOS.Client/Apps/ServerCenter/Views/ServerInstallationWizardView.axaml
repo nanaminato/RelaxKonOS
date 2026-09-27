@@ -59,13 +59,23 @@
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <Button Content="{Binding ShowHostAddressesText}" Command="{Binding ShowHostAddressesCommand}" HorizontalAlignment="Left" />
                     <TextBlock Text="{Binding CertificateText}" />
                     <ComboBox ItemsSource="{Binding CertificateModes}" SelectedItem="{Binding SelectedCertificateMode}" HorizontalAlignment="Left" MinWidth="320">
                         <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
                     </ComboBox>
                     <StackPanel Spacing="8" IsVisible="{Binding IsCustomCertificate}">
-                        <WrapPanel ItemSpacing="10"><Button Content="{Binding ChooseCertificateText}" Click="ChooseCertificate_Click" /><TextBlock Text="{Binding CertificateFileName}" IsVisible="{Binding HasCertificate}" VerticalAlignment="Center" /></WrapPanel>
-                        <TextBox Text="{Binding CertificatePassword, Mode=TwoWay}" PasswordChar="●" Watermark="PFX password (optional)" />
+                        <TextBlock Text="{Binding CertificateFormatText}" />
+                        <ComboBox ItemsSource="{Binding CertificateFormats}" SelectedItem="{Binding SelectedCertificateFormat}" HorizontalAlignment="Left" MinWidth="320">
+                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <WrapPanel ItemSpacing="10"><Button Content="{Binding ChooseCertificateText}" Click="ChooseCertificate_Click" /><TextBlock Text="{Binding CertificateFileName}" VerticalAlignment="Center" /></WrapPanel>
+                        <WrapPanel ItemSpacing="10" IsVisible="{Binding IsPemCertificate}"><Button Content="{Binding ChoosePrivateKeyText}" Click="ChoosePrivateKey_Click" /><TextBlock Text="{Binding CertificatePrivateKeyFileName}" VerticalAlignment="Center" /></WrapPanel>
+                        <TextBox Text="{Binding CertificatePassword, Mode=TwoWay}" PasswordChar="●" Watermark="Certificate password (optional)" />
+                    </StackPanel>
+                    <StackPanel Spacing="6" IsVisible="{Binding IsSelfSignedCertificate}">
+                        <TextBlock Text="{Binding SelfSignedNamesText}" />
+                        <TextBox Text="{Binding SelfSignedIdentities, Mode=TwoWay}" />
                     </StackPanel>
                 </StackPanel>
 

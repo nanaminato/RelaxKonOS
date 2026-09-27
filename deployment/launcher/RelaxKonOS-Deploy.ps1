@@ -308,6 +308,7 @@ $optionsExpectedInstallationId = ''
 $optionsServerPort = $null
 $optionsFileAccess = ''
 $optionsCertificateMode = ''
+$optionsSelfSignedIdentities = ''
 $optionsConfirmed = $false
 
 function Read-Request {
@@ -346,7 +347,7 @@ function Assert-RequestShape {
         Stop-Launcher 'server-deployment.invalid_request' 'options must be a JSON object'
     }
     $allowedOptions = @('source', 'network', 'retention', 'mode', 'version', 'packageUri', 'stagedPackageName',
-        'packageDigest', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'confirmed')
+        'packageDigest', 'expectedInstallationId', 'serverPort', 'fileAccess', 'certificateMode', 'selfSignedIdentities', 'confirmed')
     foreach ($key in $request['options'].Keys) {
         if ($allowedOptions -notcontains [string]$key) {
             Stop-Launcher 'server-deployment.invalid_request' "unsupported request field: $key"
@@ -409,6 +410,7 @@ function Parse-Request {
     $script:optionsExpectedInstallationId = Get-StringOption 'expectedInstallationId'
     $script:optionsFileAccess = Get-StringOption 'fileAccess'
     $script:optionsCertificateMode = Get-StringOption 'certificateMode'
+    $script:optionsSelfSignedIdentities = Get-StringOption 'selfSignedIdentities'
 
     $port = Get-LiteralOption 'serverPort'
     if ($null -ne $port) {
@@ -430,7 +432,7 @@ function Parse-Request {
     if ($script:optionsFileAccess -and $script:optionsFileAccess -notin @('restricted', 'full', 'whitelist')) {
         Stop-Launcher 'server-deployment.invalid_request' 'unsupported file access scope'
     }
-    if ($script:optionsCertificateMode -and $script:optionsCertificateMode -notin @('none', 'custom')) {
+    if ($script:optionsCertificateMode -and $script:optionsCertificateMode -notin @('none', 'custom', 'selfSigned')) {
         Stop-Launcher 'server-deployment.invalid_request' 'unsupported certificate mode'
     }
     if ($script:optionsMode -and $script:optionsMode -notin @('linuxSystem', 'linuxUser', 'windowsSystem')) {
@@ -876,6 +878,10 @@ function Invoke-InstallLikeAction {
             Stop-Launcher 'server-deployment.invalid_request' 'custom certificate files are unavailable'
         }
         $arguments += @('-CertificateMode', 'custom', '-CertificatePath', $certificate, '-CertificatePasswordFile', $password)
+    }
+    if ($script:optionsCertificateMode -eq 'selfSigned') {
+        if (-not $script:optionsSelfSignedIdentities) { Stop-Launcher 'server-deployment.invalid_request' 'self-signed certificate names are required' }
+        $arguments += @('-CertificateMode', 'self-signed', '-SelfSignedIdentities', $script:optionsSelfSignedIdentities)
     }
     if ($script:optionsExpectedInstallationId) { $arguments += @('-ExpectedInstallationId', $script:optionsExpectedInstallationId) }
 

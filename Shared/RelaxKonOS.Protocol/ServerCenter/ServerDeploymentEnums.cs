@@ -80,7 +80,7 @@ public enum ServerPackageSourceKind { OfficialStable, LocalBundle, RemoteBundle,
 public enum ServerFileAccessScope { Restricted, Full, Whitelist }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ServerCertificateMode>))]
-public enum ServerCertificateMode { None, Custom }
+public enum ServerCertificateMode { None, Custom, SelfSigned }
 
 /// <summary>已确认的主机密钥状态。变化时必须阻断所有写操作。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerHostKeyTrust>))]

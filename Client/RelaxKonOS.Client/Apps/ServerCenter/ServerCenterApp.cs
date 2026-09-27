@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
@@ -37,7 +38,33 @@ public sealed class ServerCenterApp : RemoteApplicationBase
                         viewModel.Text("server_center.wizard.choose_server_bundle", "Browse server files"),
                         picker => new SshFileBrowserView(sshSession, selectPackage: path => picker.Close(path),
                             cancelPicker: picker.Cancel),
-                        new Size(860, 580)))),
+                        new Size(860, 580)),
+                    async () =>
+                    {
+                        var addresses = await viewModel.GetHostIpAddressesAsync();
+                        if (addresses is null) return;
+                        await context.ShowDialogAsync<bool>(window,
+                            viewModel.Text("server_center.host_addresses_title", "Host IP addresses"),
+                            addressDialog =>
+                            {
+                                var close = new Button { Content = viewModel.CloseText, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
+                                close.Click += (_, _) => addressDialog.Close(true);
+                                var content = new StackPanel { Spacing = 14 };
+                                content.Children.Add(new TextBlock
+                                {
+                                    Text = addresses.Count == 0
+                                        ? viewModel.Text("server_center.host_addresses_empty", "No IP addresses were reported by this host.")
+                                        : string.Join(Environment.NewLine, addresses),
+                                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                                });
+                                content.Children.Add(close);
+                                return new Border
+                                {
+                                    Padding = new Thickness(22),
+                                    Child = content
+                                };
+                            }, new Size(440, 280));
+                    })),
             new Size(620, 480));
         _ = viewModel.LoadAsync();
     }

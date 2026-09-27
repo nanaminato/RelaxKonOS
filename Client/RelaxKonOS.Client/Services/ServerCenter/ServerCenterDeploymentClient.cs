@@ -58,7 +58,7 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
                 !ServerDeploymentInputRules.IsSha256(request.Options?.PackageDigest))
                 throw new ArgumentException("A signed, staged release and a trusted key are required.");
             if (needsCertificate && (certificate is null || !certificate.CanRead || !certificate.CanSeek))
-                throw new ArgumentException("A readable PFX certificate is required for custom TLS.");
+                throw new ArgumentException("A readable staged certificate is required for custom TLS.");
             if (platform == HostPlatformKind.Windows && request.Options?.Mode != ServerInstallMode.WindowsSystem ||
                 platform == HostPlatformKind.Linux && request.Options?.Mode is not
                     (ServerInstallMode.LinuxSystem or ServerInstallMode.LinuxUser))

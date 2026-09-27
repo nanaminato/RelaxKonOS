@@ -9,7 +9,7 @@
         <Border Classes="card" Padding="20">
             <StackPanel Spacing="10">
                 <TextBlock Text="{Binding SelectedTargetLabel}" FontWeight="SemiBold" />
-                <ComboBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" HorizontalAlignment="Left" MinWidth="310">
+                <ComboBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" SelectionChanged="SelectedHost_SelectionChanged" HorizontalAlignment="Left" MinWidth="310">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
@@ -31,12 +31,10 @@
                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
                 <TextBlock Text="{Binding ProbeHelpText}" FontSize="12" TextWrapping="Wrap" />
                 <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding DeploymentPasswordHint}" />
-                <ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding SelectedPlatform}"
-                          PlaceholderText="{Binding PlatformLabel}" HorizontalAlignment="Left" MinWidth="180">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding PlatformLabel}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding SelectedPlatformText}" />
+                </StackPanel>
                 <Button Command="{Binding ProbeHostCommand}" Content="{Binding ProbeText}" HorizontalAlignment="Left" />
                 <TextBlock Text="{Binding LastProbeText}" IsVisible="{Binding HasLastProbe}" TextWrapping="Wrap" />
                 <Button Command="{Binding OpenInstallationWizardCommand}" Content="{Binding DeployText}" HorizontalAlignment="Left" />
