@@ -8,9 +8,9 @@ import androidx.compose.runtime.setValue
 /**
  * Process-owned navigation state for the server centre.
  *
- * This deliberately owns no SSH password or deployment request.  It survives a composable being
- * removed, while secrets remain confined to the SSH credential store and a later operation
- * coordinator can safely outlive the individual list/detail screens.
+ * It owns no persisted SSH password or deployment request.  A verified workspace may retain one
+ * transient in-memory password until that workspace closes; it is never written to a target,
+ * navigation argument or credential store.
  */
 class ServerCenterCoordinator(
     private val targets: ServerHostTargetStore,
@@ -24,6 +24,9 @@ class ServerCenterCoordinator(
     var sshFilesHostId by mutableStateOf<String?>(null)
         private set
 
+    /** In-memory only credential for the verified SSH workspace; cleared when that workspace closes. */
+    private var sshWorkspacePassword: CharArray? = null
+
     var revision by mutableIntStateOf(0)
         private set
 
@@ -34,16 +37,22 @@ class ServerCenterCoordinator(
 
     fun close() {
         isOpen = false
-        sshFilesHostId = null
+        closeSshFiles()
     }
 
-    fun openSshFiles(hostId: String) {
+    fun openSshFiles(hostId: String, password: CharArray) {
         require(targets.find(hostId) != null) { "Unknown host target '$hostId'." }
+        sshWorkspacePassword?.fill('\u0000')
+        sshWorkspacePassword = password.copyOf()
         sshFilesHostId = hostId
     }
 
+    fun workspacePasswordCopy(): CharArray? = sshWorkspacePassword?.copyOf()
+
     fun closeSshFiles() {
         sshFilesHostId = null
+        sshWorkspacePassword?.fill('\u0000')
+        sshWorkspacePassword = null
     }
 
     fun hosts(): List<ServerHostTarget> {
@@ -53,9 +62,15 @@ class ServerCenterCoordinator(
     }
 
     fun addHost(host: String, port: Int, userName: String, displayName: String?): ServerHostTarget {
-        val target = targets.upsert(ServerHostTargetRules.create(host, port, userName, displayName, System.currentTimeMillis()))
-        revision++
+        val target = saveHost(ServerHostTargetRules.create(host, port, userName, displayName, System.currentTimeMillis()))
         return target
+    }
+
+    /** Persists a target only after the caller has completed its SSH verification workflow. */
+    fun saveHost(target: ServerHostTarget): ServerHostTarget {
+        val saved = targets.upsert(target)
+        revision++
+        return saved
     }
 
     /**
@@ -88,8 +103,19 @@ class ServerCenterCoordinator(
     }
 
     /** A read-only SSH handshake. No remote command is run until the launcher workflow begins. */
-    suspend fun verifySsh(hostId: String, credential: SshCredential): ServerCenterSshVerification = try {
-        connections.connect(hostId, credential, System.currentTimeMillis()).use { session ->
+    suspend fun verifySsh(hostId: String, credential: SshCredential): ServerCenterSshVerification {
+        val target = targets.find(hostId)
+            ?: return ServerCenterSshVerification.Failed
+        return verifySsh(target, credential)
+    }
+
+    /**
+     * Verifies an as-yet-unsaved target during "add and verify".  Keeping this separate from
+     * [addHost] is important: an unreachable host or wrong password must not create a durable
+     * management record.
+     */
+    suspend fun verifySsh(target: ServerHostTarget, credential: SshCredential): ServerCenterSshVerification = try {
+        connections.connect(target, credential, connections.prepareHostKeyGuard(target)).use { session ->
             ServerCenterSshVerification.Trusted(session.observedHostKey?.fingerprint)
         }
     } catch (rejected: ServerCenterHostKeyRejectedException) {

@@ -72,6 +72,7 @@
     <string name="server_center_selected_host">%1$s を管理</string>
     <string name="server_center_ssh_password">SSH パスワード</string>
     <string name="server_center_verify_ssh">SSH 接続を検証</string>
+    <string name="server_center_verify_and_open">検証してワークスペースを開く</string>
     <string name="server_center_ssh_verified">SSH ホストの識別情報を検証しました：%1$s</string>
     <string name="server_center_host_key_confirm_title">SSH ホストキーを確認</string>
     <string name="server_center_host_key_review">信頼する前に、ホスト管理者へこの SSH ホストキー指紋を確認してください：%1$s</string>
@@ -96,6 +97,10 @@
     <string name="ssh_files_image_unreadable">この画像をデコードできませんでした。</string>
     <string name="ssh_files_invalid_name">空でなく、パス区切り文字を含まないファイル名を入力してください。</string>
     <string name="ssh_files_connection_failed">SSH ファイル操作に失敗しました。パスワード、接続、信頼済みホストキーを確認してください。</string>
+    <string name="ssh_workspace_title">SSH ワークスペース</string>
+    <string name="ssh_workspace_subtitle">%1$s</string>
+    <string name="ssh_workspace_deploy">RelaxKonOS Server をデプロイ</string>
+    <string name="ssh_workspace_deploy_unavailable">この Android ビルドには固定ランチャー、検証器、署名済みリリースソースがまだ含まれていないため、デプロイは利用できません。</string>
     <string name="login_saved_password_fingerprint">パスワード保存済み · 空欄のまま指紋でサインインできます</string>
     <string name="login_saved_password_screen_lock">パスワード保存済み · 空欄のまま画面ロックで解錠できます</string>
     <string name="login_saved_password_debug">パスワード保存済み（デバッグビルド、暗号化なし）· 空欄のままこれでサインインできます</string>

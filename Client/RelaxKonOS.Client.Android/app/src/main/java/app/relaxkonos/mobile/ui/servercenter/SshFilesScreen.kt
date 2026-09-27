@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -24,8 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
@@ -38,7 +35,6 @@ import app.relaxkonos.mobile.servercenter.SshCredential
 import app.relaxkonos.mobile.servercenter.SshCredentialKind
 import app.relaxkonos.mobile.servercenter.SshFileEntry
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
-import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.io.ByteArrayInputStream
@@ -51,7 +47,7 @@ import kotlinx.coroutines.launch
 /**
  * SFTP-only browser for a host whose key was already trusted in Server Centre.
  *
- * The password is deliberately only UI memory.  Each operation opens a fresh, pinned SSH session,
+ * The password is inherited from the just-verified workspace and never rendered here. Each operation opens a fresh, pinned SSH session,
  * so backgrounding or leaving this page cannot leave an unauthenticated transport around and a
  * changed host key still blocks every read and write.
  */
@@ -60,10 +56,11 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
     private val stateFlow = MutableStateFlow(SshFilesUiState())
     val state = stateFlow.asStateFlow()
 
-    fun setPassword(value: String) = update { copy(password = value, problem = null) }
+    private var startedHostId: String? = null
 
-    fun connect() {
-        if (state.value.password.isBlank()) return
+    fun start() {
+        if (state.value.hostId.isBlank() || startedHostId == state.value.hostId) return
+        startedHostId = state.value.hostId
         reload()
     }
 
@@ -187,11 +184,13 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun execute(action: suspend (app.relaxkonos.mobile.servercenter.ServerCenterSshTransport) -> Unit) {
-        val password = state.value.password
-        if (password.isBlank()) return
+        val secret = container.serverCenter.workspacePasswordCopy()
+        if (secret == null) {
+            update { copy(problem = "connection-failed") }
+            return
+        }
         update { copy(busy = true, problem = null) }
         viewModelScope.launch {
-            val secret = password.toCharArray()
             try {
                 container.serverCenterConnections.connect(
                     state.value.hostId,
@@ -207,12 +206,10 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setHost(hostId: String) {
-        if (state.value.hostId != hostId) stateFlow.value = SshFilesUiState(hostId = hostId)
-    }
-
-    override fun onCleared() {
-        stateFlow.value.password.toCharArray().fill('\u0000')
-        super.onCleared()
+        if (state.value.hostId != hostId) {
+            startedHostId = null
+            stateFlow.value = SshFilesUiState(hostId = hostId)
+        }
     }
 
     private inline fun update(block: SshFilesUiState.() -> SshFilesUiState) = stateFlow.update(block)
@@ -228,7 +225,6 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
 
 data class SshFilesUiState(
     val hostId: String = "",
-    val password: String = "",
     val path: String = "/",
     val entries: List<SshFileEntry> = emptyList(),
     val connected: Boolean = false,
@@ -254,24 +250,16 @@ private val SshFileEntry.isImage: Boolean get() = name.substringAfterLast('.', "
     setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
 
 @Composable
-fun SshFilesScreen(hostId: String, onClose: () -> Unit) {
+fun SshFilesScreen(hostId: String, onClose: () -> Unit, showHeader: Boolean = true) {
     val model: SshFilesViewModel = viewModel()
-    LaunchedEffect(hostId) { model.setHost(hostId) }
+    LaunchedEffect(hostId) { model.setHost(hostId); model.start() }
     val state by model.state.collectAsState()
     Column(Modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        ScreenHeader(title = stringResource(R.string.ssh_files_title), onBack = onClose)
+        if (showHeader) ScreenHeader(title = stringResource(R.string.ssh_files_title), onBack = onClose)
         state.problem?.let { Text(problemText(it), color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
         if (!state.connected) {
-            Text(stringResource(R.string.ssh_files_password_hint))
-            PasswordTextField(
-                value = state.password,
-                onValueChange = model::setPassword,
-                label = stringResource(R.string.server_center_ssh_password),
-                enabled = !state.busy,
-            )
-            Button(model::connect, enabled = state.password.isNotBlank() && !state.busy, modifier = Modifier.fillMaxWidth()) {
-                if (state.busy) CircularProgressIndicator() else Text(stringResource(R.string.ssh_files_connect))
-            }
+            if (state.busy) CircularProgressIndicator()
+            else OutlinedButton(model::reload, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_retry)) }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(model::up, enabled = state.path != "/" && !state.busy) { Text(stringResource(R.string.ssh_files_up)) }
