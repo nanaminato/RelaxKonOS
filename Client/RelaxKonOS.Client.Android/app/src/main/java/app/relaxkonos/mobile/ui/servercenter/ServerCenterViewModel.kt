@@ -91,7 +91,16 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
         verify(target, password.toCharArray(), clearAddFormOnSuccess = current.pendingPassword.isNotEmpty())
     }
 
+    /** Cancelling a first-contact trust decision leaves no password pending for a later action. */
+    fun dismissHostKeyTrust() = update {
+        copy(verification = null, pendingPassword = "")
+    }
+
     fun requestDelete() = update { copy(deleteRequested = selectedTarget() != null) }
+
+    fun openSshFiles() {
+        selectedTarget()?.let { coordinator.openSshFiles(it.hostId) }
+    }
 
     fun dismissDelete() = update { copy(deleteRequested = false) }
 

@@ -20,6 +20,10 @@ class ServerCenterCoordinator(
     var isOpen by mutableStateOf(false)
         private set
 
+    /** The SSH browser is a child of Server Centre, never a sixth top-level destination. */
+    var sshFilesHostId by mutableStateOf<String?>(null)
+        private set
+
     var revision by mutableIntStateOf(0)
         private set
 
@@ -30,6 +34,16 @@ class ServerCenterCoordinator(
 
     fun close() {
         isOpen = false
+        sshFilesHostId = null
+    }
+
+    fun openSshFiles(hostId: String) {
+        require(targets.find(hostId) != null) { "Unknown host target '$hostId'." }
+        sshFilesHostId = hostId
+    }
+
+    fun closeSshFiles() {
+        sshFilesHostId = null
     }
 
     fun hosts(): List<ServerHostTarget> {

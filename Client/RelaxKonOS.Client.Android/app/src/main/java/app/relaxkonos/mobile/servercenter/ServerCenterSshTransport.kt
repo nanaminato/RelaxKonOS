@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.servercenter
 import app.relaxkonos.mobile.security.encodeUtf8
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelSftp
+import com.jcraft.jsch.SftpATTRS
 import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
 import com.jcraft.jsch.JSch
@@ -209,6 +210,64 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         }
     }
 
+    override suspend fun listDirectory(remotePath: String): List<SshFileEntry> = withContext(Dispatchers.IO) {
+        val sftp = openSftp()
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val entries = sftp.ls(remotePath) as java.util.Vector<*>
+            entries.asSequence().map { it as ChannelSftp.LsEntry }
+                .filterNot { it.filename == "." || it.filename == ".." }
+                .map { entry ->
+                    val attributes = entry.attrs
+                    SshFileEntry(
+                        path = childPath(remotePath, entry.filename),
+                        name = entry.filename,
+                        isDirectory = attributes.isDir,
+                        isSymbolicLink = attributes.isLink,
+                        size = if (attributes.isDir) null else attributes.size,
+                        modifiedAtEpochMillis = attributes.mTime.toLong().takeIf { it > 0 }?.times(1_000),
+                    )
+                }
+                .sortedWith(compareByDescending<SshFileEntry> { it.isDirectory }.thenBy { it.name.lowercase() })
+                .toList()
+        } finally {
+            sftp.disconnect()
+        }
+    }
+
+    override suspend fun createDirectory(remotePath: String) = withContext(Dispatchers.IO) {
+        val sftp = openSftp()
+        try {
+            sftp.mkdir(remotePath)
+        } finally {
+            sftp.disconnect()
+        }
+    }
+
+    override suspend fun delete(remotePath: String, recursive: Boolean) = withContext(Dispatchers.IO) {
+        val sftp = openSftp()
+        try {
+            val attributes = sftp.lstat(remotePath)
+            if (attributes.isDir && !attributes.isLink) {
+                if (recursive) deleteDirectoryTree(sftp, remotePath)
+                else sftp.rmdir(remotePath)
+            } else {
+                sftp.rm(remotePath)
+            }
+        } finally {
+            sftp.disconnect()
+        }
+    }
+
+    override suspend fun rename(sourcePath: String, destinationPath: String) = withContext(Dispatchers.IO) {
+        val sftp = openSftp()
+        try {
+            sftp.rename(sourcePath, destinationPath)
+        } finally {
+            sftp.disconnect()
+        }
+    }
+
     override fun openLoopbackTunnel(remotePort: Int, basePath: String?): ServerCenterSshTunnel {
         require(remotePort in 1..65535) { "The remote port must be between 1 and 65535." }
         // Hard constraint: a tunnel that binds anywhere but loopback would expose an
@@ -258,6 +317,22 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         channel.connect(CHANNEL_CONNECT_TIMEOUT_MILLIS)
         return channel
     }
+
+    private fun deleteDirectoryTree(sftp: ChannelSftp, path: String) {
+        @Suppress("UNCHECKED_CAST")
+        val entries = sftp.ls(path) as java.util.Vector<*>
+        for (item in entries) {
+            val entry = item as ChannelSftp.LsEntry
+            if (entry.filename == "." || entry.filename == "..") continue
+            val child = childPath(path, entry.filename)
+            val attrs: SftpATTRS = entry.attrs
+            if (attrs.isDir && !attrs.isLink) deleteDirectoryTree(sftp, child) else sftp.rm(child)
+        }
+        sftp.rmdir(path)
+    }
+
+    private fun childPath(parent: String, name: String): String =
+        if (parent == "/") "/$name" else parent.trimEnd('/') + "/" + name
 
     /**
      * 执行一条命令并等待结束。stdout 与 stderr 由两个读取线程并行排空：
@@ -454,6 +529,7 @@ internal class PasswordUserInfo(private val password: CharArray) : UserInfo, UIK
         if (!accepted) return null
         return arrayOf(String(password))
     }
+
 }
 
 /**

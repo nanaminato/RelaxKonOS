@@ -47,7 +47,7 @@ fun ServerCenterScreen(onClose: () -> Unit) {
         onSelectHost = viewModel::selectHost,
         onManagePasswordChanged = viewModel::updateManagePassword,
         onVerifySelectedHost = viewModel::verifySelectedHost,
-        onTrustAndVerify = viewModel::trustAndVerify,
+        onOpenSshFiles = viewModel::openSshFiles,
         onRequestDelete = viewModel::requestDelete,
         onClose = onClose,
     )
@@ -60,6 +60,18 @@ fun ServerCenterScreen(onClose: () -> Unit) {
             confirmLabel = stringResource(R.string.server_center_remove_host),
             onConfirm = viewModel::removeSelectedHost,
             onDismiss = viewModel::dismissDelete,
+        )
+    }
+
+    val trustRequest = state.verification as? ServerCenterSshVerification.NeedsTrust
+    if (trustRequest != null) {
+        ConfirmDangerousDialog(
+            title = stringResource(R.string.server_center_host_key_confirm_title),
+            message = stringResource(R.string.server_center_host_key_review, trustRequest.observation.groupedFingerprint),
+            confirmLabel = stringResource(R.string.server_center_trust_and_verify),
+            onConfirm = viewModel::trustAndVerify,
+            onDismiss = viewModel::dismissHostKeyTrust,
+            busy = state.isVerifying,
         )
     }
 }
@@ -76,7 +88,7 @@ private fun ServerCenterContent(
     onSelectHost: (String) -> Unit,
     onManagePasswordChanged: (String) -> Unit,
     onVerifySelectedHost: () -> Unit,
-    onTrustAndVerify: () -> Unit,
+    onOpenSshFiles: () -> Unit,
     onRequestDelete: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -104,7 +116,7 @@ private fun ServerCenterContent(
                 state = state,
                 onPasswordChanged = onManagePasswordChanged,
                 onVerify = onVerifySelectedHost,
-                onTrustAndVerify = onTrustAndVerify,
+                onOpenSshFiles = onOpenSshFiles,
                 onRequestDelete = onRequestDelete,
             )
         }
@@ -212,7 +224,7 @@ private fun HostManagementCard(
     state: ServerCenterUiState,
     onPasswordChanged: (String) -> Unit,
     onVerify: () -> Unit,
-    onTrustAndVerify: () -> Unit,
+    onOpenSshFiles: () -> Unit,
     onRequestDelete: () -> Unit,
 ) {
     Text(stringResource(R.string.server_center_selected_host, target.displayName), style = MaterialTheme.typography.titleMedium)
@@ -229,7 +241,12 @@ private fun HostManagementCard(
     ) {
         ProgressOrText(state.isVerifying, R.string.server_center_verify_ssh)
     }
-    VerificationNotice(state.verification, state.isVerifying, onTrustAndVerify)
+    VerificationNotice(state.verification)
+    if (state.verification is ServerCenterSshVerification.Trusted) {
+        OutlinedButton(onClick = onOpenSshFiles, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.ssh_files_open))
+        }
+    }
     TextButton(onClick = onRequestDelete) {
         Text(stringResource(R.string.server_center_remove_host), color = MaterialTheme.colorScheme.error)
     }
@@ -238,20 +255,13 @@ private fun HostManagementCard(
 @Composable
 private fun VerificationNotice(
     verification: ServerCenterSshVerification?,
-    isVerifying: Boolean,
-    onTrustAndVerify: () -> Unit,
 ) {
     when (verification) {
         is ServerCenterSshVerification.Trusted -> Text(
             stringResource(R.string.server_center_ssh_verified, verification.fingerprint.orEmpty()),
             color = MaterialTheme.colorScheme.primary,
         )
-        is ServerCenterSshVerification.NeedsTrust -> {
-            Text(stringResource(R.string.server_center_host_key_review, verification.observation.groupedFingerprint))
-            Button(onClick = onTrustAndVerify, enabled = !isVerifying, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.server_center_trust_and_verify))
-            }
-        }
+        is ServerCenterSshVerification.NeedsTrust -> Unit
         is ServerCenterSshVerification.KeyChanged -> Text(
             stringResource(R.string.server_center_host_key_changed, verification.observation.groupedFingerprint),
             color = MaterialTheme.colorScheme.error,

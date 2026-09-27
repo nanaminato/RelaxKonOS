@@ -61,7 +61,7 @@
     <string name="login_action_connecting">Connecting…</string>
     <string name="server_center_open">Install or manage a server</string>
     <string name="server_center_title">Server centre</string>
-    <string name="server_center_subtitle">Add an SSH host to install, update or repair RelaxKonOS. SSH credentials are kept separate from your server login.</string>
+    <string name="server_center_subtitle">Manage trusted SSH hosts and their files. SSH credentials are kept separate from your server login.</string>
     <string name="server_center_empty">No managed hosts have been added on this device.</string>
     <string name="server_center_add_host">Add host</string>
     <string name="server_center_add_host_hint">Enter the SSH connection once. RelaxKonOS adds the host and verifies it in the same step.</string>
@@ -83,6 +83,7 @@
     <string name="server_center_ssh_password">SSH password</string>
     <string name="server_center_verify_ssh">Verify SSH connection</string>
     <string name="server_center_ssh_verified">SSH host identity verified: %1$s</string>
+    <string name="server_center_host_key_confirm_title">Confirm SSH host key</string>
     <string name="server_center_host_key_review">Verify this SSH host-key fingerprint with the host administrator before trusting it: %1$s</string>
     <string name="server_center_trust_host_key">I verified this fingerprint</string>
     <string name="server_center_trust_and_verify">Trust and verify connection</string>
@@ -90,6 +91,21 @@
     <string name="server_center_ssh_failed">Could not verify the SSH connection. Check the host, account, password and network.</string>
     <string name="server_center_remove_host">Remove host record</string>
     <string name="server_center_remove_host_message">Remove the local management record for %1$s? This does not uninstall RelaxKonOS, delete its data, remove saved server logins, or delete saved SSH credentials.</string>
+    <string name="ssh_files_open">Browse SSH files</string>
+    <string name="ssh_files_title">SSH files</string>
+    <string name="ssh_files_password_hint">Enter the SSH password for this session. It stays only in memory while this page is open.</string>
+    <string name="ssh_files_connect">Open files</string>
+    <string name="ssh_files_up">Up</string>
+    <string name="ssh_files_refresh">Refresh</string>
+    <string name="ssh_files_new_folder">New folder</string>
+    <string name="ssh_files_rename">Rename</string>
+    <string name="ssh_files_delete">Delete</string>
+    <string name="ssh_files_delete_note">Delete %1$s and all of its contents? This cannot be undone.</string>
+    <string name="ssh_files_save">Save changes</string>
+    <string name="ssh_files_text_too_large">This text file is larger than 1 MiB and is not opened on a phone.</string>
+    <string name="ssh_files_image_unreadable">This image could not be decoded.</string>
+    <string name="ssh_files_invalid_name">Use a non-empty file name without a path separator.</string>
+    <string name="ssh_files_connection_failed">The SSH file operation failed. Check the password, connection and trusted host key.</string>
     <!--
       The saved-password state line. It is rendered beside the password field and reports only that a
       credential exists and what unlocks it; producing it never reads the password.

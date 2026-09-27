@@ -237,6 +237,14 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
 
     override suspend fun download(remotePath: String, destination: OutputStream) = error("not used")
 
+    override suspend fun listDirectory(remotePath: String): List<SshFileEntry> = error("not used")
+
+    override suspend fun createDirectory(remotePath: String) = error("not used")
+
+    override suspend fun delete(remotePath: String, recursive: Boolean) = error("not used")
+
+    override suspend fun rename(sourcePath: String, destinationPath: String) = error("not used")
+
     override fun openLoopbackTunnel(remotePort: Int, basePath: String?): ServerCenterSshTunnel = error("not used")
 
     override fun close() = Unit

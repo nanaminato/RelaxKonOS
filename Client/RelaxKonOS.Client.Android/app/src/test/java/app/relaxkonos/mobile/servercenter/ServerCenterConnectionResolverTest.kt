@@ -214,6 +214,14 @@ private class FakeTransport(private val portSequence: List<Int>) : ServerCenterS
 
     override suspend fun download(remotePath: String, destination: OutputStream) = Unit
 
+    override suspend fun listDirectory(remotePath: String): List<SshFileEntry> = emptyList()
+
+    override suspend fun createDirectory(remotePath: String) = Unit
+
+    override suspend fun delete(remotePath: String, recursive: Boolean) = Unit
+
+    override suspend fun rename(sourcePath: String, destinationPath: String) = Unit
+
     override fun openLoopbackTunnel(remotePort: Int, basePath: String?): ServerCenterSshTunnel {
         val port = portSequence[portIndex.coerceAtMost(portSequence.lastIndex)]
         portIndex++
