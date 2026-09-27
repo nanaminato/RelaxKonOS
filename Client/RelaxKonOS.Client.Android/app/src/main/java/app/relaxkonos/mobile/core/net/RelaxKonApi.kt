@@ -7,6 +7,7 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -33,6 +34,165 @@ class RelaxKonApi(
     override suspend fun deploymentRuntime(serverUrl: String, accessToken: String): ApiResult<DeploymentRuntime> =
         deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.RUNTIME, ApplicationDeploymentWire::runtime)
 
+    override suspend fun deploymentTemplates(serverUrl: String, accessToken: String): ApiResult<List<DeploymentTemplate>> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.TEMPLATES, ApplicationDeploymentWire::templates)
+
+    override suspend fun uploadDeploymentArchive(
+        serverUrl: String,
+        accessToken: String,
+        fileName: String,
+        contentLength: Long?,
+        open: () -> InputStream,
+    ): ApiResult<DeploymentArchive> = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            val boundary = "RelaxKonOS-deployment-${System.currentTimeMillis()}"
+            val header = buildMultipartHeader(boundary, fileName)
+            val footer = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+            connection = openConnection(serverUrl, ApplicationDeploymentRoutes.UPLOADS, "POST", accessToken)
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            if (contentLength != null && contentLength >= 0) {
+                val total = header.size.toLong() + contentLength + footer.size
+                if (total <= Int.MAX_VALUE) connection.setFixedLengthStreamingMode(total.toInt()) else connection.setFixedLengthStreamingMode(total)
+            } else connection.setChunkedStreamingMode(BUFFER_SIZE)
+            connection.outputStream.use { output ->
+                output.write(header)
+                open().use { input ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                    }
+                }
+                output.write(footer)
+            }
+            val code = connection.responseCode
+            if (code !in 200..299) return@withContext readProblem(connection, code)
+            runCatching { ApplicationDeploymentWire.archive(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed deployment archive response.") })
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            ApiResult.Transport(error.message)
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    override suspend fun deploymentLogs(serverUrl: String, accessToken: String, applicationId: String, tail: Int): ApiResult<DeploymentLog> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.logs(applicationId, tail), ApplicationDeploymentWire::logs)
+
+    override suspend fun createImageDeployment(
+        serverUrl: String,
+        accessToken: String,
+        definition: ImageDeploymentDefinition,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentApplication> {
+        val body = JsonBody()
+            .string("name", definition.name.trim())
+            .string("sourceKind", "Image")
+            .string("workloadKind", "Web")
+            .string("readinessLevel", "Http")
+            .string("healthCheckPath", definition.healthCheckPath)
+            .int("containerPort", definition.containerPort)
+            .string("bindAddress", definition.bindAddress)
+            .raw("configuration", deploymentConfiguration(definition.configuration))
+        return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.APPLICATIONS, accessToken, body, idempotencyKey,
+            ApplicationDeploymentWire::createdApplication)
+    }
+
+    override suspend fun createArchiveDeployment(
+        serverUrl: String,
+        accessToken: String,
+        definition: ArchiveDeploymentDefinition,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentApplication> {
+        val body = JsonBody()
+            .string("name", definition.name.trim())
+            .string("sourceKind", definition.sourceKind)
+            .string("workloadKind", definition.workloadKind)
+            .string("readinessLevel", definition.readinessLevel)
+            .string("healthCheckPath", definition.healthCheckPath)
+            .int("containerPort", definition.containerPort)
+            .string("bindAddress", "127.0.0.1")
+            .raw("configuration", deploymentConfiguration(definition.configuration))
+        return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.APPLICATIONS, accessToken, body, idempotencyKey,
+            ApplicationDeploymentWire::createdApplication)
+    }
+
+    override suspend fun deployArchive(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        archiveReferenceId: String,
+        definition: ArchiveDeploymentDefinition,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> {
+        val source = JSONObject().apply {
+            put("archiveReferenceId", archiveReferenceId)
+            definition.baseImage?.trim()?.takeIf(String::isNotEmpty)?.let { put("baseImage", it) }
+            definition.runtimeVersion?.trim()?.takeIf(String::isNotEmpty)?.let { put("runtimeVersion", it) }
+            definition.programEntry?.trim()?.takeIf(String::isNotEmpty)?.let { put("programEntry", it) }
+            if (definition.selfContained) put("selfContained", true)
+        }.toString()
+        return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken,
+            JsonBody().raw("source", source).bool("confirmed", true), idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
+    }
+
+    override suspend fun deployImage(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        imageReference: String,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> {
+        val source = JSONObject().put("imageReference", imageReference.trim()).toString()
+        val body = JsonBody().raw("source", source).bool("confirmed", true)
+        return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken, body, idempotencyKey,
+            ApplicationDeploymentWire::acceptedOperation)
+    }
+
+    override suspend fun rollbackDeployment(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        revisionId: String,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> {
+        val body = JsonBody().string("revisionId", UUID.fromString(revisionId).toString()).bool("confirmed", true)
+        return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.rollback(applicationId), accessToken, body, idempotencyKey,
+            ApplicationDeploymentWire::acceptedOperation)
+    }
+
+    override suspend fun deleteDeployment(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> = deploymentMutation(
+        "DELETE", serverUrl, ApplicationDeploymentRoutes.delete(applicationId), accessToken,
+        JsonBody().bool("deleteVolumes", false).bool("confirmed", false), idempotencyKey,
+        ApplicationDeploymentWire::acceptedOperation,
+    )
+
+    override suspend fun deploymentLifecycle(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        action: DeploymentLifecycleAction,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> = deploymentMutation(
+        "POST", serverUrl, ApplicationDeploymentRoutes.lifecycle(applicationId, action), accessToken,
+        JsonBody().bool("force", false).bool("confirmed", true), idempotencyKey,
+        ApplicationDeploymentWire::acceptedOperation,
+    )
+
+    override suspend fun cancelDeploymentOperation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
+        deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.cancelOperation(operationId), accessToken,
+            JsonBody(), idempotencyKey, ApplicationDeploymentWire::acceptedOperation)
+
     private suspend fun <T> deploymentRead(serverUrl: String, accessToken: String, route: String, parse: (String) -> T): ApiResult<T> =
         when (val result = execute("GET", serverUrl, route, accessToken, null)) {
             is ApiResult.Success -> runCatching { parse(result.value) }
@@ -40,6 +200,20 @@ class RelaxKonApi(
             is ApiResult.Problem -> result
             is ApiResult.Transport -> result
         }
+
+    private suspend fun <T> deploymentMutation(
+        method: String, serverUrl: String, route: String, accessToken: String, body: JsonBody, idempotencyKey: String,
+        parse: (String) -> T,
+    ): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body, mapOf("Idempotency-Key" to idempotencyKey))) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed deployment response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
+    private fun deploymentConfiguration(entries: List<DeploymentConfigEntry>): String = JSONArray().apply {
+        entries.forEach { entry -> put(JSONObject().put("name", entry.name.trim()).put("value", entry.value).put("isSecret", entry.isSecret)) }
+    }.toString()
 
     override suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession> {
         val body = JsonBody()

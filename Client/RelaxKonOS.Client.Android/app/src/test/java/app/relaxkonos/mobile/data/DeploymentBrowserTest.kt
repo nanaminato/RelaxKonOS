@@ -23,11 +23,13 @@ class DeploymentBrowserTest {
 
     private suspend fun signIn(user: String = "nana", caps: Set<String> = capabilities, url: String = "https://server.local") {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(userName = user, capabilities = caps)) }
+        gateway.onDeploymentTemplates = { _, _ -> ApiResult.Success(emptyList()) }
         session.login(ServerConnectionIdentityRules.direct(url), user, charArrayOf('p')) {}
     }
 
     private fun reads() {
         gateway.onDeploymentRuntime = { _, _ -> ApiResult.Success(runtime) }
+        gateway.onDeploymentTemplates = { _, _ -> ApiResult.Success(emptyList()) }
         gateway.onDeploymentApplications = { _, _ -> ApiResult.Success(listOf(app)) }
         gateway.onDeploymentSnapshot = { _, _, _ -> ApiResult.Success(DeploymentSnapshot(app, emptyList(), emptyList(), null)) }
     }
@@ -120,6 +122,29 @@ class DeploymentBrowserTest {
         gate.complete(Unit); runCurrent()
         assertEquals("second", (browser.state.value.detail as ApiResult.Success).value.application.id)
         assertFalse(browser.state.value.detailLoading)
+    }
+
+    @Test fun `rollback ignores the current revision and queues a selected older revision once`() = runTest {
+        signIn(); reads()
+        val current = DeploymentRevision("revision-current", 2, "image@sha256:current", true)
+        val older = DeploymentRevision("revision-older", 1, "image@sha256:older", false)
+        gateway.onDeploymentSnapshot = { _, _, _ -> ApiResult.Success(DeploymentSnapshot(app, listOf(current, older), emptyList(), null)) }
+        val calls = mutableListOf<List<String>>()
+        gateway.onRollbackDeployment = { _, _, applicationId, revisionId, key ->
+            calls += listOf(applicationId, revisionId, key)
+            ApiResult.Success(DeploymentOperation("operation-1", applicationId, "Rollback", "Queued", "Queued", null, null, null, null, true))
+        }
+        val browser = DeploymentBrowser(repository, session, backgroundScope)
+        runCurrent(); browser.select(app.id); runCurrent()
+
+        browser.rollback(current); runCurrent()
+        assertTrue(calls.isEmpty())
+
+        browser.rollback(older); runCurrent()
+        assertEquals(app.id, calls.single()[0])
+        assertEquals(older.id, calls.single()[1])
+        assertTrue(calls.single()[2].isNotBlank())
+        assertEquals("Rollback", (browser.state.value.submission as ApiResult.Success).value.kind)
     }
 
     @Test fun `expired access token retries read with refreshed token once`() = runTest {

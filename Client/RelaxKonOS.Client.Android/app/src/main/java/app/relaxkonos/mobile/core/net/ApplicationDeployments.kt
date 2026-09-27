@@ -24,8 +24,12 @@ data class DeploymentApplication(
 
 data class DeploymentRevision(val id: String, val number: Int, val imageReference: String, val isCurrent: Boolean)
 
+/** Bounded, server-sanitized workload output. Android never receives an unbounded log stream here. */
+data class DeploymentLog(val lines: List<String>, val truncated: Boolean)
+
 data class DeploymentOperation(
     val operationId: String,
+    val applicationId: String,
     val kind: String,
     val state: String,
     val stage: String,
@@ -33,6 +37,7 @@ data class DeploymentOperation(
     val problemCode: String?,
     val recoveryProblemCode: String?,
     val createdAtMillis: Long?,
+    val cancellable: Boolean,
 )
 
 data class DeploymentSnapshot(
@@ -50,10 +55,63 @@ data class DeploymentRuntime(
     val architecture: String?,
 )
 
+/** Server-owned template metadata. Android consumes this rather than copying runtime defaults. */
+data class DeploymentTemplate(
+    val sourceKind: String,
+    val displayName: String,
+    val defaultBaseImage: String?,
+    val requiresArchive: Boolean,
+    val requiresImageReference: Boolean,
+    val supportsSelfContained: Boolean,
+    val defaultContainerPort: Int,
+)
+
+/** A staged archive reference; its server-side expiry and bytes never become a deployment secret. */
+data class DeploymentArchive(val referenceId: String, val fileName: String, val length: Long, val expiresAtMillis: Long?)
+
+/** A constrained configuration entry. A secret value is sent only for deployment creation and never retained in snapshots. */
+data class DeploymentConfigEntry(val name: String, val value: String, val isSecret: Boolean)
+
+/** The constrained definition Android submits for the first image-only deployment flow. */
+data class ImageDeploymentDefinition(
+    val name: String,
+    val containerPort: Int,
+    val hostPort: Int? = null,
+    val bindAddress: String = "127.0.0.1",
+    val healthCheckPath: String = "/",
+    val configuration: List<DeploymentConfigEntry> = emptyList(),
+)
+
+/** Restricted definition for archive templates; host paths, Dockerfiles and arbitrary environment are absent. */
+data class ArchiveDeploymentDefinition(
+    val sourceKind: String,
+    val name: String,
+    val containerPort: Int,
+    val workloadKind: String,
+    val readinessLevel: String,
+    val healthCheckPath: String?,
+    val baseImage: String? = null,
+    val runtimeVersion: String? = null,
+    val programEntry: String? = null,
+    val selfContained: Boolean = false,
+    val configuration: List<DeploymentConfigEntry> = emptyList(),
+)
+
+/** Closed set mirroring the server lifecycle routes; callers cannot submit arbitrary action paths. */
+enum class DeploymentLifecycleAction { Start, Stop, Restart }
+
 object ApplicationDeploymentRoutes {
     const val APPLICATIONS = "/api/v1.0/application-deployments/applications"
     const val RUNTIME = "/api/v1.0/docker/status"
+    const val TEMPLATES = "/api/v1.0/application-deployments/templates"
+    const val UPLOADS = "/api/v1.0/application-deployments/uploads"
     fun application(id: String): String = "$APPLICATIONS/${UUID.fromString(id)}"
+    fun deploy(id: String): String = "${application(id)}/deploy"
+    fun rollback(id: String): String = "${application(id)}/rollback"
+    fun delete(id: String): String = application(id)
+    fun lifecycle(id: String, action: DeploymentLifecycleAction): String = "${application(id)}/${action.name.lowercase()}"
+    fun logs(id: String, tail: Int): String = "${application(id)}/logs?tail=${tail.coerceIn(1, 1_000)}"
+    fun cancelOperation(id: String): String = "/api/v1.0/application-deployments/operations/${UUID.fromString(id)}/cancel"
 }
 
 /** Required fields fail closed; unfamiliar enum strings stay unknown in the presentation layer. */
@@ -76,6 +134,28 @@ internal object ApplicationDeploymentWire {
             it.nullableText("serverVersion"), it.nullableText("operatingSystem"), it.nullableText("architecture"))
     }
 
+    fun templates(payload: String): List<DeploymentTemplate> = JSONArray(payload).objects { json ->
+        DeploymentTemplate(
+            json.getString("sourceKind"), json.getString("displayName"), json.nullableText("defaultBaseImage"),
+            json.getBoolean("requiresArchive"), json.getBoolean("requiresImageReference"),
+            json.getBoolean("supportsSelfContained"), json.getInt("defaultContainerPort"),
+        )
+    }
+
+    fun archive(payload: String): DeploymentArchive = JSONObject(payload).let { json ->
+        DeploymentArchive(json.getString("referenceId"), json.getString("fileName"), json.getLong("length"),
+            IsoInstant.toEpochMillis(json.getString("expiresAt")))
+    }
+
+    fun createdApplication(payload: String): DeploymentApplication = application(JSONObject(payload))
+
+    fun acceptedOperation(payload: String): DeploymentOperation = operation(JSONObject(payload))
+
+    fun logs(payload: String): DeploymentLog = JSONObject(payload).let { json ->
+        val lines = json.getJSONArray("lines").let { array -> (0 until array.length()).map(array::getString) }
+        DeploymentLog(lines, json.getBoolean("truncated"))
+    }
+
     private fun application(json: JSONObject) = DeploymentApplication(
         json.getString("id"), json.getString("name"), json.getString("sourceKind"),
         json.getString("workloadKind"), json.getString("desiredState"), json.getString("actualState"),
@@ -85,9 +165,9 @@ internal object ApplicationDeploymentWire {
     )
 
     private fun operation(json: JSONObject) = DeploymentOperation(
-        json.getString("operationId"), json.getString("kind"), json.getString("state"), json.getString("stage"),
+        json.getString("operationId"), json.getString("applicationId"), json.getString("kind"), json.getString("state"), json.getString("stage"),
         json.nullableInt("progress"), json.nullableText("problemCode"), json.nullableText("recoveryProblemCode"),
-        IsoInstant.toEpochMillis(json.getString("createdAt")),
+        IsoInstant.toEpochMillis(json.getString("createdAt")), json.getBoolean("cancellable"),
     )
 
     private fun JSONObject.nullableText(key: String): String? =

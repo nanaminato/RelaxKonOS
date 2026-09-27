@@ -285,7 +285,9 @@ class AppContainer(context: Context) {
      * exclusively through an authorized [VaultAccess.load].
      */
     fun suggestedAdministratorAccount(): String =
-        vault.records(VaultKind.Elevation).firstOrNull()?.account ?: when (session.server.platform.lowercase()) {
+        vault.records(VaultKind.Elevation).firstOrNull()?.account ?: when ((session.state.value as? SessionState.Active)
+            ?.serverPlatform
+            ?.lowercase()) {
             "windows" -> "Administrator"
             "linux" -> "root"
             else -> ""
