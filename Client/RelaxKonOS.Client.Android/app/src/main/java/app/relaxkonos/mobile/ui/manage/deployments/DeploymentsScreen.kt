@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -337,6 +338,15 @@ private fun DeploymentCreateDialog(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            if (showServerArchivePicker) {
+                ServerArchivePicker(
+                    onDismiss = { showServerArchivePicker = false },
+                    onSelect = { path ->
+                        form.archiveDefinition()?.let { onServerArchiveSubmit(path, it) }
+                        showServerArchivePicker = false
+                    },
+                )
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
                 if (form.isArchive) {
@@ -359,19 +369,9 @@ private fun DeploymentCreateDialog(
             }
         }
     }
-    if (showServerArchivePicker) {
-        ServerArchivePicker(
-            onDismiss = { showServerArchivePicker = false },
-            onSelect = { path ->
-                form.archiveDefinition()?.let { onServerArchiveSubmit(path, it) }
-                showServerArchivePicker = false
-            },
-        )
-    }
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
     val container = appContainer()
     var path by remember { mutableStateOf("") }
@@ -381,12 +381,23 @@ private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Uni
         listing = container.files.list(path, container.elevationAnswers)
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.lg),
+            Modifier.padding(Spacing.md),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            Text(stringResource(R.string.deployments_server_archive_title), style = MaterialTheme.typography.headlineSmall)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.deployments_server_archive_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            }
             Text(path.ifBlank { "/" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (path.isNotBlank()) {
                 TextButton(onClick = { path = container.files.navigationParentOf(path) }) {
