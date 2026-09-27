@@ -35,6 +35,7 @@ public sealed record ServerDeploymentOptions(
     [property: JsonPropertyName("packageDigest")] string? PackageDigest = null,
     [property: JsonPropertyName("expectedInstallationId")] string? ExpectedInstallationId = null,
     [property: JsonPropertyName("serverPort")] int? ServerPort = null,
+    [property: JsonPropertyName("fileAccess")] ServerFileAccessScope? FileAccess = null,
     [property: JsonPropertyName("confirmed")] bool Confirmed = false);
 
 /// <summary>

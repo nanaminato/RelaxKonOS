@@ -306,6 +306,7 @@ $optionsStagedName = ''
 $optionsPackageDigest = ''
 $optionsExpectedInstallationId = ''
 $optionsServerPort = $null
+$optionsFileAccess = ''
 $optionsConfirmed = $false
 
 function Read-Request {
@@ -344,7 +345,7 @@ function Assert-RequestShape {
         Stop-Launcher 'server-deployment.invalid_request' 'options must be a JSON object'
     }
     $allowedOptions = @('source', 'network', 'retention', 'mode', 'version', 'packageUri', 'stagedPackageName',
-        'packageDigest', 'expectedInstallationId', 'serverPort', 'confirmed')
+        'packageDigest', 'expectedInstallationId', 'serverPort', 'fileAccess', 'confirmed')
     foreach ($key in $request['options'].Keys) {
         if ($allowedOptions -notcontains [string]$key) {
             Stop-Launcher 'server-deployment.invalid_request' "unsupported request field: $key"
@@ -405,6 +406,7 @@ function Parse-Request {
     $script:optionsStagedName = Get-StringOption 'stagedPackageName'
     $script:optionsPackageDigest = Get-StringOption 'packageDigest'
     $script:optionsExpectedInstallationId = Get-StringOption 'expectedInstallationId'
+    $script:optionsFileAccess = Get-StringOption 'fileAccess'
 
     $port = Get-LiteralOption 'serverPort'
     if ($null -ne $port) {
@@ -414,7 +416,7 @@ function Parse-Request {
     $confirmed = Get-LiteralOption 'confirmed'
     if ($confirmed -is [bool] -and $confirmed) { $script:optionsConfirmed = $true }
 
-    if ($script:optionsSource -notin @('officialStable', 'localBundle', 'directUrl')) {
+    if ($script:optionsSource -notin @('officialStable', 'localBundle', 'remoteBundle', 'directUrl')) {
         Stop-Launcher 'server-deployment.invalid_request' 'unsupported package source'
     }
     if ($script:optionsNetwork -notin @('loopback', 'lan', 'reverseProxy')) {
@@ -422,6 +424,9 @@ function Parse-Request {
     }
     if ($script:optionsRetention -notin @('retain', 'delete')) {
         Stop-Launcher 'server-deployment.invalid_request' 'unsupported data retention policy'
+    }
+    if ($script:optionsFileAccess -and $script:optionsFileAccess -notin @('restricted', 'full', 'whitelist')) {
+        Stop-Launcher 'server-deployment.invalid_request' 'unsupported file access scope'
     }
     if ($script:optionsMode -and $script:optionsMode -notin @('linuxSystem', 'linuxUser', 'windowsSystem')) {
         Stop-Launcher 'server-deployment.invalid_request' 'unsupported installation mode'
@@ -860,6 +865,7 @@ function Invoke-InstallLikeAction {
     if ($needsPackage) { $arguments += @('-BundlePath', $packageRoot) }
     if ($null -ne $script:optionsServerPort) { $arguments += @('-ServerPort', [string]$script:optionsServerPort) }
     if ($script:optionsNetwork) { $arguments += @('-NetworkProfile', (Get-EngineNetworkProfile $script:optionsNetwork)) }
+    if ($script:optionsFileAccess) { $arguments += @('-FileAccess', $script:optionsFileAccess) }
     if ($script:optionsExpectedInstallationId) { $arguments += @('-ExpectedInstallationId', $script:optionsExpectedInstallationId) }
 
     $status = Invoke-Engine (Get-PowerShellHost) $arguments

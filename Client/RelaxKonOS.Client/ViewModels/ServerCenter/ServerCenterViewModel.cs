@@ -455,6 +455,7 @@ public partial class ServerCenterViewModel : ObservableObject
         IsBusy = true;
         ErrorMessage = string.Empty;
         StatusMessage = string.Empty;
+        string? downloadedRemoteBundle = null;
         try
         {
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
@@ -499,6 +500,22 @@ public partial class ServerCenterViewModel : ObservableObject
                 return false;
             }
 
+            if (installation.Source == ServerPackageSourceKind.RemoteBundle)
+            {
+                if (string.IsNullOrWhiteSpace(installation.RemoteBundlePath) ||
+                    !installation.RemoteBundlePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    ErrorMessage = T("server_center.remote_bundle_unavailable", "Choose a signed .zip release bundle from this SSH server.");
+                    return false;
+                }
+
+                downloadedRemoteBundle = Path.Combine(Path.GetTempPath(),
+                    "relaxkonos-server-release-" + Guid.NewGuid().ToString("N") + ".zip");
+                await using (var output = new FileStream(downloadedRemoteBundle, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None))
+                    await session.Transport.DownloadAsync(installation.RemoteBundlePath, output, cancellationToken).ConfigureAwait(true);
+            }
+
             var release = installation.Source switch
             {
                 ServerPackageSourceKind.OfficialStable => await _releaseSource.ResolveReleaseAsync(
@@ -506,11 +523,14 @@ public partial class ServerCenterViewModel : ObservableObject
                 ServerPackageSourceKind.LocalBundle when !string.IsNullOrWhiteSpace(installation.LocalBundlePath) =>
                     await _releaseSource.ResolveLocalBundleAsync(
                         platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, installation.LocalBundlePath, cancellationToken).ConfigureAwait(true),
+                ServerPackageSourceKind.RemoteBundle when downloadedRemoteBundle is not null =>
+                    await _releaseSource.ResolveLocalBundleAsync(
+                        platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, downloadedRemoteBundle, cancellationToken).ConfigureAwait(true),
                 _ => null
             };
             if (release is null)
             {
-                ErrorMessage = installation.Source == ServerPackageSourceKind.LocalBundle
+                ErrorMessage = installation.Source is ServerPackageSourceKind.LocalBundle or ServerPackageSourceKind.RemoteBundle
                     ? T("server_center.local_bundle_unavailable", "The selected local bundle is not a trusted signed release for this host.")
                     : T("server_center.release_unavailable", "No trusted signed release is available for this host architecture and installation mode.");
                 return false;
@@ -522,7 +542,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 kind,
                 new ServerDeploymentOptions(
                     installation.Source,
-                    ServerNetworkProfile.Loopback,
+                    installation.Network,
                     ServerDataRetention.Retain,
                     mode,
                     release.Version,
@@ -531,6 +551,7 @@ public partial class ServerCenterViewModel : ObservableObject
                     release.PackageDigest,
                     kind == ServerDeploymentKind.Upgrade ? probe.ExistingInstallationId : null,
                     null,
+                    installation.FileAccess,
                     Confirmed: true));
             await using var launcher = release.Tools.OpenLauncher();
             await using var verifier = release.Tools.OpenVerifier();
@@ -584,6 +605,11 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         finally
         {
+            if (downloadedRemoteBundle is not null)
+            {
+                try { File.Delete(downloadedRemoteBundle); }
+                catch (IOException) { }
+            }
             SshPassword = string.Empty;
             IsBusy = false;
         }
@@ -912,4 +938,7 @@ public sealed record HostPlatformOption(HostPlatformKind Platform, string Displa
 public sealed record ServerInstallationOptions(
     ServerPackageSourceKind Source,
     ServerInstallMode? Mode,
-    string? LocalBundlePath);
+    string? LocalBundlePath,
+    string? RemoteBundlePath,
+    ServerFileAccessScope FileAccess,
+    ServerNetworkProfile Network);

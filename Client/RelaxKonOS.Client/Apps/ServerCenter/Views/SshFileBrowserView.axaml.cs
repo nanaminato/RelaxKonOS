@@ -29,6 +29,7 @@ internal partial class SshFileBrowserView : UserControl
     private readonly SshDesktopSession _session;
     private readonly Func<string, bool> _canOpenFile;
     private readonly Func<string, bool> _openFile;
+    private readonly Action<string>? _selectPackage;
     private readonly List<string> _history = [];
     private readonly List<SshFileEntry> _clipboard = [];
     private readonly ObservableCollection<TreeNodeModel> _navigationNodes = [];
@@ -63,12 +64,15 @@ internal partial class SshFileBrowserView : UserControl
     public string TypeSortGlyph { get => GetValue(TypeSortGlyphProperty); private set => SetValue(TypeSortGlyphProperty, value); }
     public string SizeSortGlyph { get => GetValue(SizeSortGlyphProperty); private set => SetValue(SizeSortGlyphProperty, value); }
 
-    public SshFileBrowserView(SshDesktopSession session, Func<string, bool>? canOpenFile = null, Func<string, bool>? openFile = null)
+    public SshFileBrowserView(SshDesktopSession session, Func<string, bool>? canOpenFile = null,
+        Func<string, bool>? openFile = null, Action<string>? selectPackage = null)
     {
         _session = session;
         _canOpenFile = canOpenFile ?? (_ => false);
         _openFile = openFile ?? (_ => false);
+        _selectPackage = selectPackage;
         InitializeComponent();
+        SelectPackageButton.IsVisible = _selectPackage is not null;
         NavigationTree.ItemsSource = _navigationNodes;
         _viewReady = true;
         // The grid marks pointer presses as handled while it updates the selection, so the
@@ -117,6 +121,17 @@ internal partial class SshFileBrowserView : UserControl
     {
         if (EntriesGrid.SelectedItem is SshFileEntry entry)
             await OpenEntryAsync(entry);
+    }
+
+    private void SelectPackage_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_selectPackage is null || _busy || Selection() is not [var entry] || entry.IsDirectory ||
+            !entry.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            StatusText.Text = T("server_center.wizard.bundle_required", "Choose a signed .zip release bundle to continue.");
+            return;
+        }
+        _selectPackage(entry.Path);
     }
 
     private async void AddressBox_KeyDown(object? sender, KeyEventArgs e)
@@ -564,6 +579,8 @@ internal partial class SshFileBrowserView : UserControl
         RenameButton.IsEnabled = !_busy && selected.Length == 1;
         DeleteButton.IsEnabled = !_busy && selected.Length > 0;
         DownloadButton.IsEnabled = !_busy && selected.Length > 0;
+        SelectPackageButton.IsEnabled = !_busy && selected.Length == 1 && !selected[0].IsDirectory &&
+            selected[0].Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
         CopyButton.IsEnabled = CutButton.IsEnabled = !_busy && selected.Length > 0;
         PasteButton.IsEnabled = !_busy && _clipboard.Count > 0;
         NavigationTree.IsEnabled = !_busy;

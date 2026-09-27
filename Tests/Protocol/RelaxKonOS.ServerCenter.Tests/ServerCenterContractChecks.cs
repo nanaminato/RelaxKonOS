@@ -361,6 +361,16 @@ internal static class ServerCenterContractChecks
         Check(json.Contains("\"kind\":\"probe\"", StringComparison.Ordinal), "枚举以 camelCase 字符串序列化");
         Check(json.Contains("\"network\":\"loopback\"", StringComparison.Ordinal), "网络选项以字符串序列化");
 
+        var scopedInstall = request with
+        {
+            Kind = ServerDeploymentKind.Install,
+            Options = request.Options! with { FileAccess = ServerFileAccessScope.Full }
+        };
+        var scopedJson = JsonSerializer.Serialize(scopedInstall, RelaxKonOSJsonOptions.Default);
+        Check(ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(scopedJson)) &&
+              scopedJson.Contains("\"fileAccess\":\"full\"", StringComparison.Ordinal),
+            "特权文件访问范围以严格的字符串选项传递");
+
         var round = JsonSerializer.Deserialize<ServerDeploymentRequest>(json, RelaxKonOSJsonOptions.Default);
         Check(round == request, "请求可无损往返序列化");
 

@@ -73,6 +73,9 @@
                     <TextBlock Text="{loc:Loc ssh_files.new_folder}" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
+            <Button x:Name="SelectPackageButton" IsVisible="False" Click="SelectPackage_Click">
+                <TextBlock Text="{loc:Loc server_center.wizard.choose_bundle}" VerticalAlignment="Center" />
+            </Button>
             <Button x:Name="CopyButton" Click="Copy_Click" ToolTip.Tip="Ctrl+C">
                 <Image Width="18" Height="18"
                        Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-copy.png" />
