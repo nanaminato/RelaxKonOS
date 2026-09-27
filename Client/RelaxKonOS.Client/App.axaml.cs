@@ -76,7 +76,7 @@ public partial class App : Application
                     if (shutdownRequested) return;
 
                     if (e.State == AuthSessionState.Unauthenticated
-                        && e.EndReason == AuthSessionEndReason.RefreshTokenInvalid
+                        && e.EndReason is AuthSessionEndReason.RefreshTokenInvalid or AuthSessionEndReason.UserSignedOut
                         && mainWindow is not null)
                     {
                         replacingMainWindow = true;
@@ -86,7 +86,8 @@ public partial class App : Application
                         desktop.MainWindow = loginWindow;
                         loginWindow.Show();
                         await loginViewModel.LoadSavedProfilesAsync();
-                        loginViewModel.ShowSessionExpiredMessage();
+                        if (e.EndReason == AuthSessionEndReason.RefreshTokenInvalid)
+                            loginViewModel.ShowSessionExpiredMessage();
                         replacingMainWindow = false;
                         return;
                     }

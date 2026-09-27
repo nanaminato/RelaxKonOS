@@ -157,13 +157,21 @@ public partial class MainWindow : Window
         {
             await App.Services.GetRequiredService<WindowLayoutStore>().FlushAsync();
             if (App.Services.GetRequiredService<SshDesktopSession>().IsConnected)
+            {
                 App.Services.GetRequiredService<SshDesktopSession>().Disconnect();
-            else
-                await App.Services.GetRequiredService<IAuthSession>().LogoutAsync();
+                Close();
+                return;
+            }
+
+            // The application-level session handler replaces this window with the login window
+            // after LogoutAsync raises UserSignedOut. Closing here would instead trigger the
+            // main-window shutdown handler before that replacement can run.
+            await App.Services.GetRequiredService<IAuthSession>().LogoutAsync();
         }
-        finally
+        catch
         {
-            Close();
+            // LogoutAsync always clears the local session, even when the server-side revoke
+            // request fails. Its state change still takes the user back to the login window.
         }
     }
 

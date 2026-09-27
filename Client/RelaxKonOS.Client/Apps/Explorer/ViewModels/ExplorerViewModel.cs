@@ -37,6 +37,10 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     private readonly List<string?> _history = new();
     private int _historyIndex = -1;
     private bool _isNavigating;
+    // A root session may use the closed privileged-file route while its root policy deliberately
+    // excludes '/'.  In that case the generic Linux drive supplied by the API is not a usable
+    // navigation target, even though the session's /root home remains available.
+    private bool _hidePosixRootDrive;
     private readonly List<FileSystemEntryDto> _directoryEntries = [];
 
     /// <summary>路径变化时同步树选中的抑制标志：避免 SyncTreeSelectionAsync 设 SelectedNode 触发 OnSelectedNodeChanged
@@ -388,6 +392,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             await Task.WhenAll(specialTask, drivesTask);
             var specials = specialTask.Result;
             var drives = GetNavigationDrives(drivesTask.Result);
+            _hidePosixRootDrive = await ShouldHidePosixRootDriveAsync(specials, drives);
+            if (_hidePosixRootDrive)
+                drives = drives.Where(d => !string.Equals(d.Path, Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)).ToArray();
 
             Nodes.Clear();
 
@@ -569,6 +576,8 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             if (path is null)
             {
                 var drives = GetNavigationDrives(await _client.GetDrivesAsync());
+                if (_hidePosixRootDrive)
+                    drives = drives.Where(d => !string.Equals(d.Path, Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)).ToArray();
                 loaded.AddRange(drives.Select(d => new FileSystemEntryDto(d.Path, d.Name, d.TotalSize,
                     FileSystemEntryType.Drive, null, null, null, false, false, null)));
                 confirmedPath = null;
@@ -700,6 +709,31 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         var readyDrives = drives.Where(d => d.IsReady).ToArray();
         var posixRoot = readyDrives.FirstOrDefault(d => string.Equals(d.Path, "/", StringComparison.Ordinal));
         return posixRoot is null ? readyDrives : [posixRoot];
+    }
+
+    /// <summary>
+    /// The Linux drive list is deployment-wide and therefore always contains '/'. Root sessions,
+    /// however, can be deliberately restricted to a smaller privileged-helper policy. Probe only
+    /// root metadata (never its directory contents) so an unavailable '/' is not rendered as an
+    /// apparently usable drive. A full root policy continues to show it.
+    /// </summary>
+    private async Task<bool> ShouldHidePosixRootDriveAsync(IReadOnlyList<SpecialLocationDto> specials,
+        IReadOnlyList<DriveDto> drives)
+    {
+        var rootHome = specials.FirstOrDefault(location => location.Kind == SpecialFolderKind.Home)?.Path;
+        var posixRoot = drives.FirstOrDefault(drive => string.Equals(drive.Path,
+            Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal));
+        if (!string.Equals(rootHome, "/root", StringComparison.Ordinal) || posixRoot is null)
+            return false;
+
+        try
+        {
+            return await _client.GetInfoAsync(posixRoot.Path) is null;
+        }
+        catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/access-denied", StringComparison.Ordinal))
+        {
+            return true;
+        }
     }
 
     /// <summary>Whether a list entry can initiate a move drag.</summary>
