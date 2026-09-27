@@ -15,6 +15,12 @@ public static class ApplicationDeploymentApiRoutes
     public const string Templates = Root + "/templates";
     public const string TemplatesPattern = "/templates";
 
+    /// <summary>Purpose-oriented, versioned application templates (distinct from runtime templates).</summary>
+    public const string Catalog = Root + "/catalog";
+    public const string CatalogPattern = "/catalog";
+    public const string CatalogTemplatePattern = "/catalog/{templateId}";
+    public const string CatalogInstallPattern = "/catalog/install";
+
     /// <summary>Recent selectable tags for a public image repository.</summary>
     public const string ImageTags = Root + "/image-tags";
     public const string ImageTagsPattern = "/image-tags";

@@ -93,7 +93,9 @@ internal sealed record ApplicationRecord(
     string? Domain,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    DateTimeOffset? LastDeployedAt);
+    DateTimeOffset? LastDeployedAt,
+    string? CatalogTemplateId = null,
+    string? CatalogTemplateVersion = null);
 
 /// <summary>
 /// An immutable published version. It binds the observed image identity, the start definition, and
@@ -123,7 +125,9 @@ internal sealed record RevisionRecord(
     ApplicationConfigRecord[] Configuration,
     string? SiteId,
     string CreatedByReference,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string? CatalogTemplateId = null,
+    string? CatalogTemplateVersion = null);
 
 /// <summary>
 /// The validated, typed deployment input produced by a template. It is never a raw client payload:

@@ -85,6 +85,9 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 | 方法 | 路由 | 语义 | 策略 |
 | --- | --- | --- | --- |
 | GET | `/templates` | 四个模板的能力描述 | Read |
+| GET | `/catalog` | 可信、版本化的应用用途模板目录（不含可执行脚本） | Read |
+| GET | `/catalog/{templateId}` | 一个用途模板的受限字段与维护说明 | Read |
+| POST | `/catalog/install` | 用精确模板版本创建定义并排队首次部署 → `202` | Manage |
 | GET | `/image-tags?repository=` | Docker Hub 公共仓库的最近 20 个非 `latest` tag；其他仓库保留手动填写 | Read |
 | GET | `/applications` | 应用列表（含观测状态） | Read |
 | POST | `/applications` | 创建应用定义 | Manage |

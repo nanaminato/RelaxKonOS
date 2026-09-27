@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.core.net
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import java.util.Locale
 
 /** Read-only projections of Protocol/ApplicationDeployments. Configuration values are not retained. */
 data class DeploymentApplication(
@@ -66,6 +67,29 @@ data class DeploymentTemplate(
     val defaultContainerPort: Int,
 )
 
+/** Product application catalogue, distinct from the AD02 runtime-source templates above. */
+data class CatalogTemplate(
+    val schemaVersion: String,
+    val id: String,
+    val version: String,
+    val publisher: String,
+    val purpose: String,
+    val description: String,
+    val requiredCapabilities: List<String>,
+    val fields: List<CatalogField>,
+    val volumes: List<CatalogVolume>,
+    val containerPort: Int,
+    val accessPath: String?,
+    val maintenanceNotes: String,
+    val withdrawn: Boolean,
+)
+
+data class CatalogField(val id: String, val type: String, val required: Boolean, val defaultValue: String?, val labels: Map<String, String>, val help: String?) {
+    fun label(): String = labels[Locale.getDefault().language] ?: labels["en"] ?: id
+}
+data class CatalogVolume(val name: String, val containerPath: String)
+data class CatalogFieldValue(val id: String, val value: String)
+
 /** A staged archive reference; its server-side expiry and bytes never become a deployment secret. */
 data class DeploymentArchive(val referenceId: String, val fileName: String, val length: Long, val expiresAtMillis: Long?)
 
@@ -104,6 +128,8 @@ object ApplicationDeploymentRoutes {
     const val APPLICATIONS = "/api/v1.0/application-deployments/applications"
     const val RUNTIME = "/api/v1.0/docker/status"
     const val TEMPLATES = "/api/v1.0/application-deployments/templates"
+    const val CATALOG = "/api/v1.0/application-deployments/catalog"
+    const val CATALOG_INSTALL = "$CATALOG/install"
     const val UPLOADS = "/api/v1.0/application-deployments/uploads"
     fun application(id: String): String = "$APPLICATIONS/${UUID.fromString(id)}"
     fun deploy(id: String): String = "${application(id)}/deploy"
@@ -142,6 +168,21 @@ internal object ApplicationDeploymentWire {
         )
     }
 
+    fun catalog(payload: String): List<CatalogTemplate> = JSONArray(payload).objects { json ->
+        CatalogTemplate(
+            json.getString("schemaVersion"), json.getString("id"), json.getString("version"), json.getString("publisher"),
+            json.getString("purpose"), json.getString("description"), json.getJSONArray("requiredCapabilities").strings(),
+            json.getJSONArray("fields").objects { field -> CatalogField(field.getString("id"), field.getString("type"), field.getBoolean("required"),
+                field.nullableText("defaultValue"), field.getJSONObject("labels").let { labels ->
+                    mapOf("en" to labels.getString("en"), "zh" to labels.getString("zh"), "ja" to labels.getString("ja"))
+                }, field.nullableText("help")) },
+            json.getJSONArray("volumes").objects { volume -> CatalogVolume(volume.getString("name"), volume.getString("containerPath")) },
+            json.getInt("containerPort"), json.nullableText("accessPath"), json.getString("maintenanceNotes"), json.getBoolean("withdrawn"),
+        )
+    }
+
+    fun catalogInstall(payload: String): DeploymentOperation = operation(JSONObject(payload).getJSONObject("operation"))
+
     fun archive(payload: String): DeploymentArchive = JSONObject(payload).let { json ->
         DeploymentArchive(json.getString("referenceId"), json.getString("fileName"), json.getLong("length"),
             IsoInstant.toEpochMillis(json.getString("expiresAt")))
@@ -175,4 +216,5 @@ internal object ApplicationDeploymentWire {
     private fun JSONObject.nullableInt(key: String): Int? = if (isNull(key)) null else getInt(key)
     private fun <T> JSONArray.objects(parse: (JSONObject) -> T): List<T> =
         (0 until length()).map { parse(getJSONObject(it)) }
+    private fun JSONArray.strings(): List<String> = (0 until length()).map(::getString)
 }

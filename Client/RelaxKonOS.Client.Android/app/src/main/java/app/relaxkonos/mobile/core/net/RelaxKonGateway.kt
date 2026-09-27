@@ -29,6 +29,13 @@ interface RelaxKonGateway {
     suspend fun deploymentTemplates(serverUrl: String, accessToken: String): ApiResult<List<DeploymentTemplate>> =
         ApiResult.Transport("Application deployment templates are unavailable.")
 
+    suspend fun applicationCatalog(serverUrl: String, accessToken: String): ApiResult<List<CatalogTemplate>> =
+        ApiResult.Transport("Application catalogue is unavailable.")
+
+    suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String,
+        fields: List<CatalogFieldValue>, idempotencyKey: String): ApiResult<DeploymentOperation> =
+        ApiResult.Transport("Application catalogue install is unavailable.")
+
     /** Streams one selected archive directly into deployment-owned staging; callers must not buffer it. */
     suspend fun uploadDeploymentArchive(
         serverUrl: String,

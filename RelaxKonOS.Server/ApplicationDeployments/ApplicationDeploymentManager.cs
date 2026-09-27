@@ -109,7 +109,8 @@ internal sealed class ApplicationDeploymentManager(
     /// Creates the definition. The source archive or image is deliberately not part of it: a published
     /// revision binds the source, so the definition can be edited without implying a rebuild.
     /// </summary>
-    public async Task<ApplicationDto> CreateAsync(CreateApplicationRequest request, string actor, CancellationToken cancellationToken)
+    public async Task<ApplicationDto> CreateAsync(CreateApplicationRequest request, string actor, CancellationToken cancellationToken,
+        ApplicationCatalog.Entry? catalogTemplate = null)
     {
         if (!Enum.IsDefined(request.SourceKind))
             throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
@@ -131,7 +132,8 @@ internal sealed class ApplicationDeploymentManager(
                 ApplicationDeploymentValidation.Reference(actor), request.SourceKind, definition.WorkloadKind,
                 ApplicationDesiredState.Stopped, definition.ReadinessLevel, definition.HealthCheckPath,
                 definition.ContainerPort, definition.HostPort, definition.BindAddress, definition.Limits,
-                volumes, configuration, null, null, null, null, definition.SiteId, null, now, now, null);
+                volumes, configuration, null, null, null, null, definition.SiteId, null, now, now, null,
+                catalogTemplate?.Id, catalogTemplate?.Version);
             catalog.Create(application);
             return await DescribeOneAsync(application, cancellationToken);
         }

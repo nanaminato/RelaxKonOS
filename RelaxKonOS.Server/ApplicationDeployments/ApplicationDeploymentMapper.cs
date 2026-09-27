@@ -44,7 +44,8 @@ internal static class ApplicationDeploymentMapper
             application.CreatedAt,
             application.UpdatedAt,
             application.LastDeployedAt,
-            ApplicationDeploymentRuntime.DescribeDrift(application, container, engineAvailable, ownedByUs));
+            ApplicationDeploymentRuntime.DescribeDrift(application, container, engineAvailable, ownedByUs),
+            application.CatalogTemplateId, application.CatalogTemplateVersion);
 
     public static ApplicationRevisionDto Revision(RevisionRecord revision, Guid? currentRevisionId) => new(
         revision.Id,
@@ -71,7 +72,7 @@ internal static class ApplicationDeploymentMapper
         revision.SiteId,
         revision.Id == currentRevisionId,
         revision.CreatedByReference,
-        revision.CreatedAt);
+        revision.CreatedAt, null, revision.CatalogTemplateId, revision.CatalogTemplateVersion);
 
     public static ApplicationVolumeDto Volume(ApplicationVolumeRecord volume) =>
         new(volume.Name, volume.ContainerPath, volume.ReadOnly);

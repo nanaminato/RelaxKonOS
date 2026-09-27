@@ -19,6 +19,12 @@ public static class ApplicationDeploymentProblemCodes
     public const string ConfirmationRequired = "application-deployment.confirmation_required";
     public const string NotCancellable = "application-deployment.not_cancellable";
     public const string AlreadyActive = "application-deployment.already_active";
+    public const string CatalogTemplateNotFound = "application-catalog.template_not_found";
+    public const string CatalogTemplateVersionUnavailable = "application-catalog.template_version_unavailable";
+    public const string CatalogTemplateWithdrawn = "application-catalog.template_withdrawn";
+    public const string CatalogTemplateInvalid = "application-catalog.template_invalid";
+    public const string CatalogFieldInvalid = "application-catalog.field_invalid";
+    public const string CatalogSchemaUnsupported = "application-catalog.schema_unsupported";
 
     // Preflight.
     public const string EngineUnavailable = "application-deployment.engine_unavailable";

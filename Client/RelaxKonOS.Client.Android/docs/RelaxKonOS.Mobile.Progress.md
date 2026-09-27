@@ -50,6 +50,13 @@
 - 全量 `:app:lintDebug` 未通过，报告有本轮起点已有的 **5 个错误、75 个 warning**（MediaStore、`contentLengthLong`、两处 Keystore API、登录页 Context 转 Activity）；新增应用部署文件没有 Lint 错误。报告：`app/build/reports/lint-results-debug.html`。
 - 未执行真实 Docker/服务器、SAF 大包、手机竖横屏/平板/大字体和三语视觉验收；它们仍是 AD02-T1–T6 的阻塞验证条件，不能以本轮 JVM 测试替代。
 
+## AD03-M1 / M2：模板应用库（已实现待验证，2026-09-27）
+
+- Shared Protocol 定义版本化用途模板、受限字段和值、安装请求和安装结果；服务端只从可信内置目录读取首批个人网站、状态监控、文件服务与 Webhook 模板，目录不接受脚本、Dockerfile、宿主路径或任意 UI 代码。
+- `GET /application-deployments/catalog` 返回目录，`POST /catalog/install` 以模板 ID 与精确版本重新验证字段、生成受限 Image 部署定义并排队 AD02 操作。安装记录在应用及不可变修订中保留模板 ID/版本；刷新目录不会修改已安装实例。
+- Android 展示“从模板安装”入口、模板用途、端口、持久数据位置与维护说明，按服务端字段生成原生文本/秘密控件。秘密值只在提交请求中存在，不进入列表、快照、摘要或日志；未知 schema、撤回模板和缺失能力都会禁用安装。
+- 尚未执行真实 Docker、首批镜像许可/架构/资源核验、更新差异预览、卸载恢复或设备三语视觉验收。因此 AD03-M3/M4 和 AD03-T1–T5 仍未验收。
+
 ## M0：Kotlin / Jetpack Compose 基线（已完成）
 
 - 移除 `RelaxKonOS.Client.Mobile`、Avalonia Mobile、.NET for Android Host、其 XAML 页面、NuGet 包与 `.sln` 项目条目。

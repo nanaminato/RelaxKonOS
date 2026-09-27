@@ -97,7 +97,9 @@ public sealed record ApplicationDto(
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt,
     [property: JsonPropertyName("updatedAt")] DateTimeOffset UpdatedAt,
     [property: JsonPropertyName("lastDeployedAt")] DateTimeOffset? LastDeployedAt = null,
-    [property: JsonPropertyName("driftProblemCode")] string? DriftProblemCode = null);
+    [property: JsonPropertyName("driftProblemCode")] string? DriftProblemCode = null,
+    [property: JsonPropertyName("catalogTemplateId")] string? CatalogTemplateId = null,
+    [property: JsonPropertyName("catalogTemplateVersion")] string? CatalogTemplateVersion = null);
 
 /// <summary>
 /// An immutable published version. Tags are input and display only: the published revision binds the
@@ -129,7 +131,9 @@ public sealed record ApplicationRevisionDto(
     [property: JsonPropertyName("isCurrent")] bool IsCurrent,
     [property: JsonPropertyName("createdByReference")] string CreatedByReference,
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt,
-    [property: JsonPropertyName("problemCode")] string? ProblemCode = null);
+    [property: JsonPropertyName("problemCode")] string? ProblemCode = null,
+    [property: JsonPropertyName("catalogTemplateId")] string? CatalogTemplateId = null,
+    [property: JsonPropertyName("catalogTemplateVersion")] string? CatalogTemplateVersion = null);
 
 /// <summary>An archive staged for a deployment. Only the reference id travels through the protocol.</summary>
 public sealed record DeploymentStagedFileDto(

@@ -40,6 +40,7 @@ fun DeploymentsScreen(
     val expanded = layoutState == LayoutState.Expanded
     val available = state.owner?.capabilities?.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS) == true
     var showCreate by remember { mutableStateOf(false) }
+    var showCatalog by remember { mutableStateOf(false) }
     var pendingArchive by remember { mutableStateOf<ArchiveDeploymentDefinition?>(null) }
     val pickArchive = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val definition = pendingArchive
@@ -56,6 +57,9 @@ fun DeploymentsScreen(
             onBack = onBack,
             trailing = {
                 Row {
+                    TextButton(onClick = { showCatalog = true }, enabled = available && state.catalog is ApiResult.Success && !state.submitting) {
+                        Text(stringResource(R.string.catalog_install_from_template))
+                    }
                     TextButton(onClick = { showCreate = true }, enabled = available && state.templates is ApiResult.Success && !state.submitting) {
                         Text(stringResource(R.string.deployments_create_application))
                     }
@@ -101,6 +105,56 @@ fun DeploymentsScreen(
                 pickArchive.launch(arrayOf("application/zip", "application/java-archive", "application/octet-stream"))
             },
         )
+    }
+    if (showCatalog) {
+        CatalogInstallDialog(
+            templates = (state.catalog as? ApiResult.Success)?.value.orEmpty(),
+            capabilities = state.owner?.capabilities.orEmpty(),
+            submitting = state.submitting,
+            onDismiss = { if (!state.submitting) showCatalog = false },
+            onInstall = { template, name, fields -> browser.installCatalog(template, name, fields); showCatalog = false },
+        )
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun CatalogInstallDialog(
+    templates: List<CatalogTemplate>, capabilities: Set<String>, submitting: Boolean, onDismiss: () -> Unit,
+    onInstall: (CatalogTemplate, String, List<CatalogFieldValue>) -> Unit,
+) {
+    var selectedId by remember(templates) { mutableStateOf(templates.firstOrNull()?.id) }
+    val template = templates.firstOrNull { it.id == selectedId }
+    var name by remember(template) { mutableStateOf("") }
+    var values by remember(template) { mutableStateOf(template?.fields?.associate { it.id to (it.defaultValue ?: "") }.orEmpty()) }
+    val supported = template?.let { it.schemaVersion == "1" && it.requiredCapabilities.all(capabilities::contains) && !it.withdrawn } == true
+    val complete = template?.fields?.all { !it.required || values[it.id].isNullOrBlank().not() } == true
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.lg).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            Text(stringResource(R.string.catalog_title), style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.catalog_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            templates.forEach { option -> FilterChip(selected = option.id == selectedId, onClick = { selectedId = option.id }, label = { Text(option.purpose) }) }
+            template?.let { selected ->
+                Text(selected.description)
+                Text(stringResource(R.string.catalog_version, selected.version), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.catalog_access, selected.accessPath ?: "/", selected.containerPort), style = MaterialTheme.typography.bodySmall)
+                if (selected.volumes.isNotEmpty()) Text(stringResource(R.string.catalog_data, selected.volumes.joinToString { it.containerPath }), style = MaterialTheme.typography.bodySmall)
+                if (!supported) Text(stringResource(R.string.catalog_unsupported), color = MaterialTheme.colorScheme.error)
+                OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true)
+                selected.fields.forEach { field ->
+                    OutlinedTextField(values[field.id].orEmpty(), { values = values + (field.id to it) },
+                        label = { Text(field.label()) }, supportingText = field.help?.let { { Text(it) } }, singleLine = true,
+                        visualTransformation = if (field.type == "secret") PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
+                }
+                Text(selected.maintenanceNotes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
+                    Button(onClick = { onInstall(selected, name, selected.fields.mapNotNull { field -> values[field.id]?.let { CatalogFieldValue(field.id, it) } }) },
+                        enabled = supported && complete && name.isNotBlank() && !submitting) { Text(stringResource(R.string.catalog_install)) }
+                }
+            }
+        }
     }
 }
 

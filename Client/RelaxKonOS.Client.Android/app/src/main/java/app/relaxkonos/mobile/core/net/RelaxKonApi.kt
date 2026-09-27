@@ -37,6 +37,18 @@ class RelaxKonApi(
     override suspend fun deploymentTemplates(serverUrl: String, accessToken: String): ApiResult<List<DeploymentTemplate>> =
         deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.TEMPLATES, ApplicationDeploymentWire::templates)
 
+    override suspend fun applicationCatalog(serverUrl: String, accessToken: String): ApiResult<List<CatalogTemplate>> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.CATALOG, ApplicationDeploymentWire::catalog)
+
+    override suspend fun installCatalogApplication(serverUrl: String, accessToken: String, template: CatalogTemplate, name: String,
+        fields: List<CatalogFieldValue>, idempotencyKey: String): ApiResult<DeploymentOperation> {
+        val fieldJson = JSONArray().apply { fields.forEach { put(JSONObject().put("id", it.id).put("value", it.value)) } }
+        val body = JsonBody().string("templateId", template.id).string("templateVersion", template.version).string("name", name.trim())
+            .raw("fields", fieldJson.toString()).bool("confirmed", true)
+        return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.CATALOG_INSTALL, accessToken, body, idempotencyKey,
+            ApplicationDeploymentWire::catalogInstall)
+    }
+
     override suspend fun uploadDeploymentArchive(
         serverUrl: String,
         accessToken: String,

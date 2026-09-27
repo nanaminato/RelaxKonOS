@@ -19,6 +19,7 @@ data class DeploymentBrowserState(
     val applications: ApiResult<List<DeploymentApplication>>? = null,
     val runtime: ApiResult<DeploymentRuntime>? = null,
     val templates: ApiResult<List<DeploymentTemplate>>? = null,
+    val catalog: ApiResult<List<CatalogTemplate>>? = null,
     val checkedAtMillis: Long? = null,
     val selectedId: String? = null,
     val detailLoading: Boolean = false,
@@ -67,13 +68,15 @@ class DeploymentBrowser(
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
         listJob?.cancel()
         val generation = ++listGeneration
-        mutableState.update { it.copy(loading = true, applications = null, runtime = null, templates = null, checkedAtMillis = null) }
+        mutableState.update { it.copy(loading = true, applications = null, runtime = null, templates = null, catalog = null, checkedAtMillis = null) }
         listJob = scope.launch {
             try {
                 val runtime = if (ServerCapabilities.DOCKER in owner.capabilities) repository.runtime(owner) else null
                 if (current(owner) && generation == listGeneration) mutableState.update { it.copy(runtime = runtime) }
                 val templates = repository.templates(owner)
                 if (current(owner) && generation == listGeneration) mutableState.update { it.copy(templates = templates) }
+                val catalog = repository.catalog(owner)
+                if (current(owner) && generation == listGeneration) mutableState.update { it.copy(catalog = catalog) }
                 val applications = repository.applications(owner)
                 if (current(owner) && generation == listGeneration) mutableState.update {
                     it.copy(applications = applications, checkedAtMillis = if (applications is ApiResult.Success) System.currentTimeMillis() else null)
@@ -206,6 +209,26 @@ class DeploymentBrowser(
 
     fun archiveUnavailable() {
         mutableState.update { it.copy(submitting = false, submission = ApiResult.Transport("Selected deployment archive cannot be read.")) }
+    }
+
+    /** Installs the exact server catalogue version. Field values live only in this request path. */
+    fun installCatalog(template: CatalogTemplate, name: String, fields: List<CatalogFieldValue>) {
+        val owner = mutableState.value.owner ?: return
+        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities || template.schemaVersion != "1" || template.withdrawn) return
+        listJob?.cancel()
+        val generation = ++listGeneration
+        mutableState.update { it.copy(submitting = true, submission = null) }
+        listJob = scope.launch {
+            try {
+                val result = repository.installCatalog(owner, template, name, fields, UUID.randomUUID().toString())
+                if (current(owner) && generation == listGeneration) {
+                    mutableState.update { it.copy(submitting = false, submission = result, selectedId = (result as? ApiResult.Success)?.value?.applicationId ?: it.selectedId) }
+                    if (result is ApiResult.Success) { refresh(); observeOperation(owner, result.value) }
+                }
+            } finally {
+                if (current(owner) && generation == listGeneration) mutableState.update { it.copy(submitting = false) }
+            }
+        }
     }
 
     fun lifecycle(action: DeploymentLifecycleAction) {

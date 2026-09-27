@@ -190,7 +190,8 @@ internal sealed class ApplicationDeploymentService(
             entryPoint, arguments, application.ContainerPort, application.HostPort, application.BindAddress,
             application.Limits, application.Volumes, application.Configuration,
             application.SiteId,
-            ApplicationDeploymentValidation.Reference(actor), DateTimeOffset.UtcNow), out _);
+            ApplicationDeploymentValidation.Reference(actor), DateTimeOffset.UtcNow,
+            application.CatalogTemplateId, application.CatalogTemplateVersion), out _);
 
         await ActivateRevisionAsync(application, operationId, revision, progress, cancellationToken, rollback: false);
     }

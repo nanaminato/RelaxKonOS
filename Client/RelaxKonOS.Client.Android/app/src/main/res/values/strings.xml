@@ -526,4 +526,12 @@
     <string name="deployments_logs_load_initial">Load latest %1$d lines</string>
     <string name="deployments_logs_load_more">Load latest %1$d lines</string>
     <string name="deployments_logs_retry">Try loading logs again</string>
+    <string name="catalog_install_from_template">From template</string>
+    <string name="catalog_title">Install from template</string>
+    <string name="catalog_note">Templates are verified by the server. Secret fields are never added to a draft or summary.</string>
+    <string name="catalog_version">Template version: %1$s</string>
+    <string name="catalog_access">Access: %1$s · container port %2$d</string>
+    <string name="catalog_data">Persistent data: %1$s</string>
+    <string name="catalog_unsupported">This template needs a newer client or server capability and cannot be installed.</string>
+    <string name="catalog_install">Install</string>
 </resources>

@@ -490,4 +490,12 @@
     <string name="deployments_logs_load_initial">最新 %1$d 行を読み込む</string>
     <string name="deployments_logs_load_more">最新 %1$d 行を読み込む</string>
     <string name="deployments_logs_retry">ログを再読み込み</string>
+    <string name="catalog_install_from_template">テンプレートから</string>
+    <string name="catalog_title">テンプレートからインストール</string>
+    <string name="catalog_note">テンプレートはサーバーで検証されます。秘密フィールドは下書きや要約に保存されません。</string>
+    <string name="catalog_version">テンプレートのバージョン：%1$s</string>
+    <string name="catalog_access">アクセス：%1$s · コンテナポート %2$d</string>
+    <string name="catalog_data">永続データ：%1$s</string>
+    <string name="catalog_unsupported">このテンプレートには新しいクライアントまたはサーバー機能が必要なため、インストールできません。</string>
+    <string name="catalog_install">インストール</string>
 </resources>

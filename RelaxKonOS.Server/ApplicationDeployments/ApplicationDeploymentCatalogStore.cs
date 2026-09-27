@@ -218,6 +218,7 @@ internal sealed class ApplicationDeploymentCatalogStore
         && ApplicationDeploymentValidation.IsValidLimits(application.Limits)
         && ApplicationDeploymentValidation.IsValidVolumes(application.Volumes)
         && ApplicationDeploymentValidation.IsValidConfiguration(application.Configuration)
+        && ValidCatalogReference(application.CatalogTemplateId, application.CatalogTemplateVersion)
         && (application.SiteId is null || application.SiteId.Length <= 128 && application.SiteId.All(char.IsAsciiLetterOrDigit))
         && (application.SiteInstanceId is null || application.SiteInstanceId.Length <= 128 && application.SiteInstanceId.All(char.IsAsciiLetterOrDigit))
         && (application.Domain is null || application.Domain.Length is >= 1 and <= 253 && !application.Domain.Any(char.IsControl))
@@ -245,9 +246,14 @@ internal sealed class ApplicationDeploymentCatalogStore
         && ApplicationDeploymentValidation.IsValidLimits(revision.Limits)
         && ApplicationDeploymentValidation.IsValidVolumes(revision.Volumes)
         && ApplicationDeploymentValidation.IsValidConfiguration(revision.Configuration)
+        && ValidCatalogReference(revision.CatalogTemplateId, revision.CatalogTemplateVersion)
         && (revision.SiteId is null || revision.SiteId.Length <= 128 && revision.SiteId.All(char.IsAsciiLetterOrDigit))
         && ApplicationDeploymentValidation.IsValidReference(revision.CreatedByReference, 64)
         && revision.CreatedAt != default;
+
+    private static bool ValidCatalogReference(string? id, string? version) => (id is null && version is null)
+        || (id is { Length: >= 1 and <= 64 } && id.All(character => char.IsAsciiLetterLower(character) || char.IsAsciiDigit(character) || character == '-')
+            && version is { Length: >= 1 and <= 32 } && version.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-'));
 
     private sealed record Ledger(ApplicationRecord[] Applications, RevisionRecord[] Revisions);
 }

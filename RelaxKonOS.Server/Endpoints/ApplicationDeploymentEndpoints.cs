@@ -32,6 +32,34 @@ public static class ApplicationDeploymentEndpoints
             (ApplicationDeploymentManager manager) => Handle(() => Results.Ok(manager.Templates())))
             .RequireAuthorization(ReadPolicy);
 
+        group.MapGet(ApplicationDeploymentApiRoutes.CatalogPattern,
+            () => Results.Ok(ApplicationCatalog.DescribeAll()))
+            .RequireAuthorization(ReadPolicy);
+
+        group.MapGet(ApplicationDeploymentApiRoutes.CatalogTemplatePattern,
+            (string templateId) => Handle(() => ApplicationCatalog.Describe(templateId) is { } template
+                ? Results.Ok(template) : Problem(ApplicationDeploymentProblemCodes.CatalogTemplateNotFound, 404)))
+            .RequireAuthorization(ReadPolicy);
+
+        group.MapPost(ApplicationDeploymentApiRoutes.CatalogInstallPattern,
+            (InstallCatalogApplicationRequest request, HttpContext http, ApplicationDeploymentManager manager,
+                ApplicationDeploymentCoordinator coordinator, ApplicationDeploymentDefinitionMutationStore mutations, CancellationToken ct) =>
+                HandleAsync(async () =>
+                {
+                    if (!request.Confirmed) return Problem(ApplicationDeploymentProblemCodes.ConfirmationRequired, 400);
+                    var actor = Actor(http.User);
+                    var installed = await mutations.ExecuteAsync(actor, Key(http), "install", RequestReference(request), async () =>
+                    {
+                        var template = ApplicationCatalog.Require(request.TemplateId, request.TemplateVersion);
+                        var bound = template.Bind(request);
+                        var application = await manager.CreateAsync(bound.Definition, actor, ct, template);
+                        var operation = coordinator.Start(new DeploymentRequest(application.Id, DeploymentOperationKind.Deploy, bound.Source), actor, Key(http));
+                        return new CatalogApplicationInstallDto(application, operation, template.Id, template.Version);
+                    });
+                    return Results.Accepted(ApplicationDeploymentApiRoutes.Operation(installed.Operation.OperationId), installed);
+                }))
+            .RequireAuthorization(ManagePolicy);
+
         group.MapGet(ApplicationDeploymentApiRoutes.ImageTagsPattern,
             (string repository, ApplicationDeploymentManager manager, CancellationToken ct) =>
                 HandleAsync(async () => Results.Ok(await manager.ImageTagsAsync(repository, ct))))

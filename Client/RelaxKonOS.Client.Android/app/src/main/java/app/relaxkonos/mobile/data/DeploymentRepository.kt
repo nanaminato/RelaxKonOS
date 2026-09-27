@@ -28,6 +28,13 @@ class DeploymentRepository(private val gateway: RelaxKonGateway, private val ses
         gateway.deploymentTemplates(url, token)
     }
 
+    suspend fun catalog(owner: SessionState.Active): ApiResult<List<CatalogTemplate>> = read(owner) { url, token ->
+        gateway.applicationCatalog(url, token)
+    }
+
+    suspend fun installCatalog(owner: SessionState.Active, template: CatalogTemplate, name: String, fields: List<CatalogFieldValue>, key: String): ApiResult<DeploymentOperation> =
+        read(owner) { url, token -> gateway.installCatalogApplication(url, token, template, name, fields, key) }
+
     /**
      * Creates a definition and then queues its first revision. The two server actions intentionally
      * retain distinct keys: retrying after a lost response returns the same definition or operation

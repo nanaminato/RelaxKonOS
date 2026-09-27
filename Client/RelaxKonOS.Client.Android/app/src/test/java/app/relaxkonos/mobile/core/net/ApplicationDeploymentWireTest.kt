@@ -76,6 +76,19 @@ class ApplicationDeploymentWireTest {
         assertEquals(8000, template.defaultContainerPort)
     }
 
+    @Test fun `catalogue keeps a server version and never gives a secret field a stored value`() {
+        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"1","id":"file-service","version":"1.0.0",
+            "publisher":"RelaxKonOS","source":"built-in","purpose":"File service","description":"Files",
+            "supportedPlatforms":["linux/amd64"],"requiredCapabilities":["server.application-deployments"],
+            "minimumResources":{"cpuCores":1,"memoryBytes":536870912,"pidsLimit":512},
+            "fields":[{"id":"adminPassword","type":"secret","required":true,"defaultValue":null,"options":[],"labels":{"en":"Password","zh":"密码","ja":"パスワード"},"help":null}],
+            "volumes":[{"name":"database","containerPath":"/database","readOnly":false}],"containerPort":80,"accessPath":"/","maintenanceNotes":"Keep data","withdrawn":false}]""").single()
+        assertEquals("1", template.schemaVersion)
+        assertEquals("1.0.0", template.version)
+        assertEquals("secret", template.fields.single().type)
+        assertNull(template.fields.single().defaultValue)
+    }
+
     @Test fun `logs retain only bounded server output`() {
         val logs = ApplicationDeploymentWire.logs("""{"lines":["first","second"],"truncated":true}""")
         assertEquals(listOf("first", "second"), logs.lines)
