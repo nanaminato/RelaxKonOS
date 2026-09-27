@@ -357,8 +357,8 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
             await using var package = File.OpenRead(path);
             var reference = await Installation.UploadPackageAsync(Path.GetFileName(path), package);
             if (reference is null) { StatusText = LocalizedText.Ref("webservers.package.invalid"); return; }
-            localPackageReference = reference.Id;
-            LocalPackageName = reference.FileName;
+            localPackageReference = reference;
+            LocalPackageName = Path.GetFileName(path);
         }
         catch (Exception exception) { StatusText = ProblemText(exception is WebServerApiException request ? request.ProblemCode : "webservers.error.request_failed"); }
     }
