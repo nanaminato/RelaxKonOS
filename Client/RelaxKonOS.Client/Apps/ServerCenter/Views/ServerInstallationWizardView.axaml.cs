@@ -29,4 +29,17 @@ public partial class ServerInstallationWizardView : UserControl
         });
         _viewModel.SetLocalBundle(selected.FirstOrDefault()?.TryGetLocalPath());
     }
+
+    private async void ChooseCertificate_Click(object? sender, RoutedEventArgs e)
+    {
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel?.StorageProvider is null) return;
+        var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = _viewModel.ChooseCertificateText,
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("PFX certificate") { Patterns = ["*.pfx", "*.p12"] }]
+        });
+        _viewModel.SetCertificate(selected.FirstOrDefault()?.TryGetLocalPath());
+    }
 }

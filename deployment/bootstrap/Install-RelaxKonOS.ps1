@@ -13,7 +13,7 @@ param(
     [string] $ReleaseCatalogBaseUri = 'https://downloads.relaxkon.com/relaxkonos/stable/latest',
     [string] $InstallRoot = (Join-Path $env:ProgramFiles 'RelaxKonOS'),
     [string] $DataRoot = (Join-Path $env:ProgramData 'RelaxKonOS'),
-    [ValidateSet('local', 'lan', 'reverse-proxy')]
+    [ValidateSet('local', 'lan')]
     [string] $NetworkProfile = 'local',
     [ValidateRange(1, 65535)]
     [int] $ServerPort = 5000,
@@ -21,6 +21,7 @@ param(
     [string] $CertificateMode = 'none',
     [string] $CertificatePath,
     [string] $CertificatePassword,
+    [string] $CertificatePasswordFile,
     [string] $SelfSignedIdentities,
     [ValidateSet('restricted', 'full', 'whitelist')]
     [string] $FileAccess = 'restricted',
@@ -34,9 +35,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Text = @{
-    'zh-CN' = @{ title = 'RelaxKonOS 服务端安装器'; source = '选择安装来源：1) 官方稳定版（默认）  2) 本地发布目录  3) 自定义发布 ZIP URL'; local = '本地发布目录'; remote = '发布 ZIP URL'; hash = '发布 ZIP 的 SHA-256'; network = '网络模式：1) 仅本机（推荐）  2) 局域网 HTTP  3) 反向代理'; file = '权限助手文件范围：1) 仅 RelaxKonOS 数据目录（推荐）  2) 白名单  3) 所有本地磁盘'; confirm = '确认开始安装？[Y/n]'; elevation = '需要管理员权限，正在请求 UAC 提升。'; done = '安装完成。'; health = '健康检查通过。'; lan = '局域网模式不会自动开放防火墙；请仅为受信任来源创建入站规则。'; proxy = '反向代理模式仅监听本机；请在反向代理处配置 HTTPS。' }
-    'en-US' = @{ title = 'RelaxKonOS Server Installer'; source = 'Select source: 1) official stable release (default)  2) local release directory  3) custom release ZIP URL'; local = 'Local release directory'; remote = 'Release ZIP URL'; hash = 'SHA-256 of release ZIP'; network = 'Network: 1) local only (recommended)  2) LAN HTTP  3) reverse proxy'; file = 'Privileged file access: 1) RelaxKonOS data only (recommended)  2) whitelist  3) all local disks'; confirm = 'Start installation? [Y/n]'; elevation = 'Administrator permission is required; requesting UAC elevation.'; done = 'Installation completed.'; health = 'Health check passed.'; lan = 'LAN mode does not open the firewall automatically; create an inbound rule only for trusted sources.'; proxy = 'Reverse-proxy mode listens locally only; configure HTTPS at the reverse proxy.' }
-    'ja-JP' = @{ title = 'RelaxKonOS サーバー インストーラー'; source = 'インストール元: 1) 公式安定版（既定）  2) ローカル リリース ディレクトリ  3) カスタム リリース ZIP URL'; local = 'ローカル リリース ディレクトリ'; remote = 'リリース ZIP URL'; hash = 'リリース ZIP の SHA-256'; network = 'ネットワーク: 1) ローカルのみ（推奨）  2) LAN HTTP  3) リバースプロキシ'; file = '特権ヘルパーのファイル範囲: 1) RelaxKonOS データのみ（推奨）  2) ホワイトリスト  3) 全ローカルディスク'; confirm = 'インストールを開始しますか？ [Y/n]'; elevation = '管理者権限が必要です。UAC 昇格を要求します。'; done = 'インストールが完了しました。'; health = 'ヘルスチェックに成功しました。'; lan = 'LAN モードはファイアウォールを自動変更しません。信頼できる送信元だけを許可してください。'; proxy = 'リバースプロキシ モードはローカルのみで待ち受けて、HTTPS はリバースプロキシで設定してください。' }
+    'zh-CN' = @{ title = 'RelaxKonOS 服务端安装器'; source = '选择安装来源：1) 官方稳定版（默认）  2) 本地发布目录  3) 自定义发布 ZIP URL'; local = '本地发布目录'; remote = '发布 ZIP URL'; hash = '发布 ZIP 的 SHA-256'; network = '网络模式：1) 仅本机（推荐）  2) 局域网 HTTP'; file = '权限助手文件范围：1) 仅 RelaxKonOS 数据目录（推荐）  2) 白名单  3) 所有本地磁盘'; confirm = '确认开始安装？[Y/n]'; elevation = '需要管理员权限，正在请求 UAC 提升。'; done = '安装完成。'; health = '健康检查通过。'; lan = '局域网模式不会自动开放防火墙；请仅为受信任来源创建入站规则。' }
+    'en-US' = @{ title = 'RelaxKonOS Server Installer'; source = 'Select source: 1) official stable release (default)  2) local release directory  3) custom release ZIP URL'; local = 'Local release directory'; remote = 'Release ZIP URL'; hash = 'SHA-256 of release ZIP'; network = 'Network: 1) local only (recommended)  2) LAN HTTP'; file = 'Privileged file access: 1) RelaxKonOS data only (recommended)  2) whitelist  3) all local disks'; confirm = 'Start installation? [Y/n]'; elevation = 'Administrator permission is required; requesting UAC elevation.'; done = 'Installation completed.'; health = 'Health check passed.'; lan = 'LAN mode does not open the firewall automatically; create an inbound rule only for trusted sources.' }
+    'ja-JP' = @{ title = 'RelaxKonOS サーバー インストーラー'; source = 'インストール元: 1) 公式安定版（既定）  2) ローカル リリース ディレクトリ  3) カスタム リリース ZIP URL'; local = 'ローカル リリース ディレクトリ'; remote = 'リリース ZIP URL'; hash = 'リリース ZIP の SHA-256'; network = 'ネットワーク: 1) ローカルのみ（推奨）  2) LAN HTTP'; file = '特権ヘルパーのファイル範囲: 1) RelaxKonOS データのみ（推奨）  2) ホワイトリスト  3) 全ローカルディスク'; confirm = 'インストールを開始しますか？ [Y/n]'; elevation = '管理者権限が必要です。UAC 昇格を要求します。'; done = 'インストールが完了しました。'; health = 'ヘルスチェックに成功しました。'; lan = 'LAN モードはファイアウォールを自動変更しません。信頼できる送信元だけを許可してください。' }
 }
 
 function Select-Language {
@@ -284,7 +285,8 @@ if (-not (Test-Administrator)) {
     if ($ReleaseCatalogBaseUri) { $elevationArguments += @('-ReleaseCatalogBaseUri', (Quote-Argument $ReleaseCatalogBaseUri)) }
     if ($FileRootsFile) { $elevationArguments += @('-FileRootsFile', (Quote-Argument $FileRootsFile)) }
     if ($CertificatePath) { $elevationArguments += @('-CertificatePath', (Quote-Argument $CertificatePath)) }
-    if ($CertificatePassword) { $elevationArguments += @('-CertificatePassword', (Quote-Argument $CertificatePassword)) }
+    if ($CertificatePasswordFile) { $elevationArguments += @('-CertificatePasswordFile', (Quote-Argument $CertificatePasswordFile)) }
+    elseif ($CertificatePassword) { $elevationArguments += @('-CertificatePassword', (Quote-Argument $CertificatePassword)) }
     if ($SelfSignedIdentities) { $elevationArguments += @('-SelfSignedIdentities', (Quote-Argument $SelfSignedIdentities)) }
     if ($ExpectedInstallationId) { $elevationArguments += @('-ExpectedInstallationId', $ExpectedInstallationId) }
     if ($NonInteractive) { $elevationArguments += '-NonInteractive' }
@@ -292,6 +294,11 @@ if (-not (Test-Administrator)) {
     if (-not (Test-Path -LiteralPath $host)) { $host = (Get-Command pwsh -ErrorAction Stop).Source }
     $process = Start-Process -FilePath $host -ArgumentList ($elevationArguments -join ' ') -Verb RunAs -Wait -PassThru
     exit $process.ExitCode
+}
+
+if ($CertificatePasswordFile) {
+    if (-not (Test-Path -LiteralPath $CertificatePasswordFile -PathType Leaf)) { throw 'CertificatePasswordFile does not exist.' }
+    $CertificatePassword = [IO.File]::ReadAllText($CertificatePasswordFile, [Text.UTF8Encoding]::new($false))
 }
 
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
@@ -426,7 +433,6 @@ try {
     $effectiveListenUrl = Get-ListenUrl $NetworkProfile $CertificateMode $ServerPort
     if ($Action -in @('install', 'upgrade')) {
         if ($NetworkProfile -eq 'lan') { Write-Warning $M.lan }
-        if ($NetworkProfile -eq 'reverse-proxy') { Write-Warning $M.proxy }
         if ($FileAccess -eq 'whitelist' -and -not $FileRootsFile) {
             if ($NonInteractive) { throw 'FileRootsFile is required for whitelist access.' }
             $FileRootsFile = Read-Required 'Whitelist JSON file'
@@ -439,7 +445,7 @@ try {
         if (-not $NonInteractive) {
             $network = Read-Host $M.network
             if ($network) {
-                $selectedNetwork = @{ '1' = 'local'; '2' = 'lan'; '3' = 'reverse-proxy' }[$network]
+                $selectedNetwork = @{ '1' = 'local'; '2' = 'lan' }[$network]
                 if (-not $selectedNetwork) { throw 'Invalid network selection.' }
                 $NetworkProfile = $selectedNetwork
                 $effectiveListenUrl = Get-ListenUrl $NetworkProfile $CertificateMode $ServerPort

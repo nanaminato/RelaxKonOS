@@ -6,7 +6,7 @@
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.SshFileBrowserView"
              x:Name="Root"
              Background="{DynamicResource SurfaceBrush}">
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
         <!-- Keep SSH browsing visually aligned with the Server desktop Explorer: navigation,
              breadcrumbs, and filtering share the same compact top bar. -->
         <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="8">
@@ -72,9 +72,6 @@
                            Source="avares://RelaxKonOS.Client/Assets/Icons/Explorer/toolbar-new-folder.png" />
                     <TextBlock Text="{loc:Loc ssh_files.new_folder}" VerticalAlignment="Center" />
                 </StackPanel>
-            </Button>
-            <Button x:Name="SelectPackageButton" IsVisible="False" Click="SelectPackage_Click">
-                <TextBlock Text="{loc:Loc server_center.wizard.choose_bundle}" VerticalAlignment="Center" />
             </Button>
             <Button x:Name="CopyButton" Click="Copy_Click" ToolTip.Tip="Ctrl+C">
                 <Image Width="18" Height="18"
@@ -289,7 +286,26 @@
             </DataGrid>
         </Grid>
 
-        <Border Grid.Row="3" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"
+        <!-- Picker mode follows the signed-in server Explorer: folders stay navigable, only a
+             matching file may be confirmed, and mutating file commands are disabled. -->
+        <Border x:Name="PickerPanel" Grid.Row="3" IsVisible="False" Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Text="{loc:Loc server_center.wizard.bundle_file_label}" VerticalAlignment="Center" />
+                    <TextBox x:Name="PickerEntryName" Grid.Column="1" IsReadOnly="True" />
+                    <TextBlock x:Name="PickerFilterText" Grid.Column="2" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Grid>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                    <Button Content="{loc:Loc common.cancel}" Click="CancelPicker_Click" />
+                    <Button x:Name="ConfirmPickerButton" Classes="primary" Content="{loc:Loc common.open}"
+                            Click="ConfirmPicker_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="4" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"
                 BorderThickness="0,1,0,0" Padding="12,5">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock x:Name="SummaryText" FontSize="12" VerticalAlignment="Center" />

@@ -35,7 +35,8 @@ public sealed class ServerCenterApp : RemoteApplicationBase
                 new ServerInstallationWizardViewModel(viewModel, () => dialog.Close(true),
                     () => context.ShowDialogAsync<string?>(window,
                         viewModel.Text("server_center.wizard.choose_server_bundle", "Browse server files"),
-                        picker => new SshFileBrowserView(sshSession, selectPackage: path => picker.Close(path)),
+                        picker => new SshFileBrowserView(sshSession, selectPackage: path => picker.Close(path),
+                            cancelPicker: picker.Cancel),
                         new Size(860, 580)))),
             new Size(620, 480));
         _ = viewModel.LoadAsync();

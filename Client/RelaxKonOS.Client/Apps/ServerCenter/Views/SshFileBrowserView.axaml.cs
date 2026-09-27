@@ -30,6 +30,7 @@ internal partial class SshFileBrowserView : UserControl
     private readonly Func<string, bool> _canOpenFile;
     private readonly Func<string, bool> _openFile;
     private readonly Action<string>? _selectPackage;
+    private readonly Action? _cancelPicker;
     private readonly List<string> _history = [];
     private readonly List<SshFileEntry> _clipboard = [];
     private readonly ObservableCollection<TreeNodeModel> _navigationNodes = [];
@@ -65,14 +66,19 @@ internal partial class SshFileBrowserView : UserControl
     public string SizeSortGlyph { get => GetValue(SizeSortGlyphProperty); private set => SetValue(SizeSortGlyphProperty, value); }
 
     public SshFileBrowserView(SshDesktopSession session, Func<string, bool>? canOpenFile = null,
-        Func<string, bool>? openFile = null, Action<string>? selectPackage = null)
+        Func<string, bool>? openFile = null, Action<string>? selectPackage = null, Action? cancelPicker = null)
     {
         _session = session;
         _canOpenFile = canOpenFile ?? (_ => false);
         _openFile = openFile ?? (_ => false);
         _selectPackage = selectPackage;
+        _cancelPicker = cancelPicker;
         InitializeComponent();
-        SelectPackageButton.IsVisible = _selectPackage is not null;
+        PickerPanel.IsVisible = IsPackagePicker;
+        PickerFilterText.Text = IsPackagePicker
+            ? T("server_center.wizard.bundle_file_type", "RelaxKonOS signed release") + " (*.zip)"
+            : string.Empty;
+        EntriesGrid.SelectionMode = IsPackagePicker ? DataGridSelectionMode.Single : DataGridSelectionMode.Extended;
         NavigationTree.ItemsSource = _navigationNodes;
         _viewReady = true;
         // The grid marks pointer presses as handled while it updates the selection, so the
@@ -123,16 +129,19 @@ internal partial class SshFileBrowserView : UserControl
             await OpenEntryAsync(entry);
     }
 
-    private void SelectPackage_Click(object? sender, RoutedEventArgs e)
+    private bool IsPackagePicker => _selectPackage is not null;
+
+    private void ConfirmPicker_Click(object? sender, RoutedEventArgs e)
     {
-        if (_selectPackage is null || _busy || Selection() is not [var entry] || entry.IsDirectory ||
-            !entry.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        if (!CanConfirmPackage())
         {
             StatusText.Text = T("server_center.wizard.bundle_required", "Choose a signed .zip release bundle to continue.");
             return;
         }
-        _selectPackage(entry.Path);
+        _selectPackage!(Selection()[0].Path);
     }
+
+    private void CancelPicker_Click(object? sender, RoutedEventArgs e) => _cancelPicker?.Invoke();
 
     private async void AddressBox_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -288,11 +297,12 @@ internal partial class SshFileBrowserView : UserControl
         var selected = Selection();
         OpenMenuItem.IsEnabled = !_busy && selected.Length == 1
             && (selected[0].IsDirectory || _canOpenFile(selected[0].Path));
-        CopyMenuItem.IsEnabled = CutMenuItem.IsEnabled = DeleteMenuItem.IsEnabled = !_busy && selected.Length > 0;
-        PasteMenuItem.IsEnabled = !_busy && _clipboard.Count > 0;
-        RenameMenuItem.IsEnabled = PropertiesMenuItem.IsEnabled = !_busy && selected.Length == 1;
-        DownloadMenuItem.IsEnabled = !_busy && selected.Length > 0;
-        NewFolderMenuItem.IsEnabled = UploadMenuItem.IsEnabled = RefreshMenuItem.IsEnabled = !_busy;
+        CopyMenuItem.IsEnabled = CutMenuItem.IsEnabled = DeleteMenuItem.IsEnabled = !IsPackagePicker && !_busy && selected.Length > 0;
+        PasteMenuItem.IsEnabled = !IsPackagePicker && !_busy && _clipboard.Count > 0;
+        RenameMenuItem.IsEnabled = PropertiesMenuItem.IsEnabled = !IsPackagePicker && !_busy && selected.Length == 1;
+        DownloadMenuItem.IsEnabled = !IsPackagePicker && !_busy && selected.Length > 0;
+        NewFolderMenuItem.IsEnabled = UploadMenuItem.IsEnabled = !IsPackagePicker && !_busy;
+        RefreshMenuItem.IsEnabled = !_busy;
     }
 
     private async void View_KeyDown(object? sender, KeyEventArgs e)
@@ -342,6 +352,11 @@ internal partial class SshFileBrowserView : UserControl
         if (entry.IsDirectory)
         {
             await NavigateAsync(entry.Path);
+            return;
+        }
+        if (IsPackagePicker && entry.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectPackage!(entry.Path);
             return;
         }
         if (_canOpenFile(entry.Path) && !_openFile(entry.Path))
@@ -545,7 +560,8 @@ internal partial class SshFileBrowserView : UserControl
         var query = SearchBox.Text?.Trim();
         IEnumerable<SshFileEntry> entries = _entries.Where(file =>
             (_showHidden || !file.Name.StartsWith('.')) &&
-            (string.IsNullOrEmpty(query) || file.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)));
+            (string.IsNullOrEmpty(query) || file.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)) &&
+            (!IsPackagePicker || file.IsDirectory || file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)));
         var ordered = entries.OrderByDescending(file => file.IsDirectory);
         entries = _descending ? ordered.ThenByDescending(file => _sortIndex switch
         {
@@ -574,17 +590,19 @@ internal partial class SshFileBrowserView : UserControl
         BackButton.IsEnabled = !_busy && _historyIndex > 0;
         ForwardButton.IsEnabled = !_busy && _historyIndex < _history.Count - 1;
         UpButton.IsEnabled = !_busy && _path != "/";
-        RefreshButton.IsEnabled = NewFolderButton.IsEnabled = !_busy;
-        UploadButton.IsEnabled = UploadFolderButton.IsEnabled = !_busy;
-        RenameButton.IsEnabled = !_busy && selected.Length == 1;
-        DeleteButton.IsEnabled = !_busy && selected.Length > 0;
-        DownloadButton.IsEnabled = !_busy && selected.Length > 0;
-        SelectPackageButton.IsEnabled = !_busy && selected.Length == 1 && !selected[0].IsDirectory &&
-            selected[0].Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
-        CopyButton.IsEnabled = CutButton.IsEnabled = !_busy && selected.Length > 0;
-        PasteButton.IsEnabled = !_busy && _clipboard.Count > 0;
+        RefreshButton.IsEnabled = !_busy;
+        NewFolderButton.IsEnabled = UploadButton.IsEnabled = UploadFolderButton.IsEnabled = !IsPackagePicker && !_busy;
+        RenameButton.IsEnabled = !IsPackagePicker && !_busy && selected.Length == 1;
+        DeleteButton.IsEnabled = DownloadButton.IsEnabled = !IsPackagePicker && !_busy && selected.Length > 0;
+        CopyButton.IsEnabled = CutButton.IsEnabled = PasteButton.IsEnabled = !IsPackagePicker && !_busy && selected.Length > 0;
+        if (!IsPackagePicker) PasteButton.IsEnabled = !_busy && _clipboard.Count > 0;
+        PickerEntryName.Text = IsPackagePicker && Selection() is [var picked] ? picked.Name : string.Empty;
+        ConfirmPickerButton.IsEnabled = CanConfirmPackage();
         NavigationTree.IsEnabled = !_busy;
     }
+
+    private bool CanConfirmPackage() => IsPackagePicker && !_busy && Selection() is [var entry] &&
+        !entry.IsDirectory && entry.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
 
     private async Task ShowPropertiesAsync()
     {

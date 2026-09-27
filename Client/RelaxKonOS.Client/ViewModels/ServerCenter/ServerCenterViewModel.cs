@@ -492,6 +492,11 @@ public partial class ServerCenterViewModel : ObservableObject
                 ErrorMessage = T("server_center.install_mode_unavailable", "The selected installation mode is not available for this SSH session.");
                 return false;
             }
+            if (installation.CertificateMode == ServerCertificateMode.Custom && mode == ServerInstallMode.LinuxUser)
+            {
+                ErrorMessage = T("server_center.certificate_mode_unavailable", "A custom TLS certificate requires a system-service installation.");
+                return false;
+            }
 
             var kind = probe.ExistingInstalled ? ServerDeploymentKind.Upgrade : ServerDeploymentKind.Install;
             if (kind == ServerDeploymentKind.Upgrade && !ServerInstallationId.IsValid(probe.ExistingInstallationId))
@@ -535,6 +540,12 @@ public partial class ServerCenterViewModel : ObservableObject
                     : T("server_center.release_unavailable", "No trusted signed release is available for this host architecture and installation mode.");
                 return false;
             }
+            if (installation.CertificateMode == ServerCertificateMode.Custom &&
+                (string.IsNullOrWhiteSpace(installation.CertificatePath) || !File.Exists(installation.CertificatePath)))
+            {
+                ErrorMessage = T("server_center.certificate_unavailable", "The selected PFX certificate is unavailable.");
+                return false;
+            }
 
             var request = new ServerDeploymentRequest(
                 ServerDeploymentProtocol.Version,
@@ -552,14 +563,17 @@ public partial class ServerCenterViewModel : ObservableObject
                     kind == ServerDeploymentKind.Upgrade ? probe.ExistingInstallationId : null,
                     null,
                     installation.FileAccess,
+                    installation.CertificateMode,
                     Confirmed: true));
             await using var launcher = release.Tools.OpenLauncher();
             await using var verifier = release.Tools.OpenVerifier();
             await using var archive = release.OpenSignedArchive();
             var client = new ServerCenterDeploymentClient(session.Transport);
+            await using var certificate = installation.CertificateMode == ServerCertificateMode.Custom
+                ? File.OpenRead(installation.CertificatePath!) : null;
             var staged = await client.StageAsync(
                 request, platform.Platform, launcher, verifier, archive, release.Runtime,
-                release.KeyId, release.PublicKeyPem, cancellationToken).ConfigureAwait(true);
+                release.KeyId, release.PublicKeyPem, certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
             var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
@@ -829,7 +843,7 @@ public partial class ServerCenterViewModel : ObservableObject
         await using var verifier = tools.OpenVerifier();
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
-            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
+            request, tools.Platform, launcher, verifier, null, null, null, null, null, null, cancellationToken).ConfigureAwait(true);
         var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
@@ -846,7 +860,7 @@ public partial class ServerCenterViewModel : ObservableObject
         await using var verifier = tools.OpenVerifier();
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
-            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
+            request, tools.Platform, launcher, verifier, null, null, null, null, null, null, cancellationToken).ConfigureAwait(true);
         var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
@@ -941,4 +955,7 @@ public sealed record ServerInstallationOptions(
     string? LocalBundlePath,
     string? RemoteBundlePath,
     ServerFileAccessScope FileAccess,
-    ServerNetworkProfile Network);
+    ServerNetworkProfile Network,
+    ServerCertificateMode CertificateMode,
+    string? CertificatePath,
+    string CertificatePassword);

@@ -162,7 +162,7 @@ assert_request_keys() {
   while IFS= read -r key; do
     [[ -n $key ]] || continue
     case "$key" in
-      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|expectedInstallationId|serverPort|fileAccess|confirmed) ;;
+      schemaVersion|operationId|kind|options|source|network|retention|mode|version|packageUri|stagedPackageName|packageDigest|expectedInstallationId|serverPort|fileAccess|certificateMode|confirmed) ;;
       *) launcher_fail invalid_request "unsupported request field: $key" ;;
     esac
   done <<< "$keys"
@@ -181,6 +181,7 @@ options_package_digest=
 options_expected_installation_id=
 options_server_port=
 options_file_access=
+options_certificate_mode=
 options_confirmed=false
 
 parse_request() {
@@ -211,12 +212,14 @@ parse_request() {
   options_expected_installation_id=$(json_text expectedInstallationId)
   local port_raw; port_raw=$(json_literal serverPort); [[ $port_raw != null ]] && options_server_port=$port_raw
   options_file_access=$(json_text fileAccess)
+  options_certificate_mode=$(json_text certificateMode)
   local confirmed_raw; confirmed_raw=$(json_literal confirmed); [[ $confirmed_raw == true ]] && options_confirmed=true
 
   case "$options_source" in officialStable|localBundle|remoteBundle|directUrl) ;; *) launcher_fail invalid_request "unsupported package source" ;; esac
-  case "$options_network" in loopback|lan|reverseProxy) ;; *) launcher_fail invalid_request "unsupported network profile" ;; esac
+  case "$options_network" in loopback|lan) ;; *) launcher_fail invalid_request "unsupported network profile" ;; esac
   case "$options_retention" in retain|delete) ;; *) launcher_fail invalid_request "unsupported data retention policy" ;; esac
   case "${options_file_access:-unset}" in unset|restricted|full|whitelist) ;; *) launcher_fail invalid_request "unsupported file access scope" ;; esac
+  case "${options_certificate_mode:-unset}" in unset|none|custom) ;; *) launcher_fail invalid_request "unsupported certificate mode" ;; esac
   case "${options_mode:-unset}" in unset|linuxSystem|linuxUser|windowsSystem) ;; *) launcher_fail invalid_request "unsupported installation mode" ;; esac
   if [[ -n $options_version ]]; then
     [[ $options_version =~ ^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$ && $options_version == *[0-9]* ]] || launcher_fail invalid_request "version is invalid"
@@ -578,10 +581,14 @@ action_install_like() {
         case "$operation_kind" in
           install|upgrade)
             arguments+=(--bundle "$package_root" --action "$operation_kind")
-            case "$options_network" in lan) arguments+=(--network lan);; reverseProxy) arguments+=(--network reverse-proxy);; *) arguments+=(--network local);; esac
+            case "$options_network" in lan) arguments+=(--network lan);; *) arguments+=(--network local);; esac
             [[ -n $options_server_port ]] && arguments+=(--server-port "$options_server_port")
             if [[ -n $options_file_access ]]; then
               arguments+=(--file-access "$options_file_access" --administrator-file-access "$options_file_access" --root-file-access "$options_file_access")
+            fi
+            if [[ $options_certificate_mode == custom ]]; then
+              [[ -f $staging_root/certificate.pfx && -f $staging_root/certificate-password.txt ]] || launcher_fail invalid_request "custom certificate files are unavailable"
+              arguments+=(--certificate-mode custom --certificate-path "$staging_root/certificate.pfx" --certificate-password-file "$staging_root/certificate-password.txt")
             fi
             ;;
           repair) arguments+=(--action repair);;

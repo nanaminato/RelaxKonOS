@@ -37,16 +37,22 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         Networks =
         [
             new(ServerNetworkProfile.Loopback, Text("server_center.wizard.network_loopback", "Local only (recommended)")),
-            new(ServerNetworkProfile.Lan, Text("server_center.wizard.network_lan", "LAN HTTP")),
-            new(ServerNetworkProfile.ReverseProxy, Text("server_center.wizard.network_reverse_proxy", "Reverse proxy"))
+            new(ServerNetworkProfile.Lan, Text("server_center.wizard.network_lan", "LAN HTTP"))
         ];
         SelectedNetwork = Networks[0];
+        CertificateModes =
+        [
+            new(ServerCertificateMode.None, Text("server_center.wizard.certificate_none", "No TLS certificate")),
+            new(ServerCertificateMode.Custom, Text("server_center.wizard.certificate_custom", "Use a PFX certificate"))
+        ];
+        SelectedCertificateMode = CertificateModes[0];
     }
 
     public IReadOnlyList<InstallationSourceOption> Sources { get; }
     public IReadOnlyList<InstallationModeOption> Modes { get; }
     public IReadOnlyList<FileAccessOption> FileAccesses { get; }
     public IReadOnlyList<NetworkOption> Networks { get; }
+    public IReadOnlyList<CertificateModeOption> CertificateModes { get; }
 
     [ObservableProperty] private int _stepIndex;
     [ObservableProperty] private InstallationSourceOption? _selectedSource;
@@ -55,6 +61,9 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     [ObservableProperty] private string? _remoteBundlePath;
     [ObservableProperty] private FileAccessOption? _selectedFileAccess;
     [ObservableProperty] private NetworkOption? _selectedNetwork;
+    [ObservableProperty] private CertificateModeOption? _selectedCertificateMode;
+    [ObservableProperty] private string? _certificatePath;
+    [ObservableProperty] private string _certificatePassword = string.Empty;
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
 
@@ -82,6 +91,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string ModeText => Text("server_center.wizard.mode", "Mode");
     public string FileAccessText => Text("server_center.wizard.file_access", "Privileged file access");
     public string NetworkText => Text("server_center.wizard.network", "Network access");
+    public string CertificateText => Text("server_center.wizard.certificate", "TLS certificate");
+    public string ChooseCertificateText => Text("server_center.wizard.choose_certificate", "Choose PFX certificate");
+    public bool IsCustomCertificate => SelectedCertificateMode?.Mode == ServerCertificateMode.Custom;
+    public bool HasCertificate => !string.IsNullOrWhiteSpace(CertificatePath);
+    public string CertificateFileName => string.IsNullOrWhiteSpace(CertificatePath) ? string.Empty : Path.GetFileName(CertificatePath);
     public string LocalBundleText => Text("server_center.wizard.local_bundle", "Signed local release bundle");
     public string ChooseBundleText => Text("server_center.wizard.choose_bundle", "Choose bundle");
     public string ChooseServerBundleText => Text("server_center.wizard.choose_server_bundle", "Browse server files");
@@ -96,6 +110,12 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public void SetLocalBundle(string? path)
     {
         LocalBundlePath = string.IsNullOrWhiteSpace(path) ? null : path;
+        ErrorMessage = string.Empty;
+    }
+
+    public void SetCertificate(string? path)
+    {
+        CertificatePath = string.IsNullOrWhiteSpace(path) ? null : path;
         ErrorMessage = string.Empty;
     }
 
@@ -136,6 +156,11 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
             ErrorMessage = BundleRequiredText;
             return;
         }
+        if (IsCustomCertificate && !HasCertificate)
+        {
+            ErrorMessage = Text("server_center.wizard.certificate_required", "Choose a PFX certificate to continue.");
+            return;
+        }
 
         IsBusy = true;
         ErrorMessage = string.Empty;
@@ -147,7 +172,10 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
                 LocalBundlePath,
                 RemoteBundlePath,
                 SelectedFileAccess?.Scope ?? ServerFileAccessScope.Restricted,
-                SelectedNetwork?.Profile ?? ServerNetworkProfile.Loopback));
+                SelectedNetwork?.Profile ?? ServerNetworkProfile.Loopback,
+                SelectedCertificateMode?.Mode ?? ServerCertificateMode.None,
+                CertificatePath,
+                CertificatePassword));
             if (succeeded)
                 _close();
             else
@@ -181,6 +209,17 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         OnPropertyChanged(nameof(IsRemoteBundle));
         OnPropertyChanged(nameof(BundleFileName));
         OnPropertyChanged(nameof(HasBundle));
+    }
+
+    partial void OnSelectedCertificateModeChanged(CertificateModeOption? value)
+    {
+        OnPropertyChanged(nameof(IsCustomCertificate));
+    }
+
+    partial void OnCertificatePathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasCertificate));
+        OnPropertyChanged(nameof(CertificateFileName));
     }
 
     partial void OnLocalBundlePathChanged(string? value)
@@ -222,3 +261,4 @@ public sealed record InstallationSourceOption(ServerPackageSourceKind Source, st
 public sealed record InstallationModeOption(ServerInstallMode? Mode, string Label);
 public sealed record FileAccessOption(ServerFileAccessScope Scope, string Label);
 public sealed record NetworkOption(ServerNetworkProfile Profile, string Label);
+public sealed record CertificateModeOption(ServerCertificateMode Mode, string Label);

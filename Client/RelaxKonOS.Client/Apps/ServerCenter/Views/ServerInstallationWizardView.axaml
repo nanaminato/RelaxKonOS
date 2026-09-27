@@ -59,6 +59,14 @@
                             <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <TextBlock Text="{Binding CertificateText}" />
+                    <ComboBox ItemsSource="{Binding CertificateModes}" SelectedItem="{Binding SelectedCertificateMode}" HorizontalAlignment="Left" MinWidth="320">
+                        <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <StackPanel Spacing="8" IsVisible="{Binding IsCustomCertificate}">
+                        <WrapPanel ItemSpacing="10"><Button Content="{Binding ChooseCertificateText}" Click="ChooseCertificate_Click" /><TextBlock Text="{Binding CertificateFileName}" IsVisible="{Binding HasCertificate}" VerticalAlignment="Center" /></WrapPanel>
+                        <TextBox Text="{Binding CertificatePassword, Mode=TwoWay}" PasswordChar="●" Watermark="PFX password (optional)" />
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel Spacing="12" IsVisible="{Binding IsReviewStep}">

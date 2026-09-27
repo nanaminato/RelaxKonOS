@@ -29,6 +29,8 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         ServerRuntimeIdentifier? expectedRuntime,
         string? trustedKeyId,
         string? trustedPublicKeyPem,
+        Stream? certificate,
+        string? certificatePassword,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -45,6 +47,7 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
             throw new ArgumentException("The deployment request is not a strict wire request.", nameof(request));
 
         var needsArchive = request.Kind is ServerDeploymentKind.Install or ServerDeploymentKind.Upgrade;
+        var needsCertificate = request.Options?.CertificateMode == ServerCertificateMode.Custom;
         if (needsArchive)
         {
             if (signedArchive is null || !signedArchive.CanSeek ||
@@ -54,6 +57,8 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
                 !ServerDeploymentInputRules.IsSafeStagedPackageName(request.Options?.StagedPackageName) ||
                 !ServerDeploymentInputRules.IsSha256(request.Options?.PackageDigest))
                 throw new ArgumentException("A signed, staged release and a trusted key are required.");
+            if (needsCertificate && (certificate is null || !certificate.CanRead || !certificate.CanSeek))
+                throw new ArgumentException("A readable PFX certificate is required for custom TLS.");
             if (platform == HostPlatformKind.Windows && request.Options?.Mode != ServerInstallMode.WindowsSystem ||
                 platform == HostPlatformKind.Linux && request.Options?.Mode is not
                     (ServerInstallMode.LinuxSystem or ServerInstallMode.LinuxUser))
@@ -85,6 +90,12 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
                 .ConfigureAwait(false);
             await UploadFromStartAsync(signedArchive!, staged, request.Options!.StagedPackageName!, cancellationToken)
                 .ConfigureAwait(false);
+            if (needsCertificate)
+            {
+                await UploadFromStartAsync(certificate!, staged, "certificate.pfx", cancellationToken).ConfigureAwait(false);
+                await UploadBytesAsync(Encoding.UTF8.GetBytes(certificatePassword ?? string.Empty), staged,
+                    "certificate-password.txt", cancellationToken).ConfigureAwait(false);
+            }
         }
         await UploadBytesAsync(requestBytes, staged, "request.json", cancellationToken).ConfigureAwait(false);
         if (platform == HostPlatformKind.Linux)
