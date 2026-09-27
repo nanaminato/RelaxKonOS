@@ -18,6 +18,7 @@ class ApplicationDeploymentWireTest {
         assertEquals("/api/v1.0/application-deployments/applications", ApplicationDeploymentRoutes.APPLICATIONS)
         assertEquals("/api/v1.0/docker/status", ApplicationDeploymentRoutes.RUNTIME)
         assertTrue(ApplicationDeploymentRoutes.application("d3708cc7-3e7e-42ad-b498-11466a48af23").endsWith("/d3708cc7-3e7e-42ad-b498-11466a48af23"))
+        assertTrue(ApplicationDeploymentRoutes.rollback("d3708cc7-3e7e-42ad-b498-11466a48af23").endsWith("/rollback"))
         assertThrows(IllegalArgumentException::class.java) { ApplicationDeploymentRoutes.application("../operations") }
     }
 
@@ -42,14 +43,16 @@ class ApplicationDeploymentWireTest {
     }
 
     @Test fun `snapshot reads active operation independently of recent history`() {
-        val operation = """{"operationId":"op-1","kind":"Deploy","state":"Running","stage":"Pulling",
-            "progress":null,"problemCode":null,"recoveryProblemCode":null,"createdAt":"2026-09-26T12:00:00Z"}"""
+        val operation = """{"operationId":"op-1","applicationId":"d3708cc7-3e7e-42ad-b498-11466a48af23","kind":"Deploy","state":"Running","stage":"Pulling",
+            "progress":null,"problemCode":null,"recoveryProblemCode":null,"createdAt":"2026-09-26T12:00:00Z","cancellable":true}"""
         val snapshot = ApplicationDeploymentWire.snapshot("""{"application":$application,
             "revisions":[{"id":"rev-1","number":1,"imageReference":"image@sha256:abc","isCurrent":false}],
             "operations":[],"activeOperation":$operation}""")
         assertTrue(snapshot.operations.isEmpty())
         assertEquals("Pulling", snapshot.activeOperation!!.stage)
+        assertEquals("d3708cc7-3e7e-42ad-b498-11466a48af23", snapshot.activeOperation.applicationId)
         assertNull(snapshot.activeOperation.progress)
+        assertTrue(snapshot.activeOperation.cancellable)
         assertNotNull(snapshot.activeOperation.createdAtMillis)
         assertFalse(snapshot.revisions.single().isCurrent)
     }
@@ -61,5 +64,22 @@ class ApplicationDeploymentWireTest {
         assertNull(missing.serverVersion)
         assertTrue(ApplicationDeploymentWire.runtime("""{"isAvailable":true,"problemCode":"","serverVersion":"28","operatingSystem":"linux","architecture":"amd64"}""").isAvailable)
         assertThrows(Exception::class.java) { ApplicationDeploymentWire.runtime("""{"problemCode":""}""") }
+    }
+
+    @Test fun `templates preserve server defaults rather than inventing Android defaults`() {
+        val template = ApplicationDeploymentWire.templates("""[{"sourceKind":"PythonProject","templateVersion":"1.0",
+            "displayName":"Python project","defaultBaseImage":"python:3.13-slim","supportedPlatforms":["linux/amd64"],
+            "requiresArchive":true,"requiresImageReference":false,"supportsSelfContained":false,"defaultContainerPort":8000}]""").single()
+        assertEquals("PythonProject", template.sourceKind)
+        assertEquals("python:3.13-slim", template.defaultBaseImage)
+        assertTrue(template.requiresArchive)
+        assertEquals(8000, template.defaultContainerPort)
+    }
+
+    @Test fun `logs retain only bounded server output`() {
+        val logs = ApplicationDeploymentWire.logs("""{"lines":["first","second"],"truncated":true}""")
+        assertEquals(listOf("first", "second"), logs.lines)
+        assertTrue(logs.truncated)
+        assertThrows(Exception::class.java) { ApplicationDeploymentWire.logs("""{"lines":[]}""") }
     }
 }

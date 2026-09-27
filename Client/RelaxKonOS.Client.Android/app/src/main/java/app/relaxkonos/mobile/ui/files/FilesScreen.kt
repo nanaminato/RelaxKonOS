@@ -54,6 +54,7 @@ import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DirectoryListing
 import app.relaxkonos.mobile.core.net.ProblemCodes
@@ -189,6 +190,8 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     private var transferJob: Job? = null
+    private var directoryJob: Job? = null
+    private var directoryRequest = 0L
 
     /** Uploads this device can still continue, as the coordinator sees them. */
     val resumableUploads: StateFlow<List<UploadResumeEntry>> get() = container.uploads.resumable
@@ -298,6 +301,29 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     private var thumbnail: Bitmap? = null
 
     private var started = false
+    private var activeSession: SessionState.Active? = null
+
+    init {
+        // ViewModels outlive the authenticated shell because they are stored by the Activity. A
+        // new login must therefore be a hard boundary for server-owned UI state: retaining a Linux
+        // path such as /home/nanami/下载 after signing in to a Windows host would otherwise send
+        // that path to the new server on refresh or on the next operation.
+        viewModelScope.launch {
+            container.session.state.collect { state ->
+                if (state is SessionState.Active) {
+                    if (activeSession !== state) {
+                        activeSession = state
+                        val wasStarted = started
+                        resetForSessionBoundary()
+                        if (wasStarted) start()
+                    }
+                } else if (activeSession != null) {
+                    activeSession = null
+                    resetForSessionBoundary()
+                }
+            }
+        }
+    }
 
     /** Loads the roots once per process; later loads are explicit refreshes. */
     fun start() {
@@ -943,18 +969,60 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun reload() {
+        val request = ++directoryRequest
+        val requestedPath = path
+        directoryJob?.cancel()
         loading = true
-        viewModelScope.launch {
-            when (val result = container.files.list(path, container.elevationAnswers)) {
-                is ApiResult.Success -> {
-                    listing = result.value
-                    path = result.value.path
-                }
+        directoryJob = viewModelScope.launch {
+            try {
+                when (val result = container.files.list(requestedPath, container.elevationAnswers)) {
+                    is ApiResult.Success -> if (request == directoryRequest) {
+                        listing = result.value
+                        path = result.value.path
+                    }
 
-                else -> message = result.failureMessage()
+                    else -> if (request == directoryRequest) {
+                        message = result.failureMessage()
+                    }
+                }
+            } finally {
+                if (request == directoryRequest) {
+                    loading = false
+                    directoryJob = null
+                }
             }
-            loading = false
         }
+    }
+
+    /** Clears every screen-owned value that is meaningful only to one authenticated server session. */
+    private fun resetForSessionBoundary() {
+        directoryRequest++
+        directoryJob?.cancel()
+        directoryJob = null
+        transferJob?.cancel()
+        transferJob = null
+        cancelPreview()
+
+        started = false
+        path = ""
+        listing = null
+        loading = false
+        message = null
+        selected = null
+        properties = null
+        propertiesLoading = false
+        newDirectoryOpen = false
+        renameTarget = null
+        deleteTarget = null
+        transferTarget = null
+        transfer = null
+        uploadCollapsed = false
+        uploadNotificationPrompt = false
+        preview = ImagePreview.Hidden
+        previewFile = null
+        previewDecodedFor = IntSize.Zero
+        thumbnail = null
+        viewerOpen = false
     }
 
 }

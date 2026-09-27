@@ -26,6 +26,82 @@ interface RelaxKonGateway {
     suspend fun deploymentSnapshot(serverUrl: String, accessToken: String, applicationId: String): ApiResult<DeploymentSnapshot>
     suspend fun deploymentRuntime(serverUrl: String, accessToken: String): ApiResult<DeploymentRuntime>
 
+    suspend fun deploymentTemplates(serverUrl: String, accessToken: String): ApiResult<List<DeploymentTemplate>> =
+        ApiResult.Transport("Application deployment templates are unavailable.")
+
+    /** Streams one selected archive directly into deployment-owned staging; callers must not buffer it. */
+    suspend fun uploadDeploymentArchive(
+        serverUrl: String,
+        accessToken: String,
+        fileName: String,
+        contentLength: Long?,
+        open: () -> InputStream,
+    ): ApiResult<DeploymentArchive> = ApiResult.Transport("Application deployment archive upload is unavailable.")
+
+    /** Creates an image deployment definition; publishing it is the separate call below. */
+    suspend fun createImageDeployment(
+        serverUrl: String,
+        accessToken: String,
+        definition: ImageDeploymentDefinition,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentApplication> = ApiResult.Transport("Image deployment creation is unavailable.")
+
+    suspend fun createArchiveDeployment(
+        serverUrl: String,
+        accessToken: String,
+        definition: ArchiveDeploymentDefinition,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentApplication> = ApiResult.Transport("Archive deployment creation is unavailable.")
+
+    suspend fun deployArchive(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        archiveReferenceId: String,
+        definition: ArchiveDeploymentDefinition,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> = ApiResult.Transport("Archive deployment is unavailable.")
+
+    /** Queues a confirmed image deployment and returns its durable operation record. */
+    suspend fun deployImage(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        imageReference: String,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> = ApiResult.Transport("Image deployment is unavailable.")
+
+    /** Queues a confirmed switch back to an immutable, server-known revision. */
+    suspend fun rollbackDeployment(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        revisionId: String,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> = ApiResult.Transport("Application rollback is unavailable.")
+
+    /** Removes the application while explicitly retaining managed volumes. */
+    suspend fun deleteDeployment(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> = ApiResult.Transport("Application removal is unavailable.")
+
+    suspend fun deploymentLifecycle(
+        serverUrl: String,
+        accessToken: String,
+        applicationId: String,
+        action: DeploymentLifecycleAction,
+        idempotencyKey: String,
+    ): ApiResult<DeploymentOperation> = ApiResult.Transport("Application lifecycle actions are unavailable.")
+
+    suspend fun deploymentLogs(serverUrl: String, accessToken: String, applicationId: String, tail: Int = 200): ApiResult<DeploymentLog> =
+        ApiResult.Transport("Application logs are unavailable.")
+
+    suspend fun cancelDeploymentOperation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
+        ApiResult.Transport("Deployment cancellation is unavailable.")
+
     suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession>
 
     suspend fun refresh(serverUrl: String, refreshToken: String): ApiResult<AuthTokens>

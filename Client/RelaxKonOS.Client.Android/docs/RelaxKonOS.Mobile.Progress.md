@@ -10,7 +10,7 @@
 
 ## AD02-M1：应用部署只读接入（2026-09-26）
 
-状态：**已实现待验证**（真实远端和设备矩阵待执行）；AD02 整体仍在实施中，M2–M4 未开始。
+状态：**已实现待验证**（真实远端和设备矩阵待执行）；AD02 的 Android 客户端 M1–M4 已完成实现。
 
 - “管理 → 应用部署”按 `server.application-deployments` 能力显示；手机列表/详情独立导航，Expanded 平板显示列表与详情双栏。仅提供查看和刷新，明确标注只读，不显示未实现的创建、启停、回滚或上传按钮。
 - Gateway/DTO/Repository 消费当前 `/api/v1.0/application-deployments/applications`、`applications/{id}` 和 `/api/v1.0/docker/status`，不修改共享协议、不引入兼容路由。DTO 是只读字段投影，不保留配置值、秘密或原始响应正文。
@@ -22,6 +22,33 @@
 - 本轮验证：`:app:assembleDebug`、`:app:testDebugUnitTest` 均通过，**40 个测试类、382 个用例，0 失败 / 0 错误 / 0 跳过**，其中本轮新增 25 个用例。三套字符串各 **423 键**，无重复且键集一致；`git diff --check` 通过。APK 位于 `app/build/outputs/apk/debug/app-debug.apk`（19,293,523 字节）。环境为 Gradle 9.6.0、现有 JDK/SDK；构建时临时替换 SDK 路径，结束后已逐字节还原 `local.properties`。
 - 全量 `:app:lintDebug` **未通过**：5 个已存在于本轮起点提交的错误（下载 MediaStore API 29、`contentLengthLong` API 24、保险箱两处 API 24/28 检查、登录页 `LocalContext` 转 Activity），另有 65 个 warning、7 个 hint。报告为 `app/build/reports/lint-results-debug.html`；未抑制这些错误，也未将 Lint 计为通过。
 - **尚未执行**真实 Docker/服务器及手机竖横屏、8/11 英寸平板、大字体、三语视觉验收；AD02-T1–T6 均不能因 M1 编译或单测通过而标为已验收。
+
+## AD02-M2：镜像部署与受限配置（已实现待验证，2026-09-27）
+
+- “管理 → 应用部署”从服务端模板目录读取支持的来源；镜像路径收集应用名、镜像引用和容器端口，固定 `127.0.0.1` 绑定。配置输入仅能添加受限名称/值对；秘密值以密码控件输入并只显示“已配置”，不会进入列表、快照或日志。它不提供任意宿主挂载、Dockerfile 或 shell 参数。
+- 客户端先 `POST /applications` 创建定义，再 `POST /applications/{id}/deploy` 提交已确认部署；两个变更各有独立 UUID 幂等键，因此任一响应丢失后的重复请求仍由服务端归并，不会重复创建资源或重复排队。成功后刷新权威列表、自动打开对应详情，并只在操作仍为 Queued/Running 时轮询权威快照；失败仍保留服务端问题码供现有三语错误映射展示。
+- 创建和部署仍是分离的幂等操作：先 `POST /applications`，再 `POST /applications/{id}/deploy`；两次提交各使用一个 UUID 键。成功后刷新权威列表、打开详情，并在操作为 Queued/Running 时轮询快照。资源限制、命名卷与站点绑定属于后续受管模板/发布工作流，未在此受限首条路径中暴露。
+- AD02-M2 与任何 AD02-T 项均**未验收**：JVM 验证不替代服务器预检、真实镜像或设备测试。
+
+## AD02-M3：操作维护（已实现待验证，2026-09-27）
+
+- 已部署且状态为 Running 的镜像应用可在详情页请求停止或重启；Stopped 应用可请求启动。停止/重启先在客户端确认；所有动作都固定映射为 start/stop/restart 闭集路由，提交 `force=false`、`confirmed=true` 和独立 UUID 幂等键，随后复用权威快照观察。详情页也读取服务端已脱敏、长度受限的近期日志，并明确提示截断。
+- 活动操作只有在服务端 `cancellable=true` 时才显示取消入口；取消同样只走 UUID 操作路由和独立幂等键，之后重新读取快照。删除必须单独确认，客户端固定提交 `deleteVolumes=false`，因此受管数据卷会保留。
+- 详情页现在列出快照内的不可变修订，仅允许选择非当前修订来发起回滚。回滚需要单独确认，说明短暂服务中断及“数据卷不会随修订回滚”，并只提交服务端已知的 UUID、`confirmed=true` 与独立幂等键。删除仍未实现。
+- M3 及 AD02-T1–T6 仍**未验收**，见本轮验证记录。
+
+## AD02-M4：Java/.NET/Python 归档输入（已实现待验证，2026-09-27）
+
+- 创建对话框消费服务端返回的四类模板（Image、JavaJar、DotNetPublish、PythonProject），不在 APK 中复制模板版本或默认端口。Java、.NET 与 Python 均通过 Storage Access Framework 选择归档；归档由 `HttpURLConnection` 以 multipart 流直接传到 `/application-deployments/uploads`，不读入内存，之后只将服务端暂存引用传入部署操作。
+- Java/.NET/Python 可选运行时/基础镜像参数受服务端模板验证；Python 强制填写模块入口，.NET 可选择自包含发布；Web 使用 HTTP `/` 就绪检查，Worker 使用 Process 检查。归档流不冒充通用文件上传的续传能力；大包、过期引用、切账号、真实解压和引擎行为仍需 AD02-T2/T6 的真实环境验收。
+- AD02-M4 及 AD02-T2/T6 均**未验收**。
+
+## AD02：本轮实现与验证记录（2026-09-27）
+
+- 聚焦 `ApplicationDeploymentWireTest`、`DeploymentHttpTest` 和 `DeploymentBrowserTest` 通过，覆盖服务端模板读取、四来源归档暂存/部署的 wire 合同、秘密配置标记、生命周期、回滚、删除保卷和操作幂等键。
+- 全量 `:app:testDebugUnitTest` 通过：**393 个用例，0 失败**。`git diff --check` 通过。
+- 全量 `:app:lintDebug` 未通过，报告有本轮起点已有的 **5 个错误、75 个 warning**（MediaStore、`contentLengthLong`、两处 Keystore API、登录页 Context 转 Activity）；新增应用部署文件没有 Lint 错误。报告：`app/build/reports/lint-results-debug.html`。
+- 未执行真实 Docker/服务器、SAF 大包、手机竖横屏/平板/大字体和三语视觉验收；它们仍是 AD02-T1–T6 的阻塞验证条件，不能以本轮 JVM 测试替代。
 
 ## M0：Kotlin / Jetpack Compose 基线（已完成）
 
