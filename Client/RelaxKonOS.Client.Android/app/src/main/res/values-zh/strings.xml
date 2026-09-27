@@ -110,6 +110,11 @@
     <string name="ssh_files_preview">预览</string>
     <string name="ssh_workspace_title">SSH 工作区</string>
     <string name="ssh_workspace_subtitle">%1$s</string>
+    <string name="ssh_workspace_system">系统</string>
+    <string name="ssh_workspace_system_subtitle">%1$s 的资源状态</string>
+    <string name="ssh_workspace_system_unavailable">此主机未提供 Linux 资源快照。</string>
+    <string name="ssh_workspace_system_platform">平台</string>
+    <string name="ssh_workspace_exit">退出 SSH 工作区</string>
     <string name="ssh_workspace_deploy">部署 RelaxKonOS Server</string>
     <string name="ssh_workspace_deploy_unavailable">此 Android 构建尚未打包固定启动器、验证器和签名发布源，因此无法提供部署功能。</string>
     <string name="ssh_workspace_deploy_draft">部署资产接入前，先核对安装选项。</string>

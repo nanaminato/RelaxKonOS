@@ -26,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
@@ -37,7 +36,6 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     var page by rememberSaveable(hostId) { mutableIntStateOf(0) }
-    val title = stringResource(if (page == 0) R.string.ssh_files_title else R.string.ssh_workspace_deploy)
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         bottomBar = {
@@ -54,24 +52,26 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
                     icon = { DesktopIcon(DesktopIcons.deployments, size = 26.dp) },
                     label = { Text(stringResource(R.string.ssh_workspace_deploy)) },
                 )
+                NavigationBarItem(
+                    selected = page == 2,
+                    onClick = { page = 2 },
+                    icon = { DesktopIcon(DesktopIcons.system, size = 26.dp) },
+                    label = { Text(stringResource(R.string.ssh_workspace_system)) },
+                )
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            ScreenHeader(
-                title = title,
-                subtitle = stringResource(R.string.ssh_workspace_subtitle, hostId),
-                onBack = onClose,
-                modifier = Modifier.padding(Spacing.lg),
-            )
-            if (page == 0) SshFilesScreen(hostId) else DeploymentSetupScreen()
+        when (page) {
+            0 -> SshFilesScreen(hostId, Modifier.padding(padding))
+            1 -> DeploymentSetupScreen(Modifier.padding(padding))
+            else -> SshSystemScreen(hostId, onClose, Modifier.padding(padding))
         }
     }
 }
 
 /** This draft collects desktop-equivalent constrained options but never submits an unverified release. */
 @Composable
-private fun DeploymentSetupScreen() {
+private fun DeploymentSetupScreen(modifier: Modifier = Modifier) {
     var mode by rememberSaveable { mutableStateOf("linuxSystem") }
     var network by rememberSaveable { mutableStateOf("loopback") }
     var source by rememberSaveable { mutableStateOf("official") }
@@ -89,7 +89,7 @@ private fun DeploymentSetupScreen() {
     val pickBundle = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> bundleName = uri?.lastPathSegment.orEmpty() }
     val pickCertificate = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> certificateName = uri?.lastPathSegment.orEmpty() }
     val pickPrivateKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> privateKeyName = uri?.lastPathSegment.orEmpty() }
-    Column(Modifier.padding(Spacing.lg).verticalScroll(rememberScrollState())) {
+    Column(modifier.padding(Spacing.lg).verticalScroll(rememberScrollState())) {
         SectionCard(
             title = stringResource(R.string.ssh_workspace_deploy),
             subtitle = stringResource(R.string.ssh_workspace_deploy_draft),

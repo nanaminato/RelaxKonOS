@@ -315,7 +315,7 @@ private val SshFileEntry.isImage: Boolean get() = name.substringAfterLast('.', "
     setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
 
 @Composable
-fun SshFilesScreen(hostId: String) {
+fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
     val model: SshFilesViewModel = viewModel()
     LaunchedEffect(hostId) { model.setHost(hostId); model.start() }
     val state by model.state.collectAsState()
@@ -328,7 +328,7 @@ fun SshFilesScreen(hostId: String) {
             saveDownload.launch(target.name)
         }
     }
-    Column(Modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+    Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         state.problem?.let { Text(problemText(it), color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
         if (!state.connected) {
             if (state.busy) CircularProgressIndicator()
