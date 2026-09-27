@@ -110,6 +110,7 @@ fun DeploymentsScreen(
         CatalogInstallDialog(
             templates = (state.catalog as? ApiResult.Success)?.value.orEmpty(),
             capabilities = state.owner?.capabilities.orEmpty(),
+            runtime = (state.runtime as? ApiResult.Success)?.value,
             submitting = state.submitting,
             onDismiss = { if (!state.submitting) showCatalog = false },
             onInstall = { template, name, fields -> browser.installCatalog(template, name, fields); showCatalog = false },
@@ -120,15 +121,19 @@ fun DeploymentsScreen(
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun CatalogInstallDialog(
-    templates: List<CatalogTemplate>, capabilities: Set<String>, submitting: Boolean, onDismiss: () -> Unit,
+    templates: List<CatalogTemplate>, capabilities: Set<String>, runtime: DeploymentRuntime?, submitting: Boolean, onDismiss: () -> Unit,
     onInstall: (CatalogTemplate, String, List<CatalogFieldValue>) -> Unit,
 ) {
     var selectedId by remember(templates) { mutableStateOf(templates.firstOrNull()?.id) }
     val template = templates.firstOrNull { it.id == selectedId }
     var name by remember(template) { mutableStateOf("") }
     var values by remember(template) { mutableStateOf(template?.fields?.associate { it.id to (it.defaultValue ?: "") }.orEmpty()) }
-    val supported = template?.let { it.schemaVersion == "1" && it.requiredCapabilities.all(capabilities::contains) && !it.withdrawn } == true
+    val compatibility = template?.compatibility(capabilities, runtime)
+    val supported = compatibility?.canInstall == true
     val complete = template?.fields?.all { !it.required || values[it.id].isNullOrBlank().not() } == true
+    val validValues = template?.fields?.all { field ->
+        field.type != "number" || values[field.id].isNullOrBlank() || values[field.id]?.toDoubleOrNull() != null
+    } == true
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.lg).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -138,20 +143,37 @@ private fun CatalogInstallDialog(
             template?.let { selected ->
                 Text(selected.description)
                 Text(stringResource(R.string.catalog_version, selected.version), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.catalog_source, selected.publisher, selected.source), style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(R.string.catalog_access, selected.accessPath ?: "/", selected.containerPort), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.catalog_resources, selected.minimumResources.cpuCores ?: 0.0,
+                    (selected.minimumResources.memoryBytes ?: 0L) / (1024L * 1024L)), style = MaterialTheme.typography.bodySmall)
                 if (selected.volumes.isNotEmpty()) Text(stringResource(R.string.catalog_data, selected.volumes.joinToString { it.containerPath }), style = MaterialTheme.typography.bodySmall)
-                if (!supported) Text(stringResource(R.string.catalog_unsupported), color = MaterialTheme.colorScheme.error)
+                compatibility?.blockers?.forEach { blocker ->
+                    Text(catalogBlockerText(blocker), color = MaterialTheme.colorScheme.error)
+                }
                 OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true)
                 selected.fields.forEach { field ->
-                    OutlinedTextField(values[field.id].orEmpty(), { values = values + (field.id to it) },
-                        label = { Text(field.label()) }, supportingText = field.help?.let { { Text(it) } }, singleLine = true,
-                        visualTransformation = if (field.type == "secret") PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
+                    if (field.type == "enum") {
+                        Text(field.label(), style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                            field.options.forEach { option ->
+                                FilterChip(selected = values[field.id] == option, onClick = { values = values + (field.id to option) }, label = { Text(option) })
+                            }
+                        }
+                        field.help?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    } else {
+                        OutlinedTextField(values[field.id].orEmpty(), { values = values + (field.id to it) },
+                            label = { Text(field.label()) }, supportingText = field.help?.let { { Text(it) } }, singleLine = true,
+                            isError = field.type == "number" && values[field.id].isNullOrBlank().not() && values[field.id]?.toDoubleOrNull() == null,
+                            keyboardOptions = if (field.type == "number") KeyboardOptions(keyboardType = KeyboardType.Decimal) else KeyboardOptions.Default,
+                            visualTransformation = if (field.type == "secret") PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
+                    }
                 }
                 Text(selected.maintenanceNotes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
                     Button(onClick = { onInstall(selected, name, selected.fields.mapNotNull { field -> values[field.id]?.let { CatalogFieldValue(field.id, it) } }) },
-                        enabled = supported && complete && name.isNotBlank() && !submitting) { Text(stringResource(R.string.catalog_install)) }
+                        enabled = supported && complete && validValues && name.isNotBlank() && !submitting) { Text(stringResource(R.string.catalog_install)) }
                 }
             }
         }
@@ -333,6 +355,9 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                         Text(stringResource(R.string.deployments_actual, label(app.actualState)))
                         Text(stringResource(R.string.deployments_desired, label(app.desiredState)))
                         Text(stringResource(R.string.deployments_revision, revisionLabel(app.currentRevisionNumber)))
+                        if (app.catalogTemplateId != null && app.catalogTemplateVersion != null) {
+                            Text(stringResource(R.string.catalog_instance_version, app.catalogTemplateId, app.catalogTemplateVersion))
+                        }
                         Text(stringResource(R.string.deployments_source, label(app.sourceKind)))
                         Text(stringResource(R.string.deployments_workload, label(app.workloadKind)))
                         Text(stringResource(R.string.deployments_readiness, label(app.readinessLevel)))
@@ -474,6 +499,19 @@ private fun label(value: String): String = stringResource(deploymentLabel(value)
 
 @Composable
 private fun revisionLabel(number: Int?): String = number?.toString() ?: stringResource(R.string.deployments_no_revision)
+
+@Composable
+private fun catalogBlockerText(blocker: CatalogInstallBlocker): String = stringResource(
+    when (blocker) {
+        CatalogInstallBlocker.UnsupportedSchema -> R.string.catalog_blocked_schema
+        CatalogInstallBlocker.UntrustedSource -> R.string.catalog_blocked_trust
+        CatalogInstallBlocker.Withdrawn -> R.string.catalog_blocked_withdrawn
+        CatalogInstallBlocker.MissingCapability -> R.string.catalog_blocked_capability
+        CatalogInstallBlocker.RuntimeUnavailable -> R.string.catalog_blocked_runtime
+        CatalogInstallBlocker.UnsupportedPlatform -> R.string.catalog_blocked_platform
+        CatalogInstallBlocker.InvalidField -> R.string.catalog_blocked_field
+    },
+)
 
 private const val INITIAL_LOG_TAIL = 20
 private const val MAXIMUM_LOG_TAIL = 1_000

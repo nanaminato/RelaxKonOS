@@ -16,6 +16,17 @@ internal static class ApplicationDeploymentDiagnosticsVerification
 
     public static void Run(string root)
     {
+        var catalogue = ApplicationCatalog.DescribeAll();
+        Check(catalogue.Length == 4
+            && catalogue.All(template => template.SchemaVersion == ApplicationCatalog.SchemaVersion
+                && template.Trusted
+                && template.Source == "built-in"
+                && template.SupportedPlatforms.Count > 0
+                && template.RequiredCapabilities.Count > 0
+                && template.MinimumResources.MemoryBytes is > 0
+                && template.Fields.All(field => field.Type is "text" or "number" or "enum" or "secret")),
+            "Every built-in catalogue entry must have a verified source and a closed, supported form contract.");
+
         Check(!ApplicationDeploymentValidation.IsPinnedImageReference("nginx")
             && !ApplicationDeploymentValidation.IsPinnedImageReference("registry.example:5000/team/app")
             && !ApplicationDeploymentValidation.IsPinnedImageReference("nginx:latest")

@@ -13,6 +13,8 @@ public sealed record ApplicationCatalogTemplateDto(
     [property: JsonPropertyName("version")] string Version,
     [property: JsonPropertyName("publisher")] string Publisher,
     [property: JsonPropertyName("source")] string Source,
+    /// <summary>True only after the server has verified the configured catalogue source.</summary>
+    [property: JsonPropertyName("trusted")] bool Trusted,
     [property: JsonPropertyName("purpose")] string Purpose,
     [property: JsonPropertyName("description")] string Description,
     [property: JsonPropertyName("supportedPlatforms")] IReadOnlyList<string> SupportedPlatforms,

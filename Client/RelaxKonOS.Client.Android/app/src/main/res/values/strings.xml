@@ -530,8 +530,17 @@
     <string name="catalog_title">Install from template</string>
     <string name="catalog_note">Templates are verified by the server. Secret fields are never added to a draft or summary.</string>
     <string name="catalog_version">Template version: %1$s</string>
+    <string name="catalog_source">Publisher: %1$s · source: %2$s</string>
     <string name="catalog_access">Access: %1$s · container port %2$d</string>
+    <string name="catalog_resources">Minimum resources: %1$.1f CPU · %2$d MiB memory</string>
     <string name="catalog_data">Persistent data: %1$s</string>
-    <string name="catalog_unsupported">This template needs a newer client or server capability and cannot be installed.</string>
+    <string name="catalog_instance_version">Installed from template: %1$s v%2$s</string>
+    <string name="catalog_blocked_schema">This template uses a schema this app does not support.</string>
+    <string name="catalog_blocked_trust">The template source has not been verified by the server.</string>
+    <string name="catalog_blocked_withdrawn">This template has been withdrawn and cannot be installed.</string>
+    <string name="catalog_blocked_capability">This server does not provide every capability required by this template.</string>
+    <string name="catalog_blocked_runtime">The container runtime is unavailable, so compatibility cannot be checked.</string>
+    <string name="catalog_blocked_platform">This template does not support this server's operating system or architecture.</string>
+    <string name="catalog_blocked_field">This template contains a field type or default this app cannot safely use.</string>
     <string name="catalog_install">Install</string>
 </resources>

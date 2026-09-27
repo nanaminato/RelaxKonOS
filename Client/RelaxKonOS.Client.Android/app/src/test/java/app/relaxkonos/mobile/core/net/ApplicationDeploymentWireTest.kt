@@ -11,6 +11,7 @@ class ApplicationDeploymentWireTest {
         "actualState":"unknown", "readinessLevel":"http", "containerPort":8080,
         "hostPort":null, "bindAddress":"127.0.0.1", "currentRevisionNumber":null,
         "containerName":null, "domain":null, "driftProblemCode":null,
+        "catalogTemplateId":"personal-site", "catalogTemplateVersion":"1.0.0",
         "configuration":[{"name":"TOKEN","value":"must-not-be-retained","isSecret":true}]
     }"""
 
@@ -28,6 +29,8 @@ class ApplicationDeploymentWireTest {
         assertNull(app.currentRevisionNumber)
         assertNull(app.containerName)
         assertNull(app.domain)
+        assertEquals("personal-site", app.catalogTemplateId)
+        assertEquals("1.0.0", app.catalogTemplateVersion)
         assertEquals("unknown", app.actualState)
         assertFalse(app.toString().contains("must-not-be-retained"))
     }
@@ -78,15 +81,47 @@ class ApplicationDeploymentWireTest {
 
     @Test fun `catalogue keeps a server version and never gives a secret field a stored value`() {
         val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"1","id":"file-service","version":"1.0.0",
-            "publisher":"RelaxKonOS","source":"built-in","purpose":"File service","description":"Files",
+            "publisher":"RelaxKonOS","source":"built-in","trusted":true,"purpose":"File service","description":"Files",
             "supportedPlatforms":["linux/amd64"],"requiredCapabilities":["server.application-deployments"],
             "minimumResources":{"cpuCores":1,"memoryBytes":536870912,"pidsLimit":512},
             "fields":[{"id":"adminPassword","type":"secret","required":true,"defaultValue":null,"options":[],"labels":{"en":"Password","zh":"密码","ja":"パスワード"},"help":null}],
             "volumes":[{"name":"database","containerPath":"/database","readOnly":false}],"containerPort":80,"accessPath":"/","maintenanceNotes":"Keep data","withdrawn":false}]""").single()
         assertEquals("1", template.schemaVersion)
         assertEquals("1.0.0", template.version)
+        assertTrue(template.trusted)
+        assertEquals(listOf("linux/amd64"), template.supportedPlatforms)
+        assertEquals(536870912L, template.minimumResources.memoryBytes)
         assertEquals("secret", template.fields.single().type)
         assertNull(template.fields.single().defaultValue)
+    }
+
+    @Test fun `catalogue blocks unverified schemas fields capabilities and incompatible platforms locally`() {
+        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"2","id":"example","version":"2.0.0",
+            "publisher":"Example","source":"remote","trusted":false,"purpose":"Example","description":"Example",
+            "supportedPlatforms":["linux/arm64"],"requiredCapabilities":["server.application-deployments"],
+            "minimumResources":{"cpuCores":1,"memoryBytes":536870912,"pidsLimit":512},
+            "fields":[{"id":"mode","type":"enum","required":true,"defaultValue":"unsafe","options":["safe"],"labels":{"en":"Mode","zh":"模式","ja":"モード"},"help":null}],
+            "volumes":[],"containerPort":80,"accessPath":"/","maintenanceNotes":"Keep data","withdrawn":false}]""").single()
+        val result = template.compatibility(
+            capabilities = setOf("server.application-deployments"),
+            runtime = DeploymentRuntime(true, "", "28", "linux", "x86_64"),
+        )
+        assertFalse(result.canInstall)
+        assertTrue(CatalogInstallBlocker.UnsupportedSchema in result.blockers)
+        assertTrue(CatalogInstallBlocker.UntrustedSource in result.blockers)
+        assertTrue(CatalogInstallBlocker.UnsupportedPlatform in result.blockers)
+        assertTrue(CatalogInstallBlocker.InvalidField in result.blockers)
+    }
+
+    @Test fun `catalogue accepts a trusted known schema on a normalized platform`() {
+        val template = ApplicationDeploymentWire.catalog("""[{"schemaVersion":"1","id":"example","version":"1.0.0",
+            "publisher":"Example","source":"built-in","trusted":true,"purpose":"Example","description":"Example",
+            "supportedPlatforms":["linux/arm64"],"requiredCapabilities":["server.application-deployments"],
+            "minimumResources":{"cpuCores":1,"memoryBytes":536870912,"pidsLimit":512},
+            "fields":[{"id":"mode","type":"enum","required":true,"defaultValue":"safe","options":["safe"],"labels":{"en":"Mode","zh":"模式","ja":"モード"},"help":null}],
+            "volumes":[],"containerPort":80,"accessPath":"/","maintenanceNotes":"Keep data","withdrawn":false}]""").single()
+        assertTrue(template.compatibility(setOf("server.application-deployments"),
+            DeploymentRuntime(true, "", "28", "linux", "aarch64")).canInstall)
     }
 
     @Test fun `logs retain only bounded server output`() {

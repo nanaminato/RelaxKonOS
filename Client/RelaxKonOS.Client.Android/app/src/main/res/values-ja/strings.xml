@@ -494,8 +494,17 @@
     <string name="catalog_title">テンプレートからインストール</string>
     <string name="catalog_note">テンプレートはサーバーで検証されます。秘密フィールドは下書きや要約に保存されません。</string>
     <string name="catalog_version">テンプレートのバージョン：%1$s</string>
+    <string name="catalog_source">発行者：%1$s · ソース：%2$s</string>
     <string name="catalog_access">アクセス：%1$s · コンテナポート %2$d</string>
+    <string name="catalog_resources">最小リソース：CPU %1$.1f · メモリ %2$d MiB</string>
     <string name="catalog_data">永続データ：%1$s</string>
-    <string name="catalog_unsupported">このテンプレートには新しいクライアントまたはサーバー機能が必要なため、インストールできません。</string>
+    <string name="catalog_instance_version">インストール元テンプレート：%1$s v%2$s</string>
+    <string name="catalog_blocked_schema">このテンプレートは、このアプリが対応していないスキーマを使用しています。</string>
+    <string name="catalog_blocked_trust">テンプレートのソースがサーバーで検証されていません。</string>
+    <string name="catalog_blocked_withdrawn">このテンプレートは取り下げられており、インストールできません。</string>
+    <string name="catalog_blocked_capability">このサーバーにはテンプレートに必要な機能が不足しています。</string>
+    <string name="catalog_blocked_runtime">コンテナランタイムを利用できないため、互換性を確認できません。</string>
+    <string name="catalog_blocked_platform">このテンプレートは、このサーバーの OS またはアーキテクチャに対応していません。</string>
+    <string name="catalog_blocked_field">このテンプレートには、このアプリが安全に使用できないフィールド型または既定値があります。</string>
     <string name="catalog_install">インストール</string>
 </resources>

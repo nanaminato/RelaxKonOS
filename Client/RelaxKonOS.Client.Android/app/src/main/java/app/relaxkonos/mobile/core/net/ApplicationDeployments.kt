@@ -21,6 +21,9 @@ data class DeploymentApplication(
     val bindAddress: String,
     val domain: String?,
     val driftProblemCode: String?,
+    /** The exact product template used to create this instance, if any. */
+    val catalogTemplateId: String? = null,
+    val catalogTemplateVersion: String? = null,
 )
 
 data class DeploymentRevision(val id: String, val number: Int, val imageReference: String, val isCurrent: Boolean)
@@ -73,9 +76,13 @@ data class CatalogTemplate(
     val id: String,
     val version: String,
     val publisher: String,
+    val source: String,
+    val trusted: Boolean,
     val purpose: String,
     val description: String,
+    val supportedPlatforms: List<String>,
     val requiredCapabilities: List<String>,
+    val minimumResources: CatalogResources,
     val fields: List<CatalogField>,
     val volumes: List<CatalogVolume>,
     val containerPort: Int,
@@ -84,11 +91,77 @@ data class CatalogTemplate(
     val withdrawn: Boolean,
 )
 
-data class CatalogField(val id: String, val type: String, val required: Boolean, val defaultValue: String?, val labels: Map<String, String>, val help: String?) {
+data class CatalogResources(val cpuCores: Double?, val memoryBytes: Long?, val pidsLimit: Int?)
+
+data class CatalogField(
+    val id: String,
+    val type: String,
+    val required: Boolean,
+    val defaultValue: String?,
+    val options: List<String>,
+    val labels: Map<String, String>,
+    val help: String?,
+) {
     fun label(): String = labels[Locale.getDefault().language] ?: labels["en"] ?: id
 }
 data class CatalogVolume(val name: String, val containerPath: String)
 data class CatalogFieldValue(val id: String, val value: String)
+
+/**
+ * All local checks are explanatory only; the server repeats every check before it creates a
+ * definition.  Unknown catalogue input fails closed instead of being rendered as a text field.
+ */
+data class CatalogInstallCompatibility(val blockers: Set<CatalogInstallBlocker>) {
+    val canInstall: Boolean get() = blockers.isEmpty()
+}
+
+enum class CatalogInstallBlocker {
+    UnsupportedSchema,
+    UntrustedSource,
+    Withdrawn,
+    MissingCapability,
+    RuntimeUnavailable,
+    UnsupportedPlatform,
+    InvalidField,
+}
+
+fun CatalogTemplate.compatibility(
+    capabilities: Set<String>,
+    runtime: DeploymentRuntime?,
+): CatalogInstallCompatibility {
+    val blockers = buildSet {
+        if (schemaVersion != "1") add(CatalogInstallBlocker.UnsupportedSchema)
+        if (!trusted) add(CatalogInstallBlocker.UntrustedSource)
+        if (withdrawn) add(CatalogInstallBlocker.Withdrawn)
+        if (!requiredCapabilities.all(capabilities::contains)) add(CatalogInstallBlocker.MissingCapability)
+        if (!hasValidFields()) add(CatalogInstallBlocker.InvalidField)
+        if (runtime?.isAvailable != true) {
+            add(CatalogInstallBlocker.RuntimeUnavailable)
+        } else if (!supports(runtime)) {
+            add(CatalogInstallBlocker.UnsupportedPlatform)
+        }
+    }
+    return CatalogInstallCompatibility(blockers)
+}
+
+private fun CatalogTemplate.hasValidFields(): Boolean =
+    fields.map(CatalogField::id).toSet().size == fields.size && fields.all { field ->
+        field.id.isNotBlank() && field.type in setOf("text", "number", "enum", "secret") &&
+            (field.type != "enum" || field.options.isNotEmpty()) &&
+            (field.defaultValue == null || field.type != "secret") &&
+            (field.defaultValue == null || field.type != "enum" || field.defaultValue in field.options)
+    }
+
+private fun CatalogTemplate.supports(runtime: DeploymentRuntime): Boolean {
+    val operatingSystem = runtime.operatingSystem?.trim()?.lowercase() ?: return false
+    val architecture = when (runtime.architecture?.trim()?.lowercase()) {
+        "amd64", "x86_64", "x64" -> "amd64"
+        "arm64", "aarch64" -> "arm64"
+        "arm", "armv7l", "armhf", "arm/v7" -> "arm"
+        else -> return false
+    }
+    return "$operatingSystem/$architecture" in supportedPlatforms
+}
 
 /** A staged archive reference; its server-side expiry and bytes never become a deployment secret. */
 data class DeploymentArchive(val referenceId: String, val fileName: String, val length: Long, val expiresAtMillis: Long?)
@@ -171,9 +244,15 @@ internal object ApplicationDeploymentWire {
     fun catalog(payload: String): List<CatalogTemplate> = JSONArray(payload).objects { json ->
         CatalogTemplate(
             json.getString("schemaVersion"), json.getString("id"), json.getString("version"), json.getString("publisher"),
-            json.getString("purpose"), json.getString("description"), json.getJSONArray("requiredCapabilities").strings(),
+            json.getString("source"), json.getBoolean("trusted"), json.getString("purpose"), json.getString("description"),
+            json.getJSONArray("supportedPlatforms").strings(), json.getJSONArray("requiredCapabilities").strings(),
+            json.getJSONObject("minimumResources").let { resources -> CatalogResources(
+                if (resources.isNull("cpuCores")) null else resources.getDouble("cpuCores"),
+                if (resources.isNull("memoryBytes")) null else resources.getLong("memoryBytes"),
+                if (resources.isNull("pidsLimit")) null else resources.getInt("pidsLimit"),
+            ) },
             json.getJSONArray("fields").objects { field -> CatalogField(field.getString("id"), field.getString("type"), field.getBoolean("required"),
-                field.nullableText("defaultValue"), field.getJSONObject("labels").let { labels ->
+                field.nullableText("defaultValue"), field.getJSONArray("options").strings(), field.getJSONObject("labels").let { labels ->
                     mapOf("en" to labels.getString("en"), "zh" to labels.getString("zh"), "ja" to labels.getString("ja"))
                 }, field.nullableText("help")) },
             json.getJSONArray("volumes").objects { volume -> CatalogVolume(volume.getString("name"), volume.getString("containerPath")) },
@@ -203,6 +282,7 @@ internal object ApplicationDeploymentWire {
         json.getString("readinessLevel"), json.nullableInt("currentRevisionNumber"),
         json.nullableText("containerName"), json.getInt("containerPort"), json.nullableInt("hostPort"),
         json.getString("bindAddress"), json.nullableText("domain"), json.nullableText("driftProblemCode"),
+        json.nullableText("catalogTemplateId"), json.nullableText("catalogTemplateVersion"),
     )
 
     private fun operation(json: JSONObject) = DeploymentOperation(

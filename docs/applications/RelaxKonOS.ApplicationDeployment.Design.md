@@ -110,6 +110,12 @@ Goal §2 把「单服务 Compose 项目」列入第一阶段范围，实施清�
 
 表中所有路由都是**组内相对模式**（`*Pattern` 常量）。服务端一律用 `ApplicationsPattern` 等相对常量注册，客户端才用绝对常量（`Applications = Root + "/applications"`）拼接 URL：`MapGroup` 只做字符串拼接，组内传入绝对常量会得到前缀重复的路径并让客户端收到 404。详见 [`RelaxKonOS.Protocol.md`](../architecture/RelaxKonOS.Protocol.md) §5。
 
+### 3.2 用途模板目录契约
+
+`ApplicationCatalogTemplateDto` 是唯一的用途模板描述。它必须携带稳定 `id`、精确 `version`、发布者和 `source`，以及由服务端目录校验结果写入的 `trusted`。客户端只将 `trusted: true`、已知 `schemaVersion`、已知字段类型（`text`、`number`、`enum`、`secret`）、满足所需 capability 且与 Docker OS/架构相符的条目开放安装；这些检查只帮助用户，服务端在 `POST /catalog/install` 时仍按 ID/版本重新验证。目录字段不会携带脚本、Dockerfile、宿主路径或 UI 代码。
+
+安装成功后，`ApplicationDto` 和其不可变 `ApplicationRevisionDto` 都保留 `catalogTemplateId` 与 `catalogTemplateVersion`。后续目录刷新或模板撤回只影响新的安装选择，绝不修改、停止或替换已有实例；更新必须以一个明确的、可审计的后续操作进行。
+
 ### 3.2 权限
 
 | 权限 ID | 含义 |

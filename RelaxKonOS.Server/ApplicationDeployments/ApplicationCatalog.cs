@@ -34,7 +34,7 @@ internal static class ApplicationCatalog
             secret is null ? [] : [new("adminPassword", "secret", true, null, secret,
                 new("Administrator password", "管理员密码", "管理者パスワード"))]);
 
-        public ApplicationCatalogTemplateDto Describe() => new(SchemaVersion, Id, Version, "RelaxKonOS", "built-in", Purpose, Description,
+        public ApplicationCatalogTemplateDto Describe() => new(SchemaVersion, Id, Version, "RelaxKonOS", "built-in", true, Purpose, Description,
             ApplicationDeploymentValidation.SupportedPlatforms, ["server.application-deployments", "server.docker"],
             new(1, 512L * 1024 * 1024, 512), [.. Fields.Select(x => x.Describe())], Volumes, ContainerPort, "/",
             "Updates and removal retain managed data volumes. Installed instances are never changed by a catalogue refresh.");

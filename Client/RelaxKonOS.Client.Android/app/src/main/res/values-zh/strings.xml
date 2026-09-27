@@ -493,8 +493,17 @@
     <string name="catalog_title">从模板安装</string>
     <string name="catalog_note">模板由服务器验证。秘密字段不会写入草稿或摘要。</string>
     <string name="catalog_version">模板版本：%1$s</string>
+    <string name="catalog_source">发布者：%1$s · 来源：%2$s</string>
     <string name="catalog_access">访问方式：%1$s · 容器端口 %2$d</string>
+    <string name="catalog_resources">最低资源：%1$.1f CPU · %2$d MiB 内存</string>
     <string name="catalog_data">持久数据：%1$s</string>
-    <string name="catalog_unsupported">此模板需要更新的客户端或服务器能力，无法安装。</string>
+    <string name="catalog_instance_version">安装来源模板：%1$s v%2$s</string>
+    <string name="catalog_blocked_schema">此模板使用了当前应用不支持的 schema。</string>
+    <string name="catalog_blocked_trust">服务器尚未验证该模板来源。</string>
+    <string name="catalog_blocked_withdrawn">此模板已撤回，无法安装。</string>
+    <string name="catalog_blocked_capability">此服务器缺少模板所需的能力。</string>
+    <string name="catalog_blocked_runtime">容器运行时不可用，无法检查兼容性。</string>
+    <string name="catalog_blocked_platform">此模板不支持该服务器的操作系统或架构。</string>
+    <string name="catalog_blocked_field">此模板含有当前应用无法安全使用的字段类型或默认值。</string>
     <string name="catalog_install">安装</string>
 </resources>
