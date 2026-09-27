@@ -125,7 +125,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
             update {
                 copy(
                     hosts = if (succeeded) coordinator.hosts() else hosts,
-                    selectedHostId = if (succeeded && persistOnSuccess) target.hostId else selectedHostId,
+                    selectedHostId = if (succeeded && clearFormOnSuccess) target.hostId else selectedHostId,
                     pendingTarget = null, pendingPassword = "", verification = result, isVerifying = false,
                     formMode = if (succeeded && clearFormOnSuccess) ServerCenterFormMode.Add else formMode,
                     host = if (succeeded && clearFormOnSuccess) "" else host,

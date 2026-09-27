@@ -107,10 +107,25 @@
     <string name="ssh_files_image_unreadable">This image could not be decoded.</string>
     <string name="ssh_files_invalid_name">Use a non-empty file name without a path separator.</string>
     <string name="ssh_files_connection_failed">The SSH file operation failed. Check the password, connection and trusted host key.</string>
+    <string name="ssh_files_upload">Upload</string>
+    <string name="ssh_files_download">Download</string>
+    <string name="ssh_files_actions">File actions</string>
+    <string name="ssh_files_folder">Folder</string>
     <string name="ssh_workspace_title">SSH workspace</string>
     <string name="ssh_workspace_subtitle">%1$s</string>
     <string name="ssh_workspace_deploy">Deploy RelaxKonOS Server</string>
     <string name="ssh_workspace_deploy_unavailable">Deployment is not available in this Android build because no pinned launcher, verifier and signed release source have been packaged yet.</string>
+    <string name="ssh_workspace_deploy_draft">Review installation options before deployment assets are added.</string>
+    <string name="ssh_workspace_deploy_mode">Installation mode</string>
+    <string name="ssh_workspace_deploy_linux_system">Linux system service</string>
+    <string name="ssh_workspace_deploy_linux_user">Linux user service</string>
+    <string name="ssh_workspace_deploy_windows_system">Windows service</string>
+    <string name="ssh_workspace_deploy_network">Network profile</string>
+    <string name="ssh_workspace_deploy_loopback">Loopback only</string>
+    <string name="ssh_workspace_deploy_lan">LAN</string>
+    <string name="ssh_workspace_deploy_proxy">Reverse proxy</string>
+    <string name="ssh_workspace_deploy_port">Server port</string>
+    <string name="ssh_workspace_deploy_version">Version (optional)</string>
     <!--
       The saved-password state line. It is rendered beside the password field and reports only that a
       credential exists and what unlocks it; producing it never reads the password.
