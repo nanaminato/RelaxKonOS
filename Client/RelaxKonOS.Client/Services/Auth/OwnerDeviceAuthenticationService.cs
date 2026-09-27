@@ -47,11 +47,13 @@ public sealed class OwnerDeviceAuthenticationService(IRelaxKonOSClient client, I
         finally { CryptographicOperations.ZeroMemory(nonce); }
     }
 
-    public async Task<string> CreatePairingPayloadAsync(ServerConnectionIdentity identity, string accessToken, CancellationToken ct = default)
+    public async Task<string> CreatePairingPayloadAsync(ServerConnectionIdentity identity, string publicPairingUrl,
+        string accessToken, CancellationToken ct = default)
     {
+        var publicEndpoint = OwnerDevicePairingEndpointRules.Normalize(publicPairingUrl);
         var invitation = await client.CreateOwnerDeviceInvitationAsync(identity.EffectiveBaseUrl, accessToken, ct);
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(
-            new OwnerDevicePairingPayload(1, identity.EffectiveBaseUrl, invitation.Token, invitation.ExpiresAt), RelaxKonOSJsonOptions.Default)));
+            new OwnerDevicePairingPayload(1, publicEndpoint, invitation.Token, invitation.ExpiresAt), RelaxKonOSJsonOptions.Default)));
     }
 
     public async Task<LoginResponse> AcceptPairingPayloadAsync(string payload, string deviceName, string platform, string clientVersion,
@@ -84,10 +86,9 @@ public sealed class OwnerDeviceAuthenticationService(IRelaxKonOSClient client, I
         {
             var parsed = JsonSerializer.Deserialize<OwnerDevicePairingPayload>(Convert.FromBase64String(payload.Trim()), RelaxKonOSJsonOptions.Default);
             if (parsed is null || parsed.Version != 1 || string.IsNullOrWhiteSpace(parsed.Token)
-                || !Uri.TryCreate(parsed.ServerUrl, UriKind.Absolute, out var endpoint)
-                || endpoint.Scheme is not ("https" or "http") || parsed.ExpiresAt <= DateTimeOffset.UtcNow)
+                || parsed.ExpiresAt <= DateTimeOffset.UtcNow)
                 throw new FormatException();
-            return parsed;
+            return parsed with { ServerUrl = OwnerDevicePairingEndpointRules.Normalize(parsed.ServerUrl) };
         }
         catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException)
         {

@@ -149,12 +149,12 @@ public sealed class AuthSession : IAuthSession
         catch { ResetAfterLoginFailure(); throw; }
     }
 
-    public async Task<string> CreateOwnerDevicePairingPayloadAsync(CancellationToken ct = default)
+    public async Task<string> CreateOwnerDevicePairingPayloadAsync(string publicPairingUrl, CancellationToken ct = default)
     {
         var identity = _identity ?? throw new InvalidOperationException("Sign in before pairing another device.");
         var token = await GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct)
             ?? throw new InvalidOperationException("The current session has expired.");
-        return await _ownerDevices.CreatePairingPayloadAsync(identity, token, ct);
+        return await _ownerDevices.CreatePairingPayloadAsync(identity, publicPairingUrl, token, ct);
     }
 
     public async Task<LoginResponse> AcceptOwnerDevicePairingAsync(string payload, string deviceName, string platform,

@@ -15,11 +15,13 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
     private readonly AccountSecurityClient client;
     private readonly IAuthSession session;
     private readonly IRememberedSessionStore remembered;
+    private readonly IOwnerDevicePairingEndpointStore pairingEndpoints;
     private CancellationTokenSource lifetime = new();
     private bool disposed;
-    public AccountSecurityPageViewModel(ShellSettings settings, AccountSecurityClient client, IAuthSession session, IRememberedSessionStore remembered) : base(settings, null)
+    public AccountSecurityPageViewModel(ShellSettings settings, AccountSecurityClient client, IAuthSession session,
+        IRememberedSessionStore remembered, IOwnerDevicePairingEndpointStore pairingEndpoints) : base(settings, null)
     {
-        this.client = client; this.session = session; this.remembered = remembered;
+        this.client = client; this.session = session; this.remembered = remembered; this.pairingEndpoints = pairingEndpoints;
         session.StateChanged += OnSessionChanged;
     }
     public override string Route => "account-security";
@@ -30,6 +32,7 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
     [ObservableProperty] private bool busy;
     [ObservableProperty] private string pairingCode = string.Empty;
     [ObservableProperty] private Bitmap? pairingQrCode;
+    [ObservableProperty] private string pairingServerUrl = string.Empty;
     public string SystemUsername => Configuration?.SystemUsername ?? session.CurrentUser?.Username ?? "—";
     public string Alias => Configuration is null
         ? T("settings.account.not_loaded", "Not loaded")
@@ -82,7 +85,9 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
         Busy = true;
         try
         {
-            var payload = await session.CreateOwnerDevicePairingPayloadAsync(ct);
+            if (session.ServiceId is not { } serviceId) throw new InvalidOperationException("Not connected.");
+            await pairingEndpoints.SaveAsync(serviceId, PairingServerUrl, ct);
+            var payload = await session.CreateOwnerDevicePairingPayloadAsync(PairingServerUrl, ct);
             using var generator = new QRCodeGenerator();
             using var data = generator.CreateQrCode(payload, QRCodeGenerator.ECCLevel.Q);
             using var qr = new PngByteQRCode(data);
@@ -95,6 +100,7 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
             Status = Ref("settings.account.owner_device_pairing_ready", "Pairing QR code is ready. It expires in 10 minutes and can be used once.");
         }
         catch (OperationCanceledException) { }
+        catch (ArgumentException) { Status = Ref("settings.account.owner_device_pairing_address_invalid", "Enter a reachable LAN or public HTTP(S) address; localhost cannot be used for another device."); }
         catch (Exception) { Status = Ref("settings.account.owner_device_pairing_failed", "Could not create a pairing code. Confirm that this session was signed in with a paired owner device."); }
         finally { Busy = false; }
     }
@@ -153,7 +159,18 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
         OnPropertyChanged(nameof(CanRestore));
         OnPropertyChanged(nameof(CanCreateOwnerDevicePairing));
         CreateOwnerDevicePairingCommand.NotifyCanExecuteChanged();
+        _ = LoadPairingServerUrlAsync();
         if (session.State == AuthSessionState.Authenticated) _ = LoadAsync();
     });
+    private async Task LoadPairingServerUrlAsync()
+    {
+        try
+        {
+            PairingServerUrl = session.ServiceId is { } serviceId
+                ? await pairingEndpoints.GetAsync(serviceId, lifetime.Token) ?? string.Empty
+                : string.Empty;
+        }
+        catch (OperationCanceledException) { }
+    }
     public void Dispose() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); session.StateChanged -= OnSessionChanged; PairingQrCode?.Dispose(); }
 }

@@ -94,6 +94,7 @@ public static class Bootstrapper
             .AddRelaxKonOSAuthentication();
         services.AddSingleton<IRememberedSessionStore, RememberedSessionStore>();
         services.AddSingleton<IOwnerDeviceKeyStore, OwnerDeviceKeyStore>();
+        services.AddSingleton<IOwnerDevicePairingEndpointStore, OwnerDevicePairingEndpointStore>();
         services.AddSingleton<OwnerDeviceAuthenticationService>();
         services.AddSingleton<IAuthSession, AuthSession>();
         services.AddHttpClient<AccountSecurityClient>()

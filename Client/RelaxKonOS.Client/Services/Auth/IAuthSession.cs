@@ -60,7 +60,7 @@ public interface IAuthSession
         CancellationToken ct = default);
 
     /// <summary>Creates a short-lived pairing payload for a second Windows/Linux client to scan or paste.</summary>
-    Task<string> CreateOwnerDevicePairingPayloadAsync(CancellationToken ct = default);
+    Task<string> CreateOwnerDevicePairingPayloadAsync(string publicPairingUrl, CancellationToken ct = default);
 
     /// <summary>Enrolls this device from a scanned/pasted pairing payload, then signs in with its new key.</summary>
     Task<LoginResponse> AcceptOwnerDevicePairingAsync(string payload, string deviceName, string platform,
