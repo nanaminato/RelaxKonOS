@@ -6,18 +6,22 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.relaxkonos.mobile.AppContainer
@@ -520,28 +526,37 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
 
 @Composable private fun <T> SimpleList(title: String, result: ApiResult<List<T>>?, text: (T) -> String) = SectionCard(title) { when (result) { is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_resources)) else result.value.forEach { Text(text(it)) }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) } }
 
-@Composable @OptIn(ExperimentalMaterial3Api::class) private fun DockerComposer(
+@Composable private fun DockerComposer(
     initialYaml: String, preview: DockerStackPreview?, busy: Boolean,
     onPreview: (String, String) -> Unit, onClearPreview: () -> Unit,
     onDismiss: () -> Unit, onDeploy: (String, String) -> Unit,
 ) {
     var name by mutableStateOf(""); var yaml by mutableStateOf(initialYaml)
-    ModalBottomSheet(onDismissRequest = onDismiss) { Column(Modifier.fillMaxWidth().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-        Text(stringResource(R.string.docker_new_stack), style = MaterialTheme.typography.headlineSmall); Text(stringResource(R.string.docker_compose_note), style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(name, { name = it; onClearPreview() }, label = { Text(stringResource(R.string.docker_stack_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(yaml, { yaml = it; onClearPreview() }, label = { Text(stringResource(R.string.docker_compose_yaml)) }, minLines = 8, modifier = Modifier.fillMaxWidth())
-        // What the server parsed, shown before anything is applied. It is not a prediction: the preview
-        // is the Composer's own answer, and the deployment sends back the version it returned.
-        preview?.let { value ->
-            Text(stringResource(R.string.docker_stack_preview_version, value.definitionVersion.take(12)), style = MaterialTheme.typography.bodySmall)
-            value.services.forEach { service -> Text("· ${service.service} · ${service.image}", style = MaterialTheme.typography.bodySmall) }
-            if (value.volumes.isNotEmpty()) Text(stringResource(R.string.docker_stack_preview_volumes, value.volumes.joinToString(", ")), style = MaterialTheme.typography.bodySmall)
-            if (value.networks.isNotEmpty()) Text(stringResource(R.string.docker_stack_preview_networks, value.networks.joinToString(", ")), style = MaterialTheme.typography.bodySmall)
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize()) {
+                ScreenHeader(stringResource(R.string.docker_new_stack), onBack = if (!busy) onDismiss else null,
+                    modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md))
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    Text(stringResource(R.string.docker_compose_note), style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(name, { name = it; onClearPreview() }, label = { Text(stringResource(R.string.docker_stack_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(yaml, { yaml = it; onClearPreview() }, label = { Text(stringResource(R.string.docker_compose_yaml)) }, minLines = 8, modifier = Modifier.fillMaxWidth())
+                    // What the server parsed, shown before anything is applied. It is not a prediction: the preview
+                    // is the Composer's own answer, and the deployment sends back the version it returned.
+                    preview?.let { value ->
+                        Text(stringResource(R.string.docker_stack_preview_version, value.definitionVersion.take(12)), style = MaterialTheme.typography.bodySmall)
+                        value.services.forEach { service -> Text("· ${service.service} · ${service.image}", style = MaterialTheme.typography.bodySmall) }
+                        if (value.volumes.isNotEmpty()) Text(stringResource(R.string.docker_stack_preview_volumes, value.volumes.joinToString(", ")), style = MaterialTheme.typography.bodySmall)
+                        if (value.networks.isNotEmpty()) Text(stringResource(R.string.docker_stack_preview_networks, value.networks.joinToString(", ")), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                HorizontalDivider()
+                FlowRow(Modifier.fillMaxWidth().padding(Spacing.lg), horizontalArrangement = Arrangement.End, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.common_cancel)) }
+                    TextButton(onClick = { onPreview(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_preview)) }
+                    Button(onClick = { onDeploy(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_deploy)) }
+                }
+            }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
-            TextButton(onClick = { onPreview(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_preview)) }
-            Button(onClick = { onDeploy(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_deploy)) }
-        }
-    } }
+    }
 }

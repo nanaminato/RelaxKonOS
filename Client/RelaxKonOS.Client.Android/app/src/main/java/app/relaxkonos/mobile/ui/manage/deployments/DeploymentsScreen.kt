@@ -144,12 +144,27 @@ private fun CatalogInstallDialog(
     val validValues = template?.fields?.all { field ->
         field.type != "number" || values[field.id].isNullOrBlank() || values[field.id]?.toDoubleOrNull() != null
     } == true
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.lg).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            Text(stringResource(R.string.catalog_title), style = MaterialTheme.typography.headlineSmall)
+    Dialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize()) {
+                ScreenHeader(
+                    title = stringResource(R.string.catalog_title),
+                    onBack = if (!submitting) onDismiss else null,
+                    modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                )
+                Column(
+                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                ) {
             Text(stringResource(R.string.catalog_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            templates.forEach { option -> FilterChip(selected = option.id == selectedId, onClick = { selectedId = option.id }, label = { Text(option.purpose) }) }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                templates.forEach { option ->
+                    FilterChip(selected = option.id == selectedId, onClick = { selectedId = option.id }, label = { Text(option.purpose) })
+                }
+            }
             template?.let { selected ->
                 Text(selected.description)
                 Text(stringResource(R.string.catalog_version, selected.version), style = MaterialTheme.typography.bodySmall)
@@ -161,7 +176,8 @@ private fun CatalogInstallDialog(
                 compatibility?.blockers?.forEach { blocker ->
                     Text(catalogBlockerText(blocker), color = MaterialTheme.colorScheme.error)
                 }
-                OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true)
+                OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth())
                 selected.fields.forEach { field ->
                     if (field.type == "enum") {
                         Text(field.label(), style = MaterialTheme.typography.labelLarge)
@@ -176,14 +192,24 @@ private fun CatalogInstallDialog(
                             label = { Text(field.label()) }, supportingText = field.help?.let { { Text(it) } }, singleLine = true,
                             isError = field.type == "number" && values[field.id].isNullOrBlank().not() && values[field.id]?.toDoubleOrNull() == null,
                             keyboardOptions = if (field.type == "number") KeyboardOptions(keyboardType = KeyboardType.Decimal) else KeyboardOptions.Default,
-                            visualTransformation = if (field.type == "secret") PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
+                            visualTransformation = if (field.type == "secret") PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                            modifier = Modifier.fillMaxWidth())
                     }
                 }
                 Text(selected.maintenanceNotes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            }
+                }
+                HorizontalDivider()
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+                    horizontalArrangement = Arrangement.End,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) {
                     TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
-                    Button(onClick = { onInstall(selected, name, selected.fields.mapNotNull { field -> values[field.id]?.let { CatalogFieldValue(field.id, it) } }) },
-                        enabled = supported && complete && validValues && name.isNotBlank() && !submitting) { Text(stringResource(R.string.catalog_install)) }
+                    template?.let { selected ->
+                        Button(onClick = { onInstall(selected, name, selected.fields.mapNotNull { field -> values[field.id]?.let { CatalogFieldValue(field.id, it) } }) },
+                            enabled = supported && complete && validValues && name.isNotBlank() && !submitting) { Text(stringResource(R.string.catalog_install)) }
+                    }
                 }
             }
         }
@@ -203,17 +229,26 @@ private fun DeploymentCreateDialog(
     val form = remember(templates) { DeploymentCreateForm(templates) }
     var sourceMenuExpanded by remember { mutableStateOf(false) }
     var showServerArchivePicker by remember { mutableStateOf(false) }
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = { if (!submitting) onDismiss() },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
-        Column(
-            Modifier.fillMaxWidth()
-                .padding(horizontal = Spacing.lg)
-                .padding(bottom = Spacing.lg)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md),
-        ) {
-            Text(stringResource(R.string.deployments_create_title), style = MaterialTheme.typography.headlineSmall)
+        Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize()) {
+                ScreenHeader(
+                    title = stringResource(R.string.deployments_create_title),
+                    onBack = onDismiss,
+                    modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                )
+                Column(
+                    Modifier.weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                ) {
             Text(
                 stringResource(R.string.deployments_create_note),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -325,7 +360,10 @@ private fun DeploymentCreateDialog(
                         visualTransformation = if (form.configurationSecret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Row {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                    ) {
                         Checkbox(checked = form.configurationSecret, onCheckedChange = { form.configurationSecret = it })
                         Text(stringResource(R.string.deployments_configuration_secret))
                         TextButton(onClick = form::addConfiguration, enabled = form.configurationName.isNotBlank()) { Text(stringResource(R.string.deployments_configuration_add)) }
@@ -339,24 +377,31 @@ private fun DeploymentCreateDialog(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
-                if (form.isArchive) {
-                    OutlinedButton(
-                        onClick = { showServerArchivePicker = true },
+                }
+                HorizontalDivider()
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+                    horizontalArrangement = Arrangement.End,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) {
+                    TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
+                    if (form.isArchive) {
+                        OutlinedButton(
+                            onClick = { showServerArchivePicker = true },
+                            enabled = form.canSubmit && !submitting,
+                        ) {
+                            Text(stringResource(R.string.deployments_choose_server_archive))
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            if (form.isArchive) onArchiveSubmit(form.archiveDefinition()!!)
+                            else onImageSubmit(form.name.trim(), form.image.trim(), form.parsedPort!!, form.imageConfiguration())
+                        },
                         enabled = form.canSubmit && !submitting,
                     ) {
-                        Text(stringResource(R.string.deployments_choose_server_archive))
+                        Text(stringResource(if (form.isArchive) R.string.deployments_choose_archive else R.string.deployments_create_and_deploy))
                     }
-                }
-                Button(
-                    onClick = {
-                        if (form.isArchive) onArchiveSubmit(form.archiveDefinition()!!)
-                        else onImageSubmit(form.name.trim(), form.image.trim(), form.parsedPort!!, form.imageConfiguration())
-                    },
-                    enabled = form.canSubmit && !submitting,
-                ) {
-                    Text(stringResource(if (form.isArchive) R.string.deployments_choose_archive else R.string.deployments_create_and_deploy))
                 }
             }
         }
