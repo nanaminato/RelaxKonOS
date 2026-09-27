@@ -139,6 +139,10 @@ public partial class LoginViewModel : ObservableObject
     private string _ownerDeviceKeyPassphrase = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OwnerDevicePassphraseInputVisible))]
+    private bool _ownerDevicePassphraseRequired;
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AcceptOwnerDevicePairingCommand))]
     private string _ownerDevicePairingCode = string.Empty;
 
@@ -222,7 +226,7 @@ public partial class LoginViewModel : ObservableObject
     public bool StandardAuthenticationVisible => !ShowOwnerDeviceOptions;
     public bool PasswordAuthenticationVisible => StandardAuthenticationVisible && ShowOptions;
     public bool WindowsOwnerDeviceBootstrapAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
-    public bool OwnerDevicePassphraseAvailable => OperatingSystem.IsLinux();
+    public bool OwnerDevicePassphraseInputVisible => OperatingSystem.IsLinux() && OwnerDevicePassphraseRequired;
     public string OwnerDeviceOptionsToggleText => T(ShowOwnerDeviceOptions ? "login.owner_device.options.hide" : "login.owner_device.options.show",
         ShowOwnerDeviceOptions ? "Hide paired-device options" : "Use a paired device key");
     public string OwnerDeviceTitle => T("login.owner_device.title", "Paired device");
@@ -452,6 +456,7 @@ public partial class LoginViewModel : ObservableObject
         }
         catch (OwnerDeviceKeyPassphraseRequiredException)
         {
+            OwnerDevicePassphraseRequired = true;
             ErrorMessage = T("login.owner_device.passphrase_required", "This Linux client has no secure keyring. Enter a device key passphrase of at least 12 characters.");
             HasError = true;
             StatusMessage = string.Empty;
@@ -485,6 +490,7 @@ public partial class LoginViewModel : ObservableObject
         }
         catch (OwnerDeviceKeyPassphraseRequiredException)
         {
+            OwnerDevicePassphraseRequired = true;
             ErrorMessage = T("login.owner_device.passphrase_required", "This Linux client has no secure keyring. Enter a device key passphrase of at least 12 characters.");
             HasError = true;
             StatusMessage = string.Empty;
@@ -609,7 +615,14 @@ public partial class LoginViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleOwnerDeviceOptions()
-        => ShowOwnerDeviceOptions = !ShowOwnerDeviceOptions;
+    {
+        ShowOwnerDeviceOptions = !ShowOwnerDeviceOptions;
+        if (!ShowOwnerDeviceOptions)
+        {
+            OwnerDevicePassphraseRequired = false;
+            OwnerDeviceKeyPassphrase = string.Empty;
+        }
+    }
 
     [RelayCommand]
     private void TogglePasswordVisibility()

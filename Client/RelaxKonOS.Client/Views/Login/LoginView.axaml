@@ -175,8 +175,8 @@
                             <Button Classes="connect-button" Content="{Binding ConnectOwnerDeviceText}"
                                     Command="{Binding ConnectOwnerDeviceCommand}" />
                         </WrapPanel>
-                        <StackPanel IsVisible="{Binding OwnerDevicePassphraseAvailable}" Spacing="4">
-                            <TextBox Classes="connection-input" Text="{Binding OwnerDeviceKeyPassphrase}" PasswordChar="●" MaxLength="256"
+                        <StackPanel IsVisible="{Binding OwnerDevicePassphraseInputVisible}" Spacing="4">
+                            <TextBox Classes="connection-input" Text="{Binding OwnerDeviceKeyPassphrase}" PasswordChar="•" MaxLength="256"
                                      PlaceholderText="{Binding OwnerDeviceKeyPassphraseText}" />
                             <TextBlock Text="{Binding OwnerDeviceKeyPassphraseHint}" TextWrapping="Wrap" FontSize="12"
                                        Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.72" />
