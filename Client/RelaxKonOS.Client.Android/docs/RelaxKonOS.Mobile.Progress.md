@@ -417,10 +417,53 @@ e: ServerCenterScreen.kt:10:43 Cannot access 'val RowColumnParentData?.weight: F
 这与仓库 API 演进策略一致——不留兼容垫片，直接把当前接口用对。该文件是 SSH 合并提交 `f0696d5f` 带进来的，
 与启动图标改动无关。
 
+## 构建修复：模板平台文案的未转义单引号与 Docker 页编译（2026-09-27）
+
+`903fa86b`（Docker 管理入口）带进来两类阻断，`:app:assembleDebug` 无法通过。
+
+**一、资源合并失败**：`app/src/main/res/values/strings.xml` 的 `catalog_blocked_platform` 里 `this server's` 用了
+未转义的单引号。`mergeDebugResources` 把同一个字符串的解析失败报成
+`Failed to flatten XML for resource 'catalog_blocked_platform' with error: Invalid unicode escape sequence in string`
+——该措辞指错了方向：字符串里没有任何 `\u`，`aapt2` 的真实诊断是 `unescaped apostrophe in string`。
+绕开 Gradle 直接编译资源能看到最直白的报错，也是这类问题的首选定位手段：
+
+```bash
+aapt2 compile --dir app/src/main/res -o <已存在的目录>/res.zip   # build-tools 36.0.0
+```
+
+修法是写成 `server\'s`（与 Material3 自带资源里的 `%1$d o\'clock` 一致）。三语文案里只有英文这一处，
+中文（`此模板不支持该服务器的操作系统或架构。`）与日文不受影响。
+
+**二、Kotlin 编译失败**（`ui/manage/docker/DockerScreen.kt`），两类错误：
+
+1. 第 14 行 `import androidx.compose.foundation.layout.weight` —— 与 2026-09-26 `ServerCenterScreen.kt`
+   完全同一个坑：`Modifier.weight()` 是 `RowScope` / `ColumnScope` 的作用域成员，这一行导入解析到
+   `RowColumnParentData` 的 internal 扩展属性。第 180 行的调用本来就在 `Column { }` 内，删掉导入即可。
+   **同一个坑已出现两次**，新增界面不要再写这行导入。
+2. 第 169、170 行把 `stringResource(...)` 写在 `DockerStacks` / `DockerContainers` 的**非 composable** 回调
+   （`(DockerStack) -> Unit`、`(DockerContainer, String) -> Unit`）里，报
+   `@Composable invocations can only happen from the context of a @Composable function`——确认对话框文案不可能
+   在点击处生成。修法与 `DeploymentsScreen` 既有做法一致：状态里只存**领域对象**（新增私有类型
+   `DockerRemoval.Stack(name)` / `DockerRemoval.Container(name)`），文案交给 `removalMessage()` 在 `AlertDialog`
+   的 composable 作用域里解析。
+
+校验（2026-09-27）：
+
+- `:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 BUILD SUCCESSFUL；**41 个测试类、401 个用例，
+  0 失败 / 0 错误 / 0 跳过**；产物 `app/build/outputs/apk/debug/app-debug.apk` 19,410,463 字节。
+- 三份 `strings.xml` 均为 **511 键**且键集一致、无重复；`aapt2 compile --dir app/src/main/res` 零错误。
+- 环境（本机现状）：Gradle 9.7.1（`D:\environments\Android\gradle-9.7.1`）、JDK 21（`D:\environments\JDK\jdk-21`）、
+  工作树的 `local.properties` 与 `gradle-wrapper.properties` 的 `distributionUrl` 都已指向 `D:` 下实际存在的
+  路径（相对 2026-09-26 的记录已改变，不需要再临时改写路径）；`GRADLE_USER_HOME` 用仓库内
+  `.workbuddy/gradle-home`，避开可能在跑的 daemon 对 `D:\environments\Android\.gradle` 的锁。
+- **未做真机验证**：Docker 页的资源列表、Stack 服务状态、容器/Stack 启停与删除确认、Compose 导入与部署流程。
+
 ## 已知限制
 
 - 连接保险箱的密码被服务端拒绝时**不**删除（§7.3）。代价是：用户已在服务端改密后，本机那条旧密码会一直失败，直到手动输入新密码并在成功后保存覆盖它。这是有意选择——删除只在用户显式「忘记密码」或「删除登录记录」时发生。
-- 终端、Docker 管理与守护进程管理尚未实现，对应入口不会出现。应用部署已有只读入口，创建、启停、回滚和包上传尚未实现。
+- 终端与守护进程管理尚未实现，对应入口不会出现。**Docker 管理**（`manage/docker`，`903fa86b` 引入）集合状态、
+  Stack 服务、容器/镜像/卷/网络列表与容器/Stack 启停删除（删除需确认）于一体；**应用部署**已有只读详情与创建、
+  启停、回滚写操作。两者都按服务端能力门控，且均未做真机验收。
 - 连接保险箱在 `WEAK_ONLY` 设备上只能用**设备凭据**（锁屏 PIN/图案/密码）解封：Android Keystore 不存在
   "弱生物识别"标志位，`setUserAuthenticationParameters` 只接受 `AUTH_BIOMETRIC_STRONG` 与 `AUTH_DEVICE_CREDENTIAL`。
   仅有弱生物识别且未设置锁屏的设备无法创建窗口密钥，此时降级为输入密码，且**不删除**任何已存记录。

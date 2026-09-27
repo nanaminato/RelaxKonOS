@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -145,6 +144,19 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
     }
 }
 
+// A destructive action awaiting confirmation. The question itself is resolved inside the dialog:
+// the click handlers that raise it are not composable contexts.
+private sealed interface DockerRemoval {
+    data class Stack(val name: String) : DockerRemoval
+    data class Container(val name: String) : DockerRemoval
+}
+
+@Composable
+private fun removalMessage(removal: DockerRemoval): String = when (removal) {
+    is DockerRemoval.Stack -> stringResource(R.string.docker_confirm_remove_stack, removal.name)
+    is DockerRemoval.Container -> stringResource(R.string.docker_confirm_remove_container, removal.name)
+}
+
 @Composable
 fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
     val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
@@ -152,7 +164,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
     var composer by mutableStateOf(false)
     var composeDraft by mutableStateOf("services:\n  app:\n    image: nginx:alpine\n")
-    var destructive by mutableStateOf<Pair<String, () -> Unit>?>(null)
+    var destructive by mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) viewModel.importCompose(uri) { yaml -> composeDraft = yaml; composer = true } }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(
@@ -166,15 +178,15 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         DockerStatusCard(state.status)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.weight(1f)) {
-            item { DockerStacks(state, viewModel, { destructive = stringResource(R.string.docker_confirm_remove_stack, it.name) to { viewModel.stackAction(it, "delete") } }) }
-            item { DockerContainers(state.containers, { item, action -> if (action == "delete") destructive = stringResource(R.string.docker_confirm_remove_container, item.names) to { viewModel.containerAction(item, action) } else viewModel.containerAction(item, action) }) }
+            item { DockerStacks(state, viewModel, { destructive = DockerRemoval.Stack(it.name) to { viewModel.stackAction(it, "delete") } }) }
+            item { DockerContainers(state.containers, { item, action -> if (action == "delete") destructive = DockerRemoval.Container(item.names) to { viewModel.containerAction(item, action) } else viewModel.containerAction(item, action) }) }
             item { SimpleList(stringResource(R.string.docker_images), state.images) { "${it.repository}:${it.tag} · ${it.size}" } }
             item { SimpleList(stringResource(R.string.docker_volumes), state.volumes) { "${it.name} · ${it.driver}" } }
             item { SimpleList(stringResource(R.string.docker_networks), state.networks) { "${it.name} · ${it.driver}" } }
         }
     }
     if (composer) DockerComposer(initialYaml = composeDraft, onDismiss = { composer = false }, onDeploy = { name, yaml -> viewModel.deploy(name, yaml); composer = false })
-    destructive?.let { (message, confirm) -> AlertDialog(onDismissRequest = { destructive = null }, title = { Text(stringResource(R.string.docker_confirm_title)) }, text = { Text(message) },
+    destructive?.let { (removal, confirm) -> AlertDialog(onDismissRequest = { destructive = null }, title = { Text(stringResource(R.string.docker_confirm_title)) }, text = { Text(removalMessage(removal)) },
         confirmButton = { Button(onClick = { destructive = null; confirm() }) { Text(stringResource(R.string.common_delete)) } }, dismissButton = { TextButton(onClick = { destructive = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }
 

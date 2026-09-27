@@ -540,7 +540,7 @@
     <string name="catalog_blocked_withdrawn">This template has been withdrawn and cannot be installed.</string>
     <string name="catalog_blocked_capability">This server does not provide every capability required by this template.</string>
     <string name="catalog_blocked_runtime">The container runtime is unavailable, so compatibility cannot be checked.</string>
-    <string name="catalog_blocked_platform">This template does not support this server's operating system or architecture.</string>
+    <string name="catalog_blocked_platform">This template does not support this server\'s operating system or architecture.</string>
     <string name="catalog_blocked_field">This template contains a field type or default this app cannot safely use.</string>
     <string name="catalog_install">Install</string>
 
