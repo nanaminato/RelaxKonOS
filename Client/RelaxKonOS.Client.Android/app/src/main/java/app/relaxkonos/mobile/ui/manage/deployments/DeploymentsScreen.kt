@@ -1,6 +1,5 @@
 package app.relaxkonos.mobile.ui.manage.deployments
 
-import android.app.Application
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,14 +15,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.DeploymentBrowser
@@ -32,20 +25,6 @@ import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
-
-class DeploymentsViewModel(application: Application) : AndroidViewModel(application) {
-    private val container = getApplication<RelaxKonApplication>().container
-    val browser = DeploymentBrowser(container.deployments, container.session, viewModelScope)
-
-    fun createArchive(uri: Uri, definition: ArchiveDeploymentDefinition) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val document = container.uploadDocuments.open(uri.toString())
-            withContext(Dispatchers.Main.immediate) {
-                if (document == null) browser.archiveUnavailable() else browser.createArchive(definition, document)
-            }
-        }
-    }
-}
 
 @Composable
 fun DeploymentsScreen(
@@ -134,50 +113,7 @@ private fun DeploymentCreateDialog(
     onImageSubmit: (String, String, Int, List<DeploymentConfigEntry>) -> Unit,
     onArchiveSubmit: (ArchiveDeploymentDefinition) -> Unit,
 ) {
-    var sourceKind by remember(templates) { mutableStateOf(templates.firstOrNull()?.sourceKind.orEmpty()) }
-    var name by remember { mutableStateOf("") }
-    var image by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf(templates.firstOrNull()?.defaultContainerPort?.toString() ?: "8080") }
-    var workload by remember { mutableStateOf("Web") }
-    var baseImage by remember { mutableStateOf("") }
-    var runtimeVersion by remember { mutableStateOf("") }
-    var programEntry by remember { mutableStateOf("") }
-    var selfContained by remember { mutableStateOf(false) }
-    val configuration = remember { mutableStateListOf<DeploymentConfigEntry>() }
-    var configurationName by remember { mutableStateOf("") }
-    var configurationValue by remember { mutableStateOf("") }
-    var configurationSecret by remember { mutableStateOf(false) }
-    val template = templates.firstOrNull { it.sourceKind == sourceKind }
-    LaunchedEffect(template?.sourceKind) {
-        port = template?.defaultContainerPort?.toString() ?: "8080"
-        baseImage = template?.defaultBaseImage.orEmpty()
-        runtimeVersion = ""
-        programEntry = ""
-        selfContained = false
-    }
-    val parsedPort = port.toIntOrNull()?.takeIf { it in 1..65535 }
-    val archive = template?.requiresArchive == true
-    val valid = name.isNotBlank() && parsedPort != null && when {
-        template == null -> false
-        template.requiresImageReference -> image.isNotBlank()
-        template.sourceKind == "PythonProject" -> programEntry.isNotBlank()
-        else -> true
-    }
-    val archiveDefinition = template?.let {
-        ArchiveDeploymentDefinition(
-            sourceKind = it.sourceKind,
-            name = name.trim(),
-            containerPort = parsedPort ?: it.defaultContainerPort,
-            workloadKind = workload,
-            readinessLevel = if (workload == "Web") "Http" else "Process",
-            healthCheckPath = if (workload == "Web") "/" else null,
-            baseImage = baseImage.trim().ifBlank { null },
-            runtimeVersion = runtimeVersion.trim().ifBlank { null },
-            programEntry = programEntry.trim().ifBlank { null },
-            selfContained = selfContained,
-            configuration = configuration.toList(),
-        )
-    }
+    val form = remember(templates) { DeploymentCreateForm(templates) }
     ModalBottomSheet(
         onDismissRequest = { if (!submitting) onDismiss() },
     ) {
@@ -202,8 +138,8 @@ private fun DeploymentCreateDialog(
                     Text(stringResource(R.string.deployments_source), style = MaterialTheme.typography.labelLarge)
                     templates.forEach { option ->
                         FilterChip(
-                            selected = sourceKind == option.sourceKind,
-                            onClick = { sourceKind = option.sourceKind },
+                            selected = form.sourceKind == option.sourceKind,
+                            onClick = { form.selectSource(option.sourceKind) },
                             label = { Text(label(option.sourceKind)) },
                         )
                     }
@@ -211,57 +147,51 @@ private fun DeploymentCreateDialog(
             }
             Surface(shape = MaterialTheme.shapes.medium, tonalElevation = Spacing.xs) {
                 Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true)
-                    if (template?.requiresImageReference == true) {
-                        OutlinedTextField(image, { image = it }, label = { Text(stringResource(R.string.deployments_image_reference)) }, singleLine = true)
+                    OutlinedTextField(form.name, { form.name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true)
+                    if (form.template?.requiresImageReference == true) {
+                        OutlinedTextField(form.image, { form.image = it }, label = { Text(stringResource(R.string.deployments_image_reference)) }, singleLine = true)
                     }
                     OutlinedTextField(
-                        port, { port = it }, label = { Text(stringResource(R.string.deployments_container_port)) }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = port.isNotEmpty() && parsedPort == null,
+                        form.port, { form.port = it }, label = { Text(stringResource(R.string.deployments_container_port)) }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = form.port.isNotEmpty() && form.parsedPort == null,
                     )
-                    if (archive) {
-                        OutlinedTextField(baseImage, { baseImage = it }, label = { Text(stringResource(R.string.deployments_base_image)) }, singleLine = true)
-                        if (template?.sourceKind in setOf("JavaJar", "DotNetPublish", "PythonProject")) {
-                            OutlinedTextField(runtimeVersion, { runtimeVersion = it }, label = { Text(stringResource(R.string.deployments_runtime_version)) }, singleLine = true)
+                    if (form.isArchive) {
+                        OutlinedTextField(form.baseImage, { form.baseImage = it }, label = { Text(stringResource(R.string.deployments_base_image)) }, singleLine = true)
+                        if (form.template?.sourceKind in setOf("JavaJar", "DotNetPublish", "PythonProject")) {
+                            OutlinedTextField(form.runtimeVersion, { form.runtimeVersion = it }, label = { Text(stringResource(R.string.deployments_runtime_version)) }, singleLine = true)
                         }
-                        if (template?.sourceKind == "PythonProject") {
-                            OutlinedTextField(programEntry, { programEntry = it }, label = { Text(stringResource(R.string.deployments_python_entry)) }, singleLine = true)
+                        if (form.template?.sourceKind == "PythonProject") {
+                            OutlinedTextField(form.programEntry, { form.programEntry = it }, label = { Text(stringResource(R.string.deployments_python_entry)) }, singleLine = true)
                         }
-                        if (template?.supportsSelfContained == true) {
+                        if (form.template?.supportsSelfContained == true) {
                             Row {
-                                Checkbox(checked = selfContained, onCheckedChange = { selfContained = it })
+                                Checkbox(checked = form.selfContained, onCheckedChange = { form.selfContained = it })
                                 Text(stringResource(R.string.deployments_self_contained))
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            FilterChip(selected = workload == "Web", onClick = { workload = "Web" }, label = { Text(stringResource(R.string.deployment_web)) })
-                            FilterChip(selected = workload == "Worker", onClick = { workload = "Worker" }, label = { Text(stringResource(R.string.deployment_worker)) })
+                            FilterChip(selected = form.workload == "Web", onClick = { form.workload = "Web" }, label = { Text(stringResource(R.string.deployment_web)) })
+                            FilterChip(selected = form.workload == "Worker", onClick = { form.workload = "Worker" }, label = { Text(stringResource(R.string.deployment_worker)) })
                         }
                     }
                     Text(stringResource(R.string.deployments_configuration), style = MaterialTheme.typography.titleSmall)
-                    configuration.forEach { entry ->
+                    form.configuration.forEach { entry ->
                         Text(if (entry.isSecret) stringResource(R.string.deployments_secret_configured, entry.name) else "${entry.name}=${entry.value}",
                             style = MaterialTheme.typography.bodySmall)
                     }
-                    OutlinedTextField(configurationName, { configurationName = it }, label = { Text(stringResource(R.string.deployments_configuration_name)) }, singleLine = true)
+                    OutlinedTextField(form.configurationName, { form.configurationName = it }, label = { Text(stringResource(R.string.deployments_configuration_name)) }, singleLine = true)
                     OutlinedTextField(
-                        configurationValue, { configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) }, singleLine = true,
-                        visualTransformation = if (configurationSecret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                        form.configurationValue, { form.configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) }, singleLine = true,
+                        visualTransformation = if (form.configurationSecret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
                     )
                     Row {
-                        Checkbox(checked = configurationSecret, onCheckedChange = { configurationSecret = it })
+                        Checkbox(checked = form.configurationSecret, onCheckedChange = { form.configurationSecret = it })
                         Text(stringResource(R.string.deployments_configuration_secret))
-                        TextButton(onClick = {
-                            if (configurationName.isNotBlank()) {
-                                configuration.removeAll { it.name == configurationName.trim() }
-                                configuration += DeploymentConfigEntry(configurationName.trim(), configurationValue, configurationSecret)
-                                configurationName = ""; configurationValue = ""; configurationSecret = false
-                            }
-                        }, enabled = configurationName.isNotBlank()) { Text(stringResource(R.string.deployments_configuration_add)) }
+                        TextButton(onClick = form::addConfiguration, enabled = form.configurationName.isNotBlank()) { Text(stringResource(R.string.deployments_configuration_add)) }
                     }
                 }
             }
-            if (archive) {
+            if (form.isArchive) {
                 Text(
                     stringResource(R.string.deployments_archive_note),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -272,12 +202,12 @@ private fun DeploymentCreateDialog(
                 TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
                 Button(
                     onClick = {
-                        if (archive) onArchiveSubmit(archiveDefinition!!)
-                        else onImageSubmit(name.trim(), image.trim(), parsedPort!!, configuration.toList())
+                        if (form.isArchive) onArchiveSubmit(form.archiveDefinition()!!)
+                        else onImageSubmit(form.name.trim(), form.image.trim(), form.parsedPort!!, form.imageConfiguration())
                     },
-                    enabled = valid && !submitting,
+                    enabled = form.canSubmit && !submitting,
                 ) {
-                    Text(stringResource(if (archive) R.string.deployments_choose_archive else R.string.deployments_create_and_deploy))
+                    Text(stringResource(if (form.isArchive) R.string.deployments_choose_archive else R.string.deployments_create_and_deploy))
                 }
             }
         }

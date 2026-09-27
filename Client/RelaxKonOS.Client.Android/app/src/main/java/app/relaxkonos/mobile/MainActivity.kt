@@ -82,7 +82,7 @@ private fun RelaxKonApp(container: AppContainer) {
 
         AppBackdrop {
             if (container.serverCenter.isOpen) {
-                ServerCenterScreen(coordinator = container.serverCenter, onClose = container.serverCenter::close)
+                ServerCenterScreen(onClose = container.serverCenter::close)
             } else when (sessionState) {
                 is SessionState.Active -> ShellScaffold(
                     container = container,

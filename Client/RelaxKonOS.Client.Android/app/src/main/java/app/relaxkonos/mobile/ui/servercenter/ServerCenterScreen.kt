@@ -19,43 +19,68 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
-import app.relaxkonos.mobile.servercenter.ServerCenterCoordinator
 import app.relaxkonos.mobile.servercenter.ServerCenterSshVerification
 import app.relaxkonos.mobile.servercenter.ServerHostTarget
-import app.relaxkonos.mobile.servercenter.ServerHostTargetRules
-import app.relaxkonos.mobile.servercenter.SshCredential
-import app.relaxkonos.mobile.servercenter.SshCredentialKind
-import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
+import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.launch
 
-/** First, login-independent server-centre surface. SSH authentication and operations are added from host detail. */
+/** Login-independent server-centre surface. All connection state and operations live in [ServerCenterViewModel]. */
 @Composable
-fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit) {
-    var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("22") }
-    var user by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("") }
-    var addPassword by remember { mutableStateOf("") }
-    var inputError by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<ServerHostTarget?>(null) }
-    var sshPassword by remember { mutableStateOf("") }
-    var pendingPassword by remember { mutableStateOf("") }
-    var verification by remember { mutableStateOf<ServerCenterSshVerification?>(null) }
-    var isVerifying by remember { mutableStateOf(false) }
-    var deleteRequested by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val hosts = coordinator.hosts()
+fun ServerCenterScreen(onClose: () -> Unit) {
+    val viewModel: ServerCenterViewModel = viewModel()
+    val state by viewModel.state.collectAsState()
+    ServerCenterContent(
+        state = state,
+        onAddHostChanged = viewModel::updateAddHost,
+        onAddPortChanged = viewModel::updateAddPort,
+        onAddUserChanged = viewModel::updateAddUser,
+        onAddNameChanged = viewModel::updateAddName,
+        onAddPasswordChanged = viewModel::updateAddPassword,
+        onAddAndVerify = viewModel::addAndVerify,
+        onSelectHost = viewModel::selectHost,
+        onManagePasswordChanged = viewModel::updateManagePassword,
+        onVerifySelectedHost = viewModel::verifySelectedHost,
+        onTrustAndVerify = viewModel::trustAndVerify,
+        onRequestDelete = viewModel::requestDelete,
+        onClose = onClose,
+    )
 
+    val selected = state.hosts.firstOrNull { it.hostId == state.selectedHostId }
+    if (state.deleteRequested && selected != null) {
+        ConfirmDangerousDialog(
+            title = stringResource(R.string.server_center_remove_host),
+            message = stringResource(R.string.server_center_remove_host_message, selected.displayName),
+            confirmLabel = stringResource(R.string.server_center_remove_host),
+            onConfirm = viewModel::removeSelectedHost,
+            onDismiss = viewModel::dismissDelete,
+        )
+    }
+}
+
+@Composable
+private fun ServerCenterContent(
+    state: ServerCenterUiState,
+    onAddHostChanged: (String) -> Unit,
+    onAddPortChanged: (String) -> Unit,
+    onAddUserChanged: (String) -> Unit,
+    onAddNameChanged: (String) -> Unit,
+    onAddPasswordChanged: (String) -> Unit,
+    onAddAndVerify: () -> Unit,
+    onSelectHost: (String) -> Unit,
+    onManagePasswordChanged: (String) -> Unit,
+    onVerifySelectedHost: () -> Unit,
+    onTrustAndVerify: () -> Unit,
+    onRequestDelete: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val selected = state.hosts.firstOrNull { it.hostId == state.selectedHostId }
     Column(
         Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -63,182 +88,191 @@ fun ServerCenterScreen(coordinator: ServerCenterCoordinator, onClose: () -> Unit
         Text(stringResource(R.string.server_center_title), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.server_center_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(
-                Modifier.padding(Spacing.md),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-            ) {
-                Text(stringResource(R.string.server_center_add_host), style = MaterialTheme.typography.titleMedium)
+        AddHostCard(
+            state = state,
+            onHostChanged = onAddHostChanged,
+            onPortChanged = onAddPortChanged,
+            onUserChanged = onAddUserChanged,
+            onNameChanged = onAddNameChanged,
+            onPasswordChanged = onAddPasswordChanged,
+            onSubmit = onAddAndVerify,
+        )
+        ManagedHostList(hosts = state.hosts, onSelectHost = onSelectHost)
+        selected?.let {
+            HostManagementCard(
+                target = it,
+                state = state,
+                onPasswordChanged = onManagePasswordChanged,
+                onVerify = onVerifySelectedHost,
+                onTrustAndVerify = onTrustAndVerify,
+                onRequestDelete = onRequestDelete,
+            )
+        }
+        OutlinedButton(onClose, Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_back)) }
+    }
+}
+
+@Composable
+private fun AddHostCard(
+    state: ServerCenterUiState,
+    onHostChanged: (String) -> Unit,
+    onPortChanged: (String) -> Unit,
+    onUserChanged: (String) -> Unit,
+    onNameChanged: (String) -> Unit,
+    onPasswordChanged: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    ElevatedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Text(stringResource(R.string.server_center_add_host), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.server_center_add_host_hint),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedTextField(
+                value = state.addHost,
+                onValueChange = onHostChanged,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.server_center_ssh_host)) },
+                isError = state.inputError,
+                singleLine = true,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                OutlinedTextField(
+                    value = state.addPort,
+                    onValueChange = onPortChanged,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.server_center_ssh_port)) },
+                    isError = state.inputError,
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = state.addUser,
+                    onValueChange = onUserChanged,
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.server_center_ssh_user)) },
+                    isError = state.inputError,
+                    singleLine = true,
+                )
+            }
+            PasswordTextField(
+                value = state.addPassword,
+                onValueChange = onPasswordChanged,
+                label = stringResource(R.string.server_center_ssh_password),
+                enabled = !state.isVerifying,
+            )
+            OutlinedTextField(
+                value = state.addName,
+                onValueChange = onNameChanged,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.server_center_host_name_optional)) },
+                singleLine = true,
+            )
+            if (state.inputError) Text(stringResource(R.string.server_center_invalid_host), color = MaterialTheme.colorScheme.error)
+            Button(onClick = onSubmit, enabled = !state.isVerifying, modifier = Modifier.fillMaxWidth()) {
+                ProgressOrText(state.isVerifying, R.string.server_center_add_and_verify)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManagedHostList(hosts: List<ServerHostTarget>, onSelectHost: (String) -> Unit) {
+    if (hosts.isEmpty()) {
+        Text(stringResource(R.string.server_center_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    hosts.forEach { target ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(target.displayName, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    stringResource(R.string.server_center_add_host_hint),
+                    stringResource(
+                        R.string.server_center_host_summary,
+                        target.sshUserName,
+                        target.sshHost,
+                        target.sshPort,
+                        hostStatus(target),
+                    ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                OutlinedTextField(host, { host = it; inputError = false }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_center_ssh_host)) }, isError = inputError, singleLine = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    OutlinedTextField(port, { port = it; inputError = false }, Modifier.weight(1f), label = { Text(stringResource(R.string.server_center_ssh_port)) }, isError = inputError, singleLine = true)
-                    OutlinedTextField(user, { user = it; inputError = false }, Modifier.weight(1f), label = { Text(stringResource(R.string.server_center_ssh_user)) }, isError = inputError, singleLine = true)
-                }
-                PasswordTextField(
-                    value = addPassword,
-                    onValueChange = { addPassword = it; inputError = false },
-                    label = stringResource(R.string.server_center_ssh_password),
-                    enabled = !isVerifying,
-                )
-                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.server_center_host_name_optional)) }, singleLine = true)
-                if (inputError) Text(stringResource(R.string.server_center_invalid_host), color = MaterialTheme.colorScheme.error)
-                Button(
-                    onClick = {
-                        val number = port.toIntOrNull()
-                        if (number == null || !ServerHostTargetRules.isValidEndpoint(host, number, user) || addPassword.isEmpty()) {
-                            inputError = true
-                        } else {
-                            val target = coordinator.addHost(host, number, user, name.ifBlank { null })
-                            selected = target
-                            pendingPassword = addPassword
-                            verification = null
-                            scope.launch {
-                                isVerifying = true
-                                verification = coordinator.verifySsh(
-                                    target.hostId,
-                                    SshCredential(SshCredentialKind.Password, addPassword.toCharArray(), null),
-                                )
-                                isVerifying = false
-                                if (verification is ServerCenterSshVerification.Trusted) {
-                                    host = ""; port = "22"; user = ""; name = ""; addPassword = ""; pendingPassword = ""
-                                }
-                            }
-                        }
-                    },
-                    enabled = !isVerifying,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (isVerifying) CircularProgressIndicator() else Text(stringResource(R.string.server_center_add_and_verify))
+                TextButton(onClick = { onSelectHost(target.hostId) }) {
+                    Text(stringResource(R.string.server_center_manage_host))
                 }
             }
-        }
-
-        if (hosts.isEmpty()) {
-            Text(stringResource(R.string.server_center_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else {
-            hosts.forEach { target ->
-                val status = when {
-                    target.lastVerified == null -> stringResource(R.string.server_center_status_unverified)
-                    target.lastVerified.installed && target.lastVerified.healthy -> stringResource(R.string.server_center_status_healthy_cached)
-                    target.lastVerified.installed -> stringResource(R.string.server_center_status_unhealthy_cached)
-                    else -> stringResource(R.string.server_center_status_not_installed_cached)
-                }
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        Text(target.displayName, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            stringResource(R.string.server_center_host_summary, target.sshUserName, target.sshHost, target.sshPort, status),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        TextButton(onClick = {
-                            selected = target
-                            verification = null
-                            pendingPassword = ""
-                            sshPassword = ""
-                        }) {
-                            Text(stringResource(R.string.server_center_manage_host))
-                        }
-                    }
-                }
-            }
-        }
-
-        selected?.let { target ->
-            Text(stringResource(R.string.server_center_selected_host, target.displayName), style = MaterialTheme.typography.titleMedium)
-            PasswordTextField(
-                value = sshPassword,
-                onValueChange = { sshPassword = it; verification = null },
-                label = stringResource(R.string.server_center_ssh_password),
-            )
-            Button(
-                onClick = {
-                    val secret = sshPassword.toCharArray()
-                    scope.launch {
-                        isVerifying = true
-                        verification = coordinator.verifySsh(
-                            target.hostId,
-                            SshCredential(SshCredentialKind.Password, secret, null),
-                        )
-                        isVerifying = false
-                    }
-                },
-                enabled = sshPassword.isNotEmpty() && !isVerifying,
-                modifier = Modifier.fillMaxWidth(),
-            ) { if (isVerifying) CircularProgressIndicator() else Text(stringResource(R.string.server_center_verify_ssh)) }
-            when (val result = verification) {
-                is ServerCenterSshVerification.Trusted -> Text(
-                    stringResource(R.string.server_center_ssh_verified, result.fingerprint.orEmpty()),
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                is ServerCenterSshVerification.NeedsTrust -> {
-                    Text(stringResource(R.string.server_center_host_key_review, result.observation.groupedFingerprint))
-                    Button(
-                        onClick = {
-                            coordinator.trustHostKey(target, result.observation)
-                            val password = pendingPassword.ifEmpty { sshPassword }
-                            if (password.isNotEmpty()) {
-                                scope.launch {
-                                    isVerifying = true
-                                    verification = coordinator.verifySsh(
-                                        target.hostId,
-                                        SshCredential(SshCredentialKind.Password, password.toCharArray(), null),
-                                    )
-                                    isVerifying = false
-                                    if (verification is ServerCenterSshVerification.Trusted && pendingPassword.isNotEmpty()) {
-                                        host = ""; port = "22"; user = ""; name = ""; addPassword = ""; pendingPassword = ""
-                                    }
-                                }
-                            } else {
-                                verification = null
-                            }
-                        },
-                        enabled = !isVerifying,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(R.string.server_center_trust_and_verify)) }
-                }
-                is ServerCenterSshVerification.KeyChanged -> Text(
-                    stringResource(R.string.server_center_host_key_changed, result.observation.groupedFingerprint),
-                    color = MaterialTheme.colorScheme.error,
-                )
-                ServerCenterSshVerification.Failed -> Text(
-                    stringResource(R.string.server_center_ssh_failed),
-                    color = MaterialTheme.colorScheme.error,
-                )
-                null -> Unit
-            }
-            TextButton(onClick = { deleteRequested = true }) {
-                Text(stringResource(R.string.server_center_remove_host), color = MaterialTheme.colorScheme.error)
-            }
-        }
-
-        OutlinedButton(onClose, Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_back)) }
-    }
-
-    if (deleteRequested) {
-        val target = selected
-        if (target != null) {
-            ConfirmDangerousDialog(
-                title = stringResource(R.string.server_center_remove_host),
-                message = stringResource(R.string.server_center_remove_host_message, target.displayName),
-                confirmLabel = stringResource(R.string.server_center_remove_host),
-                onConfirm = {
-                    coordinator.removeHost(target.hostId)
-                    selected = null
-                    sshPassword = ""
-                    pendingPassword = ""
-                    verification = null
-                    deleteRequested = false
-                },
-                onDismiss = { deleteRequested = false },
-            )
-        } else {
-            deleteRequested = false
         }
     }
+}
+
+@Composable
+private fun HostManagementCard(
+    target: ServerHostTarget,
+    state: ServerCenterUiState,
+    onPasswordChanged: (String) -> Unit,
+    onVerify: () -> Unit,
+    onTrustAndVerify: () -> Unit,
+    onRequestDelete: () -> Unit,
+) {
+    Text(stringResource(R.string.server_center_selected_host, target.displayName), style = MaterialTheme.typography.titleMedium)
+    PasswordTextField(
+        value = state.managePassword,
+        onValueChange = onPasswordChanged,
+        label = stringResource(R.string.server_center_ssh_password),
+        enabled = !state.isVerifying,
+    )
+    Button(
+        onClick = onVerify,
+        enabled = state.managePassword.isNotEmpty() && !state.isVerifying,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        ProgressOrText(state.isVerifying, R.string.server_center_verify_ssh)
+    }
+    VerificationNotice(state.verification, state.isVerifying, onTrustAndVerify)
+    TextButton(onClick = onRequestDelete) {
+        Text(stringResource(R.string.server_center_remove_host), color = MaterialTheme.colorScheme.error)
+    }
+}
+
+@Composable
+private fun VerificationNotice(
+    verification: ServerCenterSshVerification?,
+    isVerifying: Boolean,
+    onTrustAndVerify: () -> Unit,
+) {
+    when (verification) {
+        is ServerCenterSshVerification.Trusted -> Text(
+            stringResource(R.string.server_center_ssh_verified, verification.fingerprint.orEmpty()),
+            color = MaterialTheme.colorScheme.primary,
+        )
+        is ServerCenterSshVerification.NeedsTrust -> {
+            Text(stringResource(R.string.server_center_host_key_review, verification.observation.groupedFingerprint))
+            Button(onClick = onTrustAndVerify, enabled = !isVerifying, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.server_center_trust_and_verify))
+            }
+        }
+        is ServerCenterSshVerification.KeyChanged -> Text(
+            stringResource(R.string.server_center_host_key_changed, verification.observation.groupedFingerprint),
+            color = MaterialTheme.colorScheme.error,
+        )
+        ServerCenterSshVerification.Failed -> Text(
+            stringResource(R.string.server_center_ssh_failed),
+            color = MaterialTheme.colorScheme.error,
+        )
+        null -> Unit
+    }
+}
+
+@Composable
+private fun ProgressOrText(isWorking: Boolean, textRes: Int) {
+    if (isWorking) CircularProgressIndicator() else Text(stringResource(textRes))
+}
+
+@Composable
+private fun hostStatus(target: ServerHostTarget): String = when {
+    target.lastVerified == null -> stringResource(R.string.server_center_status_unverified)
+    target.lastVerified.installed && target.lastVerified.healthy -> stringResource(R.string.server_center_status_healthy_cached)
+    target.lastVerified.installed -> stringResource(R.string.server_center_status_unhealthy_cached)
+    else -> stringResource(R.string.server_center_status_not_installed_cached)
 }
