@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using System.Security.Principal;
 using Microsoft.AspNetCore.Identity;
 using RelaxKonOS.Server.Domain;
 using RelaxKonOS.Server.HostMode;
@@ -99,6 +100,28 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
         if (policy?.SystemLoginEnabled == false) throw Invalid();
         return new(user, "windows-desktop-session", policy?.Revision ?? 0, user.SecurityVersion, user.Id.ToString("D"),
             RelaxKonOS.Server.UserExecution.UserExecutionEligibilityRules.Evaluate(identity, serverMode.Mode));
+    }
+
+    /// <summary>
+    /// Enrolls the first owner device through the Windows account already signed into the local
+    /// workstation. It is deliberately separate from desktop-session login: it never enables a
+    /// passwordless remote sign-in endpoint and is gated by a loopback-only Negotiate route.
+    /// </summary>
+    public AuthenticatedLogin AuthenticateWindowsWorkstationOwnerBootstrap(ClaimsPrincipal principal)
+    {
+        if (!WindowsWorkstationPlatform.IsWindows10Or11Workstation())
+            throw new AliasAuthenticationException(404, "owner-device-unsupported-platform");
+        if (principal.Identity is not WindowsIdentity windowsIdentity
+            || !new WindowsPrincipal(windowsIdentity).IsInRole(WindowsBuiltInRole.Administrator))
+            throw new AliasAuthenticationException(403, "owner-device-local-administrator-required");
+        var sid = windowsIdentity.User?.Value;
+        if (string.IsNullOrWhiteSpace(sid)) throw Invalid();
+        var lookup = identities.LookupIdentity(sid);
+        if (lookup.Status == IdentityLookupStatus.Unavailable) throw Unavailable("owner-device-identity-lookup");
+        if (lookup.Identity is not { } identity || identity.Platform != HostPlatformKind.Windows) throw Invalid();
+        var user = resolver.ResolveSystem(identity);
+        return new(user, "owner-device-key", 0, user.SecurityVersion, user.Id.ToString("D"),
+            UserExecutionEligibilityRules.Evaluate(identity, serverMode.Mode));
     }
 
     /// <summary>User Mode has exactly one login identity: the effective Unix account running

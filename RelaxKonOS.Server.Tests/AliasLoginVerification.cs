@@ -57,18 +57,24 @@ internal static class AliasLoginVerification
         services.AddScoped<IAliasCredentialRepository, SqliteAliasCredentialRepository>();
         services.AddScoped<IWorkspaceRepository, SqliteWorkspaceRepository>();
         services.AddScoped<IDeviceRepository, SqliteDeviceRepository>();
+        services.AddScoped<IOwnerDeviceKeyRepository, SqliteOwnerDeviceKeyRepository>();
         services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
         services.AddSingleton<ISessionRepository, InMemorySessionRepository>();
         services.AddScoped<IAuthenticationProtectionStore, SqliteAuthenticationProtectionStore>();
         services.AddSingleton<IIdentityProvider>(provider);
         // Auth endpoints and the login service resolve the deployment mode boundary; the host must
         // register the same contract the production Program does, or endpoint inference fails.
+        var windowsDesktopSession = new WindowsDesktopSessionOptions(builder.Configuration, builder.Environment,
+            UserExecutionBackend.Helper);
+        services.AddSingleton(windowsDesktopSession);
         services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver>(
-            new RelaxKonOS.Server.HostMode.ServerModeResolver(builder.Configuration, UserExecutionBackend.Helper));
+            new RelaxKonOS.Server.HostMode.ServerModeResolver(builder.Configuration, UserExecutionBackend.Helper,
+                windowsDesktopSession));
         services.AddSingleton<AuthenticationGate>();
         services.AddSingleton<AuthSessionStore>();
         services.AddSingleton<AliasPasswordService>();
         services.AddSingleton<SessionValidityService>();
+        services.AddSingleton<OwnerDeviceKeyService>();
         services.AddSingleton<JwtTokenService>();
         services.AddScoped<LoginProtectionService>();
         services.AddScoped<CanonicalUserResolver>();
@@ -132,6 +138,15 @@ internal static class AliasLoginVerification
         var token = system.Tokens.AccessToken;
         var parsed = new JwtSecurityTokenHandler().ReadJwtToken(token);
         Check(parsed.Claims.Single(x => x.Type == "sid").Value == system.Session.Id.ToString(), "domain session equals JWT sid");
+        var windowsDesktopSessionPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim(JwtRegisteredClaimNames.Sub, system.User.Id.ToString()),
+            new Claim("security_version", "0"),
+            new Claim("sid", Guid.NewGuid().ToString()),
+            new Claim("amr", "windows-desktop-session"),
+            new Claim("auth_time", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
+        ], "test"));
+        Check(app.Services.GetRequiredService<SessionValidityService>().IsValid(windowsDesktopSessionPrincipal),
+            "Windows desktop session JWT remains valid for protected APIs");
         Check((await Read(token)) is { Alias: null, SystemLoginEnabled: true, Revision: 0 }, "default system login enabled");
         using (var response = await Send(HttpMethod.Post, AuthApiRoutes.Login, new { username = "nanami", password = OsPassword, clientPlatform = "windows", deviceName = "x", clientVersion = "1" }))
             Check(response.StatusCode == HttpStatusCode.BadRequest, "old username wire contract rejected");

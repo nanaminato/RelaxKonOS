@@ -16,6 +16,11 @@ public sealed class AuthenticationEndpointFilter(AuthenticationGate gate, ILogge
             LogFailure(context.HttpContext, exception.Status, exception.Code);
             return Failure(context.HttpContext, exception.Status, exception.Code);
         }
+        catch (OwnerDeviceKeyException exception)
+        {
+            LogFailure(context.HttpContext, exception.StatusCode, exception.Code);
+            return Failure(context.HttpContext, exception.StatusCode, exception.Code);
+        }
         catch (DbException exception)
         {
             logger.LogError("Authentication database operation failed. ExceptionType={ExceptionType} Route={Route}",

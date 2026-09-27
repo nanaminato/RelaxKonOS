@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using RelaxKonOS.Protocol.Privileged;
+using RelaxKonOS.Server.Identity;
 using RelaxKonOS.Server.Privileged;
 
 namespace RelaxKonOS.Server.Endpoints;
@@ -14,7 +15,7 @@ public static class PrivilegedEndpoints
     {
         app.MapPost(PrivilegedApiRoutes.Elevation, (HostElevationRequest request, HttpContext http,
             IHostAdministratorAuthenticator administrators, IHostElevationSessionStore elevations,
-            RelaxKonOS.Server.Settings.IHostEnvironmentService environment) =>
+            RelaxKonOS.Server.Settings.IHostEnvironmentService environment, OwnerDeviceKeyService ownerDevices) =>
         {
             if (!Enum.IsDefined(request.Capability)) return Problem(400, "elevation-capability-invalid", "授权能力无效。");
             if (request.Capability is >= HostElevationCapability.FileRead and <= HostElevationCapability.FileUpload)
@@ -50,9 +51,9 @@ public static class PrivilegedEndpoints
                     }.All(capability => elevations.IsGranted(http.User, capability, environment.ResolveTarget(http.User, scope).ResourceId)));
             if (environmentBundleAlreadyGranted || !isEnvironmentCapability && elevations.IsGranted(http.User, request.Capability, request.Target))
                 return Results.Ok(new HostElevationResult(true));
-            var username = http.User.FindFirstValue(JwtRegisteredClaimNames.Name);
-            if (string.IsNullOrWhiteSpace(username)) return Results.Unauthorized();
-            var authentication = administrators.Authenticate(username, request.AdministratorUsername, request.Password);
+            var authentication = ownerDevices.IsOwner(http.User)
+                ? new HostAdministratorAuthenticationResult(true, string.Empty, "windows-owner-device")
+                : AuthenticateAdministrator(http.User, request, administrators);
             if (!authentication.Succeeded) return Problem(403, authentication.ProblemCode, "宿主管理员认证未通过，未执行操作。");
             try
             {
@@ -88,4 +89,13 @@ public static class PrivilegedEndpoints
     private static IResult Problem(int status, string code, string detail) => Results.Problem(detail: detail, statusCode: status,
         title: "需要管理员权限", type: ProblemBase + code,
         extensions: new Dictionary<string, object?> { ["problemCode"] = code });
+
+    private static HostAdministratorAuthenticationResult AuthenticateAdministrator(ClaimsPrincipal principal,
+        HostElevationRequest request, IHostAdministratorAuthenticator administrators)
+    {
+        var username = principal.FindFirstValue(JwtRegisteredClaimNames.Name);
+        return string.IsNullOrWhiteSpace(username)
+            ? new(false, "elevation-session-unavailable", "none")
+            : administrators.Authenticate(username, request.AdministratorUsername, request.Password);
+    }
 }
