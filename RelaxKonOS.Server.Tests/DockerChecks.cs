@@ -1,5 +1,27 @@
 internal static class DockerChecks
 {
+    internal static void VerifyComposeSubsetValidation()
+    {
+        const string supported = "services:\n  web:\n    image: nginx:alpine\n    volumes:\n      - site-data:/usr/share/nginx/html\nvolumes:\n  site-data:\nnetworks:\n  default:\n";
+        TestAssert.Assert(DockerComposeSubsetValidation.IsSupported(supported, out var accepted) && accepted.Length == 0,
+            "The Android Compose subset rejected an image service with a named volume.");
+
+        foreach (var rejected in new[]
+        {
+            "services:\n  web:\n    build: .\n",
+            "services:\n  web:\n    image: nginx\n    privileged: true\n",
+            "services:\n  web:\n    image: nginx\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n",
+            "services:\n  web:\n    image: nginx\n    volumes:\n      - ./site:/usr/share/nginx/html\n",
+            "services:\n  web:\n    image: nginx\n    volumes:\n      - type: bind\n        source: site\n        target: /usr/share/nginx/html\n",
+            "volumes:\n  shared:\n    external: true\n",
+        })
+        {
+            TestAssert.Assert(!DockerComposeSubsetValidation.IsSupported(rejected, out var problem)
+                && problem == DockerComposeSubsetValidation.UnsupportedFeature,
+                "The Android Compose subset accepted an unsupported or dangerous source feature.");
+        }
+    }
+
 internal static async Task VerifyDockerProxyAsync(string root)
 {
     TestAssert.Assert(DockerProxyApiRoutes.Proxy == "/api/v1.0/docker/proxy", "The Docker proxy route moved away from the versioned public base.");

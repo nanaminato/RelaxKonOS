@@ -543,4 +543,35 @@
     <string name="catalog_blocked_platform">This template does not support this server's operating system or architecture.</string>
     <string name="catalog_blocked_field">This template contains a field type or default this app cannot safely use.</string>
     <string name="catalog_install">Install</string>
+
+    <!-- Docker and Compose -->
+    <string name="docker_title">Docker</string>
+    <string name="docker_subtitle">Inspect containers and deploy supported Compose stacks.</string>
+    <string name="docker_import">Import</string>
+    <string name="docker_new_stack">New stack</string>
+    <string name="docker_runtime">Container runtime</string>
+    <string name="docker_ready">Ready · Docker %1$s</string>
+    <string name="docker_unavailable">Docker is unavailable on this server.</string>
+    <string name="docker_stacks">Compose stacks</string>
+    <string name="docker_containers">Containers</string>
+    <string name="docker_images">Images</string>
+    <string name="docker_volumes">Volumes</string>
+    <string name="docker_networks">Networks</string>
+    <string name="docker_empty_stacks">No Compose stacks were found.</string>
+    <string name="docker_empty_containers">No containers were found.</string>
+    <string name="docker_empty_resources">No resources were found.</string>
+    <string name="docker_list_failed">Could not load this resource list.</string>
+    <string name="docker_start">Start</string>
+    <string name="docker_stop">Stop</string>
+    <string name="docker_restart">Restart</string>
+    <string name="docker_confirm_title">Confirm removal</string>
+    <string name="docker_confirm_remove_container">Remove container %1$s? Its persistent data is not deleted.</string>
+    <string name="docker_confirm_remove_stack">Remove stack %1$s? Named volumes are retained.</string>
+    <string name="docker_operation_complete">Operation completed. Refreshing Docker resources.</string>
+    <string name="docker_operation_failed">The Docker operation could not be completed.</string>
+    <string name="docker_import_failed">Could not read the selected Compose document.</string>
+    <string name="docker_compose_note">Only image services, named volumes and project-managed networks are supported. Build contexts, bind mounts, external files, privileged services and Docker socket access are rejected by the server.</string>
+    <string name="docker_stack_name">Stack name</string>
+    <string name="docker_compose_yaml">Compose YAML</string>
+    <string name="docker_deploy">Deploy stack</string>
 </resources>

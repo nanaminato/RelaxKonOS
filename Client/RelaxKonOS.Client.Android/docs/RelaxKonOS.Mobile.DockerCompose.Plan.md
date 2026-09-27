@@ -1,6 +1,6 @@
 # AD04：Android Docker 与 Compose 管理计划
 
-> 状态：待开始 Android 接入及任务语义补齐。优先级：P1。工作量：大。
+> 状态：实施中；Android 资源浏览与受限 Compose 准入已接入，持久 Stack 操作契约仍待补齐。优先级：P1。工作量：大。
 > 总入口：[无电脑部署路线图](./RelaxKonOS.Mobile.Deployment.Roadmap.md)。
 
 ## 1. 目标与范围

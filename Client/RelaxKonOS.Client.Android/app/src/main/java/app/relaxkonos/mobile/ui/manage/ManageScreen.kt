@@ -208,11 +208,15 @@ fun ManageScreen(
     onOpenMonitor: () -> Unit,
     onOpenProcesses: () -> Unit,
     onOpenDeployments: () -> Unit,
+    onOpenDocker: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val container = app.relaxkonos.mobile.ui.common.appContainer()
 
     val domains = buildList {
+        if (container.capabilities.contains(ServerCapabilities.DOCKER)) {
+            add(ManageDomain(R.string.docker_title, R.string.docker_subtitle, R.drawable.ic_app_docker, onOpenDocker))
+        }
         if (container.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) {
             add(ManageDomain(R.string.deployments_title, R.string.deployments_subtitle,
                 DesktopIcons.deployments, onOpenDeployments))

@@ -25,6 +25,40 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.STATUS, DockerWire::status)
+
+    override suspend fun dockerContainers(serverUrl: String, accessToken: String): ApiResult<List<DockerContainer>> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.CONTAINERS, DockerWire::containers)
+
+    override suspend fun dockerImages(serverUrl: String, accessToken: String): ApiResult<List<DockerImage>> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.IMAGES, DockerWire::images)
+
+    override suspend fun dockerNetworks(serverUrl: String, accessToken: String): ApiResult<List<DockerNetwork>> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.NETWORKS, DockerWire::networks)
+
+    override suspend fun dockerVolumes(serverUrl: String, accessToken: String): ApiResult<List<DockerVolume>> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.VOLUMES, DockerWire::volumes)
+
+    override suspend fun dockerStacks(serverUrl: String, accessToken: String): ApiResult<List<DockerStack>> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.STACKS, DockerWire::stacks)
+
+    override suspend fun dockerStackServices(serverUrl: String, accessToken: String, name: String): ApiResult<List<DockerStackService>> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.stackServices(name), DockerWire::services)
+
+    override suspend fun dockerContainerLogs(serverUrl: String, accessToken: String, id: String, tail: Int): ApiResult<DockerLogs> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.containerLogs(id, tail.coerceIn(1, 500)), DockerWire::logs)
+
+    override suspend fun dockerContainerAction(serverUrl: String, accessToken: String, id: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> =
+        dockerMutation("POST", serverUrl, DockerRoutes.containerAction(id, action), accessToken,
+            JsonBody().bool("confirmed", confirmed).bool("force", false))
+
+    override suspend fun dockerStackAction(serverUrl: String, accessToken: String, name: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> =
+        dockerMutation("POST", serverUrl, DockerRoutes.stackAction(name, action), accessToken, JsonBody().bool("confirmed", confirmed))
+
+    override suspend fun dockerStackDefinition(serverUrl: String, accessToken: String, name: String, composeYaml: String): ApiResult<DockerOperation> =
+        dockerMutation("POST", serverUrl, DockerRoutes.STACK_DEPLOY, accessToken, JsonBody().string("name", name.trim()).string("composeYaml", composeYaml))
+
     override suspend fun deploymentApplications(serverUrl: String, accessToken: String): ApiResult<List<DeploymentApplication>> =
         deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.APPLICATIONS, ApplicationDeploymentWire::applications)
 
@@ -209,6 +243,22 @@ class RelaxKonApi(
         when (val result = execute("GET", serverUrl, route, accessToken, null)) {
             is ApiResult.Success -> runCatching { parse(result.value) }
                 .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed deployment response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
+    private suspend fun <T> dockerRead(serverUrl: String, accessToken: String, route: String, parse: (String) -> T): ApiResult<T> =
+        when (val result = execute("GET", serverUrl, route, accessToken, null)) {
+            is ApiResult.Success -> runCatching { parse(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Docker response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
+    private suspend fun dockerMutation(method: String, serverUrl: String, route: String, accessToken: String, body: JsonBody): ApiResult<DockerOperation> =
+        when (val result = execute(method, serverUrl, route, accessToken, body)) {
+            is ApiResult.Success -> runCatching { DockerWire.operation(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Docker operation response.") })
             is ApiResult.Problem -> result
             is ApiResult.Transport -> result
         }

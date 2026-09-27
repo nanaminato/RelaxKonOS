@@ -32,6 +32,7 @@ import app.relaxkonos.mobile.ui.home.HomeScreen
 import app.relaxkonos.mobile.ui.manage.ManageScreen
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.manage.deployments.DeploymentsScreen
+import app.relaxkonos.mobile.ui.manage.docker.DockerScreen
 import app.relaxkonos.mobile.ui.manage.monitor.MonitorScreen
 import app.relaxkonos.mobile.ui.manage.processes.ProcessesScreen
 import app.relaxkonos.mobile.ui.more.AboutScreen
@@ -65,6 +66,7 @@ fun MobileNavHost(
                 onOpenDetail = { navigator.push(Routes.MANAGE_DEPLOYMENT_DETAIL) },
                 onBack = { navigator.pop() },
             )
+            Routes.MANAGE_DOCKER -> DockerScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES -> ManageDestination(navigator, layoutState)
             Routes.MORE,
@@ -129,6 +131,7 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
                 onOpenMonitor = { viewModel.openPane(Routes.MANAGE_MONITOR) },
                 onOpenProcesses = { viewModel.openPane(Routes.MANAGE_PROCESSES) },
                 onOpenDeployments = { navigator.push(Routes.MANAGE_DEPLOYMENTS) },
+                onOpenDocker = { navigator.push(Routes.MANAGE_DOCKER) },
                 modifier = Modifier.weight(1f),
             )
             when (viewModel.expandedPane) {
@@ -151,6 +154,7 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             onOpenMonitor = { navigator.push(Routes.MANAGE_MONITOR) },
             onOpenProcesses = { navigator.push(Routes.MANAGE_PROCESSES) },
             onOpenDeployments = { navigator.push(Routes.MANAGE_DEPLOYMENTS) },
+            onOpenDocker = { navigator.push(Routes.MANAGE_DOCKER) },
             modifier = Modifier.fillMaxSize(),
         )
     }

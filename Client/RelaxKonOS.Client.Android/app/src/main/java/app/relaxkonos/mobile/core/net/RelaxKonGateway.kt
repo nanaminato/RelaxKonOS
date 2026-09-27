@@ -22,6 +22,18 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerContainers(serverUrl: String, accessToken: String): ApiResult<List<DockerContainer>> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerImages(serverUrl: String, accessToken: String): ApiResult<List<DockerImage>> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerNetworks(serverUrl: String, accessToken: String): ApiResult<List<DockerNetwork>> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerVolumes(serverUrl: String, accessToken: String): ApiResult<List<DockerVolume>> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerStacks(serverUrl: String, accessToken: String): ApiResult<List<DockerStack>> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerStackServices(serverUrl: String, accessToken: String, name: String): ApiResult<List<DockerStackService>> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerContainerLogs(serverUrl: String, accessToken: String, id: String, tail: Int): ApiResult<DockerLogs> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerContainerAction(serverUrl: String, accessToken: String, id: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerStackAction(serverUrl: String, accessToken: String, name: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerStackDefinition(serverUrl: String, accessToken: String, name: String, composeYaml: String): ApiResult<DockerOperation> = ApiResult.Transport("Docker Compose is unavailable.")
+
     suspend fun deploymentApplications(serverUrl: String, accessToken: String): ApiResult<List<DeploymentApplication>>
     suspend fun deploymentSnapshot(serverUrl: String, accessToken: String, applicationId: String): ApiResult<DeploymentSnapshot>
     suspend fun deploymentRuntime(serverUrl: String, accessToken: String): ApiResult<DeploymentRuntime>

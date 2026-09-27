@@ -180,6 +180,7 @@ public sealed class DockerComposeService : IDockerComposeService
     {
         if (!IsProjectName(definition.Name)) { problem = "docker.stack_invalid_name"; return false; }
         if (string.IsNullOrWhiteSpace(definition.ComposeYaml) || System.Text.Encoding.UTF8.GetByteCount(definition.ComposeYaml) > MaximumComposeBytes) { problem = "docker.stack_invalid_compose"; return false; }
+        if (!DockerComposeSubsetValidation.IsSupported(definition.ComposeYaml, out problem)) return false;
         problem = string.Empty; return true;
     }
 

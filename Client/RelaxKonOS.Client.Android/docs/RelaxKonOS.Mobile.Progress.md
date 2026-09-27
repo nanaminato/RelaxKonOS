@@ -8,6 +8,14 @@
 
 后续实施以 `ADxx-Mn` 记录阶段、`ADxx-Tn` 记录验收；进度和证据只在本文件维护。首轮 R1 交付 AD01 首次安装、AD02 镜像部署、AD05 基本发布及 AD08 任务恢复。应用部署的真实 Docker 验收和服务器中心的真实宿主安装仍是必要条件，见各计划前置要求。
 
+## AD04-M1：Docker 资源浏览与受控操作（已实现待验证，2026-09-27）
+
+- “管理 → Docker”仅在服务器声明 `server.docker` 时显示。页面读取 Engine、容器、镜像、命名卷、网络和 Compose Stack；Stack 可展开读取服务状态。资源读取全部经现有认证 REST API，Android 不直接接触 Docker socket 或自行执行 YAML。
+- 容器提供 start/stop，容器及 Stack 删除均要求本机再次确认；现有服务端的 Stack 删除路径保留命名卷。Stack 编辑器支持 Storage Access Framework 导入或粘贴 YAML，再提交给服务端的受限校验和部署入口。
+- 服务端新增保守准入检查：拒绝 `build`、特权与设备权限、bind mount（含相对/绝对路径）、外部资源和 Docker socket；通过准入的定义仍由 `docker compose config` 进行权威解析，客户端不会删除或改写未知 YAML 项。
+- 当前 Compose deploy 仍是既有**同步**服务：它不满足 AD04-M2 的持久操作 ID、服务端重启恢复、重复提交归并或断开手机后的可查询结果。因此 AD04-M2 至 M4 和 AD04-T1 至 T6 均未完成、未验收；移动端不把同步成功显示为可恢复的后台任务。
+- 本轮已通过 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj`（0 错误；3 个既有跨平台 CA1416 warning），并加入不依赖 Docker Engine 的 Compose 子集拒绝检查。Android Gradle wrapper 未随本工程提交，当前环境也未提供 `gradle`，因此 Android 编译、JVM 测试和设备矩阵尚未执行。
+
 ## AD02-M1：应用部署只读接入（2026-09-26）
 
 状态：**已实现待验证**（真实远端和设备矩阵待执行）；AD02 的 Android 客户端 M1–M4 已完成实现。

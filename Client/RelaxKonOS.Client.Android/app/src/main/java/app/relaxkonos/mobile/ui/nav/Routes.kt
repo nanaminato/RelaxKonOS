@@ -25,6 +25,7 @@ object Routes {
     const val MANAGE_PROCESSES = "manage/processes"
     const val MANAGE_DEPLOYMENTS = "manage/deployments"
     const val MANAGE_DEPLOYMENT_DETAIL = "manage/deployments/detail"
+    const val MANAGE_DOCKER = "manage/docker"
     const val MORE_ACCOUNT_SECURITY = "more/account-security"
     const val MORE_CONNECTIONS = "more/connections"
     const val MORE_APPEARANCE = "more/appearance"

@@ -102,6 +102,7 @@ try
     await HostStorageChecks.VerifyHostGlobalMigrationAsync(root);
     await HostStorageChecks.VerifyProxyHostProfileRepositoryAsync(root);
     await HostStorageChecks.VerifyProxySubscriptionRepositoryAsync(root);
+    DockerChecks.VerifyComposeSubsetValidation();
     await DockerChecks.VerifyDockerProxyAsync(root);
     await DockerChecks.VerifyDockerEngineControlAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);

@@ -207,6 +207,7 @@ class AppContainer(context: Context) {
 
     val system = SystemRepository(gateway, session)
     val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session)
+    val docker = app.relaxkonos.mobile.data.DockerRepository(gateway, session)
 
     /**
      * Where an unfinished upload is remembered.

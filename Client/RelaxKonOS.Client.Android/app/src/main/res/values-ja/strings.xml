@@ -507,4 +507,35 @@
     <string name="catalog_blocked_platform">このテンプレートは、このサーバーの OS またはアーキテクチャに対応していません。</string>
     <string name="catalog_blocked_field">このテンプレートには、このアプリが安全に使用できないフィールド型または既定値があります。</string>
     <string name="catalog_install">インストール</string>
+
+    <!-- Docker と Compose -->
+    <string name="docker_title">Docker</string>
+    <string name="docker_subtitle">コンテナを確認し、対応する Compose スタックをデプロイします。</string>
+    <string name="docker_import">インポート</string>
+    <string name="docker_new_stack">新しいスタック</string>
+    <string name="docker_runtime">コンテナランタイム</string>
+    <string name="docker_ready">準備完了 · Docker %1$s</string>
+    <string name="docker_unavailable">このサーバーでは Docker を利用できません。</string>
+    <string name="docker_stacks">Compose スタック</string>
+    <string name="docker_containers">コンテナ</string>
+    <string name="docker_images">イメージ</string>
+    <string name="docker_volumes">ボリューム</string>
+    <string name="docker_networks">ネットワーク</string>
+    <string name="docker_empty_stacks">Compose スタックが見つかりません。</string>
+    <string name="docker_empty_containers">コンテナが見つかりません。</string>
+    <string name="docker_empty_resources">リソースが見つかりません。</string>
+    <string name="docker_list_failed">このリソース一覧を読み込めませんでした。</string>
+    <string name="docker_start">開始</string>
+    <string name="docker_stop">停止</string>
+    <string name="docker_restart">再起動</string>
+    <string name="docker_confirm_title">削除の確認</string>
+    <string name="docker_confirm_remove_container">コンテナ %1$s を削除しますか？永続データは削除されません。</string>
+    <string name="docker_confirm_remove_stack">スタック %1$s を削除しますか？名前付きボリュームは保持されます。</string>
+    <string name="docker_operation_complete">操作が完了しました。Docker リソースを更新しています。</string>
+    <string name="docker_operation_failed">Docker 操作を完了できませんでした。</string>
+    <string name="docker_import_failed">選択した Compose ドキュメントを読み取れませんでした。</string>
+    <string name="docker_compose_note">イメージサービス、名前付きボリューム、プロジェクト管理ネットワークのみ対応します。ビルドコンテキスト、bind mount、外部ファイル、特権サービス、Docker socket へのアクセスはサーバーで拒否されます。</string>
+    <string name="docker_stack_name">スタック名</string>
+    <string name="docker_compose_yaml">Compose YAML</string>
+    <string name="docker_deploy">スタックをデプロイ</string>
 </resources>

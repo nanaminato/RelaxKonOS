@@ -506,4 +506,35 @@
     <string name="catalog_blocked_platform">此模板不支持该服务器的操作系统或架构。</string>
     <string name="catalog_blocked_field">此模板含有当前应用无法安全使用的字段类型或默认值。</string>
     <string name="catalog_install">安装</string>
+
+    <!-- Docker 与 Compose -->
+    <string name="docker_title">Docker</string>
+    <string name="docker_subtitle">查看容器并部署受支持的 Compose 项目。</string>
+    <string name="docker_import">导入</string>
+    <string name="docker_new_stack">新建项目</string>
+    <string name="docker_runtime">容器运行时</string>
+    <string name="docker_ready">已就绪 · Docker %1$s</string>
+    <string name="docker_unavailable">此服务器上的 Docker 不可用。</string>
+    <string name="docker_stacks">Compose 项目</string>
+    <string name="docker_containers">容器</string>
+    <string name="docker_images">镜像</string>
+    <string name="docker_volumes">卷</string>
+    <string name="docker_networks">网络</string>
+    <string name="docker_empty_stacks">未找到 Compose 项目。</string>
+    <string name="docker_empty_containers">未找到容器。</string>
+    <string name="docker_empty_resources">未找到资源。</string>
+    <string name="docker_list_failed">无法加载此资源列表。</string>
+    <string name="docker_start">启动</string>
+    <string name="docker_stop">停止</string>
+    <string name="docker_restart">重启</string>
+    <string name="docker_confirm_title">确认移除</string>
+    <string name="docker_confirm_remove_container">移除容器 %1$s？不会删除其持久数据。</string>
+    <string name="docker_confirm_remove_stack">移除项目 %1$s？命名卷将被保留。</string>
+    <string name="docker_operation_complete">操作已完成，正在刷新 Docker 资源。</string>
+    <string name="docker_operation_failed">无法完成 Docker 操作。</string>
+    <string name="docker_import_failed">无法读取选定的 Compose 文档。</string>
+    <string name="docker_compose_note">仅支持镜像服务、命名卷和项目管理的网络。服务器会拒绝构建上下文、bind mount、外部文件、特权服务和 Docker socket 访问。</string>
+    <string name="docker_stack_name">项目名称</string>
+    <string name="docker_compose_yaml">Compose YAML</string>
+    <string name="docker_deploy">部署项目</string>
 </resources>
