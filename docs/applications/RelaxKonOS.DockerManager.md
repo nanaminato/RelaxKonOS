@@ -220,11 +220,12 @@ Docker 引擎是整机资源，控制它中断的是**本机所有容器**，因
 
 | 动作 | Linux（原生守护进程） | Windows（Docker Desktop） |
 |---|---|---|
-| `start` | 特权 Helper 执行 `systemctl start docker.service` | `docker desktop start` |
-| `stop` | `systemctl stop docker.service` | `docker desktop stop` |
-| `restart` | `systemctl restart docker.service` | `docker desktop restart` |
+| `start` | 特权 Helper 在 systemd 上执行 `systemctl start docker.service`；在 OpenRC/SysV 上执行固定的 Docker 服务动作 | `docker desktop start` |
+| `stop` | `systemctl stop docker.service`；在 OpenRC/SysV 上执行固定的 Docker 服务动作 | `docker desktop stop` |
+| `restart` | `systemctl restart docker.service`；在 OpenRC/SysV 上执行固定的 Docker 服务动作 | `docker desktop restart` |
 
 - **只传动作，不传目标**：请求体只有 `confirmed`；单元名 `docker.service` 是 Helper 常量，平台标识与命令由 `IDockerEngineHostController` 自行决定，端点与客户端都不分支操作系统。因此该能力不会被用来操作任意服务或执行任意命令。
+- **Linux init 识别**：控制路径先确认 systemd 运行时存在；没有 systemd 时依次使用固定的 OpenRC、`/etc/init.d/docker` 或 SysV `service docker` 入口。Docker 首次安装仍仅支持文档列出的 Ubuntu + systemd 路径，但已运行的原生 Docker 引擎不应因 init 系统不同而被误报为平台不支持。
 - **不改变开机策略**：这些动作不会 `enable`/`disable` 单元，也不会改动宿主上的任何配置文件，仅改变当前运行状态。
 - **确认语义**：`stop` 与 `restart` 必须带 `Confirmed`，否则返回 `docker.engine.problem.confirmation_required` 且不触碰宿主；`start` 不需要确认（它不中断任何东西）。客户端在点击后先弹确认对话框。
 - **返回操作后状态**：响应同时携带动作后的 `DockerStatusDto`，客户端不必轮询即可知道引擎是否恢复；`stop` 之后守护进程不可达属于预期结果，由状态表达，不计作动作失败。

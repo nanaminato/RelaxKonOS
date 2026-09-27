@@ -70,13 +70,22 @@ public static partial class PrivilegedOperationExecutor
         return new(false, ProblemCode: PrivilegedProblemCode.RestartRequired, Error: "restart RelaxKonOS Server to apply Docker access");
     }
 
-    // The daemon unit is a Helper constant. A request selects only the action, so engine control
-    // cannot be redirected at another unit the way a caller-supplied service id could.
+    // The service identifiers and executable locations are Helper constants. A request selects
+    // only the action, so engine control cannot be redirected at another unit or init script the
+    // way a caller-supplied service id could. Docker can be available on a managed Linux host
+    // whose init system is OpenRC or SysV rather than systemd; lifecycle control must not classify
+    // those hosts as another operating-system platform merely because /usr/bin/systemctl is absent.
     private const string DockerServiceUnit = "docker.service";
+    private const string DockerServiceName = "docker";
+    private const string SystemdRuntimeDirectory = "/run/systemd/system";
+    private const string SystemctlPath = "/usr/bin/systemctl";
+    private const string OpenRcServicePath = "/sbin/rc-service";
+    private const string ServicePath = "/usr/sbin/service";
+    private const string DockerInitScriptPath = "/etc/init.d/docker";
 
     static async Task<PrivilegedOperationResult> ApplyDockerEngineServiceActionAsync(PrivilegedServiceAction? action)
     {
-        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/systemctl"))
+        if (!OperatingSystem.IsLinux())
             return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
         if (action is not (PrivilegedServiceAction.Start or PrivilegedServiceAction.Stop or PrivilegedServiceAction.Restart))
             return DockerFailure(PrivilegedProblemCode.InvalidRequest);
@@ -86,9 +95,19 @@ public static partial class PrivilegedOperationExecutor
             PrivilegedServiceAction.Stop => "stop",
             _ => "restart",
         };
-        // Unlike the proxy drop-in this changes no unit file, so it never enables or disables the
-        // daemon: the host's boot policy stays exactly as the administrator left it.
-        return await RunFixedCommandAsync("/usr/bin/systemctl", [command, DockerServiceUnit], TimeSpan.FromSeconds(120), "docker service action failed");
+        // Unlike installation this changes no enablement or unit-file state, so the host's boot
+        // policy stays exactly as the administrator left it. Check the active init runtime before
+        // using systemctl: its binary alone is often present in a container or WSL distribution
+        // where PID 1 is not systemd.
+        if (Directory.Exists(SystemdRuntimeDirectory) && File.Exists(SystemctlPath))
+            return await RunFixedCommandAsync(SystemctlPath, [command, DockerServiceUnit], TimeSpan.FromSeconds(120), "docker systemd service action failed");
+        if (File.Exists(OpenRcServicePath))
+            return await RunFixedCommandAsync(OpenRcServicePath, [DockerServiceName, command], TimeSpan.FromSeconds(120), "docker OpenRC service action failed");
+        if (File.Exists(DockerInitScriptPath))
+            return await RunFixedCommandAsync(DockerInitScriptPath, [command], TimeSpan.FromSeconds(120), "docker init script action failed");
+        if (File.Exists(ServicePath))
+            return await RunFixedCommandAsync(ServicePath, [DockerServiceName, command], TimeSpan.FromSeconds(120), "docker service action failed");
+        return DockerFailure(PrivilegedProblemCode.UnsupportedOperation);
     }
 
     // Docker Desktop ignores daemon.json proxies, but a native Linux daemon reads its proxy from
