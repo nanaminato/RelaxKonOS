@@ -433,7 +433,12 @@ private fun SshFileDetail(
     onSaveText: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.verticalScroll(rememberScrollState())) {
-        ScreenHeader(title = entry.name, subtitle = entry.path, onBack = onBack)
+        ScreenHeader(
+            title = entry.name,
+            subtitle = entry.path,
+            onBack = onBack,
+            backAlignment = Alignment.Top,
+        )
         SectionCard(title = stringResource(R.string.ssh_files_properties), leading = DesktopIcons.fileFor(entry.name, false)) {
             KeyValueRow(stringResource(R.string.ssh_files_property_type), if (entry.isSymbolicLink) stringResource(R.string.ssh_files_link) else stringResource(R.string.ssh_files_file))
             KeyValueRow(stringResource(R.string.ssh_files_property_size), formatSize(entry.size).orEmpty())
