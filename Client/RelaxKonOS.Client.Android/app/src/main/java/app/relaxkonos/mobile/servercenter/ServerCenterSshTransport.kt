@@ -87,8 +87,44 @@ class JschServerCenterTransport : ServerCenterSshTransport {
                 created.setUserInfo(PasswordUserInfo(credential.secret))
             }
             created.setConfig("StrictHostKeyChecking", "yes")
-            // 现代 OpenSSH 默认禁用 ssh-rsa，服务器多用键盘交互或公钥；两者都要尝试。
-            created.setConfig("PreferredAuthentications", "publickey,password,keyboard-interactive")
+            // This repository deliberately exposes no JSch known_hosts list: trust is decided by
+            // GuardedHostKeyRepository.check and our separately persisted pins. JSch's default
+            // pre-KEX "prefer known host key types" optimization still calls getHostKey() to
+            // reorder algorithms, which is both meaningless here and crashes on Android in this
+            // JSch path before any host key is received. Disable only that optimization; strict
+            // host-key verification below remains enabled.
+            created.setConfig("prefer_known_host_key_types", "no")
+            // JSch 2.x deliberately omits the legacy ssh-rsa host-key *signature* algorithm from
+            // its default offer. SSH.NET (the desktop transport) and Termius still negotiate it
+            // with older OpenSSH servers, so retain it as the final compatibility option here.
+            // This does not weaken host identity handling: every received key still goes through
+            // GuardedHostKeyRepository and StrictHostKeyChecking before authentication starts.
+            created.setConfig(
+                "server_host_key",
+                listOf(created.getConfig("server_host_key"), "ssh-rsa")
+                    .filterNotNull()
+                    .filter { it.isNotBlank() }
+                    .joinToString(","),
+            )
+            // Keep the password flow identical to the desktop SSH launcher.  In particular, do not
+            // offer public-key authentication for a password-only session: restrictive sshd/PAM
+            // configurations can count that attempt toward MaxAuthTries before the password method
+            // is reached. Private-key sessions still add an in-memory identity above and explicitly
+            // opt into publickey.
+            created.setConfig(
+                "PreferredAuthentications",
+                if (credential.kind == SshCredentialKind.PrivateKey) {
+                    "publickey,password,keyboard-interactive"
+                } else {
+                    "password,keyboard-interactive"
+                },
+            )
+
+            SshDiagnostics.trace(
+                "connect.begin",
+                "credential=${credential.kind} auth=${created.getConfig("PreferredAuthentications")} " +
+                    "strict_host_key=yes known_key_reordering=no",
+            )
 
             val guard = GuardedHostKeyRepository(endpoint, hostKeyGuard)
             created.setHostKeyRepository(guard)
@@ -101,11 +137,29 @@ class JschServerCenterTransport : ServerCenterSshTransport {
                 // JSch reports a rejected host key as a connection failure; translate it back into the
                 // trust decision so the caller can drive the fingerprint confirmation flow.
                 if (observation != null && guard.trust != ServerHostKeyTrust.Trusted) {
+                    SshDiagnostics.trace(
+                        "host_key.rejected",
+                        "trust=${guard.trust} algorithm=${observation.algorithm}",
+                    )
                     throw ServerCenterHostKeyRejectedException(observation, guard.trust)
                 }
+                SshDiagnostics.failure("connect.failed", error)
+                throw error
+            } catch (error: Exception) {
+                // JSch can surface Android-provider and socket failures as ordinary runtime
+                // exceptions rather than JSchException. The coordinator intentionally reduces
+                // all of them to one safe UI sentence, so preserve the classified type in the
+                // debug-only diagnostic sink before propagating it.
+                created.disconnect()
+                SshDiagnostics.failure("connect.failed", error)
                 throw error
             }
 
+            SshDiagnostics.trace(
+                "connect.authenticated",
+                "kex=${created.kexAlgorithm} host_key=${created.serverHostKeyAlgorithm} " +
+                    "cipher_c2s=${created.cipherAlgorithmC2S} cipher_s2c=${created.cipherAlgorithmS2C}",
+            )
             this@JschServerCenterTransport.endpoint = endpoint
             this@JschServerCenterTransport.repository = guard
             this@JschServerCenterTransport.session = created
@@ -335,6 +389,7 @@ private class GuardedHostKeyRepository(
         )
         observation = seen
         trust = guard(seen)
+        SshDiagnostics.trace("host_key.observed", "trust=$trust algorithm=${seen.algorithm}")
         return when (trust) {
             ServerHostKeyTrust.Trusted -> HostKeyRepository.OK
             ServerHostKeyTrust.Changed -> HostKeyRepository.CHANGED
@@ -391,7 +446,12 @@ internal class PasswordUserInfo(private val password: CharArray) : UserInfo, UIK
         prompt: Array<out String>?,
         echo: BooleanArray?,
     ): Array<String>? {
-        if (prompt == null || echo == null || prompt.size != 1 || echo.size != 1 || echo[0]) return null
+        val accepted = prompt != null && echo != null && prompt.size == 1 && echo.size == 1 && !echo[0]
+        SshDiagnostics.trace(
+            "auth.keyboard_interactive",
+            "questions=${prompt?.size ?: 0} hidden=${echo?.all { !it } ?: false} accepted=$accepted",
+        )
+        if (!accepted) return null
         return arrayOf(String(password))
     }
 }
