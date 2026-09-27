@@ -13,11 +13,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.net.*
@@ -338,15 +339,6 @@ private fun DeploymentCreateDialog(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            if (showServerArchivePicker) {
-                ServerArchivePicker(
-                    onDismiss = { showServerArchivePicker = false },
-                    onSelect = { path ->
-                        form.archiveDefinition()?.let { onServerArchiveSubmit(path, it) }
-                        showServerArchivePicker = false
-                    },
-                )
-            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
                 if (form.isArchive) {
@@ -369,6 +361,15 @@ private fun DeploymentCreateDialog(
             }
         }
     }
+    if (showServerArchivePicker) {
+        ServerArchivePicker(
+            onDismiss = { showServerArchivePicker = false },
+            onSelect = { path ->
+                form.archiveDefinition()?.let { onServerArchiveSubmit(path, it) }
+                showServerArchivePicker = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -381,13 +382,19 @@ private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Uni
         listing = container.files.list(path, container.elevationAnswers)
     }
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
+        Surface(
+            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
         Column(
-            Modifier.padding(Spacing.md),
+            Modifier.fillMaxSize().padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -411,7 +418,7 @@ private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Uni
                     if (entries.isEmpty()) {
                         Text(stringResource(R.string.deployments_server_archive_empty), style = MaterialTheme.typography.bodyMedium)
                     } else {
-                        LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        LazyColumn(Modifier.weight(1f)) {
                             items(entries, key = { it.path }) { entry ->
                                 TextButton(
                                     onClick = {
@@ -427,6 +434,7 @@ private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Uni
                 }
                 else -> Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
             }
+        }
         }
     }
 }
