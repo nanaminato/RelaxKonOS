@@ -26,6 +26,7 @@ data class DeploymentBrowserState(
     val detailCheckedAtMillis: Long? = null,
     val logsLoading: Boolean = false,
     val logs: ApiResult<DeploymentLog>? = null,
+    val loadedLogTail: Int? = null,
     val submitting: Boolean = false,
     val submission: ApiResult<DeploymentOperation>? = null,
 )
@@ -40,15 +41,18 @@ class DeploymentBrowser(
     val state = mutableState.asStateFlow()
     private var listJob: Job? = null
     private var detailJob: Job? = null
+    private var logsJob: Job? = null
     private var operationJob: Job? = null
     private var listGeneration = 0
     private var detailGeneration = 0
+    private var logsGeneration = 0
 
     init {
         scope.launch {
             session.state.collect { value ->
                 listJob?.cancel()
                 detailJob?.cancel()
+                logsJob?.cancel()
                 operationJob?.cancel()
                 listGeneration++
                 detailGeneration++
@@ -85,9 +89,11 @@ class DeploymentBrowser(
         val owner = mutableState.value.owner ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
         detailJob?.cancel()
+        logsJob?.cancel()
         operationJob?.cancel()
         val generation = ++detailGeneration
-        mutableState.update { it.copy(selectedId = id, detail = null, detailLoading = id != null, detailCheckedAtMillis = null, logsLoading = id != null, logs = null) }
+        logsGeneration++
+        mutableState.update { it.copy(selectedId = id, detail = null, detailLoading = id != null, detailCheckedAtMillis = null, logsLoading = false, logs = null, loadedLogTail = null) }
         if (id == null) return
         detailJob = scope.launch {
             try {
@@ -95,14 +101,41 @@ class DeploymentBrowser(
                 if (current(owner) && generation == detailGeneration) mutableState.update {
                     it.copy(detail = result, detailCheckedAtMillis = if (result is ApiResult.Success) System.currentTimeMillis() else null)
                 }
-                if (result is ApiResult.Success) {
-                    val logs = repository.logs(owner, id)
-                    if (current(owner) && generation == detailGeneration) mutableState.update { it.copy(logs = logs) }
-                }
             } finally {
-                if (current(owner) && generation == detailGeneration) mutableState.update { it.copy(detailLoading = false, logsLoading = false) }
+                if (current(owner) && generation == detailGeneration) mutableState.update { it.copy(detailLoading = false) }
             }
         }
+    }
+
+    /** Logs are opt-in: opening a deployment details page must not transfer container output. */
+    fun loadLogs(tail: Int = INITIAL_LOG_TAIL) {
+        val owner = mutableState.value.owner ?: return
+        val applicationId = mutableState.value.selectedId ?: return
+        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        val boundedTail = tail.coerceIn(1, MAXIMUM_LOG_TAIL)
+        logsJob?.cancel()
+        val generation = ++logsGeneration
+        mutableState.update { it.copy(logsLoading = true) }
+        logsJob = scope.launch {
+            try {
+                val logs = repository.logs(owner, applicationId, boundedTail)
+                if (current(owner) && generation == logsGeneration && mutableState.value.selectedId == applicationId) {
+                    mutableState.update { it.copy(logs = logs, loadedLogTail = boundedTail) }
+                }
+            } finally {
+                if (current(owner) && generation == logsGeneration && mutableState.value.selectedId == applicationId) {
+                    mutableState.update { it.copy(logsLoading = false) }
+                }
+            }
+        }
+    }
+
+    /** A larger tail replaces the previous snapshot, keeping it ordered and current rather than appending duplicates. */
+    fun loadMoreLogs() {
+        val currentTail = mutableState.value.loadedLogTail ?: return
+        val logs = (mutableState.value.logs as? ApiResult.Success)?.value ?: return
+        if (!logs.truncated || currentTail >= MAXIMUM_LOG_TAIL) return
+        loadLogs((currentTail * LOG_TAIL_GROWTH).coerceAtMost(MAXIMUM_LOG_TAIL))
     }
 
     /** Starts the constrained image path. Archives, secrets and arbitrary host mounts remain out of this flow. */
@@ -290,6 +323,9 @@ class DeploymentBrowser(
 
     private companion object {
         const val OPERATION_POLL_MILLIS = 1_500L
+        const val INITIAL_LOG_TAIL = 20
+        const val MAXIMUM_LOG_TAIL = 1_000
+        const val LOG_TAIL_GROWTH = 5
         val ACTIVE_OPERATION_STATES = setOf("queued", "running")
     }
 }

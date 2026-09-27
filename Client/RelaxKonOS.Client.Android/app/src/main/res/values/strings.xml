@@ -522,4 +522,8 @@
     <string name="deployments_logs_recent">Recent output</string>
     <string name="deployments_logs_truncated">Recent output (older lines omitted)</string>
     <string name="deployments_logs_empty">No log lines are currently available.</string>
+    <string name="deployments_logs_on_demand">Logs are loaded only when requested.</string>
+    <string name="deployments_logs_load_initial">Load latest %1$d lines</string>
+    <string name="deployments_logs_load_more">Load latest %1$d lines</string>
+    <string name="deployments_logs_retry">Try loading logs again</string>
 </resources>

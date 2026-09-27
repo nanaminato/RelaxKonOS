@@ -2,6 +2,7 @@ package app.relaxkonos.mobile
 
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DeploymentApplication
+import app.relaxkonos.mobile.core.net.DeploymentLog
 import app.relaxkonos.mobile.core.net.DeploymentOperation
 import app.relaxkonos.mobile.core.net.DeploymentSnapshot
 import app.relaxkonos.mobile.core.net.DeploymentRuntime
@@ -33,6 +34,7 @@ class FakeGateway : RelaxKonGateway {
     var onDeploymentSnapshot: (suspend (String, String, String) -> ApiResult<DeploymentSnapshot>)? = null
     var onDeploymentRuntime: (suspend (String, String) -> ApiResult<DeploymentRuntime>)? = null
     var onDeploymentTemplates: (suspend (String, String) -> ApiResult<List<DeploymentTemplate>>)? = null
+    var onDeploymentLogs: (suspend (String, String, String, Int) -> ApiResult<DeploymentLog>)? = null
     var onRollbackDeployment: (suspend (String, String, String, String, String) -> ApiResult<DeploymentOperation>)? = null
 
     override suspend fun deploymentApplications(serverUrl: String, accessToken: String) =
@@ -43,6 +45,8 @@ class FakeGateway : RelaxKonGateway {
         requireNotNull(onDeploymentRuntime)(serverUrl, accessToken)
     override suspend fun deploymentTemplates(serverUrl: String, accessToken: String) =
         requireNotNull(onDeploymentTemplates)(serverUrl, accessToken)
+    override suspend fun deploymentLogs(serverUrl: String, accessToken: String, applicationId: String, tail: Int) =
+        requireNotNull(onDeploymentLogs)(serverUrl, accessToken, applicationId, tail)
     override suspend fun rollbackDeployment(serverUrl: String, accessToken: String, applicationId: String, revisionId: String, idempotencyKey: String) =
         requireNotNull(onRollbackDeployment)(serverUrl, accessToken, applicationId, revisionId, idempotencyKey)
 

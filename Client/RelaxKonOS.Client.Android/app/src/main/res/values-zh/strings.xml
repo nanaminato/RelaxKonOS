@@ -485,4 +485,8 @@
     <string name="deployments_logs_recent">近期输出</string>
     <string name="deployments_logs_truncated">近期输出（更早的行已省略）</string>
     <string name="deployments_logs_empty">当前没有可用日志行。</string>
+    <string name="deployments_logs_on_demand">日志仅在你请求查看时加载。</string>
+    <string name="deployments_logs_load_initial">加载最近 %1$d 行</string>
+    <string name="deployments_logs_load_more">加载最近 %1$d 行</string>
+    <string name="deployments_logs_retry">重新加载日志</string>
 </resources>

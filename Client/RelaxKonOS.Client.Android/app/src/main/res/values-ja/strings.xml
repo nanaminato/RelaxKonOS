@@ -486,4 +486,8 @@
     <string name="deployments_logs_recent">最近の出力</string>
     <string name="deployments_logs_truncated">最近の出力（古い行は省略）</string>
     <string name="deployments_logs_empty">現在利用可能なログ行はありません。</string>
+    <string name="deployments_logs_on_demand">ログは確認を求めたときだけ読み込みます。</string>
+    <string name="deployments_logs_load_initial">最新 %1$d 行を読み込む</string>
+    <string name="deployments_logs_load_more">最新 %1$d 行を読み込む</string>
+    <string name="deployments_logs_retry">ログを再読み込み</string>
 </resources>

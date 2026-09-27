@@ -124,6 +124,29 @@ class DeploymentBrowserTest {
         assertFalse(browser.state.value.detailLoading)
     }
 
+    @Test fun `logs are opt in then expand from a small tail`() = runTest {
+        signIn(); reads()
+        val requestedTails = mutableListOf<Int>()
+        gateway.onDeploymentLogs = { _, _, _, tail ->
+            requestedTails += tail
+            ApiResult.Success(DeploymentLog((1..tail).map { "line-$it" }, truncated = tail < 1_000))
+        }
+        val browser = DeploymentBrowser(repository, session, backgroundScope)
+        runCurrent(); browser.select(app.id); runCurrent()
+
+        assertTrue(requestedTails.isEmpty())
+        assertNull(browser.state.value.logs)
+
+        browser.loadLogs(); runCurrent()
+        assertEquals(listOf(20), requestedTails)
+        assertEquals(20, browser.state.value.loadedLogTail)
+        assertEquals(20, (browser.state.value.logs as ApiResult.Success).value.lines.size)
+
+        browser.loadMoreLogs(); runCurrent()
+        assertEquals(listOf(20, 100), requestedTails)
+        assertEquals(100, browser.state.value.loadedLogTail)
+    }
+
     @Test fun `rollback ignores the current revision and queues a selected older revision once`() = runTest {
         signIn(); reads()
         val current = DeploymentRevision("revision-current", 2, "image@sha256:current", true)

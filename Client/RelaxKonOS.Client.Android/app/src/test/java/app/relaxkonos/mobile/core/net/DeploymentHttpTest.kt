@@ -57,8 +57,8 @@ class DeploymentHttpTest {
     @Test fun `application logs are read through bounded route`() = runTest {
         serve(200, """{"lines":["ready"],"truncated":false}""") { url, requests ->
             assertEquals(ApiResult.Success(DeploymentLog(listOf("ready"), false)),
-                RelaxKonApi("test", "test").deploymentLogs(url, "token", "d3708cc7-3e7e-42ad-b498-11466a48af23"))
-            assertEquals(listOf("GET /api/v1.0/application-deployments/applications/d3708cc7-3e7e-42ad-b498-11466a48af23/logs?tail=200 Bearer token"), requests)
+                RelaxKonApi("test", "test").deploymentLogs(url, "token", "d3708cc7-3e7e-42ad-b498-11466a48af23", tail = 20))
+            assertEquals(listOf("GET /api/v1.0/application-deployments/applications/d3708cc7-3e7e-42ad-b498-11466a48af23/logs?tail=20 Bearer token"), requests)
         }
     }
 

@@ -316,10 +316,27 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                         SectionCard(title = stringResource(if (logs.value.truncated) R.string.deployments_logs_truncated else R.string.deployments_logs_recent)) {
                             if (logs.value.lines.isEmpty()) Text(stringResource(R.string.deployments_logs_empty))
                             logs.value.lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            state.loadedLogTail?.takeIf { logs.value.truncated && it < MAXIMUM_LOG_TAIL }?.let { tail ->
+                                TextButton(onClick = browser::loadMoreLogs, enabled = !state.logsLoading) {
+                                    Text(stringResource(R.string.deployments_logs_load_more, nextLogTail(tail)))
+                                }
+                            }
                         }
                     }
-                    null -> Unit
-                    else -> item { Text(logs.deploymentFailure().text(), color = MaterialTheme.colorScheme.error) }
+                    null -> item {
+                        SectionCard(title = stringResource(R.string.deployments_logs_recent)) {
+                            Text(stringResource(R.string.deployments_logs_on_demand), style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
+                                Text(stringResource(R.string.deployments_logs_load_initial, INITIAL_LOG_TAIL))
+                            }
+                        }
+                    }
+                    else -> item {
+                        Text(logs.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = { browser.loadLogs() }, enabled = !state.logsLoading) {
+                            Text(stringResource(R.string.deployments_logs_retry))
+                        }
+                    }
                 }
                 item { Text(stringResource(R.string.deployments_revisions), style = MaterialTheme.typography.titleMedium) }
                 if (snapshot.revisions.isEmpty()) item { EmptyHint(stringResource(R.string.deployments_no_revisions)) }
@@ -403,6 +420,12 @@ private fun label(value: String): String = stringResource(deploymentLabel(value)
 
 @Composable
 private fun revisionLabel(number: Int?): String = number?.toString() ?: stringResource(R.string.deployments_no_revision)
+
+private const val INITIAL_LOG_TAIL = 20
+private const val MAXIMUM_LOG_TAIL = 1_000
+private const val LOG_TAIL_GROWTH = 5
+
+private fun nextLogTail(current: Int): Int = (current * LOG_TAIL_GROWTH).coerceAtMost(MAXIMUM_LOG_TAIL)
 
 @Composable
 private fun CheckedAt(millis: Long) {

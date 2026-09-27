@@ -75,8 +75,8 @@ class DeploymentRepository(private val gateway: RelaxKonGateway, private val ses
     suspend fun lifecycle(owner: SessionState.Active, applicationId: String, action: DeploymentLifecycleAction, idempotencyKey: String): ApiResult<DeploymentOperation> =
         read(owner) { url, token -> gateway.deploymentLifecycle(url, token, applicationId, action, idempotencyKey) }
 
-    suspend fun logs(owner: SessionState.Active, applicationId: String): ApiResult<DeploymentLog> =
-        read(owner) { url, token -> gateway.deploymentLogs(url, token, applicationId) }
+    suspend fun logs(owner: SessionState.Active, applicationId: String, tail: Int): ApiResult<DeploymentLog> =
+        read(owner) { url, token -> gateway.deploymentLogs(url, token, applicationId, tail) }
 
     suspend fun cancel(owner: SessionState.Active, operationId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
         read(owner) { url, token -> gateway.cancelDeploymentOperation(url, token, operationId, idempotencyKey) }
