@@ -40,9 +40,32 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
         verify(target, ServerCenterFormMode.Add, clearFormOnSuccess = true)
     }
 
-    /** Opens the same form with the stored endpoint, rather than adding a second password field. */
+    /** Re-checks a session-verified host immediately; only a failed or unavailable credential opens the password form. */
     fun manage(hostId: String) {
         val target = mutableState.value.hosts.firstOrNull { it.hostId == hostId } ?: return
+        val rememberedPassword = coordinator.verifiedPasswordCopy(target.hostId)
+        if (target.sshVerifiedAtEpochMillis != null && rememberedPassword != null) {
+            val password = rememberedPassword.concatToString()
+            rememberedPassword.fill('\u0000')
+            update {
+                copy(
+                    formMode = ServerCenterFormMode.Manage,
+                    selectedHostId = target.hostId,
+                    host = target.sshHost,
+                    port = target.sshPort.toString(),
+                    user = target.sshUserName,
+                    name = target.displayName,
+                    password = "",
+                    pendingTarget = null,
+                    pendingPassword = "",
+                    verification = null,
+                    inputError = false,
+                    quickManaging = true,
+                )
+            }
+            verify(target, ServerCenterFormMode.Manage, clearFormOnSuccess = false, passwordOverride = password)
+            return
+        }
         update {
             copy(
                 formMode = ServerCenterFormMode.Manage,
@@ -56,6 +79,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
                 pendingPassword = "",
                 verification = null,
                 inputError = false,
+                quickManaging = false,
             )
         }
     }
@@ -83,7 +107,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
         verify(target, state.formMode, clearFormOnSuccess = state.formMode == ServerCenterFormMode.Add, passwordOverride = password)
     }
 
-    fun dismissHostKeyTrust() = update { copy(verification = null, pendingTarget = null, pendingPassword = "") }
+    fun dismissHostKeyTrust() = update { copy(verification = null, pendingTarget = null, pendingPassword = "", quickManaging = false) }
     fun requestDelete() = update { copy(deleteRequested = selectedTarget() != null) }
     fun dismissDelete() = update { copy(deleteRequested = false) }
 
@@ -95,6 +119,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
                 hosts = coordinator.hosts(), formMode = ServerCenterFormMode.Add, selectedHostId = null,
                 host = "", port = "22", user = "", name = "", password = "",
                 pendingTarget = null, pendingPassword = "", verification = null, deleteRequested = false,
+                quickManaging = false,
             )
         }
     }
@@ -127,6 +152,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
                     lastUsedAtEpochMillis = System.currentTimeMillis(),
                 ),
             )
+            if (succeeded) coordinator.rememberVerifiedPassword(target.hostId, password.toCharArray())
             update {
                 copy(
                     hosts = if (succeeded) coordinator.hosts() else hosts,
@@ -137,6 +163,7 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
                     port = if (succeeded && clearFormOnSuccess) "22" else port,
                     user = if (succeeded && clearFormOnSuccess) "" else user,
                     name = if (succeeded && clearFormOnSuccess) "" else name,
+                    quickManaging = false,
                 )
             }
             if (succeeded && mode == ServerCenterFormMode.Manage) {
@@ -172,5 +199,7 @@ data class ServerCenterUiState(
     val pendingPassword: String = "",
     val verification: ServerCenterSshVerification? = null,
     val isVerifying: Boolean = false,
+    /** A trusted, in-memory credential is being re-checked before opening the workspace. */
+    val quickManaging: Boolean = false,
     val deleteRequested: Boolean = false,
 )

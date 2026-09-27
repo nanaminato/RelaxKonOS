@@ -93,16 +93,20 @@ private fun ServerCenterContent(
     ) {
         Text(stringResource(R.string.server_center_title), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.server_center_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        HostForm(
-            state = state,
-            managing = managing,
-            onHostChanged = onHostChanged,
-            onPortChanged = onPortChanged,
-            onUserChanged = onUserChanged,
-            onNameChanged = onNameChanged,
-            onPasswordChanged = onPasswordChanged,
-            onSubmit = if (managing) onVerifyAndOpen else onAddAndVerify,
-        )
+        if (!state.quickManaging) {
+            HostForm(
+                state = state,
+                managing = managing,
+                onHostChanged = onHostChanged,
+                onPortChanged = onPortChanged,
+                onUserChanged = onUserChanged,
+                onNameChanged = onNameChanged,
+                onPasswordChanged = onPasswordChanged,
+                onSubmit = if (managing) onVerifyAndOpen else onAddAndVerify,
+            )
+        } else {
+            CircularProgressIndicator()
+        }
         VerificationNotice(state.verification)
         if (managing) {
             TextButton(onClick = onRequestDelete) {

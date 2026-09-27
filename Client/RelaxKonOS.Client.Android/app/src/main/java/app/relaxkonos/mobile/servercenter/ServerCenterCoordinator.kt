@@ -8,9 +8,10 @@ import androidx.compose.runtime.setValue
 /**
  * Process-owned navigation state for the server centre.
  *
- * It owns no persisted SSH password or deployment request.  A verified workspace may retain one
- * transient in-memory password until that workspace closes; it is never written to a target,
- * navigation argument or credential store.
+ * It owns no persisted SSH password or deployment request.  Passwords accepted by a successful
+ * SSH handshake remain only in process memory while Server Centre is open, so a verified host can
+ * be re-checked without asking again.  They are never written to a target, navigation argument or
+ * credential store.
  */
 class ServerCenterCoordinator(
     private val targets: ServerHostTargetStore,
@@ -24,8 +25,8 @@ class ServerCenterCoordinator(
     var sshFilesHostId by mutableStateOf<String?>(null)
         private set
 
-    /** In-memory only credential for the verified SSH workspace; cleared when that workspace closes. */
-    private var sshWorkspacePassword: CharArray? = null
+    /** In-memory only credentials for hosts verified during this Server Centre session. */
+    private val verifiedSessionPasswords = mutableMapOf<String, CharArray>()
 
     var revision by mutableIntStateOf(0)
         private set
@@ -38,21 +39,30 @@ class ServerCenterCoordinator(
     fun close() {
         isOpen = false
         closeSshFiles()
+        verifiedSessionPasswords.values.forEach { it.fill('\u0000') }
+        verifiedSessionPasswords.clear()
     }
+
+    /** Remembers a password only after a trusted handshake, and only until Server Centre closes. */
+    fun rememberVerifiedPassword(hostId: String, password: CharArray) {
+        require(targets.find(hostId) != null) { "Unknown host target '$hostId'." }
+        verifiedSessionPasswords.remove(hostId)?.fill('\u0000')
+        verifiedSessionPasswords[hostId] = password.copyOf()
+    }
+
+    /** The caller owns and must clear the returned copy. */
+    fun verifiedPasswordCopy(hostId: String): CharArray? = verifiedSessionPasswords[hostId]?.copyOf()
 
     fun openSshFiles(hostId: String, password: CharArray) {
         require(targets.find(hostId) != null) { "Unknown host target '$hostId'." }
-        sshWorkspacePassword?.fill('\u0000')
-        sshWorkspacePassword = password.copyOf()
+        rememberVerifiedPassword(hostId, password)
         sshFilesHostId = hostId
     }
 
-    fun workspacePasswordCopy(): CharArray? = sshWorkspacePassword?.copyOf()
+    fun workspacePasswordCopy(): CharArray? = sshFilesHostId?.let(::verifiedPasswordCopy)
 
     fun closeSshFiles() {
         sshFilesHostId = null
-        sshWorkspacePassword?.fill('\u0000')
-        sshWorkspacePassword = null
     }
 
     fun hosts(): List<ServerHostTarget> {
@@ -98,7 +108,10 @@ class ServerCenterCoordinator(
     /** Removes only device-local management metadata; it never uninstalls the server or clears credentials. */
     fun removeHost(hostId: String): Boolean {
         val removed = targets.remove(hostId)
-        if (removed) revision++
+        if (removed) {
+            verifiedSessionPasswords.remove(hostId)?.fill('\u0000')
+            revision++
+        }
         return removed
     }
 

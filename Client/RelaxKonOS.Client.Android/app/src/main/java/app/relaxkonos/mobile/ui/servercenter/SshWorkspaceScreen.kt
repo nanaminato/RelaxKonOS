@@ -34,7 +34,6 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.ServerHostTarget
 import app.relaxkonos.mobile.ui.common.PasswordTextField
-import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
@@ -46,7 +45,6 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     var page by rememberSaveable(hostId) { mutableIntStateOf(0) }
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
-    val title = stringResource(if (page == 0) R.string.ssh_files_title else R.string.ssh_workspace_deploy)
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         bottomBar = {
@@ -63,24 +61,26 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
                     icon = { DesktopIcon(DesktopIcons.deployments, size = 26.dp) },
                     label = { Text(stringResource(R.string.ssh_workspace_deploy)) },
                 )
+                NavigationBarItem(
+                    selected = page == 2,
+                    onClick = { page = 2 },
+                    icon = { DesktopIcon(DesktopIcons.system, size = 26.dp) },
+                    label = { Text(stringResource(R.string.ssh_workspace_system)) },
+                )
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            ScreenHeader(
-                title = title,
-                subtitle = stringResource(R.string.ssh_workspace_subtitle, host?.displayName ?: hostId),
-                onBack = onClose,
-                modifier = Modifier.padding(Spacing.lg),
-            )
-            if (page == 0) SshFilesScreen(hostId) else DeploymentSetupScreen(host)
+        when (page) {
+            0 -> SshFilesScreen(hostId, Modifier.padding(padding))
+            1 -> DeploymentSetupScreen(host, Modifier.padding(padding))
+            else -> SshSystemScreen(hostId, onClose, Modifier.padding(padding))
         }
     }
 }
 
 /** Matches the desktop source → mode → review flow. Execution awaits packaged trusted assets. */
 @Composable
-private fun DeploymentSetupScreen(host: ServerHostTarget?) {
+private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = Modifier) {
     var step by rememberSaveable(host?.hostId) { mutableIntStateOf(0) }
     var source by rememberSaveable(host?.hostId) { mutableStateOf("official") }
     var bundleName by rememberSaveable(host?.hostId) { mutableStateOf("") }
@@ -111,7 +111,7 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?) {
         else -> false
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(modifier.fillMaxSize()) {
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
