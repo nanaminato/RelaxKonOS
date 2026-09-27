@@ -49,8 +49,13 @@ public sealed class TerminalSessionManager
         _sessions[id] = session;
 
         var shell = string.IsNullOrWhiteSpace(req.Shell) ? DefaultShell() : req.Shell!;
+        // A System Mode Linux PTY belongs to the authenticated effective OS user, not the Server
+        // service account. Keep an explicit Explorer directory intact, but otherwise start in the
+        // effective user's home rather than inheriting the Server process's current environment.
         var workingDirectory = string.IsNullOrWhiteSpace(req.WorkingDirectory)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+            ? pty is LinuxUserTerminalPty userPty
+                ? userPty.DefaultWorkingDirectory
+                : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             : req.WorkingDirectory!;
 
         try

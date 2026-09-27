@@ -67,9 +67,16 @@ public sealed class ShellRuntime
     {
         if (ReferenceEquals(_host, host) && ReferenceEquals(_state.Snapshot, workspace) && _active is not null)
             return;
+
+        // A refresh-token rejection closes the desktop window but deliberately keeps this
+        // singleton runtime alive for the next sign-in.  Detach the old visual host before
+        // moving the active shell view to the replacement window.
+        var previousHost = _host;
         // Shell preference synchronization is asynchronous. Selecting before it completes
         // briefly activates the default desktop and can overwrite an external-shell choice.
         await workspace.EnsureWorkspacePreferencesAsync();
+        if (!ReferenceEquals(previousHost, host) && previousHost is not null)
+            previousHost.Content = null;
         _host = host;
         _desktopState?.Dispose();
         _desktopState = new DesktopShellStateAdapter(workspace, _state, _catalog);
@@ -96,7 +103,24 @@ public sealed class ShellRuntime
         {
             if (intentVersion is not null && intentVersion != Volatile.Read(ref _switchIntentVersion)) return false;
             var id = ShellApi.ResolveId(requestedId);
-            if (_active is not null && id == _activeShellId) return true;
+            if (_active is not null && id == _activeShellId)
+            {
+                // Matching the selected shell is not enough after the host window changed.
+                // Without this reattachment, the new MainWindow's ShellHost remains empty and
+                // becomes a white screen when its loading overlay is removed.
+                if (!ReferenceEquals(_host.Content, _active.View))
+                {
+                    if (_activeSurfaces?.Surfaces is not { } surfaces)
+                        return Fail("Active shell has no registered surfaces.");
+
+                    _windows.Detach();
+                    _host.Content = _active.View;
+                    _windows.Attach(surfaces.WindowHost);
+                    _windows.AttachFullScreenHost(surfaces.FullScreenWindowHost);
+                    _activeSurfaces.Bind(_windows);
+                }
+                return true;
+            }
             if (!_catalog.TryCreate(id, out var candidate, out var createError) || candidate is null)
                 return Fail(createError ?? "Shell is unavailable.");
 

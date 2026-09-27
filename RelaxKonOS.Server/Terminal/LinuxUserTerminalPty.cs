@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using RelaxKonOS.Protocol.Observability;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Protocol.UserExecution;
 using RelaxKonOS.Server.Privileged;
@@ -14,6 +15,8 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
     private readonly object _inputLock = new();
     private Process? _process;
     private int _exitSignaled;
+    /// <summary>Default directory for a terminal whose authenticated identity owns this PTY.</summary>
+    public string DefaultWorkingDirectory => context.Identity.HomeDirectory;
     public bool IsRunning { get; private set; }
     public int ChildPid { get; set; }
     public event Action<byte[], int>? DataReceived;
@@ -26,10 +29,12 @@ public sealed class LinuxUserTerminalPty(UserExecutionContext context, Privilege
         p.StartInfo.ArgumentList.Add("-n"); p.StartInfo.ArgumentList.Add(options.HelperPath); p.StartInfo.ArgumentList.Add("--user-terminal");
         TrustedProcessEnvironment.Apply(p.StartInfo);
         p.Start(); _process = p; IsRunning = true; ChildPid = p.Id;
+        var operationId = Guid.NewGuid();
         var request = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.TerminalStart,
             Path: string.IsNullOrWhiteSpace(workingDirectory) ? context.Identity.HomeDirectory : workingDirectory,
             TerminalShell: shell, TerminalColumns: columns, TerminalRows: rows,
-            TerminalWidthPixels: 0, TerminalHeightPixels: 0, OperationId: Guid.NewGuid());
+            TerminalWidthPixels: 0, TerminalHeightPixels: 0, OperationId: operationId,
+            Correlation: CorrelationContext.Create(operationId, "user.execution"));
         var line = System.Text.Json.JsonSerializer.Serialize(request, RelaxKonOS.Protocol.Common.RelaxKonOSJsonOptions.Default) + "\n";
         p.StandardInput.Write(line); p.StandardInput.Flush();
         _ = Task.Run(async () => { var buffer = new byte[65536]; try { while (true) { var read = await p.StandardOutput.BaseStream.ReadAsync(buffer); if (read == 0) break; DataReceived?.Invoke(buffer[..read], read); } } catch { } });

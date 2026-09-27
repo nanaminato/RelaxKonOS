@@ -206,6 +206,15 @@ internal static void VerifyUserExecutionContextContract()
         && !UserExecutionRequestPolicy.IsValid(request with { OperationId = Guid.Empty }, terminal: false),
         "User-execution request policy accepted an unrelated field, overwrite flag, or empty operation id.");
 
+    var terminalOperationId = Guid.NewGuid();
+    var terminalRequest = new UserExecutionRequest(context.Identity, UserExecutionOperationKind.TerminalStart,
+        Path: "/home/nanami", TerminalShell: "bash", TerminalColumns: 80, TerminalRows: 24,
+        TerminalWidthPixels: 0, TerminalHeightPixels: 0, OperationId: terminalOperationId,
+        Correlation: CorrelationContext.Create(terminalOperationId, "user.execution"));
+    TestAssert.Assert(UserExecutionRequestPolicy.IsValid(terminalRequest, terminal: true)
+        && terminalRequest.Correlation?.IsValid() == true,
+        "A Linux user-terminal request must carry a valid allowlisted correlation context.");
+
     // Resumable upload staging reaches the effective user through the same closed channel: an append
     // must state the confirmed offset and the exact byte count, and no other operation may carry them.
     var stagingPath = "/home/nanami/.big.iso.9f2c1a.rkup";

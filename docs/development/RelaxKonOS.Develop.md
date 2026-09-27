@@ -113,8 +113,11 @@ Server 不会继承 root 身份，UFW、受保护文件和受限服务操作才�
 要调试真实 Server → sudo → Helper 路径，先构建 Helper，然后由管理员安装其 root-owned 开发副本：
 
 ```bash
-dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj
-sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER"
+sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER" \
+  --file-access whitelist \
+  --file-roots deployment/linux/privileged-helper-roots.example \
+  --administrator-file-access whitelist \
+  --administrator-file-roots deployment/linux/privileged-helper-administrators.example
 ```
 
 该脚本复制完整 Debug 输出（包括 PDB）到
