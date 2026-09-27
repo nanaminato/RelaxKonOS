@@ -9,6 +9,7 @@ import com.jcraft.jsch.JSch
 import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.SftpProgressMonitor
+import com.jcraft.jsch.UIKeyboardInteractive
 import com.jcraft.jsch.UserInfo
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -360,7 +361,7 @@ private class GuardedHostKeyRepository(
  * JSch 的键盘交互接口以 `String` 取密码，因此这里会把会话持有的 `CharArray` 转成一次瞬时
  * `String`；密码不落盘、不进日志，也不进入任何持久对象。
  */
-private class PasswordUserInfo(private val password: CharArray) : UserInfo {
+internal class PasswordUserInfo(private val password: CharArray) : UserInfo, UIKeyboardInteractive {
 
     override fun getPassphrase(): String? = null
 
@@ -373,6 +374,26 @@ private class PasswordUserInfo(private val password: CharArray) : UserInfo {
     override fun promptYesNo(message: String): Boolean = false
 
     override fun showMessage(message: String) = Unit
+
+    /**
+     * OpenSSH/PAM often exposes a password-only login as keyboard-interactive rather than the
+     * SSH "password" method.  Merely listing keyboard-interactive in PreferredAuthentications is
+     * insufficient: JSch also needs this callback to return the response.
+     *
+     * Only hidden prompts can receive the password.  Refusing visible or multi-question prompts
+     * avoids accidentally submitting the SSH password as an OTP, a consent answer, or some other
+     * challenge the UI cannot represent safely.
+     */
+    override fun promptKeyboardInteractive(
+        destination: String?,
+        name: String?,
+        instruction: String?,
+        prompt: Array<out String>?,
+        echo: BooleanArray?,
+    ): Array<String>? {
+        if (prompt == null || echo == null || prompt.size != 1 || echo.size != 1 || echo[0]) return null
+        return arrayOf(String(password))
+    }
 }
 
 /**
