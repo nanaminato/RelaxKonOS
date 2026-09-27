@@ -47,7 +47,7 @@
             </StackPanel>
         </Grid>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel>
             <Border Classes="login-divider" />
             <Grid Margin="32,22,32,18" IsSharedSizeScope="True">
@@ -177,6 +177,7 @@
                         </WrapPanel>
                         <StackPanel IsVisible="{Binding OwnerDevicePassphraseInputVisible}" Spacing="4">
                             <TextBox Classes="connection-input" Text="{Binding OwnerDeviceKeyPassphrase}" PasswordChar="•" MaxLength="256"
+                                     HorizontalAlignment="Stretch" MaxWidth="520"
                                      PlaceholderText="{Binding OwnerDeviceKeyPassphraseText}" />
                             <TextBlock Text="{Binding OwnerDeviceKeyPassphraseHint}" TextWrapping="Wrap" FontSize="12"
                                        Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.72" />
