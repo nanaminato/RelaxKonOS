@@ -44,6 +44,7 @@
         "login.owner_device.options.hide": "隐藏设备密钥选项",
         "login.owner_device.title": "已配对设备",
         "login.owner_device.description": "使用设备私钥登录，无需输入 Server 密码。",
+        "login.owner_device.server_only": "使用已配对设备登录时，只需要此 Server 地址；设备私钥会识别你的账号。",
         "login.owner_device.setup": "设置或恢复此 Windows 设备",
         "login.owner_device.connect": "使用设备密钥登录",
         "login.owner_device.pairing_description": "要添加新设备？扫描配对二维码后，将配对码粘贴到这里。",

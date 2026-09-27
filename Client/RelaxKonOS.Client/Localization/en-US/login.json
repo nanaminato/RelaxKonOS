@@ -44,6 +44,7 @@
         "login.owner_device.options.hide": "Hide paired-device options",
         "login.owner_device.title": "Paired device",
         "login.owner_device.description": "Sign in with a private key instead of a Server password.",
+        "login.owner_device.server_only": "For paired-device sign-in, only this Server address is required. Your private key identifies your account.",
         "login.owner_device.setup": "Set up or recover this Windows device",
         "login.owner_device.connect": "Sign in with device key",
         "login.owner_device.pairing_description": "New device? Scan a pairing QR code, then paste its code here.",

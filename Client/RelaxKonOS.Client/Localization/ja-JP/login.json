@@ -44,6 +44,7 @@
         "login.owner_device.options.hide": "デバイスキーのオプションを隠す",
         "login.owner_device.title": "ペアリング済みデバイス",
         "login.owner_device.description": "Server パスワードではなく秘密鍵でサインインします。",
+        "login.owner_device.server_only": "ペアリング済みデバイスでのサインインには、この Server アドレスだけが必要です。秘密鍵がアカウントを識別します。",
         "login.owner_device.setup": "この Windows デバイスを設定または復元",
         "login.owner_device.connect": "デバイスキーでサインイン",
         "login.owner_device.pairing_description": "新しいデバイスですか？ペアリング QR コードを読み取り、コードをここに貼り付けます。",

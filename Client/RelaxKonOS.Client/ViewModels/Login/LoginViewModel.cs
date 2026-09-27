@@ -73,6 +73,7 @@ public partial class LoginViewModel : ObservableObject
     partial void OnUseSshLoginChanged(bool value)
     {
         OnPropertyChanged(nameof(WindowsDesktopSessionAvailable));
+        OnPropertyChanged(nameof(WindowsDesktopSessionFooterAvailable));
         OnPropertyChanged(nameof(OwnerDeviceAvailable));
         OnPropertyChanged(nameof(WindowsOwnerDeviceBootstrapAvailable));
         if (value) ShowOwnerDeviceOptions = false;
@@ -143,6 +144,10 @@ public partial class LoginViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OwnerDeviceOptionsToggleText))]
+    [NotifyPropertyChangedFor(nameof(CredentialsInstructions))]
+    [NotifyPropertyChangedFor(nameof(StandardAuthenticationVisible))]
+    [NotifyPropertyChangedFor(nameof(PasswordAuthenticationVisible))]
+    [NotifyPropertyChangedFor(nameof(WindowsDesktopSessionFooterAvailable))]
     private bool _showOwnerDeviceOptions;
 
     [ObservableProperty]
@@ -160,6 +165,7 @@ public partial class LoginViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OptionsToggleText))]
+    [NotifyPropertyChangedFor(nameof(PasswordAuthenticationVisible))]
     private bool _showOptions = true;
 
     [ObservableProperty]
@@ -190,7 +196,9 @@ public partial class LoginViewModel : ObservableObject
     public string ConnectionInstructions => UseSshLogin
         ? T("login.ssh_instructions", "Enter the SSH host name and credentials.")
         : T("login.connection_instructions", "Enter the name of the remote computer you want to connect to.");
-    public string CredentialsInstructions => T("login.credentials_instructions", "The credentials below will be used when connecting.");
+    public string CredentialsInstructions => ShowOwnerDeviceOptions && !UseSshLogin
+        ? T("login.owner_device.server_only", "For paired-device sign-in, only this Server address is required. Your private key identifies your account.")
+        : T("login.credentials_instructions", "The credentials below will be used when connecting.");
     public string ComputerLabel => T("login.computer", "Computer:");
     public string IdentifierLabel => T("login.username", "Identifier:");
     public string PasswordLabel => T("login.password", "Password:");
@@ -209,7 +217,10 @@ public partial class LoginViewModel : ObservableObject
     public string ConnectText => T("common.connect", "Connect");
     public string WindowsDesktopSessionConnectText => T("login.windows_desktop_session.connect", "Use Windows session");
     public bool WindowsDesktopSessionAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
+    public bool WindowsDesktopSessionFooterAvailable => WindowsDesktopSessionAvailable && !ShowOwnerDeviceOptions;
     public bool OwnerDeviceAvailable => !UseSshLogin;
+    public bool StandardAuthenticationVisible => !ShowOwnerDeviceOptions;
+    public bool PasswordAuthenticationVisible => StandardAuthenticationVisible && ShowOptions;
     public bool WindowsOwnerDeviceBootstrapAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
     public bool OwnerDevicePassphraseAvailable => OperatingSystem.IsLinux();
     public string OwnerDeviceOptionsToggleText => T(ShowOwnerDeviceOptions ? "login.owner_device.options.hide" : "login.owner_device.options.show",
