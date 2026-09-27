@@ -593,6 +593,12 @@ builder.Services.AddScoped<RelaxKonOS.Server.ImageMirrors.IDockerImageMirrorReso
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerRuntimeInstaller, RelaxKonOS.Server.Docker.DockerRuntimeInstaller>();
 builder.Services.Configure<RelaxKonOS.Server.Docker.DockerComposeOptions>(builder.Configuration.GetSection("DockerCompose"));
 builder.Services.AddSingleton<RelaxKonOS.Server.Docker.IDockerComposeService, RelaxKonOS.Server.Docker.DockerComposeService>();
+// Compose stack operations are durable: the ledger outlives the HTTP request, the phone that started
+// it, and this process. The coordinator is the only caller of the executor and reconciles an
+// interrupted operation against the real Engine on startup instead of replaying it.
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Docker.DockerStackOperationCoordinator>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.Docker.DockerStackOperationCoordinator>());
 // Docker proxy: one resolver feeds both the docker child-process environment and the daemon
 // configurator, so the two layers can never disagree about the saved preference. The configurator
 // owns the platform difference internally (systemd drop-in on Linux, Docker Desktop settings on

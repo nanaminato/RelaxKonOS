@@ -5,7 +5,7 @@
              x:Class="RelaxKonOS.Client.Apps.Docker.Views.DockerStacksView"
              x:DataType="docker:DockerManagerViewModel">
     <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="20">
-        <Grid RowDefinitions="Auto,Auto,Auto,210,Auto,Auto,180" RowSpacing="12">
+        <Grid RowDefinitions="Auto,Auto,Auto,210,Auto,Auto,180,Auto,150" RowSpacing="12">
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
                 <TextBlock Text="{loc:Loc docker.orchestration}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <Button Grid.Column="1" Content="{loc:Loc common.refresh}" Command="{Binding RefreshCommand}" />
@@ -43,6 +43,19 @@
                         <DataGridTextColumn Header="{loc:Loc docker.table.image}" Binding="{ReflectionBinding Image}" Width="240" />
                         <DataGridTextColumn Header="{loc:Loc docker.table.state}" Binding="{ReflectionBinding State}" Width="130" />
                         <DataGridTextColumn Header="{loc:Loc docker.table.status}" Binding="{ReflectionBinding Status}" Width="300" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </ScrollViewer>
+            <!-- The durable ledger, not a live event: an operation started from a phone is readable here too. -->
+            <TextBlock Grid.Row="7" Text="{loc:Loc docker.stack.operations}" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <ScrollViewer Grid.Row="8" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <DataGrid HorizontalAlignment="Left" ItemsSource="{Binding StackOperations}" AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserResizeColumns="True" CanUserReorderColumns="False" GridLinesVisibility="Horizontal" HorizontalScrollBarVisibility="Disabled" MinWidth="900">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="{loc:Loc docker.table.operation}" Binding="{ReflectionBinding Operation}" Width="180" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.state}" Binding="{ReflectionBinding Result}" Width="200" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.problem}" Binding="{ReflectionBinding Problem}" Width="360" />
+                        <DataGridTextColumn Header="{loc:Loc docker.table.created}" Binding="{ReflectionBinding Created}" Width="180" />
                     </DataGrid.Columns>
                 </DataGrid>
             </ScrollViewer>

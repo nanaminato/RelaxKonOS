@@ -65,6 +65,10 @@ try
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
     if (args.Contains("--thumbnails-only")) { ImageThumbnailChecks.Run(root); Console.WriteLine("Thumbnail checks passed."); return; }
     if (args.Contains("--uploads-only")) { await UploadSessionChecks.RunAsync(root); Console.WriteLine("File upload session checks passed."); return; }
+    if (args.Contains("--stack-operations-only")) { await DockerChecks.VerifyStackOperationsAsync(root); return; }
+    // The only check that needs a Docker host. It is never part of the default sequence: a suite that
+    // silently depends on a local Engine fails for reasons that are not about this repository.
+    if (args.Contains("--stack-live-only")) { await DockerChecks.VerifyStackOperationsLiveAsync(root); return; }
     // This verifies the in-memory authorization decision only. Keep it ahead of the Alias HTTP
     // suite so a routing regression can run in constrained environments where opening a loopback
     // listener is deliberately disallowed.
@@ -105,6 +109,7 @@ try
     DockerChecks.VerifyComposeSubsetValidation();
     await DockerChecks.VerifyDockerProxyAsync(root);
     await DockerChecks.VerifyDockerEngineControlAsync(root);
+    await DockerChecks.VerifyStackOperationsAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoGeoDataStartupProvisioningAsync();
     await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(root);

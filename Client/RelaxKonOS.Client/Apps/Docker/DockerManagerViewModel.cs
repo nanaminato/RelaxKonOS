@@ -17,6 +17,9 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     public ObservableCollection<DockerVolumeDto> Volumes { get; } = [];
     public ObservableCollection<DockerStackDto> Stacks { get; } = [];
     public ObservableCollection<DockerStackServiceDto> StackServices { get; } = [];
+    /// <summary>Recent operations of the selected project, newest first. The durable record is the
+    /// authority, so this list is re-read from the server instead of being kept from live events.</summary>
+    public ObservableCollection<StackOperationRow> StackOperations { get; } = [];
     public ObservableCollection<string> AvailableNetworks { get; } = ["bridge"];
 
     // Docker's built-in drivers that can create a user-defined network. Host and none are
@@ -50,6 +53,8 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     [ObservableProperty] private DockerStackDto? _selectedStack;
     [ObservableProperty] private string _stackName = string.Empty;
     [ObservableProperty] private string _composeYaml = string.Empty;
+    /// <summary>What the server's Compose parser resolved for the current draft. Empty until a preview runs.</summary>
+    [ObservableProperty] private string _stackPreviewText = string.Empty;
     [ObservableProperty] private string _imageReference = string.Empty;
     [ObservableProperty] private string _containerName = string.Empty;
     [ObservableProperty] private string _containerImage = string.Empty;
@@ -323,27 +328,62 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
             operationName: LocalizedText.Format("docker.operation.update_container", container.Names));
     }
 
-    [RelayCommand] private Task ValidateStackAsync() => ApplyStackAsync("validate");
-    [RelayCommand] private Task DeployStackAsync() => TryDeployStackAsync();
+    [RelayCommand] private Task ValidateStackAsync() => PreviewStackAsync();
+
+    /// <summary>
+    /// Parses the definition with the server's Compose parser and reports what it would run. Nothing is
+    /// applied, so the operator reviews the same document that a deployment will later carry.
+    /// </summary>
+    private async Task PreviewStackAsync()
+    {
+        if (IsLoading || !await EnsureDockerAvailableAsync()) return;
+        if (string.IsNullOrWhiteSpace(StackName) || string.IsNullOrWhiteSpace(ComposeYaml)) { StatusText = LocalizedText.Ref("docker.stack.required"); return; }
+        var name = StackName.Trim();
+        await RunQuietReadAsync(LocalizedText.Get("docker.stack.validate"), async () =>
+        {
+            var preview = await client.PreviewStackAsync(new DockerStackDefinitionDto(name, ComposeYaml));
+            StackPreviewText = FormatPreview(preview);
+            StatusText = LocalizedText.Ref("docker.stack.preview_succeeded", name, preview.Services.Count, preview.Volumes.Count, preview.Networks.Count);
+            return true;
+        }, LocalizedText.Get("docker.stack.preview_unavailable"));
+    }
 
     /// <summary>Queues a Compose deployment and reports whether its dialog can close immediately.</summary>
-    public Task<bool> TryDeployStackAsync() => ApplyStackAsync("deploy");
-
-    private async Task<bool> ApplyStackAsync(string operation)
+    public async Task<bool> TryDeployStackAsync()
     {
-        if (IsLoading) return false;
+        if (IsLoading || !await EnsureDockerAvailableAsync()) return false;
         if (string.IsNullOrWhiteSpace(StackName) || string.IsNullOrWhiteSpace(ComposeYaml)) { StatusText = LocalizedText.Ref("docker.stack.required"); return false; }
-        return await RunStackOperationAsync(operation);
+        var name = StackName.Trim();
+        var title = LocalizedText.Format("docker.operation.stack", OperationText("deploy"), name);
+        IsLoading = true;
+        BeginOperation(title);
+        _ = DeployStackCoreAsync(name);
+        return true;
     }
-    private async Task<bool> RunStackOperationAsync(string operation)
+
+    private async Task DeployStackCoreAsync(string name)
     {
-        return await RunOperationAsync(
-            () => client.ApplyStackOperationAsync(operation, new DockerStackDefinitionDto(StackName.Trim(), ComposeYaml)),
-            result =>
-            {
-                var detail = result.Messages.FirstOrDefault() ?? result.ProblemCode;
-                return result.Success ? LocalizedText.Ref("docker.stack.succeeded", OperationText(operation), StackName) : LocalizedText.Ref("docker.stack.failed", OperationText(operation), detail);
-            }, LocalizedText.Format("docker.operation.stack", OperationText(operation), StackName));
+        try
+        {
+            // The deployment carries the identity of the exact document the operator approved, so an
+            // approval given for a different file is refused instead of applied. The parse is repeated
+            // here rather than reusing an earlier click's answer.
+            var definition = new DockerStackDefinitionDto(name, ComposeYaml);
+            var preview = await client.PreviewStackAsync(definition);
+            AppendOperationLog(Lines(FormatPreview(preview)));
+            var operation = await client.DeployStackAsync(
+                new DockerStackDeployRequest(definition, preview.DefinitionVersion),
+                StackKey(DockerStackOperationKind.Deploy, name, preview.DefinitionVersion));
+            await TrackStackOperationAsync(operation);
+        }
+        catch (Exception exception) { await FailStackOperationAsync(exception); }
+        finally
+        {
+            CompleteOperation(StatusText);
+            IsOperationRunning = false;
+            IsLoading = false;
+            await RefreshAsync();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedStack))]
@@ -354,6 +394,7 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         await RunQuietReadAsync(LocalizedText.Get("docker.stack.services"), async () =>
         {
             Replace(StackServices, await client.ListStackServicesAsync(stack.Name));
+            Replace(StackOperations, (await client.ListStackOperationsAsync(stack.Name)).Select(operation => new StackOperationRow(operation)));
             StatusText = LocalizedText.Ref("docker.stack.services_loaded", stack.Name, StackServices.Count);
             return true;
         });
@@ -413,22 +454,30 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     private async Task ApplySelectedStackActionAsync(string action, bool confirmed = false)
     {
         var stack = SelectedStack;
-        if (stack is null) return;
-        Func<DockerStackOperationResult, LocalizedStatus> status = result => result.Success
-            ? LocalizedText.Ref("docker.stack.succeeded", OperationText(action), stack.Name)
-            : LocalizedText.Ref("docker.stack.failed", OperationText(action), ProblemText(result.ProblemCode));
-        if (action is "start" or "stop" or "restart")
+        if (stack is null || !DockerStackActionRoutes.TryParseAction(action, out var kind)) return;
+        if (IsLoading || !await EnsureDockerAvailableAsync()) return;
+        var title = LocalizedText.Format("docker.operation.stack", OperationText(action), stack.Name);
+        IsLoading = true;
+        BeginOperation(title);
+        _ = ApplyStackActionCoreAsync(stack.Name, kind, confirmed);
+    }
+
+    private async Task ApplyStackActionCoreAsync(string name, DockerStackOperationKind kind, bool confirmed)
+    {
+        try
         {
-            await RunQuietOperationAsync(
-                () => client.ApplyStackActionAsync(stack.Name, action, new DockerStackActionRequest(confirmed)),
-                result => result.Success,
-                status);
-            return;
+            var operation = await client.ApplyStackActionAsync(name, kind, new DockerStackActionRequest(confirmed),
+                StackKey(kind, name, confirmed.ToString()));
+            await TrackStackOperationAsync(operation);
         }
-        await RunOperationAsync(
-            () => client.ApplyStackActionAsync(stack.Name, action, new DockerStackActionRequest(confirmed)),
-            status,
-            LocalizedText.Format("docker.operation.stack", OperationText(action), stack.Name));
+        catch (Exception exception) { await FailStackOperationAsync(exception); }
+        finally
+        {
+            CompleteOperation(StatusText);
+            IsOperationRunning = false;
+            IsLoading = false;
+            await RefreshAsync();
+        }
     }
 
     [RelayCommand] private Task PullImageAsync() => TryPullImageAsync();
@@ -612,33 +661,84 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         finally { IsOperationRunning = false; IsLoading = false; }
         await RefreshAsync();
     }
-    private async Task<bool> RunOperationAsync(Func<Task<DockerStackOperationResult>> operation, Func<DockerStackOperationResult, LocalizedStatus> status, string? operationName = null)
+    /// <summary>
+    /// Watches a durable operation until it reaches a terminal state. The ledger, not this loop, is the
+    /// authority: the poll stops on a timeout and the stack list is refreshed anyway, so an operation
+    /// that outlives the window is still readable from its own record.
+    /// </summary>
+    private async Task TrackStackOperationAsync(DockerStackOperationDto operation)
     {
-        if (IsLoading || !await EnsureDockerAvailableAsync()) return false;
-        IsLoading = true;
-        BeginOperation(operationName);
-        _ = CompleteStackOperationAsync(operation, status);
-        return true;
-    }
-    private async Task CompleteStackOperationAsync(Func<Task<DockerStackOperationResult>> operation, Func<DockerStackOperationResult, LocalizedStatus> status)
-    {
+        var current = operation;
+        var action = OperationText(DockerStackActionRoutes.Segment(current.Kind));
+        AppendOperationLog([LocalizedText.Format("docker.stack.operation_queued", current.OperationId.ToString("D"))]);
+        var deadline = DateTimeOffset.UtcNow.AddMinutes(10);
+        while (current.State is DockerStackOperationState.Queued or DockerStackOperationState.Running && DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            current = await client.GetStackOperationAsync(current.OperationId) ?? current;
+            StatusText = LocalizedText.Ref("docker.stack.operation_running", action, current.ProjectName, current.Stage.ToString());
+        }
+
         try
         {
-            var result = await operation(); StatusText = status(result);
-            AppendOperationLog(result.Messages);
-            CompleteOperation(StatusText);
-            if (!result.Success) await ShowUnavailableForProblemAsync(result.ProblemCode);
+            var diagnostics = await client.GetStackOperationDiagnosticsAsync(current.OperationId);
+            if (diagnostics is not null) AppendOperationLog(diagnostics.Lines);
         }
-        catch (Exception exception)
-        {
-            StatusText = LocalizedText.Ref("docker.status.failed", exception.Message);
-            AppendOperationLog([exception.Message]);
-            CompleteOperation(StatusText);
-            await ShowUnavailableForExceptionAsync();
-        }
-        finally { IsOperationRunning = false; IsLoading = false; }
-        await RefreshAsync();
+        catch (Exception exception) { AppendOperationLog([exception.Message]); }
+
+        // The observed services are the outcome. A partial failure is exactly the case where the
+        // operator has to choose between retrying, stopping, or removing the project.
+        AppendOperationLog(ServiceOutcomeLines(current));
+        StatusText = LocalizedText.Ref(OutcomeKey(current.State), action, current.ProjectName);
+        if (current.State is DockerStackOperationState.Failed) await ShowUnavailableForProblemAsync(current.ProblemCode ?? string.Empty);
     }
+
+    private async Task FailStackOperationAsync(Exception exception)
+    {
+        StatusText = LocalizedText.Ref("docker.status.failed", exception.Message);
+        AppendOperationLog([exception.Message]);
+        if (exception is DockerStackRequestException refusal) await ShowUnavailableForProblemAsync(refusal.ProblemCode);
+        else await ShowUnavailableForExceptionAsync();
+    }
+
+    private static string OutcomeKey(DockerStackOperationState state) => state switch
+    {
+        DockerStackOperationState.Succeeded => "docker.stack.succeeded",
+        DockerStackOperationState.PartialFailed => "docker.stack.partial_failed",
+        DockerStackOperationState.Interrupted => "docker.stack.interrupted",
+        DockerStackOperationState.Cancelled => "docker.stack.cancelled",
+        _ => "docker.stack.failed",
+    };
+
+    private static IEnumerable<string> ServiceOutcomeLines(DockerStackOperationDto operation) =>
+        operation.Services.Select(service => $"{service.Service} · {service.State} · {service.Status}")
+            .Prepend($"{LocalizedText.Get("docker.stack.observed_services")}:");
+
+    private static string FormatPreview(DockerStackPreviewDto preview) => string.Join(Environment.NewLine, new[]
+    {
+        $"{LocalizedText.Get("docker.stack.preview_version")}: {preview.DefinitionVersion[..12]}",
+        $"{LocalizedText.Get("docker.stack.services")}: {string.Join(", ", preview.Services.Select(service => service.Image.Length > 0 ? $"{service.Service} ({service.Image})" : service.Service))}",
+        $"{LocalizedText.Get("docker.stack.preview_volumes")}: {string.Join(", ", preview.Volumes)}",
+        $"{LocalizedText.Get("docker.stack.preview_networks")}: {string.Join(", ", preview.Networks)}",
+    });
+
+    /// <summary>
+    /// The idempotency key is reused only for the immediately preceding identical request. Reusing it for
+    /// a changed request would be rejected as a conflict, and reusing it later would be meaningless.
+    /// </summary>
+    private string StackKey(DockerStackOperationKind kind, string name, string reference)
+    {
+        var request = $"{kind}|{name}|{reference}";
+        if (!string.Equals(request, _lastStackRequest, StringComparison.Ordinal))
+        {
+            _lastStackRequest = request;
+            _lastStackKey = Guid.NewGuid().ToString("N");
+        }
+        return _lastStackKey!;
+    }
+    private string? _lastStackRequest;
+    private string? _lastStackKey;
+
     private async Task RunQuietOperationAsync<TResult>(Func<Task<TResult>> operation, Func<TResult, bool> isSuccess, Func<TResult, LocalizedStatus> status)
     {
         if (IsLoading || !await EnsureDockerAvailableAsync()) return;
@@ -726,6 +826,25 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         "delete" => LocalizedText.Get("common.delete"),
         _ => LocalizedText.Get($"docker.action.{operation}"),
     };
+
+    /// <summary>Display text of a durable operation's kind, shared by the history grid and the messages.</summary>
+    internal static string OperationTextFor(DockerStackOperationKind kind) => kind == DockerStackOperationKind.Deploy
+        ? LocalizedText.Get("docker.stack.deploy")
+        : kind == DockerStackOperationKind.Delete
+            ? LocalizedText.Get("common.delete")
+            : OperationText(DockerStackActionRoutes.Segment(kind));
+
+    /// <summary>Display text of a durable operation's state.</summary>
+    internal static string StateText(DockerStackOperationState state) => LocalizedText.Get(state switch
+    {
+        DockerStackOperationState.Queued => "docker.stack.state.queued",
+        DockerStackOperationState.Running => "docker.stack.state.running",
+        DockerStackOperationState.Succeeded => "docker.stack.state.succeeded",
+        DockerStackOperationState.PartialFailed => "docker.stack.state.partial_failed",
+        DockerStackOperationState.Failed => "docker.stack.state.failed",
+        DockerStackOperationState.Cancelled => "docker.stack.state.cancelled",
+        _ => "docker.stack.state.interrupted",
+    });
     private void BeginOperation(string? operationName)
     {
         OperationTitle = string.IsNullOrWhiteSpace(operationName) ? LocalizedText.Get("docker.operation.running") : operationName;
@@ -752,12 +871,31 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
     }
     private void CompleteOperation(string outcome) =>
         OperationLog = string.Join(Environment.NewLine, new[] { OperationLog, LocalizedText.Format("docker.operation.finished", outcome) });
+    /// <summary>
+    /// The sentence for a Docker problem code. A refusal from the Compose domain is something an
+    /// operator has to be able to act on, so every code this client can provoke is named here rather
+    /// than being printed as the raw protocol identifier.
+    /// </summary>
     private static string ProblemText(string problemCode) => problemCode switch
     {
         "docker.operation_timeout" => LocalizedText.Get("docker.problem.timeout"),
-        "docker.operation_failed" => LocalizedText.Get("docker.problem.failed"),
+        "docker.operation_failed" or "docker.compose_failed" => LocalizedText.Get("docker.problem.failed"),
         "docker.stack_no_services" => LocalizedText.Get("docker.problem.stack_no_services"),
         "docker.stack_source_unavailable" => LocalizedText.Get("docker.stack.source_unavailable"),
+        "docker.volume_in_use" => LocalizedText.Get("docker.volume.in_use"),
+        "docker.stack_invalid_name" => LocalizedText.Get("docker.problem.stack_invalid_name"),
+        "docker.stack_invalid_compose" => LocalizedText.Get("docker.problem.stack_invalid_compose"),
+        "docker.compose_feature_unsupported" => LocalizedText.Get("docker.problem.compose_feature_unsupported"),
+        "docker.compose_variable_unresolved" => LocalizedText.Get("docker.problem.compose_variable_unresolved"),
+        "docker.stack_definition_changed" => LocalizedText.Get("docker.problem.stack_definition_changed"),
+        "docker.confirmation_required" => LocalizedText.Get("docker.problem.confirmation_required"),
+        "docker.stack_not_found" => LocalizedText.Get("docker.problem.stack_not_found"),
+        "docker.stack_operation_conflict" => LocalizedText.Get("docker.problem.stack_operation_conflict"),
+        "docker.stack_idempotency_required" => LocalizedText.Get("docker.problem.stack_idempotency_required"),
+        "docker.stack_idempotency_conflict" => LocalizedText.Get("docker.problem.stack_idempotency_conflict"),
+        "docker.stack_not_cancellable" => LocalizedText.Get("docker.problem.stack_not_cancellable"),
+        "docker.stack_store_unavailable" => LocalizedText.Get("docker.problem.stack_store_unavailable"),
+        "docker.unavailable" => LocalizedText.Get("docker.problem.engine_unavailable"),
         _ => problemCode
     };
     private static IReadOnlyList<string> Lines(string text) => text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -786,12 +924,36 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         $"{LocalizedText.Get("docker.table.scope")}: {details.Scope}",
         FormatSection(LocalizedText.Get("docker.resource.attached_containers"), details.Containers)
     });
-    private static string FormatVolumeDetails(DockerVolumeDetailsDto details) => string.Join(Environment.NewLine, new[]
+    private static string FormatVolumeDetails(DockerVolumeDetailsDto details)
     {
-        $"{LocalizedText.Get("docker.table.name")}: {details.Name}",
-        $"{LocalizedText.Get("docker.volume.driver")}: {details.Driver}",
-        $"{LocalizedText.Get("docker.table.mount_point")}: {details.Mountpoint}",
-        FormatSection(LocalizedText.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}"))
-    });
+        var lines = new List<string>
+        {
+            $"{LocalizedText.Get("docker.table.name")}: {details.Name}",
+            $"{LocalizedText.Get("docker.volume.driver")}: {details.Driver}",
+            $"{LocalizedText.Get("docker.table.mount_point")}: {details.Mountpoint}",
+        };
+        // Deleting an in-use volume is refused, so this list is the impact the operator has to see
+        // before deciding to release the data. A container keeps the volume reserved even when stopped.
+        if (details.UsedBy.Count > 0)
+            lines.Add(FormatSection(LocalizedText.Get("docker.resource.attached_containers"), details.UsedBy));
+        if (details.Labels.Count > 0)
+            lines.Add(FormatSection(LocalizedText.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}")));
+        return string.Join(Environment.NewLine, lines);
+    }
     private static string FormatSection(string heading, IEnumerable<string> values) => $"{heading}:{Environment.NewLine}{string.Join(Environment.NewLine, values)}";
+}
+
+/// <summary>
+/// Read-only projection of one durable stack operation. The history grid binds to display text, so the
+/// kind and the state are localized in one place instead of leaking enum names onto the screen.
+/// </summary>
+public sealed class StackOperationRow(DockerStackOperationDto operation)
+{
+    public Guid OperationId { get; } = operation.OperationId;
+    public string Operation { get; } = DockerManagerViewModel.OperationTextFor(operation.Kind);
+    public string Result { get; } = DockerManagerViewModel.StateText(operation.State);
+    /// <summary>Empty for a success; the stable code is shown verbatim because it is what a support
+    /// request or a bug report has to name.</summary>
+    public string Problem { get; } = operation.ProblemCode ?? string.Empty;
+    public string Created { get; } = operation.CreatedAt.ToLocalTime().ToString("g");
 }

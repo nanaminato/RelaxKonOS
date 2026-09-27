@@ -248,13 +248,28 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | GET        | `/api/v1.0/docker/networks`                    | query: filters                                 | 网络 DTO\[]                           | JWT |
 | GET/DELETE | `/api/v1.0/docker/networks/{id}`               | —                                              | 网络详情 / 204                          | JWT |
 | GET        | `/api/v1.0/docker/volumes`                     | query: filters                                 | 卷 DTO\[]                            | JWT |
-| GET/DELETE | `/api/v1.0/docker/volumes/{name}`              | —                                              | 卷详情 / 204                           | JWT |
-| POST       | `/api/v1.0/docker/stacks/validate`             | body: Compose YAML + 名称                        | 验证结果 DTO                            | JWT |
+| GET/DELETE | `/api/v1.0/docker/volumes/{name}`              | DELETE query: `confirmed`                       | 卷详情（含 `usedBy`）/ 操作结果              | JWT |
+| POST       | `/api/v1.0/docker/stacks/preview`              | body: `DockerStackDefinitionDto`（名称 + Compose YAML） | `DockerStackPreviewDto`（服务/命名卷/网络 + `definitionVersion`）。只解析，不落地任何改动 | JWT |
 | GET        | `/api/v1.0/docker/stacks`                      | —                                              | Stack DTO\[]                        | JWT |
-| POST       | `/api/v1.0/docker/stacks/deploy`               | body: StackDeployDto                           | Stack DTO（200/201）                  | JWT |
+| POST       | `/api/v1.0/docker/stacks/deploy`               | body: `DockerStackDeployRequest`（定义 + 预览回报的 `definitionVersion`）+ `Idempotency-Key` | `202` + `DockerStackOperationDto`    | JWT |
+| GET        | `/api/v1.0/docker/stacks/{name}/operations`    | query: limit（1–100，默认 20）                     | `DockerStackOperationDto[]`（最新在前）  | JWT |
+| GET        | `/api/v1.0/docker/stacks/{name}/operations/active` | —                                           | 活动操作 DTO / `404`                   | JWT |
+| GET        | `/api/v1.0/docker/stack-operations/{operationId}` | —                                            | `DockerStackOperationDto` / `404`     | JWT |
+| GET        | `/api/v1.0/docker/stack-operations/{operationId}/diagnostics` | —                                 | `DockerStackOperationDiagnosticsDto`（已脱敏、限长、可标记截断） | JWT |
+| POST       | `/api/v1.0/docker/stack-operations/{operationId}/cancel` | `Idempotency-Key`                    | `DockerStackOperationDto`             | JWT |
 | GET        | `/api/v1.0/docker/stacks/{name}/services`      | —                                              | 服务 DTO\[]                           | JWT |
 | GET        | `/api/v1.0/docker/stacks/{name}/definition`    | —                                              | Compose 原文                          | JWT |
-| POST       | `/api/v1.0/docker/stacks/{name}/{action}`      | action ∈ start/stop/remove                     | 操作结果                                | JWT |
+| POST       | `/api/v1.0/docker/stacks/{name}/{action}`      | action ∈ start/stop/restart/delete + `Idempotency-Key` | `202` + `DockerStackOperationDto` | JWT |
+
+Compose 编排的**每个变更都是持久操作，不是同步结果**（`stacks/deploy`、`stacks/{name}/{action}`、`stack-operations/{id}/cancel` 均返回 `202` 与操作记录）：
+
+- 操作由 `DockerStackOperationCoordinator` 在 HTTP 请求之外执行，记录落在宿主 `stack-operations.json`（`DockerCompose:DataDirectory`，与 Compose 源同目录，原子写）。手机断开、App 被回收或服务端重启后，结果仍可从 `stack-operations/{id}` 或项目历史读到。
+- 变更请求必须携带 `Idempotency-Key`（可见 ASCII、≤128 字符）；缺失或畸形返回 `docker.stack_idempotency_required`。同一键配同一请求指纹回放原操作；同一键配**不同**请求返回 `docker.stack_idempotency_conflict`，不会静默合并。
+- 同一项目同时只允许一个活动操作（`docker.stack_operation_conflict`）；不同项目互相独立，另有 `DockerCompose:MaximumConcurrentOperations`（默认 2）的全局上限。
+- 部署必须回报 `preview` 给出的 `definitionVersion`（名称 + YAML 的内容标识）；不一致返回 `docker.stack_definition_changed`，即“对另一份文档的批准不能用于这一份”。
+- `preview` 与 `deploy` 共用同一份准入检查，都在调用引擎之前以 `400` 拒绝：不接受的 Compose 条目（`build`、特权与设备权限、外部资源、bind mount、Docker socket）返回 `docker.compose_feature_unsupported`，**变量引用**返回 `docker.compose_variable_unresolved`。后者是必须的，因为 `docker compose config` 会把未设置的变量静默替换为空串并 exit 0，而本服务不提供变量输入面——放行等于让操作者批准一份、执行另一份。`$$` 是 Compose 的字面美元转义、注释不参与插值，两者都不算引用。
+- 结果是**观察到的服务状态**，不是命令退出码：命令成功但有服务未达目标状态为 `partialFailed`，命令失败但有容器残留同样为 `partialFailed`，二者都不声称原子回滚。`recoveryProblemCode` 只在需要操作者决策**且**能补充 `problemCode` 未表达的信息时才出现（因此不会与 `problemCode` 取同一个值）。
+- 服务端重启时不重放活动操作：核对项目实际服务后置为 `interrupted`（`docker.stack_interrupted`），失联不上报为成功。
 
 ### Firewall（防火墙，Linux UFW）
 

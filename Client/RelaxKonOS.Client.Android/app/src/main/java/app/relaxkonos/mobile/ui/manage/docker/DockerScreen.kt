@@ -10,13 +10,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -39,29 +36,36 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DockerContainer
 import app.relaxkonos.mobile.core.net.DockerImage
+import app.relaxkonos.mobile.core.net.DockerLogs
 import app.relaxkonos.mobile.core.net.DockerNetwork
-import app.relaxkonos.mobile.core.net.DockerOperation
 import app.relaxkonos.mobile.core.net.DockerStack
+import app.relaxkonos.mobile.core.net.DockerStackOperation
+import app.relaxkonos.mobile.core.net.DockerStackOperationDiagnostics
+import app.relaxkonos.mobile.core.net.DockerStackOperationKind
+import app.relaxkonos.mobile.core.net.DockerStackOperationState
+import app.relaxkonos.mobile.core.net.DockerStackPreview
 import app.relaxkonos.mobile.core.net.DockerStackService
 import app.relaxkonos.mobile.core.net.DockerStatus
 import app.relaxkonos.mobile.core.net.DockerVolume
+import app.relaxkonos.mobile.core.net.DockerVolumeDetails
 import app.relaxkonos.mobile.core.net.ServerCapabilities
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.ErrorBanner
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
+import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.UiMessage
-import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
-import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 data class DockerScreenState(
     val owner: SessionState.Active? = null,
     val loading: Boolean = false,
+    val busy: Boolean = false,
     val status: ApiResult<DockerStatus>? = null,
     val containers: ApiResult<List<DockerContainer>>? = null,
     val images: ApiResult<List<DockerImage>>? = null,
@@ -70,8 +74,14 @@ data class DockerScreenState(
     val stacks: ApiResult<List<DockerStack>>? = null,
     val selectedStack: DockerStack? = null,
     val services: ApiResult<List<DockerStackService>>? = null,
+    val operations: ApiResult<List<DockerStackOperation>>? = null,
+    /** Bounded output of the step behind the most recent operation outcome. */
+    val diagnostics: DockerStackOperationDiagnostics? = null,
+    val logs: Pair<String, DockerLogs>? = null,
+    val volume: Pair<String, DockerVolumeDetails>? = null,
+    /** What the server's Compose parser resolved for the current draft. Null until a preview runs. */
+    val preview: DockerStackPreview? = null,
     val message: UiMessage? = null,
-    val actionRunning: Boolean = false,
 )
 
 class DockerViewModel(application: Application) : AndroidViewModel(application) {
@@ -103,16 +113,153 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectStack(stack: DockerStack) {
         val owner = state.owner ?: return
-        state = state.copy(selectedStack = stack, services = null)
+        state = state.copy(selectedStack = stack, services = null, operations = null, diagnostics = null, logs = null)
         viewModelScope.launch {
             val services = container.docker.services(owner, stack.name)
-            if (container.activeSession === owner && state.selectedStack?.name == stack.name) state = state.copy(services = services)
+            val operations = container.docker.stackOperations(owner, stack.name)
+            if (container.activeSession === owner && state.selectedStack?.name == stack.name) {
+                state = state.copy(services = services, operations = operations)
+                // An operation started elsewhere (another phone, or before this device reconnected) is
+                // still running; keep reading the durable record rather than showing a stale snapshot.
+                val active = (operations as? ApiResult.Success)?.value?.firstOrNull { it.state.active }
+                if (active != null) track(owner, active)
+            }
         }
     }
 
-    fun deploy(name: String, yaml: String) = runOperation { owner -> container.docker.deployStack(owner, name, yaml) }
-    fun containerAction(item: DockerContainer, action: String) = runOperation { owner -> container.docker.containerAction(owner, item.id, action, confirmed = action == "delete") }
-    fun stackAction(item: DockerStack, action: String) = runOperation { owner -> container.docker.stackAction(owner, item.name, action, confirmed = action == "delete") }
+    fun preview(name: String, yaml: String) {
+        val owner = state.owner ?: return
+        if (state.busy || name.isBlank() || yaml.isBlank()) { state = state.copy(message = UiMessage(R.string.docker_stack_required)); return }
+        state = state.copy(busy = true, message = null, preview = null)
+        viewModelScope.launch {
+            val result = container.docker.previewStack(owner, name.trim(), yaml)
+            if (container.activeSession !== owner) return@launch
+            state = state.copy(busy = false, preview = (result as? ApiResult.Success)?.value,
+                message = when (result) {
+                    is ApiResult.Success -> UiMessage(R.string.docker_stack_preview_ready, listOf(result.value.services.size, result.value.volumes.size, result.value.networks.size), tone = StatusTone.Success)
+                    // A refusal is reported as the server's verdict. The screen never rewrites a
+                    // rejected definition into something else, and it never claims a cause it did
+                    // not verify.
+                    else -> result.dockerFailure()
+                })
+        }
+    }
+
+    fun clearPreview() { state = state.copy(preview = null) }
+
+    /**
+     * Deploys the approved definition. The preview is taken here, immediately before the submission,
+     * so the version the server verifies is the version of the document that is being sent — not an
+     * answer from an earlier click that the operator may have edited away.
+     */
+    fun deploy(name: String, yaml: String) {
+        val owner = state.owner ?: return
+        if (state.busy || name.isBlank() || yaml.isBlank()) { state = state.copy(message = UiMessage(R.string.docker_stack_required)); return }
+        state = state.copy(busy = true, message = null)
+        viewModelScope.launch {
+            val preview = container.docker.previewStack(owner, name.trim(), yaml)
+            if (preview !is ApiResult.Success) {
+                // Nothing was submitted: the deployment never left the device.
+                if (container.activeSession === owner) state = state.copy(busy = false, message = preview.dockerFailure())
+                return@launch
+            }
+            val submitted = container.docker.deployStack(owner, name.trim(), yaml, preview.value.definitionVersion)
+            if (container.activeSession !== owner) return@launch
+            state = state.copy(busy = false, preview = preview.value)
+            when (submitted) {
+                is ApiResult.Success -> {
+                    state = state.copy(message = UiMessage(R.string.docker_stack_submitted, tone = StatusTone.Success))
+                    track(owner, submitted.value)
+                }
+                else -> state = state.copy(message = submitted.dockerFailure())
+            }
+        }
+    }
+
+    fun stackAction(stack: DockerStack, action: String, confirmed: Boolean) {
+        val owner = state.owner ?: return
+        if (state.busy) return
+        state = state.copy(busy = true, message = null)
+        viewModelScope.launch {
+            val result = container.docker.stackAction(owner, stack.name, action, confirmed)
+            if (container.activeSession !== owner) return@launch
+            state = state.copy(busy = false)
+            when (result) {
+                is ApiResult.Success -> { state = state.copy(message = UiMessage(R.string.docker_stack_submitted, tone = StatusTone.Success)); track(owner, result.value) }
+                else -> state = state.copy(message = result.dockerFailure())
+            }
+        }
+    }
+
+    fun cancelOperation(operationId: String) {
+        val owner = state.owner ?: return
+        viewModelScope.launch {
+            val result = container.docker.cancelStackOperation(owner, operationId)
+            if (container.activeSession !== owner) return@launch
+            state = state.copy(message = when (result) {
+                is ApiResult.Success -> UiMessage(R.string.docker_stack_cancel_requested, tone = StatusTone.Neutral)
+                else -> result.dockerFailure()
+            })
+        }
+    }
+
+    fun containerAction(item: DockerContainer, action: String) {
+        val owner = state.owner ?: return
+        if (state.busy) return
+        state = state.copy(busy = true, message = null)
+        viewModelScope.launch {
+            val result = container.docker.containerAction(owner, item.id, action, confirmed = action == "delete")
+            if (container.activeSession !== owner) return@launch
+            state = state.copy(busy = false, message = when (result) {
+                is ApiResult.Success -> if (result.value.success) UiMessage(R.string.docker_operation_complete, tone = StatusTone.Success) else UiMessage(R.string.docker_operation_failed)
+                else -> result.dockerFailure()
+            })
+            if (result is ApiResult.Success) refresh()
+        }
+    }
+
+    fun loadLogs(id: String) {
+        val owner = state.owner ?: return
+        viewModelScope.launch {
+            val result = container.docker.logs(owner, id, 200)
+            if (container.activeSession !== owner) return@launch
+            if (state.logs?.first == id) state = state.copy(logs = null)
+            else if (result is ApiResult.Success) state = state.copy(logs = id to result.value)
+            else state = state.copy(message = result.dockerFailure())
+        }
+    }
+
+    /** Reads the reference list behind a volume. Deleting an in-use volume is refused by the server. */
+    fun loadVolume(name: String) {
+        val owner = state.owner ?: return
+        viewModelScope.launch {
+            val result = container.docker.volumeDetails(owner, name)
+            if (container.activeSession !== owner) return@launch
+            if (state.volume?.first == name) state = state.copy(volume = null)
+            else if (result is ApiResult.Success) state = state.copy(volume = name to result.value)
+            else state = state.copy(message = result.dockerFailure())
+        }
+    }
+
+    /**
+     * Releases a volume's data. This is the one Docker action here that destroys something the server
+     * cannot recreate, so the reference list is dropped first and the server's own answer decides the
+     * wording: an in-use volume comes back as a refusal, not as a failure the caller has to guess at.
+     */
+    fun deleteVolume(name: String) {
+        val owner = state.owner ?: return
+        if (state.busy) return
+        state = state.copy(busy = true, message = null, volume = null)
+        viewModelScope.launch {
+            val result = container.docker.deleteVolume(owner, name, confirmed = true)
+            if (container.activeSession !== owner) return@launch
+            state = state.copy(busy = false, message = when (result) {
+                is ApiResult.Success -> if (result.value.success) UiMessage(R.string.docker_operation_complete, tone = StatusTone.Success) else UiMessage(R.string.docker_operation_failed)
+                else -> result.dockerFailure()
+            })
+            refresh()
+        }
+    }
 
     fun importCompose(uri: Uri, onImported: (String) -> Unit) {
         viewModelScope.launch {
@@ -126,21 +273,52 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissMessage() { state = state.copy(message = null) }
 
-    private fun runOperation(call: suspend (SessionState.Active) -> ApiResult<DockerOperation>) {
-        val owner = state.owner ?: return
-        if (state.actionRunning) return
-        state = state.copy(actionRunning = true, message = null)
+    /**
+     * Follows a durable operation until the server reports a terminal state. The record, not this
+     * loop, is the authority: if the window closes the operation keeps running on the server and its
+     * result is still readable from the project's operation list.
+     */
+    private fun track(owner: SessionState.Active, operation: DockerStackOperation) {
         viewModelScope.launch {
-            val result = call(owner)
-            if (container.activeSession === owner) {
-                state = state.copy(actionRunning = false, message = when (result) {
-                    is ApiResult.Success -> if (result.value.success) UiMessage(R.string.docker_operation_complete, tone = app.relaxkonos.mobile.ui.common.StatusTone.Success)
-                    else UiMessage(R.string.docker_operation_failed)
-                    else -> result.failureMessage()
-                })
-                if (result is ApiResult.Success && result.value.success) refresh()
+            var current = operation
+            var elapsed = 0
+            while (current.state.active && elapsed < POLL_LIMIT_SECONDS) {
+                delay(POLL_INTERVAL_MILLIS)
+                elapsed += POLL_INTERVAL_SECONDS
+                val next = container.docker.stackOperation(owner, current.operationId)
+                if (next is ApiResult.Success) current = next.value else break
             }
+            if (container.activeSession !== owner) return@launch
+            val diagnostics = (container.docker.stackOperationDiagnostics(owner, current.operationId) as? ApiResult.Success)?.value
+            state = state.copy(diagnostics = diagnostics, message = operationMessage(current))
+            if (state.selectedStack?.name == current.projectName) {
+                val services = container.docker.services(owner, current.projectName)
+                val operations = container.docker.stackOperations(owner, current.projectName)
+                if (container.activeSession === owner && state.selectedStack?.name == current.projectName)
+                    state = state.copy(services = services, operations = operations)
+            }
+            refresh()
         }
+    }
+
+    /**
+     * The outcome sentence. A partial failure and an interrupted operation are reported as results
+     * that need a decision, never as a plain failure and never as a success.
+     */
+    private fun operationMessage(operation: DockerStackOperation): UiMessage = when (operation.state) {
+        DockerStackOperationState.SUCCEEDED -> UiMessage(R.string.docker_stack_operation_succeeded, listOf(operation.projectName), tone = StatusTone.Success)
+        DockerStackOperationState.PARTIAL_FAILED -> UiMessage(R.string.docker_stack_operation_partial, listOf(operation.projectName), tone = StatusTone.Warning)
+        DockerStackOperationState.INTERRUPTED -> UiMessage(R.string.docker_stack_operation_interrupted, listOf(operation.projectName), tone = StatusTone.Warning)
+        DockerStackOperationState.CANCELLED -> UiMessage(R.string.docker_stack_operation_cancelled, listOf(operation.projectName), tone = StatusTone.Neutral)
+        DockerStackOperationState.FAILED -> UiMessage(R.string.docker_stack_operation_failed, listOf(operation.projectName))
+        else -> UiMessage(R.string.docker_stack_operation_pending, listOf(operation.projectName), tone = StatusTone.Info)
+    }
+
+    private companion object {
+        const val POLL_INTERVAL_MILLIS = 1_000L
+        const val POLL_INTERVAL_SECONDS = 1
+        /** Five minutes of polling. Past that the phone stops watching, but the record still exists. */
+        const val POLL_LIMIT_SECONDS = 300
     }
 }
 
@@ -149,13 +327,42 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
 private sealed interface DockerRemoval {
     data class Stack(val name: String) : DockerRemoval
     data class Container(val name: String) : DockerRemoval
+    data class Volume(val name: String) : DockerRemoval
 }
 
 @Composable
 private fun removalMessage(removal: DockerRemoval): String = when (removal) {
     is DockerRemoval.Stack -> stringResource(R.string.docker_confirm_remove_stack, removal.name)
     is DockerRemoval.Container -> stringResource(R.string.docker_confirm_remove_container, removal.name)
+    is DockerRemoval.Volume -> stringResource(R.string.docker_confirm_remove_volume, removal.name)
 }
+
+/** The state word shown next to an operation, and the tone that goes with it. */
+@Composable
+private fun operationState(result: DockerStackOperationState): String = stringResource(
+    when (result) {
+        DockerStackOperationState.QUEUED -> R.string.docker_stack_state_queued
+        DockerStackOperationState.RUNNING -> R.string.docker_stack_state_running
+        DockerStackOperationState.SUCCEEDED -> R.string.docker_stack_state_succeeded
+        DockerStackOperationState.PARTIAL_FAILED -> R.string.docker_stack_state_partial
+        DockerStackOperationState.FAILED -> R.string.docker_stack_state_failed
+        DockerStackOperationState.CANCELLED -> R.string.docker_stack_state_cancelled
+        DockerStackOperationState.INTERRUPTED -> R.string.docker_stack_state_interrupted
+        DockerStackOperationState.UNKNOWN -> R.string.docker_stack_state_unknown
+    },
+)
+
+@Composable
+private fun operationKind(kind: DockerStackOperationKind): String = stringResource(
+    when (kind) {
+        DockerStackOperationKind.DEPLOY -> R.string.docker_deploy
+        DockerStackOperationKind.START -> R.string.docker_start
+        DockerStackOperationKind.STOP -> R.string.docker_stop
+        DockerStackOperationKind.RESTART -> R.string.docker_restart
+        DockerStackOperationKind.DELETE -> R.string.common_delete
+        DockerStackOperationKind.UNKNOWN -> R.string.docker_stack_state_unknown
+    },
+)
 
 @Composable
 fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
@@ -163,7 +370,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
     var composer by mutableStateOf(false)
-    var composeDraft by mutableStateOf("services:\n  app:\n    image: nginx:alpine\n")
+    var composeDraft by mutableStateOf(DEFAULT_COMPOSE)
     var destructive by mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) viewModel.importCompose(uri) { yaml -> composeDraft = yaml; composer = true } }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -175,47 +382,166 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
         )
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         state.message?.let { message -> ErrorBanner(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
-        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         DockerStatusCard(state.status)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.weight(1f)) {
-            item { DockerStacks(state, viewModel, { destructive = DockerRemoval.Stack(it.name) to { viewModel.stackAction(it, "delete") } }) }
-            item { DockerContainers(state.containers, { item, action -> if (action == "delete") destructive = DockerRemoval.Container(item.names) to { viewModel.containerAction(item, action) } else viewModel.containerAction(item, action) }) }
+            item {
+                DockerStacks(state, viewModel,
+                    onDelete = { destructive = DockerRemoval.Stack(it.name) to { viewModel.stackAction(it, "delete", confirmed = true) } },
+                    onCancel = viewModel::cancelOperation)
+            }
+            item { DockerContainers(state, viewModel, { item, action -> if (action == "delete") destructive = DockerRemoval.Container(item.names) to { viewModel.containerAction(item, action) } else viewModel.containerAction(item, action) }) }
             item { SimpleList(stringResource(R.string.docker_images), state.images) { "${it.repository}:${it.tag} · ${it.size}" } }
-            item { SimpleList(stringResource(R.string.docker_volumes), state.volumes) { "${it.name} · ${it.driver}" } }
+            item {
+                DockerVolumes(state.volumes, state.volume, viewModel::loadVolume,
+                    onDelete = { name -> destructive = DockerRemoval.Volume(name) to { viewModel.deleteVolume(name) } })
+            }
             item { SimpleList(stringResource(R.string.docker_networks), state.networks) { "${it.name} · ${it.driver}" } }
         }
     }
-    if (composer) DockerComposer(initialYaml = composeDraft, onDismiss = { composer = false }, onDeploy = { name, yaml -> viewModel.deploy(name, yaml); composer = false })
+    if (composer) DockerComposer(
+        initialYaml = composeDraft, preview = state.preview, busy = state.busy,
+        onPreview = viewModel::preview, onClearPreview = viewModel::clearPreview,
+        onDismiss = { composer = false },
+        onDeploy = { name, yaml -> viewModel.deploy(name, yaml); composer = false })
     destructive?.let { (removal, confirm) -> AlertDialog(onDismissRequest = { destructive = null }, title = { Text(stringResource(R.string.docker_confirm_title)) }, text = { Text(removalMessage(removal)) },
         confirmButton = { Button(onClick = { destructive = null; confirm() }) { Text(stringResource(R.string.common_delete)) } }, dismissButton = { TextButton(onClick = { destructive = null }) { Text(stringResource(R.string.common_cancel)) } }) }
 }
+
+private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\n"
 
 @Composable private fun DockerStatusCard(status: ApiResult<DockerStatus>?) = SectionCard(stringResource(R.string.docker_runtime)) {
     when (status) { is ApiResult.Success -> Text(if (status.value.available) stringResource(R.string.docker_ready, status.value.serverVersion) else stringResource(R.string.docker_unavailable))
         null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_unavailable), color = MaterialTheme.colorScheme.error) }
 }
 
-@Composable private fun DockerStacks(state: DockerScreenState, viewModel: DockerViewModel, onDelete: (DockerStack) -> Unit) = SectionCard(stringResource(R.string.docker_stacks)) {
+@Composable private fun DockerStacks(state: DockerScreenState, viewModel: DockerViewModel, onDelete: (DockerStack) -> Unit, onCancel: (String) -> Unit) = SectionCard(stringResource(R.string.docker_stacks)) {
     when (val stacks = state.stacks) { is ApiResult.Success -> if (stacks.value.isEmpty()) Text(stringResource(R.string.docker_empty_stacks)) else stacks.value.forEach { stack ->
-        ListRow(stack.name, subtitle = stack.status, leading = { DesktopIcon(R.drawable.ic_app_docker, size = 22.dp) }, onClick = { viewModel.selectStack(stack) }, trailing = { Row { TextButton(onClick = { viewModel.stackAction(stack, "restart") }) { Text(stringResource(R.string.docker_restart)) }; TextButton(onClick = { onDelete(stack) }) { Text(stringResource(R.string.common_delete)) } } })
-        if (state.selectedStack?.name == stack.name) StackServices(state.services)
+        ListRow(stack.name, subtitle = stack.status, leading = { DesktopIcon(R.drawable.ic_app_docker, size = 22.dp) }, onClick = { viewModel.selectStack(stack) },
+            trailing = { Row { TextButton(onClick = { viewModel.stackAction(stack, "restart", confirmed = false) }) { Text(stringResource(R.string.docker_restart)) }; TextButton(onClick = { onDelete(stack) }) { Text(stringResource(R.string.common_delete)) } } })
+        if (state.selectedStack?.name == stack.name) {
+            StackServices(state.services, state.logs, viewModel::loadLogs)
+            StackOperations(state.operations, state.diagnostics, viewModel, stack, onCancel)
+        }
     }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) }
 }
 
-@Composable private fun StackServices(services: ApiResult<List<DockerStackService>>?) { when (services) { is ApiResult.Success -> services.value.forEach { Text("${it.service} · ${it.state}", style = MaterialTheme.typography.bodySmall) }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) } }
+@Composable private fun StackServices(services: ApiResult<List<DockerStackService>>?, logs: Pair<String, DockerLogs>?, onLogs: (String) -> Unit) {
+    when (services) {
+        is ApiResult.Success -> services.value.forEach { service ->
+            ListRow(service.service, subtitle = "${service.state} · ${service.container}",
+                trailing = { TextButton(onClick = { onLogs(service.container) }) { Text(stringResource(R.string.docker_service_logs)) } })
+            logs?.takeIf { it.first == service.container }?.let { (_, value) ->
+                Text(value.lines.joinToString("\n"), style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().padding(start = Spacing.md))
+                if (value.truncated) Text(stringResource(R.string.docker_logs_truncated), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        null -> Text(stringResource(R.string.common_loading))
+        else -> Text(stringResource(R.string.docker_list_failed))
+    }
+}
 
-@Composable private fun DockerContainers(result: ApiResult<List<DockerContainer>>?, action: (DockerContainer, String) -> Unit) = SectionCard(stringResource(R.string.docker_containers)) {
-    when (result) { is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_containers)) else result.value.forEach { item -> ListRow(item.names, subtitle = "${item.image} · ${item.status}", leading = { DesktopIcon(R.drawable.ic_app_docker, size = 22.dp) }, trailing = { Row { TextButton(onClick = { action(item, if (item.state.equals("running", true)) "stop" else "start") }) { Text(stringResource(if (item.state.equals("running", true)) R.string.docker_stop else R.string.docker_start)) }; TextButton(onClick = { action(item, "delete") }) { Text(stringResource(R.string.common_delete)) } } }) }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) }
+/**
+ * The durable operation history of one project. A failed or partly failed operation keeps its problem
+ * code visible and offers the two follow-ups that actually exist: deploy again (Compose's own update
+ * path) or stop the project. Nothing here claims a rollback.
+ */
+@Composable private fun StackOperations(
+    operations: ApiResult<List<DockerStackOperation>>?, diagnostics: DockerStackOperationDiagnostics?,
+    viewModel: DockerViewModel, stack: DockerStack, onCancel: (String) -> Unit,
+) = Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+    Text(stringResource(R.string.docker_stack_operations), style = MaterialTheme.typography.labelLarge)
+    when (operations) {
+        is ApiResult.Success -> if (operations.value.isEmpty()) Text(stringResource(R.string.docker_stack_no_operations), style = MaterialTheme.typography.bodySmall)
+        else operations.value.forEach { operation ->
+            ListRow(
+                "${operationKind(operation.kind)} · ${operationState(operation.state)}",
+                subtitle = operation.problemCode,
+                // While running, the stage says where it is. Once it needs attention, the recovery code
+                // says what the server could not do — which is what decides between retrying and
+                // stopping the project.
+                supporting = if (operation.state.active) operation.stage else operation.recoveryProblemCode,
+                trailing = {
+                    Row {
+                        if (operation.state.active && operation.cancellable) TextButton(onClick = { onCancel(operation.operationId) }) { Text(stringResource(R.string.docker_cancel)) }
+                        if (operation.state.needsAttention) {
+                            TextButton(onClick = { viewModel.stackAction(stack, "stop", confirmed = false) }) { Text(stringResource(R.string.docker_stop)) }
+                        }
+                    }
+                },
+            )
+            // The observed services are the outcome of the operation, not a prediction of it.
+            operation.services.forEach { observed ->
+                Text("· ${observed.service} · ${observed.state}", style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().padding(start = Spacing.md))
+            }
+        }
+        null -> Text(stringResource(R.string.common_loading))
+        else -> Text(stringResource(R.string.docker_list_failed))
+    }
+    if (diagnostics != null && diagnostics.lines.isNotEmpty()) {
+        Text(diagnostics.lines.joinToString("\n"), style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.fillMaxWidth().padding(start = Spacing.md))
+        // Truncation is stated rather than hidden: a cut-off command output that looks complete is
+        // how an operator concludes the wrong cause.
+        if (diagnostics.truncated) Text(stringResource(R.string.docker_logs_truncated), style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable private fun DockerContainers(state: DockerScreenState, viewModel: DockerViewModel, action: (DockerContainer, String) -> Unit) = SectionCard(stringResource(R.string.docker_containers)) {
+    when (val result = state.containers) { is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_containers)) else result.value.forEach { item -> ListRow(item.names, subtitle = "${item.image} · ${item.status}", leading = { DesktopIcon(R.drawable.ic_app_docker, size = 22.dp) }, trailing = { Row { TextButton(onClick = { action(item, if (item.state.equals("running", true)) "stop" else "start") }) { Text(stringResource(if (item.state.equals("running", true)) R.string.docker_stop else R.string.docker_start)) }; TextButton(onClick = { action(item, "delete") }) { Text(stringResource(R.string.common_delete)) } } }) }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) }
+}
+
+/**
+ * Volumes are listed with their references on demand, because a volume is persistent data: the operator
+ * has to see which containers still hold it before choosing to release it.
+ */
+@Composable private fun DockerVolumes(
+    result: ApiResult<List<DockerVolume>>?, details: Pair<String, DockerVolumeDetails>?,
+    onSelect: (String) -> Unit, onDelete: (String) -> Unit,
+) = SectionCard(stringResource(R.string.docker_volumes)) {
+    when (result) {
+        is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_resources)) else result.value.forEach { volume ->
+            ListRow(volume.name, subtitle = volume.driver, onClick = { onSelect(volume.name) },
+                trailing = { TextButton(onClick = { onDelete(volume.name) }) { Text(stringResource(R.string.common_delete)) } })
+            details?.takeIf { it.first == volume.name }?.let { (_, value) ->
+                Text(
+                    if (value.usedBy.isEmpty()) stringResource(R.string.docker_volume_unused)
+                    else stringResource(R.string.docker_volume_used_by, value.usedBy.joinToString(", ")),
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(start = Spacing.md),
+                )
+            }
+        }
+        null -> Text(stringResource(R.string.common_loading))
+        else -> Text(stringResource(R.string.docker_list_failed))
+    }
 }
 
 @Composable private fun <T> SimpleList(title: String, result: ApiResult<List<T>>?, text: (T) -> String) = SectionCard(title) { when (result) { is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_resources)) else result.value.forEach { Text(text(it)) }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) } }
 
-@Composable @OptIn(ExperimentalMaterial3Api::class) private fun DockerComposer(initialYaml: String, onDismiss: () -> Unit, onDeploy: (String, String) -> Unit) {
+@Composable @OptIn(ExperimentalMaterial3Api::class) private fun DockerComposer(
+    initialYaml: String, preview: DockerStackPreview?, busy: Boolean,
+    onPreview: (String, String) -> Unit, onClearPreview: () -> Unit,
+    onDismiss: () -> Unit, onDeploy: (String, String) -> Unit,
+) {
     var name by mutableStateOf(""); var yaml by mutableStateOf(initialYaml)
     ModalBottomSheet(onDismissRequest = onDismiss) { Column(Modifier.fillMaxWidth().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         Text(stringResource(R.string.docker_new_stack), style = MaterialTheme.typography.headlineSmall); Text(stringResource(R.string.docker_compose_note), style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.docker_stack_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(yaml, { yaml = it }, label = { Text(stringResource(R.string.docker_compose_yaml)) }, minLines = 8, modifier = Modifier.fillMaxWidth())
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }; Button(onClick = { onDeploy(name, yaml) }, enabled = name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_deploy)) } }
+        OutlinedTextField(name, { name = it; onClearPreview() }, label = { Text(stringResource(R.string.docker_stack_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(yaml, { yaml = it; onClearPreview() }, label = { Text(stringResource(R.string.docker_compose_yaml)) }, minLines = 8, modifier = Modifier.fillMaxWidth())
+        // What the server parsed, shown before anything is applied. It is not a prediction: the preview
+        // is the Composer's own answer, and the deployment sends back the version it returned.
+        preview?.let { value ->
+            Text(stringResource(R.string.docker_stack_preview_version, value.definitionVersion.take(12)), style = MaterialTheme.typography.bodySmall)
+            value.services.forEach { service -> Text("· ${service.service} · ${service.image}", style = MaterialTheme.typography.bodySmall) }
+            if (value.volumes.isNotEmpty()) Text(stringResource(R.string.docker_stack_preview_volumes, value.volumes.joinToString(", ")), style = MaterialTheme.typography.bodySmall)
+            if (value.networks.isNotEmpty()) Text(stringResource(R.string.docker_stack_preview_networks, value.networks.joinToString(", ")), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
+            TextButton(onClick = { onPreview(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_preview)) }
+            Button(onClick = { onDeploy(name, yaml) }, enabled = !busy && name.isNotBlank() && yaml.isNotBlank()) { Text(stringResource(R.string.docker_deploy)) }
+        }
     } }
 }
