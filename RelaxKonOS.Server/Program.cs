@@ -651,6 +651,13 @@ builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.WebServerOperationStor
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.NginxWebServerManager>();
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IWebServerProvider>(services => services.GetRequiredService<RelaxKonOS.Server.WebServer.NginxWebServerManager>());
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IWebServerManager, RelaxKonOS.Server.WebServer.WebServerManager>();
+builder.Services.AddSingleton<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationCoordinator>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.WebsitePublishing.WebsitePublicationCoordinator>());
+builder.Services.AddHttpClient("WebsitePublicationVerification", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 // Tunnel desired state is stored separately from workspace preferences. FRP stays an external
 // process; the provider only generates private configuration and supervises its own child PID.
@@ -1031,6 +1038,7 @@ app.MapDockerEndpoints();
 app.MapDockerProxyEndpoints();
 app.MapProcessGuardianEndpoints();
 app.MapWebServerEndpoints();
+app.MapWebsitePublicationEndpoints();
 app.MapFileServiceEndpoints();
 app.MapCertificateEndpoints();
 app.MapGitEndpoints();

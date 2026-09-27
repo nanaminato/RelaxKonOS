@@ -16,6 +16,16 @@
 - Android 网络层新增 Web Server 与证书只读 projections、按单一路径段编码的路由构造，以及 session-scoped repository；wire 测试覆盖服务器、站点、证书、配置检查、必填字段拒绝和动态 ID 编码。
 - **本轮验证**：`:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 `BUILD SUCCESSFUL`（Gradle 9.7.1；44 个测试类、409 个用例，0 失败 / 0 错误 / 0 跳过）；新增 `WebPublishingWireTest`。未执行真机、真实 Nginx/证书、DNS 或外网访问验证，因而 AD05-T1–T6 仍未完成。
 
+## AD05-M2/M3：确认式 HTTPS 发布、持久化恢复与主机观测（已实现，2026-09-27）
+
+- 共享协议新增 `WebsitePublishing` 契约与三条权威路由：提交发布、按应用读取历史、按操作读取状态。请求只含应用、受管 Web Server、域名、可选既有证书及明确确认；DNS 服务商令牌、证书私钥、Nginx 配置全文和联系人邮箱均不会出现在操作记录或 Android 状态中。
+- 服务端 `WebsitePublicationCoordinator` 是发布流程中唯一会改变站点的编排器：它要求应用实际运行、上游监听在 loopback、站点未被另一应用使用、域名未被其他受管站点占用、证书覆盖请求域名，并要求当前会话已获得目标实例的 `nginxConfigurationWrite` 授权。新证书走既有 ACME HTTP-01 流程；既有证书只复用服务端验证过的 SAN。站点由现有 Nginx 受控写入路径生成（`nginx -t`、reload 和失败回滚），之后才绑定应用的权威 `siteId`。
+- 发布账本 `data/website-publications.json` 以原子替换持久化幂等键、状态、阶段、关联 ID 与检查结果。每个应用同时只能有一个活动操作；服务重启把 queued/running 标为 `interrupted` 并要求重新核对，绝不重放 ACME 或站点写入。绑定目录失败时只还原本次写入的站点，不删除旧证书，也不影响应用进程。
+- Android “管理 → 网站”现在提供受控发布卡：选择正在运行的回环应用与受管 Web Server，输入域名，明确提示先把 A/AAAA 指向宿主公网地址；可选择 SAN 匹配的受管证书，或填写证书联系人、同意条款并确认 HTTP 80 公网可达。提交先走手机现有的单次管理员授权，再提交带 UUID 幂等键的持久操作。网络掉线仅影响手机读取，宿主操作继续；重开页面可按应用历史恢复。
+- 完成后不把“主机能看到 HTTPS”误写为全球成功：操作分别保留宿主上游、DNS、TLS 握手与 HTTP 响应检查的观察者、时间、通过/失败/尚未验证和问题码。Nginx/证书/绑定成功但 TLS 或 HTTP 无法由宿主确认时，操作仍说明配置完成，同时显示 `unverified`，而非声称应用已停止或公网已经可达。
+- M4 保持条件阶段：项目尚未接入某个可授权的 DNS 提供商，也没有把内网应用通过 FRP 对外暴露的已批准需求；因此没有伪造 DNS 自动化、共享 DNS 凭据，或自动添加宽泛防火墙规则。已有的独立 Firewall 与 FRP 服务仍是未来的集成边界。
+- **本轮构建**：服务端以独立 `BaseOutputPath` 编译成功（避免覆盖正在运行实例锁定的 Protocol DLL），仅有 3 条既有 CA1416 平台警告；Android `:app:assembleDebug` 使用缓存的 Gradle 9.7.1 成功。三套 Android `strings.xml` 均为 597 键、键集一致。真实 Nginx、ACME、DNS、端口转发/防火墙和真机外网访问未在此开发环境执行，仍须按 AD05-T1–T6 进行宿主验收。
+
 ## AD04-M1：Docker 资源浏览与受控操作（已实现；服务端真实宿主已验收，2026-09-27）
 
 - “管理 → Docker”仅在服务器声明 `server.docker` 时显示。页面读取 Engine、容器、镜像、命名卷、网络和 Compose Stack；Stack 可展开读取服务状态。资源读取全部经现有认证 REST API，Android 不直接接触 Docker socket 或自行执行 YAML。

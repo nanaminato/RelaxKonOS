@@ -10,11 +10,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -32,12 +36,15 @@ import app.relaxkonos.mobile.core.net.WebServer
 import app.relaxkonos.mobile.core.net.WebServerConfigTest
 import app.relaxkonos.mobile.core.net.WebServerSite
 import app.relaxkonos.mobile.core.net.WebServerStatus
+import app.relaxkonos.mobile.core.net.WebsitePublishRequest
+import app.relaxkonos.mobile.core.net.WebsitePublicationOperation
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 private data class WebsiteServerState(
     val server: WebServer,
@@ -51,9 +58,13 @@ private data class WebsitesState(
     val servers: ApiResult<List<WebsiteServerState>>? = null,
     val certificates: ApiResult<List<ManagedCertificate>>? = null,
     val applications: ApiResult<List<DeploymentApplication>>? = null,
+    val selectedServerId: String? = null,
+    val selectedApplicationId: String? = null,
+    val publication: ApiResult<WebsitePublicationOperation>? = null,
+    val publicationHistory: ApiResult<List<WebsitePublicationOperation>>? = null,
+    val publishing: Boolean = false,
 )
 
-/** AD05-M1: host-observed publication diagnostics. No action in this screen changes a site or certificate. */
 private class WebsitesViewModel(application: Application) : AndroidViewModel(application) {
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
     var state by mutableStateOf(WebsitesState())
@@ -80,8 +91,50 @@ private class WebsitesViewModel(application: Application) : AndroidViewModel(app
             }
             val certificates = if (owner.capabilities.contains(ServerCapabilities.CERTIFICATES)) container.webPublishing.certificates(owner) else null
             val applications = if (owner.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) container.deployments.applications(owner) else null
-            state = WebsitesState(servers = details, certificates = certificates, applications = applications)
+            val firstServer = (details as? ApiResult.Success)?.value?.firstOrNull { it.server.canRead && it.server.canTestConfiguration }?.server?.id
+            val firstApplication = (applications as? ApiResult.Success)?.value?.firstOrNull { it.actualState.equals("running", true) }?.id
+            state = WebsitesState(
+                servers = details, certificates = certificates, applications = applications,
+                selectedServerId = state.selectedServerId ?: firstServer,
+                selectedApplicationId = state.selectedApplicationId ?: firstApplication,
+            )
         }
+    }
+
+    fun selectServer(serverId: String) { state = state.copy(selectedServerId = serverId) }
+    fun selectApplication(applicationId: String) {
+        state = state.copy(selectedApplicationId = applicationId, publication = null, publicationHistory = null)
+        loadHistory(applicationId)
+    }
+
+    fun publish(domain: String, contactEmail: String, certificateId: String?, acceptedTerms: Boolean, publiclyReachable: Boolean) {
+        val owner = container.activeSession ?: return
+        val serverId = state.selectedServerId ?: return
+        val applicationId = state.selectedApplicationId ?: return
+        state = state.copy(publishing = true, publication = null)
+        viewModelScope.launch {
+            val result = container.webPublishing.publish(WebsitePublishRequest(
+                applicationId = applicationId, webServerId = serverId, domain = domain,
+                certificateId = certificateId, contactEmail = contactEmail, acceptedTerms = acceptedTerms,
+                publicReachabilityConfirmed = publiclyReachable, confirmed = true,
+            ), container.elevationAnswers)
+            state = state.copy(publishing = false, publication = result)
+            if (result is ApiResult.Success) loadHistory(result.value.applicationId)
+        }
+    }
+
+    fun refreshPublication(operationId: String) {
+        val owner = container.activeSession ?: return
+        viewModelScope.launch {
+            val result = container.webPublishing.operation(owner, operationId)
+            state = state.copy(publication = result)
+            if (result is ApiResult.Success && result.value.isTerminal()) loadHistory(result.value.applicationId)
+        }
+    }
+
+    private fun loadHistory(applicationId: String) {
+        val owner = container.activeSession ?: return
+        viewModelScope.launch { state = state.copy(publicationHistory = container.webPublishing.history(owner, applicationId)) }
     }
 
 }
@@ -106,11 +159,97 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
             EmptyHint(stringResource(R.string.error_capability_missing))
             return@Column
         }
-        Text(stringResource(R.string.websites_read_only_note), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.websites_publish_note), style = MaterialTheme.typography.bodySmall)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        WebsitePublisher(state, viewModel)
         WebsiteServers(state, state.certificates, state.applications)
     }
 }
+
+@Composable
+private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel) {
+    val servers = (state.servers as? ApiResult.Success)?.value.orEmpty().filter { it.server.canRead && it.server.canTestConfiguration }
+    val applications = (state.applications as? ApiResult.Success)?.value.orEmpty().filter { it.actualState.equals("running", true) }
+    if (servers.isEmpty() || applications.isEmpty()) return
+    var domain by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var useExistingCertificate by remember { mutableStateOf(false) }
+    var acceptedTerms by remember { mutableStateOf(false) }
+    var publicReachability by remember { mutableStateOf(false) }
+    val certificates = (state.certificates as? ApiResult.Success)?.value.orEmpty()
+    val selectedCertificate = certificates.firstOrNull { certificate ->
+        useExistingCertificate && certificate.subjectAlternativeNames.any { it.equals(domain.trim(), true) }
+    }
+    SectionCard(stringResource(R.string.websites_publish_title)) {
+        Text(stringResource(R.string.websites_publish_intro), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.websites_publish_server), style = MaterialTheme.typography.labelLarge)
+        servers.forEach { item ->
+            TextButton(onClick = { viewModel.selectServer(item.server.id) }) {
+                Text(if (item.server.id == state.selectedServerId) "✓ ${item.server.type}" else item.server.type)
+            }
+        }
+        Text(stringResource(R.string.websites_publish_application), style = MaterialTheme.typography.labelLarge)
+        applications.forEach { app ->
+            TextButton(onClick = { viewModel.selectApplication(app.id) }) {
+                Text(if (app.id == state.selectedApplicationId) "✓ ${app.name}" else app.name)
+            }
+        }
+        OutlinedTextField(domain, { domain = it.trim() }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.websites_domain)) }, singleLine = true)
+        if (certificates.isNotEmpty()) {
+            androidx.compose.foundation.layout.Row {
+                Checkbox(checked = useExistingCertificate, onCheckedChange = { useExistingCertificate = it })
+                Text(stringResource(R.string.websites_use_existing_certificate))
+            }
+            if (useExistingCertificate) Text(
+                selectedCertificate?.let { stringResource(R.string.websites_existing_certificate_selected, it.primaryDomain) }
+                    ?: stringResource(R.string.websites_existing_certificate_missing),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (!useExistingCertificate) {
+            OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.websites_contact_email)) }, singleLine = true)
+            androidx.compose.foundation.layout.Row {
+                Checkbox(checked = acceptedTerms, onCheckedChange = { acceptedTerms = it })
+                Text(stringResource(R.string.websites_accept_terms))
+            }
+            androidx.compose.foundation.layout.Row {
+                Checkbox(checked = publicReachability, onCheckedChange = { publicReachability = it })
+                Text(stringResource(R.string.websites_public_reachability))
+            }
+        }
+        Button(
+            enabled = !state.publishing && domain.isNotBlank() && (useExistingCertificate || (email.isNotBlank() && acceptedTerms && publicReachability)),
+            onClick = { viewModel.publish(domain, email, selectedCertificate?.id, acceptedTerms, publicReachability) },
+        ) { Text(stringResource(if (state.publishing) R.string.websites_publishing else R.string.websites_publish)) }
+        PublicationResult(state, viewModel)
+    }
+}
+
+@Composable
+private fun PublicationResult(state: WebsitesState, viewModel: WebsitesViewModel) {
+    val result = state.publication
+    if (result is ApiResult.Success) {
+        val operation = result.value
+        Text(stringResource(R.string.websites_operation, operation.state, operation.stage), style = MaterialTheme.typography.bodyMedium)
+        if (operation.problemCode.isNotBlank()) Text(operation.problemCode, color = MaterialTheme.colorScheme.error)
+        operation.checks.forEach { check -> Text(stringResource(R.string.websites_check, check.name, check.observer, check.state, check.problemCode.ifBlank { "—" }), style = MaterialTheme.typography.bodySmall) }
+        androidx.compose.runtime.LaunchedEffect(operation.operationId, operation.state) {
+            if (!operation.isTerminal()) {
+                delay(1_000)
+                viewModel.refreshPublication(operation.operationId)
+            }
+        }
+    } else if (result is ApiResult.Problem) {
+        Text(result.code, color = MaterialTheme.colorScheme.error)
+    } else if (result is ApiResult.Transport) {
+        Text(stringResource(R.string.websites_publish_transport_failed), color = MaterialTheme.colorScheme.error)
+    }
+    (state.publicationHistory as? ApiResult.Success)?.value?.take(3)?.forEach { history ->
+        Text(stringResource(R.string.websites_operation_history, history.domain, history.state, history.stage), style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+private fun WebsitePublicationOperation.isTerminal(): Boolean = state in setOf("succeeded", "partialFailed", "failed", "cancelled", "interrupted")
 
 @Composable
 private fun WebsiteServers(

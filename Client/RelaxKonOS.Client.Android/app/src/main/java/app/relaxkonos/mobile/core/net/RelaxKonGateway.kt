@@ -28,6 +28,9 @@ interface RelaxKonGateway {
     suspend fun webServerConfigTest(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerConfigTest> = ApiResult.Transport("Web server configuration diagnostics are unavailable.")
     suspend fun webServerSites(serverUrl: String, accessToken: String, instanceId: String): ApiResult<List<WebServerSite>> = ApiResult.Transport("Web server sites are unavailable.")
     suspend fun certificates(serverUrl: String, accessToken: String): ApiResult<List<ManagedCertificate>> = ApiResult.Transport("Certificates are unavailable.")
+    suspend fun publishWebsite(serverUrl: String, accessToken: String, request: WebsitePublishRequest, idempotencyKey: String): ApiResult<WebsitePublicationOperation> = ApiResult.Transport("Website publishing is unavailable.")
+    suspend fun websitePublicationHistory(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<WebsitePublicationOperation>> = ApiResult.Transport("Website publishing history is unavailable.")
+    suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> = ApiResult.Transport("Website publishing operation is unavailable.")
 
     suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerContainers(serverUrl: String, accessToken: String): ApiResult<List<DockerContainer>> = ApiResult.Transport("Docker is unavailable.")

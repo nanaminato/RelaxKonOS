@@ -40,6 +40,25 @@ class RelaxKonApi(
     override suspend fun certificates(serverUrl: String, accessToken: String): ApiResult<List<ManagedCertificate>> =
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.CERTIFICATES, WebPublishingWire::certificates)
 
+    override suspend fun publishWebsite(
+        serverUrl: String, accessToken: String, request: WebsitePublishRequest, idempotencyKey: String,
+    ): ApiResult<WebsitePublicationOperation> = webPublishingMutation(
+        serverUrl, accessToken, WebPublishingRoutes.publish(),
+        JsonBody().string("applicationId", request.applicationId).string("webServerId", request.webServerId)
+            .string("domain", request.domain.trim()).string("certificateId", request.certificateId)
+            .string("contactEmail", request.contactEmail?.trim()?.takeIf(String::isNotEmpty))
+            .bool("acceptedTerms", request.acceptedTerms)
+            .bool("publicReachabilityConfirmed", request.publicReachabilityConfirmed)
+            .bool("confirmed", request.confirmed),
+        idempotencyKey, WebPublishingWire::publication,
+    )
+
+    override suspend fun websitePublicationHistory(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<WebsitePublicationOperation>> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.publicationHistory(applicationId), WebPublishingWire::publicationHistory)
+
+    override suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.publication(operationId), WebPublishingWire::publication)
+
     override suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> =
         dockerRead(serverUrl, accessToken, DockerRoutes.STATUS, DockerWire::status)
 
@@ -318,6 +337,15 @@ class RelaxKonApi(
     ): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
         is ApiResult.Success -> runCatching { parse(result.value) }
             .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed web publishing response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
+    private suspend fun <T> webPublishingMutation(
+        serverUrl: String, accessToken: String, route: String, body: JsonBody, idempotencyKey: String, parse: (String) -> T,
+    ): ApiResult<T> = when (val result = execute("POST", serverUrl, route, accessToken, body, mapOf("Idempotency-Key" to idempotencyKey))) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed website publication operation.") })
         is ApiResult.Problem -> result
         is ApiResult.Transport -> result
     }
