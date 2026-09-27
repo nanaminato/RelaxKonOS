@@ -186,6 +186,7 @@
                         <TextBlock Text="{Binding OwnerDevicePairingDescription}" TextWrapping="Wrap" FontSize="12"
                                    Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBox Classes="connection-input" Text="{Binding OwnerDevicePairingCode}"
+                                 HorizontalAlignment="Stretch" MaxWidth="520"
                                  PlaceholderText="{Binding OwnerDevicePairingCodeText}" />
                         <Button Classes="connect-button" Content="{Binding AcceptOwnerDevicePairingText}"
                                 Command="{Binding AcceptOwnerDevicePairingCommand}" HorizontalAlignment="Left" />
