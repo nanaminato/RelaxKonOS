@@ -64,7 +64,8 @@
 - `GET /application-deployments/catalog` 返回目录，`POST /catalog/install` 以模板 ID 与精确版本重新验证字段、生成受限 Image 部署定义并排队 AD02 操作。安装记录在应用及不可变修订中保留模板 ID/版本；刷新目录不会修改已安装实例。
 - Android 展示“从模板安装”入口、模板用途、端口、持久数据位置与维护说明，按服务端字段生成原生文本/秘密控件。秘密值只在提交请求中存在，不进入列表、快照、摘要或日志；未知 schema、撤回模板和缺失能力都会禁用安装。
 - 目录协议现在明确携带服务端校验过的来源标识；Android 保留来源、支持的平台及最小资源字段，并在安装前阻断未受信任来源、未知 schema/字段类型、能力缺失、Docker 不可用或架构不匹配。详情页显示实例绑定的模板 ID 与版本，因此目录刷新不会被误认为更新了既有实例。
-- 尚未执行真实 Docker、首批镜像许可/架构/资源核验、更新差异预览、卸载恢复或设备三语视觉验收。因此 AD03-M3/M4 和 AD03-T1–T5 仍未验收。
+- **本轮自动化验证（2026-09-27）**：Android `:app:testDebugUnitTest` 通过，**401 个 JVM 用例，0 失败/错误/跳过**；`ApplicationDeploymentWireTest` 覆盖目录版本/来源、秘密字段无默认值，以及 schema、信任、字段、能力、Docker 运行时和平台不兼容时的本地阻断。服务端 `dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -- --deployment-progress-only` 也通过：确认 4 个内置目录模板的受信任来源、schema、平台、能力、资源和闭集字段契约，并验证部署日志的秘密脱敏与有界重放。该服务端验证不启动 Docker Engine，也不实际安装目录模板。
+- **尚未验证**：Android 对 `GET /catalog`、`POST /catalog/install` 的联网安装闭环；设备上选模板、填写字段、提交和打开服务；安装端点对缺秘密、非法字段/端口、版本不匹配及目录变化的独立 HTTP 拒绝；每个首批模板的真实 Docker 镜像许可/架构/资源、卷保留、升级、卸载与恢复；手机竖横屏、8/11 英寸平板、大字体及中英日视觉验收。模板更新说明、差异预览与显式实例更新流程（AD03-M4）尚未实现。因此 AD03-M3/M4 和 AD03-T1–T5 仍未验收。
 
 ## M0：Kotlin / Jetpack Compose 基线（已完成）
 
