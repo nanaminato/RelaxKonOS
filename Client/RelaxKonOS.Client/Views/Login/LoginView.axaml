@@ -23,6 +23,19 @@
             <Setter Property="Padding" Value="9,4" />
             <Setter Property="CornerRadius" Value="2" />
         </Style>
+        <Style Selector="TextBox.pairing-code-input">
+            <!-- A pairing payload is an unbroken Base64 token, so it needs a finite
+                 measure width and character-level wrapping rather than the single-line
+                 connection-input presentation. -->
+            <Setter Property="Width" Value="520" />
+            <Setter Property="Height" Value="72" />
+            <Setter Property="Padding" Value="9,4" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="WrapWithOverflow" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        </Style>
         <Style Selector="ComboBox.connection-input">
             <Setter Property="Height" Value="32" />
             <Setter Property="Padding" Value="9,4" />
@@ -185,11 +198,8 @@
                         <Border Background="{DynamicResource BorderDefaultBrush}" Height="1" Margin="0,2" />
                         <TextBlock Text="{Binding OwnerDevicePairingDescription}" TextWrapping="Wrap" FontSize="12"
                                    Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBox Classes="connection-input" Text="{Binding OwnerDevicePairingCode}"
-                                 HorizontalAlignment="Stretch" MaxWidth="520" MinWidth="0" Height="72"
-                                 AcceptsReturn="True" TextWrapping="WrapWithOverflow"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        <TextBox Classes="pairing-code-input" Text="{Binding OwnerDevicePairingCode}"
+                                 HorizontalAlignment="Left"
                                  PlaceholderText="{Binding OwnerDevicePairingCodeText}" />
                         <Button Classes="connect-button" Content="{Binding AcceptOwnerDevicePairingText}"
                                 Command="{Binding AcceptOwnerDevicePairingCommand}" HorizontalAlignment="Left" />
