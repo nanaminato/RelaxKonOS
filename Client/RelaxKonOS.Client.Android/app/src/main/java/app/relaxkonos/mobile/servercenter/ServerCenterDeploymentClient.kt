@@ -31,7 +31,7 @@ data class ServerCenterStagedOperation(
 )
 
 /**
- * Android deployment operation layer. It binds local signed-release verification to the built-in
+ * Android deployment operation layer. It binds local release validation to the built-in
  * SSH/SFTP transport and invokes only the fixed launcher actions.
  */
 class ServerCenterDeploymentClient(private val transport: ServerCenterSshTransport) {
@@ -41,10 +41,8 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         platform: ServerHostPlatform,
         launcher: ServerCenterUploadAsset,
         verifier: ServerCenterUploadAsset,
-        signedArchive: File? = null,
+        archiveFile: File? = null,
         expectedRuntime: ServerRuntimeIdentifier? = null,
-        trustedKeyId: String? = null,
-        trustedPublicKeyPem: String? = null,
         uploadProgress: ((Double) -> Unit)? = null,
     ): ServerCenterStagedOperation {
         check(transport.isConnected) { "A trusted SSH session is required." }
@@ -52,16 +50,12 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         val needsArchive = request.kind == ServerDeploymentKind.Install || request.kind == ServerDeploymentKind.Upgrade
         if (needsArchive) {
             val options = requireNotNull(request.options) { "Deployment options are required." }
-            val archive = requireNotNull(signedArchive) { "A signed release is required." }
+            val archive = requireNotNull(archiveFile) { "A release archive is required." }
             val runtime = requireNotNull(expectedRuntime) { "The expected release RID is required." }
-            val keyId = requireNotNull(trustedKeyId?.takeIf { it.isNotBlank() }) { "A trusted key ID is required." }
-            val publicKey = requireNotNull(trustedPublicKeyPem?.takeIf { it.isNotBlank() }) {
-                "A trusted public key is required."
-            }
-            require(archive.isFile && TRUSTED_KEY_ID.matches(keyId) &&
+            require(archive.isFile &&
                 ServerDeploymentInputRules.isSafeStagedPackageName(options.stagedPackageName) &&
                 ServerDeploymentInputRules.isSha256(options.packageDigest)) {
-                "A signed, staged release and a trusted key are required."
+                "A staged release and its SHA-256 are required."
             }
             require(modeMatchesPlatform(options.mode, platform)) { "Installation mode does not match the host platform." }
             require(runtimeMatchesPlatform(runtime, platform)) { "Release RID does not match the host platform." }
@@ -73,7 +67,6 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 archiveFile = archive,
                 expectedKind = expectedKind,
                 expectedRuntime = runtime,
-                trustedPublicKeys = mapOf(keyId to publicKey),
                 expectedArchiveSha256 = options.packageDigest,
             )
             if (!checkedRelease.verified) {
@@ -87,17 +80,7 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         upload(launcher, staged, if (platform == ServerHostPlatform.Windows) "RelaxKonOS-Deploy.ps1" else "relaxkonos-deploy.sh")
         if (needsArchive) {
             upload(
-                ServerCenterUploadAsset.bytes(trustedPublicKeyPem!!.toByteArray(Charsets.UTF_8)),
-                staged,
-                "release-public.pem",
-            )
-            upload(
-                ServerCenterUploadAsset.bytes(trustedKeyId!!.toByteArray(Charsets.US_ASCII)),
-                staged,
-                "release-key-id.txt",
-            )
-            upload(
-                ServerCenterUploadAsset.file(signedArchive!!),
+                ServerCenterUploadAsset.file(archiveFile!!),
                 staged,
                 request.options!!.stagedPackageName!!,
                 uploadProgress,
@@ -192,7 +175,6 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         }
 
     private companion object {
-        val TRUSTED_KEY_ID = Regex("^[A-Za-z0-9._-]{1,128}$")
         val LINUX_STAGING_PATH = Regex("^/tmp/relaxkonos-deploy\\.[A-Za-z0-9]{8,32}$")
         val WINDOWS_STAGING_PATH = Regex("^[A-Za-z]:[\\\\/].*[\\\\/]relaxkonos-deploy-[0-9a-f]{32}$")
     }

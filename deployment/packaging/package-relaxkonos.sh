@@ -6,9 +6,6 @@ RUNTIME=${2:-linux-x64}
 CONFIGURATION=${3:-Release}
 OUTPUT_DIRECTORY=${4:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/artifacts"}
 PACKAGE_KIND=${5:-all}
-SIGNING_KEY_PATH=${RELAXKONOS_RELEASE_SIGNING_KEY:-}
-SIGNING_KEY_ID=${RELAXKONOS_RELEASE_KEY_ID:-}
-[[ -f $SIGNING_KEY_PATH && -n $SIGNING_KEY_ID ]] || { echo 'RELAXKONOS_RELEASE_SIGNING_KEY and RELAXKONOS_RELEASE_KEY_ID are required.' >&2; exit 64; }
 case "$RUNTIME" in linux-x64|linux-arm64) ;; *) echo 'Linux package script supports linux-x64 and linux-arm64.' >&2; exit 64 ;; esac
 case "$CONFIGURATION" in Release|Debug) ;; *) echo 'Configuration must be Release or Debug.' >&2; exit 64 ;; esac
 case "$PACKAGE_KIND" in all|client|server|user-server) ;; *) echo 'Package kind must be all, client, server, or user-server.' >&2; exit 64 ;; esac
@@ -16,7 +13,7 @@ case "$PACKAGE_KIND" in all|client|server|user-server) ;; *) echo 'Package kind 
 
 SCRIPT_DIRECTORY="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIRECTORY/../.." && pwd)"
-SIGNER_PROJECT="$SCRIPT_DIRECTORY/RelaxKonOS.ReleaseSigner/RelaxKonOS.ReleaseSigner.csproj"
+VERIFIER_PROJECT="$SCRIPT_DIRECTORY/RelaxKonOS.ReleaseVerifier/RelaxKonOS.ReleaseVerifier.csproj"
 OUTPUT_DIRECTORY="$(mkdir -p -- "$OUTPUT_DIRECTORY" && cd -- "$OUTPUT_DIRECTORY" && pwd)"
 
 new_package() {
@@ -46,10 +43,10 @@ publish_deployment_tools() {
   # Packaging may run from a Windows-mounted working tree; launchers uploaded to Linux must be LF.
   sed -i 's/\r$//' "$tools/relaxkonos-deploy.sh"
   rm -rf -- "$temporary"
-  dotnet publish "$SIGNER_PROJECT" --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained true \
+  dotnet publish "$VERIFIER_PROJECT" --configuration "$CONFIGURATION" --runtime "$RUNTIME" --self-contained true \
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output "$temporary"
-  [[ -f "$temporary/RelaxKonOS.ReleaseSigner" ]] || { echo 'Verifier publish output did not contain RelaxKonOS.ReleaseSigner.' >&2; exit 1; }
-  install -m 700 "$temporary/RelaxKonOS.ReleaseSigner" "$tools/release-verifier"
+  [[ -f "$temporary/RelaxKonOS.ReleaseVerifier" ]] || { echo 'Verifier publish output did not contain RelaxKonOS.ReleaseVerifier.' >&2; exit 1; }
+  install -m 700 "$temporary/RelaxKonOS.ReleaseVerifier" "$tools/release-verifier"
   rm -rf -- "$temporary"
 }
 
@@ -76,17 +73,15 @@ complete_package() {
   files+=']'
   printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","supportedSystems":["debian-12","ubuntu-22.04","ubuntu-24.04","ubuntu-26.04"],"payload":{"linux":{%s}},"files":%s}\n' \
     "$kind" "$VERSION" "$RUNTIME" "$payload" "$files" > "$BUNDLE/manifest.json"
-  dotnet run --project "$SIGNER_PROJECT" --configuration Release -- sign "$BUNDLE/manifest.json" "$SIGNING_KEY_PATH" "$SIGNING_KEY_ID" >/dev/null
   (cd "$BUNDLE" && zip -qr "$ARCHIVE" .)
   hash="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
   printf '%s  %s\n' "$hash" "$(basename -- "$ARCHIVE")" > "$ARCHIVE.sha256"
   printf '{"schemaVersion":1,"packageKind":"%s","version":"%s","runtime":"%s","url":"https://downloads.relaxkon.com/relaxkonos/stable/%s/%s/%s/%s","sha256":"%s"}\n' \
     "$kind" "$VERSION" "$RUNTIME" "$VERSION" "$RUNTIME" "$kind" "$(basename -- "$ARCHIVE")" "$hash" > "$ARCHIVE.json"
-  dotnet run --project "$SIGNER_PROJECT" --configuration Release -- sign "$ARCHIVE.json" "$SIGNING_KEY_PATH" "$SIGNING_KEY_ID" >/dev/null
   printf '%s bundle: %s\nSHA-256: %s\n' "$kind" "$ARCHIVE" "$hash"
 }
 
-# This directory accompanies the signed release packages. It is uploaded by the client as fixed
+# This directory accompanies the release packages. It is uploaded by the client as fixed
 # deployment tooling and is deliberately not extracted from a host-selected package.
 publish_deployment_tools
 

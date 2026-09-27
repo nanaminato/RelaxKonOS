@@ -248,7 +248,7 @@ parse_request() {
   case "$operation_kind" in
     install|upgrade)
       [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required"
-      [[ -n $options_staged_name && -n $options_package_digest ]] || launcher_fail invalid_request "install and upgrade need a staged signed archive and SHA-256"
+      [[ -n $options_staged_name && -n $options_package_digest ]] || launcher_fail invalid_request "install and upgrade need a staged archive and SHA-256"
       ;;
     repair|rollback|uninstall|status) [[ -n $options_mode ]] || launcher_fail invalid_request "installation mode is required";;
   esac
@@ -428,17 +428,13 @@ persist_digest() { umask 077; request_digest > "$(digest_path)"; chmod 600 -- "$
 require_package() {
   local archive=$staging_root/$options_staged_name
   local verifier=$staging_root/release-verifier
-  local public_key=$staging_root/release-public.pem
-  local key_id_file=$staging_root/release-key-id.txt
-  local path actual key_id architecture kind
-  for path in "$archive" "$verifier" "$public_key" "$key_id_file"; do
+  local path actual architecture kind
+  for path in "$archive" "$verifier"; do
     [[ -f $path && ! -L $path ]] || launcher_fail package_unavailable "a required staged release file is missing or unsafe"
   done
   [[ -x $verifier ]] || launcher_fail package_unavailable "the staged release verifier is not executable"
   actual=$(sha256sum -- "$archive" | cut -d' ' -f1)
   [[ $actual == "$options_package_digest" ]] || launcher_fail package_digest_mismatch "the staged archive digest does not match the request"
-  key_id=$(<"$key_id_file")
-  [[ $key_id =~ ^[A-Za-z0-9._-]{1,128}$ ]] || launcher_fail package_trust_root_missing "the release key id is invalid"
   case "$(uname -m)" in
     x86_64) architecture=linux-x64;;
     aarch64) architecture=linux-arm64;;
@@ -447,9 +443,9 @@ require_package() {
   case "$options_mode" in linuxUser) kind=user-server;; *) kind=server;; esac
   package_root=$staging_root/package-$operation_id
   [[ ! -e $package_root && ! -L $package_root ]] || launcher_fail package_unavailable "the operation package directory already exists"
-  "$verifier" extract "$archive" "$public_key" "$key_id" "$kind" "$architecture" "$package_root" >/dev/null 2>&1 \
-    || launcher_fail package_signature_invalid "the staged release could not be verified and extracted"
-  [[ -d $package_root && ! -L $package_root ]] || launcher_fail package_signature_invalid "the staged release could not be extracted"
+  "$verifier" extract "$archive" "$kind" "$architecture" "$package_root" >/dev/null 2>&1 \
+    || launcher_fail package_manifest_invalid "the staged release could not be verified and extracted"
+  [[ -d $package_root && ! -L $package_root ]] || launcher_fail package_manifest_invalid "the staged release could not be extracted"
 }
 user_engine_path() {
   [[ -x $package_root/deployment/user/relaxkon ]] && { printf '%s/deployment/user/relaxkon' "$package_root"; return; }

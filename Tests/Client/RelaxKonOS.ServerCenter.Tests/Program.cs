@@ -9,6 +9,9 @@ using RelaxKonOS.WindowManager;
 using RoyalTerminal.Terminal;
 using RoyalTerminal.Terminal.Transport.Ssh.SshNet;
 using RoyalTerminal.Terminal.Transport.Ssh;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text.Json;
 
 static void Check(bool condition, string message)
 {
@@ -61,7 +64,7 @@ var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, oper
 using var launcher = new MemoryStream("#!/bin/sh\n"u8.ToArray());
 using var verifier = new MemoryStream("verifier"u8.ToArray());
 var staged = await client.StageAsync(request, HostPlatformKind.Linux, launcher, verifier,
-    null, null, null, null, null, null, CancellationToken.None);
+    null, null, null, null, CancellationToken.None);
 Check(staged.OperationId == operationId && staged.RemoteDirectory.StartsWith("/tmp/relaxkonos-deploy.",
     StringComparison.Ordinal), "预检操作使用私有远端暂存目录");
 Check(transport.Uploaded.Keys.Order().SequenceEqual(new[]
@@ -89,17 +92,47 @@ var blocked = false;
 try
 {
     await refusingClient.StageAsync(invalidRequest, HostPlatformKind.Linux, launcher, verifier,
-        null, null, null, null, null, null, CancellationToken.None);
+        null, null, null, null, CancellationToken.None);
 }
 catch (ArgumentException) { blocked = true; }
 Check(blocked && refused.Commands.Count == 0 && refused.Uploaded.Count == 0,
-    "缺少签名包时在接触宿主前拒绝安装");
+    "缺少发布包时在接触宿主前拒绝安装");
+
+var payload = "server payload"u8.ToArray();
+const string payloadPath = "payload/linux/server/RelaxKonOS.Server";
+var manifest = new ServerReleaseManifestDto(ServerDeploymentProtocol.Version, ServerReleasePackageKind.Server,
+    "0.1.0", ServerRuntimeIdentifier.LinuxX64, ["debian-12"],
+    new Dictionary<string, IReadOnlyDictionary<string, string>>
+    { ["linux"] = new Dictionary<string, string> { ["server"] = payloadPath } },
+    null, [new ServerReleaseFileDto(payloadPath, payload.Length,
+        Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant())]);
+using var unsignedArchive = new MemoryStream();
+using (var zip = new ZipArchive(unsignedArchive, ZipArchiveMode.Create, leaveOpen: true))
+{
+    using (var entry = zip.CreateEntry("manifest.json").Open())
+        entry.Write(JsonSerializer.SerializeToUtf8Bytes(manifest, RelaxKonOSJsonOptions.Default));
+    using (var entry = zip.CreateEntry(payloadPath).Open())
+        entry.Write(payload);
+}
+var unsignedDigest = Convert.ToHexString(SHA256.HashData(unsignedArchive.ToArray())).ToLowerInvariant();
+var installRequest = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, Guid.NewGuid(),
+    ServerDeploymentKind.Install,
+    new ServerDeploymentOptions(ServerPackageSourceKind.LocalBundle, ServerNetworkProfile.Loopback,
+        Mode: ServerInstallMode.LinuxSystem, Version: "0.1.0", StagedPackageName: "server.zip",
+        PackageDigest: unsignedDigest, Confirmed: true));
+var unsignedTransport = new FakeTransport();
+var unsignedClient = new ServerCenterDeploymentClient(unsignedTransport);
+await unsignedClient.StageAsync(installRequest, HostPlatformKind.Linux, launcher, verifier,
+    unsignedArchive, ServerRuntimeIdentifier.LinuxX64, null, null, CancellationToken.None);
+Check(unsignedTransport.Uploaded.Keys.Any(path => path.EndsWith("/server.zip", StringComparison.Ordinal)) &&
+      !unsignedTransport.Uploaded.Keys.Any(path => path.Contains("release-public", StringComparison.Ordinal)),
+    "无签名 ZIP 可以上传且无需发布公钥");
 
 var windows = new FakeTransport { WindowsDirectory =
     @"C:\Users\runner\AppData\Local\Temp\relaxkonos-deploy-0123456789abcdef0123456789abcdef" };
 var windowsClient = new ServerCenterDeploymentClient(windows);
 var windowsStage = await windowsClient.StageAsync(request, HostPlatformKind.Windows, launcher, verifier,
-    null, null, null, null, null, null, CancellationToken.None);
+    null, null, null, null, CancellationToken.None);
 Check(windowsStage.Platform == HostPlatformKind.Windows &&
       windows.Uploaded.Keys.Any(path => path.EndsWith("/release-verifier.exe", StringComparison.Ordinal)),
     "Windows 暂存使用目标平台验证器文件名");

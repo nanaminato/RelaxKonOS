@@ -8,7 +8,7 @@ using RelaxKonOS.Protocol.ServerCenter;
 
 namespace RelaxKonOS.ServerCenter.Tests;
 
-/// <summary>G0 部署契约的契约测试：manifest、路径、并发/中断不变量、发布签名与稳定登录身份。</summary>
+/// <summary>G0 部署契约的契约测试：manifest、路径、并发/中断不变量、发布包完整性与稳定登录身份。</summary>
 internal static class ServerCenterContractChecks
 {
     public static void Run()
@@ -20,8 +20,8 @@ internal static class ServerCenterContractChecks
         VerifyLifecycle();
         VerifyRetentionPolicy();
         VerifyModeMatrix();
-        VerifyReleaseTrust();
-        VerifySignedArchive();
+        VerifyReleaseDescriptor();
+        VerifyArchive();
         VerifyJsonContract();
         VerifyOperationRecovery();
         VerifyProblemCodes();
@@ -195,78 +195,20 @@ internal static class ServerCenterContractChecks
             "三种模式都支持保留数据且默认仅 loopback");
     }
 
-    private static void VerifyReleaseTrust()
+    private static void VerifyReleaseDescriptor()
     {
-        using var rsa = RSA.Create(2048);
-        var pem = rsa.ExportSubjectPublicKeyInfoPem();
-        const string keyId = "release-2026-a";
-        var payload = "canonical-manifest-bytes"u8.ToArray();
-
-        var signature = Sign(payload, rsa, keyId);
-        var trusted = new ServerReleaseTrustPolicy([keyId]);
-
-        Check(ServerReleaseSignatureVerifier.Verify(payload, signature, pem, trusted) is null, "可信密钥签名通过校验");
-        Check(ServerReleaseSignatureVerifier.Verify("tampered"u8, signature, pem, trusted)
-                == ServerDeploymentProblemCodes.PackageSignatureInvalid,
-            "被篡改内容签名校验失败");
-        Check(ServerReleaseSignatureVerifier.Verify(payload, signature, pem, ServerReleaseTrustPolicy.Strict)
-                == ServerDeploymentProblemCodes.PackageSignatureInvalid,
-            "未受信任 keyId 被拒绝");
-        using var otherRsa = RSA.Create(2048);
-        Check(ServerReleaseSignatureVerifier.Verify(payload, signature, otherRsa.ExportSubjectPublicKeyInfoPem(), trusted)
-                == ServerDeploymentProblemCodes.PackageSignatureInvalid,
-            "同 keyId 但公钥不符时被拒绝");
-        Check(ServerReleaseSignatureVerifier.Verify(payload, signature, pem,
-                new ServerReleaseTrustPolicy([], AllowDevelopmentSource: true)) is null,
-            "开发配置允许自签来源");
-        Check(ServerReleaseSignatureVerifier.Verify(payload, signature, "", trusted)
-                == ServerDeploymentProblemCodes.PackageTrustRootMissing,
-            "缺少内置公钥时报告信任根缺失");
-
         var descriptor = new ServerReleaseDescriptorDto(
             ServerDeploymentProtocol.Version, ServerReleasePackageKind.Server, "0.1.0",
             ServerRuntimeIdentifier.LinuxX64, "https://downloads.relaxkon.com/x.zip", new string('a', 64));
-        var descriptorBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(descriptor, RelaxKonOSJsonOptions.Default);
-        var descriptorSignature = Sign(descriptorBytes, rsa, keyId);
-        Check(ServerReleaseValidation.VerifyDescriptor(descriptorBytes, descriptor, descriptorSignature, pem, trusted) is null,
-            "合法描述符通过校验");
-        Check(ServerReleaseValidation.VerifyDescriptor(descriptorBytes, descriptor, null, pem, trusted)
-                == ServerDeploymentProblemCodes.PackageSignatureInvalid,
-            "缺少签名的描述符被拒绝");
-        Check(ServerReleaseValidation.VerifyDescriptor("tampered-descriptor"u8, descriptor, descriptorSignature, pem, trusted)
-                == ServerDeploymentProblemCodes.PackageSignatureInvalid,
-            "被篡改的描述符字节签名校验失败");
-
-        var manifest = new ServerReleaseManifestDto(
-            ServerDeploymentProtocol.Version, ServerReleasePackageKind.Server, "0.1.0",
-            ServerRuntimeIdentifier.LinuxX64, ["debian-12"],
-            new Dictionary<string, IReadOnlyDictionary<string, string>>
-            { ["linux"] = new Dictionary<string, string> { ["server"] = "payload/linux/server/RelaxKonOS.Server" } },
-            DateTimeOffset.UnixEpoch,
-            [new ServerReleaseFileDto("payload/linux/server/RelaxKonOS.Server", 1024, new string('c', 64))]);
-        var manifestBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(manifest, RelaxKonOSJsonOptions.Default);
-        var manifestSignature = Sign(manifestBytes, rsa, keyId);
-        Check(ServerReleaseValidation.VerifyManifest(manifestBytes, manifest, ServerRuntimeIdentifier.LinuxX64,
-                manifestSignature, pem, trusted) is null,
-            "合法 manifest 签名通过校验");
-        Check(ServerReleaseValidation.VerifyManifest(manifestBytes, manifest, ServerRuntimeIdentifier.LinuxX64,
-                null, pem, trusted) == ServerDeploymentProblemCodes.PackageSignatureInvalid,
-            "缺少 manifest 签名被拒绝");
-        Check(ServerReleaseValidation.VerifyManifest(manifestBytes, manifest, ServerRuntimeIdentifier.LinuxX64,
-                manifestSignature, pem, ServerReleaseTrustPolicy.Strict)
-                == ServerDeploymentProblemCodes.PackageSignatureInvalid,
-            "未受信任密钥的 manifest 被拒绝");
-        Check(ServerReleaseValidation.VerifyManifest("tampered-manifest"u8, manifest, ServerRuntimeIdentifier.LinuxX64,
-                manifestSignature, pem, trusted) == ServerDeploymentProblemCodes.PackageSignatureInvalid,
-            "被篡改的 manifest 字节签名校验失败");
+        Check(ServerReleaseValidation.ValidateDescriptor(descriptor) is null, "合法描述符通过校验");
+        Check(ServerReleaseValidation.ValidateDescriptor(descriptor with { Sha256 = "bad" })
+              == ServerDeploymentProblemCodes.PackageDigestMismatch, "描述符摘要格式被校验");
     }
 
-    private static void VerifySignedArchive()
+    private static void VerifyArchive()
     {
-        using var rsa = RSA.Create(2048);
-        const string keyId = "test-release-key";
         const string path = "payload/linux/server/RelaxKonOS.Server";
-        var payload = "signed server payload"u8.ToArray();
+        var payload = "server payload"u8.ToArray();
         var digest = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
         var manifest = new ServerReleaseManifestDto(
             ServerDeploymentProtocol.Version, ServerReleasePackageKind.Server, "0.1.0",
@@ -275,20 +217,13 @@ internal static class ServerCenterContractChecks
             { ["linux"] = new Dictionary<string, string> { ["server"] = path } },
             DateTimeOffset.UnixEpoch, [new ServerReleaseFileDto(path, payload.Length, digest)]);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, RelaxKonOSJsonOptions.Default);
-        var signatureBytes = JsonSerializer.SerializeToUtf8Bytes(Sign(manifestBytes, rsa, keyId),
-            RelaxKonOSJsonOptions.Default);
-        var keys = new Dictionary<string, string> { [keyId] = rsa.ExportSubjectPublicKeyInfoPem() };
 
-        static MemoryStream Archive(byte[] manifestBytes, byte[] signatureBytes, byte[] payload,
-            string path, bool extra = false)
+        static MemoryStream Archive(byte[] manifestBytes, byte[] payload, string path, bool extra = false)
         {
             var stream = new MemoryStream();
             using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
             {
-                foreach (var (name, bytes) in new[]
-                {
-                    ("manifest.json", manifestBytes), ("manifest.json.sig", signatureBytes), (path, payload)
-                })
+                foreach (var (name, bytes) in new[] { ("manifest.json", manifestBytes), (path, payload) })
                 {
                     using var entry = zip.CreateEntry(name).Open();
                     entry.Write(bytes);
@@ -303,21 +238,21 @@ internal static class ServerCenterContractChecks
             return stream;
         }
 
-        using var valid = Archive(manifestBytes, signatureBytes, payload, path);
+        using var valid = Archive(manifestBytes, payload, path);
         var verified = ServerReleaseArchiveVerifier.Verify(
-            valid, ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxX64, keys);
-        Check(verified.Verified && verified.Manifest?.Version == "0.1.0", "已签名 ZIP 的逐文件校验通过");
+            valid, ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxX64);
+        Check(verified.Verified && verified.Manifest?.Version == "0.1.0", "无签名 ZIP 的逐文件校验通过");
         var extractParent = Path.Combine(Path.GetTempPath(), "relaxkonos-release-check-" + Guid.NewGuid().ToString("N"));
         try
         {
             var target = Path.Combine(extractParent, "package");
             var extracted = ServerReleaseArchiveVerifier.VerifyAndExtract(valid, target,
-                ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxX64, keys);
+                ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxX64);
             Check(extracted.Verified && File.ReadAllBytes(Path.Combine(target, path.Replace('/', Path.DirectorySeparatorChar)))
-                .AsSpan().SequenceEqual(payload), "启动器只解出已签名 ZIP 中的文件");
+                .AsSpan().SequenceEqual(payload), "启动器只解出清单列明的文件");
             var rejectedTarget = Path.Combine(extractParent, "rejected");
             var rejected = ServerReleaseArchiveVerifier.VerifyAndExtract(valid, rejectedTarget,
-                ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxArm64, keys);
+                ServerReleasePackageKind.Server, ServerRuntimeIdentifier.LinuxArm64);
             Check(!rejected.Verified && !Directory.Exists(rejectedTarget), "错误架构在解包前被拒绝");
         }
         finally
@@ -325,19 +260,16 @@ internal static class ServerCenterContractChecks
             if (Directory.Exists(extractParent)) Directory.Delete(extractParent, recursive: true);
         }
         Check(ServerReleaseArchiveVerifier.Verify(valid, ServerReleasePackageKind.Server,
-                ServerRuntimeIdentifier.LinuxArm64, keys).ProblemCode
+                ServerRuntimeIdentifier.LinuxArm64).ProblemCode
               == ServerDeploymentProblemCodes.PackageRuntimeMismatch, "错误 RID 的 ZIP 被拒绝");
-        Check(ServerReleaseArchiveVerifier.Verify(valid, ServerReleasePackageKind.Server,
-                ServerRuntimeIdentifier.LinuxX64, new Dictionary<string, string>()).ProblemCode
-              == ServerDeploymentProblemCodes.PackageTrustRootMissing, "缺少固定信任根时拒绝 ZIP");
-        using var altered = Archive(manifestBytes, signatureBytes, "altered"u8.ToArray(), path);
+        using var altered = Archive(manifestBytes, "altered"u8.ToArray(), path);
         Check(ServerReleaseArchiveVerifier.Verify(altered, ServerReleasePackageKind.Server,
-                ServerRuntimeIdentifier.LinuxX64, keys).ProblemCode
+                ServerRuntimeIdentifier.LinuxX64).ProblemCode
               == ServerDeploymentProblemCodes.PackageManifestInvalid, "包内文件长度变化被拒绝");
-        using var extra = Archive(manifestBytes, signatureBytes, payload, path, extra: true);
+        using var extra = Archive(manifestBytes, payload, path, extra: true);
         Check(ServerReleaseArchiveVerifier.Verify(extra, ServerReleasePackageKind.Server,
-                ServerRuntimeIdentifier.LinuxX64, keys).ProblemCode
-              == ServerDeploymentProblemCodes.PackageLayoutUnsafe, "未列入签名清单的文件被拒绝");
+                ServerRuntimeIdentifier.LinuxX64).ProblemCode
+              == ServerDeploymentProblemCodes.PackageLayoutUnsafe, "未列入清单的文件被拒绝");
     }
 
     private static void VerifyJsonContract()
@@ -580,15 +512,6 @@ internal static class ServerCenterContractChecks
         Check(codes.Count >= 30, "问题码覆盖请求、信任、预检、包、执行与终态");
         Check(codes.Distinct(StringComparer.Ordinal).Count() == codes.Count, "问题码互不重复");
         Check(codes.All(c => c.StartsWith("server-deployment.", StringComparison.Ordinal)), "问题码带稳定前缀");
-    }
-
-    private static ServerReleaseSignatureDto Sign(byte[] payload, RSA rsa, string keyId)
-    {
-        var digest = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
-        var signature = rsa.SignData(payload, HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
-        return new ServerReleaseSignatureDto(
-            ServerDeploymentProtocol.Version, keyId, ServerReleaseSignatureAlgorithms.RsaPssSha256,
-            digest, Convert.ToBase64String(signature));
     }
 
     private static void VerifyHostTarget()

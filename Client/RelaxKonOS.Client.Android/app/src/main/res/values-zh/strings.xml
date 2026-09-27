@@ -125,14 +125,14 @@
     <string name="ssh_workspace_system_platform">平台</string>
     <string name="ssh_workspace_exit">退出 SSH 工作区</string>
     <string name="ssh_workspace_deploy">部署 RelaxKonOS Server</string>
-    <string name="ssh_workspace_deploy_unavailable">此 Android 构建尚未打包固定启动器、验证器和签名发布源，因此无法提供部署功能。</string>
+    <string name="ssh_workspace_deploy_unavailable">此 Android 构建尚未打包启动器、验证器和发布源，因此无法提供部署功能。</string>
     <string name="ssh_workspace_deploy_draft">按与桌面端相同的步骤选择安装选项。</string>
     <string name="ssh_workspace_deploy_step">第 %1$d 步，共 3 步</string>
     <string name="ssh_workspace_deploy_step_source">选择发布来源</string>
     <string name="ssh_workspace_deploy_step_mode">选择安装方式</string>
     <string name="ssh_workspace_deploy_step_review">核对并安装</string>
     <string name="ssh_workspace_deploy_automatic">自动选择（预检后推荐）</string>
-    <string name="ssh_workspace_deploy_bundle_required">请选择已签名的 .zip 发布包以继续。</string>
+    <string name="ssh_workspace_deploy_bundle_required">请选择 .zip 发布包以继续。</string>
     <string name="ssh_workspace_deploy_certificate_required">请选择证书文件以继续。</string>
     <string name="ssh_workspace_deploy_target">服务器和用户</string>
     <string name="ssh_workspace_deploy_next">下一步</string>
@@ -148,8 +148,8 @@
     <string name="ssh_workspace_deploy_port">服务器端口</string>
     <string name="ssh_workspace_deploy_version">版本（可选）</string>
     <string name="ssh_workspace_deploy_source">发布源</string>
-    <string name="ssh_workspace_deploy_source_official">受信任的官方发布</string>
-    <string name="ssh_workspace_deploy_source_local">已签名本地部署包</string>
+    <string name="ssh_workspace_deploy_source_official">官方发布包</string>
+    <string name="ssh_workspace_deploy_source_local">本地部署包</string>
     <string name="ssh_workspace_deploy_source_remote">此 SSH 服务器上的部署包</string>
     <string name="ssh_workspace_deploy_choose_bundle">选择部署包</string>
     <string name="ssh_workspace_deploy_choose_remote_bundle">浏览 SSH 部署包</string>

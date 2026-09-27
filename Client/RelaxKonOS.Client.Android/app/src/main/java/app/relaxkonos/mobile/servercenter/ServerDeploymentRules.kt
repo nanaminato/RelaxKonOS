@@ -36,10 +36,8 @@ object ServerDeploymentProblemCodes {
     const val PORT_UNAVAILABLE = "server-deployment.port_unavailable"
     const val DEPENDENCY_MISSING = "server-deployment.dependency_missing"
 
-    // 包与发布信任。
+    // 发布包与完整性。
     const val PACKAGE_UNAVAILABLE = "server-deployment.package_unavailable"
-    const val PACKAGE_SIGNATURE_INVALID = "server-deployment.package_signature_invalid"
-    const val PACKAGE_TRUST_ROOT_MISSING = "server-deployment.package_trust_root_missing"
     const val PACKAGE_DIGEST_MISMATCH = "server-deployment.package_digest_mismatch"
     const val PACKAGE_MANIFEST_INVALID = "server-deployment.package_manifest_invalid"
     const val PACKAGE_RUNTIME_MISMATCH = "server-deployment.package_runtime_mismatch"
@@ -73,7 +71,7 @@ object ServerDeploymentProblemCodes {
         PRIVILEGE_DENIED, ELEVATION_REQUIRED,
         NOT_INSTALLED, ALREADY_INSTALLED, INSTALLATION_ID_MISMATCH, OS_UNSUPPORTED,
         ARCHITECTURE_MISMATCH, DISK_FULL, PORT_UNAVAILABLE, DEPENDENCY_MISSING,
-        PACKAGE_UNAVAILABLE, PACKAGE_SIGNATURE_INVALID, PACKAGE_TRUST_ROOT_MISSING,
+        PACKAGE_UNAVAILABLE,
         PACKAGE_DIGEST_MISMATCH, PACKAGE_MANIFEST_INVALID, PACKAGE_RUNTIME_MISMATCH,
         PACKAGE_LAYOUT_UNSAFE,
         SERVICE_STOP_FAILED, SERVICE_START_FAILED, ACTIVATION_FAILED, HEALTH_CHECK_FAILED,

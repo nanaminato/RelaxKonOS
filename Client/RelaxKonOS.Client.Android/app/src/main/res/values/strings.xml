@@ -136,14 +136,14 @@
     <string name="ssh_workspace_system_platform">Platform</string>
     <string name="ssh_workspace_exit">Exit SSH workspace</string>
     <string name="ssh_workspace_deploy">Deploy RelaxKonOS Server</string>
-    <string name="ssh_workspace_deploy_unavailable">Deployment is not available in this Android build because no pinned launcher, verifier and signed release source have been packaged yet.</string>
+    <string name="ssh_workspace_deploy_unavailable">Deployment is not available in this Android build because no launcher, verifier and release source have been packaged yet.</string>
     <string name="ssh_workspace_deploy_draft">Choose the same installation options as on desktop.</string>
     <string name="ssh_workspace_deploy_step">Step %1$d of 3</string>
     <string name="ssh_workspace_deploy_step_source">Choose the release source</string>
     <string name="ssh_workspace_deploy_step_mode">Choose the installation mode</string>
     <string name="ssh_workspace_deploy_step_review">Review and install</string>
     <string name="ssh_workspace_deploy_automatic">Automatic (recommended after preflight)</string>
-    <string name="ssh_workspace_deploy_bundle_required">Choose a signed .zip release bundle to continue.</string>
+    <string name="ssh_workspace_deploy_bundle_required">Choose a .zip release bundle to continue.</string>
     <string name="ssh_workspace_deploy_certificate_required">Choose the certificate files to continue.</string>
     <string name="ssh_workspace_deploy_target">Server and user</string>
     <string name="ssh_workspace_deploy_next">Next</string>
@@ -159,8 +159,8 @@
     <string name="ssh_workspace_deploy_port">Server port</string>
     <string name="ssh_workspace_deploy_version">Version (optional)</string>
     <string name="ssh_workspace_deploy_source">Release source</string>
-    <string name="ssh_workspace_deploy_source_official">Trusted official release</string>
-    <string name="ssh_workspace_deploy_source_local">Signed local bundle</string>
+    <string name="ssh_workspace_deploy_source_official">Official release</string>
+    <string name="ssh_workspace_deploy_source_local">Local release bundle</string>
     <string name="ssh_workspace_deploy_source_remote">Bundle on this SSH server</string>
     <string name="ssh_workspace_deploy_choose_bundle">Choose release bundle</string>
     <string name="ssh_workspace_deploy_choose_remote_bundle">Browse SSH bundle</string>

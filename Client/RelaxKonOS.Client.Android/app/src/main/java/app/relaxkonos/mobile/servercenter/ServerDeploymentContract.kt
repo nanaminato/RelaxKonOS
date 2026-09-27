@@ -44,7 +44,7 @@ enum class ServerInstallMode { LinuxSystem, LinuxUser, WindowsSystem }
 /** 服务端网络监听选项。默认仅 loopback。 */
 enum class ServerNetworkProfile { Loopback, Lan, ReverseProxy }
 
-/** 安装/升级包来源。离线包与指定 URL 都必须是已签名制品。 */
+/** 安装/升级包来源。所有来源都须通过清单与摘要检查。 */
 enum class ServerPackageSourceKind { OfficialStable, LocalBundle, DirectUrl }
 
 /** 已确认的主机密钥状态。变化时必须阻断所有写操作。 */
@@ -231,16 +231,7 @@ data class ServerReleaseManifest(
     val createdAtUtc: String? = null,
 )
 
-/** 发布签名。签名覆盖制品**原始文件字节**的 SHA-256，签名单独放在同名 `*.sig` 文件中。 */
-data class ServerReleaseSignature(
-    val schemaVersion: Int,
-    val keyId: String,
-    val algorithm: String,
-    val signedSha256: String,
-    val signature: String,
-)
-
-/** 官方稳定版目录项。签名是伴随文件，因此这里只描述包本身。 */
+/** 官方稳定版目录项。 */
 data class ServerReleaseDescriptor(
     val schemaVersion: Int,
     val packageKind: ServerReleasePackageKind,
@@ -248,30 +239,4 @@ data class ServerReleaseDescriptor(
     val runtime: ServerRuntimeIdentifier,
     val url: String,
     val sha256: String,
-)
-
-/** 发布信任策略。未内置任何密钥时不得信任任何来源。 */
-data class ServerReleaseTrustPolicy(
-    val trustedKeyIds: List<String> = emptyList(),
-    val allowDevelopmentSource: Boolean = false,
-) {
-    fun isTrustedKey(keyId: String): Boolean = trustedKeyIds.contains(keyId)
-
-    val acceptsUntrustedSource: Boolean get() = allowDevelopmentSource
-
-    companion object {
-        /** 严格策略：不信任任何 keyId，也不允许开发来源。 */
-        val Strict = ServerReleaseTrustPolicy()
-    }
-}
-
-/** 发布校验的机器可读结果。 */
-data class ServerReleaseVerification(
-    val verified: Boolean,
-    val verifiedAtUtc: String,
-    val packageKind: ServerReleasePackageKind? = null,
-    val version: String? = null,
-    val runtime: ServerRuntimeIdentifier? = null,
-    val keyId: String? = null,
-    val problemCode: String? = null,
 )

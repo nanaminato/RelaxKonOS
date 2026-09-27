@@ -3,11 +3,7 @@ package app.relaxkonos.mobile.servercenter
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
-import java.security.KeyPairGenerator
 import java.security.MessageDigest
-import java.security.Signature
-import java.security.spec.MGF1ParameterSpec
-import java.security.spec.PSSParameterSpec
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -57,8 +53,8 @@ class ServerCenterDeploymentClientTest {
     }
 
     @Test
-    fun `signed install archive is fully verified before upload`() = runTest {
-        val release = signedRelease("payload/linux/server/RelaxKonOS.Server", "server bytes".toByteArray())
+    fun `unsigned install archive is fully checked before upload`() = runTest {
+        val release = releaseArchive("payload/linux/server/RelaxKonOS.Server", "server bytes".toByteArray())
         try {
             val transport = FakeDeploymentTransport()
             val client = ServerCenterDeploymentClient(transport)
@@ -70,26 +66,22 @@ class ServerCenterDeploymentClientTest {
                 platform = ServerHostPlatform.Linux,
                 launcher = ServerCenterUploadAsset.bytes("launcher".toByteArray()),
                 verifier = ServerCenterUploadAsset.bytes("verifier".toByteArray()),
-                signedArchive = release.file,
+                archiveFile = release.file,
                 expectedRuntime = ServerRuntimeIdentifier.LinuxX64,
-                trustedKeyId = release.keyId,
-                trustedPublicKeyPem = release.publicKeyPem,
             )
 
             assertTrue(transport.uploaded.containsKey("/tmp/relaxkonos-deploy.abcdefgh/server.zip"))
-            assertTrue(transport.uploaded.containsKey("/tmp/relaxkonos-deploy.abcdefgh/release-public.pem"))
-            assertTrue(transport.uploaded.containsKey("/tmp/relaxkonos-deploy.abcdefgh/release-key-id.txt"))
         } finally {
             release.file.delete()
         }
     }
 
     @Test
-    fun `tampered signed archive is rejected before remote staging`() = runTest {
-        val release = signedRelease(
+    fun `tampered archive is rejected before remote staging`() = runTest {
+        val release = releaseArchive(
             "payload/linux/server/RelaxKonOS.Server",
             "tampered".toByteArray(),
-            signedPayload = "original".toByteArray(),
+            listedPayload = "original".toByteArray(),
         )
         try {
             val transport = FakeDeploymentTransport()
@@ -102,10 +94,8 @@ class ServerCenterDeploymentClientTest {
                     platform = ServerHostPlatform.Linux,
                     launcher = ServerCenterUploadAsset.bytes("launcher".toByteArray()),
                     verifier = ServerCenterUploadAsset.bytes("verifier".toByteArray()),
-                    signedArchive = release.file,
+                    archiveFile = release.file,
                     expectedRuntime = ServerRuntimeIdentifier.LinuxX64,
-                    trustedKeyId = release.keyId,
-                    trustedPublicKeyPem = release.publicKeyPem,
                 )
             } catch (_: java.io.IOException) {
                 rejected = true
@@ -121,7 +111,7 @@ class ServerCenterDeploymentClientTest {
 
     @Test
     fun `wrong runtime is rejected before touching host`() = runTest {
-        val release = signedRelease("payload/linux/server/RelaxKonOS.Server", "server".toByteArray())
+        val release = releaseArchive("payload/linux/server/RelaxKonOS.Server", "server".toByteArray())
         try {
             val transport = FakeDeploymentTransport()
             var rejected = false
@@ -131,10 +121,8 @@ class ServerCenterDeploymentClientTest {
                     platform = ServerHostPlatform.Linux,
                     launcher = ServerCenterUploadAsset.bytes(byteArrayOf(1)),
                     verifier = ServerCenterUploadAsset.bytes(byteArrayOf(2)),
-                    signedArchive = release.file,
+                    archiveFile = release.file,
                     expectedRuntime = ServerRuntimeIdentifier.WinX64,
-                    trustedKeyId = release.keyId,
-                    trustedPublicKeyPem = release.publicKeyPem,
                 )
             } catch (_: IllegalArgumentException) {
                 rejected = true
@@ -161,33 +149,24 @@ class ServerCenterDeploymentClientTest {
         ),
     )
 
-    private fun signedRelease(path: String, payload: ByteArray, signedPayload: ByteArray = payload): SignedRelease {
-        val keyId = "test-key"
-        val pair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        val manifest = """{"schemaVersion":1,"packageKind":"server","version":"0.1.0","runtime":"linux-x64","supportedSystems":["linux"],"payload":{"linux":{"server":"$path"}},"files":[{"path":"$path","length":${signedPayload.size},"sha256":"${sha256(signedPayload)}"}]}"""
-            .toByteArray()
-        val signer = Signature.getInstance("RSASSA-PSS")
-        signer.setParameter(PSSParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, 32, 1))
-        signer.initSign(pair.private)
-        signer.update(manifest)
-        val signature = """{"schemaVersion":1,"keyId":"$keyId","algorithm":"rsa-pss-sha256","signedSha256":"${sha256(manifest)}","signature":"${Base64Codec.encode(signer.sign())}"}"""
+    private fun releaseArchive(path: String, payload: ByteArray, listedPayload: ByteArray = payload): ReleaseArchive {
+        val manifest = """{"schemaVersion":1,"packageKind":"server","version":"0.1.0","runtime":"linux-x64","supportedSystems":["linux"],"payload":{"linux":{"server":"$path"}},"files":[{"path":"$path","length":${listedPayload.size},"sha256":"${sha256(listedPayload)}"}]}"""
             .toByteArray()
         val file = File.createTempFile("relaxkonos-android-release-", ".zip")
         ZipOutputStream(file.outputStream()).use { zip ->
-            listOf("manifest.json" to manifest, "manifest.json.sig" to signature, path to payload).forEach { (name, bytes) ->
+            listOf("manifest.json" to manifest, path to payload).forEach { (name, bytes) ->
                 zip.putNextEntry(ZipEntry(name))
                 zip.write(bytes)
                 zip.closeEntry()
             }
         }
-        val publicKey = "-----BEGIN PUBLIC KEY-----\n${Base64Codec.encode(pair.public.encoded)}\n-----END PUBLIC KEY-----"
-        return SignedRelease(file, keyId, publicKey)
+        return ReleaseArchive(file)
     }
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
         .digest(bytes).joinToString("") { "%02x".format(it) }
 
-    private data class SignedRelease(val file: File, val keyId: String, val publicKeyPem: String)
+    private data class ReleaseArchive(val file: File)
 }
 
 private class FakeDeploymentTransport : ServerCenterSshTransport {

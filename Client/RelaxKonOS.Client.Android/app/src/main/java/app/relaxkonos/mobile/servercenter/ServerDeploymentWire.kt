@@ -79,17 +79,6 @@ internal object ServerDeploymentWire {
         )
     }
 
-    fun readSignature(bytes: ByteArray): ServerReleaseSignature {
-        val fields = ServerCenterJson.parse(String(bytes, Charsets.UTF_8), MAXIMUM_RECORD_BYTES).asObject()
-        return ServerReleaseSignature(
-            schemaVersion = fields.required("schemaVersion").asLong().toIntExact(),
-            keyId = fields.required("keyId").asString(),
-            algorithm = fields.required("algorithm").asString(),
-            signedSha256 = fields.required("signedSha256").asString(),
-            signature = fields.required("signature").asString(),
-        )
-    }
-
     private fun writeOptions(options: ServerDeploymentOptions): String = buildString {
         append("{\"source\":").append(ServerCenterJson.quote(options.source.wireName()))
         append(",\"network\":").append(ServerCenterJson.quote(options.network.wireName()))

@@ -76,7 +76,7 @@ internal partial class SshFileBrowserView : UserControl
         InitializeComponent();
         PickerPanel.IsVisible = IsPackagePicker;
         PickerFilterText.Text = IsPackagePicker
-            ? T("server_center.wizard.bundle_file_type", "RelaxKonOS signed release") + " (*.zip)"
+            ? T("server_center.wizard.bundle_file_type", "RelaxKonOS release bundle") + " (*.zip)"
             : string.Empty;
         EntriesGrid.SelectionMode = IsPackagePicker ? DataGridSelectionMode.Single : DataGridSelectionMode.Extended;
         NavigationTree.ItemsSource = _navigationNodes;

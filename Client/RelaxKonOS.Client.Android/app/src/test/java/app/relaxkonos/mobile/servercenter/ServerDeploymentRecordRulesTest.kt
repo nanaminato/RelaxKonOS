@@ -37,7 +37,7 @@ class ServerDeploymentRecordRulesTest {
     }
 
     @Test
-    fun `signed manifest payload must be present in its file inventory`() {
+    fun `manifest payload must be present in its file inventory`() {
         val path = "payload/linux/server/RelaxKonOS.Server"
         val manifest = ServerReleaseManifest(
             schemaVersion = ServerDeploymentProtocol.VERSION,
