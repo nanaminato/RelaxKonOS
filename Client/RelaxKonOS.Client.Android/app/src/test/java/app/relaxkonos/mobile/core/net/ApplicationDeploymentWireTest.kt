@@ -7,8 +7,8 @@ import org.junit.Test
 class ApplicationDeploymentWireTest {
     private val application = """{
         "id":"d3708cc7-3e7e-42ad-b498-11466a48af23", "name":"website",
-        "sourceKind":"Image", "workloadKind":"Web", "desiredState":"Running",
-        "actualState":"Unknown", "readinessLevel":"Http", "containerPort":8080,
+        "sourceKind":"image", "workloadKind":"web", "desiredState":"running",
+        "actualState":"unknown", "readinessLevel":"http", "containerPort":8080,
         "hostPort":null, "bindAddress":"127.0.0.1", "currentRevisionNumber":null,
         "containerName":null, "domain":null, "driftProblemCode":null,
         "configuration":[{"name":"TOKEN","value":"must-not-be-retained","isSecret":true}]
@@ -28,7 +28,7 @@ class ApplicationDeploymentWireTest {
         assertNull(app.currentRevisionNumber)
         assertNull(app.containerName)
         assertNull(app.domain)
-        assertEquals("Unknown", app.actualState)
+        assertEquals("unknown", app.actualState)
         assertFalse(app.toString().contains("must-not-be-retained"))
     }
 
@@ -38,18 +38,18 @@ class ApplicationDeploymentWireTest {
     }
 
     @Test fun `unfamiliar state is preserved without substituting stopped or running`() {
-        val json = JSONObject(application).put("actualState", "FutureState")
-        assertEquals("FutureState", ApplicationDeploymentWire.applications("[$json]").single().actualState)
+        val json = JSONObject(application).put("actualState", "futureState")
+        assertEquals("futureState", ApplicationDeploymentWire.applications("[$json]").single().actualState)
     }
 
     @Test fun `snapshot reads active operation independently of recent history`() {
-        val operation = """{"operationId":"op-1","applicationId":"d3708cc7-3e7e-42ad-b498-11466a48af23","kind":"Deploy","state":"Running","stage":"Pulling",
+        val operation = """{"operationId":"op-1","applicationId":"d3708cc7-3e7e-42ad-b498-11466a48af23","kind":"deploy","state":"running","stage":"pulling",
             "progress":null,"problemCode":null,"recoveryProblemCode":null,"createdAt":"2026-09-26T12:00:00Z","cancellable":true}"""
         val snapshot = ApplicationDeploymentWire.snapshot("""{"application":$application,
             "revisions":[{"id":"rev-1","number":1,"imageReference":"image@sha256:abc","isCurrent":false}],
             "operations":[],"activeOperation":$operation}""")
         assertTrue(snapshot.operations.isEmpty())
-        assertEquals("Pulling", snapshot.activeOperation!!.stage)
+        assertEquals("pulling", snapshot.activeOperation!!.stage)
         assertEquals("d3708cc7-3e7e-42ad-b498-11466a48af23", snapshot.activeOperation.applicationId)
         assertNull(snapshot.activeOperation.progress)
         assertTrue(snapshot.activeOperation.cancellable)
@@ -67,10 +67,10 @@ class ApplicationDeploymentWireTest {
     }
 
     @Test fun `templates preserve server defaults rather than inventing Android defaults`() {
-        val template = ApplicationDeploymentWire.templates("""[{"sourceKind":"PythonProject","templateVersion":"1.0",
+        val template = ApplicationDeploymentWire.templates("""[{"sourceKind":"pythonProject","templateVersion":"1.0",
             "displayName":"Python project","defaultBaseImage":"python:3.13-slim","supportedPlatforms":["linux/amd64"],
             "requiresArchive":true,"requiresImageReference":false,"supportsSelfContained":false,"defaultContainerPort":8000}]""").single()
-        assertEquals("PythonProject", template.sourceKind)
+        assertEquals("pythonProject", template.sourceKind)
         assertEquals("python:3.13-slim", template.defaultBaseImage)
         assertTrue(template.requiresArchive)
         assertEquals(8000, template.defaultContainerPort)

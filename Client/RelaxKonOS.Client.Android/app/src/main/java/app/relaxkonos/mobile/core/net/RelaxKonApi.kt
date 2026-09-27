@@ -92,9 +92,9 @@ class RelaxKonApi(
     ): ApiResult<DeploymentApplication> {
         val body = JsonBody()
             .string("name", definition.name.trim())
-            .string("sourceKind", "Image")
-            .string("workloadKind", "Web")
-            .string("readinessLevel", "Http")
+            .string("sourceKind", "image")
+            .string("workloadKind", "web")
+            .string("readinessLevel", "http")
             .string("healthCheckPath", definition.healthCheckPath)
             .int("containerPort", definition.containerPort)
             .string("bindAddress", definition.bindAddress)

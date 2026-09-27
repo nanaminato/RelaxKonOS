@@ -290,6 +290,6 @@ class DeploymentBrowser(
 
     private companion object {
         const val OPERATION_POLL_MILLIS = 1_500L
-        val ACTIVE_OPERATION_STATES = setOf("Queued", "Running")
+        val ACTIVE_OPERATION_STATES = setOf("queued", "running")
     }
 }

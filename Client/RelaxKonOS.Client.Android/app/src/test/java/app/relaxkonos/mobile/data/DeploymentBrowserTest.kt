@@ -18,7 +18,7 @@ class DeploymentBrowserTest {
     private val repository = DeploymentRepository(gateway, session)
     private val capabilities = setOf(ServerCapabilities.APPLICATION_DEPLOYMENTS, ServerCapabilities.DOCKER)
     private val runtime = DeploymentRuntime(true, "", "28", "linux", "amd64")
-    private val app = DeploymentApplication("id-1", "first", "Image", "Web", "Running", "Unknown", "Http",
+    private val app = DeploymentApplication("id-1", "first", "image", "web", "running", "unknown", "http",
         null, null, 80, null, "127.0.0.1", null, null)
 
     private suspend fun signIn(user: String = "nana", caps: Set<String> = capabilities, url: String = "https://server.local") {
@@ -56,7 +56,7 @@ class DeploymentBrowserTest {
         gateway.onDeploymentRuntime = { _, _ -> ApiResult.Success(runtime.copy(isAvailable = false, problemCode = "docker.unavailable")) }
         val browser = DeploymentBrowser(repository, session, backgroundScope)
         runCurrent()
-        assertEquals("Unknown", (browser.state.value.applications as ApiResult.Success).value.single().actualState)
+        assertEquals("unknown", (browser.state.value.applications as ApiResult.Success).value.single().actualState)
         assertFalse((browser.state.value.runtime as ApiResult.Success).value.isAvailable)
     }
 
@@ -132,7 +132,7 @@ class DeploymentBrowserTest {
         val calls = mutableListOf<List<String>>()
         gateway.onRollbackDeployment = { _, _, applicationId, revisionId, key ->
             calls += listOf(applicationId, revisionId, key)
-            ApiResult.Success(DeploymentOperation("operation-1", applicationId, "Rollback", "Queued", "Queued", null, null, null, null, true))
+            ApiResult.Success(DeploymentOperation("operation-1", applicationId, "rollback", "queued", "queued", null, null, null, null, true))
         }
         val browser = DeploymentBrowser(repository, session, backgroundScope)
         runCurrent(); browser.select(app.id); runCurrent()
@@ -144,7 +144,7 @@ class DeploymentBrowserTest {
         assertEquals(app.id, calls.single()[0])
         assertEquals(older.id, calls.single()[1])
         assertTrue(calls.single()[2].isNotBlank())
-        assertEquals("Rollback", (browser.state.value.submission as ApiResult.Success).value.kind)
+        assertEquals("rollback", (browser.state.value.submission as ApiResult.Success).value.kind)
     }
 
     @Test fun `expired access token retries read with refreshed token once`() = runTest {

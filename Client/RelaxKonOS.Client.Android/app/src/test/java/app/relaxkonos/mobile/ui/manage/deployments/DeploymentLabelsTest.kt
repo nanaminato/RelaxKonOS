@@ -6,12 +6,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DeploymentLabelsTest {
-    @Test fun `unknown enum never becomes success or stopped`() {
-        for (value in listOf("", "Unknown", "future-state", "running")) {
+    @Test fun `camel case protocol values have labels and unknown enum stays unknown`() {
+        for (value in listOf("", "Unknown", "future-state", "Running")) {
             assertEquals(R.string.deployment_unknown, deploymentLabel(value))
         }
-        assertEquals(R.string.deployment_running, deploymentLabel("Running"))
-        assertEquals(R.string.deployment_interrupted, deploymentLabel("Interrupted"))
+        assertEquals(R.string.deployment_image, deploymentLabel("image"))
+        assertEquals(R.string.deployment_web, deploymentLabel("web"))
+        assertEquals(R.string.deployment_running, deploymentLabel("running"))
+        assertEquals(R.string.deployment_http, deploymentLabel("http"))
+        assertEquals(R.string.deployment_interrupted, deploymentLabel("interrupted"))
     }
 
     @Test fun `engine installation permissions and reachability have distinct explanations`() {

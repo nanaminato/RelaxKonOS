@@ -21,7 +21,7 @@ class DeploymentCreateForm(private val templates: List<DeploymentTemplate>) {
     var name by mutableStateOf("")
     var image by mutableStateOf("")
     var port by mutableStateOf(templates.firstOrNull()?.defaultContainerPort?.toString() ?: "8080")
-    var workload by mutableStateOf("Web")
+    var workload by mutableStateOf("web")
     var baseImage by mutableStateOf("")
     var runtimeVersion by mutableStateOf("")
     var programEntry by mutableStateOf("")
@@ -34,12 +34,15 @@ class DeploymentCreateForm(private val templates: List<DeploymentTemplate>) {
     val template: DeploymentTemplate? get() = templates.firstOrNull { it.sourceKind == sourceKind }
     val parsedPort: Int? get() = port.toIntOrNull()?.takeIf { it in 1..65535 }
     val isArchive: Boolean get() = template?.requiresArchive == true
-    val canSubmit: Boolean get() = name.isNotBlank() && parsedPort != null && when {
-        template == null -> false
-        template.requiresImageReference -> image.isNotBlank()
-        template.sourceKind == "PythonProject" -> programEntry.isNotBlank()
-        else -> true
-    }
+    val canSubmit: Boolean
+        get() {
+            val selected = template ?: return false
+            return name.isNotBlank() && parsedPort != null && when {
+                selected.requiresImageReference -> image.isNotBlank()
+                selected.sourceKind == "pythonProject" -> programEntry.isNotBlank()
+                else -> true
+            }
+        }
 
     fun selectSource(value: String) {
         sourceKind = value
@@ -70,8 +73,8 @@ class DeploymentCreateForm(private val templates: List<DeploymentTemplate>) {
             name = name.trim(),
             containerPort = selectedPort,
             workloadKind = workload,
-            readinessLevel = if (workload == "Web") "Http" else "Process",
-            healthCheckPath = if (workload == "Web") "/" else null,
+            readinessLevel = if (workload == "web") "http" else "process",
+            healthCheckPath = if (workload == "web") "/" else null,
             baseImage = baseImage.trim().ifBlank { null },
             runtimeVersion = runtimeVersion.trim().ifBlank { null },
             programEntry = programEntry.trim().ifBlank { null },

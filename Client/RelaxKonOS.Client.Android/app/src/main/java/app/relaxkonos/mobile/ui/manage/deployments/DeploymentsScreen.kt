@@ -157,10 +157,10 @@ private fun DeploymentCreateDialog(
                     )
                     if (form.isArchive) {
                         OutlinedTextField(form.baseImage, { form.baseImage = it }, label = { Text(stringResource(R.string.deployments_base_image)) }, singleLine = true)
-                        if (form.template?.sourceKind in setOf("JavaJar", "DotNetPublish", "PythonProject")) {
+                        if (form.template?.sourceKind in setOf("javaJar", "dotNetPublish", "pythonProject")) {
                             OutlinedTextField(form.runtimeVersion, { form.runtimeVersion = it }, label = { Text(stringResource(R.string.deployments_runtime_version)) }, singleLine = true)
                         }
-                        if (form.template?.sourceKind == "PythonProject") {
+                        if (form.template?.sourceKind == "pythonProject") {
                             OutlinedTextField(form.programEntry, { form.programEntry = it }, label = { Text(stringResource(R.string.deployments_python_entry)) }, singleLine = true)
                         }
                         if (form.template?.supportsSelfContained == true) {
@@ -170,8 +170,8 @@ private fun DeploymentCreateDialog(
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            FilterChip(selected = form.workload == "Web", onClick = { form.workload = "Web" }, label = { Text(stringResource(R.string.deployment_web)) })
-                            FilterChip(selected = form.workload == "Worker", onClick = { form.workload = "Worker" }, label = { Text(stringResource(R.string.deployment_worker)) })
+                            FilterChip(selected = form.workload == "web", onClick = { form.workload = "web" }, label = { Text(stringResource(R.string.deployment_web)) })
+                            FilterChip(selected = form.workload == "worker", onClick = { form.workload = "worker" }, label = { Text(stringResource(R.string.deployment_worker)) })
                         }
                     }
                     Text(stringResource(R.string.deployments_configuration), style = MaterialTheme.typography.titleSmall)
@@ -288,14 +288,14 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                         app.domain?.let { Text(stringResource(R.string.deployments_domain, it)) }
                         if (app.driftProblemCode != null) Text(stringResource(R.string.deployments_drift), color = MaterialTheme.colorScheme.error)
                         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            if (app.actualState == "Running") {
+                            if (app.actualState == "running") {
                                 TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Stop }, enabled = !state.submitting) {
                                     Text(stringResource(R.string.deployment_stop))
                                 }
                                 TextButton(onClick = { actionToConfirm = DeploymentLifecycleAction.Restart }, enabled = !state.submitting) {
                                     Text(stringResource(R.string.deployment_restart))
                                 }
-                            } else if (app.actualState == "Stopped") {
+                            } else if (app.actualState == "stopped") {
                                 TextButton(onClick = { browser.lifecycle(DeploymentLifecycleAction.Start) }, enabled = !state.submitting) {
                                     Text(stringResource(R.string.deployment_start))
                                 }
