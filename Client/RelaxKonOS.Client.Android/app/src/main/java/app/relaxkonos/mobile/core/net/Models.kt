@@ -238,4 +238,5 @@ object ServerCapabilities {
     const val DOCKER = "server.docker"
     const val APPLICATION_DEPLOYMENTS = "server.application-deployments"
     const val WEB_SERVER = "server.web-server"
+    const val CERTIFICATES = "server.certificates"
 }

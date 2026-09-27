@@ -25,6 +25,21 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.servers(), WebPublishingWire::servers)
+
+    override suspend fun webServerStatus(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerStatus> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.status(instanceId), WebPublishingWire::status)
+
+    override suspend fun webServerConfigTest(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerConfigTest> =
+        webPublishingCall("POST", serverUrl, WebPublishingRoutes.testConfiguration(instanceId), accessToken, JsonBody(), WebPublishingWire::configTest)
+
+    override suspend fun webServerSites(serverUrl: String, accessToken: String, instanceId: String): ApiResult<List<WebServerSite>> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.sites(instanceId), WebPublishingWire::sites)
+
+    override suspend fun certificates(serverUrl: String, accessToken: String): ApiResult<List<ManagedCertificate>> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.CERTIFICATES, WebPublishingWire::certificates)
+
     override suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> =
         dockerRead(serverUrl, accessToken, DockerRoutes.STATUS, DockerWire::status)
 
@@ -294,6 +309,18 @@ class RelaxKonApi(
             is ApiResult.Problem -> result
             is ApiResult.Transport -> result
         }
+
+    private suspend fun <T> webPublishingRead(serverUrl: String, accessToken: String, route: String, parse: (String) -> T): ApiResult<T> =
+        webPublishingCall("GET", serverUrl, route, accessToken, null, parse)
+
+    private suspend fun <T> webPublishingCall(
+        method: String, serverUrl: String, route: String, accessToken: String, body: JsonBody?, parse: (String) -> T,
+    ): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed web publishing response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
 
     private suspend fun dockerMutation(method: String, serverUrl: String, route: String, accessToken: String, body: JsonBody): ApiResult<DockerOperation> =
         when (val result = execute(method, serverUrl, route, accessToken, body)) {

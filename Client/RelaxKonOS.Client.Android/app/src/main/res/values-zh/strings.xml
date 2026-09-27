@@ -581,4 +581,30 @@
     <string name="docker_problem_not_cancellable">该操作已无法取消，它已经产生了结果。</string>
     <string name="docker_problem_store_unavailable">服务器上的操作账本不可用，因此该变更未被排队。</string>
     <string name="docker_problem_engine_unavailable">Docker 引擎无法完成该命令。请检查运行时状态和操作输出。</string>
+
+    <!-- AD05：网站发布诊断；写入操作将在后续阶段提供。 -->
+    <string name="websites_title">网站</string>
+    <string name="websites_subtitle">查看站点、TLS 与宿主发布诊断。</string>
+    <string name="websites_read_only_note">此页面只观察宿主配置，不能证明公网 DNS 已传播或互联网可达。</string>
+    <string name="websites_servers">Web 服务器</string>
+    <string name="websites_no_servers">宿主没有报告受支持且受管的 Web 服务器。</string>
+    <string name="websites_load_failed">宿主无法提供网站诊断。请检查服务器连接和权限后刷新。</string>
+    <string name="websites_version_unknown">版本未知</string>
+    <string name="websites_server_details">%1$s · %2$s</string>
+    <string name="websites_runtime_running">宿主 Web 服务器正在运行。</string>
+    <string name="websites_runtime_not_running">宿主 Web 服务器未运行。</string>
+    <string name="websites_runtime_unknown">无法核实宿主 Web 服务器运行状态。</string>
+    <string name="websites_config_valid">宿主配置已通过语法检查。</string>
+    <string name="websites_config_invalid">宿主配置未通过语法检查。</string>
+    <string name="websites_config_unknown">无法检查宿主配置。</string>
+    <string name="websites_config_unsupported">此 Web 服务器不支持通过当前连接检查配置。</string>
+    <string name="websites_no_sites">此 Web 服务器没有配置 RelaxKonOS 所属站点。</string>
+    <string name="websites_sites_unavailable">无法读取站点列表；这不代表站点不存在。</string>
+    <string name="websites_no_linked_application">没有受管应用关联到此站点。</string>
+    <string name="websites_application_association_unverified">无法通过当前连接核实受管应用关联。</string>
+    <string name="websites_linked_application">受管应用：%1$s</string>
+    <string name="websites_tls_disabled">此站点未启用 TLS。</string>
+    <string name="websites_certificate_unverified">TLS 已启用，但无法通过当前连接核实证书关联。</string>
+    <string name="websites_certificate_status">证书 %1$s · %2$s</string>
+    <string name="websites_route_count">%1$d 条代理路由</string>
 </resources>

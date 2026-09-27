@@ -35,6 +35,7 @@ import app.relaxkonos.mobile.ui.manage.deployments.DeploymentsScreen
 import app.relaxkonos.mobile.ui.manage.docker.DockerScreen
 import app.relaxkonos.mobile.ui.manage.monitor.MonitorScreen
 import app.relaxkonos.mobile.ui.manage.processes.ProcessesScreen
+import app.relaxkonos.mobile.ui.manage.websites.WebsitesScreen
 import app.relaxkonos.mobile.ui.more.AboutScreen
 import app.relaxkonos.mobile.ui.more.AccountSecurityScreen
 import app.relaxkonos.mobile.ui.more.AppearanceScreen
@@ -67,6 +68,7 @@ fun MobileNavHost(
                 onBack = { navigator.pop() },
             )
             Routes.MANAGE_DOCKER -> DockerScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_WEBSITES -> WebsitesScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES -> ManageDestination(navigator, layoutState)
             Routes.MORE,
@@ -132,6 +134,7 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
                 onOpenProcesses = { viewModel.openPane(Routes.MANAGE_PROCESSES) },
                 onOpenDeployments = { navigator.push(Routes.MANAGE_DEPLOYMENTS) },
                 onOpenDocker = { navigator.push(Routes.MANAGE_DOCKER) },
+                onOpenWebsites = { navigator.push(Routes.MANAGE_WEBSITES) },
                 modifier = Modifier.weight(1f),
             )
             when (viewModel.expandedPane) {
@@ -155,6 +158,7 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             onOpenProcesses = { navigator.push(Routes.MANAGE_PROCESSES) },
             onOpenDeployments = { navigator.push(Routes.MANAGE_DEPLOYMENTS) },
             onOpenDocker = { navigator.push(Routes.MANAGE_DOCKER) },
+            onOpenWebsites = { navigator.push(Routes.MANAGE_WEBSITES) },
             modifier = Modifier.fillMaxSize(),
         )
     }

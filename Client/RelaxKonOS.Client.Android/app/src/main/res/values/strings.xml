@@ -618,4 +618,30 @@
     <string name="docker_problem_not_cancellable">The operation can no longer be cancelled; it has already reached an outcome.</string>
     <string name="docker_problem_store_unavailable">The operation ledger is unavailable on the server, so the change was not queued.</string>
     <string name="docker_problem_engine_unavailable">The Docker engine could not complete this command. Check the runtime status and the operation output.</string>
+
+    <!-- AD05: website publishing diagnostics. Mutations follow in a later milestone. -->
+    <string name="websites_title">Websites</string>
+    <string name="websites_subtitle">Inspect sites, TLS and host publication diagnostics.</string>
+    <string name="websites_read_only_note">This view only observes host configuration. It cannot prove public DNS propagation or internet reachability.</string>
+    <string name="websites_servers">Web servers</string>
+    <string name="websites_no_servers">No supported, managed web server was reported by this host.</string>
+    <string name="websites_load_failed">The host could not provide website diagnostics. Refresh after checking the server connection and permission.</string>
+    <string name="websites_version_unknown">version unknown</string>
+    <string name="websites_server_details">%1$s · %2$s</string>
+    <string name="websites_runtime_running">Host web server is running.</string>
+    <string name="websites_runtime_not_running">Host web server is not running.</string>
+    <string name="websites_runtime_unknown">The host web-server runtime state could not be verified.</string>
+    <string name="websites_config_valid">The host configuration passed its syntax check.</string>
+    <string name="websites_config_invalid">The host configuration did not pass its syntax check.</string>
+    <string name="websites_config_unknown">The host configuration could not be checked.</string>
+    <string name="websites_config_unsupported">This web server does not support configuration checks through this connection.</string>
+    <string name="websites_no_sites">No RelaxKonOS-owned sites are configured on this web server.</string>
+    <string name="websites_sites_unavailable">The site list could not be read. This does not prove that a site is absent.</string>
+    <string name="websites_no_linked_application">No managed application is associated with this site.</string>
+    <string name="websites_application_association_unverified">The managed application association could not be verified through this connection.</string>
+    <string name="websites_linked_application">Managed application: %1$s</string>
+    <string name="websites_tls_disabled">TLS is not enabled for this site.</string>
+    <string name="websites_certificate_unverified">TLS is enabled, but its certificate association could not be verified through this connection.</string>
+    <string name="websites_certificate_status">Certificate %1$s · %2$s</string>
+    <string name="websites_route_count">%1$d proxy route(s)</string>
 </resources>

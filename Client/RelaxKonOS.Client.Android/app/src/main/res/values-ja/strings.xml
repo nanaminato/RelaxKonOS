@@ -582,4 +582,30 @@
     <string name="docker_problem_not_cancellable">この操作はすでに結果を出しており、キャンセルできません。</string>
     <string name="docker_problem_store_unavailable">サーバーの操作台帳が利用できないため、変更はキューに追加されませんでした。</string>
     <string name="docker_problem_engine_unavailable">Docker エンジンがこのコマンドを完了できませんでした。ランタイムの状態と操作の出力を確認してください。</string>
+
+    <!-- AD05：書き込み操作は後続の段階で提供する。 -->
+    <string name="websites_title">Web サイト</string>
+    <string name="websites_subtitle">サイト、TLS、ホスト公開の診断を確認します。</string>
+    <string name="websites_read_only_note">この画面はホスト構成のみを確認します。公開 DNS の伝播やインターネット到達性は証明しません。</string>
+    <string name="websites_servers">Web サーバー</string>
+    <string name="websites_no_servers">このホストから、対応する管理対象 Web サーバーは報告されていません。</string>
+    <string name="websites_load_failed">ホストから Web サイト診断を取得できませんでした。サーバー接続と権限を確認して更新してください。</string>
+    <string name="websites_version_unknown">バージョン不明</string>
+    <string name="websites_server_details">%1$s · %2$s</string>
+    <string name="websites_runtime_running">ホスト Web サーバーは実行中です。</string>
+    <string name="websites_runtime_not_running">ホスト Web サーバーは実行中ではありません。</string>
+    <string name="websites_runtime_unknown">ホスト Web サーバーの実行状態を確認できませんでした。</string>
+    <string name="websites_config_valid">ホスト構成は構文チェックに合格しました。</string>
+    <string name="websites_config_invalid">ホスト構成は構文チェックに合格しませんでした。</string>
+    <string name="websites_config_unknown">ホスト構成を確認できませんでした。</string>
+    <string name="websites_config_unsupported">この Web サーバーは現在の接続を通じた構成チェックに対応していません。</string>
+    <string name="websites_no_sites">この Web サーバーには RelaxKonOS 所有のサイトが構成されていません。</string>
+    <string name="websites_sites_unavailable">サイト一覧を読み取れませんでした。サイトが存在しないことを意味しません。</string>
+    <string name="websites_no_linked_application">このサイトに関連付けられた管理対象アプリケーションはありません。</string>
+    <string name="websites_application_association_unverified">現在の接続では、管理対象アプリケーションの関連付けを確認できませんでした。</string>
+    <string name="websites_linked_application">管理対象アプリケーション：%1$s</string>
+    <string name="websites_tls_disabled">このサイトでは TLS が有効になっていません。</string>
+    <string name="websites_certificate_unverified">TLS は有効ですが、現在の接続では証明書の関連付けを確認できませんでした。</string>
+    <string name="websites_certificate_status">証明書 %1$s · %2$s</string>
+    <string name="websites_route_count">プロキシルート %1$d 件</string>
 </resources>

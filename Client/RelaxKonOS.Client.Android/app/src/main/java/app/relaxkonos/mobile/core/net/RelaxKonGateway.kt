@@ -22,6 +22,13 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> = ApiResult.Transport("Web servers are unavailable.")
+    suspend fun webServerStatus(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerStatus> = ApiResult.Transport("Web server status is unavailable.")
+    /** A server-side syntax check: it does not write, reload, or start the web server. */
+    suspend fun webServerConfigTest(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerConfigTest> = ApiResult.Transport("Web server configuration diagnostics are unavailable.")
+    suspend fun webServerSites(serverUrl: String, accessToken: String, instanceId: String): ApiResult<List<WebServerSite>> = ApiResult.Transport("Web server sites are unavailable.")
+    suspend fun certificates(serverUrl: String, accessToken: String): ApiResult<List<ManagedCertificate>> = ApiResult.Transport("Certificates are unavailable.")
+
     suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerContainers(serverUrl: String, accessToken: String): ApiResult<List<DockerContainer>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerImages(serverUrl: String, accessToken: String): ApiResult<List<DockerImage>> = ApiResult.Transport("Docker is unavailable.")

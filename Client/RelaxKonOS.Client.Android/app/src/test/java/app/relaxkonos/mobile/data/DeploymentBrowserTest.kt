@@ -19,7 +19,7 @@ class DeploymentBrowserTest {
     private val capabilities = setOf(ServerCapabilities.APPLICATION_DEPLOYMENTS, ServerCapabilities.DOCKER)
     private val runtime = DeploymentRuntime(true, "", "28", "linux", "amd64")
     private val app = DeploymentApplication("id-1", "first", "image", "web", "running", "unknown", "http",
-        null, null, 80, null, "127.0.0.1", null, null)
+        null, null, 80, null, "127.0.0.1", null, null, null)
 
     private suspend fun signIn(user: String = "nana", caps: Set<String> = capabilities, url: String = "https://server.local") {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(userName = user, capabilities = caps)) }

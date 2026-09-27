@@ -8,6 +8,14 @@
 
 后续实施以 `ADxx-Mn` 记录阶段、`ADxx-Tn` 记录验收；进度和证据只在本文件维护。首轮 R1 交付 AD01 首次安装、AD02 镜像部署、AD05 基本发布及 AD08 任务恢复。应用部署的真实 Docker 验收和服务器中心的真实宿主安装仍是必要条件，见各计划前置要求。
 
+## AD05-M1：网站发布只读诊断（已实现；Android 编译与 JVM 验收，2026-09-27）
+
+- “管理 → 网站”仅在服务器声明 `server.web-server` 时显示。它读取受管 Web 服务器的运行状态、配置语法检查、RelaxKonOS 所属站点及其 TLS 绑定；读取不会请求提权，也不会创建、覆盖、重载或启动宿主 Web Server。
+- 应用与站点的关系只读取服务端的权威 `siteId`：Android 不会从端口、上游地址或域名推测关联。证书只显示服务端返回的域名和状态，绝不读取私钥、证书文件路径或挑战凭据。
+- 页面明确把“宿主运行 / 配置语法检查 / 站点记录 / TLS 关联”分开呈现。它声明公网 DNS 传播和互联网可达性尚未验证；站点列表读取失败也不会被误写为“没有站点”。`server.certificates` 缺失时，TLS 关联同样显示为未核实。
+- Android 网络层新增 Web Server 与证书只读 projections、按单一路径段编码的路由构造，以及 session-scoped repository；wire 测试覆盖服务器、站点、证书、配置检查、必填字段拒绝和动态 ID 编码。
+- **本轮验证**：`:app:assembleDebug` 与 `:app:testDebugUnitTest` 均 `BUILD SUCCESSFUL`（Gradle 9.7.1；44 个测试类、409 个用例，0 失败 / 0 错误 / 0 跳过）；新增 `WebPublishingWireTest`。未执行真机、真实 Nginx/证书、DNS 或外网访问验证，因而 AD05-T1–T6 仍未完成。
+
 ## AD04-M1：Docker 资源浏览与受控操作（已实现；服务端真实宿主已验收，2026-09-27）
 
 - “管理 → Docker”仅在服务器声明 `server.docker` 时显示。页面读取 Engine、容器、镜像、命名卷、网络和 Compose Stack；Stack 可展开读取服务状态。资源读取全部经现有认证 REST API，Android 不直接接触 Docker socket 或自行执行 YAML。

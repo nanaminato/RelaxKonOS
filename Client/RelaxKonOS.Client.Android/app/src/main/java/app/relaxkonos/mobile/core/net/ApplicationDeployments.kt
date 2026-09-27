@@ -19,6 +19,8 @@ data class DeploymentApplication(
     val containerPort: Int,
     val hostPort: Int?,
     val bindAddress: String,
+    /** Server-authoritative association with a RelaxKonOS-owned reverse-proxy site. */
+    val siteId: String?,
     val domain: String?,
     val driftProblemCode: String?,
     /** The exact product template used to create this instance, if any. */
@@ -281,7 +283,7 @@ internal object ApplicationDeploymentWire {
         json.getString("workloadKind"), json.getString("desiredState"), json.getString("actualState"),
         json.getString("readinessLevel"), json.nullableInt("currentRevisionNumber"),
         json.nullableText("containerName"), json.getInt("containerPort"), json.nullableInt("hostPort"),
-        json.getString("bindAddress"), json.nullableText("domain"), json.nullableText("driftProblemCode"),
+        json.getString("bindAddress"), json.nullableText("siteId"), json.nullableText("domain"), json.nullableText("driftProblemCode"),
         json.nullableText("catalogTemplateId"), json.nullableText("catalogTemplateVersion"),
     )
 
