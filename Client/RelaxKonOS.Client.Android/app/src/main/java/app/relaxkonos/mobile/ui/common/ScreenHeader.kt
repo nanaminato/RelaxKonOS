@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.ui.common
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.core.layout.LayoutState
+import app.relaxkonos.mobile.core.layout.layoutStateFor
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -33,30 +36,55 @@ fun ScreenHeader(
     onBack: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-    ) {
-        if (onBack != null) {
-            FilledTonalIconButton(onClick = onBack) {
-                DesktopIcon(
-                    icon = DesktopIcons.back,
-                    size = 22.dp,
-                    contentDescription = stringResource(R.string.common_back),
-                )
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val titleContent: @Composable (Modifier) -> Unit = { titleModifier ->
+            Column(titleModifier) {
+                Text(title, style = MaterialTheme.typography.headlineSmall)
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.headlineSmall)
-            if (subtitle != null) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        val backButton: @Composable () -> Unit = {
+            if (onBack != null) {
+                FilledTonalIconButton(onClick = onBack) {
+                    DesktopIcon(
+                        icon = DesktopIcons.back,
+                        size = 22.dp,
+                        contentDescription = stringResource(R.string.common_back),
+                    )
+                }
             }
         }
-        trailing?.invoke()
+
+        if (layoutStateFor(maxWidth) == LayoutState.Compact && trailing != null) {
+            // A phone cannot reliably fit a back button, a localized title, and several text actions
+            // on one row. Keep the title at its readable width and put the action group below it.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                ) {
+                    backButton()
+                    titleContent(Modifier.weight(1f))
+                }
+                trailing()
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+            ) {
+                backButton()
+                titleContent(Modifier.weight(1f))
+                trailing?.invoke()
+            }
+        }
     }
 }

@@ -56,7 +56,10 @@ fun DeploymentsScreen(
             subtitle = state.owner?.let { "${it.userName} · ${it.workspaceName}" },
             onBack = onBack,
             trailing = {
-                Row {
+                FlowRow(
+                    horizontalArrangement = Arrangement.End,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) {
                     TextButton(onClick = { showCatalog = true }, enabled = available && state.catalog is ApiResult.Success && !state.submitting) {
                         Text(stringResource(R.string.catalog_install_from_template))
                     }
