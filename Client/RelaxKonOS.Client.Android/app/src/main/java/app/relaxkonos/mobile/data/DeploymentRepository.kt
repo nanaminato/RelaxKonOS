@@ -73,6 +73,25 @@ class DeploymentRepository(private val gateway: RelaxKonGateway, private val ses
         }
     }
 
+    /** The server copies the selected user-readable file into deployment-owned staging before use. */
+    suspend fun createAndDeployServerArchive(
+        owner: SessionState.Active,
+        definition: ArchiveDeploymentDefinition,
+        path: String,
+        definitionKey: String,
+        deploymentKey: String,
+    ): ApiResult<DeploymentOperation> = read(owner) { url, token ->
+        when (val created = gateway.createArchiveDeployment(url, token, definition, definitionKey)) {
+            is ApiResult.Success -> when (val staged = gateway.stageServerDeploymentArchive(url, token, path)) {
+                is ApiResult.Success -> gateway.deployArchive(url, token, created.value.id, staged.value.referenceId, definition, deploymentKey)
+                is ApiResult.Problem -> staged
+                is ApiResult.Transport -> staged
+            }
+            is ApiResult.Problem -> created
+            is ApiResult.Transport -> created
+        }
+    }
+
     suspend fun rollback(owner: SessionState.Active, applicationId: String, revisionId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
         read(owner) { url, token -> gateway.rollbackDeployment(url, token, applicationId, revisionId, idempotencyKey) }
 

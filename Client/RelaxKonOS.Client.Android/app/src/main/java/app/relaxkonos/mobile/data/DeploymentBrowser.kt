@@ -207,6 +207,37 @@ class DeploymentBrowser(
         }
     }
 
+    /** Creates an archive deployment from a file selected in the authenticated server filesystem. */
+    fun createServerArchive(definition: ArchiveDeploymentDefinition, path: String) {
+        val owner = mutableState.value.owner ?: return
+        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        listJob?.cancel()
+        val generation = ++listGeneration
+        mutableState.update { it.copy(submitting = true, submission = null) }
+        listJob = scope.launch {
+            try {
+                val result = repository.createAndDeployServerArchive(
+                    owner, definition, path, UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                )
+                if (current(owner) && generation == listGeneration) {
+                    mutableState.update {
+                        it.copy(
+                            submitting = false,
+                            submission = result,
+                            selectedId = (result as? ApiResult.Success)?.value?.applicationId ?: it.selectedId,
+                        )
+                    }
+                    if (result is ApiResult.Success) {
+                        refresh()
+                        observeOperation(owner, result.value)
+                    }
+                }
+            } finally {
+                if (current(owner) && generation == listGeneration) mutableState.update { it.copy(submitting = false) }
+            }
+        }
+    }
+
     fun archiveUnavailable() {
         mutableState.update { it.copy(submitting = false, submission = ApiResult.Transport("Selected deployment archive cannot be read.")) }
     }

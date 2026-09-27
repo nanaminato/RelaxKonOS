@@ -463,6 +463,9 @@
     <string name="deployments_container_port">容器端口</string>
     <string name="deployments_create_and_deploy">创建并部署</string>
     <string name="deployments_choose_archive">选择归档并部署</string>
+    <string name="deployments_choose_server_archive">从服务器选择</string>
+    <string name="deployments_server_archive_title">选择服务器归档</string>
+    <string name="deployments_server_archive_empty">此目录没有 .zip 或 .jar 归档。</string>
     <string name="deployments_archive_note">所选归档会直接流式传输到服务端专用暂存区，不会保存在应用定义中。</string>
     <string name="deployments_base_image">基础镜像（可选）</string>
     <string name="deployments_runtime_version">运行时版本（可选）</string>

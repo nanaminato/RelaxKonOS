@@ -500,6 +500,9 @@
     <string name="deployments_container_port">Container port</string>
     <string name="deployments_create_and_deploy">Create and deploy</string>
     <string name="deployments_choose_archive">Choose archive and deploy</string>
+    <string name="deployments_choose_server_archive">Choose from server</string>
+    <string name="deployments_server_archive_title">Choose server archive</string>
+    <string name="deployments_server_archive_empty">This folder has no .zip or .jar archives.</string>
     <string name="deployments_archive_note">The selected archive streams directly to server-owned staging. It is not retained in the application definition.</string>
     <string name="deployments_base_image">Base image (optional)</string>
     <string name="deployments_runtime_version">Runtime version (optional)</string>

@@ -206,6 +206,7 @@ object ApplicationDeploymentRoutes {
     const val CATALOG = "/api/v1.0/application-deployments/catalog"
     const val CATALOG_INSTALL = "$CATALOG/install"
     const val UPLOADS = "/api/v1.0/application-deployments/uploads"
+    const val FILE_REFERENCES = "/api/v1.0/application-deployments/file-references"
     fun application(id: String): String = "$APPLICATIONS/${UUID.fromString(id)}"
     fun deploy(id: String): String = "${application(id)}/deploy"
     fun rollback(id: String): String = "${application(id)}/rollback"

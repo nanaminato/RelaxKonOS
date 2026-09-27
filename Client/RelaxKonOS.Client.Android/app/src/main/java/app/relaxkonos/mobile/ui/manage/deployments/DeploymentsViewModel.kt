@@ -24,4 +24,8 @@ class DeploymentsViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
     }
+
+    fun createServerArchive(path: String, definition: ArchiveDeploymentDefinition) {
+        browser.createServerArchive(definition, path)
+    }
 }

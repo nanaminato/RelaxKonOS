@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -107,6 +108,10 @@ fun DeploymentsScreen(
                 pendingArchive = definition
                 pickArchive.launch(arrayOf("application/zip", "application/java-archive", "application/octet-stream"))
             },
+            onServerArchiveSubmit = { path, definition ->
+                viewModel.createServerArchive(path, definition)
+                showCreate = false
+            },
         )
     }
     if (showCatalog) {
@@ -191,9 +196,11 @@ private fun DeploymentCreateDialog(
     onDismiss: () -> Unit,
     onImageSubmit: (String, String, Int, List<DeploymentConfigEntry>) -> Unit,
     onArchiveSubmit: (ArchiveDeploymentDefinition) -> Unit,
+    onServerArchiveSubmit: (String, ArchiveDeploymentDefinition) -> Unit,
 ) {
     val form = remember(templates) { DeploymentCreateForm(templates) }
     var sourceMenuExpanded by remember { mutableStateOf(false) }
+    var showServerArchivePicker by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = { if (!submitting) onDismiss() },
     ) {
@@ -332,6 +339,14 @@ private fun DeploymentCreateDialog(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
+                if (form.isArchive) {
+                    OutlinedButton(
+                        onClick = { showServerArchivePicker = true },
+                        enabled = form.canSubmit && !submitting,
+                    ) {
+                        Text(stringResource(R.string.deployments_choose_server_archive))
+                    }
+                }
                 Button(
                     onClick = {
                         if (form.isArchive) onArchiveSubmit(form.archiveDefinition()!!)
@@ -344,7 +359,68 @@ private fun DeploymentCreateDialog(
             }
         }
     }
+    if (showServerArchivePicker) {
+        ServerArchivePicker(
+            onDismiss = { showServerArchivePicker = false },
+            onSelect = { path ->
+                form.archiveDefinition()?.let { onServerArchiveSubmit(path, it) }
+                showServerArchivePicker = false
+            },
+        )
+    }
 }
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    val container = appContainer()
+    var path by remember { mutableStateOf("") }
+    var listing by remember { mutableStateOf<ApiResult<DirectoryListing>?>(null) }
+
+    LaunchedEffect(path) {
+        listing = container.files.list(path, container.elevationAnswers)
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = Spacing.lg).padding(bottom = Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Text(stringResource(R.string.deployments_server_archive_title), style = MaterialTheme.typography.headlineSmall)
+            Text(path.ifBlank { "/" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (path.isNotBlank()) {
+                TextButton(onClick = { path = container.files.navigationParentOf(path) }) {
+                    Text(stringResource(R.string.common_back))
+                }
+            }
+            when (val result = listing) {
+                null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                is ApiResult.Success -> {
+                    val entries = result.value.entries.filter { it.isDirectory || isDeploymentArchive(it.name) }
+                    if (entries.isEmpty()) {
+                        Text(stringResource(R.string.deployments_server_archive_empty), style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                            items(entries, key = { it.path }) { entry ->
+                                TextButton(
+                                    onClick = {
+                                        if (entry.isDirectory) path = entry.path else onSelect(entry.path)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(if (entry.isDirectory) "${entry.name}/" else entry.name, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+                else -> Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
+private fun isDeploymentArchive(name: String): Boolean = name.lowercase().let { it.endsWith(".zip") || it.endsWith(".jar") }
 
 @Composable
 private fun DeploymentList(state: DeploymentBrowserState, onSelect: (String) -> Unit, modifier: Modifier) {

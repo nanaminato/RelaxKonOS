@@ -77,6 +77,13 @@ interface RelaxKonGateway {
         open: () -> InputStream,
     ): ApiResult<DeploymentArchive> = ApiResult.Transport("Application deployment archive upload is unavailable.")
 
+    /** Stages an archive already readable by the authenticated server user. */
+    suspend fun stageServerDeploymentArchive(
+        serverUrl: String,
+        accessToken: String,
+        path: String,
+    ): ApiResult<DeploymentArchive> = ApiResult.Transport("Server deployment archive selection is unavailable.")
+
     /** Creates an image deployment definition; publishing it is the separate call below. */
     suspend fun createImageDeployment(
         serverUrl: String,

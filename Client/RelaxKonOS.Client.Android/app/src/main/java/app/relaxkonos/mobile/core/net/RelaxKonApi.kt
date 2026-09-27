@@ -201,6 +201,23 @@ class RelaxKonApi(
         }
     }
 
+    override suspend fun stageServerDeploymentArchive(
+        serverUrl: String,
+        accessToken: String,
+        path: String,
+    ): ApiResult<DeploymentArchive> = when (val result = execute(
+        "POST",
+        serverUrl,
+        ApplicationDeploymentRoutes.FILE_REFERENCES,
+        accessToken,
+        JsonBody().string("path", path),
+    )) {
+        is ApiResult.Success -> runCatching { ApplicationDeploymentWire.archive(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed deployment archive response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
     override suspend fun deploymentLogs(serverUrl: String, accessToken: String, applicationId: String, tail: Int): ApiResult<DeploymentLog> =
         deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.logs(applicationId, tail), ApplicationDeploymentWire::logs)
 
