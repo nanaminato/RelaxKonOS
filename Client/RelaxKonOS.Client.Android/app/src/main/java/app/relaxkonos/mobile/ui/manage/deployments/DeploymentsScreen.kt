@@ -193,6 +193,7 @@ private fun DeploymentCreateDialog(
     onArchiveSubmit: (ArchiveDeploymentDefinition) -> Unit,
 ) {
     val form = remember(templates) { DeploymentCreateForm(templates) }
+    var sourceMenuExpanded by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = { if (!submitting) onDismiss() },
     ) {
@@ -209,38 +210,83 @@ private fun DeploymentCreateDialog(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = MaterialTheme.shapes.medium,
+            ExposedDropdownMenuBox(
+                expanded = sourceMenuExpanded,
+                onExpandedChange = { sourceMenuExpanded = it },
             ) {
-                Column(Modifier.padding(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(stringResource(R.string.deployments_source), style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(
+                    value = form.template?.let { label(it.sourceKind) }.orEmpty(),
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.deployments_source_selector)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceMenuExpanded) },
+                    modifier = Modifier
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                        .fillMaxWidth(),
+                )
+                ExposedDropdownMenu(
+                    expanded = sourceMenuExpanded,
+                    onDismissRequest = { sourceMenuExpanded = false },
+                ) {
                     templates.forEach { option ->
-                        FilterChip(
-                            selected = form.sourceKind == option.sourceKind,
-                            onClick = { form.selectSource(option.sourceKind) },
-                            label = { Text(label(option.sourceKind)) },
+                        DropdownMenuItem(
+                            text = { Text(label(option.sourceKind)) },
+                            onClick = {
+                                form.selectSource(option.sourceKind)
+                                sourceMenuExpanded = false
+                            },
                         )
                     }
                 }
             }
             Surface(shape = MaterialTheme.shapes.medium, tonalElevation = Spacing.xs) {
                 Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedTextField(form.name, { form.name = it }, label = { Text(stringResource(R.string.deployments_name)) }, singleLine = true)
+                    OutlinedTextField(
+                        form.name,
+                        { form.name = it },
+                        label = { Text(stringResource(R.string.deployments_name)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     if (form.template?.requiresImageReference == true) {
-                        OutlinedTextField(form.image, { form.image = it }, label = { Text(stringResource(R.string.deployments_image_reference)) }, singleLine = true)
+                        OutlinedTextField(
+                            form.image,
+                            { form.image = it },
+                            label = { Text(stringResource(R.string.deployments_image_reference)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                     OutlinedTextField(
                         form.port, { form.port = it }, label = { Text(stringResource(R.string.deployments_container_port)) }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = form.port.isNotEmpty() && form.parsedPort == null,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     if (form.isArchive) {
-                        OutlinedTextField(form.baseImage, { form.baseImage = it }, label = { Text(stringResource(R.string.deployments_base_image)) }, singleLine = true)
+                        OutlinedTextField(
+                            form.baseImage,
+                            { form.baseImage = it },
+                            label = { Text(stringResource(R.string.deployments_base_image)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                         if (form.template?.sourceKind in setOf("javaJar", "dotNetPublish", "pythonProject")) {
-                            OutlinedTextField(form.runtimeVersion, { form.runtimeVersion = it }, label = { Text(stringResource(R.string.deployments_runtime_version)) }, singleLine = true)
+                            OutlinedTextField(
+                                form.runtimeVersion,
+                                { form.runtimeVersion = it },
+                                label = { Text(stringResource(R.string.deployments_runtime_version)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
                         if (form.template?.sourceKind == "pythonProject") {
-                            OutlinedTextField(form.programEntry, { form.programEntry = it }, label = { Text(stringResource(R.string.deployments_python_entry)) }, singleLine = true)
+                            OutlinedTextField(
+                                form.programEntry,
+                                { form.programEntry = it },
+                                label = { Text(stringResource(R.string.deployments_python_entry)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
                         if (form.template?.supportsSelfContained == true) {
                             Row {
@@ -258,10 +304,17 @@ private fun DeploymentCreateDialog(
                         Text(if (entry.isSecret) stringResource(R.string.deployments_secret_configured, entry.name) else "${entry.name}=${entry.value}",
                             style = MaterialTheme.typography.bodySmall)
                     }
-                    OutlinedTextField(form.configurationName, { form.configurationName = it }, label = { Text(stringResource(R.string.deployments_configuration_name)) }, singleLine = true)
+                    OutlinedTextField(
+                        form.configurationName,
+                        { form.configurationName = it },
+                        label = { Text(stringResource(R.string.deployments_configuration_name)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     OutlinedTextField(
                         form.configurationValue, { form.configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) }, singleLine = true,
                         visualTransformation = if (form.configurationSecret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     Row {
                         Checkbox(checked = form.configurationSecret, onCheckedChange = { form.configurationSecret = it })

@@ -455,8 +455,9 @@
     <string name="deployments_create_image">新建镜像</string>
     <string name="deployments_create_application">新建应用</string>
     <string name="deployments_image_deploy_note">现已支持容器镜像以及 Java、.NET、Python 归档；服务端会在运行前验证每次部署。</string>
-    <string name="deployments_create_title">部署容器镜像</string>
+    <string name="deployments_create_title">新建应用</string>
     <string name="deployments_create_note">请选择服务端支持的来源。部署会绑定到回环地址；服务端会验证来源、端口、权限和可用资源。</string>
+    <string name="deployments_source_selector">部署来源</string>
     <string name="deployments_name">应用名称</string>
     <string name="deployments_image_reference">镜像引用</string>
     <string name="deployments_container_port">容器端口</string>

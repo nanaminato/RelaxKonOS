@@ -456,8 +456,9 @@
     <string name="deployments_create_image">新しいイメージ</string>
     <string name="deployments_create_application">新しいアプリケーション</string>
     <string name="deployments_image_deploy_note">コンテナイメージと Java、.NET、Python アーカイブに対応しています。サーバーは実行前にすべてのデプロイを検証します。</string>
-    <string name="deployments_create_title">コンテナイメージをデプロイ</string>
+    <string name="deployments_create_title">アプリケーションを作成</string>
     <string name="deployments_create_note">サーバーが対応するソースを選択してください。デプロイはループバックにバインドされ、サーバーがソース、ポート、権限、利用可能なリソースを検証します。</string>
+    <string name="deployments_source_selector">デプロイソース</string>
     <string name="deployments_name">アプリ名</string>
     <string name="deployments_image_reference">イメージ参照</string>
     <string name="deployments_container_port">コンテナポート</string>

@@ -492,8 +492,9 @@
     <string name="deployments_create_image">New image</string>
     <string name="deployments_create_application">New application</string>
     <string name="deployments_image_deploy_note">Container images and Java, .NET and Python archives are supported. The server validates every deployment before it runs.</string>
-    <string name="deployments_create_title">Deploy a container image</string>
+    <string name="deployments_create_title">Create application</string>
     <string name="deployments_create_note">Choose a server-supported source. Deployment stays bound to loopback; the server validates the source, ports, access and available resources.</string>
+    <string name="deployments_source_selector">Deployment source</string>
     <string name="deployments_name">Application name</string>
     <string name="deployments_image_reference">Image reference</string>
     <string name="deployments_container_port">Container port</string>
