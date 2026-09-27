@@ -121,7 +121,12 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
                 secret.fill('\u0000')
             }
             val succeeded = result is ServerCenterSshVerification.Trusted
-            if (succeeded) coordinator.saveHost(target.copy(lastUsedAtEpochMillis = System.currentTimeMillis()))
+            if (succeeded) coordinator.saveHost(
+                target.copy(
+                    sshVerifiedAtEpochMillis = System.currentTimeMillis(),
+                    lastUsedAtEpochMillis = System.currentTimeMillis(),
+                ),
+            )
             update {
                 copy(
                     hosts = if (succeeded) coordinator.hosts() else hosts,

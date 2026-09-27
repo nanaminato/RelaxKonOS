@@ -47,6 +47,8 @@ import app.relaxkonos.mobile.servercenter.SshFileEntry
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
+import app.relaxkonos.mobile.ui.common.KeyValueRow
+import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.formatSize
@@ -93,7 +95,7 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
             update { copy(path = entry.path, selected = null, preview = SshPreview.None) }
             reload()
         } else {
-            update { copy(selected = entry, preview = SshPreview.None) }
+            update { copy(selected = entry, detailEntry = entry, preview = SshPreview.None) }
             if (entry.isText) loadText(entry) else if (entry.isImage) loadImage(entry)
         }
     }
@@ -106,6 +108,8 @@ class SshFilesViewModel(application: Application) : AndroidViewModel(application
         update { copy(path = parent, selected = null, preview = SshPreview.None) }
         reload()
     }
+
+    fun closeDetail() = update { copy(detailEntry = null, selected = null, preview = SshPreview.None) }
 
     fun beginCreateDirectory() = update { copy(newDirectory = "") }
     fun cancelCreateDirectory() = update { copy(newDirectory = null) }
@@ -289,6 +293,7 @@ data class SshFilesUiState(
     val busy: Boolean = false,
     val problem: String? = null,
     val selected: SshFileEntry? = null,
+    val detailEntry: SshFileEntry? = null,
     val preview: SshPreview = SshPreview.None,
     val newDirectory: String? = null,
     val deleteTarget: SshFileEntry? = null,
@@ -329,6 +334,20 @@ fun SshFilesScreen(hostId: String) {
             if (state.busy) CircularProgressIndicator()
             else OutlinedButton(model::reload, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_retry)) }
         } else {
+            val detail = state.detailEntry
+            if (detail != null) {
+                SshFileDetail(
+                    entry = detail,
+                    preview = state.preview,
+                    busy = state.busy,
+                    onBack = model::closeDetail,
+                    onDownload = { model.requestDownload(detail) },
+                    onRename = { model.beginRename(detail) },
+                    onDelete = { model.askDelete(detail) },
+                    onTextChanged = model::updateText,
+                    onSaveText = model::saveText,
+                )
+            } else {
             SectionCard(
                 title = stringResource(R.string.ssh_files_title),
                 subtitle = state.path,
@@ -370,6 +389,7 @@ fun SshFilesScreen(hostId: String) {
                     }
                 }
             }
+            }
         }
     }
     state.newDirectory?.let { value -> NameDialog(stringResource(R.string.ssh_files_new_folder), value, model::setNewDirectory, model::createDirectory, model::cancelCreateDirectory) }
@@ -393,6 +413,38 @@ private fun SshEntryMenu(
         if (!entry.isDirectory) DropdownMenuItem({ Text(stringResource(R.string.ssh_files_download)) }, { onDownload(entry); expanded = false })
         DropdownMenuItem({ Text(stringResource(R.string.ssh_files_rename)) }, { onRename(entry); expanded = false })
         DropdownMenuItem({ Text(stringResource(R.string.ssh_files_delete)) }, { onDelete(entry); expanded = false })
+    }
+}
+
+@Composable
+private fun SshFileDetail(
+    entry: SshFileEntry,
+    preview: SshPreview,
+    busy: Boolean,
+    onBack: () -> Unit,
+    onDownload: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+    onTextChanged: (String) -> Unit,
+    onSaveText: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.verticalScroll(rememberScrollState())) {
+        ScreenHeader(title = entry.name, subtitle = entry.path, onBack = onBack)
+        SectionCard(title = stringResource(R.string.ssh_files_properties), leading = DesktopIcons.fileFor(entry.name, false)) {
+            KeyValueRow(stringResource(R.string.ssh_files_property_type), if (entry.isSymbolicLink) stringResource(R.string.ssh_files_link) else stringResource(R.string.ssh_files_file))
+            KeyValueRow(stringResource(R.string.ssh_files_property_size), formatSize(entry.size).orEmpty())
+            KeyValueRow(stringResource(R.string.ssh_files_property_modified), formatTimestamp(entry.modifiedAtEpochMillis).orEmpty())
+        }
+        SectionCard(title = stringResource(R.string.ssh_files_actions)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                OutlinedButton(onDownload, enabled = !busy) { Text(stringResource(R.string.ssh_files_download)) }
+                TextButton(onRename, enabled = !busy) { Text(stringResource(R.string.ssh_files_rename)) }
+                TextButton(onDelete, enabled = !busy) { Text(stringResource(R.string.ssh_files_delete)) }
+            }
+        }
+        SectionCard(title = stringResource(R.string.ssh_files_preview)) {
+            Preview(preview, onTextChanged, onSaveText, busy)
+        }
     }
 }
 

@@ -179,6 +179,7 @@ private fun VerificationNotice(verification: ServerCenterSshVerification?) = whe
 
 @Composable
 private fun hostStatus(target: ServerHostTarget): String = when {
+    target.sshVerifiedAtEpochMillis != null -> stringResource(R.string.server_center_status_ssh_verified)
     target.lastVerified == null -> stringResource(R.string.server_center_status_unverified)
     target.lastVerified.installed && target.lastVerified.healthy -> stringResource(R.string.server_center_status_healthy_cached)
     target.lastVerified.installed -> stringResource(R.string.server_center_status_unhealthy_cached)

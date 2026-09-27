@@ -75,6 +75,7 @@
     <string name="server_center_host_summary">%1$s@%2$s:%3$d · %4$s</string>
     <string name="server_center_connections_hint">SSH host records are managed separately from saved server logins.</string>
     <string name="server_center_status_unverified">Not yet verified</string>
+    <string name="server_center_status_ssh_verified">SSH verified</string>
     <string name="server_center_status_healthy_cached">Previously verified healthy</string>
     <string name="server_center_status_unhealthy_cached">Previously verified service problem</string>
     <string name="server_center_status_not_installed_cached">Previously verified: not installed</string>
@@ -111,6 +112,13 @@
     <string name="ssh_files_download">Download</string>
     <string name="ssh_files_actions">File actions</string>
     <string name="ssh_files_folder">Folder</string>
+    <string name="ssh_files_properties">Properties</string>
+    <string name="ssh_files_property_type">Type</string>
+    <string name="ssh_files_property_size">Size</string>
+    <string name="ssh_files_property_modified">Modified</string>
+    <string name="ssh_files_file">File</string>
+    <string name="ssh_files_link">Symbolic link</string>
+    <string name="ssh_files_preview">Preview</string>
     <string name="ssh_workspace_title">SSH workspace</string>
     <string name="ssh_workspace_subtitle">%1$s</string>
     <string name="ssh_workspace_deploy">Deploy RelaxKonOS Server</string>
@@ -126,6 +134,27 @@
     <string name="ssh_workspace_deploy_proxy">Reverse proxy</string>
     <string name="ssh_workspace_deploy_port">Server port</string>
     <string name="ssh_workspace_deploy_version">Version (optional)</string>
+    <string name="ssh_workspace_deploy_source">Release source</string>
+    <string name="ssh_workspace_deploy_source_official">Trusted official release</string>
+    <string name="ssh_workspace_deploy_source_local">Signed local bundle</string>
+    <string name="ssh_workspace_deploy_source_remote">Bundle on this SSH server</string>
+    <string name="ssh_workspace_deploy_choose_bundle">Choose release bundle</string>
+    <string name="ssh_workspace_deploy_choose_remote_bundle">Browse SSH bundle</string>
+    <string name="ssh_workspace_deploy_remote_bundle_path">SSH release bundle path</string>
+    <string name="ssh_workspace_deploy_file_access">Privileged file access</string>
+    <string name="ssh_workspace_deploy_restricted">RelaxKonOS data only</string>
+    <string name="ssh_workspace_deploy_full_access">All local files</string>
+    <string name="ssh_workspace_deploy_certificate">TLS certificate</string>
+    <string name="ssh_workspace_deploy_certificate_none">No TLS certificate</string>
+    <string name="ssh_workspace_deploy_certificate_custom">Custom certificate</string>
+    <string name="ssh_workspace_deploy_certificate_self_signed">Generate self-signed certificate</string>
+    <string name="ssh_workspace_deploy_certificate_format">Certificate format</string>
+    <string name="ssh_workspace_deploy_certificate_pfx">PFX / P12</string>
+    <string name="ssh_workspace_deploy_certificate_pem">PEM certificate chain + private key</string>
+    <string name="ssh_workspace_deploy_choose_certificate">Choose certificate</string>
+    <string name="ssh_workspace_deploy_choose_private_key">Choose private key</string>
+    <string name="ssh_workspace_deploy_certificate_password">Certificate password (optional)</string>
+    <string name="ssh_workspace_deploy_certificate_names">Certificate names (comma-separated)</string>
     <!--
       The saved-password state line. It is rendered beside the password field and reports only that a
       credential exists and what unlocks it; producing it never reads the password.

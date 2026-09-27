@@ -138,6 +138,7 @@ class ServerHostTargetStore(private val storage: HostTargetStorage) {
         output.writeUTF(target.sshUserName)
         output.writeNullableUtf(target.installationId)
         output.writeVerifiedState(target.lastVerified)
+        output.writeNullableLong(target.sshVerifiedAtEpochMillis)
         output.writeLong(target.createdAtEpochMillis)
         output.writeLong(target.lastUsedAtEpochMillis)
     }
@@ -150,6 +151,7 @@ class ServerHostTargetStore(private val storage: HostTargetStorage) {
         sshUserName = input.readUTF(),
         installationId = input.readNullableUtf(),
         lastVerified = input.readVerifiedState(),
+        sshVerifiedAtEpochMillis = input.readNullableLong(),
         createdAtEpochMillis = input.readLong(),
         lastUsedAtEpochMillis = input.readLong(),
     )
@@ -194,8 +196,15 @@ class ServerHostTargetStore(private val storage: HostTargetStorage) {
 
     private fun DataInputStream.readNullableUtf(): String? = if (readByte().toInt() == 1) readUTF() else null
 
+    private fun DataOutputStream.writeNullableLong(value: Long?) {
+        writeByte(if (value == null) 0 else 1)
+        if (value != null) writeLong(value)
+    }
+
+    private fun DataInputStream.readNullableLong(): Long? = if (readByte().toInt() == 1) readLong() else null
+
     private companion object {
-        /** `RKH2`：布局随首次正式发布前的接口直接演进，不做双解析。 */
-        const val MAGIC = 0x524B4832
+        /** `RKH3`：布局随首次正式发布前的接口直接演进，不做双解析。 */
+        const val MAGIC = 0x524B4833
     }
 }
