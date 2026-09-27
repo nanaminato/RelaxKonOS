@@ -43,6 +43,11 @@ Check(!UserExecutionProblemText.TryResolveKey("https://relaxkonos.app/problems/d
 var client = DispatchProxy.Create<IExplorerClient, ExplorerFake>();
 var fake = (ExplorerFake)(object)client;
 var vm = new ExplorerViewModel(client);
+fake.FailSpecialLocations = true;
+await vm.LoadRootAsync();
+Check(vm.Nodes.Single(node => node.IsComputer).Children.Single().Path == "/",
+    "A failed special-location request still leaves Computer and its drive available");
+fake.FailSpecialLocations = false;
 await vm.NavigateToAsync("/a");
 Check(vm.AddressbarPath == "/a" && vm.Entries.Count == 2, "Navigation commits loaded directory and hides hidden files");
 Check(vm.Entries[0].Type == FileSystemEntryType.Directory, "Folders appear before files");
@@ -241,6 +246,7 @@ public class ExplorerFake : DispatchProxy
     public string? RenamedName { get; set; }
     public string? ProtectedDirectory { get; set; }
     public string? ElevatedDirectory { get; set; }
+    public bool FailSpecialLocations { get; set; }
     public TaskCompletionSource<DirectoryDto>? Pending { get; set; }
     public TaskCompletionSource<FileSystemEntryDto>? PendingRename { get; set; }
     protected override object? Invoke(MethodInfo? method, object?[]? args)
@@ -254,6 +260,14 @@ public class ExplorerFake : DispatchProxy
                     new RelaxKonOS.Protocol.Common.ProblemDetails("test/elevation-required", "Elevation", 403, "Denied", null)));
             if (path == "/slow" && Pending is not null) return Pending.Task;
             return Task.FromResult(Directory(path));
+        }
+        if (method.Name == nameof(IExplorerClient.GetDrivesAsync))
+            return Task.FromResult<IReadOnlyList<DriveDto>>([new DriveDto("/", "/", null, true, true)]);
+        if (method.Name == nameof(IExplorerClient.GetSpecialLocationsAsync))
+        {
+            if (FailSpecialLocations)
+                return Task.FromException<IReadOnlyList<SpecialLocationDto>>(new UnauthorizedAccessException());
+            return Task.FromResult<IReadOnlyList<SpecialLocationDto>>([]);
         }
         if (method.Name == nameof(IExplorerClient.CreateDirectoryAsync))
         {

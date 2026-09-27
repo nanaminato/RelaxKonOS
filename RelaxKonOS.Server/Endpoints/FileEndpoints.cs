@@ -39,8 +39,18 @@ public static class FileEndpoints
             });
 
         // GET drives
-        files.MapGet(FileApiRoutes.Drives, (IFileService fs) =>
-            Results.Ok(fs.GetDrives()))
+        files.MapGet(FileApiRoutes.Drives, (HttpContext http, IFileService fs, IHostFileAuthorizationService authorizations) =>
+        {
+            var drives = fs.GetDrives();
+            if (!OperatingSystem.IsLinux() || !authorizations.IsRoot(http.User)) return Results.Ok(drives);
+
+            // A root session can be restricted to selected Helper roots even though the host has a
+            // POSIX '/' drive. Confirm its actual list capability before advertising that drive to
+            // the client; a denied probe reveals no directory entries and avoids a dead-end row.
+            return Results.Ok(drives.Select(drive => string.Equals(drive.Path, "/", StringComparison.Ordinal)
+                ? drive with { IsBrowsable = CanListRootDirectory(fs) }
+                : drive));
+        })
            .RequireAuthorization(FileAuthorizationPolicies.List)
            .WithTags("Files");
 
@@ -416,6 +426,19 @@ public static class FileEndpoints
         .WithTags("Files");
 
         return app;
+    }
+
+    private static bool CanListRootDirectory(IFileService files)
+    {
+        try
+        {
+            _ = files.GetDirectory("/");
+            return true;
+        }
+        catch (HostFileExecutionException error) when (error.ProblemCode == "access-denied")
+        {
+            return false;
+        }
     }
 
     private static IResult Problem(int status, string typeSuffix, string title, string detail)

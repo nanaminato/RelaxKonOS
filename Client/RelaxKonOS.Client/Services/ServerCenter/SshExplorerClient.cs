@@ -14,7 +14,7 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 public sealed class SshExplorerClient(SshDesktopSession session) : IExplorerClient
 {
     public Task<IReadOnlyList<DriveDto>> GetDrivesAsync(CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<DriveDto>>([new DriveDto("/", "/", null, true)]);
+        Task.FromResult<IReadOnlyList<DriveDto>>([new DriveDto("/", "/", null, true, true)]);
 
     public Task<IReadOnlyList<SpecialLocationDto>> GetSpecialLocationsAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<SpecialLocationDto>>([]);

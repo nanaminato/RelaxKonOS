@@ -92,9 +92,22 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     {
         var principal = http.HttpContext?.User ?? throw new InvalidOperationException("User execution requires an authenticated HTTP request.");
         if (mode.Mode == ServerMode.System && IsRootSession(principal))
-            return await RunPrivilegedAsync<T>(
-                RequireRootAuthorization(principal, Capability(operation), TargetPaths(operation, path, destinationPath, newName)), operation, path,
-                destinationPath, newName, fileName, overwrite, content, unixMode, offset, expectedBytes);
+        {
+            try
+            {
+                return await RunPrivilegedAsync<T>(
+                    RequireRootAuthorization(principal, Capability(operation), TargetPaths(operation, path, destinationPath, newName)), operation, path,
+                    destinationPath, newName, fileName, overwrite, content, unixMode, offset, expectedBytes);
+            }
+            catch (HostFileExecutionException error) when (error.ProblemCode == "access-denied"
+                && CanReadAsServerIdentity(operation))
+            {
+                // Root's closed Helper policy can intentionally exclude broad paths such as '/'.
+                // For observation only, fall back to the Server's *actual non-root* OS account.
+                // This never impersonates an arbitrary host user and it never broadens mutation.
+                return ReadAsServerIdentity<T>(operation, path!);
+            }
+        }
         var context = contexts.Resolve(principal);
         var request = new UserExecutionRequest(context.Identity, operation, path, destinationPath, newName, fileName, overwrite,
             content, unixMode, offset, expectedBytes, OperationId: Guid.NewGuid());
@@ -135,6 +148,37 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             or UserExecutionOperationKind.FileDeleteStaging => FileElevationCapability.Upload,
         _ => FileElevationCapability.Read,
     };
+
+    private static bool CanReadAsServerIdentity(UserExecutionOperationKind operation)
+        => !ServerProcessIdentity.IsPrivileged() && operation is UserExecutionOperationKind.FileListDirectory
+            or UserExecutionOperationKind.FileGetInfo or UserExecutionOperationKind.FileGetProperties
+            or UserExecutionOperationKind.FileRead;
+
+    private T ReadAsServerIdentity<T>(UserExecutionOperationKind operation, string path)
+    {
+        object? result = operation switch
+        {
+            UserExecutionOperationKind.FileListDirectory => direct.GetDirectory(path),
+            UserExecutionOperationKind.FileGetInfo => direct.GetInfo(path),
+            UserExecutionOperationKind.FileGetProperties => direct.GetProperties(path),
+            UserExecutionOperationKind.FileRead => ReadAsServerIdentity(path),
+            _ => throw new InvalidOperationException("Only root read operations can use the Server identity."),
+        };
+        return (T)result!;
+    }
+
+    private DirectUserExecutionOperations.FileReadResult ReadAsServerIdentity(string path)
+    {
+        var read = direct.OpenRead(path) ?? throw new FileNotFoundException("File was not found.", path);
+        using (read.Stream)
+        using (var copy = new MemoryStream())
+        {
+            read.Stream.CopyTo(copy);
+            if (copy.Length > UserExecutionProtocol.MaximumFileContentBytes)
+                throw new DirectUserExecutionOperations.ContentTooLargeException();
+            return new(Convert.ToBase64String(copy.ToArray()), read.FileName, read.ContentType);
+        }
+    }
 
     private bool IsRootSession(System.Security.Claims.ClaimsPrincipal principal)
     {

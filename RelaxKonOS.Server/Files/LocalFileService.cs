@@ -30,7 +30,7 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
         {
             var home = UserRoot;
             var root = new DriveInfo(Path.GetPathRoot(home)!);
-            return [new DriveDto(Path.GetFileName(home), home, root.IsReady ? root.TotalSize : null, root.IsReady)];
+            return [new DriveDto(Path.GetFileName(home), home, root.IsReady ? root.TotalSize : null, root.IsReady, true)];
         }
         // DriveInfo.GetDrives() 在 Linux 上会枚举每一个挂载点，其中包含 /dev、
         // /dev/pts、/dev/shm 等嵌套的伪文件系统。把它们全部作为“此电脑”的
@@ -44,7 +44,8 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
                 Name: root.Name,
                 Path: root.RootDirectory.FullName,
                 TotalSize: root.IsReady ? root.TotalSize : null,
-                IsReady: root.IsReady)];
+                IsReady: root.IsReady,
+                IsBrowsable: true)];
         }
 
         var list = new List<DriveDto>();
@@ -55,7 +56,8 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
                 Name: d.Name,
                 Path: d.RootDirectory.FullName,
                 TotalSize: total,
-                IsReady: d.IsReady));
+                IsReady: d.IsReady,
+                IsBrowsable: true));
         }
         return list;
     }

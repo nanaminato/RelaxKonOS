@@ -37,10 +37,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     private readonly List<string?> _history = new();
     private int _historyIndex = -1;
     private bool _isNavigating;
-    // A root session may use the closed privileged-file route while its root policy deliberately
-    // excludes '/'.  In that case the generic Linux drive supplied by the API is not a usable
-    // navigation target, even though the session's /root home remains available.
-    private bool _hidePosixRootDrive;
     private readonly List<FileSystemEntryDto> _directoryEntries = [];
 
     /// <summary>路径变化时同步树选中的抑制标志：避免 SyncTreeSelectionAsync 设 SelectedNode 触发 OnSelectedNodeChanged
@@ -386,39 +382,42 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
         StatusText = LocalizedText.Ref("explorer.status.loading_navigation");
         try
         {
-            // 并发加载特殊位置与盘符列表
+            // Special locations are optional shortcuts. A root policy may deliberately deny the
+            // root-home shortcut while still allowing a drive listing through the read fallback;
+            // that must never erase the Computer navigation tree.
             var specialTask = _client.GetSpecialLocationsAsync();
             var drivesTask = _client.GetDrivesAsync();
-            await Task.WhenAll(specialTask, drivesTask);
-            var specials = specialTask.Result;
-            var drives = GetNavigationDrives(drivesTask.Result);
-            _hidePosixRootDrive = await ShouldHidePosixRootDriveAsync(specials, drives);
-            if (_hidePosixRootDrive)
-                drives = drives.Where(d => !string.Equals(d.Path, Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)).ToArray();
+            var drives = GetNavigationDrives(await drivesTask);
+            IReadOnlyList<SpecialLocationDto> specials;
+            try { specials = await specialTask; }
+            catch { specials = []; }
 
             Nodes.Clear();
 
             // (1) 主目录组节点：静态填充快捷入口（不含 dummy child，叶子节点点击直接导航，不挂 ExpandRequested）。
             // 与 Windows 11 File Explorer Home 节点行为一致：展开=精选快捷入口；点击组节点本身=导航到家目录（右侧网格列全部子项）。
             var homeEntry = specials.FirstOrDefault(s => s.Kind == SpecialFolderKind.Home);
-            var homePath = homeEntry?.Path;
-            var homeGroup = new TreeNodeModel(LocalizedText.Get("explorer.home"), homePath, iconKind: TreeNodeIconKind.Home);
-            foreach (var s in specials.Where(s => s.Kind != SpecialFolderKind.Home))
+            TreeNodeModel? homeGroup = null;
+            if (homeEntry is not null)
             {
-                var icon = s.Kind switch
+                homeGroup = new TreeNodeModel(LocalizedText.Get("explorer.home"), homeEntry.Path, iconKind: TreeNodeIconKind.Home);
+                foreach (var s in specials.Where(s => s.Kind != SpecialFolderKind.Home))
                 {
-                    SpecialFolderKind.Desktop   => TreeNodeIconKind.Desktop,
-                    SpecialFolderKind.Documents => TreeNodeIconKind.Documents,
-                    SpecialFolderKind.Downloads => TreeNodeIconKind.Downloads,
-                    SpecialFolderKind.Pictures  => TreeNodeIconKind.Pictures,
-                    SpecialFolderKind.Music      => TreeNodeIconKind.Music,
-                    SpecialFolderKind.Videos     => TreeNodeIconKind.Videos,
-                    _ => TreeNodeIconKind.Folder
-                };
-                // 快捷入口叶子节点：不 AddDummyChild、不挂 ExpandRequested（点击直接导航）
-                homeGroup.Children.Add(new TreeNodeModel(s.Name, s.Path, iconKind: icon));
+                    var icon = s.Kind switch
+                    {
+                        SpecialFolderKind.Desktop   => TreeNodeIconKind.Desktop,
+                        SpecialFolderKind.Documents => TreeNodeIconKind.Documents,
+                        SpecialFolderKind.Downloads => TreeNodeIconKind.Downloads,
+                        SpecialFolderKind.Pictures  => TreeNodeIconKind.Pictures,
+                        SpecialFolderKind.Music      => TreeNodeIconKind.Music,
+                        SpecialFolderKind.Videos     => TreeNodeIconKind.Videos,
+                        _ => TreeNodeIconKind.Folder
+                    };
+                    // 快捷入口叶子节点：不 AddDummyChild、不挂 ExpandRequested（点击直接导航）
+                    homeGroup.Children.Add(new TreeNodeModel(s.Name, s.Path, iconKind: icon));
+                }
+                Nodes.Add(homeGroup);
             }
-            Nodes.Add(homeGroup);
 
             // (2) 此电脑节点：保留盘符列表 + dummy child 懒加载（与原 Jaya 逻辑一致）
             var thisPc = new TreeNodeModel(LocalizedText.Get("explorer.computer"), null,
@@ -437,7 +436,7 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             // (3) 网络占位节点（当前不实现浏览）
             Nodes.Add(new TreeNodeModel(LocalizedText.Get("explorer.network"), null, iconKind: TreeNodeIconKind.Network));
 
-            homeGroup.IsExpanded = true;
+            if (homeGroup is not null) homeGroup.IsExpanded = true;
             thisPc.IsExpanded = true;
             StatusText = LocalizedText.Ref("explorer.status.root_ready", drives.Count, specials.Count);
         }
@@ -576,8 +575,6 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
             if (path is null)
             {
                 var drives = GetNavigationDrives(await _client.GetDrivesAsync());
-                if (_hidePosixRootDrive)
-                    drives = drives.Where(d => !string.Equals(d.Path, Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)).ToArray();
                 loaded.AddRange(drives.Select(d => new FileSystemEntryDto(d.Path, d.Name, d.TotalSize,
                     FileSystemEntryType.Drive, null, null, null, false, false, null)));
                 confirmedPath = null;
@@ -706,34 +703,9 @@ public sealed partial class ExplorerViewModel : ObservableObject, IDisposable
     /// </summary>
     private static IReadOnlyList<DriveDto> GetNavigationDrives(IReadOnlyList<DriveDto> drives)
     {
-        var readyDrives = drives.Where(d => d.IsReady).ToArray();
+        var readyDrives = drives.Where(d => d.IsReady && d.IsBrowsable).ToArray();
         var posixRoot = readyDrives.FirstOrDefault(d => string.Equals(d.Path, "/", StringComparison.Ordinal));
         return posixRoot is null ? readyDrives : [posixRoot];
-    }
-
-    /// <summary>
-    /// The Linux drive list is deployment-wide and therefore always contains '/'. Root sessions,
-    /// however, can be deliberately restricted to a smaller privileged-helper policy. Probe only
-    /// root metadata (never its directory contents) so an unavailable '/' is not rendered as an
-    /// apparently usable drive. A full root policy continues to show it.
-    /// </summary>
-    private async Task<bool> ShouldHidePosixRootDriveAsync(IReadOnlyList<SpecialLocationDto> specials,
-        IReadOnlyList<DriveDto> drives)
-    {
-        var rootHome = specials.FirstOrDefault(location => location.Kind == SpecialFolderKind.Home)?.Path;
-        var posixRoot = drives.FirstOrDefault(drive => string.Equals(drive.Path,
-            Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal));
-        if (!string.Equals(rootHome, "/root", StringComparison.Ordinal) || posixRoot is null)
-            return false;
-
-        try
-        {
-            return await _client.GetInfoAsync(posixRoot.Path) is null;
-        }
-        catch (RelaxKonOSAuthException error) when (error.Type.EndsWith("/access-denied", StringComparison.Ordinal))
-        {
-            return true;
-        }
     }
 
     /// <summary>Whether a list entry can initiate a move drag.</summary>
