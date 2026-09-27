@@ -73,10 +73,12 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private HostPlatformOption? _selectedPlatform;
     [ObservableProperty] private string _verifiedStateText = string.Empty;
     [ObservableProperty] private string _lastProbeText = string.Empty;
-    [ObservableProperty] private bool _deploymentConfirmed;
     [ObservableProperty] private bool _deleteServerData;
     [ObservableProperty] private string _uninstallNameConfirmation = string.Empty;
     [ObservableProperty] private ServerCenterOperationRecord? _selectedOperation;
+
+    /// <summary>Workspace-owned modal presentation; the view model owns the deployment action only.</summary>
+    public Func<Task>? ShowInstallationWizardAsync { get; set; }
 
     public string Title => T("server_center.title", "Server centre");
     public string Subtitle => T("server_center.subtitle", "Manage SSH hosts and RelaxKonOS server installations.");
@@ -109,7 +111,6 @@ public partial class ServerCenterViewModel : ObservableObject
     public string DeployText => SelectedHost?.LastVerified?.Installed == true
         ? T("server_center.update", "Install update")
         : T("server_center.install", "Install RelaxKonOS");
-    public string DeployConfirmationText => T("server_center.deploy_confirmation", "I understand that this operation changes this host; update, repair, and rollback may interrupt the service.");
     public string RepairText => T("server_center.repair", "Repair current installation");
     public string RollbackText => T("server_center.rollback", "Restore previous version");
     public string UninstallText => T("server_center.uninstall", "Uninstall server");
@@ -345,7 +346,7 @@ public partial class ServerCenterViewModel : ObservableObject
     {
         var target = SelectedHost;
         var platform = SelectedPlatform;
-        if (target is null || platform is null || !DeploymentConfirmed) return;
+        if (target is null || platform is null) return;
         if (retention == ServerDataRetention.Delete &&
             !string.Equals(UninstallNameConfirmation.Trim(), target.DisplayName, StringComparison.Ordinal)) return;
 
@@ -435,19 +436,21 @@ public partial class ServerCenterViewModel : ObservableObject
         finally
         {
             SshPassword = string.Empty;
-            DeploymentConfirmed = false;
             DeleteServerData = false;
             UninstallNameConfirmation = string.Empty;
             IsBusy = false;
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanDeploy))]
-    private async Task DeployRecommendedAsync(CancellationToken cancellationToken = default)
+    [RelayCommand(CanExecute = nameof(CanOpenInstallationWizard))]
+    private Task OpenInstallationWizardAsync() => ShowInstallationWizardAsync?.Invoke() ?? Task.CompletedTask;
+
+    public async Task<bool> DeployAsync(
+        ServerInstallationOptions installation, CancellationToken cancellationToken = default)
     {
         var target = SelectedHost;
         var platform = SelectedPlatform;
-        if (target is null || platform is null || !DeploymentConfirmed) return;
+        if (target is null || platform is null) return false;
 
         IsBusy = true;
         ErrorMessage = string.Empty;
@@ -458,11 +461,11 @@ public partial class ServerCenterViewModel : ObservableObject
             if (tools is null)
             {
                 ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
-                return;
+                return false;
             }
 
             var credential = await ResolveCredentialAsync(target, cancellationToken).ConfigureAwait(true);
-            if (credential is null) return;
+            if (credential is null) return false;
             await using var session = await _connections.ConnectAsync(
                 target.HostId,
                 credential,
@@ -474,29 +477,43 @@ public partial class ServerCenterViewModel : ObservableObject
                 !PlatformMatches(platform.Platform, probe.HostPlatform))
             {
                 ErrorMessage = T("server_center.unsupported_host", "The selected platform does not match a supported target reported by the host preflight.");
-                return;
+                return false;
             }
 
-            var mode = RecommendedMode(platform.Platform, probe);
+            var mode = installation.Mode ?? RecommendedMode(platform.Platform, probe);
             if (mode is null)
             {
                 ErrorMessage = T("server_center.elevation_required", "The selected installation mode requires an elevated SSH session or approved sudo access.");
-                return;
+                return false;
+            }
+            if (!CanUseInstallationMode(platform.Platform, probe, mode.Value))
+            {
+                ErrorMessage = T("server_center.install_mode_unavailable", "The selected installation mode is not available for this SSH session.");
+                return false;
             }
 
             var kind = probe.ExistingInstalled ? ServerDeploymentKind.Upgrade : ServerDeploymentKind.Install;
             if (kind == ServerDeploymentKind.Upgrade && !ServerInstallationId.IsValid(probe.ExistingInstallationId))
             {
                 ErrorMessage = T("server_center.installation_identity_missing", "The existing installation did not report a valid managed installation identity. Update is blocked.");
-                return;
+                return false;
             }
 
-            var release = await _releaseSource.ResolveReleaseAsync(platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, cancellationToken)
-                .ConfigureAwait(true);
+            var release = installation.Source switch
+            {
+                ServerPackageSourceKind.OfficialStable => await _releaseSource.ResolveReleaseAsync(
+                    platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, cancellationToken).ConfigureAwait(true),
+                ServerPackageSourceKind.LocalBundle when !string.IsNullOrWhiteSpace(installation.LocalBundlePath) =>
+                    await _releaseSource.ResolveLocalBundleAsync(
+                        platform.Platform, probe.RuntimeIdentifier.Value, mode.Value, installation.LocalBundlePath, cancellationToken).ConfigureAwait(true),
+                _ => null
+            };
             if (release is null)
             {
-                ErrorMessage = T("server_center.release_unavailable", "No trusted signed release is available for this host architecture and installation mode.");
-                return;
+                ErrorMessage = installation.Source == ServerPackageSourceKind.LocalBundle
+                    ? T("server_center.local_bundle_unavailable", "The selected local bundle is not a trusted signed release for this host.")
+                    : T("server_center.release_unavailable", "No trusted signed release is available for this host architecture and installation mode.");
+                return false;
             }
 
             var request = new ServerDeploymentRequest(
@@ -504,7 +521,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 Guid.NewGuid(),
                 kind,
                 new ServerDeploymentOptions(
-                    ServerPackageSourceKind.OfficialStable,
+                    installation.Source,
                     ServerNetworkProfile.Loopback,
                     ServerDataRetention.Retain,
                     mode,
@@ -533,7 +550,7 @@ public partial class ServerCenterViewModel : ObservableObject
             if (status.Snapshot is null)
             {
                 ErrorMessage = T("server_center.status_missing", "The deployment finished, but no authoritative SSH-side status receipt was returned.");
-                return;
+                return false;
             }
             var verified = ServerHostTargetRules.ApplyVerifiedState(
                 target, ServerHostTargetRules.VerifiedStateFrom(status.Snapshot), DateTimeOffset.UtcNow);
@@ -545,6 +562,7 @@ public partial class ServerCenterViewModel : ObservableObject
             StatusMessage = kind == ServerDeploymentKind.Install
                 ? T("server_center.install_succeeded", "RelaxKonOS was installed and verified through SSH. Return to the login window to sign in.")
                 : T("server_center.update_succeeded", "RelaxKonOS was updated and verified through SSH. Sign in again if the existing session was interrupted.");
+            return true;
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
@@ -552,19 +570,21 @@ public partial class ServerCenterViewModel : ObservableObject
             HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
             NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
             HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            return false;
         }
         catch (OperationCanceledException)
         {
             StatusMessage = string.Empty;
+            return false;
         }
         catch (Exception)
         {
             ErrorMessage = T("server_center.deploy_failed", "The server operation could not be completed. Its SSH-side receipt can be checked from this host later.");
+            return false;
         }
         finally
         {
             SshPassword = string.Empty;
-            DeploymentConfirmed = false;
             IsBusy = false;
         }
     }
@@ -680,9 +700,8 @@ public partial class ServerCenterViewModel : ObservableObject
     }
 
     private bool CanProbeHost() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null && !HostKeyChanged;
-    private bool CanDeploy() => CanProbeHost() && DeploymentConfirmed &&
-                                SelectedHost?.LastVerified is not null && HasLastProbe;
-    private bool CanMaintain() => CanDeploy() && SelectedHost?.LastVerified?.Installed == true;
+    private bool CanOpenInstallationWizard() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null && !HostKeyChanged;
+    private bool CanMaintain() => CanProbeHost() && HasLastProbe && SelectedHost?.LastVerified?.Installed == true;
     private bool CanUninstall() => CanMaintain() &&
                                    (!DeleteServerData || string.Equals(
                                        UninstallNameConfirmation.Trim(), SelectedHost?.DisplayName, StringComparison.Ordinal));
@@ -714,7 +733,6 @@ public partial class ServerCenterViewModel : ObservableObject
         SshPassword = string.Empty;
         VerifiedStateText = value?.LastVerified is { } verified ? FormatSnapshot(verified) : string.Empty;
         LastProbeText = string.Empty;
-        DeploymentConfirmed = false;
         DeleteServerData = false;
         UninstallNameConfirmation = string.Empty;
         Operations.Clear();
@@ -724,7 +742,7 @@ public partial class ServerCenterViewModel : ObservableObject
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
-        DeployRecommendedCommand.NotifyCanExecuteChanged();
+        OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -736,7 +754,7 @@ public partial class ServerCenterViewModel : ObservableObject
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
-        DeployRecommendedCommand.NotifyCanExecuteChanged();
+        OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -748,7 +766,7 @@ public partial class ServerCenterViewModel : ObservableObject
     partial void OnHostKeyChangedChanged(bool value)
     {
         ProbeHostCommand.NotifyCanExecuteChanged();
-        DeployRecommendedCommand.NotifyCanExecuteChanged();
+        OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -757,15 +775,7 @@ public partial class ServerCenterViewModel : ObservableObject
     partial void OnSelectedPlatformChanged(HostPlatformOption? value)
     {
         ProbeHostCommand.NotifyCanExecuteChanged();
-        DeployRecommendedCommand.NotifyCanExecuteChanged();
-        RepairCommand.NotifyCanExecuteChanged();
-        RollbackCommand.NotifyCanExecuteChanged();
-        UninstallCommand.NotifyCanExecuteChanged();
-        RefreshOperationCommand.NotifyCanExecuteChanged();
-    }
-    partial void OnDeploymentConfirmedChanged(bool value)
-    {
-        DeployRecommendedCommand.NotifyCanExecuteChanged();
+        OpenInstallationWizardCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -773,7 +783,6 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnLastProbeTextChanged(string value)
     {
-        DeployRecommendedCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -874,6 +883,16 @@ public partial class ServerCenterViewModel : ObservableObject
             _ => null
         };
 
+    private static bool CanUseInstallationMode(
+        HostPlatformKind platform, ServerHostProbeDto probe, ServerInstallMode mode) =>
+        (platform, mode) switch
+        {
+            (HostPlatformKind.Windows, ServerInstallMode.WindowsSystem) => probe.Elevated,
+            (HostPlatformKind.Linux, ServerInstallMode.LinuxSystem) => probe.Elevated,
+            (HostPlatformKind.Linux, ServerInstallMode.LinuxUser) => true,
+            _ => false
+        };
+
     private static ServerInstallMode? StatusMode(HostPlatformKind platform, ServerHostProbeDto probe) =>
         probe.ExistingMode ?? RecommendedMode(platform, probe);
 
@@ -883,7 +902,14 @@ public partial class ServerCenterViewModel : ObservableObject
         ServerDataRetention.Retain,
         mode);
 
-    private string T(string key, string fallback) => _localization.Get(key, fallback);
+    internal string Text(string key, string fallback) => _localization.Get(key, fallback);
+
+    private string T(string key, string fallback) => Text(key, fallback);
 }
 
 public sealed record HostPlatformOption(HostPlatformKind Platform, string DisplayName);
+
+public sealed record ServerInstallationOptions(
+    ServerPackageSourceKind Source,
+    ServerInstallMode? Mode,
+    string? LocalBundlePath);

@@ -1,3 +1,4 @@
+using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using RelaxKonOS.AppSDK;
 using RelaxKonOS.Client.ViewModels.ServerCenter;
@@ -24,8 +25,12 @@ public sealed class ServerCenterApp : RemoteApplicationBase
     {
         if (!context.Services.GetRequiredService<SshDesktopSession>().IsConnected) return;
         var viewModel = context.Services.GetRequiredService<ServerCenterViewModel>();
-        context.ShowWindow(viewModel.Title, new ServerCenterWorkspace { DataContext = viewModel },
+        var window = context.ShowWindow(viewModel.Title, new ServerCenterWorkspace { DataContext = viewModel },
             new Rect(70, 50, 1120, 760), Manifest.IconGlyph);
+        viewModel.ShowInstallationWizardAsync = () => context.ShowDialogAsync<bool>(window, viewModel.DeployText,
+            dialog => new ServerInstallationWizardView(
+                new ServerInstallationWizardViewModel(viewModel, () => dialog.Close(true))),
+            new Size(620, 480));
         _ = viewModel.LoadAsync();
     }
 }

@@ -27,9 +27,7 @@
                             Content="{Binding HistoryPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
                 </StackPanel>
             </Border>
-            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <ContentControl x:Name="ContentHost" Margin="30,24" HorizontalAlignment="Stretch" />
-            </ScrollViewer>
+            <ContentControl Grid.Column="1" x:Name="ContentHost" Margin="30,24" HorizontalAlignment="Stretch" />
         </Grid>
 
         <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"

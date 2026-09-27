@@ -3,7 +3,8 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterHostsPage"
              x:DataType="vm:ServerCenterViewModel">
-    <StackPanel Spacing="18">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="18" Margin="0,0,12,0">
         <TextBlock Text="{Binding HostsPageTitle}" FontSize="21" FontWeight="SemiBold" />
         <Border Classes="card" Padding="20">
             <StackPanel Spacing="12">
@@ -53,4 +54,5 @@
             </StackPanel>
         </Border>
     </StackPanel>
+    </ScrollViewer>
 </UserControl>
