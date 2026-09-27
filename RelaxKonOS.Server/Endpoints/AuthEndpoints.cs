@@ -34,79 +34,38 @@ public static class AuthEndpoints
                 JwtTokenService jwt,
                 LoginProtectionService protection,
                 IServerModeResolver serverMode,
+                WindowsDesktopSessionOptions desktopSession,
                 CancellationToken ct) =>
             {
+                if (desktopSession.Enabled)
+                    return Problem(http, 403, "windows-desktop-session-required", "Windows Desktop session required",
+                        "This loopback development Server accepts only the current Windows session.");
                 var login = await authentication.AuthenticateAsync(req.Identifier, req.Password, http.Connection.RemoteIpAddress, ct);
-                var user = login.User;
-                var now = DateTimeOffset.UtcNow;
-
-                // 查/建 Workspace（One User One Persistent，见 Workspace.md §4）
-                var ws = wss.FindByUserId(user.Id)
-                       ?? wss.Add(new Workspace
-                       {
-                           Id = Guid.NewGuid(),
-                           UserId = user.Id,
-                           Name = $"{user.Username} Workspace",
-                           State = WorkspaceState.Running,
-                           CreatedAt = now,
-                       });
-
-                // Configuration defaults are registry values. The legacy Workspace JSON columns
-                // are intentionally not consulted or updated.
-                WorkspaceConfigurationRegistry.EnsureDefaults(registry, ws, user.Id.ToString("D"));
-
-                // 查/建 Device（按 name+platform 复用，更新版本与登录时间）
-                var platformStr = req.ClientPlatform.ToString().ToLowerInvariant();
-                var device = devs.FindByNameAndPlatform(req.DeviceName, platformStr);
-                if (device is null)
-                {
-                    device = devs.Add(new Device
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = req.DeviceName,
-                        Platform = platformStr,
-                        ClientVersion = req.ClientVersion,
-                    });
-                }
-                device.ClientVersion = req.ClientVersion;
-                device.LastLoginAt = now;
-                devs.Update(device);
-
-                // 新建 Session（每次登录新建，Session ≠ Workspace）
-                var session = sess.Add(new Session
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = user.Id,
-                    AuthenticationMethod = login.Method,
-                    AuthenticatedAt = now,
-                    WorkspaceId = ws.Id,
-                    DeviceId = device.Id,
-                    CreatedAt = now,
-                    LastActiveAt = now,
-                    Status = SessionStatus.Active,
-                });
-
-                // 该设备成为 Controller（Grace Period 5 分钟，见 Workspace.md §19）
-                ws.ControllerDeviceId = device.Id;
-                ws.ControllerGrantedAt = now;
-                ws.ControllerLeaseExpiresAt = now.AddMinutes(5);
-                ws.State = WorkspaceState.Running;
-                wss.Update(ws);
-
-                users.UpdateLastLogin(user.Id, now);
-
-                var role = DeviceRole.Controller;
-                authentication.RequireCurrent(login);
-                var tokens = jwt.Issue(user, ws, device, role, session.Id, login.Method, now, login.SecurityVersion);
-                await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
-
-                return Results.Ok(new LoginResponse(
-                    user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role, CreateServerDescriptor(serverMode),
-                    new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available, login.ExecutionEligibility.ReasonCode,
-                        serverMode.Mode == ServerMode.System && login.Method == "system"
-                        && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));
+                return await CompleteLoginAsync(login, req.ClientPlatform, req.DeviceName, req.ClientVersion, http,
+                    authentication, users, wss, registry, sess, devs, jwt, protection, serverMode, ct);
             })
             .RequireRateLimiting("login")
+            .WithTags("Auth");
+
+        group.MapPost(AuthApiRoutes.WindowsDesktopSession, async (
+                WindowsDesktopSessionLoginRequest req,
+                HttpContext http,
+                LoginAuthenticationService authentication,
+                IUserRepository users,
+                IWorkspaceRepository wss,
+                IRegistryRepository registry,
+                ISessionRepository sess,
+                IDeviceRepository devs,
+                JwtTokenService jwt,
+                LoginProtectionService protection,
+                IServerModeResolver serverMode,
+                CancellationToken ct) =>
+            {
+                var login = authentication.AuthenticateWindowsDesktopSession(http.User);
+                return await CompleteLoginAsync(login, req.ClientPlatform, req.DeviceName, req.ClientVersion, http,
+                    authentication, users, wss, registry, sess, devs, jwt, protection, serverMode, ct);
+            })
+            .RequireAuthorization("WindowsDesktopSessionLogin")
             .WithTags("Auth");
 
         group.MapPost(AuthApiRoutes.Refresh, (
@@ -168,6 +127,48 @@ public static class AuthEndpoints
             .WithTags("Server");
 
         return app;
+    }
+
+    private static async Task<IResult> CompleteLoginAsync(AuthenticatedLogin login, ClientPlatformKind clientPlatform,
+        string deviceName, string clientVersion, HttpContext http, LoginAuthenticationService authentication,
+        IUserRepository users, IWorkspaceRepository wss, IRegistryRepository registry, ISessionRepository sess,
+        IDeviceRepository devs, JwtTokenService jwt, LoginProtectionService protection, IServerModeResolver serverMode,
+        CancellationToken ct)
+    {
+        var user = login.User;
+        var now = DateTimeOffset.UtcNow;
+        var ws = wss.FindByUserId(user.Id) ?? wss.Add(new Workspace
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, Name = $"{user.Username} Workspace", State = WorkspaceState.Running, CreatedAt = now,
+        });
+        WorkspaceConfigurationRegistry.EnsureDefaults(registry, ws, user.Id.ToString("D"));
+        var platform = clientPlatform.ToString().ToLowerInvariant();
+        var device = devs.FindByNameAndPlatform(deviceName, platform) ?? devs.Add(new Device
+        {
+            Id = Guid.NewGuid(), Name = deviceName, Platform = platform, ClientVersion = clientVersion,
+        });
+        device.ClientVersion = clientVersion;
+        device.LastLoginAt = now;
+        devs.Update(device);
+        var session = sess.Add(new Session
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, AuthenticationMethod = login.Method, AuthenticatedAt = now,
+            WorkspaceId = ws.Id, DeviceId = device.Id, CreatedAt = now, LastActiveAt = now, Status = SessionStatus.Active,
+        });
+        ws.ControllerDeviceId = device.Id;
+        ws.ControllerGrantedAt = now;
+        ws.ControllerLeaseExpiresAt = now.AddMinutes(5);
+        ws.State = WorkspaceState.Running;
+        wss.Update(ws);
+        users.UpdateLastLogin(user.Id, now);
+        authentication.RequireCurrent(login);
+        var role = DeviceRole.Controller;
+        var tokens = jwt.Issue(user, ws, device, role, session.Id, login.Method, now, login.SecurityVersion);
+        await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
+        return Results.Ok(new LoginResponse(user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role,
+            CreateServerDescriptor(serverMode), new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available,
+                login.ExecutionEligibility.ReasonCode, serverMode.Mode == ServerMode.System && login.Method == "system"
+                && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));
     }
 
     private static ServerDescriptorDto CreateServerDescriptor(IServerModeResolver serverMode)

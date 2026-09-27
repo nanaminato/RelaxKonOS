@@ -98,7 +98,9 @@ if (eventAlertsOptions.Enabled)
 // The ordinary-user execution backend is the same kind of decision, so it is resolved and
 // validated once, next to the mode, and passed along rather than re-read per call site.
 var userExecutionBackend = RelaxKonOS.Server.UserExecution.UserExecutionBackendResolver.Resolve(builder.Configuration, builder.Environment);
-var serverModeResolver = new ServerModeResolver(builder.Configuration, userExecutionBackend);
+var windowsDesktopSession = new WindowsDesktopSessionOptions(builder.Configuration, builder.Environment, userExecutionBackend);
+builder.Services.AddSingleton(windowsDesktopSession);
+var serverModeResolver = new ServerModeResolver(builder.Configuration, userExecutionBackend, windowsDesktopSession);
 builder.Services.AddSingleton<IServerModeResolver>(serverModeResolver);
 // The deployment installer registers this executable with the Windows Service
 // Control Manager. Opt in to its lifetime protocol so SCM receives the start
@@ -355,6 +357,7 @@ builder.Services.AddAuthentication(options =>
             }
         };
     })
+    .AddNegotiate(RelaxKonOSAuthSchemes.WindowsDesktopSession, _ => { })
     .AddJwtBearer(RelaxKonOSAuthSchemes.FileCapability, opts =>
     {
         opts.TokenValidationParameters = new TokenValidationParameters
@@ -383,6 +386,9 @@ builder.Services.AddAuthentication(options =>
     });
 builder.Services.AddAuthorization(options =>
 {
+    options.AddPolicy("WindowsDesktopSessionLogin", policy => policy
+        .AddAuthenticationSchemes(RelaxKonOSAuthSchemes.WindowsDesktopSession)
+        .RequireAuthenticatedUser());
     foreach (var policyName in new[]
              {
                  RelaxKonOS.Server.Files.FileAuthorizationPolicies.List,

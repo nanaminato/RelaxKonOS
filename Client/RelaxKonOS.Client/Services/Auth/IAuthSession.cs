@@ -48,6 +48,9 @@ public interface IAuthSession
         bool rememberPassword,
         CancellationToken ct = default);
 
+    Task<LoginResponse> LoginWindowsDesktopSessionAsync(ServerConnectionIdentity identity,
+        WindowsDesktopSessionLoginRequest request, bool rememberServer, CancellationToken ct = default);
+
     /// <summary>
     /// 隧道重建或换端口后只更新传输地址。身份必须保持不变，否则会制造新的登录记录并丢掉保险箱关联。
     /// </summary>

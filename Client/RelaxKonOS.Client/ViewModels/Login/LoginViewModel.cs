@@ -61,6 +61,7 @@ public partial class LoginViewModel : ObservableObject
     public ObservableCollection<SavedSshLoginProfile> SavedSshHosts { get; } = [];
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
     [NotifyPropertyChangedFor(nameof(ConnectionInstructions))]
     [NotifyPropertyChangedFor(nameof(ConnectionSettingsDescription))]
     [NotifyPropertyChangedFor(nameof(IdentityNotice))]
@@ -68,6 +69,7 @@ public partial class LoginViewModel : ObservableObject
 
     partial void OnUseSshLoginChanged(bool value)
     {
+        OnPropertyChanged(nameof(WindowsDesktopSessionAvailable));
         if (value)
         {
             _relaxServerUrl = ServerUrl;
@@ -95,22 +97,27 @@ public partial class LoginViewModel : ObservableObject
     // 此前缺少通知，导致填写完账号密码后按钮仍处于禁用状态（无法点击）。
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
     private string _serverUrl = "localhost:5090";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
     private string _identifier = string.Empty;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
     private string _password = string.Empty;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
     private bool _isConnecting;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
     private bool _isDiscoveringServer;
 
     [ObservableProperty]
@@ -175,6 +182,8 @@ public partial class LoginViewModel : ObservableObject
         : T("login.connection_settings_description", "RelaxKonOS will open the workspace using this computer's name and local display settings.");
     public string ClientNameText => T("login.client_name", "RelaxKonOS Remote Desktop Client");
     public string ConnectText => T("common.connect", "Connect");
+    public string WindowsDesktopSessionConnectText => T("login.windows_desktop_session.connect", "Use Windows session");
+    public bool WindowsDesktopSessionAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
     public string ConfirmHostKeyText => T("login.ssh_confirm_host_key", "I verified this fingerprint; trust and connect");
     public string HostKeyDialogTitle => T("login.ssh_host_key_title", "Verify SSH host key");
     public string CancelText => T("common.cancel", "Cancel");
@@ -298,6 +307,45 @@ public partial class LoginViewModel : ObservableObject
            && !string.IsNullOrWhiteSpace(ServerUrl)
            && !string.IsNullOrWhiteSpace(Identifier)
            && (UseSshLogin || !string.IsNullOrWhiteSpace(Password));
+
+    private bool CanConnectWindowsDesktopSession()
+        => OperatingSystem.IsWindows() && !UseSshLogin && !IsConnecting && !IsDiscoveringServer && !string.IsNullOrWhiteSpace(ServerUrl);
+
+    [RelayCommand(CanExecute = nameof(CanConnectWindowsDesktopSession))]
+    private async Task ConnectWindowsDesktopSessionAsync(CancellationToken ct)
+    {
+        var resolution = await ResolveServerEndpointAsync(ct);
+        if (!resolution.IsResolved)
+        {
+            ErrorMessage = T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.");
+            HasError = true;
+            return;
+        }
+        IsConnecting = true;
+        StatusMessage = T("login.status.connecting", "Connecting...");
+        ClearError();
+        try
+        {
+            var request = new WindowsDesktopSessionLoginRequest(DetectClientPlatform(), Environment.MachineName,
+                Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0");
+            await _session.LoginWindowsDesktopSessionAsync(ServerConnectionIdentityRules.Direct(resolution.Endpoint!), request,
+                RememberServer, ct);
+            StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
+        }
+        catch (RelaxKonOSAuthException ex)
+        {
+            ErrorMessage = MapProblemToMessage(ex);
+            HasError = true;
+            StatusMessage = string.Empty;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            ErrorMessage = ex.Message;
+            HasError = true;
+            StatusMessage = string.Empty;
+        }
+        finally { IsConnecting = false; }
+    }
 
     public async Task LoadSavedProfilesAsync(CancellationToken ct = default)
     {
@@ -634,6 +682,10 @@ public partial class LoginViewModel : ObservableObject
         "https://relaxkonos.app/problems/account-restriction" => T("api.auth.account_restriction", "This account is restricted from signing in."),
         "https://relaxkonos.app/problems/invalid-input"       => T("api.auth.invalid_input", "Enter all required information."),
         "https://relaxkonos.app/problems/authentication-unavailable" => T("api.auth.authentication_unavailable", "System account authentication is temporarily unavailable. Check the server authentication configuration and try again."),
+        "https://relaxkonos.app/problems/windows-desktop-session-required" => T("api.auth.windows_desktop_session_required", "This Server requires the current Windows session sign-in."),
+        "https://relaxkonos.app/problems/windows-desktop-session-unavailable" => T("api.auth.windows_desktop_session_unavailable", "This Server has not enabled Windows session sign-in."),
+        "https://relaxkonos.app/problems/windows-desktop-session-account-required" => T("api.auth.windows_desktop_session_account_required", "Use the same Windows account that started this local Server."),
+        "https://relaxkonos.app/problems/windows-desktop-session-loopback-required" => T("api.auth.windows_desktop_session_loopback_required", "Windows session sign-in is available only through localhost."),
         "https://relaxkonos.app/problems/login-rate-limited"   => T("api.auth.login_rate_limited", "Too many sign-in attempts. Wait a few minutes and try again."),
         "https://relaxkonos.app/problems/auth-failed"         => T("api.auth.failed", "Sign-in failed. Try again later."),
         _ => T("api.auth.failed_short", "Sign-in failed."),

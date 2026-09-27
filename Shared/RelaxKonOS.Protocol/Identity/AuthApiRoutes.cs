@@ -10,6 +10,9 @@ public static class AuthApiRoutes
     /// <summary>登录（POST，无需认证）。</summary>
     public const string Login = $"/{V1}/auth/login";
 
+    /// <summary>Windows Desktop loopback session login (Negotiate; no password payload).</summary>
+    public const string WindowsDesktopSession = $"/{V1}/auth/windows-desktop-session";
+
     /// <summary>刷新令牌（POST，无需认证）。</summary>
     public const string Refresh = $"/{V1}/auth/refresh";
 

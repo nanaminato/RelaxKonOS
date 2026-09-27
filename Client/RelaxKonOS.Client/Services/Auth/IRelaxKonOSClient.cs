@@ -9,6 +9,10 @@ public interface IRelaxKonOSClient
     /// <summary>登录。serverUrl 形如 "http://localhost:5090"。</summary>
     Task<LoginResponse> LoginAsync(string serverUrl, LoginRequest request, CancellationToken ct = default);
 
+    /// <summary>Explicit Windows Desktop loopback login using the current Windows session.</summary>
+    Task<LoginResponse> LoginWindowsDesktopSessionAsync(string serverUrl, WindowsDesktopSessionLoginRequest request,
+        CancellationToken ct = default);
+
     /// <summary>用 RefreshToken 换取新的令牌对。</summary>
     Task<RefreshTokenResponse> RefreshAsync(string serverUrl, string refreshToken, CancellationToken ct = default);
 

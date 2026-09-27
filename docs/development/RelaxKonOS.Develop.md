@@ -11,7 +11,48 @@
 
 ## 常规桌面系统（Windows 10/11）
 
-### 特权 Helper 日常调试
+### Windows 10/11：先选择互斥的开发模型
+
+Windows 10/11 的 Docker Desktop 是交互用户拥有的开发运行时，而不是可由 RelaxKonOS 任意账户共享的
+系统 Docker 服务。`local-identity` 也只允许 Server 以自己的 SID 执行普通文件、终端和 Git 操作。
+因此不要把“Docker Desktop 所有者”、“Server 进程账户”和“登录的宿主账户”拆成不同用户，再试图用
+`developerUserSids` 或管理员 Helper 把它们重新拼起来。
+
+| 模型 | Docker Desktop 所有者 | Server / 登录账户 | 支持范围 |
+| --- | --- | --- | --- |
+| **桌面 Docker 开发** | 同一交互用户 `U` | 同一用户 `U` | Docker、普通文件、终端、Git 与可选的管理员 Helper 调试 |
+| **跨身份 Helper 测试** | 不使用 Docker Desktop | 可验证的本地 `testuser` | 仅命名管道 ACL、普通文件与 Helper 协议排障 |
+| **多用户 Windows 主机** | 不使用 Docker Desktop | 服务账户 + LocalSystem Helper | 仅 Windows Server 隔离验收；当前不作为开发桌面的已支持路径 |
+
+Docker Desktop 的容器和镜像不能在 WSL 2 后端跨 Windows 用户共享，且其非特权命名管道默认只向启动
+Docker Desktop 的用户、Administrators 和 LocalSystem 开放。详见 Docker 的
+[Windows 权限要求](https://docs.docker.com/desktop/setup/install/windows-permission-requirements/) 和
+[安装说明](https://docs.docker.com/desktop/setup/install/windows-install/)。
+
+### 1. 桌面 Docker 开发：一个交互操作员
+
+选择实际启动 Docker Desktop 的 Windows 用户 `U`。以 `U` 启动 Docker Desktop、RelaxKonOS Server 和
+RelaxKonOS Client，并以 `U` 的宿主账户登录。开发 profile 使用
+`PrivilegedHelper:UserExecutionBackend=local-identity`，因此这个 SID 相等关系是承重安全边界，不是可选
+优化。以 `betha` 启动的 Docker Desktop 必须由 `betha` 运行的 Server 管理；不要改为用 `testuser` 的
+`runas` Server 管理它。
+
+当前 Server 的 Windows 密码登录使用 `LogonUser`。Windows Hello PIN 不是账户密码；Microsoft Account
+需要使用真实密码和可解析的规范账户名。若 `U` 不方便使用密码路径，可用内置的“当前 Windows 会话”
+开发认证：它用 Negotiate 证明客户端 SID，并要求它严格等于 Server SID；它不是管理员切换或跨用户功能。
+
+从 `U` 的 PowerShell 或 IDE 使用 `http-windows-desktop` profile 启动 Server：
+
+```powershell
+dotnet run --project RelaxKonOS.Server --launch-profile http-windows-desktop
+```
+
+该 profile 会启用 `Identity:WindowsDesktopSessionEnabled=true`，并只监听 `http://localhost:5090`。客户端连接
+`http://localhost:5090` 后点击“使用当前 Windows 会话”，无需输入密码。此入口只在 Windows、Development、
+`local-identity`、交互式非服务进程和 loopback 监听器同时成立时启用；普通密码登录在此 profile 中被拒绝，
+远程地址、其他 SID、SSH 隧道和 Docker Desktop 的跨用户操作同样被拒绝。
+
+### 2. 可选：配置并启动特权 Helper
 
 不要为日常断点调试安装 `RelaxKonOSPrivilegedHelper` 服务。创建开发专用配置（不可放在
 `ProgramData\RelaxKonOS\privileged-helper`，且仅允许测试目录）。例如
@@ -32,10 +73,12 @@
 
 示例密钥仅用于展示；请替换为新的、至少 32 字节的随机 Base64 密钥。`developerUserSids` 填入
 `whoami /user` 输出的 SID（也接受 `计算机名\账户名`），它列出的身份与"启动 Helper 的账户"一样
-可以连接管道。Helper 必须提权运行，因而常常与 Server 不是同一账户——**只要两者不同就必须显式
-列出 Server 账户**，否则该连接会在认证之前被内核拒绝（EPERM），客户端只会显示"特权助手不可用"，
-与密钥错误、配置缺失无法区分。该项可省略（行为与以前一致）；条目无法解析时 Helper 直接启动失败，
-不会静默丢弃。启动时会打印实际生效的客户端 SID 列表，排障时先与 `whoami /user` 对照。
+可以连接管道。桌面 Docker 开发时，列表必须包含运行 Server 的操作员 `U`（若 Helper 正是由 `U` 提升
+启动，该 SID 已自动获准）。
+Helper 必须提权运行，因而常常与 Server 不是同一账户——**只要两者不同就必须显式列出 Server
+账户**，否则该连接会在认证之前被内核拒绝（EPERM），客户端只会显示"特权助手不可用"，与密钥错误、
+配置缺失无法区分。该项可省略（行为与以前一致）；条目无法解析时 Helper 直接启动失败，不会静默丢弃。
+启动时会打印实际生效的客户端 SID 列表，排障时先与 `whoami /user` 对照。
 
 然后从以管理员身份运行的 PowerShell 或 IDE 启动：
 
@@ -51,6 +94,33 @@ dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxK
 不会自动触发 UAC 提权。Server 和客户端仍可使用普通权限运行。只有管道创建成功后才会输出
 `is listening`；配置或管道创建失败会报错退出。
 
+### 3. 跨身份 Helper 测试（不含 Docker）
+
+只有需要验证“提升的 Helper 与不同 Server SID 的管道 ACL”时才创建 `testuser`。此流程**不能**验证或
+管理由 `betha`（或其他用户）启动的 Docker Desktop；不要把它与上一节混用。
+
+```powershell
+# 以管理员身份运行；仅创建一次。
+New-LocalUser -Name "testuser" -Password (ConvertTo-SecureString "Test@123" -AsPlainText -Force)
+(Get-LocalUser -Name "testuser").SID.Value
+```
+
+将该 SID 写入 `privileged-helper.debug.json` 的 `developerUserSids`，再从普通 PowerShell 以同一用户启动
+Server。`http` profile 显式选择 `local-identity`：
+
+```powershell
+$machine = $env:COMPUTERNAME
+runas /user:"$machine\testuser" 'cmd /c "cd /d D:\RelaxKon\RelaxKonOS && dotnet run --project RelaxKonOS.Server --launch-profile http"'
+```
+
+在客户端以 `testuser` 登录。`testuser` 需要对工作树拥有写入权限，因为 `dotnet run` 会更新项目的 `bin`
+和 `obj` 目录。不要直接运行 `RelaxKonOS.Server.exe`，因为它不会读取 `launchSettings.json` 中的开发 profile
+和命名管道配置。测试结束后可用提升 PowerShell 删除该账户：
+
+```powershell
+Remove-LocalUser -Name "testuser"
+```
+
 `--console` 不能读取并启用生产 `helper.json`：它使用独立配置结构，并要求显式开发开关。发布前
 仍必须在隔离 Windows VM 以 LocalSystem 服务模式至少验证一次，以覆盖 Session 0、HKCU、用户
 profile、DPAPI、网络凭据、映射盘和环境变量差异。
@@ -61,48 +131,8 @@ Windows 有效用户文件执行另用 `<pipeName>-user` 管道。代码只接�
 （`helper` / `local-identity` / `disabled`）选择执行后端，默认 `helper`，安装器在省略
 `-EnableWindowsUserExecution` 时写入 `disabled`。只有在隔离 Windows Server 中准备两个普通本地用户并执行
 SID/NTFS ACL、并发、token 释放与服务重启矩阵时，才可临时把 Helper 侧开关打开并把 Server 侧改为
-`helper`；`local-identity` 只是开发机后端（Production 下启动期拒绝），域账户、Git 与 Terminal
-仍不在此次测试范围内。
-
-### 1. 创建调试用户
-
-以**管理员身份**打开 PowerShell，创建用于调试的本地用户：
-
-```powershell
-# 以管理员身份运行
-New-LocalUser -Name "testuser" -Password (ConvertTo-SecureString "Test@123" -AsPlainText -Force)
-
-# 验证用户是否创建成功
-Get-LocalUser | Select-Object Name, Enabled
-```
-预期输出示例：
-```bash
-Name               Enabled
-----               -------
-Administrator      False
-betha               True
-DefaultAccount     False
-Guest              False
-testuser            True
-WDAGUtilityAccount False
-WsiAccount         False
-```
-### 2. 验证用户密码
-创建完成后，可以用以下命令验证密码是否正确：
-```powershell
-# 使用 PrincipalContext 验证
-$ctx = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Machine)
-$ctx.ValidateCredentials("testuser", "Test@123")
-```
-返回 True 表示验证成功。
-
-注意：不要用当前已登录的账户测试 ValidateCredentials，Windows 安全机制会阻止已登录用户验证自己的密码。
-
-### 3. 清理测试用户（可选）
-调试完成后可删除测试用户：
-```powershell
-Remove-LocalUser -Name "testuser"
-```
+`helper`；Windows 10/11 Docker Desktop 不属于该验收路径。`local-identity` 只是开发机后端（Production
+下启动期拒绝），域账户、Git 与 Terminal 仍不在此次测试范围内。
 
 ## Linux 特权 Helper 调试
 

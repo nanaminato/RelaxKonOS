@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using RelaxKonOS.Server.Domain;
 using RelaxKonOS.Server.HostMode;
@@ -15,7 +16,8 @@ public sealed record AuthenticatedLogin(User User, string Method, long Revision,
 
 public sealed class LoginAuthenticationService(IIdentityProvider identities, IUserRepository users,
     IAliasCredentialRepository credentials, AliasPasswordService passwords, CanonicalUserResolver resolver,
-    LoginProtectionService protection, IServerModeResolver serverMode, ILogger<LoginAuthenticationService> logger)
+    LoginProtectionService protection, IServerModeResolver serverMode, WindowsDesktopSessionOptions desktopSession,
+    ILogger<LoginAuthenticationService> logger)
 {
     public async Task<AuthenticatedLogin> AuthenticateAsync(string identifier, string password, IPAddress? ip, CancellationToken ct)
     {
@@ -66,8 +68,37 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
         var policy = credentials.Find(login.User.Id);
         if (current is null || current.IdentityReviewRequired || current.SecurityVersion != login.SecurityVersion
             || (policy?.Revision ?? 0) != login.Revision
-            || serverMode.Mode != ServerMode.User && login.Method == "system" && policy?.SystemLoginEnabled == false)
+            || (serverMode.Mode != ServerMode.User
+                && (login.Method is "system" or "windows-desktop-session")
+                && policy?.SystemLoginEnabled == false))
             throw Invalid();
+    }
+
+    /// <summary>
+    /// Authenticates the Windows principal negotiated on a loopback request. This is deliberately
+    /// separate from password login: it accepts only the interactive account that already owns the
+    /// Server process and therefore cannot turn a desktop Docker host into a multi-user server.
+    /// </summary>
+    public AuthenticatedLogin AuthenticateWindowsDesktopSession(ClaimsPrincipal principal)
+    {
+        desktopSession.RequireEnabled();
+        if (!OperatingSystem.IsWindows()) throw Invalid();
+        var callerSid = principal.FindFirstValue(ClaimTypes.PrimarySid)
+            ?? principal.FindFirstValue(ClaimTypes.Sid)
+            ?? (principal.Identity is System.Security.Principal.WindowsIdentity windows ? windows.User?.Value : null);
+        var serverSid = RelaxKonOS.Server.UserExecution.ServerProcessIdentity.CurrentStableIdentity();
+        if (string.IsNullOrWhiteSpace(callerSid) || string.IsNullOrWhiteSpace(serverSid)
+            || !string.Equals(callerSid, serverSid, StringComparison.OrdinalIgnoreCase))
+            throw new AliasAuthenticationException(403, "windows-desktop-session-account-required");
+
+        var lookup = identities.LookupIdentity(callerSid);
+        if (lookup.Status == IdentityLookupStatus.Unavailable) throw Unavailable("windows-desktop-session-identity-lookup");
+        if (lookup.Identity is not { } identity || identity.Platform != HostPlatformKind.Windows) throw Invalid();
+        var user = resolver.ResolveSystem(identity);
+        var policy = credentials.Find(user.Id);
+        if (policy?.SystemLoginEnabled == false) throw Invalid();
+        return new(user, "windows-desktop-session", policy?.Revision ?? 0, user.SecurityVersion, user.Id.ToString("D"),
+            RelaxKonOS.Server.UserExecution.UserExecutionEligibilityRules.Evaluate(identity, serverMode.Mode));
     }
 
     /// <summary>User Mode has exactly one login identity: the effective Unix account running

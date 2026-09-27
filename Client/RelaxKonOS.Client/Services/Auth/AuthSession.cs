@@ -84,6 +84,36 @@ public sealed class AuthSession : IAuthSession
         }
     }
 
+    public async Task<LoginResponse> LoginWindowsDesktopSessionAsync(ServerConnectionIdentity identity,
+        WindowsDesktopSessionLoginRequest request, bool rememberServer, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        lock (_gate)
+        {
+            if (State == AuthSessionState.Connecting) throw new InvalidOperationException("A login request is already in progress.");
+            State = AuthSessionState.Connecting;
+        }
+        RaiseStateChanged();
+        try
+        {
+            var response = await _client.LoginWindowsDesktopSessionAsync(identity.EffectiveBaseUrl, request, ct);
+            Apply(response, identity);
+            RememberedProfileSaveResult? saveResult = null;
+            if (rememberServer)
+                saveResult = await _rememberedSessionStore.UpsertAsync(new SavedLoginProfile(identity.ServiceId,
+                    "windows-desktop-session", null, DateTimeOffset.UtcNow), ct);
+            State = AuthSessionState.Authenticated;
+            RaiseStateChanged(saveResult);
+            return response;
+        }
+        catch
+        {
+            State = AuthSessionState.Unauthenticated;
+            RaiseStateChanged();
+            throw;
+        }
+    }
+
     public void UpdateConnection(ServerConnectionIdentity identity)
     {
         ArgumentNullException.ThrowIfNull(identity);

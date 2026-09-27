@@ -125,6 +125,7 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | 方法   | 路径                     | 请求                    | 响应                     | 认证  |
 | ---- | ---------------------- | --------------------- | ---------------------- | --- |
 | POST | `/api/v1.0/auth/login`   | `LoginRequest`        | `LoginResponse`        | 无   |
+| POST | `/api/v1.0/auth/windows-desktop-session` | `WindowsDesktopSessionLoginRequest` | `LoginResponse` | Negotiate；仅 Windows 开发机 loopback 的同 SID 会话 |
 | POST | `/api/v1.0/auth/refresh` | `RefreshTokenRequest` | `RefreshTokenResponse` | 无   |
 | POST | `/api/v1.0/auth/logout`  | `LogoutRequest`       | 204                    | JWT |
 | GET  | `/api/v1.0/auth/me`      | —                     | `UserDto`              | JWT |
