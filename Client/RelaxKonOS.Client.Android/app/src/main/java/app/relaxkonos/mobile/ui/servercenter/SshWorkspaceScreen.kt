@@ -58,12 +58,18 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
                 NavigationBarItem(
                     selected = page == 1,
                     onClick = { page = 1 },
-                    icon = { DesktopIcon(DesktopIcons.deployments, size = 26.dp) },
-                    label = { Text(stringResource(R.string.ssh_workspace_deploy)) },
+                    icon = { DesktopIcon(DesktopIcons.navTerminal, size = 26.dp) },
+                    label = { Text(stringResource(R.string.ssh_terminal_title)) },
                 )
                 NavigationBarItem(
                     selected = page == 2,
                     onClick = { page = 2 },
+                    icon = { DesktopIcon(DesktopIcons.deployments, size = 26.dp) },
+                    label = { Text(stringResource(R.string.ssh_workspace_deploy)) },
+                )
+                NavigationBarItem(
+                    selected = page == 3,
+                    onClick = { page = 3 },
                     icon = { DesktopIcon(DesktopIcons.system, size = 26.dp) },
                     label = { Text(stringResource(R.string.ssh_workspace_system)) },
                 )
@@ -72,7 +78,8 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     ) { padding ->
         when (page) {
             0 -> SshFilesScreen(hostId, Modifier.padding(padding))
-            1 -> DeploymentSetupScreen(host, Modifier.padding(padding))
+            1 -> SshTerminalScreen(hostId, onClose, Modifier.padding(padding))
+            2 -> DeploymentSetupScreen(host, Modifier.padding(padding))
             else -> SshSystemScreen(hostId, onClose, Modifier.padding(padding))
         }
     }

@@ -137,6 +137,9 @@ interface ServerCenterSshTransport : AutoCloseable {
      */
     suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult
 
+    /** Open a persistent, interactive PTY on this pinned SSH session. */
+    suspend fun openTerminal(): ServerCenterSshTerminal
+
     /**
      * 经 SFTP 上传到受控暂存目录。目标路径由操作层给出，不接受用户输入。
      * [contentLength] 未知时不上报进度百分比——界面不得凭空编造进度。
@@ -165,6 +168,11 @@ interface ServerCenterSshTransport : AutoCloseable {
      * 不接受任意主机名，避免把隧道变成通用的端口转发工具。
      */
     fun openLoopbackTunnel(remotePort: Int, basePath: String? = null): ServerCenterSshTunnel
+}
+
+interface ServerCenterSshTerminal : AutoCloseable {
+    suspend fun read(): String?
+    suspend fun write(value: String)
 }
 
 /** 创建传输实例。每次会话一条独立连接，由会话负责释放。 */

@@ -110,6 +110,15 @@
     <string name="ssh_files_preview">预览</string>
     <string name="ssh_workspace_title">SSH 工作区</string>
     <string name="ssh_workspace_subtitle">%1$s</string>
+    <string name="ssh_terminal_title">终端</string>
+    <string name="ssh_terminal_connecting">正在连接已信任的 SSH 主机…</string>
+    <string name="ssh_terminal_connected">交互式 SSH 终端已连接</string>
+    <string name="ssh_terminal_disconnected">SSH 终端已关闭</string>
+    <string name="ssh_terminal_failed">SSH 终端连接已断开，请检查网络和已信任的主机密钥。</string>
+    <string name="ssh_terminal_input">命令或输入</string>
+    <string name="ssh_terminal_send">发送</string>
+    <string name="ssh_terminal_retry">重新连接</string>
+    <string name="ssh_terminal_hide_input">隐藏输入</string>
     <string name="ssh_workspace_system">系统</string>
     <string name="ssh_workspace_system_subtitle">%1$s 的资源状态</string>
     <string name="ssh_workspace_system_unavailable">此主机未提供 Linux 资源快照。</string>

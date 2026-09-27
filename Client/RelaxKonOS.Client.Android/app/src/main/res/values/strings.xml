@@ -121,6 +121,15 @@
     <string name="ssh_files_preview">Preview</string>
     <string name="ssh_workspace_title">SSH workspace</string>
     <string name="ssh_workspace_subtitle">%1$s</string>
+    <string name="ssh_terminal_title">Terminal</string>
+    <string name="ssh_terminal_connecting">Connecting to the trusted SSH host…</string>
+    <string name="ssh_terminal_connected">Interactive SSH shell connected</string>
+    <string name="ssh_terminal_disconnected">SSH shell closed</string>
+    <string name="ssh_terminal_failed">SSH terminal disconnected. Check the connection and trusted host key.</string>
+    <string name="ssh_terminal_input">Command or input</string>
+    <string name="ssh_terminal_send">Send</string>
+    <string name="ssh_terminal_retry">Reconnect</string>
+    <string name="ssh_terminal_hide_input">Hide input</string>
     <string name="ssh_workspace_system">System</string>
     <string name="ssh_workspace_system_subtitle">Resource status for %1$s</string>
     <string name="ssh_workspace_system_unavailable">This host did not provide a Linux resource snapshot.</string>

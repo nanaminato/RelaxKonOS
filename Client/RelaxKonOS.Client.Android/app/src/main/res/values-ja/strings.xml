@@ -111,6 +111,15 @@
     <string name="ssh_files_preview">プレビュー</string>
     <string name="ssh_workspace_title">SSH ワークスペース</string>
     <string name="ssh_workspace_subtitle">%1$s</string>
+    <string name="ssh_terminal_title">ターミナル</string>
+    <string name="ssh_terminal_connecting">信頼済み SSH ホストに接続しています…</string>
+    <string name="ssh_terminal_connected">対話型 SSH シェルに接続しました</string>
+    <string name="ssh_terminal_disconnected">SSH シェルを閉じました</string>
+    <string name="ssh_terminal_failed">SSH ターミナルが切断されました。接続と信頼済みホストキーを確認してください。</string>
+    <string name="ssh_terminal_input">コマンドまたは入力</string>
+    <string name="ssh_terminal_send">送信</string>
+    <string name="ssh_terminal_retry">再接続</string>
+    <string name="ssh_terminal_hide_input">入力を隠す</string>
     <string name="ssh_workspace_system">システム</string>
     <string name="ssh_workspace_system_subtitle">%1$s のリソース状態</string>
     <string name="ssh_workspace_system_unavailable">このホストは Linux リソーススナップショットを提供しませんでした。</string>

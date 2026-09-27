@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.servercenter
 
 import app.relaxkonos.mobile.security.encodeUtf8
 import com.jcraft.jsch.ChannelExec
+import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.ChannelSftp
 import com.jcraft.jsch.SftpATTRS
 import com.jcraft.jsch.HostKey
@@ -15,6 +16,7 @@ import com.jcraft.jsch.UserInfo
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.io.InputStreamReader
 import java.io.OutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -178,6 +180,21 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         // sudo password stays out of the process list, the logs and the disk.
         val input = if (inputLine.isNullOrEmpty()) null else (inputLine + "\n").toByteArray(Charsets.UTF_8)
         return withContext(Dispatchers.IO) { execute(command, input) }
+    }
+
+    override suspend fun openTerminal(): ServerCenterSshTerminal = withContext(Dispatchers.IO) {
+        val channel = requireSession().openChannel("shell") as ChannelShell
+        try {
+            channel.setPty(true)
+            channel.setPtyType("dumb")
+            channel.setPtySize(80, 24, 640, 384)
+            val terminal = JschInteractiveTerminal(channel, channel.inputStream, channel.outputStream)
+            channel.connect(CHANNEL_CONNECT_TIMEOUT_MILLIS)
+            terminal
+        } catch (error: Exception) {
+            channel.disconnect()
+            throw error
+        }
     }
 
     override suspend fun upload(
@@ -414,6 +431,34 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         const val CONNECT_TIMEOUT_MILLIS = 20_000
         const val CHANNEL_CONNECT_TIMEOUT_MILLIS = 20_000
         const val CHANNEL_SETTLE_MILLIS = 5_000L
+    }
+}
+
+/** PTY streams stay live across commands, so shell state such as the working directory is retained. */
+internal class JschInteractiveTerminal(
+    private val channel: ChannelShell,
+    input: InputStream,
+    private val output: OutputStream,
+) : ServerCenterSshTerminal {
+    private val reader = InputStreamReader(input, Charsets.UTF_8)
+    private val writerGate = Mutex()
+
+    override suspend fun read(): String? = withContext(Dispatchers.IO) {
+        val buffer = CharArray(4096)
+        val count = reader.read(buffer)
+        if (count < 0) null else String(buffer, 0, count)
+    }
+
+    override suspend fun write(value: String) = withContext(Dispatchers.IO) {
+        writerGate.withLock {
+            check(channel.isConnected) { "The SSH terminal is disconnected." }
+            output.write(value.toByteArray(Charsets.UTF_8))
+            output.flush()
+        }
+    }
+
+    override fun close() {
+        channel.disconnect()
     }
 }
 

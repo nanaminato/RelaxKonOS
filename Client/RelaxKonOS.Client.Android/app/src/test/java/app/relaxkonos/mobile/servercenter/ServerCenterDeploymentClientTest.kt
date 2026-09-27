@@ -224,6 +224,8 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
     override suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult =
         error("not used")
 
+    override suspend fun openTerminal(): ServerCenterSshTerminal = error("not used")
+
     override suspend fun upload(
         content: InputStream,
         contentLength: Long?,

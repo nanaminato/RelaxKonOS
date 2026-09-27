@@ -205,6 +205,8 @@ private class FakeTransport(private val portSequence: List<Int>) : ServerCenterS
     override suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult =
         ServerCenterSshCommandResult(0, "", "")
 
+    override suspend fun openTerminal(): ServerCenterSshTerminal = error("not used")
+
     override suspend fun upload(
         content: InputStream,
         contentLength: Long?,
