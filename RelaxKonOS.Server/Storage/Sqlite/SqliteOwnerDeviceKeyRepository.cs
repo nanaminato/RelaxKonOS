@@ -9,8 +9,10 @@ public sealed class SqliteOwnerDeviceKeyRepository(RelaxKonOSDbContext db) : IOw
         => db.OwnerDeviceKeys.FirstOrDefault(key => key.Id == id && key.RevokedAt == null);
 
     public IReadOnlyList<OwnerDeviceKey> ListActive(Guid userId)
+        // Microsoft.EntityFrameworkCore.Sqlite cannot translate DateTimeOffset ordering.
+        // Keep filtering in SQL and apply the small per-user ordering after materialization.
         => db.OwnerDeviceKeys.AsNoTracking().Where(key => key.UserId == userId && key.RevokedAt == null)
-            .OrderBy(key => key.CreatedAt).ToArray();
+            .AsEnumerable().OrderBy(key => key.CreatedAt).ToArray();
 
     public OwnerDeviceKey Add(OwnerDeviceKey key)
     {

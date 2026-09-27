@@ -77,6 +77,46 @@ public sealed class OwnerDeviceKeyService(IServiceScopeFactory scopes)
         });
     }
 
+    /// <summary>
+    /// Registers the local Windows device, or replaces its lost local key. The caller is already
+    /// constrained by the loopback Negotiate route and the same Windows account that runs Server.
+    /// It is intentionally not available to ordinary owner-device or remote sessions.
+    /// </summary>
+    public OwnerDeviceKey RegisterOrReplaceLocalWindowsDevice(Guid userId, Guid deviceId, OwnerDeviceBootstrapRequest request)
+    {
+        RequireAvailable();
+        ValidateRequest(request.DeviceName, request.Platform, request.ClientVersion, request.PublicKeySpki);
+        return WithKeys(keys =>
+        {
+            var existing = keys.FindActive(deviceId);
+            if (existing is null)
+            {
+                return keys.Add(new OwnerDeviceKey
+                {
+                    Id = deviceId,
+                    UserId = userId,
+                    DeviceId = deviceId,
+                    Name = request.DeviceName.Trim(),
+                    Platform = request.Platform.Trim().ToLowerInvariant(),
+                    ClientVersion = request.ClientVersion.Trim(),
+                    PublicKeySpki = request.PublicKeySpki,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                });
+            }
+
+            if (existing.UserId != userId)
+                throw new OwnerDeviceKeyException(409, "owner-device-already-enrolled");
+
+            existing.Name = request.DeviceName.Trim();
+            existing.Platform = request.Platform.Trim().ToLowerInvariant();
+            existing.ClientVersion = request.ClientVersion.Trim();
+            existing.PublicKeySpki = request.PublicKeySpki;
+            existing.LastUsedAt = null;
+            keys.Update(existing);
+            return existing;
+        });
+    }
+
     public OwnerDeviceInvitation CreateInvitation(ClaimsPrincipal principal)
     {
         var owner = RequireOwner(principal);

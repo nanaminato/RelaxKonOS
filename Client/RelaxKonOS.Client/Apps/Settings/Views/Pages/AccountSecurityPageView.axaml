@@ -21,11 +21,13 @@
     <TextBlock Text="{Binding Capability}" TextWrapping="Wrap" />
     <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" Padding="12" CornerRadius="3">
       <StackPanel Spacing="8">
-        <TextBlock Text="Paired owner devices" FontWeight="SemiBold" />
-        <TextBlock Text="Enter the LAN or public address that the receiving device can reach. The local connection address is never placed in this QR code; no Server password is transferred." TextWrapping="Wrap" FontSize="12" />
-        <TextBox Text="{Binding PairingServerUrl}" PlaceholderText="https://server.example or http://192.168.1.10:5090" />
-        <TextBlock Text="For an Internet-facing address, use HTTPS. Plain HTTP is suitable only for a trusted LAN." TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
-        <Button Content="Create pairing QR code" Command="{Binding CreateOwnerDevicePairingCommand}" IsEnabled="{Binding CanCreateOwnerDevicePairing}" HorizontalAlignment="Left" />
+        <TextBlock Text="{loc:Loc settings.account.owner_devices.title}" FontWeight="SemiBold" />
+        <TextBlock Text="{loc:Loc settings.account.owner_devices.description}" TextWrapping="Wrap" FontSize="12" />
+        <TextBlock Text="{loc:Loc settings.account.owner_devices.endpoint}" FontSize="12" />
+        <TextBox Text="{Binding PairingServerUrl}" PlaceholderText="{loc:Loc settings.account.owner_devices.endpoint_placeholder}" />
+        <TextBlock Text="{loc:Loc settings.account.owner_devices.http_notice}" TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
+        <TextBlock Text="{Binding OwnerDevicePairingRequirement}" IsVisible="{Binding OwnerDevicePairingSignInRequired}" TextWrapping="Wrap" FontSize="12" />
+        <Button Content="{loc:Loc settings.account.owner_devices.create}" Command="{Binding CreateOwnerDevicePairingCommand}" IsEnabled="{Binding CanCreateOwnerDevicePairing}" HorizontalAlignment="Left" />
         <Image Source="{Binding PairingQrCode}" IsVisible="{Binding HasPairingQrCode}" Width="280" Height="280" Stretch="Uniform" />
         <TextBox Text="{Binding PairingCode}" IsVisible="{Binding HasPairingQrCode}" IsReadOnly="True" TextWrapping="Wrap" MinHeight="60" />
       </StackPanel>

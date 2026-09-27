@@ -157,15 +157,17 @@
                 <TextBlock Text="{Binding IdentityNotice}"
                            Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="88,11,0,0" />
 
-                <Border IsVisible="{Binding OwnerDeviceAvailable}" Background="{DynamicResource SurfaceBrush}"
+                <Button IsVisible="{Binding OwnerDeviceAvailable}" Command="{Binding ToggleOwnerDeviceOptionsCommand}"
+                        Content="{Binding OwnerDeviceOptionsToggleText}" HorizontalAlignment="Left" Margin="0,12,0,0"
+                        Padding="0" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource AccentBrush}" />
+
+                <Border IsVisible="{Binding ShowOwnerDeviceOptions}" Background="{DynamicResource SurfaceBrush}"
                         BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="2"
-                        Margin="0,18,0,0" Padding="13,11">
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="Paired device key" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="Use a paired Windows/Linux device without storing the Server password. On Linux without a desktop keyring, the private key remains in a passphrase-encrypted file."
+                        Margin="0,10,0,0" Padding="13,11">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="{Binding OwnerDeviceTitle}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding OwnerDeviceDescription}"
                                    TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBox Classes="connection-input" Text="{Binding OwnerDeviceKeyPassphrase}" PasswordChar="●"
-                                 PlaceholderText="{Binding OwnerDeviceKeyPassphraseText}" />
                         <WrapPanel>
                             <Button Classes="connect-button" Content="{Binding BootstrapWindowsOwnerDeviceText}"
                                     Command="{Binding BootstrapWindowsOwnerDeviceCommand}"
@@ -173,6 +175,15 @@
                             <Button Classes="connect-button" Content="{Binding ConnectOwnerDeviceText}"
                                     Command="{Binding ConnectOwnerDeviceCommand}" />
                         </WrapPanel>
+                        <StackPanel IsVisible="{Binding OwnerDevicePassphraseAvailable}" Spacing="4">
+                            <TextBox Classes="connection-input" Text="{Binding OwnerDeviceKeyPassphrase}" PasswordChar="●"
+                                     PlaceholderText="{Binding OwnerDeviceKeyPassphraseText}" />
+                            <TextBlock Text="{Binding OwnerDeviceKeyPassphraseHint}" TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.72" />
+                        </StackPanel>
+                        <Border Background="{DynamicResource BorderDefaultBrush}" Height="1" Margin="0,2" />
+                        <TextBlock Text="{Binding OwnerDevicePairingDescription}" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBox Classes="connection-input" Text="{Binding OwnerDevicePairingCode}"
                                  PlaceholderText="{Binding OwnerDevicePairingCodeText}" />
                         <Button Classes="connect-button" Content="{Binding AcceptOwnerDevicePairingText}"

@@ -31,7 +31,7 @@ public sealed class OwnerDeviceAuthenticationService(IRelaxKonOSClient client, I
     public async Task<LoginResponse> SignInAsync(ServerConnectionIdentity identity, string? passphrase, CancellationToken ct = default)
     {
         var material = await keys.LoadAsync(identity.ServiceId, passphrase, ct)
-            ?? throw new InvalidOperationException("This device has not been paired with the selected Server.");
+            ?? throw new OwnerDeviceNotPairedException();
         if (material.DeviceId == Guid.Empty) throw new InvalidOperationException("The saved owner-device key is not enrolled.");
         var challenge = await client.CreateOwnerDeviceChallengeAsync(identity.EffectiveBaseUrl,
             new OwnerDeviceChallengeRequest(material.DeviceId), ct);
@@ -109,3 +109,9 @@ public sealed class OwnerDeviceAuthenticationService(IRelaxKonOSClient client, I
 /// never a private key or an access token.
 /// </summary>
 public sealed record OwnerDevicePairingPayload(int Version, string ServerUrl, string Token, DateTimeOffset ExpiresAt);
+
+/// <summary>Raised when this client has no private key enrolled with the selected Server.</summary>
+public sealed class OwnerDeviceNotPairedException : InvalidOperationException
+{
+    public OwnerDeviceNotPairedException() : base("This device has not been paired with the selected Server.") { }
+}

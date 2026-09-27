@@ -51,7 +51,12 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
     public bool CanCreate => !Busy && Configuration is { Available: true, Alias: null } && session.CurrentSession?.AuthenticationMethod == "system";
     public bool CanManage => !Busy && Configuration is { Available: true, Alias: not null };
     public bool CanRestore => !Busy && Configuration is { Alias: not null };
-    public bool CanCreateOwnerDevicePairing => !Busy && session.State == AuthSessionState.Authenticated;
+    public bool CanCreateOwnerDevicePairing => !Busy && session.State == AuthSessionState.Authenticated
+        && session.CurrentSession?.AuthenticationMethod == "owner-device-key";
+    public bool OwnerDevicePairingSignInRequired => session.State == AuthSessionState.Authenticated
+        && session.CurrentSession?.AuthenticationMethod != "owner-device-key";
+    public string OwnerDevicePairingRequirement => T("settings.account.owner_devices.sign_in_required",
+        "Sign in with a paired device key before creating a pairing QR code.");
     public string Capability => Configuration is { Available: false } ? T("settings.account.unavailable." + Configuration.UnavailableReason,
         T("settings.account.unavailable", "Account eligibility could not be confirmed. System login remains available when enabled; contact the server operator.")) : "";
     public Func<string, AliasConfigurationDto, CancellationToken, Task<object?>>? RequestOperationAsync { get; set; }
@@ -158,6 +163,8 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
         OnPropertyChanged(nameof(CanManage));
         OnPropertyChanged(nameof(CanRestore));
         OnPropertyChanged(nameof(CanCreateOwnerDevicePairing));
+        OnPropertyChanged(nameof(OwnerDevicePairingSignInRequired));
+        OnPropertyChanged(nameof(OwnerDevicePairingRequirement));
         CreateOwnerDevicePairingCommand.NotifyCanExecuteChanged();
         _ = LoadPairingServerUrlAsync();
         if (session.State == AuthSessionState.Authenticated) _ = LoadAsync();

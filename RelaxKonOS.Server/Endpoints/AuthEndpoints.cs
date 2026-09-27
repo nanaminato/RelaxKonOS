@@ -127,7 +127,7 @@ public static class AuthEndpoints
             .WithTags("Server");
 
         group.MapPost(OwnerDeviceKeyApiRoutes.LocalBootstrap, async (OwnerDeviceBootstrapRequest request, HttpContext http,
-                LoginAuthenticationService authentication, IOwnerDeviceKeyRepository keys, OwnerDeviceKeyService ownerDevices,
+                LoginAuthenticationService authentication, OwnerDeviceKeyService ownerDevices,
                 IUserRepository users, IWorkspaceRepository workspaces, IRegistryRepository registry, ISessionRepository sessions,
                 IDeviceRepository devices, JwtTokenService jwt, LoginProtectionService protection, IServerModeResolver serverMode,
                 CancellationToken ct) =>
@@ -137,15 +137,13 @@ public static class AuthEndpoints
                 if (!ownerDevices.IsAvailable)
                     throw new OwnerDeviceKeyException(404, "owner-device-unsupported-platform");
                 var login = authentication.AuthenticateWindowsWorkstationOwnerBootstrap(http.User);
-                if (keys.ListActive(login.User.Id).Count != 0)
-                    return Results.Conflict(new { problemCode = "owner-device-bootstrap-complete" });
                 var platform = request.Platform.Trim().ToLowerInvariant();
                 var device = devices.FindByNameAndPlatform(request.DeviceName.Trim(), platform) ?? devices.Add(new Device
                 {
                     Id = Guid.NewGuid(), Name = request.DeviceName.Trim(), Platform = platform,
                     ClientVersion = request.ClientVersion.Trim(),
                 });
-                ownerDevices.Register(login.User.Id, device.Id, request);
+                ownerDevices.RegisterOrReplaceLocalWindowsDevice(login.User.Id, device.Id, request);
                 return await CompleteLoginAsync(login, OwnerClientPlatform(device.Platform), device.Name, device.ClientVersion, http,
                     authentication, users, workspaces, registry, sessions, devices, jwt, protection, serverMode, ct, device);
             })

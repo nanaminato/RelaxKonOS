@@ -51,7 +51,7 @@ public interface IAuthSession
     Task<LoginResponse> LoginWindowsDesktopSessionAsync(ServerConnectionIdentity identity,
         WindowsDesktopSessionLoginRequest request, bool rememberServer, CancellationToken ct = default);
 
-    /// <summary>Creates the first owner-device key through local Windows session authentication.</summary>
+    /// <summary>Creates or recovers this Windows device's owner key through local Windows session authentication.</summary>
     Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(ServerConnectionIdentity identity, string deviceName,
         string clientVersion, CancellationToken ct = default);
 

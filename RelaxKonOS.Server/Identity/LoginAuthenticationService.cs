@@ -109,13 +109,16 @@ public sealed class LoginAuthenticationService(IIdentityProvider identities, IUs
     /// </summary>
     public AuthenticatedLogin AuthenticateWindowsWorkstationOwnerBootstrap(ClaimsPrincipal principal)
     {
-        if (!WindowsWorkstationPlatform.IsWindows10Or11Workstation())
+        if (!OperatingSystem.IsWindows() || !WindowsWorkstationPlatform.IsWindows10Or11Workstation())
             throw new AliasAuthenticationException(404, "owner-device-unsupported-platform");
         if (principal.Identity is not WindowsIdentity windowsIdentity
-            || !new WindowsPrincipal(windowsIdentity).IsInRole(WindowsBuiltInRole.Administrator))
+            || !WindowsAdministratorMembership.IsAdministratorOrCanElevate(windowsIdentity))
             throw new AliasAuthenticationException(403, "owner-device-local-administrator-required");
         var sid = windowsIdentity.User?.Value;
         if (string.IsNullOrWhiteSpace(sid)) throw Invalid();
+        var serverSid = RelaxKonOS.Server.UserExecution.ServerProcessIdentity.CurrentStableIdentity();
+        if (string.IsNullOrWhiteSpace(serverSid) || !string.Equals(sid, serverSid, StringComparison.OrdinalIgnoreCase))
+            throw new AliasAuthenticationException(403, "owner-device-windows-session-account-required");
         var lookup = identities.LookupIdentity(sid);
         if (lookup.Status == IdentityLookupStatus.Unavailable) throw Unavailable("owner-device-identity-lookup");
         if (lookup.Identity is not { } identity || identity.Platform != HostPlatformKind.Windows) throw Invalid();

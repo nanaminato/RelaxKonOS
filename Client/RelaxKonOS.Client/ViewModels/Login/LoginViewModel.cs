@@ -75,6 +75,7 @@ public partial class LoginViewModel : ObservableObject
         OnPropertyChanged(nameof(WindowsDesktopSessionAvailable));
         OnPropertyChanged(nameof(OwnerDeviceAvailable));
         OnPropertyChanged(nameof(WindowsOwnerDeviceBootstrapAvailable));
+        if (value) ShowOwnerDeviceOptions = false;
         if (value)
         {
             _relaxServerUrl = ServerUrl;
@@ -139,6 +140,10 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AcceptOwnerDevicePairingCommand))]
     private string _ownerDevicePairingCode = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OwnerDeviceOptionsToggleText))]
+    private bool _showOwnerDeviceOptions;
 
     [ObservableProperty]
     // Debug 和生产版本都默认启用；用户可在共享设备上取消勾选。
@@ -206,11 +211,18 @@ public partial class LoginViewModel : ObservableObject
     public bool WindowsDesktopSessionAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
     public bool OwnerDeviceAvailable => !UseSshLogin;
     public bool WindowsOwnerDeviceBootstrapAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
+    public bool OwnerDevicePassphraseAvailable => OperatingSystem.IsLinux();
+    public string OwnerDeviceOptionsToggleText => T(ShowOwnerDeviceOptions ? "login.owner_device.options.hide" : "login.owner_device.options.show",
+        ShowOwnerDeviceOptions ? "Hide paired-device options" : "Use a paired device key");
+    public string OwnerDeviceTitle => T("login.owner_device.title", "Paired device");
+    public string OwnerDeviceDescription => T("login.owner_device.description", "Sign in with a private key instead of a Server password.");
     public string BootstrapWindowsOwnerDeviceText => T("login.owner_device.setup", "Set up this Windows device");
-    public string ConnectOwnerDeviceText => T("login.owner_device.connect", "Use paired device key");
-    public string OwnerDevicePairingCodeText => T("login.owner_device.pairing_code", "Pairing code (paste from QR or another client)");
-    public string OwnerDeviceKeyPassphraseText => T("login.owner_device.passphrase", "Device key passphrase (Linux without a keyring)");
-    public string AcceptOwnerDevicePairingText => T("login.owner_device.accept", "Pair and connect");
+    public string ConnectOwnerDeviceText => T("login.owner_device.connect", "Sign in with device key");
+    public string OwnerDevicePairingDescription => T("login.owner_device.pairing_description", "New device? Scan a pairing QR code, then paste its code here.");
+    public string OwnerDevicePairingCodeText => T("login.owner_device.pairing_code", "Pairing code");
+    public string OwnerDeviceKeyPassphraseText => T("login.owner_device.passphrase", "Key-file passphrase");
+    public string OwnerDeviceKeyPassphraseHint => T("login.owner_device.passphrase_hint", "Required only when Linux has no desktop keyring.");
+    public string AcceptOwnerDevicePairingText => T("login.owner_device.accept", "Pair and sign in");
     public string ConfirmHostKeyText => T("login.ssh_confirm_host_key", "I verified this fingerprint; trust and connect");
     public string HostKeyDialogTitle => T("login.ssh_host_key_title", "Verify SSH host key");
     public string CancelText => T("common.cancel", "Cancel");
@@ -433,6 +445,12 @@ public partial class LoginViewModel : ObservableObject
             HasError = true;
             StatusMessage = string.Empty;
         }
+        catch (OwnerDeviceNotPairedException)
+        {
+            ErrorMessage = T("login.owner_device.not_paired", "This device has not been paired with the selected Server. Set up or recover this Windows device locally, or use a pairing code.");
+            HasError = true;
+            StatusMessage = string.Empty;
+        }
         catch (RelaxKonOSAuthException ex) { ErrorMessage = MapProblemToMessage(ex); HasError = true; StatusMessage = string.Empty; }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or CryptographicException) { ErrorMessage = ex.Message; HasError = true; StatusMessage = string.Empty; }
         finally { IsConnecting = false; }
@@ -577,6 +595,10 @@ public partial class LoginViewModel : ObservableObject
     [RelayCommand]
     private void ToggleOptions()
         => ShowOptions = !ShowOptions;
+
+    [RelayCommand]
+    private void ToggleOwnerDeviceOptions()
+        => ShowOwnerDeviceOptions = !ShowOwnerDeviceOptions;
 
     [RelayCommand]
     private void TogglePasswordVisibility()
@@ -804,6 +826,9 @@ public partial class LoginViewModel : ObservableObject
         "https://relaxkonos.app/problems/windows-desktop-session-unavailable" => T("api.auth.windows_desktop_session_unavailable", "This Server has not enabled Windows session sign-in."),
         "https://relaxkonos.app/problems/windows-desktop-session-account-required" => T("api.auth.windows_desktop_session_account_required", "Use the same Windows account that started this local Server."),
         "https://relaxkonos.app/problems/windows-desktop-session-loopback-required" => T("api.auth.windows_desktop_session_loopback_required", "Windows session sign-in is available only through localhost."),
+        "https://relaxkonos.app/problems/owner-device-local-administrator-required" => T("api.auth.owner_device_local_administrator_required", "The current Windows account must be an Administrator to set up the first paired device."),
+        "https://relaxkonos.app/problems/owner-device-windows-session-account-required" => T("api.auth.owner_device_windows_session_account_required", "Use the same Windows account that started this local Server."),
+        "https://relaxkonos.app/problems/owner-device-bootstrap-complete" => T("api.auth.owner_device_bootstrap_complete", "A paired owner device is already configured for this account. Sign in with its device key or pair another device."),
         "https://relaxkonos.app/problems/login-rate-limited"   => T("api.auth.login_rate_limited", "Too many sign-in attempts. Wait a few minutes and try again."),
         "https://relaxkonos.app/problems/auth-failed"         => T("api.auth.failed", "Sign-in failed. Try again later."),
         _ => T("api.auth.failed_short", "Sign-in failed."),

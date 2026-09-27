@@ -13,7 +13,7 @@ public interface IRelaxKonOSClient
     Task<LoginResponse> LoginWindowsDesktopSessionAsync(string serverUrl, WindowsDesktopSessionLoginRequest request,
         CancellationToken ct = default);
 
-    /// <summary>Bootstraps the first owner-device key through local Windows Negotiate authentication.</summary>
+    /// <summary>Creates or recovers this Windows device's owner key through local Windows Negotiate authentication.</summary>
     Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(string serverUrl, OwnerDeviceBootstrapRequest request,
         CancellationToken ct = default);
 
