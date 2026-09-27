@@ -61,7 +61,7 @@ var request = new ServerDeploymentRequest(ServerDeploymentProtocol.Version, oper
 using var launcher = new MemoryStream("#!/bin/sh\n"u8.ToArray());
 using var verifier = new MemoryStream("verifier"u8.ToArray());
 var staged = await client.StageAsync(request, HostPlatformKind.Linux, launcher, verifier,
-    null, null, null, null, CancellationToken.None);
+    null, null, null, null, null, null, CancellationToken.None);
 Check(staged.OperationId == operationId && staged.RemoteDirectory.StartsWith("/tmp/relaxkonos-deploy.",
     StringComparison.Ordinal), "预检操作使用私有远端暂存目录");
 Check(transport.Uploaded.Keys.Order().SequenceEqual(new[]
@@ -89,7 +89,7 @@ var blocked = false;
 try
 {
     await refusingClient.StageAsync(invalidRequest, HostPlatformKind.Linux, launcher, verifier,
-        null, null, null, null, CancellationToken.None);
+        null, null, null, null, null, null, CancellationToken.None);
 }
 catch (ArgumentException) { blocked = true; }
 Check(blocked && refused.Commands.Count == 0 && refused.Uploaded.Count == 0,
@@ -99,7 +99,7 @@ var windows = new FakeTransport { WindowsDirectory =
     @"C:\Users\runner\AppData\Local\Temp\relaxkonos-deploy-0123456789abcdef0123456789abcdef" };
 var windowsClient = new ServerCenterDeploymentClient(windows);
 var windowsStage = await windowsClient.StageAsync(request, HostPlatformKind.Windows, launcher, verifier,
-    null, null, null, null, CancellationToken.None);
+    null, null, null, null, null, null, CancellationToken.None);
 Check(windowsStage.Platform == HostPlatformKind.Windows &&
       windows.Uploaded.Keys.Any(path => path.EndsWith("/release-verifier.exe", StringComparison.Ordinal)),
     "Windows 暂存使用目标平台验证器文件名");

@@ -15,9 +15,9 @@ class ServerHostTargetTest {
     private val installIdB = "rki-" + "b".repeat(32)
 
     @Test
-    fun `host id is derived from the normalized endpoint`() {
+    fun `host id is derived from the normalized server and user`() {
         val target = ServerHostTargetRules.create("Host.Example", 22, "deploy", "  机房 A  ", now)
-        assertEquals(ServerHostTargetRules.hostId("host.example", 22), target.hostId)
+        assertEquals(ServerHostTargetRules.hostId("host.example", 22, "deploy"), target.hostId)
         assertTrue(ServerHostTargetRules.isHostId(target.hostId))
         assertEquals("host.example", target.sshHost)
         assertEquals("机房 A", target.displayName)
@@ -29,19 +29,19 @@ class ServerHostTargetTest {
     fun `host id matches the C# derivation byte for byte`() {
         // 这两个值是 C# `ServerHostTargetRules.HostId` 的输出。两端必须逐字一致，
         // 否则同一台宿主会在桌面与手机上得到两条不同的管理资料。
-        assertEquals("rkhost-830da5105a935d10", ServerHostTargetRules.hostId("host.example", 22))
-        assertEquals("rkhost-3dcd84aa41489796", ServerHostTargetRules.hostId("node-1", 2222))
+        assertEquals("rkhost-3191daa32b9b1e91", ServerHostTargetRules.hostId("host.example", 22, "deploy"))
+        assertEquals("rkhost-179ee8d9b69573a2", ServerHostTargetRules.hostId("node-1", 2222, "root"))
     }
 
     @Test
-    fun `adding the same endpoint twice does not create a second target`() {
+    fun `the same server can retain distinct users`() {
         val first = ServerHostTargetRules.create("host.example", 22, "deploy", null, now)
         val second = ServerHostTargetRules.create("HOST.EXAMPLE", 22, "other", null, now)
-        assertEquals(first.hostId, second.hostId)
+        assertFalse(first.hostId == second.hostId)
         assertEquals("host.example:22", second.displayName)
         assertFalse(
-            ServerHostTargetRules.hostId("host.example", 22) ==
-                ServerHostTargetRules.hostId("host.example", 2222),
+            ServerHostTargetRules.hostId("host.example", 22, "deploy") ==
+                ServerHostTargetRules.hostId("host.example", 2222, "deploy"),
         )
     }
 

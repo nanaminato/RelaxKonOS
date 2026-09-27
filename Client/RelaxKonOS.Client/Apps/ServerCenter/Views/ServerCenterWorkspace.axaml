@@ -21,17 +21,13 @@
                 <StackPanel Margin="14,22" Spacing="4">
                     <Button x:Name="HostsButton" Classes="workspace-nav" Tag="hosts" Click="NavigationButton_Click"
                             Content="{Binding HostsPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
-                    <Button Classes="workspace-nav" Tag="connection" Click="NavigationButton_Click"
-                            Content="{Binding ConnectionPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="deployment" Click="NavigationButton_Click"
                             Content="{Binding DeploymentPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="history" Click="NavigationButton_Click"
                             Content="{Binding HistoryPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
                 </StackPanel>
             </Border>
-            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <ContentControl x:Name="ContentHost" Margin="30,24" HorizontalAlignment="Stretch" />
-            </ScrollViewer>
+            <ContentControl Grid.Column="1" x:Name="ContentHost" Margin="30,24" HorizontalAlignment="Stretch" />
         </Grid>
 
         <Border Grid.Row="2" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}"

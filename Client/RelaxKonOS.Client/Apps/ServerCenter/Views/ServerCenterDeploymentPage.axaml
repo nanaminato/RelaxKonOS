@@ -3,24 +3,41 @@
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterDeploymentPage"
              x:DataType="vm:ServerCenterViewModel">
-    <StackPanel Spacing="18">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="18" Margin="0,0,12,0">
         <TextBlock Text="{Binding DeploymentPageTitle}" FontSize="21" FontWeight="SemiBold" />
+        <Border Classes="card" Padding="20">
+            <StackPanel Spacing="10">
+                <TextBlock Text="{Binding SelectedTargetLabel}" FontWeight="SemiBold" />
+                <ComboBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}" SelectionChanged="SelectedHost_SelectionChanged" HorizontalAlignment="Left" MinWidth="310">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SshHost}" FontSize="12" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding SshUserName}" VerticalAlignment="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="{Binding EmptyHostsText}" IsVisible="{Binding !HasHosts}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
         <TextBlock Text="{Binding SelectHostHint}" IsVisible="{Binding !SelectedHost}" TextWrapping="Wrap" />
         <Border Classes="card" Padding="20" IsVisible="{Binding SelectedHost}">
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
                 <TextBlock Text="{Binding ProbeHelpText}" FontSize="12" TextWrapping="Wrap" />
-                <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding SshPasswordLabel}" />
-                <ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding SelectedPlatform}"
-                          PlaceholderText="{Binding PlatformLabel}" HorizontalAlignment="Left" MinWidth="180">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
+                <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding DeploymentPasswordHint}" />
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding PlatformLabel}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding SelectedPlatformText}" />
+                </StackPanel>
                 <Button Command="{Binding ProbeHostCommand}" Content="{Binding ProbeText}" HorizontalAlignment="Left" />
                 <TextBlock Text="{Binding LastProbeText}" IsVisible="{Binding HasLastProbe}" TextWrapping="Wrap" />
-                <CheckBox IsChecked="{Binding DeploymentConfirmed}" Content="{Binding DeployConfirmationText}" />
-                <Button Command="{Binding DeployRecommendedCommand}" Content="{Binding DeployText}" HorizontalAlignment="Left" />
+                <Button Command="{Binding OpenInstallationWizardCommand}" Content="{Binding DeployText}" HorizontalAlignment="Left" />
             </StackPanel>
         </Border>
         <Border Classes="card" Padding="20" IsVisible="{Binding SelectedHost.LastVerified.Installed}">
@@ -36,4 +53,5 @@
             </StackPanel>
         </Border>
     </StackPanel>
+    </ScrollViewer>
 </UserControl>

@@ -108,7 +108,7 @@ say() {
   case "$LANGUAGE:$key" in
     zh-CN:title) echo 'RelaxKonOS 服务端安装器' ;; en-US:title) echo 'RelaxKonOS Server Installer' ;; ja-JP:title) echo 'RelaxKonOS サーバー インストーラー' ;;
     zh-CN:source) echo '选择安装来源：1) 官方稳定版（默认）  2) 本地发布目录  3) 自定义发布 ZIP URL' ;; en-US:source) echo 'Select source: 1) official stable release (default)  2) local release directory  3) custom release ZIP URL' ;; ja-JP:source) echo 'インストール元: 1) 公式安定版（既定） 2) ローカル リリース ディレクトリ 3) カスタム ZIP URL' ;;
-    zh-CN:network) echo '网络模式：1) 仅本机（推荐）  2) 局域网 HTTP  3) 反向代理' ;; en-US:network) echo 'Network: 1) local only (recommended)  2) LAN HTTP  3) reverse proxy' ;; ja-JP:network) echo 'ネットワーク: 1) ローカルのみ（推奨） 2) LAN HTTP 3) リバースプロキシ' ;;
+    zh-CN:network) echo '网络模式：1) 仅本机（推荐）  2) 局域网 HTTP' ;; en-US:network) echo 'Network: 1) local only (recommended)  2) LAN HTTP' ;; ja-JP:network) echo 'ネットワーク: 1) ローカルのみ（推奨） 2) LAN HTTP' ;;
     zh-CN:certificate) echo '证书模式：1) 不使用证书（默认）  2) 使用自己的 PFX 证书  3) 生成自签名证书' ;; en-US:certificate) echo 'TLS certificate: 1) no certificate (default)  2) use your PFX certificate  3) generate a self-signed certificate' ;; ja-JP:certificate) echo '証明書: 1) 使用しない（既定） 2) 自分の PFX 証明書 3) 自己署名証明書を生成' ;;
     zh-CN:certificate_path) echo 'PFX 证书文件路径' ;; en-US:certificate_path) echo 'PFX certificate file path' ;; ja-JP:certificate_path) echo 'PFX 証明書ファイルのパス' ;;
     zh-CN:certificate_password) echo 'PFX 证书密码（如无密码直接回车）' ;; en-US:certificate_password) echo 'PFX password (press Enter when there is no password)' ;; ja-JP:certificate_password) echo 'PFX パスワード（パスワードなしの場合は Enter）' ;;
@@ -274,7 +274,7 @@ if [[ "$DOCKER_ACCESS_SET" != true ]]; then
   [[ "$(state_flag dockerAccess)" == true ]] && DOCKER_ACCESS=true || DOCKER_ACCESS=false
 fi
 
-case "$NETWORK_PROFILE" in local|lan|reverse-proxy) ;; *) usage ;; esac
+case "$NETWORK_PROFILE" in local|lan) ;; *) usage ;; esac
 for access in "$FILE_ACCESS" "$ADMINISTRATOR_FILE_ACCESS" "$ROOT_FILE_ACCESS"; do
   case "$access" in restricted|full|whitelist) ;; *) usage ;; esac
 done
@@ -388,13 +388,12 @@ fi
 
 if [[ "$NON_INTERACTIVE" == false && ( "$ACTION" == install || "$ACTION" == upgrade ) ]]; then
   echo "$(say network)"; read -r network
-  case "${network:-1}" in 1) NETWORK_PROFILE=local ;; 2) NETWORK_PROFILE=lan ;; 3) NETWORK_PROFILE=reverse-proxy ;; *) exit 64 ;; esac
+  case "${network:-1}" in 1) NETWORK_PROFILE=local ;; 2) NETWORK_PROFILE=lan ;; *) exit 64 ;; esac
   echo "$(say file)"; read -r access
   case "${access:-1}" in 1) FILE_ACCESS=restricted ;; 2) FILE_ACCESS=whitelist; [[ -n "$FILE_ROOTS_FILE" ]] || read -r -p 'Whitelist file: ' FILE_ROOTS_FILE ;; 3) FILE_ACCESS=full ;; *) exit 64 ;; esac
   [[ "$FILE_ACCESS" != whitelist || -f "$FILE_ROOTS_FILE" ]] || { echo 'Whitelist file is required.' >&2; exit 64; }
 fi
 case "$NETWORK_PROFILE" in lan) LISTEN_HOST=0.0.0.0; echo 'LAN mode does not open the firewall automatically.' >&2 ;; *) LISTEN_HOST=127.0.0.1 ;; esac
-[[ "$NETWORK_PROFILE" != reverse-proxy ]] || echo 'Reverse-proxy mode listens locally; configure HTTPS at the proxy.' >&2
 [[ "$FILE_ACCESS" != full ]] || echo 'WARNING: full file access is enabled.' >&2
 LISTEN_SCHEME=http
 [[ "$CERTIFICATE_MODE" == none ]] || LISTEN_SCHEME=https

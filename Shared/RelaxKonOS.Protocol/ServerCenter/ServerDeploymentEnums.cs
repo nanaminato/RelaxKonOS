@@ -69,11 +69,18 @@ public enum ServerInstallMode { LinuxSystem, LinuxUser, WindowsSystem }
 
 /// <summary>服务端网络监听选项。默认仅 loopback；跨设备直连必须显式选择可信 TLS 入口。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerNetworkProfile>))]
-public enum ServerNetworkProfile { Loopback, Lan, ReverseProxy }
+public enum ServerNetworkProfile { Loopback, Lan }
 
 /// <summary>安装/升级包的来源。离线包与指定 URL 都必须是已签名的发布制品。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerPackageSourceKind>))]
-public enum ServerPackageSourceKind { OfficialStable, LocalBundle, DirectUrl }
+public enum ServerPackageSourceKind { OfficialStable, LocalBundle, RemoteBundle, DirectUrl }
+
+/// <summary>Scope granted to the privileged file helper during server installation.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ServerFileAccessScope>))]
+public enum ServerFileAccessScope { Restricted, Full, Whitelist }
+
+[JsonConverter(typeof(JsonStringEnumConverter<ServerCertificateMode>))]
+public enum ServerCertificateMode { None, Custom, SelfSigned }
 
 /// <summary>已确认的主机密钥状态。变化时必须阻断所有写操作。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerHostKeyTrust>))]

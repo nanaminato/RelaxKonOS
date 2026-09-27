@@ -27,7 +27,6 @@ public partial class ServerCenterWorkspace : UserControl
         button.Classes.Add("nav-selected");
         ContentHost.Content = page switch
         {
-            "connection" => new ServerCenterConnectionPage(),
             "deployment" => new ServerCenterDeploymentPage(),
             "history" => new ServerCenterHistoryPage(),
             _ => new ServerCenterHostsPage(),

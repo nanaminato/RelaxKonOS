@@ -1,0 +1,110 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
+             x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerInstallationWizardView"
+             x:DataType="vm:ServerInstallationWizardViewModel"
+             Background="{DynamicResource AppBackgroundBrush}">
+    <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16" Margin="22">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+            <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="1" Text="{Binding StepCounter}" VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="16" Margin="0,0,12,0">
+                <StackPanel Spacing="12" IsVisible="{Binding IsSourceStep}">
+                    <TextBlock Text="{Binding SourceStepTitle}" FontSize="17" FontWeight="SemiBold" />
+                    <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}" HorizontalAlignment="Left" MinWidth="320">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <StackPanel Spacing="8" IsVisible="{Binding IsLocalBundle}">
+                        <TextBlock Text="{Binding LocalBundleText}" />
+                        <WrapPanel ItemSpacing="10">
+                            <Button Content="{Binding ChooseBundleText}" Click="ChooseBundle_Click" />
+                            <TextBlock Text="{Binding BundleFileName}" IsVisible="{Binding HasBundle}" VerticalAlignment="Center" />
+                        </WrapPanel>
+                        <TextBlock Text="{Binding BundleRequiredText}" IsVisible="{Binding !HasBundle}"
+                                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    </StackPanel>
+                    <StackPanel Spacing="8" IsVisible="{Binding IsRemoteBundle}">
+                        <TextBlock Text="{Binding ServerBundleText}" />
+                        <WrapPanel ItemSpacing="10">
+                            <Button Content="{Binding ChooseServerBundleText}" Command="{Binding ChooseServerBundleCommand}" />
+                            <TextBlock Text="{Binding BundleFileName}" IsVisible="{Binding HasBundle}" VerticalAlignment="Center" />
+                        </WrapPanel>
+                        <TextBlock Text="{Binding BundleRequiredText}" IsVisible="{Binding !HasBundle}"
+                                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextTertiaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="12" IsVisible="{Binding IsModeStep}">
+                    <TextBlock Text="{Binding ModeStepTitle}" FontSize="17" FontWeight="SemiBold" />
+                    <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" HorizontalAlignment="Left" MinWidth="320">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="{Binding FileAccessText}" />
+                    <ComboBox ItemsSource="{Binding FileAccesses}" SelectedItem="{Binding SelectedFileAccess}" HorizontalAlignment="Left" MinWidth="320">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="{Binding NetworkText}" />
+                    <ComboBox ItemsSource="{Binding Networks}" SelectedItem="{Binding SelectedNetwork}" HorizontalAlignment="Left" MinWidth="320">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Content="{Binding ShowHostAddressesText}" Command="{Binding ShowHostAddressesCommand}" HorizontalAlignment="Left" />
+                    <TextBlock Text="{Binding CertificateText}" />
+                    <ComboBox ItemsSource="{Binding CertificateModes}" SelectedItem="{Binding SelectedCertificateMode}" HorizontalAlignment="Left" MinWidth="320">
+                        <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <StackPanel Spacing="8" IsVisible="{Binding IsCustomCertificate}">
+                        <TextBlock Text="{Binding CertificateFormatText}" />
+                        <ComboBox ItemsSource="{Binding CertificateFormats}" SelectedItem="{Binding SelectedCertificateFormat}" HorizontalAlignment="Left" MinWidth="320">
+                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <WrapPanel ItemSpacing="10"><Button Content="{Binding ChooseCertificateText}" Click="ChooseCertificate_Click" /><TextBlock Text="{Binding CertificateFileName}" VerticalAlignment="Center" /></WrapPanel>
+                        <WrapPanel ItemSpacing="10" IsVisible="{Binding IsPemCertificate}"><Button Content="{Binding ChoosePrivateKeyText}" Click="ChoosePrivateKey_Click" /><TextBlock Text="{Binding CertificatePrivateKeyFileName}" VerticalAlignment="Center" /></WrapPanel>
+                        <TextBox Text="{Binding CertificatePassword, Mode=TwoWay}" PasswordChar="●" Watermark="Certificate password (optional)" />
+                    </StackPanel>
+                    <StackPanel Spacing="6" IsVisible="{Binding IsSelfSignedCertificate}">
+                        <TextBlock Text="{Binding SelfSignedNamesText}" />
+                        <TextBox Text="{Binding SelfSignedIdentities, Mode=TwoWay}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="12" IsVisible="{Binding IsReviewStep}">
+                    <TextBlock Text="{Binding ReviewStepTitle}" FontSize="17" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="14" RowSpacing="10">
+                        <TextBlock Text="{Binding ServerAndUserText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding TargetText}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="1" Text="{Binding ReleaseText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedSourceText}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="2" Text="{Binding ModeText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedModeText}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="3" Text="{Binding FileAccessText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedFileAccess.Label}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="4" Text="{Binding NetworkText}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedNetwork.Label}" TextWrapping="Wrap" />
+                    </Grid>
+                </StackPanel>
+
+                <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap" />
+                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="{Binding BackText}" Command="{Binding MoveBackCommand}" IsVisible="{Binding !IsSourceStep}" />
+            <Button Content="{Binding NextText}" Command="{Binding MoveNextCommand}" IsVisible="{Binding !IsReviewStep}" />
+            <Button Classes="primary" Content="{Binding InstallText}" Command="{Binding InstallCommand}" IsVisible="{Binding IsReviewStep}" />
+            <Button Content="{Binding CancelText}" Command="{Binding CancelCommand}" IsEnabled="{Binding !IsBusy}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

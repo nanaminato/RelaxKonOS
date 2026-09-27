@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 宿主目标仓库的持久化测试：同一端点只留一条记录，字段逐项往返，损坏文件不冒充资料。 */
+/** 宿主目标仓库的持久化测试：同一服务器和用户只留一条记录，字段逐项往返，损坏文件不冒充资料。 */
 class ServerHostTargetStoreTest {
 
     private val now = 1_790_000_000_000L
@@ -33,7 +33,7 @@ class ServerHostTargetStoreTest {
         )
         store.upsert(installed)
 
-        val reloaded = store.findByEndpoint("HOST.EXAMPLE", 22)
+        val reloaded = store.find("HOST.EXAMPLE", 22, "deploy")
         assertEquals(installed.hostId, reloaded?.hostId)
         assertEquals("机房 A", reloaded?.displayName)
         assertEquals("host.example", reloaded?.sshHost)
@@ -53,21 +53,30 @@ class ServerHostTargetStoreTest {
         val store = ServerHostTargetStore(InMemoryHostTargetStorage())
         store.upsert(target())
 
-        val reloaded = store.findByEndpoint("host.example", 22)
+        val reloaded = store.find("host.example", 22, "deploy")
         assertNull(reloaded?.installationId)
         assertNull(reloaded?.lastVerified)
     }
 
     @Test
-    fun `the same endpoint only ever holds one record`() {
+    fun `the same server and user only ever holds one record`() {
         val store = ServerHostTargetStore(InMemoryHostTargetStorage())
         val first = target(display = "first")
         store.upsert(first)
-        // 同一端点、不同 SSH 用户仍是同一宿主目标。
-        store.upsert(first.copy(sshUserName = "other", displayName = "second"))
+        store.upsert(first.copy(displayName = "second"))
 
         assertEquals(1, store.all().size)
         assertEquals("second", store.find(first.hostId)?.displayName)
+    }
+
+    @Test
+    fun `the same server can retain different users`() {
+        val store = ServerHostTargetStore(InMemoryHostTargetStorage())
+        store.upsert(target(user = "deploy"))
+        store.upsert(target(user = "operator"))
+
+        assertEquals(2, store.all().size)
+        assertEquals("operator", store.find("host.example", 22, "operator")?.sshUserName)
     }
 
     @Test

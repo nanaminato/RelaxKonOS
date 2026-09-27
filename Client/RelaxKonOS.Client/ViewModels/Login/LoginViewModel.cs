@@ -486,12 +486,10 @@ public partial class LoginViewModel : ObservableObject
             await _sshDesktop.ConnectAsync(target, password, ct);
             if (RememberServer)
             {
-                var existing = await _sshTargets.FindByEndpointAsync(uri.Host, uri.Port, ct);
+                var existing = await _sshTargets.FindAsync(uri.Host, uri.Port, Identifier, ct);
                 target = existing is null
                     ? await _sshTargets.UpsertAsync(target, ct)
-                    : string.Equals(existing.SshUserName, Identifier.Trim(), StringComparison.Ordinal)
-                        ? existing
-                        : await _sshTargets.UpsertAsync(existing with { SshUserName = Identifier.Trim() }, ct);
+                    : existing;
             }
             if (RememberServer && RememberPassword)
             {

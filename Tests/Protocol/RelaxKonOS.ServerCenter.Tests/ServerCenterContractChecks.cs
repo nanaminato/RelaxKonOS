@@ -361,6 +361,16 @@ internal static class ServerCenterContractChecks
         Check(json.Contains("\"kind\":\"probe\"", StringComparison.Ordinal), "枚举以 camelCase 字符串序列化");
         Check(json.Contains("\"network\":\"loopback\"", StringComparison.Ordinal), "网络选项以字符串序列化");
 
+        var scopedInstall = request with
+        {
+            Kind = ServerDeploymentKind.Install,
+            Options = request.Options! with { FileAccess = ServerFileAccessScope.Full }
+        };
+        var scopedJson = JsonSerializer.Serialize(scopedInstall, RelaxKonOSJsonOptions.Default);
+        Check(ServerDeploymentRequestWireValidation.IsStrictRequest(Encoding.UTF8.GetBytes(scopedJson)) &&
+              scopedJson.Contains("\"fileAccess\":\"full\"", StringComparison.Ordinal),
+            "特权文件访问范围以严格的字符串选项传递");
+
         var round = JsonSerializer.Deserialize<ServerDeploymentRequest>(json, RelaxKonOSJsonOptions.Default);
         Check(round == request, "请求可无损往返序列化");
 
@@ -586,23 +596,23 @@ internal static class ServerCenterContractChecks
         var now = DateTimeOffset.Parse("2026-09-25T06:00:00Z", CultureInfo.InvariantCulture);
 
         var target = ServerHostTargetRules.Create("Host.Example", 22, "deploy", "  机房 A  ", now);
-        Check(target.HostId == ServerHostTargetRules.HostId("host.example", 22), "宿主标识由规范化端点派生");
+        Check(target.HostId == ServerHostTargetRules.HostId("host.example", 22, "deploy"), "宿主标识由规范化服务器和用户派生");
         Check(ServerHostTargetRules.IsHostId(target.HostId), "宿主标识形状合法");
         Check(target.SshHost == "host.example", "SSH 主机名被规范化");
         Check(target.DisplayName == "机房 A", "展示名去空白并保留原意");
         Check(target.InstallationId is null && target.LastVerified is null, "新建宿主目标没有安装标识与核验状态");
 
-        // 重复添加同一端点必须命中同一记录，否则同一台宿主会出现两条管理资料。
+        // 同一服务器的不同 SSH 用户必须是独立的可选管理目标。
         var again = ServerHostTargetRules.Create("HOST.EXAMPLE", 22, "other", null, now);
-        Check(again.HostId == target.HostId, "同端点不同用户仍是同一宿主目标");
+        Check(again.HostId != target.HostId, "同端点不同用户是不同宿主目标");
         Check(again.DisplayName == "host.example:22", "缺省展示名回落到端点键而非编造名称");
-        Check(ServerHostTargetRules.HostId("host.example", 2222) != target.HostId, "不同端口是不同宿主目标");
+        Check(ServerHostTargetRules.HostId("host.example", 2222, "deploy") != target.HostId, "不同端口是不同宿主目标");
 
         // 这两个值是 Kotlin `ServerHostTargetRules.hostId` 的输出。两端必须逐字一致，
         // 否则同一台宿主会在桌面与手机上得到两条不同的管理资料。
-        Check(ServerHostTargetRules.HostId("host.example", 22) == "rkhost-830da5105a935d10",
+        Check(ServerHostTargetRules.HostId("host.example", 22, "deploy") == "rkhost-3191daa32b9b1e91",
             "宿主标识与 Kotlin 派生一致（一）");
-        Check(ServerHostTargetRules.HostId("node-1", 2222) == "rkhost-3dcd84aa41489796",
+        Check(ServerHostTargetRules.HostId("node-1", 2222, "root") == "rkhost-179ee8d9b69573a2",
             "宿主标识与 Kotlin 派生一致（二）");
 
         Check(!ServerHostTargetRules.IsValidEndpoint("host", 0, "deploy"), "端口 0 被拒绝");

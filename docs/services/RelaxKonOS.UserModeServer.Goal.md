@@ -59,7 +59,7 @@ Linux 登录的默认 `LinuxPamProvider` 目前依赖 root-owned Helper 的固�
 | 常驻方式 | 内置 launcher；可选 user systemd | systemd system service |
 | 特权助手 / sudoers | 不安装、不检测 | 按现有受限 Helper 合同 |
 | PAM | 进程内调用已有的 `login` service；不写、不改 PAM | 经受限 root Helper 调用专用 service |
-| 网络默认值 | `127.0.0.1` + HTTP；SSH 隧道 | 现有 local / lan / reverse-proxy 选择 |
+| 网络默认值 | `127.0.0.1` + HTTP；SSH 隧道 | local 或 lan 选择 |
 | 宿主能力 | 当前账号的可访问范围 | 专用服务账号 + 经 Helper 审批的系统操作 |
 
 `--mode` 必须显式指定；不依据 `EUID` 静默切换模式。安装器可在未传入模式时显示说明并拒绝继续，以避免“没有 sudo 时意外得到功能不同的部署”。`--mode user` 收到 root 身份时必须失败；`--mode system` 不以隐式 `sudo` 重新执行，向调用者返回明确的 root 要求。这样脚本永远不会在用户不知情时改变权限模型。
@@ -156,7 +156,7 @@ GET /api/v1.0/server/capabilities
 ServerCapabilitiesDto =
   mode: "user" | "system",
   executionIdentity: { uid, username, homeDirectory },
-  listener: { scope: "loopback" | "lan" | "reverseProxy" },
+  listener: { scope: "loopback" | "lan" },
   authentication: { kind: "currentUnixUser" | "hostAccount", pamTransport: "in-process" | "helper" },
   capabilities: { ...冻结的布尔字段... },
   limitations: [稳定、可本地化的 reason code]
