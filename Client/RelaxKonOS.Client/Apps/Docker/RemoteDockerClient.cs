@@ -20,13 +20,23 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
     public Task<IReadOnlyList<DockerStackDto>> ListStacksAsync(CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<DockerStackDto>>(DockerApiRoutes.Stacks, cancellationToken);
     public Task<IReadOnlyList<DockerStackServiceDto>> ListStackServicesAsync(string name, CancellationToken cancellationToken = default) => SendAsync<IReadOnlyList<DockerStackServiceDto>>(DockerApiRoutes.StackServices.Replace("{name}", Uri.EscapeDataString(name)), cancellationToken);
     public Task<DockerOperationResult> ApplyContainerActionAsync(string id, string action, DockerContainerActionRequest request, CancellationToken cancellationToken = default) => SendAsync<DockerOperationResult>(HttpMethod.Post, DockerApiRoutes.ContainerAction.Replace("{id}", Uri.EscapeDataString(id)).Replace("{action}", action), request, cancellationToken);
-    public Task<DockerStackOperationResult> ApplyStackOperationAsync(string operation, DockerStackDefinitionDto definition, CancellationToken cancellationToken = default)
-    {
-        var route = operation switch { "validate" => DockerApiRoutes.StackValidate, "deploy" => DockerApiRoutes.StackDeploy, _ => throw new ArgumentOutOfRangeException(nameof(operation)) };
-        return SendAsync<DockerStackOperationResult>(HttpMethod.Post, route, definition, cancellationToken);
-    }
-    public Task<DockerStackOperationResult> ApplyStackActionAsync(string name, string action, DockerStackActionRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<DockerStackOperationResult>(HttpMethod.Post, DockerApiRoutes.StackAction.Replace("{name}", Uri.EscapeDataString(name)).Replace("{action}", action), request, cancellationToken);
+    /// <summary>Parses a definition without applying it. The answer is what the operator approves.</summary>
+    public Task<DockerStackPreviewDto> PreviewStackAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default) =>
+        SendAsync<DockerStackPreviewDto>(HttpMethod.Post, DockerApiRoutes.StackPreview, definition, cancellationToken);
+    public Task<DockerStackOperationDto> DeployStackAsync(DockerStackDeployRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAsync<DockerStackOperationDto>(HttpMethod.Post, DockerApiRoutes.StackDeploy, request, idempotencyKey, cancellationToken);
+    public Task<DockerStackOperationDto> ApplyStackActionAsync(string name, DockerStackOperationKind action, DockerStackActionRequest request, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAsync<DockerStackOperationDto>(HttpMethod.Post,
+            DockerApiRoutes.StackAction.Replace("{name}", Uri.EscapeDataString(name)).Replace("{action}", DockerStackActionRoutes.Segment(action)),
+            request, idempotencyKey, cancellationToken);
+    public async Task<DockerStackOperationDto?> GetStackOperationAsync(Guid operationId, CancellationToken cancellationToken = default) =>
+        await TrySendAsync<DockerStackOperationDto>(DockerApiRoutes.StackOperation(operationId), cancellationToken);
+    public Task<IReadOnlyList<DockerStackOperationDto>> ListStackOperationsAsync(string name, int limit = 20, CancellationToken cancellationToken = default) =>
+        SendAsync<IReadOnlyList<DockerStackOperationDto>>(DockerApiRoutes.StackOperations.Replace("{name}", Uri.EscapeDataString(name)) + $"?limit={limit}", cancellationToken);
+    public async Task<DockerStackOperationDiagnosticsDto?> GetStackOperationDiagnosticsAsync(Guid operationId, CancellationToken cancellationToken = default) =>
+        await TrySendAsync<DockerStackOperationDiagnosticsDto>(DockerApiRoutes.StackOperationDiagnosticsRoute(operationId), cancellationToken);
+    public Task<DockerStackOperationDto> CancelStackOperationAsync(Guid operationId, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        SendAsync<DockerStackOperationDto>(HttpMethod.Post, DockerApiRoutes.StackOperationCancelRoute(operationId), null, idempotencyKey, cancellationToken);
     public Task<DockerOperationResult> PullImageAsync(DockerImageOperationRequest request, CancellationToken cancellationToken = default) => SendAsync<DockerOperationResult>(HttpMethod.Post, DockerApiRoutes.ImagePull, request, cancellationToken);
     public Task<DockerOperationResult> DeleteImageAsync(string id, DockerImageOperationRequest request, CancellationToken cancellationToken = default) => SendAsync<DockerOperationResult>(HttpMethod.Delete, DockerApiRoutes.ImageDelete.Replace("{id}", Uri.EscapeDataString(id)), request, cancellationToken);
     public Task<DockerOperationResult> CreateContainerAsync(DockerContainerCreateRequest request, CancellationToken cancellationToken = default) => SendAsync<DockerOperationResult>(HttpMethod.Post, DockerApiRoutes.Containers, request, cancellationToken);
@@ -61,14 +71,13 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode) throw new DockerProxyRequestException(await ReadProblemCodeAsync(response, cancellationToken));
+        if (!response.IsSuccessStatusCode) throw new DockerProxyRequestException(await ReadProblemCodeAsync(response, "docker.proxy.problem.request_failed", cancellationToken));
         return await response.Content.ReadFromJsonAsync<DockerProxyStatusDto>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException(LocalizedText.Get("docker.error.empty_response"));
     }
 
-    private static async Task<string> ReadProblemCodeAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<string> ReadProblemCodeAsync(HttpResponseMessage response, string fallback, CancellationToken cancellationToken)
     {
-        const string fallback = "docker.proxy.problem.request_failed";
         try
         {
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
@@ -96,15 +105,24 @@ public sealed class RemoteDockerClient(HttpClient http, IAuthSession session) : 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken);
     }
-    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken)
+    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, CancellationToken cancellationToken) =>
+        await SendAsync<T>(method, route, body, null, cancellationToken);
+
+    /// <summary>
+    /// A mutating stack call carries an idempotency key, so a retry after an unanswered request returns
+    /// the operation that was already created instead of starting a second deployment of the same stack.
+    /// </summary>
+    private async Task<T> SendAsync<T>(HttpMethod method, string route, object? body, string? idempotencyKey, CancellationToken cancellationToken)
     {
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException(LocalizedText.Get("docker.error.not_signed_in"));
         using var request = new HttpRequestMessage(method, new Uri(new Uri(session.EffectiveBaseUrl), route.TrimStart('/')));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
+        if (idempotencyKey is not null) request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
         if (body is not null) request.Content = JsonContent.Create(body, options: RelaxKonOSJsonOptions.Default);
         using var response = await http.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+            throw new DockerStackRequestException(await ReadProblemCodeAsync(response, "docker.operation_failed", cancellationToken));
         return await response.Content.ReadFromJsonAsync<T>(RelaxKonOSJsonOptions.Default, cancellationToken)
             ?? throw new InvalidOperationException(LocalizedText.Get("docker.error.empty_response"));
     }

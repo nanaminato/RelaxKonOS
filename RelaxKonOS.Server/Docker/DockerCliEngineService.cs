@@ -195,9 +195,22 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
             using var document = JsonDocument.Parse(result.Output); var root = document.RootElement;
             var labels = root.TryGetProperty("Labels", out var labelMap) && labelMap.ValueKind == JsonValueKind.Object
                 ? labelMap.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.GetString() ?? string.Empty, StringComparer.Ordinal) : new Dictionary<string, string>();
-            return new DockerVolumeDetailsDto(Read(root, "Name"), Read(root, "Driver"), Read(root, "Mountpoint"), labels);
+            return new DockerVolumeDetailsDto(Read(root, "Name"), Read(root, "Driver"), Read(root, "Mountpoint"), labels,
+                await ReferencingContainersAsync(name, cancellationToken));
         }
         catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Containers that still mount this volume, running or stopped. A stopped container keeps the volume
+    /// reserved, so it has to count as a reference; this is the value the operator sees before confirming.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> ReferencingContainersAsync(string name, CancellationToken cancellationToken)
+    {
+        var result = await RunAsync(["ps", "--all", "--filter", $"volume={name}", "--format", "{{.Names}}"], cancellationToken);
+        return result.Success
+            ? [.. result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
+            : [];
     }
 
     public async Task<DockerOperationResult> CreateNetworkAsync(DockerNetworkCreateRequest request, CancellationToken cancellationToken = default)
@@ -228,6 +241,11 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
     {
         if (!confirmed) return new DockerOperationResult(false, "docker.confirmation_required");
         if (!IsContainerId(name)) return new DockerOperationResult(false, "docker.validation_failed");
+        // A volume still referenced by any container — running or stopped — is persistent data, not
+        // leftover state. Refusing here turns a confusing Engine error into an action the operator can
+        // understand, and it makes the deletion of retained data an explicit, separate decision.
+        var references = await ReferencingContainersAsync(name, cancellationToken);
+        if (references.Count > 0) return new DockerOperationResult(false, "docker.volume_in_use", [.. references]);
         return ToOperationResult(await RunAsync(["volume", "rm", name], cancellationToken));
     }
 

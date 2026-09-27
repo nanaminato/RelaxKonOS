@@ -8,13 +8,32 @@
 
 后续实施以 `ADxx-Mn` 记录阶段、`ADxx-Tn` 记录验收；进度和证据只在本文件维护。首轮 R1 交付 AD01 首次安装、AD02 镜像部署、AD05 基本发布及 AD08 任务恢复。应用部署的真实 Docker 验收和服务器中心的真实宿主安装仍是必要条件，见各计划前置要求。
 
-## AD04-M1：Docker 资源浏览与受控操作（已实现待验证，2026-09-27）
+## AD04-M1：Docker 资源浏览与受控操作（已实现；服务端真实宿主已验收，2026-09-27）
 
 - “管理 → Docker”仅在服务器声明 `server.docker` 时显示。页面读取 Engine、容器、镜像、命名卷、网络和 Compose Stack；Stack 可展开读取服务状态。资源读取全部经现有认证 REST API，Android 不直接接触 Docker socket 或自行执行 YAML。
-- 容器提供 start/stop，容器及 Stack 删除均要求本机再次确认；现有服务端的 Stack 删除路径保留命名卷。Stack 编辑器支持 Storage Access Framework 导入或粘贴 YAML，再提交给服务端的受限校验和部署入口。
-- 服务端新增保守准入检查：拒绝 `build`、特权与设备权限、bind mount（含相对/绝对路径）、外部资源和 Docker socket；通过准入的定义仍由 `docker compose config` 进行权威解析，客户端不会删除或改写未知 YAML 项。
-- 当前 Compose deploy 仍是既有**同步**服务：它不满足 AD04-M2 的持久操作 ID、服务端重启恢复、重复提交归并或断开手机后的可查询结果。因此 AD04-M2 至 M4 和 AD04-T1 至 T6 均未完成、未验收；移动端不把同步成功显示为可恢复的后台任务。
-- 本轮已通过 `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj`（0 错误；3 个既有跨平台 CA1416 warning），并加入不依赖 Docker Engine 的 Compose 子集拒绝检查。Android Gradle wrapper 未随本工程提交，当前环境也未提供 `gradle`，因此 Android 编译、JVM 测试和设备矩阵尚未执行。
+- 容器提供 start/stop，容器、Stack 与卷的删除均要求本机再次确认；服务端删除路径保留命名卷。Stack 编辑器支持 Storage Access Framework 导入或粘贴 YAML。
+- 服务端新增保守准入检查：拒绝 `build`、特权与设备权限、bind mount（含相对/绝对路径）、外部资源和 Docker socket；通过准入的定义仍由 `docker compose config` 进行权威解析，客户端不会删除或改写未知 YAML 项。**变量引用同样在准入阶段拒绝**（`docker.compose_variable_unresolved`）：`docker compose config` 会把未设置的变量静默替换为空串且 exit 0，而本服务不提供变量输入面，放行等于让操作者批准一份、执行另一份。
+- 卷列表可展开读取引用容器（`usedBy`，含已停止容器）；服务端在引用非空时以 `docker.volume_in_use` 拒绝删除，因此“停止应用”“移除容器”“删除持久数据”是三个分别表达的动作。**已用真实宿主验收**：运行中与已停止的容器都被计为引用并拒绝删除，删除项目保留命名卷，无引用后才释放成功。
+
+## AD04-M2：持久 Stack 操作与恢复（已实现；服务端真实宿主已验收，2026-09-27）
+
+- **同步 Compose 路径已不存在**。新增共享契约 `RelaxKonOS.Protocol/Docker/DockerStackOperationContracts.cs`：操作种类（deploy/start/stop/restart/delete）、状态（queued/running/succeeded/partialFailed/failed/cancelled/interrupted）、阶段、预览 DTO、部署请求与诊断 DTO；`DockerApiRoutes` 增加 `stacks/preview`、项目操作历史与活动操作、`stack-operations/{id}`（含 `/diagnostics`、`/cancel`）。
+- 服务端新增 `DockerStackOperationCoordinator`（`IHostedService`）与宿主账本 `DockerStackOperationStore`（`stack-operations.json`，与 Compose 源同目录；`DockerComposePaths` 是两者唯一路径来源）。`deploy`、项目级动作用 `202` 返回操作记录，端点只提交与读取：**断开 HTTP、App 被回收或服务端重启后，结果仍可从 `stack-operations/{id}` 或项目历史读到**；`IDockerComposeService` 只剩协调器一个调用方。
+- 幂等键与请求指纹绑定：同键同请求回放原操作，同键不同请求 `docker.stack_idempotency_conflict`，缺键或畸形 `docker.stack_idempotency_required`；客户端在重试同一份文档时复用键、请求变了就换键。同项目活动操作互斥（`docker.stack_operation_conflict`），不同项目并行，全局上限 `DockerCompose:MaximumConcurrentOperations`（默认 2）。
+- 部署必须回传 `preview` 给出的 `definitionVersion`（名称 + YAML 的内容标识），不一致以 `docker.stack_definition_changed` 拒绝——“对某一份文档的批准”无法套用到另一份。
+- 重启核对**不重放**：仍活动的操作在下次启动观察项目实际服务后置为 `interrupted`（`docker.stack_interrupted`），记录观察结果并给出恢复动作；引擎失联绝不上报为成功。
+
+## AD04-M3/M4：预览、部署、部分失败与卷保护（已实现；服务端真实宿主已验收，2026-09-27）
+
+- Android 侧新增 `DockerStackPreview`/`DockerStackOperation`/`DockerStackOperationDiagnostics` 与网关/仓库入口（每次变更生成 UUID 幂等键）；`DockerScreen` 的编辑面板先预览（显示定义版本、服务、命名卷、网络），再携带 `definitionVersion` 部署。项目详情新增“近期操作”区，展示种类、状态、问题码、阶段、逐服务观察结果与诊断输出，并按状态给出可执行动作：活动且 `cancellable` 时可取消，需要决策时可停止项目。发现他处发起的活动操作会继续按 1 s 间隔读取持久记录（上限 5 分钟），离开页面不影响服务端继续执行。
+- 结果取自**观察到的服务**而非命令退出码：命令成功但服务未达目标状态、或命令失败但有容器残留，都是 `partialFailed`；两者都不声称整组原子回滚，也不声称恢复旧定义能撤销数据库迁移。`recoveryProblemCode` 只在需要操作者决策**且**能补充 `problemCode` 未表达的信息时出现（实现上与 `problemCode` 永不同值）。
+- 诊断在写入口逐行脱敏、单行限 512 字符、最多保留末 120 行；丢弃行首即置 `DiagnosticsTruncated`，界面明示截断，读者不会把日志尾部误当全量。账本保留 200 条操作与 1000 条审计，先淘汰最旧的**终态**操作、活动操作永不被裁剪，审计行随后按仍在册的操作过滤。写这条校验时发现并修掉了一个真实缺陷：`diagnostics.Select(ProxyLogSanitizer.Sanitize)` 会绑定到 `Select` 的 `Func<T, int, TResult>` 重载，把**行下标当成最大长度**，于是第 0 行被截成「…」、第 1 行只剩 1 个字符；现在改为显式 lambda 加独立常量，并有一条断言钉住（校验会打印每行实际长度）。
+- 拒绝文案两端各自成表：桌面把 `docker.compose_failed` 归入既有 `docker.problem.failed`，并为 12 个 stack 拒绝码新增 `docker.problem.*`；Android 新增 `ui/manage/docker/DockerLabels.kt`（`dockerProblem`/`dockerFailure`，`DockerLabelsTest` 覆盖），403/404/连接失败三种情形不合并。历史列表里的问题码仍按原样展示，因为它正是工单要引用的稳定标识。
+- 服务端测试新增 `PASS DOCKER STACK`（`--stack-operations-only` 可单独运行）：路由与动作表、项目名/定义版本/问题码/引用格式规则、账本写入与重开、幂等回放与两类冲突、按项目互斥且跨项目独立、诊断逐行脱敏与限长与截断标记、成功/部分失败/失败三类分类、确认删除、取消、重启核对（并断言 `DeployCalls == 0`，即没有重放）。
+- **本轮验证**：服务端完整套件 `RelaxKonOS.Server.Tests` 通过（含 `PASS DOCKER STACK`，exit 0；`--stack-operations-only`、`--stack-live-only` 可单独运行）；桌面客户端 `RelaxKonOS.Client` 编译通过（0 错误，4 个既有 warning）；Android `:app:assembleDebug` + `:app:testDebugUnitTest` 通过，**42 个测试类、406 个用例，0 失败 / 0 错误 / 0 跳过**（`DockerLabelsTest` 覆盖 12 个拒绝码），三套字符串各 **555 键**、键集一致，桌面三份 `docker.json` 各 **327 键**、键集一致且仅新增不删改，`aapt2 compile --dir res` 通过。APK：`app/build/outputs/apk/debug/app-debug.apk`（19,816,811 字节）。环境为 Gradle 9.7.1、JDK 21、SDK 位于本机 `D:\environments\Android\Sdk`（项目未提交 wrapper）。
+- **真实 Compose 宿主验收（2026-09-27）**：环境为 **Docker 29.8.0（linux/overlayfs）+ Docker Compose v5.5.1**，入口 `RelaxKonOS.Server.Tests --stack-live-only`，输出 `PASS DOCKER STACK LIVE`。该检查用真实 `docker`/`docker compose` 驱动服务端自身的 `DockerComposeService` 与协调器（不是替身），依次验证：`config --format json` 的解析结果正是协调器所依赖的服务/命名卷/网络；部署一个「一服务常驻、一服务立刻退出」的定义时 `up` 仍 exit 0，而分类为 `partialFailed` 且 `Services` 记录的是引擎实际状态；用修复后的同一项目定义更新得到 `succeeded`；同键同文档再次提交回放**同一个** `OperationId` 而不新建部署；`docker volume rm` 在运行中与停止后都被拒（`docker.volume_in_use`）；删除项目后命名卷仍在、引用为空后才释放成功。无 Engine 或缺少 `alpine:3.20` 时该检查打印 SKIP 并返回，不会假通过，也不进默认套件。
+- **这两次真实宿主运行抓到了两个只在真实 Engine 上才会暴露的缺陷（均已修复）**：① `DockerComposeService.ListServicesAsync` 与 `ListAsync` 的 `--format` 模板把标签名写成 `\"name\"`（面向 shell 的转义），而该参数直接进 `ProcessStartInfo.ArgumentList`，Docker 以 `failed to parse template: unexpected "\\" in operand` 退出 1 —— 结果 `ListServicesAsync` 恒返回空，于是**真实宿主上任何一次成功部署都会被判为部分失败**，停止的项目也不会出现在 `stacks` 列表里；改为正确的模板引号（`{{.Label "com.docker.compose.project"}}`）后修复。② 未设置变量被 `docker compose config` 静默替换为空串且 exit 0，现在准入阶段即以 `docker.compose_variable_unresolved` 拒绝（`$$` 字面转义与注释不算引用，均有断言钉住）。
+- **尚未执行**：带认证的 HTTP 往返（`202` + 轮询整条链路）和 Android/iOS 真机矩阵。登录需要真实宿主凭据，验收不绕过认证；AD04-T3 的端口冲突与引擎失联注入、T6 的跨管理域归属也未执行，详见计划 §6。
 
 ## AD02-M1：应用部署只读接入（2026-09-26）
 

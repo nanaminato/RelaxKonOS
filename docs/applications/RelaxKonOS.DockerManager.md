@@ -2,7 +2,7 @@
 
 > 内置 Docker 管理器。它管理 **RelaxKonOS.Server 所在宿主机** 的本地 Docker Engine；客户端只负责本地 UI 渲染，不直连 Docker socket、不保存 Docker 凭据，也不将守护进程 API 暴露到网络。
 >
-> 当前状态：**已实现**本机 Engine 状态、容器/镜像/网络/卷列表、容器生命周期与安全的原地重命名，以及网络、卷和容器的只读详情查看。Compose 编排支持项目列表、校验、编辑、`up` 部署、服务查看和项目级启动/停止/重启。编排会展示 Compose 文件来源；点击来源可路由至内置文件浏览器。RelaxKonOS 部署的 Compose 文件保存在服务器受管目录，停止后的项目仍会显示。安装、持久化 Stack 历史、终端、流式统计和审计仍为**设计中**。
+> 当前状态：**已实现**本机 Engine 状态、容器/镜像/网络/卷列表、容器生命周期与安全的原地重命名，以及网络、卷和容器的只读详情查看。Compose 编排支持项目列表、定义预览、`up` 部署、服务查看、项目级启动/停止/重启/删除，以及**持久 Stack 操作记录**（断开请求、App 被回收或服务端重启后仍可查询结果、按项目互斥、幂等重放与部分失败分类）。编排会展示 Compose 文件来源；点击来源可路由至内置文件浏览器。RelaxKonOS 部署的 Compose 文件与操作账本保存在服务器受管目录，停止后的项目仍会显示。安装、终端、流式统计和审计仍为**设计中**。
 >
 > - 架构与内置应用边界：[`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md)
 > - 协议契约规则：[`RelaxKonOS.Protocol.md`](../architecture/RelaxKonOS.Protocol.md)
@@ -111,7 +111,8 @@ IDockerEngineService ── IDockerRuntimeInstaller ── IDockerComposeService
 ### 3.1 服务端边界
 
 - `IDockerEngineService` 是唯一可访问 Docker 的业务边界，封装 API 版本协商、列举、生命周期操作、stream 和错误映射。
-- `IDockerComposeService` 只接受结构化 `StackDefinition`，在服务器受控工作目录写入临时 Compose/`.env` 文件，调用经过白名单构造的 `docker compose` 子命令；不得拼接用户 shell 字符串。已部署的 Compose 源默认放在 Linux `/var/lib/relaxkonos/docker-compose`、Windows `C:\\ProgramData\\RelaxKonOS\\docker-compose`，绝不写入安装目录或项目源码；管理员可通过绝对路径配置 `DockerCompose:DataDirectory` 覆盖。开发环境默认使用当前用户的 LocalApplicationData 目录。
+- `IDockerComposeService` 只接受结构化 `StackDefinition`，在服务器受控工作目录写入 Compose 源文件，调用经过白名单构造的 `docker compose` 子命令；不得拼接用户 shell 字符串。已部署的 Compose 源默认放在 Linux `/var/lib/relaxkonos/docker-compose`、Windows `C:\\ProgramData\\RelaxKonOS\\docker-compose`，绝不写入安装目录或项目源码；管理员可通过绝对路径配置 `DockerCompose:DataDirectory` 覆盖。开发环境默认使用当前用户的 LocalApplicationData 目录。
+- `DockerStackOperationCoordinator` 是 `IDockerComposeService` 的**唯一调用方**：端点只提交请求和读取记录，执行、幂等、按项目互斥、结果分类与重启核对都归它。任何绕过协调器直接调用 Compose 的路径都会重新引入“HTTP 断开即失去结果”的问题。
 - `IDockerRuntimeInstaller` 返回 `InstallationPlan`，再由独立的受提权宿主操作执行器运行。安装器永远不能自行提升权限。
 - Linux socket、Windows named pipe、CLI 路径和平台判断全部封装在 Provider 内；Endpoint、Client 和 ViewModel 不出现平台分支或 Docker CLI 命令。
 - Docker 原始错误转为稳定问题码，例如 `docker.not_installed`、`docker.permission_denied`、`docker.api_incompatible`、`docker.conflict`，细节仅写入管理员审计。
@@ -128,13 +129,31 @@ IDockerEngineService ── IDockerRuntimeInstaller ── IDockerComposeService
 | GET/POST | `/api/v1.0/docker/containers` | read/manage | 列表、创建 |
 | POST/DELETE | `/api/v1.0/docker/containers/{id}/{action}` | manage | 生命周期、删除、复制、exec |
 | GET | `/api/v1.0/docker/containers/{id}/logs` | read | 带游标/时间范围；follow 用 SignalR |
-| GET/POST | `/api/v1.0/docker/stacks` | read/manage | Compose 项目列表、定义校验与部署；可读取项目服务并执行启动/停止/重启 |
+| GET | `/api/v1.0/docker/stacks` | read | Compose 项目列表；`stacks/{name}/services` 读取项目服务 |
+| POST | `/api/v1.0/docker/stacks/preview` | read | 用服务端的 `docker compose config --format json` 解析定义，返回服务/命名卷/网络与 `definitionVersion`。**不落地任何改动**，是操作者批准的对象 |
+| POST | `/api/v1.0/docker/stacks/deploy` | manage | 提交部署（携带 `definitionVersion` 与 `Idempotency-Key`），返回 `202` + 持久操作记录 |
+| POST | `/api/v1.0/docker/stacks/{name}/{action}` | manage | 项目级 start/stop/restart/delete（携带 `Idempotency-Key`），返回 `202` + 持久操作记录 |
+| GET | `/api/v1.0/docker/stacks/{name}/operations`、`.../operations/active` | read | 项目操作历史（最新在前）与当前活动操作 |
+| GET | `/api/v1.0/docker/stack-operations/{id}`、`.../diagnostics` | read | 单次操作的权威记录，以及该步已脱敏、限长、可标记截断的输出 |
+| POST | `/api/v1.0/docker/stack-operations/{id}/cancel` | manage | 请求取消；仅仍在活动的操作可取消 |
 | GET/POST/DELETE | `/api/v1.0/docker/images|networks|volumes` | read/manage | 资源管理，删除前依赖检查 |
 | GET | `/api/v1.0/docker/events` | `server.docker.read` | 过滤后的事件和审计只读流 |
 | GET/PUT/DELETE | `/api/v1.0/docker/proxy` | read/manage | 读取、写入、移除守护进程层与构建层代理；写操作返回完整状态，被拒绝时返回稳定问题码 |
 | POST | `/api/v1.0/docker/engine/{action}` | `server.docker.manage` | 启动/停止/重启整机 Docker 引擎；`stop`/`restart` 必须带 `confirmed`，返回操作后的引擎状态 |
 
 长任务（拉取、构建、部署、导入导出、安装）返回 `OperationId`，以通用 SignalR 任务通道推送阶段、百分比、可本地化消息键和终态。日志与终端必须设置最大帧、速率限制、取消和断连清理；浏览器/客户端不保留 raw Docker stream。
+
+**Compose 操作不依赖推送通道**：它由 `DockerStackOperationCoordinator` 在发起请求的 HTTP 调用之外执行，结果写在宿主上的 `stack-operations.json`（与 Compose 源同目录，原子替换 `*.tmp` → `File.Move`）。SignalR 只是可用时的加速手段——没有它（例如 Android 客户端）客户端按持久记录轮询即可拿到同一答案，断线或服务端重启后也能补读。
+
+### 3.2.1 持久 Stack 操作的语义边界
+
+- **偏移/结果的唯一真相是服务端记录**，客户端不从自己的请求推断“部署成功”。
+- **幂等键绑定请求指纹**：`Idempotency-Key` 相同但请求不同（例如换了一份 YAML）返回 `docker.stack_idempotency_conflict`；不会把一次批准套用到另一份文档。客户端在为同一份文档重试时复用键，请求变了就换键。
+- **部署绑定 `definitionVersion`**：`preview` 返回的版本随 `deploy` 回传；服务端重新计算不一致即拒绝（`docker.stack_definition_changed`）。所以“批准”的对象是一份确定的文档，而不是一次点击。
+- **按项目互斥 + 全局并发上限**：同一项目同时只有一个活动操作（`docker.stack_operation_conflict`）；`DockerCompose:MaximumConcurrentOperations`（默认 2）限制不同项目同时执行的数目。
+- **结果是观察到的服务状态**，不是命令退出码。命令成功但服务未达目标状态，或命令失败但有容器残留，都是 `partialFailed`；`RecoveryProblemCode` 只在需要操作者决策且能补充 `ProblemCode` 时出现，二者永不同值。**不声称整组原子回滚**；恢复旧定义也不等于回滚数据迁移。
+- **重启核对不重放**：进程停止时仍活动的操作在下次启动被核对为 `interrupted`（`docker.stack_interrupted`），记录观察到的服务并给出恢复动作；引擎失联绝不上报为成功。
+- **删除项目保留命名卷**：`compose down` 不带 `--volumes`；卷引用与 `docker.volume_in_use` 见 §3.3。
 
 ### 3.3 持久化边界
 
@@ -145,6 +164,16 @@ Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；Rel
 - 用户偏好、可恢复任务摘要和审计记录；
 - `docker_proxy_settings`（宿主全局单行表，`CHECK(settings_id = 1)`）中的 Docker 代理偏好；代理 URL 可能内嵌 `user:pass@`，故经 DataProtection（purpose `RelaxKonOS.Docker.ProxySettings.v1`）加密后落库，`no_proxy` 与各开关明文保存。见 §3.5；
 - 管理器不保存 Docker socket、daemon TLS 私钥、Docker Desktop 账户令牌或明文 `.env` 秘密。
+
+**Stack 操作账本**不走 SQLite，而是宿主上的 `stack-operations.json`，与 Compose 源同目录（`DockerCompose:DataDirectory`，`DockerComposePaths` 是两者唯一的路径来源）：
+
+- 记录 200 条操作与 1000 条审计（先淘汰最旧的**终态**操作，活动操作永不被裁剪），审计行随后按仍在册的操作过滤，因此不会出现指向已消失操作的审计；
+- 按项目取历史、按 `Idempotency-Key` 的哈希查重放、按项目哈希做互斥；操作者只存 SHA-256 引用，ID 和幂等键都不落原文；
+- 诊断输出在写入口即用 `ProxyLogSanitizer` 逐行脱敏、单行限 512 字符、最多保留末 120 行；丢弃了行首就写入 `DiagnosticsTruncated`，读者不会把日志尾部误当全量；
+- 单次写入是 `*.tmp` 写完 `Flush(true)` 后 `File.Move(overwrite)`；写失败即整库 fail-closed（`docker.stack_store_unavailable`），不会留下半份账本；
+- 打开时校验每条记录的结构（GUID、项目名、枚举、四类 64 字符引用、服务字段长度上限），任一不合法按不可用处理而不是带着坏数据继续运行。
+
+**卷保护**：`docker.volume_in_use` 与 `DockerVolumeDetailsDto.UsedBy` 是同一判据的两面。`GET /volumes/{name}` 用 `docker ps --all --filter volume=<name>` 列出引用容器（**停止**的容器也算占用），`DELETE /volumes/{name}` 在引用非空时返回 `docker.volume_in_use` 而不是先解绑再删。`compose down` 不带 `--volumes`，所以删除项目后卷仍在。
 
 ### 3.4 Docker Hub 镜像源
 
@@ -249,6 +278,7 @@ Docker daemon 的控制权相当于宿主机高权限。故默认原则是“只
 - 表单里的 `password`、token、secret 和整个敏感环境变量值默认掩码；日志、审计和异常不得回显它们。代理 URL 的 userinfo（`user:pass@`）按同一规则处理，但**面向操作者的界面是例外**：该值必须原样返回，否则表单回填后再保存会把真实凭据改写成掩码。因此掩码只作用于日志、审计、问题码与诊断信息，见 §3.5。
 - 应用只接受 local transport。若将来增加远程 Engine，必须使用 TLS、证书轮换、允许列表、显式环境配置及单独权限，不能复用本机默认。
 - 审计事件最少记录操作者、时间、目标、动作、确认方式、结果和关联 `OperationId`；记录命令模板/结构化差异，不记录秘密。
+- **输入卫生：不接受的文档必须拒绝，而不是替换**。Compose 定义在准入阶段被逐行检查，拒绝宿主文件系统与越权相关条目（`build`、`privileged`、`cap_add`/`cap_drop`、`devices`、`network_mode`、`pid`/`ipc`/`userns_mode`、`external`、bind mount 的绝对/相对来源、`/var/run/docker.sock` 与 Windows named pipe）并返回 `docker.compose_feature_unsupported`。变量引用同样被拒绝（`docker.compose_variable_unresolved`）：`docker compose config` 会把未设置的变量**静默替换为空串并 exit 0**，而本服务不提供变量输入面，放行等于让操作者批准一份、执行另一份；`$$` 是 Compose 的字面美元转义、注释不参与插值，两者都不算引用。准入不是第二个 Compose 实现：通过后仍由 `docker compose config` 做权威解析。
 
 ---
 
@@ -257,7 +287,13 @@ Docker daemon 的控制权相当于宿主机高权限。故默认原则是“只
 1. 定义 Protocol DTO/路由、权限和 `IDockerEngineService`，实现只读 status/containers/images/networks/volumes。
 2. 实现 Unix socket 与 named pipe Provider、API 版本协商和 Ubuntu/Windows 探测；在 `Windows Server Test` 做 native transport 验证。
 3. 交付容器详情、日志、统计、生命周期和审计，再交付镜像/网络/卷。
-4. 增加 Compose 校验、Stack 部署与任务流；先支持本地文本/上传，再支持经过凭据引用的 Git 来源。
+4. 增加 Compose 校验、Stack 部署与任务流；先支持本地文本/上传，再支持经过凭据引用的 Git 来源。**已完成**：定义预览（`stacks/preview`）、持久操作账本与协调器、项目级动作、取消、诊断、卷引用检查与 `delete` 保留命名卷；桌面与 Android 都消费同一持久契约。
 5. 最后增加 Ubuntu 安装器和 Windows 引导安装器；安装、升级和回滚均须在干净 VM 中验证。
 
 验收至少覆盖 Ubuntu 22.04/24.04 与 Windows 的可用 Engine：无 Engine、权限不足、API 不兼容、拉取失败、断流重连、Compose 失败回滚、运行中资源删除冲突、机密脱敏和审计完整性。代理功能另需覆盖：内置来源不可达时失败关闭、无确认时不下发守护进程层、写入后待重启与重启后生效两种状态、以及凭据在界面/日志/审计中的脱敏。任何平台仅在“安装 + hello-world + 管理 CRUD + 重启后恢复 + 卸载/故障路径”通过后才标记为支持。
+
+Stack 操作的**无 Docker 依赖**部分已由 `RelaxKonOS.Server.Tests` 的 `PASS DOCKER STACK` 覆盖（路由与动作表、名称/版本/问题码规则、账本持久化与重开、幂等回放与冲突、按项目互斥、诊断逐行脱敏与限长、成功/部分失败/失败分类、确认删除、取消、重启核对不重放）。
+
+**真实 Engine** 部分由同一套件的 `PASS DOCKER STACK LIVE` 覆盖（`--stack-live-only`，需要本机 `docker` 与 `alpine:3.20`，无 Engine 时明确 SKIP 而不是假通过）。它在真实 Compose 宿主上端到端跑：解析 → 部署一个「一服务常驻、一服务立刻退出」的项目 → 分类为 `partialFailed` 并记录真实观察结果 → 用修复后的定义更新为 `succeeded` → 同键同文档回放不新建操作 → 停止项目后卷仍被引用且拒绝删除 → 删除项目后命名卷保留、无引用时才可释放。**这项校验发现了两个只有在真实宿主上才会暴露的缺陷**：`ListServicesAsync` 与 `ListAsync` 的 `--format` 模板把标签名写成 `\"name\"`（面向 shell 的转义），而该参数是直接进 `ProcessStartInfo.ArgumentList` 的，Docker 因此以 `failed to parse template: unexpected "\\" in operand` 退出 1、观察结果恒为空——真实宿主上每一次成功部署都会被误判为部分失败，停止项目也不会出现在列表里；改为正确的模板引号后修复。另一个：普通未设置变量（`${NAME}` / `$NAME`）会被 `docker compose config` 静默替换为空串且 exit 0，定义会被「批准一份、执行另一份」，现在在准入阶段以 `docker.compose_variable_unresolved` 拒绝（见 §4「输入卫生」）。
+
+**仍未验收**：以上都是服务端 + 真实 Engine 的证据。带认证的 HTTP 往返（`202` + 轮询）与 Android/iOS 真机矩阵仍未执行——登录需要真实宿主凭据，不能在验收里绕过。任何平台仍只在「安装 + hello-world + 管理 CRUD + 重启后恢复 + 卸载/故障路径」全通过后才标记为支持。

@@ -40,6 +40,23 @@ class RelaxKonApi(
     override suspend fun dockerVolumes(serverUrl: String, accessToken: String): ApiResult<List<DockerVolume>> =
         dockerRead(serverUrl, accessToken, DockerRoutes.VOLUMES, DockerWire::volumes)
 
+    override suspend fun dockerVolumeDetails(serverUrl: String, accessToken: String, name: String): ApiResult<DockerVolumeDetails> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.volumeDetails(name), DockerWire::volumeDetails)
+
+    /**
+     * Releases a volume's data. Deleting a volume is destructive and irreversible, so the reference
+     * check happens on the server: a volume a container still holds is refused with
+     * `docker.volume_in_use` rather than being detached.
+     */
+    override suspend fun dockerDeleteVolume(serverUrl: String, accessToken: String, name: String, confirmed: Boolean): ApiResult<DockerOperation> =
+        // The confirmation travels as a query parameter, so there is no request body to send.
+        when (val result = execute("DELETE", serverUrl, DockerRoutes.volumeDelete(name, confirmed), accessToken, null)) {
+            is ApiResult.Success -> runCatching { DockerWire.operation(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Docker operation response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
     override suspend fun dockerStacks(serverUrl: String, accessToken: String): ApiResult<List<DockerStack>> =
         dockerRead(serverUrl, accessToken, DockerRoutes.STACKS, DockerWire::stacks)
 
@@ -53,11 +70,34 @@ class RelaxKonApi(
         dockerMutation("POST", serverUrl, DockerRoutes.containerAction(id, action), accessToken,
             JsonBody().bool("confirmed", confirmed).bool("force", false))
 
-    override suspend fun dockerStackAction(serverUrl: String, accessToken: String, name: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> =
-        dockerMutation("POST", serverUrl, DockerRoutes.stackAction(name, action), accessToken, JsonBody().bool("confirmed", confirmed))
+    override suspend fun dockerStackAction(serverUrl: String, accessToken: String, name: String, action: String, confirmed: Boolean, idempotencyKey: String): ApiResult<DockerStackOperation> =
+        dockerStackMutation("POST", serverUrl, DockerRoutes.stackAction(name, action), accessToken,
+            JsonBody().bool("confirmed", confirmed), idempotencyKey, DockerWire::stackOperation)
 
-    override suspend fun dockerStackDefinition(serverUrl: String, accessToken: String, name: String, composeYaml: String): ApiResult<DockerOperation> =
-        dockerMutation("POST", serverUrl, DockerRoutes.STACK_DEPLOY, accessToken, JsonBody().string("name", name.trim()).string("composeYaml", composeYaml))
+    override suspend fun dockerStackPreview(serverUrl: String, accessToken: String, name: String, composeYaml: String): ApiResult<DockerStackPreview> =
+        dockerStackMutation("POST", serverUrl, DockerRoutes.STACK_PREVIEW, accessToken,
+            JsonBody().string("name", name.trim()).string("composeYaml", composeYaml), null, DockerWire::preview)
+
+    override suspend fun dockerStackDeploy(serverUrl: String, accessToken: String, name: String, composeYaml: String, definitionVersion: String, idempotencyKey: String): ApiResult<DockerStackOperation> {
+        // The definition is a nested object: it is what the server parses and what the version refers to.
+        val definition = JSONObject().put("name", name.trim()).put("composeYaml", composeYaml).toString()
+        return dockerStackMutation("POST", serverUrl, DockerRoutes.STACK_DEPLOY, accessToken,
+            JsonBody().raw("definition", definition).string("definitionVersion", definitionVersion),
+            idempotencyKey, DockerWire::stackOperation)
+    }
+
+    override suspend fun dockerStackOperations(serverUrl: String, accessToken: String, name: String, limit: Int): ApiResult<List<DockerStackOperation>> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.stackOperations(name, limit.coerceIn(1, 100)), DockerWire::stackOperations)
+
+    override suspend fun dockerStackOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperation> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.stackOperation(operationId), DockerWire::stackOperation)
+
+    override suspend fun dockerStackOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperationDiagnostics> =
+        dockerRead(serverUrl, accessToken, DockerRoutes.stackOperationDiagnostics(operationId), DockerWire::diagnostics)
+
+    override suspend fun dockerStackOperationCancel(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<DockerStackOperation> =
+        dockerStackMutation("POST", serverUrl, DockerRoutes.stackOperationCancel(operationId), accessToken,
+            JsonBody(), idempotencyKey, DockerWire::stackOperation)
 
     override suspend fun deploymentApplications(serverUrl: String, accessToken: String): ApiResult<List<DeploymentApplication>> =
         deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.APPLICATIONS, ApplicationDeploymentWire::applications)
@@ -262,6 +302,24 @@ class RelaxKonApi(
             is ApiResult.Problem -> result
             is ApiResult.Transport -> result
         }
+
+    /**
+     * A stack mutation carries an idempotency key, so a retry after an unanswered request returns the
+     * operation that was already created instead of starting a second one. The response is a durable
+     * operation rather than a result, and it is `202`, which the transport still reads as success.
+     */
+    private suspend fun <T> dockerStackMutation(
+        method: String, serverUrl: String, route: String, accessToken: String, body: JsonBody,
+        idempotencyKey: String?, parse: (String) -> T,
+    ): ApiResult<T> {
+        val headers = if (idempotencyKey == null) emptyMap() else mapOf("Idempotency-Key" to idempotencyKey)
+        return when (val result = execute(method, serverUrl, route, accessToken, body, headers)) {
+            is ApiResult.Success -> runCatching { parse(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Docker stack response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+    }
 
     private suspend fun <T> deploymentMutation(
         method: String, serverUrl: String, route: String, accessToken: String, body: JsonBody, idempotencyKey: String,
@@ -934,21 +992,6 @@ class RelaxKonApi(
             ).toByteArray(Charsets.UTF_8)
     }
 
-    private fun JSONObject.optNullableLong(name: String): Long? = if (isNull(name)) null else optLong(name)
-
-    /**
-     * Reads a string the server is allowed to leave empty.
-     *
-     * `optString` alone cannot answer this. Android's `org.json` renders a JSON null as the four-letter
-     * string "null" (`JSON.toString(JSONObject.NULL)` -> `String.valueOf(NULL)`), so a blank-check keeps
-     * it and the field reaches the UI as that literal word — which is exactly what put "null" in every
-     * row of the process list: a Windows server never resolves a process owner, so `userName` is
-     * genuinely null on the wire. Only `isNull` separates "the server sent nothing" from "the server
-     * sent a value", and it answers the same way on Android and on the reference `org.json`.
-     */
-    private fun JSONObject.optNullableString(name: String): String? =
-        if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }
-
     private companion object {
         const val CLIENT_PLATFORM = "android"
         const val CONNECT_TIMEOUT_MILLIS = 15_000
@@ -1032,6 +1075,22 @@ private fun jsonString(value: String): String {
 }
 
 private fun jsonStringArray(values: List<String>): String = values.joinToString(",", "[", "]") { jsonString(it) }
+
+internal fun JSONObject.optNullableLong(name: String): Long? = if (isNull(name)) null else optLong(name)
+
+/**
+ * Reads a string the server is allowed to leave empty. This is the package's only way to read an
+ * optional string, so no caller can invent a second, wrong rule.
+ *
+ * `optString` alone cannot answer this. Android's `org.json` renders a JSON null as the four-letter
+ * string "null" (`JSON.toString(JSONObject.NULL)` -> `String.valueOf(NULL)`), so a blank-check keeps
+ * it and the field reaches the UI as that literal word — which is exactly what put "null" in every
+ * row of the process list: a Windows server never resolves a process owner, so `userName` is
+ * genuinely null on the wire. Only `isNull` separates "the server sent nothing" from "the server
+ * sent a value", and it answers the same way on Android and on the reference `org.json`.
+ */
+internal fun JSONObject.optNullableString(name: String): String? =
+    if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }
 
 /** Route constants mirroring `SystemMonitorApiRoutes`. */
 private object SystemRoutes {

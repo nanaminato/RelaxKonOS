@@ -27,12 +27,22 @@ interface RelaxKonGateway {
     suspend fun dockerImages(serverUrl: String, accessToken: String): ApiResult<List<DockerImage>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerNetworks(serverUrl: String, accessToken: String): ApiResult<List<DockerNetwork>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerVolumes(serverUrl: String, accessToken: String): ApiResult<List<DockerVolume>> = ApiResult.Transport("Docker is unavailable.")
+    suspend fun dockerVolumeDetails(serverUrl: String, accessToken: String, name: String): ApiResult<DockerVolumeDetails> = ApiResult.Transport("Docker is unavailable.")
+    /** Releases a volume's data. The server refuses while a container still references it. */
+    suspend fun dockerDeleteVolume(serverUrl: String, accessToken: String, name: String, confirmed: Boolean): ApiResult<DockerOperation> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerStacks(serverUrl: String, accessToken: String): ApiResult<List<DockerStack>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerStackServices(serverUrl: String, accessToken: String, name: String): ApiResult<List<DockerStackService>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerContainerLogs(serverUrl: String, accessToken: String, id: String, tail: Int): ApiResult<DockerLogs> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerContainerAction(serverUrl: String, accessToken: String, id: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> = ApiResult.Transport("Docker is unavailable.")
-    suspend fun dockerStackAction(serverUrl: String, accessToken: String, name: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> = ApiResult.Transport("Docker is unavailable.")
-    suspend fun dockerStackDefinition(serverUrl: String, accessToken: String, name: String, composeYaml: String): ApiResult<DockerOperation> = ApiResult.Transport("Docker Compose is unavailable.")
+    /** Parses a Compose definition without applying it. Nothing on the host changes. */
+    suspend fun dockerStackPreview(serverUrl: String, accessToken: String, name: String, composeYaml: String): ApiResult<DockerStackPreview> = ApiResult.Transport("Docker Compose is unavailable.")
+    /** Submits a deployment, or returns the operation already bound to this idempotency key. */
+    suspend fun dockerStackDeploy(serverUrl: String, accessToken: String, name: String, composeYaml: String, definitionVersion: String, idempotencyKey: String): ApiResult<DockerStackOperation> = ApiResult.Transport("Docker Compose is unavailable.")
+    suspend fun dockerStackAction(serverUrl: String, accessToken: String, name: String, action: String, confirmed: Boolean, idempotencyKey: String): ApiResult<DockerStackOperation> = ApiResult.Transport("Docker Compose is unavailable.")
+    suspend fun dockerStackOperations(serverUrl: String, accessToken: String, name: String, limit: Int): ApiResult<List<DockerStackOperation>> = ApiResult.Transport("Docker Compose is unavailable.")
+    suspend fun dockerStackOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperation> = ApiResult.Transport("Docker Compose is unavailable.")
+    suspend fun dockerStackOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DockerStackOperationDiagnostics> = ApiResult.Transport("Docker Compose is unavailable.")
+    suspend fun dockerStackOperationCancel(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<DockerStackOperation> = ApiResult.Transport("Docker Compose is unavailable.")
 
     suspend fun deploymentApplications(serverUrl: String, accessToken: String): ApiResult<List<DeploymentApplication>>
     suspend fun deploymentSnapshot(serverUrl: String, accessToken: String, applicationId: String): ApiResult<DeploymentSnapshot>

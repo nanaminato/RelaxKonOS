@@ -13,6 +13,3 @@ public sealed record DockerStackDto(string Name, string Status, string ConfigFil
 
 /// <summary>A Compose-managed container, grouped by its Compose service.</summary>
 public sealed record DockerStackServiceDto(string Service, string Container, string Image, string State, string Status);
-
-/// <summary>Bounded diagnostic result for a Compose operation.</summary>
-public sealed record DockerStackOperationResult(bool Success, string ProblemCode, IReadOnlyList<string> Messages);

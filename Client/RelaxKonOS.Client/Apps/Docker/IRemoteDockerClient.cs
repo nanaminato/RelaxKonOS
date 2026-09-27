@@ -13,8 +13,15 @@ public interface IRemoteDockerClient
     Task<IReadOnlyList<DockerStackDto>> ListStacksAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DockerStackServiceDto>> ListStackServicesAsync(string name, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> ApplyContainerActionAsync(string id, string action, DockerContainerActionRequest request, CancellationToken cancellationToken = default);
-    Task<DockerStackOperationResult> ApplyStackOperationAsync(string operation, DockerStackDefinitionDto definition, CancellationToken cancellationToken = default);
-    Task<DockerStackOperationResult> ApplyStackActionAsync(string name, string action, DockerStackActionRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Parses a definition and returns what it would run. Nothing is applied.</summary>
+    Task<DockerStackPreviewDto> PreviewStackAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default);
+    /// <summary>Submits a deployment. The server answers with a durable operation, not with the result.</summary>
+    Task<DockerStackOperationDto> DeployStackAsync(DockerStackDeployRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task<DockerStackOperationDto> ApplyStackActionAsync(string name, DockerStackOperationKind action, DockerStackActionRequest request, string idempotencyKey, CancellationToken cancellationToken = default);
+    Task<DockerStackOperationDto?> GetStackOperationAsync(Guid operationId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<DockerStackOperationDto>> ListStackOperationsAsync(string name, int limit = 20, CancellationToken cancellationToken = default);
+    Task<DockerStackOperationDiagnosticsDto?> GetStackOperationDiagnosticsAsync(Guid operationId, CancellationToken cancellationToken = default);
+    Task<DockerStackOperationDto> CancelStackOperationAsync(Guid operationId, string idempotencyKey, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> PullImageAsync(DockerImageOperationRequest request, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> DeleteImageAsync(string id, DockerImageOperationRequest request, CancellationToken cancellationToken = default);
     Task<DockerOperationResult> CreateContainerAsync(DockerContainerCreateRequest request, CancellationToken cancellationToken = default);
@@ -41,6 +48,16 @@ public interface IRemoteDockerClient
 /// to explain what was wrong instead of showing a transport error.
 /// </summary>
 public sealed class DockerProxyRequestException(string problemCode) : Exception(problemCode)
+{
+    public string ProblemCode { get; } = problemCode;
+}
+
+/// <summary>
+/// A stack request the server refused, carrying its stable problem code. A rejected Compose definition
+/// (an unsupported feature, a missing variable, a changed document) must be explained from that code
+/// instead of being collapsed into a generic transport error.
+/// </summary>
+public sealed class DockerStackRequestException(string problemCode) : Exception(problemCode)
 {
     public string ProblemCode { get; } = problemCode;
 }

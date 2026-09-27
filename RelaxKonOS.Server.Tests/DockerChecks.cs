@@ -6,6 +6,18 @@ internal static class DockerChecks
         TestAssert.Assert(DockerComposeSubsetValidation.IsSupported(supported, out var accepted) && accepted.Length == 0,
             "The Android Compose subset rejected an image service with a named volume.");
 
+        // `$$` is Compose's escape for a literal dollar and a comment is never interpolated (Compose
+        // substitutes the parsed document, not the raw text), so neither is a variable reference.
+        foreach (var escaped in new[]
+        {
+            "services:\n  web:\n    image: nginx\n    command: [\"sh\", \"-c\", \"echo $$HOME\"]\n",
+            "services:\n  web:\n    image: nginx\n# TOKEN: ${AD04_COMMENT_VAR}\n",
+        })
+        {
+            TestAssert.Assert(DockerComposeSubsetValidation.IsSupported(escaped, out var escapeProblem) && escapeProblem.Length == 0,
+                "The Android Compose subset rejected an escaped dollar or a comment as an unresolved variable.");
+        }
+
         foreach (var rejected in new[]
         {
             "services:\n  web:\n    build: .\n",
@@ -19,6 +31,24 @@ internal static class DockerChecks
             TestAssert.Assert(!DockerComposeSubsetValidation.IsSupported(rejected, out var problem)
                 && problem == DockerComposeSubsetValidation.UnsupportedFeature,
                 "The Android Compose subset accepted an unsupported or dangerous source feature.");
+        }
+
+        // `docker compose config` substitutes an unset variable with an empty string and still exits 0,
+        // so admitting any of these would deploy a project built from values the operator never saw.
+        // The `$$` escape and a trailing quoted `#` are what separate a real reference from literal text.
+        foreach (var rejected in new[]
+        {
+            "services:\n  web:\n    image: nginx\n    environment:\n      TOKEN: ${AD04_UNSET}\n",
+            "services:\n  web:\n    image: nginx\n    environment:\n      TOKEN: $AD04_UNSET\n",
+            "services:\n  web:\n    image: nginx\n    environment:\n      TOKEN: ${AD04_UNSET:-fallback}\n",
+            "services:\n  web:\n    image: nginx\n    environment:\n      TOKEN: ${AD04_UNSET:?required}\n",
+            "services:\n  web:\n    image: nginx\n    container_name: \"web-${AD04_UNSET}\"\n",
+            "services:\n  web:\n    image: nginx\n    labels:\n      note: \"before#${AD04_UNSET}\"\n",
+        })
+        {
+            TestAssert.Assert(!DockerComposeSubsetValidation.IsSupported(rejected, out var problem)
+                && problem == DockerStackProblem.VariableUnresolved,
+                "The Android Compose subset accepted a variable reference the server has no value for.");
         }
     }
 
@@ -412,4 +442,658 @@ internal static async Task VerifyDockerEngineControlAsync(string root)
     Console.WriteLine("PASS DOCKER ENGINE: lifecycle route, action mapping, confirmation, host dispatch, and outcome reporting verified.");
 }
 
+/// <summary>
+/// Verifies the durable Compose stack-operation contract: the wire routes, the value rules, the ledger
+/// that survives a restart, idempotent replay, per-project exclusion, outcome classification over what
+/// the Engine actually runs, and the startup reconciliation that observes instead of replaying.
+/// </summary>
+internal static async Task VerifyStackOperationsAsync(string root)
+{
+    // --- Wire contract: routes and the action table ---------------------------------------------
+    TestAssert.Assert(DockerApiRoutes.StackPreview == "/api/v1.0/docker/stacks/preview"
+        && DockerApiRoutes.StackDeploy == "/api/v1.0/docker/stacks/deploy"
+        && DockerApiRoutes.StackOperations == "/api/v1.0/docker/stacks/{name}/operations"
+        && DockerApiRoutes.StackActiveOperation == "/api/v1.0/docker/stacks/{name}/operations/active"
+        && DockerApiRoutes.StackOperationById == "/api/v1.0/docker/stack-operations/{operationId}"
+        && DockerApiRoutes.StackOperationDiagnostics == "/api/v1.0/docker/stack-operations/{operationId}/diagnostics"
+        && DockerApiRoutes.StackOperationCancel == "/api/v1.0/docker/stack-operations/{operationId}/cancel",
+        "A durable stack operation route moved away from the versioned public base.");
+
+    var identifier = Guid.NewGuid();
+    TestAssert.Assert(DockerApiRoutes.StackOperation(identifier) == $"/api/v1.0/docker/stack-operations/{identifier:D}",
+        "The canonical read route of a stack operation is not built from its identifier.");
+
+    // A deployment carries a definition, so it is not a lifecycle action: the action table must not
+    // admit it, or a caller could reach the deployment path without ever submitting a document.
+    TestAssert.Assert(DockerStackActionRoutes.Segment(DockerStackOperationKind.Deploy) == "deploy"
+        && !DockerStackActionRoutes.TryParseAction("deploy", out _)
+        && !DockerStackActionRoutes.TryParseAction("validate", out _)
+        && !DockerStackActionRoutes.TryParseAction(null, out _),
+        "The stack action table admitted a segment that is not a whole-project lifecycle verb.");
+    foreach (var kind in new[]
+    {
+        DockerStackOperationKind.Start, DockerStackOperationKind.Stop,
+        DockerStackOperationKind.Restart, DockerStackOperationKind.Delete,
+    })
+    {
+        TestAssert.Assert(DockerStackActionRoutes.TryParseAction(DockerStackActionRoutes.Segment(kind), out var roundTripped)
+            && roundTripped == kind,
+            $"The action segment of {kind} did not round-trip through the shared table.");
+    }
+
+    // --- Value rules -----------------------------------------------------------------------------
+    // The project name also becomes the prefix of every container, volume and network Docker creates,
+    // so it stays narrow instead of being escaped later.
+    TestAssert.Assert(DockerStackValidation.IsValidProjectName("a")
+        && DockerStackValidation.IsValidProjectName("web_app-1")
+        && !DockerStackValidation.IsValidProjectName(null)
+        && !DockerStackValidation.IsValidProjectName(string.Empty)
+        && !DockerStackValidation.IsValidProjectName(new string('a', 64))
+        && !DockerStackValidation.IsValidProjectName("../escape")
+        && !DockerStackValidation.IsValidProjectName("web app")
+        && !DockerStackValidation.IsValidProjectName("web/app"),
+        "A Compose project name was accepted outside the resources Docker would prefix with it.");
+
+    const string source = "services:\n  web:\n    image: nginx:alpine\n";
+    var version = DockerStackValidation.DefinitionVersion("web", source);
+    TestAssert.Assert(version == DockerStackValidation.DefinitionVersion("web", source)
+        && version != DockerStackValidation.DefinitionVersion("web", source + "  # edited\n")
+        && version != DockerStackValidation.DefinitionVersion("other", source)
+        && DockerStackValidation.IsValidReference(version),
+        "The definition version did not identify exactly one approved source document.");
+
+    TestAssert.Assert(DockerStackValidation.IsValidProblemCode(null)
+        && DockerStackValidation.IsValidProblemCode("docker.stack_partial_failure")
+        && !DockerStackValidation.IsValidProblemCode("docker.stack_partial_failure\nsecond line")
+        && !DockerStackValidation.IsValidProblemCode(new string('c', 121))
+        && !DockerStackValidation.IsValidReference(new string('a', 64)),
+        "A problem code or a ledger reference was accepted outside its documented shape.");
+
+    // --- Ledger: durability, replay, per-project exclusion ----------------------------------------
+    var ledgerRoot = Path.Combine(root, "stack-ledger");
+    var actor = Guid.NewGuid().ToString("D");
+    var other = Guid.NewGuid().ToString("D");
+    var store = NewStackStore(ledgerRoot, 16);
+
+    var request = DockerStackValidation.Reference("deploy|shop|v1");
+    var created = store.Create("shop", DockerStackOperationKind.Deploy, actor, "key-1", request, out var wasCreated);
+    TestAssert.Assert(wasCreated && DockerStackOperationStore.Active(created.Operation) && created.Operation.Cancellable
+        && created.Operation.ProblemCode is null && created.Operation.Services.Count == 0,
+        "A submitted deployment was not recorded as an active, cancellable operation with no claimed outcome.");
+
+    // The actor is stored hashed: a ledger that names identities is a ledger that leaks them.
+    TestAssert.Assert(created.ActorReference.Length == 64 && !created.ActorReference.Contains(actor, StringComparison.OrdinalIgnoreCase)
+        && created.IdempotencyReference != DockerStackValidation.Reference("key-1"),
+        "The operation ledger stored an actor or an idempotency key in a recoverable form.");
+
+    var replay = store.Create("shop", DockerStackOperationKind.Deploy, actor, "key-1", request, out var replayedCreated);
+    TestAssert.Assert(!replayedCreated && replay.Operation.OperationId == created.Operation.OperationId,
+        "A retried submission created a second operation instead of returning the first.");
+
+    // The same key with a different request is a conflict, not a replay: otherwise an approval given
+    // for one document would be silently applied to another.
+    var keyConflict = CaptureStackFailure(() => store.Create("shop", DockerStackOperationKind.Deploy, actor, "key-1",
+        DockerStackValidation.Reference("deploy|shop|v2"), out _),
+        "Reusing an idempotency key for a different request was accepted.");
+    TestAssert.Assert(keyConflict.ProblemCode == DockerStackProblem.IdempotencyConflict,
+        "A reused idempotency key did not report a conflict.");
+
+    var projectConflict = CaptureStackFailure(() => store.Create("shop", DockerStackOperationKind.Stop, actor, "key-2",
+        DockerStackValidation.Reference("stop|shop|False"), out _),
+        "A second change to a project with an active operation was queued.");
+    TestAssert.Assert(projectConflict.ProblemCode == DockerStackProblem.OperationConflict,
+        "A concurrent change to one project did not report an operation conflict.");
+
+    // Exclusion is per project, not global: an independent project keeps running beside it.
+    var parallel = store.Create("warehouse", DockerStackOperationKind.Deploy, other, "key-3",
+        DockerStackValidation.Reference("deploy|warehouse|v1"), out var parallelCreated);
+    TestAssert.Assert(parallelCreated
+        && store.GetActive("shop")?.Operation.OperationId == created.Operation.OperationId
+        && store.GetActive("warehouse")?.Operation.OperationId == parallel.Operation.OperationId,
+        "Per-project exclusion was applied globally, or an active operation could not be found.");
+
+    // --- The record outlives the process ---------------------------------------------------------
+    var reopened = NewStackStore(ledgerRoot, 16);
+    TestAssert.Assert(reopened.Get(created.Operation.OperationId)?.Operation.ProjectName == "shop"
+        && reopened.GetActive("shop")?.Operation.OperationId == created.Operation.OperationId,
+        "The operation ledger did not survive a restart, so a reconnecting client would lose the record.");
+
+    // Diagnostics are sanitized and bounded here, and a dropped head is recorded rather than implied.
+    reopened.Update(created.Operation.OperationId, operation => operation with
+    {
+        State = DockerStackOperationState.Succeeded,
+        Stage = DockerStackOperationStage.Completed,
+        CompletedAt = DateTimeOffset.UtcNow,
+        Cancellable = false,
+    }, "completed", [.. Enumerable.Range(0, 200).Select(index => $"line {index}")]);
+    TestAssert.Assert(!DockerStackOperationStore.Active(reopened.Get(created.Operation.OperationId)!.Operation),
+        "A completed operation was still reported as active.");
+
+    var diagnostics = reopened.Diagnostics(created.Operation.OperationId);
+    TestAssert.Assert(diagnostics.Length == 120 && diagnostics[^1] == "line 199"
+        && reopened.DiagnosticsTruncated(created.Operation.OperationId),
+        "Bounded diagnostics dropped the tail instead of the head, or did not report the truncation.");
+
+    // A terminal operation frees its project again, and the history stays newest-first.
+    await Task.Delay(20);
+    var second = reopened.Create("shop", DockerStackOperationKind.Start, actor, "key-4",
+        DockerStackValidation.Reference("start|shop|False"), out var secondCreated);
+    var shopHistory = reopened.History("shop", 10);
+    TestAssert.Assert(secondCreated && shopHistory.Length == 2 && shopHistory[0].Operation.OperationId == second.Operation.OperationId,
+        "A terminal operation still blocked its project, or the history is not newest-first.");
+    TestAssert.Assert(reopened.History("warehouse", 1).Length == 1 && reopened.History("shop", 1).Length == 1,
+        "The history ignored its limit or returned another project's operations.");
+
+    // Sanitization and the per-line bound are independent of where a line sits in the log: binding the
+    // bound to the line's index would silently truncate the head of every operation's output.
+    reopened.Update(second.Operation.OperationId, operation => operation with
+    {
+        State = DockerStackOperationState.Succeeded,
+        Stage = DockerStackOperationStage.Completed,
+        CompletedAt = DateTimeOffset.UtcNow,
+        Cancellable = false,
+    }, "completed", ["auth-token: super-secret-value", new string('x', 900)]);
+    var perLine = reopened.Diagnostics(second.Operation.OperationId);
+    TestAssert.Assert(perLine.Length == 2
+        && perLine[0].Contains("[REDACTED]", StringComparison.Ordinal)
+        && !perLine[0].Contains("super-secret-value", StringComparison.Ordinal)
+        && perLine[1].Length == 513 && perLine[1].EndsWith('…'),
+        $"Diagnostic lines were not sanitized and bounded per line: {string.Join(", ", perLine.Select(line => line.Length.ToString()))}");
+
+    // --- Coordinator: admission, idempotency, and outcome classification --------------------------
+    var coordinatorRoot = Path.Combine(root, "stack-coordinator");
+    var compose = new FakeComposeService();
+    var coordinator = NewStackCoordinator(coordinatorRoot, compose, new TestApplicationLifetime(), 16);
+
+    const string shopYaml = "services:\n  web:\n    image: nginx:alpine\n  db:\n    image: postgres:16-alpine\n";
+    var deployKey = Guid.NewGuid().ToString("N");
+    DockerStackDeployRequest Deploy(string project, string yaml) =>
+        new(new DockerStackDefinitionDto(project, yaml), DockerStackValidation.DefinitionVersion(project, yaml));
+
+    // Nothing is admitted before startup reconciliation has finished: an operation that is accepted
+    // and then never run is worse than a refusal.
+    var notReady = CaptureStackFailure(() => coordinator.Deploy(Deploy("shop", shopYaml), actor, deployKey),
+        "An operation was admitted before the coordinator was ready.");
+    TestAssert.Assert(notReady.ProblemCode == DockerStackProblem.StoreUnavailable,
+        "A coordinator that had not reconciled yet did not refuse the submission.");
+
+    // An approval is bound to one exact document.
+    var edited = CaptureStackFailure(() => coordinator.Deploy(
+        new DockerStackDeployRequest(new DockerStackDefinitionDto("shop", shopYaml),
+            DockerStackValidation.DefinitionVersion("shop", shopYaml + "  # edited\n")), actor, Guid.NewGuid().ToString("N")),
+        "A deployment whose source changed after the preview was accepted.");
+    TestAssert.Assert(edited.ProblemCode == DockerStackProblem.DefinitionChanged,
+        "A submission that no longer matched its approved definition was not refused.");
+
+    // The import subset is enforced before anything is recorded, and nothing is silently rewritten.
+    const string buildYaml = "services:\n  web:\n    build: .\n";
+    var unsupported = CaptureStackFailure(() => coordinator.Deploy(Deploy("shop", buildYaml), actor, Guid.NewGuid().ToString("N")),
+        "An unsupported Compose document was queued.");
+    TestAssert.Assert(unsupported.ProblemCode == DockerStackProblem.FeatureUnsupported,
+        "An unsupported Compose feature was not refused with the shared feature code.");
+
+    await coordinator.StartAsync(CancellationToken.None);
+
+    // A mutation without a usable idempotency key can never be replayed, so it is refused outright.
+    foreach (var badKey in new[] { string.Empty, "   ", new string('k', 129), "key\nwith-newline" })
+    {
+        var missingKey = CaptureStackFailure(() => coordinator.Deploy(Deploy("shop", shopYaml), actor, badKey),
+            "A submission without a usable idempotency key was admitted.");
+        TestAssert.Assert(missingKey.ProblemCode == DockerStackProblem.IdempotencyRequired,
+            "A missing or malformed idempotency key did not report the idempotency requirement.");
+    }
+
+    compose.PreviewServices = ["web", "db"];
+    compose.Observed = [RunningService("web"), RunningService("db")];
+    compose.NextResult = new DockerStackMutationResult(true, string.Empty, ["Container shop-web-1 Started"]);
+    var submitted = coordinator.Deploy(Deploy("shop", shopYaml), actor, deployKey);
+    TestAssert.Assert(submitted.State == DockerStackOperationState.Queued && submitted.Stage == DockerStackOperationStage.Queued,
+        "A submitted deployment was not answered with its queued record.");
+    var deployed = await AwaitTerminalOperationAsync(coordinator, submitted.OperationId);
+    TestAssert.Assert(deployed.State == DockerStackOperationState.Succeeded && deployed.ProblemCode is null
+        && deployed.RecoveryProblemCode is null && !deployed.Cancellable
+        && deployed.Services.Select(service => service.Service).OrderBy(name => name, StringComparer.Ordinal).SequenceEqual(["db", "web"]),
+        "A successful deployment was not classified over the services actually observed.");
+
+    var replayedDeployment = coordinator.Deploy(Deploy("shop", shopYaml), actor, deployKey);
+    TestAssert.Assert(replayedDeployment.OperationId == submitted.OperationId,
+        "Replaying an idempotency key started a second deployment of the same project.");
+
+    // The command succeeded but a service is not in its desired state: that is a partial failure, and
+    // the operator has to choose between retrying, stopping, or removing the project.
+    const string portalYaml = "services:\n  web:\n    image: nginx:alpine\n  cache:\n    image: redis:7-alpine\n";
+    compose.PreviewServices = ["web", "cache"];
+    compose.Observed = [RunningService("web"), StoppedService("cache")];
+    compose.NextResult = new DockerStackMutationResult(true, string.Empty, ["cache failed to start"]);
+    var partial = await AwaitTerminalOperationAsync(coordinator,
+        coordinator.Deploy(Deploy("portal", portalYaml), actor, Guid.NewGuid().ToString("N")).OperationId);
+    TestAssert.Assert(partial.State == DockerStackOperationState.PartialFailed
+        && partial.ProblemCode == DockerStackProblem.PartialFailure
+        && partial.RecoveryProblemCode is null
+        && partial.Services.Any(service => service.Service == "cache" && service.State == "exited"),
+        "A deployment that left a service down was reported as a success instead of a partial failure.");
+
+    // A failure with nothing running is a plain failure; the same failure with containers left behind
+    // is a partial one, because doing nothing is then not an option.
+    const string brokenYaml = "services:\n  web:\n    image: nginx:alpine\n";
+    compose.PreviewServices = ["web"];
+    compose.Observed = [];
+    compose.NextResult = new DockerStackMutationResult(false, DockerStackProblem.ComposeFailed, ["no such image"]);
+    var broken = await AwaitTerminalOperationAsync(coordinator,
+        coordinator.Deploy(Deploy("broken", brokenYaml), actor, Guid.NewGuid().ToString("N")).OperationId);
+    TestAssert.Assert(broken.State == DockerStackOperationState.Failed
+        && broken.ProblemCode == DockerStackProblem.ComposeFailed && broken.RecoveryProblemCode is null
+        && broken.Services.Count == 0,
+        "A failed deployment that left nothing running was not reported as a plain failure.");
+
+    compose.Observed = [RunningService("web")];
+    var halfApplied = await AwaitTerminalOperationAsync(coordinator,
+        coordinator.Deploy(Deploy("half", brokenYaml), actor, Guid.NewGuid().ToString("N")).OperationId);
+    TestAssert.Assert(halfApplied.State == DockerStackOperationState.PartialFailed
+        && halfApplied.ProblemCode == DockerStackProblem.ComposeFailed
+        && halfApplied.RecoveryProblemCode == DockerStackProblem.PartialFailure,
+        "A failed deployment that left containers running did not report a partial failure with a recovery code.");
+
+    // Removing a project needs an explicit confirmation, and the flag is part of the request identity.
+    var unconfirmedDelete = CaptureStackFailure(() =>
+        coordinator.ApplyAction("shop", DockerStackOperationKind.Delete, confirmed: false, actor, Guid.NewGuid().ToString("N")),
+        "A project removal without confirmation was queued.");
+    TestAssert.Assert(unconfirmedDelete.ProblemCode == DockerStackProblem.ConfirmationRequired,
+        "An unconfirmed project removal did not report the confirmation requirement.");
+
+    compose.Observed = [];
+    compose.NextResult = new DockerStackMutationResult(true, string.Empty, ["removed"]);
+    var removed = await AwaitTerminalOperationAsync(coordinator,
+        coordinator.ApplyAction("shop", DockerStackOperationKind.Delete, confirmed: true, actor, Guid.NewGuid().ToString("N")).OperationId);
+    TestAssert.Assert(removed.State == DockerStackOperationState.Succeeded && removed.Kind == DockerStackOperationKind.Delete
+        && compose.AppliedActions.Contains(DockerStackOperationKind.Delete),
+        "A confirmed project removal was not executed, or was not classified as a success.");
+
+    // Stopping is verified against the running set, so a service that stayed up is a partial failure.
+    compose.Observed = [RunningService("web"), StoppedService("db")];
+    compose.NextResult = new DockerStackMutationResult(true, string.Empty, ["stopped"]);
+    var stoppedLoudly = await AwaitTerminalOperationAsync(coordinator,
+        coordinator.ApplyAction("legacy", DockerStackOperationKind.Stop, confirmed: false, actor, Guid.NewGuid().ToString("N")).OperationId);
+    TestAssert.Assert(stoppedLoudly.State == DockerStackOperationState.PartialFailed
+        && stoppedLoudly.ProblemCode == DockerStackProblem.PartialFailure && stoppedLoudly.RecoveryProblemCode is null,
+        "A stop that left a service running was reported as a success.");
+
+    compose.Observed = [StoppedService("web")];
+    var stoppedQuietly = await AwaitTerminalOperationAsync(coordinator,
+        coordinator.ApplyAction("legacy", DockerStackOperationKind.Stop, confirmed: false, actor, Guid.NewGuid().ToString("N")).OperationId);
+    TestAssert.Assert(stoppedQuietly.State == DockerStackOperationState.Succeeded,
+        "A stop that left nothing running was not reported as a success.");
+
+    // --- Reads: history, diagnostics, and the refusals that go with them --------------------------
+    var history = coordinator.History("portal", 10);
+    TestAssert.Assert(history.Count == 1 && history[0].OperationId == partial.OperationId,
+        "The project operation history did not return the durable records of exactly that project.");
+    TestAssert.Assert(coordinator.GetActive("portal") is null && coordinator.GetActive("legacy") is null,
+        "A terminal operation was still reported as the project's active one.");
+
+    var recorded = coordinator.Diagnostics(partial.OperationId);
+    TestAssert.Assert(recorded.Lines.Any(line => line.Contains("cache failed to start", StringComparison.Ordinal))
+        && recorded.Lines.Any(line => line.Contains("not in their desired state", StringComparison.Ordinal)),
+        $"The diagnostics of a partial failure did not carry the command output and the classification note: {string.Join(" | ", recorded.Lines)}");
+
+    var invalidName = CaptureStackFailure(() => coordinator.History("no/such", 10),
+        "An invalid project name was accepted by the history route.");
+    TestAssert.Assert(invalidName.ProblemCode == DockerStackProblem.InvalidName,
+        "An invalid project name did not report the name problem.");
+
+    var absent = CaptureStackFailure(() => coordinator.Diagnostics(Guid.NewGuid()),
+        "Diagnostics for an unknown operation were returned.");
+    TestAssert.Assert(absent.ProblemCode == DockerStackProblem.OperationNotFound && absent.StatusCode == 404,
+        "Diagnostics for an unknown operation did not report a missing operation.");
+
+    // --- Cancellation: requested immediately, acknowledged by the worker that stops --------------
+    const string cancelYaml = "services:\n  web:\n    image: nginx:alpine\n";
+    compose.PreviewServices = ["web"];
+    compose.Observed = [StoppedService("web")];
+    compose.BlockOnDeploy = true;
+    var cancellable = coordinator.Deploy(Deploy("cancelme", cancelYaml), actor, Guid.NewGuid().ToString("N"));
+    await AwaitRunningOperationAsync(coordinator, cancellable.OperationId);
+    var cancellation = coordinator.Cancel(cancellable.OperationId, Guid.NewGuid().ToString("N"));
+    TestAssert.Assert(!cancellation.Cancellable && DockerStackOperationStore.Active(cancellation),
+        "A cancellation request did not immediately mark the operation as no longer cancellable.");
+
+    compose.BlockOnDeploy = false;
+    compose.ReleaseDeploy();
+    var cancelled = await AwaitTerminalOperationAsync(coordinator, cancellable.OperationId);
+    TestAssert.Assert(cancelled.State == DockerStackOperationState.Cancelled
+        && cancelled.ProblemCode == DockerStackProblem.Cancelled,
+        "A cancelled operation did not end in the cancelled state.");
+
+    // --- Startup reconciliation: observed, never replayed ----------------------------------------
+    var recoveryRoot = Path.Combine(root, "stack-recovery");
+    var recoveryStore = NewStackStore(recoveryRoot, 16);
+    var interrupted = recoveryStore.Create("leftover", DockerStackOperationKind.Deploy, actor, "key-r1",
+        DockerStackValidation.Reference("deploy|leftover|v1"), out _).Operation;
+    recoveryStore.Update(interrupted.OperationId, operation => operation with
+    {
+        State = DockerStackOperationState.Running,
+        Stage = DockerStackOperationStage.Applying,
+        StartedAt = DateTimeOffset.UtcNow,
+    }, "started");
+    // A queued change that never started is equally unverifiable, and must not claim observations.
+    var neverStarted = recoveryStore.Create("waiting", DockerStackOperationKind.Deploy, actor, "key-r2",
+        DockerStackValidation.Reference("deploy|waiting|v1"), out _).Operation;
+
+    var recoveryCompose = new FakeComposeService { Observed = [RunningService("web")] };
+    var recoveryCoordinator = NewStackCoordinator(recoveryRoot, recoveryCompose, new TestApplicationLifetime(), 16);
+    await recoveryCoordinator.StartAsync(CancellationToken.None);
+
+    var reconciled = recoveryCoordinator.Get(interrupted.OperationId)!;
+    TestAssert.Assert(reconciled.State == DockerStackOperationState.Interrupted
+        && reconciled.ProblemCode == DockerStackProblem.Interrupted
+        && !reconciled.Cancellable
+        && reconciled.Services.Any(service => service.Service == "web")
+        && reconciled.RecoveryProblemCode is null,
+        "A deployment interrupted by a restart was not reported as unverified over the services actually observed.");
+
+    var reconciledNeverStarted = recoveryCoordinator.Get(neverStarted.OperationId)!;
+    TestAssert.Assert(reconciledNeverStarted.State == DockerStackOperationState.Interrupted
+        && reconciledNeverStarted.Services.Count == 0
+        && reconciledNeverStarted.RecoveryProblemCode == DockerStackProblem.PartialFailure,
+        "A queued operation that never started was reconciled into a claimed state, or without a recovery action.");
+
+    // The whole point of reconciliation: nothing was replayed, and the only call was an observation.
+    TestAssert.Assert(recoveryCompose.DeployCalls == 0 && recoveryCompose.AppliedActions.Count == 0
+        && recoveryCompose.ListServicesCalls == 1,
+        "A restart replayed an interrupted operation instead of only observing the project.");
+
+    Console.WriteLine("PASS DOCKER STACK: durable ledger, idempotent replay, per-project exclusion, "
+        + "partial-failure classification, cancellation, and restart reconciliation verified.");
+}
+
+/// <summary>
+/// AD04-T1/T3/T5 on a real Compose host. <see cref="VerifyStackOperationsAsync" /> proves what the
+/// coordinator decides once the Engine's answers are chosen for it; this proves that the commands those
+/// decisions rest on behave that way — that <c>config --format json</c> really has the shape the parser
+/// reads, that a service which exits is observed as not running while <c>up</c> still exits 0, and that
+/// taking a project down leaves its named volume in place.
+///
+/// It is opt-in (<c>--stack-live</c>) and skips unless an Engine answers and its image is already on the
+/// host, because a live check that quietly passes without Docker would be worse than no check at all.
+/// </summary>
+internal static async Task VerifyStackOperationsLiveAsync(string root)
+{
+    // One small image that can both idle and exit, so a single document can produce a service that
+    // reaches its target state and one that does not.
+    const string image = "alpine:3.20";
+    const string variableDocument = "services:\n  web:\n    image: alpine:3.20\n    environment:\n      TOKEN: ${AD04_UNSET}\n";
+    var dataDirectory = Path.Combine(root, "docker-stack-live", "compose");
+    var ledgerDirectory = Path.Combine(root, "docker-stack-live", "ledger");
+    Directory.CreateDirectory(dataDirectory);
+
+    var engine = new DockerCliEngineService(new DockerCliEngineOptions(), new DisabledDockerProxyResolver(),
+        NullLogger<DockerCliEngineService>.Instance);
+    var status = await engine.GetStatusAsync();
+    if (!status.IsAvailable)
+    {
+        Console.WriteLine($"SKIP DOCKER STACK LIVE: no reachable Docker Engine ({status.ProblemCode}).");
+        return;
+    }
+    var images = await engine.ListImagesAsync();
+    if (!images.Any(item => item.Repository == "alpine" && item.Tag.StartsWith("3.20", StringComparison.Ordinal)))
+    {
+        Console.WriteLine($"SKIP DOCKER STACK LIVE: {image} is not on this host; pull it first.");
+        return;
+    }
+
+    var project = "ad04live" + Guid.NewGuid().ToString("N")[..8];
+    var volume = $"{project}_data";
+    var compose = new DockerComposeService(new TestHostEnvironment(dataDirectory),
+        Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory }));
+    var coordinator = NewStackCoordinator(ledgerDirectory, compose, new TestApplicationLifetime(), 4);
+    await coordinator.StartAsync(CancellationToken.None);
+
+    static string Document(string workerCommand) => $$"""
+services:
+  web:
+    image: alpine:3.20
+    command: ["sh", "-c", "sleep 600"]
+    volumes:
+      - data:/data
+  worker:
+    image: alpine:3.20
+    command: ["sh", "-c", "{{workerCommand}}"]
+    volumes:
+      - data:/work
+volumes:
+  data: {}
+""";
+
+    // A real deployment takes longer than the fake engine's instant answer, so the live waits are their
+    // own budget rather than the 30 seconds the offline checks use.
+    static async Task<DockerStackOperationDto> WaitAsync(DockerStackOperationCoordinator coordinator, Guid operationId, int seconds)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(seconds);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (coordinator.Get(operationId) is { } operation && !DockerStackOperationStore.Active(operation)) return operation;
+            await Task.Delay(200);
+        }
+        throw new InvalidOperationException($"Live operation {operationId} did not reach a terminal state within {seconds} seconds.");
+    }
+
+    try
+    {
+        // AD04-T2 — this server exposes no way to supply a variable, and `docker compose config`
+        // substitutes an empty string and still exits 0. Refusing has to happen before the Engine runs.
+        var variableVersion = DockerStackValidation.DefinitionVersion(project, variableDocument);
+        var refusal = CaptureStackFailure(() => coordinator.Deploy(
+            new DockerStackDeployRequest(new DockerStackDefinitionDto(project, variableDocument), variableVersion),
+            "live-actor", "live-key-variable"),
+            "A definition with an unset variable was queued instead of refused.");
+        TestAssert.Assert(refusal.ProblemCode == DockerStackProblem.VariableUnresolved && refusal.StatusCode == 400,
+            $"An unresolved variable was not refused before execution: {refusal.ProblemCode}/{refusal.StatusCode}.");
+
+        // AD04-T1/T3 — two services, one of which exits immediately. `up` still exits 0, so the outcome
+        // can only come from observing the Engine.
+        var failing = Document("exit 7");
+        var preview = await compose.PreviewAsync(new DockerStackDefinitionDto(project, failing));
+        TestAssert.Assert(preview.Services.Select(service => service.Service).SequenceEqual(["web", "worker"])
+            && preview.Volumes.Contains(volume) && preview.Networks.Contains($"{project}_default"),
+            $"The live parser did not report the services, volume and network the coordinator reasons about: "
+            + $"{string.Join(", ", preview.Services.Select(service => $"{service.Service}/{service.Image}/[{string.Join(",", service.Ports)}]"))}; "
+            + $"volumes {string.Join(",", preview.Volumes)}; networks {string.Join(",", preview.Networks)}");
+
+        var submitted = coordinator.Deploy(
+            new DockerStackDeployRequest(new DockerStackDefinitionDto(project, failing), preview.DefinitionVersion),
+            "live-actor", "live-key-failing");
+        var classified = await WaitAsync(coordinator, submitted.OperationId, 180);
+        TestAssert.Assert(classified.State == DockerStackOperationState.PartialFailed
+            && classified.ProblemCode == DockerStackProblem.PartialFailure,
+            $"A live deployment that left one service down was classified as {classified.State}/{classified.ProblemCode}.");
+        // What is recorded is the Engine's answer, not the document's intent.
+        TestAssert.Assert(classified.Services.Any(service => service.Service == "web" && service.State.Equals("running", StringComparison.OrdinalIgnoreCase))
+            && classified.Services.Any(service => service.Service == "worker" && !service.State.Equals("running", StringComparison.OrdinalIgnoreCase)),
+            "The live observation did not record one running and one stopped service: "
+            + string.Join(", ", classified.Services.Select(service => $"{service.Service}={service.State}")));
+
+        // The repair is the same project and the same volume, which is what makes it an update rather
+        // than a second project.
+        var repaired = Document("sleep 600");
+        var repairedPreview = await compose.PreviewAsync(new DockerStackDefinitionDto(project, repaired));
+        TestAssert.Assert(repairedPreview.DefinitionVersion != preview.DefinitionVersion,
+            "A changed document produced the same definition version, so an old approval would still be valid.");
+        var repair = coordinator.Deploy(
+            new DockerStackDeployRequest(new DockerStackDefinitionDto(project, repaired), repairedPreview.DefinitionVersion),
+            "live-actor", "live-key-repair");
+        var recovered = await WaitAsync(coordinator, repair.OperationId, 180);
+        TestAssert.Assert(recovered.State == DockerStackOperationState.Succeeded,
+            $"A repaired project was not reported as succeeded: {recovered.State}/{recovered.ProblemCode}.");
+
+        // Same key and same document: the ledger answers with the operation it already ran.
+        var replay = coordinator.Deploy(
+            new DockerStackDeployRequest(new DockerStackDefinitionDto(project, repaired), repairedPreview.DefinitionVersion),
+            "live-actor", "live-key-repair");
+        TestAssert.Assert(replay.OperationId == repair.OperationId,
+            "A repeated submission created a second live deployment instead of replaying the recorded operation.");
+
+        // AD04-T5 — the volume holds the project's data, not leftover state.
+        var retained = await engine.GetVolumeAsync(volume);
+        TestAssert.Assert(retained is not null && retained.UsedBy.Count == 2,
+            $"A running two-service project did not report both containers as volume references: {retained?.UsedBy.Count}.");
+        var inUse = await engine.DeleteVolumeAsync(volume, confirmed: true);
+        TestAssert.Assert(!inUse.Success && inUse.ProblemCode == "docker.volume_in_use",
+            $"A volume with live references was not refused: {inUse.Success}/{inUse.ProblemCode}.");
+
+        // A stopped project still reserves its volume: the containers exist, so their mounts are held.
+        var stopped = await WaitAsync(coordinator,
+            coordinator.ApplyAction(project, DockerStackOperationKind.Stop, confirmed: true, "live-actor", "live-key-stop").OperationId, 180);
+        TestAssert.Assert(stopped.State == DockerStackOperationState.Succeeded,
+            $"Stopping a live project was not reported as succeeded: {stopped.State}/{stopped.ProblemCode}.");
+        var afterStop = await engine.GetVolumeAsync(volume);
+        TestAssert.Assert(afterStop is not null && afterStop.UsedBy.Count == 2,
+            "A stopped project stopped counting as a volume reference, so its data would be releasable by accident.");
+        var stoppedDelete = await engine.DeleteVolumeAsync(volume, confirmed: true);
+        TestAssert.Assert(!stoppedDelete.Success && stoppedDelete.ProblemCode == "docker.volume_in_use",
+            $"A volume held by stopped containers was not refused: {stoppedDelete.Success}/{stoppedDelete.ProblemCode}.");
+
+        // Taking the project down removes the containers and the project network, never the named volume.
+        var removed = await WaitAsync(coordinator,
+            coordinator.ApplyAction(project, DockerStackOperationKind.Delete, confirmed: true, "live-actor", "live-key-delete").OperationId, 180);
+        TestAssert.Assert(removed.State == DockerStackOperationState.Succeeded,
+            $"Removing a live project was not reported as succeeded: {removed.State}/{removed.ProblemCode}.");
+        var survivor = await engine.GetVolumeAsync(volume);
+        TestAssert.Assert(survivor is not null && survivor.UsedBy.Count == 0,
+            "Taking the project down removed the project's named volume instead of retaining it.");
+        var released = await engine.DeleteVolumeAsync(volume, confirmed: true);
+        TestAssert.Assert(released.Success, $"A volume with no references could not be released: {released.ProblemCode}.");
+
+        Console.WriteLine("PASS DOCKER STACK LIVE: a real Compose host parsed, deployed, partly failed, "
+            + "recovered, replayed idempotently, and released the project's volume only after removal.");
+    }
+    finally
+    {
+        // The check must not leave containers, networks, volumes or files behind.
+        try { await compose.ApplyActionAsync(project, DockerStackOperationKind.Delete, confirmed: true); } catch { /* best-effort cleanup */ }
+        try { await engine.DeleteVolumeAsync(volume, confirmed: true); } catch { /* best-effort cleanup */ }
+        try { Directory.Delete(Path.Combine(root, "docker-stack-live"), recursive: true); } catch { /* best-effort cleanup */ }
+    }
+}
+
+/// <summary>A store over a fixed directory, with a ceiling high enough that exclusion rules under test
+/// are the per-project ones rather than the concurrency ceiling.</summary>
+internal static DockerStackOperationStore NewStackStore(string dataDirectory, int maximumConcurrent)
+{
+    Directory.CreateDirectory(dataDirectory);
+    return new(new TestHostEnvironment(dataDirectory),
+        Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory, MaximumConcurrentOperations = maximumConcurrent }));
+}
+
+internal static DockerStackOperationCoordinator NewStackCoordinator(string dataDirectory, IDockerComposeService compose,
+    IHostApplicationLifetime lifetime, int maximumConcurrent) =>
+    new(NewStackStore(dataDirectory, maximumConcurrent), compose,
+        Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory, MaximumConcurrentOperations = maximumConcurrent }),
+        lifetime, NullLogger<DockerStackOperationCoordinator>.Instance);
+
+internal static DockerStackServiceDto RunningService(string service) =>
+    new(service, $"shop-{service}-1", "nginx:alpine", "running", "Up 2 seconds");
+
+internal static DockerStackServiceDto StoppedService(string service) =>
+    new(service, $"shop-{service}-1", "nginx:alpine", "exited", "Exited (0) 2 seconds ago");
+
+/// <summary>Waits for the outcome the worker writes, so the classification is asserted on the record
+/// the server persisted rather than on a value the test guessed.</summary>
+internal static async Task<DockerStackOperationDto> AwaitTerminalOperationAsync(DockerStackOperationCoordinator coordinator, Guid operationId)
+{
+    var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        if (coordinator.Get(operationId) is { } operation && !DockerStackOperationStore.Active(operation)) return operation;
+        await Task.Delay(10);
+    }
+    throw new InvalidOperationException($"Operation {operationId} did not reach a terminal state.");
+}
+
+internal static async Task AwaitRunningOperationAsync(DockerStackOperationCoordinator coordinator, Guid operationId)
+{
+    var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        if (coordinator.Get(operationId) is { State: DockerStackOperationState.Running }) return;
+        await Task.Delay(10);
+    }
+    throw new InvalidOperationException($"Operation {operationId} never entered the running state.");
+}
+
+/// <summary>Runs a synchronous admission check and returns the domain refusal it raised.</summary>
+internal static DockerStackException CaptureStackFailure(Action action, string message)
+{
+    try { action(); }
+    catch (DockerStackException exception) { return exception; }
+    throw new InvalidOperationException(message);
+}
+}
+
+/// <summary>
+/// Compose executor whose every answer is chosen by the test, so the coordinator's outcome
+/// classification can be verified without a Docker host.
+/// </summary>
+internal sealed class FakeComposeService : IDockerComposeService
+{
+    public IReadOnlyList<string> PreviewServices { get; set; } = [];
+    public DockerStackMutationResult NextResult { get; set; } = new(true, string.Empty, []);
+    public IReadOnlyList<DockerStackServiceDto> Observed { get; set; } = [];
+    public List<DockerStackOperationKind> AppliedActions { get; } = [];
+    public int DeployCalls { get; private set; }
+    public int ListServicesCalls { get; private set; }
+    /// <summary>Holds a deployment inside the Engine call so a test can cancel it while it is active.</summary>
+    public bool BlockOnDeploy { get; set; }
+    private readonly TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public void ReleaseDeploy() => gate.TrySetResult();
+
+    public Task<IReadOnlyList<DockerStackDto>> ListAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<DockerStackDto>>([]);
+
+    public Task<DockerStackPreviewDto> PreviewAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new DockerStackPreviewDto(definition.Name,
+            DockerStackValidation.DefinitionVersion(definition.Name, definition.ComposeYaml),
+            [.. PreviewServices.Select(service => new DockerStackPreviewServiceDto(service, "nginx:alpine", []))], [], []));
+
+    public Task<DockerStackDefinitionDto?> GetDefinitionAsync(string name, CancellationToken cancellationToken = default) =>
+        Task.FromResult<DockerStackDefinitionDto?>(null);
+
+    public Task<IReadOnlyList<DockerStackServiceDto>> ListServicesAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ListServicesCalls++;
+        return Task.FromResult(Observed);
+    }
+
+    public async Task<DockerStackMutationResult> DeployAsync(DockerStackDefinitionDto definition, CancellationToken cancellationToken = default)
+    {
+        DeployCalls++;
+        if (BlockOnDeploy) await gate.Task;
+        return NextResult;
+    }
+
+    public Task<DockerStackMutationResult> ApplyActionAsync(string name, DockerStackOperationKind action, bool confirmed,
+        CancellationToken cancellationToken = default)
+    {
+        AppliedActions.Add(action);
+        return Task.FromResult(NextResult);
+    }
+}
+
+/// <summary>Lifetime the coordinator links its own cancellation to. It never stops during a test.</summary>
+internal sealed class TestApplicationLifetime : IHostApplicationLifetime
+{
+    public CancellationToken ApplicationStarted => CancellationToken.None;
+    public CancellationToken ApplicationStopping => CancellationToken.None;
+    public CancellationToken ApplicationStopped => CancellationToken.None;
+    public void StopApplication() { }
+}
+
+/// <summary>No outbound proxy, which is what a default install resolves to. The live stack check talks to
+/// the local Engine exactly as that install does.</summary>
+internal sealed class DisabledDockerProxyResolver : IDockerProxyResolver
+{
+    public Task<DockerProxyResolution> ResolveAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new DockerProxyResolution(false, DockerProxySource.Custom, string.Empty, string.Empty,
+            string.Empty, false, false, false, false, string.Empty, false, string.Empty));
+
+    public void Invalidate() { }
 }

@@ -21,7 +21,9 @@ public sealed record DockerImageDto(string Id, string Repository, string Tag, st
 public sealed record DockerNetworkDto(string Id, string Name, string Driver, string Scope);
 public sealed record DockerVolumeDto(string Name, string Driver, string Mountpoint);
 public sealed record DockerNetworkDetailsDto(string Id, string Name, string Driver, string Scope, IReadOnlyList<string> Containers);
-public sealed record DockerVolumeDetailsDto(string Name, string Driver, string Mountpoint, IReadOnlyDictionary<string, string> Labels);
+/// <param name="UsedBy">Containers — running or stopped — that still reference this volume. Deleting an
+/// in-use volume is refused, so the impact is shown before the operator confirms anything.</param>
+public sealed record DockerVolumeDetailsDto(string Name, string Driver, string Mountpoint, IReadOnlyDictionary<string, string> Labels, IReadOnlyList<string> UsedBy);
 
 /// <summary>Structured container lifecycle request. Confirmation is required for irreversible actions.</summary>
 public sealed record DockerContainerActionRequest(bool Force = false, bool Confirmed = false);

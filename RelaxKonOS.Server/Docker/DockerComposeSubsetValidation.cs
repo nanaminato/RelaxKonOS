@@ -12,7 +12,7 @@ namespace RelaxKonOS.Server.Docker;
 /// </summary>
 public static partial class DockerComposeSubsetValidation
 {
-    public const string UnsupportedFeature = "docker.compose_feature_unsupported";
+    public const string UnsupportedFeature = DockerStackProblem.FeatureUnsupported;
 
     public static bool IsSupported(string composeYaml, out string problemCode)
     {
@@ -36,22 +36,62 @@ public static partial class DockerComposeSubsetValidation
                 problemCode = UnsupportedFeature;
                 return false;
             }
+
+            // Compose interpolates the document before it parses it, and this server exposes no way to
+            // supply a value: `up` would substitute an empty string and still exit successfully, so the
+            // project would run on values the operator never saw.  A reference that the server cannot
+            // resolve is therefore a refused document, not a blank one.
+            if (ReferencesVariable(line))
+            {
+                problemCode = DockerStackProblem.VariableUnresolved;
+                return false;
+            }
         }
 
         problemCode = string.Empty;
         return true;
     }
 
-    // YAML comments are not meaningful to Compose.  Quoted # characters are intentionally kept:
-    // they can only make the admission test more conservative, which is safe for this boundary.
+    /// <summary>
+    /// Removes a YAML comment.  Compose interpolates the parsed document rather than the raw text, so a
+    /// comment can never carry a variable reference — but this test only sees text, which means a '#'
+    /// inside a quoted scalar must not be mistaken for the start of one.
+    /// </summary>
     private static string StripComment(string value)
     {
-        var index = value.IndexOf('#');
-        return index >= 0 ? value[..index] : value;
+        var quote = '\0';
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (quote == '\0')
+            {
+                if (character is '\'' or '"') quote = character;
+                else if (character == '#') return value[..index];
+                continue;
+            }
+            if (quote == '"' && character == '\\') { index++; continue; }
+            if (character != quote) continue;
+            // A single-quoted scalar escapes its own quote by doubling it.
+            if (quote == '\'' && index + 1 < value.Length && value[index + 1] == '\'') { index++; continue; }
+            quote = '\0';
+        }
+        return value;
     }
+
+    /// <summary>
+    /// Whether the line carries a variable the server has no value for.  <c>$$</c> is Compose's escape for
+    /// a literal dollar, so it is removed first; every remaining <c>$</c> that starts a name or a brace is
+    /// a substitution.
+    /// </summary>
+    private static bool ReferencesVariable(string line) => VariableReference().IsMatch(line.Replace("$$", string.Empty));
 
     [GeneratedRegex(@"^\s*(?:build|privileged|external|network_mode|pid|ipc|userns_mode|devices|device_cgroup_rules|cap_add|cap_drop)\s*:", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex UnsupportedKey();
+
+    // Bare `$NAME`, braced `${NAME}`, and the whole `${NAME:-default}` / `${NAME:?error}` guard family
+    // all read from an environment the server does not provide.
+    [GeneratedRegex(@"\$(?:\{[^}]*\}|[A-Za-z_][A-Za-z0-9_]*)", RegexOptions.CultureInvariant)]
+    private static partial Regex VariableReference();
 
     [GeneratedRegex(@"^\s*(?:-\s*)?type\s*:\s*bind\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BindMount();
