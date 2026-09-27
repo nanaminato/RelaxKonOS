@@ -126,7 +126,7 @@
     <string name="ssh_workspace_system_unavailable">This host did not provide a Linux resource snapshot.</string>
     <string name="ssh_workspace_system_platform">Platform</string>
     <string name="ssh_workspace_exit">Exit SSH workspace</string>
-    <string name="ssh_workspace_deploy">Deploy RelaxKonOS Server</string>
+    <string name="ssh_workspace_deploy">Deploy</string>
     <string name="ssh_workspace_deploy_unavailable">Deployment is not available in this Android build because no pinned launcher, verifier and signed release source have been packaged yet.</string>
     <string name="ssh_workspace_deploy_draft">Choose the same installation options as on desktop.</string>
     <string name="ssh_workspace_deploy_step">Step %1$d of 3</string>

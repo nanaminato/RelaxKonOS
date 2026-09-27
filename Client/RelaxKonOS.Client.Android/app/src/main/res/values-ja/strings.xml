@@ -116,7 +116,7 @@
     <string name="ssh_workspace_system_unavailable">このホストは Linux リソーススナップショットを提供しませんでした。</string>
     <string name="ssh_workspace_system_platform">プラットフォーム</string>
     <string name="ssh_workspace_exit">SSH ワークスペースを終了</string>
-    <string name="ssh_workspace_deploy">RelaxKonOS Server をデプロイ</string>
+    <string name="ssh_workspace_deploy">デプロイ</string>
     <string name="ssh_workspace_deploy_unavailable">この Android ビルドには固定ランチャー、検証器、署名済みリリースソースがまだ含まれていないため、デプロイは利用できません。</string>
     <string name="ssh_workspace_deploy_draft">デスクトップ版と同じ手順でインストール設定を選択します。</string>
     <string name="ssh_workspace_deploy_step">ステップ %1$d / 3</string>

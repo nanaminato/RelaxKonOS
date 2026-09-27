@@ -22,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -33,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
@@ -50,7 +52,6 @@ import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
-import app.relaxkonos.mobile.ui.common.SectionGroup
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
@@ -348,24 +349,28 @@ fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
                     onSaveText = model::saveText,
                 )
             } else {
-            SectionCard(
-                title = stringResource(R.string.ssh_files_title),
-                subtitle = state.path,
-                leading = DesktopIcons.folder,
-                trailing = {
+                Text(stringResource(R.string.ssh_files_title), style = MaterialTheme.typography.headlineSmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = model::up, enabled = state.path != "/" && !state.busy) {
+                        DesktopIcon(DesktopIcons.upload, contentDescription = stringResource(R.string.ssh_files_up))
+                    }
+                    Text(state.path, modifier = Modifier.weight(1f))
                     IconButton(onClick = model::reload, enabled = !state.busy) {
                         DesktopIcon(DesktopIcons.refresh, contentDescription = stringResource(R.string.ssh_files_refresh))
                     }
-                },
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(model::up, enabled = state.path != "/" && !state.busy) { Text(stringResource(R.string.ssh_files_up)) }
-                    OutlinedButton({ pickUpload.launch(arrayOf("*/*")) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_upload)) }
-                    OutlinedButton(model::beginCreateDirectory, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_new_folder)) }
                 }
-            }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                SectionGroup {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(model::beginCreateDirectory, enabled = !state.busy, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.ssh_files_new_folder))
+                    }
+                    Button({ pickUpload.launch(arrayOf("*/*")) }, enabled = !state.busy, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.ssh_files_upload))
+                    }
+                }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     state.entries.forEach { entry ->
                         ListRow(
                             title = entry.name,
@@ -377,18 +382,17 @@ fun SshFilesScreen(hostId: String, modifier: Modifier = Modifier) {
                             selected = state.selected?.path == entry.path,
                         )
                     }
-                }
-                state.selected?.takeIf { !it.isDirectory }?.let { selected ->
-                    SectionCard(title = selected.name, subtitle = formatSize(selected.size), leading = DesktopIcons.fileFor(selected.name, false)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            OutlinedButton({ model.requestDownload(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_download)) }
-                            TextButton({ model.beginRename(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_rename)) }
-                            TextButton({ model.askDelete(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_delete)) }
+                    state.selected?.takeIf { !it.isDirectory }?.let { selected ->
+                        SectionCard(title = selected.name, subtitle = formatSize(selected.size), leading = DesktopIcons.fileFor(selected.name, false)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                OutlinedButton({ model.requestDownload(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_download)) }
+                                TextButton({ model.beginRename(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_rename)) }
+                                TextButton({ model.askDelete(selected) }, enabled = !state.busy) { Text(stringResource(R.string.ssh_files_delete)) }
+                            }
+                            Preview(state.preview, model::updateText, model::saveText, state.busy)
                         }
-                        Preview(state.preview, model::updateText, model::saveText, state.busy)
                     }
                 }
-            }
             }
         }
     }
