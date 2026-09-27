@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services.Privileged;
 using RelaxKonOS.Client.Services.Theming;
@@ -147,8 +149,8 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         var panel = new StackPanel { Spacing = 14, Margin = new Avalonia.Thickness(20), DataContext = vm };
         panel.Children.Add(new TextBlock { Text = LocalizedText.Get("guardian.editor.intro"), TextWrapping = TextWrapping.Wrap, Foreground = ThemeBrushes.Get("TextSecondaryBrush") });
         panel.Children.Add(EditorField("guardian.create.name", "guardian.create.name.help", "guardian.create.name.example", nameof(vm.DefinitionName)));
-        panel.Children.Add(EditorField("guardian.create.executable", "guardian.create.executable.help", "guardian.create.executable.example", nameof(vm.ExecutablePath)));
-        panel.Children.Add(EditorField("guardian.create.working_directory", "guardian.create.working_directory.help", "guardian.create.working_directory.example", nameof(vm.WorkingDirectory)));
+        panel.Children.Add(EditorField("guardian.create.executable", "guardian.create.executable.help", "guardian.create.executable.example", nameof(vm.ExecutablePath), browse: () => SelectExecutableAsync(vm)));
+        panel.Children.Add(EditorField("guardian.create.working_directory", "guardian.create.working_directory.help", "guardian.create.working_directory.example", nameof(vm.WorkingDirectory), browse: () => SelectWorkingDirectoryAsync(vm)));
         panel.Children.Add(EditorField("guardian.create.arguments", "guardian.create.arguments.help", "guardian.create.arguments.example", nameof(vm.ArgumentsText), true));
         panel.Children.Add(EditorField("guardian.create.run_as", "guardian.create.run_as.help", "guardian.create.run_as.example", nameof(vm.RunAs)));
         var startup = new StackPanel { Spacing = 4 };
@@ -167,7 +169,16 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         actions.Children.Add(new Button { Content = LocalizedText.Get("guardian.create.submit"), Command = vm.CreateWorkloadCommand, Classes = { "primary" } });
 
         var root = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
-        root.Children.Add(new ScrollViewer { Content = panel });
+        // A horizontally-scrollable ScrollViewer measures its child with unlimited width.
+        // That made the StackPanel (and its TextBoxes) grow to the longest help text instead
+        // of the dialog width. Keep scrolling vertical-only so the form receives the available
+        // width and the wrapped descriptions can lay out within it.
+        root.Children.Add(new ScrollViewer
+        {
+            Content = panel,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        });
         Grid.SetRow(actions, 1);
         root.Children.Add(actions);
         return root;
@@ -185,20 +196,60 @@ public sealed class ProcessGuardianApp : RemoteApplicationBase
         return root;
     }
 
-    private static Control EditorField(string labelKey, string helpKey, string exampleKey, string property, bool acceptsReturn = false)
+    private static Control EditorField(string labelKey, string helpKey, string exampleKey, string property, bool acceptsReturn = false, Func<Task>? browse = null)
     {
-        var field = new StackPanel { Spacing = 4 };
+        var field = new StackPanel { Spacing = 4, HorizontalAlignment = HorizontalAlignment.Stretch };
         field.Children.Add(new TextBlock { Text = LocalizedText.Get(labelKey), FontWeight = FontWeight.SemiBold });
         field.Children.Add(EditorHelp(helpKey));
-        field.Children.Add(new TextBox
+        var input = new TextBox
         {
             PlaceholderText = LocalizedText.Get(exampleKey),
             AcceptsReturn = acceptsReturn,
             MinHeight = acceptsReturn ? 88 : 0,
             TextWrapping = acceptsReturn ? TextWrapping.Wrap : TextWrapping.NoWrap,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             [!TextBox.TextProperty] = new Avalonia.Data.Binding(property) { Mode = Avalonia.Data.BindingMode.TwoWay }
-        });
+        };
+        if (browse is null)
+        {
+            field.Children.Add(input);
+            return field;
+        }
+
+        var inputRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+        inputRow.Children.Add(input);
+        var browseButton = new Button { Content = LocalizedText.Get("guardian.create.browse") };
+        browseButton.Click += async (_, _) => await browse();
+        Grid.SetColumn(browseButton, 1);
+        inputRow.Children.Add(browseButton);
+        field.Children.Add(inputRow);
         return field;
+    }
+
+    private static async Task SelectExecutableAsync(ProcessGuardianViewModel vm)
+    {
+        var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
+        if (topLevel is null) return;
+        var selected = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = LocalizedText.Get("guardian.create.executable.select"),
+            AllowMultiple = false,
+        });
+        var path = selected.FirstOrDefault()?.TryGetLocalPath();
+        if (path is not null) vm.ExecutablePath = path;
+    }
+
+    private static async Task SelectWorkingDirectoryAsync(ProcessGuardianViewModel vm)
+    {
+        var topLevel = Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null;
+        if (topLevel is null) return;
+        var selected = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = LocalizedText.Get("guardian.create.working_directory.select"),
+            AllowMultiple = false,
+        });
+        var path = selected.FirstOrDefault()?.TryGetLocalPath();
+        if (path is not null) vm.WorkingDirectory = path;
     }
 
     private static TextBlock EditorHelp(string key) => new()
