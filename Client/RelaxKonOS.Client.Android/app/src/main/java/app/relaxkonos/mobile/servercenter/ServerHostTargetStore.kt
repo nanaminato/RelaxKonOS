@@ -52,7 +52,7 @@ class InMemoryHostTargetStorage : HostTargetStorage {
  * 本机宿主目标的仓库。宿主目标只包含管理资料，因此与 SSH 凭据、主机指纹、登录记录分别保存：
  * 删除一个宿主目标只影响本机管理资料，不会顺带删掉登录或凭据。
  *
- * 与桌面 `HostTargetStore` 采用同一去重口径：同一 `(host, port)` 只保留一条记录，与 SSH 用户无关。
+ * 与桌面 `HostTargetStore` 采用同一去重口径：同一 `(host, port, user)` 只保留一条记录。
  */
 class ServerHostTargetStore(private val storage: HostTargetStorage) {
 
@@ -60,25 +60,25 @@ class ServerHostTargetStore(private val storage: HostTargetStorage) {
 
     fun find(hostId: String): ServerHostTarget? = read().firstOrNull { it.hostId == hostId }
 
-    /** 按 SSH 端点查找；端点相同即同一目标，与 SSH 用户无关。 */
-    fun findByEndpoint(host: String, port: Int): ServerHostTarget? {
-        require(ServerHostTargetRules.isValidEndpoint(host, port, "probe")) {
-            "An SSH host and port are required."
+    /** 按 SSH 服务器和用户查找。 */
+    fun find(host: String, port: Int, userName: String): ServerHostTarget? {
+        require(ServerHostTargetRules.isValidEndpoint(host, port, userName)) {
+            "An SSH host, port and user name are required."
         }
-        val identity = ServerHostTargetRules.endpointIdentity(host, port)
+        val identity = ServerHostTargetRules.targetIdentity(host, port, userName)
         return read().firstOrNull {
-            ServerHostTargetRules.endpointIdentity(it.sshHost, it.sshPort) == identity
+            ServerHostTargetRules.targetIdentity(it.sshHost, it.sshPort, it.sshUserName) == identity
         }
     }
 
-    /** 写入或更新一个宿主目标。同一端点只会保留一条记录。 */
+    /** 写入或更新一个宿主目标。同一服务器和用户只会保留一条记录。 */
     fun upsert(target: ServerHostTarget): ServerHostTarget {
         require(ServerHostTargetRules.isValidEndpoint(target.sshHost, target.sshPort, target.sshUserName)) {
             "A host target needs a valid SSH endpoint and user."
         }
-        val identity = ServerHostTargetRules.endpointIdentity(target.sshHost, target.sshPort)
+        val identity = ServerHostTargetRules.targetIdentity(target.sshHost, target.sshPort, target.sshUserName)
         val remaining = read().filterNot {
-            ServerHostTargetRules.endpointIdentity(it.sshHost, it.sshPort) == identity
+            ServerHostTargetRules.targetIdentity(it.sshHost, it.sshPort, it.sshUserName) == identity
         }
         write(remaining + target)
         return target
@@ -195,7 +195,7 @@ class ServerHostTargetStore(private val storage: HostTargetStorage) {
     private fun DataInputStream.readNullableUtf(): String? = if (readByte().toInt() == 1) readUTF() else null
 
     private companion object {
-        /** `RKHT`：布局随首次正式发布前的接口直接演进，不做双解析。 */
-        const val MAGIC = 0x524B4854
+        /** `RKH2`：布局随首次正式发布前的接口直接演进，不做双解析。 */
+        const val MAGIC = 0x524B4832
     }
 }

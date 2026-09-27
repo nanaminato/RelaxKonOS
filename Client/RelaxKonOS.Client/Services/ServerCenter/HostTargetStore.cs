@@ -14,11 +14,11 @@ public interface IHostTargetStore
 
     Task<ServerHostTarget?> FindAsync(string hostId, CancellationToken cancellationToken = default);
 
-    /// <summary>按 SSH 端点查找；端点相同即同一目标，与 SSH 用户无关。</summary>
-    Task<ServerHostTarget?> FindByEndpointAsync(
-        string host, int port, CancellationToken cancellationToken = default);
+    /// <summary>按 SSH 服务器和用户查找。</summary>
+    Task<ServerHostTarget?> FindAsync(
+        string host, int port, string userName, CancellationToken cancellationToken = default);
 
-    /// <summary>写入或更新一个宿主目标。同一端点只会保留一条记录。</summary>
+    /// <summary>写入或更新一个宿主目标。同一服务器和用户只会保留一条记录。</summary>
     Task<ServerHostTarget> UpsertAsync(ServerHostTarget target, CancellationToken cancellationToken = default);
 
     /// <summary>删除一个宿主目标。它只影响本机管理资料：关联的登录与 SSH 凭据分别由用户决定如何处理。</summary>
@@ -26,11 +26,12 @@ public interface IHostTargetStore
 }
 
 /// <summary>
-/// 文件实现：单文件 JSON、原子替换、进程内串行化写入。文件损坏时按「没有宿主目标」处理，
-/// 使用户重新添加，而不是让一个读不懂的旧文件继续冒充管理资料。
+/// 文件实现：单文件 JSON、原子替换、进程内串行化写入。文件损坏或接口已升级时按「没有宿主目标」处理，
+/// 使用户重新添加，而不是让读不懂的旧资料继续冒充当前管理目标。
 /// </summary>
 public sealed class HostTargetStore : IHostTargetStore
 {
+    private const int CurrentSchemaVersion = 2;
     private readonly string _filePath;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -63,16 +64,16 @@ public sealed class HostTargetStore : IHostTargetStore
         return targets.FirstOrDefault(t => string.Equals(t.HostId, hostId, StringComparison.Ordinal));
     }
 
-    public async Task<ServerHostTarget?> FindByEndpointAsync(
-        string host, int port, CancellationToken cancellationToken = default)
+    public async Task<ServerHostTarget?> FindAsync(
+        string host, int port, string userName, CancellationToken cancellationToken = default)
     {
-        if (!ServerHostTargetRules.IsValidEndpoint(host, port, "probe"))
-            throw new ArgumentException("An SSH host and port are required.", nameof(host));
+        if (!ServerHostTargetRules.IsValidEndpoint(host, port, userName))
+            throw new ArgumentException("An SSH host, port and user name are required.", nameof(host));
 
-        var identity = ServerHostTargetRules.EndpointIdentity(host, port);
+        var identity = ServerHostTargetRules.TargetIdentity(host, port, userName);
         var targets = await LoadAsync(cancellationToken).ConfigureAwait(false);
         return targets.FirstOrDefault(t =>
-            string.Equals(ServerHostTargetRules.EndpointIdentity(t.SshHost, t.SshPort), identity, StringComparison.Ordinal));
+            string.Equals(ServerHostTargetRules.TargetIdentity(t.SshHost, t.SshPort, t.SshUserName), identity, StringComparison.Ordinal));
     }
 
     public async Task<ServerHostTarget> UpsertAsync(
@@ -86,10 +87,10 @@ public sealed class HostTargetStore : IHostTargetStore
         try
         {
             var targets = await ReadUnlockedAsync(cancellationToken).ConfigureAwait(false);
-            var identity = ServerHostTargetRules.EndpointIdentity(target.SshHost, target.SshPort);
+            var identity = ServerHostTargetRules.TargetIdentity(target.SshHost, target.SshPort, target.SshUserName);
             var remaining = targets
                 .Where(t => !string.Equals(
-                    ServerHostTargetRules.EndpointIdentity(t.SshHost, t.SshPort), identity, StringComparison.Ordinal))
+                    ServerHostTargetRules.TargetIdentity(t.SshHost, t.SshPort, t.SshUserName), identity, StringComparison.Ordinal))
                 .ToList();
             remaining.Add(target);
             await WriteUnlockedAsync(remaining, cancellationToken).ConfigureAwait(false);
@@ -129,7 +130,9 @@ public sealed class HostTargetStore : IHostTargetStore
             var payload = await JsonSerializer
                 .DeserializeAsync<HostTargetCollection>(stream, RelaxKonOSJsonOptions.Default, cancellationToken)
                 .ConfigureAwait(false);
-            return payload?.Targets ?? [];
+            return payload is { SchemaVersion: CurrentSchemaVersion, Targets: not null }
+                ? payload.Targets
+                : [];
         }
         catch (JsonException)
         {
@@ -151,10 +154,10 @@ public sealed class HostTargetStore : IHostTargetStore
         var temporary = _filePath + ".tmp";
         await using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
             await JsonSerializer.SerializeAsync(
-                stream, new HostTargetCollection([.. targets]), RelaxKonOSJsonOptions.Default, cancellationToken)
+                stream, new HostTargetCollection(CurrentSchemaVersion, [.. targets]), RelaxKonOSJsonOptions.Default, cancellationToken)
                 .ConfigureAwait(false);
         File.Move(temporary, _filePath, overwrite: true);
     }
 
-    private sealed record HostTargetCollection(IReadOnlyList<ServerHostTarget> Targets);
+    private sealed record HostTargetCollection(int SchemaVersion, IReadOnlyList<ServerHostTarget> Targets);
 }

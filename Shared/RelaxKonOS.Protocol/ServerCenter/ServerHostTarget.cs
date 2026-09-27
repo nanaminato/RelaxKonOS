@@ -28,7 +28,7 @@ public sealed record ServerHostVerifiedState(
 /// 卸载服务端是需要远端确认的独立动作。</para>
 /// <para>SSH 凭据、主机指纹与操作回执只保存在本设备，不同步到 Workspace。</para>
 /// </summary>
-/// <param name="HostId">本机稳定标识，由规范化端点派生；同一 <c>(host, port)</c> 只有一个目标。</param>
+/// <param name="HostId">本机稳定标识，由规范化 SSH 目标派生；同一 <c>(host, port, user)</c> 只有一个目标。</param>
 /// <param name="DisplayName">用户起的宿主名。登录表单展示它，而不是临时 loopback 端口。</param>
 /// <param name="SshHost">SSH 主机名或 IP，按规范化形式保存（小写、去 IPv6 方括号）。</param>
 /// <param name="SshPort">SSH 端口，总是显式记录。</param>
@@ -58,16 +58,20 @@ public static class ServerHostTargetRules
     /// <summary>用户起名的长度上限；超出即视为无效输入。</summary>
     public const int MaximumDisplayNameLength = 64;
 
-    /// <summary>宿主目标的去重键：<c>host:port</c>。不含 SSH 用户，因为安装与主机密钥都属于宿主。</summary>
+    /// <summary>SSH 服务器端点键。它不含用户，供主机密钥固定与默认展示名使用。</summary>
     public static string EndpointIdentity(string host, int port) => ServerHostTrustRules.EndpointKey(host, port);
 
+    /// <summary>受管 SSH 目标的去重键：<c>host:port + user</c>。同一服务器可保留多个管理用户。</summary>
+    public static string TargetIdentity(string host, int port, string userName) =>
+        $"{EndpointIdentity(host, port)}\u001f{userName.Trim()}";
+
     /// <summary>
-    /// 由规范化端点派生的稳定本机标识。它不含秘密，也不随端口以外的任何输入变化，
-    /// 因此重复添加同一宿主不会产生第二条记录。
+    /// 由规范化 SSH 目标派生的稳定本机标识。它不含秘密；同一服务器的不同 SSH 用户
+    /// 具有独立记录，重复添加相同服务器和用户不会产生第二条记录。
     /// </summary>
-    public static string HostId(string host, int port)
+    public static string HostId(string host, int port, string userName)
     {
-        var key = EndpointIdentity(host, port);
+        var key = TargetIdentity(host, port, userName);
         var digest = SHA256.HashData(Encoding.UTF8.GetBytes(key));
         return HostIdPrefix + Convert.ToHexString(digest.AsSpan(0, 8)).ToLowerInvariant();
     }
@@ -112,7 +116,7 @@ public static class ServerHostTargetRules
 
         var normalizedHost = ServerHostTrustRules.NormalizeHost(host);
         return new ServerHostTarget(
-            HostId: HostId(normalizedHost, port),
+            HostId: HostId(normalizedHost, port, userName),
             DisplayName: NormalizeDisplayName(displayName, normalizedHost, port),
             SshHost: normalizedHost,
             SshPort: port,

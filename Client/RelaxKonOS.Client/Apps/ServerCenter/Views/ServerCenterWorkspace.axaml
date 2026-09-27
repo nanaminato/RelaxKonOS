@@ -21,8 +21,6 @@
                 <StackPanel Margin="14,22" Spacing="4">
                     <Button x:Name="HostsButton" Classes="workspace-nav" Tag="hosts" Click="NavigationButton_Click"
                             Content="{Binding HostsPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
-                    <Button Classes="workspace-nav" Tag="connection" Click="NavigationButton_Click"
-                            Content="{Binding ConnectionPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="deployment" Click="NavigationButton_Click"
                             Content="{Binding DeploymentPageTitle}" HorizontalContentAlignment="Left" Padding="10,8" />
                     <Button Classes="workspace-nav" Tag="history" Click="NavigationButton_Click"

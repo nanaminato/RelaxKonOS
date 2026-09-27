@@ -32,6 +32,12 @@ static class LoginPickerChecks
         {
             var targets = new HostTargetStore(directory);
             await targets.UpsertAsync(ServerHostTargetRules.Create(host, port, user, null, DateTimeOffset.UtcNow));
+            var otherUser = ServerHostTargetRules.Create(host, port, "operator", null, DateTimeOffset.UtcNow);
+            await targets.UpsertAsync(otherUser);
+            Check((await targets.LoadAsync()).Count == 2 &&
+                  (await targets.FindAsync(host, port, "operator"))?.HostId == otherUser.HostId,
+                "同一 SSH 服务器可保存多个用户，并按服务器和用户精确查找");
+            await targets.RemoveAsync(otherUser.HostId);
             var credentials = new SshCredentialStore(directory);
             // Linux 上没有 Secret Service 时凭据不会被保存；此时只覆盖宿主记录提供的用户名。
             var credentialSaved = await credentials.SaveAsync(SshCredentialRecord.From(

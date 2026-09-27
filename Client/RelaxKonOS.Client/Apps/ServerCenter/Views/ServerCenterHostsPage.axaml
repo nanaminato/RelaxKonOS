@@ -24,6 +24,15 @@
                 <TextBlock Text="{Binding EmptyHostsText}" IsVisible="{Binding !HasHosts}" />
                 <StackPanel IsVisible="{Binding SelectedHost}" Spacing="7">
                     <TextBlock Text="{Binding VerifiedStateText}" IsVisible="{Binding HasVerifiedState}" TextWrapping="Wrap" />
+                    <Border IsVisible="{Binding NeedsHostKeyConfirmation}" BorderBrush="{DynamicResource BorderDefaultBrush}"
+                            BorderThickness="1" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{Binding HostKeyReviewText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding HostKeyFingerprint}" FontFamily="Consolas" TextWrapping="Wrap" />
+                            <Button Command="{Binding ConfirmHostKeyCommand}" Content="{Binding ConfirmHostKeyText}" HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Text="{Binding HostKeyChangedText}" IsVisible="{Binding HostKeyChanged}" Classes="error" TextWrapping="Wrap" />
                     <Button Command="{Binding RemoveHostCommand}" Content="{Binding RemoveText}" HorizontalAlignment="Left" />
                 </StackPanel>
             </StackPanel>
@@ -31,12 +40,15 @@
         <Border Classes="card" Padding="20">
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding AddHostLabel}" FontSize="17" FontWeight="SemiBold" />
-                <Grid ColumnDefinitions="*,110,*" ColumnSpacing="10" RowDefinitions="Auto,Auto" RowSpacing="10">
+                <Grid ColumnDefinitions="*,110,*" ColumnSpacing="10" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
                     <TextBox Text="{Binding Host}" PlaceholderText="{Binding HostLabel}" />
                     <TextBox Grid.Column="1" Text="{Binding Port}" PlaceholderText="{Binding PortLabel}" />
                     <TextBox Grid.Column="2" Text="{Binding UserName}" PlaceholderText="{Binding UserLabel}" />
                     <TextBox Grid.Row="1" Grid.ColumnSpan="3" Text="{Binding DisplayName}" PlaceholderText="{Binding DisplayNameLabel}" />
+                    <TextBox Grid.Row="2" Grid.ColumnSpan="3" Text="{Binding NewHostPassword}" PasswordChar="●"
+                             PlaceholderText="{Binding NewHostPasswordLabel}" />
                 </Grid>
+                <CheckBox IsChecked="{Binding SaveNewHostPassword}" Content="{Binding SaveNewHostPasswordText}" />
                 <Button Command="{Binding AddHostCommand}" Content="{Binding AddText}" HorizontalAlignment="Left" />
             </StackPanel>
         </Border>

@@ -27,7 +27,7 @@ data class ServerHostVerifiedState(
  * 一个宿主目标可以关联多个登录，也可以在首次安装前没有任何登录。删除宿主目标只影响本机管理资料；
  * 卸载服务端是需要远端确认的独立动作。SSH 凭据、主机指纹与操作回执只保存在本设备，不同步到 Workspace。
  *
- * @param hostId 本机稳定标识，由规范化端点派生；同一 `(host, port)` 只有一个目标。
+ * @param hostId 本机稳定标识，由规范化 SSH 目标派生；同一 `(host, port, user)` 只有一个目标。
  * @param displayName 用户起的宿主名。登录表单展示它，而不是临时 loopback 端口。
  * @param sshHost SSH 主机名或 IP，按规范化形式保存（小写、去 IPv6 方括号）。
  * @param sshPort SSH 端口，总是显式记录。
@@ -85,16 +85,20 @@ object ServerHostTargetRules {
 
     private const val HEX_DIGITS = "0123456789abcdef"
 
-    /** 宿主目标的去重键：`host:port`。不含 SSH 用户，因为安装与主机密钥都属于宿主。 */
+    /** SSH 服务器端点键。它不含用户，供主机密钥固定与默认展示名使用。 */
     fun endpointIdentity(host: String, port: Int): String = ServerHostTrustRules.endpointKey(host, port)
 
+    /** 受管 SSH 目标的去重键：`host:port + user`。同一服务器可保留多个管理用户。 */
+    fun targetIdentity(host: String, port: Int, userName: String): String =
+        endpointIdentity(host, port) + "\u001f" + userName.trim()
+
     /**
-     * 由规范化端点派生的稳定本机标识。它不含秘密，也不随端口以外的任何输入变化，
-     * 因此重复添加同一宿主不会产生第二条记录。
+     * 由规范化 SSH 目标派生的稳定本机标识。它不含秘密；同一服务器的不同 SSH 用户
+     * 具有独立记录，重复添加相同服务器和用户不会产生第二条记录。
      */
-    fun hostId(host: String, port: Int): String {
+    fun hostId(host: String, port: Int, userName: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
-            .digest(endpointIdentity(host, port).toByteArray(Charsets.UTF_8))
+            .digest(targetIdentity(host, port, userName).toByteArray(Charsets.UTF_8))
         // 逐字节取无符号值转十六进制：与 C# `Convert.ToHexString(...).ToLowerInvariant()` 一致。
         val hex = buildString(16) {
             for (index in 0 until 8) {
@@ -143,7 +147,7 @@ object ServerHostTargetRules {
         }
         val normalizedHost = ServerHostTrustRules.normalizeHost(host)
         return ServerHostTarget(
-            hostId = hostId(normalizedHost, port),
+            hostId = hostId(normalizedHost, port, userName),
             displayName = normalizeDisplayName(displayName, normalizedHost, port),
             sshHost = normalizedHost,
             sshPort = port,
