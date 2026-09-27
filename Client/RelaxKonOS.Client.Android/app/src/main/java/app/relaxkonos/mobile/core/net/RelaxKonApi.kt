@@ -230,15 +230,28 @@ class RelaxKonApi(
         val body = JsonBody()
             .string("name", definition.name.trim())
             .string("sourceKind", "image")
-            .string("workloadKind", "web")
-            .string("readinessLevel", "http")
-            .string("healthCheckPath", definition.healthCheckPath)
+            .string("workloadKind", definition.workloadKind)
+            .string("readinessLevel", definition.readinessLevel)
+            .string("healthCheckPath", definition.healthCheckPath.takeIf { definition.readinessLevel == "http" })
             .int("containerPort", definition.containerPort)
             .string("bindAddress", definition.bindAddress)
+            .raw("hostPort", definition.hostPort?.toString() ?: "null")
+            .raw("limits", deploymentLimits(definition.limits))
+            .raw("volumes", deploymentVolumes(definition.volumes))
             .raw("configuration", deploymentConfiguration(definition.configuration))
+            .string("siteId", definition.siteId)
         return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.APPLICATIONS, accessToken, body, idempotencyKey,
             ApplicationDeploymentWire::createdApplication)
     }
+
+    override suspend fun deploymentImageTags(serverUrl: String, accessToken: String, repository: String): ApiResult<DeploymentImageTags> =
+        deploymentRead(serverUrl, accessToken,
+            "${ApplicationDeploymentRoutes.IMAGE_TAGS}?repository=${URLEncoder.encode(repository.trim(), "UTF-8")}",
+            ApplicationDeploymentWire::imageTags)
+
+    override suspend fun deploymentOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperationDiagnostics> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.operationLogs(operationId),
+            ApplicationDeploymentWire::operationDiagnostics)
 
     override suspend fun createArchiveDeployment(
         serverUrl: String,
@@ -253,8 +266,12 @@ class RelaxKonApi(
             .string("readinessLevel", definition.readinessLevel)
             .string("healthCheckPath", definition.healthCheckPath)
             .int("containerPort", definition.containerPort)
-            .string("bindAddress", "127.0.0.1")
+            .raw("hostPort", definition.hostPort?.toString() ?: "null")
+            .string("bindAddress", definition.bindAddress)
+            .raw("limits", deploymentLimits(definition.limits))
+            .raw("volumes", deploymentVolumes(definition.volumes))
             .raw("configuration", deploymentConfiguration(definition.configuration))
+            .string("siteId", definition.siteId)
         return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.APPLICATIONS, accessToken, body, idempotencyKey,
             ApplicationDeploymentWire::createdApplication)
     }
@@ -272,6 +289,7 @@ class RelaxKonApi(
             definition.baseImage?.trim()?.takeIf(String::isNotEmpty)?.let { put("baseImage", it) }
             definition.runtimeVersion?.trim()?.takeIf(String::isNotEmpty)?.let { put("runtimeVersion", it) }
             definition.programEntry?.trim()?.takeIf(String::isNotEmpty)?.let { put("programEntry", it) }
+            if (definition.arguments.isNotEmpty()) put("arguments", JSONArray(definition.arguments))
             if (definition.selfContained) put("selfContained", true)
         }.toString()
         return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken,
@@ -406,6 +424,14 @@ class RelaxKonApi(
     private fun deploymentConfiguration(entries: List<DeploymentConfigEntry>): String = JSONArray().apply {
         entries.forEach { entry -> put(JSONObject().put("name", entry.name.trim()).put("value", entry.value).put("isSecret", entry.isSecret)) }
     }.toString()
+
+    private fun deploymentVolumes(volumes: List<DeploymentVolume>): String = JSONArray().apply {
+        volumes.forEach { put(JSONObject().put("name", it.name).put("containerPath", it.containerPath).put("readOnly", it.readOnly)) }
+    }.toString()
+
+    private fun deploymentLimits(limits: DeploymentLimits?): String = limits?.let {
+        JSONObject().put("cpuCores", it.cpuCores).put("memoryBytes", it.memoryBytes).put("pidsLimit", it.pidsLimit).toString()
+    } ?: "null"
 
     override suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession> {
         val body = JsonBody()

@@ -71,6 +71,21 @@ class DeploymentHttpTest {
         }
     }
 
+    @Test fun `image tags and operation output use the desktop deployment routes`() = runTest {
+        serve(200, """{"available":true,"tags":[{"tag":"1.27","imageReference":"nginx:1.27"}]}""") { url, requests ->
+            val tags = RelaxKonApi("test", "test").deploymentImageTags(url, "token", "nginx")
+            assertEquals("nginx:1.27", (tags as ApiResult.Success).value.tags.single().imageReference)
+            assertEquals(listOf("GET /api/v1.0/application-deployments/image-tags?repository=nginx Bearer token"), requests)
+        }
+        val operationId = "d3708cc7-3e7e-42ad-b498-11466a48af23"
+        serve(200, """{"operationId":"$operationId","applicationId":"$operationId","kind":"deploy","stage":"building",
+            "problemCode":null,"lines":["build output"],"truncated":false}""") { url, requests ->
+            val result = RelaxKonApi("test", "test").deploymentOperationDiagnostics(url, "token", operationId)
+            assertEquals(listOf("build output"), (result as ApiResult.Success).value.lines)
+            assertEquals(listOf("GET /api/v1.0/application-deployments/operations/$operationId/logs Bearer token"), requests)
+        }
+    }
+
     @Test fun `archive deployment streams staging input then submits only its opaque reference`() = runTest {
         val applicationId = "d3708cc7-3e7e-42ad-b498-11466a48af23"
         val requests = mutableListOf<Pair<String, String>>()
@@ -96,7 +111,10 @@ class DeploymentHttpTest {
         try {
             val api = RelaxKonApi("test", "test")
             val definition = ArchiveDeploymentDefinition("pythonProject", "worker", 8000, "worker", "process", null,
-                baseImage = "python:3.13-slim", runtimeVersion = "3.13", programEntry = "worker.main")
+                baseImage = "python:3.13-slim", runtimeVersion = "3.13", programEntry = "worker.main",
+                hostPort = 8081, bindAddress = "127.0.0.1", arguments = listOf("--workers", "2"),
+                limits = DeploymentLimits(1.5, 512L * 1024 * 1024, 100),
+                volumes = listOf(DeploymentVolume("worker-data", "/data", false)), siteId = "site42")
             val created = api.createArchiveDeployment("http://127.0.0.1:${server.address.port}", "token", definition, "create-key")
             val staged = api.uploadDeploymentArchive("http://127.0.0.1:${server.address.port}", "token", "worker.zip", 3L) {
                 "zip".byteInputStream()
@@ -106,9 +124,14 @@ class DeploymentHttpTest {
             assertEquals(applicationId, (created as ApiResult.Success).value.id)
             assertEquals("deploy", (deployed as ApiResult.Success).value.kind)
             assertTrue(requests[0].second.contains("\"sourceKind\":\"pythonProject\""))
+            assertTrue(requests[0].second.contains("\"hostPort\":8081"))
+            assertTrue(requests[0].second.contains("\"cpuCores\":1.5"))
+            assertTrue(requests[0].second.contains("\"containerPath\":\"/data\""))
+            assertTrue(requests[0].second.contains("\"siteId\":\"site42\""))
             assertTrue(requests[1].second.contains("filename=\"worker.zip\""))
             assertTrue(requests[1].second.contains("zip"))
             assertTrue(requests[2].second.contains("\"archiveReferenceId\":\"archive-1\""))
+            assertTrue(requests[2].second.contains("\"arguments\":[\"--workers\",\"2\"]"))
             assertFalse(requests[2].second.contains("worker.zip"))
         } finally {
             server.stop(0)
@@ -136,7 +159,8 @@ class DeploymentHttpTest {
         try {
             val api = RelaxKonApi("test", "test")
             val created = api.createImageDeployment("http://127.0.0.1:${server.address.port}", "token",
-                ImageDeploymentDefinition("website", 8080, configuration = listOf(DeploymentConfigEntry("TOKEN", "not-in-summary", true))), "definition-key")
+                ImageDeploymentDefinition("website", 8080, hostPort = 18080, readinessLevel = "process",
+                    configuration = listOf(DeploymentConfigEntry("TOKEN", "not-in-summary", true))), "definition-key")
             assertEquals(applicationId, (created as ApiResult.Success).value.id)
             val deployed = api.deployImage("http://127.0.0.1:${server.address.port}", "token", applicationId, "nginx:1.27", "deployment-key")
             assertEquals(applicationId, (deployed as ApiResult.Success).value.applicationId)
@@ -144,6 +168,8 @@ class DeploymentHttpTest {
             assertTrue(requests[0].third.contains("\"sourceKind\":\"image\""))
             assertTrue(requests[0].third.contains("\"name\":\"TOKEN\""))
             assertTrue(requests[0].third.contains("\"isSecret\":true"))
+            assertTrue(requests[0].third.contains("\"hostPort\":18080"))
+            assertTrue(requests[0].third.contains("\"readinessLevel\":\"process\""))
             assertTrue(requests[1].third.contains("\"imageReference\":\"nginx:1.27\""))
             assertTrue(requests[1].third.contains("\"confirmed\":true"))
         } finally {

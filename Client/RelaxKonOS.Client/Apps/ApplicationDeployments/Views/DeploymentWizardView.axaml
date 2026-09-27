@@ -118,7 +118,7 @@
                     </StackPanel>
 
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-                        <StackPanel Grid.Column="0" Spacing="4">
+                        <StackPanel Grid.Column="0" Spacing="4" IsVisible="{Binding RequiresArchive}">
                             <TextBlock Text="{loc:Loc application_deployments.field.runtime_version}" FontSize="12"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                             <TextBox Text="{Binding RuntimeVersion, Mode=TwoWay}"

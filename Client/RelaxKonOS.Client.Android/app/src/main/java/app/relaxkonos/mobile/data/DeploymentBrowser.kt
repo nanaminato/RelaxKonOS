@@ -30,6 +30,13 @@ data class DeploymentBrowserState(
     val loadedLogTail: Int? = null,
     val submitting: Boolean = false,
     val submission: ApiResult<DeploymentOperation>? = null,
+    val definitionSubmission: ApiResult<DeploymentApplication>? = null,
+    val imageTags: ApiResult<DeploymentImageTags>? = null,
+    val imageTagsLoading: Boolean = false,
+    val imageTagsRepository: String? = null,
+    val operationDiagnostics: ApiResult<DeploymentOperationDiagnostics>? = null,
+    val stagedArchive: ApiResult<DeploymentArchive>? = null,
+    val archiveStaging: Boolean = false,
 )
 
 /** A session-scoped, read-only browser. Failed refreshes discard old runtime claims. */
@@ -44,9 +51,12 @@ class DeploymentBrowser(
     private var detailJob: Job? = null
     private var logsJob: Job? = null
     private var operationJob: Job? = null
+    private var imageTagsJob: Job? = null
+    private var archiveJob: Job? = null
     private var listGeneration = 0
     private var detailGeneration = 0
     private var logsGeneration = 0
+    private var archiveGeneration = 0
 
     init {
         scope.launch {
@@ -55,6 +65,8 @@ class DeploymentBrowser(
                 detailJob?.cancel()
                 logsJob?.cancel()
                 operationJob?.cancel()
+                imageTagsJob?.cancel()
+                archiveJob?.cancel()
                 listGeneration++
                 detailGeneration++
                 mutableState.value = DeploymentBrowserState(owner = value as? SessionState.Active)
@@ -141,18 +153,18 @@ class DeploymentBrowser(
         loadLogs((currentTail * LOG_TAIL_GROWTH).coerceAtMost(MAXIMUM_LOG_TAIL))
     }
 
-    /** Starts the constrained image path. Archives, secrets and arbitrary host mounts remain out of this flow. */
-    fun createImage(name: String, imageReference: String, containerPort: Int, configuration: List<DeploymentConfigEntry> = emptyList()) {
+    /** Creates the same application definition fields as the desktop wizard, then queues its image revision. */
+    fun createImage(definition: ImageDeploymentDefinition, imageReference: String) {
         val owner = mutableState.value.owner ?: return
         if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
         listJob?.cancel()
         val generation = ++listGeneration
-        mutableState.update { it.copy(submitting = true, submission = null) }
+        mutableState.update { it.copy(submitting = true, submission = null, definitionSubmission = null, operationDiagnostics = null) }
         listJob = scope.launch {
             try {
                 val result = repository.createAndDeployImage(
                     owner = owner,
-                    definition = ImageDeploymentDefinition(name = name, containerPort = containerPort, configuration = configuration),
+                    definition = definition,
                     imageReference = imageReference,
                     definitionKey = UUID.randomUUID().toString(),
                     deploymentKey = UUID.randomUUID().toString(),
@@ -176,70 +188,94 @@ class DeploymentBrowser(
         }
     }
 
-    /** Creates an archive-template definition, streams the selected SAF document, then queues the resulting revision. */
-    fun createArchive(definition: ArchiveDeploymentDefinition, archive: PickedDocument) {
+    fun lookupImageTags(repositoryName: String) {
         val owner = mutableState.value.owner ?: return
-        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        if (repositoryName.isBlank()) return
+        imageTagsJob?.cancel()
+        mutableState.update { it.copy(imageTags = null, imageTagsLoading = true, imageTagsRepository = repositoryName) }
+        imageTagsJob = scope.launch {
+            try {
+                val result = repository.imageTags(owner, repositoryName)
+                if (current(owner)) mutableState.update { it.copy(imageTags = result) }
+            } finally {
+                if (current(owner)) mutableState.update { it.copy(imageTagsLoading = false) }
+            }
+        }
+    }
+
+    fun createDefinition(image: ImageDeploymentDefinition? = null, archive: ArchiveDeploymentDefinition? = null) {
+        val owner = mutableState.value.owner ?: return
+        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities || (image == null) == (archive == null)) return
         listJob?.cancel()
         val generation = ++listGeneration
-        mutableState.update { it.copy(submitting = true, submission = null) }
+        mutableState.update { it.copy(submitting = true, submission = null, definitionSubmission = null, operationDiagnostics = null) }
+        listJob = scope.launch {
+            try {
+                val key = UUID.randomUUID().toString()
+                val result = if (image != null) repository.createImageDefinition(owner, image, key)
+                    else repository.createArchiveDefinition(owner, archive!!, key)
+                if (current(owner) && generation == listGeneration) {
+                    mutableState.update { it.copy(submitting = false, definitionSubmission = result,
+                        selectedId = (result as? ApiResult.Success)?.value?.id ?: it.selectedId) }
+                    if (result is ApiResult.Success) refresh()
+                }
+            } finally {
+                if (current(owner) && generation == listGeneration) mutableState.update { it.copy(submitting = false) }
+            }
+        }
+    }
+
+    fun clearStagedArchive() {
+        archiveJob?.cancel()
+        archiveGeneration++
+        mutableState.update { it.copy(stagedArchive = null, archiveStaging = false) }
+    }
+
+    fun stageArchive(archive: PickedDocument) = stage { owner -> repository.stageArchive(owner, archive) }
+
+    fun stageServerArchive(path: String) = stage { owner -> repository.stageServerArchive(owner, path) }
+
+    fun archiveUnavailable() {
+        mutableState.update { it.copy(archiveStaging = false, stagedArchive = ApiResult.Transport("Selected deployment archive cannot be read.")) }
+    }
+
+    private fun stage(load: suspend (SessionState.Active) -> ApiResult<DeploymentArchive>) {
+        val owner = mutableState.value.owner ?: return
+        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        archiveJob?.cancel()
+        val generation = ++archiveGeneration
+        mutableState.update { it.copy(archiveStaging = true, stagedArchive = null) }
+        archiveJob = scope.launch {
+            try {
+                val result = load(owner)
+                if (current(owner) && generation == archiveGeneration) mutableState.update { it.copy(stagedArchive = result) }
+            } finally {
+                if (current(owner) && generation == archiveGeneration) mutableState.update { it.copy(archiveStaging = false) }
+            }
+        }
+    }
+
+    fun createArchive(definition: ArchiveDeploymentDefinition, archiveReferenceId: String) {
+        val owner = mutableState.value.owner ?: return
+        val staged = (mutableState.value.stagedArchive as? ApiResult.Success)?.value ?: return
+        if (staged.referenceId != archiveReferenceId || ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
+        listJob?.cancel()
+        val generation = ++listGeneration
+        mutableState.update { it.copy(submitting = true, submission = null, definitionSubmission = null, operationDiagnostics = null) }
         listJob = scope.launch {
             try {
                 val result = repository.createAndDeployArchive(
-                    owner, definition, archive, UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                    owner, definition, archiveReferenceId, UUID.randomUUID().toString(), UUID.randomUUID().toString(),
                 )
                 if (current(owner) && generation == listGeneration) {
-                    mutableState.update {
-                        it.copy(
-                            submitting = false,
-                            submission = result,
-                            selectedId = (result as? ApiResult.Success)?.value?.applicationId ?: it.selectedId,
-                        )
-                    }
-                    if (result is ApiResult.Success) {
-                        refresh()
-                        observeOperation(owner, result.value)
-                    }
+                    mutableState.update { it.copy(submitting = false, submission = result,
+                        selectedId = (result as? ApiResult.Success)?.value?.applicationId ?: it.selectedId) }
+                    if (result is ApiResult.Success) { refresh(); observeOperation(owner, result.value) }
                 }
             } finally {
                 if (current(owner) && generation == listGeneration) mutableState.update { it.copy(submitting = false) }
             }
         }
-    }
-
-    /** Creates an archive deployment from a file selected in the authenticated server filesystem. */
-    fun createServerArchive(definition: ArchiveDeploymentDefinition, path: String) {
-        val owner = mutableState.value.owner ?: return
-        if (ServerCapabilities.APPLICATION_DEPLOYMENTS !in owner.capabilities) return
-        listJob?.cancel()
-        val generation = ++listGeneration
-        mutableState.update { it.copy(submitting = true, submission = null) }
-        listJob = scope.launch {
-            try {
-                val result = repository.createAndDeployServerArchive(
-                    owner, definition, path, UUID.randomUUID().toString(), UUID.randomUUID().toString(),
-                )
-                if (current(owner) && generation == listGeneration) {
-                    mutableState.update {
-                        it.copy(
-                            submitting = false,
-                            submission = result,
-                            selectedId = (result as? ApiResult.Success)?.value?.applicationId ?: it.selectedId,
-                        )
-                    }
-                    if (result is ApiResult.Success) {
-                        refresh()
-                        observeOperation(owner, result.value)
-                    }
-                }
-            } finally {
-                if (current(owner) && generation == listGeneration) mutableState.update { it.copy(submitting = false) }
-            }
-        }
-    }
-
-    fun archiveUnavailable() {
-        mutableState.update { it.copy(submitting = false, submission = ApiResult.Transport("Selected deployment archive cannot be read.")) }
     }
 
     /** Installs the exact server catalogue version. Field values live only in this request path. */
@@ -357,6 +393,10 @@ class DeploymentBrowser(
         operationJob = scope.launch {
             while (isActive && current(owner) && mutableState.value.selectedId == operation.applicationId) {
                 delay(OPERATION_POLL_MILLIS)
+                val diagnostics = repository.operationDiagnostics(owner, operation.operationId)
+                if (current(owner) && mutableState.value.selectedId == operation.applicationId && diagnostics is ApiResult.Success) {
+                    mutableState.update { it.copy(operationDiagnostics = diagnostics) }
+                }
                 val generation = ++detailGeneration
                 val snapshot = repository.snapshot(owner, operation.applicationId)
                 if (!current(owner) || generation != detailGeneration || mutableState.value.selectedId != operation.applicationId) break

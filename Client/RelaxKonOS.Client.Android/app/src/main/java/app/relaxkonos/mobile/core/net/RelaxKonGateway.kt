@@ -92,6 +92,12 @@ interface RelaxKonGateway {
         idempotencyKey: String,
     ): ApiResult<DeploymentApplication> = ApiResult.Transport("Image deployment creation is unavailable.")
 
+    suspend fun deploymentImageTags(serverUrl: String, accessToken: String, repository: String): ApiResult<DeploymentImageTags> =
+        ApiResult.Transport("Image tag lookup is unavailable.")
+
+    suspend fun deploymentOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperationDiagnostics> =
+        ApiResult.Transport("Deployment operation diagnostics are unavailable.")
+
     suspend fun createArchiveDeployment(
         serverUrl: String,
         accessToken: String,

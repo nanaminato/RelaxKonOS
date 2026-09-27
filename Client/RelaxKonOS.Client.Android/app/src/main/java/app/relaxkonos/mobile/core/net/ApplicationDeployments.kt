@@ -32,6 +32,7 @@ data class DeploymentRevision(val id: String, val number: Int, val imageReferenc
 
 /** Bounded, server-sanitized workload output. Android never receives an unbounded log stream here. */
 data class DeploymentLog(val lines: List<String>, val truncated: Boolean)
+data class DeploymentOperationDiagnostics(val operationId: String, val lines: List<String>, val truncated: Boolean)
 
 data class DeploymentOperation(
     val operationId: String,
@@ -71,6 +72,9 @@ data class DeploymentTemplate(
     val supportsSelfContained: Boolean,
     val defaultContainerPort: Int,
 )
+
+data class DeploymentImageTag(val tag: String, val imageReference: String)
+data class DeploymentImageTags(val available: Boolean, val tags: List<DeploymentImageTag>)
 
 /** Product application catalogue, distinct from the AD02 runtime-source templates above. */
 data class CatalogTemplate(
@@ -171,7 +175,10 @@ data class DeploymentArchive(val referenceId: String, val fileName: String, val 
 /** A constrained configuration entry. A secret value is sent only for deployment creation and never retained in snapshots. */
 data class DeploymentConfigEntry(val name: String, val value: String, val isSecret: Boolean)
 
-/** The constrained definition Android submits for the first image-only deployment flow. */
+data class DeploymentVolume(val name: String, val containerPath: String, val readOnly: Boolean)
+data class DeploymentLimits(val cpuCores: Double?, val memoryBytes: Long?, val pidsLimit: Int?)
+
+/** The definition fields shared by image and archive deployments. */
 data class ImageDeploymentDefinition(
     val name: String,
     val containerPort: Int,
@@ -179,9 +186,14 @@ data class ImageDeploymentDefinition(
     val bindAddress: String = "127.0.0.1",
     val healthCheckPath: String = "/",
     val configuration: List<DeploymentConfigEntry> = emptyList(),
+    val workloadKind: String = "web",
+    val readinessLevel: String = "http",
+    val limits: DeploymentLimits? = null,
+    val volumes: List<DeploymentVolume> = emptyList(),
+    val siteId: String? = null,
 )
 
-/** Restricted definition for archive templates; host paths, Dockerfiles and arbitrary environment are absent. */
+/** Archive input and the same application definition fields as the image path. */
 data class ArchiveDeploymentDefinition(
     val sourceKind: String,
     val name: String,
@@ -194,6 +206,12 @@ data class ArchiveDeploymentDefinition(
     val programEntry: String? = null,
     val selfContained: Boolean = false,
     val configuration: List<DeploymentConfigEntry> = emptyList(),
+    val hostPort: Int? = null,
+    val bindAddress: String = "127.0.0.1",
+    val limits: DeploymentLimits? = null,
+    val volumes: List<DeploymentVolume> = emptyList(),
+    val siteId: String? = null,
+    val arguments: List<String> = emptyList(),
 )
 
 /** Closed set mirroring the server lifecycle routes; callers cannot submit arbitrary action paths. */
@@ -203,6 +221,7 @@ object ApplicationDeploymentRoutes {
     const val APPLICATIONS = "/api/v1.0/application-deployments/applications"
     const val RUNTIME = "/api/v1.0/docker/status"
     const val TEMPLATES = "/api/v1.0/application-deployments/templates"
+    const val IMAGE_TAGS = "/api/v1.0/application-deployments/image-tags"
     const val CATALOG = "/api/v1.0/application-deployments/catalog"
     const val CATALOG_INSTALL = "$CATALOG/install"
     const val UPLOADS = "/api/v1.0/application-deployments/uploads"
@@ -214,6 +233,7 @@ object ApplicationDeploymentRoutes {
     fun lifecycle(id: String, action: DeploymentLifecycleAction): String = "${application(id)}/${action.name.lowercase()}"
     fun logs(id: String, tail: Int): String = "${application(id)}/logs?tail=${tail.coerceIn(1, 1_000)}"
     fun cancelOperation(id: String): String = "/api/v1.0/application-deployments/operations/${UUID.fromString(id)}/cancel"
+    fun operationLogs(id: String): String = "/api/v1.0/application-deployments/operations/${UUID.fromString(id)}/logs"
 }
 
 /** Required fields fail closed; unfamiliar enum strings stay unknown in the presentation layer. */
@@ -242,6 +262,12 @@ internal object ApplicationDeploymentWire {
             json.getBoolean("requiresArchive"), json.getBoolean("requiresImageReference"),
             json.getBoolean("supportsSelfContained"), json.getInt("defaultContainerPort"),
         )
+    }
+
+    fun imageTags(payload: String): DeploymentImageTags = JSONObject(payload).let { json ->
+        DeploymentImageTags(json.getBoolean("available"), json.getJSONArray("tags").objects {
+            DeploymentImageTag(it.getString("tag"), it.getString("imageReference"))
+        })
     }
 
     fun catalog(payload: String): List<CatalogTemplate> = JSONArray(payload).objects { json ->
@@ -277,6 +303,10 @@ internal object ApplicationDeploymentWire {
     fun logs(payload: String): DeploymentLog = JSONObject(payload).let { json ->
         val lines = json.getJSONArray("lines").let { array -> (0 until array.length()).map(array::getString) }
         DeploymentLog(lines, json.getBoolean("truncated"))
+    }
+
+    fun operationDiagnostics(payload: String): DeploymentOperationDiagnostics = JSONObject(payload).let { json ->
+        DeploymentOperationDiagnostics(json.getString("operationId"), json.getJSONArray("lines").strings(), json.getBoolean("truncated"))
     }
 
     private fun application(json: JSONObject) = DeploymentApplication(

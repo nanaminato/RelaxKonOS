@@ -44,15 +44,6 @@ fun DeploymentsScreen(
     val available = state.owner?.capabilities?.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS) == true
     var showCreate by remember { mutableStateOf(false) }
     var showCatalog by remember { mutableStateOf(false) }
-    var pendingArchive by remember { mutableStateOf<ArchiveDeploymentDefinition?>(null) }
-    val pickArchive = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        val definition = pendingArchive
-        pendingArchive = null
-        if (uri != null && definition != null) {
-            viewModel.createArchive(uri, definition)
-            showCreate = false
-        }
-    }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(
             title = stringResource(R.string.deployments_title),
@@ -66,7 +57,7 @@ fun DeploymentsScreen(
                     TextButton(onClick = { showCatalog = true }, enabled = available && state.catalog is ApiResult.Success && !state.submitting) {
                         Text(stringResource(R.string.catalog_install_from_template))
                     }
-                    TextButton(onClick = { showCreate = true }, enabled = available && state.templates is ApiResult.Success && !state.submitting) {
+                    TextButton(onClick = { viewModel.clearStagedArchive(); showCreate = true }, enabled = available && state.templates is ApiResult.Success && !state.submitting) {
                         Text(stringResource(R.string.deployments_create_application))
                     }
                     TextButton(onClick = browser::refresh, enabled = available && !state.loading && !state.detailLoading && !state.submitting) {
@@ -101,19 +92,23 @@ fun DeploymentsScreen(
         DeploymentCreateDialog(
             templates = templates,
             submitting = state.submitting,
+            submission = state.submission,
+            definitionSubmission = state.definitionSubmission,
+            snapshot = (state.detail as? ApiResult.Success)?.value,
+            diagnostics = (state.operationDiagnostics as? ApiResult.Success)?.value,
+            stagedArchive = state.stagedArchive,
+            archiveStaging = state.archiveStaging,
+            imageTags = state.imageTags,
+            imageTagsRepository = state.imageTagsRepository,
+            imageTagsLoading = state.imageTagsLoading,
+            onLookupImageTags = browser::lookupImageTags,
             onDismiss = { if (!state.submitting) showCreate = false },
-            onImageSubmit = { name, image, port, configuration ->
-                browser.createImage(name, image, port, configuration)
-                showCreate = false
-            },
-            onArchiveSubmit = { definition ->
-                pendingArchive = definition
-                pickArchive.launch(arrayOf("application/zip", "application/java-archive", "application/octet-stream"))
-            },
-            onServerArchiveSubmit = { path, definition ->
-                viewModel.createServerArchive(path, definition)
-                showCreate = false
-            },
+            onImageSubmit = { definition, image -> browser.createImage(definition, image) },
+            onDefinitionSubmit = { image, archive -> browser.createDefinition(image, archive) },
+            onArchiveStage = viewModel::stageArchive,
+            onServerArchiveStage = viewModel::stageServerArchive,
+            onClearArchive = viewModel::clearStagedArchive,
+            onArchiveSubmit = browser::createArchive,
         )
     }
     if (showCatalog) {
@@ -221,201 +216,294 @@ private fun CatalogInstallDialog(
 private fun DeploymentCreateDialog(
     templates: List<DeploymentTemplate>,
     submitting: Boolean,
+    submission: ApiResult<DeploymentOperation>?,
+    definitionSubmission: ApiResult<DeploymentApplication>?,
+    snapshot: DeploymentSnapshot?,
+    diagnostics: DeploymentOperationDiagnostics?,
+    stagedArchive: ApiResult<DeploymentArchive>?,
+    archiveStaging: Boolean,
+    imageTags: ApiResult<DeploymentImageTags>?,
+    imageTagsRepository: String?,
+    imageTagsLoading: Boolean,
+    onLookupImageTags: (String) -> Unit,
     onDismiss: () -> Unit,
-    onImageSubmit: (String, String, Int, List<DeploymentConfigEntry>) -> Unit,
-    onArchiveSubmit: (ArchiveDeploymentDefinition) -> Unit,
-    onServerArchiveSubmit: (String, ArchiveDeploymentDefinition) -> Unit,
+    onImageSubmit: (ImageDeploymentDefinition, String) -> Unit,
+    onDefinitionSubmit: (ImageDeploymentDefinition?, ArchiveDeploymentDefinition?) -> Unit,
+    onArchiveStage: (Uri) -> Unit,
+    onServerArchiveStage: (String) -> Unit,
+    onClearArchive: () -> Unit,
+    onArchiveSubmit: (ArchiveDeploymentDefinition, String) -> Unit,
 ) {
-    val form = remember(templates) { DeploymentCreateForm(templates) }
+    // A list refresh after submission must not reset the wizard while its progress step is open.
+    val form = remember { DeploymentCreateForm(templates) }
     var sourceMenuExpanded by remember { mutableStateOf(false) }
     var showServerArchivePicker by remember { mutableStateOf(false) }
+    var attemptedNext by remember { mutableStateOf(false) }
+    val pickArchive = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            form.archiveName = ""
+            onClearArchive()
+            onArchiveStage(uri)
+        }
+    }
+    LaunchedEffect(stagedArchive) {
+        form.archiveName = (stagedArchive as? ApiResult.Success)?.value?.fileName.orEmpty()
+    }
+    val stepTitles = listOf(
+        R.string.deployments_step_source, R.string.deployments_step_entry, R.string.deployments_step_runtime,
+        R.string.deployments_step_configuration, R.string.deployments_step_proxy, R.string.deployments_step_preview,
+        R.string.deployments_step_progress,
+    )
+    val problem = if (attemptedNext) form.problemAt(form.step) else null
     Dialog(
         onDismissRequest = { if (!submitting) onDismiss() },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize()) {
                 ScreenHeader(
                     title = stringResource(R.string.deployments_create_title),
-                    onBack = onDismiss,
+                    subtitle = "${form.step + 1} / 7 · ${stringResource(stepTitles[form.step])}",
+                    onBack = if (!submitting) onDismiss else null,
                     modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
                 )
                 Column(
-                    Modifier.weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = Spacing.lg),
+                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Spacing.lg),
                     verticalArrangement = Arrangement.spacedBy(Spacing.md),
                 ) {
-            Text(
-                stringResource(R.string.deployments_create_note),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            ExposedDropdownMenuBox(
-                expanded = sourceMenuExpanded,
-                onExpandedChange = { sourceMenuExpanded = it },
-            ) {
-                OutlinedTextField(
-                    value = form.template?.let { label(it.sourceKind) }.orEmpty(),
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(R.string.deployments_source_selector)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceMenuExpanded) },
-                    modifier = Modifier
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                        .fillMaxWidth(),
-                )
-                ExposedDropdownMenu(
-                    expanded = sourceMenuExpanded,
-                    onDismissRequest = { sourceMenuExpanded = false },
-                ) {
-                    templates.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(label(option.sourceKind)) },
-                            onClick = {
-                                form.selectSource(option.sourceKind)
-                                sourceMenuExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
-            Surface(shape = MaterialTheme.shapes.medium, tonalElevation = Spacing.xs) {
-                Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    OutlinedTextField(
-                        form.name,
-                        { form.name = it },
-                        label = { Text(stringResource(R.string.deployments_name)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (form.template?.requiresImageReference == true) {
-                        OutlinedTextField(
-                            form.image,
-                            { form.image = it },
-                            label = { Text(stringResource(R.string.deployments_image_reference)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    OutlinedTextField(
-                        form.port, { form.port = it }, label = { Text(stringResource(R.string.deployments_container_port)) }, singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = form.port.isNotEmpty() && form.parsedPort == null,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (form.isArchive) {
-                        OutlinedTextField(
-                            form.baseImage,
-                            { form.baseImage = it },
-                            label = { Text(stringResource(R.string.deployments_base_image)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        if (form.template?.sourceKind in setOf("javaJar", "dotNetPublish", "pythonProject")) {
-                            OutlinedTextField(
-                                form.runtimeVersion,
-                                { form.runtimeVersion = it },
-                                label = { Text(stringResource(R.string.deployments_runtime_version)) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                        if (form.template?.sourceKind == "pythonProject") {
-                            OutlinedTextField(
-                                form.programEntry,
-                                { form.programEntry = it },
-                                label = { Text(stringResource(R.string.deployments_python_entry)) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                        if (form.template?.supportsSelfContained == true) {
-                            Row {
-                                Checkbox(checked = form.selfContained, onCheckedChange = { form.selfContained = it })
-                                Text(stringResource(R.string.deployments_self_contained))
+                    Text(stringResource(stepTitles[form.step]), style = MaterialTheme.typography.titleMedium)
+                    when (form.step) {
+                        0 -> {
+                            OutlinedTextField(form.name, { form.name = it }, label = { Text(stringResource(R.string.deployments_name)) },
+                                singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.deployments_name_rule), style = MaterialTheme.typography.bodySmall)
+                            ExposedDropdownMenuBox(expanded = sourceMenuExpanded, onExpandedChange = { sourceMenuExpanded = it }) {
+                                OutlinedTextField(value = form.template?.let { label(it.sourceKind) }.orEmpty(), onValueChange = {},
+                                    readOnly = true, label = { Text(stringResource(R.string.deployments_source_selector)) },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceMenuExpanded) },
+                                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth())
+                                ExposedDropdownMenu(expanded = sourceMenuExpanded, onDismissRequest = { sourceMenuExpanded = false }) {
+                                    templates.forEach { option -> DropdownMenuItem(text = { Text(label(option.sourceKind)) }, onClick = {
+                                        form.selectSource(option.sourceKind)
+                                        onClearArchive()
+                                        sourceMenuExpanded = false
+                                    }) }
+                                }
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                listOf("web" to R.string.deployment_web, "worker" to R.string.deployment_worker).forEach { (kind, title) ->
+                                    FilterChip(selected = form.workload == kind, onClick = { form.selectWorkload(kind) }, label = { Text(stringResource(title)) })
+                                }
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            FilterChip(selected = form.workload == "web", onClick = { form.workload = "web" }, label = { Text(stringResource(R.string.deployment_web)) })
-                            FilterChip(selected = form.workload == "worker", onClick = { form.workload = "worker" }, label = { Text(stringResource(R.string.deployment_worker)) })
+                        1 -> {
+                            if (form.template?.requiresImageReference == true) {
+                                OutlinedTextField(form.image, { form.image = it }, label = { Text(stringResource(R.string.deployments_image_reference)) },
+                                    supportingText = { Text(stringResource(R.string.deployments_image_version_note)) },
+                                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                                OutlinedButton(onClick = { onLookupImageTags(form.image) }, enabled = form.image.isNotBlank() && !imageTagsLoading) {
+                                    Text(stringResource(R.string.deployments_lookup_tags))
+                                }
+                                if (imageTagsLoading && imageTagsRepository == form.image) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                if (imageTagsRepository == form.image) when (val result = imageTags) {
+                                    is ApiResult.Success -> if (result.value.available) {
+                                        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                            result.value.tags.forEach { tag -> FilterChip(selected = form.image == tag.imageReference,
+                                                onClick = { form.image = tag.imageReference }, label = { Text(tag.tag) }) }
+                                        }
+                                    } else Text(stringResource(R.string.deployments_tags_unavailable), style = MaterialTheme.typography.bodySmall)
+                                    null -> Unit
+                                    else -> Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                            if (form.isArchive) {
+                                Text(stringResource(R.string.deployments_archive_note), style = MaterialTheme.typography.bodySmall)
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                    OutlinedButton(onClick = { pickArchive.launch(arrayOf("application/zip", "application/java-archive", "application/octet-stream")) }) {
+                                        Text(stringResource(R.string.deployments_choose_archive))
+                                    }
+                                    OutlinedButton(onClick = { showServerArchivePicker = true }) {
+                                        Text(stringResource(R.string.deployments_choose_server_archive))
+                                    }
+                                }
+                                if (archiveStaging) {
+                                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                                    TextButton(onClick = onClearArchive) { Text(stringResource(R.string.common_cancel)) }
+                                }
+                                if (form.archiveName.isNotBlank()) Text(form.archiveName)
+                                if (stagedArchive != null && stagedArchive !is ApiResult.Success)
+                                    Text(stagedArchive.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                                OutlinedTextField(form.baseImage, { form.baseImage = it }, label = { Text(stringResource(R.string.deployments_base_image)) },
+                                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                                OutlinedTextField(form.programEntry, { form.programEntry = it }, label = { Text(stringResource(R.string.deployments_program_entry)) },
+                                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                                OutlinedTextField(form.arguments, { form.arguments = it }, label = { Text(stringResource(R.string.deployments_arguments)) },
+                                    minLines = 2, modifier = Modifier.fillMaxWidth())
+                                if (form.template?.supportsSelfContained == true) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(checked = form.selfContained, onCheckedChange = { form.selfContained = it })
+                                        Text(stringResource(R.string.deployments_self_contained))
+                                    }
+                                }
+                            }
+                            if (form.isArchive) OutlinedTextField(form.runtimeVersion, { form.runtimeVersion = it },
+                                label = { Text(stringResource(R.string.deployments_runtime_version)) },
+                                singleLine = true, modifier = Modifier.fillMaxWidth())
+                        }
+                        2 -> {
+                            OutlinedTextField(form.port, { form.port = it }, label = { Text(stringResource(R.string.deployments_container_port)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(form.hostPort, { form.hostPort = it }, label = { Text(stringResource(R.string.deployments_host_port)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(form.bindAddress, { form.bindAddress = it }, label = { Text(stringResource(R.string.deployments_bind_address)) },
+                                singleLine = true, modifier = Modifier.fillMaxWidth())
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                                listOf("http", "process").forEach { level ->
+                                    FilterChip(selected = form.readiness == level, onClick = { form.readiness = level }, label = { Text(label(level)) })
+                                }
+                            }
+                            if (form.readiness == "http") OutlinedTextField(form.healthPath, { form.healthPath = it },
+                                label = { Text(stringResource(R.string.deployments_health_path)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.deployments_host_port_note), style = MaterialTheme.typography.bodySmall)
+                        }
+                        3 -> {
+                            Text(stringResource(R.string.deployments_configuration), style = MaterialTheme.typography.titleSmall)
+                            form.configuration.forEach { entry ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (entry.isSecret) stringResource(R.string.deployments_secret_configured, entry.name)
+                                        else "${entry.name}=${entry.value}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { form.configuration.remove(entry) }) { Text(stringResource(R.string.common_delete)) }
+                                }
+                            }
+                            OutlinedTextField(form.configurationName, { form.configurationName = it }, label = { Text(stringResource(R.string.deployments_configuration_name)) },
+                                singleLine = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(form.configurationValue, { form.configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) },
+                                singleLine = true, visualTransformation = if (form.configurationSecret) PasswordVisualTransformation()
+                                    else androidx.compose.ui.text.input.VisualTransformation.None, modifier = Modifier.fillMaxWidth())
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = form.configurationSecret, onCheckedChange = { form.configurationSecret = it })
+                                Text(stringResource(R.string.deployments_configuration_secret))
+                                TextButton(onClick = form::addConfiguration, enabled = form.configurationName.isNotBlank()) {
+                                    Text(stringResource(R.string.deployments_configuration_add))
+                                }
+                            }
+                            OutlinedTextField(form.volumes, { form.volumes = it }, label = { Text(stringResource(R.string.deployments_volumes)) },
+                                supportingText = { Text(stringResource(R.string.deployments_volumes_hint)) }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(form.cpuCores, { form.cpuCores = it }, label = { Text(stringResource(R.string.deployments_cpu)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(form.memoryMegabytes, { form.memoryMegabytes = it }, label = { Text(stringResource(R.string.deployments_memory)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(form.pidsLimit, { form.pidsLimit = it }, label = { Text(stringResource(R.string.deployments_pids)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                        }
+                        4 -> {
+                            OutlinedTextField(form.siteId, { form.siteId = it }, label = { Text(stringResource(R.string.deployments_site)) },
+                                singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Text(stringResource(R.string.deployments_site_note), style = MaterialTheme.typography.bodySmall)
+                        }
+                        5 -> {
+                            SectionCard(title = stringResource(R.string.deployments_step_preview)) {
+                                Text(form.name)
+                                Text("${label(form.sourceKind)} · ${if (form.isArchive) form.archiveName else form.image}")
+                                Text("${form.bindAddress}:${form.hostPort.ifBlank { "—" }} → ${form.port}")
+                                Text("${form.readiness} ${if (form.readiness == "http") form.healthPath else ""}")
+                                Text(stringResource(R.string.deployments_preview_counts, form.volumes.lines().count { it.isNotBlank() },
+                                    form.configuration.count { !it.isSecret }, form.configuration.count { it.isSecret }))
+                                Text(form.siteId.ifBlank { "—" })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = form.deployNow, onCheckedChange = { form.deployNow = it })
+                                Text(stringResource(R.string.deployments_deploy_now))
+                            }
+                            Text(stringResource(R.string.deployments_replacement_note), style = MaterialTheme.typography.bodySmall)
+                        }
+                        6 -> {
+                            if (submitting) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            when (val result = submission) {
+                                null -> if (form.deployNow) Text(stringResource(R.string.common_loading))
+                                is ApiResult.Success -> {
+                                    val operation = snapshot?.operations?.firstOrNull { it.operationId == result.value.operationId }
+                                        ?: snapshot?.activeOperation?.takeIf { it.operationId == result.value.operationId } ?: result.value
+                                    Text("${label(operation.state)} · ${label(operation.stage)}")
+                                    operation.progress?.let { LinearProgressIndicator(progress = { it / 100f }, modifier = Modifier.fillMaxWidth()) }
+                                    operation.problemCode?.let { Text(deploymentProblem(it).text(), color = MaterialTheme.colorScheme.error) }
+                                    Text(stringResource(R.string.deployments_operation_id, operation.operationId), style = MaterialTheme.typography.bodySmall)
+                                    diagnostics?.takeIf { it.operationId == operation.operationId }?.let { output ->
+                                        if (output.lines.isNotEmpty()) SectionCard(title = stringResource(R.string.deployments_operation_output)) {
+                                            Text(output.lines.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+                                            if (output.truncated) Text(stringResource(R.string.deployments_logs_truncated))
+                                        }
+                                    }
+                                }
+                                else -> Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                            }
+                            when (val saved = definitionSubmission) {
+                                is ApiResult.Success -> Text(stringResource(R.string.deployments_definition_saved, saved.value.name))
+                                null -> Unit
+                                else -> Text(saved.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
-                    Text(stringResource(R.string.deployments_configuration), style = MaterialTheme.typography.titleSmall)
-                    form.configuration.forEach { entry ->
-                        Text(if (entry.isSecret) stringResource(R.string.deployments_secret_configured, entry.name) else "${entry.name}=${entry.value}",
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                    OutlinedTextField(
-                        form.configurationName,
-                        { form.configurationName = it },
-                        label = { Text(stringResource(R.string.deployments_configuration_name)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        form.configurationValue, { form.configurationValue = it }, label = { Text(stringResource(R.string.deployments_configuration_value)) }, singleLine = true,
-                        visualTransformation = if (form.configurationSecret) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-                    ) {
-                        Checkbox(checked = form.configurationSecret, onCheckedChange = { form.configurationSecret = it })
-                        Text(stringResource(R.string.deployments_configuration_secret))
-                        TextButton(onClick = form::addConfiguration, enabled = form.configurationName.isNotBlank()) { Text(stringResource(R.string.deployments_configuration_add)) }
-                    }
-                }
-            }
-            if (form.isArchive) {
-                Text(
-                    stringResource(R.string.deployments_archive_note),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+                    if (problem != null) Text(stringResource(R.string.deployments_step_error, wizardProblemField(problem)), color = MaterialTheme.colorScheme.error)
                 }
                 HorizontalDivider()
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
-                    horizontalArrangement = Arrangement.End,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                ) {
-                    TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_cancel)) }
-                    if (form.isArchive) {
-                        OutlinedButton(
-                            onClick = { showServerArchivePicker = true },
-                            enabled = form.canSubmit && !submitting,
-                        ) {
-                            Text(stringResource(R.string.deployments_choose_server_archive))
+                FlowRow(modifier = Modifier.fillMaxWidth().padding(Spacing.lg), horizontalArrangement = Arrangement.End,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    if (form.step in 1..5) TextButton(onClick = { form.back(); attemptedNext = false }) { Text(stringResource(R.string.common_back)) }
+                    if (form.step < 5) Button(onClick = { attemptedNext = !form.next() }, enabled = !submitting && !archiveStaging) {
+                        Text(stringResource(R.string.deployments_next))
+                    }
+                    if (form.step == 5) Button(onClick = {
+                        val firstProblem = (0..4).firstOrNull { form.problemAt(it) != null }
+                        if (firstProblem != null) {
+                            form.goTo(firstProblem)
+                            attemptedNext = true
+                        } else {
+                            form.showProgress()
+                            if (!form.deployNow) {
+                                if (form.isArchive) onDefinitionSubmit(null, form.archiveDefinition())
+                                else onDefinitionSubmit(form.imageDefinition(), null)
+                            } else if (form.isArchive) {
+                                val reference = (stagedArchive as? ApiResult.Success)?.value?.referenceId
+                                if (reference != null) onArchiveSubmit(form.archiveDefinition(), reference)
+                            } else onImageSubmit(form.imageDefinition(), form.image)
                         }
-                    }
-                    Button(
-                        onClick = {
-                            if (form.isArchive) onArchiveSubmit(form.archiveDefinition()!!)
-                            else onImageSubmit(form.name.trim(), form.image.trim(), form.parsedPort!!, form.imageConfiguration())
-                        },
-                        enabled = form.canSubmit && !submitting,
-                    ) {
-                        Text(stringResource(if (form.isArchive) R.string.deployments_choose_archive else R.string.deployments_create_and_deploy))
-                    }
+                    }, enabled = !submitting) { Text(stringResource(if (form.deployNow) R.string.deployments_create_and_deploy else R.string.deployments_save_definition)) }
+                    if (form.step == 6) TextButton(onClick = onDismiss, enabled = !submitting) { Text(stringResource(R.string.common_close)) }
                 }
             }
         }
     }
-    if (showServerArchivePicker) {
-        ServerArchivePicker(
-            onDismiss = { showServerArchivePicker = false },
-            onSelect = { path ->
-                form.archiveDefinition()?.let { onServerArchiveSubmit(path, it) }
-                showServerArchivePicker = false
-            },
-        )
-    }
+    if (showServerArchivePicker) ServerArchivePicker(
+        onDismiss = { showServerArchivePicker = false },
+        onSelect = { path ->
+            form.archiveName = ""
+            onClearArchive()
+            onServerArchiveStage(path)
+            showServerArchivePicker = false
+        },
+    )
 }
+
+@Composable
+private fun wizardProblemField(problem: String): String = stringResource(when (problem) {
+    "source" -> R.string.deployments_source_selector
+    "name" -> R.string.deployments_name
+    "image" -> R.string.deployments_image_reference
+    "archive" -> R.string.deployments_choose_archive
+    "entry" -> R.string.deployments_program_entry
+    "runtime" -> R.string.deployments_runtime_version
+    "arguments" -> R.string.deployments_arguments
+    "containerPort" -> R.string.deployments_container_port
+    "hostPort" -> R.string.deployments_host_port
+    "healthPath" -> R.string.deployments_health_path
+    "volumes" -> R.string.deployments_volumes
+    "cpu" -> R.string.deployments_cpu
+    "memory" -> R.string.deployments_memory
+    "pids" -> R.string.deployments_pids
+    "site" -> R.string.deployments_site
+    else -> R.string.deployments_configuration
+})
 
 @Composable
 private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Unit) {

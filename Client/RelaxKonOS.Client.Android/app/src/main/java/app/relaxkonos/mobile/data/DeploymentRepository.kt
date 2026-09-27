@@ -28,12 +28,26 @@ class DeploymentRepository(private val gateway: RelaxKonGateway, private val ses
         gateway.deploymentTemplates(url, token)
     }
 
+    suspend fun imageTags(owner: SessionState.Active, repository: String): ApiResult<DeploymentImageTags> = read(owner) { url, token ->
+        gateway.deploymentImageTags(url, token, repository)
+    }
+
+    suspend fun operationDiagnostics(owner: SessionState.Active, operationId: String): ApiResult<DeploymentOperationDiagnostics> = read(owner) { url, token ->
+        gateway.deploymentOperationDiagnostics(url, token, operationId)
+    }
+
     suspend fun catalog(owner: SessionState.Active): ApiResult<List<CatalogTemplate>> = read(owner) { url, token ->
         gateway.applicationCatalog(url, token)
     }
 
     suspend fun installCatalog(owner: SessionState.Active, template: CatalogTemplate, name: String, fields: List<CatalogFieldValue>, key: String): ApiResult<DeploymentOperation> =
         read(owner) { url, token -> gateway.installCatalogApplication(url, token, template, name, fields, key) }
+
+    suspend fun createImageDefinition(owner: SessionState.Active, definition: ImageDeploymentDefinition, key: String): ApiResult<DeploymentApplication> =
+        read(owner) { url, token -> gateway.createImageDeployment(url, token, definition, key) }
+
+    suspend fun createArchiveDefinition(owner: SessionState.Active, definition: ArchiveDeploymentDefinition, key: String): ApiResult<DeploymentApplication> =
+        read(owner) { url, token -> gateway.createArchiveDeployment(url, token, definition, key) }
 
     /**
      * Creates a definition and then queues its first revision. The two server actions intentionally
@@ -54,39 +68,22 @@ class DeploymentRepository(private val gateway: RelaxKonGateway, private val ses
         }
     }
 
-    /** The archive travels as a stream into deployment-owned staging, then only its opaque reference reaches the operation. */
+    suspend fun stageArchive(owner: SessionState.Active, archive: PickedDocument): ApiResult<DeploymentArchive> =
+        read(owner) { url, token -> gateway.uploadDeploymentArchive(url, token, archive.displayName, archive.length, archive.open) }
+
+    suspend fun stageServerArchive(owner: SessionState.Active, path: String): ApiResult<DeploymentArchive> =
+        read(owner) { url, token -> gateway.stageServerDeploymentArchive(url, token, path) }
+
+    /** The entry step has already staged the archive; only its opaque reference reaches deployment. */
     suspend fun createAndDeployArchive(
         owner: SessionState.Active,
         definition: ArchiveDeploymentDefinition,
-        archive: PickedDocument,
+        archiveReferenceId: String,
         definitionKey: String,
         deploymentKey: String,
     ): ApiResult<DeploymentOperation> = read(owner) { url, token ->
         when (val created = gateway.createArchiveDeployment(url, token, definition, definitionKey)) {
-            is ApiResult.Success -> when (val staged = gateway.uploadDeploymentArchive(url, token, archive.displayName, archive.length, archive.open)) {
-                is ApiResult.Success -> gateway.deployArchive(url, token, created.value.id, staged.value.referenceId, definition, deploymentKey)
-                is ApiResult.Problem -> staged
-                is ApiResult.Transport -> staged
-            }
-            is ApiResult.Problem -> created
-            is ApiResult.Transport -> created
-        }
-    }
-
-    /** The server copies the selected user-readable file into deployment-owned staging before use. */
-    suspend fun createAndDeployServerArchive(
-        owner: SessionState.Active,
-        definition: ArchiveDeploymentDefinition,
-        path: String,
-        definitionKey: String,
-        deploymentKey: String,
-    ): ApiResult<DeploymentOperation> = read(owner) { url, token ->
-        when (val created = gateway.createArchiveDeployment(url, token, definition, definitionKey)) {
-            is ApiResult.Success -> when (val staged = gateway.stageServerDeploymentArchive(url, token, path)) {
-                is ApiResult.Success -> gateway.deployArchive(url, token, created.value.id, staged.value.referenceId, definition, deploymentKey)
-                is ApiResult.Problem -> staged
-                is ApiResult.Transport -> staged
-            }
+            is ApiResult.Success -> gateway.deployArchive(url, token, created.value.id, archiveReferenceId, definition, deploymentKey)
             is ApiResult.Problem -> created
             is ApiResult.Transport -> created
         }
