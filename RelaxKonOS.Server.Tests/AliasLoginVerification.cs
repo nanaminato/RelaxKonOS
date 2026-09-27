@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -147,6 +148,33 @@ internal static class AliasLoginVerification
         ], "test"));
         Check(app.Services.GetRequiredService<SessionValidityService>().IsValid(windowsDesktopSessionPrincipal),
             "Windows desktop session JWT remains valid for protected APIs");
+        if (app.Services.GetRequiredService<OwnerDeviceKeyService>().IsAvailable)
+        {
+            using var ownerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var ownerDeviceId = Guid.NewGuid();
+            var registered = app.Services.GetRequiredService<OwnerDeviceKeyService>().Register(system.User.Id, ownerDeviceId,
+                new OwnerDeviceBootstrapRequest("owner-test", "windows", Convert.ToBase64String(ownerKey.ExportSubjectPublicKeyInfo()), "1"));
+            var challenge = app.Services.GetRequiredService<OwnerDeviceKeyService>().CreateChallenge(ownerDeviceId);
+            var challengeNonce = Convert.FromBase64String(challenge.Nonce.Replace('-', '+').Replace('_', '/').PadRight(
+                challenge.Nonce.Length + (4 - challenge.Nonce.Length % 4) % 4, '='));
+            var verified = app.Services.GetRequiredService<OwnerDeviceKeyService>().VerifyChallenge(challenge.ChallengeId, ownerDeviceId,
+                Convert.ToBase64String(ownerKey.SignData(challengeNonce, HashAlgorithmName.SHA256)));
+            Check(verified.Id == registered.Id && verified.LastUsedAt is not null,
+                "P-256 owner-device nonce signature is accepted exactly through its enrolled key");
+            var ownerPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim("sub", system.User.Id.ToString()), new Claim("device_id", ownerDeviceId.ToString()),
+                new Claim("amr", "owner-device-key"), new Claim("role", "controller"),
+            ], "test"));
+            Check(app.Services.GetRequiredService<OwnerDeviceKeyService>().IsOwner(ownerPrincipal),
+                "nonce-signed owner-device controller session may use passwordless elevation");
+            var passwordPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim("sub", system.User.Id.ToString()), new Claim("device_id", ownerDeviceId.ToString()),
+                new Claim("amr", "system"), new Claim("role", "controller"),
+            ], "test"));
+            Check(!app.Services.GetRequiredService<OwnerDeviceKeyService>().IsOwner(passwordPrincipal),
+                "ordinary password session cannot inherit owner-device elevation");
+            Check(registered.Id == ownerDeviceId, "owner-device registration preserves the associated device id");
+        }
         Check((await Read(token)) is { Alias: null, SystemLoginEnabled: true, Revision: 0 }, "default system login enabled");
         using (var response = await Send(HttpMethod.Post, AuthApiRoutes.Login, new { username = "nanami", password = OsPassword, clientPlatform = "windows", deviceName = "x", clientVersion = "1" }))
             Check(response.StatusCode == HttpStatusCode.BadRequest, "old username wire contract rejected");

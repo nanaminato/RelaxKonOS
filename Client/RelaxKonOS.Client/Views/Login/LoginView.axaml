@@ -157,6 +157,29 @@
                 <TextBlock Text="{Binding IdentityNotice}"
                            Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" Margin="88,11,0,0" />
 
+                <Border IsVisible="{Binding OwnerDeviceAvailable}" Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1" CornerRadius="2"
+                        Margin="0,18,0,0" Padding="13,11">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Paired device key" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="Use a paired Windows/Linux device without storing the Server password. On Linux without a desktop keyring, the private key remains in a passphrase-encrypted file."
+                                   TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBox Classes="connection-input" Text="{Binding OwnerDeviceKeyPassphrase}" PasswordChar="●"
+                                 PlaceholderText="{Binding OwnerDeviceKeyPassphraseText}" />
+                        <WrapPanel>
+                            <Button Classes="connect-button" Content="{Binding BootstrapWindowsOwnerDeviceText}"
+                                    Command="{Binding BootstrapWindowsOwnerDeviceCommand}"
+                                    IsVisible="{Binding WindowsOwnerDeviceBootstrapAvailable}" Margin="0,0,8,0" />
+                            <Button Classes="connect-button" Content="{Binding ConnectOwnerDeviceText}"
+                                    Command="{Binding ConnectOwnerDeviceCommand}" />
+                        </WrapPanel>
+                        <TextBox Classes="connection-input" Text="{Binding OwnerDevicePairingCode}"
+                                 PlaceholderText="{Binding OwnerDevicePairingCodeText}" />
+                        <Button Classes="connect-button" Content="{Binding AcceptOwnerDevicePairingText}"
+                                Command="{Binding AcceptOwnerDevicePairingCommand}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+
                 <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1"
                         CornerRadius="2" Margin="0,24,0,0" Padding="13,11">
                     <StackPanel Spacing="4">

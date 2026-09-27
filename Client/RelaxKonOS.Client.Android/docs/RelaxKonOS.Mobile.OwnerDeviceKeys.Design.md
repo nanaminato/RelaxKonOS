@@ -8,6 +8,14 @@ Each controller owns a distinct P-256 ECDSA key pair. The private key remains in
 
 The first controller is enrolled from a loopback-only Negotiate endpoint while a local Windows administrator is signed in. It is unavailable over a LAN address, tunnel, or reverse proxy. An enrolled controller creates a one-time, ten-minute pairing invitation for another controller. The invitation carries no private key and may be represented as a QR payload containing the server origin and invitation token.
 
+The current desktop flow serializes the QR payload as base64-encoded UTF-8 JSON:
+
+```json
+{ "version": 1, "serverUrl": "https://host.example/", "token": "…", "expiresAt": "…" }
+```
+
+Android must scan this exact payload with CameraX/ML Kit, show the resolved Server origin for explicit confirmation, and reject expired or non-HTTPS origins before creating its Android Keystore key. Manual paste is only an input alternative, not a second wire format.
+
 To sign in, a controller requests a 32-byte, two-minute nonce and returns an ECDSA SHA-256 signature. The Server consumes each nonce once, then issues the usual short-lived access and refresh tokens with `amr=owner-device-key`.
 
 ## Host elevation
@@ -20,5 +28,5 @@ Owner devices can list and revoke other owner devices. The final active device c
 
 1. Generate a P-256 Android Keystore key with user authentication enabled when available.
 2. Scan a pairing QR code created by an enrolled controller.
-3. Submit the invitation token and SPKI public key; then request and sign a nonce to obtain the normal login session.
+3. Show the scanned Server origin and expiry, then submit the invitation token and SPKI public key; request and sign a nonce to obtain the normal login session.
 4. On each remote sign-in, repeat only nonce signing; never transmit an administrator or Microsoft-account password.

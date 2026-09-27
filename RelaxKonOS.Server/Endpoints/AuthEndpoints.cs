@@ -134,6 +134,8 @@ public static class AuthEndpoints
             {
                 if (http.Connection.RemoteIpAddress is not { } address || !System.Net.IPAddress.IsLoopback(address))
                     throw new AliasAuthenticationException(403, "owner-device-loopback-required");
+                if (!ownerDevices.IsAvailable)
+                    throw new OwnerDeviceKeyException(404, "owner-device-unsupported-platform");
                 var login = authentication.AuthenticateWindowsWorkstationOwnerBootstrap(http.User);
                 if (keys.ListActive(login.User.Id).Count != 0)
                     return Results.Conflict(new { problemCode = "owner-device-bootstrap-complete" });
@@ -144,7 +146,7 @@ public static class AuthEndpoints
                     ClientVersion = request.ClientVersion.Trim(),
                 });
                 ownerDevices.Register(login.User.Id, device.Id, request);
-                return await CompleteLoginAsync(login, ClientPlatformKind.Windows, device.Name, device.ClientVersion, http,
+                return await CompleteLoginAsync(login, OwnerClientPlatform(device.Platform), device.Name, device.ClientVersion, http,
                     authentication, users, workspaces, registry, sessions, devices, jwt, protection, serverMode, ct, device);
             })
             .RequireAuthorization("WindowsOwnerDeviceBootstrap")
@@ -180,7 +182,7 @@ public static class AuthEndpoints
                 var login = new AuthenticatedLogin(user, "owner-device-key", 0, user.SecurityVersion, user.Id.ToString("D"),
                     RelaxKonOS.Server.UserExecution.UserExecutionEligibilityRules.Evaluate(
                         new PlatformUserInfo(user.PlatformIdentity ?? string.Empty, user.Username, user.Platform, user.Username, null), serverMode.Mode));
-                return await CompleteLoginAsync(login, ClientPlatformKind.Windows, device.Name, device.ClientVersion, http,
+                return await CompleteLoginAsync(login, OwnerClientPlatform(device.Platform), device.Name, device.ClientVersion, http,
                     authentication, users, workspaces, registry, sessions, devices, jwt, protection, serverMode, ct, device);
             })
             .RequireRateLimiting("login")
@@ -194,6 +196,9 @@ public static class AuthEndpoints
         group.MapPost(OwnerDeviceKeyApiRoutes.AcceptInvitation, (OwnerDeviceAcceptInvitationRequest request,
                 IDeviceRepository devices, OwnerDeviceKeyService ownerDevices) =>
             {
+                if (!ownerDevices.IsAvailable)
+                    throw new OwnerDeviceKeyException(404, "owner-device-unsupported-platform");
+                ownerDevices.EnsureInvitationIsUsable(request.Token);
                 var platform = request.Platform.Trim().ToLowerInvariant();
                 if (devices.FindByNameAndPlatform(request.DeviceName.Trim(), platform) is not null)
                     return Results.Conflict(new { problemCode = "owner-device-name-in-use" });
@@ -315,6 +320,14 @@ public static class AuthEndpoints
 
     private static OwnerDeviceDto ToOwnerDeviceDto(OwnerDeviceKey key, Guid currentDeviceId) => new(
         key.Id, key.Name, key.Platform, key.CreatedAt, key.LastUsedAt, key.Id == currentDeviceId);
+
+    private static ClientPlatformKind OwnerClientPlatform(string platform) => platform.ToLowerInvariant() switch
+    {
+        "linux" => ClientPlatformKind.Linux,
+        "android" => ClientPlatformKind.Android,
+        "ios" => ClientPlatformKind.iOS,
+        _ => ClientPlatformKind.Windows,
+    };
 
     private static IResult TooManyAttempts(HttpContext http, DateTimeOffset retryAt)
     {

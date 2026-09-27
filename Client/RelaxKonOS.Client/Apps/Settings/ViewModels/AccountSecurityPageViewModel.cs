@@ -1,10 +1,12 @@
 using Avalonia.Threading;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RelaxKonOS.Client.Localization;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Identity;
+using QRCoder;
 
 namespace RelaxKonOS.Client.Apps.Settings.ViewModels;
 
@@ -26,6 +28,8 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
     [ObservableProperty] private AliasConfigurationDto? configuration;
     [ObservableProperty] private LocalizedStatus status;
     [ObservableProperty] private bool busy;
+    [ObservableProperty] private string pairingCode = string.Empty;
+    [ObservableProperty] private Bitmap? pairingQrCode;
     public string SystemUsername => Configuration?.SystemUsername ?? session.CurrentUser?.Username ?? "—";
     public string Alias => Configuration is null
         ? T("settings.account.not_loaded", "Not loaded")
@@ -44,11 +48,18 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
     public bool CanCreate => !Busy && Configuration is { Available: true, Alias: null } && session.CurrentSession?.AuthenticationMethod == "system";
     public bool CanManage => !Busy && Configuration is { Available: true, Alias: not null };
     public bool CanRestore => !Busy && Configuration is { Alias: not null };
+    public bool CanCreateOwnerDevicePairing => !Busy && session.State == AuthSessionState.Authenticated;
     public string Capability => Configuration is { Available: false } ? T("settings.account.unavailable." + Configuration.UnavailableReason,
         T("settings.account.unavailable", "Account eligibility could not be confirmed. System login remains available when enabled; contact the server operator.")) : "";
     public Func<string, AliasConfigurationDto, CancellationToken, Task<object?>>? RequestOperationAsync { get; set; }
     partial void OnConfigurationChanged(AliasConfigurationDto? value) => OnPropertyChanged(string.Empty);
-    partial void OnBusyChanged(bool value) => OnPropertyChanged(string.Empty);
+    partial void OnBusyChanged(bool value)
+    {
+        OnPropertyChanged(string.Empty);
+        CreateOwnerDevicePairingCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnPairingQrCodeChanged(Bitmap? value) => OnPropertyChanged(nameof(HasPairingQrCode));
+    public bool HasPairingQrCode => PairingQrCode is not null;
 
     [RelayCommand]
     public async Task LoadAsync()
@@ -62,6 +73,30 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
         }
         catch (OperationCanceledException) { }
         catch { if (current == lifetime && !disposed) Status = Ref("settings.account.load_failed", "Could not read account security. Reconnect or reload."); }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCreateOwnerDevicePairing))]
+    private async Task CreateOwnerDevicePairingAsync(CancellationToken ct)
+    {
+        if (Busy) return;
+        Busy = true;
+        try
+        {
+            var payload = await session.CreateOwnerDevicePairingPayloadAsync(ct);
+            using var generator = new QRCodeGenerator();
+            using var data = generator.CreateQrCode(payload, QRCodeGenerator.ECCLevel.Q);
+            using var qr = new PngByteQRCode(data);
+            var png = qr.GetGraphic(8);
+            await using var stream = new MemoryStream(png, writable: false);
+            var bitmap = new Bitmap(stream);
+            PairingQrCode?.Dispose();
+            PairingQrCode = bitmap;
+            PairingCode = payload;
+            Status = Ref("settings.account.owner_device_pairing_ready", "Pairing QR code is ready. It expires in 10 minutes and can be used once.");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception) { Status = Ref("settings.account.owner_device_pairing_failed", "Could not create a pairing code. Confirm that this session was signed in with a paired owner device."); }
+        finally { Busy = false; }
     }
 
     [RelayCommand]
@@ -116,7 +151,9 @@ public sealed partial class AccountSecurityPageViewModel : SettingsPageViewModel
         OnPropertyChanged(nameof(CanCreate));
         OnPropertyChanged(nameof(CanManage));
         OnPropertyChanged(nameof(CanRestore));
+        OnPropertyChanged(nameof(CanCreateOwnerDevicePairing));
+        CreateOwnerDevicePairingCommand.NotifyCanExecuteChanged();
         if (session.State == AuthSessionState.Authenticated) _ = LoadAsync();
     });
-    public void Dispose() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); session.StateChanged -= OnSessionChanged; }
+    public void Dispose() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); session.StateChanged -= OnSessionChanged; PairingQrCode?.Dispose(); }
 }

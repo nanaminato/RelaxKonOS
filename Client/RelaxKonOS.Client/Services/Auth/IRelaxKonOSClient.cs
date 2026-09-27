@@ -13,6 +13,22 @@ public interface IRelaxKonOSClient
     Task<LoginResponse> LoginWindowsDesktopSessionAsync(string serverUrl, WindowsDesktopSessionLoginRequest request,
         CancellationToken ct = default);
 
+    /// <summary>Bootstraps the first owner-device key through local Windows Negotiate authentication.</summary>
+    Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(string serverUrl, OwnerDeviceBootstrapRequest request,
+        CancellationToken ct = default);
+
+    Task<OwnerDeviceChallenge> CreateOwnerDeviceChallengeAsync(string serverUrl, OwnerDeviceChallengeRequest request,
+        CancellationToken ct = default);
+
+    Task<LoginResponse> SignInWithOwnerDeviceAsync(string serverUrl, OwnerDeviceSignInRequest request,
+        CancellationToken ct = default);
+
+    Task<OwnerDeviceInvitation> CreateOwnerDeviceInvitationAsync(string serverUrl, string accessToken,
+        CancellationToken ct = default);
+
+    Task<OwnerDeviceDto> AcceptOwnerDeviceInvitationAsync(string serverUrl, OwnerDeviceAcceptInvitationRequest request,
+        CancellationToken ct = default);
+
     /// <summary>用 RefreshToken 换取新的令牌对。</summary>
     Task<RefreshTokenResponse> RefreshAsync(string serverUrl, string refreshToken, CancellationToken ct = default);
 

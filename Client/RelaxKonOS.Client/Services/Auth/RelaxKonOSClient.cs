@@ -37,6 +37,64 @@ public sealed class RelaxKonOSClient : IRelaxKonOSClient
             ?? throw new RelaxKonOSAuthException(NoBodyProblem());
     }
 
+    public async Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(string serverUrl, OwnerDeviceBootstrapRequest request,
+        CancellationToken ct = default)
+    {
+        if (!OperatingSystem.IsWindows() || !Uri.TryCreate(serverUrl, UriKind.Absolute, out var endpoint) || !endpoint.IsLoopback)
+            throw new InvalidOperationException("Windows owner-device setup is available only for a local Windows loopback endpoint.");
+        using var handler = new HttpClientHandler { UseDefaultCredentials = true, AllowAutoRedirect = false };
+        using var client = new HttpClient(handler);
+        using var response = await client.PostAsJsonAsync(BuildUri(serverUrl, OwnerDeviceKeyApiRoutes.LocalBootstrap), request,
+            RelaxKonOSJsonOptions.Default, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<LoginResponse>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
+    }
+
+    public async Task<OwnerDeviceChallenge> CreateOwnerDeviceChallengeAsync(string serverUrl, OwnerDeviceChallengeRequest request,
+        CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsJsonAsync(BuildUri(serverUrl, OwnerDeviceKeyApiRoutes.Challenge), request,
+            RelaxKonOSJsonOptions.Default, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<OwnerDeviceChallenge>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
+    }
+
+    public async Task<LoginResponse> SignInWithOwnerDeviceAsync(string serverUrl, OwnerDeviceSignInRequest request,
+        CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsJsonAsync(BuildUri(serverUrl, OwnerDeviceKeyApiRoutes.SignIn), request,
+            RelaxKonOSJsonOptions.Default, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<LoginResponse>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
+    }
+
+    public async Task<OwnerDeviceInvitation> CreateOwnerDeviceInvitationAsync(string serverUrl, string accessToken,
+        CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri(serverUrl, OwnerDeviceKeyApiRoutes.Invitations))
+        {
+            Headers = { Authorization = new AuthenticationHeaderValue("Bearer", accessToken) },
+            Content = JsonContent.Create(new OwnerDeviceInvitationRequest(), options: RelaxKonOSJsonOptions.Default),
+        };
+        using var response = await _http.SendAsync(request, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<OwnerDeviceInvitation>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
+    }
+
+    public async Task<OwnerDeviceDto> AcceptOwnerDeviceInvitationAsync(string serverUrl, OwnerDeviceAcceptInvitationRequest request,
+        CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsJsonAsync(BuildUri(serverUrl, OwnerDeviceKeyApiRoutes.AcceptInvitation), request,
+            RelaxKonOSJsonOptions.Default, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<OwnerDeviceDto>(RelaxKonOSJsonOptions.Default, ct)
+            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
+    }
+
     public async Task<RefreshTokenResponse> RefreshAsync(string serverUrl, string refreshToken, CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(

@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Collections.ObjectModel;
 using RelaxKonOS.Client.Services;
 using RelaxKonOS.Client.Services.Auth;
@@ -62,6 +63,8 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BootstrapWindowsOwnerDeviceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectOwnerDeviceCommand))]
     [NotifyPropertyChangedFor(nameof(ConnectionInstructions))]
     [NotifyPropertyChangedFor(nameof(ConnectionSettingsDescription))]
     [NotifyPropertyChangedFor(nameof(IdentityNotice))]
@@ -70,6 +73,8 @@ public partial class LoginViewModel : ObservableObject
     partial void OnUseSshLoginChanged(bool value)
     {
         OnPropertyChanged(nameof(WindowsDesktopSessionAvailable));
+        OnPropertyChanged(nameof(OwnerDeviceAvailable));
+        OnPropertyChanged(nameof(WindowsOwnerDeviceBootstrapAvailable));
         if (value)
         {
             _relaxServerUrl = ServerUrl;
@@ -98,6 +103,8 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BootstrapWindowsOwnerDeviceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectOwnerDeviceCommand))]
     private string _serverUrl = "localhost:5090";
 
     [ObservableProperty]
@@ -113,12 +120,25 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BootstrapWindowsOwnerDeviceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectOwnerDeviceCommand))]
     private bool _isConnecting;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConnectCommand))]
     [NotifyCanExecuteChangedFor(nameof(ConnectWindowsDesktopSessionCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BootstrapWindowsOwnerDeviceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConnectOwnerDeviceCommand))]
     private bool _isDiscoveringServer;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ConnectOwnerDeviceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(AcceptOwnerDevicePairingCommand))]
+    private string _ownerDeviceKeyPassphrase = string.Empty;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AcceptOwnerDevicePairingCommand))]
+    private string _ownerDevicePairingCode = string.Empty;
 
     [ObservableProperty]
     // Debug 和生产版本都默认启用；用户可在共享设备上取消勾选。
@@ -184,6 +204,13 @@ public partial class LoginViewModel : ObservableObject
     public string ConnectText => T("common.connect", "Connect");
     public string WindowsDesktopSessionConnectText => T("login.windows_desktop_session.connect", "Use Windows session");
     public bool WindowsDesktopSessionAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
+    public bool OwnerDeviceAvailable => !UseSshLogin;
+    public bool WindowsOwnerDeviceBootstrapAvailable => OperatingSystem.IsWindows() && !UseSshLogin;
+    public string BootstrapWindowsOwnerDeviceText => T("login.owner_device.setup", "Set up this Windows device");
+    public string ConnectOwnerDeviceText => T("login.owner_device.connect", "Use paired device key");
+    public string OwnerDevicePairingCodeText => T("login.owner_device.pairing_code", "Pairing code (paste from QR or another client)");
+    public string OwnerDeviceKeyPassphraseText => T("login.owner_device.passphrase", "Device key passphrase (Linux without a keyring)");
+    public string AcceptOwnerDevicePairingText => T("login.owner_device.accept", "Pair and connect");
     public string ConfirmHostKeyText => T("login.ssh_confirm_host_key", "I verified this fingerprint; trust and connect");
     public string HostKeyDialogTitle => T("login.ssh_host_key_title", "Verify SSH host key");
     public string CancelText => T("common.cancel", "Cancel");
@@ -311,6 +338,15 @@ public partial class LoginViewModel : ObservableObject
     private bool CanConnectWindowsDesktopSession()
         => OperatingSystem.IsWindows() && !UseSshLogin && !IsConnecting && !IsDiscoveringServer && !string.IsNullOrWhiteSpace(ServerUrl);
 
+    private bool CanBootstrapWindowsOwnerDevice()
+        => OperatingSystem.IsWindows() && !UseSshLogin && !IsConnecting && !IsDiscoveringServer && !string.IsNullOrWhiteSpace(ServerUrl);
+
+    private bool CanConnectOwnerDevice()
+        => !UseSshLogin && !IsConnecting && !IsDiscoveringServer && !string.IsNullOrWhiteSpace(ServerUrl);
+
+    private bool CanAcceptOwnerDevicePairing()
+        => !UseSshLogin && !IsConnecting && !string.IsNullOrWhiteSpace(OwnerDevicePairingCode);
+
     [RelayCommand(CanExecute = nameof(CanConnectWindowsDesktopSession))]
     private async Task ConnectWindowsDesktopSessionAsync(CancellationToken ct)
     {
@@ -344,6 +380,88 @@ public partial class LoginViewModel : ObservableObject
             HasError = true;
             StatusMessage = string.Empty;
         }
+        finally { IsConnecting = false; }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanBootstrapWindowsOwnerDevice))]
+    private async Task BootstrapWindowsOwnerDeviceAsync(CancellationToken ct)
+    {
+        var resolution = await ResolveServerEndpointAsync(ct);
+        if (!resolution.IsResolved)
+        {
+            ErrorMessage = T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.");
+            HasError = true;
+            return;
+        }
+        IsConnecting = true;
+        ClearError();
+        StatusMessage = T("login.owner_device.setting_up", "Generating and registering this device key...");
+        try
+        {
+            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
+            await _session.BootstrapWindowsOwnerDeviceAsync(ServerConnectionIdentityRules.Direct(resolution.Endpoint!),
+                Environment.MachineName, version, ct);
+            StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
+        }
+        catch (RelaxKonOSAuthException ex) { ErrorMessage = MapProblemToMessage(ex); HasError = true; StatusMessage = string.Empty; }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException) { ErrorMessage = ex.Message; HasError = true; StatusMessage = string.Empty; }
+        finally { IsConnecting = false; }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanConnectOwnerDevice))]
+    private async Task ConnectOwnerDeviceAsync(CancellationToken ct)
+    {
+        var resolution = await ResolveServerEndpointAsync(ct);
+        if (!resolution.IsResolved)
+        {
+            ErrorMessage = T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.");
+            HasError = true;
+            return;
+        }
+        IsConnecting = true;
+        ClearError();
+        StatusMessage = T("login.owner_device.signing_in", "Signing the device challenge...");
+        try
+        {
+            await _session.LoginWithOwnerDeviceAsync(ServerConnectionIdentityRules.Direct(resolution.Endpoint!), OwnerDeviceKeyPassphrase, ct);
+            OwnerDeviceKeyPassphrase = string.Empty;
+            StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
+        }
+        catch (OwnerDeviceKeyPassphraseRequiredException)
+        {
+            ErrorMessage = T("login.owner_device.passphrase_required", "This Linux client has no secure keyring. Enter a device key passphrase of at least 12 characters.");
+            HasError = true;
+            StatusMessage = string.Empty;
+        }
+        catch (RelaxKonOSAuthException ex) { ErrorMessage = MapProblemToMessage(ex); HasError = true; StatusMessage = string.Empty; }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or CryptographicException) { ErrorMessage = ex.Message; HasError = true; StatusMessage = string.Empty; }
+        finally { IsConnecting = false; }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanAcceptOwnerDevicePairing))]
+    private async Task AcceptOwnerDevicePairingAsync(CancellationToken ct)
+    {
+        IsConnecting = true;
+        ClearError();
+        StatusMessage = T("login.owner_device.pairing", "Pairing this device...");
+        try
+        {
+            var platform = DetectClientPlatform().ToString().ToLowerInvariant();
+            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
+            await _session.AcceptOwnerDevicePairingAsync(OwnerDevicePairingCode, Environment.MachineName, platform, version,
+                OwnerDeviceKeyPassphrase, ct);
+            OwnerDevicePairingCode = string.Empty;
+            OwnerDeviceKeyPassphrase = string.Empty;
+            StatusMessage = T("login.status.opening_desktop", "Connected. Opening desktop...");
+        }
+        catch (OwnerDeviceKeyPassphraseRequiredException)
+        {
+            ErrorMessage = T("login.owner_device.passphrase_required", "This Linux client has no secure keyring. Enter a device key passphrase of at least 12 characters.");
+            HasError = true;
+            StatusMessage = string.Empty;
+        }
+        catch (RelaxKonOSAuthException ex) { ErrorMessage = MapProblemToMessage(ex); HasError = true; StatusMessage = string.Empty; }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or CryptographicException) { ErrorMessage = ex.Message; HasError = true; StatusMessage = string.Empty; }
         finally { IsConnecting = false; }
     }
 
