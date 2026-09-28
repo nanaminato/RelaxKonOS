@@ -66,7 +66,11 @@ public static class IdentityMigrationRunner
             if (check.ExecuteScalar() is string binding)
             {
                 if (binding != HostBinding()) throw new InvalidOperationException("Identity database belongs to another host. Restore requires operator verification.");
+                using var indexTransaction = db.Database.BeginTransaction();
+                MigrateDeviceDisplayNameIndex(db);
+                db.Database.ExecuteSqlInterpolated($"INSERT OR IGNORE INTO identity_schema_migrations(Version,HostBinding,AppliedAt) VALUES(2,{HostBinding()},{DateTimeOffset.UtcNow})");
                 ValidateSchema(connection);
+                indexTransaction.Commit();
                 return;
             }
         }
@@ -100,8 +104,18 @@ public static class IdentityMigrationRunner
         AddColumn(db, "authentication_security_events", "Revision", "INTEGER NULL");
         AddColumn(db, "authentication_security_events", "ActorKind", "TEXT NOT NULL DEFAULT 'User'");
         db.Database.ExecuteSqlInterpolated($"INSERT INTO identity_schema_migrations(Version,HostBinding,AppliedAt) VALUES(1,{HostBinding()},{DateTimeOffset.UtcNow})");
+        MigrateDeviceDisplayNameIndex(db);
+        db.Database.ExecuteSqlInterpolated($"INSERT INTO identity_schema_migrations(Version,HostBinding,AppliedAt) VALUES(2,{HostBinding()},{DateTimeOffset.UtcNow})");
         ValidateSchema(connection);
         tx.Commit();
+    }
+
+    private static void MigrateDeviceDisplayNameIndex(RelaxKonOSDbContext db)
+    {
+        // Older databases made this label pair unique. Owner invitations generate a distinct
+        // device Id, so identical manufacturer/model labels must be allowed.
+        db.Database.ExecuteSqlRaw("DROP INDEX IF EXISTS IX_devices_Name_Platform");
+        db.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_devices_Name_Platform ON devices(Name, Platform)");
     }
 
     private static void AddColumn(RelaxKonOSDbContext db, string table, string column, string type)

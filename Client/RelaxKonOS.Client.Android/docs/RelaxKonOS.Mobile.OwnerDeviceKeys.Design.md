@@ -8,6 +8,8 @@ Each controller owns a distinct P-256 ECDSA key pair. The private key remains in
 
 The local Windows device is enrolled from a loopback-only Negotiate endpoint while the same local Windows administrator that runs Server is signed in. It is unavailable over a LAN address, tunnel, or reverse proxy. That route may also replace a lost local key for the same device; it never accepts a remote request. An enrolled controller creates a one-time, ten-minute pairing invitation for another controller. The invitation carries no private key and may be represented as a QR payload containing the server origin and invitation token.
 
+`deviceName` is a display label, not a unique enrollment key: Android commonly reports the same manufacturer/model on multiple phones, and a stale local record may use the same label. A valid invitation always creates a new server device identity; owner-key proof binds to that generated identity rather than to the name.
+
 The current desktop flow serializes the QR payload as base64-encoded UTF-8 JSON:
 
 ```json

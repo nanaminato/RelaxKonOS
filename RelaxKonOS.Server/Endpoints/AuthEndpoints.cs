@@ -173,8 +173,10 @@ public static class AuthEndpoints
                     throw new OwnerDeviceKeyException(404, "owner-device-unsupported-platform");
                 ownerDevices.EnsureInvitationIsUsable(request.Token);
                 var platform = request.Platform.Trim().ToLowerInvariant();
-                if (devices.FindByNameAndPlatform(request.DeviceName.Trim(), platform) is not null)
-                    return Results.Conflict(new { problemCode = "owner-device-name-in-use" });
+                // A device name is a user-editable label (Android defaults it to manufacturer +
+                // model), not its identity. The invitation authorizes this enrollment; the newly
+                // allocated device id binds the owner key and must remain unique even when two
+                // phones report the same model name or a previous local registration is stale.
                 var device = devices.Add(new Device
                 {
                     Id = Guid.NewGuid(), Name = request.DeviceName.Trim(), Platform = platform,

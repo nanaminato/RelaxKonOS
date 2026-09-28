@@ -101,6 +101,11 @@ internal static class AliasLoginVerification
         {
             var db = scope.ServiceProvider.GetRequiredService<RelaxKonOSDbContext>();
             db.Database.EnsureCreated(); IdentityMigrationRunner.Migrate(db, provider); IdentityMigrationRunner.Migrate(db, provider);
+            // A database created by a prior server made this display-label pair unique. Verify
+            // startup migration removes that constraint before any Android invitation is handled.
+            db.Database.ExecuteSqlRaw("DROP INDEX IF EXISTS IX_devices_Name_Platform");
+            db.Database.ExecuteSqlRaw("CREATE UNIQUE INDEX IX_devices_Name_Platform ON devices(Name, Platform)");
+            IdentityMigrationRunner.Migrate(db, provider);
         }
         app.UseRateLimiter(); app.UseAuthentication(); app.UseAuthorization(); app.MapAuthEndpoints(); app.MapAliasEndpoints();
         await app.StartAsync();
@@ -162,6 +167,14 @@ internal static class AliasLoginVerification
                 "local Windows recovery replaces a lost key for its existing device");
             Check(ownerDevices.List(ownerPrincipal).Single().Id == ownerDeviceId,
                 "SQLite lists active owner-device keys without DateTimeOffset query translation");
+            var invitation = ownerDevices.CreateInvitation(ownerPrincipal);
+            using var invitedAndroidKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            using (var response = await Send(HttpMethod.Post, OwnerDeviceKeyApiRoutes.AcceptInvitation,
+                       new OwnerDeviceAcceptInvitationRequest(invitation.Token, "test-device", "android",
+                           Convert.ToBase64String(invitedAndroidKey.ExportSubjectPublicKeyInfo()), "3")))
+                Check(response.StatusCode == HttpStatusCode.Created,
+                    "owner invitation enrollment accepts an Android label already used by another device: " +
+                    (int)response.StatusCode + " " + await response.Content.ReadAsStringAsync());
             var passwordPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
                 new Claim("sub", system.User.Id.ToString()), new Claim("device_id", ownerDeviceId.ToString()),
                 new Claim("amr", "system"), new Claim("role", "controller"),

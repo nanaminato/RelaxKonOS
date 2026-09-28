@@ -181,8 +181,9 @@ public sealed class RelaxKonOSDbContext : DbContext
             e.Property(d => d.Platform).IsRequired().HasMaxLength(32);
             e.Property(d => d.ClientVersion).HasMaxLength(64);
             e.Property(d => d.LastLoginAt).HasColumnType("TEXT");
-            // 按 (name, platform) 索引——对应 InMemoryDeviceRepository._byKey
-            e.HasIndex(d => new { d.Name, d.Platform }).IsUnique();
+            // Name is a display label, not a device identity. Keep this as a query index for
+            // password-login device lookup, but allow several same-model client devices.
+            e.HasIndex(d => new { d.Name, d.Platform });
         });
 
         mb.Entity<OwnerDeviceKey>(e =>

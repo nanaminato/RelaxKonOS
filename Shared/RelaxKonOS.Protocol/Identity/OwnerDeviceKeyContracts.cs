@@ -47,6 +47,10 @@ public sealed record OwnerDeviceInvitation(
     [property: JsonPropertyName("token")] string Token,
     [property: JsonPropertyName("expiresAt")] DateTimeOffset ExpiresAt);
 
+/// <summary>
+/// Completes an owner-device enrollment. <see cref="DeviceName"/> is a display label;
+/// server-issued device identities, rather than names, determine uniqueness.
+/// </summary>
 public sealed record OwnerDeviceAcceptInvitationRequest(
     [property: JsonPropertyName("token")] string Token,
     [property: JsonPropertyName("deviceName")] string DeviceName,
