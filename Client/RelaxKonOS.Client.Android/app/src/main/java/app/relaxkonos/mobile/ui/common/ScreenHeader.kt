@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ fun ScreenHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    backAlignment: Alignment.Vertical = Alignment.CenterVertically,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
@@ -49,9 +51,9 @@ fun ScreenHeader(
                 }
             }
         }
-        val backButton: @Composable () -> Unit = {
+        val backButton: @Composable RowScope.() -> Unit = {
             if (onBack != null) {
-                FilledTonalIconButton(onClick = onBack) {
+                FilledTonalIconButton(onClick = onBack, modifier = Modifier.align(backAlignment)) {
                     DesktopIcon(
                         icon = DesktopIcons.back,
                         size = 22.dp,

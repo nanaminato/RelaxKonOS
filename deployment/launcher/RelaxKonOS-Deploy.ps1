@@ -465,7 +465,7 @@ function Parse-Request {
     if ($kind -in @('install', 'upgrade')) {
         if (-not $script:optionsMode) { Stop-Launcher 'server-deployment.invalid_request' 'installation mode is required' }
         if (-not $script:optionsStagedName -or -not $script:optionsPackageDigest) {
-            Stop-Launcher 'server-deployment.invalid_request' 'install and upgrade need a staged signed archive and SHA-256'
+            Stop-Launcher 'server-deployment.invalid_request' 'install and upgrade need a staged archive and SHA-256'
         }
     }
     if ($kind -in @('repair', 'rollback', 'uninstall', 'status') -and -not $script:optionsMode) {
@@ -716,13 +716,11 @@ function Save-RequestDigest {
 # The launcher maps a fixed action onto the existing deployment engine. It never passes a caller
 # supplied path, service name or command; only the package directory it staged itself.
 function Test-PackageAvailable {
-    # The engine consumes only bytes extracted here from the signed archive. A separately uploaded
+    # The engine consumes only bytes extracted here from the checked archive. A separately uploaded
     # package/ directory is never an acceptable source, even if it has a plausible manifest.
     $archive = Join-Path $stagingRoot $script:optionsStagedName
     $verifier = Join-Path $stagingRoot 'release-verifier.exe'
-    $publicKey = Join-Path $stagingRoot 'release-public.pem'
-    $keyIdFile = Join-Path $stagingRoot 'release-key-id.txt'
-    foreach ($path in @($archive, $verifier, $publicKey, $keyIdFile)) {
+    foreach ($path in @($archive, $verifier)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
             ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
             Stop-Launcher 'server-deployment.package_unavailable' 'a required staged release file is missing or unsafe'
@@ -732,10 +730,6 @@ function Test-PackageAvailable {
     if ($actual -ne $script:optionsPackageDigest) {
         Stop-Launcher 'server-deployment.package_digest_mismatch' 'the staged archive digest does not match the request'
     }
-    $keyId = [IO.File]::ReadAllText($keyIdFile).Trim()
-    if ($keyId -notmatch '^[A-Za-z0-9._-]{1,128}$') {
-        Stop-Launcher 'server-deployment.package_trust_root_missing' 'the release key id is invalid'
-    }
     $architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
     if ($architecture -notin @('x64', 'arm64')) {
         Stop-Launcher 'server-deployment.package_runtime_mismatch' 'this Windows architecture is unsupported'
@@ -744,9 +738,9 @@ function Test-PackageAvailable {
     if (Test-Path -LiteralPath $script:packageRoot) {
         Stop-Launcher 'server-deployment.package_unavailable' 'the operation package directory already exists'
     }
-    & $verifier extract $archive $publicKey $keyId server "win-$architecture" $script:packageRoot *> $null
+    & $verifier extract $archive server "win-$architecture" $script:packageRoot *> $null
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $script:packageRoot -PathType Container)) {
-        Stop-Launcher 'server-deployment.package_signature_invalid' 'the staged release could not be verified and extracted'
+        Stop-Launcher 'server-deployment.package_manifest_invalid' 'the staged release could not be verified and extracted'
     }
 }
 

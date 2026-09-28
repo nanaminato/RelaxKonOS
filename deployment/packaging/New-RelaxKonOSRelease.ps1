@@ -7,26 +7,15 @@ param(
     [ValidateSet('Release', 'Debug')]
     [string] $Configuration = 'Release',
     [string] $DownloadBaseUri = 'https://downloads.relaxkon.com/relaxkonos/stable',
-    [string] $OutputDirectory = 'artifacts',
-    [string] $SigningKeyPath = $env:RELAXKONOS_RELEASE_SIGNING_KEY,
-    [string] $SigningKeyId = $env:RELAXKONOS_RELEASE_KEY_ID
+    [string] $OutputDirectory = 'artifacts'
 )
 
 $ErrorActionPreference = 'Stop'
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') { throw 'Version may contain only letters, numbers, dot, underscore, and dash.' }
-if ([string]::IsNullOrWhiteSpace($SigningKeyPath) -or -not (Test-Path -LiteralPath $SigningKeyPath -PathType Leaf) -or
-    [string]::IsNullOrWhiteSpace($SigningKeyId)) { throw 'A release signing key and key ID are required.' }
-$signerProject = Join-Path $PSScriptRoot 'RelaxKonOS.ReleaseSigner\RelaxKonOS.ReleaseSigner.csproj'
+$verifierProject = Join-Path $PSScriptRoot 'RelaxKonOS.ReleaseVerifier\RelaxKonOS.ReleaseVerifier.csproj'
 $launcherSource = Join-Path $projectRoot 'deployment\launcher'
-
-function Sign-ReleaseFile([string] $Path) {
-    & dotnet run --project $signerProject --configuration Release -- sign $Path $SigningKeyPath $SigningKeyId | Out-Null
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath ($Path + '.sig') -PathType Leaf)) {
-        throw "Release signing failed for $Path"
-    }
-}
 
 $platform = if ($Runtime.StartsWith('win-')) { 'windows' } else { 'linux' }
 $extension = if ($platform -eq 'windows') { '.exe' } else { '' }
@@ -61,11 +50,11 @@ function Publish-DeploymentTools() {
 
     $verifierOutput = Join-Path $launcherDirectory '.release-verifier-publish'
     if (Test-Path -LiteralPath $verifierOutput) { Remove-Item -LiteralPath $verifierOutput -Recurse -Force }
-    & dotnet publish $signerProject --configuration $Configuration --runtime $Runtime --self-contained true `
+    & dotnet publish $verifierProject --configuration $Configuration --runtime $Runtime --self-contained true `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output $verifierOutput
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed for the deployment request verifier.' }
 
-    $publishedName = if ($platform -eq 'windows') { 'RelaxKonOS.ReleaseSigner.exe' } else { 'RelaxKonOS.ReleaseSigner' }
+    $publishedName = if ($platform -eq 'windows') { 'RelaxKonOS.ReleaseVerifier.exe' } else { 'RelaxKonOS.ReleaseVerifier' }
     $verifierName = if ($platform -eq 'windows') { 'release-verifier.exe' } else { 'release-verifier' }
     $publishedVerifier = Join-Path $verifierOutput $publishedName
     if (-not (Test-Path -LiteralPath $publishedVerifier -PathType Leaf)) {
@@ -117,7 +106,6 @@ function Complete-Package($Package, [hashtable] $Payload) {
     $manifest.payload[$platform] = $Payload
     $manifestPath = Join-Path $Package.Directory 'manifest.json'
     [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
-    Sign-ReleaseFile $manifestPath
     Compress-Archive -Path (Join-Path $Package.Directory '*') -DestinationPath $Package.Archive -CompressionLevel Optimal
     $hash = (Get-FileHash -LiteralPath $Package.Archive -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText(($Package.Archive + '.sha256'), "$hash  $([IO.Path]::GetFileName($Package.Archive))`n", [Text.UTF8Encoding]::new($false))
@@ -131,7 +119,6 @@ function Complete-Package($Package, [hashtable] $Payload) {
     }
     $descriptorPath = $Package.Archive + '.json'
     [IO.File]::WriteAllText($descriptorPath, ($descriptor | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
-    Sign-ReleaseFile $descriptorPath
     Write-Host "$($Package.Kind) bundle: $($Package.Archive)"
     Write-Host "SHA-256: $hash"
 }

@@ -37,10 +37,8 @@ public static class ServerDeploymentProblemCodes
     public const string PortUnavailable = "server-deployment.port_unavailable";
     public const string DependencyMissing = "server-deployment.dependency_missing";
 
-    // 包与发布信任。
+    // 发布包与完整性。
     public const string PackageUnavailable = "server-deployment.package_unavailable";
-    public const string PackageSignatureInvalid = "server-deployment.package_signature_invalid";
-    public const string PackageTrustRootMissing = "server-deployment.package_trust_root_missing";
     public const string PackageDigestMismatch = "server-deployment.package_digest_mismatch";
     public const string PackageManifestInvalid = "server-deployment.package_manifest_invalid";
     public const string PackageRuntimeMismatch = "server-deployment.package_runtime_mismatch";

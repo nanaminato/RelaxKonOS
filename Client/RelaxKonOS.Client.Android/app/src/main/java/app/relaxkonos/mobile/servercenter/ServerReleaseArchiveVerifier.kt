@@ -9,7 +9,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipException
 import java.util.zip.ZipFile
 
-/** Result of validating a complete signed release ZIP before SFTP upload. */
+/** Result of validating a complete release ZIP before SFTP upload. */
 data class ServerReleaseArchiveVerification(
     val problemCode: String?,
     val manifest: ServerReleaseManifest?,
@@ -19,13 +19,10 @@ data class ServerReleaseArchiveVerification(
 }
 
 /**
- * Verifies the archive digest, pinned manifest signature, RID, layout and every signed payload file.
- * The public key is supplied by application release configuration; a key carried inside the ZIP is
- * never considered a trust root.
+ * Verifies the archive digest, manifest, RID, layout and every listed payload file.
  */
 object ServerReleaseArchiveVerifier {
     private const val MAXIMUM_MANIFEST_BYTES = 1024 * 1024
-    private const val MAXIMUM_SIGNATURE_BYTES = 16 * 1024
     private const val MAXIMUM_ENTRIES = 20_000
     private const val MAXIMUM_PAYLOAD_BYTES = 8L * 1024 * 1024 * 1024
 
@@ -33,7 +30,6 @@ object ServerReleaseArchiveVerifier {
         archiveFile: File,
         expectedKind: ServerReleasePackageKind,
         expectedRuntime: ServerRuntimeIdentifier,
-        trustedPublicKeys: Map<String, String>,
         expectedArchiveSha256: String? = null,
     ): ServerReleaseArchiveVerification {
         require(archiveFile.isFile) { "Release archive must be a readable file." }
@@ -66,34 +62,19 @@ object ServerReleaseArchiveVerifier {
                 }
 
                 val manifestEntry = entries["manifest.json"]
-                    ?: return failed(ServerDeploymentProblemCodes.PACKAGE_SIGNATURE_INVALID, archiveDigest)
-                val signatureEntry = entries["manifest.json.sig"]
-                    ?: return failed(ServerDeploymentProblemCodes.PACKAGE_SIGNATURE_INVALID, archiveDigest)
+                    ?: return failed(ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID, archiveDigest)
                 val manifestBytes = archive.getInputStream(manifestEntry).use {
                     readBounded(it, manifestEntry.size, MAXIMUM_MANIFEST_BYTES)
                 }
-                val signatureBytes = archive.getInputStream(signatureEntry).use {
-                    readBounded(it, signatureEntry.size, MAXIMUM_SIGNATURE_BYTES)
-                }
                 val manifest = ServerDeploymentWire.readManifest(manifestBytes)
-                val signature = ServerDeploymentWire.readSignature(signatureBytes)
                 if (manifest.packageKind != expectedKind) {
                     return failed(ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID, archiveDigest)
                 }
-                val publicKey = trustedPublicKeys[signature.keyId]
-                    ?: return failed(ServerDeploymentProblemCodes.PACKAGE_TRUST_ROOT_MISSING, archiveDigest)
-                val signatureProblem = ServerReleaseValidation.verifyManifest(
-                    manifestBytes = manifestBytes,
-                    manifest = manifest,
-                    expectedRuntime = expectedRuntime,
-                    signature = signature,
-                    publicKeyPem = publicKey,
-                    trustPolicy = ServerReleaseTrustPolicy(listOf(signature.keyId)),
-                )
-                if (signatureProblem != null) return failed(signatureProblem, archiveDigest)
+                val manifestProblem = ServerReleaseValidation.validateManifest(manifest, expectedRuntime)
+                if (manifestProblem != null) return failed(manifestProblem, archiveDigest)
 
-                val signedFiles = manifest.files.associateBy { it.path }
-                if (signedFiles.size != manifest.files.size) {
+                val listedFiles = manifest.files.associateBy { it.path }
+                if (listedFiles.size != manifest.files.size) {
                     return failed(ServerDeploymentProblemCodes.PACKAGE_MANIFEST_INVALID, archiveDigest)
                 }
                 var totalLength = 0L
@@ -109,7 +90,7 @@ object ServerReleaseArchiveVerifier {
                         return failed(ServerDeploymentProblemCodes.PACKAGE_DIGEST_MISMATCH, archiveDigest)
                     }
                 }
-                if (entries.keys.any { it != "manifest.json" && it != "manifest.json.sig" && it !in signedFiles }) {
+                if (entries.keys.any { it != "manifest.json" && it !in listedFiles }) {
                     return failed(ServerDeploymentProblemCodes.PACKAGE_LAYOUT_UNSAFE, archiveDigest)
                 }
                 ServerReleaseArchiveVerification(null, manifest, archiveDigest)
@@ -157,7 +138,7 @@ object ServerReleaseArchiveVerifier {
     }
 
     /**
-     * `ZipEntry` does not expose Unix mode bits. Inspect the central directory directly so a signed
+     * `ZipEntry` does not expose Unix mode bits. Inspect the central directory directly so a checked
      * entry marked as a symbolic link is rejected before upload, matching the desktop verifier.
      */
     private fun hasSafeCentralDirectory(file: File): Boolean = RandomAccessFile(file, "r").use { archive ->

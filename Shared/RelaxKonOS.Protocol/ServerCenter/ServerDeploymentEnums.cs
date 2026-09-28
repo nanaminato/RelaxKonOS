@@ -71,7 +71,7 @@ public enum ServerInstallMode { LinuxSystem, LinuxUser, WindowsSystem }
 [JsonConverter(typeof(JsonStringEnumConverter<ServerNetworkProfile>))]
 public enum ServerNetworkProfile { Loopback, Lan }
 
-/// <summary>安装/升级包的来源。离线包与指定 URL 都必须是已签名的发布制品。</summary>
+/// <summary>安装/升级包的来源。所有来源都须通过清单与摘要检查。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ServerPackageSourceKind>))]
 public enum ServerPackageSourceKind { OfficialStable, LocalBundle, RemoteBundle, DirectUrl }
 

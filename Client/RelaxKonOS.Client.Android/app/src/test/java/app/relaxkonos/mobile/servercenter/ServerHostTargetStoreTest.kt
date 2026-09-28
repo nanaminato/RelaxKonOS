@@ -19,7 +19,7 @@ class ServerHostTargetStoreTest {
     fun `every field survives a round trip`() {
         val store = ServerHostTargetStore(InMemoryHostTargetStorage())
         val installed = ServerHostTargetRules.applyVerifiedState(
-            target(display = "机房 A"),
+            target(display = "机房 A").copy(sshVerifiedAtEpochMillis = now + 4),
             ServerHostVerifiedState(
                 installed = true,
                 mode = ServerInstallMode.LinuxSystem,
@@ -44,6 +44,7 @@ class ServerHostTargetStoreTest {
         assertEquals("http://127.0.0.1:5090", reloaded?.lastVerified?.listenUrl)
         assertEquals(true, reloaded?.lastVerified?.healthy)
         assertEquals(now + 5, reloaded?.lastVerified?.verifiedAtEpochMillis)
+        assertEquals(now + 4, reloaded?.sshVerifiedAtEpochMillis)
         assertEquals(now, reloaded?.createdAtEpochMillis)
         assertEquals(now + 5, reloaded?.lastUsedAtEpochMillis)
     }

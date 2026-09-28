@@ -362,7 +362,6 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
   [[ "$MANIFEST_VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$ ]] || { echo 'The release manifest has no usable version.' >&2; exit 65; }
   # The ZIP checksum only covers transport. The extracted bundle is additionally checked against the
   # packaged inventory, so a tampered or partially copied local bundle is rejected before staging.
-  # manifest.json.sig is produced after the inventory is written and is therefore excluded here.
   if [[ -n "$(find "$BUNDLE_PATH" -mindepth 1 \( -type l -o \( ! -type d -a ! -type f \) \) -print -quit)" ]]; then
     echo 'Release bundle contains a symbolic link or unsupported filesystem entry.' >&2
     exit 65
@@ -370,7 +369,7 @@ if [[ "$ACTION" == install || "$ACTION" == upgrade ]]; then
   command -v sha256sum >/dev/null || { echo 'sha256sum is required to verify the release inventory.' >&2; exit 69; }
   if [[ -z "$TEMPORARY_DIRECTORY" ]]; then TEMPORARY_DIRECTORY="$(mktemp -d)"; fi
   ACTUAL_INVENTORY="$TEMPORARY_DIRECTORY/manifest.actual.sha256"
-  (cd "$BUNDLE_PATH" && find . -type f ! -name manifest.json ! -name manifest.json.sig ! -name manifest.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$ACTUAL_INVENTORY"
+  (cd "$BUNDLE_PATH" && find . -type f ! -name manifest.json ! -name manifest.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$ACTUAL_INVENTORY"
   cmp --silent "$INVENTORY" "$ACTUAL_INVENTORY" || { echo 'Release file inventory verification failed.' >&2; exit 65; }
 fi
 

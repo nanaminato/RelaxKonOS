@@ -53,6 +53,7 @@ import app.relaxkonos.mobile.servercenter.ServerCenterCoordinator
 import app.relaxkonos.mobile.servercenter.ServerCenterSshCredentialStore
 import app.relaxkonos.mobile.servercenter.ServerHostKeyTrustStore
 import app.relaxkonos.mobile.servercenter.ServerHostTargetStore
+import app.relaxkonos.mobile.servercenter.SshDiagnostics
 import app.relaxkonos.mobile.servercenter.StoreManagedLoginResolver
 import app.relaxkonos.mobile.ui.theme.AppearancePreferences
 import app.relaxkonos.mobile.ui.theme.AppearanceState
@@ -395,6 +396,9 @@ class RelaxKonApplication : Application() {
         if (BuildConfig.DEBUG) {
             VaultDiagnostics.sink = { event, detail ->
                 Log.d(VaultDiagnostics.TAG, if (detail == null) event else "$event: $detail")
+            }
+            SshDiagnostics.sink = { event, detail ->
+                Log.d(SshDiagnostics.TAG, if (detail == null) event else "$event: $detail")
             }
         }
         container = AppContainer(this)

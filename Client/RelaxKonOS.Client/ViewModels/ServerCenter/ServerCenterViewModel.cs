@@ -298,7 +298,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
+                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
                 return;
             }
             var credential = await ResolveCredentialAsync(target, cancellationToken).ConfigureAwait(true);
@@ -363,7 +363,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
+                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
                 return;
             }
 
@@ -467,7 +467,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
+                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
                 return false;
             }
 
@@ -516,7 +516,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 if (string.IsNullOrWhiteSpace(installation.RemoteBundlePath) ||
                     !installation.RemoteBundlePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                 {
-                    ErrorMessage = T("server_center.remote_bundle_unavailable", "Choose a signed .zip release bundle from this SSH server.");
+                    ErrorMessage = T("server_center.remote_bundle_unavailable", "Choose a .zip release bundle from this SSH server.");
                     return false;
                 }
 
@@ -542,8 +542,8 @@ public partial class ServerCenterViewModel : ObservableObject
             if (release is null)
             {
                 ErrorMessage = installation.Source is ServerPackageSourceKind.LocalBundle or ServerPackageSourceKind.RemoteBundle
-                    ? T("server_center.local_bundle_unavailable", "The selected local bundle is not a trusted signed release for this host.")
-                    : T("server_center.release_unavailable", "No trusted signed release is available for this host architecture and installation mode.");
+                    ? T("server_center.local_bundle_unavailable", "The selected bundle is not a valid release for this host.")
+                    : T("server_center.release_unavailable", "No release is available for this host architecture and installation mode.");
                 return false;
             }
             if (!HasUsableCertificate(installation))
@@ -577,13 +577,13 @@ public partial class ServerCenterViewModel : ObservableObject
                     Confirmed: true));
             await using var launcher = release.Tools.OpenLauncher();
             await using var verifier = release.Tools.OpenVerifier();
-            await using var archive = release.OpenSignedArchive();
+            await using var archive = release.OpenArchive();
             var client = new ServerCenterDeploymentClient(session.Transport);
             await using var certificate = installation.CertificateMode == ServerCertificateMode.Custom
                 ? File.OpenRead(convertedCertificate ?? installation.CertificatePath!) : null;
             var staged = await client.StageAsync(
                 request, platform.Platform, launcher, verifier, archive, release.Runtime,
-                release.KeyId, release.PublicKeyPem, certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
+                certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
             var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
@@ -663,7 +663,7 @@ public partial class ServerCenterViewModel : ObservableObject
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
             if (tools is null)
             {
-                ErrorMessage = T("server_center.tools_unavailable", "This client has no configured, trusted deployment tools for the selected platform.");
+                ErrorMessage = T("server_center.tools_unavailable", "Deployment tools for this platform are unavailable in this client.");
                 return;
             }
 
@@ -966,7 +966,7 @@ public partial class ServerCenterViewModel : ObservableObject
         await using var verifier = tools.OpenVerifier();
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
-            request, tools.Platform, launcher, verifier, null, null, null, null, null, null, cancellationToken).ConfigureAwait(true);
+            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
         var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
@@ -983,7 +983,7 @@ public partial class ServerCenterViewModel : ObservableObject
         await using var verifier = tools.OpenVerifier();
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
-            request, tools.Platform, launcher, verifier, null, null, null, null, null, null, cancellationToken).ConfigureAwait(true);
+            request, tools.Platform, launcher, verifier, null, null, null, null, cancellationToken).ConfigureAwait(true);
         var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);

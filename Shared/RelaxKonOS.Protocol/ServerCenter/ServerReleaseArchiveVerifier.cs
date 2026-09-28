@@ -13,27 +13,24 @@ public sealed record ServerReleaseArchiveVerification(
 }
 
 /// <summary>
-/// 发布签名绑定原始 manifest.json，清单绑定包内每个文件；ZIP 摘要只负责传输完整性。
-/// 信任根由客户端内置或显式开发配置提供，包中携带的公钥永远不被自动信任。
+/// 校验发布包布局、目标运行时、逐文件摘要和 ZIP 传输摘要。
 /// </summary>
 public static class ServerReleaseArchiveVerifier
 {
     private const int MaximumManifestBytes = 1024 * 1024;
-    private const int MaximumSignatureBytes = 16 * 1024;
     private const int MaximumEntries = 20000;
     private const long MaximumPayloadBytes = 8L * 1024 * 1024 * 1024;
 
-    /// <summary>Verify the archive, then materialize only its signed files into a new directory.</summary>
+    /// <summary>Verify the archive, then materialize only files listed in its manifest.</summary>
     public static ServerReleaseArchiveVerification VerifyAndExtract(
         Stream archiveStream,
         string destination,
         ServerReleasePackageKind expectedKind,
         ServerRuntimeIdentifier expectedRuntime,
-        IReadOnlyDictionary<string, string> trustedPublicKeys,
         string? expectedArchiveSha256 = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
-        var result = Verify(archiveStream, expectedKind, expectedRuntime, trustedPublicKeys, expectedArchiveSha256);
+        var result = Verify(archiveStream, expectedKind, expectedRuntime, expectedArchiveSha256);
         if (!result.Verified) return result;
 
         var target = Path.GetFullPath(destination);
@@ -49,14 +46,14 @@ public static class ServerReleaseArchiveVerifier
             using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read, leaveOpen: true);
             if (archive.Entries.Count > MaximumEntries)
                 throw new InvalidDataException("The release contains too many entries.");
-            var signedFiles = result.Manifest!.Files.ToDictionary(item => item.Path, StringComparer.Ordinal);
+            var listedFiles = result.Manifest!.Files.ToDictionary(item => item.Path, StringComparer.Ordinal);
             foreach (var entry in archive.Entries)
             {
                 if (entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
                 var relative = entry.FullName;
                 if (!ServerReleaseValidation.IsSafeManifestPath(relative) ||
                     ((entry.ExternalAttributes >> 16) & 0xF000) == 0xA000 ||
-                    relative is not ("manifest.json" or "manifest.json.sig") && !signedFiles.ContainsKey(relative))
+                    relative != "manifest.json" && !listedFiles.ContainsKey(relative))
                     throw new InvalidDataException("The archive changed during extraction.");
                 var output = Path.Combine(temporary, relative.Replace('/', Path.DirectorySeparatorChar));
                 Directory.CreateDirectory(Path.GetDirectoryName(output)!);
@@ -74,10 +71,10 @@ public static class ServerReleaseArchiveVerifier
                     digest.AppendData(buffer, 0, count);
                 }
                 if (length != entry.Length) throw new InvalidDataException("The archive changed during extraction.");
-                if (signedFiles.TryGetValue(relative, out var signed) &&
-                    (length != signed.Length ||
-                     !Convert.ToHexString(digest.GetHashAndReset()).Equals(signed.Sha256, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidDataException("A signed file changed during extraction.");
+                if (listedFiles.TryGetValue(relative, out var listed) &&
+                    (length != listed.Length ||
+                     !Convert.ToHexString(digest.GetHashAndReset()).Equals(listed.Sha256, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidDataException("A listed file changed during extraction.");
                 if (OperatingSystem.IsLinux())
                 {
                     var permissions = (UnixFileMode)((entry.ExternalAttributes >> 16) & 0x1FF);
@@ -102,11 +99,9 @@ public static class ServerReleaseArchiveVerifier
         Stream archiveStream,
         ServerReleasePackageKind expectedKind,
         ServerRuntimeIdentifier expectedRuntime,
-        IReadOnlyDictionary<string, string> trustedPublicKeys,
         string? expectedArchiveSha256 = null)
     {
         ArgumentNullException.ThrowIfNull(archiveStream);
-        ArgumentNullException.ThrowIfNull(trustedPublicKeys);
         if (!archiveStream.CanRead || !archiveStream.CanSeek)
             throw new ArgumentException("A readable, seekable archive stream is required.", nameof(archiveStream));
 
@@ -140,28 +135,19 @@ public static class ServerReleaseArchiveVerifier
             }
 
             if (!entries.TryGetValue("manifest.json", out var manifestEntry) ||
-                !entries.TryGetValue("manifest.json.sig", out var signatureEntry) ||
-                manifestEntry.Length > MaximumManifestBytes || signatureEntry.Length > MaximumSignatureBytes)
-                return new(ServerDeploymentProblemCodes.PackageSignatureInvalid, null, archiveDigest);
+                manifestEntry.Length > MaximumManifestBytes)
+                return new(ServerDeploymentProblemCodes.PackageManifestInvalid, null, archiveDigest);
 
             var manifestBytes = ReadBounded(manifestEntry, MaximumManifestBytes);
-            var signatureBytes = ReadBounded(signatureEntry, MaximumSignatureBytes);
             var manifest = JsonSerializer.Deserialize<ServerReleaseManifestDto>(manifestBytes, RelaxKonOSJsonOptions.Default);
-            var signature = JsonSerializer.Deserialize<ServerReleaseSignatureDto>(signatureBytes, RelaxKonOSJsonOptions.Default);
-            if (manifest is null || signature is null)
+            if (manifest is null)
                 return new(ServerDeploymentProblemCodes.PackageManifestInvalid, null, archiveDigest);
             if (manifest.PackageKind != expectedKind)
                 return new(ServerDeploymentProblemCodes.PackageManifestInvalid, null, archiveDigest);
-            if (string.IsNullOrWhiteSpace(signature.KeyId) ||
-                !trustedPublicKeys.TryGetValue(signature.KeyId, out var publicKey))
-                return new(ServerDeploymentProblemCodes.PackageTrustRootMissing, null, archiveDigest);
-
-            var trust = new ServerReleaseTrustPolicy([signature.KeyId]);
-            var problem = ServerReleaseValidation.VerifyManifest(
-                manifestBytes, manifest, expectedRuntime, signature, publicKey, trust);
+            var problem = ServerReleaseValidation.ValidateManifest(manifest, expectedRuntime);
             if (problem is not null) return new(problem, null, archiveDigest);
 
-            var signedFiles = manifest.Files.ToDictionary(item => item.Path, StringComparer.Ordinal);
+            var listedFiles = manifest.Files.ToDictionary(item => item.Path, StringComparer.Ordinal);
             long totalLength = 0;
             foreach (var file in manifest.Files)
             {
@@ -176,7 +162,7 @@ public static class ServerReleaseArchiveVerifier
             }
 
             foreach (var path in entries.Keys)
-                if (path is not ("manifest.json" or "manifest.json.sig") && !signedFiles.ContainsKey(path))
+                if (path != "manifest.json" && !listedFiles.ContainsKey(path))
                     return new(ServerDeploymentProblemCodes.PackageLayoutUnsafe, null, archiveDigest);
 
             return new(null, manifest, archiveDigest);

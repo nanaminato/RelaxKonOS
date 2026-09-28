@@ -34,6 +34,7 @@ data class ServerHostVerifiedState(
  * @param sshUserName 用于管理该宿主的 SSH 用户；SSH 凭据按它与端点绑定。
  * @param installationId 受管安装标识：安装成功后写入，作为受管隧道的稳定 serviceId；安装前为 null。
  * @param lastVerified 最近一次经 SSH 核验的部署状态；从未核验时为 null。
+ * @param sshVerifiedAtEpochMillis 最近一次成功 SSH 握手的时间；它不声称部署或 API 健康。
  */
 data class ServerHostTarget(
     val hostId: String,
@@ -43,6 +44,7 @@ data class ServerHostTarget(
     val sshUserName: String,
     val installationId: String?,
     val lastVerified: ServerHostVerifiedState?,
+    val sshVerifiedAtEpochMillis: Long?,
     val createdAtEpochMillis: Long,
     val lastUsedAtEpochMillis: Long,
 )
@@ -154,6 +156,7 @@ object ServerHostTargetRules {
             sshUserName = userName.trim(),
             installationId = null,
             lastVerified = null,
+            sshVerifiedAtEpochMillis = null,
             createdAtEpochMillis = nowEpochMillis,
             lastUsedAtEpochMillis = nowEpochMillis,
         )

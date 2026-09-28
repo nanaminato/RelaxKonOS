@@ -10,8 +10,7 @@ namespace RelaxKonOS.Client.Services.ServerCenter;
 public sealed record ServerCenterStagedOperation(Guid OperationId, HostPlatformKind Platform, string RemoteDirectory);
 
 /// <summary>
-/// Binds the signed release verifier to the built-in SSH/SFTP transport. The caller supplies trusted
-/// release assets from its pinned release configuration, never from the archive being uploaded.
+/// Stages the checked release and fixed deployment tools through the built-in SSH/SFTP transport.
 /// </summary>
 public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport transport)
 {
@@ -25,10 +24,8 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         HostPlatformKind platform,
         Stream launcher,
         Stream verifier,
-        Stream? signedArchive,
+        Stream? archive,
         ServerRuntimeIdentifier? expectedRuntime,
-        string? trustedKeyId,
-        string? trustedPublicKeyPem,
         Stream? certificate,
         string? certificatePassword,
         CancellationToken cancellationToken)
@@ -50,13 +47,11 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         var needsCertificate = request.Options?.CertificateMode == ServerCertificateMode.Custom;
         if (needsArchive)
         {
-            if (signedArchive is null || !signedArchive.CanSeek ||
-                expectedRuntime is null || string.IsNullOrWhiteSpace(trustedKeyId) ||
-                string.IsNullOrWhiteSpace(trustedPublicKeyPem) ||
-                !Regex.IsMatch(trustedKeyId, @"^[A-Za-z0-9._-]{1,128}$", RegexOptions.CultureInvariant) ||
+            if (archive is null || !archive.CanSeek ||
+                expectedRuntime is null ||
                 !ServerDeploymentInputRules.IsSafeStagedPackageName(request.Options?.StagedPackageName) ||
                 !ServerDeploymentInputRules.IsSha256(request.Options?.PackageDigest))
-                throw new ArgumentException("A signed, staged release and a trusted key are required.");
+                throw new ArgumentException("A staged release and its SHA-256 are required.");
             if (needsCertificate && (certificate is null || !certificate.CanRead || !certificate.CanSeek))
                 throw new ArgumentException("A readable staged certificate is required for custom TLS.");
             if (platform == HostPlatformKind.Windows && request.Options?.Mode != ServerInstallMode.WindowsSystem ||
@@ -69,9 +64,8 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
 
             var kind = request.Options!.Mode == ServerInstallMode.LinuxUser
                 ? ServerReleasePackageKind.UserServer : ServerReleasePackageKind.Server;
-            var keys = new Dictionary<string, string>(StringComparer.Ordinal) { [trustedKeyId] = trustedPublicKeyPem };
             var checkedRelease = ServerReleaseArchiveVerifier.Verify(
-                signedArchive, kind, expectedRuntime.Value, keys, request.Options.PackageDigest);
+                archive, kind, expectedRuntime.Value, request.Options.PackageDigest);
             if (!checkedRelease.Verified)
                 throw new InvalidDataException($"{checkedRelease.ProblemCode}: release verification failed before upload.");
         }
@@ -84,11 +78,7 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
             ? "RelaxKonOS-Deploy.ps1" : "relaxkonos-deploy.sh", cancellationToken).ConfigureAwait(false);
         if (needsArchive)
         {
-            await UploadBytesAsync(Encoding.UTF8.GetBytes(trustedPublicKeyPem!), staged, "release-public.pem", cancellationToken)
-                .ConfigureAwait(false);
-            await UploadBytesAsync(Encoding.ASCII.GetBytes(trustedKeyId!), staged, "release-key-id.txt", cancellationToken)
-                .ConfigureAwait(false);
-            await UploadFromStartAsync(signedArchive!, staged, request.Options!.StagedPackageName!, cancellationToken)
+            await UploadFromStartAsync(archive!, staged, request.Options!.StagedPackageName!, cancellationToken)
                 .ConfigureAwait(false);
             if (needsCertificate)
             {

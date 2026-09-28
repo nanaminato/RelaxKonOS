@@ -3,6 +3,17 @@ package app.relaxkonos.mobile.servercenter
 import java.io.InputStream
 import java.io.OutputStream
 
+/** A non-recursive SFTP directory item.  Paths are returned by the SFTP server, never assembled
+ * from a shell command, so browsing does not turn the SSH channel into an arbitrary-command UI. */
+data class SshFileEntry(
+    val path: String,
+    val name: String,
+    val isDirectory: Boolean,
+    val isSymbolicLink: Boolean,
+    val size: Long? = null,
+    val modifiedAtEpochMillis: Long? = null,
+)
+
 /**
  * SSH 端点：主机、端口与登录用户。主机密钥与 SSH 凭据都绑定到这个三元组，
  * 因此同一台宿主的两个 SSH 用户不会互相覆盖对方的信任决定。与 C# `ServerCenterSshEndpoint` 一致。
@@ -126,6 +137,9 @@ interface ServerCenterSshTransport : AutoCloseable {
      */
     suspend fun runWithInput(command: String, inputLine: String?): ServerCenterSshCommandResult
 
+    /** Open a persistent, interactive PTY on this pinned SSH session. */
+    suspend fun openTerminal(): ServerCenterSshTerminal
+
     /**
      * 经 SFTP 上传到受控暂存目录。目标路径由操作层给出，不接受用户输入。
      * [contentLength] 未知时不上报进度百分比——界面不得凭空编造进度。
@@ -140,11 +154,25 @@ interface ServerCenterSshTransport : AutoCloseable {
     /** 经 SFTP 下载（用于导出备份）。 */
     suspend fun download(remotePath: String, destination: OutputStream)
 
+    /** SFTP file-manager primitives.  They intentionally exclude executing user supplied commands. */
+    suspend fun listDirectory(remotePath: String): List<SshFileEntry>
+
+    suspend fun createDirectory(remotePath: String)
+
+    suspend fun delete(remotePath: String, recursive: Boolean = false)
+
+    suspend fun rename(sourcePath: String, destinationPath: String)
+
     /**
      * 打开一条到远端 loopback 端口的隧道。[remotePort] 必须是远端自身的回环端口，
      * 不接受任意主机名，避免把隧道变成通用的端口转发工具。
      */
     fun openLoopbackTunnel(remotePort: Int, basePath: String? = null): ServerCenterSshTunnel
+}
+
+interface ServerCenterSshTerminal : AutoCloseable {
+    suspend fun read(): String?
+    suspend fun write(value: String)
 }
 
 /** 创建传输实例。每次会话一条独立连接，由会话负责释放。 */

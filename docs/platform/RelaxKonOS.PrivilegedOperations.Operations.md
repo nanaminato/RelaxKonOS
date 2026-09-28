@@ -6,7 +6,7 @@ LocalSystem 或 Administrator 身份运行；所有成功的宿主特权操作�
 
 ## Linux
 
-使用签名发布包中的 `deployment/linux/install-relaxkonos-services.sh` 安装。安装程序会：
+使用发布包中的 `deployment/linux/install-relaxkonos-services.sh` 安装。安装程序会：
 
 - 创建 `relaxkonos-server` 系统账户；
 - 将 Helper 发布目录、sudoers 与策略文件设为 root 所有且 Server 用户不可写；

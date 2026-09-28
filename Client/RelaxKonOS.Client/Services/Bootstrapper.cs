@@ -112,7 +112,6 @@ public static class Bootstrapper
         services.AddSingleton<SshDesktopSession>();
         services.AddSingleton<SshExplorerClient>();
         services.AddSingleton<IServerCenterOperationJournal, ServerCenterOperationJournal>();
-        services.AddSingleton<IServerCenterReleaseTrustStore, FileServerCenterReleaseTrustStore>();
         services.AddSingleton<IServerCenterReleaseSource, FileServerCenterReleaseSource>();
         services.AddTransient<ServerCenterViewModel>();
 

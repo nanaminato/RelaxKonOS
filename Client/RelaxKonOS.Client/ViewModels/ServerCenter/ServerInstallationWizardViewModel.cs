@@ -22,8 +22,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         _showHostAddresses = showHostAddresses;
         Sources =
         [
-            new(ServerPackageSourceKind.OfficialStable, Text("server_center.wizard.source_official", "Trusted official release")),
-            new(ServerPackageSourceKind.LocalBundle, Text("server_center.wizard.source_local", "Trusted local bundle")),
+            new(ServerPackageSourceKind.OfficialStable, Text("server_center.wizard.source_official", "Official release")),
+            new(ServerPackageSourceKind.LocalBundle, Text("server_center.wizard.source_local", "Local release bundle")),
             new(ServerPackageSourceKind.RemoteBundle, Text("server_center.wizard.source_server", "Bundle on this SSH server"))
         ];
         SelectedSource = Sources[0];
@@ -119,12 +119,12 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string CertificateFileName => string.IsNullOrWhiteSpace(CertificatePath) ? string.Empty : Path.GetFileName(CertificatePath);
     public string CertificatePrivateKeyFileName => string.IsNullOrWhiteSpace(CertificatePrivateKeyPath)
         ? string.Empty : Path.GetFileName(CertificatePrivateKeyPath);
-    public string LocalBundleText => Text("server_center.wizard.local_bundle", "Signed local release bundle");
+    public string LocalBundleText => Text("server_center.wizard.local_bundle", "Local release bundle");
     public string ChooseBundleText => Text("server_center.wizard.choose_bundle", "Choose bundle");
     public string ChooseServerBundleText => Text("server_center.wizard.choose_server_bundle", "Browse server files");
-    public string ServerBundleText => Text("server_center.wizard.server_bundle", "Signed release bundle on this SSH server");
-    public string BundleFileTypeText => Text("server_center.wizard.bundle_file_type", "RelaxKonOS signed release");
-    public string BundleRequiredText => Text("server_center.wizard.bundle_required", "Choose a signed .zip release bundle to continue.");
+    public string ServerBundleText => Text("server_center.wizard.server_bundle", "Release bundle on this SSH server");
+    public string BundleFileTypeText => Text("server_center.wizard.bundle_file_type", "RelaxKonOS release bundle");
+    public string BundleRequiredText => Text("server_center.wizard.bundle_required", "Choose a .zip release bundle to continue.");
     public string BackText => Text("server_center.wizard.back", "Back");
     public string NextText => Text("server_center.wizard.next", "Next");
     public string CancelText => Text("server_center.wizard.cancel", "Cancel");

@@ -21,6 +21,7 @@ import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.connect.LoginScreen
 import app.relaxkonos.mobile.ui.servercenter.ServerCenterScreen
+import app.relaxkonos.mobile.ui.servercenter.SshWorkspaceScreen
 import app.relaxkonos.mobile.ui.nav.Routes
 import app.relaxkonos.mobile.ui.nav.ShellScaffold
 import app.relaxkonos.mobile.ui.nav.ShellViewModel
@@ -82,7 +83,9 @@ private fun RelaxKonApp(container: AppContainer) {
 
         AppBackdrop {
             if (container.serverCenter.isOpen) {
-                ServerCenterScreen(onClose = container.serverCenter::close)
+                container.serverCenter.sshFilesHostId?.let { hostId ->
+                    SshWorkspaceScreen(hostId = hostId, onClose = container.serverCenter::closeSshFiles)
+                } ?: ServerCenterScreen(onClose = container.serverCenter::close)
             } else when (sessionState) {
                 is SessionState.Active -> ShellScaffold(
                     container = container,

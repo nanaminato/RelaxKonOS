@@ -15,10 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * Stateful server-centre workflow. Compose components only render [ServerCenterUiState] and forward
- * user events here; SSH credentials never become navigation arguments or persisted UI state.
- */
+/** One form, one transient password and no saved record until the first SSH handshake succeeds. */
 class ServerCenterViewModel(application: Application) : AndroidViewModel(application) {
     private val coordinator: ServerCenterCoordinator =
         getApplication<RelaxKonApplication>().container.serverCenter
@@ -26,73 +23,92 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
     private val mutableState = MutableStateFlow(ServerCenterUiState(hosts = coordinator.hosts()))
     val state = mutableState.asStateFlow()
 
-    fun updateAddHost(value: String) = update { copy(addHost = value, inputError = false) }
-
-    fun updateAddPort(value: String) = update { copy(addPort = value, inputError = false) }
-
-    fun updateAddUser(value: String) = update { copy(addUser = value, inputError = false) }
-
-    fun updateAddName(value: String) = update { copy(addName = value) }
-
-    fun updateAddPassword(value: String) = update { copy(addPassword = value, inputError = false) }
-
-    fun updateManagePassword(value: String) = update {
-        copy(managePassword = value, pendingPassword = "", verification = null)
-    }
-
-    fun selectHost(hostId: String) = update {
-        copy(selectedHostId = hostId, managePassword = "", pendingPassword = "", verification = null)
-    }
+    fun updateHost(value: String) = update { copy(host = value, inputError = false, verification = null) }
+    fun updatePort(value: String) = update { copy(port = value, inputError = false, verification = null) }
+    fun updateUser(value: String) = update { copy(user = value, inputError = false, verification = null) }
+    fun updateName(value: String) = update { copy(name = value, verification = null) }
+    fun updatePassword(value: String) = update { copy(password = value, inputError = false, verification = null) }
 
     fun addAndVerify() {
-        val current = mutableState.value
-        val port = current.addPort.toIntOrNull()
-        if (port == null || !ServerHostTargetRules.isValidEndpoint(current.addHost, port, current.addUser) ||
-            current.addPassword.isEmpty()
-        ) {
+        val state = mutableState.value
+        val port = state.port.toIntOrNull()
+        if (port == null || !ServerHostTargetRules.isValidEndpoint(state.host, port, state.user) || state.password.isEmpty()) {
             update { copy(inputError = true) }
             return
         }
-
-        val target = coordinator.addHost(current.addHost, port, current.addUser, current.addName.ifBlank { null })
-        val password = current.addPassword.toCharArray()
-        update {
-            copy(
-                hosts = coordinator.hosts(),
-                selectedHostId = target.hostId,
-                addPassword = "",
-                pendingPassword = current.addPassword,
-                verification = null,
-                isVerifying = true,
-            )
-        }
-        verify(target, password, clearAddFormOnSuccess = true)
+        val target = ServerHostTargetRules.create(state.host, port, state.user, state.name.ifBlank { null }, System.currentTimeMillis())
+        verify(target, ServerCenterFormMode.Add, clearFormOnSuccess = true)
     }
 
-    fun verifySelectedHost() {
+    /** Re-checks a session-verified host immediately; only a failed or unavailable credential opens the password form. */
+    fun manage(hostId: String) {
+        val target = mutableState.value.hosts.firstOrNull { it.hostId == hostId } ?: return
+        val rememberedPassword = coordinator.verifiedPasswordCopy(target.hostId)
+        if (target.sshVerifiedAtEpochMillis != null && rememberedPassword != null) {
+            val password = rememberedPassword.concatToString()
+            rememberedPassword.fill('\u0000')
+            update {
+                copy(
+                    formMode = ServerCenterFormMode.Manage,
+                    selectedHostId = target.hostId,
+                    host = target.sshHost,
+                    port = target.sshPort.toString(),
+                    user = target.sshUserName,
+                    name = target.displayName,
+                    password = "",
+                    pendingTarget = null,
+                    pendingPassword = "",
+                    verification = null,
+                    inputError = false,
+                    quickManaging = true,
+                )
+            }
+            verify(target, ServerCenterFormMode.Manage, clearFormOnSuccess = false, passwordOverride = password)
+            return
+        }
+        update {
+            copy(
+                formMode = ServerCenterFormMode.Manage,
+                selectedHostId = target.hostId,
+                host = target.sshHost,
+                port = target.sshPort.toString(),
+                user = target.sshUserName,
+                name = target.displayName,
+                password = "",
+                pendingTarget = null,
+                pendingPassword = "",
+                verification = null,
+                inputError = false,
+                quickManaging = false,
+            )
+        }
+    }
+
+    /** A successful re-check goes straight to the SSH workspace. */
+    fun verifyAndOpen() {
         val target = selectedTarget() ?: return
-        val password = mutableState.value.managePassword
-        if (password.isEmpty()) return
-        update { copy(verification = null, isVerifying = true) }
-        verify(target, password.toCharArray(), clearAddFormOnSuccess = false)
+        if (mutableState.value.password.isEmpty()) {
+            update { copy(inputError = true) }
+            return
+        }
+        verify(target, ServerCenterFormMode.Manage, clearFormOnSuccess = false)
     }
 
     fun trustAndVerify() {
-        val target = selectedTarget() ?: return
-        val verification = mutableState.value.verification as? ServerCenterSshVerification.NeedsTrust ?: return
-        coordinator.trustHostKey(target, verification.observation)
-        val current = mutableState.value
-        val password = current.pendingPassword.ifEmpty { current.managePassword }
+        val state = mutableState.value
+        val target = state.pendingTarget ?: return
+        val confirmation = state.verification as? ServerCenterSshVerification.NeedsTrust ?: return
+        val password = state.pendingPassword
         if (password.isEmpty()) {
-            update { copy(verification = null) }
+            update { copy(verification = null, pendingTarget = null) }
             return
         }
-        update { copy(isVerifying = true) }
-        verify(target, password.toCharArray(), clearAddFormOnSuccess = current.pendingPassword.isNotEmpty())
+        coordinator.trustHostKey(target, confirmation.observation)
+        verify(target, state.formMode, clearFormOnSuccess = state.formMode == ServerCenterFormMode.Add, passwordOverride = password)
     }
 
+    fun dismissHostKeyTrust() = update { copy(verification = null, pendingTarget = null, pendingPassword = "", quickManaging = false) }
     fun requestDelete() = update { copy(deleteRequested = selectedTarget() != null) }
-
     fun dismissDelete() = update { copy(deleteRequested = false) }
 
     fun removeSelectedHost() {
@@ -100,62 +116,97 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
         coordinator.removeHost(target.hostId)
         update {
             copy(
-                hosts = coordinator.hosts(),
-                selectedHostId = null,
-                managePassword = "",
-                pendingPassword = "",
-                verification = null,
-                deleteRequested = false,
+                hosts = coordinator.hosts(), formMode = ServerCenterFormMode.Add, selectedHostId = null,
+                host = "", port = "22", user = "", name = "", password = "",
+                pendingTarget = null, pendingPassword = "", verification = null, deleteRequested = false,
+                quickManaging = false,
             )
         }
     }
 
-    private fun verify(target: ServerHostTarget, password: CharArray, clearAddFormOnSuccess: Boolean) {
+    private fun verify(
+        target: ServerHostTarget,
+        mode: ServerCenterFormMode,
+        clearFormOnSuccess: Boolean,
+        passwordOverride: String? = null,
+    ) {
+        val password = passwordOverride ?: mutableState.value.password
+        if (password.isEmpty()) return
+        update {
+            copy(
+                formMode = mode, password = "", pendingPassword = password, pendingTarget = target,
+                verification = null, isVerifying = true,
+            )
+        }
         viewModelScope.launch {
+            val secret = password.toCharArray()
             val result = try {
-                coordinator.verifySsh(target.hostId, SshCredential(SshCredentialKind.Password, password, null))
+                coordinator.verifySsh(target, SshCredential(SshCredentialKind.Password, secret, null))
             } finally {
-                // The coordinator clears the credential, and this is harmless if a transport failed
-                // before taking ownership. Keep the UI's String separate from this request buffer.
-                password.fill('\u0000')
+                secret.fill('\u0000')
             }
+            val succeeded = result is ServerCenterSshVerification.Trusted
+            if (succeeded) coordinator.saveHost(
+                target.copy(
+                    sshVerifiedAtEpochMillis = System.currentTimeMillis(),
+                    lastUsedAtEpochMillis = System.currentTimeMillis(),
+                ),
+            )
+            if (succeeded) coordinator.rememberVerifiedPassword(target.hostId, password.toCharArray())
             update {
-                val succeeded = result is ServerCenterSshVerification.Trusted
+                // A rejected first handshake is an intentional pause in this same verification
+                // flow. Keep the target and the transient password until the user either confirms
+                // the displayed fingerprint or dismisses the dialog; otherwise trustAndVerify()
+                // has nothing to resume and its confirm button appears to do nothing.
+                val awaitingHostKeyTrust = result is ServerCenterSshVerification.NeedsTrust
                 copy(
-                    verification = result,
-                    isVerifying = false,
-                    pendingPassword = if (succeeded) "" else pendingPassword,
-                    addHost = if (succeeded && clearAddFormOnSuccess) "" else addHost,
-                    addPort = if (succeeded && clearAddFormOnSuccess) "22" else addPort,
-                    addUser = if (succeeded && clearAddFormOnSuccess) "" else addUser,
-                    addName = if (succeeded && clearAddFormOnSuccess) "" else addName,
+                    hosts = if (succeeded) coordinator.hosts() else hosts,
+                    selectedHostId = if (succeeded && clearFormOnSuccess) target.hostId else selectedHostId,
+                    pendingTarget = if (awaitingHostKeyTrust) target else null,
+                    pendingPassword = if (awaitingHostKeyTrust) password else "",
+                    verification = result, isVerifying = false,
+                    formMode = if (succeeded && clearFormOnSuccess) ServerCenterFormMode.Add else formMode,
+                    host = if (succeeded && clearFormOnSuccess) "" else host,
+                    port = if (succeeded && clearFormOnSuccess) "22" else port,
+                    user = if (succeeded && clearFormOnSuccess) "" else user,
+                    name = if (succeeded && clearFormOnSuccess) "" else name,
+                    quickManaging = false,
                 )
+            }
+            if (succeeded && mode == ServerCenterFormMode.Manage) {
+                val workspaceSecret = password.toCharArray()
+                try {
+                    coordinator.openSshFiles(target.hostId, workspaceSecret)
+                } finally {
+                    workspaceSecret.fill('\u0000')
+                }
             }
         }
     }
 
-    private fun selectedTarget(): ServerHostTarget? {
-        val hostId = mutableState.value.selectedHostId ?: return null
-        return mutableState.value.hosts.firstOrNull { it.hostId == hostId }
-    }
+    private fun selectedTarget(): ServerHostTarget? =
+        mutableState.value.selectedHostId?.let { id -> mutableState.value.hosts.firstOrNull { it.hostId == id } }
 
-    private inline fun update(transform: ServerCenterUiState.() -> ServerCenterUiState) {
-        mutableState.update(transform)
-    }
+    private inline fun update(transform: ServerCenterUiState.() -> ServerCenterUiState) = mutableState.update(transform)
 }
+
+enum class ServerCenterFormMode { Add, Manage }
 
 data class ServerCenterUiState(
     val hosts: List<ServerHostTarget>,
-    val addHost: String = "",
-    val addPort: String = "22",
-    val addUser: String = "",
-    val addName: String = "",
-    val addPassword: String = "",
+    val formMode: ServerCenterFormMode = ServerCenterFormMode.Add,
+    val host: String = "",
+    val port: String = "22",
+    val user: String = "",
+    val name: String = "",
+    val password: String = "",
     val inputError: Boolean = false,
     val selectedHostId: String? = null,
-    val managePassword: String = "",
+    val pendingTarget: ServerHostTarget? = null,
     val pendingPassword: String = "",
     val verification: ServerCenterSshVerification? = null,
     val isVerifying: Boolean = false,
+    /** A trusted, in-memory credential is being re-checked before opening the workspace. */
+    val quickManaging: Boolean = false,
     val deleteRequested: Boolean = false,
 )
