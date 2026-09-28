@@ -31,6 +31,7 @@ fun ScreenHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    backAlignment: Alignment.Vertical = Alignment.CenterVertically,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -39,7 +40,7 @@ fun ScreenHeader(
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         if (onBack != null) {
-            FilledTonalIconButton(onClick = onBack) {
+            FilledTonalIconButton(onClick = onBack, modifier = Modifier.align(backAlignment)) {
                 DesktopIcon(
                     icon = DesktopIcons.back,
                     size = 22.dp,

@@ -154,10 +154,17 @@ class ServerCenterViewModel(application: Application) : AndroidViewModel(applica
             )
             if (succeeded) coordinator.rememberVerifiedPassword(target.hostId, password.toCharArray())
             update {
+                // A rejected first handshake is an intentional pause in this same verification
+                // flow. Keep the target and the transient password until the user either confirms
+                // the displayed fingerprint or dismisses the dialog; otherwise trustAndVerify()
+                // has nothing to resume and its confirm button appears to do nothing.
+                val awaitingHostKeyTrust = result is ServerCenterSshVerification.NeedsTrust
                 copy(
                     hosts = if (succeeded) coordinator.hosts() else hosts,
                     selectedHostId = if (succeeded && clearFormOnSuccess) target.hostId else selectedHostId,
-                    pendingTarget = null, pendingPassword = "", verification = result, isVerifying = false,
+                    pendingTarget = if (awaitingHostKeyTrust) target else null,
+                    pendingPassword = if (awaitingHostKeyTrust) password else "",
+                    verification = result, isVerifying = false,
                     formMode = if (succeeded && clearFormOnSuccess) ServerCenterFormMode.Add else formMode,
                     host = if (succeeded && clearFormOnSuccess) "" else host,
                     port = if (succeeded && clearFormOnSuccess) "22" else port,
