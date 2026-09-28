@@ -23,20 +23,6 @@ public sealed class RelaxKonOSClient : IRelaxKonOSClient
             ?? throw new RelaxKonOSAuthException(NoBodyProblem());
     }
 
-    public async Task<LoginResponse> LoginWindowsDesktopSessionAsync(string serverUrl,
-        WindowsDesktopSessionLoginRequest request, CancellationToken ct = default)
-    {
-        if (!OperatingSystem.IsWindows() || !Uri.TryCreate(serverUrl, UriKind.Absolute, out var endpoint) || !endpoint.IsLoopback)
-            throw new InvalidOperationException("Windows Desktop session login is available only for a local Windows loopback endpoint.");
-        using var handler = new HttpClientHandler { UseDefaultCredentials = true, AllowAutoRedirect = false };
-        using var client = new HttpClient(handler);
-        using var response = await client.PostAsJsonAsync(BuildUri(serverUrl, AuthApiRoutes.WindowsDesktopSession), request,
-            RelaxKonOSJsonOptions.Default, ct);
-        await EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<LoginResponse>(RelaxKonOSJsonOptions.Default, ct)
-            ?? throw new RelaxKonOSAuthException(NoBodyProblem());
-    }
-
     public async Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(string serverUrl, OwnerDeviceBootstrapRequest request,
         CancellationToken ct = default)
     {

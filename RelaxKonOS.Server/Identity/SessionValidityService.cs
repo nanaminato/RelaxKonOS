@@ -25,7 +25,7 @@ public sealed class SessionValidityService(IServiceScopeFactory scopes)
             return false;
         if (!principal.HasClaim(RelaxKonOSAuthSchemes.TokenTypeClaim, RelaxKonOSAuthSchemes.FileCapabilityTokenType)
             && (!Guid.TryParse(principal.FindFirst("sid")?.Value, out _)
-                || principal.FindFirst("amr")?.Value is not ("system" or "alias" or "windows-desktop-session" or "owner-device-key")
+                || principal.FindFirst("amr")?.Value is not ("system" or "alias" or "owner-device-key")
                 || !long.TryParse(principal.FindFirst("auth_time")?.Value, out _))) return false;
         return IsValid(userId, version);
     }

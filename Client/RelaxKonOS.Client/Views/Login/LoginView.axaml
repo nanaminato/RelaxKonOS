@@ -225,9 +225,6 @@
                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="10">
                     <Button Classes="primary connect-button" Content="{Binding ConnectText}" Command="{Binding ConnectCommand}"
                             IsVisible="{Binding StandardAuthenticationVisible}" />
-                    <Button Classes="connect-button" Content="{Binding WindowsDesktopSessionConnectText}"
-                            Command="{Binding ConnectWindowsDesktopSessionCommand}"
-                            IsVisible="{Binding WindowsDesktopSessionFooterAvailable}" />
                 </StackPanel>
             </Grid>
         </Border>

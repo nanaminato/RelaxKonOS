@@ -35,22 +35,6 @@
         "PrivilegedHelper__UserExecutionBackend": "local-identity"
       }
     },
-    "http-windows-desktop": {
-      "commandName": "Project",
-      "dotnetRunMessages": true,
-      "launchBrowser": false,
-      "applicationUrl": "http://localhost:5090",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development",
-        "NginxManaged__InstallationRoot": "%HOME%/.local/share/RelaxKonOS/debug/webserver/nginx",
-        "GuardianAgent__PipeName": "relaxkonos-guardian-dev",
-        "GuardianAgent__SharedSecret": "dev-guardian-secret-local-only",
-        "PrivilegedHelper__PipeName": "relaxkonos-privileged-helper-dev",
-        "PrivilegedHelper__SharedSecret": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
-        "PrivilegedHelper__UserExecutionBackend": "local-identity",
-        "Identity__WindowsDesktopSessionEnabled": "true"
-      }
-    },
     "http-linux-privileged": {
       "commandName": "Project",
       "dotnetRunMessages": true,

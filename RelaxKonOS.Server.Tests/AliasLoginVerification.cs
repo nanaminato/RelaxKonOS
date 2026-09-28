@@ -65,12 +65,8 @@ internal static class AliasLoginVerification
         services.AddSingleton<IIdentityProvider>(provider);
         // Auth endpoints and the login service resolve the deployment mode boundary; the host must
         // register the same contract the production Program does, or endpoint inference fails.
-        var windowsDesktopSession = new WindowsDesktopSessionOptions(builder.Configuration, builder.Environment,
-            UserExecutionBackend.Helper);
-        services.AddSingleton(windowsDesktopSession);
         services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver>(
-            new RelaxKonOS.Server.HostMode.ServerModeResolver(builder.Configuration, UserExecutionBackend.Helper,
-                windowsDesktopSession));
+            new RelaxKonOS.Server.HostMode.ServerModeResolver(builder.Configuration, UserExecutionBackend.Helper));
         services.AddSingleton<AuthenticationGate>();
         services.AddSingleton<AuthSessionStore>();
         services.AddSingleton<AliasPasswordService>();
@@ -139,15 +135,6 @@ internal static class AliasLoginVerification
         var token = system.Tokens.AccessToken;
         var parsed = new JwtSecurityTokenHandler().ReadJwtToken(token);
         Check(parsed.Claims.Single(x => x.Type == "sid").Value == system.Session.Id.ToString(), "domain session equals JWT sid");
-        var windowsDesktopSessionPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
-            new Claim(JwtRegisteredClaimNames.Sub, system.User.Id.ToString()),
-            new Claim("security_version", "0"),
-            new Claim("sid", Guid.NewGuid().ToString()),
-            new Claim("amr", "windows-desktop-session"),
-            new Claim("auth_time", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
-        ], "test"));
-        Check(app.Services.GetRequiredService<SessionValidityService>().IsValid(windowsDesktopSessionPrincipal),
-            "Windows desktop session JWT remains valid for protected APIs");
         if (app.Services.GetRequiredService<OwnerDeviceKeyService>().IsAvailable)
         {
             var ownerDevices = app.Services.GetRequiredService<OwnerDeviceKeyService>();

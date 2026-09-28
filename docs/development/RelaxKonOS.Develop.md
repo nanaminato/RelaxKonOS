@@ -38,19 +38,18 @@ RelaxKonOS Client，并以 `U` 的宿主账户登录。开发 profile 使用
 `runas` Server 管理它。
 
 当前 Server 的 Windows 密码登录使用 `LogonUser`。Windows Hello PIN 不是账户密码；Microsoft Account
-需要使用真实密码和可解析的规范账户名。若 `U` 不方便使用密码路径，可用内置的“当前 Windows 会话”
-开发认证：它用 Negotiate 证明客户端 SID，并要求它严格等于 Server SID；它不是管理员切换或跨用户功能。
-
-从 `U` 的 PowerShell 或 IDE 使用 `http-windows-desktop` profile 启动 Server：
+需要使用真实密码和可解析的规范账户名。无密码地初始化用于分发配对码的本机时，从 `U` 的 PowerShell 或 IDE
+使用普通 `http` profile 启动 Server，并让同一台机器上的 Client 连接 `http://localhost:5090`：
 
 ```powershell
-dotnet run --project RelaxKonOS.Server --launch-profile http-windows-desktop
+dotnet run --project RelaxKonOS.Server --launch-profile http
 ```
 
-该 profile 会启用 `Identity:WindowsDesktopSessionEnabled=true`，并只监听 `http://localhost:5090`。客户端连接
-`http://localhost:5090` 后点击“使用当前 Windows 会话”，无需输入密码。此入口只在 Windows、Development、
-`local-identity`、交互式非服务进程和 loopback 监听器同时成立时启用；普通密码登录在此 profile 中被拒绝，
-远程地址、其他 SID、SSH 隧道和 Docker Desktop 的跨用户操作同样被拒绝。
+在登录窗口展开“使用已配对设备密钥”，选择“设置或恢复此 Windows 设备”。该 bootstrap 仅接受本机 loopback
+的 Negotiate 请求，要求 Windows 10/11 管理员账户的 SID 与 Server 进程 SID 相同；它会登记 owner-device
+私钥并完成登录。后续在相同的 `http://localhost:5090` 使用“使用设备密钥登录”，并可在账户安全设置中创建
+一次性配对码。`0.0.0.0` 仅是 Server 的监听地址，不能作为 Client 连接地址。局域网设备必须使用实际的 LAN
+地址或 DNS 名称；真实跨设备部署应使用 HTTPS。
 
 ### 2. 可选：配置并启动特权 Helper
 
