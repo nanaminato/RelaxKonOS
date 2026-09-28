@@ -79,6 +79,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
+    // QR pairing: the system scanner handles live camera capture without a CAMERA permission; the
+    // bundled ML Kit reader also handles a user-selected local image without waiting for a model download.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     // 服务器中心：内置 SSH/SFTP 传输，替代对系统 ssh/scp/sftp 工具的依赖。
     // mwiede/jsch 是 com.jcraft:jsch 的维护分支，支持 rsa-sha2-256/512 等现代算法；
     // bcprov 提供 ed25519 / curve25519 / chacha20-poly1305 所需的密码学原语（jsch 直接调用其轻量 API）。

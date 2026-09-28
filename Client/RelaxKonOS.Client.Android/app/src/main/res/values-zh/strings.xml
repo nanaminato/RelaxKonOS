@@ -56,6 +56,17 @@
     <string name="owner_device_pairing_code_required">请粘贴已注册 Windows 设备提供的配对码。</string>
     <string name="owner_device_pairing_invalid">配对码无效、已过期，或者未指向 HTTPS 服务器。</string>
     <string name="owner_device_not_paired">此 Android 设备尚未与所选服务器配对。</string>
+    <string name="owner_device_add">添加 Windows 10/11 设备</string>
+    <string name="owner_device_add_title">添加 Windows 10/11 设备</string>
+    <string name="owner_device_add_subtitle">将此 Android 设备与已有所有者设备注册的 Windows 工作站配对。</string>
+    <string name="owner_device_scan_camera">扫描二维码</string>
+    <string name="owner_device_scan_image">扫描本地图片</string>
+    <string name="owner_device_pair_next">继续</string>
+    <string name="owner_device_confirm_title">确认 Windows 设备</string>
+    <string name="owner_device_confirm_message">要与 %1$s 配对吗？此配对码将在 %2$s 过期。</string>
+    <string name="owner_device_confirm">配对并登录</string>
+    <string name="owner_device_scan_no_code">未找到二维码配对码。</string>
+    <string name="owner_device_scan_failed">无法扫描此二维码。请使用更清晰的图片，或粘贴配对码。</string>
     <string name="server_center_open">安装或管理服务器</string>
     <string name="server_center_title">服务器中心</string>
     <string name="server_center_subtitle">管理已信任的 SSH 主机及其文件。SSH 凭据与服务器登录凭据分开保存。</string>

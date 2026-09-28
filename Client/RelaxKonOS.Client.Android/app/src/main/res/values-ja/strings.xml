@@ -57,6 +57,17 @@
     <string name="owner_device_pairing_code_required">登録済み Windows デバイスのペアリングコードを貼り付けてください。</string>
     <string name="owner_device_pairing_invalid">ペアリングコードが無効か期限切れ、または HTTPS サーバーを示していません。</string>
     <string name="owner_device_not_paired">この Android デバイスは選択したサーバーとペアリングされていません。</string>
+    <string name="owner_device_add">Windows 10/11 デバイスを追加</string>
+    <string name="owner_device_add_title">Windows 10/11 デバイスを追加</string>
+    <string name="owner_device_add_subtitle">この Android デバイスを、所有者デバイスが登録済みの Windows ワークステーションとペアリングします。</string>
+    <string name="owner_device_scan_camera">QR コードをスキャン</string>
+    <string name="owner_device_scan_image">ローカル画像をスキャン</string>
+    <string name="owner_device_pair_next">続行</string>
+    <string name="owner_device_confirm_title">Windows デバイスを確認</string>
+    <string name="owner_device_confirm_message">%1$s とペアリングしますか？このペアリングコードは %2$s に期限切れになります。</string>
+    <string name="owner_device_confirm">ペアリングしてサインイン</string>
+    <string name="owner_device_scan_no_code">QR ペアリングコードが見つかりませんでした。</string>
+    <string name="owner_device_scan_failed">この QR コードをスキャンできませんでした。より鮮明な画像を試すか、ペアリングコードを貼り付けてください。</string>
     <string name="server_center_open">サーバーをインストールまたは管理</string>
     <string name="server_center_title">サーバーセンター</string>
     <string name="server_center_subtitle">信頼済み SSH ホストとそのファイルを管理します。SSH 資格情報はサーバーログインとは別に保管されます。</string>

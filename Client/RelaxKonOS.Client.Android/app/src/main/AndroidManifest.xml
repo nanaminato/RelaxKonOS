@@ -45,6 +45,11 @@
             android:name="androidx.appcompat.app.AppCompatDelegate.autoStoreLocales"
             android:value="true" />
 
+        <!-- Google Play services may install the permissionless QR camera scanner ahead of first use. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <!--
           Keeps one upload alive and visible while the app is in the background. The transfer itself is
           owned by the process-wide coordinator, so nothing here holds state that a restart would lose.

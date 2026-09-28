@@ -8,7 +8,11 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -20,6 +24,7 @@ import app.relaxkonos.mobile.ui.common.LocalAppContainer
 import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.connect.LoginScreen
+import app.relaxkonos.mobile.ui.connect.OwnerDevicePairingScreen
 import app.relaxkonos.mobile.ui.servercenter.ServerCenterScreen
 import app.relaxkonos.mobile.ui.servercenter.SshWorkspaceScreen
 import app.relaxkonos.mobile.ui.nav.Routes
@@ -72,12 +77,14 @@ private fun RelaxKonApp(container: AppContainer) {
         val sessionState = container.session.state.collectAsStateValue()
         val shell: ShellViewModel = viewModel()
         val scope = rememberCoroutineScope()
+        var ownerDevicePairingOpen by rememberSaveable { mutableStateOf(false) }
 
         // Sign-out and a rejected refresh both clear the navigation stacks;
         // the saved connection profiles are untouched (design §4.1, rule 3).
         LaunchedEffect(sessionState) {
             if (sessionState !is SessionState.Active) {
                 shell.navigator.resetTo(Routes.HOME)
+                ownerDevicePairingOpen = false
             }
         }
 
@@ -94,7 +101,14 @@ private fun RelaxKonApp(container: AppContainer) {
                     onSignOut = { scope.launch { container.session.logout() } },
                 )
 
-                else -> LoginScreen(onOpenServerCenter = container.serverCenter::open)
+                else -> if (ownerDevicePairingOpen) {
+                    OwnerDevicePairingScreen(onClose = { ownerDevicePairingOpen = false })
+                } else {
+                    LoginScreen(
+                        onOpenServerCenter = container.serverCenter::open,
+                        onOpenOwnerDevicePairing = { ownerDevicePairingOpen = true },
+                    )
+                }
             }
 
             container.pendingNotice?.let { notice ->

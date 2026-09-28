@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.ui.connect
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -64,7 +66,11 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * surface holding exactly the three fields and the action, with nothing decorative competing with them.
  */
 @Composable
-fun LoginScreen(modifier: Modifier = Modifier, onOpenServerCenter: () -> Unit = {}) {
+fun LoginScreen(
+    modifier: Modifier = Modifier,
+    onOpenServerCenter: () -> Unit = {},
+    onOpenOwnerDevicePairing: () -> Unit = {},
+) {
     val activity = LocalContext.current as? FragmentActivity ?: return
     val viewModel: LoginViewModel = viewModel()
 
@@ -94,11 +100,12 @@ fun LoginScreen(modifier: Modifier = Modifier, onOpenServerCenter: () -> Unit = 
         else -> R.string.login_action_connect
     }
 
-    Column(
-        modifier = modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
         Column(
             modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -216,30 +223,6 @@ fun LoginScreen(modifier: Modifier = Modifier, onOpenServerCenter: () -> Unit = 
                         ) { Text(stringResource(R.string.owner_device_sign_in)) }
                     }
 
-                    Text(
-                        stringResource(R.string.owner_device_pairing_title),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    Text(
-                        stringResource(R.string.owner_device_pairing_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedTextField(
-                        value = viewModel.ownerDevicePairingCode,
-                        onValueChange = viewModel::changeOwnerDevicePairingCode,
-                        label = { Text(stringResource(R.string.owner_device_pairing_code)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !viewModel.isLoggingIn,
-                        minLines = 2,
-                        shape = MaterialTheme.shapes.medium,
-                    )
-                    OutlinedButton(
-                        onClick = { viewModel.pairOwnerDevice(activity) },
-                        enabled = !viewModel.isLoggingIn,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(stringResource(R.string.owner_device_pair)) }
-
                     OutlinedButton(onClick = onOpenServerCenter, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.server_center_open))
                     }
@@ -252,6 +235,12 @@ fun LoginScreen(modifier: Modifier = Modifier, onOpenServerCenter: () -> Unit = 
                 }
             }
         }
+        }
+
+        TextButton(
+            onClick = onOpenOwnerDevicePairing,
+            modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(Spacing.sm),
+        ) { Text(stringResource(R.string.owner_device_add)) }
     }
 
     if (viewModel.connectionsOpen) {

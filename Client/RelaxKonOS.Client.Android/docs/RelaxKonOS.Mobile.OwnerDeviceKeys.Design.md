@@ -14,7 +14,7 @@ The current desktop flow serializes the QR payload as base64-encoded UTF-8 JSON:
 { "version": 1, "serverUrl": "https://host.example/", "token": "…", "expiresAt": "…" }
 ```
 
-Android must scan this exact payload with CameraX/ML Kit, show the resolved Server origin for explicit confirmation, and reject expired or non-HTTPS origins before creating its Android Keystore key. Manual paste is only an input alternative, not a second wire format.
+Android must accept this exact payload from a live QR scan, a user-selected local image, or manual paste; these are input alternatives, never distinct wire formats. Live scanning uses the permissionless Google Code Scanner when available, while local-image recognition uses the bundled ML Kit QR reader so it works without a model download. Before creating its Android Keystore key, the app shows the resolved Server origin and expiry for explicit confirmation, and rejects expired or non-HTTPS origins.
 
 To sign in, a controller requests a 32-byte, two-minute nonce and returns an ECDSA SHA-256 signature. The Server consumes each nonce once, then issues the usual short-lived access and refresh tokens with `amr=owner-device-key`.
 
@@ -27,6 +27,6 @@ Owner devices can list and revoke other owner devices. The final active device c
 ## Mobile flow
 
 1. Generate a P-256 Android Keystore key with user authentication enabled when available.
-2. Scan a pairing QR code created by an enrolled controller.
+2. Scan a pairing QR code, select a local QR image, or paste the code created by an enrolled controller.
 3. Show the scanned Server origin and expiry, then submit the invitation token and SPKI public key; request and sign a nonce to obtain the normal login session.
 4. On each remote sign-in, repeat only nonce signing; never transmit an administrator or Microsoft-account password.

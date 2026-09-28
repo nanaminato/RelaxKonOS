@@ -67,6 +67,17 @@
     <string name="owner_device_pairing_code_required">Paste a pairing code from an enrolled Windows device.</string>
     <string name="owner_device_pairing_invalid">This pairing code is invalid, expired, or does not name an HTTPS server.</string>
     <string name="owner_device_not_paired">This Android device is not paired with the selected server.</string>
+    <string name="owner_device_add">Add Windows 10/11 device</string>
+    <string name="owner_device_add_title">Add Windows 10/11 device</string>
+    <string name="owner_device_add_subtitle">Pair this Android device with a Windows workstation that already has an enrolled owner device.</string>
+    <string name="owner_device_scan_camera">Scan QR code</string>
+    <string name="owner_device_scan_image">Scan local image</string>
+    <string name="owner_device_pair_next">Continue</string>
+    <string name="owner_device_confirm_title">Confirm Windows device</string>
+    <string name="owner_device_confirm_message">Pair with %1$s? The pairing code expires %2$s.</string>
+    <string name="owner_device_confirm">Pair and sign in</string>
+    <string name="owner_device_scan_no_code">No QR pairing code was found.</string>
+    <string name="owner_device_scan_failed">Could not scan this QR code. Try a clearer image or paste the pairing code.</string>
     <string name="server_center_open">Install or manage a server</string>
     <string name="server_center_title">Server centre</string>
     <string name="server_center_subtitle">Manage trusted SSH hosts and their files. SSH credentials are kept separate from your server login.</string>
