@@ -55,7 +55,7 @@
     <string name="owner_device_pair">この Android デバイスをペアリング</string>
     <string name="owner_device_sign_in">このデバイスでサインイン</string>
     <string name="owner_device_pairing_code_required">登録済み Windows デバイスのペアリングコードを貼り付けてください。</string>
-    <string name="owner_device_pairing_invalid">ペアリングコードが無効か期限切れ、または HTTPS サーバーを示していません。</string>
+    <string name="owner_device_pairing_invalid">ペアリングコードが無効か期限切れ、または HTTP(S) サーバーを示していません。</string>
     <string name="owner_device_not_paired">この Android デバイスは選択したサーバーとペアリングされていません。</string>
     <string name="owner_device_add">Windows 10/11 デバイスを追加</string>
     <string name="owner_device_add_title">Windows 10/11 デバイスを追加</string>

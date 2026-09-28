@@ -54,7 +54,7 @@
     <string name="owner_device_pair">配对此 Android 设备</string>
     <string name="owner_device_sign_in">使用此设备登录</string>
     <string name="owner_device_pairing_code_required">请粘贴已注册 Windows 设备提供的配对码。</string>
-    <string name="owner_device_pairing_invalid">配对码无效、已过期，或者未指向 HTTPS 服务器。</string>
+    <string name="owner_device_pairing_invalid">配对码无效、已过期，或者未指向 HTTP(S) 服务器。</string>
     <string name="owner_device_not_paired">此 Android 设备尚未与所选服务器配对。</string>
     <string name="owner_device_add">添加 Windows 10/11 设备</string>
     <string name="owner_device_add_title">添加 Windows 10/11 设备</string>

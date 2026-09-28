@@ -29,7 +29,10 @@ data class OwnerDevicePairingInvitation(
                 require(json.getInt("version") == 1)
                 val serverUrl = json.getString("serverUrl")
                 val uri = URI(serverUrl)
-                require(uri.scheme.equals("https", ignoreCase = true))
+                // Pairing originates on the desktop client, whose current contract permits a
+                // reachable non-loopback HTTP or HTTPS endpoint. Do not make Android reject an
+                // otherwise valid desktop invitation before it can reach the Server.
+                require(uri.scheme.equals("http", ignoreCase = true) || uri.scheme.equals("https", ignoreCase = true))
                 require(!uri.host.isNullOrBlank())
                 require(uri.userInfo.isNullOrEmpty() && uri.query.isNullOrEmpty() && uri.fragment.isNullOrEmpty())
                 require(uri.path.isNullOrEmpty() || uri.path == "/")

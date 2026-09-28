@@ -2,10 +2,10 @@
 
 ## Windows 10/11 所有者设备注册与登录（已实现；待真机验收，2026-09-28）
 
-- Android 登录页现在接受由已注册 Windows 控制器创建的一次性配对码。它只接受桌面端既有的 base64 UTF-8 JSON 载荷（`version`、HTTPS `serverUrl`、`token`、`expiresAt`）；拒绝过期、非 HTTPS、含用户信息/查询/片段或非根路径的地址，不引入 Android 专用的第二种协议格式。
+- Android 登录页现在接受由已注册 Windows 控制器创建的一次性配对码。它只接受桌面端既有的 base64 UTF-8 JSON 载荷（`version`、HTTP(S) `serverUrl`、`token`、`expiresAt`）；拒绝过期、非 HTTP(S)、含用户信息/查询/片段或非根路径的地址，不引入 Android 专用的第二种协议格式。
 - 配对前，应用在 Android Keystore 生成不可导出的 P-256 密钥；私钥不进入文件、网络或备份。仅 `(serviceId, deviceId)` 落在 `noBackupFilesDir`，公钥 SPKI 与设备名通过现有 `accept-invitation` 路由注册。配对失败会清除刚生成的本地密钥和记录。
 - 后续登录先向既有 `challenge` 路由请求一次性 nonce，再由 Keystore 使用 ECDSA SHA-256 签名并调用 `sign-in`。强生物识别可用时每次签名都要求确认；只有屏幕锁/弱生物识别时使用 Android 平台允许的五分钟解锁窗口；完全没有本机认证能力时密钥仍不导出。此路径从不采集、缓存或提交 Windows/Microsoft/本地管理员密码。
-- 登录页右上角现在提供“添加 Windows 10/11 设备”，进入独立页面后可粘贴配对码、打开免相机权限的系统 QR 扫描器，或选择本地图片交给内置 ML Kit QR 阅读器。扫描结果只回填到同一个输入框；解析成功后必须在确认服务器 HTTPS 地址与到期时间的对话框中再次确认，才会创建密钥或消耗邀请码。尚未在真实 Windows 10/11 主机和 Android 设备上验证邀请码过期、取消生物识别、屏幕锁窗口过期和密钥失效后的端到端行为。
+- 登录页右上角现在提供“添加 Windows 10/11 设备”，进入独立页面后可粘贴配对码、打开免相机权限的系统 QR 扫描器，或选择本地图片交给内置 ML Kit QR 阅读器。扫描结果只回填到同一个输入框；解析成功后必须在确认服务器 HTTP(S) 地址与到期时间的对话框中再次确认，才会创建密钥或消耗邀请码。尚未在真实 Windows 10/11 主机和 Android 设备上验证邀请码过期、取消生物识别、屏幕锁窗口过期和密钥失效后的端到端行为。
 - **本轮验证**：` :app:compileDebugKotlin :app:testDebugUnitTest --rerun-tasks` 使用 Gradle 9.7.1 成功（26 个任务全部执行）。
 
 ## 无电脑部署规划（2026-09-26）

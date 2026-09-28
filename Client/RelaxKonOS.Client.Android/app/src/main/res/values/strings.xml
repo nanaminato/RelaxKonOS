@@ -65,7 +65,7 @@
     <string name="owner_device_pair">Pair this Android device</string>
     <string name="owner_device_sign_in">Sign in with this device</string>
     <string name="owner_device_pairing_code_required">Paste a pairing code from an enrolled Windows device.</string>
-    <string name="owner_device_pairing_invalid">This pairing code is invalid, expired, or does not name an HTTPS server.</string>
+    <string name="owner_device_pairing_invalid">This pairing code is invalid, expired, or does not name an HTTP(S) server.</string>
     <string name="owner_device_not_paired">This Android device is not paired with the selected server.</string>
     <string name="owner_device_add">Add Windows 10/11 device</string>
     <string name="owner_device_add_title">Add Windows 10/11 device</string>

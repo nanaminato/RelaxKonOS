@@ -14,7 +14,7 @@ The current desktop flow serializes the QR payload as base64-encoded UTF-8 JSON:
 { "version": 1, "serverUrl": "https://host.example/", "token": "…", "expiresAt": "…" }
 ```
 
-Android must accept this exact payload from a live QR scan, a user-selected local image, or manual paste; these are input alternatives, never distinct wire formats. Live scanning uses the permissionless Google Code Scanner when available, while local-image recognition uses the bundled ML Kit QR reader so it works without a model download. Before creating its Android Keystore key, the app shows the resolved Server origin and expiry for explicit confirmation, and rejects expired or non-HTTPS origins.
+Android must accept this exact payload from a live QR scan, a user-selected local image, or manual paste; these are input alternatives, never distinct wire formats. Live scanning uses the permissionless Google Code Scanner when available, while local-image recognition uses the bundled ML Kit QR reader so it works without a model download. Before creating its Android Keystore key, the app shows the resolved HTTP(S) Server origin and expiry for explicit confirmation, and rejects expired or unsupported-protocol origins.
 
 To sign in, a controller requests a 32-byte, two-minute nonce and returns an ECDSA SHA-256 signature. The Server consumes each nonce once, then issues the usual short-lived access and refresh tokens with `amr=owner-device-key`.
 
