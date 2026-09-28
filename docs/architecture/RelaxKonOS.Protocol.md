@@ -129,6 +129,17 @@ Server MVC（`AddControllers().AddJsonOptions`）与 SignalR（`AddSignalR().Add
 | POST | `/api/v1.0/auth/logout`  | `LogoutRequest`       | 204                    | JWT |
 | GET  | `/api/v1.0/auth/me`      | —                     | `UserDto`              | JWT |
 
+### Server
+
+| 方法  | 路径                                     | 请求 | 响应                       | 认证  |
+| --- | -------------------------------------- | -- | ------------------------ | --- |
+| GET | `/api/v1.0/server/capabilities`          | —  | `ServerCapabilitiesDto`  | JWT |
+| GET | `/api/v1.0/server/host-operating-system` | —  | `HostOperatingSystemDto` | 无   |
+
+`/server/host-operating-system` 是**唯一一个不要求凭据的 Server 信息面**，存在理由只有一条：客户端要在**尚未登录、手上也没有可用密码**时，为一条保存的连接选出正确的平台标记。因此它只回答 `HostOperatingSystemKind`（`unknown` / `ubuntu` / `windows10` / `windows11` / `windowsServer`），不含账号、版本、配置、路径或主机身份；任何想往响应里增加的东西都要先过这条标准。
+
+`unknown` 同时表示「宿主不是这几类」与「问不出来」（`RtlGetVersion` 失败、`/etc/os-release` 读不到、平台既非 Windows 也非 Linux）；客户端对两种情况都必须回落通用标记，不得猜成其中任何一个。类别只描述产品标记，能力仍由 `ServerCapabilitiesDto` 回答，两者不可互相替代。路由常量见 `ServerApiRoutes`。
+
 ### Workspace
 
 | 方法   | 路径                                        | 请求                       | 响应                          | 认证                |

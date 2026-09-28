@@ -103,6 +103,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      */
     private var windowUnlocked: Set<String> = emptySet()
     private var discoveryJob: Job? = null
+    private var hostLookupJob: Job? = null
 
     /** The identity the form currently describes, i.e. the `(Service, Username)` pair (§2.1). */
     val selectedLogin: SelectedLogin get() = SelectedLogin.direct(serverUrl, identifier)
@@ -214,10 +215,30 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openConnections() {
         connectionsOpen = true
+        refreshHostOperatingSystems()
     }
 
     fun closeConnections() {
         connectionsOpen = false
+        // The list is gone, so an answer nobody will see is not worth a socket.
+        hostLookupJob?.cancel()
+    }
+
+    /**
+     * Asks the servers behind saved connections what they run on, so a row that has never learned it can
+     * still carry the matching mark (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
+     *
+     * Background work with no message of its own: the list is usable the moment it opens, rows that
+     * already know their mark do not move, and a host that does not answer keeps the generic mark. The
+     * job is bound to the dialog — reopening cancels the older lookup, whose answers were already stored
+     * per row as they arrived.
+     */
+    private fun refreshHostOperatingSystems() {
+        hostLookupJob?.cancel()
+        hostLookupJob = viewModelScope.launch {
+            val stored = container.hostOperatingSystems.resolve(container.profiles.all())
+            if (stored > 0) revision++
+        }
     }
 
     fun consumeFocusRequest() {
@@ -757,6 +778,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 displayName = existing?.displayName,
                 hasSavedCredential = container.vault
                     .record(VaultKind.Connection, login.serviceId, login.normalizedIdentifier) != null,
+                // Signing in is not a reason to forget what the host already told us about itself.
+                hostOperatingSystem = existing?.hostOperatingSystem,
             ),
         )
         revision++

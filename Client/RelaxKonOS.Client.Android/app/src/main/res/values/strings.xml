@@ -293,6 +293,10 @@
     <string name="connections_windows_device">Windows 10/11 device</string>
     <string name="connections_windows_device_support">Windows 10/11 · paired device-key sign-in</string>
     <string name="connections_platform_trademarks">Ubuntu is a Canonical trademark. Windows, Windows Server, Windows 10 and Windows 11 are Microsoft trademarks.</string>
+    <string name="host_platform_ubuntu">Ubuntu</string>
+    <string name="host_platform_windows10">Windows 10</string>
+    <string name="host_platform_windows11">Windows 11</string>
+    <string name="host_platform_windows_server">Windows Server</string>
     <string name="connections_swipe_actions">Swipe left to forget the password or delete this login.</string>
     <string name="connections_use">Use</string>
     <string name="connections_active">Current connection</string>

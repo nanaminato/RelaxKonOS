@@ -70,4 +70,14 @@ public sealed record ServerHostCapabilitiesDto(
 public static class ServerApiRoutes
 {
     public const string Capabilities = $"/{RelaxKonOSEndpoints.ApiVersionPrefix}/server/capabilities";
+
+    /// <summary>
+    /// 宿主系统类别（<see cref="HostOperatingSystemDto"/>）。
+    ///
+    /// 本路由是**唯一一个不需要凭据的 Server 信息面**，存在理由只有一个：连接管理要在用户尚未登录、
+    /// 手上也还没有可用密码时，为一条保存的连接选出正确的平台标记。因此它只回答系统类别，不含账号、
+    /// 版本、配置、路径或主机身份；任何新字段都必须先通过这条标准，否则请放到
+    /// <see cref="Capabilities"/> 后面。
+    /// </summary>
+    public const string HostOperatingSystem = $"/{RelaxKonOSEndpoints.ApiVersionPrefix}/server/host-operating-system";
 }

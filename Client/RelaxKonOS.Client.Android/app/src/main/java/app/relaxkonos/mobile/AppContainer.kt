@@ -21,6 +21,7 @@ import app.relaxkonos.mobile.data.ElevationCoordinator
 import app.relaxkonos.mobile.data.ElevationRepository
 import app.relaxkonos.mobile.data.FileProfileStorage
 import app.relaxkonos.mobile.data.FilesRepository
+import app.relaxkonos.mobile.data.HostOperatingSystemLookup
 import app.relaxkonos.mobile.data.ImageDecoder
 import app.relaxkonos.mobile.data.ImagePreviewCache
 import app.relaxkonos.mobile.data.PREVIEW_CACHE_DIRECTORY
@@ -187,6 +188,13 @@ class AppContainer(context: Context) {
     }
 
     val gateway: RelaxKonGateway = RelaxKonApi(clientVersion = BuildConfig.VERSION_NAME)
+
+    /**
+     * 连接列表打开时，补全那些还没问过宿主的连接是哪一类操作系统。
+     *
+     * 它属于进程而不是某个页面：登录页的对话框与 Shell 内的连接管理读的是同一份记录，也就该走同一个入口。
+     */
+    val hostOperatingSystems = HostOperatingSystemLookup(profiles, gateway)
 
     /** Android private keys for the Windows workstation owner-device protocol. */
     val ownerDeviceKeys = OwnerDeviceKeyStore(appContext, biometrics)

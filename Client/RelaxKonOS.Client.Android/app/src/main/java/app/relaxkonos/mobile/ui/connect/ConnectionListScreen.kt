@@ -34,13 +34,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.CredentialStatus
+import app.relaxkonos.mobile.core.net.HostOperatingSystemKind
 import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyState
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.formatTimestamp
-import app.relaxkonos.mobile.ui.icons.DesktopIcons
+import app.relaxkonos.mobile.ui.icons.hostPlatformMark
+import app.relaxkonos.mobile.ui.icons.hostPlatformMarkLabel
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -57,6 +59,10 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  *
  * The rows are scrollable: the number of saved logins is the user's business, and a dialog that clips
  * its own content would hide the very action the list exists for.
+ *
+ * Each row carries its host's operating system mark once the server has answered what it runs on
+ * (§6.3). That answer is fetched when the list is opened (`HostOperatingSystemLookup`), so a row whose
+ * answer arrives late simply re-renders with its mark instead of holding up the dialog.
  */
 @Composable
 fun ConnectionListScreen(
@@ -167,10 +173,11 @@ private fun OwnerDeviceEntry(serviceId: String, onSelect: () -> Unit) {
 private fun PlatformTrademarkLegend() {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            IconBadge(icon = R.drawable.ic_platform_ubuntu)
-            IconBadge(icon = R.drawable.ic_platform_windows_server)
-            IconBadge(icon = R.drawable.ic_platform_windows10)
-            IconBadge(icon = R.drawable.ic_platform_windows11)
+            // Driven by the same mapping the rows use, so the legend cannot end up advertising a mark
+            // that no row can ever show (or miss one that a row can).
+            HostOperatingSystemKind.entries
+                .filter { it != HostOperatingSystemKind.Unknown }
+                .forEach { IconBadge(icon = hostPlatformMark(it)) }
         }
         Text(
             stringResource(R.string.connections_platform_trademarks),
@@ -224,26 +231,34 @@ private fun SwipeableSavedLoginEntry(
     ) {
         Surface(shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.surface) {
             ListRow(
-            title = login.displayName ?: login.serviceId,
-            subtitle = login.displayName?.let { login.serviceId },
-            supporting = listOf(
-                stringResource(
-                    if (login.directServerUrl == null) R.string.connections_managed_server
-                    else R.string.connections_direct_server,
-                ),
-                login.identifier,
-                statusLabel,
-                formatTimestamp(login.lastUsedEpochMillis),
-            ).joinToString(" · "),
-            leading = { IconBadge(icon = DesktopIcons.connections) },
-            trailing = {
-                Text(
-                    stringResource(R.string.connections_connect),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelLarge,
-                    textAlign = TextAlign.End,
-                )
-            },
+                title = login.displayName ?: login.serviceId,
+                subtitle = login.displayName?.let { login.serviceId },
+                supporting = listOf(
+                    stringResource(
+                        if (login.directServerUrl == null) R.string.connections_managed_server
+                        else R.string.connections_direct_server,
+                    ),
+                    login.identifier,
+                    statusLabel,
+                    formatTimestamp(login.lastUsedEpochMillis),
+                ).joinToString(" · "),
+                // The host's own operating system once the server has said what it is, the generic
+                // connection mark while it has not: a row never guesses a platform from an address
+                // (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
+                leading = {
+                    IconBadge(
+                        icon = hostPlatformMark(login.hostOperatingSystem),
+                        contentDescription = hostPlatformMarkLabel(login.hostOperatingSystem)?.let { stringResource(it) },
+                    )
+                },
+                trailing = {
+                    Text(
+                        stringResource(R.string.connections_connect),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge,
+                        textAlign = TextAlign.End,
+                    )
+                },
                 onClick = onSelect,
             )
         }

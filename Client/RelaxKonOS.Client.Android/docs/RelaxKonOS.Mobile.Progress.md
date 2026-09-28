@@ -1,5 +1,15 @@
 # RelaxKonOS Mobile 实施进展
 
+## 连接管理的宿主系统标记与登录页入口（已实现，2026-09-28）
+
+- 登录页的两条设置入口改为同类形状：品牌标记下方两个文字链接（「添加 Windows 10/11 设备」「安装或管理服务器」），同侧对齐、上下排列。「安装或管理服务器」原来是一条整宽描边按钮，而这条界面上唯一的主动作是「登录」，整宽按钮会把它读成第二个主按钮。两者上下排列而非并排，是因为英文/日文文案在小屏上一行放不下两条链接。
+- 连接管理里每条密码登录记录左侧的标记改为**该宿主的操作系统类别**，来源是新增的匿名只读路由 `GET /api/v1.0/server/host-operating-system`（只回答 `unknown` / `ubuntu` / `windows10` / `windows11` / `windowsServer`）。判定在服务端只有一处（`HostOperatingSystemDescriptor`）：Windows 工作站与 Server 靠 `RtlGetVersion` 的 `ProductType` 分开（`Environment.OSVersion` 在两者上都是 10.0.x），`BuildNumber >= 22000` 记作 Windows 11；Linux 只认 `/etc/os-release` 的 `ID=ubuntu`，其余发行版（含 Debian）与读不到的情况一律 `unknown`——宁可回落通用标记，也不套一个错的商标。这是 Server 上**唯一不需要凭据的信息面**，因此只带系统类别，不含账号、版本、配置或主机身份。
+- 答案是**随记录保存**的显示投影（`SavedLogin.hostOperatingSystem`），落盘布局升 `RKC3`。按本仓库既有规则「布局升版即降级为空、不写迁移」，升级后旧的连接列表会被清空——密码仍在保险箱里，重新登录一次即可恢复记录与指纹登录。`null`（还没问过）与 `unknown`（问过，且不是这四类）是两个不同状态：前者下次打开列表会再问一次，后者不会再产生请求。
+- 连接管理打开时会为「还没问过」的直连记录**并发补问一次**（`HostOperatingSystemLookup`，并发上限 4），答完即落盘并刷新列表。受管登录不参与：它的地址是隧道，只在打开宿主时才存在。失败与拒绝都不落盘——「问不到」不会被固化成结论，下次打开再试；重复答案不写盘，因此界面也不会无谓重组。
+- 首部图例与每行标记共用同一份映射（`ui/icons/HostPlatformMark.kt`），所以图例不会宣传一条记录永远显示不出的标记，也不会漏掉记录能显示的标记。标记带本地化无障碍名称（`host_platform_*`，三语同名）。
+- **未做**：Shell 内「更多 → 连接」页面仍不显示标记（那里原本不显示任何图标），桌面客户端的连接列表同样未加。两处都可以复用同一份映射，需要时再补。
+- **本轮验证**：服务端完整套件通过（含新增 `HostOperatingSystemChecks`，独立入口 `--host-os-only`）；Android `:app:assembleDebug` + `:app:testDebugUnitTest` 通过（49 类 / 435 用例 / 0 失败），三语 `strings.xml` 各 752 键且键集一致。新增/扩展用例：`HostOperatingSystemTest`（线上名字解析）、`HostOperatingSystemLookupTest`（补问规则）、`ConnectionProfileStoreTest`（宿主列往返、只影响一条、重复答案不写盘、`RKC2` 文件降级为空）。
+
 ## Windows 10/11 所有者设备注册与登录（已实现；待真机验收，2026-09-28）
 
 - Android 登录页现在接受由已注册 Windows 控制器创建的一次性配对码。它只接受桌面端既有的 base64 UTF-8 JSON 载荷（`version`、HTTP(S) `serverUrl`、`token`、`expiresAt`）；拒绝过期、非 HTTP(S)、含用户信息/查询/片段或非根路径的地址，不引入 Android 专用的第二种协议格式。

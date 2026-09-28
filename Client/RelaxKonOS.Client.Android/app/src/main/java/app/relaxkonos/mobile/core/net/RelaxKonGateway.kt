@@ -154,6 +154,16 @@ interface RelaxKonGateway {
     suspend fun cancelDeploymentOperation(serverUrl: String, accessToken: String, operationId: String, idempotencyKey: String): ApiResult<DeploymentOperation> =
         ApiResult.Transport("Deployment cancellation is unavailable.")
 
+    /**
+     * The operating system class the server at [serverUrl] runs on, asked with no credential at all.
+     *
+     * Anonymous because of *when* it is needed: the connection list is opened before any session
+     * exists, and a password is exactly what the user may not have for that server. The route answers
+     * this one fact and nothing else (`RelaxKonOS.Protocol.ServerApiRoutes.HostOperatingSystem`).
+     */
+    suspend fun hostOperatingSystem(serverUrl: String): ApiResult<HostOperatingSystemKind> =
+        ApiResult.Transport("Host operating system lookup is unavailable.")
+
     suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession>
 
     /** Enrols this Android Keystore public key with a one-time invitation issued by a Windows owner device. */

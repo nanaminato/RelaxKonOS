@@ -1043,6 +1043,7 @@ app.UseAuthorization();
 app.UseMiddleware<UserModeRequestGuardMiddleware>();
 app.UseRateLimiter();
 app.MapHealthEndpoints();
+app.MapServerHostEndpoints();
 app.MapAuthEndpoints();
 app.MapAliasEndpoints();
 app.MapFileEndpoints();

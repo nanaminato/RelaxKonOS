@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile.data
 
+import app.relaxkonos.mobile.core.net.HostOperatingSystemKind
 import app.relaxkonos.mobile.security.model.SavedLogin
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -101,6 +102,30 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
         }
     }
 
+    /**
+     * Stores what one login's host answered about its operating system.
+     *
+     * Returns whether the file was written: a login that is gone is never resurrected by a background
+     * answer, and an answer that changes nothing does not rewrite the file — the list is opened often,
+     * and a write per open would be churn with no visible difference. Nothing else writes this field,
+     * so a value here always came from the server; a failed request never reaches this method.
+     */
+    fun setHostOperatingSystem(serviceId: String, identifier: String, kind: HostOperatingSystemKind): Boolean {
+        val current = read()
+        val target = current.firstOrNull { it.serviceId == serviceId && it.identifier == identifier } ?: return false
+        if (target.hostOperatingSystem == kind) return false
+        write(
+            current.map {
+                if (it.serviceId == serviceId && it.identifier == identifier) {
+                    it.copy(hostOperatingSystem = kind)
+                } else {
+                    it
+                }
+            },
+        )
+        return true
+    }
+
     private fun SavedLogin.sameIdentityAs(other: SavedLogin): Boolean =
         serviceId == other.serviceId && identifier == other.identifier
 
@@ -119,7 +144,13 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
                             val lastUsed = input.readLong()
                             val displayName = if (input.readByte().toInt() == 1) input.readUTF() else null
                             val hasCredential = input.readByte().toInt() == 1
-                            add(SavedLogin(serviceId, identifier, lastUsed, displayName, hasCredential))
+                            val hostOs = if (input.readByte().toInt() == 1) input.readUTF() else null
+                            add(
+                                SavedLogin(
+                                    serviceId, identifier, lastUsed, displayName, hasCredential,
+                                    hostOs?.let(HostOperatingSystemKind::fromWire),
+                                ),
+                            )
                         }
                     }
                 }
@@ -145,13 +176,25 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
                     output.writeUTF(displayName)
                 }
                 output.writeByte(if (login.hasSavedCredential) 1 else 0)
+                val hostOs = login.hostOperatingSystem
+                output.writeByte(if (hostOs == null) 0 else 1)
+                if (hostOs != null) {
+                    output.writeUTF(hostOs.name)
+                }
             }
         }
         storage.write(buffer.toByteArray())
     }
 
     private companion object {
-        /** `RKC2`: the first string is serviceId; direct records already store that canonical URL. */
-        const val MAGIC = 0x524B4332
+        /**
+         * `RKC3`: `RKC2` plus the host operating system class of each login.
+         *
+         * The layout gained a field, so the older magic is discarded rather than migrated — the same
+         * rule the vault and the account archive follow (`RelaxKonOS.Mobile.LoginCredentials.Design.md`
+         * §2.2). What is lost is the list of remembered endpoints and accounts; every password stays in
+         * the vault, and signing in again brings the row back with it.
+         */
+        const val MAGIC = 0x524B4333
     }
 }

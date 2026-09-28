@@ -269,6 +269,10 @@
     <string name="connections_windows_device">Windows 10/11 デバイス</string>
     <string name="connections_windows_device_support">Windows 10/11 · ペアリング済みデバイスキーでサインイン</string>
     <string name="connections_platform_trademarks">Ubuntu は Canonical の商標です。Windows、Windows Server、Windows 10、Windows 11 は Microsoft の商標です。</string>
+    <string name="host_platform_ubuntu">Ubuntu</string>
+    <string name="host_platform_windows10">Windows 10</string>
+    <string name="host_platform_windows11">Windows 11</string>
+    <string name="host_platform_windows_server">Windows Server</string>
     <string name="connections_swipe_actions">左にスワイプすると、パスワードを忘れるかこのログインを削除できます。</string>
     <string name="connections_use">使用</string>
     <string name="connections_active">現在の接続</string>

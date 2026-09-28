@@ -63,6 +63,7 @@ try
     if (args.Contains("--git-conflicts-only")) { await GitConflictChecks.RunAsync(root); return; }
     if (args.Contains("--performance-only")) { await ServerCoreChecks.VerifyPerformanceSamplerAsync(); Console.WriteLine("Performance sampler checks passed."); return; }
     if (args.Contains("--helper-allowlist-only")) { await DeveloperUserSidAllowListVerification.RunAsync(); return; }
+    if (args.Contains("--host-os-only")) { HostOperatingSystemChecks.Run(); return; }
     if (args.Contains("--thumbnails-only")) { ImageThumbnailChecks.Run(root); Console.WriteLine("Thumbnail checks passed."); return; }
     if (args.Contains("--uploads-only")) { await UploadSessionChecks.RunAsync(root); Console.WriteLine("File upload session checks passed."); return; }
     if (args.Contains("--stack-operations-only")) { await DockerChecks.VerifyStackOperationsAsync(root); return; }
@@ -133,6 +134,7 @@ try
     await NetworkProxyTunnelChecks.VerifyTunnelSecretLifecycleAsync(root);
     ServerCoreChecks.VerifyWorkspacePreferencesJsonContract();
     ServerCoreChecks.VerifyThemePaletteContract();
+    HostOperatingSystemChecks.Run();
     await ServerCoreChecks.VerifyTrackedWorkspaceWallpaperUpdateAsync(root);
     await ServerCoreChecks.VerifyRegistryRuntimeCacheAsync(root);
     await ServerCoreChecks.VerifyPerformanceSamplerAsync();

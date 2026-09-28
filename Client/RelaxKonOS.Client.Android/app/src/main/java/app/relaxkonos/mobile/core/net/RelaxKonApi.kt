@@ -447,6 +447,22 @@ class RelaxKonApi(
         }
     }
 
+    /**
+     * Asks a server what its host runs on, without a credential and without a session.
+     *
+     * A missing or non-string `kind` is a contract break ([ApiResult.Transport]); a *name* this build
+     * does not know is [HostOperatingSystemKind.Unknown], because a newer server naming a system this
+     * version has no mark for is a normal answer, not a reason to fail a list row.
+     */
+    override suspend fun hostOperatingSystem(serverUrl: String): ApiResult<HostOperatingSystemKind> =
+        when (val parsed = execute("GET", serverUrl, ServerHostRoutes.OPERATING_SYSTEM, accessToken = null, body = null)) {
+            is ApiResult.Success -> runCatching {
+                HostOperatingSystemKind.fromWire(JSONObject(parsed.value).getString("kind"))
+            }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed host operating system response.") })
+            is ApiResult.Problem -> parsed
+            is ApiResult.Transport -> parsed
+        }
+
     override suspend fun acceptOwnerDeviceInvitation(
         serverUrl: String,
         invitationToken: String,
@@ -1169,6 +1185,11 @@ private object AuthRoutes {
     const val LOGIN = "$V1/auth/login"
     const val REFRESH = "$V1/auth/refresh"
     const val LOGOUT = "$V1/auth/logout"
+}
+
+/** Route constant mirroring `ServerApiRoutes.HostOperatingSystem`; the one anonymous server route. */
+private object ServerHostRoutes {
+    const val OPERATING_SYSTEM = "/api/v1.0/server/host-operating-system"
 }
 
 /** Route constants mirroring `OwnerDeviceKeyApiRoutes`. */

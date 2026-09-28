@@ -110,14 +110,20 @@ fun LoginScreen(
         ) {
             LoginBrand()
 
-            // This action belongs to the same scroll surface as the form. Keeping it below the
-            // mark avoids the overlap caused by pinning it to a small device's top-right corner.
-            TextButton(onClick = onOpenOwnerDevicePairing, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.owner_device_add))
-            }
-
-            OutlinedButton(onClick = onOpenServerCenter, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.server_center_open))
+            // The two setup actions belong to the same scroll surface as the form, and they are peers:
+            // both lead somewhere that produces something to sign in with, and neither is *the* action
+            // of this screen — signing in is. So they are drawn as peers, under the mark and on the
+            // same edge, instead of one being a link and the other a full-width outlined button.
+            Column(
+                modifier = Modifier.align(Alignment.End),
+                horizontalAlignment = Alignment.End,
+            ) {
+                TextButton(onClick = onOpenOwnerDevicePairing) {
+                    Text(stringResource(R.string.owner_device_add))
+                }
+                TextButton(onClick = onOpenServerCenter) {
+                    Text(stringResource(R.string.server_center_open))
+                }
             }
 
             Spacer(Modifier.height(Spacing.md))
