@@ -263,6 +263,13 @@
     <string name="connections_password_unavailable">パスワードは保存されていますが、この端末では現在解錠できません</string>
     <string name="connections_password_invalidated">保存したパスワードは無効になりました</string>
     <string name="connections_no_password">パスワード未保存</string>
+    <string name="connections_connect">接続</string>
+    <string name="connections_direct_server">直接サーバー</string>
+    <string name="connections_managed_server">管理対象サーバー</string>
+    <string name="connections_windows_device">Windows 10/11 デバイス</string>
+    <string name="connections_windows_device_support">Windows 10/11 · ペアリング済みデバイスキーでサインイン</string>
+    <string name="connections_platform_trademarks">Ubuntu は Canonical の商標です。Windows、Windows Server、Windows 10、Windows 11 は Microsoft の商標です。</string>
+    <string name="connections_swipe_actions">左にスワイプすると、パスワードを忘れるかこのログインを削除できます。</string>
     <string name="connections_use">使用</string>
     <string name="connections_active">現在の接続</string>
     <string name="connections_sign_out_note">サインアウトしても、保存された接続とパスワードは残ります。</string>

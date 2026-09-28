@@ -287,6 +287,13 @@
     <string name="connections_password_unavailable">A password is saved but cannot be unlocked on this device right now</string>
     <string name="connections_password_invalidated">The saved password is no longer valid</string>
     <string name="connections_no_password">No password saved</string>
+    <string name="connections_connect">Connect</string>
+    <string name="connections_direct_server">Direct server</string>
+    <string name="connections_managed_server">Managed server</string>
+    <string name="connections_windows_device">Windows 10/11 device</string>
+    <string name="connections_windows_device_support">Windows 10/11 · paired device-key sign-in</string>
+    <string name="connections_platform_trademarks">Ubuntu is a Canonical trademark. Windows, Windows Server, Windows 10 and Windows 11 are Microsoft trademarks.</string>
+    <string name="connections_swipe_actions">Swipe left to forget the password or delete this login.</string>
     <string name="connections_use">Use</string>
     <string name="connections_active">Current connection</string>
     <string name="connections_sign_out_note">Signing out keeps the saved connections and their passwords.</string>

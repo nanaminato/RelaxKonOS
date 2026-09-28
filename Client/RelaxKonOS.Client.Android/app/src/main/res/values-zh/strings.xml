@@ -262,6 +262,13 @@
     <string name="connections_password_unavailable">已保存密码，但本机当前无法解封</string>
     <string name="connections_password_invalidated">已保存的密码已失效</string>
     <string name="connections_no_password">未保存密码</string>
+    <string name="connections_connect">连接</string>
+    <string name="connections_direct_server">直连服务器</string>
+    <string name="connections_managed_server">受管服务器</string>
+    <string name="connections_windows_device">Windows 10/11 设备</string>
+    <string name="connections_windows_device_support">Windows 10/11 · 已配对的设备密钥登录</string>
+    <string name="connections_platform_trademarks">Ubuntu 是 Canonical 的商标；Windows、Windows Server、Windows 10 和 Windows 11 是 Microsoft 的商标。</string>
+    <string name="connections_swipe_actions">向左滑动可忘记密码或删除这条登录记录。</string>
     <string name="connections_use">使用</string>
     <string name="connections_active">当前连接</string>
     <string name="connections_sign_out_note">退出登录会保留已保存的连接及其密码。</string>

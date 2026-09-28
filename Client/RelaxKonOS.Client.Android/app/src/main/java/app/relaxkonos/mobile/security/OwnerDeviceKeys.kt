@@ -42,6 +42,22 @@ class OwnerDeviceKeyStore(
     fun registration(serviceId: String): OwnerDeviceRegistration? = registrations()
         .firstOrNull { it.serviceId == serviceId }
 
+    /** Non-secret registrations for the connection picker; the private keys remain in Android Keystore. */
+    fun registrations(): List<OwnerDeviceRegistration> {
+        if (!storage.isFile) return emptyList()
+        return runCatching {
+            val values = JSONArray(storage.readText(Charsets.UTF_8))
+            buildList {
+                for (index in 0 until values.length()) {
+                    val value = values.getJSONObject(index)
+                    val serviceId = value.getString("serviceId")
+                    val deviceId = value.getString("deviceId")
+                    if (serviceId.isNotBlank() && deviceId.isNotBlank()) add(OwnerDeviceRegistration(serviceId, deviceId))
+                }
+            }
+        }.getOrElse { emptyList() }
+    }
+
     /** Replaces a stale local key before an invitation is consumed. */
     fun create(serviceId: String): String {
         require(serviceId.isNotBlank()) { "A server identity is required." }
@@ -110,21 +126,6 @@ class OwnerDeviceKeyStore(
                 }
             }
         }
-    }
-
-    private fun registrations(): List<OwnerDeviceRegistration> {
-        if (!storage.isFile) return emptyList()
-        return runCatching {
-            val values = JSONArray(storage.readText(Charsets.UTF_8))
-            buildList {
-                for (index in 0 until values.length()) {
-                    val value = values.getJSONObject(index)
-                    val serviceId = value.getString("serviceId")
-                    val deviceId = value.getString("deviceId")
-                    if (serviceId.isNotBlank() && deviceId.isNotBlank()) add(OwnerDeviceRegistration(serviceId, deviceId))
-                }
-            }
-        }.getOrElse { emptyList() }
     }
 
     private fun keyAuthenticationPolicy(): KeyAuthenticationPolicy = when (biometricCapability.detect()) {

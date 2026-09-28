@@ -114,6 +114,14 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     val hasLogins: Boolean get() = logins.isNotEmpty()
 
+    /** Paired Windows controllers are independent of password login records and stay discoverable here. */
+    val pairedOwnerDeviceServiceIds: List<String>
+        get() = revision.let {
+            container.ownerDeviceKeys.registrations().map { it.serviceId }.distinct().sorted()
+        }
+
+    val hasConnectionEntries: Boolean get() = hasLogins || pairedOwnerDeviceServiceIds.isNotEmpty()
+
     /**
      * Whether the debug-only plaintext store may stand in for the vault.
      *
@@ -237,6 +245,38 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         connectionsOpen = false
         focusRequest = null
         windowUnlocked = windowUnlocked - loginIdOf(login.serviceId, login.identifier)
+    }
+
+    /**
+     * Opens a saved login directly. A password-backed record continues through the normal decision
+     * table; an absent or unusable password leaves this selected identity in the form for editing.
+     */
+    fun connectSavedLogin(activity: FragmentActivity, login: SavedLogin) {
+        if (isLoggingIn) return
+        select(login)
+        if (login.directServerUrl != null) {
+            submit(activity)
+        }
+    }
+
+    /** Selects a paired Windows 10/11 owner device and starts its nonce-signature sign-in. */
+    fun connectOwnerDevice(activity: FragmentActivity, serviceId: String) {
+        if (isLoggingIn) return
+        val connection = runCatching {
+            app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules.direct(serviceId)
+        }.getOrNull()
+        if (connection == null || !container.ownerDevices.isPaired(connection)) {
+            message = UiMessage(R.string.owner_device_not_paired)
+            return
+        }
+        managedHostName = null
+        serverUrl = connection.effectiveBaseUrl
+        identifier = ""
+        passwordText = ""
+        connectionsOpen = false
+        message = null
+        focusRequest = null
+        signInWithOwnerDevice(activity)
     }
 
     /**

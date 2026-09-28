@@ -1,22 +1,37 @@
 package app.relaxkonos.mobile.ui.connect
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.CredentialStatus
 import app.relaxkonos.mobile.security.model.SavedLogin
@@ -26,6 +41,7 @@ import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
+import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
@@ -45,33 +61,39 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 @Composable
 fun ConnectionListScreen(
     logins: List<SavedLogin>,
+    ownerDeviceServiceIds: List<String>,
     credentialStatus: (SavedLogin) -> CredentialStatus,
     onSelected: (SavedLogin) -> Unit,
+    onOwnerDeviceSelected: (String) -> Unit,
     onForgetPassword: (SavedLogin) -> Unit,
     onDeleteLogin: (SavedLogin) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var forgetTarget by remember { mutableStateOf<SavedLogin?>(null) }
     var deleteTarget by remember { mutableStateOf<SavedLogin?>(null) }
+    var actionTarget by remember { mutableStateOf<SavedLogin?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.connections_title)) },
         text = {
-            if (logins.isEmpty()) {
+            if (logins.isEmpty() && ownerDeviceServiceIds.isEmpty()) {
                 EmptyState(text = stringResource(R.string.connections_empty))
             } else {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm),
                 ) {
+                    PlatformTrademarkLegend()
+                    ownerDeviceServiceIds.forEach { serviceId ->
+                        OwnerDeviceEntry(serviceId = serviceId, onSelect = { onOwnerDeviceSelected(serviceId) })
+                    }
                     logins.forEach { login ->
-                        SavedLoginEntry(
+                        SwipeableSavedLoginEntry(
                             login = login,
                             statusLabel = credentialStatusLabel(credentialStatus(login)),
                             onSelect = { onSelected(login) },
-                            onForget = { forgetTarget = login },
-                            onDelete = { deleteTarget = login },
+                            onManage = { actionTarget = login },
                         )
                     }
                 }
@@ -79,6 +101,28 @@ fun ConnectionListScreen(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
     )
+
+    actionTarget?.let { login ->
+        AlertDialog(
+            onDismissRequest = { actionTarget = null },
+            title = { Text(login.displayName ?: login.serviceId) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    Text(stringResource(R.string.connections_swipe_actions))
+                    OutlinedButton(
+                        onClick = { actionTarget = null; forgetTarget = login },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.connections_forget_password)) }
+                    Button(
+                        onClick = { actionTarget = null; deleteTarget = login },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    ) { Text(stringResource(R.string.common_delete)) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { actionTarget = null }) { Text(stringResource(R.string.common_close)) } },
+        )
+    }
 
     forgetTarget?.let { login ->
         ConfirmDangerousDialog(
@@ -107,35 +151,101 @@ fun ConnectionListScreen(
     }
 }
 
-/**
- * One saved login.
- *
- * The identifier, the credential state and the last use share one line because they are all detail;
- * the actions sit under them, where they read as belonging to this entry and not to the one above.
- */
 @Composable
-private fun SavedLoginEntry(
+private fun OwnerDeviceEntry(serviceId: String, onSelect: () -> Unit) {
+    ListRow(
+        title = stringResource(R.string.connections_windows_device),
+        subtitle = serviceId,
+        supporting = stringResource(R.string.connections_windows_device_support),
+        leading = { IconBadge(icon = R.drawable.ic_platform_windows11) },
+        onClick = onSelect,
+    )
+}
+
+/** Small legend makes the operating-system marks unambiguous without claiming a server version we do not know. */
+@Composable
+private fun PlatformTrademarkLegend() {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(icon = R.drawable.ic_platform_ubuntu)
+            IconBadge(icon = R.drawable.ic_platform_windows_server)
+            IconBadge(icon = R.drawable.ic_platform_windows10)
+            IconBadge(icon = R.drawable.ic_platform_windows11)
+        }
+        Text(
+            stringResource(R.string.connections_platform_trademarks),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** A left swipe exposes the destructive management path without competing with the connect tap. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Suppress("DEPRECATION") // The current Material state API needs this callback to keep the row open.
+@Composable
+private fun SwipeableSavedLoginEntry(
     login: SavedLogin,
     statusLabel: String,
     onSelect: () -> Unit,
-    onForget: () -> Unit,
-    onDelete: () -> Unit,
+    onManage: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-        ListRow(
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { target ->
+            if (target == SwipeToDismissBoxValue.EndToStart) onManage()
+            false
+        },
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(Radius.md))
+                    .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.connections_forget_password),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Spacer(Modifier.width(Spacing.md))
+                Text(
+                    stringResource(R.string.common_delete),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        },
+    ) {
+        Surface(shape = RoundedCornerShape(Radius.md), color = MaterialTheme.colorScheme.surface) {
+            ListRow(
             title = login.displayName ?: login.serviceId,
             subtitle = login.displayName?.let { login.serviceId },
-            supporting = listOfNotNull(
+            supporting = listOf(
+                stringResource(
+                    if (login.directServerUrl == null) R.string.connections_managed_server
+                    else R.string.connections_direct_server,
+                ),
                 login.identifier,
                 statusLabel,
                 formatTimestamp(login.lastUsedEpochMillis),
             ).joinToString(" · "),
             leading = { IconBadge(icon = DesktopIcons.connections) },
-        )
-        Row(Modifier.fillMaxWidth().padding(start = Spacing.sm), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            TextButton(onClick = onSelect) { Text(stringResource(R.string.connections_use)) }
-            TextButton(onClick = onForget) { Text(stringResource(R.string.connections_forget_password)) }
-            TextButton(onClick = onDelete) { Text(stringResource(R.string.common_delete)) }
+            trailing = {
+                Text(
+                    stringResource(R.string.connections_connect),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                    textAlign = TextAlign.End,
+                )
+            },
+                onClick = onSelect,
+            )
         }
     }
 }

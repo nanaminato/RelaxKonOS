@@ -1,7 +1,6 @@
 package app.relaxkonos.mobile.ui.connect
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -100,19 +99,28 @@ fun LoginScreen(
         else -> R.string.login_action_connect
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
+    Column(
+        modifier = modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Top,
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             LoginBrand()
 
-            Spacer(Modifier.height(Spacing.xl))
+            // This action belongs to the same scroll surface as the form. Keeping it below the
+            // mark avoids the overlap caused by pinning it to a small device's top-right corner.
+            TextButton(onClick = onOpenOwnerDevicePairing, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.owner_device_add))
+            }
+
+            OutlinedButton(onClick = onOpenServerCenter, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.server_center_open))
+            }
+
+            Spacer(Modifier.height(Spacing.md))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -135,6 +143,14 @@ fun LoginScreen(
                             onRetry = null,
                             onDismiss = { viewModel.dismissMessage() },
                         )
+                    }
+
+                    // Connection choices are setup actions, so they come before the address they
+                    // may fill. A selected saved item starts connecting immediately when possible.
+                    if (viewModel.hasConnectionEntries) {
+                        OutlinedButton(onClick = { viewModel.openConnections() }, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.connections_title))
+                        }
                     }
 
                     OutlinedTextField(
@@ -214,42 +230,20 @@ fun LoginScreen(
                         enabled = !viewModel.isLoggingIn && viewModel.endpointDiscoveryState != EndpointDiscoveryState.Checking,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(actionLabel)) }
-
-                    if (viewModel.ownerDeviceSignInAvailable) {
-                        OutlinedButton(
-                            onClick = { viewModel.signInWithOwnerDevice(activity) },
-                            enabled = !viewModel.isLoggingIn,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(stringResource(R.string.owner_device_sign_in)) }
-                    }
-
-                    OutlinedButton(onClick = onOpenServerCenter, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.server_center_open))
-                    }
-
-                    if (viewModel.hasLogins) {
-                        OutlinedButton(onClick = { viewModel.openConnections() }, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.connections_title))
-                        }
-                    }
                 }
             }
         }
-        }
-
-        TextButton(
-            onClick = onOpenOwnerDevicePairing,
-            modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(Spacing.sm),
-        ) { Text(stringResource(R.string.owner_device_add)) }
     }
 
     if (viewModel.connectionsOpen) {
         ConnectionListScreen(
             logins = viewModel.logins,
+            ownerDeviceServiceIds = viewModel.pairedOwnerDeviceServiceIds,
             // The row asks the same question the form does, through the same function, so a login
             // cannot be listed as having no password while the field above says one is saved.
             credentialStatus = { login -> viewModel.savedCredentialStatus(login.serviceId, login.identifier) },
-            onSelected = { viewModel.select(it) },
+            onSelected = { viewModel.connectSavedLogin(activity, it) },
+            onOwnerDeviceSelected = { viewModel.connectOwnerDevice(activity, it) },
             onForgetPassword = { viewModel.forgetPassword(it) },
             onDeleteLogin = { viewModel.deleteLogin(it) },
             onDismiss = { viewModel.closeConnections() },
