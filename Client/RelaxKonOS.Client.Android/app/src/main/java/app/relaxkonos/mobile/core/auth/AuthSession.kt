@@ -9,6 +9,7 @@ import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.core.net.isSessionExpired
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentity
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
+import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +69,7 @@ class TokenStore {
 class AuthSession(
     private val gateway: RelaxKonGateway,
     private val tokenStore: TokenStore = TokenStore(),
+    private val ownerDevices: OwnerDeviceAuthenticationService? = null,
 ) {
     private val stateFlow = MutableStateFlow<SessionState>(SessionState.SignedOut)
 
@@ -130,6 +132,29 @@ class AuthSession(
 
             is ApiResult.Transport -> {
                 // A network failure must not look like a rejected credential.
+                stateFlow.value = SessionState.SignedOut
+                result
+            }
+        }
+    }
+
+    /** Signs in through an enrolled Android owner-device key instead of an OS account password. */
+    suspend fun loginWithOwnerDevice(
+        connection: ServerConnectionIdentity,
+        activity: FragmentActivity,
+    ): ApiResult<LoginSession> {
+        val devices = ownerDevices ?: return ApiResult.Transport("Owner-device authentication is unavailable.")
+        stateFlow.value = SessionState.Authenticating
+        return when (val result = devices.signIn(connection, activity)) {
+            is ApiResult.Success -> {
+                adopt(connection, result.value)
+                result
+            }
+            is ApiResult.Problem -> {
+                stateFlow.value = SessionState.SignedOut
+                result
+            }
+            is ApiResult.Transport -> {
                 stateFlow.value = SessionState.SignedOut
                 result
             }

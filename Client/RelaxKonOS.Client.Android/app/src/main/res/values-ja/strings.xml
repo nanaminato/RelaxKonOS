@@ -49,6 +49,14 @@
     <string name="login_action_connect">接続</string>
     <string name="login_action_sign_in">サインイン</string>
     <string name="login_action_connecting">接続中…</string>
+    <string name="owner_device_pairing_title">Windows ペアリング済みデバイス</string>
+    <string name="owner_device_pairing_description">Windows 10 または Windows 11 のコンピューターで作成した使い捨てペアリングコードを貼り付けます。Android デバイスは秘密鍵をローカルに保管し、Windows パスワードを送信しません。</string>
+    <string name="owner_device_pairing_code">ペアリングコード</string>
+    <string name="owner_device_pair">この Android デバイスをペアリング</string>
+    <string name="owner_device_sign_in">このデバイスでサインイン</string>
+    <string name="owner_device_pairing_code_required">登録済み Windows デバイスのペアリングコードを貼り付けてください。</string>
+    <string name="owner_device_pairing_invalid">ペアリングコードが無効か期限切れ、または HTTPS サーバーを示していません。</string>
+    <string name="owner_device_not_paired">この Android デバイスは選択したサーバーとペアリングされていません。</string>
     <string name="server_center_open">サーバーをインストールまたは管理</string>
     <string name="server_center_title">サーバーセンター</string>
     <string name="server_center_subtitle">信頼済み SSH ホストとそのファイルを管理します。SSH 資格情報はサーバーログインとは別に保管されます。</string>

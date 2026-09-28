@@ -59,6 +59,14 @@
     <string name="login_action_connect">Connect</string>
     <string name="login_action_sign_in">Sign in</string>
     <string name="login_action_connecting">Connecting…</string>
+    <string name="owner_device_pairing_title">Windows paired device</string>
+    <string name="owner_device_pairing_description">Paste the one-time pairing code created on the Windows 10 or 11 computer. The Android device keeps its private key locally and never sends the Windows password.</string>
+    <string name="owner_device_pairing_code">Pairing code</string>
+    <string name="owner_device_pair">Pair this Android device</string>
+    <string name="owner_device_sign_in">Sign in with this device</string>
+    <string name="owner_device_pairing_code_required">Paste a pairing code from an enrolled Windows device.</string>
+    <string name="owner_device_pairing_invalid">This pairing code is invalid, expired, or does not name an HTTPS server.</string>
+    <string name="owner_device_not_paired">This Android device is not paired with the selected server.</string>
     <string name="server_center_open">Install or manage a server</string>
     <string name="server_center_title">Server centre</string>
     <string name="server_center_subtitle">Manage trusted SSH hosts and their files. SSH credentials are kept separate from your server login.</string>

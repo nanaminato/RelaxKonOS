@@ -208,6 +208,38 @@ fun LoginScreen(modifier: Modifier = Modifier, onOpenServerCenter: () -> Unit = 
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(stringResource(actionLabel)) }
 
+                    if (viewModel.ownerDeviceSignInAvailable) {
+                        OutlinedButton(
+                            onClick = { viewModel.signInWithOwnerDevice(activity) },
+                            enabled = !viewModel.isLoggingIn,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.owner_device_sign_in)) }
+                    }
+
+                    Text(
+                        stringResource(R.string.owner_device_pairing_title),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        stringResource(R.string.owner_device_pairing_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = viewModel.ownerDevicePairingCode,
+                        onValueChange = viewModel::changeOwnerDevicePairingCode,
+                        label = { Text(stringResource(R.string.owner_device_pairing_code)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !viewModel.isLoggingIn,
+                        minLines = 2,
+                        shape = MaterialTheme.shapes.medium,
+                    )
+                    OutlinedButton(
+                        onClick = { viewModel.pairOwnerDevice(activity) },
+                        enabled = !viewModel.isLoggingIn,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.owner_device_pair)) }
+
                     OutlinedButton(onClick = onOpenServerCenter, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.server_center_open))
                     }

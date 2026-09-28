@@ -48,6 +48,14 @@
     <string name="login_action_connect">连接</string>
     <string name="login_action_sign_in">登录</string>
     <string name="login_action_connecting">连接中…</string>
+    <string name="owner_device_pairing_title">Windows 配对设备</string>
+    <string name="owner_device_pairing_description">粘贴由 Windows 10 或 Windows 11 电脑创建的一次性配对码。Android 设备会在本机保留私钥，绝不会发送 Windows 密码。</string>
+    <string name="owner_device_pairing_code">配对码</string>
+    <string name="owner_device_pair">配对此 Android 设备</string>
+    <string name="owner_device_sign_in">使用此设备登录</string>
+    <string name="owner_device_pairing_code_required">请粘贴已注册 Windows 设备提供的配对码。</string>
+    <string name="owner_device_pairing_invalid">配对码无效、已过期，或者未指向 HTTPS 服务器。</string>
+    <string name="owner_device_not_paired">此 Android 设备尚未与所选服务器配对。</string>
     <string name="server_center_open">安装或管理服务器</string>
     <string name="server_center_title">服务器中心</string>
     <string name="server_center_subtitle">管理已信任的 SSH 主机及其文件。SSH 凭据与服务器登录凭据分开保存。</string>

@@ -447,6 +447,56 @@ class RelaxKonApi(
         }
     }
 
+    override suspend fun acceptOwnerDeviceInvitation(
+        serverUrl: String,
+        invitationToken: String,
+        deviceName: String,
+        publicKeySpki: String,
+    ): ApiResult<OwnerDeviceEnrollment> {
+        val body = JsonBody()
+            .string("token", invitationToken)
+            .string("deviceName", deviceName)
+            .string("platform", CLIENT_PLATFORM)
+            .string("publicKeySpki", publicKeySpki)
+            .string("clientVersion", clientVersion)
+        return when (val parsed = execute("POST", serverUrl, OwnerDeviceRoutes.ACCEPT_INVITATION, accessToken = null, body = body)) {
+            is ApiResult.Success -> runCatching {
+                OwnerDeviceEnrollment(JSONObject(parsed.value).getString("id"))
+            }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed owner-device enrollment response.") })
+            is ApiResult.Problem -> parsed
+            is ApiResult.Transport -> parsed
+        }
+    }
+
+    override suspend fun ownerDeviceChallenge(serverUrl: String, deviceId: String): ApiResult<OwnerDeviceChallenge> {
+        val body = JsonBody().string("deviceId", deviceId)
+        return when (val parsed = execute("POST", serverUrl, OwnerDeviceRoutes.CHALLENGE, accessToken = null, body = body)) {
+            is ApiResult.Success -> runCatching {
+                val json = JSONObject(parsed.value)
+                OwnerDeviceChallenge(json.getString("challengeId"), json.getString("nonce"))
+            }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed owner-device challenge response.") })
+            is ApiResult.Problem -> parsed
+            is ApiResult.Transport -> parsed
+        }
+    }
+
+    override suspend fun signInWithOwnerDevice(
+        serverUrl: String,
+        challengeId: String,
+        deviceId: String,
+        signature: String,
+    ): ApiResult<LoginSession> {
+        val body = JsonBody()
+            .string("challengeId", challengeId)
+            .string("deviceId", deviceId)
+            .string("signature", signature)
+        return when (val parsed = execute("POST", serverUrl, OwnerDeviceRoutes.SIGN_IN, accessToken = null, body = body)) {
+            is ApiResult.Success -> parseLogin(parsed.value)
+            is ApiResult.Problem -> parsed
+            is ApiResult.Transport -> parsed
+        }
+    }
+
     override suspend fun refresh(serverUrl: String, refreshToken: String): ApiResult<AuthTokens> {
         val body = JsonBody().string("refreshToken", refreshToken)
         return when (val parsed = execute("POST", serverUrl, AuthRoutes.REFRESH, accessToken = null, body = body)) {
@@ -1119,6 +1169,14 @@ private object AuthRoutes {
     const val LOGIN = "$V1/auth/login"
     const val REFRESH = "$V1/auth/refresh"
     const val LOGOUT = "$V1/auth/logout"
+}
+
+/** Route constants mirroring `OwnerDeviceKeyApiRoutes`. */
+private object OwnerDeviceRoutes {
+    private const val ROOT = "/api/v1.0/auth/owner-devices"
+    const val CHALLENGE = "$ROOT/challenge"
+    const val SIGN_IN = "$ROOT/sign-in"
+    const val ACCEPT_INVITATION = "$ROOT/accept-invitation"
 }
 
 /** Route constants mirroring `PrivilegedApiRoutes`. */

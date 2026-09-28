@@ -71,6 +71,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     /** Only ever what was typed this time. A saved password is never written here (§3, §6.2). */
     var passwordText by mutableStateOf("")
 
+    /** Exact base64 JSON payload produced by the already-enrolled Windows controller. */
+    var ownerDevicePairingCode by mutableStateOf("")
+
     var rememberCredential by mutableStateOf(true)
     var isLoggingIn by mutableStateOf(false)
     var message by mutableStateOf<UiMessage?>(null)
@@ -171,6 +174,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     val decision: LoginDecision?
         get() = decideLogin(selectedLogin, passwordText, savedCredentialState, isLoggingIn)
 
+    /** A key is bound to the normalized server identity, never to an editable display string. */
+    val ownerDeviceSignInAvailable: Boolean
+        get() = directConnection()?.let(container.ownerDevices::isPaired) == true
+
     fun changeServer(value: String) {
         discoveryJob?.cancel()
         // Typing an address means the form now describes a direct server, so it stops being a managed
@@ -186,6 +193,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changePassword(value: String) {
         passwordText = value
+    }
+
+    fun changeOwnerDevicePairingCode(value: String) {
+        ownerDevicePairingCode = value
+        message = null
     }
 
     fun dismissMessage() {
@@ -303,6 +315,80 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         discoveryJob = viewModelScope.launch {
             resolve(entered)
             submitResolved(activity)
+        }
+    }
+
+    /** Enrols this Android Keystore key with the one-time invitation created on the Windows host. */
+    fun pairOwnerDevice(activity: FragmentActivity) {
+        if (isLoggingIn) return
+        val payload = ownerDevicePairingCode
+        if (payload.isBlank()) {
+            message = UiMessage(R.string.owner_device_pairing_code_required)
+            return
+        }
+        isLoggingIn = true
+        message = null
+        viewModelScope.launch {
+            try {
+                when (val paired = container.ownerDevices.pair(payload)) {
+                    is ApiResult.Success -> {
+                        managedHostName = null
+                        serverUrl = paired.value.effectiveBaseUrl
+                        endpointDiscoveryState = EndpointDiscoveryState.Found
+                        ownerDevicePairingCode = ""
+                        signInWithOwnerDevice(activity, paired.value)
+                    }
+                    is ApiResult.Problem -> message = loginProblemMessage(paired)
+                    is ApiResult.Transport -> message = loginTransportMessage(paired)
+                }
+            } catch (_: IllegalArgumentException) {
+                message = UiMessage(R.string.owner_device_pairing_invalid)
+            } catch (error: Exception) {
+                message = UiMessage(R.string.error_generic)
+                    .withDebugDetail(error.message ?: error::class.java.simpleName)
+            } finally {
+                isLoggingIn = false
+            }
+        }
+    }
+
+    /** Signs the server nonce with the private key that Android Keystore keeps on this device. */
+    fun signInWithOwnerDevice(activity: FragmentActivity) {
+        val connection = directConnection()
+        if (connection == null) {
+            message = UiMessage(R.string.login_missing_fields)
+            focusRequest = LoginField.Server
+            return
+        }
+        if (!container.ownerDevices.isPaired(connection)) {
+            message = UiMessage(R.string.owner_device_not_paired)
+            return
+        }
+        isLoggingIn = true
+        message = null
+        viewModelScope.launch {
+            try {
+                signInWithOwnerDevice(activity, connection)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                message = UiMessage(R.string.error_generic)
+                    .withDebugDetail(error.message ?: error::class.java.simpleName)
+            } finally {
+                isLoggingIn = false
+            }
+        }
+    }
+
+    private suspend fun signInWithOwnerDevice(activity: FragmentActivity, connection: app.relaxkonos.mobile.servercenter.ServerConnectionIdentity) {
+        when (val result = container.session.loginWithOwnerDevice(connection, activity)) {
+            is ApiResult.Success -> {
+                // Keep the normalized server address in the ordinary connection list. It records no
+                // secret and lets the paired-device button remain discoverable after process death.
+                rememberLogin(SelectedLogin.resolved(connection, result.value.userName))
+            }
+            is ApiResult.Problem -> message = loginProblemMessage(result)
+            is ApiResult.Transport -> message = loginTransportMessage(result)
         }
     }
 
@@ -646,6 +732,12 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun loginIdOf(serviceId: String, identifier: String): String = loginId(serviceId, identifier)
+
+    private fun directConnection() = if (managedHostName == null && serverUrl.isNotBlank()) {
+        runCatching { app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules.direct(serverUrl) }.getOrNull()
+    } else {
+        null
+    }
 
     private fun report(result: ApiResult<*>) {
         when (result) {

@@ -156,6 +156,26 @@ interface RelaxKonGateway {
 
     suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession>
 
+    /** Enrols this Android Keystore public key with a one-time invitation issued by a Windows owner device. */
+    suspend fun acceptOwnerDeviceInvitation(
+        serverUrl: String,
+        invitationToken: String,
+        deviceName: String,
+        publicKeySpki: String,
+    ): ApiResult<OwnerDeviceEnrollment> = ApiResult.Transport("Owner-device pairing is unavailable.")
+
+    /** Obtains the one-use nonce for a previously enrolled device key. */
+    suspend fun ownerDeviceChallenge(serverUrl: String, deviceId: String): ApiResult<OwnerDeviceChallenge> =
+        ApiResult.Transport("Owner-device sign-in is unavailable.")
+
+    /** Exchanges a signature over an owner-device nonce for the regular RelaxKonOS session. */
+    suspend fun signInWithOwnerDevice(
+        serverUrl: String,
+        challengeId: String,
+        deviceId: String,
+        signature: String,
+    ): ApiResult<LoginSession> = ApiResult.Transport("Owner-device sign-in is unavailable.")
+
     suspend fun refresh(serverUrl: String, refreshToken: String): ApiResult<AuthTokens>
 
     suspend fun logout(serverUrl: String, accessToken: String, refreshToken: String): ApiResult<Unit>

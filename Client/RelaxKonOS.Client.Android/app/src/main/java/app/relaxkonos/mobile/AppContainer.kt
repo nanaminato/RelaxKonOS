@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.core.auth.OwnerDeviceAuthenticationService
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.RelaxKonApi
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
@@ -37,6 +38,7 @@ import app.relaxkonos.mobile.security.CredentialVault
 import app.relaxkonos.mobile.security.DebugCredentialStore
 import app.relaxkonos.mobile.security.FileDebugCredentialStorage
 import app.relaxkonos.mobile.security.FileVaultStorage
+import app.relaxkonos.mobile.security.OwnerDeviceKeyStore
 import app.relaxkonos.mobile.security.VaultAccess
 import app.relaxkonos.mobile.security.VaultDiagnostics
 import app.relaxkonos.mobile.security.VaultKeyManager
@@ -186,7 +188,12 @@ class AppContainer(context: Context) {
 
     val gateway: RelaxKonGateway = RelaxKonApi(clientVersion = BuildConfig.VERSION_NAME)
 
-    val session = AuthSession(gateway)
+    /** Android private keys for the Windows workstation owner-device protocol. */
+    val ownerDeviceKeys = OwnerDeviceKeyStore(appContext, biometrics)
+
+    val ownerDevices = OwnerDeviceAuthenticationService(gateway, ownerDeviceKeys)
+
+    val session = AuthSession(gateway, ownerDevices = ownerDevices)
 
     val elevations = ElevationRepository(gateway, session, vault)
 
