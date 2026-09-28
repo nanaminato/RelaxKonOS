@@ -720,7 +720,7 @@ internal sealed partial class NginxWebServerManager(
 
     private async Task<bool> WriteNginxFileAsync(string path, string content, CancellationToken cancellationToken)
     {
-        if (OperatingSystem.IsLinux())
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())
             return (await privilegedNginx.WriteManagedFileAsync(path, Encoding.UTF8.GetBytes(content), cancellationToken)).Success;
         await File.WriteAllTextAsync(path, content, new UTF8Encoding(false), cancellationToken);
         return true;
@@ -728,7 +728,7 @@ internal sealed partial class NginxWebServerManager(
 
     private async Task<bool> MoveNginxFileAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken)
     {
-        if (OperatingSystem.IsLinux())
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())
             return (await privilegedNginx.MoveManagedFileAsync(source, destination, overwrite, cancellationToken)).Success;
         File.Move(source, destination, overwrite);
         return true;
@@ -736,7 +736,7 @@ internal sealed partial class NginxWebServerManager(
 
     private async Task<bool> DeleteNginxFileAsync(string path, CancellationToken cancellationToken)
     {
-        if (OperatingSystem.IsLinux())
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsWindows())
             return (await privilegedNginx.DeleteManagedFileAsync(path, cancellationToken)).Success;
         File.Delete(path);
         return true;
@@ -966,7 +966,7 @@ internal sealed partial class NginxWebServerManager(
             var anchorProblem = await EnsureSiteIncludeAnchorAsync(instance, cancellationToken);
             if (anchorProblem is not null) return new WebServerOperationResult("webserver.acme_integration_required");
             if (IsSymbolicLink(directory)) return new WebServerOperationResult("webserver.unsafe_path");
-            Directory.CreateDirectory(directory);
+            if (!OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
             var sites = await ReadSitesAsync(instance, cancellationToken);
             if (sites.Count == 0) return new WebServerOperationResult("webserver.acme_no_managed_sites");
 
@@ -977,10 +977,10 @@ internal sealed partial class NginxWebServerManager(
                 var stage = marker + ".stage";
                 try
                 {
-                    await File.WriteAllTextAsync(stage, OwnershipMarker + "\nACME HTTP-01 enabled.\n", new UTF8Encoding(false), cancellationToken);
-                    File.Move(stage, marker, false);
+                    if (!await WriteNginxFileAsync(stage, OwnershipMarker + "\nACME HTTP-01 enabled.\n", cancellationToken)
+                        || !await MoveNginxFileAsync(stage, marker, false, cancellationToken)) return new("webserver.config_elevation_required");
                 }
-                finally { if (File.Exists(stage)) File.Delete(stage); }
+                finally { if (File.Exists(stage)) await DeleteNginxFileAsync(stage, CancellationToken.None); }
             }
 
             foreach (var site in sites)
@@ -1037,176 +1037,25 @@ internal sealed partial class NginxWebServerManager(
     private async Task<WebServerOperationResult> InstallWindowsManagedCoreAsync(ManagedLayout layout, NginxManagedInstallRequest request, IWebServerOperationProgress progress, CancellationToken cancellationToken)
     {
         string? packageId = null;
-        logger.LogInformation("Starting managed Windows Nginx installation from the fixed official release.");
         try
         {
-            if (ManagedRootExists(layout))
-            {
-                return new WebServerOperationResult("webserver.managed_installation_exists");
-            }
+            var version = string.IsNullOrWhiteSpace(request.Version) ? "1.31.3" : request.Version.Trim();
+            if (!WindowsVersionPattern().IsMatch(version)) return new("webserver.version_invalid");
             if (request.Source is not null)
             {
-                if (!WindowsVersionPattern().IsMatch(request.Version ?? "1.31.3")) return new WebServerOperationResult("webserver.version_invalid");
                 await progress.ReportAsync("copying", cancellationToken);
                 packageId = await packages.SaveAsync(request.Source.FileName, request.Source.Stream, cancellationToken: cancellationToken);
-                if (packageId is null) return new WebServerOperationResult("webserver.package_invalid");
+                if (packageId is null) return new("webserver.package_invalid");
             }
-            else if (string.IsNullOrWhiteSpace(packageId))
-            {
-                var version = string.IsNullOrWhiteSpace(request.Version) ? "1.31.3" : request.Version.Trim();
-                if (!WindowsVersionPattern().IsMatch(version)) return new WebServerOperationResult("webserver.version_invalid");
-                await progress.ReportAsync("downloading", cancellationToken);
-                logger.LogInformation("Downloading Windows Nginx ZIP from the official source. Version={Version}", version);
-                using var client = await outboundProxyClients.CreateAsync(OutboundProxyTarget.RuntimeDownloads, TimeSpan.FromMinutes(10), cancellationToken);
-                using var response = await client.GetAsync($"https://nginx.org/download/nginx-{version}.zip", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-                if (!response.IsSuccessStatusCode)
-                {
-                    logger.LogWarning("Official Windows Nginx download failed. Version={Version}, StatusCode={StatusCode}", version, (int)response.StatusCode);
-                    return new WebServerOperationResult("webserver.download_failed");
-                }
-                await using var download = await response.Content.ReadAsStreamAsync(cancellationToken);
-                packageId = await packages.SaveAsync($"nginx-{version}.zip", download, cancellationToken: cancellationToken);
-                if (packageId is null)
-                {
-                    logger.LogWarning("Downloaded Windows Nginx ZIP failed validation. Version={Version}", version);
-                    return new WebServerOperationResult("webserver.package_invalid");
-                }
-            }
-
-            var archivePath = packages.GetPath(packageId);
-            if (archivePath is null)
-            {
-                logger.LogWarning("Windows Nginx installation package is unavailable. PackageId={PackageId}", packageId);
-                return new WebServerOperationResult("webserver.package_not_found");
-            }
-            await progress.ReportAsync("extracting", cancellationToken);
-            var extracted = ExtractWindowsPackage(layout, archivePath);
-            if (!extracted)
-            {
-                logger.LogWarning("Windows Nginx package extraction or layout validation failed. PackageId={PackageId}", packageId);
-                return new WebServerOperationResult("webserver.package_invalid");
-            }
-            var finalized = await ValidateAndMarkWindowsManagedInstallationAsync(layout, progress, cancellationToken);
-            if (finalized.ProblemCode.Length == 0)
-                logger.LogInformation("Managed Windows Nginx installation completed. PackageId={PackageId}", packageId);
-            return finalized;
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (HttpRequestException exception)
-        {
-            logger.LogWarning(exception, "Windows Nginx download request failed.");
-            return new WebServerOperationResult("webserver.download_failed");
+            await progress.ReportAsync("installing_package", cancellationToken);
+            var installed = await privilegedNginx.ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Install,
+                version, packageId is null ? null : packages.GetPath(packageId), cancellationToken);
+            if (!installed.Success) return new(ToWebServerProblem(installed.ProblemCode, "webserver.install_failed"));
+            await progress.ReportAsync("validating_configuration", cancellationToken);
+            var verified = await privilegedNginx.ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Test, cancellationToken: cancellationToken);
+            return new(verified.Success ? "" : ToWebServerProblem(verified.ProblemCode, "webserver.config_test_failed"));
         }
         finally { packages.Delete(packageId); }
-    }
-
-    private async Task<WebServerOperationResult> ValidateAndMarkWindowsManagedInstallationAsync(ManagedLayout layout, IWebServerOperationProgress progress, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await progress.ReportAsync("verifying_layout", cancellationToken);
-            if (!IsReusableWindowsInstallation(layout))
-                return new WebServerOperationResult("webserver.existing_installation_unsafe");
-            await progress.ReportAsync("validating_configuration", cancellationToken);
-            var test = await RunNginxAsync(layout.ExecutablePath, ManagedArguments(layout, ["-t"]), cancellationToken);
-            if (!test.Success)
-            {
-                logger.LogWarning("Windows Nginx configuration test failed during managed installation. Executable={Executable}, Configuration={Configuration}, Output={Output}",
-                    layout.ExecutablePath, layout.ConfigurationPath, CommandOutputForLog(test.Output));
-                return new WebServerOperationResult("webserver.config_test_failed");
-            }
-            await progress.ReportAsync("finalizing", cancellationToken);
-            await WriteManagedMarkerAsync(layout.MarkerPath, cancellationToken);
-            logger.LogInformation("Validated and marked Windows Nginx installation as RelaxKonOS-managed. Destination={Destination}", layout.Root);
-            return new WebServerOperationResult("");
-        }
-        catch (UnauthorizedAccessException) { return new WebServerOperationResult("webserver.install_elevation_required"); }
-        catch (IOException exception)
-        {
-            logger.LogWarning(exception, "Failed to validate and mark a Windows Nginx installation. Destination={Destination}", layout.Root);
-            return new WebServerOperationResult("webserver.existing_installation_unsafe");
-        }
-    }
-
-    private bool ExtractWindowsPackage(ManagedLayout layout, string archivePath)
-    {
-        var staging = $"{layout.Root}.staging-{Guid.NewGuid():N}";
-        try
-        {
-            if (Directory.Exists(layout.Root) || File.Exists(layout.Root) || IsSymbolicLink(layout.Root))
-            {
-                logger.LogWarning("Cannot extract Windows Nginx package because the managed destination already exists or is unsafe. Destination={Destination}", layout.Root);
-                return false;
-            }
-            logger.LogInformation("Extracting Windows Nginx ZIP into a staging directory. Destination={Destination}", layout.Root);
-            using (var archive = ZipFile.OpenRead(archivePath))
-            {
-                if (!archive.Entries.All(entry => NginxInstallPackageStore.IsSafeEntry(entry.FullName)))
-                {
-                    logger.LogWarning("Rejected Windows Nginx ZIP because it contains an unsafe archive entry.");
-                    return false;
-                }
-                archive.ExtractToDirectory(staging);
-            }
-            var executable = Directory.GetFiles(staging, "nginx.exe", SearchOption.AllDirectories).SingleOrDefault();
-            if (executable is null)
-            {
-                logger.LogWarning("Rejected Windows Nginx ZIP because nginx.exe was not found after extraction.");
-                return false;
-            }
-            var extractedRoot = Path.GetDirectoryName(executable)!;
-            if (!File.Exists(Path.Combine(extractedRoot, "conf", "nginx.conf")))
-            {
-                logger.LogWarning("Rejected Windows Nginx ZIP because conf/nginx.conf was not found next to nginx.exe.");
-                return false;
-            }
-            Directory.CreateDirectory(Path.GetDirectoryName(layout.Root)!);
-            Directory.Move(extractedRoot, layout.Root);
-            var validLayout = File.Exists(layout.ExecutablePath) && File.Exists(layout.ConfigurationPath);
-            if (!validLayout)
-                logger.LogWarning("Windows Nginx extraction completed but the managed layout is incomplete. Destination={Destination}", layout.Root);
-            return validLayout;
-        }
-        catch (InvalidDataException exception)
-        {
-            logger.LogWarning(exception, "Windows Nginx ZIP could not be read during extraction.");
-            return false;
-        }
-        catch (IOException exception)
-        {
-            logger.LogWarning(exception, "I/O failure while extracting Windows Nginx ZIP. Destination={Destination}", layout.Root);
-            return false;
-        }
-        catch (UnauthorizedAccessException exception)
-        {
-            logger.LogWarning(exception, "Access denied while extracting Windows Nginx ZIP. Destination={Destination}", layout.Root);
-            return false;
-        }
-        finally { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); }
-    }
-
-    private static bool ManagedRootExists(ManagedLayout layout)
-        => Directory.Exists(layout.Root) || File.Exists(layout.Root) || IsSymbolicLink(layout.Root);
-
-    private static async Task WriteManagedMarkerAsync(string markerPath, CancellationToken cancellationToken)
-    {
-        await using var stream = new FileStream(markerPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        await stream.WriteAsync(new UTF8Encoding(false).GetBytes(ManagedMarkerContent), cancellationToken);
-    }
-
-    private static bool IsReusableWindowsInstallation(ManagedLayout layout)
-    {
-        if (!Directory.Exists(layout.Root) || IsSymbolicLink(layout.Root)
-            || !File.Exists(layout.ExecutablePath) || !File.Exists(layout.ConfigurationPath)
-            || IsSymbolicLink(layout.ExecutablePath) || IsSymbolicLink(layout.ConfigurationPath)
-            || File.Exists(layout.MarkerPath) || IsSymbolicLink(layout.MarkerPath)) return false;
-        try
-        {
-            return Directory.EnumerateFileSystemEntries(layout.Root, "*", SearchOption.AllDirectories)
-                .All(path => !IsSymbolicLink(path));
-        }
-        catch (IOException) { return false; }
-        catch (UnauthorizedAccessException) { return false; }
     }
 
     private async Task<WebServerOperationResult> ApplyManagedLifecycleCoreAsync(ManagedLayout layout, WebServerLifecycleAction action, CancellationToken cancellationToken)
@@ -1258,6 +1107,11 @@ internal sealed partial class NginxWebServerManager(
 
     private async Task<WebServerOperationResult> UninstallManagedCoreAsync(ManagedLayout layout, CancellationToken cancellationToken)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            var result = await privilegedNginx.ApplyWindowsRuntimeAsync(WindowsManagedRuntimeAction.Uninstall, cancellationToken: cancellationToken);
+            return new(result.Success ? "" : ToWebServerProblem(result.ProblemCode, "webserver.uninstall_failed"));
+        }
         if (!IsManagedInstallation(layout)) return new WebServerOperationResult("webserver.managed_required");
         if (UsesSystemPackageManagedService())
         {
@@ -1567,13 +1421,6 @@ internal sealed partial class NginxWebServerManager(
         catch (UnauthorizedAccessException) { return false; }
     }
 
-    private static bool DeleteOwnedFile(string path)
-    {
-        if (!IsOwnedFile(path)) return false;
-        File.Delete(path);
-        return true;
-    }
-
     private static bool IsSymbolicLink(string path)
     {
         try { return File.Exists(path) || Directory.Exists(path) ? File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint) : false; }
@@ -1720,6 +1567,23 @@ internal sealed partial class NginxWebServerManager(
 
     private async Task<CommandResult> RunNginxAsync(string executable, IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
+        if (OperatingSystem.IsWindows() && !arguments.SequenceEqual(new[] { "-V" }) && !arguments.SequenceEqual(new[] { "-v" }))
+        {
+            var layout = GetManagedLayout();
+            if (!string.Equals(Path.GetFullPath(executable), layout.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                return new(false, "Windows privileged Nginx operations require the Helper-managed instance.");
+            // Only the server's closed command shapes are translated; the Helper never receives arguments.
+            var tail = arguments.Count >= 4 && arguments[0] == "-p" && arguments[2] == "-c"
+                && Path.GetFullPath(arguments[1]) == layout.Root && Path.GetFullPath(arguments[3]) == layout.ConfigurationPath
+                ? arguments.Skip(4).ToArray() : arguments.ToArray();
+            WindowsManagedRuntimeAction? action = tail.Length == 0 ? WindowsManagedRuntimeAction.Start
+                : tail.SequenceEqual(new[] { "-t" }) ? WindowsManagedRuntimeAction.Test
+                : tail.SequenceEqual(new[] { "-s", "quit" }) ? WindowsManagedRuntimeAction.Stop
+                : tail.SequenceEqual(new[] { "-s", "reload" }) ? WindowsManagedRuntimeAction.Reload : null;
+            if (action is null) return new(false, "Unsupported Windows Nginx operation.");
+            var result = await privilegedNginx.ApplyWindowsRuntimeAsync(action.Value, cancellationToken: cancellationToken);
+            return new(result.Success, result.Success ? "" : ToWebServerProblem(result.ProblemCode, "webserver.lifecycle_failed"));
+        }
         using var process = new Process { StartInfo = new ProcessStartInfo { FileName = executable, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
         try

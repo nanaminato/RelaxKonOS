@@ -225,6 +225,8 @@
     "tunnels.problem.tunnel.runtime_previous_unhealthy": "旧版 FRP 运行时未通过健康检查。",
     "tunnels.problem.tunnel.runtime_release_not_configured": "当前平台和版本没有配置受信任的 FRP 运行时发布包。",
     "tunnels.problem.tunnel.runtime_start_failed": "无法启动受管 FRP 运行时。",
+    "tunnels.problem.privileged-helper-unavailable": "特权助手不可用。请确认宿主上的助手已启动且连接配置一致。",
+    "tunnels.problem.tunnel.runtime_helper_policy_denied": "宿主特权助手拒绝此运行时操作。请检查受信任版本和受管目录配置。",
     "tunnels.problem.tunnel.runtime_uninstall_confirmation_required": "请确认卸载运行时后再继续。",
     "tunnels.problem.tunnel.runtime_uninstall_failed": "无法卸载受管 FRP 运行时。",
     "tunnels.problem.tunnel.runtime_version_invalid": "请选择有效的 FRP 运行时版本。",

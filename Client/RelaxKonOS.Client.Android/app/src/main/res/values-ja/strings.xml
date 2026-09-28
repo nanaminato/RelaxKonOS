@@ -250,7 +250,7 @@
     <string name="error_elevation_not_administrator">そのアカウントはこのサーバーの管理者ではありません。</string>
     <string name="error_performance_not_ready">ホスト指標はまだ準備できていません。</string>
     <string name="error_unauthorized">セッションが期限切れです。もう一度サインインしてください。</string>
-    <string name="error_identity_not_eligible">ログイン中のホストアカウントは通常のファイル・ターミナル・Git 操作に使用できません。root、UID 1000 未満のシステムアカウント、nobody、有効なホームディレクトリを持たないアカウントは、このサーバーでは許可されません。通常のホストアカウントでサインインしてください。</string>
+    <string name="error_identity_not_eligible">このホストアカウントは、通常のファイル・ターミナル・Git 操作に必要な条件を満たしていません。アカウントの識別情報とユーザープロファイルを確認してください。</string>
     <string name="execution_root_files_available">ファイル操作は制限付きの特権 Helper で使用できます。このアカウントでは通常のターミナルと Git 操作は使用できません。</string>
     <string name="error_identity_not_executable">サーバーは現在このホストアカウントとして通常操作を実行できません。User Mode ではサーバー自身のホストアカウントとしてのみ実行され、その他の構成では特権ヘルパーのインストールと稼働が必要です。</string>
     <string name="error_capability_missing">このサーバーはその機能を提供していません。</string>
@@ -781,4 +781,8 @@
     <string name="websites_certificate_unverified">TLS は有効ですが、現在の接続では証明書の関連付けを確認できませんでした。</string>
     <string name="websites_certificate_status">証明書 %1$s · %2$s</string>
     <string name="websites_route_count">プロキシルート %1$d 件</string>
+    <string name="error_windows_profile_required">Windows の通常操作には、ローカルのホストアカウント、有効な SID とユーザープロファイルが必要です。サーバー上の Windows プロファイルを確認してください。</string>
+    <string name="error_reserved_identity">この Linux の予約アカウントでは通常のファイル・ターミナル・Git 操作を実行できません。通常のアカウントを使用してください。保護されたファイルは管理者の承認で操作できます。</string>
+    <string name="error_system_account">この Linux システムアカウントの UID は 1000 未満のため、通常操作を実行できません。通常のホストアカウントでサインインしてください。</string>
+    <string name="error_home_directory_required">このホストアカウントには検証済みの絶対ホームディレクトリがありません。ホスト管理者にプロファイルの修復を依頼してください。</string>
 </resources>

@@ -5,6 +5,7 @@ using System.ServiceProcess;
 using System.Text.Json;
 using System.Runtime.Versioning;
 using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -69,9 +70,10 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 
     protected override void OnStop()
     {
+        if (_pipeServer is not null) _pipeServer.StopAsync().GetAwaiter().GetResult();
+        WindowsManagedRuntimeHost.StopForHelperShutdownAsync().GetAwaiter().GetResult();
         WindowsMihomoPrivilegedProcessHost.StopForHelperShutdownAsync().GetAwaiter().GetResult();
         if (_userExecutionPipeServer is not null) _userExecutionPipeServer.StopAsync().GetAwaiter().GetResult();
-        if (_pipeServer is not null) _pipeServer.StopAsync().GetAwaiter().GetResult();
     }
 
     protected override void Dispose(bool disposing)
@@ -85,7 +87,9 @@ public sealed class WindowsPrivilegedHelperService : ServiceBase
 [SupportedOSPlatform("windows")]
 public sealed record WindowsHelperServiceConfiguration(string PipeName, string SharedSecret, string ServerServiceSid,
     IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds, string HelperExecutableSha256,
-    bool EnableWindowsUserExecution = false, int UserExecutionTimeoutSeconds = 25)
+    bool EnableWindowsUserExecution = false, int UserExecutionTimeoutSeconds = 25,
+    string? NginxRoot = null, string? RuntimePrivateRoot = null,
+    IReadOnlyList<string>? RuntimeArchiveRoots = null, IReadOnlyList<WindowsFrpRelease>? FrpReleases = null)
 {
     public void Validate()
     {
@@ -97,11 +101,13 @@ public sealed record WindowsHelperServiceConfiguration(string PipeName, string S
             throw new InvalidOperationException("Windows Helper configuration is incomplete.");
         if (Convert.FromBase64String(SharedSecret).Length < 32) throw new InvalidOperationException("Windows Helper secret is too short.");
         _ = new SecurityIdentifier(ServerServiceSid);
+        WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [], FrpReleases).Validate();
     }
 
     internal WindowsHelperPipeConfiguration ToPipeConfiguration()
         => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds, ServerServiceSid,
-            UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds);
+            UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds,
+            WindowsRuntimes: WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [ServerServiceSid], FrpReleases));
 
     public void VerifyCurrentExecutable()
     {

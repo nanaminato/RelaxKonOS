@@ -667,3 +667,7 @@ aapt2 compile --dir app/src/main/res -o <已存在的目录>/res.zip   # build-t
   正常授权提示而不是「已失效」。
 - V1-C 终端：SignalR 客户端与 PTY 渲染。
 - V1-E 其余域：Docker、部署、守护（按服务端能力门控）。
+
+## 2026-09-29：Windows 权限提示与授权边界
+
+主页根据服务端 `executionEligibility.reason` 分别显示 Windows profile、Linux 保留身份/系统账户和缺少家目录原因；Windows 登录不再显示 Linux UID/root 的泛化文案。Android 的业务授权保留在客户端；宿主 UAC 只用于部署/启动特权 Helper，日常操作不要求用户操作 Windows。文件沿用专用路径授权；Windows 受管 Nginx/FRP 的执行规则由 [Server/Helper 运维契约](../../../docs/platform/RelaxKonOS.PrivilegedOperations.Operations.md) 定义。当前 Android 未提供 FRP 生命周期管理页面；该能力的 Server/桌面调用者已更新，不把它记为移动端功能完成。

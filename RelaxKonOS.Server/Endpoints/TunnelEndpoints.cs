@@ -4,6 +4,8 @@ using RelaxKonOS.Server.HostMode;
 using RelaxKonOS.Server.Runtimes;
 using RelaxKonOS.Server.Secrets;
 using RelaxKonOS.Server.Tunnels;
+using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -44,8 +46,12 @@ public static class TunnelEndpoints
             await HandleAsync(() => service.UpsertTunnelAsync(tunnelId, request, UserId(user), ct))).RequireAuthorization("TunnelsManage");
         group.MapDelete(TunnelApiRoutes.TunnelPattern, async (Guid tunnelId, ClaimsPrincipal user, ITunnelService service, CancellationToken ct) =>
             await HandleDeleteAsync(() => service.DeleteTunnelAsync(tunnelId, UserId(user), ct))).RequireAuthorization("TunnelsManage");
-        group.MapPost(TunnelApiRoutes.ApplyProfilePattern, (Guid profileId, ClaimsPrincipal user, ITunnelProvider provider, CancellationToken ct) => provider.ApplyAsync(profileId, UserId(user), ct)).RequireAuthorization("TunnelsManage");
-        group.MapPost(TunnelApiRoutes.StopProfilePattern, (Guid profileId, ClaimsPrincipal user, ITunnelProvider provider, CancellationToken ct) => provider.StopAsync(profileId, UserId(user), ct)).RequireAuthorization("TunnelsManage");
+        group.MapPost(TunnelApiRoutes.ApplyProfilePattern, (Guid profileId, HttpContext http, ITunnelProvider provider, ITunnelService service,
+            IHostElevationSessionStore grants, CancellationToken ct) => ProfileLifecycleAsync(profileId, http, service, grants,
+                () => provider.ApplyAsync(profileId, UserId(http.User), ct), ct)).RequireAuthorization("TunnelsManage");
+        group.MapPost(TunnelApiRoutes.StopProfilePattern, (Guid profileId, HttpContext http, ITunnelProvider provider, ITunnelService service,
+            IHostElevationSessionStore grants, CancellationToken ct) => ProfileLifecycleAsync(profileId, http, service, grants,
+                () => provider.StopAsync(profileId, UserId(http.User), ct), ct)).RequireAuthorization("TunnelsManage");
         group.MapGet(TunnelApiRoutes.ManagedFrpsPattern, (IManagedFrpsService frps, CancellationToken ct) => frps.GetAsync(ct)).RequireAuthorization("TunnelsRead");
         group.MapGet(TunnelApiRoutes.ManagedFrpsEditorPattern, (ClaimsPrincipal user, IManagedFrpsService frps, CancellationToken ct) => frps.GetForEditingAsync(UserId(user), ct)).RequireAuthorization("TunnelsManage");
         group.MapPut(TunnelApiRoutes.ManagedFrpsPattern, async (UpdateManagedFrpsConfigurationRequest request, ClaimsPrincipal user, IManagedFrpsService frps, CancellationToken ct) =>
@@ -53,8 +59,10 @@ public static class TunnelEndpoints
             try { return Results.Ok(await frps.UpdateAsync(request, UserId(user), ct)); }
             catch (ManagedFrpsValidationException ex) { return Problem(ex.ProblemCode, StatusCodes.Status400BadRequest); }
         }).RequireAuthorization("TunnelsManage");
-        group.MapPost(TunnelApiRoutes.ManagedFrpsStartPattern, (ClaimsPrincipal user, IManagedFrpsService frps, CancellationToken ct) => frps.StartAsync(UserId(user), ct)).RequireAuthorization("TunnelsManage");
-        group.MapPost(TunnelApiRoutes.ManagedFrpsStopPattern, (ClaimsPrincipal user, IManagedFrpsService frps, CancellationToken ct) => frps.StopAsync(UserId(user), ct)).RequireAuthorization("TunnelsManage");
+        group.MapPost(TunnelApiRoutes.ManagedFrpsStartPattern, (HttpContext http, IManagedFrpsService frps, IHostElevationSessionStore grants, CancellationToken ct) =>
+            FrpsLifecycleAsync(http, grants, () => frps.StartAsync(UserId(http.User), ct))).RequireAuthorization("TunnelsManage");
+        group.MapPost(TunnelApiRoutes.ManagedFrpsStopPattern, (HttpContext http, IManagedFrpsService frps, IHostElevationSessionStore grants, CancellationToken ct) =>
+            FrpsLifecycleAsync(http, grants, () => frps.StopAsync(UserId(http.User), ct))).RequireAuthorization("TunnelsManage");
         group.MapGet(TunnelApiRoutes.ManagedFrpsLogsPattern, (IManagedFrpsService frps, CancellationToken ct) => frps.GetLogsAsync(ct)).RequireAuthorization("TunnelsRead");
         group.MapGet(TunnelApiRoutes.ManagedFrpsAuditPattern, (ITunnelAudit audit, CancellationToken ct) => audit.ListFrpsAsync(ct)).RequireAuthorization("TunnelsRead");
         // Patterns registered on a route group must be relative to that group.  Using the
@@ -65,6 +73,23 @@ public static class TunnelEndpoints
             await runtime.GetManagedFrpcDownloadAsync(version, ct) is { } download ? Results.Ok(download) : Results.NotFound()).RequireAuthorization("TunnelsRead");
         group.MapPost(TunnelApiRoutes.RuntimeDetectExternalPattern, (DetectExternalTunnelRuntimeRequest request, IRuntimeManager runtime, CancellationToken ct) => runtime.DetectExternalFrpcAsync(request.ExecutablePath, ct)).RequireAuthorization("TunnelsManage");
         return app;
+    }
+
+    private static async Task<IResult> ProfileLifecycleAsync(Guid id, HttpContext http, ITunnelService service,
+        IHostElevationSessionStore grants, Func<Task<TunnelOperationResultDto>> operation, CancellationToken ct)
+    {
+        var profile = await service.GetProfileAsync(id, UserId(http.User), ct);
+        if (profile is null) return Results.NotFound();
+        if (OperatingSystem.IsWindows() && profile.RuntimeMode == TunnelRuntimeMode.Managed
+            && !grants.IsGranted(http.User, HostElevationCapability.FrpLifecycle, id.ToString("D"))) return Problem("elevation-required", 403);
+        return Results.Ok(await operation());
+    }
+
+    private static async Task<IResult> FrpsLifecycleAsync(HttpContext http, IHostElevationSessionStore grants,
+        Func<Task<TunnelOperationResultDto>> operation)
+    {
+        if (OperatingSystem.IsWindows() && !grants.IsGranted(http.User, HostElevationCapability.FrpLifecycle, "frps")) return Problem("elevation-required", 403);
+        return Results.Ok(await operation());
     }
 
     private static async Task<IResult> HandleAsync<T>(Func<Task<T>> operation, bool created = false)

@@ -283,7 +283,7 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     };
     var runtimeRoot = Path.Combine(root, "frp-runtime"); Directory.CreateDirectory(runtimeRoot);
     var env = new TestHostEnvironment(runtimeRoot);
-    var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions { Releases = releases }));
+    var manager = new FrpRuntimeManager(env, new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions { Releases = releases }), new RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport()));
     var first = await manager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(first.Succeeded, "Verified FRP fixture did not install.");
     await VerifyFrpApplyLifecycleAsync(root, env, manager);
@@ -305,7 +305,7 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var badChecksumManager = new FrpRuntimeManager(new TestHostEnvironment(badChecksumRoot), new FixtureHttpClientFactory(archive), Options.Create(new FrpRuntimeOptions
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = new string('0', 64), ArchiveFormat = "tar.gz" }],
-    }));
+    }), new RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport()));
     var badChecksum = await badChecksumManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(!badChecksum.Succeeded && badChecksum.ProblemCode == "tunnel.runtime_checksum_failed", "Wrong checksum was accepted.");
     TestAssert.Assert((await badChecksumManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Checksum failure changed the active runtime.");
@@ -316,7 +316,7 @@ internal static async Task VerifyFrpRuntimeInstallAndRollbackAsync(string root)
     var maliciousManager = new FrpRuntimeManager(new TestHostEnvironment(maliciousRoot), new FixtureHttpClientFactory(maliciousArchive), Options.Create(new FrpRuntimeOptions
     {
         Releases = [new FrpRuntimeRelease { Version = "v0.71.0", Rid = "linux-x64", Url = "https://github.com/fatedier/frp/releases/download/v0.71.0/frp_0.71.0_linux_amd64.tar.gz", Sha256 = maliciousDigest, ArchiveFormat = "tar.gz" }],
-    }));
+    }), new RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport()));
     var malicious = await maliciousManager.InstallManagedFrpcAsync("v0.71.0", new SilentInstallationProgress(), CancellationToken.None);
     TestAssert.Assert(!malicious.Succeeded && malicious.ProblemCode == "tunnel.runtime_archive_unexpected_entry", "Unexpected archive content was accepted.");
     TestAssert.Assert((await maliciousManager.GetManagedFrpcStatusAsync(CancellationToken.None)).State == TunnelRuntimeState.NotInstalled, "Rejected archive changed the active runtime.");
@@ -358,7 +358,7 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
     services.AddScoped<ITunnelAudit, TunnelAudit>();
     services.AddScoped<ITunnelService, TunnelService>();
     services.AddSingleton<IRuntimeManager>(runtime);
-    services.AddSingleton<ITunnelProvider>(provider => new FrpTunnelProvider(provider.GetRequiredService<IServiceScopeFactory>(), environment, provider.GetRequiredService<IRuntimeManager>()));
+    services.AddSingleton<ITunnelProvider>(provider => new FrpTunnelProvider(provider.GetRequiredService<IServiceScopeFactory>(), environment, provider.GetRequiredService<IRuntimeManager>(), new RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations(new CapturingPrivilegedTransport())));
     await using var container = services.BuildServiceProvider();
     await using (var scope = container.CreateAsyncScope())
     {

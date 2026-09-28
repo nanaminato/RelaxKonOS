@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.Privileged;
 /// <summary>Versioning and size limits for the local Helper protocol.</summary>
 public static class PrivilegedOperationProtocol
 {
-    public const string Version = "1.1";
+    public const string Version = "1.2";
     public const int MaximumRequestBytes = 16 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
 }
@@ -20,6 +20,7 @@ public static class PrivilegedOperationProtocol
 [JsonConverter(typeof(JsonStringEnumConverter<PrivilegedOperationKind>))]
 public enum PrivilegedOperationKind
 {
+    WindowsManagedRuntime,
     FileRead,
     FileListDirectory,
     FileWrite,
@@ -260,7 +261,8 @@ public sealed record PrivilegedOperationRequest(
     [property: JsonPropertyName("expectedRevision")] string? ExpectedRevision = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
     [property: JsonPropertyName("correlation")] CorrelationContext? Correlation = null,
-    [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);
+    [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version,
+    [property: JsonPropertyName("windowsRuntime")] WindowsManagedRuntimeRequest? WindowsRuntime = null);
 
 /// <summary>Versioned structured result returned by the local Helper.</summary>
 public sealed record PrivilegedOperationResult(
@@ -278,4 +280,5 @@ public sealed record PrivilegedOperationResult(
     [property: JsonPropertyName("systemAuthenticationResult")] SystemAuthenticationResult? SystemAuthenticationResult = null,
     [property: JsonPropertyName("hostAdministratorEligible")] bool? HostAdministratorEligible = null,
     [property: JsonPropertyName("nginxRunning")] bool? NginxRunning = null,
+    [property: JsonPropertyName("windowsProcess")] WindowsManagedProcessSnapshot? WindowsProcess = null,
     [property: JsonPropertyName("version")] string Version = PrivilegedOperationProtocol.Version);

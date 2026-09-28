@@ -273,7 +273,7 @@
     <string name="error_elevation_not_administrator">That account is not an administrator on this server.</string>
     <string name="error_performance_not_ready">Host metrics are not ready yet.</string>
     <string name="error_unauthorized">The session expired. Sign in again.</string>
-    <string name="error_identity_not_eligible">This host account cannot be used for ordinary file, terminal, or Git operations: root, system accounts below UID 1000, nobody, and accounts without a usable home directory are outside what this server allows. Sign in with a regular host account instead.</string>
+    <string name="error_identity_not_eligible">This host account does not meet the server requirements for ordinary file, terminal or Git operations. Check the account identity and user profile.</string>
     <string name="execution_root_files_available">File operations are available through the privileged Helper. Ordinary terminal and Git operations are unavailable for this account.</string>
     <string name="error_identity_not_executable">The server cannot run ordinary operations as this host account right now: in User Mode it runs only as its own host account, and any other deployment needs the privileged helper installed and running.</string>
     <string name="error_capability_missing">This server does not offer that feature.</string>
@@ -817,4 +817,8 @@
     <string name="websites_certificate_unverified">TLS is enabled, but its certificate association could not be verified through this connection.</string>
     <string name="websites_certificate_status">Certificate %1$s · %2$s</string>
     <string name="websites_route_count">%1$d proxy route(s)</string>
+    <string name="error_windows_profile_required">Ordinary operations on Windows require a local host account with a valid SID and user profile. Check this account’s Windows profile on the server.</string>
+    <string name="error_reserved_identity">This reserved Linux account cannot run ordinary file, terminal or Git operations. Use a regular host account; protected file operations may use administrator authorization.</string>
+    <string name="error_system_account">This Linux system account has a UID below 1000 and cannot run ordinary operations on this server. Sign in with a regular host account.</string>
+    <string name="error_home_directory_required">This host account has no verified absolute home directory. Ask the host administrator to repair its user profile.</string>
 </resources>

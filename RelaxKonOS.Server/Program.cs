@@ -546,6 +546,7 @@ builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeSer
 builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostFileAuthorizationService, RelaxKonOS.Server.Privileged.HostFileAuthorizationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IPrivilegedNativeServiceOperations, RelaxKonOS.Server.ProcessGuardian.PrivilegedNativeServiceOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IPrivilegedNginxOperations, RelaxKonOS.Server.WebServer.PrivilegedNginxOperations>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IPrivilegedSmbOperations, RelaxKonOS.Server.FileServices.PrivilegedSmbOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.ISambaPlatformAdapter, RelaxKonOS.Server.FileServices.LinuxSambaPlatformAdapter>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IWindowsSmbPlatformAdapter, RelaxKonOS.Server.FileServices.WindowsSmbPlatformAdapter>();
@@ -648,7 +649,10 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Firewall.IFirewallChangeAuthoriz
 // Web Server V1: host-global Nginx discovery/read state plus an explicitly confirmed,
 // marker-owned conf.d integration. It never accepts shell text or elevation credentials from HTTP.
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IHostPrivilegeService, RelaxKonOS.Server.WebServer.HostPrivilegeService>();
-builder.Services.AddSingleton(builder.Configuration.GetSection("NginxManaged").Get<RelaxKonOS.Server.WebServer.NginxManagedOptions>() ?? new RelaxKonOS.Server.WebServer.NginxManagedOptions());
+var nginxManagedOptions = builder.Configuration.GetSection("NginxManaged").Get<RelaxKonOS.Server.WebServer.NginxManagedOptions>() ?? new();
+if (OperatingSystem.IsLinux() && builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(nginxManagedOptions.InstallationRoot))
+    nginxManagedOptions = new() { InstallationRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share", "RelaxKonOS", "debug", "webserver", "nginx") };
+builder.Services.AddSingleton(nginxManagedOptions);
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.NginxInstallPackageStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Certificate.HostOperationJournal>();
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.WebServerMetadataRepository>();

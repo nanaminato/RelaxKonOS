@@ -1,6 +1,6 @@
-﻿# 开发调试指南
+# 开发调试指南
 
-常规开发调试时**不要**运行部署脚本，也**不需要**注册 Windows 服务。直接在 Rider 中同时启动 Agent 和 Server 即可。仅当需要测试真实 Linux UFW 变更时，按下节完成一次特权 helper 配置。
+常规开发调试时**不要**运行部署脚本，也**不需要**注册 Windows 服务。直接在 Rider 中同时启动 Agent 和 Server 即可。需要受保护文件、Windows 受管 Nginx/FRP 或真实 Linux UFW 操作时，按对应章节配置特权 Helper。
 
 > 日常调试时的「有效用户执行」（文件浏览器、终端、Git、媒体、上传）**不需要安装任何服务**：
 > 开发 profile 已把 `PrivilegedHelper:UserExecutionBackend` 设为 `local-identity`，以你自己的账户在
@@ -51,7 +51,11 @@ dotnet run --project RelaxKonOS.Server --launch-profile http
 一次性配对码。`0.0.0.0` 仅是 Server 的监听地址，不能作为 Client 连接地址。局域网设备必须使用实际的 LAN
 地址或 DNS 名称；真实跨设备部署应使用 HTTPS。
 
-### 2. 可选：配置并启动特权 Helper
+### 2. 配置并启动特权 Helper（需要受保护操作时）
+
+本地开发的完整模型是：**普通权限启动 `http` Server，以管理员身份启动一次控制台 Helper，之后所有日常授权留在客户端**。Helper 持续监听本机命名管道，文件提权和 Windows 受管 Nginx/FRP 操作不再次弹宿主 UAC，也不需要用户回到 Windows 点击确认。无需安装服务；只有重启管理员控制台 Helper 时重新使用提升的终端。
+
+`http` profile 与 Helper 必须使用相同的管道名和 sharedSecret，Server 登录账户必须与运行 Server 的 SID 相同。Helper 不同账户启动时，把 Server SID 写入 `developerUserSids`。管理员终端启动不代表可以省略 `--console --config` 或放宽文件根策略。Nginx 与 FRP 的软件包入口另由 `runtimeArchiveRoots` 管理；不需要为了安装软件把普通文件白名单改成整盘。
 
 不要为日常断点调试安装 `RelaxKonOSPrivilegedHelper` 服务。创建开发专用配置（不可放在
 `ProgramData\RelaxKonOS\privileged-helper`，且仅允许测试目录）。例如
@@ -64,6 +68,10 @@ dotnet run --project RelaxKonOS.Server --launch-profile http
   "fileAllowedRoots": ["C:\\RelaxKonOS-dev"],
   "allowedServiceIds": ["RelaxKonOSServer-dev"],
   "allowConsoleDebug": true,
+  "runtimeArchiveRoots": [
+    "E:\\riderprojects\\RelaxKon\\RelaxKonOS\\RelaxKonOS.Server\\data\\runtimes\\frp",
+    "E:\\riderprojects\\RelaxKon\\RelaxKonOS\\RelaxKonOS.Server\\data\\webserver-packages"
+  ],
   "developerUserSids": [
     "S-1-5-21-2333115902-1181188794-1498531570-1005",
     "S-1-5-21-518898542-3752080965-3168045265-1005"]
@@ -84,6 +92,8 @@ Helper 必须提权运行，因而常常与 Server 不是同一账户——**只
 ```powershell
 dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config C:\RelaxKonOS-dev\privileged-helper.debug.json
 ```
+
+将 `runtimeArchiveRoots` 改为实际 Server 内容目录下的两个包暂存目录；它们不能与 Helper 的受管程序目录重叠。未指定时 Nginx 使用 `%ProgramData%\RelaxKonOS\webserver\nginx`，FRP 的受保护副本使用 `%ProgramData%\RelaxKonOS\privileged-runtimes`。定制 Nginx 目录时，Server 的 `NginxManaged:InstallationRoot` 和 Helper 的 `nginxRoot` 必须相同且为明确绝对路径。Helper 会保护这些目录及 Nginx 的父目录，Server 只能通过专用运行时接口修改；这些路径应专用，不能选成源码、用户工作目录、Server 数据或包暂存目录。
 
 配置必须显式包含 `allowConsoleDebug: true`，并配置与 Server 完全相同的
 `pipeName`、随机 Base64 `sharedSecret`、`fileAllowedRoots` 与 `allowedServiceIds`。Server 启动
@@ -175,9 +185,10 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 `/usr/bin/sudo`。普通 `http` 配置不包含此路径，因此适合 UI/API 调试；一旦发起真实 UFW 修改，
 它会稳定返回 `firewall.privileged_proxy_required`。
 
-所有 Development 启动配置都会将 `NginxManaged:InstallationRoot` 设为
-`%HOME%/.local/share/RelaxKonOS/debug/webserver/nginx`。它只保存 RelaxKonOS 的 Nginx
-受管标记；Linux 系统包 Nginx 仍由 `nginx.service` 使用 `/etc/nginx/nginx.conf`，不会读取该开发目录作为配置。
+未显式配置 `NginxManaged:InstallationRoot` 时，Development 下 Linux 使用
+`$HOME/.local/share/RelaxKonOS/debug/webserver/nginx`，Windows 使用 `%ProgramData%\RelaxKonOS\webserver\nginx`。
+Linux 目录只保存 RelaxKonOS 的受管标记；系统包 Nginx 仍由 `nginx.service` 使用
+`/etc/nginx/nginx.conf`。Windows 目录包含由提升 Helper 保护和执行的受管程序及配置。
 
 若只需给 Helper 的 Dispatcher 设断点，可直接以 root 执行构建产物并传入一条结构化请求：
 

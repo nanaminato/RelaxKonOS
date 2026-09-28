@@ -100,6 +100,27 @@ Server 的主机上将任何来源切换为 `full`。
 若增加受保护文件根或可控制服务，修改前必须进行安全审查；策略文件必须保持
 `root:root`、`0600`。重装服务会根据所选模式重建文件策略。
 
+## Windows：客户端授权与宿主执行分离
+
+Windows 的 UAC 确认只发生在部署/更新 Helper，或开发者启动管理员控制台 Helper 时。日常文件、Nginx、受管 FRP 操作不再要求用户操作宿主 Windows，也不使用 `runas`、ShellExecute 或启动 UAC 进程作为失败后的重试。Server 保持普通权限；客户端管理员凭据只用于认证和签发授权，不会改变 Server 的 Windows token。
+
+- 客户端使用宿主 Windows 管理员账户和真实账户密码获得授权；Windows Hello PIN 和 Alias 密码不满足该挑战。已登记 owner-device 会话按既有设备密钥规则授权非文件能力。
+- 管理员密码挑战通过 `LogonUser(LOGON32_LOGON_INTERACTIVE)` 验证，再检查管理员身份或 UAC limited token；令牌随即关闭，不用于执行或 impersonate。普通登录仍使用 network logon。管理员挑战账户需具有本地交互登录权；UPN 原样传入且 domain 为 null，`MicrosoftAccount\邮箱` 保留显式账户域。此选择依据 [LogonUser 文档](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-logonuserw) 和 [UAC 网络令牌限制](https://learn.microsoft.com/en-us/troubleshoot/windows-server/windows-security/user-account-control-and-remote-restriction)。
+- 授权保存在 Server 内存，绑定当前 access-token jti、subject、capability 和规范目标，约 5 分钟。有效范围内复用，退出/撤销后失效。授权过期不终止已经启动的受管进程；后续变更必须重新授权。
+- 文件继续使用文件专用入口和 Helper 文件根策略。账户未满足普通执行条件、SID 不一致、Helper 缺失等错误不能靠提权重试掩盖。Windows 管理员文件会话目前仍使用显式文件授权；Linux 的自动管理员文件路由不直接移植到 Windows。
+- Nginx 的受管安装、卸载、配置/元数据文件写入、配置测试、启停和 reload 交给 Helper。安装/配置/启停分别检查 `NginxInstall`、`NginxConfigurationWrite`、`NginxLifecycle` 的精确目标授权。
+- Windows 受管 frpc/frps 由 Helper 持有进程、PID 生命周期和日志。启动/停止检查 `FrpLifecycle`，frpc 目标为拥有者的 profile GUID（D 格式），frps 目标为 `frps`。安装/修复/回滚/卸载仍检查 `FrpInstall`。Server 不用自己的低权限 token 重试这些受管操作；外部 FRP 可执行文件仍仅以 Server 普通身份运行，不进入特权路径。
+
+Helper 协议直接升级为 **1.2**；Server 与 Helper 必须同时更新。运行时请求只携带固定 runtime/action、受管版本与结构化 FRP 配置，不接受 executable、arguments、shell、环境变量或任意 PID。Windows Nginx 特权操作仅支持 Helper 安装的受管实例；外部实例不自动导入或提升。
+
+Helper 独立校验软件来源：Nginx 仅从固定 nginx.org HTTPS 发布地址获取官方 ZIP；上传 ZIP 必须与 Helper 获取的同版本官方包完全一致，因此该校验需要联网。FRP ZIP 必须匹配 Helper 管理员配置中的版本/RID/SHA-256 信任清单，默认清单与当前发行配置一致。新的 FRP pin 必须同时更新 Server 与 Helper 配置；不能由 HTTP 请求提交 hash 或下载 URL。上传/暂存包只能从 `runtimeArchiveRoots` 读取，拒绝链接、路径越界、超限和 ZIP traversal。
+
+受管程序与完整性清单只允许 LocalSystem/Administrators 写入，Server SID 只读。FRP 的解密运行配置只保存在 Helper 私有目录，日志只返回不含凭据的固定摘要。Nginx 配置禁止加载模块、脚本/环境注入、越界 include 和越界日志写入；通用文件授权不能覆盖这些程序、配置或完整性清单，静态站点 `sites/` 内容仍受文件授权及文件根策略管理。Helper 停止时清理其受管进程；Server 重启后通过 Helper 状态查询恢复显示，不把“保存配置”当成“正在运行”。
+
+Helper 配置中的可选固定路径为 `nginxRoot`（默认 `%ProgramData%\RelaxKonOS\webserver\nginx`）与 `runtimePrivateRoot`（默认 `%ProgramData%\RelaxKonOS\privileged-runtimes`）。Server 的 `NginxManaged:InstallationRoot` 若非空，必须与前者一致。Nginx 安装还会保护其父目录以固定安装位置；自定义根及其父目录必须专用于 Helper，不能指向源码、用户工作目录或 Server 数据目录。`runtimeArchiveRoots` 为 Server 内容目录下的 `data/runtimes/frp` 和 `data/webserver-packages`，与普通文件提权白名单分开。部署安装器写入这些包入口；开发控制台示例见 [开发调试指南](../development/RelaxKonOS.Develop.md)。
+
+本次验证覆盖 Server/Helper/桌面客户端构建、Android 提示单元测试、受限配置、授权范围、调用方预置伪造完整性清单及缺失 Helper 的拒绝行为。真实 Windows 10/11 管理员控制台、LocalSystem 服务及受管进程重启矩阵仍须在对应宿主验收；此处不把编译成功等同于实机通过。
+
 ## Windows Server
 
 使用提升的会话运行 `deployment/windows/Install-RelaxKonOSServices.ps1`。它会安装：

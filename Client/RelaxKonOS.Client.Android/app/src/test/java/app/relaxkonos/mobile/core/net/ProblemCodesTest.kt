@@ -163,7 +163,7 @@ class ProblemCodesTest {
             executionEligibilityMessage(ExecutionEligibilityReasons.SERVER_ACCOUNT_REQUIRED).resId,
         )
         assertEquals(
-            R.string.error_identity_not_eligible,
+            R.string.error_reserved_identity,
             executionEligibilityMessage(ExecutionEligibilityReasons.RESERVED_IDENTITY).resId,
         )
     }
@@ -182,7 +182,12 @@ class ProblemCodesTest {
         ).forEach { reason ->
             assertEquals(
                 "reason=$reason must still be explained",
-                R.string.error_identity_not_eligible,
+                when (reason) {
+                    ExecutionEligibilityReasons.SYSTEM_ACCOUNT -> R.string.error_system_account
+                    ExecutionEligibilityReasons.UNVERIFIED_HOME_DIRECTORY -> R.string.error_home_directory_required
+                    ExecutionEligibilityReasons.WINDOWS_PROFILE_REQUIRED -> R.string.error_windows_profile_required
+                    else -> R.string.error_identity_not_eligible
+                },
                 executionEligibilityMessage(reason).resId,
             )
         }

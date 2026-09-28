@@ -21,6 +21,21 @@ public static partial class PrivilegedOperationExecutor
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "operation id is required");
         if (request.Correlation is not { } correlation || !correlation.IsValid())
             return Fail(64, PrivilegedProblemCode.InvalidRequest, "valid correlation metadata is required");
+        if (request.Operation != PrivilegedOperationKind.WindowsManagedRuntime && request.WindowsRuntime is not null)
+            return Fail(64, PrivilegedProblemCode.InvalidRequest, "runtime fields require a dedicated operation");
+        if (request.Operation == PrivilegedOperationKind.WindowsManagedRuntime)
+        {
+            // No general-purpose fields may ride along with a runtime request.
+            var clean = new PrivilegedOperationRequest(request.Operation, OperationId: request.OperationId,
+                Correlation: request.Correlation, Version: request.Version, WindowsRuntime: request.WindowsRuntime);
+            if (request != clean) return Fail(64, PrivilegedProblemCode.InvalidRequest, "unexpected runtime request fields");
+            return OperatingSystem.IsWindows()
+                ? await WindowsManagedRuntimeHost.ExecuteAsync(request.WindowsRuntime, policy.WindowsRuntimes)
+                : Fail(64, PrivilegedProblemCode.UnsupportedOperation, "Windows runtime operation is unavailable");
+        }
+        if (OperatingSystem.IsWindows() && request.Operation is PrivilegedOperationKind.NginxWriteManagedFile
+            or PrivilegedOperationKind.NginxMoveManagedFile or PrivilegedOperationKind.NginxDeleteManagedFile)
+            return await WindowsManagedRuntimeHost.FileAsync(request, policy.WindowsRuntimes);
         if (OperatingSystem.IsWindows() && request.Operation is >= PrivilegedOperationKind.SmbDetect and <= PrivilegedOperationKind.SmbSetUserPassword)
         {
             if (request.Operation == PrivilegedOperationKind.SmbPackageInstall && progress is not null)
@@ -62,6 +77,15 @@ public static partial class PrivilegedOperationExecutor
         var fileRoots = isFileOperation ? policy.FileRoots(request.FileAuthorizationSource!.Value) : Array.Empty<string>();
         try
         {
+            // Generic elevated file grants cannot mutate the Helper's executable/configuration store.
+            if (OperatingSystem.IsWindows() && policy.WindowsRuntimes is { } runtimes
+                && isFileOperation && new[] { request.Path, request.DestinationPath }.Any(path => path is not null
+                    && (WindowsManagedRuntimePolicy.Contains(runtimes.PrivateRoot, path)
+                        || request.Operation is not (PrivilegedOperationKind.FileRead or PrivilegedOperationKind.FileListDirectory
+                            or PrivilegedOperationKind.FileGetInfo or PrivilegedOperationKind.FileGetProperties or PrivilegedOperationKind.FileGetSpecialLocations)
+                        && WindowsManagedRuntimePolicy.Contains(runtimes.NginxRoot, path)
+                        && !WindowsManagedRuntimePolicy.Contains(Path.Combine(runtimes.NginxRoot, "sites"), path))))
+                return Fail(64, PrivilegedProblemCode.ResourceNotAllowed, "runtime files require dedicated operations");
             // File roots are a privilege boundary, not merely an input filter. Keep their directory
             // descriptors open throughout the operation so a path component replaced after validation
             // cannot redirect root-owned I/O through a symlink. Construction is inside this guarded

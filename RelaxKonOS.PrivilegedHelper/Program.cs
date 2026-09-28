@@ -1108,7 +1108,7 @@ static async Task AtomicWriteBytesAsync(string path, byte[] bytes) { var temp = 
 /// <summary>Host-supplied allowlists for the closed-set privileged operation dispatcher.</summary>
 public sealed record PrivilegedOperationPolicy(IReadOnlyList<string> ManualFileRoots,
     IReadOnlyList<string> AdministratorFileRoots, IReadOnlyList<string> RootFileRoots,
-    IReadOnlyList<string> AllowedServiceIds)
+    IReadOnlyList<string> AllowedServiceIds, RelaxKonOS.PrivilegedHelper.WindowsManagedRuntimePolicy? WindowsRuntimes = null)
 {
     public IReadOnlyList<string> FileRoots(PrivilegedFileAuthorizationSource source) => source switch
     {

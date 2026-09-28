@@ -24,6 +24,7 @@ public enum HostElevationCapability
     SmbManage,
     SmbInstall,
     FrpInstall,
+    FrpLifecycle,
     MihomoInstall,
     DockerInstall,
     HostTimeChange,

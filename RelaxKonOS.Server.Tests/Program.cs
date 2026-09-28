@@ -19,6 +19,7 @@ try
 {
     ObservabilityChecks.VerifyProtocolAndSanitization();
     await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(root);
+    if (args.Contains("--windows-privileges-only")) { await WindowsPrivilegeChecks.RunAsync(root); return; }
     if (args.Contains("--proxy-geodata-only"))
     {
         await ProxyConfigurationChecks.VerifyMihomoGeoDataStagingAsync(root);
@@ -94,6 +95,7 @@ try
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);
     if (settingsOnly || fileOperationsOnly) return;
     await ServerCoreChecks.VerifyPrivilegedOperationProtocolAsync();
+    await WindowsPrivilegeChecks.RunAsync(root);
     await DeveloperUserSidAllowListVerification.RunAsync();
     ServerCoreChecks.VerifyLinuxSystemAuthenticationProvider();
     ServerCoreChecks.VerifySmbProtocolAndElevationContract();

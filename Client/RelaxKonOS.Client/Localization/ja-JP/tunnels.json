@@ -225,6 +225,8 @@
     "tunnels.problem.tunnel.runtime_previous_unhealthy": "以前の FRP Runtime バージョンはヘルスチェックに失敗しました。",
     "tunnels.problem.tunnel.runtime_release_not_configured": "このプラットフォームとバージョンには信頼済み FRP Runtime リリースが設定されていません。",
     "tunnels.problem.tunnel.runtime_start_failed": "管理対象 FRP Runtime を開始できませんでした。",
+    "tunnels.problem.privileged-helper-unavailable": "特権ヘルパーを利用できません。ホストで起動していることと接続設定が一致することを確認してください。",
+    "tunnels.problem.tunnel.runtime_helper_policy_denied": "ホストの特権ヘルパーがこの操作を拒否しました。信頼済みバージョンと管理対象ディレクトリの設定を確認してください。",
     "tunnels.problem.tunnel.runtime_uninstall_confirmation_required": "続行する前に Runtime のアンインストールを確認してください。",
     "tunnels.problem.tunnel.runtime_uninstall_failed": "管理対象 FRP Runtime をアンインストールできませんでした。",
     "tunnels.problem.tunnel.runtime_version_invalid": "有効な FRP Runtime バージョンを選択してください。",
