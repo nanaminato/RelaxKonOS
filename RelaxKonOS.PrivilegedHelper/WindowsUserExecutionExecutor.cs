@@ -6,6 +6,7 @@ using Microsoft.Win32;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Protocol.Git;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -81,6 +82,8 @@ internal static class WindowsUserExecutionExecutor
             UserExecutionOperationKind.FileRead => Read(ValidatePath(request.Path!), cancellationToken),
             UserExecutionOperationKind.FileWrite => Write(ValidatePath(request.Path!),
                 Decode(request.ContentBase64!), cancellationToken),
+            UserExecutionOperationKind.FileWriteIfMatch => GitTextFileWrite.ReplaceIfVersion(
+                ValidatePath(request.Path!), Decode(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileDelete => Delete(ValidatePath(request.Path!), cancellationToken),
             UserExecutionOperationKind.FileRename => Rename(ValidatePath(request.Path!), request.NewName!),
             UserExecutionOperationKind.FileMove => Move(ValidatePath(request.Path!),

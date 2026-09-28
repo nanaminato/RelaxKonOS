@@ -127,7 +127,13 @@ internal sealed record RevisionRecord(
     string CreatedByReference,
     DateTimeOffset CreatedAt,
     string? CatalogTemplateId = null,
-    string? CatalogTemplateVersion = null);
+    string? CatalogTemplateVersion = null,
+    Guid? GitBuildId = null,
+    string? GitRepositoryUrl = null,
+    string? GitReference = null,
+    string? GitCommitSha = null,
+    string? GitContextDirectory = null,
+    string? GitDockerfile = null);
 
 /// <summary>
 /// The validated, typed deployment input produced by a template. It is never a raw client payload:

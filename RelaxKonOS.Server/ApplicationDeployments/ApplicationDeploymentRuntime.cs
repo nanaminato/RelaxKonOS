@@ -188,7 +188,7 @@ internal sealed class ApplicationDeploymentRuntime(
 
         var request = new DockerContainerCreateRequest(
             containerName,
-            revision.ImageReference,
+            revision.ImageId ?? revision.ImageReference,
             revision.Arguments,
             ports,
             environment,

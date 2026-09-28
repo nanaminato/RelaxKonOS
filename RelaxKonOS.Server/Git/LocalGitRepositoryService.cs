@@ -342,14 +342,19 @@ public sealed partial class LocalGitRepositoryService(
                 foreach (var path in request.Paths)
                     if (!IsPathSafe(repo.Path, path))
                         return new GitOperationResult(false, "commit", Message: $"Path outside repository: {path}");
-                var addArgs = new List<string> { "add", "--" };
-                addArgs.AddRange(request.Paths);
-                var addResult = await RunGitAsync(gitPath, repo.Path, [.. addArgs], cancellationToken);
-                if (!addResult.Success)
-                    return new GitOperationResult(false, "commit", Message: addResult.Error);
+                var add = await RunGitAsync(gitPath, repo.Path, ["add", "--", .. request.Paths], cancellationToken);
+                if (!add.Success) return new GitOperationResult(false, "commit", Message: add.Error);
             }
             var args = new List<string> { "commit", "-m", request.Message };
             if (request.Amend) args.Add("--amend");
+            // --only commits the requested paths without sweeping unrelated staged work into a
+            // mobile one-file commit. Git itself rejects unresolved conflicts on these paths.
+            if (request.Paths.Count > 0)
+            {
+                args.Add("--only");
+                args.Add("--");
+                args.AddRange(request.Paths);
+            }
             var result = await RunGitAsync(gitPath, repo.Path, [.. args], cancellationToken);
             return new GitOperationResult(result.Success, "commit", Message: result.Success ? null : result.Error);
         });

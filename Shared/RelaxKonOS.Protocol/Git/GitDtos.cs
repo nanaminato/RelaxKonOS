@@ -103,6 +103,16 @@ public sealed record GitDiffDto(
     [property: JsonPropertyName("binary")] bool Binary = false,
     [property: JsonPropertyName("truncated")] bool Truncated = false);
 
+/// <summary>A UTF-8 working-tree file and the exact bytes its editor must compare at save time.</summary>
+public sealed record GitTextFileDto(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("content")] string Content,
+    [property: JsonPropertyName("version")] string Version);
+
+public sealed record GitSaveTextFileRequest(
+    [property: JsonPropertyName("content")] string Content,
+    [property: JsonPropertyName("expectedVersion")] string ExpectedVersion);
+
 /// <summary>Generic operation result for pull/push/merge/revert/checkout.</summary>
 public sealed record GitOperationResult(
     [property: JsonPropertyName("success")] bool Success,

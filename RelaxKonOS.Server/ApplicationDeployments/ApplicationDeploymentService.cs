@@ -1,6 +1,8 @@
 using RelaxKonOS.Protocol.ApplicationDeployments;
 using RelaxKonOS.Protocol.Docker;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Proxy.Mihomo;
+using RelaxKonOS.Server.Git;
 
 namespace RelaxKonOS.Server.ApplicationDeployments;
 
@@ -28,6 +30,7 @@ internal sealed class ApplicationDeploymentService(
     ApplicationDeploymentOptions options,
     IHostEnvironment environment,
     ApplicationDeploymentLiveLogs liveLogs,
+    GitBuildService gitBuilds,
     ILogger<ApplicationDeploymentService> logger)
 {
     /// <summary>Read-only secret delivery path inside the workload container.</summary>
@@ -156,6 +159,16 @@ internal sealed class ApplicationDeploymentService(
         var inputReference = ApplicationDeploymentValidation.Reference(Canonical(source));
         var template = ApplicationTemplateCatalog.Require(application.SourceKind);
         var plan = template.Validate(source, application, options, inputReference);
+        GitBuildOperationDto? gitArtifact = null;
+        if (source.GitBuildId is { } buildId)
+        {
+            if (template is not ImageTemplate || !Guid.TryParse(actor, out var owner))
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.InvalidRequest, 400);
+            try { gitArtifact = gitBuilds.Artifact(owner, buildId); }
+            catch (GitBuildProblem) { throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageNotFound, 409); }
+            if (gitArtifact.ImageReference != plan.ImageReference)
+                throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageReferenceInvalid, 400);
+        }
 
         await progress.ReportAsync(new(DeploymentStage.Preparing, null, true), cancellationToken);
         var contextDirectory = Path.Combine(BuildRoot, inputReference[..16]);
@@ -175,13 +188,17 @@ internal sealed class ApplicationDeploymentService(
             (entryPoint, arguments) = await template.PrepareBuildContextAsync(plan, contextDirectory, application, options, cancellationToken);
         }
 
-        await progress.ReportAsync(new(template is ImageTemplate ? DeploymentStage.Pulling : DeploymentStage.Building, null, true), cancellationToken);
-        await ProduceImageAsync(template, plan, contextDirectory, operationId, cancellationToken);
+        if (gitArtifact is null)
+            await progress.ReportAsync(new(template is ImageTemplate ? DeploymentStage.Pulling : DeploymentStage.Building, null, true), cancellationToken);
+        if (gitArtifact is null)
+            await ProduceImageAsync(template, plan, contextDirectory, operationId, cancellationToken);
 
         var identity = await runtime.ResolveImageIdentityAsync(plan.ImageReference, cancellationToken);
         if (identity.ImageId is null)
             throw new ApplicationDeploymentException(
                 template is ImageTemplate ? ApplicationDeploymentProblemCodes.ImageNotFound : ApplicationDeploymentProblemCodes.BuildFailed, 409);
+        if (gitArtifact is not null && !string.Equals(identity.ImageId, gitArtifact.ImageId, StringComparison.Ordinal))
+            throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ImageReferenceInvalid, 409);
 
         var revision = catalog.AddRevision(new RevisionRecord(
             Guid.NewGuid(), application.Id, 0, application.SourceKind, template.TemplateVersion,
@@ -191,7 +208,9 @@ internal sealed class ApplicationDeploymentService(
             application.Limits, application.Volumes, application.Configuration,
             application.SiteId,
             ApplicationDeploymentValidation.Reference(actor), DateTimeOffset.UtcNow,
-            application.CatalogTemplateId, application.CatalogTemplateVersion), out _);
+            application.CatalogTemplateId, application.CatalogTemplateVersion,
+            gitArtifact?.Id, gitArtifact?.RepositoryUrl, gitArtifact?.Reference, gitArtifact?.CommitSha,
+            gitArtifact?.ContextDirectory, gitArtifact?.Dockerfile), out _);
 
         await ActivateRevisionAsync(application, operationId, revision, progress, cancellationToken, rollback: false);
     }
@@ -589,6 +608,7 @@ internal sealed class ApplicationDeploymentService(
         source.ImageReference ?? "-", source.BaseImage ?? "-", source.ArchiveReferenceId ?? "-",
         source.RuntimeVersion ?? "-", source.ProgramEntry ?? "-",
         source.SelfContained ? "self-contained" : "framework-dependent",
+        source.GitBuildId?.ToString("D") ?? "-",
         string.Join('\u001f', source.Arguments ?? []));
 
     /// <summary>Keeps build contexts bounded without ever reaching outside the deployment root.</summary>

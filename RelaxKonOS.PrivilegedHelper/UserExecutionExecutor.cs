@@ -5,6 +5,7 @@ using System.Text.Json;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Protocol.Git;
 using RoyalTerminal.Terminal;
 
 namespace RelaxKonOS.PrivilegedHelper;
@@ -152,6 +153,8 @@ public static class UserExecutionExecutor
             UserExecutionOperationKind.FileGetInfo => Info(path),
             UserExecutionOperationKind.FileRead => await ReadAsync(path!),
             UserExecutionOperationKind.FileWrite => await WriteAsync(path!, request.ContentBase64!),
+            UserExecutionOperationKind.FileWriteIfMatch => GitTextFileWrite.ReplaceIfVersion(path!,
+                Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileDelete => Delete(path!),
             UserExecutionOperationKind.FileRename => Rename(path!, request.NewName!, home),
             UserExecutionOperationKind.FileMove => Move(path!, destination!, request.Overwrite),

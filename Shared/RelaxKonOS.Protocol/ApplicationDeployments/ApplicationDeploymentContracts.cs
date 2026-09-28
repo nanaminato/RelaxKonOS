@@ -133,7 +133,13 @@ public sealed record ApplicationRevisionDto(
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt,
     [property: JsonPropertyName("problemCode")] string? ProblemCode = null,
     [property: JsonPropertyName("catalogTemplateId")] string? CatalogTemplateId = null,
-    [property: JsonPropertyName("catalogTemplateVersion")] string? CatalogTemplateVersion = null);
+    [property: JsonPropertyName("catalogTemplateVersion")] string? CatalogTemplateVersion = null,
+    [property: JsonPropertyName("gitBuildId")] Guid? GitBuildId = null,
+    [property: JsonPropertyName("gitRepositoryUrl")] string? GitRepositoryUrl = null,
+    [property: JsonPropertyName("gitReference")] string? GitReference = null,
+    [property: JsonPropertyName("gitCommitSha")] string? GitCommitSha = null,
+    [property: JsonPropertyName("gitContextDirectory")] string? GitContextDirectory = null,
+    [property: JsonPropertyName("gitDockerfile")] string? GitDockerfile = null);
 
 /// <summary>An archive staged for a deployment. Only the reference id travels through the protocol.</summary>
 public sealed record DeploymentStagedFileDto(

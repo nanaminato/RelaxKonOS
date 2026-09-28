@@ -43,6 +43,15 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
     }
     public async Task<FileEntryDto> WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default)
         => await RunAsync<FileEntryDto>(UserExecutionOperationKind.FileWrite, path, content: await ReadContentAsync(content, cancellationToken));
+    public Task<bool> WriteFileIfMatchAsync(string path, byte[] content, string expectedSha256,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (content.Length > RelaxKonOS.Protocol.Git.GitTextFileWrite.MaximumBytes)
+            throw new ArgumentException("Git text file is too large.", nameof(content));
+        return RunAsync<bool>(UserExecutionOperationKind.FileWriteIfMatch, path,
+            content: Convert.ToBase64String(content), expectedSha256: expectedSha256);
+    }
     public FilePropertiesDto? GetProperties(string path) => Run<FilePropertiesDto?>(UserExecutionOperationKind.FileGetProperties, path: path);
     public FilePropertiesDto SetUnixPermissions(string path, int unixMode) => Run<FilePropertiesDto>(UserExecutionOperationKind.FileSetUnixPermissions, path: path, unixMode: unixMode);
     public void CreateDirectory(string path) => Run<bool>(UserExecutionOperationKind.FileCreateDirectory, path: path);
@@ -88,9 +97,11 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
 
     private async Task<T> RunAsync<T>(UserExecutionOperationKind operation, string? path = null, string? destinationPath = null, string? newName = null,
         string? fileName = null, bool overwrite = false, string? content = null, int? unixMode = null,
-        long? offset = null, long? expectedBytes = null)
+        long? offset = null, long? expectedBytes = null, string? expectedSha256 = null)
     {
         var principal = http.HttpContext?.User ?? throw new InvalidOperationException("User execution requires an authenticated HTTP request.");
+        if (operation == UserExecutionOperationKind.FileWriteIfMatch && mode.Mode == ServerMode.System && IsRootSession(principal))
+            throw new UnauthorizedAccessException("Git editing requires an ordinary host identity.");
         if (mode.Mode == ServerMode.System && IsRootSession(principal))
         {
             try
@@ -110,7 +121,7 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
         }
         var context = contexts.Resolve(principal);
         var request = new UserExecutionRequest(context.Identity, operation, path, destinationPath, newName, fileName, overwrite,
-            content, unixMode, offset, expectedBytes, OperationId: Guid.NewGuid());
+            content, unixMode, offset, expectedBytes, OperationId: Guid.NewGuid(), ExpectedSha256: expectedSha256);
         if (mode.Mode == ServerMode.User)
         {
             var validation = new DirectUserExecutionService(mode).Validate(context, request);
@@ -118,7 +129,8 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
             return await DirectAsync<T>(request);
         }
         var result = await transport.ExecuteAsync(request, http.HttpContext?.RequestAborted ?? CancellationToken.None);
-        if (!result.Success && result.ProblemCode == UserExecutionProblemCode.AccessDenied)
+        if (operation != UserExecutionOperationKind.FileWriteIfMatch
+            && !result.Success && result.ProblemCode == UserExecutionProblemCode.AccessDenied)
         {
             PrivilegedFileAuthorizationSource? source;
             try { source = authorizations.Authorize(principal, Capability(operation),
@@ -137,7 +149,8 @@ public sealed class UserExecutionFileService(LocalFileService direct, IUserExecu
 
     private static FileElevationCapability Capability(UserExecutionOperationKind operation) => operation switch
     {
-        UserExecutionOperationKind.FileWrite or UserExecutionOperationKind.FileSetUnixPermissions => FileElevationCapability.Write,
+        UserExecutionOperationKind.FileWrite or UserExecutionOperationKind.FileWriteIfMatch
+            or UserExecutionOperationKind.FileSetUnixPermissions => FileElevationCapability.Write,
         UserExecutionOperationKind.FileCreateDirectory => FileElevationCapability.CreateDirectory,
         UserExecutionOperationKind.FileDelete => FileElevationCapability.Delete,
         UserExecutionOperationKind.FileRename => FileElevationCapability.Rename,

@@ -635,6 +635,10 @@ builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.INativeServiceAd
 // Invokes host git CLI as the host user; credentials handled entirely by the host git credential helper.
 builder.Services.AddSingleton<RelaxKonOS.Server.Git.IHostGitCli, RelaxKonOS.Server.Git.HostGitCli>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Git.IGitRepositoryService, RelaxKonOS.Server.Git.LocalGitRepositoryService>();
+builder.Services.AddScoped<RelaxKonOS.Server.Git.GitTextEditor>();
+builder.Services.AddSingleton(builder.Configuration.GetSection("GitBuilds").Get<RelaxKonOS.Server.Git.GitBuildOptions>()
+    ?? new RelaxKonOS.Server.Git.GitBuildOptions());
+builder.Services.AddSingleton<RelaxKonOS.Server.Git.GitBuildService>();
 
 // Firewall keeps a deliberately narrow UFW-only surface. On Linux the RelaxKonOS Server service
 // is the privileged host facade; on Windows the unavailable provider is retained only so all
@@ -1063,6 +1067,7 @@ app.MapWebsitePublicationEndpoints();
 app.MapFileServiceEndpoints();
 app.MapCertificateEndpoints();
 app.MapGitEndpoints();
+app.MapGitBuildEndpoints();
 app.MapInstallationEndpoints();
 app.MapApplicationDeploymentEndpoints();
 app.MapTunnelEndpoints();

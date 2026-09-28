@@ -46,6 +46,9 @@ class DeploymentRepository(private val gateway: RelaxKonGateway, private val ses
     suspend fun createImageDefinition(owner: SessionState.Active, definition: ImageDeploymentDefinition, key: String): ApiResult<DeploymentApplication> =
         read(owner) { url, token -> gateway.createImageDeployment(url, token, definition, key) }
 
+    suspend fun deployGitBuild(owner: SessionState.Active, applicationId: String, build: GitBuildOperation, key: String): ApiResult<DeploymentOperation> =
+        read(owner) { url, token -> gateway.deployGitBuild(url, token, applicationId, build, key) }
+
     suspend fun createArchiveDefinition(owner: SessionState.Active, definition: ArchiveDeploymentDefinition, key: String): ApiResult<DeploymentApplication> =
         read(owner) { url, token -> gateway.createArchiveDeployment(url, token, definition, key) }
 

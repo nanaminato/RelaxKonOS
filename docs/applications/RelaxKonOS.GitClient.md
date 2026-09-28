@@ -29,7 +29,7 @@ GitClient 是 RelaxKonOS 的内置版本控制客户端，参考 TortoiseGit / G
 | 仓库选择 | 已注册仓库列表 + 当前选中仓库 + 切换 | `GET /api/v1.0/git/repositories` |
 | 工作区状态 | 已暂存/未暂存/未跟踪/冲突文件清单 + 当前分支 + upstream 落后/领先计数 | `GET /api/v1.0/git/repositories/{id}/status` |
 | 分支管理 | 本地+远程分支列表、切换(checkout)、新建、删除 | `GET/POST/DELETE /api/v1.0/git/repositories/{id}/branches` |
-| 提交 | 暂存选择文件 + 提交消息 + 提交 | `POST /api/v1.0/git/repositories/{id}/commit` |
+| 提交 | 对请求路径暂存并使用 `git commit --only` 提交，不附带其他已暂存文件 | `POST /api/v1.0/git/repositories/{id}/commit` |
 | 拉取 | 当前分支 fetch+merge/fetch+rebase；未检出分支可仅安全快进更新 | `POST /api/v1.0/git/repositories/{id}/pull` |
 | 推送 | 推送当前或指定本地分支到指定 remote/分支，无需 checkout | `POST /api/v1.0/git/repositories/{id}/push` |
 | 提交历史 | log 列表（hash/作者/时间/消息）+ 单提交详情 | `GET /api/v1.0/git/repositories/{id}/log` |

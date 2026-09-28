@@ -23,6 +23,7 @@ public static class GitApiRoutes
     public const string Log = $"/{V1}/git/repositories/{{id}}/log";
     public const string CommitDetail = $"/{V1}/git/repositories/{{id}}/commits/{{sha}}";
     public const string Diff = $"/{V1}/git/repositories/{{id}}/diff";
+    public const string TextFile = $"/{V1}/git/repositories/{{id}}/text-file";
     public const string Revert = $"/{V1}/git/repositories/{{id}}/revert";
     public const string Conflicts = $"/{V1}/git/repositories/{{id}}/conflicts";
     public const string Conflict = Conflicts + "/file";
@@ -33,6 +34,10 @@ public static class GitApiRoutes
     public const string Restore = $"/{V1}/git/repositories/{{id}}/restore";
     public const string Stage = $"/{V1}/git/repositories/{{id}}/stage";
     public const string Unstage = $"/{V1}/git/repositories/{{id}}/unstage";
+    public const string Builds = $"/{V1}/git/builds";
+    public const string BuildCredentials = Builds + "/credentials";
+    public const string BuildResolve = Builds + "/resolve";
+    public const string BuildRefs = Builds + "/refs";
 
     // ── 路径探测与初始化（不依赖已注册仓库）──
     public const string Probe = $"/{V1}/git/probe";
