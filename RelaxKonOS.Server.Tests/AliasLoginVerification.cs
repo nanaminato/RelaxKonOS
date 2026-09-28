@@ -33,6 +33,18 @@ internal static class AliasLoginVerification
     private static readonly JsonSerializerOptions Json = RelaxKonOSJsonOptions.Default;
     private static int checks;
 
+    // Fixed P-256 key pair, nonce and signature produced once by a JVM (SunEC):
+    //   Signature.getInstance("SHA256withECDSA") over the bytes 0x00..0x1F.
+    // They pin the owner-device wire contract to what Android actually emits, instead of letting the
+    // test and the service agree with each other while both stay incompatible with the phone.
+    private const string AndroidPrivateKeyPkcs8 =
+        "MEECAQAwEwYHKoZIzj0CAQYIKoZIzj0DAQcEJzAlAgEBBCCmdv0HBHvTyBwBoTzq3LLBrDPw0JKbUlptNikbdzkoCw==";
+    private const string AndroidPublicKeySpki =
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE57fWRm+M5rQCgvJlzdE69iAuVFDIHP+XOJwpglzqK1y1ABSsACN+JPajQm2P386eXLN9GgoevcxWU860aUqQNg==";
+    private const string AndroidVectorNonceBase64 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+    private const string AndroidVectorSignatureBase64 =
+        "MEQCICbHLxt2SP5QrnCPh0Amb+7caepIe3IJsZWx2Ih8sDEHAiA5/aJA7Yah4sUM473QOKIImfKX6hFKZ0O5xz1YI8sa6A==";
+
     public static async Task RunAsync(string root)
     {
         var provider = new FakeIdentityProvider();
@@ -148,12 +160,11 @@ internal static class AliasLoginVerification
             var registered = ownerDevices.Register(system.User.Id, ownerDeviceId,
                 new OwnerDeviceBootstrapRequest("owner-test", "windows", Convert.ToBase64String(ownerKey.ExportSubjectPublicKeyInfo()), "1"));
             var challenge = ownerDevices.CreateChallenge(ownerDeviceId);
-            var challengeNonce = Convert.FromBase64String(challenge.Nonce.Replace('-', '+').Replace('_', '/').PadRight(
-                challenge.Nonce.Length + (4 - challenge.Nonce.Length % 4) % 4, '='));
+            var challengeNonce = DecodeBase64Url(challenge.Nonce);
             var verified = ownerDevices.VerifyChallenge(challenge.ChallengeId, ownerDeviceId,
-                Convert.ToBase64String(ownerKey.SignData(challengeNonce, HashAlgorithmName.SHA256)));
+                Convert.ToBase64String(ownerKey.SignData(challengeNonce, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)));
             Check(verified.Id == registered.Id && verified.LastUsedAt is not null,
-                "P-256 owner-device nonce signature is accepted exactly through its enrolled key");
+                "RFC 3279 DER owner-device nonce signature is accepted exactly through its enrolled key");
             var ownerPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
                 new Claim("sub", system.User.Id.ToString()), new Claim("device_id", ownerDeviceId.ToString()),
                 new Claim("amr", "owner-device-key"), new Claim("role", "controller"),
@@ -168,13 +179,47 @@ internal static class AliasLoginVerification
             Check(ownerDevices.List(ownerPrincipal).Single().Id == ownerDeviceId,
                 "SQLite lists active owner-device keys without DateTimeOffset query translation");
             var invitation = ownerDevices.CreateInvitation(ownerPrincipal);
-            using var invitedAndroidKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            // Android interop: both wire values below come from a real JVM (SunEC) key pair, the same
+            // provider family Android Keystore and Conscrypt use. Android emits ASN.1 DER signatures,
+            // so a server that verifies .NET's default IEEE P1363 concatenation rejects every phone.
+            using var invitedAndroidKey = ECDsa.Create();
+            invitedAndroidKey.ImportPkcs8PrivateKey(Convert.FromBase64String(AndroidPrivateKeyPkcs8), out _);
+            var androidDeviceId = Guid.Empty;
             using (var response = await Send(HttpMethod.Post, OwnerDeviceKeyApiRoutes.AcceptInvitation,
-                       new OwnerDeviceAcceptInvitationRequest(invitation.Token, "test-device", "android",
-                           Convert.ToBase64String(invitedAndroidKey.ExportSubjectPublicKeyInfo()), "3")))
+                       new OwnerDeviceAcceptInvitationRequest(invitation.Token, "test-device", "android", AndroidPublicKeySpki, "3")))
+            {
                 Check(response.StatusCode == HttpStatusCode.Created,
                     "owner invitation enrollment accepts an Android label already used by another device: " +
                     (int)response.StatusCode + " " + await response.Content.ReadAsStringAsync());
+                androidDeviceId = (await response.Content.ReadFromJsonAsync<OwnerDeviceDto>(Json))!.Id;
+            }
+            using (var challengeResponse = await Send(HttpMethod.Post, OwnerDeviceKeyApiRoutes.Challenge,
+                       new OwnerDeviceChallengeRequest(androidDeviceId)))
+            {
+                Check(challengeResponse.StatusCode == HttpStatusCode.OK, "the enrolled Android device obtains a nonce");
+                var androidChallenge = (await challengeResponse.Content.ReadFromJsonAsync<OwnerDeviceChallenge>(Json))!;
+                using var signIn = await Send(HttpMethod.Post, OwnerDeviceKeyApiRoutes.SignIn, new OwnerDeviceSignInRequest(
+                    androidChallenge.ChallengeId, androidDeviceId, Convert.ToBase64String(
+                        invitedAndroidKey.SignData(DecodeBase64Url(androidChallenge.Nonce), HashAlgorithmName.SHA256,
+                            DSASignatureFormat.Rfc3279DerSequence))));
+                Check(signIn.StatusCode == HttpStatusCode.OK,
+                    "an Android DER signature signs in over HTTP: " + (int)signIn.StatusCode + " " + await signIn.Content.ReadAsStringAsync());
+                var androidToken = (await signIn.Content.ReadFromJsonAsync<LoginResponse>(Json))!.Tokens.AccessToken;
+                Check(new JwtSecurityTokenHandler().ReadJwtToken(androidToken).Claims.Single(x => x.Type == "amr").Value == "owner-device-key",
+                    "an Android owner-device session is issued with amr=owner-device-key");
+            }
+            // Known-answer test on the raw JVM bytes: this exact signature must verify in the DER format
+            // the service uses, and must not be mistaken for the IEEE P1363 default.
+            using (var vector = ECDsa.Create())
+            {
+                vector.ImportSubjectPublicKeyInfo(Convert.FromBase64String(AndroidPublicKeySpki), out _);
+                var vectorNonce = Convert.FromBase64String(AndroidVectorNonceBase64);
+                var vectorSignature = Convert.FromBase64String(AndroidVectorSignatureBase64);
+                Check(vector.VerifyData(vectorNonce, vectorSignature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence),
+                    "a JVM-produced owner-device signature verifies as RFC 3279 DER");
+                Check(!vector.VerifyData(vectorNonce, vectorSignature, HashAlgorithmName.SHA256),
+                    "the same JVM signature is not the IEEE P1363 default the owner-device service must avoid");
+            }
             var passwordPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
                 new Claim("sub", system.User.Id.ToString()), new Claim("device_id", ownerDeviceId.ToString()),
                 new Claim("amr", "system"), new Claim("role", "controller"),
@@ -282,6 +327,9 @@ internal static class AliasLoginVerification
     }
     private static void Check(bool condition, string description)
     { if (!condition) throw new InvalidOperationException("Alias check failed: " + description); checks++; }
+
+    private static byte[] DecodeBase64Url(string value) => Convert.FromBase64String(
+        value.Replace('-', '+').Replace('_', '/').PadRight(value.Length + (4 - value.Length % 4) % 4, '='));
 
     private sealed class FakeIdentityProvider : IIdentityProvider
     {

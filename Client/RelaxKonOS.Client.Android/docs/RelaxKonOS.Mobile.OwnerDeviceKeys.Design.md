@@ -18,7 +18,7 @@ The current desktop flow serializes the QR payload as base64-encoded UTF-8 JSON:
 
 Android must accept this exact payload from a live QR scan, a user-selected local image, or manual paste; these are input alternatives, never distinct wire formats. Live scanning uses the permissionless Google Code Scanner when available, while local-image recognition uses the bundled ML Kit QR reader so it works without a model download. Before creating its Android Keystore key, the app shows the resolved HTTP(S) Server origin and expiry for explicit confirmation, and rejects expired or unsupported-protocol origins.
 
-To sign in, a controller requests a 32-byte, two-minute nonce and returns an ECDSA SHA-256 signature. The Server consumes each nonce once, then issues the usual short-lived access and refresh tokens with `amr=owner-device-key`.
+To sign in, a controller requests a 32-byte, two-minute nonce and returns an ECDSA SHA-256 signature over the raw nonce bytes (never over the base64url text). The signature is the ASN.1 DER SEQUENCE of RFC 3279 / X9.62: that is what Android Keystore (`SHA256withECDSA`), any JVM and OpenSSL emit natively, and the encoding both the mobile client and the desktop client must send. It is deliberately not the fixed-field IEEE P1363 `r‖s` concatenation, which is merely .NET's `ECDsa.SignData`/`VerifyData` default and is accepted by no other platform. The Server consumes each nonce once, then issues the usual short-lived access and refresh tokens with `amr=owner-device-key`.
 
 ## Host elevation
 

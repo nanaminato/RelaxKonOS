@@ -30,11 +30,18 @@ public sealed record OwnerDeviceBootstrapRequest(
 public sealed record OwnerDeviceChallengeRequest(
     [property: JsonPropertyName("deviceId")] Guid DeviceId);
 
+/// <summary>Base64url of the raw 32-byte nonce. Clients sign the decoded bytes, never this text.</summary>
 public sealed record OwnerDeviceChallenge(
     [property: JsonPropertyName("challengeId")] Guid ChallengeId,
     [property: JsonPropertyName("nonce")] string Nonce,
     [property: JsonPropertyName("expiresAt")] DateTimeOffset ExpiresAt);
 
+/// <summary>
+/// Proves possession of an enrolled owner-device key. <see cref="Signature"/> is base64 of an
+/// ECDSA/SHA-256 signature over the decoded nonce, encoded as the ASN.1 DER SEQUENCE of RFC 3279 /
+/// X9.62 — the form Android Keystore, JVMs and OpenSSL emit natively. It is not the fixed-field
+/// IEEE P1363 <c>r‖s</c> concatenation that .NET signs and verifies by default.
+/// </summary>
 public sealed record OwnerDeviceSignInRequest(
     [property: JsonPropertyName("challengeId")] Guid ChallengeId,
     [property: JsonPropertyName("deviceId")] Guid DeviceId,
