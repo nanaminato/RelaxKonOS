@@ -25,6 +25,53 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun scriptTasks(serverUrl: String, accessToken: String): ApiResult<ScriptTasksResult> =
+        guardianCall("GET", serverUrl, ScriptRoutes.TASKS, accessToken, null, ScriptWire::tasks)
+    override suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> =
+        guardianCall("GET", serverUrl, ScriptRoutes.task(id), accessToken, null, ScriptWire::taskResult)
+    override suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> {
+        val body = JsonBody().string("executablePath", request.executablePath)
+            .raw("arguments", JSONArray(request.arguments).toString())
+            .string("workingDirectory", request.workingDirectory)
+            .raw("environment", JSONObject(request.environment).toString())
+            .int("timeoutSeconds", request.timeoutSeconds).string("runAs", request.runAs)
+        request.approval?.let { body.objectField("runAsApproval", JsonBody().string("username", it.username).secret("password", it.password)) }
+        return when (val result = execute("POST", serverUrl, ScriptRoutes.TASKS, accessToken, body, mapOf("Idempotency-Key" to key))) {
+            is ApiResult.Success -> runCatching { ScriptWire.taskResult(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed script response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+    }
+    override suspend fun scriptCancel(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> =
+        guardianCall("POST", serverUrl, ScriptRoutes.cancel(id), accessToken, JsonBody(), ScriptWire::taskResult)
+
+    override suspend fun guardianStatus(serverUrl: String, accessToken: String): ApiResult<GuardianStatus> =
+        guardianCall("GET", serverUrl, GuardianRoutes.STATUS, accessToken, null, GuardianWire::status)
+    override suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> =
+        guardianCall("GET", serverUrl, GuardianRoutes.WORKLOADS, accessToken, null, GuardianWire::workloads)
+    override suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinition?> =
+        guardianCall("GET", serverUrl, GuardianRoutes.workload(id), accessToken, null, GuardianWire::definition)
+    override suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<GuardianLog>> =
+        guardianCall("GET", serverUrl, GuardianRoutes.logs(id), accessToken, null, GuardianWire::logs)
+    override suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianOperation> {
+        val body = JsonBody().raw("definition", GuardianWire.definitionJson(definition))
+        if (approval != null) body.objectField("runAsApproval", JsonBody().string("username", approval.username).secret("password", approval.password))
+        return guardianCall("POST", serverUrl, GuardianRoutes.WORKLOADS, accessToken, body, GuardianWire::operation)
+    }
+    override suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation> =
+        guardianCall("POST", serverUrl, GuardianRoutes.action(id, action), accessToken, JsonBody(), GuardianWire::operation)
+    override suspend fun guardianDelete(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianOperation> =
+        guardianCall("DELETE", serverUrl, GuardianRoutes.workload(id), accessToken, null, GuardianWire::operation)
+
+    private suspend fun <T> guardianCall(method: String, serverUrl: String, route: String, accessToken: String,
+        body: JsonBody?, parse: (String) -> T): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Guardian response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
     override suspend fun gitRepositories(serverUrl: String, accessToken: String): ApiResult<List<GitRepository>> =
         gitCall("GET", serverUrl, GitRoutes.REPOSITORIES, accessToken, null, GitWire::repositories)
 

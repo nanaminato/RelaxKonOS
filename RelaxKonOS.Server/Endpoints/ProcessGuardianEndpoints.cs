@@ -41,6 +41,45 @@ public static class ProcessGuardianEndpoints
         group.MapPost("/workloads/{id}/{action}", (string id, string action, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ApplyActionAsync(id, action, ct));
         group.MapGet("/workloads/{id}/logs", (string id, RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ListLogsAsync(id, ct));
         group.MapGet("/audit", (RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) => service.ListAuditAsync(ct));
+        group.MapGet("/scripts", (HttpContext http, IUserExecutionContextResolver contexts,
+            RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) =>
+        {
+            var identity = ResolveScriptIdentity(http, contexts);
+            return identity is null ? Task.FromResult(new GuardianAgentResponse(false, "guardian.script_identity_unavailable"))
+                : service.ListScriptsAsync(identity.Value.Stable, ct);
+        });
+        group.MapGet("/scripts/{id}", (string id, HttpContext http, IUserExecutionContextResolver contexts,
+            RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) =>
+        {
+            var identity = ResolveScriptIdentity(http, contexts);
+            return identity is null ? Task.FromResult(new GuardianAgentResponse(false, "guardian.script_identity_unavailable"))
+                : service.GetScriptAsync(identity.Value.Stable, id, ct);
+        });
+        group.MapPost("/scripts", (SubmitScriptTaskRequest request, HttpContext http, IUserExecutionContextResolver contexts,
+            RelaxKonOS.Server.ProcessGuardian.IRunAsAuthorizationService runAs,
+            RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) =>
+        {
+            var identity = ResolveScriptIdentity(http, contexts);
+            if (identity is null) return Task.FromResult(new GuardianAgentResponse(false, "guardian.script_identity_unavailable"));
+            if (!Guid.TryParse(http.Request.Headers["Idempotency-Key"], out var id))
+                return Task.FromResult(new GuardianAgentResponse(false, "guardian.script_idempotency_required"));
+            if (string.IsNullOrWhiteSpace(request.ExecutablePath) || string.IsNullOrWhiteSpace(request.WorkingDirectory) ||
+                request.Arguments is null || request.Environment is null || request.Arguments.Count > 64 ||
+                request.Environment.Count > 32 || request.TimeoutSeconds is < 1 or > 3600)
+                return Task.FromResult(new GuardianAgentResponse(false, "guardian.script_invalid"));
+            var approval = runAs.Authorize(identity.Value.Account, request.RunAs, request.RunAsApproval);
+            if (!approval.Success) return Task.FromResult(new GuardianAgentResponse(false, approval.ProblemCode));
+            return service.SubmitScriptAsync(new ScriptTaskDefinitionDto(id.ToString("D"), identity.Value.Stable,
+                request.ExecutablePath, request.Arguments, request.WorkingDirectory, request.Environment,
+                request.TimeoutSeconds, approval.RunAs!, approval.StableIdentity!), ct);
+        });
+        group.MapPost("/scripts/{id}/cancel", (string id, HttpContext http, IUserExecutionContextResolver contexts,
+            RelaxKonOS.Server.ProcessGuardian.IProcessGuardianService service, CancellationToken ct) =>
+        {
+            var identity = ResolveScriptIdentity(http, contexts);
+            return identity is null ? Task.FromResult(new GuardianAgentResponse(false, "guardian.script_identity_unavailable"))
+                : service.CancelScriptAsync(identity.Value.Stable, id, ct);
+        });
         group.MapGet("/services", (RelaxKonOS.Server.ProcessGuardian.INativeServiceAdapter services, CancellationToken ct) => services.ListAsync(ct))
             .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.NativeServices));
         group.MapPost("/services/{id}/{action}", async (string id, string action, NativeServiceActionRequest request, HttpContext http,
@@ -54,5 +93,15 @@ public static class ProcessGuardianEndpoints
         group.MapPost("/agent/installation/plan", (RelaxKonOS.Server.ProcessGuardian.IGuardianAgentInstaller installer, CancellationToken ct) => installer.CreatePlanAsync(ct))
             .AddEndpointFilter(new ServerModeEndpointFilter(ServerHostFeature.AgentInstallation));
         return app;
+    }
+
+    private static (string Account, string Stable)? ResolveScriptIdentity(HttpContext http, IUserExecutionContextResolver contexts)
+    {
+        try
+        {
+            var identity = contexts.Resolve(http.User).Identity;
+            return (identity.CanonicalAccount, identity.StableIdentity);
+        }
+        catch (UserExecutionException) { return null; }
     }
 }

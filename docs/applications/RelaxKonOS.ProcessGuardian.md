@@ -1,6 +1,8 @@
 # RelaxKonOS ProcessGuardian 设计
 
 > 内置进程守护管理器。它统一管理由 RelaxKonOS 声明和守护的后台程序，并以只读/受控方式管理现有 `systemd` 单元和 Windows SCM 服务；不是任务管理器的替代品。
+
+一次性脚本任务使用同一独立 Guardian Agent，但不进入工作负载重启策略。`/api/v1.0/guardian/scripts` 接受结构化可执行路径、参数、工作目录、环境、超时和逐次授权的 `RunAs`；Agent 按请求者的稳定 OS 身份隔离任务，保存退出码与有界输出，支持查询和取消。HTTP 或手机断线不停止任务；Agent 重启后把未完成记录标为 `interrupted`，不自动重跑。该接口要求 Agent 可用，且宿主 OS 实际允许目标账户执行。
 >
 > 当前状态：**已实现**独立 Guardian Agent 可执行体、本机认证 IPC、工作负载声明持久化、启动/停止/重启/删除、退出退避、健康检查、审计，以及 Windows/Linux 的服务部署脚本。`RunAs` 已实现为工作负载的声明字段、Server 一次性管理员认证和 Linux Agent 的受控 `runuser` 启动；Windows 跨账户令牌启动、内置 Server/Agent 的服务账户变更、正式安装包、可视化安装向导、日志轮转和完整原生服务管理仍待完成；Server 不会替代 Agent 守护任何用户工作负载。
 >

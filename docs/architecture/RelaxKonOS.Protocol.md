@@ -461,16 +461,21 @@ Docker 拉取镜像时的加速前缀；按 User + Target（如 docker）隔离�
 
 | 方法             | 路径                                        | 请求                                              | 响应                                           | 认证                                    |
 | -------------- | ----------------------------------------- | ----------------------------------------------- | -------------------------------------------- | ------------------------------------- |
-| GET            | `/api/v1.0/guardian/status`                 | —                                               | GuardianStatusDto（Agent 版本、管道状态、工作负载计数、健康摘要） | JWT（按归属）                              |
-| GET            | `/api/v1.0/guardian/workloads`              | —                                               | WorkloadDto\[]（声明持久化到 SQLite）                | JWT（按归属）                              |
-| POST           | `/api/v1.0/guardian/workloads`              | body: CreateWorkloadRequest（命令、参数、环境、重启策略、健康检查） | WorkloadDto（201）+ 写入 SQLite 声明 + 通知 Agent    | JWT（按归属）                              |
-| GET/PUT/DELETE | `/api/v1.0/guardian/workloads/{id}`         | —                                               | 详情 / 更新声明 / 204（含停止实例）                       | JWT（按归属）                              |
+| GET            | `/api/v1.0/guardian/status`                 | —                                               | `GuardianStatusDto` | JWT |
+| GET            | `/api/v1.0/guardian/workloads`              | —                                               | `GuardianWorkloadDto[]`，由 Agent 管理声明 | JWT |
+| POST           | `/api/v1.0/guardian/workloads`              | `UpsertGuardianWorkloadRequest`；跨账户 `RunAs` 需逐次管理员证明 | `GuardianAgentResponse` | JWT |
+| GET/DELETE     | `/api/v1.0/guardian/workloads/{id}`         | —                                               | 定义 / 删除结果 | JWT |
 | POST           | `/api/v1.0/guardian/workloads/{id}/start`   | —                                               | 启动操作结果                                       | JWT（按归属）                              |
-| POST           | `/api/v1.0/guardian/workloads/{id}/stop`    | query: killAfterSeconds?                        | 停止操作结果                                       | JWT（按归属）                              |
+| POST           | `/api/v1.0/guardian/workloads/{id}/stop`    | — | 停止操作结果 | JWT |
 | POST           | `/api/v1.0/guardian/workloads/{id}/restart` | —                                               | 重启操作结果                                       | JWT（按归属）                              |
-| GET            | `/api/v1.0/guardian/agent/install-status`   | —                                               | 安装状态 DTO（是否安装、版本、路径、systemd/SCM 服务状态）        | JWT（HostGlobal 管理员）                   |
-| POST           | `/api/v1.0/guardian/agent/install`          | —                                               | 安装 operation（部署 Guardian.Agent 并注册原生服务）      | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| POST           | `/api/v1.0/guardian/agent/uninstall`        | —                                               | 卸载 operation（保留工作负载声明）                       | JWT（HostGlobal 管理员 + Idempotency-Key） |
+| GET/POST       | `/api/v1.0/guardian/scripts`               | POST: `SubmitScriptTaskRequest` + UUID `Idempotency-Key` | 当前账号任务列表 / 提交结果，均由 Agent 持久保存 | JWT |
+| GET            | `/api/v1.0/guardian/scripts/{id}`          | —                                               | 当前账号的任务结果与有界输出 | JWT |
+| POST           | `/api/v1.0/guardian/scripts/{id}/cancel`   | —                                               | 取消请求结果 | JWT |
+| GET            | `/api/v1.0/guardian/workloads/{id}/logs` | — | 有界日志数组 | JWT |
+| GET            | `/api/v1.0/guardian/audit` | — | 守护审计数组 | JWT |
+| GET            | `/api/v1.0/guardian/services` | — | 原生服务数组 | JWT，System Mode |
+| POST           | `/api/v1.0/guardian/services/{id}/{action}` | `NativeServiceActionRequest` | 原生服务操作结果 | JWT，System Mode + 宿主授权 |
+| POST           | `/api/v1.0/guardian/agent/installation/plan` | — | 安装计划 | JWT，System Mode |
 
 ### 健康检查（Health）
 
@@ -523,6 +528,7 @@ Hub 路径 `/hubs/workspace`。Server 端实现 `WorkspaceHub : Hub<IWorkspaceHu
 | 方法             | 参数                                                      | 返回                                            | 说明                                                           |
 | -------------- | ------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------ |
 | `Start`        | `StartTerminalRequest req, string? sessionId = null`    | `AttachTerminalResponse {SessionId, Created}` | sessionId 命中且属于当前用户且未退出则**附加**（先回放 1MB 缓冲快照），否则**新建** PTY 会话 |
+| `AttachExisting` | `string sessionId` | `AttachTerminalResponse {SessionId, Created=false}` | 只附加当前用户仍存活的会话；找不到则失败，绝不新建 PTY |
 | `Input`        | `byte[]`                                                | void                                          | 转发到 `session.Pty.Write(data)`                                |
 | `Resize`       | `int cols, int rows, int widthPixels, int heightPixels` | void                                          | 转发到 `session.Pty.Resize(...)`                                |
 | `Close`        | —                                                       | void                                          | `manager.Remove` —— **手动终止**（杀 PTY），对应关闭终端窗口 / "断开"按钮        |
@@ -604,7 +610,7 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 | --------------------------- | ---------------------------------------------------------------------- |
 | `ITerminalHubClient.cs`     | server→client 接口（`OnOutput`/`OnProcessExited`）                         |
 | `TerminalHubEvents.cs`      | server→client 事件名常量                                                    |
-| `TerminalHubMethods.cs`     | client→server 方法名常量（`Start`/`Input`/`Resize`/`Close`/`ListSessions`）   |
+| `TerminalHubMethods.cs`     | client→server 方法名常量（`Start`/`AttachExisting`/`Input`/`Resize`/`Close`/`ListSessions`）   |
 | `StartTerminalRequest.cs`   | 启动请求 DTO（columns/rows/widthPixels/heightPixels/shell/workingDirectory） |
 | `AttachTerminalResponse.cs` | `Start` 返回值（`SessionId` + `Created`）                                   |
 | `TerminalSessionInfo.cs`    | 会话摘要 DTO（`ListSessions` 用）                                             |

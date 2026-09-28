@@ -244,7 +244,7 @@ public sealed class GitBuildService : IDisposable
             var output = await RunAsync("docker", args, env, TimeSpan.FromMinutes(Math.Clamp(options.TimeoutMinutes, 1, 120)), ct,
                 batch => Append(id, batch, token));
             if (output.ExitCode != 0) throw new GitBuildProblem("git-build.build-failed");
-            var inspect = await RunAsync("docker", ["image", "inspect", "--format", "{{.Id}}", image], [], TimeSpan.FromSeconds(20), ct);
+            var inspect = await RunAsync("docker", ["image", "inspect", "--format", "{{.Id}}", image], new Dictionary<string, string>(), TimeSpan.FromSeconds(20), ct);
             var imageId = inspect.Lines.FirstOrDefault()?.Trim();
             if (inspect.ExitCode != 0 || imageId is null || !Regex.IsMatch(imageId, "^sha256:[a-f0-9]{64}$"))
                 throw new GitBuildProblem("git-build.image-unavailable");
@@ -269,7 +269,7 @@ public sealed class GitBuildService : IDisposable
         {
             if (!succeeded)
             {
-                try { await RunAsync("docker", ["image", "rm", image], [], TimeSpan.FromSeconds(15), CancellationToken.None); }
+                try { await RunAsync("docker", ["image", "rm", image], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), CancellationToken.None); }
                 catch (Exception) { /* Only this operation's unique tag may be removed. */ }
             }
             lock (gate) { if (active.Remove(id, out var source)) source.Dispose(); }
@@ -284,18 +284,18 @@ public sealed class GitBuildService : IDisposable
             || !Builder.IsMatch(options.BuilderNetwork)
             || options.BuilderNetwork is "host" or "bridge" or "none" or "default")
             throw new GitBuildProblem("git-build.builder-unconfigured", 503);
-        var details = await RunAsync("docker", ["buildx", "inspect", options.BuilderName], [], TimeSpan.FromSeconds(15), ct);
+        var details = await RunAsync("docker", ["buildx", "inspect", options.BuilderName], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         if (details.ExitCode != 0 || !details.Lines.Any(line => line.TrimStart().StartsWith("Driver:", StringComparison.Ordinal)
             && line.Contains("remote", StringComparison.Ordinal))
             || !details.Lines.Any(line => line.Contains("docker-container://" + options.BuilderContainer, StringComparison.Ordinal)))
             throw new GitBuildProblem("git-build.builder-unavailable", 503);
-        var inspect = await RunAsync("docker", ["inspect", "--format", "{{json .HostConfig}}", options.BuilderContainer], [], TimeSpan.FromSeconds(15), ct);
+        var inspect = await RunAsync("docker", ["inspect", "--format", "{{json .HostConfig}}", options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         if (inspect.ExitCode != 0 || inspect.Lines.Count != 1) throw new GitBuildProblem("git-build.builder-unavailable", 503);
-        var identity = await RunAsync("docker", ["inspect", "--format", "{{.Config.User}}", options.BuilderContainer], [], TimeSpan.FromSeconds(15), ct);
+        var identity = await RunAsync("docker", ["inspect", "--format", "{{.Config.User}}", options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         var user = identity.Lines.FirstOrDefault()?.Trim();
         if (identity.ExitCode != 0 || string.IsNullOrWhiteSpace(user) || user is "0" or "root" || user.StartsWith("0:", StringComparison.Ordinal))
             throw new GitBuildProblem("git-build.builder-unrestricted", 503);
-        var running = await RunAsync("docker", ["inspect", "--format", "{{.State.Running}}", options.BuilderContainer], [], TimeSpan.FromSeconds(15), ct);
+        var running = await RunAsync("docker", ["inspect", "--format", "{{.State.Running}}", options.BuilderContainer], new Dictionary<string, string>(), TimeSpan.FromSeconds(15), ct);
         if (running.ExitCode != 0 || running.Lines.FirstOrDefault()?.Trim() != "true")
             throw new GitBuildProblem("git-build.builder-unavailable", 503);
         try

@@ -211,6 +211,8 @@ fun ManageScreen(
     onOpenDocker: () -> Unit,
     onOpenGit: () -> Unit,
     onOpenWebsites: () -> Unit,
+    onOpenGuardian: () -> Unit,
+    onOpenScripts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val container = app.relaxkonos.mobile.ui.common.appContainer()
@@ -228,6 +230,10 @@ fun ManageScreen(
         }
         if (container.capabilities.contains(ServerCapabilities.WEB_SERVER)) {
             add(ManageDomain(R.string.websites_title, R.string.websites_subtitle, R.drawable.ic_app_webservers, onOpenWebsites))
+        }
+        if (container.capabilities.contains(ServerCapabilities.GUARDIAN)) {
+            add(ManageDomain(R.string.guardian_title, R.string.guardian_subtitle, R.drawable.ic_app_processguardian, onOpenGuardian))
+            add(ManageDomain(R.string.scripts_title, R.string.scripts_subtitle, R.drawable.ic_app_terminal, onOpenScripts))
         }
         if (container.capabilities.contains(ServerCapabilities.METRICS)) {
             add(

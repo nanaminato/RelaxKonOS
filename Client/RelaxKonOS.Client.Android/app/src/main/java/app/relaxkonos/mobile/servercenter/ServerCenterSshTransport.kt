@@ -457,6 +457,10 @@ internal class JschInteractiveTerminal(
         }
     }
 
+    override fun resize(columns: Int, rows: Int) {
+        if (channel.isConnected) channel.setPtySize(columns, rows, 0, 0)
+    }
+
     override fun close() {
         channel.disconnect()
     }

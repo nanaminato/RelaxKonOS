@@ -13,6 +13,7 @@ builder.Services.AddWindowsService(service => service.ServiceName = "RelaxKonOSG
 builder.Services.AddSystemd();
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<WorkloadSupervisor>();
+builder.Services.AddSingleton<ScriptTaskSupervisor>();
 builder.Services.AddSingleton<GuardianPipeServer>();
 builder.Services.AddSingleton<ProtectedServerMonitor>();
 builder.Services.AddHostedService<GuardianWorker>();

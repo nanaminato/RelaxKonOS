@@ -2,23 +2,27 @@ package app.relaxkonos.mobile.ui.servercenter
 
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -124,6 +129,10 @@ class SshTerminalViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun resize(columns: Int, rows: Int) {
+        runCatching { terminal?.resize(columns.coerceIn(20, 300), rows.coerceIn(5, 100)) }
+    }
+
     fun stop() {
         generation++
         terminal?.close()
@@ -155,15 +164,35 @@ fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = 
     val state by model.state.collectAsState()
     var input by remember(hostId) { mutableStateOf("") }
     var concealInput by remember(hostId) { mutableStateOf(false) }
+    var pasteReview by remember(hostId) { mutableStateOf<String?>(null) }
+    var ctrlNext by remember(hostId) { mutableStateOf(false) }
+    var altNext by remember(hostId) { mutableStateOf(false) }
+    var fontSize by remember(hostId) { mutableStateOf(13) }
     val scroll = rememberScrollState()
     LaunchedEffect(hostId) { model.start(hostId) }
     DisposableEffect(hostId) { onDispose { model.stop() } }
     LaunchedEffect(state.output) { scroll.scrollTo(scroll.maxValue) }
 
     fun sendLine() {
-        model.send(input + "\r")
-        input = ""
+        if (input.contains('\n') && !ctrlNext && !altNext) pasteReview = input + "\r"
+        else {
+            val value = if (ctrlNext && input.length == 1) ((input[0].uppercaseChar().code) and 0x1f).toChar().toString()
+                else if (ctrlNext || altNext) input else input + "\r"
+            model.send(if (altNext) "\u001b$value" else value)
+            input = ""
+            ctrlNext = false
+            altNext = false
+        }
     }
+
+    if (pasteReview != null) AlertDialog(
+        onDismissRequest = { pasteReview = null },
+        title = { Text(stringResource(R.string.terminal_paste_title)) },
+        text = { SelectionContainer { Text(pasteReview.orEmpty().take(2000)) } },
+        confirmButton = { TextButton(onClick = { model.send(pasteReview.orEmpty()); input = ""; pasteReview = null }) {
+            Text(stringResource(R.string.terminal_send)) } },
+        dismissButton = { TextButton(onClick = { pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
+    )
 
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ScreenHeader(
@@ -186,23 +215,37 @@ fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = 
                 Text(stringResource(R.string.ssh_terminal_retry))
             }
         }
-        Surface(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            color = Color(0xFF101820),
-            contentColor = Color(0xFFF2F5F7),
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            SelectionContainer {
-                Column(Modifier.verticalScroll(scroll).padding(Spacing.md)) {
-                    Text(state.output, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            OutlinedButton(onClick = { fontSize = (fontSize - 1).coerceAtLeast(9) }) { Text("A−") }
+            OutlinedButton(onClick = { fontSize = (fontSize + 1).coerceAtMost(24) }) { Text("A+") }
+        }
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+            val width = maxWidth.value
+            val height = maxHeight.value
+            LaunchedEffect(width, height, fontSize, state.connected) {
+                model.resize((width / (fontSize * 0.59f)).toInt(), (height / (fontSize * 1.5f)).toInt())
+            }
+            Surface(
+                modifier = Modifier.fillMaxSize(), color = Color(0xFF101820),
+                contentColor = Color(0xFFF2F5F7), shape = MaterialTheme.shapes.medium,
+            ) {
+                SelectionContainer {
+                    Column(Modifier.verticalScroll(scroll).padding(Spacing.md)) {
+                        Text(state.output, fontFamily = FontFamily.Monospace, fontSize = fontSize.sp)
+                    }
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            OutlinedButton({ ctrlNext = !ctrlNext }, enabled = state.connected) { Text(if (ctrlNext) "Ctrl ✓" else "Ctrl") }
+            OutlinedButton({ altNext = !altNext }, enabled = state.connected) { Text(if (altNext) "Alt ✓" else "Alt") }
+            OutlinedButton({ model.send("\u001b") }, enabled = state.connected) { Text("Esc") }
             OutlinedButton({ model.send("\u0003") }, enabled = state.connected) { Text("Ctrl+C") }
             OutlinedButton({ model.send("\t") }, enabled = state.connected) { Text("Tab") }
             OutlinedButton({ model.send("\u001b[A") }, enabled = state.connected) { Text("↑") }
             OutlinedButton({ model.send("\u001b[B") }, enabled = state.connected) { Text("↓") }
+            OutlinedButton({ model.send("\u001b[D") }, enabled = state.connected) { Text("←") }
+            OutlinedButton({ model.send("\u001b[C") }, enabled = state.connected) { Text("→") }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Checkbox(checked = concealInput, onCheckedChange = { concealInput = it })
@@ -214,7 +257,7 @@ fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = 
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
                 label = { Text(stringResource(R.string.ssh_terminal_input)) },
-                singleLine = true,
+                maxLines = 3,
                 enabled = state.connected,
                 visualTransformation = if (concealInput) PasswordVisualTransformation() else VisualTransformation.None,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),

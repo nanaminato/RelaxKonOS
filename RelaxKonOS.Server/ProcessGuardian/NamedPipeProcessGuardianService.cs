@@ -44,6 +44,19 @@ public sealed class NamedPipeProcessGuardianService(GuardianAgentOptions options
     public async Task<IReadOnlyList<GuardianAuditEntryDto>> ListAuditAsync(CancellationToken cancellationToken = default)
         => (await SendAsync(new GuardianAgentRequest(options.SharedSecret, "audit"), cancellationToken))?.Audits ?? Array.Empty<GuardianAuditEntryDto>();
 
+    public async Task<GuardianAgentResponse> ListScriptsAsync(string ownerIdentity, CancellationToken cancellationToken = default)
+        => await SendAsync(new GuardianAgentRequest(options.SharedSecret, "script-list", OwnerIdentity: ownerIdentity), cancellationToken)
+            ?? new(false, "guardian.agent_unavailable");
+    public async Task<GuardianAgentResponse> GetScriptAsync(string ownerIdentity, string id, CancellationToken cancellationToken = default)
+        => await SendAsync(new GuardianAgentRequest(options.SharedSecret, "script-get", id, OwnerIdentity: ownerIdentity), cancellationToken)
+            ?? new(false, "guardian.agent_unavailable");
+    public async Task<GuardianAgentResponse> SubmitScriptAsync(ScriptTaskDefinitionDto definition, CancellationToken cancellationToken = default)
+        => await SendAsync(new GuardianAgentRequest(options.SharedSecret, "script-submit", Script: definition,
+            OwnerIdentity: definition.OwnerIdentity), cancellationToken) ?? new(false, "guardian.agent_unavailable");
+    public async Task<GuardianAgentResponse> CancelScriptAsync(string ownerIdentity, string id, CancellationToken cancellationToken = default)
+        => await SendAsync(new GuardianAgentRequest(options.SharedSecret, "script-cancel", id, OwnerIdentity: ownerIdentity), cancellationToken)
+            ?? new(false, "guardian.agent_unavailable");
+
     private async Task<GuardianAgentResponse?> SendAsync(GuardianAgentRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.SharedSecret)) return new GuardianAgentResponse(false, "guardian.agent_not_configured");

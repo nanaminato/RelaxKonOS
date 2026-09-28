@@ -34,6 +34,8 @@ import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.manage.deployments.DeploymentsScreen
 import app.relaxkonos.mobile.ui.manage.docker.DockerScreen
 import app.relaxkonos.mobile.ui.manage.git.GitScreen
+import app.relaxkonos.mobile.ui.manage.guardian.GuardianScreen
+import app.relaxkonos.mobile.ui.manage.scripts.ScriptsScreen
 import app.relaxkonos.mobile.ui.manage.monitor.MonitorScreen
 import app.relaxkonos.mobile.ui.manage.processes.ProcessesScreen
 import app.relaxkonos.mobile.ui.manage.websites.WebsitesScreen
@@ -43,6 +45,7 @@ import app.relaxkonos.mobile.ui.more.AppearanceScreen
 import app.relaxkonos.mobile.ui.more.ConnectionsScreen
 import app.relaxkonos.mobile.ui.more.DiagnosticsScreen
 import app.relaxkonos.mobile.ui.more.MoreScreen
+import app.relaxkonos.mobile.ui.terminal.ServerTerminalScreen
 
 /**
  * Maps the navigator's current route to a screen.
@@ -71,6 +74,9 @@ fun MobileNavHost(
             Routes.MANAGE_DOCKER -> DockerScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_GIT -> GitScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_WEBSITES -> WebsitesScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_GUARDIAN -> GuardianScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_SCRIPTS -> ScriptsScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.TERMINAL -> ServerTerminalScreen(owner = session, modifier = Modifier.fillMaxSize())
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES -> ManageDestination(navigator, layoutState)
             Routes.MORE,
@@ -138,6 +144,8 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
                 onOpenDocker = { navigator.push(Routes.MANAGE_DOCKER) },
                 onOpenGit = { navigator.push(Routes.MANAGE_GIT) },
                 onOpenWebsites = { navigator.push(Routes.MANAGE_WEBSITES) },
+                onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
+                onOpenScripts = { navigator.push(Routes.MANAGE_SCRIPTS) },
                 modifier = Modifier.weight(1f),
             )
             when (viewModel.expandedPane) {
@@ -163,6 +171,8 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             onOpenDocker = { navigator.push(Routes.MANAGE_DOCKER) },
             onOpenGit = { navigator.push(Routes.MANAGE_GIT) },
             onOpenWebsites = { navigator.push(Routes.MANAGE_WEBSITES) },
+            onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
+            onOpenScripts = { navigator.push(Routes.MANAGE_SCRIPTS) },
             modifier = Modifier.fillMaxSize(),
         )
     }

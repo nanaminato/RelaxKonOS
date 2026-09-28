@@ -22,6 +22,17 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun scriptTasks(serverUrl: String, accessToken: String): ApiResult<ScriptTasksResult> = ApiResult.Transport("Scripts unavailable.")
+    suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
+    suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
+    suspend fun scriptCancel(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
+    suspend fun guardianStatus(serverUrl: String, accessToken: String): ApiResult<GuardianStatus> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinition?> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<GuardianLog>> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianDelete(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
     suspend fun gitRepositories(serverUrl: String, accessToken: String): ApiResult<List<GitRepository>> = ApiResult.Transport("Git unavailable.")
     suspend fun gitRegisterRepository(serverUrl: String, accessToken: String, name: String, path: String): ApiResult<GitRepository> = ApiResult.Transport("Git unavailable.")
     suspend fun gitBranches(serverUrl: String, accessToken: String, id: String): ApiResult<List<GitBranch>> = ApiResult.Transport("Git unavailable.")

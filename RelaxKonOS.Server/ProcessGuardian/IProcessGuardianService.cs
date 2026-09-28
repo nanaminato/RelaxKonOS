@@ -13,4 +13,8 @@ public interface IProcessGuardianService
     Task<GuardianAgentResponse> ApplyActionAsync(string workloadId, string action, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GuardianLogEntryDto>> ListLogsAsync(string workloadId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GuardianAuditEntryDto>> ListAuditAsync(CancellationToken cancellationToken = default);
+    Task<GuardianAgentResponse> ListScriptsAsync(string ownerIdentity, CancellationToken cancellationToken = default);
+    Task<GuardianAgentResponse> GetScriptAsync(string ownerIdentity, string id, CancellationToken cancellationToken = default);
+    Task<GuardianAgentResponse> SubmitScriptAsync(ScriptTaskDefinitionDto definition, CancellationToken cancellationToken = default);
+    Task<GuardianAgentResponse> CancelScriptAsync(string ownerIdentity, string id, CancellationToken cancellationToken = default);
 }

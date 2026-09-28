@@ -54,6 +54,11 @@ class JsonBody {
         return this
     }
 
+    fun objectField(name: String, value: JsonBody): JsonBody {
+        fields += name to { out -> value.writeTo(out) }
+        return this
+    }
+
     fun toByteArray(): ByteArray = java.io.ByteArrayOutputStream().also { writeTo(it) }.toByteArray()
 
     fun writeTo(target: OutputStream) {

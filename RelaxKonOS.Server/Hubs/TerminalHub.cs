@@ -34,10 +34,23 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
         var (session, created) = _manager.GetOrCreate(userId, sessionId, req);
 
         // 附加当前连接并回放缓冲快照（恢复历史输出）。失败则不留下半附加状态。
+        GetCurrentSession()?.Detach(Context.ConnectionId);
         await session.AttachAsync(Context.ConnectionId).ConfigureAwait(false);
         Context.Items[SidKey] = session.SessionId;
 
         return new AttachTerminalResponse(session.SessionId, created);
+    }
+
+    public async Task<AttachTerminalResponse> AttachExisting(string sessionId)
+    {
+        var userId = Context.UserIdentifier ?? throw new HubException("未认证的连接：缺少用户标识。");
+        if (!_manager.TryGet(sessionId, out var session) || session is null ||
+            session.UserId != userId || session.HasExited)
+            throw new HubException("terminal.session_not_found");
+        GetCurrentSession()?.Detach(Context.ConnectionId);
+        await session.AttachAsync(Context.ConnectionId).ConfigureAwait(false);
+        Context.Items[SidKey] = session.SessionId;
+        return new AttachTerminalResponse(session.SessionId, false);
     }
 
     /// <summary>向当前会话的 PTY 写入用户输入字节。</summary>

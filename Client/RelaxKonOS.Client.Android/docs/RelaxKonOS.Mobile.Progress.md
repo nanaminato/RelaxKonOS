@@ -1,5 +1,12 @@
 # RelaxKonOS Mobile 实施进展
 
+## AD07-M1–M4：终端、脚本与进程守护（已编码；未构建、未测试，2026-09-28）
+
+- 顶级 Server 终端接入当前 SignalR Hub，采用有界 VT 文本缓冲、扩展键、Ctrl/Alt、字号与 PTY 尺寸同步。离开页面只分离；恢复先列出会话，再用新的 `AttachExisting` 只附加现存会话，不因重连重跑 shell。服务器中心 SSH 终端继续使用独立的宿主信任和 SSH 凭据，界面显示 SSH 用户与宿主；补齐扩展键、多行输入确认和旋转后的 PTY 尺寸同步。SSH shell 离开页面仍按既有行为关闭。
+- “管理 → 进程守护”接入 Agent 状态、工作负载列表、配置、启动/停止/重启、日志与删除。跨账号 `RunAs` 仍经过服务端逐次管理员验证；Android 不持久保存审批密码。工作负载摘要增加最近退出码与问题状态。
+- “管理 → 脚本任务”通过新增的 Guardian Agent 一次性任务契约提交结构化程序路径、参数数组、工作目录、环境、超时与执行身份，读取持久结果及有界输出，支持取消和 Agent 重启后的 `interrupted` 状态；HTTP 断线不取消远端任务。任务按登录者的稳定 OS 身份隔离，跨账号执行复用逐次 `RunAs` 授权。
+- 本轮依要求不运行 Android 构建或测试；.NET Guardian Agent 编译通过（0 警告），Server 编译通过（3 条既有 CA1416 平台警告）。为使 Server 可编译，一并修正既有 GitBuildService 六处把空集合表达式传给 `IReadOnlyDictionary` 的编译错误。未执行真机、真实 SSH、PTY、Linux/Windows Agent 与权限矩阵验收。移动端 VT 控件目前只实现常用控制序列，复杂全屏程序、CJK 单元格宽度及 IME 组合行为仍须真机核对；AD07-T1–T6 不标记通过。
+
 ## AD06-M1/M2：Ubuntu 受限 BuildKit 与 Git 构建发布链路（已编码；未构建、未测试，2026-09-28）
 
 - 新增 Git 构建契约、按账号隔离的加密 token 引用、远端引用列举与 SHA 解析、幂等持久任务、取消/超时/重启中断、有界脱敏日志和实际镜像 ID 记录。仅在 Ubuntu 上核对预置 rootless BuildKit remote builder 的容器用户、网络、权限与资源配额；不调用 AD02 的普通 Docker build。

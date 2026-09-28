@@ -28,6 +28,8 @@ object Routes {
     const val MANAGE_DOCKER = "manage/docker"
     const val MANAGE_GIT = "manage/git"
     const val MANAGE_WEBSITES = "manage/websites"
+    const val MANAGE_GUARDIAN = "manage/guardian"
+    const val MANAGE_SCRIPTS = "manage/scripts"
     const val MORE_ACCOUNT_SECURITY = "more/account-security"
     const val MORE_CONNECTIONS = "more/connections"
     const val MORE_APPEARANCE = "more/appearance"
@@ -54,7 +56,7 @@ enum class TopDestination(
 ) {
     Home(Routes.HOME, R.string.nav_home, DesktopIcons.navHome),
     Files(Routes.FILES, R.string.nav_files, DesktopIcons.navFiles, requiredCapability = ServerCapabilities.FILES),
-    Terminal(Routes.TERMINAL, R.string.nav_terminal, DesktopIcons.navTerminal, implemented = false),
+    Terminal(Routes.TERMINAL, R.string.nav_terminal, DesktopIcons.navTerminal, requiredCapability = ServerCapabilities.TERMINAL),
     Manage(Routes.MANAGE, R.string.nav_manage, DesktopIcons.navManage),
     More(Routes.MORE, R.string.nav_more, DesktopIcons.navMore);
 
