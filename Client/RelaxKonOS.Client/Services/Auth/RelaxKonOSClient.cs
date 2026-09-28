@@ -28,7 +28,15 @@ public sealed class RelaxKonOSClient : IRelaxKonOSClient
     {
         if (!OperatingSystem.IsWindows() || !Uri.TryCreate(serverUrl, UriKind.Absolute, out var endpoint) || !endpoint.IsLoopback)
             throw new InvalidOperationException("Windows owner-device setup is available only for a local Windows loopback endpoint.");
-        using var handler = new HttpClientHandler { UseDefaultCredentials = true, AllowAutoRedirect = false };
+        // This Negotiate exchange is meaningful only when it reaches the local Kestrel listener
+        // directly. A system HTTP proxy can forward the first 401 challenge but cannot complete
+        // Windows authentication for the local Server, leaving the bootstrap stuck at 401.
+        using var handler = new HttpClientHandler
+        {
+            UseDefaultCredentials = true,
+            AllowAutoRedirect = false,
+            UseProxy = false,
+        };
         using var client = new HttpClient(handler);
         using var response = await client.PostAsJsonAsync(BuildUri(serverUrl, OwnerDeviceKeyApiRoutes.LocalBootstrap), request,
             RelaxKonOSJsonOptions.Default, ct);

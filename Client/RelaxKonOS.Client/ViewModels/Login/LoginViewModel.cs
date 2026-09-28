@@ -218,7 +218,10 @@ public partial class LoginViewModel : ObservableObject
     public string OwnerDeviceOptionsToggleText => T(ShowOwnerDeviceOptions ? "login.owner_device.options.hide" : "login.owner_device.options.show",
         ShowOwnerDeviceOptions ? "Hide paired-device options" : "Use a paired device key");
     public string OwnerDeviceTitle => T("login.owner_device.title", "Paired device");
-    public string OwnerDeviceDescription => T("login.owner_device.description", "Sign in with a private key instead of a Server password.");
+    public string OwnerDeviceDescription => T("login.owner_device.description", "Set up this computer once, then sign in with its private key instead of a Server password.");
+    public string OwnerDeviceSetupHeading => T("login.owner_device.setup_heading", "First use on this Windows computer");
+    public string OwnerDeviceSignInHeading => T("login.owner_device.sign_in_heading", "Already set up on this computer");
+    public string OwnerDevicePairingHeading => T("login.owner_device.pairing_heading", "Pair a device from another computer");
     public string BootstrapWindowsOwnerDeviceText => T("login.owner_device.setup", "Set up this Windows device");
     public string ConnectOwnerDeviceText => T("login.owner_device.connect", "Sign in with device key");
     public string OwnerDevicePairingDescription => T("login.owner_device.pairing_description", "New device? Scan a pairing QR code, then paste its code here.");
