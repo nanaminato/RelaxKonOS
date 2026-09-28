@@ -10,15 +10,18 @@ public sealed class AuthSession : IAuthSession
 {
     private readonly IRelaxKonOSClient _client;
     private readonly IRememberedSessionStore _rememberedSessionStore;
+    private readonly OwnerDeviceAuthenticationService _ownerDevices;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
     private ServerConnectionIdentity? _identity;
 
-    public AuthSession(IRelaxKonOSClient client, IRememberedSessionStore rememberedSessionStore)
+    public AuthSession(IRelaxKonOSClient client, IRememberedSessionStore rememberedSessionStore,
+        OwnerDeviceAuthenticationService ownerDevices)
     {
         _client = client;
         _rememberedSessionStore = rememberedSessionStore;
+        _ownerDevices = ownerDevices;
     }
 
     public AuthSessionState State { get; private set; } = AuthSessionState.Unauthenticated;
@@ -82,6 +85,93 @@ public sealed class AuthSession : IAuthSession
             RaiseStateChanged();
             throw;
         }
+    }
+
+    public async Task<LoginResponse> LoginWindowsDesktopSessionAsync(ServerConnectionIdentity identity,
+        WindowsDesktopSessionLoginRequest request, bool rememberServer, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        lock (_gate)
+        {
+            if (State == AuthSessionState.Connecting) throw new InvalidOperationException("A login request is already in progress.");
+            State = AuthSessionState.Connecting;
+        }
+        RaiseStateChanged();
+        try
+        {
+            var response = await _client.LoginWindowsDesktopSessionAsync(identity.EffectiveBaseUrl, request, ct);
+            Apply(response, identity);
+            RememberedProfileSaveResult? saveResult = null;
+            if (rememberServer)
+                saveResult = await _rememberedSessionStore.UpsertAsync(new SavedLoginProfile(identity.ServiceId,
+                    "windows-desktop-session", null, DateTimeOffset.UtcNow), ct);
+            State = AuthSessionState.Authenticated;
+            RaiseStateChanged(saveResult);
+            return response;
+        }
+        catch
+        {
+            State = AuthSessionState.Unauthenticated;
+            RaiseStateChanged();
+            throw;
+        }
+    }
+
+    public async Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(ServerConnectionIdentity identity, string deviceName,
+        string clientVersion, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        BeginLogin();
+        try
+        {
+            var response = await _ownerDevices.BootstrapWindowsAsync(identity, deviceName, clientVersion, ct);
+            Apply(response, identity);
+            State = AuthSessionState.Authenticated;
+            RaiseStateChanged();
+            return response;
+        }
+        catch { ResetAfterLoginFailure(); throw; }
+    }
+
+    public async Task<LoginResponse> LoginWithOwnerDeviceAsync(ServerConnectionIdentity identity, string? keyPassphrase,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        BeginLogin();
+        try
+        {
+            var response = await _ownerDevices.SignInAsync(identity, keyPassphrase, ct);
+            Apply(response, identity);
+            State = AuthSessionState.Authenticated;
+            RaiseStateChanged();
+            return response;
+        }
+        catch { ResetAfterLoginFailure(); throw; }
+    }
+
+    public async Task<string> CreateOwnerDevicePairingPayloadAsync(string publicPairingUrl, CancellationToken ct = default)
+    {
+        var identity = _identity ?? throw new InvalidOperationException("Sign in before pairing another device.");
+        var token = await GetAccessTokenAsync(TimeSpan.FromMinutes(1), ct: ct)
+            ?? throw new InvalidOperationException("The current session has expired.");
+        return await _ownerDevices.CreatePairingPayloadAsync(identity, publicPairingUrl, token, ct);
+    }
+
+    public async Task<LoginResponse> AcceptOwnerDevicePairingAsync(string payload, string deviceName, string platform,
+        string clientVersion, string? keyPassphrase, CancellationToken ct = default)
+    {
+        BeginLogin();
+        try
+        {
+            var response = await _ownerDevices.AcceptPairingPayloadAsync(payload, deviceName, platform, clientVersion,
+                keyPassphrase, ct);
+            var pairing = OwnerDeviceAuthenticationService.ParsePairingPayload(payload);
+            Apply(response, ServerConnectionIdentityRules.Direct(pairing.ServerUrl));
+            State = AuthSessionState.Authenticated;
+            RaiseStateChanged();
+            return response;
+        }
+        catch { ResetAfterLoginFailure(); throw; }
     }
 
     public void UpdateConnection(ServerConnectionIdentity identity)
@@ -209,6 +299,23 @@ public sealed class AuthSession : IAuthSession
         CurrentDevice = response.Device;
         AssignedRole = response.AssignedRole;
         ExecutionEligibility = response.ExecutionEligibility;
+    }
+
+    private void BeginLogin()
+    {
+        lock (_gate)
+        {
+            if (State == AuthSessionState.Connecting)
+                throw new InvalidOperationException("A login request is already in progress.");
+            State = AuthSessionState.Connecting;
+        }
+        RaiseStateChanged();
+    }
+
+    private void ResetAfterLoginFailure()
+    {
+        State = AuthSessionState.Unauthenticated;
+        RaiseStateChanged();
     }
 
     private void Reset(AuthSessionEndReason endReason = AuthSessionEndReason.None)

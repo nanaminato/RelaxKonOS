@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -57,18 +58,24 @@ internal static class AliasLoginVerification
         services.AddScoped<IAliasCredentialRepository, SqliteAliasCredentialRepository>();
         services.AddScoped<IWorkspaceRepository, SqliteWorkspaceRepository>();
         services.AddScoped<IDeviceRepository, SqliteDeviceRepository>();
+        services.AddScoped<IOwnerDeviceKeyRepository, SqliteOwnerDeviceKeyRepository>();
         services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
         services.AddSingleton<ISessionRepository, InMemorySessionRepository>();
         services.AddScoped<IAuthenticationProtectionStore, SqliteAuthenticationProtectionStore>();
         services.AddSingleton<IIdentityProvider>(provider);
         // Auth endpoints and the login service resolve the deployment mode boundary; the host must
         // register the same contract the production Program does, or endpoint inference fails.
+        var windowsDesktopSession = new WindowsDesktopSessionOptions(builder.Configuration, builder.Environment,
+            UserExecutionBackend.Helper);
+        services.AddSingleton(windowsDesktopSession);
         services.AddSingleton<RelaxKonOS.Server.HostMode.IServerModeResolver>(
-            new RelaxKonOS.Server.HostMode.ServerModeResolver(builder.Configuration, UserExecutionBackend.Helper));
+            new RelaxKonOS.Server.HostMode.ServerModeResolver(builder.Configuration, UserExecutionBackend.Helper,
+                windowsDesktopSession));
         services.AddSingleton<AuthenticationGate>();
         services.AddSingleton<AuthSessionStore>();
         services.AddSingleton<AliasPasswordService>();
         services.AddSingleton<SessionValidityService>();
+        services.AddSingleton<OwnerDeviceKeyService>();
         services.AddSingleton<JwtTokenService>();
         services.AddScoped<LoginProtectionService>();
         services.AddScoped<CanonicalUserResolver>();
@@ -132,6 +139,50 @@ internal static class AliasLoginVerification
         var token = system.Tokens.AccessToken;
         var parsed = new JwtSecurityTokenHandler().ReadJwtToken(token);
         Check(parsed.Claims.Single(x => x.Type == "sid").Value == system.Session.Id.ToString(), "domain session equals JWT sid");
+        var windowsDesktopSessionPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim(JwtRegisteredClaimNames.Sub, system.User.Id.ToString()),
+            new Claim("security_version", "0"),
+            new Claim("sid", Guid.NewGuid().ToString()),
+            new Claim("amr", "windows-desktop-session"),
+            new Claim("auth_time", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
+        ], "test"));
+        Check(app.Services.GetRequiredService<SessionValidityService>().IsValid(windowsDesktopSessionPrincipal),
+            "Windows desktop session JWT remains valid for protected APIs");
+        if (app.Services.GetRequiredService<OwnerDeviceKeyService>().IsAvailable)
+        {
+            var ownerDevices = app.Services.GetRequiredService<OwnerDeviceKeyService>();
+            using var ownerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var ownerDeviceId = Guid.NewGuid();
+            var registered = ownerDevices.Register(system.User.Id, ownerDeviceId,
+                new OwnerDeviceBootstrapRequest("owner-test", "windows", Convert.ToBase64String(ownerKey.ExportSubjectPublicKeyInfo()), "1"));
+            var challenge = ownerDevices.CreateChallenge(ownerDeviceId);
+            var challengeNonce = Convert.FromBase64String(challenge.Nonce.Replace('-', '+').Replace('_', '/').PadRight(
+                challenge.Nonce.Length + (4 - challenge.Nonce.Length % 4) % 4, '='));
+            var verified = ownerDevices.VerifyChallenge(challenge.ChallengeId, ownerDeviceId,
+                Convert.ToBase64String(ownerKey.SignData(challengeNonce, HashAlgorithmName.SHA256)));
+            Check(verified.Id == registered.Id && verified.LastUsedAt is not null,
+                "P-256 owner-device nonce signature is accepted exactly through its enrolled key");
+            var ownerPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim("sub", system.User.Id.ToString()), new Claim("device_id", ownerDeviceId.ToString()),
+                new Claim("amr", "owner-device-key"), new Claim("role", "controller"),
+            ], "test"));
+            Check(ownerDevices.IsOwner(ownerPrincipal),
+                "nonce-signed owner-device controller session may use passwordless elevation");
+            using var recoveredKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var recovered = ownerDevices.RegisterOrReplaceLocalWindowsDevice(system.User.Id, ownerDeviceId,
+                new OwnerDeviceBootstrapRequest("owner-test", "windows", Convert.ToBase64String(recoveredKey.ExportSubjectPublicKeyInfo()), "2"));
+            Check(recovered.Id == ownerDeviceId && recovered.PublicKeySpki == Convert.ToBase64String(recoveredKey.ExportSubjectPublicKeyInfo()),
+                "local Windows recovery replaces a lost key for its existing device");
+            Check(ownerDevices.List(ownerPrincipal).Single().Id == ownerDeviceId,
+                "SQLite lists active owner-device keys without DateTimeOffset query translation");
+            var passwordPrincipal = new ClaimsPrincipal(new ClaimsIdentity([
+                new Claim("sub", system.User.Id.ToString()), new Claim("device_id", ownerDeviceId.ToString()),
+                new Claim("amr", "system"), new Claim("role", "controller"),
+            ], "test"));
+            Check(!ownerDevices.IsOwner(passwordPrincipal),
+                "ordinary password session cannot inherit owner-device elevation");
+            Check(registered.Id == ownerDeviceId, "owner-device registration preserves the associated device id");
+        }
         Check((await Read(token)) is { Alias: null, SystemLoginEnabled: true, Revision: 0 }, "default system login enabled");
         using (var response = await Send(HttpMethod.Post, AuthApiRoutes.Login, new { username = "nanami", password = OsPassword, clientPlatform = "windows", deviceName = "x", clientVersion = "1" }))
             Check(response.StatusCode == HttpStatusCode.BadRequest, "old username wire contract rejected");

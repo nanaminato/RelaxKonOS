@@ -93,6 +93,9 @@ public static class Bootstrapper
             .AddHttpMessageHandler<AcceptLanguageHandler>()
             .AddRelaxKonOSAuthentication();
         services.AddSingleton<IRememberedSessionStore, RememberedSessionStore>();
+        services.AddSingleton<IOwnerDeviceKeyStore, OwnerDeviceKeyStore>();
+        services.AddSingleton<IOwnerDevicePairingEndpointStore, OwnerDevicePairingEndpointStore>();
+        services.AddSingleton<OwnerDeviceAuthenticationService>();
         services.AddSingleton<IAuthSession, AuthSession>();
         services.AddHttpClient<AccountSecurityClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });

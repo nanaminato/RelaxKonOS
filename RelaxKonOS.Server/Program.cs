@@ -98,7 +98,9 @@ if (eventAlertsOptions.Enabled)
 // The ordinary-user execution backend is the same kind of decision, so it is resolved and
 // validated once, next to the mode, and passed along rather than re-read per call site.
 var userExecutionBackend = RelaxKonOS.Server.UserExecution.UserExecutionBackendResolver.Resolve(builder.Configuration, builder.Environment);
-var serverModeResolver = new ServerModeResolver(builder.Configuration, userExecutionBackend);
+var windowsDesktopSession = new WindowsDesktopSessionOptions(builder.Configuration, builder.Environment, userExecutionBackend);
+builder.Services.AddSingleton(windowsDesktopSession);
+var serverModeResolver = new ServerModeResolver(builder.Configuration, userExecutionBackend, windowsDesktopSession);
 builder.Services.AddSingleton<IServerModeResolver>(serverModeResolver);
 // The deployment installer registers this executable with the Windows Service
 // Control Manager. Opt in to its lifetime protocol so SCM receives the start
@@ -298,6 +300,7 @@ builder.Services.AddSingleton<AuthenticationGate>();
 builder.Services.AddSingleton<AliasPasswordService>();
 builder.Services.AddSingleton<SessionValidityService>();
 builder.Services.AddSingleton<SessionValidityHubFilter>();
+builder.Services.AddSingleton<OwnerDeviceKeyService>();
 builder.Services.AddScoped<CanonicalUserResolver>();
 builder.Services.AddScoped<RelaxKonOS.Server.UserExecution.IUserExecutionContextResolver,
     RelaxKonOS.Server.UserExecution.UserExecutionContextResolver>();
@@ -355,6 +358,7 @@ builder.Services.AddAuthentication(options =>
             }
         };
     })
+    .AddNegotiate(RelaxKonOSAuthSchemes.WindowsDesktopSession, _ => { })
     .AddJwtBearer(RelaxKonOSAuthSchemes.FileCapability, opts =>
     {
         opts.TokenValidationParameters = new TokenValidationParameters
@@ -383,6 +387,12 @@ builder.Services.AddAuthentication(options =>
     });
 builder.Services.AddAuthorization(options =>
 {
+    options.AddPolicy("WindowsDesktopSessionLogin", policy => policy
+        .AddAuthenticationSchemes(RelaxKonOSAuthSchemes.WindowsDesktopSession)
+        .RequireAuthenticatedUser());
+    options.AddPolicy("WindowsOwnerDeviceBootstrap", policy => policy
+        .AddAuthenticationSchemes(RelaxKonOSAuthSchemes.WindowsDesktopSession)
+        .RequireAuthenticatedUser());
     foreach (var policyName in new[]
              {
                  RelaxKonOS.Server.Files.FileAuthorizationPolicies.List,
@@ -710,6 +720,7 @@ if (storageProvider == "sqlite")
     builder.Services.AddScoped<IAuthenticationProtectionStore, SqliteAuthenticationProtectionStore>();
     builder.Services.AddScoped<IWorkspaceRepository, SqliteWorkspaceRepository>();
     builder.Services.AddScoped<IDeviceRepository, SqliteDeviceRepository>();
+    builder.Services.AddScoped<IOwnerDeviceKeyRepository, SqliteOwnerDeviceKeyRepository>();
     builder.Services.AddScoped<IBrowserRepository, SqliteBrowserRepository>();
     builder.Services.AddScoped<IAppSettingsRepository, SqliteAppSettingsRepository>();
     // The registry is the runtime configuration source. It is hydrated once at startup and
@@ -739,6 +750,7 @@ else
     builder.Services.AddSingleton<IAuthenticationProtectionStore, InMemoryAuthenticationProtectionStore>();
     builder.Services.AddSingleton<IWorkspaceRepository, InMemoryWorkspaceRepository>();
     builder.Services.AddSingleton<IDeviceRepository, InMemoryDeviceRepository>();
+    builder.Services.AddSingleton<IOwnerDeviceKeyRepository, InMemoryOwnerDeviceKeyRepository>();
     builder.Services.AddSingleton<IBrowserRepository, InMemoryBrowserRepository>();
     builder.Services.AddSingleton<IAppSettingsRepository, InMemoryAppSettingsRepository>();
     builder.Services.AddSingleton<IRegistryRepository, InMemoryRegistryRepository>();
@@ -997,6 +1009,20 @@ if (storageProvider == "sqlite")
             "Path" TEXT NOT NULL, "CreatedAt" TEXT NOT NULL, "CreatedBy" TEXT NOT NULL,
             PRIMARY KEY ("UserId", "Scope", "ScopeId", "Path")
         );
+        CREATE TABLE IF NOT EXISTS "owner_device_keys" (
+            "Id" TEXT NOT NULL PRIMARY KEY,
+            "UserId" TEXT NOT NULL,
+            "DeviceId" TEXT NOT NULL,
+            "Name" TEXT NOT NULL,
+            "Platform" TEXT NOT NULL,
+            "ClientVersion" TEXT NOT NULL,
+            "PublicKeySpki" TEXT NOT NULL,
+            "CreatedAt" TEXT NOT NULL,
+            "LastUsedAt" TEXT NULL,
+            "RevokedAt" TEXT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "IX_owner_device_keys_UserId_RevokedAt" ON "owner_device_keys" ("UserId", "RevokedAt");
+        CREATE UNIQUE INDEX IF NOT EXISTS "IX_owner_device_keys_DeviceId" ON "owner_device_keys" ("DeviceId");
         """);
 
     // Host-global certificate/WebServer state uses independently versioned migrations. This

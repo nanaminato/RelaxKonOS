@@ -36,6 +36,7 @@
         <!-- Protocol / SignalR / JWT（为后续实现阶段预备，本次仅定义版本，未在任何 csproj 引用） -->
         <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
         <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.12" />
         <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
         <PackageVersion Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.12" />
         <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
@@ -63,6 +64,8 @@
         <!-- 服务器中心：客户端内置 SSH/SFTP 传输（主机密钥核对、SFTP 暂存上传、loopback 隧道）。
              不依赖系统 ssh/scp/sftp 命令。RoyalTerminal 已传递引用同一版本，这里显式声明以便直接使用。 -->
         <PackageVersion Include="SSH.NET" Version="2026.0.0" />
+        <!-- Owner-device pairing: pure managed QR rendering for the desktop pairing dialog. -->
+        <PackageVersion Include="QRCoder" Version="1.8.0" />
 
         <!-- Video Player example: managed Avalonia control + Windows native VLC runtime. -->
         <PackageVersion Include="LibVLCSharp.Avalonia" Version="3.10.1" />

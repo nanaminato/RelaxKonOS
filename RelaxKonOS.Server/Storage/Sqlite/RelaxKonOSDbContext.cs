@@ -13,6 +13,7 @@ public sealed class RelaxKonOSDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<Device> Devices => Set<Device>();
+    public DbSet<OwnerDeviceKey> OwnerDeviceKeys => Set<OwnerDeviceKey>();
     public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
     public DbSet<HistoryEntry> History => Set<HistoryEntry>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
@@ -182,6 +183,24 @@ public sealed class RelaxKonOSDbContext : DbContext
             e.Property(d => d.LastLoginAt).HasColumnType("TEXT");
             // 按 (name, platform) 索引——对应 InMemoryDeviceRepository._byKey
             e.HasIndex(d => new { d.Name, d.Platform }).IsUnique();
+        });
+
+        mb.Entity<OwnerDeviceKey>(e =>
+        {
+            e.ToTable("owner_device_keys");
+            e.HasKey(key => key.Id);
+            e.Property(key => key.Id).HasColumnType("TEXT");
+            e.Property(key => key.UserId).HasColumnType("TEXT");
+            e.Property(key => key.DeviceId).HasColumnType("TEXT");
+            e.Property(key => key.Name).IsRequired().HasMaxLength(128);
+            e.Property(key => key.Platform).IsRequired().HasMaxLength(32);
+            e.Property(key => key.ClientVersion).HasMaxLength(64);
+            e.Property(key => key.PublicKeySpki).IsRequired().HasMaxLength(512);
+            e.Property(key => key.CreatedAt).HasColumnType("TEXT");
+            e.Property(key => key.LastUsedAt).HasColumnType("TEXT");
+            e.Property(key => key.RevokedAt).HasColumnType("TEXT");
+            e.HasIndex(key => new { key.UserId, key.RevokedAt });
+            e.HasIndex(key => key.DeviceId).IsUnique();
         });
 
         // ── bookmarks ── 浏览器书签：按用户隔离，同用户下 URL 唯一（UPSERT 语义靠唯一索引保证）

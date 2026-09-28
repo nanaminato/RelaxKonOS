@@ -34,79 +34,38 @@ public static class AuthEndpoints
                 JwtTokenService jwt,
                 LoginProtectionService protection,
                 IServerModeResolver serverMode,
+                WindowsDesktopSessionOptions desktopSession,
                 CancellationToken ct) =>
             {
+                if (desktopSession.Enabled)
+                    return Problem(http, 403, "windows-desktop-session-required", "Windows Desktop session required",
+                        "This loopback development Server accepts only the current Windows session.");
                 var login = await authentication.AuthenticateAsync(req.Identifier, req.Password, http.Connection.RemoteIpAddress, ct);
-                var user = login.User;
-                var now = DateTimeOffset.UtcNow;
-
-                // 查/建 Workspace（One User One Persistent，见 Workspace.md §4）
-                var ws = wss.FindByUserId(user.Id)
-                       ?? wss.Add(new Workspace
-                       {
-                           Id = Guid.NewGuid(),
-                           UserId = user.Id,
-                           Name = $"{user.Username} Workspace",
-                           State = WorkspaceState.Running,
-                           CreatedAt = now,
-                       });
-
-                // Configuration defaults are registry values. The legacy Workspace JSON columns
-                // are intentionally not consulted or updated.
-                WorkspaceConfigurationRegistry.EnsureDefaults(registry, ws, user.Id.ToString("D"));
-
-                // 查/建 Device（按 name+platform 复用，更新版本与登录时间）
-                var platformStr = req.ClientPlatform.ToString().ToLowerInvariant();
-                var device = devs.FindByNameAndPlatform(req.DeviceName, platformStr);
-                if (device is null)
-                {
-                    device = devs.Add(new Device
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = req.DeviceName,
-                        Platform = platformStr,
-                        ClientVersion = req.ClientVersion,
-                    });
-                }
-                device.ClientVersion = req.ClientVersion;
-                device.LastLoginAt = now;
-                devs.Update(device);
-
-                // 新建 Session（每次登录新建，Session ≠ Workspace）
-                var session = sess.Add(new Session
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = user.Id,
-                    AuthenticationMethod = login.Method,
-                    AuthenticatedAt = now,
-                    WorkspaceId = ws.Id,
-                    DeviceId = device.Id,
-                    CreatedAt = now,
-                    LastActiveAt = now,
-                    Status = SessionStatus.Active,
-                });
-
-                // 该设备成为 Controller（Grace Period 5 分钟，见 Workspace.md §19）
-                ws.ControllerDeviceId = device.Id;
-                ws.ControllerGrantedAt = now;
-                ws.ControllerLeaseExpiresAt = now.AddMinutes(5);
-                ws.State = WorkspaceState.Running;
-                wss.Update(ws);
-
-                users.UpdateLastLogin(user.Id, now);
-
-                var role = DeviceRole.Controller;
-                authentication.RequireCurrent(login);
-                var tokens = jwt.Issue(user, ws, device, role, session.Id, login.Method, now, login.SecurityVersion);
-                await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
-
-                return Results.Ok(new LoginResponse(
-                    user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role, CreateServerDescriptor(serverMode),
-                    new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available, login.ExecutionEligibility.ReasonCode,
-                        serverMode.Mode == ServerMode.System && login.Method == "system"
-                        && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));
+                return await CompleteLoginAsync(login, req.ClientPlatform, req.DeviceName, req.ClientVersion, http,
+                    authentication, users, wss, registry, sess, devs, jwt, protection, serverMode, ct);
             })
             .RequireRateLimiting("login")
+            .WithTags("Auth");
+
+        group.MapPost(AuthApiRoutes.WindowsDesktopSession, async (
+                WindowsDesktopSessionLoginRequest req,
+                HttpContext http,
+                LoginAuthenticationService authentication,
+                IUserRepository users,
+                IWorkspaceRepository wss,
+                IRegistryRepository registry,
+                ISessionRepository sess,
+                IDeviceRepository devs,
+                JwtTokenService jwt,
+                LoginProtectionService protection,
+                IServerModeResolver serverMode,
+                CancellationToken ct) =>
+            {
+                var login = authentication.AuthenticateWindowsDesktopSession(http.User);
+                return await CompleteLoginAsync(login, req.ClientPlatform, req.DeviceName, req.ClientVersion, http,
+                    authentication, users, wss, registry, sess, devs, jwt, protection, serverMode, ct);
+            })
+            .RequireAuthorization("WindowsDesktopSessionLogin")
             .WithTags("Auth");
 
         group.MapPost(AuthApiRoutes.Refresh, (
@@ -167,7 +126,147 @@ public static class AuthEndpoints
             .RequireAuthorization()
             .WithTags("Server");
 
+        group.MapPost(OwnerDeviceKeyApiRoutes.LocalBootstrap, async (OwnerDeviceBootstrapRequest request, HttpContext http,
+                LoginAuthenticationService authentication, OwnerDeviceKeyService ownerDevices,
+                IUserRepository users, IWorkspaceRepository workspaces, IRegistryRepository registry, ISessionRepository sessions,
+                IDeviceRepository devices, JwtTokenService jwt, LoginProtectionService protection, IServerModeResolver serverMode,
+                CancellationToken ct) =>
+            {
+                if (http.Connection.RemoteIpAddress is not { } address || !System.Net.IPAddress.IsLoopback(address))
+                    throw new AliasAuthenticationException(403, "owner-device-loopback-required");
+                if (!ownerDevices.IsAvailable)
+                    throw new OwnerDeviceKeyException(404, "owner-device-unsupported-platform");
+                var login = authentication.AuthenticateWindowsWorkstationOwnerBootstrap(http.User);
+                var platform = request.Platform.Trim().ToLowerInvariant();
+                var device = devices.FindByNameAndPlatform(request.DeviceName.Trim(), platform) ?? devices.Add(new Device
+                {
+                    Id = Guid.NewGuid(), Name = request.DeviceName.Trim(), Platform = platform,
+                    ClientVersion = request.ClientVersion.Trim(),
+                });
+                ownerDevices.RegisterOrReplaceLocalWindowsDevice(login.User.Id, device.Id, request);
+                return await CompleteLoginAsync(login, OwnerClientPlatform(device.Platform), device.Name, device.ClientVersion, http,
+                    authentication, users, workspaces, registry, sessions, devices, jwt, protection, serverMode, ct, device);
+            })
+            .RequireAuthorization("WindowsOwnerDeviceBootstrap")
+            .WithTags("Owner devices");
+
+        group.MapPost(OwnerDeviceKeyApiRoutes.Bootstrap, (OwnerDeviceBootstrapRequest request, ClaimsPrincipal principal,
+                IOwnerDeviceKeyRepository keys, OwnerDeviceKeyService ownerDevices) =>
+            {
+                var userId = Subject(principal);
+                var deviceId = DeviceId(principal);
+                if (keys.ListActive(userId).Count != 0)
+                    return Results.Conflict(new { problemCode = "owner-device-bootstrap-complete" });
+                var key = ownerDevices.Register(userId, deviceId, request);
+                return Results.Created(OwnerDeviceKeyApiRoutes.Device(key.Id), ToOwnerDeviceDto(key, key.Id));
+            })
+            .RequireAuthorization()
+            .WithTags("Owner devices");
+
+        group.MapPost(OwnerDeviceKeyApiRoutes.Challenge, (OwnerDeviceChallengeRequest request, OwnerDeviceKeyService ownerDevices) =>
+            Results.Ok(ownerDevices.CreateChallenge(request.DeviceId)))
+            .RequireRateLimiting("login")
+            .WithTags("Owner devices");
+
+        group.MapPost(OwnerDeviceKeyApiRoutes.SignIn, async (OwnerDeviceSignInRequest request, HttpContext http,
+                OwnerDeviceKeyService ownerDevices, IUserRepository users, IWorkspaceRepository workspaces,
+                IRegistryRepository registry, ISessionRepository sessions, IDeviceRepository devices, JwtTokenService jwt,
+                LoginProtectionService protection, LoginAuthenticationService authentication, IServerModeResolver serverMode,
+                CancellationToken ct) =>
+            {
+                var key = ownerDevices.VerifyChallenge(request.ChallengeId, request.DeviceId, request.Signature);
+                var user = users.FindById(key.UserId) ?? throw new OwnerDeviceKeyException(401, "owner-device-user-unavailable");
+                var device = devices.FindById(key.DeviceId) ?? throw new OwnerDeviceKeyException(401, "owner-device-unavailable");
+                var login = new AuthenticatedLogin(user, "owner-device-key", 0, user.SecurityVersion, user.Id.ToString("D"),
+                    RelaxKonOS.Server.UserExecution.UserExecutionEligibilityRules.Evaluate(
+                        new PlatformUserInfo(user.PlatformIdentity ?? string.Empty, user.Username, user.Platform, user.Username, null), serverMode.Mode));
+                return await CompleteLoginAsync(login, OwnerClientPlatform(device.Platform), device.Name, device.ClientVersion, http,
+                    authentication, users, workspaces, registry, sessions, devices, jwt, protection, serverMode, ct, device);
+            })
+            .RequireRateLimiting("login")
+            .WithTags("Owner devices");
+
+        group.MapPost(OwnerDeviceKeyApiRoutes.Invitations, (ClaimsPrincipal principal, OwnerDeviceKeyService ownerDevices) =>
+            Results.Ok(ownerDevices.CreateInvitation(principal)))
+            .RequireAuthorization()
+            .WithTags("Owner devices");
+
+        group.MapPost(OwnerDeviceKeyApiRoutes.AcceptInvitation, (OwnerDeviceAcceptInvitationRequest request,
+                IDeviceRepository devices, OwnerDeviceKeyService ownerDevices) =>
+            {
+                if (!ownerDevices.IsAvailable)
+                    throw new OwnerDeviceKeyException(404, "owner-device-unsupported-platform");
+                ownerDevices.EnsureInvitationIsUsable(request.Token);
+                var platform = request.Platform.Trim().ToLowerInvariant();
+                if (devices.FindByNameAndPlatform(request.DeviceName.Trim(), platform) is not null)
+                    return Results.Conflict(new { problemCode = "owner-device-name-in-use" });
+                var device = devices.Add(new Device
+                {
+                    Id = Guid.NewGuid(), Name = request.DeviceName.Trim(), Platform = platform,
+                    ClientVersion = request.ClientVersion.Trim(), LastLoginAt = null,
+                });
+                var key = ownerDevices.AcceptInvitation(request, device.Id);
+                return Results.Created(OwnerDeviceKeyApiRoutes.Device(key.Id), ToOwnerDeviceDto(key, key.Id));
+            })
+            .RequireRateLimiting("login")
+            .WithTags("Owner devices");
+
+        group.MapGet(OwnerDeviceKeyApiRoutes.Devices, (ClaimsPrincipal principal, OwnerDeviceKeyService ownerDevices) =>
+            Results.Ok(ownerDevices.List(principal).Select(key => ToOwnerDeviceDto(key, DeviceId(principal)))))
+            .RequireAuthorization()
+            .WithTags("Owner devices");
+
+        group.MapDelete(OwnerDeviceKeyApiRoutes.DeviceTemplate, (Guid id, ClaimsPrincipal principal, OwnerDeviceKeyService ownerDevices) =>
+            {
+                ownerDevices.Revoke(principal, id);
+                return Results.NoContent();
+            })
+            .RequireAuthorization()
+            .WithTags("Owner devices");
+
         return app;
+    }
+
+    private static async Task<IResult> CompleteLoginAsync(AuthenticatedLogin login, ClientPlatformKind clientPlatform,
+        string deviceName, string clientVersion, HttpContext http, LoginAuthenticationService authentication,
+        IUserRepository users, IWorkspaceRepository wss, IRegistryRepository registry, ISessionRepository sess,
+        IDeviceRepository devs, JwtTokenService jwt, LoginProtectionService protection, IServerModeResolver serverMode,
+        CancellationToken ct, Device? existingDevice = null)
+    {
+        var user = login.User;
+        var now = DateTimeOffset.UtcNow;
+        var ws = wss.FindByUserId(user.Id) ?? wss.Add(new Workspace
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, Name = $"{user.Username} Workspace", State = WorkspaceState.Running, CreatedAt = now,
+        });
+        WorkspaceConfigurationRegistry.EnsureDefaults(registry, ws, user.Id.ToString("D"));
+        var platform = clientPlatform.ToString().ToLowerInvariant();
+        var device = existingDevice ?? devs.FindByNameAndPlatform(deviceName, platform) ?? devs.Add(new Device
+        {
+            Id = Guid.NewGuid(), Name = deviceName, Platform = platform, ClientVersion = clientVersion,
+        });
+        device.ClientVersion = clientVersion;
+        device.LastLoginAt = now;
+        devs.Update(device);
+        var session = sess.Add(new Session
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, AuthenticationMethod = login.Method, AuthenticatedAt = now,
+            WorkspaceId = ws.Id, DeviceId = device.Id, CreatedAt = now, LastActiveAt = now, Status = SessionStatus.Active,
+        });
+        ws.ControllerDeviceId = device.Id;
+        ws.ControllerGrantedAt = now;
+        ws.ControllerLeaseExpiresAt = now.AddMinutes(5);
+        ws.State = WorkspaceState.Running;
+        wss.Update(ws);
+        users.UpdateLastLogin(user.Id, now);
+        authentication.RequireCurrent(login);
+        var role = DeviceRole.Controller;
+        var tokens = jwt.Issue(user, ws, device, role, session.Id, login.Method, now, login.SecurityVersion);
+        await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
+        return Results.Ok(new LoginResponse(user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role,
+            CreateServerDescriptor(serverMode), new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available,
+                login.ExecutionEligibility.ReasonCode, serverMode.Mode == ServerMode.System && login.Method == "system"
+                && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));
     }
 
     private static ServerDescriptorDto CreateServerDescriptor(IServerModeResolver serverMode)
@@ -202,6 +301,31 @@ public static class AuthEndpoints
     private static IResult Problem(HttpContext http, int status, string typeSuffix, string title, string detail)
         => Results.Problem(detail: detail, statusCode: status,
             title: ApiLocalizer.Get(http, typeSuffix, title), type: ProblemBase + typeSuffix);
+
+    private static Guid Subject(ClaimsPrincipal principal)
+    {
+        if (!Guid.TryParse(principal.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            throw new OwnerDeviceKeyException(401, "owner-device-user-unavailable");
+        return userId;
+    }
+
+    private static Guid DeviceId(ClaimsPrincipal principal)
+    {
+        if (!Guid.TryParse(principal.FindFirstValue("device_id"), out var deviceId))
+            throw new OwnerDeviceKeyException(401, "owner-device-unavailable");
+        return deviceId;
+    }
+
+    private static OwnerDeviceDto ToOwnerDeviceDto(OwnerDeviceKey key, Guid currentDeviceId) => new(
+        key.Id, key.Name, key.Platform, key.CreatedAt, key.LastUsedAt, key.Id == currentDeviceId);
+
+    private static ClientPlatformKind OwnerClientPlatform(string platform) => platform.ToLowerInvariant() switch
+    {
+        "linux" => ClientPlatformKind.Linux,
+        "android" => ClientPlatformKind.Android,
+        "ios" => ClientPlatformKind.iOS,
+        _ => ClientPlatformKind.Windows,
+    };
 
     private static IResult TooManyAttempts(HttpContext http, DateTimeOffset retryAt)
     {
