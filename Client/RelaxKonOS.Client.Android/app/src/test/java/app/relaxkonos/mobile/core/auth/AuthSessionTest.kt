@@ -11,6 +11,8 @@ import app.relaxkonos.mobile.core.net.ServerDescriptor
 import app.relaxkonos.mobile.loginSession
 import app.relaxkonos.mobile.servercenter.ServerConnectionIdentityRules
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -29,6 +31,64 @@ class AuthSessionTest {
     private val server = "https://relaxkonos.local:5090"
 
     private fun direct(url: String = server) = ServerConnectionIdentityRules.direct(url)
+
+    @Test
+    fun `terminal handshake renews a token near expiry before using it`() = runTest {
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession().copy(
+            tokens = AuthTokens("old", "refresh-1", System.currentTimeMillis() + 5_000, null),
+        )) }
+        gateway.onRefresh = { _, _ -> ApiResult.Success(AuthTokens("fresh", "refresh-2", null, null)) }
+        session.login(direct(), "nana", "pw".toCharArray()) {}
+
+        assertEquals(ApiResult.Success("fresh"), session.connectionToken())
+        assertEquals(1, gateway.refreshCount)
+    }
+
+    @Test
+    fun `valid connection token is used without refreshing`() = runTest {
+        signIn()
+        assertEquals(ApiResult.Success("access-1"), session.connectionToken())
+        assertEquals(0, gateway.refreshCount)
+    }
+
+    @Test
+    fun `concurrent REST and terminal expiry share one rotated token pair`() = runTest {
+        signIn()
+        val refreshStarted = CompletableDeferred<Unit>()
+        val finishRefresh = CompletableDeferred<Unit>()
+        gateway.onRefresh = { _, token ->
+            assertEquals("refresh-1", token)
+            refreshStarted.complete(Unit)
+            finishRefresh.await()
+            ApiResult.Success(AuthTokens("access-2", "refresh-2", null, null))
+        }
+        val first = async { session.renew("access-1") }
+        refreshStarted.await()
+        val second = async { session.renew("access-1") }
+        finishRefresh.complete(Unit)
+        assertEquals(first.await(), second.await())
+        assertEquals(1, gateway.refreshCount)
+        assertEquals("access-2", session.accessToken)
+    }
+
+    @Test
+    fun `late refresh response cannot revive a signed out session`() = runTest {
+        signIn()
+        val started = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        gateway.onRefresh = { _, _ ->
+            started.complete(Unit)
+            finished.await()
+            ApiResult.Success(AuthTokens("late", "late-refresh", null, null))
+        }
+        val renewal = async { session.renew() }
+        started.await()
+        session.clearSession()
+        finished.complete(Unit)
+        assertTrue(renewal.await() is ApiResult.Transport)
+        assertEquals(SessionState.SignedOut, session.state.value)
+        assertNull(session.accessToken)
+    }
 
     private suspend fun signIn(accessToken: String = "access-1", refreshToken: String = "refresh-1") {
         gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession(accessToken, refreshToken)) }

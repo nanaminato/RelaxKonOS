@@ -320,9 +320,6 @@
     <string name="home_metrics_empty">还没有取到数据。</string>
     <string name="home_metrics_stale">最近一次数据已过期（%1$s）。</string>
     <string name="home_filesystems_title">磁盘</string>
-    <string name="home_capabilities_title">服务器能力</string>
-    <string name="home_capabilities_empty">服务器未上报任何能力。</string>
-    <string name="home_open_files">打开文件</string>
     <string name="home_recent_title">近期操作</string>
     <string name="home_recent_empty">此应用会话中成功的操作将显示在这里。</string>
     <string name="home_recent_item">%1$s · %2$s · %3$s</string>
@@ -518,7 +515,7 @@
     <string name="more_diagnostics">诊断</string>
     <string name="more_diagnostics_subtitle">连接自检与已脱敏报告</string>
     <string name="more_about">关于</string>
-    <string name="more_about_subtitle">版本、服务端信息、开源许可</string>
+    <string name="more_about_subtitle">版本与开源许可</string>
     <string name="more_sign_out">退出登录</string>
     <string name="more_sign_out_message">退出此服务器的登录？已保存的连接及其密码会保留在本机。</string>
 
@@ -591,9 +588,6 @@
     <string name="about_client_version">版本</string>
     <string name="about_client_platform">平台</string>
     <string name="about_client_platform_value">Android</string>
-    <string name="about_server_title">服务端</string>
-    <string name="about_server_unavailable">未登录。</string>
-    <string name="about_server_capabilities">能力数量</string>
     <string name="about_licenses_title">开源许可</string>
     <string name="about_licenses_body">RelaxKonOS 包含第三方组件，其许可声明列于仓库根目录的 THIRD_PARTY_NOTICES.md。</string>
     <string name="deployments_title">应用部署</string>
@@ -964,6 +958,14 @@
     <string name="terminal_input">输入</string>
     <string name="terminal_send">发送</string>
     <string name="terminal_paste_title">发送多行内容前请确认</string>
+    <string name="terminal_recovering">正在恢复远端会话连接…</string>
+    <string name="terminal_switching">正在更新终端会话…</string>
+    <string name="terminal_font_smaller">缩小终端字体</string>
+    <string name="terminal_font_larger">放大终端字体</string>
+    <string name="terminal_session_actions">会话操作</string>
+    <string name="terminal_close_confirm">结束 %1$s？这些会话中正在运行的命令将被停止。</string>
+    <string name="terminal_empty">尚未选中会话。请选择上方会话，或新建会话。</string>
+    <string name="terminal_latest">最新输出 ↓</string>
     <string name="guardian_title">进程守护</string>
     <string name="guardian_subtitle">远端受管工作负载与日志</string>
     <string name="guardian_loading">正在加载进程守护…</string>
@@ -1021,4 +1023,34 @@
     <string name="scripts_timeout_reason">远端超时结束了此任务。</string>
     <string name="scripts_agent_restart_reason">任务运行时 Agent 重启。重试前请核对宿主进程。</string>
     <string name="scripts_launch_reason">宿主无法以此账号启动所选程序。</string>
+
+    <!-- Server information -->
+    <string name="more_server_information">服务器信息</string>
+    <string name="more_server_information_subtitle">服务器基本信息与功能支持</string>
+    <string name="server_information_identity">基本信息</string>
+    <string name="server_information_unavailable">未登录。</string>
+    <string name="server_information_features">支持的功能</string>
+    <string name="server_information_features_note">以下功能由服务器上报；手机端的可用入口与账户权限请以各功能页面为准。</string>
+    <string name="server_information_features_empty">服务器未上报支持的功能。</string>
+    <string name="server_information_other_features">另有 %1$d 项功能，可在技术详情中查看。</string>
+    <string name="server_information_technical_details">技术详情</string>
+    <string name="server_information_show_details">展开</string>
+    <string name="server_information_hide_details">收起</string>
+    <string name="server_feature_files">文件管理</string>
+    <string name="server_feature_terminal">终端</string>
+    <string name="server_feature_metrics">性能监控</string>
+    <string name="server_feature_processes">进程管理</string>
+    <string name="server_feature_guardian">工作负载守护</string>
+    <string name="server_feature_docker">容器管理</string>
+    <string name="server_feature_deployments">应用部署</string>
+    <string name="server_feature_web_server">Web 服务</string>
+    <string name="server_feature_certificates">证书管理</string>
+    <string name="server_feature_git">Git 仓库</string>
+    <string name="server_feature_alerts">事件告警</string>
+    <string name="server_feature_backup_recovery">备份与恢复</string>
+    <string name="server_feature_posix_permissions">POSIX 文件权限</string>
+    <string name="server_feature_file_services">文件共享服务</string>
+    <string name="server_feature_firewall">防火墙管理</string>
+    <string name="server_feature_proxy">反向代理</string>
+    <string name="server_feature_tunnels">网络隧道</string>
 </resources>

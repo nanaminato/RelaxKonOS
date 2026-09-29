@@ -42,7 +42,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * pushed pages, which keeps one implementation of each settings page instead of two.
  *
  * Sign-out is drawn as a destructive outlined button rather than as a list row: it is the one entry
- * here that ends the session, and it should not look like the five entries that only open a page.
+ * here that ends the session, and it should not look like the entries that only open a page.
  */
 @Composable
 fun MoreScreen(
@@ -69,6 +69,11 @@ fun MoreScreen(
                 titleRes = R.string.more_connections,
                 subtitleRes = R.string.more_connections_subtitle,
             ) { onOpenRoute(Routes.MORE_CONNECTIONS) }
+            SettingsRow(
+                icon = DesktopIcons.host,
+                titleRes = R.string.more_server_information,
+                subtitleRes = R.string.more_server_information_subtitle,
+            ) { onOpenRoute(Routes.MORE_SERVER_INFORMATION) }
             SettingsRow(
                 icon = DesktopIcons.appearance,
                 titleRes = R.string.more_appearance,

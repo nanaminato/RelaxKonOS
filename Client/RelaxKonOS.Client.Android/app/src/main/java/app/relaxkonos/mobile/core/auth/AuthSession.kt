@@ -14,6 +14,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** What the shell is currently showing. */
 sealed interface SessionState {
@@ -44,7 +46,10 @@ sealed interface SessionState {
  * that is one fingerprint.
  */
 class TokenStore {
+    @Volatile
     private var tokens: AuthTokens? = null
+
+    internal fun snapshot(): AuthTokens? = tokens
 
     val accessToken: String? get() = tokens?.accessToken
 
@@ -72,6 +77,7 @@ class AuthSession(
     private val ownerDevices: OwnerDeviceAuthenticationService? = null,
 ) {
     private val stateFlow = MutableStateFlow<SessionState>(SessionState.SignedOut)
+    private val refreshMutex = Mutex()
 
     val state: StateFlow<SessionState> = stateFlow.asStateFlow()
 
@@ -162,10 +168,16 @@ class AuthSession(
     }
 
     /** Refreshes the token pair. Returns the renewed tokens, or the reason it failed. */
-    suspend fun renew(): ApiResult<AuthTokens> {
+    suspend fun renew(expectedAccessToken: String? = accessToken): ApiResult<AuthTokens> = refreshMutex.withLock {
+        // REST requests and Hub reconnects can expire together. Refresh-token rotation must only
+        // happen once; waiting callers use the pair already renewed by the first caller.
+        val held = tokenStore.snapshot()
+        if (held != null && held.accessToken != expectedAccessToken) return@withLock ApiResult.Success(held)
         val url = effectiveBaseUrl ?: return ApiResult.Transport("No server has been selected.")
         val refreshToken = tokenStore.refreshToken ?: return ApiResult.Transport("No refresh token is held.")
-        return when (val result = gateway.refresh(url, refreshToken)) {
+        val result = gateway.refresh(url, refreshToken)
+        if (tokenStore.refreshToken != refreshToken) return@withLock ApiResult.Transport("The session changed during refresh.")
+        when (result) {
             is ApiResult.Success -> {
                 tokenStore.update(result.value)
                 result
@@ -177,6 +189,18 @@ class AuthSession(
             }
 
             is ApiResult.Transport -> result
+        }
+    }
+
+    /** Hub handshakes must not start with a token that is about to expire. */
+    suspend fun connectionToken(): ApiResult<String> {
+        val held = tokenStore.snapshot() ?: return ApiResult.Problem(401, ProblemCodes.UNAUTHORIZED, null)
+        val expiresAt = held.accessTokenExpiresAtMillis
+        if (expiresAt == null || expiresAt > System.currentTimeMillis() + 30_000) return ApiResult.Success(held.accessToken)
+        return when (val renewed = renew(held.accessToken)) {
+            is ApiResult.Success -> ApiResult.Success(renewed.value.accessToken)
+            is ApiResult.Problem -> renewed
+            is ApiResult.Transport -> renewed
         }
     }
 
@@ -194,7 +218,7 @@ class AuthSession(
         if (first !is ApiResult.Problem || !first.isSessionExpired()) {
             return first
         }
-        return when (val renewed = renew()) {
+        return when (val renewed = renew(token)) {
             is ApiResult.Success -> {
                 val reboundUrl = effectiveBaseUrl ?: return ApiResult.Transport("No server has been selected.")
                 call(reboundUrl, renewed.value.accessToken)

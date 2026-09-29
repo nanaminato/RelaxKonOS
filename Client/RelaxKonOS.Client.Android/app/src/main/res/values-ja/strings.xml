@@ -321,9 +321,6 @@
     <string name="home_metrics_empty">まだ計測値がありません。</string>
     <string name="home_metrics_stale">最後の計測値は古くなっています（%1$s）。</string>
     <string name="home_filesystems_title">ディスク</string>
-    <string name="home_capabilities_title">サーバー機能</string>
-    <string name="home_capabilities_empty">サーバーは機能を報告していません。</string>
-    <string name="home_open_files">ファイルを開く</string>
     <string name="home_recent_title">最近の操作</string>
     <string name="home_recent_empty">このアプリのセッションで成功した操作がここに表示されます。</string>
     <string name="home_recent_item">%1$s · %2$s · %3$s</string>
@@ -519,7 +516,7 @@
     <string name="more_diagnostics">診断</string>
     <string name="more_diagnostics_subtitle">接続のセルフチェックと秘匿化レポート</string>
     <string name="more_about">このアプリについて</string>
-    <string name="more_about_subtitle">バージョン、サーバー、ライセンス</string>
+    <string name="more_about_subtitle">バージョンとライセンス</string>
     <string name="more_sign_out">サインアウト</string>
     <string name="more_sign_out_message">このサーバーからサインアウトしますか？保存された接続とパスワードはこの端末に残ります。</string>
 
@@ -592,9 +589,6 @@
     <string name="about_client_version">バージョン</string>
     <string name="about_client_platform">プラットフォーム</string>
     <string name="about_client_platform_value">Android</string>
-    <string name="about_server_title">サーバー</string>
-    <string name="about_server_unavailable">サインインしていません。</string>
-    <string name="about_server_capabilities">機能数</string>
     <string name="about_licenses_title">ライセンス</string>
     <string name="about_licenses_body">RelaxKonOS はサードパーティのコンポーネントを含みます。その告知はリポジトリ直下の THIRD_PARTY_NOTICES.md に記載されています。</string>
     <string name="deployments_title">アプリのデプロイ</string>
@@ -965,6 +959,14 @@
     <string name="terminal_input">入力</string>
     <string name="terminal_send">送信</string>
     <string name="terminal_paste_title">複数行を送信する前に確認</string>
+    <string name="terminal_recovering">リモートセッションに再接続中…</string>
+    <string name="terminal_switching">ターミナルセッションを更新中…</string>
+    <string name="terminal_font_smaller">ターミナルの文字を小さくする</string>
+    <string name="terminal_font_larger">ターミナルの文字を大きくする</string>
+    <string name="terminal_session_actions">セッション操作</string>
+    <string name="terminal_close_confirm">%1$s を終了しますか？これらのセッションで実行中のコマンドは停止します。</string>
+    <string name="terminal_empty">セッションが未選択です。上から選ぶか、新規作成してください。</string>
+    <string name="terminal_latest">最新の出力 ↓</string>
     <string name="guardian_title">プロセスガーディアン</string>
     <string name="guardian_subtitle">管理対象のリモート処理とログ</string>
     <string name="guardian_loading">ガーディアンを読み込み中…</string>
@@ -1022,4 +1024,34 @@
     <string name="scripts_timeout_reason">リモートのタイムアウトでタスクが終了しました。</string>
     <string name="scripts_agent_restart_reason">実行中に Agent が再起動しました。再試行前にホストのプロセスを確認してください。</string>
     <string name="scripts_launch_reason">このアカウントでプログラムを開始できません。</string>
+
+    <!-- Server information -->
+    <string name="more_server_information">サーバー情報</string>
+    <string name="more_server_information_subtitle">サーバーの基本情報と対応機能</string>
+    <string name="server_information_identity">基本情報</string>
+    <string name="server_information_unavailable">サインインしていません。</string>
+    <string name="server_information_features">対応機能</string>
+    <string name="server_information_features_note">サーバーが報告した機能です。モバイルアプリでの利用可否とアカウントの権限は各機能のページで確認してください。</string>
+    <string name="server_information_features_empty">サーバーは対応機能を報告していません。</string>
+    <string name="server_information_other_features">ほかに %1$d 件の機能があります。技術詳細で確認できます。</string>
+    <string name="server_information_technical_details">技術詳細</string>
+    <string name="server_information_show_details">展開</string>
+    <string name="server_information_hide_details">折りたたむ</string>
+    <string name="server_feature_files">ファイル管理</string>
+    <string name="server_feature_terminal">ターミナル</string>
+    <string name="server_feature_metrics">パフォーマンス監視</string>
+    <string name="server_feature_processes">プロセス管理</string>
+    <string name="server_feature_guardian">ワークロード監視</string>
+    <string name="server_feature_docker">コンテナ管理</string>
+    <string name="server_feature_deployments">アプリケーション配備</string>
+    <string name="server_feature_web_server">Web サービス</string>
+    <string name="server_feature_certificates">証明書管理</string>
+    <string name="server_feature_git">Git リポジトリ</string>
+    <string name="server_feature_alerts">イベント通知</string>
+    <string name="server_feature_backup_recovery">バックアップと復元</string>
+    <string name="server_feature_posix_permissions">POSIX ファイル権限</string>
+    <string name="server_feature_file_services">ファイル共有サービス</string>
+    <string name="server_feature_firewall">ファイアウォール管理</string>
+    <string name="server_feature_proxy">リバースプロキシ</string>
+    <string name="server_feature_tunnels">ネットワークトンネル</string>
 </resources>

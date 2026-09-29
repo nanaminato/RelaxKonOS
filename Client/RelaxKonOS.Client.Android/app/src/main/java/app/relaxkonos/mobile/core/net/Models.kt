@@ -251,4 +251,8 @@ object ServerCapabilities {
     const val CERTIFICATES = "server.certificates"
     const val EVENT_ALERTS = "server.event-alerts"
     const val BACKUP_RECOVERY = "server.backup-recovery"
+    const val FILE_SERVICES = "server.file-services"
+    const val FIREWALL = "server.firewall"
+    const val PROXY = "server.proxy"
+    const val TUNNELS = "server.tunnels"
 }

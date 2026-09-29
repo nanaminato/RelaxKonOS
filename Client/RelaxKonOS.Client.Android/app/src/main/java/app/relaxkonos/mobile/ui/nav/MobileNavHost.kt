@@ -46,6 +46,7 @@ import app.relaxkonos.mobile.ui.more.AppearanceScreen
 import app.relaxkonos.mobile.ui.more.ConnectionsScreen
 import app.relaxkonos.mobile.ui.more.DiagnosticsScreen
 import app.relaxkonos.mobile.ui.more.MoreScreen
+import app.relaxkonos.mobile.ui.more.ServerInformationScreen
 import app.relaxkonos.mobile.ui.terminal.ServerTerminalScreen
 
 /**
@@ -99,6 +100,7 @@ fun MobileNavHost(
             Routes.MORE,
             Routes.MORE_ACCOUNT_SECURITY,
             Routes.MORE_CONNECTIONS,
+            Routes.MORE_SERVER_INFORMATION,
             Routes.MORE_APPEARANCE,
             Routes.MORE_DIAGNOSTICS,
             Routes.MORE_ABOUT,
@@ -107,7 +109,6 @@ fun MobileNavHost(
             else -> HomeScreen(
                 session = session,
                 layoutState = layoutState,
-                onOpenFiles = { navigator.select(Routes.FILES) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -237,6 +238,7 @@ private fun MorePane(route: String, onBack: (() -> Unit)?) {
     when (route) {
         Routes.MORE_ACCOUNT_SECURITY -> AccountSecurityScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_CONNECTIONS -> ConnectionsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
+        Routes.MORE_SERVER_INFORMATION -> ServerInformationScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_APPEARANCE -> AppearanceScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_DIAGNOSTICS -> DiagnosticsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize())

@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -127,7 +125,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 fun HomeScreen(
     session: SessionState.Active,
     layoutState: LayoutState,
-    onOpenFiles: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: HomeViewModel = viewModel()
@@ -200,40 +197,6 @@ fun HomeScreen(
                         )
                     }
                     MetricsBlock(snapshot)
-                }
-            }
-        }
-
-        SectionCard(
-            title = stringResource(R.string.home_capabilities_title),
-            leading = DesktopIcons.capabilities,
-            trailing = {
-                if (session.capabilities.contains(ServerCapabilities.FILES)) {
-                    Button(onClick = onOpenFiles) { Text(stringResource(R.string.home_open_files)) }
-                }
-            },
-        ) {
-            if (session.capabilities.isEmpty()) {
-                EmptyHint(stringResource(R.string.home_capabilities_empty))
-            } else {
-                session.capabilities.sorted().forEach { capability ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                    ) {
-                        // A success-toned dot rather than a checkmark: the desktop icon set has no
-                        // tick, and inventing one here would put a second icon language in the row.
-                        Box(
-                            Modifier
-                                .size(6.dp)
-                                .background(MaterialTheme.relaxKon.success, CircleShape),
-                        )
-                        Text(
-                            capability,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
         }

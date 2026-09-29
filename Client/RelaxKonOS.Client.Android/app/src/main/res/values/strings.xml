@@ -346,9 +346,6 @@
     <string name="home_metrics_empty">No reading has been taken yet.</string>
     <string name="home_metrics_stale">The last reading is out of date (%1$s).</string>
     <string name="home_filesystems_title">Disks</string>
-    <string name="home_capabilities_title">Server capabilities</string>
-    <string name="home_capabilities_empty">The server reported no capabilities.</string>
-    <string name="home_open_files">Open files</string>
     <string name="home_recent_title">Recent activity</string>
     <string name="home_recent_empty">Successful operations from this app session will appear here.</string>
     <string name="home_recent_item">%1$s · %2$s · %3$s</string>
@@ -550,7 +547,7 @@
     <string name="more_diagnostics">Diagnostics</string>
     <string name="more_diagnostics_subtitle">Connection self-check and a redacted report</string>
     <string name="more_about">About</string>
-    <string name="more_about_subtitle">Version, server, licences</string>
+    <string name="more_about_subtitle">Version and licences</string>
     <string name="more_sign_out">Sign out</string>
     <string name="more_sign_out_message">Sign out of this server? The saved connection and its password stay on this device.</string>
 
@@ -628,9 +625,6 @@
     <string name="about_client_version">Version</string>
     <string name="about_client_platform">Platform</string>
     <string name="about_client_platform_value">Android</string>
-    <string name="about_server_title">Server</string>
-    <string name="about_server_unavailable">Not signed in.</string>
-    <string name="about_server_capabilities">Capabilities</string>
     <string name="about_licenses_title">Licences</string>
     <string name="about_licenses_body">RelaxKonOS includes third-party components. Their notices are listed in THIRD_PARTY_NOTICES.md in the repository root.</string>
     <string name="deployments_title">Application deployments</string>
@@ -1001,6 +995,14 @@
     <string name="terminal_input">Input</string>
     <string name="terminal_send">Send</string>
     <string name="terminal_paste_title">Review multiline input before sending</string>
+    <string name="terminal_recovering">Reconnecting to the remote session…</string>
+    <string name="terminal_switching">Updating terminal session…</string>
+    <string name="terminal_font_smaller">Decrease terminal font size</string>
+    <string name="terminal_font_larger">Increase terminal font size</string>
+    <string name="terminal_session_actions">Session actions</string>
+    <string name="terminal_close_confirm">End %1$s? Running commands in these sessions will be stopped.</string>
+    <string name="terminal_empty">No session selected. Choose a session above or create a new one.</string>
+    <string name="terminal_latest">Latest output ↓</string>
     <string name="guardian_title">Process Guardian</string>
     <string name="guardian_subtitle">Managed remote workloads and logs</string>
     <string name="guardian_loading">Loading Guardian…</string>
@@ -1058,4 +1060,34 @@
     <string name="scripts_timeout_reason">The remote timeout ended this task.</string>
     <string name="scripts_agent_restart_reason">The Agent restarted while this task was active. Check host processes before retrying.</string>
     <string name="scripts_launch_reason">The host could not start the selected program as this account.</string>
+
+    <!-- Server information -->
+    <string name="more_server_information">Server information</string>
+    <string name="more_server_information_subtitle">Server identity and supported features</string>
+    <string name="server_information_identity">Server identity</string>
+    <string name="server_information_unavailable">Not signed in.</string>
+    <string name="server_information_features">Supported features</string>
+    <string name="server_information_features_note">Features reported by this server. Mobile app availability and account permissions are shown in the relevant sections.</string>
+    <string name="server_information_features_empty">The server reported no supported features.</string>
+    <string name="server_information_other_features">%1$d additional feature(s). See technical details.</string>
+    <string name="server_information_technical_details">Technical details</string>
+    <string name="server_information_show_details">Show</string>
+    <string name="server_information_hide_details">Hide</string>
+    <string name="server_feature_files">File management</string>
+    <string name="server_feature_terminal">Terminal</string>
+    <string name="server_feature_metrics">Performance monitoring</string>
+    <string name="server_feature_processes">Process management</string>
+    <string name="server_feature_guardian">Workload supervision</string>
+    <string name="server_feature_docker">Container management</string>
+    <string name="server_feature_deployments">Application deployment</string>
+    <string name="server_feature_web_server">Web services</string>
+    <string name="server_feature_certificates">Certificate management</string>
+    <string name="server_feature_git">Git repositories</string>
+    <string name="server_feature_alerts">Event alerts</string>
+    <string name="server_feature_backup_recovery">Backup and recovery</string>
+    <string name="server_feature_posix_permissions">POSIX file permissions</string>
+    <string name="server_feature_file_services">File sharing services</string>
+    <string name="server_feature_firewall">Firewall management</string>
+    <string name="server_feature_proxy">Reverse proxy</string>
+    <string name="server_feature_tunnels">Network tunnels</string>
 </resources>
