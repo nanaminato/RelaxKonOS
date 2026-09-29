@@ -23,8 +23,14 @@ public static class TerminalHubMethods
     /// <summary>调整 PTY 尺寸（列/行/像素）。</summary>
     public const string Resize = nameof(Resize);
 
-    /// <summary>关闭并释放 PTY（手动终止：杀掉该会话并从服务端移除）。</summary>
-    public const string Close = nameof(Close);
+    /// <summary>
+    /// 关闭并释放指定 PTY（手动终止：杀掉该会话并从服务端移除）。
+    /// </summary>
+    /// <remarks>
+    /// 会话 ID 由客户端给出，因此服务端必须校验归属：只有会话的主人能关闭它。
+    /// 关闭当前已附加的会话后，该连接不再指向任何会话，后续 <c>Input</c>/<c>Resize</c> 成为空操作。
+    /// </remarks>
+    public const string CloseSession = nameof(CloseSession);
 
     /// <summary>拉取当前用户的全部终端会话摘要（多实例列表）。</summary>
     public const string ListSessions = nameof(ListSessions);

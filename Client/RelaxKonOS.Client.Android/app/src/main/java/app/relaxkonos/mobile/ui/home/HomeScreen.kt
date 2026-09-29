@@ -60,6 +60,7 @@ import app.relaxkonos.mobile.ui.common.UiMessage
 import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.failureMessage
 import app.relaxkonos.mobile.ui.common.formatSize
+import app.relaxkonos.mobile.ui.common.formatUptime
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.loadTone
 import app.relaxkonos.mobile.ui.common.text
@@ -295,7 +296,7 @@ private fun MetricsBlock(snapshot: PerformanceSnapshot) {
 
     KeyValueRow(
         stringResource(R.string.home_label_uptime),
-        stringResource(R.string.home_value_seconds, snapshot.uptimeSeconds),
+        formatUptime(snapshot.uptimeSeconds),
     )
 
     if (snapshot.filesystems.isNotEmpty()) {

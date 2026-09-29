@@ -53,7 +53,15 @@ class ServerTerminalConnection(
     suspend fun resize(columns: Int, rows: Int) = withContext(Dispatchers.IO) {
         hub.invoke("Resize", columns, rows, 0, 0).blockingAwait()
     }
-    suspend fun terminate() = withContext(Dispatchers.IO) { hub.invoke("Close").blockingAwait() }
+    /**
+     * Terminates one Server session by ID.
+     *
+     * The ID is sent explicitly because the phone closes sessions it is not attached to: the Server
+     * only drops the caller's attachment when the closed session happens to be the attached one.
+     */
+    suspend fun closeSession(sessionId: String) = withContext(Dispatchers.IO) {
+        hub.invoke("CloseSession", sessionId).blockingAwait()
+    }
     override fun close() { hub.stop().blockingAwait() }
 }
 

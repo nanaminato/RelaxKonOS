@@ -311,7 +311,10 @@
     <string name="home_label_memory">メモリ</string>
     <string name="home_label_uptime">稼働時間</string>
     <string name="home_value_percent">%1$.1f%%</string>
-    <string name="home_value_seconds">%1$d 秒</string>
+    <string name="home_value_uptime_days_hours">%1$d 日 %2$d 時間</string>
+    <string name="home_value_uptime_hours_minutes">%1$d 時間 %2$d 分</string>
+    <string name="home_value_uptime_minutes_seconds">%1$d 分 %2$d 秒</string>
+    <string name="home_value_uptime_seconds">%1$d 秒</string>
     <string name="home_value_used_of_total">%2$s 中 %1$s</string>
     <string name="home_system_title">システム状態</string>
     <string name="home_metrics_absent">このサーバーはホスト指標を報告していません。</string>
@@ -950,6 +953,8 @@
     <string name="terminal_reconnect">再接続</string>
     <string name="terminal_new">新しいセッション</string>
     <string name="terminal_close">セッションを終了</string>
+    <string name="terminal_close_others">ほかのセッションを閉じる</string>
+    <string name="terminal_session_current">使用中</string>
     <string name="terminal_exit_code">終了コード: %1$d</string>
     <string name="terminal_input">入力</string>
     <string name="terminal_send">送信</string>

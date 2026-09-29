@@ -53,7 +53,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private data class OperationsState(
+internal data class OperationsState(
     val owner: SessionState.Active? = null,
     val loading: Boolean = false,
     val items: List<ObservedOperation> = emptyList(),
@@ -65,7 +65,7 @@ private data class OperationsState(
     val error: Boolean = false,
 )
 
-private class OperationsViewModel(application: Application) : AndroidViewModel(application) {
+internal class OperationsViewModel(application: Application) : AndroidViewModel(application) {
     private val container = getApplication<RelaxKonApplication>().container
     var state by mutableStateOf(OperationsState())
         private set

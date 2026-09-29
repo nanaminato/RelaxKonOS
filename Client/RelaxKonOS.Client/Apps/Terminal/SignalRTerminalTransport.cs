@@ -10,7 +10,7 @@ namespace RelaxKonOS.Client.Apps.Terminal;
 /// Terminal Hub。服务端是 PTY 哑中继——本传输只搬运原始字节，VT 渲染由客户端 <c>TerminalControl</c> 完成。
 /// </summary>
 /// <remarks>
-/// <b>断开语义</b>：<see cref="StopAsync"/> 只关闭连接，<b>不</b>调用服务端 <c>Close</c>，故 PTY 存活
+/// <b>断开语义</b>：<see cref="StopAsync"/> 只关闭连接，<b>不</b>调用服务端 <c>CloseSession</c>，故 PTY 存活
 /// （用于关窗切换会话 / 桌面关闭 / 网络掉线 —— 再次登录可恢复）。<see cref="KillAsync"/> 才显式终止服务端会话
 /// （对应"断开"按钮 / 关闭终端窗口）。
 /// </remarks>
@@ -100,17 +100,18 @@ public sealed class SignalRTerminalTransport : ITerminalTransport
             TerminalHubConnection.Record(_options.Diagnostics, "Stop", TimeSpan.Zero, NetworkDiagnosticOutcome.Succeeded);
     }
 
-    /// <summary>显式终止服务端会话（杀 PTY 并从注册表移除）。对应"断开"按钮 / 关闭终端窗口。</summary>
+    /// <summary>显式终止服务端会话（按会话 ID 杀 PTY 并从注册表移除）。对应"断开"按钮 / 关闭终端窗口。</summary>
     public async ValueTask KillAsync()
     {
         if (!IsRunning) return;
         IsRunning = false;
         var conn = _conn;
-        if (conn is null) return;
-        try { await conn.InvokeAsync(TerminalHubMethods.Close).ConfigureAwait(false); } catch { /* best effort */ }
+        var sessionId = SessionId;
+        if (conn is null || sessionId is null) return;
+        try { await conn.InvokeAsync(TerminalHubMethods.CloseSession, sessionId).ConfigureAwait(false); } catch { /* best effort */ }
         try { await conn.StopAsync().ConfigureAwait(false); } catch { /* best effort */ }
         if (_options.Diagnostics is not null)
-            TerminalHubConnection.Record(_options.Diagnostics, TerminalHubMethods.Close, TimeSpan.Zero, NetworkDiagnosticOutcome.Succeeded);
+            TerminalHubConnection.Record(_options.Diagnostics, TerminalHubMethods.CloseSession, TimeSpan.Zero, NetworkDiagnosticOutcome.Succeeded);
     }
 
     /// <summary>用当前活动连接拉取会话列表（需已 <see cref="StartAsync"/>）。</summary>

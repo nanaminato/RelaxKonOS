@@ -139,7 +139,7 @@ SignalR 不能像普通 HTTP 一样以“每个数据包”为单位记录，也
 | Build / Connect started | Hub 名称、净化路径、连接序号、开始时间 | access token、协商 body |
 | `/negotiate` HTTP | 状态、耗时、错误类别 | negotiate response 和 connection token |
 | Connected / Closed | 结果、耗时、关闭类别 | WebSocket payload |
-| Invoke（如 `Start`、`ListSessions`、`Input`、`Resize`、`Close`） | 方法名、开始/完成、耗时、成功/失败 | 参数与返回值；尤其不记录终端字节 |
+| Invoke（如 `Start`、`ListSessions`、`Input`、`Resize`、`CloseSession`） | 方法名、开始/完成、耗时、成功/失败 | 参数与返回值；尤其不记录终端字节 |
 | Reconnecting / Reconnected（未来使用自动重连时） | 连接序号、重试次数、间隔、最终结果 | token、帧和服务端缓冲 |
 
 通过受控的 `TerminalHubConnection.Build` 接入 SignalR。它在 `WithUrl` 中通过 `HttpMessageHandlerFactory` 包装协商 HTTP handler，并订阅 `Closed`；`StartAsync`、`StopAsync` 和会话列表调用由小型包装方法上报。

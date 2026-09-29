@@ -336,7 +336,10 @@
     <string name="home_label_memory">Memory</string>
     <string name="home_label_uptime">Uptime</string>
     <string name="home_value_percent">%1$.1f%%</string>
-    <string name="home_value_seconds">%1$d s</string>
+    <string name="home_value_uptime_days_hours">%1$d d %2$d h</string>
+    <string name="home_value_uptime_hours_minutes">%1$d h %2$d min</string>
+    <string name="home_value_uptime_minutes_seconds">%1$d min %2$d s</string>
+    <string name="home_value_uptime_seconds">%1$d s</string>
     <string name="home_value_used_of_total">%1$s of %2$s</string>
     <string name="home_system_title">System status</string>
     <string name="home_metrics_absent">This server does not report host metrics.</string>
@@ -986,6 +989,8 @@
     <string name="terminal_reconnect">Reconnect</string>
     <string name="terminal_new">New session</string>
     <string name="terminal_close">End session</string>
+    <string name="terminal_close_others">Close other sessions</string>
+    <string name="terminal_session_current">Current</string>
     <string name="terminal_exit_code">Exit code: %1$d</string>
     <string name="terminal_input">Input</string>
     <string name="terminal_send">Send</string>

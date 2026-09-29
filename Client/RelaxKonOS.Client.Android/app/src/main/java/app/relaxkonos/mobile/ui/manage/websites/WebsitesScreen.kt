@@ -46,14 +46,14 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
-private data class WebsiteServerState(
+internal data class WebsiteServerState(
     val server: WebServer,
     val status: ApiResult<WebServerStatus>,
     val configuration: ApiResult<WebServerConfigTest>?,
     val sites: ApiResult<List<WebServerSite>>,
 )
 
-private data class WebsitesState(
+internal data class WebsitesState(
     val loading: Boolean = false,
     val servers: ApiResult<List<WebsiteServerState>>? = null,
     val certificates: ApiResult<List<ManagedCertificate>>? = null,
@@ -65,7 +65,7 @@ private data class WebsitesState(
     val publishing: Boolean = false,
 )
 
-private class WebsitesViewModel(application: Application) : AndroidViewModel(application) {
+internal class WebsitesViewModel(application: Application) : AndroidViewModel(application) {
     private val container: AppContainer get() = getApplication<RelaxKonApplication>().container
     var state by mutableStateOf(WebsitesState())
         private set

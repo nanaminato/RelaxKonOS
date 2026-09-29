@@ -1059,7 +1059,7 @@ class RelaxKonApi(
         val query = buildString {
             append("?page=").append(page)
             append("&pageSize=").append(pageSize)
-            append("&sort=cpuPercent&direction=desc")
+            append("&sort=cpu&direction=desc")
             if (!filter.isNullOrBlank()) {
                 append("&filter=").append(encode(filter))
             }

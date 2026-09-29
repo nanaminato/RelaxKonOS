@@ -30,6 +30,7 @@ import app.relaxkonos.mobile.ui.common.MetricTile
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.formatSize
+import app.relaxkonos.mobile.ui.common.formatUptime
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -167,6 +168,6 @@ private fun SystemMetrics(snapshot: SshSystemSnapshot) {
             modifier = Modifier.weight(1f),
         )
     }
-    KeyValueRow(stringResource(R.string.home_label_uptime), stringResource(R.string.home_value_seconds, snapshot.uptimeSeconds))
+    KeyValueRow(stringResource(R.string.home_label_uptime), formatUptime(snapshot.uptimeSeconds))
     if (snapshot.system.isNotBlank()) KeyValueRow(stringResource(R.string.ssh_workspace_system_platform), snapshot.system)
 }

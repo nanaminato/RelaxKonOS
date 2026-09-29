@@ -43,7 +43,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-private data class AlertState(
+internal data class AlertState(
     val owner: SessionState.Active? = null,
     val loading: Boolean = false,
     val alerts: List<OperationalAlert> = emptyList(),
@@ -54,7 +54,7 @@ private data class AlertState(
     val actionError: Boolean = false,
 )
 
-private class AlertViewModel(application: Application) : AndroidViewModel(application) {
+internal class AlertViewModel(application: Application) : AndroidViewModel(application) {
     private val container = getApplication<RelaxKonApplication>().container
     var state by mutableStateOf(AlertState())
         private set

@@ -28,6 +28,7 @@ import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.StatusChip
 import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.formatSize
+import app.relaxkonos.mobile.ui.common.formatUptime
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.common.loadTone
 import app.relaxkonos.mobile.ui.common.text
@@ -138,7 +139,7 @@ fun MonitorScreen(
 
                     KeyValueRow(
                         stringResource(R.string.home_label_uptime),
-                        stringResource(R.string.home_value_seconds, snapshot.uptimeSeconds),
+                        formatUptime(snapshot.uptimeSeconds),
                     )
 
                     Text(

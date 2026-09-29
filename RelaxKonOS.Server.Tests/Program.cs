@@ -76,6 +76,7 @@ try
     // suite so a routing regression can run in constrained environments where opening a loopback
     // listener is deliberately disallowed.
     if (args.Contains("--host-file-routing-only")) { HostFileRoutingChecks.Run(); return; }
+    if (args.Contains("--terminal-contract-only")) { TerminalHubContractChecks.Run(); return; }
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
@@ -91,6 +92,9 @@ try
         await FileServiceChecks.RunAsync();
         return;
     }
+    // Static contract checks first: they need no loopback listener, so a Hub rename regression is
+    // reported even in environments where the alias HTTP suite cannot run.
+    TerminalHubContractChecks.Run();
     await AliasLoginVerification.RunAsync(root);
     if (!fileOperationsOnly || settingsOnly) await SettingsSystemVerification.RunAsync(root);
     if (!settingsOnly || fileOperationsOnly) await FileOperationChecks.RunAsync(root);

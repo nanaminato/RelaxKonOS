@@ -67,6 +67,22 @@ fun formatSize(bytes: Long?): String? {
     return bytes?.let { Formatter.formatFileSize(context, it) }
 }
 
+/** Localised, compact uptime with the two most meaningful elapsed units. */
+@Composable
+fun formatUptime(seconds: Long): String {
+    val totalSeconds = seconds.coerceAtLeast(0)
+    val days = totalSeconds / 86_400
+    val hours = (totalSeconds % 86_400) / 3_600
+    val minutes = (totalSeconds % 3_600) / 60
+    val remainingSeconds = totalSeconds % 60
+    return when {
+        days > 0 -> stringResource(R.string.home_value_uptime_days_hours, days, hours)
+        hours > 0 -> stringResource(R.string.home_value_uptime_hours_minutes, hours, minutes)
+        minutes > 0 -> stringResource(R.string.home_value_uptime_minutes_seconds, minutes, remainingSeconds)
+        else -> stringResource(R.string.home_value_uptime_seconds, remainingSeconds)
+    }
+}
+
 /** Platform-localised date and time, or `null` when the server did not report one. */
 fun formatTimestamp(epochMillis: Long?): String? =
     epochMillis?.let { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it)) }

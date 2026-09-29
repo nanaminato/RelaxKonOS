@@ -8,8 +8,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -30,9 +34,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -46,6 +55,7 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ServerTerminalConnection
 import app.relaxkonos.mobile.core.net.TerminalSessionSummary
 import app.relaxkonos.mobile.ui.common.ScreenHeader
+import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -126,7 +136,13 @@ class ServerTerminalViewModel(application: Application) : AndroidViewModel(appli
                 mutable.update { it.copy(output = "", sessionLost = false) }
                 val result = connection.attach(id, columns, rows)
                 selectedId = result.sessionId
-                mutable.update { it.copy(sessionId = result.sessionId, exitCode = null, sessions = connection.sessions()) }
+                mutable.update {
+                    it.copy(
+                        sessionId = result.sessionId,
+                        exitCode = null,
+                        sessions = connection.sessions().filterNot { session -> session.hasExited },
+                    )
+                }
             } catch (_: Exception) { mutable.update { it.copy(error = true) } }
         }
     }
@@ -147,15 +163,57 @@ class ServerTerminalViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch { runCatching { connection.resize(columns, rows) } }
     }
 
-    fun closeSession() {
+    /**
+     * Terminates one Server session by ID and refreshes the session list.
+     *
+     * Closing the attached session also clears the transcript: its PTY is gone, so leaving its output
+     * on screen would suggest a shell that no longer exists.
+     */
+    fun close(sessionId: String) {
         val connection = transport ?: return
         viewModelScope.launch {
             try {
-                connection.terminate()
-                selectedId = null
-                synchronized(this@ServerTerminalViewModel) { transcript = TerminalTranscript().also { it.resize(columns, rows) } }
-                mutable.update { it.copy(sessionId = null, output = "", sessions = connection.sessions()) }
+                connection.closeSession(sessionId)
+                val closingAttached = sessionId == mutable.value.sessionId
+                if (closingAttached) {
+                    selectedId = null
+                    synchronized(this@ServerTerminalViewModel) { transcript = TerminalTranscript().also { it.resize(columns, rows) } }
+                }
+                val sessions = connection.sessions().filterNot { it.hasExited }
+                mutable.update {
+                    if (closingAttached) it.copy(sessionId = null, output = "", exitCode = null, sessions = sessions)
+                    else it.copy(sessions = sessions)
+                }
             } catch (_: Exception) { mutable.update { it.copy(error = true) } }
+        }
+    }
+
+    /**
+     * Terminates every session except the attached one.
+     *
+     * Each session holds a live PTY on the Server, and a phone only ever shows one of them, so pruning
+     * the background ones has to be one action rather than "attach, close" repeated per session. A
+     * session that refuses to close is counted instead of thrown: the rest still get reported.
+     */
+    fun closeOtherSessions() {
+        val connection = transport ?: return
+        val attached = mutable.value.sessionId
+        val others = mutable.value.sessions.filter { it.sessionId != attached }
+        if (others.isEmpty()) return
+        viewModelScope.launch {
+            var failure = false
+            others.forEach { session ->
+                try { connection.closeSession(session.sessionId) } catch (_: Exception) { failure = true }
+            }
+            // Re-read instead of filtering locally: only the Server knows what is still alive.
+            val remaining = runCatching { connection.sessions() }.getOrNull()
+            if (remaining == null) failure = true
+            mutable.update {
+                it.copy(
+                    sessions = remaining?.filterNot { session -> session.hasExited } ?: it.sessions,
+                    error = it.error || failure,
+                )
+            }
         }
     }
 
@@ -231,11 +289,27 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
         if (state.connected) {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Button(onClick = { model.attach(null) }) { Text(stringResource(R.string.terminal_new)) }
-                if (state.sessionId != null) OutlinedButton(onClick = model::closeSession) { Text(stringResource(R.string.terminal_close)) }
+                if (state.sessions.size > 1) OutlinedButton(onClick = model::closeOtherSessions) {
+                    Text(stringResource(R.string.terminal_close_others))
+                }
             }
-            state.sessions.forEach { session ->
-                OutlinedButton(onClick = { model.attach(session.sessionId) }, enabled = session.sessionId != state.sessionId) {
-                    Text("${session.createdAt} · ${session.sessionId.take(8)}")
+            // One scrolling row rather than a growing column. `RelaxKonOS.Mobile.Design.md` gives a phone
+            // a single focused session, so switching and pruning must never take rows away from the
+            // terminal — which is exactly what a vertical session list did, one session at a time.
+            if (state.sessions.isNotEmpty()) Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                state.sessions.forEach { session ->
+                    val active = session.sessionId == state.sessionId
+                    val stamp = terminalSessionLabel(session.createdAt, session.sessionId, System.currentTimeMillis())
+                    TerminalSessionChip(
+                        label = if (active) "${stringResource(R.string.terminal_session_current)} · $stamp" else stamp,
+                        active = active,
+                        closeLabel = stringResource(R.string.terminal_close),
+                        onSelect = { if (!active) model.attach(session.sessionId) },
+                        onClose = { model.close(session.sessionId) },
+                    )
                 }
             }
         }
@@ -272,5 +346,45 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { sendLine() }))
             Button(onClick = { sendLine() }, enabled = state.sessionId != null) { Text(stringResource(R.string.terminal_send)) }
         }
+    }
+}
+
+/**
+ * One entry of the session strip.
+ *
+ * The attached session is both tinted and named — colour alone never carries the state — and every
+ * entry closes itself, because a PTY is freed only by an explicit Server call and a phone has no room
+ * for a separate screen of session management.
+ */
+@Composable
+private fun TerminalSessionChip(
+    label: String,
+    active: Boolean,
+    closeLabel: String,
+    onSelect: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val container = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
+    val content = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(Radius.pill))
+            .background(container)
+            .clickable(onClick = onSelect)
+            .padding(start = Spacing.md, end = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = content, maxLines = 1)
+        // The glyph is not a word, so the accessible name is set here rather than left as "multiplication sign".
+        Text(
+            "×",
+            style = MaterialTheme.typography.labelMedium,
+            color = content,
+            modifier = Modifier
+                .clip(CircleShape)
+                .clickable(role = Role.Button, onClick = onClose)
+                .padding(Spacing.sm)
+                .clearAndSetSemantics { contentDescription = closeLabel },
+        )
     }
 }

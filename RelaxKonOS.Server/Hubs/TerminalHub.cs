@@ -10,7 +10,7 @@ namespace RelaxKonOS.Server.Hubs;
 /// <list type="bullet">
 /// <item><see cref="Start"/>：附加到既有会话（先回放缓冲快照）或新建 PTY 会话，返回会话 ID 与是否新建。</item>
 /// <item><see cref="Input"/>/<see cref="Resize"/>：转发到当前附加会话的 PTY。</item>
-/// <item><see cref="Close"/>：手动终止——杀掉当前会话并从注册表移除（对应客户端"断开"按钮 / 关闭终端窗口）。</item>
+/// <item><see cref="CloseSession"/>：手动终止——按会话 ID 杀掉并移除（会话必须属于当前用户）。</item>
 /// <item><see cref="ListSessions"/>：返回当前用户的全部终端会话摘要（多实例）。</item>
 /// <item><see cref="OnDisconnectedAsync"/>：仅 detach 当前连接，<b>不</b>终止 PTY（网络掉线 / 桌面关闭 / 进程退出 → 保活，供再次登录恢复）。</item>
 /// </list>
@@ -74,14 +74,24 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
         return Task.CompletedTask;
     }
 
-    /// <summary>手动终止当前会话：杀 PTY 并从注册表移除。对应客户端"断开"按钮 / 关闭终端窗口。</summary>
-    public Task Close()
+    /// <summary>
+    /// 终止指定会话：杀 PTY 并从注册表移除。对应客户端的「关闭会话」——一个会话一个按钮，
+    /// 不要求在关闭前先附加到它上面（否则关掉一个后台会话就得先切过去、丢失当前视图）。
+    /// </summary>
+    public Task CloseSession(string sessionId)
     {
-        if (Context.Items.TryGetValue(SidKey, out var sid) && sid is string id)
-        {
+        var userId = Context.UserIdentifier;
+        if (userId is null || string.IsNullOrWhiteSpace(sessionId))
+            return Task.CompletedTask;
+
+        // 会话 ID 来自客户端，所以归属必须在这里核对：只按 ID 删除会让任何已认证用户靠猜 ID 杀掉别人的 PTY。
+        if (!_manager.TryGet(sessionId, out var session) || session is null || session.UserId != userId)
+            throw new HubException("terminal.session_not_found");
+
+        if (Context.Items.TryGetValue(SidKey, out var sid) && sid is string current && current == sessionId)
             Context.Items.Remove(SidKey);
-            _manager.Remove(id);
-        }
+
+        _manager.Remove(sessionId);
         return Task.CompletedTask;
     }
 

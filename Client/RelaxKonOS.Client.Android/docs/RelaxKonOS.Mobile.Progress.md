@@ -1,5 +1,14 @@
 # RelaxKonOS Mobile 实施进展
 
+## 修复：终端会话越多、终端越小（2026-09-29）
+
+- 症状：在「终端」连续新建会话后，会话按钮逐行堆叠，终端区域被挤到只剩两三行，而且关不掉堆积起来的后台会话。
+- 根因（两层）：① `ServerTerminalScreen` 把会话列表当作 `Column` 里的一组全宽按钮逐行堆叠，而终端区是 `weight(1f)`，每个会话吃掉约 56dp + 间距；`BoxWithConstraints` 变矮又触发 `resize()` 把远端 PTY 的行数一起改小，于是界面与 PTY 双重缩水。② 会话此前只能关掉「当前」那一个（Hub 的 `Close()` 用 `Context.Items["sid"]` 定位），后台 PTY 没有任何释放路径。另外按钮标签直接显示带纳秒的 ISO 串，会折行成两行，进一步放大高度占用。
+- 布局修复：会话改为**单行横向滚动胶囊**（`TerminalSessionChip`），高度恒定，终端永远拿到剩余全屏。标签由 `terminalSessionLabel` 生成——当天只显示本地时间、跨天补日期、时间戳无法解析时只留 ID 后缀；当前会话用容器配色 **加**「当前」字样双重标示（颜色不单独承载状态）。这也把实现拉回文档既定形态：`Design.md` 规定手机聚焦单个会话、会话列表属平板。
+- 逻辑修复：新增 Hub 方法 `CloseSession(string sessionId)` 取代无参的 `Close()`——服务端按 ID 关闭并**先校验会话归属**（ID 现在来自客户端，只按 ID 删除会让任何已认证用户靠猜 ID 杀掉别人的 PTY；关闭的若是当前附加会话，同时清掉 `Context.Items["sid"]`）。Android 据此提供胶囊上的逐个关闭与「关闭其它会话」批量清理；桌面端 `SignalRTerminalTransport.KillAsync` 改为传自己的 `SessionId`。协议常量 `TerminalHubMethods.Close` → `CloseSession`。
+- 验证：Android `:app:assembleDebug :app:testDebugUnitTest` 通过，新增 `TerminalSessionLabelTest`（3 用例）覆盖当天 / 跨天 / 无法解析三种标签形态。服务端 `dotnet build` 0 错误（3 条既有 CA1416 警告）；新增静态契约检查 `TerminalHubContractChecks`（独立入口 `--terminal-contract-only`，已进默认套件最前），覆盖「`TerminalHubMethods` 常量 ↔ `TerminalHub` 方法 ↔ `TerminalHubEvents` ↔ `ITerminalHubClient`」以及 `Start`/`AttachExisting`/`CloseSession`/`Resize` 的参数形状——这正是当初「新建会话必然失败」那类漂移的防线，已做负向对照（改掉 Hub 方法名即报错）。
+- **未覆盖**：`CloseSession` 的归属校验只有静态契约保证，没有行为用例——本仓库缺 Hub 测试夹具（需要 `IPty` 与 `HubCallerContext` 替身）。终端页仍只有单栏形态：`LayoutState` 已有 Compact/Medium/Expanded，但平板/横屏的「会话列表 + 终端双栏」尚未实现。真机验收未执行。服务端改动需重启服务端进程才生效。
+
 ## 修复：Android 顶级终端点「新建」必然失败（2026-09-29）
 
 - 症状：进入「终端」后点「新建」报连接失败。`connect()`（`hub.start` + `ListSessions`）本身成功，失败只发生在 `Start` 调用。

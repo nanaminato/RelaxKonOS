@@ -105,8 +105,8 @@ var control = new TerminalControl(
 │                   ├── HubConnection                │◄───┤  Input(data)  → session.Pty.Write(data) │
 │                   │   OnOutput(byte[])  ◄──────────┤────┤  Resize(c,r)  → session.Pty.Resize(c,r) │
 │                   │   OnProcessExited(int) ◄───────┤────┤  pty.DataReceived→缓冲+Clients.Caller   │
-│                   │   Start(Input/Resize) ────────►│────┤  Close()      → manager.Remove (杀 PTY) │
-│                   │   KillAsync→Close (手动终止) ──►│────┤  ListSessions()→ ListForUser           │
+│                   │   Start(Input/Resize) ────────►│────┤  CloseSession(sid)→ manager.Remove (终止)│
+│                   │   KillAsync→CloseSession(sid)─►│────┤  ListSessions()→ ListForUser           │
 │                   │   StopAsync (不杀, 仅关连接)    │    │  OnDisconnected→ Detach (保留 PTY)      │
 │                   │   [JWT via AccessTokenProvider]│    │                                          │
 │                   └── DataReceived/ProcessExited   │    │  IPtyFactory (PlatformPtyFactory)       │
@@ -124,7 +124,7 @@ var control = new TerminalControl(
 |------|------|
 | `ITerminalHubClient.cs` | server→client 接口：`OnOutput(byte[])`、`OnProcessExited(int)`。Server 端 `Hub<ITerminalHubClient>` 获编译期校验；Client 端 `HubConnection.On<T>` 注册回调 |
 | `TerminalHubEvents.cs` | server→client 事件名常量（`nameof(ITerminalHubClient.OnOutput)` 等），Client 端 `HubConnection.On` 用 |
-| `TerminalHubMethods.cs` | client→server invoke 方法名常量（`Start`/`Input`/`Resize`/`Close`） |
+| `TerminalHubMethods.cs` | client→server invoke 方法名常量（`Start`/`Input`/`Resize`/`CloseSession`/`ListSessions`） |
 | `StartTerminalRequest.cs` | 启动终端请求 DTO（columns/rows/widthPixels/heightPixels/shell/workingDirectory） |
 
 > **方法名对齐**：Server Hub 方法名必须与 `TerminalHubMethods` 常量完全一致。`Start` 方法在 Hub 上命名为 `Start`（非 `StartTerminal`），因为客户端 `InvokeAsync(TerminalHubMethods.Start)` 发送的是 `"Start"`。
@@ -163,7 +163,7 @@ http.AccessTokenProvider = () =>
 - **`Start(StartTerminalRequest req, string? sessionId = null)` → `AttachTerminalResponse`**：`manager.GetOrCreate(UserIdentifier, sessionId, req)` —— sessionId 命中且属于当前用户且未退出则**附加**（先回放缓冲快照），否则**新建** PTY 会话；`Context.Items["sid"]=sessionId`。返回 `{SessionId, Created}`。
 - **`Input(byte[])`**：取 `Context.Items["sid"]` 对应会话 → `pty.Write(data)`。
 - **`Resize(int, int, int, int)`**：对应会话 → `pty.Resize(cols, rows, ...)`。
-- **`Close()`**：`manager.Remove(sid)` —— **手动终止**（杀 PTY 并从注册表移除）。对应客户端"断开"按钮 / 关闭终端窗口。
+- **`CloseSession(string sessionId)`**：按会话 ID `manager.Remove(sessionId)` —— **手动终止**（杀 PTY 并从注册表移除）。会话 ID 来自客户端，故方法内先核对 `session.UserId == UserIdentifier`，不匹配即报 `terminal.session_not_found`；关闭的若正是当前附加会话，同时清掉 `Context.Items["sid"]`（该连接此后 `Input`/`Resize` 为空操作）。对应桌面端"断开"按钮 / 关闭终端窗口，也是移动端会话条逐个关闭与"关闭其它会话"的唯一入口。
 - **`ListSessions()`**：`manager.ListForUser(UserIdentifier)` —— 返回当前用户的全部终端会话摘要（多实例）。
 - **`OnDisconnectedAsync(Exception?)`**：`session.Detach(Context.ConnectionId)` —— **仅 detach 当前连接，不终止 PTY**。网络掉线 / 桌面关闭 / 进程退出均走此路径，PTY 存活供再次登录恢复。
 
@@ -298,7 +298,7 @@ else
 
 | 文件 | 职责 |
 |------|------|
-| `RelaxKonOS.Server/Hubs/TerminalHub.cs` | 持久会话 Hub（Start=attach/create, Input, Resize, Close=kill, ListSessions, OnDisconnected=detach） |
+| `RelaxKonOS.Server/Hubs/TerminalHub.cs` | 持久会话 Hub（Start=attach/create, Input, Resize, CloseSession=kill by id, ListSessions, OnDisconnected=detach） |
 | `RelaxKonOS.Server/Terminal/TerminalSession.cs` | PTY + 1MB 环形缓冲 + attach/detach/kill |
 | `RelaxKonOS.Server/Terminal/TerminalSessionManager.cs` | Singleton 注册表（sessionId 索引、userId 过滤） |
 | `RelaxKonOS.Server/Terminal/TerminalUserIdProvider.cs` | `IUserIdProvider`（JWT sub claim） |
@@ -311,7 +311,7 @@ else
 |------|------|
 | `Shared/RelaxKonOS.Protocol/Hubs/ITerminalHubClient.cs` | server→client 接口 |
 | `Shared/RelaxKonOS.Protocol/Hubs/TerminalHubEvents.cs` | server→client 事件名常量 |
-| `Shared/RelaxKonOS.Protocol/Hubs/TerminalHubMethods.cs` | client→server 方法名常量（Start/Input/Resize/Close/ListSessions） |
+| `Shared/RelaxKonOS.Protocol/Hubs/TerminalHubMethods.cs` | client→server 方法名常量（Start/Input/Resize/CloseSession/ListSessions） |
 | `Shared/RelaxKonOS.Protocol/Hubs/StartTerminalRequest.cs` | 启动请求 DTO |
 | `Shared/RelaxKonOS.Protocol/Hubs/AttachTerminalResponse.cs` | `Start` 返回值（SessionId + Created） |
 | `Shared/RelaxKonOS.Protocol/Hubs/TerminalSessionInfo.cs` | 会话摘要 DTO（ListSessions 用） |
@@ -334,8 +334,9 @@ else
 - **传输用 SignalR，禁止裸 WebSocket**：RoyalTerminal 传输抽象（`ITerminalTransport`）是传输方式无关的，本项目选择 SignalR（JWT + 强类型 Hub + 一次性连接拉取列表）。禁止为终端单独引入裸 WebSocket 端点。**不启用 `WithAutomaticReconnect`**（自动重连后服务端不会自动重新附加会话，进入半附加状态）；恢复路径是"再次登录打开终端"→重新 `Start(Attach)`→服务端回放缓冲快照。
 - **`TerminalControl` 在 code-behind 创建（9-param ctor）**：`TerminalTransportFactory` 是只读属性，只能通过构造函数注入 `SignalRTransportFactory`。禁止在 XAML 中声明 `TerminalControl` 后尝试运行时替换传输工厂。
 - **服务端是 PTY 哑中继 + 持久会话**：`TerminalHub` 只做附加/输入/输出/退出/尺寸/手动终止/列表，**不做 VT 解析**。PTY 由 `TerminalSessionManager` 持有，与 Hub 连接解耦。VT 渲染（标题/响铃/光标/颜色）全部在客户端 `TerminalControl` 完成。服务端不得引入 VT 处理器。
-- **Hub 方法名必须与 `TerminalHubMethods` 常量一致**：Server Hub 方法 `Start`/`Input`/`Resize`/`Close`/`ListSessions` 必须与 `TerminalHubMethods` 中的常量值（`nameof`）完全匹配，否则 SignalR 运行时找不到方法。
-- **连接断开仅 detach，保留 PTY**：`TerminalHub.OnDisconnectedAsync` 必须调用 `session.Detach(Context.ConnectionId)`，**禁止**在断开时杀 PTY。只有显式 `Close`（客户端"断开"按钮 / 关闭终端窗口）才 `manager.Remove` 杀 PTY。这是"再次登录恢复原桌面"的前提。
+- **Hub 方法名必须与 `TerminalHubMethods` 常量一致**：Server Hub 方法 `Start`/`Input`/`Resize`/`CloseSession`/`ListSessions` 必须与 `TerminalHubMethods` 中的常量值（`nameof`）完全匹配，否则 SignalR 运行时找不到方法。
+- **关闭会话必须校验归属**：`CloseSession` 的 sessionId 由客户端给出，因此必须先确认 `session.UserId == Context.UserIdentifier` 再 `manager.Remove`；只按 ID 删除会让任何已认证用户靠猜 ID 杀掉别人的 PTY。
+- **连接断开仅 detach，保留 PTY**：`TerminalHub.OnDisconnectedAsync` 必须调用 `session.Detach(Context.ConnectionId)`，**禁止**在断开时杀 PTY。只有显式 `CloseSession`（客户端"断开"按钮 / 关闭终端窗口 / 移动端会话条的关闭）才 `manager.Remove` 杀 PTY。这是"再次登录恢复原桌面"的前提。
 - **断开语义判据**：客户端 `TerminalViewModel.Detach` 按 `IAuthSession.State` 判断——`Authenticated` 表示仅关了终端窗口 → `KillActiveAsync`（杀）；`Unauthenticated`（桌面登出/关闭中）→ `StopActiveAsync`（保留）。网络掉线/崩溃不触发 `Detach`，服务端 `OnDisconnected` 保留 PTY。
 - **JWT 鉴权 + query 兜底**：`TerminalHub` 标注 `[Authorize]`；Client 端通过 `AccessTokenProvider` 从 `IAuthSession.Tokens.AccessToken` 取 token；Server `AddJwtBearer` 的 `OnMessageReceived` 对 `/hubs/terminals` 从查询串 `access_token` 读 token（修复 WebSocket 升级 401）。禁止未认证连接。
 - **按用户索引会话**：`TerminalUserIdProvider`（`IUserIdProvider`）以 JWT `sub` claim 作 `Context.UserIdentifier`；会话按 sessionId 索引、按 userId 归属过滤。多实例。

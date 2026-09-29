@@ -40,6 +40,9 @@ import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.theme.Spacing
+import kotlinx.coroutines.delay
+
+private const val PROCESS_REFRESH_INTERVAL_MILLIS = 6_000L
 
 /**
  * Process list.
@@ -58,7 +61,18 @@ fun ProcessesScreen(
 ) {
     val viewModel: ManageViewModel = viewModel()
 
-    LaunchedEffect(Unit) { viewModel.loadProcesses(1) }
+    // Process CPU is a difference between adjacent server samples. Keep this screen subscribed
+    // long enough to receive the second sample instead of leaving the initial all-zero baseline
+    // on screen indefinitely. The interval is intentionally longer than the server's five-second
+    // sampling window.
+    LaunchedEffect(viewModel.processesAvailable) {
+        if (!viewModel.processesAvailable) return@LaunchedEffect
+        viewModel.loadProcesses(1)
+        while (true) {
+            delay(PROCESS_REFRESH_INTERVAL_MILLIS)
+            viewModel.loadProcesses()
+        }
+    }
 
     var forceKill by remember { mutableStateOf(false) }
 

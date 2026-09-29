@@ -542,7 +542,7 @@ Hub 路径 `/hubs/workspace`。Server 端实现 `WorkspaceHub : Hub<IWorkspaceHu
 | `AttachExisting` | `string sessionId` | `AttachTerminalResponse {SessionId, Created=false}` | 只附加当前用户仍存活的会话；找不到则失败，绝不新建 PTY |
 | `Input`        | `byte[]`                                                | void                                          | 转发到 `session.Pty.Write(data)`                                |
 | `Resize`       | `int cols, int rows, int widthPixels, int heightPixels` | void                                          | 转发到 `session.Pty.Resize(...)`                                |
-| `Close`        | —                                                       | void                                          | `manager.Remove` —— **手动终止**（杀 PTY），对应关闭终端窗口 / "断开"按钮        |
+| `CloseSession` | `string sessionId`                                      | void                                          | `manager.Remove` —— **手动终止**（杀 PTY），对应关闭终端窗口 / "断开"按钮；先校验会话归属当前用户 |
 | `ListSessions` | —                                                       | `TerminalSessionInfo[]`                       | 返回当前用户全部终端会话摘要（多实例）                                          |
 
 #### Server → Client（on，事件名见 `TerminalHubEvents`，接口 `ITerminalHubClient`）
@@ -551,7 +551,7 @@ Hub 路径 `/hubs/workspace`。Server 端实现 `WorkspaceHub : Hub<IWorkspaceHu
 
 * `OnProcessExited(int exitCode)`：子进程退出
 
-> **方法名对齐**：Server Hub 方法名必须与 `TerminalHubMethods` 常量完全一致（`Start` 非 `StartTerminal`），否则 SignalR 运行时找不到方法。`OnDisconnectedAsync` 调 `session.Detach(Context.ConnectionId)` 保留 PTY；仅显式 `Close` 才杀。`TerminalUserIdProvider`（`IUserIdProvider`）以 JWT `sub` claim 作 `Context.UserIdentifier`，按用户过滤会话。
+> **方法名对齐**：Server Hub 方法名必须与 `TerminalHubMethods` 常量完全一致（`Start` 非 `StartTerminal`），否则 SignalR 运行时找不到方法。`OnDisconnectedAsync` 调 `session.Detach(Context.ConnectionId)` 保留 PTY；仅显式 `CloseSession` 才杀。`TerminalUserIdProvider`（`IUserIdProvider`）以 JWT `sub` claim 作 `Context.UserIdentifier`，按用户过滤会话。
 
 ### Performance Hub（`/hubs/performance`）
 
@@ -621,7 +621,7 @@ RemoteTerminal 的 PTY 流传输**已在 Protocol 契约内**，走 SignalR Hub 
 | --------------------------- | ---------------------------------------------------------------------- |
 | `ITerminalHubClient.cs`     | server→client 接口（`OnOutput`/`OnProcessExited`）                         |
 | `TerminalHubEvents.cs`      | server→client 事件名常量                                                    |
-| `TerminalHubMethods.cs`     | client→server 方法名常量（`Start`/`AttachExisting`/`Input`/`Resize`/`Close`/`ListSessions`）   |
+| `TerminalHubMethods.cs`     | client→server 方法名常量（`Start`/`AttachExisting`/`Input`/`Resize`/`CloseSession`/`ListSessions`）   |
 | `StartTerminalRequest.cs`   | 启动请求 DTO（columns/rows/widthPixels/heightPixels/shell/workingDirectory） |
 | `AttachTerminalResponse.cs` | `Start` 返回值（`SessionId` + `Created`）                                   |
 | `TerminalSessionInfo.cs`    | 会话摘要 DTO（`ListSessions` 用）                                             |
