@@ -1,6 +1,6 @@
 # AD06：Android Git 部署与轻量编辑计划
 
-> 状态：M1–M3 首版链路已编码，未构建、未测试；M4 为后续扩展。优先级：P2。工作量：大。
+> 状态：M1–M3 首版链路已编码，并已通过 Android 全量 JVM 构建与测试；Git 构建流程尚无专项 Android 用例，且未在真实受限 BuildKit、Git 远端或设备上验收。M4 为后续扩展。优先级：P2。工作量：大。
 > 总入口：[无电脑部署路线图](./RelaxKonOS.Mobile.Deployment.Roadmap.md)。
 
 ## 1. 目标与首版范围

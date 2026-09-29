@@ -1,6 +1,6 @@
 # Android 无电脑部署路线图
 
-> 建立日期：2026-09-26。状态：实施中，AD02-M1 只读接入已实现；验证证据及其余阶段状态见 Mobile Progress。
+> 建立日期：2026-09-26。状态：实施中；功能实现、验证证据与未关闭验收项以 [Mobile Progress](./RelaxKonOS.Mobile.Progress.md) 为唯一真源。当前 AD02-M1–M4、AD04、AD05-M1–M3、AD06-M1–M3、AD07-M1–M4 及 AD08 的部分能力均已编码，但 R1 尚未验收。
 >
 > 目标：用户只有 Android 手机和一台具备管理权限的远端主机，也能完成首次安装、应用部署、发布访问和持续维护。无需使用电脑、外置 SSH 客户端或本地开发工具链。
 
@@ -16,16 +16,16 @@ Android 负责表单、草稿、输入检查、凭据授权、上传、操作提
 
 ## 2. 已核对基线
 
-基线日期为 2026-09-26；“已有代码”不代表端到端验收通过。实际进度统一记录到 [Mobile Progress](./RelaxKonOS.Mobile.Progress.md)。
+下表的实施基线更新至 2026-09-29；“已有代码”不代表端到端验收通过。实际进度统一记录到 [Mobile Progress](./RelaxKonOS.Mobile.Progress.md)。
 
 | 范围 | 当前基础 | 本路线图仍需交付 |
 | --- | --- | --- |
-| Android Shell | Kotlin/Compose、三种宽度布局、登录、凭据、文件传输、监控和进程管理 | 面向部署的完整用户流程 |
-| 服务器中心 | 宿主资料、SSH 验证、主机指纹确认；底层 SSH/SFTP、隧道与部署操作层 | 安装界面、发布信任接入、应用级任务恢复和真实宿主验收 |
-| 应用部署 | Server/Protocol/桌面已有镜像、Java、.NET、Python 四类来源，操作记录、修订和回滚；Android 已接入只读列表/详情和运行时检查 | Android 写操作、包上传和恢复；真实 Docker 验收。共享进度仍记录运行期验证缺口 |
-| Docker Stack | 服务端有 Docker/Compose 管理接口 | Android 工作流、持久长任务与故障恢复核验 |
-| 发布、Git、守护 | 相关服务端领域已有接口与实现 | 手机交互及跨领域编排；Git 到构建发布属于新增能力 |
-| 运维 | 领域操作记录与事件告警基础可复用 | 移动聚合、恢复入口、备份恢复及必要的领域事件补齐 |
+| Android Shell | Kotlin/Compose、三种宽度布局、登录、凭据、文件传输、监控和进程管理；部署相关页面已接入能力门控 | 真机自适应、三语与进程回收验收 |
+| 服务器中心 | 宿主资料、SSH 验证、主机指纹确认、SSH/SFTP、隧道、安装回执查阅与部署操作层 | 可信首次安装的执行链路、发布信任接入和真实宿主验收 |
+| 应用部署 | Server/Protocol/桌面已有四类来源、操作记录、修订和回滚；Android M1–M4 已接入读写、包上传、操作恢复 | 真实 Docker、SAF 大包和设备矩阵验收 |
+| Docker Stack | 服务端与 Android 工作流、持久 Stack 操作和恢复均已接入；服务端已完成真实 Compose 宿主验证 | 认证 HTTP 往返、故障注入和移动设备验收 |
+| 发布、Git、守护 | AD05-M1–M3、AD06-M1–M3 与 AD07-M1–M4 的手机交互及服务端边界均已编码 | 真实 Nginx/ACME/DNS、隔离 BuildKit/Git、SSH/PTY/Agent 与设备验收 |
+| 运维 | 领域任务观察、诊断导出、安装回执查阅、前台告警读取及部分定义备份/只读预检已接入 | 卷/数据库恢复、跨安装秘密重绑定、可靠后台通知和真实恢复演练 |
 
 服务端部署限制见 [应用部署设计](../../../docs/applications/RelaxKonOS.ApplicationDeployment.Design.md) 和 [实施进度](../../../docs/applications/RelaxKonOS.ApplicationDeployment.Progress.md)。现有应用部署不接受 Compose 项目、Git 源码或任意 Dockerfile；这些是后续计划，不能以新 UI 声称已支持。
 

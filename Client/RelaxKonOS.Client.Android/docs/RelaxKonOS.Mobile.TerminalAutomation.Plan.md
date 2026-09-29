@@ -1,6 +1,6 @@
 # AD07：Android 终端、脚本与进程守护计划
 
-> 状态：M1–M4 已编码，待 Android 构建、真机和真实远端验收。优先级：P2。
+> 状态：M1–M4 已编码并通过 Android JVM 验证，待真机和真实 SSH、PTY、Linux/Windows Agent 及权限矩阵验收。优先级：P2。
 > 总入口：[无电脑部署路线图](./RelaxKonOS.Mobile.Deployment.Roadmap.md)。
 
 ## 1. 目标与能力分层
