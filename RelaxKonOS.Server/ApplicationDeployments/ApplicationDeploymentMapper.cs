@@ -72,7 +72,9 @@ internal static class ApplicationDeploymentMapper
         revision.SiteId,
         revision.Id == currentRevisionId,
         revision.CreatedByReference,
-        revision.CreatedAt, null, revision.CatalogTemplateId, revision.CatalogTemplateVersion);
+        revision.CreatedAt, null, revision.CatalogTemplateId, revision.CatalogTemplateVersion,
+        revision.GitBuildId, revision.GitRepositoryUrl, revision.GitReference, revision.GitCommitSha,
+        revision.GitContextDirectory, revision.GitDockerfile);
 
     public static ApplicationVolumeDto Volume(ApplicationVolumeRecord volume) =>
         new(volume.Name, volume.ContainerPath, volume.ReadOnly);

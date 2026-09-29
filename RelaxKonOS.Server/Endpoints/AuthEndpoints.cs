@@ -241,12 +241,13 @@ public static class AuthEndpoints
         var tokens = jwt.Issue(user, ws, device, role, session.Id, login.Method, now, login.SecurityVersion);
         await protection.RecordSuccessAsync(login.ProtectionKey, http.Connection.RemoteIpAddress, ct, user.Id);
         return Results.Ok(new LoginResponse(user.ToDto(), ws.ToDto(), session.ToDto(), device.ToDto(), tokens, role,
-            CreateServerDescriptor(serverMode), new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available,
+            CreateServerDescriptor(serverMode, http.RequestServices.GetRequiredService<RelaxKonOS.Server.EventAlerts.EventAlertsOptions>()),
+            new ServerExecutionEligibilityDto(login.ExecutionEligibility.Available,
                 login.ExecutionEligibility.ReasonCode, serverMode.Mode == ServerMode.System && login.Method == "system"
                 && user.Platform == HostPlatformKind.Linux && user.PlatformIdentity == "0" && user.Username == "root")));
     }
 
-    private static ServerDescriptorDto CreateServerDescriptor(IServerModeResolver serverMode)
+    private static ServerDescriptorDto CreateServerDescriptor(IServerModeResolver serverMode, RelaxKonOS.Server.EventAlerts.EventAlertsOptions eventAlerts)
     {
         var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         var capabilities = new List<string>
@@ -272,6 +273,7 @@ public static class AuthEndpoints
         if (host.Capabilities.Tunnels) capabilities.Add(ServerCapabilities.Tunnels);
         if (host.Capabilities.Proxy) capabilities.Add(ServerCapabilities.Proxy);
         if (host.Capabilities.ApplicationDeployments) capabilities.Add(ServerCapabilities.ApplicationDeployments);
+        if (eventAlerts.Enabled) capabilities.Add(ServerCapabilities.EventAlerts);
         return new ServerDescriptorDto(isWindows ? HostPlatformKind.Windows : HostPlatformKind.Linux, capabilities, host);
     }
 

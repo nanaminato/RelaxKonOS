@@ -27,6 +27,7 @@ public static class ServerCapabilities
     public const string FileServices = "server.file-services";
     public const string WebServer = "server.web-server";
     public const string Certificates = "server.certificates";
+    public const string EventAlerts = "server.event-alerts";
     public const string Tunnels = "server.tunnels";
     public const string Proxy = "server.proxy";
 }

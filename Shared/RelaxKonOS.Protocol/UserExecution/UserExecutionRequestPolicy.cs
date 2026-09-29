@@ -13,6 +13,8 @@ public static class UserExecutionRequestPolicy
             || request.OperationId is not { } operationId || operationId == Guid.Empty
             || !Enum.IsDefined(request.Operation))
             return false;
+        if (request.Operation != UserExecutionOperationKind.FileWriteIfMatch && request.ExpectedSha256 is not null)
+            return false;
 
         var noDestination = request.DestinationPath is null;
         var noName = request.NewName is null && request.FileName is null;
@@ -37,6 +39,10 @@ public static class UserExecutionRequestPolicy
             UserExecutionOperationKind.FileWrite => !terminal && request.Path is not null
                 && noDestination && noName && request.ContentBase64 is not null && noMode
                 && noGit && noTerminal && noStaging && !request.Overwrite,
+            UserExecutionOperationKind.FileWriteIfMatch => !terminal && request.Path is not null
+                && noDestination && noName && request.ContentBase64 is not null && noMode
+                && noGit && noTerminal && noStaging && !request.Overwrite
+                && request.ExpectedSha256 is { Length: 64 } hash && hash.All(Uri.IsHexDigit),
             UserExecutionOperationKind.FileRename => !terminal && request.Path is not null
                 && noDestination && request.NewName is not null && request.FileName is null
                 && noContent && noMode && noGit && noTerminal && noStaging && !request.Overwrite,

@@ -29,6 +29,9 @@ public interface IFileService
     /// <summary>以提供的字节覆盖保存文件，并返回保存后的文件元数据。</summary>
     Task<FileEntryDto> WriteFileAsync(string path, Stream content, CancellationToken cancellationToken = default);
 
+    /// <summary>Replace an existing small file only when its current SHA-256 matches the editor's baseline.</summary>
+    Task<bool> WriteFileIfMatchAsync(string path, byte[] content, string expectedSha256, CancellationToken cancellationToken = default);
+
     /// <summary>获取属性和宿主 OS 权限摘要。不存在时返回 null。</summary>
     FilePropertiesDto? GetProperties(string path);
 

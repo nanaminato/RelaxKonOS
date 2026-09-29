@@ -171,7 +171,8 @@ internal sealed partial class WorkloadSupervisor
     /// refuses cross-account launches until a non-interactive token broker is available;
     /// accepting a target password here would violate the Guardian credential boundary.
     /// </summary>
-    private static ProcessStartInfo? CreateStartInfo(ProcessDefinitionDto definition, out string? problem)
+    internal static ProcessStartInfo? CreateStartInfo(ProcessDefinitionDto definition, out string? problem,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         problem = null;
         var runAs = definition.RunAs!;
@@ -205,12 +206,22 @@ internal sealed partial class WorkloadSupervisor
             start.ArgumentList.Add("--user");
             start.ArgumentList.Add(runAs);
             start.ArgumentList.Add("--");
+            if (environment is { Count: > 0 })
+            {
+                // Apply variables after runuser has dropped privileges, never to the root launcher.
+                if (!File.Exists("/usr/bin/env")) { problem = "guardian.script_launcher_unavailable"; return null; }
+                start.ArgumentList.Add("/usr/bin/env");
+                start.ArgumentList.Add("--");
+                foreach (var (key, value) in environment) start.ArgumentList.Add($"{key}={value}");
+            }
             start.ArgumentList.Add(definition.ExecutablePath);
             foreach (var argument in definition.Arguments) start.ArgumentList.Add(argument);
             return start;
         }
 
         var direct = CreateBaseStartInfo(definition.ExecutablePath, definition.WorkingDirectory);
+        if (environment is not null)
+            foreach (var (key, value) in environment) direct.Environment[key] = value;
         foreach (var argument in definition.Arguments) direct.ArgumentList.Add(argument);
         return direct;
     }
@@ -362,7 +373,7 @@ internal sealed partial class WorkloadSupervisor
     /// while Windows accepts only the current process token's SID (cross-account Windows launch
     /// is intentionally unsupported until a token broker exists).
     /// </summary>
-    private static bool ValidateStableRunAsIdentity(ProcessDefinitionDto definition, out string? problem)
+    internal static bool ValidateStableRunAsIdentity(ProcessDefinitionDto definition, out string? problem)
     {
         if (string.IsNullOrWhiteSpace(definition.RunAsIdentity))
         {
@@ -572,7 +583,9 @@ internal sealed partial class WorkloadSupervisor
         workload.Definition.ExecutablePath,
         workload.Definition.WorkingDirectory,
         workload.Definition.EnabledOnBoot,
-        workload.Definition.RunAs);
+        workload.Definition.RunAs,
+        workload.ExitCode,
+        workload.LastProblemCode);
 
     private sealed class ManagedWorkload(ProcessDefinitionDto definition)
     {

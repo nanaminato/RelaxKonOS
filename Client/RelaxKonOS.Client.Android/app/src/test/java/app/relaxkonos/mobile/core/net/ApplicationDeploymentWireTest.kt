@@ -21,6 +21,8 @@ class ApplicationDeploymentWireTest {
         assertEquals("/api/v1.0/application-deployments/file-references", ApplicationDeploymentRoutes.FILE_REFERENCES)
         assertTrue(ApplicationDeploymentRoutes.application("d3708cc7-3e7e-42ad-b498-11466a48af23").endsWith("/d3708cc7-3e7e-42ad-b498-11466a48af23"))
         assertTrue(ApplicationDeploymentRoutes.rollback("d3708cc7-3e7e-42ad-b498-11466a48af23").endsWith("/rollback"))
+        assertEquals("/api/v1.0/application-deployments/operations/d3708cc7-3e7e-42ad-b498-11466a48af23",
+            ApplicationDeploymentRoutes.operation("d3708cc7-3e7e-42ad-b498-11466a48af23"))
         assertThrows(IllegalArgumentException::class.java) { ApplicationDeploymentRoutes.application("../operations") }
     }
 

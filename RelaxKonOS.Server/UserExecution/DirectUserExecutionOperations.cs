@@ -1,4 +1,5 @@
 using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.Files;
 
 namespace RelaxKonOS.Server.UserExecution;
@@ -24,6 +25,8 @@ internal static class DirectUserExecutionOperations
             UserExecutionOperationKind.FileGetInfo => direct.GetInfo(request.Path!),
             UserExecutionOperationKind.FileRead => ReadDirect(direct, request.Path!),
             UserExecutionOperationKind.FileWrite => await direct.WriteFileAsync(request.Path!, Bytes(request.ContentBase64!)),
+            UserExecutionOperationKind.FileWriteIfMatch => await direct.WriteFileIfMatchAsync(request.Path!,
+                Convert.FromBase64String(request.ContentBase64!), request.ExpectedSha256!),
             UserExecutionOperationKind.FileGetProperties => direct.GetProperties(request.Path!),
             UserExecutionOperationKind.FileSetUnixPermissions => direct.SetUnixPermissions(request.Path!, request.UnixMode!.Value),
             UserExecutionOperationKind.FileDelete => DeleteDirect(direct, request.Path!),

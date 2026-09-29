@@ -25,6 +25,149 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?): ApiResult<OperationalAlertPage> =
+        eventAlertCall("GET", serverUrl, EventAlertRoutes.page(cursor), accessToken, null, EventAlertWire::page)
+
+    override suspend fun alertDetail(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlertDetail> =
+        eventAlertCall("GET", serverUrl, EventAlertRoutes.alert(id), accessToken, null, EventAlertWire::detail)
+
+    override suspend fun acknowledgeAlert(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlert> =
+        eventAlertCall("POST", serverUrl, EventAlertRoutes.acknowledgement(id), accessToken, JsonBody(), EventAlertWire::alert)
+
+    private suspend fun <T> eventAlertCall(method: String, serverUrl: String, route: String, accessToken: String,
+        body: JsonBody?, parse: (String) -> T): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed operational alert response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
+    override suspend fun scriptTasks(serverUrl: String, accessToken: String): ApiResult<ScriptTasksResult> =
+        guardianCall("GET", serverUrl, ScriptRoutes.TASKS, accessToken, null, ScriptWire::tasks)
+    override suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> =
+        guardianCall("GET", serverUrl, ScriptRoutes.task(id), accessToken, null, ScriptWire::taskResult)
+    override suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> {
+        val body = JsonBody().string("executablePath", request.executablePath)
+            .raw("arguments", JSONArray(request.arguments).toString())
+            .string("workingDirectory", request.workingDirectory)
+            .raw("environment", JSONObject(request.environment).toString())
+            .int("timeoutSeconds", request.timeoutSeconds).string("runAs", request.runAs)
+        request.approval?.let { body.objectField("runAsApproval", JsonBody().string("username", it.username).secret("password", it.password)) }
+        return when (val result = execute("POST", serverUrl, ScriptRoutes.TASKS, accessToken, body, mapOf("Idempotency-Key" to key))) {
+            is ApiResult.Success -> runCatching { ScriptWire.taskResult(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed script response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+    }
+    override suspend fun scriptCancel(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> =
+        guardianCall("POST", serverUrl, ScriptRoutes.cancel(id), accessToken, JsonBody(), ScriptWire::taskResult)
+
+    override suspend fun guardianStatus(serverUrl: String, accessToken: String): ApiResult<GuardianStatus> =
+        guardianCall("GET", serverUrl, GuardianRoutes.STATUS, accessToken, null, GuardianWire::status)
+    override suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> =
+        guardianCall("GET", serverUrl, GuardianRoutes.WORKLOADS, accessToken, null, GuardianWire::workloads)
+    override suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinition?> =
+        guardianCall("GET", serverUrl, GuardianRoutes.workload(id), accessToken, null, GuardianWire::definition)
+    override suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<GuardianLog>> =
+        guardianCall("GET", serverUrl, GuardianRoutes.logs(id), accessToken, null, GuardianWire::logs)
+    override suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianOperation> {
+        val body = JsonBody().raw("definition", GuardianWire.definitionJson(definition))
+        if (approval != null) body.objectField("runAsApproval", JsonBody().string("username", approval.username).secret("password", approval.password))
+        return guardianCall("POST", serverUrl, GuardianRoutes.WORKLOADS, accessToken, body, GuardianWire::operation)
+    }
+    override suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation> =
+        guardianCall("POST", serverUrl, GuardianRoutes.action(id, action), accessToken, JsonBody(), GuardianWire::operation)
+    override suspend fun guardianDelete(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianOperation> =
+        guardianCall("DELETE", serverUrl, GuardianRoutes.workload(id), accessToken, null, GuardianWire::operation)
+
+    private suspend fun <T> guardianCall(method: String, serverUrl: String, route: String, accessToken: String,
+        body: JsonBody?, parse: (String) -> T): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Guardian response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
+    override suspend fun gitRepositories(serverUrl: String, accessToken: String): ApiResult<List<GitRepository>> =
+        gitCall("GET", serverUrl, GitRoutes.REPOSITORIES, accessToken, null, GitWire::repositories)
+
+    override suspend fun gitRegisterRepository(serverUrl: String, accessToken: String, name: String, path: String): ApiResult<GitRepository> =
+        gitCall("POST", serverUrl, GitRoutes.REPOSITORIES, accessToken,
+            JsonBody().string("name", name.trim()).string("path", path.trim()), GitWire::repository)
+
+    override suspend fun gitBranches(serverUrl: String, accessToken: String, id: String): ApiResult<List<GitBranch>> =
+        gitCall("GET", serverUrl, GitRoutes.branches(id), accessToken, null, GitWire::branches)
+
+    override suspend fun gitStatus(serverUrl: String, accessToken: String, id: String): ApiResult<GitStatus> =
+        gitCall("GET", serverUrl, GitRoutes.status(id), accessToken, null, GitWire::status)
+
+    override suspend fun gitTextFile(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<GitTextFile> =
+        gitCall("GET", serverUrl, GitRoutes.textFile(id, path), accessToken, null, GitWire::textFile)
+
+    override suspend fun gitSaveTextFile(serverUrl: String, accessToken: String, id: String, file: GitTextFile, content: String): ApiResult<GitTextFile> =
+        gitCall("PUT", serverUrl, GitRoutes.textFile(id, file.path), accessToken,
+            JsonBody().string("content", content).string("expectedVersion", file.version), GitWire::textFile)
+
+    override suspend fun gitCommit(serverUrl: String, accessToken: String, id: String, path: String, message: String): ApiResult<GitOperation> =
+        gitCall("POST", serverUrl, GitRoutes.commit(id), accessToken,
+            JsonBody().string("message", message).raw("paths", JSONArray().put(path).toString()).bool("amend", false), GitWire::operation)
+
+    override suspend fun gitPush(serverUrl: String, accessToken: String, id: String): ApiResult<GitOperation> =
+        gitCall("POST", serverUrl, GitRoutes.push(id), accessToken, JsonBody(), GitWire::operation)
+
+    override suspend fun gitBuildCredentials(serverUrl: String, accessToken: String): ApiResult<List<GitBuildCredential>> =
+        gitCall("GET", serverUrl, GitBuildRoutes.CREDENTIALS, accessToken, null, GitBuildWire::credentials)
+
+    override suspend fun gitBuildSetCredential(serverUrl: String, accessToken: String, name: String, token: String): ApiResult<GitBuildCredential> =
+        gitCall("POST", serverUrl, GitBuildRoutes.CREDENTIALS, accessToken,
+            JsonBody().string("name", name.trim()).string("token", token), GitBuildWire::credential)
+
+    override suspend fun gitBuildResolve(serverUrl: String, accessToken: String, url: String, reference: String, credentialId: String?): ApiResult<GitBuildResolved> =
+        gitCall("POST", serverUrl, GitBuildRoutes.RESOLVE, accessToken,
+            JsonBody().string("repositoryUrl", url.trim()).string("reference", reference.trim())
+                .string("credentialId", credentialId), GitBuildWire::resolved)
+
+    override suspend fun gitBuildRefs(serverUrl: String, accessToken: String, url: String, credentialId: String?): ApiResult<List<GitBuildRef>> =
+        gitCall("POST", serverUrl, GitBuildRoutes.REFS, accessToken,
+            JsonBody().string("repositoryUrl", url.trim()).string("reference", "main")
+                .string("credentialId", credentialId), GitBuildWire::refs)
+
+    override suspend fun gitBuilds(serverUrl: String, accessToken: String): ApiResult<List<GitBuildOperation>> =
+        gitCall("GET", serverUrl, GitBuildRoutes.ROOT, accessToken, null, GitBuildWire::operations)
+
+    override suspend fun gitBuildStart(serverUrl: String, accessToken: String, request: GitBuildRequest, key: String): ApiResult<GitBuildOperation> =
+        when (val result = execute("POST", serverUrl, GitBuildRoutes.ROOT, accessToken,
+            JsonBody().string("repositoryUrl", request.repositoryUrl).string("reference", request.reference)
+                .string("commitSha", request.commitSha).string("contextDirectory", request.contextDirectory)
+                .string("dockerfile", request.dockerfile).string("credentialId", request.credentialId),
+            mapOf("Idempotency-Key" to key))) {
+            is ApiResult.Success -> runCatching { GitBuildWire.operation(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Git build response.") })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
+    override suspend fun gitBuildGet(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> =
+        gitCall("GET", serverUrl, GitBuildRoutes.operation(id), accessToken, null, GitBuildWire::operation)
+
+    override suspend fun gitBuildCancel(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> =
+        gitCall("POST", serverUrl, GitBuildRoutes.cancel(id), accessToken, JsonBody(), GitBuildWire::operation)
+
+    override suspend fun deployGitBuild(serverUrl: String, accessToken: String, applicationId: String,
+        build: GitBuildOperation, key: String): ApiResult<DeploymentOperation> {
+        val source = JSONObject().put("imageReference", build.imageReference).put("gitBuildId", build.id).toString()
+        return deploymentMutation("POST", serverUrl, ApplicationDeploymentRoutes.deploy(applicationId), accessToken,
+            JsonBody().raw("source", source).bool("confirmed", true), key, ApplicationDeploymentWire::acceptedOperation)
+    }
+
+    private suspend fun <T> gitCall(method: String, serverUrl: String, route: String, accessToken: String,
+        body: JsonBody?, parse: (String) -> T): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Git response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
     override suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> =
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.servers(), WebPublishingWire::servers)
 
@@ -252,6 +395,9 @@ class RelaxKonApi(
     override suspend fun deploymentOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperationDiagnostics> =
         deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.operationLogs(operationId),
             ApplicationDeploymentWire::operationDiagnostics)
+    override suspend fun deploymentOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperation> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.operation(operationId),
+            ApplicationDeploymentWire::acceptedOperation)
 
     override suspend fun createArchiveDeployment(
         serverUrl: String,

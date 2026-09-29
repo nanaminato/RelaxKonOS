@@ -22,7 +22,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Session-scoped Docker facade. It serializes refresh-token retries and never talks to an Engine directly. */
-class DockerRepository(private val gateway: RelaxKonGateway, private val session: AuthSession) {
+class DockerRepository(
+    private val gateway: RelaxKonGateway,
+    private val session: AuthSession,
+    private val operationIndex: OperationIndex,
+) {
     private val reads = Mutex()
     suspend fun status(owner: SessionState.Active) = read(owner) { url, token -> gateway.dockerStatus(url, token) }
     suspend fun containers(owner: SessionState.Active) = read(owner) { url, token -> gateway.dockerContainers(url, token) }
@@ -47,13 +51,15 @@ class DockerRepository(private val gateway: RelaxKonGateway, private val session
      * submission so a retried request returns the operation that was already created instead of
      * starting a second deployment of the same stack.
      */
-    suspend fun deployStack(owner: SessionState.Active, name: String, composeYaml: String, definitionVersion: String): ApiResult<DockerStackOperation> =
-        read(owner) { url, token ->
-            gateway.dockerStackDeploy(url, token, name, composeYaml, definitionVersion, UUID.randomUUID().toString())
-        }
+    suspend fun deployStack(owner: SessionState.Active, name: String, composeYaml: String, definitionVersion: String): ApiResult<DockerStackOperation> {
+        val key = UUID.randomUUID().toString()
+        return read(owner) { url, token -> gateway.dockerStackDeploy(url, token, name, composeYaml, definitionVersion, key) }
+    }
 
-    suspend fun stackAction(owner: SessionState.Active, name: String, action: String, confirmed: Boolean): ApiResult<DockerStackOperation> =
-        read(owner) { url, token -> gateway.dockerStackAction(url, token, name, action, confirmed, UUID.randomUUID().toString()) }
+    suspend fun stackAction(owner: SessionState.Active, name: String, action: String, confirmed: Boolean): ApiResult<DockerStackOperation> {
+        val key = UUID.randomUUID().toString()
+        return read(owner) { url, token -> gateway.dockerStackAction(url, token, name, action, confirmed, key) }
+    }
 
     suspend fun stackOperations(owner: SessionState.Active, name: String, limit: Int = 20): ApiResult<List<DockerStackOperation>> =
         read(owner) { url, token -> gateway.dockerStackOperations(url, token, name, limit) }
@@ -64,14 +70,20 @@ class DockerRepository(private val gateway: RelaxKonGateway, private val session
     suspend fun stackOperationDiagnostics(owner: SessionState.Active, operationId: String): ApiResult<DockerStackOperationDiagnostics> =
         read(owner) { url, token -> gateway.dockerStackOperationDiagnostics(url, token, operationId) }
 
-    suspend fun cancelStackOperation(owner: SessionState.Active, operationId: String): ApiResult<DockerStackOperation> =
-        read(owner) { url, token -> gateway.dockerStackOperationCancel(url, token, operationId, UUID.randomUUID().toString()) }
+    suspend fun cancelStackOperation(owner: SessionState.Active, operationId: String): ApiResult<DockerStackOperation> {
+        val key = UUID.nameUUIDFromBytes("cancel:${owner.serviceId}:${owner.userName}:$operationId".toByteArray(Charsets.UTF_8)).toString()
+        return read(owner) { url, token -> gateway.dockerStackOperationCancel(url, token, operationId, key) }
+    }
 
     private suspend fun <T> read(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> = reads.withLock {
         fun verifyOwner() { if (session.state.value !== owner) throw CancellationException("Docker session changed") }
         verifyOwner()
         val result = session.authenticated { url, token -> verifyOwner(); call(url, token) }
         verifyOwner()
+        val operation = (result as? ApiResult.Success)?.value as? DockerStackOperation
+        if (operation != null) runCatching {
+            operationIndex.record(owner, OperationDomain.Compose, operation.projectName, operation.operationId)
+        }
         result
     }
 }

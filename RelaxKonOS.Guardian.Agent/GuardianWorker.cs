@@ -7,6 +7,7 @@ namespace RelaxKonOS.Guardian.Agent;
 internal sealed class GuardianWorker(
     GuardianAgentOptions options,
     WorkloadSupervisor supervisor,
+    ScriptTaskSupervisor scripts,
     GuardianPipeServer pipeServer,
     ProtectedServerMonitor protectedServerMonitor,
     ILogger<GuardianWorker> logger) : BackgroundService
@@ -16,6 +17,7 @@ internal sealed class GuardianWorker(
         try
         {
             await supervisor.RestoreEnabledWorkloadsAsync(stoppingToken);
+            await scripts.RestoreAsync(stoppingToken);
             await Task.WhenAll(
                 pipeServer.RunAsync(stoppingToken),
                 supervisor.RunHealthChecksAsync(stoppingToken),
@@ -33,6 +35,7 @@ internal sealed class GuardianWorker(
         finally
         {
             await supervisor.StopAllAsync();
+            await scripts.StopAllAsync();
         }
     }
 }

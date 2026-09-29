@@ -14,7 +14,8 @@ public sealed record DeploymentSourceInputDto(
     [property: JsonPropertyName("runtimeVersion")] string? RuntimeVersion = null,
     [property: JsonPropertyName("programEntry")] string? ProgramEntry = null,
     [property: JsonPropertyName("arguments")] IReadOnlyList<string>? Arguments = null,
-    [property: JsonPropertyName("selfContained")] bool SelfContained = false);
+    [property: JsonPropertyName("selfContained")] bool SelfContained = false,
+    [property: JsonPropertyName("gitBuildId")] Guid? GitBuildId = null);
 
 /// <summary>
 /// Creates the application record only. The source archive or image deliberately stays out of the

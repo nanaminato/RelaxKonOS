@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text;
 using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Protocol.Privileged;
 using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Server.UserExecution;
 
 namespace RelaxKonOS.Server.Endpoints;
 
@@ -157,6 +159,38 @@ public static class GitEndpoints
             try { return Results.Ok(await service.GetDiffAsync(repoId, GetUserId(principal), path, staged ?? false, @ref, ct)); }
             catch (ArgumentException ex) { return Results.Problem(detail: ex.Message, statusCode: 400, title: "Invalid path", type: ProblemBase + "invalid-path"); }
             catch (InvalidOperationException ex) { return Results.Problem(detail: ex.Message, statusCode: 500, title: "Git error", type: ProblemBase + "diff-failed"); }
+        });
+
+        group.MapGet("/repositories/{id}/text-file", async (Guid id, string path, ClaimsPrincipal principal,
+            RelaxKonOS.Server.Git.GitTextEditor editor, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await editor.ReadAsync(id, GetUserId(principal), path, ct)); }
+            catch (UserExecutionException ex) { return UserExecutionProblemResult.From(ex); }
+            catch (FileNotFoundException) { return Results.Problem(statusCode: 404, type: ProblemBase + "text-not-found"); }
+            catch (DirectoryNotFoundException) { return Results.Problem(statusCode: 404, type: ProblemBase + "text-not-found"); }
+            catch (DecoderFallbackException) { return Results.Problem(statusCode: 415, type: ProblemBase + "text-encoding"); }
+            catch (ArgumentException) { return Results.Problem(statusCode: 400, type: ProblemBase + "invalid-text-path"); }
+            catch (InvalidDataException) { return Results.Problem(statusCode: 413, type: ProblemBase + "text-too-large"); }
+            catch (UnauthorizedAccessException) { return Results.Problem(statusCode: 403, type: ProblemBase + "text-access-denied"); }
+            catch (IOException) { return Results.Problem(statusCode: 409, type: ProblemBase + "text-busy"); }
+        });
+
+        group.MapPut("/repositories/{id}/text-file", async (Guid id, string path, GitSaveTextFileRequest request,
+            ClaimsPrincipal principal, RelaxKonOS.Server.Git.GitTextEditor editor, CancellationToken ct) =>
+        {
+            try
+            {
+                var saved = await editor.SaveAsync(id, GetUserId(principal), path, request, ct);
+                return saved is null ? Results.Problem(statusCode: 409, type: ProblemBase + "text-changed") : Results.Ok(saved);
+            }
+            catch (UserExecutionException ex) { return UserExecutionProblemResult.From(ex); }
+            catch (FileNotFoundException) { return Results.Problem(statusCode: 404, type: ProblemBase + "text-not-found"); }
+            catch (DirectoryNotFoundException) { return Results.Problem(statusCode: 404, type: ProblemBase + "text-not-found"); }
+            catch (EncoderFallbackException) { return Results.Problem(statusCode: 400, type: ProblemBase + "text-encoding"); }
+            catch (ArgumentException) { return Results.Problem(statusCode: 400, type: ProblemBase + "invalid-text-write"); }
+            catch (InvalidDataException) { return Results.Problem(statusCode: 413, type: ProblemBase + "text-too-large"); }
+            catch (UnauthorizedAccessException) { return Results.Problem(statusCode: 403, type: ProblemBase + "text-access-denied"); }
+            catch (IOException) { return Results.Problem(statusCode: 409, type: ProblemBase + "text-busy"); }
         });
 
         group.MapPost("/repositories/{id}/revert", async (string id, GitRevertRequest request, ClaimsPrincipal principal, RelaxKonOS.Server.Git.IGitRepositoryService service, CancellationToken ct) =>

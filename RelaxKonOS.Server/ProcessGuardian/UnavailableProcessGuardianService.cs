@@ -20,4 +20,8 @@ public sealed class UnavailableProcessGuardianService : IProcessGuardianService
     public Task<GuardianAgentResponse> ApplyActionAsync(string workloadId, string action, CancellationToken cancellationToken = default) => Task.FromResult(new GuardianAgentResponse(false, "guardian.agent_not_installed"));
     public Task<IReadOnlyList<GuardianLogEntryDto>> ListLogsAsync(string workloadId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<GuardianLogEntryDto>>(Array.Empty<GuardianLogEntryDto>());
     public Task<IReadOnlyList<GuardianAuditEntryDto>> ListAuditAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<GuardianAuditEntryDto>>(Array.Empty<GuardianAuditEntryDto>());
+    public Task<GuardianAgentResponse> ListScriptsAsync(string ownerIdentity, CancellationToken cancellationToken = default) => Task.FromResult(new GuardianAgentResponse(false, "guardian.agent_not_installed"));
+    public Task<GuardianAgentResponse> GetScriptAsync(string ownerIdentity, string id, CancellationToken cancellationToken = default) => Task.FromResult(new GuardianAgentResponse(false, "guardian.agent_not_installed"));
+    public Task<GuardianAgentResponse> SubmitScriptAsync(ScriptTaskDefinitionDto definition, CancellationToken cancellationToken = default) => Task.FromResult(new GuardianAgentResponse(false, "guardian.agent_not_installed"));
+    public Task<GuardianAgentResponse> CancelScriptAsync(string ownerIdentity, string id, CancellationToken cancellationToken = default) => Task.FromResult(new GuardianAgentResponse(false, "guardian.agent_not_installed"));
 }

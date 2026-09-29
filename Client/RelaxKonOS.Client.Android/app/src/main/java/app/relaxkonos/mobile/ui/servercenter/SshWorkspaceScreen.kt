@@ -124,6 +124,7 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             Text(stringResource(R.string.ssh_workspace_deploy_step, step + 1), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (step == 0 && host != null) ServerInstallRecoveryPanel(host.hostId)
             when (step) {
                 0 -> SectionCard(
                     title = stringResource(R.string.ssh_workspace_deploy_step_source),

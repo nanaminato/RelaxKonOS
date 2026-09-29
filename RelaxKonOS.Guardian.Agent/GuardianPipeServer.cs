@@ -8,7 +8,8 @@ using RelaxKonOS.Protocol.Observability;
 namespace RelaxKonOS.Guardian.Agent;
 
 /// <summary>Local, authenticated IPC server. Named pipes map to Unix domain sockets on Unix.</summary>
-internal sealed class GuardianPipeServer(GuardianAgentOptions options, WorkloadSupervisor supervisor, ILogger<GuardianPipeServer> logger)
+internal sealed class GuardianPipeServer(GuardianAgentOptions options, WorkloadSupervisor supervisor,
+    ScriptTaskSupervisor scripts, ILogger<GuardianPipeServer> logger)
 {
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -48,7 +49,9 @@ internal sealed class GuardianPipeServer(GuardianAgentOptions options, WorkloadS
                     ["action"] = request.Correlation.Action,
                     ["component"] = "guardian"
                 });
-                response = await supervisor.HandleAsync(request, cancellationToken);
+                response = request.Command.StartsWith("script-", StringComparison.Ordinal)
+                    ? await scripts.HandleAsync(request, cancellationToken)
+                    : await supervisor.HandleAsync(request, cancellationToken);
             }
         }
         catch (JsonException) { response = new GuardianAgentResponse(false, "guardian.ipc_invalid_request"); }

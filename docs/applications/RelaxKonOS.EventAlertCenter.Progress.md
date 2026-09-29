@@ -1,6 +1,6 @@
 # RelaxKonOS 事件与告警中心：实施进度
 
-最后更新：2026-09-21（UTC）  
+最后更新：2026-09-29（UTC）
 状态：进行中；**不得**据此关闭 Goal。
 
 ## 已完成
@@ -14,10 +14,11 @@
 - [x] M5 的最小读取体验：注册只声明读取权限的 `relaxkonos.event-alerts` 内置应用，新增读/管两项应用权限定义、三语文案和摘要/告警列表刷新界面。
 - [x] 新应用权限及 Server `EventsRead`、`EventsManage`、`EventsCriticalSuppress` policy 已接入。
 - [x] M2 的部署失败最小接入：`ApplicationDeploymentCoordinator` 在其 terminal ledger 已持久化后发布失败或成功恢复信号；中心失败不会回滚部署。
+- [x] M2 的 Compose 操作最小接入：`DockerStackOperationCoordinator` 在持久终态写入后按项目稳定身份发布失败、部分失败及经观察的成功恢复；取消和中断不发布恢复，幂等重放不产生第二事件。
 
 ## 尚未完成（不可作为已交付功能宣传）
 
-- [ ] M2：部署启动重放，以及证书、Docker、隧道的结构化发布器、状态监视器、宽限/退避与持久 journal 重放。
+- [ ] M2：部署与 Compose 终态事件的持久重放，以及证书、Docker Engine 可用性、隧道的结构化发布器、状态监视器、宽限/退避与持久 journal 重放。
 - [ ] M3：Guardian Agent 的 sequence 事件账本、checkpoint、可靠拉取、可用性监视器和重启补偿。
 - [ ] M4：按目标领域的二次资源授权、Critical 独立权限角色以及跳转请求审计。
 - [ ] M5：详情抽屉、处理操作界面、SignalR 客户端订阅、壳状态徽章/toast、固定激活处理器和各领域深链。
@@ -26,16 +27,17 @@
 
 ## 本次验证
 
-- 通过：`dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -c Debug --no-restore`（仅既有两条平台可达性警告）。
-- 已新增：`RelaxKonOS.Server.Tests/EventAlertChecks.cs`，覆盖 append、净化、同 key 聚合、确认和恢复投影；尚未实际执行，见下一节。
+- 2026-09-29：`dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore` 通过（3 条既有 CA1416）；`dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UsePrebuiltServerAssembly=true -- --stack-operations-only` 通过，包含 Compose 失败/恢复发布、幂等重放与取消不发布事件的断言。普通项目引用构建仍因本机 workload locator 条件退出，预构建服务端程序集路径是测试工程已有的本机选项。
+- 2026-09-21 记录：`dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj -c Debug --no-restore` 当时通过（两条平台可达性警告）。
+- `RelaxKonOS.Server.Tests/EventAlertChecks.cs` 覆盖 append、净化、同 key 聚合、确认和恢复投影；2026-09-29 已随上述定向命令实际执行。
 
 ## 暂时跳过／需恢复的测试
 
 | 项目 | 尝试命令 | 当前结果 | 恢复条件 |
 | --- | --- | --- | --- |
-| 新增 EventAlertChecks | `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug --no-restore` | 立即失败，退出码非零且没有 MSBuild 错误输出；诊断显示失败发生在 restore project-path graph。 | 修复/确认该现有 restore graph 问题后，执行 build，再运行 `dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug -- --deployment-progress-only`（它会先执行 EventAlertChecks）。 |
+| Server.Tests 普通项目引用路径 | `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug --no-restore` | 仍在本机立即失败且无 MSBuild 错误输出；但 2026-09-29 的 `UsePrebuiltServerAssembly=true` 路径已编译并运行 EventAlertChecks 和 Compose 定向检查。 | 修复本机 workload locator/项目引用路径后重新执行普通构建。 |
 | 客户端编译 | `dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj -c Debug --no-restore` | 立即失败，退出码非零且没有编译错误输出。 | 修复客户端项目评估/restore graph 后重新构建，特别检查新 EventAlerts 应用的 Avalonia API。 |
 | 全解决方案 | `dotnet build RelaxKonOS.sln -c Debug --no-restore` | 立即失败，退出码非零且没有编译错误输出。 | 在以上项目评估问题解决后执行；Goal §17 要求最终必须通过。 |
 | 领域与故障演练 | 未执行 | M2/M3/M6 尚未实施。 | 完成各采集器和 Guardian 可靠协议后，按 Goal §14、§17 逐项补充并执行。 |
 
-补充：直接运行当前磁盘中既有的 `RelaxKonOS.Server.Tests.dll --deployment-progress-only` 会先通过旧的部署诊断检查，随后因测试宿主无法绑定 Kestrel socket（`SocketException: Permission denied`）失败；该二进制未包含本次新增测试，不能作为 EventAlertChecks 的执行证据。
+历史记录：2026-09-21 直接运行当时磁盘中既有的 `RelaxKonOS.Server.Tests.dll --deployment-progress-only` 不能作为新增测试证据；2026-09-29 已重新编译并通过预构建程序集路径运行新测试。

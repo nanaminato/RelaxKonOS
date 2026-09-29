@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
@@ -17,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.data.ForegroundAlertNotifier
 import app.relaxkonos.mobile.ui.common.AppBackdrop
 import app.relaxkonos.mobile.ui.common.ElevationDialog
 import app.relaxkonos.mobile.ui.common.ErrorBanner
@@ -51,11 +54,29 @@ class MainActivity : AppCompatActivity() {
         runCatching { applyAppLanguage(container.appearance.language) }
         runCatching { applyAppNightMode(container.appearance.colorMode) }
         super.onCreate(savedInstanceState)
+        container.requestAlertOpen(intent?.getStringExtra(ForegroundAlertNotifier.EXTRA_OWNER_TOKEN))
         setContent {
             CompositionLocalProvider(LocalAppContainer provides container) {
                 RelaxKonApp(container)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        (application as RelaxKonApplication).container.requestAlertOpen(
+            intent.getStringExtra(ForegroundAlertNotifier.EXTRA_OWNER_TOKEN))
+    }
+
+    override fun onStart() {
+        super.onStart()
+        (application as RelaxKonApplication).container.foregroundAlertNotifier.start()
+    }
+
+    override fun onStop() {
+        (application as RelaxKonApplication).container.foregroundAlertNotifier.stop()
+        super.onStop()
     }
 }
 
@@ -85,6 +106,19 @@ private fun RelaxKonApp(container: AppContainer) {
             if (sessionState !is SessionState.Active) {
                 shell.navigator.resetTo(Routes.HOME)
                 ownerDevicePairingOpen = false
+            }
+        }
+
+        LaunchedEffect(sessionState, container.pendingAlertOwnerToken) {
+            val token = container.pendingAlertOwnerToken ?: return@LaunchedEffect
+            if (sessionState is SessionState.Active) {
+                if (ServerCapabilities.EVENT_ALERTS in sessionState.capabilities &&
+                    token == container.foregroundAlertNotifier.ownerToken(sessionState)) {
+                    shell.navigator.select(Routes.MANAGE)
+                    shell.navigator.push(Routes.MANAGE_OPERATIONS)
+                    container.prepareAlertScreen()
+                }
+                container.consumeAlertRequest()
             }
         }
 

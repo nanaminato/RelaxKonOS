@@ -8,6 +8,9 @@ public static class ProcessGuardianApiRoutes
     private const string V1 = RelaxKonOSEndpoints.ApiVersionPrefix;
     public const string Status = $"/{V1}/guardian/status";
     public const string Workloads = $"/{V1}/guardian/workloads";
+    public const string Scripts = $"/{V1}/guardian/scripts";
+    public const string Script = $"/{V1}/guardian/scripts/{{id}}";
+    public const string ScriptCancel = $"/{V1}/guardian/scripts/{{id}}/cancel";
     public const string Workload = $"/{V1}/guardian/workloads/{{id}}";
     public const string WorkloadAction = $"/{V1}/guardian/workloads/{{id}}/{{action}}";
     public const string WorkloadLogs = $"/{V1}/guardian/workloads/{{id}}/logs";

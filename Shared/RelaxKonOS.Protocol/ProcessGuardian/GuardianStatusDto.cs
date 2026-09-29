@@ -17,7 +17,9 @@ public sealed record GuardianWorkloadDto(
     string? ExecutablePath = null,
     string? WorkingDirectory = null,
     bool EnabledOnBoot = false,
-    string? RunAs = null);
+    string? RunAs = null,
+    int? LastExitCode = null,
+    string? LastProblemCode = null);
 public sealed record GuardianLogEntryDto(DateTimeOffset Timestamp, string Stream, string Message);
 public sealed record GuardianAuditEntryDto(DateTimeOffset Timestamp, string Action, string? WorkloadId, string Outcome, string ProblemCode, string? RunAs = null);
 public sealed record GuardianHealthCheckDto(string Type, string? Target = null, int IntervalSeconds = 15, int TimeoutSeconds = 5, int FailureThreshold = 3);
@@ -51,5 +53,7 @@ public sealed record UpsertGuardianWorkloadRequest(
 
 /// <summary>Private local IPC envelope. It is never exposed through RelaxKonOS HTTP endpoints.</summary>
 public sealed record GuardianAgentRequest(string SharedSecret, string Command, string? WorkloadId = null,
-    ProcessDefinitionDto? Definition = null, CorrelationContext? Correlation = null);
-public sealed record GuardianAgentResponse(bool Success, string ProblemCode, GuardianStatusDto? Status = null, IReadOnlyList<GuardianWorkloadDto>? Workloads = null, IReadOnlyList<GuardianLogEntryDto>? Logs = null, IReadOnlyList<GuardianAuditEntryDto>? Audits = null, ProcessDefinitionDto? Definition = null);
+    ProcessDefinitionDto? Definition = null, CorrelationContext? Correlation = null,
+    ScriptTaskDefinitionDto? Script = null, string? OwnerIdentity = null);
+public sealed record GuardianAgentResponse(bool Success, string ProblemCode, GuardianStatusDto? Status = null, IReadOnlyList<GuardianWorkloadDto>? Workloads = null, IReadOnlyList<GuardianLogEntryDto>? Logs = null, IReadOnlyList<GuardianAuditEntryDto>? Audits = null, ProcessDefinitionDto? Definition = null,
+    IReadOnlyList<ScriptTaskDto>? Scripts = null, ScriptTaskDto? ScriptTask = null);

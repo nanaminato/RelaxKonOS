@@ -6,6 +6,7 @@ using System.Security.AccessControl;
 using Microsoft.AspNetCore.StaticFiles;
 using RelaxKonOS.Protocol.Files;
 using RelaxKonOS.Protocol.Common;
+using RelaxKonOS.Protocol.Git;
 using RelaxKonOS.Server.HostMode;
 
 namespace RelaxKonOS.Server.Files;
@@ -23,6 +24,14 @@ public sealed class LocalFileService(IServerModeResolver mode) : IFileService
     private const string TextPlain = "text/plain";
     private const string OctetStream = "application/octet-stream";
     private const string InodeDirectory = "inode/directory";
+
+    public Task<bool> WriteFileIfMatchAsync(string path, byte[] content, string expectedSha256,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureUserModePath(path);
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(GitTextFileWrite.ReplaceIfVersion(path, content, expectedSha256));
+    }
 
     public IReadOnlyList<DriveDto> GetDrives()
     {

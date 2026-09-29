@@ -22,6 +22,40 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?): ApiResult<OperationalAlertPage> =
+        ApiResult.Transport("Operational alerts unavailable.")
+    suspend fun alertDetail(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlertDetail> =
+        ApiResult.Transport("Operational alert unavailable.")
+    suspend fun acknowledgeAlert(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlert> =
+        ApiResult.Transport("Operational alert acknowledgement unavailable.")
+    suspend fun scriptTasks(serverUrl: String, accessToken: String): ApiResult<ScriptTasksResult> = ApiResult.Transport("Scripts unavailable.")
+    suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
+    suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
+    suspend fun scriptCancel(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
+    suspend fun guardianStatus(serverUrl: String, accessToken: String): ApiResult<GuardianStatus> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianWorkloads(serverUrl: String, accessToken: String): ApiResult<List<GuardianWorkload>> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianDefinition?> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<GuardianLog>> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianSave(serverUrl: String, accessToken: String, definition: GuardianDefinition, approval: GuardianApproval?): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianAction(serverUrl: String, accessToken: String, id: String, action: String): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun guardianDelete(serverUrl: String, accessToken: String, id: String): ApiResult<GuardianOperation> = ApiResult.Transport("Guardian unavailable.")
+    suspend fun gitRepositories(serverUrl: String, accessToken: String): ApiResult<List<GitRepository>> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitRegisterRepository(serverUrl: String, accessToken: String, name: String, path: String): ApiResult<GitRepository> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitBranches(serverUrl: String, accessToken: String, id: String): ApiResult<List<GitBranch>> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitStatus(serverUrl: String, accessToken: String, id: String): ApiResult<GitStatus> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitTextFile(serverUrl: String, accessToken: String, id: String, path: String): ApiResult<GitTextFile> = ApiResult.Transport("Git editing unavailable.")
+    suspend fun gitSaveTextFile(serverUrl: String, accessToken: String, id: String, file: GitTextFile, content: String): ApiResult<GitTextFile> = ApiResult.Transport("Git editing unavailable.")
+    suspend fun gitCommit(serverUrl: String, accessToken: String, id: String, path: String, message: String): ApiResult<GitOperation> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitPush(serverUrl: String, accessToken: String, id: String): ApiResult<GitOperation> = ApiResult.Transport("Git unavailable.")
+    suspend fun gitBuildCredentials(serverUrl: String, accessToken: String): ApiResult<List<GitBuildCredential>> = ApiResult.Transport("Git builds unavailable.")
+    suspend fun gitBuildSetCredential(serverUrl: String, accessToken: String, name: String, token: String): ApiResult<GitBuildCredential> = ApiResult.Transport("Git builds unavailable.")
+    suspend fun gitBuildResolve(serverUrl: String, accessToken: String, url: String, reference: String, credentialId: String?): ApiResult<GitBuildResolved> = ApiResult.Transport("Git builds unavailable.")
+    suspend fun gitBuildRefs(serverUrl: String, accessToken: String, url: String, credentialId: String?): ApiResult<List<GitBuildRef>> = ApiResult.Transport("Git builds unavailable.")
+    suspend fun gitBuilds(serverUrl: String, accessToken: String): ApiResult<List<GitBuildOperation>> = ApiResult.Transport("Git builds unavailable.")
+    suspend fun gitBuildStart(serverUrl: String, accessToken: String, request: GitBuildRequest, key: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
+    suspend fun gitBuildGet(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
+    suspend fun gitBuildCancel(serverUrl: String, accessToken: String, id: String): ApiResult<GitBuildOperation> = ApiResult.Transport("Git builds unavailable.")
+    suspend fun deployGitBuild(serverUrl: String, accessToken: String, applicationId: String, build: GitBuildOperation, key: String): ApiResult<DeploymentOperation> = ApiResult.Transport("Git deployment unavailable.")
     suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> = ApiResult.Transport("Web servers are unavailable.")
     suspend fun webServerStatus(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerStatus> = ApiResult.Transport("Web server status is unavailable.")
     /** A server-side syntax check: it does not write, reload, or start the web server. */
@@ -97,6 +131,8 @@ interface RelaxKonGateway {
 
     suspend fun deploymentOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperationDiagnostics> =
         ApiResult.Transport("Deployment operation diagnostics are unavailable.")
+    suspend fun deploymentOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperation> =
+        ApiResult.Transport("Deployment operation is unavailable.")
 
     suspend fun createArchiveDeployment(
         serverUrl: String,

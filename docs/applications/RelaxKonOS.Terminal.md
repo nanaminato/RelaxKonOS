@@ -3,6 +3,8 @@
 > **当前 UI 行为（优先于下文早期工具条描述）**：一个服务端 PTY 对应一个桌面终端窗口；不提供会话切换、新建、断开、Restart 或 Clear 按钮。进入已认证桌面时会自动恢复所有存活会话；再次手动打开 Terminal 时也会恢复存活会话，若不存在会话则新建一个。只有关闭某个终端窗口才会显式终止对应的服务端进程。字体、字号和配色为 Workspace 级设置，经 `GET`/`PUT /api/v1.0/workspaces/{id}/terminal-settings` 保存在服务器端。
 
 > 内置终端应用：基于 [RoyalTerminal](https://github.com/royalapplications/RoyalTerminal) NuGet 包引入终端能力，支持 **Remote Mode**（SignalR 远端 PTY）与 **Local Mode**（本地 PTY 回退）。
+
+Android 客户端使用同一 Server Hub；`AttachExisting(sessionId)` 只附加当前用户仍存活的会话，找不到时返回 `terminal.session_not_found`，供网络恢复路径避免误创建 PTY。移动端交互规范和验收状态由 [Android AD07 文档](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.TerminalAutomation.Plan.md) 维护。
 >
 > - 架构原则见 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md)（§6 Application Execution Model / §6.2 Remote Service Application）
 > - 项目当前状态见 [`RelaxKonOS.md`](../README.md)（§7 RemoteTerminal）

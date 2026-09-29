@@ -9,6 +9,9 @@ public static class TerminalHubMethods
     /// </summary>
     public const string Start = nameof(Start);
 
+    /// <summary>只附加现有且归属当前用户的会话；不存在时失败，绝不创建新 PTY。</summary>
+    public const string AttachExisting = nameof(AttachExisting);
+
     /// <summary>向 PTY 写入用户输入字节（client→server）。</summary>
     public const string Input = nameof(Input);
 

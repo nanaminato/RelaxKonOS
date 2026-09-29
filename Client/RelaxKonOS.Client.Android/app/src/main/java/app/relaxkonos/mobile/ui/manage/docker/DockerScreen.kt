@@ -25,8 +25,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -371,13 +373,17 @@ private fun operationKind(kind: DockerStackOperationKind): String = stringResour
 )
 
 @Composable
-fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null) {
     val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
-    var composer by mutableStateOf(false)
-    var composeDraft by mutableStateOf(DEFAULT_COMPOSE)
-    var destructive by mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null)
+    var composer by remember { mutableStateOf(false) }
+    var composeDraft by remember { mutableStateOf(DEFAULT_COMPOSE) }
+    var destructive by remember { mutableStateOf<Pair<DockerRemoval, () -> Unit>?>(null) }
+    LaunchedEffect(initialStackName, state.stacks) {
+        val stack = (state.stacks as? ApiResult.Success)?.value?.firstOrNull { it.name == initialStackName }
+        if (stack != null && state.selectedStack?.name != stack.name) viewModel.selectStack(stack)
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) viewModel.importCompose(uri) { yaml -> composeDraft = yaml; composer = true } }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         ScreenHeader(

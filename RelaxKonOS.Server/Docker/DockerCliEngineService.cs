@@ -53,7 +53,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
             .Select(row => new DockerContainerDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4))).ToArray();
 
     public async Task<IReadOnlyList<DockerImageDto>> ListImagesAsync(CancellationToken cancellationToken = default)
-        => (await RunTableAsync(["image", "ls", "--format", "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"], cancellationToken))
+        => (await RunTableAsync(["image", "ls", "--no-trunc", "--format", "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"], cancellationToken))
             .Select(row => new DockerImageDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4))).ToArray();
 
     public async Task<IReadOnlyList<DockerNetworkDto>> ListNetworksAsync(CancellationToken cancellationToken = default)

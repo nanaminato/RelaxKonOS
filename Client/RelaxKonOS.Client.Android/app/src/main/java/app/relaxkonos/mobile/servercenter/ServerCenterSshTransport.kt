@@ -17,7 +17,9 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.InputStreamReader
+import java.io.IOException
 import java.io.OutputStream
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -368,11 +370,15 @@ class JschServerCenterTransport : ServerCenterSshTransport {
 
             val out = ByteArrayOutputStream()
             val err = ByteArrayOutputStream()
-            val outReader = drain(stdout, out)
-            val errReader = drain(stderr, err)
+            val outputOverflowed = AtomicBoolean(false)
+            val outputFailed = AtomicBoolean(false)
+            val outReader = drain(stdout, out, outputOverflowed, outputFailed)
+            val errReader = drain(stderr, err, outputOverflowed, outputFailed)
             outReader.join()
             errReader.join()
             settle(channel)
+            if (outputFailed.get()) throw IOException("SSH command output could not be read completely.")
+            if (outputOverflowed.get()) throw IOException("SSH command output exceeds its size limit.")
 
             return ServerCenterSshCommandResult(
                 exitStatus = channel.exitStatus,
@@ -384,17 +390,22 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         }
     }
 
-    private fun drain(stream: InputStream, sink: ByteArrayOutputStream): Thread {
+    private fun drain(stream: InputStream, sink: ByteArrayOutputStream, overflowed: AtomicBoolean,
+        failed: AtomicBoolean): Thread {
         val thread = Thread {
             val buffer = ByteArray(8192)
             try {
                 while (true) {
                     val read = stream.read(buffer)
                     if (read < 0) break
-                    if (read > 0) sink.write(buffer, 0, read)
+                    if (read > 0) {
+                        val remaining = MAX_COMMAND_OUTPUT_BYTES - sink.size()
+                        if (read > remaining) overflowed.set(true)
+                        if (remaining > 0) sink.write(buffer, 0, minOf(read, remaining))
+                    }
                 }
             } catch (_: Exception) {
-                // The channel closing under us ends the drain; whatever arrived is kept.
+                failed.set(true)
             }
         }
         thread.isDaemon = true
@@ -431,6 +442,7 @@ class JschServerCenterTransport : ServerCenterSshTransport {
         const val CONNECT_TIMEOUT_MILLIS = 20_000
         const val CHANNEL_CONNECT_TIMEOUT_MILLIS = 20_000
         const val CHANNEL_SETTLE_MILLIS = 5_000L
+        const val MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024
     }
 }
 
@@ -455,6 +467,10 @@ internal class JschInteractiveTerminal(
             output.write(value.toByteArray(Charsets.UTF_8))
             output.flush()
         }
+    }
+
+    override fun resize(columns: Int, rows: Int) {
+        if (channel.isConnected) channel.setPtySize(columns, rows, 0, 0)
     }
 
     override fun close() {

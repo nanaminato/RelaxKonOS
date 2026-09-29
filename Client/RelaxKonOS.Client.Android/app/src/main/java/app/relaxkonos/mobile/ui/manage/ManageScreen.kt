@@ -209,14 +209,27 @@ fun ManageScreen(
     onOpenProcesses: () -> Unit,
     onOpenDeployments: () -> Unit,
     onOpenDocker: () -> Unit,
+    onOpenGit: () -> Unit,
     onOpenWebsites: () -> Unit,
+    onOpenGuardian: () -> Unit,
+    onOpenScripts: () -> Unit,
+    onOpenOperations: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val container = app.relaxkonos.mobile.ui.common.appContainer()
 
     val domains = buildList {
+        if (container.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS) ||
+            container.capabilities.contains(ServerCapabilities.WEB_SERVER) ||
+            container.capabilities.contains(ServerCapabilities.EVENT_ALERTS)) {
+            add(ManageDomain(R.string.operations_title, R.string.operations_subtitle,
+                DesktopIcons.notice, onOpenOperations))
+        }
         if (container.capabilities.contains(ServerCapabilities.DOCKER)) {
             add(ManageDomain(R.string.docker_title, R.string.docker_subtitle, R.drawable.ic_app_docker, onOpenDocker))
+        }
+        if (container.capabilities.contains(ServerCapabilities.GIT)) {
+            add(ManageDomain(R.string.git_title, R.string.git_subtitle, R.drawable.ic_sys_file_git_config, onOpenGit))
         }
         if (container.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) {
             add(ManageDomain(R.string.deployments_title, R.string.deployments_subtitle,
@@ -224,6 +237,10 @@ fun ManageScreen(
         }
         if (container.capabilities.contains(ServerCapabilities.WEB_SERVER)) {
             add(ManageDomain(R.string.websites_title, R.string.websites_subtitle, R.drawable.ic_app_webservers, onOpenWebsites))
+        }
+        if (container.capabilities.contains(ServerCapabilities.GUARDIAN)) {
+            add(ManageDomain(R.string.guardian_title, R.string.guardian_subtitle, R.drawable.ic_app_processguardian, onOpenGuardian))
+            add(ManageDomain(R.string.scripts_title, R.string.scripts_subtitle, R.drawable.ic_app_terminal, onOpenScripts))
         }
         if (container.capabilities.contains(ServerCapabilities.METRICS)) {
             add(

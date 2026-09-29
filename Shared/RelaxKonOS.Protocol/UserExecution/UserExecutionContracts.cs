@@ -7,7 +7,7 @@ namespace RelaxKonOS.Protocol.UserExecution;
 /// <summary>Protocol constants for the dedicated, local-only user-execution channel.</summary>
 public static class UserExecutionProtocol
 {
-    public const string Version = "1.2";
+    public const string Version = "1.3";
     // A 12 MiB payload expands to 16 MiB in base64; leave bounded room for the JSON envelope.
     public const int MaximumRequestBytes = 17 * 1024 * 1024;
     public const int MaximumFileContentBytes = 12 * 1024 * 1024;
@@ -53,6 +53,7 @@ public enum UserExecutionOperationKind
     FileGetInfo,
     FileRead,
     FileWrite,
+    FileWriteIfMatch,
     FileDelete,
     FileRename,
     FileMove,
@@ -109,7 +110,8 @@ public sealed record UserExecutionRequest(
     [property: JsonPropertyName("terminalHeightPixels")] int? TerminalHeightPixels = null,
     [property: JsonPropertyName("operationId")] Guid? OperationId = null,
     [property: JsonPropertyName("correlation")] CorrelationContext? Correlation = null,
-    [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version);
+    [property: JsonPropertyName("version")] string Version = UserExecutionProtocol.Version,
+    [property: JsonPropertyName("expectedSha256")] string? ExpectedSha256 = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<UserExecutionProblemCode>))]
 public enum UserExecutionProblemCode

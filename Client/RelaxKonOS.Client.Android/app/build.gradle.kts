@@ -20,6 +20,8 @@ android {
     namespace = "app.relaxkonos.mobile"
     compileSdk = 36
 
+    sourceSets.getByName("main").assets.srcDir("../../../deployment/launcher")
+
     defaultConfig {
         applicationId = "app.relaxkonos.mobile"
         minSdk = 23
@@ -78,6 +80,7 @@ dependencies {
     // release that still declares minCompileSdk 35 is pinned. Revisit when compileSdk moves to 37.
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("com.microsoft.signalr:signalr:10.0.6")
 
     // QR pairing: the system scanner handles live camera capture without a CAMERA permission; the
     // bundled ML Kit reader also handles a user-selected local image without waiting for a model download.
