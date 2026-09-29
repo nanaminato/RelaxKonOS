@@ -152,6 +152,8 @@ Server 不会继承 root 身份，UFW、受保护文件和受限服务操作才�
 要调试真实 Server → sudo → Helper 路径，先构建 Helper，然后由管理员安装其 root-owned 开发副本：
 
 ```bash
+dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj
+
 sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER" \
   --file-access whitelist \
   --file-roots deployment/linux/privileged-helper-roots.example \
@@ -184,6 +186,19 @@ sudo deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER
 `PrivilegedHelper__HelperPath` 指向上述 root-owned 副本；`PrivilegedHelper__SudoPath` 仍必须为
 `/usr/bin/sudo`。普通 `http` 配置不包含此路径，因此适合 UI/API 调试；一旦发起真实 UFW 修改，
 它会稳定返回 `firewall.privileged_proxy_required`。
+
+### `http-linux-privileged` 登录返回 503
+
+`http-linux-privileged` 的系统账户登录也走同一条 `Server → sudo → Helper → PAM` 链路。仅在 Rider
+中切换到该启动配置不会安装或更新 Helper。因此若客户端登录提示
+`authentication-unavailable`（HTTP 503），首先重新构建并重新执行上面的开发安装命令；这会将当前
+Debug Helper 快照安装到它配置的路径，并同时恢复受管 PAM 文件和精确的 sudoers 规则。
+
+每次修改 `RelaxKonOS.PrivilegedHelper` 后都必须重复这两个步骤；仅重新启动 Rider 或 Server 不会更新
+root-owned 副本。若重新安装后仍失败，查看 Server 控制台中同一次请求的
+`Privileged Helper operation completed`：`HelperUnavailable` 表示 Helper 路径或 sudo 授权未就绪，
+`InternalError` 则表示 Helper 已运行但专用 PAM service 或其依赖不可用。不要将 System Mode 改为
+`in-process` 作为绕过方式。
 
 未显式配置 `NginxManaged:InstallationRoot` 时，Development 下 Linux 使用
 `$HOME/.local/share/RelaxKonOS/debug/webserver/nginx`，Windows 使用 `%ProgramData%\RelaxKonOS\webserver\nginx`。
