@@ -30,18 +30,20 @@
 - “管理 → 脚本任务”通过新增的 Guardian Agent 一次性任务契约提交结构化程序路径、参数数组、工作目录、环境、超时与执行身份，读取持久结果及有界输出，支持取消和 Agent 重启后的 `interrupted` 状态；HTTP 断线不取消远端任务。任务按登录者的稳定 OS 身份隔离，跨账号执行复用逐次 `RunAs` 授权。
 - .NET Guardian Agent 编译通过（0 警告），Server 编译通过（3 条既有 CA1416 平台警告）。为使 Server 可编译，一并修正既有 GitBuildService 六处把空集合表达式传给 `IReadOnlyDictionary` 的编译错误。Android `:app:testDebugUnitTest` 亦已通过（57 类 / 462 用例 / 0 失败）；新增 `TerminalTranscriptTest` 覆盖分块 UTF-8、VT 行重绘、清屏与有界行保留，终端能力门控测试同步要求服务端声明能力时显示入口。未执行真机、真实 SSH、PTY、Linux/Windows Agent 与权限矩阵验收。移动端 VT 控件目前只实现常用控制序列，复杂全屏程序、CJK 单元格宽度及 IME 组合行为仍须真机核对；AD07-T1–T6 不标记通过。
 
-## AD06-M1/M2：Ubuntu 受限 BuildKit 与 Git 构建发布链路（已编码；未构建、未测试，2026-09-28）
+## AD06-M1/M2：Ubuntu 受限 BuildKit 与 Git 构建发布链路（已编码；Android 初步构建与语言资源检查通过，2026-09-29）
 
 - 新增 Git 构建契约、按账号隔离的加密 token 引用、远端引用列举与 SHA 解析、幂等持久任务、取消/超时/重启中断、有界脱敏日志和实际镜像 ID 记录。仅在 Ubuntu 上核对预置 rootless BuildKit remote builder 的容器用户、网络、权限与资源配额；不调用 AD02 的普通 Docker build。
 - Android“管理 → Git”加入仓库 URL、凭据、分支/标签、构建上下文、Dockerfile、固定 SHA 预览、任务历史/日志/取消和成功产物发布。发布通过现有 AD02 Image 应用创建与部署操作完成；共享修订保存 Git 构建来源，创建容器按镜像 ID 固定。详见 [Ubuntu 执行边界](./RelaxKonOS.Mobile.GitBuild.Ubuntu.md)。
-- 本轮按要求未运行任何构建或测试，也没有 Ubuntu 受限 BuildKit 环境。真实公共/私有 GitHub 构建、GitLab 公开仓库、配额、远端构建日志、镜像导入和手机发布结果均**未验证**；AD06-T1–T6 不标为通过。Git LFS 与私有子模块不在首版支持范围，安全产物回收仍待实现。
+- 初始实现时未运行构建或测试，也没有 Ubuntu 受限 BuildKit 环境。2026-09-29 的 Android 初步验证已运行 `:app:assembleDebug :app:testDebugUnitTest --rerun-tasks`：构建成功，57 个测试类共 462 个用例，0 失败 / 0 错误 / 0 跳过。该全量 JVM 套件会编译 AD06 源码，但尚无专门覆盖 Git 构建流程的 Android 测试类；它不能替代远端 Git 或 BuildKit 验收。
+- 三份 `strings.xml`（英文、简体中文、日文）各有 981 个键，无重复，键集完全一致。这是资源完整性检查，不是设备上的三语视觉验收。
+- 真实公共/私有 GitHub 构建、GitLab 公开仓库、配额、远端构建日志、镜像导入和手机发布结果均**未验证**；AD06-T1–T6 不标为通过。Git LFS 与私有子模块不在首版支持范围，安全产物回收仍待实现。
 
-## AD06-M3：既有仓库的轻量文本编辑（已编码；未构建、未测试，2026-09-28）
+## AD06-M3：既有仓库的轻量文本编辑（已编码；Android 初步构建与语言资源检查通过，2026-09-29）
 
 - 共享 Git 协议增加 `text-file` 的读取和版本条件保存契约。服务端仅允许仓库内已存在、非符号链接的 UTF-8 文本文件（最多 256 KiB）；保存要求读取时得到的精确字节 SHA-256，目标用户执行通道在独占文件句柄内重新核对，版本变化返回冲突。用户执行协议直接升级到 `1.3`，Linux、Windows Helper 与直接执行路径同步实现，不保留旧格式解析。
 - Android“管理 → Git”按 `server.git` 能力显示已注册仓库、分支、工作区变更和冲突；可注册服务器上已存在的工作树、输入仓库相对路径，预览行差异后保存，另行提交单文件和推送当前分支。草稿仅存在当前界面的内存中，并按登录会话、仓库与文件隔离。保存失败保留草稿；远端凭据缺失或推送被拒绝时展示失败，不自动强推。Git CLI 原始错误文本不进入手机提示。
 - 共享提交行为调整为对请求路径使用 `git commit --only -- ...`，避免手机单文件提交连带提交别的已暂存变更；桌面调用方仍使用同一个请求契约。新的服务端路由复用已注册仓库的用户归属与宿主 OS 权限。
-- 本轮按要求**只实现，不运行构建或测试**。尚未在 Android 真机、Linux/Windows 用户执行 Helper 或真实 Git 远端验收；AD06-T5 仍未关闭。
+- 该 Android UI 也包含在上述 `assembleDebug` 和全量 JVM 测试构建中；三语资源检查同样通过。尚未在 Android 真机、Linux/Windows 用户执行 Helper 或真实 Git 远端验收；AD06-T5 仍未关闭。
 
 ## Windows 10/11 所有者设备注册与登录（已实现；待真机验收，2026-09-28）
 
