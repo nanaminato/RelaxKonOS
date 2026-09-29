@@ -32,6 +32,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.ui.common.RemotePathField
+import app.relaxkonos.mobile.ui.common.RemotePathKind
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
@@ -214,9 +216,11 @@ private fun GuardianEditor(owner: SessionState.Active, initial: GuardianDefiniti
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ScreenHeader(title = stringResource(R.string.guardian_editor), onBack = onCancel)
         OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.guardian_name)) }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(executable, { executable = it }, label = { Text(stringResource(R.string.guardian_executable)) }, modifier = Modifier.fillMaxWidth())
+        RemotePathField(executable, { executable = it }, R.string.guardian_executable,
+            RemotePathKind.File, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(arguments, { arguments = it }, label = { Text(stringResource(R.string.guardian_arguments)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-        OutlinedTextField(directory, { directory = it }, label = { Text(stringResource(R.string.guardian_directory)) }, modifier = Modifier.fillMaxWidth())
+        RemotePathField(directory, { directory = it }, R.string.guardian_directory,
+            RemotePathKind.Directory, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(runAs, { runAs = it }, label = { Text(stringResource(R.string.guardian_run_as)) }, modifier = Modifier.fillMaxWidth())
         Row { Checkbox(enabled, { enabled = it }); Text(stringResource(R.string.guardian_boot), modifier = Modifier.padding(top = Spacing.sm)) }
         OutlinedTextField(attempts, { attempts = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.guardian_restart_attempts)) })

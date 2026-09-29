@@ -517,69 +517,12 @@ private fun wizardProblemField(problem: String): String = stringResource(when (p
 
 @Composable
 private fun ServerArchivePicker(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
-    val container = appContainer()
-    var path by remember { mutableStateOf("") }
-    var listing by remember { mutableStateOf<ApiResult<DirectoryListing>?>(null) }
-
-    LaunchedEffect(path) {
-        listing = container.files.list(path, container.elevationAnswers)
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
-            color = MaterialTheme.colorScheme.surface,
-        ) {
-        Column(
-            Modifier.fillMaxSize().padding(Spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.deployments_server_archive_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
-            }
-            Text(path.ifBlank { "/" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (path.isNotBlank()) {
-                TextButton(onClick = { path = container.files.navigationParentOf(path) }) {
-                    Text(stringResource(R.string.common_back))
-                }
-            }
-            when (val result = listing) {
-                null -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                is ApiResult.Success -> {
-                    val entries = result.value.entries.filter { it.isDirectory || isDeploymentArchive(it.name) }
-                    if (entries.isEmpty()) {
-                        Text(stringResource(R.string.deployments_server_archive_empty), style = MaterialTheme.typography.bodyMedium)
-                    } else {
-                        LazyColumn(Modifier.weight(1f)) {
-                            items(entries, key = { it.path }) { entry ->
-                                TextButton(
-                                    onClick = {
-                                        if (entry.isDirectory) path = entry.path else onSelect(entry.path)
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(if (entry.isDirectory) "${entry.name}/" else entry.name, modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
-                }
-                else -> Text(result.deploymentFailure().text(), color = MaterialTheme.colorScheme.error)
-            }
-        }
-        }
-    }
+    RemotePathPicker(kind = RemotePathKind.File,
+        title = R.string.deployments_server_archive_title,
+        onDismiss = onDismiss,
+        onSelect = onSelect,
+        fileFilter = ::isDeploymentArchive,
+        emptyMessage = R.string.deployments_server_archive_empty)
 }
 
 private fun isDeploymentArchive(name: String): Boolean = name.lowercase().let { it.endsWith(".zip") || it.endsWith(".jar") }

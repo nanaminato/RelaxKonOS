@@ -13,6 +13,8 @@ import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.ui.common.ScreenHeader
+import app.relaxkonos.mobile.ui.common.RemotePathField
+import app.relaxkonos.mobile.ui.common.RemotePathKind
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.launch
@@ -113,8 +115,8 @@ fun GitScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier
         Text(stringResource(R.string.git_register_note), style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(newRepositoryName, { newRepositoryName = it },
             label = { Text(stringResource(R.string.git_register_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(newRepositoryPath, { newRepositoryPath = it },
-            label = { Text(stringResource(R.string.git_register_path)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        RemotePathField(newRepositoryPath, { newRepositoryPath = it }, R.string.git_register_path,
+            RemotePathKind.Directory, modifier = Modifier.fillMaxWidth())
         OutlinedButton(onClick = {
             scope.launch {
                 busy = true; problem = null; notice = 0

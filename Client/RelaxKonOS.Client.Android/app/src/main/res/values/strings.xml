@@ -755,6 +755,12 @@
     <string name="deployments_create_and_deploy">Create and deploy</string>
     <string name="deployments_choose_archive">Choose archive and deploy</string>
     <string name="deployments_choose_server_archive">Choose from server</string>
+    <string name="remote_path_browse">Browse server</string>
+    <string name="remote_path_roots">Server locations</string>
+    <string name="remote_path_select_directory">Use this folder</string>
+    <string name="remote_path_empty">This folder is empty.</string>
+    <string name="remote_path_load_failed">Could not open folder: %1$s</string>
+    <string name="ssh_bundle_folder_empty">This folder has no ZIP release bundles.</string>
     <string name="deployments_server_archive_title">Choose server archive</string>
     <string name="deployments_server_archive_empty">This folder has no .zip or .jar archives.</string>
     <string name="deployments_archive_note">The selected archive streams directly to server-owned staging. It is not retained in the application definition.</string>

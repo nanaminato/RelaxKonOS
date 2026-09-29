@@ -719,6 +719,12 @@
     <string name="deployments_create_and_deploy">作成してデプロイ</string>
     <string name="deployments_choose_archive">アーカイブを選択してデプロイ</string>
     <string name="deployments_choose_server_archive">サーバーから選択</string>
+    <string name="remote_path_browse">サーバーを参照</string>
+    <string name="remote_path_roots">サーバーの場所</string>
+    <string name="remote_path_select_directory">このフォルダーを使用</string>
+    <string name="remote_path_empty">このフォルダーは空です。</string>
+    <string name="remote_path_load_failed">フォルダーを開けませんでした: %1$s</string>
+    <string name="ssh_bundle_folder_empty">このフォルダーには ZIP リリースバンドルがありません。</string>
     <string name="deployments_server_archive_title">サーバーのアーカイブを選択</string>
     <string name="deployments_server_archive_empty">このフォルダーには .zip または .jar のアーカイブがありません。</string>
     <string name="deployments_archive_note">選択したアーカイブはサーバー所有のステージングへ直接ストリーミングされ、アプリケーション定義には保持されません。</string>

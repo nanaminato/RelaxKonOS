@@ -36,6 +36,8 @@ import app.relaxkonos.mobile.core.net.GuardianApproval
 import app.relaxkonos.mobile.core.net.ScriptRequest
 import app.relaxkonos.mobile.core.net.ScriptTask
 import app.relaxkonos.mobile.ui.common.ScreenHeader
+import app.relaxkonos.mobile.ui.common.RemotePathField
+import app.relaxkonos.mobile.ui.common.RemotePathKind
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.util.UUID
 import kotlinx.coroutines.delay
@@ -205,9 +207,11 @@ private fun ScriptEditor(owner: SessionState.Active, onBack: () -> Unit, onSubmi
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ScreenHeader(title = stringResource(R.string.scripts_new), onBack = onBack)
-        OutlinedTextField(executable, { executable = it }, label = { Text(stringResource(R.string.guardian_executable)) }, modifier = Modifier.fillMaxWidth())
+        RemotePathField(executable, { executable = it }, R.string.guardian_executable,
+            RemotePathKind.File, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(arguments, { arguments = it }, label = { Text(stringResource(R.string.guardian_arguments)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-        OutlinedTextField(directory, { directory = it }, label = { Text(stringResource(R.string.guardian_directory)) }, modifier = Modifier.fillMaxWidth())
+        RemotePathField(directory, { directory = it }, R.string.guardian_directory,
+            RemotePathKind.Directory, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(environment, { environment = it }, label = { Text(stringResource(R.string.scripts_environment)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
         OutlinedTextField(timeout, { timeout = it.filter(Char::isDigit) }, label = { Text(stringResource(R.string.scripts_timeout)) })
         OutlinedTextField(runAs, { runAs = it }, label = { Text(stringResource(R.string.guardian_run_as)) })

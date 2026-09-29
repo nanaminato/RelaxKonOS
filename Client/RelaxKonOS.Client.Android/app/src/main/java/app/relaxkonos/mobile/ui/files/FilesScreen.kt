@@ -80,6 +80,8 @@ import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ProgressSheet
+import app.relaxkonos.mobile.ui.common.RemotePathKind
+import app.relaxkonos.mobile.ui.common.RemotePathPicker
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.StatusTone
@@ -1658,6 +1660,8 @@ private fun RenameDialog(entry: RemoteEntry, onDismiss: () -> Unit, onConfirm: (
 @Composable
 private fun TransferDialog(request: TransferTarget, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var destination by remember { mutableStateOf(request.entry.path) }
+    var browsing by remember { mutableStateOf(false) }
+    val files = appContainer().files
     val title = stringResource(if (request.move) R.string.files_move_title else R.string.files_copy_title)
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1672,6 +1676,9 @@ private fun TransferDialog(request: TransferTarget, onDismiss: () -> Unit, onCon
                     label = { Text(stringResource(R.string.files_destination_path)) },
                     shape = MaterialTheme.shapes.medium,
                 )
+                OutlinedButton(onClick = { browsing = true }) {
+                    Text(stringResource(R.string.remote_path_browse))
+                }
             }
         },
         confirmButton = {
@@ -1680,5 +1687,15 @@ private fun TransferDialog(request: TransferTarget, onDismiss: () -> Unit, onCon
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
+    )
+    if (browsing) RemotePathPicker(
+        kind = RemotePathKind.Directory,
+        initialPath = files.navigationParentOf(destination),
+        title = R.string.files_destination_path,
+        onDismiss = { browsing = false },
+        onSelect = { directory ->
+            destination = files.childOf(directory, request.entry.name)
+            browsing = false
+        },
     )
 }

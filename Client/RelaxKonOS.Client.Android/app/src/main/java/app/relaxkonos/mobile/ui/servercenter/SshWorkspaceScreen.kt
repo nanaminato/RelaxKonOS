@@ -92,6 +92,7 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
     var source by rememberSaveable(host?.hostId) { mutableStateOf("official") }
     var bundleName by rememberSaveable(host?.hostId) { mutableStateOf("") }
     var remoteBundlePath by rememberSaveable(host?.hostId) { mutableStateOf("") }
+    var browseRemoteBundle by remember(host?.hostId) { mutableStateOf(false) }
     var mode by rememberSaveable(host?.hostId) { mutableStateOf("automatic") }
     var fileAccess by rememberSaveable(host?.hostId) { mutableStateOf("restricted") }
     var network by rememberSaveable(host?.hostId) { mutableStateOf("loopback") }
@@ -148,6 +149,9 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                             label = { Text(stringResource(R.string.ssh_workspace_deploy_remote_bundle_path)) },
                             singleLine = true,
                         )
+                        OutlinedButton(onClick = { browseRemoteBundle = true }, enabled = host != null) {
+                            Text(stringResource(R.string.remote_path_browse))
+                        }
                     }
                     if (!mayContinue) Text(stringResource(R.string.ssh_workspace_deploy_bundle_required), color = MaterialTheme.colorScheme.error)
                 }
@@ -237,6 +241,11 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
             }
         }
     }
+    if (browseRemoteBundle && host != null) SshBundlePicker(
+        hostId = host.hostId,
+        onDismiss = { browseRemoteBundle = false },
+        onSelect = { remoteBundlePath = it; browseRemoteBundle = false },
+    )
 }
 
 @Composable
