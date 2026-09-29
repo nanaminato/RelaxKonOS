@@ -35,8 +35,11 @@ class ServerTerminalConnection(
 
     suspend fun attach(sessionId: String?, columns: Int, rows: Int): TerminalAttachment = withContext(Dispatchers.IO) {
         if (sessionId == null) {
+            // The hub method is Start(request, sessionId). SignalR rejects a call whose argument count
+            // does not match the method signature - it never applies the C# default value - so the second
+            // argument has to be sent explicitly even when no existing session is being resumed.
             val request = TerminalStartRequest(columns, rows, 0, 0, null, null)
-            hub.invoke(TerminalAttachment::class.java, "Start", request).blockingGet()
+            hub.invoke(TerminalAttachment::class.java, "Start", request, null).blockingGet()
         } else hub.invoke(TerminalAttachment::class.java, "AttachExisting", sessionId).blockingGet().also {
             hub.invoke("Resize", columns, rows, 0, 0).blockingAwait()
         }

@@ -1,5 +1,13 @@
 # RelaxKonOS Mobile 实施进展
 
+## 修复：Android 顶级终端点「新建」必然失败（2026-09-29）
+
+- 症状：进入「终端」后点「新建」报连接失败。`connect()`（`hub.start` + `ListSessions`）本身成功，失败只发生在 `Start` 调用。
+- 根因：服务端 `TerminalHub.Start(StartTerminalRequest req, string? sessionId = null)` 带 C# 默认值，而 Android `ServerTerminalConnection` 只传了 1 个参数。**SignalR 不支持 Hub 方法的可选参数**——它按参数个数匹配、不应用默认值，于是整次调用被拒（`HubException: Failed to invoke 'Start' due to an error on the server.`），客户端只能显示笼统失败。桌面端传的是 `Start(_lastRequest, opts.SessionId)` 两个参数，所以该缺陷只在 Android 出现。
+- 修复：Android `core/net/ServerTerminalConnection.kt` 在新建分支显式补第二个参数 `null`；服务端 `Start` 去掉从未生效的 `= null` 默认值并在 remarks 写明匹配规则；`TerminalHubMethods.Start` 补客户端契约注释（必须传两个参数）。`Input`/`OnOutput` 的 `byte[]` ↔ base64 映射经实测本来正确，未改动。
+- 验证：用真实 Java SignalR 客户端（10.0.6，与 Android 同库）对签名一致的最小 Hub 实测——单参数 `Start` 复现失败、双参数成功；`Input` 的 base64 字符串被 `byte[]` 形参正确接收。Android `:app:compileDebugKotlin` 与 `dotnet build RelaxKonOS.Server` 均通过（3 条既有 CA1416 警告）。服务端改动需重启服务端进程才生效。
+- **未覆盖**：这条链路没有自动化防线——Android 侧 `HubConnection` 是具体类、不可注入替身，服务端测试用 .NET 客户端也照不出来，两端 Hub 调用点的参数个数仍靠人工对齐。另外首次进入且没有任何既有会话时终端页保持空白，需用户点一次「新建」（有意不改，避免与「重连不重跑 shell」的设计冲突）。
+
 ## 连接管理的宿主系统标记与登录页入口（已实现，2026-09-28）
 
 - 登录页的两条设置入口改为同类形状：品牌标记下方两个文字链接（「添加 Windows 10/11 设备」「安装或管理服务器」），同侧对齐、上下排列。「安装或管理服务器」原来是一条整宽描边按钮，而这条界面上唯一的主动作是「登录」，整宽按钮会把它读成第二个主按钮。两者上下排列而非并排，是因为英文/日文文案在小屏上一行放不下两条链接。

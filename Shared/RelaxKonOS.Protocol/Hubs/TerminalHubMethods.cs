@@ -7,6 +7,11 @@ public static class TerminalHubMethods
     /// 附加到远端 PTY 会话：sessionId 命中且属于当前用户则恢复（先发缓冲快照），否则新建 PTY 并 spawn shell。
     /// 返回 <c>AttachTerminalResponse</c>（实际会话 ID + 是否新建）。
     /// </summary>
+    /// <remarks>
+    /// 客户端必须<b>显式传两个</b>参数：<c>Start(request, sessionId)</c>；不恢复既有会话时第二个参数传 <c>null</c>。
+    /// SignalR 按参数个数匹配 Hub 方法、<b>不</b>应用 C# 默认值，少传一个参数会让整次调用失败，
+    /// 而调用方只会看到笼统的 invoke 错误（Android 的“终端无法连接”就是这样产生的）。
+    /// </remarks>
     public const string Start = nameof(Start);
 
     /// <summary>只附加现有且归属当前用户的会话；不存在时失败，绝不创建新 PTY。</summary>

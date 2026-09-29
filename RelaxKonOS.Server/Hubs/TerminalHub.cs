@@ -26,7 +26,12 @@ public sealed class TerminalHub : Hub<ITerminalHubClient>
     public TerminalHub(TerminalSessionManager manager) => _manager = manager;
 
     /// <summary>附加到远端 PTY 会话。方法名 <c>Start</c> 与 <see cref="TerminalHubMethods.Start"/> 对齐。</summary>
-    public async Task<AttachTerminalResponse> Start(StartTerminalRequest req, string? sessionId = null)
+    /// <remarks>
+    /// <paramref name="sessionId"/> 刻意<b>不</b>写 C# 默认值：SignalR 按参数个数匹配方法，不会应用默认值，
+    /// 客户端少传一个参数会整次调用失败（客户端只会看到笼统的 invoke 错误）。没有默认值才能让"必须传两个参数"
+    /// 在签名上直接可见。附带既有会话用 <see cref="AttachExisting"/>，语义相同但找不到时会失败而不是新建。
+    /// </remarks>
+    public async Task<AttachTerminalResponse> Start(StartTerminalRequest req, string? sessionId)
     {
         var userId = Context.UserIdentifier
             ?? throw new HubException("未认证的连接：缺少用户标识。");
