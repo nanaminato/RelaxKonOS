@@ -21,10 +21,14 @@ import app.relaxkonos.mobile.data.ElevationCoordinator
 import app.relaxkonos.mobile.data.ElevationRepository
 import app.relaxkonos.mobile.data.FileProfileStorage
 import app.relaxkonos.mobile.data.FilesRepository
+import app.relaxkonos.mobile.data.FileOperationIndexStorage
 import app.relaxkonos.mobile.data.ImageDecoder
 import app.relaxkonos.mobile.data.ImagePreviewCache
 import app.relaxkonos.mobile.data.PREVIEW_CACHE_DIRECTORY
 import app.relaxkonos.mobile.data.RecentOperationJournal
+import app.relaxkonos.mobile.data.OperationIndex
+import app.relaxkonos.mobile.data.OperationCenter
+import app.relaxkonos.mobile.data.EventAlertRepository
 import app.relaxkonos.mobile.data.SystemRepository
 import app.relaxkonos.mobile.data.UploadCoordinator
 import app.relaxkonos.mobile.data.UploadResumeJournal
@@ -214,10 +218,13 @@ class AppContainer(context: Context) {
     val imageDecoder: ImageDecoder = BitmapFactoryImageDecoder()
 
     val system = SystemRepository(gateway, session)
-    val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session)
+    val operationIndex = OperationIndex(FileOperationIndexStorage(appContext.noBackupFilesDir))
+    val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session, operationIndex)
     val git = app.relaxkonos.mobile.data.GitRepositoryClient(gateway, session)
     val docker = app.relaxkonos.mobile.data.DockerRepository(gateway, session)
-    val webPublishing = app.relaxkonos.mobile.data.WebPublishingRepository(gateway, session, elevations)
+    val webPublishing = app.relaxkonos.mobile.data.WebPublishingRepository(gateway, session, elevations, operationIndex)
+    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing)
+    val eventAlerts = EventAlertRepository(gateway, session)
 
     /**
      * Where an unfinished upload is remembered.

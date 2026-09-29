@@ -16,6 +16,7 @@ class WebPublishingRepository(
     private val gateway: RelaxKonGateway,
     private val session: AuthSession,
     private val elevations: ElevationRepository,
+    private val operationIndex: OperationIndex? = null,
 ) {
     private val reads = Mutex()
 
@@ -31,10 +32,17 @@ class WebPublishingRepository(
 
     suspend fun publish(request: WebsitePublishRequest, provider: ElevationAnswerProvider): ApiResult<WebsitePublicationOperation> {
         require(request.confirmed) { "Website publication must be confirmed." }
+        val owner = session.state.value as? SessionState.Active
         val idempotencyKey = UUID.randomUUID().toString()
-        return elevations.withElevation("nginxConfigurationWrite", request.webServerId, provider) { url, token ->
+        val result = elevations.withElevation("nginxConfigurationWrite", request.webServerId, provider) { url, token ->
             gateway.publishWebsite(url, token, request, idempotencyKey)
         }
+        if (result is ApiResult.Success) {
+            if (owner != null && session.state.value === owner) runCatching {
+                operationIndex?.record(owner, OperationDomain.Website, result.value.applicationId, result.value.operationId)
+            }
+        }
+        return result
     }
 
     private suspend fun <T> read(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> = reads.withLock {
@@ -42,6 +50,10 @@ class WebPublishingRepository(
         verifyOwner()
         val result = session.authenticated { url, token -> verifyOwner(); call(url, token) }
         verifyOwner()
+        val operation = (result as? ApiResult.Success)?.value as? WebsitePublicationOperation
+        if (operation != null) runCatching {
+            operationIndex?.record(owner, OperationDomain.Website, operation.applicationId, operation.operationId)
+        }
         result
     }
 }

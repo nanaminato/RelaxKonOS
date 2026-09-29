@@ -36,12 +36,16 @@ fun DeploymentsScreen(
     onOpenDetail: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    initialApplicationId: String? = null,
 ) {
     val viewModel: DeploymentsViewModel = viewModel()
     val browser = viewModel.browser
     val state by browser.state.collectAsState()
     val expanded = layoutState == LayoutState.Expanded
     val available = state.owner?.capabilities?.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS) == true
+    LaunchedEffect(state.owner, initialApplicationId) {
+        if (available && initialApplicationId != null) browser.select(initialApplicationId)
+    }
     var showCreate by remember { mutableStateOf(false) }
     var showCatalog by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {

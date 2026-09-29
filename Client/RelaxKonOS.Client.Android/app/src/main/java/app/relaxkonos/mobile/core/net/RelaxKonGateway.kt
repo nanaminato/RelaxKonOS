@@ -22,6 +22,12 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?): ApiResult<OperationalAlertPage> =
+        ApiResult.Transport("Operational alerts unavailable.")
+    suspend fun alertDetail(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlertDetail> =
+        ApiResult.Transport("Operational alert unavailable.")
+    suspend fun acknowledgeAlert(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlert> =
+        ApiResult.Transport("Operational alert acknowledgement unavailable.")
     suspend fun scriptTasks(serverUrl: String, accessToken: String): ApiResult<ScriptTasksResult> = ApiResult.Transport("Scripts unavailable.")
     suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
     suspend fun scriptSubmit(serverUrl: String, accessToken: String, request: ScriptRequest, key: String): ApiResult<ScriptTaskResult> = ApiResult.Transport("Scripts unavailable.")
@@ -125,6 +131,8 @@ interface RelaxKonGateway {
 
     suspend fun deploymentOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperationDiagnostics> =
         ApiResult.Transport("Deployment operation diagnostics are unavailable.")
+    suspend fun deploymentOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperation> =
+        ApiResult.Transport("Deployment operation is unavailable.")
 
     suspend fun createArchiveDeployment(
         serverUrl: String,

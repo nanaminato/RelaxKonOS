@@ -213,11 +213,18 @@ fun ManageScreen(
     onOpenWebsites: () -> Unit,
     onOpenGuardian: () -> Unit,
     onOpenScripts: () -> Unit,
+    onOpenOperations: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val container = app.relaxkonos.mobile.ui.common.appContainer()
 
     val domains = buildList {
+        if (container.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS) ||
+            container.capabilities.contains(ServerCapabilities.WEB_SERVER) ||
+            container.capabilities.contains(ServerCapabilities.EVENT_ALERTS)) {
+            add(ManageDomain(R.string.operations_title, R.string.operations_subtitle,
+                DesktopIcons.notice, onOpenOperations))
+        }
         if (container.capabilities.contains(ServerCapabilities.DOCKER)) {
             add(ManageDomain(R.string.docker_title, R.string.docker_subtitle, R.drawable.ic_app_docker, onOpenDocker))
         }

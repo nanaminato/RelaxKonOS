@@ -25,6 +25,23 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?): ApiResult<OperationalAlertPage> =
+        eventAlertCall("GET", serverUrl, EventAlertRoutes.page(cursor), accessToken, null, EventAlertWire::page)
+
+    override suspend fun alertDetail(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlertDetail> =
+        eventAlertCall("GET", serverUrl, EventAlertRoutes.alert(id), accessToken, null, EventAlertWire::detail)
+
+    override suspend fun acknowledgeAlert(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlert> =
+        eventAlertCall("POST", serverUrl, EventAlertRoutes.acknowledgement(id), accessToken, JsonBody(), EventAlertWire::alert)
+
+    private suspend fun <T> eventAlertCall(method: String, serverUrl: String, route: String, accessToken: String,
+        body: JsonBody?, parse: (String) -> T): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, body)) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed operational alert response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
     override suspend fun scriptTasks(serverUrl: String, accessToken: String): ApiResult<ScriptTasksResult> =
         guardianCall("GET", serverUrl, ScriptRoutes.TASKS, accessToken, null, ScriptWire::tasks)
     override suspend fun scriptTask(serverUrl: String, accessToken: String, id: String): ApiResult<ScriptTaskResult> =
@@ -378,6 +395,9 @@ class RelaxKonApi(
     override suspend fun deploymentOperationDiagnostics(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperationDiagnostics> =
         deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.operationLogs(operationId),
             ApplicationDeploymentWire::operationDiagnostics)
+    override suspend fun deploymentOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<DeploymentOperation> =
+        deploymentRead(serverUrl, accessToken, ApplicationDeploymentRoutes.operation(operationId),
+            ApplicationDeploymentWire::acceptedOperation)
 
     override suspend fun createArchiveDeployment(
         serverUrl: String,

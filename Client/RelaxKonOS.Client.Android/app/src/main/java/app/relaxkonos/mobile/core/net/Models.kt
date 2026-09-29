@@ -249,4 +249,5 @@ object ServerCapabilities {
     const val APPLICATION_DEPLOYMENTS = "server.application-deployments"
     const val WEB_SERVER = "server.web-server"
     const val CERTIFICATES = "server.certificates"
+    const val EVENT_ALERTS = "server.event-alerts"
 }

@@ -8,7 +8,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Reads never request elevation or infer management permission from execution eligibility. */
-class DeploymentRepository(private val gateway: RelaxKonGateway, private val session: AuthSession) {
+class DeploymentRepository(
+    private val gateway: RelaxKonGateway,
+    private val session: AuthSession,
+    private val operationIndex: OperationIndex? = null,
+) {
     // A list refresh can overlap a detail refresh. Serialize their auth retries so both do not
     // try to rotate the same refresh token when the access token expires.
     private val reads = Mutex()
@@ -34,6 +38,10 @@ class DeploymentRepository(private val gateway: RelaxKonGateway, private val ses
 
     suspend fun operationDiagnostics(owner: SessionState.Active, operationId: String): ApiResult<DeploymentOperationDiagnostics> = read(owner) { url, token ->
         gateway.deploymentOperationDiagnostics(url, token, operationId)
+    }
+
+    suspend fun operation(owner: SessionState.Active, operationId: String): ApiResult<DeploymentOperation> = read(owner) { url, token ->
+        gateway.deploymentOperation(url, token, operationId)
     }
 
     suspend fun catalog(owner: SessionState.Active): ApiResult<List<CatalogTemplate>> = read(owner) { url, token ->
@@ -117,6 +125,10 @@ class DeploymentRepository(private val gateway: RelaxKonGateway, private val ses
             call(url, token)
         }
         verifyOwner()
+        val operation = (result as? ApiResult.Success)?.value as? DeploymentOperation
+        if (operation != null) runCatching {
+            operationIndex?.record(owner, OperationDomain.Deployment, operation.applicationId, operation.operationId)
+        }
         result
     }
 }

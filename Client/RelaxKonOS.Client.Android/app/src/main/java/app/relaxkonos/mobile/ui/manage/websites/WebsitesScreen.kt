@@ -140,12 +140,16 @@ private class WebsitesViewModel(application: Application) : AndroidViewModel(app
 }
 
 @Composable
-fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialApplicationId: String? = null) {
     val viewModel: WebsitesViewModel = viewModel()
     val state = viewModel.state
     val container = app.relaxkonos.mobile.ui.common.appContainer()
     val available = container.capabilities.contains(ServerCapabilities.WEB_SERVER)
     androidx.compose.runtime.LaunchedEffect(available) { if (available && state.servers == null) viewModel.refresh() }
+    androidx.compose.runtime.LaunchedEffect(initialApplicationId, state.applications) {
+        if (initialApplicationId != null && state.applications is ApiResult.Success &&
+            state.selectedApplicationId != initialApplicationId) viewModel.selectApplication(initialApplicationId)
+    }
 
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),

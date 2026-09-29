@@ -234,6 +234,7 @@ object ApplicationDeploymentRoutes {
     fun logs(id: String, tail: Int): String = "${application(id)}/logs?tail=${tail.coerceIn(1, 1_000)}"
     fun cancelOperation(id: String): String = "/api/v1.0/application-deployments/operations/${UUID.fromString(id)}/cancel"
     fun operationLogs(id: String): String = "/api/v1.0/application-deployments/operations/${UUID.fromString(id)}/logs"
+    fun operation(id: String): String = "/api/v1.0/application-deployments/operations/${UUID.fromString(id)}"
 }
 
 /** Required fields fail closed; unfamiliar enum strings stay unknown in the presentation layer. */

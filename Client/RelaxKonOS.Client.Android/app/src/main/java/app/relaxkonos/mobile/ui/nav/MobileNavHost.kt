@@ -37,6 +37,7 @@ import app.relaxkonos.mobile.ui.manage.git.GitScreen
 import app.relaxkonos.mobile.ui.manage.guardian.GuardianScreen
 import app.relaxkonos.mobile.ui.manage.scripts.ScriptsScreen
 import app.relaxkonos.mobile.ui.manage.monitor.MonitorScreen
+import app.relaxkonos.mobile.ui.manage.operations.OperationsScreen
 import app.relaxkonos.mobile.ui.manage.processes.ProcessesScreen
 import app.relaxkonos.mobile.ui.manage.websites.WebsitesScreen
 import app.relaxkonos.mobile.ui.more.AboutScreen
@@ -63,6 +64,7 @@ fun MobileNavHost(
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var taskTarget by remember(session) { mutableStateOf<String?>(null) }
     Box(modifier.fillMaxSize()) {
         when (navigator.route) {
             Routes.MANAGE_DEPLOYMENTS, Routes.MANAGE_DEPLOYMENT_DETAIL -> DeploymentsScreen(
@@ -70,15 +72,22 @@ fun MobileNavHost(
                 showDetail = navigator.route == Routes.MANAGE_DEPLOYMENT_DETAIL,
                 onOpenDetail = { navigator.push(Routes.MANAGE_DEPLOYMENT_DETAIL) },
                 onBack = { navigator.pop() },
+                initialApplicationId = taskTarget,
             )
             Routes.MANAGE_DOCKER -> DockerScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_GIT -> GitScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
-            Routes.MANAGE_WEBSITES -> WebsitesScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_WEBSITES -> WebsitesScreen(onBack = { navigator.pop() },
+                initialApplicationId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_GUARDIAN -> GuardianScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_SCRIPTS -> ScriptsScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_OPERATIONS -> OperationsScreen(owner = session, onBack = { navigator.pop() },
+                onOpenDeployment = { taskTarget = it; navigator.push(Routes.MANAGE_DEPLOYMENT_DETAIL) },
+                onOpenWebsite = { taskTarget = it; navigator.push(Routes.MANAGE_WEBSITES) },
+                modifier = Modifier.fillMaxSize())
             Routes.TERMINAL -> ServerTerminalScreen(owner = session, modifier = Modifier.fillMaxSize())
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
-            Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES -> ManageDestination(navigator, layoutState)
+            Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES ->
+                ManageDestination(navigator, layoutState, clearTaskTarget = { taskTarget = null })
             Routes.MORE,
             Routes.MORE_ACCOUNT_SECURITY,
             Routes.MORE_CONNECTIONS,
@@ -132,7 +141,7 @@ private fun FilesDestination(navigator: MobileNavigator, layoutState: LayoutStat
 }
 
 @Composable
-private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutState) {
+private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutState, clearTaskTarget: () -> Unit) {
     val viewModel: ManageViewModel = viewModel()
 
     if (layoutState == LayoutState.Expanded) {
@@ -140,12 +149,13 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             ManageScreen(
                 onOpenMonitor = { viewModel.openPane(Routes.MANAGE_MONITOR) },
                 onOpenProcesses = { viewModel.openPane(Routes.MANAGE_PROCESSES) },
-                onOpenDeployments = { navigator.push(Routes.MANAGE_DEPLOYMENTS) },
+                onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
                 onOpenDocker = { navigator.push(Routes.MANAGE_DOCKER) },
                 onOpenGit = { navigator.push(Routes.MANAGE_GIT) },
-                onOpenWebsites = { navigator.push(Routes.MANAGE_WEBSITES) },
+                onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
                 onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
                 onOpenScripts = { navigator.push(Routes.MANAGE_SCRIPTS) },
+                onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
                 modifier = Modifier.weight(1f),
             )
             when (viewModel.expandedPane) {
@@ -167,12 +177,13 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
         else -> ManageScreen(
             onOpenMonitor = { navigator.push(Routes.MANAGE_MONITOR) },
             onOpenProcesses = { navigator.push(Routes.MANAGE_PROCESSES) },
-            onOpenDeployments = { navigator.push(Routes.MANAGE_DEPLOYMENTS) },
+            onOpenDeployments = { clearTaskTarget(); navigator.push(Routes.MANAGE_DEPLOYMENTS) },
             onOpenDocker = { navigator.push(Routes.MANAGE_DOCKER) },
             onOpenGit = { navigator.push(Routes.MANAGE_GIT) },
-            onOpenWebsites = { navigator.push(Routes.MANAGE_WEBSITES) },
+            onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
             onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
             onOpenScripts = { navigator.push(Routes.MANAGE_SCRIPTS) },
+            onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
             modifier = Modifier.fillMaxSize(),
         )
     }
