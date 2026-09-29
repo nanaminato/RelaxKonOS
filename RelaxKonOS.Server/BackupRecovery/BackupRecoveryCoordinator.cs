@@ -7,12 +7,16 @@ namespace RelaxKonOS.Server.BackupRecovery;
 /// process crash: the object may have been written but not verified, so an operator must begin a
 /// fresh idempotent request after inspecting the interrupted record.
 /// </summary>
-internal sealed class BackupRecoveryCoordinator(BackupRecoveryManifestStore manifests) : IHostedService
+internal sealed class BackupRecoveryCoordinator(
+    BackupRecoveryManifestStore manifests,
+    BackupRecoveryObjectStore objects,
+    BackupRecoveryOptions options) : IHostedService
 {
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         manifests.MarkInterruptedAtStartup();
-        return Task.CompletedTask;
+        manifests.ApplyVerifiedRetention(options.MaximumVerifiedBackupsPerApplication);
+        await objects.ReconcileAtStartupAsync(manifests.VerifiedBackupIds(), cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

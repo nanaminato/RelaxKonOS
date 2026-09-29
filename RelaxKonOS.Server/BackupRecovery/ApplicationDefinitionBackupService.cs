@@ -23,7 +23,8 @@ internal sealed class ApplicationDefinitionBackupService(
     BackupRecoveryObjectStore objects,
     ApplicationDeploymentManager applications,
     IOperationalEventPublisher events,
-    ILogger<ApplicationDefinitionBackupService> logger)
+    ILogger<ApplicationDefinitionBackupService> logger,
+    BackupRecoveryOptions options)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -60,14 +61,36 @@ internal sealed class ApplicationDefinitionBackupService(
             var backupObject = new BackupObjectDto(BackupObjectKind.ApplicationDefinition, application.Id.ToString("D"),
                 "catalog-transaction", encrypted.PlaintextLength, encrypted.PlaintextSha256);
             var verifiedManifest = manifests.MarkVerified(running.Manifest.BackupId, [backupObject], [encrypted]).Manifest;
+            // Verification is the durability boundary. Retention cleanup is deliberately after it:
+            // a cleanup failure cannot relabel a good backup as failed or delete its object.
+            try
+            {
+                var retired = manifests.ApplyVerifiedRetention(options.MaximumVerifiedBackupsPerApplication);
+                foreach (var retiredBackupId in retired)
+                    await objects.DeleteBackupAsync(retiredBackupId, CancellationToken.None);
+            }
+            catch (BackupRecoveryException error)
+            {
+                logger.LogWarning("Backup retention cleanup could not complete after verified backup {BackupId}: {ProblemCode}.",
+                    verifiedManifest.BackupId, error.ProblemCode);
+            }
             PublishTerminalSignal(verifiedManifest, BackupRecoveryProblemCodes.BackupNotVerified, isRecovery: true);
             return verifiedManifest;
         }
         catch (BackupRecoveryException error)
         {
             try { manifests.MarkFailed(created.Manifest.BackupId, error.ProblemCode); } catch (BackupRecoveryException) { }
-            try { objects.DeleteUnverifiedBackup(created.Manifest.BackupId); } catch (BackupRecoveryException) { }
+            try { await objects.DeleteBackupAsync(created.Manifest.BackupId, CancellationToken.None); } catch (BackupRecoveryException) { }
             PublishTerminalSignal(created.Manifest, error.ProblemCode, isRecovery: false);
+            throw;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // HTTP cancellation is not permission to leave a possibly written object behind.
+            // The caller still observes cancellation, while the durable record remains explicit.
+            try { manifests.MarkFailed(created.Manifest.BackupId, BackupRecoveryProblemCodes.BackupInterrupted); } catch (BackupRecoveryException) { }
+            try { await objects.DeleteBackupAsync(created.Manifest.BackupId, CancellationToken.None); } catch (BackupRecoveryException) { }
+            PublishTerminalSignal(created.Manifest, BackupRecoveryProblemCodes.BackupInterrupted, isRecovery: false);
             throw;
         }
     }

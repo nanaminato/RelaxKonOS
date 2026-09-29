@@ -31,7 +31,7 @@ public sealed class BackupRecoveryObjectStore
     {
         root = Path.Combine(environment.ContentRootPath, options.RootDirectory);
         maximumObjectBytes = Math.Max(1, options.MaximumObjectBytes);
-        maximumStoredBytes = Math.Max(maximumObjectBytes, options.MaximumStoredBytes);
+        maximumStoredBytes = Math.Max(1, options.MaximumStoredBytes);
         this.keys = keys;
     }
 
@@ -95,17 +95,47 @@ public sealed class BackupRecoveryObjectStore
         }
     }
 
-    /// <summary>Removes an object directory only after its manifest has failed; callers never provide a path.</summary>
-    public void DeleteUnverifiedBackup(Guid backupId)
+    /// <summary>Removes one no-longer-referenced object directory; callers never provide a path.</summary>
+    internal async Task DeleteBackupAsync(Guid backupId, CancellationToken cancellationToken = default)
     {
         if (backupId == Guid.Empty) return;
         var directory = Path.Combine(root, "objects", backupId.ToString("N"));
+        await writeGate.WaitAsync(cancellationToken);
         try
         {
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
         catch (IOException) { throw new BackupRecoveryException(BackupRecoveryProblemCodes.StoreUnavailable); }
         catch (UnauthorizedAccessException) { throw new BackupRecoveryException(BackupRecoveryProblemCodes.StoreUnavailable); }
+        finally { writeGate.Release(); }
+    }
+
+    /// <summary>
+    /// Removes staging files and every object directory not named by a verified manifest. This
+    /// runs before request processing at startup, so it cannot race an in-flight backup. Keeping
+    /// the allow-list in the durable manifest prevents a failed write or an interrupted retention
+    /// cleanup from consuming the capacity budget indefinitely.
+    /// </summary>
+    internal async Task ReconcileAtStartupAsync(IReadOnlyCollection<Guid> verifiedBackupIds, CancellationToken cancellationToken)
+    {
+        var retained = verifiedBackupIds.Select(id => id.ToString("N")).ToHashSet(StringComparer.Ordinal);
+        await writeGate.WaitAsync(cancellationToken);
+        try
+        {
+            var staging = Path.Combine(root, "staging");
+            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+
+            var objects = Path.Combine(root, "objects");
+            if (!Directory.Exists(objects)) return;
+            foreach (var directory in Directory.EnumerateDirectories(objects))
+            {
+                var name = Path.GetFileName(directory);
+                if (!retained.Contains(name)) Directory.Delete(directory, recursive: true);
+            }
+        }
+        catch (IOException) { throw new BackupRecoveryException(BackupRecoveryProblemCodes.StoreUnavailable); }
+        catch (UnauthorizedAccessException) { throw new BackupRecoveryException(BackupRecoveryProblemCodes.StoreUnavailable); }
+        finally { writeGate.Release(); }
     }
 
     public async Task<byte[]> ReadAndVerifyAsync(Guid backupId, string objectId, EncryptedBackupObject metadata, CancellationToken cancellationToken)

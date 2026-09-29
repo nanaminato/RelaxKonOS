@@ -119,9 +119,44 @@ internal sealed class BackupRecoveryManifestStore
         {
             EnsureAvailable();
             var changed = ledger.Entries.Select(entry => entry.Manifest.State is BackupRecoveryOperationState.Queued or BackupRecoveryOperationState.Running
-                ? entry with { Manifest = entry.Manifest with { State = BackupRecoveryOperationState.Interrupted, ProblemCode = "backup-recovery.interrupted" } }
+                ? entry with { Manifest = entry.Manifest with { State = BackupRecoveryOperationState.Interrupted, ProblemCode = BackupRecoveryProblemCodes.BackupInterrupted } }
                 : entry).ToArray();
             if (!changed.SequenceEqual(ledger.Entries)) Commit(new(changed));
+        }
+    }
+
+    /// <summary>
+    /// Drops only the oldest verified manifests for each application. The caller deletes their
+    /// now-unreferenced encrypted directories afterwards; if that deletion is interrupted, the
+    /// object-store startup reconciliation removes the orphan without reviving the manifest.
+    /// </summary>
+    public Guid[] ApplyVerifiedRetention(int maximumPerApplication)
+    {
+        if (maximumPerApplication < 1) maximumPerApplication = 1;
+        lock (gate)
+        {
+            EnsureAvailable();
+            var retired = ledger.Entries
+                .Where(entry => entry.Manifest.State == BackupRecoveryOperationState.Verified)
+                .GroupBy(entry => entry.Manifest.ApplicationId)
+                .SelectMany(group => group.OrderByDescending(entry => entry.Manifest.VerifiedAt)
+                    .ThenByDescending(entry => entry.Manifest.CreatedAt).Skip(maximumPerApplication))
+                .Select(entry => entry.Manifest.BackupId)
+                .ToHashSet();
+            if (retired.Count == 0) return [];
+            Commit(new([.. ledger.Entries.Where(entry => !retired.Contains(entry.Manifest.BackupId))]));
+            return [.. retired];
+        }
+    }
+
+    /// <summary>Verified IDs are the only encrypted object directories that may survive startup reconciliation.</summary>
+    public Guid[] VerifiedBackupIds()
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            return [.. ledger.Entries.Where(entry => entry.Manifest.State == BackupRecoveryOperationState.Verified)
+                .Select(entry => entry.Manifest.BackupId)];
         }
     }
 

@@ -9,6 +9,7 @@ public static class BackupRecoveryProblemCodes
     public const string BackupNotFound = "backup-recovery.backup_not_found";
     public const string StoreUnavailable = "backup-recovery.store_unavailable";
     public const string StorageLimitExceeded = "backup-recovery.storage_limit_exceeded";
+    public const string BackupInterrupted = "backup-recovery.interrupted";
     public const string BackupNotVerified = "backup-recovery.backup_not_verified";
     public const string SecretRebindRequired = "backup-recovery.secret_rebind_required";
     public const string VolumeAdapterUnavailable = "backup-recovery.volume_adapter_unavailable";
