@@ -21,7 +21,8 @@ import java.util.UUID
 
 /** An intentionally small editor: working-tree save, commit, push and deployment stay separate. */
 @Composable
-fun GitScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun GitScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier,
+    initialBuildId: String? = null) {
     val client = appContainer().git
     val scope = rememberCoroutineScope()
     var repositories by remember(owner) { mutableStateOf<List<GitRepository>>(emptyList()) }
@@ -272,13 +273,13 @@ fun GitScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier
             }
         }
         HorizontalDivider()
-        GitBuildSection(owner)
+        GitBuildSection(owner, initialBuildId)
     }
 }
 
 /** A remote Git commit is built first; publishing its recorded image is a separate AD02 action. */
 @Composable
-private fun GitBuildSection(owner: SessionState.Active) {
+private fun GitBuildSection(owner: SessionState.Active, initialBuildId: String?) {
     val container = appContainer()
     val git = container.git
     val deployments = container.deployments
@@ -297,6 +298,7 @@ private fun GitBuildSection(owner: SessionState.Active) {
     var buildKey by rememberSaveable(owner) { mutableStateOf<String?>(null) }
     var builds by remember(owner) { mutableStateOf<List<GitBuildOperation>>(emptyList()) }
     var selectedBuildId by rememberSaveable(owner) { mutableStateOf<String?>(null) }
+    var appliedInitialBuildId by remember(owner) { mutableStateOf<String?>(null) }
     var applications by remember(owner) { mutableStateOf<List<DeploymentApplication>>(emptyList()) }
     var applicationId by rememberSaveable(owner) { mutableStateOf<String?>(null) }
     var applicationName by rememberSaveable(owner) { mutableStateOf("") }
@@ -345,6 +347,12 @@ private fun GitBuildSection(owner: SessionState.Active) {
         when (val result = deployments.applications(owner)) {
             is ApiResult.Success -> applications = result.value.filter { it.sourceKind == "image" }
             else -> Unit
+        }
+    }
+    LaunchedEffect(owner, initialBuildId, builds) {
+        if (initialBuildId != null && appliedInitialBuildId != initialBuildId && builds.any { it.id == initialBuildId }) {
+            selectedBuildId = initialBuildId
+            appliedInitialBuildId = initialBuildId
         }
     }
     LaunchedEffect(selectedBuildId, selected?.state) {

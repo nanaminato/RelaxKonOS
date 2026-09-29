@@ -7,7 +7,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 
-enum class OperationDomain { Deployment, Website }
+enum class OperationDomain { Deployment, Website, Compose, GitBuild, Script }
 
 /** Only lookup keys are persisted. The remote domain record owns state, progress and diagnostics. */
 data class OperationReference(

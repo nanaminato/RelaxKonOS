@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using RelaxKonOS.Server.EventAlerts;
+
 internal static class DockerChecks
 {
     internal static void VerifyComposeSubsetValidation()
@@ -603,7 +606,8 @@ internal static async Task VerifyStackOperationsAsync(string root)
     // --- Coordinator: admission, idempotency, and outcome classification --------------------------
     var coordinatorRoot = Path.Combine(root, "stack-coordinator");
     var compose = new FakeComposeService();
-    var coordinator = NewStackCoordinator(coordinatorRoot, compose, new TestApplicationLifetime(), 16);
+    var events = new CaptureOperationalEvents();
+    var coordinator = NewStackCoordinator(coordinatorRoot, compose, new TestApplicationLifetime(), 16, events);
 
     const string shopYaml = "services:\n  web:\n    image: nginx:alpine\n  db:\n    image: postgres:16-alpine\n";
     var deployKey = Guid.NewGuid().ToString("N");
@@ -723,6 +727,18 @@ internal static async Task VerifyStackOperationsAsync(string root)
         coordinator.ApplyAction("legacy", DockerStackOperationKind.Stop, confirmed: false, actor, Guid.NewGuid().ToString("N")).OperationId);
     TestAssert.Assert(stoppedQuietly.State == DockerStackOperationState.Succeeded,
         "A stop that left nothing running was not reported as a success.");
+    await events.WaitForAsync(stoppedQuietly.OperationId);
+    var failedSignal = events.Signals.Single(signal => signal.OperationId == stoppedLoudly.OperationId);
+    var recoveredSignal = events.Signals.Single(signal => signal.OperationId == stoppedQuietly.OperationId);
+    TestAssert.Assert(failedSignal.Type == "docker.operation_failed" && !failedSignal.IsRecovery
+        && failedSignal.ProblemCode == DockerStackProblem.PartialFailure
+        && recoveredSignal.Type == failedSignal.Type && recoveredSignal.IsRecovery
+        && recoveredSignal.ResourceId == failedSignal.ResourceId
+        && recoveredSignal.ProblemCode == "docker.recovered"
+        && failedSignal.Evidence is null && recoveredSignal.Evidence is null,
+        "Compose failure and verified recovery were not published as a safe, deduplicated project alert.");
+    TestAssert.Assert(events.Signals.Count(signal => signal.OperationId == submitted.OperationId) == 1,
+        "An idempotent Compose replay published a second terminal event.");
 
     // --- Reads: history, diagnostics, and the refusals that go with them --------------------------
     var history = coordinator.History("portal", 10);
@@ -763,6 +779,8 @@ internal static async Task VerifyStackOperationsAsync(string root)
     TestAssert.Assert(cancelled.State == DockerStackOperationState.Cancelled
         && cancelled.ProblemCode == DockerStackProblem.Cancelled,
         "A cancelled operation did not end in the cancelled state.");
+    TestAssert.Assert(events.Signals.All(signal => signal.OperationId != cancelled.OperationId),
+        "A cancellation was published as a verified recovery or failure.");
 
     // --- Startup reconciliation: observed, never replayed ----------------------------------------
     var recoveryRoot = Path.Combine(root, "stack-recovery");
@@ -985,10 +1003,32 @@ internal static DockerStackOperationStore NewStackStore(string dataDirectory, in
 }
 
 internal static DockerStackOperationCoordinator NewStackCoordinator(string dataDirectory, IDockerComposeService compose,
-    IHostApplicationLifetime lifetime, int maximumConcurrent) =>
+    IHostApplicationLifetime lifetime, int maximumConcurrent, IOperationalEventPublisher? eventPublisher = null) =>
     new(NewStackStore(dataDirectory, maximumConcurrent), compose,
         Options.Create(new DockerComposeOptions { DataDirectory = dataDirectory, MaximumConcurrentOperations = maximumConcurrent }),
-        lifetime, NullLogger<DockerStackOperationCoordinator>.Instance);
+        lifetime, eventPublisher ?? new CaptureOperationalEvents(), NullLogger<DockerStackOperationCoordinator>.Instance);
+
+internal sealed class CaptureOperationalEvents : IOperationalEventPublisher
+{
+    private readonly ConcurrentQueue<OperationalEventSignal> signals = new();
+    internal OperationalEventSignal[] Signals => [.. signals];
+    public Task PublishAsync(OperationalEventSignal signal, CancellationToken cancellationToken = default)
+    {
+        signals.Enqueue(signal);
+        return Task.CompletedTask;
+    }
+
+    internal async Task WaitForAsync(Guid operationId)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (signals.Any(signal => signal.OperationId == operationId)) return;
+            await Task.Delay(10);
+        }
+        throw new InvalidOperationException($"No operational event was published for {operationId}.");
+    }
+}
 
 internal static DockerStackServiceDto RunningService(string service) =>
     new(service, $"shop-{service}-1", "nginx:alpine", "running", "Up 2 seconds");

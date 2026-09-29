@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using RelaxKonOS.Protocol.Docker;
+using RelaxKonOS.Server.EventAlerts;
 
 namespace RelaxKonOS.Server.Docker;
 
@@ -20,6 +23,7 @@ internal sealed class DockerStackOperationCoordinator(
     IDockerComposeService compose,
     IOptions<DockerComposeOptions> options,
     IHostApplicationLifetime lifetime,
+    IOperationalEventPublisher eventPublisher,
     ILogger<DockerStackOperationCoordinator> logger) : IHostedService
 {
     private readonly object gate = new();
@@ -249,12 +253,32 @@ internal sealed class DockerStackOperationCoordinator(
                 Cancellable = false,
                 Services = observed ?? operation.Services,
             }, "completed", messages);
-            _ = terminal;
+            PublishTerminalSignal(terminal);
         }
         catch (Exception exception) when (exception is DockerStackException or InvalidOperationException)
         {
             // The ledger has failed closed. The durable Running record is what the next startup
             // reconciles, so the operation is not lost by failing to write its outcome now.
+        }
+    }
+
+    private void PublishTerminalSignal(DockerStackOperationDto terminal)
+    {
+        if (terminal.State is not (DockerStackOperationState.Failed or DockerStackOperationState.PartialFailed
+            or DockerStackOperationState.Succeeded)) return;
+        try
+        {
+            var projectHash = SHA256.HashData(Encoding.UTF8.GetBytes("docker-stack:" + terminal.ProjectName));
+            var projectId = new Guid(projectHash.AsSpan(0, 16));
+            eventPublisher.PublishAsync(new OperationalEventSignal(
+                $"docker-stack-terminal:{terminal.OperationId:D}:{terminal.State}",
+                "docker.operation_failed", projectId, Guid.NewGuid(),
+                terminal.ProblemCode ?? terminal.RecoveryProblemCode ?? "docker.recovered",
+                terminal.OperationId, IsRecovery: terminal.State == DockerStackOperationState.Succeeded)).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            logger.LogWarning("Event Alert Center did not record terminal Compose operation {OperationId}.", terminal.OperationId);
         }
     }
 

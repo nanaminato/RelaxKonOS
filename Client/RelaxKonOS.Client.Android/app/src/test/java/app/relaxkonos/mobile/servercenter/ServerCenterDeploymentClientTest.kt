@@ -53,6 +53,67 @@ class ServerCenterDeploymentClientTest {
     }
 
     @Test
+    fun `reconnect lists and queries with launcher only and never reruns the operation`() = runTest {
+        val transport = FakeDeploymentTransport()
+        val client = ServerCenterDeploymentClient(transport)
+        val operationId = UUID.randomUUID().toString()
+        transport.listedOperationId = operationId
+        val staged = client.stageLookup(ServerHostPlatform.Linux,
+            ServerCenterUploadAsset.bytes("launcher".toByteArray()))
+        assertEquals(setOf(
+            "/tmp/relaxkonos-deploy.abcdefgh/relaxkonos-deploy.sh",
+        ), transport.uploaded.keys)
+        assertTrue(transport.commands.none { it.contains(" --run") })
+        assertEquals(listOf(operationId), client.list(staged))
+        assertEquals(operationId, client.query(staged, operationId).operationId)
+        assertTrue(transport.commands.none { it.contains(" --run") })
+    }
+
+    @Test
+    fun `malformed recovery id cannot become a remote command`() = runTest {
+        val transport = FakeDeploymentTransport()
+        var rejected = false
+        try {
+            ServerCenterDeploymentClient(transport).query(
+                ServerCenterStagedLookup(ServerHostPlatform.Linux, "/tmp/relaxkonos-deploy.abcdefgh"),
+                "invalid; touch /tmp/wrong")
+        } catch (_: IllegalArgumentException) { rejected = true }
+        assertTrue(rejected)
+        assertTrue(transport.commands.isEmpty())
+        assertTrue(transport.uploaded.isEmpty())
+    }
+
+    @Test
+    fun `malformed remote list is not accepted as operation references`() = runTest {
+        val transport = FakeDeploymentTransport()
+        transport.listedOperationId = "../../wrong"
+        val client = ServerCenterDeploymentClient(transport)
+        val staged = client.stageLookup(ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes(byteArrayOf(1)))
+        var rejected = false
+        try { client.list(staged) } catch (_: java.io.IOException) { rejected = true }
+        assertTrue(rejected)
+        assertTrue(transport.commands.none { it.contains(" --run") })
+
+        transport.listedOperationId = UUID(0, 0).toString()
+        rejected = false
+        try { client.list(staged) } catch (_: java.io.IOException) { rejected = true }
+        assertTrue(rejected)
+    }
+
+    @Test
+    fun `missing receipt is distinct from an unavailable SSH query`() = runTest {
+        val transport = FakeDeploymentTransport()
+        val id = UUID.randomUUID().toString()
+        transport.missingOperationId = id
+        val client = ServerCenterDeploymentClient(transport)
+        val staged = client.stageLookup(ServerHostPlatform.Linux, ServerCenterUploadAsset.bytes(byteArrayOf(1)))
+        var missing = false
+        try { client.query(staged, id) } catch (_: ServerDeploymentReceiptMissingException) { missing = true }
+        assertTrue(missing)
+        assertTrue(transport.commands.none { it.contains(" --run") })
+    }
+
+    @Test
     fun `unsigned install archive is fully checked before upload`() = runTest {
         val release = releaseArchive("payload/linux/server/RelaxKonOS.Server", "server bytes".toByteArray())
         try {
@@ -175,6 +236,8 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
     val commands = mutableListOf<String>()
     val uploaded = linkedMapOf<String, ByteArray>()
     val uploadOrder = mutableListOf<String>()
+    var listedOperationId: String? = null
+    var missingOperationId: String? = null
 
     override suspend fun connect(
         endpoint: ServerCenterSshEndpoint,
@@ -190,12 +253,16 @@ private class FakeDeploymentTransport : ServerCenterSshTransport {
             )
             command.contains(" --query ") -> {
                 val operationId = command.substringAfterLast(' ')
-                ServerCenterSshCommandResult(
+                if (operationId == missingOperationId) ServerCenterSshCommandResult(66, "", "missing")
+                else ServerCenterSshCommandResult(
                     0,
                     """{"schemaVersion":1,"operationId":"$operationId","installationId":null,"kind":"probe","phase":"failed","state":"failed","sequence":1,"timestampUtc":"2026-09-25T00:00:00Z","progress":null,"problemCode":"server-deployment.failed","safeMessage":"failed","cancellable":false,"startedAtUtc":null,"completedAtUtc":null,"result":null,"snapshot":null,"probe":null}""",
                     "",
                 )
             }
+            command.contains(" --list") -> ServerCenterSshCommandResult(
+                0, listedOperationId?.let { "$it.json\n" }.orEmpty(), "",
+            )
             else -> ServerCenterSshCommandResult(0, "", "")
         }
     }

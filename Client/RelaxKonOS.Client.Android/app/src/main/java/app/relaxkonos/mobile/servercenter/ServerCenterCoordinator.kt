@@ -17,6 +17,7 @@ class ServerCenterCoordinator(
     private val targets: ServerHostTargetStore,
     private val connections: ServerCenterConnectionResolver,
     private val hostKeys: ServerHostKeyTrustStore,
+    private val installOperations: ServerInstallOperationIndex,
 ) {
     var isOpen by mutableStateOf(false)
         private set
@@ -107,6 +108,8 @@ class ServerCenterCoordinator(
 
     /** Removes only device-local management metadata; it never uninstalls the server or clears credentials. */
     fun removeHost(hostId: String): Boolean {
+        if (targets.find(hostId) == null) return false
+        installOperations.forgetHost(hostId)
         val removed = targets.remove(hostId)
         if (removed) {
             verifiedSessionPasswords.remove(hostId)?.fill('\u0000')

@@ -1,6 +1,8 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
 import android.app.Application
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,8 +26,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -53,7 +57,7 @@ private data class OperationsState(
     val owner: SessionState.Active? = null,
     val loading: Boolean = false,
     val items: List<ObservedOperation> = emptyList(),
-    val selectedId: String? = null,
+    val selectedKey: Pair<OperationDomain, String>? = null,
     val diagnostics: ApiResult<List<String>>? = null,
     val cancelling: Boolean = false,
     val cancelRequested: Boolean = false,
@@ -68,18 +72,18 @@ private class OperationsViewModel(application: Application) : AndroidViewModel(a
     private var refreshJob: Job? = null
     private var generation = 0
 
-    fun refresh(owner: SessionState.Active) {
+    fun refresh(owner: SessionState.Active, cancellationUnverified: Boolean = false) {
         refreshJob?.cancel()
         val request = ++generation
-        state = OperationsState(owner = owner, loading = true, selectedId = state.selectedId.takeIf { state.owner === owner })
+        state = OperationsState(owner = owner, loading = true, selectedKey = state.selectedKey.takeIf { state.owner === owner })
         refreshJob = viewModelScope.launch {
             try {
                 val snapshot = withContext(Dispatchers.IO) { container.operationCenter.refresh(owner) }
                 val items = snapshot.items
                 if (current(owner, request)) {
                     state = state.copy(loading = false, items = items,
-                        selectedId = state.selectedId?.takeIf { id -> items.any { it.reference.operationId == id } },
-                        error = snapshot.incomplete)
+                        selectedKey = state.selectedKey?.takeIf { key -> items.any { (it.reference.domain to it.reference.operationId) == key } },
+                        error = snapshot.incomplete || cancellationUnverified)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -91,11 +95,12 @@ private class OperationsViewModel(application: Application) : AndroidViewModel(a
 
     fun select(owner: SessionState.Active, item: ObservedOperation) {
         if (state.owner !== owner) return
-        state = state.copy(selectedId = item.reference.operationId, diagnostics = null, cancelRequested = false)
-        if (item.check != OperationCheck.Verified || item.reference.domain != OperationDomain.Deployment) return
+        val key = item.reference.domain to item.reference.operationId
+        state = state.copy(selectedKey = key, diagnostics = null, cancelRequested = false)
+        if (item.check != OperationCheck.Verified || item.reference.domain == OperationDomain.Website) return
         viewModelScope.launch {
             val result = container.operationCenter.diagnostics(owner, item)
-            if (state.owner === owner && state.selectedId == item.reference.operationId && container.session.state.value === owner) {
+            if (state.owner === owner && state.selectedKey == key && container.session.state.value === owner) {
                 state = state.copy(diagnostics = result)
             }
         }
@@ -112,7 +117,7 @@ private class OperationsViewModel(application: Application) : AndroidViewModel(a
             try {
                 withContext(Dispatchers.IO) { container.operationCenter.hide(owner, item) }
                 if (container.session.state.value === owner) state = state.copy(
-                    items = state.items.filterNot { it.reference == item.reference }, selectedId = null,
+                    items = state.items.filterNot { it.reference == item.reference }, selectedKey = null,
                     hideRequested = false)
             } catch (_: Exception) {
                 if (container.session.state.value === owner) state = state.copy(hideRequested = false, error = true)
@@ -125,8 +130,8 @@ private class OperationsViewModel(application: Application) : AndroidViewModel(a
         state = state.copy(cancelRequested = false, cancelling = true)
         viewModelScope.launch {
             try {
-                container.operationCenter.cancel(owner, item)
-                if (container.session.state.value === owner) refresh(owner)
+                val result = container.operationCenter.cancel(owner, item)
+                if (container.session.state.value === owner) refresh(owner, result !is ApiResult.Success)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -143,17 +148,54 @@ private class OperationsViewModel(application: Application) : AndroidViewModel(a
 fun OperationsScreen(
     owner: SessionState.Active,
     onBack: () -> Unit,
+    startOnAlerts: Boolean = false,
+    onStartOnAlertsConsumed: () -> Unit = {},
     onOpenDeployment: (String) -> Unit,
     onOpenWebsite: (String) -> Unit,
+    onOpenCompose: (String) -> Unit,
+    onOpenGitBuild: (String) -> Unit,
+    onOpenScript: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: OperationsViewModel = viewModel()
     val state = viewModel.state
     LaunchedEffect(owner) { viewModel.refresh(owner) }
     val visible = state.owner === owner
-    val selected = if (visible) state.items.firstOrNull { it.reference.operationId == state.selectedId } else null
+    val selected = if (visible) state.items.firstOrNull {
+        (it.reference.domain to it.reference.operationId) == state.selectedKey
+    } else null
     val hasAlerts = ServerCapabilities.EVENT_ALERTS in owner.capabilities
-    var tab by remember(owner) { mutableIntStateOf(0) }
+    var tab by remember(owner) { mutableIntStateOf(if (startOnAlerts && hasAlerts) 1 else 0) }
+    LaunchedEffect(startOnAlerts, hasAlerts) {
+        if (startOnAlerts && hasAlerts) {
+            tab = 1
+            onStartOnAlertsConsumed()
+        }
+    }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var exportPreview by remember(owner) { mutableStateOf(false) }
+    var pendingReport by remember(owner) { mutableStateOf<String?>(null) }
+    var pendingOperationId by remember(owner) { mutableStateOf("") }
+    var exportFailed by remember(owner) { mutableStateOf(false) }
+    var exportSaved by remember(owner) { mutableStateOf(false) }
+    val saveReport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val report = pendingReport
+        pendingReport = null
+        if (uri != null && report != null) scope.launch {
+            exportFailed = false
+            try {
+                withContext(Dispatchers.IO) {
+                    val output = context.contentResolver.openOutputStream(uri, "w")
+                        ?: throw IllegalStateException("Unable to open diagnostic destination")
+                    output.use { it.write(report.toByteArray(Charsets.UTF_8)) }
+                }
+                exportSaved = true
+            } catch (_: Exception) {
+                exportFailed = true
+            }
+        }
+    }
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -174,10 +216,15 @@ fun OperationsScreen(
         if (visible) state.items.forEach { item ->
             ListRow(
                 title = item.target,
-                subtitle = stringResource(if (item.reference.domain == OperationDomain.Deployment)
-                    R.string.operations_deployment else R.string.operations_website),
+                subtitle = stringResource(when (item.reference.domain) {
+                    OperationDomain.Deployment -> R.string.operations_deployment
+                    OperationDomain.Website -> R.string.operations_website
+                    OperationDomain.Compose -> R.string.operations_compose
+                    OperationDomain.GitBuild -> R.string.operations_git_build
+                    OperationDomain.Script -> R.string.operations_script
+                }),
                 supporting = operationStatus(item),
-                selected = item.reference.operationId == state.selectedId,
+                selected = (item.reference.domain to item.reference.operationId) == state.selectedKey,
                 onClick = { viewModel.select(owner, item) },
             )
         }
@@ -186,7 +233,7 @@ fun OperationsScreen(
             Text(stringResource(R.string.operations_detail), style = MaterialTheme.typography.titleMedium)
             Text(selected.reference.operationId, style = MaterialTheme.typography.bodySmall)
             Text(operationStatus(selected))
-            selected.stage?.let { Text(stringResource(R.string.operations_stage, it)) }
+            selected.stage?.takeIf(String::isNotBlank)?.let { Text(stringResource(R.string.operations_stage, it)) }
             selected.progress?.let { Text(stringResource(R.string.operations_progress, it)) }
             selected.problemCode?.let { Text(stringResource(R.string.operations_problem, it), color = MaterialTheme.colorScheme.error) }
             selected.checkedAtMillis?.let { millis ->
@@ -197,8 +244,13 @@ fun OperationsScreen(
                 Text(stringResource(R.string.operations_check_target), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             OutlinedButton(onClick = {
-                if (selected.reference.domain == OperationDomain.Deployment) onOpenDeployment(selected.reference.resourceId)
-                else onOpenWebsite(selected.reference.resourceId)
+                when (selected.reference.domain) {
+                    OperationDomain.Deployment -> onOpenDeployment(selected.reference.resourceId)
+                    OperationDomain.Website -> onOpenWebsite(selected.reference.resourceId)
+                    OperationDomain.Compose -> onOpenCompose(selected.reference.resourceId)
+                    OperationDomain.GitBuild -> onOpenGitBuild(selected.reference.operationId)
+                    OperationDomain.Script -> onOpenScript(selected.reference.operationId)
+                }
             }) { Text(stringResource(R.string.operations_open_target)) }
             if (selected.cancellable && selected.check == OperationCheck.Verified) {
                 OutlinedButton(onClick = viewModel::requestCancel, enabled = !state.cancelling) {
@@ -207,10 +259,20 @@ fun OperationsScreen(
             }
             TextButton(onClick = viewModel::requestHide) { Text(stringResource(R.string.operations_hide)) }
             val diagnostics = state.diagnostics
-            if (selected.reference.domain == OperationDomain.Deployment && diagnostics is ApiResult.Success && diagnostics.value.isNotEmpty()) {
+            if (selected.reference.domain != OperationDomain.Website && diagnostics is ApiResult.Success && diagnostics.value.isNotEmpty()) {
                 Text(stringResource(R.string.operations_diagnostics), style = MaterialTheme.typography.titleSmall)
                 diagnostics.value.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
+            OutlinedButton(onClick = {
+                pendingReport = OperationDiagnosticReport.create(selected,
+                    (diagnostics as? ApiResult.Success)?.value.orEmpty(), diagnostics is ApiResult.Success)
+                pendingOperationId = selected.reference.operationId
+                exportPreview = true
+                exportFailed = false
+                exportSaved = false
+            }) { Text(stringResource(R.string.operations_export_diagnostics)) }
+            if (exportFailed) Text(stringResource(R.string.operations_export_failed), color = MaterialTheme.colorScheme.error)
+            if (exportSaved) Text(stringResource(R.string.operations_export_saved))
         }
         } else if (hasAlerts) AlertPanel(owner, onOpenDeployment)
     }
@@ -228,6 +290,23 @@ fun OperationsScreen(
         confirmButton = { Button(onClick = { viewModel.hide(owner, selected) }) { Text(stringResource(R.string.operations_hide)) } },
         dismissButton = { TextButton(onClick = viewModel::dismissHide) { Text(stringResource(R.string.common_cancel)) } },
     )
+    if (exportPreview && pendingReport != null) AlertDialog(
+        onDismissRequest = { exportPreview = false; pendingReport = null },
+        title = { Text(stringResource(R.string.operations_export_diagnostics)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.operations_export_warning), color = MaterialTheme.colorScheme.error)
+                Text(pendingReport.orEmpty(), style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { Button(onClick = {
+            exportPreview = false
+            saveReport.launch("relaxkonos-operation-${pendingOperationId.filter { it.isLetterOrDigit() || it == '-' }.take(48)}.json")
+        }) { Text(stringResource(R.string.operations_export_save)) } },
+        dismissButton = { TextButton(onClick = { exportPreview = false; pendingReport = null }) {
+            Text(stringResource(R.string.common_cancel))
+        } },
+    )
 }
 
 @Composable
@@ -236,8 +315,9 @@ private fun operationStatus(item: ObservedOperation): String = when (item.check)
     OperationCheck.Missing -> stringResource(R.string.operations_missing)
     OperationCheck.Verified -> when (item.state?.lowercase()) {
         "queued", "running" -> stringResource(R.string.operations_running)
+        "cancelling" -> stringResource(R.string.scripts_cancelling)
         "succeeded" -> stringResource(R.string.operations_succeeded)
-        "failed", "partialfailed" -> stringResource(R.string.operations_failed)
+        "failed", "partialfailed", "timedout" -> stringResource(R.string.operations_failed)
         "cancelled" -> stringResource(R.string.operations_cancelled)
         "interrupted" -> stringResource(R.string.operations_interrupted)
         else -> stringResource(R.string.operations_unverified)

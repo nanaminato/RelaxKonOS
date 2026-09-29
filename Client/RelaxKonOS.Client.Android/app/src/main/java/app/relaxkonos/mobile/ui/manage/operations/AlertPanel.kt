@@ -1,21 +1,33 @@
 package app.relaxkonos.mobile.ui.manage.operations
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -25,6 +37,7 @@ import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.OperationalAlert
 import app.relaxkonos.mobile.core.net.OperationalAlertDetail
+import app.relaxkonos.mobile.data.AlertNotificationCategory
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.CancellationException
@@ -124,6 +137,7 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenDeployment: (String) -
     Text(stringResource(R.string.operations_alerts), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.operations_alerts_note), style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
+    AlertNotificationSettings(owner)
     TextButton(onClick = { viewModel.refresh(owner) }, enabled = visible && !state.loading) {
         Text(stringResource(R.string.common_refresh))
     }
@@ -162,6 +176,56 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenDeployment: (String) -
             }
         }
     }
+}
+
+@Composable
+private fun AlertNotificationSettings(owner: SessionState.Active) {
+    val context = LocalContext.current
+    val container = (context.applicationContext as RelaxKonApplication).container
+    val store = container.alertNotificationStore
+    var enabled by remember(owner.serviceId) {
+        mutableStateOf(AlertNotificationCategory.entries.filter { store.enabled(owner.serviceId, it) }.toSet())
+    }
+    var policyError by remember(owner.serviceId) { mutableStateOf(false) }
+    var permissionDenied by remember(owner.serviceId) { mutableStateOf(false) }
+    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        permissionDenied = !it
+    }
+    Text(stringResource(R.string.alert_notifications_title), style = MaterialTheme.typography.titleSmall)
+    AlertNotificationCategory.entries.forEach { category ->
+        Row(Modifier.fillMaxWidth().padding(vertical = Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(alertCategoryLabel(category)), Modifier.weight(1f))
+            Switch(checked = category in enabled, onCheckedChange = { checked ->
+                try {
+                    store.setEnabled(owner.serviceId, category, checked)
+                    enabled = if (checked) enabled + category else enabled - category
+                    policyError = false
+                    if (!checked) container.foregroundAlertNotifier.clearForCategory(owner, category)
+                    container.foregroundAlertNotifier.restart()
+                    if (checked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                } catch (_: Exception) {
+                    policyError = true
+                }
+            })
+        }
+    }
+    Text(stringResource(R.string.alert_notifications_foreground_note), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (policyError) Text(stringResource(R.string.alert_notifications_save_failed), color = MaterialTheme.colorScheme.error)
+    val systemDisabled = permissionDenied || (enabled.isNotEmpty() &&
+        !NotificationManagerCompat.from(context).areNotificationsEnabled())
+    if (systemDisabled) Text(stringResource(R.string.alert_notifications_permission_off),
+        color = MaterialTheme.colorScheme.error)
+}
+
+private fun alertCategoryLabel(category: AlertNotificationCategory): Int = when (category) {
+    AlertNotificationCategory.Deployments -> R.string.alert_notifications_deployments
+    AlertNotificationCategory.Certificates -> R.string.alert_notifications_certificates
+    AlertNotificationCategory.Infrastructure -> R.string.alert_notifications_infrastructure
+    AlertNotificationCategory.Guardian -> R.string.alert_notifications_guardian
 }
 
 @Composable

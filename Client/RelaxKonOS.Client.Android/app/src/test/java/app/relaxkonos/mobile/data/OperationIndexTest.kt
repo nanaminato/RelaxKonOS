@@ -51,6 +51,27 @@ class OperationIndexTest {
     }
 
     @Test
+    fun `compose git and script references remain distinct and hidden records stay hidden`() {
+        val storage = MemoryStorage()
+        val index = OperationIndex(storage)
+        val alice = owner("installation-1", "alice")
+        val bob = owner("installation-1", "bob")
+        listOf(OperationDomain.Compose, OperationDomain.GitBuild, OperationDomain.Script)
+            .forEach { index.record(alice, it, "resource-${it.name}", "shared-id") }
+        assertEquals(3, OperationIndex(storage).forOwner(alice).size)
+        assertTrue(OperationIndex(storage).forOwner(bob).isEmpty())
+
+        val compose = index.forOwner(alice).single { it.domain == OperationDomain.Compose }
+        index.markVerified(alice, OperationDomain.Compose, compose.operationId, 1234L)
+        index.hide(alice, compose)
+        index.record(alice, OperationDomain.Compose, compose.resourceId, compose.operationId)
+        val restored = OperationIndex(storage)
+        assertTrue(restored.isHidden(alice, OperationDomain.Compose, "shared-id"))
+        assertEquals(setOf(OperationDomain.GitBuild, OperationDomain.Script),
+            restored.forOwner(alice).map { it.domain }.toSet())
+    }
+
+    @Test
     fun `invalid persisted bytes do not expose another account or block reading`() {
         val storage = MemoryStorage()
         storage.bytes = byteArrayOf(1, 2, 3)

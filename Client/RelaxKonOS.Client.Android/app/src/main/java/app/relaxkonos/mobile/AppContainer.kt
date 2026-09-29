@@ -29,6 +29,9 @@ import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.data.OperationIndex
 import app.relaxkonos.mobile.data.OperationCenter
 import app.relaxkonos.mobile.data.EventAlertRepository
+import app.relaxkonos.mobile.data.AlertNotificationStore
+import app.relaxkonos.mobile.data.ForegroundAlertNotifier
+import app.relaxkonos.mobile.data.ScriptTaskRepository
 import app.relaxkonos.mobile.data.SystemRepository
 import app.relaxkonos.mobile.data.UploadCoordinator
 import app.relaxkonos.mobile.data.UploadResumeJournal
@@ -52,6 +55,7 @@ import app.relaxkonos.mobile.security.unlockModeFor
 import app.relaxkonos.mobile.servercenter.DefaultServerCenterConnectionResolver
 import app.relaxkonos.mobile.servercenter.FileHostKeyStorage
 import app.relaxkonos.mobile.servercenter.FileHostTargetStorage
+import app.relaxkonos.mobile.servercenter.FileServerInstallOperationStorage
 import app.relaxkonos.mobile.servercenter.JschServerCenterSshTransportFactory
 import app.relaxkonos.mobile.servercenter.ManagedLoginResolver
 import app.relaxkonos.mobile.servercenter.ServerCenterConnectionResolver
@@ -59,6 +63,7 @@ import app.relaxkonos.mobile.servercenter.ServerCenterCoordinator
 import app.relaxkonos.mobile.servercenter.ServerCenterSshCredentialStore
 import app.relaxkonos.mobile.servercenter.ServerHostKeyTrustStore
 import app.relaxkonos.mobile.servercenter.ServerHostTargetStore
+import app.relaxkonos.mobile.servercenter.ServerInstallOperationIndex
 import app.relaxkonos.mobile.servercenter.SshDiagnostics
 import app.relaxkonos.mobile.servercenter.StoreManagedLoginResolver
 import app.relaxkonos.mobile.ui.theme.AppearancePreferences
@@ -118,6 +123,11 @@ class AppContainer(context: Context) {
 
     val sshHostKeyTrust = ServerHostKeyTrustStore(FileHostKeyStorage(appContext.noBackupFilesDir))
 
+    /** Pre-login deployment receipt IDs are local to this device and its pinned SSH host key. */
+    val serverInstallOperations = ServerInstallOperationIndex(
+        FileServerInstallOperationStorage(appContext.noBackupFilesDir), sshHostKeyTrust,
+    )
+
     val sshCredentials = ServerCenterSshCredentialStore(vault, vaultAccess)
 
     /**
@@ -131,7 +141,9 @@ class AppContainer(context: Context) {
     )
 
     /** App-owned server-centre navigation; it remains available before and after authentication. */
-    val serverCenter = ServerCenterCoordinator(serverHostTargets, serverCenterConnections, sshHostKeyTrust)
+    val serverCenter = ServerCenterCoordinator(
+        serverHostTargets, serverCenterConnections, sshHostKeyTrust, serverInstallOperations,
+    )
 
     /**
      * 受管登录的连接解析入口：把登录记录里的安装标识接到本机宿主资料。
@@ -220,11 +232,29 @@ class AppContainer(context: Context) {
     val system = SystemRepository(gateway, session)
     val operationIndex = OperationIndex(FileOperationIndexStorage(appContext.noBackupFilesDir))
     val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session, operationIndex)
-    val git = app.relaxkonos.mobile.data.GitRepositoryClient(gateway, session)
-    val docker = app.relaxkonos.mobile.data.DockerRepository(gateway, session)
+    val git = app.relaxkonos.mobile.data.GitRepositoryClient(gateway, session, operationIndex)
+    val docker = app.relaxkonos.mobile.data.DockerRepository(gateway, session, operationIndex)
     val webPublishing = app.relaxkonos.mobile.data.WebPublishingRepository(gateway, session, elevations, operationIndex)
-    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing)
+    val scriptTasks = ScriptTaskRepository(gateway, session, operationIndex)
+    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks)
     val eventAlerts = EventAlertRepository(gateway, session)
+    val alertNotificationStore = AlertNotificationStore(appContext)
+    val foregroundAlertNotifier = ForegroundAlertNotifier(appContext, session, eventAlerts, alertNotificationStore, appScope)
+
+    var pendingAlertOwnerToken by mutableStateOf<String?>(null)
+        private set
+    var openAlertsOnNextScreen by mutableStateOf(false)
+        private set
+
+    fun requestAlertOpen(ownerToken: String?) {
+        if (ownerToken != null && ownerToken.length == 32 && ownerToken.all { it.isDigit() || it in 'a'..'f' }) {
+            pendingAlertOwnerToken = ownerToken
+        }
+    }
+
+    fun consumeAlertRequest() { pendingAlertOwnerToken = null }
+    fun prepareAlertScreen() { openAlertsOnNextScreen = true }
+    fun consumeAlertScreen() { openAlertsOnNextScreen = false }
 
     /**
      * Where an unfinished upload is remembered.

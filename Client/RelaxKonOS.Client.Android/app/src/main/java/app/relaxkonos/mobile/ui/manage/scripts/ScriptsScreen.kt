@@ -77,7 +77,7 @@ class ScriptsViewModel(application: Application) : AndroidViewModel(application)
         if (mutable.value.loading) return
         mutable.update { it.copy(loading = true) }
         viewModelScope.launch {
-            val result = container.session.authenticated { url, token -> container.gateway.scriptTasks(url, token) }
+            val result = container.scriptTasks.tasks(active)
             if (owner !== active) return@launch
             mutable.update { old -> when (result) {
                 is ApiResult.Success -> old.copy(loading = false, tasks = result.value.tasks,
@@ -90,7 +90,7 @@ class ScriptsViewModel(application: Application) : AndroidViewModel(application)
     fun select(id: String) {
         val active = owner ?: return
         viewModelScope.launch {
-            val result = container.session.authenticated { url, token -> container.gateway.scriptTask(url, token, id) }
+            val result = container.scriptTasks.task(active, id)
             if (owner !== active) return@launch
             when (result) {
                 is ApiResult.Success -> mutable.update { it.copy(selected = result.value.task,
@@ -105,9 +105,8 @@ class ScriptsViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { it.copy(loading = true, error = false) }
         val key = UUID.randomUUID().toString()
         viewModelScope.launch {
-            val result = try { container.session.authenticated { url, token ->
-                container.gateway.scriptSubmit(url, token, request, key)
-            } } finally { request.approval?.password?.fill('\u0000') }
+            val result = try { container.scriptTasks.submit(active, request, key) }
+                finally { request.approval?.password?.fill('\u0000') }
             if (owner !== active) return@launch
             when (result) {
                 is ApiResult.Success -> {
@@ -123,7 +122,7 @@ class ScriptsViewModel(application: Application) : AndroidViewModel(application)
     fun cancel(id: String) {
         val active = owner ?: return
         viewModelScope.launch {
-            val result = container.session.authenticated { url, token -> container.gateway.scriptCancel(url, token, id) }
+            val result = container.scriptTasks.cancel(active, id)
             if (owner !== active) return@launch
             if (result is ApiResult.Success && result.value.success) select(id)
             else mutable.update { it.copy(error = true) }
@@ -132,11 +131,15 @@ class ScriptsViewModel(application: Application) : AndroidViewModel(application)
 }
 
 @Composable
-fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun ScriptsScreen(owner: SessionState.Active, onBack: () -> Unit, modifier: Modifier = Modifier,
+    initialTaskId: String? = null) {
     val model: ScriptsViewModel = viewModel()
     val state by model.state.collectAsState()
     var editing by remember { mutableStateOf(false) }
-    LaunchedEffect(owner) { model.load(owner) }
+    LaunchedEffect(owner, initialTaskId) {
+        model.load(owner)
+        if (initialTaskId != null) model.select(initialTaskId)
+    }
     LaunchedEffect(state.selected?.id) {
         val id = state.selected?.id ?: return@LaunchedEffect
         while (true) {

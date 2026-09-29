@@ -8,7 +8,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** No file content or credentials are persisted on the phone. Every call stays in one login session. */
-class GitRepositoryClient(private val gateway: RelaxKonGateway, private val session: AuthSession) {
+class GitRepositoryClient(
+    private val gateway: RelaxKonGateway,
+    private val session: AuthSession,
+    private val operationIndex: OperationIndex,
+) {
     private val calls = Mutex()
 
     suspend fun repositories(owner: SessionState.Active) = call(owner) { url, token -> gateway.gitRepositories(url, token) }
@@ -41,6 +45,8 @@ class GitRepositoryClient(private val gateway: RelaxKonGateway, private val sess
         verify()
         val result = session.authenticated { url, token -> verify(); action(url, token) }
         verify()
+        val build = (result as? ApiResult.Success)?.value as? GitBuildOperation
+        if (build != null) runCatching { operationIndex.record(owner, OperationDomain.GitBuild, build.id, build.id) }
         result
     }
 }

@@ -20,6 +20,8 @@ android {
     namespace = "app.relaxkonos.mobile"
     compileSdk = 36
 
+    sourceSets.getByName("main").assets.srcDir("../../../deployment/launcher")
+
     defaultConfig {
         applicationId = "app.relaxkonos.mobile"
         minSdk = 23

@@ -1,9 +1,12 @@
 package app.relaxkonos.mobile.servercenter
 
+import android.content.res.AssetManager
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.util.Locale
+import java.util.UUID
 
 enum class ServerHostPlatform { Linux, Windows }
 
@@ -20,6 +23,11 @@ class ServerCenterUploadAsset(
 
         fun file(value: File): ServerCenterUploadAsset =
             ServerCenterUploadAsset(value.length()) { value.inputStream() }
+
+        fun launcher(assets: AssetManager, platform: ServerHostPlatform): ServerCenterUploadAsset {
+            val name = if (platform == ServerHostPlatform.Windows) "RelaxKonOS-Deploy.ps1" else "relaxkonos-deploy.sh"
+            return ServerCenterUploadAsset(null) { assets.open(name) }
+        }
     }
 }
 
@@ -29,6 +37,11 @@ data class ServerCenterStagedOperation(
     val platform: ServerHostPlatform,
     val remoteDirectory: String,
 )
+
+/** A client-controlled launcher staged for receipt lookup only, without a deployment request. */
+data class ServerCenterStagedLookup(val platform: ServerHostPlatform, val remoteDirectory: String)
+
+class ServerDeploymentReceiptMissingException : IOException("The remote operation receipt does not exist.")
 
 /**
  * Android deployment operation layer. It binds local release validation to the built-in
@@ -97,13 +110,47 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
     }
 
     suspend fun execute(staged: ServerCenterStagedOperation): ServerDeploymentOperation {
-        transport.run(launcherCommand(staged, query = false))
+        transport.run(launcherCommand(staged, action = LauncherAction.Run))
         // SSH exit status is not proof of success. The persistent receipt is authoritative.
         return query(staged)
     }
 
+    /** Stages the fixed launcher without a request, package or verifier; lookup never enters --run. */
+    suspend fun stageLookup(
+        platform: ServerHostPlatform,
+        launcher: ServerCenterUploadAsset,
+    ): ServerCenterStagedLookup {
+        check(transport.isConnected) { "A trusted SSH session is required." }
+        val directory = createPrivateDirectory(platform)
+        val staged = ServerCenterStagedOperation(UUID(0, 0).toString(), platform, directory)
+        upload(launcher, staged, if (platform == ServerHostPlatform.Windows) "RelaxKonOS-Deploy.ps1" else "relaxkonos-deploy.sh")
+        if (platform == ServerHostPlatform.Linux) {
+            val chmod = transport.run("chmod 700 '$directory/relaxkonos-deploy.sh'")
+            if (!chmod.succeeded) throw IOException("Unable to mark the staged deployment tools executable.")
+        }
+        return ServerCenterStagedLookup(platform, directory)
+    }
+
+    suspend fun list(lookup: ServerCenterStagedLookup): List<String> {
+        val staged = ServerCenterStagedOperation(UUID(0, 0).toString(), lookup.platform, lookup.remoteDirectory)
+        val result = transport.run(launcherCommand(staged, action = LauncherAction.List))
+        if (!result.succeeded) throw IOException("The remote operation list could not be read.")
+        if (result.standardOutput.length > 4096) throw IOException("The remote operation list is too large.")
+        val lines = result.standardOutput.lineSequence().filter(String::isNotBlank).toList()
+        if (lines.size > 20 || lines.any { !OPERATION_FILE.matches(it) || !validOperationId(it.removeSuffix(".json")) }) {
+            throw IOException("The remote operation list is invalid.")
+        }
+        return lines.map { it.removeSuffix(".json").lowercase(Locale.ROOT) }.distinct()
+    }
+
+    suspend fun query(lookup: ServerCenterStagedLookup, operationId: String): ServerDeploymentOperation {
+        require(validOperationId(operationId)) { "A canonical operation id is required." }
+        return query(ServerCenterStagedOperation(operationId.lowercase(Locale.ROOT), lookup.platform, lookup.remoteDirectory))
+    }
+
     suspend fun query(staged: ServerCenterStagedOperation): ServerDeploymentOperation {
-        val result = transport.run(launcherCommand(staged, query = true))
+        val result = transport.run(launcherCommand(staged, action = LauncherAction.Query))
+        if (result.exitStatus == 66) throw ServerDeploymentReceiptMissingException()
         if (!result.succeeded) throw IOException("The remote operation receipt could not be read.")
         return ServerDeploymentWire.readOperation(result.standardOutput.trim(), staged.operationId)
     }
@@ -144,16 +191,25 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
         }
     }
 
-    private fun launcherCommand(staged: ServerCenterStagedOperation, query: Boolean): String {
+    private fun launcherCommand(staged: ServerCenterStagedOperation, action: LauncherAction): String {
+        require(OPERATION_ID.matches(staged.operationId)) { "Invalid operation id." }
         if (staged.platform == ServerHostPlatform.Linux) {
             require(LINUX_STAGING_PATH.matches(staged.remoteDirectory)) { "Invalid staging directory." }
-            val action = if (query) " --query ${staged.operationId}" else " --run"
-            return "bash '${staged.remoteDirectory}/relaxkonos-deploy.sh'$action"
+            val argument = when (action) {
+                LauncherAction.Run -> " --run"
+                LauncherAction.Query -> " --query ${staged.operationId}"
+                LauncherAction.List -> " --list"
+            }
+            return "bash '${staged.remoteDirectory}/relaxkonos-deploy.sh'$argument"
         }
         require(WINDOWS_STAGING_PATH.matches(staged.remoteDirectory)) { "Invalid staging directory." }
         val scriptPath = staged.remoteDirectory.trimEnd('\\', '/') + "\\RelaxKonOS-Deploy.ps1"
         val command = "& '${scriptPath.replace("'", "''")}'" +
-            if (query) " -QueryOperationId '${staged.operationId}'" else ""
+            when (action) {
+                LauncherAction.Run -> ""
+                LauncherAction.Query -> " -QueryOperationId '${staged.operationId}'"
+                LauncherAction.List -> " -ListOperations"
+            }
         return "powershell.exe -NoProfile -NonInteractive -EncodedCommand " +
             Base64Codec.encode(command.toByteArray(Charsets.UTF_16LE))
     }
@@ -174,7 +230,12 @@ class ServerCenterDeploymentClient(private val transport: ServerCenterSshTranspo
                 runtime == ServerRuntimeIdentifier.WinArm64
         }
 
+    private enum class LauncherAction { Run, Query, List }
+
     private companion object {
+        val OPERATION_ID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+        val OPERATION_FILE = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\.json$")
+        fun validOperationId(value: String): Boolean = OPERATION_ID.matches(value) && UUID.fromString(value) != UUID(0, 0)
         val LINUX_STAGING_PATH = Regex("^/tmp/relaxkonos-deploy\\.[A-Za-z0-9]{8,32}$")
         val WINDOWS_STAGING_PATH = Regex("^[A-Za-z]:[\\\\/].*[\\\\/]relaxkonos-deploy-[0-9a-f]{32}$")
     }
