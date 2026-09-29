@@ -43,8 +43,6 @@ object Routes {
  *
  * [implemented] marks what this build actually ships. An entry that is not implemented yet is not
  * rendered at all, matching the rule that the shell never shows an entry without a usable workflow.
- * The terminal is the remaining V1-C work: it needs the SignalR client and a PTY renderer.
- *
  * [iconRes] addresses the desktop client's app icons, so the bottom bar carries the same four marks
  * the desktop dock does (`ui/icons/DesktopIcons.kt`).
  */

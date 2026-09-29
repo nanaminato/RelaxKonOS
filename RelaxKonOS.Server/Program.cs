@@ -475,6 +475,18 @@ builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.Applicati
 builder.Services.AddSingleton<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogSubscriptions>();
 builder.Services.AddHostedService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentLogBroadcastService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentCoordinator>());
+// Backup recovery has a separate operator-managed key domain. Its default is deliberately
+// unavailable, so no backup workflow can silently fall back to application Data Protection keys.
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>().GetSection("BackupRecovery")
+        .Get<RelaxKonOS.Server.BackupRecovery.BackupRecoveryOptions>()
+    ?? new RelaxKonOS.Server.BackupRecovery.BackupRecoveryOptions());
+builder.Services.AddSingleton<RelaxKonOS.Server.BackupRecovery.IBackupRecoveryKeyProvider,
+    RelaxKonOS.Server.BackupRecovery.ConfigurationBackupRecoveryKeyProvider>();
+builder.Services.AddSingleton<RelaxKonOS.Server.BackupRecovery.BackupRecoveryObjectStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.BackupRecovery.BackupRecoveryManifestStore>();
+builder.Services.AddSingleton<RelaxKonOS.Server.BackupRecovery.ApplicationDefinitionBackupService>();
+builder.Services.AddHostedService<RelaxKonOS.Server.BackupRecovery.BackupRecoveryCoordinator>();
 // The readiness probe talks to the container's published loopback port, so it needs its own bounded
 // client whose timeout is a readiness timeout rather than a request timeout.
 builder.Services.AddHttpClient(RelaxKonOS.Server.ApplicationDeployments.ApplicationDeploymentRuntime.HealthClientName,
@@ -1075,6 +1087,7 @@ app.MapGitEndpoints();
 app.MapGitBuildEndpoints();
 app.MapInstallationEndpoints();
 app.MapApplicationDeploymentEndpoints();
+app.MapBackupRecoveryEndpoints();
 app.MapTunnelEndpoints();
 if (eventAlertsOptions.Enabled) app.MapEventAlertEndpoints();
 app.MapProxyEndpoints();

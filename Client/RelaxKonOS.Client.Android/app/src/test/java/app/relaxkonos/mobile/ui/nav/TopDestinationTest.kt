@@ -30,7 +30,7 @@ class TopDestinationTest {
     }
 
     @Test
-    fun `the terminal is never listed in this build`() {
+    fun `terminal appears when the server offers the capability`() {
         val all = setOf(
             ServerCapabilities.FILES,
             ServerCapabilities.METRICS,
@@ -43,7 +43,7 @@ class TopDestinationTest {
             ServerCapabilities.POSIX_PERMISSIONS,
         )
 
-        assertFalse(TopDestination.visible(all).contains(TopDestination.Terminal))
+        assertTrue(TopDestination.visible(all).contains(TopDestination.Terminal))
     }
 
     @Test

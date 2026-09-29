@@ -56,6 +56,18 @@ internal sealed class ApplicationDeploymentCatalogStore
         }
     }
 
+    /// <summary>Reads an application definition and every retained revision under one catalog lock.</summary>
+    public (ApplicationRecord Application, RevisionRecord[] Revisions) ReadBackupSnapshot(Guid applicationId)
+    {
+        lock (gate)
+        {
+            EnsureAvailable();
+            var application = ledger.Applications.FirstOrDefault(x => x.Id == applicationId)
+                ?? throw new ApplicationDeploymentException(ApplicationDeploymentProblemCodes.ApplicationNotFound, 404);
+            return (application, [.. ledger.Revisions.Where(x => x.ApplicationId == applicationId).OrderByDescending(x => x.Number)]);
+        }
+    }
+
     public ApplicationRecord? Find(Guid applicationId) => ReadApplications().FirstOrDefault(x => x.Id == applicationId);
     public ApplicationRecord? FindByName(string name) => ReadApplications().FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.Ordinal));
     public RevisionRecord? FindRevision(Guid revisionId) => ReadRevisionsAll().FirstOrDefault(x => x.Id == revisionId);

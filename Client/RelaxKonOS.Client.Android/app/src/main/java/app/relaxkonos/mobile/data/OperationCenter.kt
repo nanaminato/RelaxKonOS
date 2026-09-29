@@ -3,6 +3,7 @@ package app.relaxkonos.mobile.data
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
+import app.relaxkonos.mobile.core.net.BackupManifest
 import app.relaxkonos.mobile.core.net.DeploymentOperation
 import app.relaxkonos.mobile.core.net.DockerStackOperation
 import app.relaxkonos.mobile.core.net.GitBuildOperation
@@ -36,6 +37,7 @@ class OperationCenter(
     private val docker: DockerRepository,
     private val git: GitRepositoryClient,
     private val scripts: ScriptTaskRepository,
+    private val backups: BackupRecoveryRepository,
 ) {
     suspend fun refresh(owner: SessionState.Active): OperationCenterSnapshot {
         verify(owner)
@@ -63,6 +65,15 @@ class OperationCenter(
                         if (index.isHidden(owner, OperationDomain.Website, operation.operationId)) return@publicationLoop
                         runCatching { index.record(owner, OperationDomain.Website, application.id, operation.operationId) }
                         discovered[OperationDomain.Website to operation.operationId] = fromWebsite(owner, operation, application.name)
+                    }
+                }
+                if (ServerCapabilities.BACKUP_RECOVERY in owner.capabilities) {
+                    val manifests = backups.manifests(owner, application.id)
+                    if (manifests !is ApiResult.Success) incomplete = true
+                    if (manifests is ApiResult.Success) manifests.value.forEach backupLoop@ { backup ->
+                        if (index.isHidden(owner, OperationDomain.Backup, backup.backupId)) return@backupLoop
+                        runCatching { index.record(owner, OperationDomain.Backup, application.id, backup.backupId) }
+                        discovered[OperationDomain.Backup to backup.backupId] = fromBackup(owner, backup, application.name)
                     }
                 }
             }
@@ -201,6 +212,12 @@ class OperationCenter(
                 is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
                 is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
             }
+            OperationDomain.Backup -> when (val result = backups.manifest(owner, reference.operationId)) {
+                is ApiResult.Success -> if (result.value.applicationId == reference.resourceId)
+                    fromBackup(owner, result.value, reference.resourceId) else unknown(reference, OperationCheck.Missing)
+                is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
+                is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
+            }
         }
 
     private fun fromDeployment(owner: SessionState.Active, operation: DeploymentOperation, target: String): ObservedOperation =
@@ -227,6 +244,10 @@ class OperationCenter(
         verified(owner, OperationDomain.Script, task.id, task.id,
             task.executablePath.substringAfterLast('/').substringAfterLast('\\'), task.state, "", null, task.problemCode,
             task.state == "queued" || task.state == "running")
+
+    private fun fromBackup(owner: SessionState.Active, backup: BackupManifest, target: String): ObservedOperation =
+        verified(owner, OperationDomain.Backup, backup.applicationId, backup.backupId,
+            target, backup.state, "backup", null, backup.problemCode)
 
     private fun verified(owner: SessionState.Active, domain: OperationDomain, resourceId: String, operationId: String,
         target: String, state: String, stage: String, progress: Int?, problemCode: String?, cancellable: Boolean = false): ObservedOperation {

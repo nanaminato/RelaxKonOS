@@ -10,6 +10,12 @@ class AlertNotificationRulesTest {
     private val deployment = setOf(AlertNotificationCategory.Deployments)
 
     @Test
+    fun `backup failures use the deployment notification policy`() {
+        assertEquals(AlertNotificationCategory.Deployments,
+            AlertNotificationCategories.forType("backup.definition_failed"))
+    }
+
+    @Test
     fun `first page is quiet and repeated occurrences do not notify twice`() {
         val first = AlertNotificationRules.decide(null, listOf(alert("a", count = 1)), deployment, true, 1_000_000L)
         assertTrue(first.notify.isEmpty())

@@ -94,7 +94,7 @@ internal sealed class ApplicationDeploymentDefinitionMutationStore
     private static bool Valid(Entry entry) => ApplicationDeploymentValidation.IsValidReference(entry.ActorReference, 64)
         && ApplicationDeploymentValidation.IsValidReference(entry.KeyReference, 64)
         && ApplicationDeploymentValidation.IsValidReference(entry.RequestReference, 64)
-        && entry.Kind is "create" or "update" or "install" && entry.Response is { Length: > 0 and <= 131072 } && entry.CompletedAt != default;
+        && entry.Kind is "create" or "update" or "install" or "restore" && entry.Response is { Length: > 0 and <= 131072 } && entry.CompletedAt != default;
 
     private sealed record Entry(string ActorReference, string KeyReference, string Kind, string RequestReference, string Response, DateTimeOffset CompletedAt);
     private sealed record Ledger(Entry[] Entries);

@@ -26,6 +26,8 @@ internal static class EventAlertCatalog
         EventAlertSeverity.Error, "docker-engine", RemediationTargetKind.DockerOverview, true);
     internal static readonly Definition DockerOperationFailed = new("docker.operation_failed", OperationalEventSource.Docker,
         EventAlertSeverity.Error, "docker-operation", RemediationTargetKind.DockerOverview, true);
+    internal static readonly Definition BackupDefinitionFailed = new("backup.definition_failed", OperationalEventSource.Deployment,
+        EventAlertSeverity.Error, "backup-application", RemediationTargetKind.ApplicationDeployment, true);
     internal static readonly Definition TunnelDisconnected = new("tunnel.disconnected", OperationalEventSource.Tunnel,
         EventAlertSeverity.Warning, "tunnel", RemediationTargetKind.TunnelDefinition, true);
     internal static readonly Definition SourceDegraded = new("event-center.source_degraded", OperationalEventSource.EventCenter,
@@ -34,7 +36,7 @@ internal static class EventAlertCatalog
     internal static IReadOnlyList<Definition> All { get; } = [
         DeploymentOperationFailed, CertificateRenewalFailed, CertificateRenewalExhausted, CertificateExpiringSoon,
         GuardianAgentUnavailable, GuardianWorkloadFailed, GuardianServerRestartFailed, DockerEngineUnavailable,
-        DockerOperationFailed, TunnelDisconnected, SourceDegraded];
+        DockerOperationFailed, BackupDefinitionFailed, TunnelDisconnected, SourceDegraded];
 
     internal static bool TryGet(string type, out Definition definition)
     {

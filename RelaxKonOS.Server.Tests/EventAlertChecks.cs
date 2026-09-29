@@ -69,5 +69,17 @@ internal static class EventAlertChecks
         TestAssert.Assert(recoveredSuppressedAlert.Alert.Status == OperationalAlertStatus.Resolved
             && recoveredSuppressedAlert.Alert.ResolutionReason == "source-recovered",
             "A recovery signal did not close a suppressed alert.");
+
+        var backupApplicationId = Guid.NewGuid();
+        await publisher.PublishAsync(new("backup-definition-failed", "backup.definition_failed", backupApplicationId, Guid.NewGuid(),
+            "backup-recovery.store_unavailable", OperationId: Guid.NewGuid()));
+        var backupAlert = (await store.ListAlertsAsync(20, null, null, null, CancellationToken.None)).Items
+            .Single(item => item.Type == "backup.definition_failed" && item.RemediationTarget.ResourceId == backupApplicationId);
+        await publisher.PublishAsync(new("backup-definition-recovered", "backup.definition_failed", backupApplicationId, Guid.NewGuid(),
+            "backup-recovery.recovered", OperationId: Guid.NewGuid(), IsRecovery: true));
+        var recoveredBackupAlert = await store.GetDetailAsync(backupAlert.AlertId, CancellationToken.None)
+            ?? throw new InvalidOperationException("Backup alert disappeared.");
+        TestAssert.Assert(recoveredBackupAlert.Alert.Status == OperationalAlertStatus.Resolved,
+            "A verified backup did not resolve the application backup failure alert.");
     }
 }

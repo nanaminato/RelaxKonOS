@@ -22,6 +22,11 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun createDefinitionBackup(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest> = ApiResult.Transport("Backup recovery unavailable.")
+    suspend fun definitionBackupRequest(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest?> = ApiResult.Transport("Backup recovery unavailable.")
+    suspend fun backupManifests(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<BackupManifest>> = ApiResult.Transport("Backup recovery unavailable.")
+    suspend fun backupManifest(serverUrl: String, accessToken: String, backupId: String): ApiResult<BackupManifest> = ApiResult.Transport("Backup recovery unavailable.")
+    suspend fun backupPreflight(serverUrl: String, accessToken: String, backupId: String): ApiResult<BackupPreflight> = ApiResult.Transport("Backup recovery unavailable.")
     suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?): ApiResult<OperationalAlertPage> =
         ApiResult.Transport("Operational alerts unavailable.")
     suspend fun alertDetail(serverUrl: String, accessToken: String, id: String): ApiResult<OperationalAlertDetail> =

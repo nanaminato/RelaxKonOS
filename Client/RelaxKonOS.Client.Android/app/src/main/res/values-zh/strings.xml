@@ -403,6 +403,21 @@
 
     <string name="manage_title">管理</string>
     <string name="operations_title">任务与恢复</string>
+    <string name="backup_recovery_title">备份与恢复</string>
+    <string name="backup_recovery_note">备份在服务器端加密。任何更改前，请先检查恢复条件。</string>
+    <string name="backup_recovery_empty">此应用没有可用的已验证备份。</string>
+    <string name="backup_recovery_item">备份 %1$s · %2$s</string>
+    <string name="backup_recovery_objects">%1$d 个已加密对象</string>
+    <string name="backup_recovery_preflight">检查恢复条件</string>
+    <string name="backup_recovery_create">创建定义备份</string>
+    <string name="backup_recovery_retry_create">重试备份请求</string>
+    <string name="backup_recovery_request_unknown">上一请求仍在核实中。重试会使用同一个安全请求键。</string>
+    <string name="backup_recovery_created">备份请求已接受；校验后的结果会显示在此列表中。</string>
+    <string name="backup_recovery_create_failed">未能确认备份请求。重试前请检查任务列表。</string>
+    <string name="backup_recovery_unavailable">无法读取备份记录。</string>
+    <string name="backup_recovery_ready_new_instance">恢复可创建一个新的、已停止的应用实例；不会覆盖现有应用。</string>
+    <string name="backup_recovery_blocked">恢复已阻止。请先解决下列所有要求。</string>
+    <string name="backup_recovery_preflight_failed">服务器无法验证此备份是否可恢复。</string>
     <string name="operations_tasks">任务</string>
     <string name="operations_subtitle">核实部署与网站发布结果</string>
     <string name="operations_empty">此账号没有找到部署或发布操作。</string>
@@ -412,6 +427,7 @@
     <string name="operations_compose">Compose 项目</string>
     <string name="operations_git_build">Git 构建</string>
     <string name="operations_script">脚本任务</string>
+    <string name="operations_backup">应用备份</string>
     <string name="operations_detail">操作详情</string>
     <string name="operations_open_target">打开目标</string>
     <string name="operations_stage">阶段：%1$s</string>
@@ -448,6 +464,7 @@
     <string name="operations_alert_action_failed">无法确认告警操作结果。</string>
     <string name="operations_acknowledge">确认已读</string>
     <string name="alert_deployment_failed">应用部署失败</string>
+    <string name="alert_backup_definition_failed">应用备份失败</string>
     <string name="alert_certificate_renewal_failed">证书续期失败</string>
     <string name="alert_certificate_renewal_exhausted">证书续期重试耗尽</string>
     <string name="alert_certificate_expiring">证书即将到期</string>

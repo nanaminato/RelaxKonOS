@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -20,6 +21,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.data.DeploymentBrowser
@@ -28,6 +31,9 @@ import app.relaxkonos.mobile.ui.common.*
 import app.relaxkonos.mobile.ui.theme.Spacing
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun DeploymentsScreen(
@@ -673,6 +679,7 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
                         }
                     }
                 }
+                item { BackupRecoveryCard(state.owner, app.id) }
                 snapshot.activeOperation?.let { operation ->
                     item { OperationCard(operation, stringResource(R.string.deployments_active), if (operation.cancellable && !state.submitting) ({ browser.cancel(operation) }) else null) }
                 }
@@ -767,6 +774,98 @@ private fun DeploymentDetail(state: DeploymentBrowserState, browser: DeploymentB
             },
             dismissButton = { TextButton(onClick = { deleteConfirmation = false }, enabled = !state.submitting) { Text(stringResource(R.string.common_cancel)) } },
         )
+    }
+}
+
+private data class BackupRecoveryViewState(
+    val loading: Boolean = false,
+    val manifests: ApiResult<List<BackupManifest>>? = null,
+    val preflight: ApiResult<BackupPreflight>? = null,
+    val selectedBackupId: String? = null,
+    val creating: Boolean = false,
+    val creation: ApiResult<BackupManifest>? = null,
+    val pendingRequest: Boolean = false,
+)
+
+/**
+ * A recovery capability deliberately starts as a read and preflight surface.  It never keeps an
+ * encryption key or a plaintext object on the device, and it does not turn a failed preflight into
+ * an unsafe client-side fallback.
+ */
+@Composable
+private fun BackupRecoveryCard(owner: SessionState.Active?, applicationId: String) {
+    if (owner == null || ServerCapabilities.BACKUP_RECOVERY !in owner.capabilities) return
+    val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
+    val scope = rememberCoroutineScope()
+    var state by remember(owner, applicationId) { mutableStateOf(BackupRecoveryViewState(loading = true)) }
+    LaunchedEffect(owner, applicationId) {
+        state = BackupRecoveryViewState(loading = true)
+        val result = withContext(Dispatchers.IO) { container.backupRecovery.manifests(owner, applicationId) }
+        val reconciled = withContext(Dispatchers.IO) { container.backupRecovery.reconcileDefinitionBackup(owner, applicationId) }
+        if (container.session.state.value === owner) {
+            val reconciledManifest = (reconciled as? ApiResult.Success)?.value
+            val merged = if (result is ApiResult.Success && reconciledManifest != null)
+                ApiResult.Success((listOf(reconciledManifest) + result.value).distinctBy { it.backupId }) else result
+            state = state.copy(loading = false, manifests = merged,
+                pendingRequest = container.backupRecovery.hasPendingDefinitionBackup(owner, applicationId))
+        }
+    }
+    SectionCard(title = stringResource(R.string.backup_recovery_title), subtitle = stringResource(R.string.backup_recovery_note)) {
+        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        when (val manifests = state.manifests) {
+            is ApiResult.Success -> {
+                if (manifests.value.isEmpty()) Text(stringResource(R.string.backup_recovery_empty))
+                manifests.value.forEach { manifest ->
+                    HorizontalDivider()
+                    Text(stringResource(R.string.backup_recovery_item, manifest.backupId.take(8), manifest.state))
+                    if (manifest.objects.isNotEmpty()) Text(stringResource(R.string.backup_recovery_objects, manifest.objects.size))
+                    manifest.problemCode?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = {
+                        state = state.copy(selectedBackupId = manifest.backupId, preflight = null)
+                    }) { Text(stringResource(R.string.backup_recovery_preflight)) }
+                }
+            }
+            null -> Unit
+            else -> Text(stringResource(R.string.backup_recovery_unavailable), color = MaterialTheme.colorScheme.error)
+        }
+        OutlinedButton(onClick = {
+            scope.launch {
+                state = state.copy(creating = true, creation = null)
+                val result = withContext(Dispatchers.IO) { container.backupRecovery.createDefinitionBackup(owner, applicationId) }
+                if (container.session.state.value === owner) {
+                    val merged = if (result is ApiResult.Success && state.manifests is ApiResult.Success)
+                        ApiResult.Success((listOf(result.value) + (state.manifests as ApiResult.Success).value).distinctBy { it.backupId }) else state.manifests
+                    state = state.copy(creating = false, creation = result, manifests = merged,
+                        pendingRequest = container.backupRecovery.hasPendingDefinitionBackup(owner, applicationId))
+                }
+            }
+        }, enabled = !state.loading && !state.creating) {
+            Text(stringResource(if (state.pendingRequest) R.string.backup_recovery_retry_create else R.string.backup_recovery_create))
+        }
+        if (state.creating) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (state.pendingRequest) Text(stringResource(R.string.backup_recovery_request_unknown), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        when (state.creation) {
+            is ApiResult.Success -> Text(stringResource(R.string.backup_recovery_created))
+            null -> Unit
+            else -> Text(stringResource(R.string.backup_recovery_create_failed), color = MaterialTheme.colorScheme.error)
+        }
+        val selected = state.selectedBackupId
+        if (selected != null && state.preflight == null) {
+            LaunchedEffect(owner, selected) {
+                val result = withContext(Dispatchers.IO) { container.backupRecovery.preflight(owner, selected) }
+                if (container.session.state.value === owner && state.selectedBackupId == selected) state = state.copy(preflight = result)
+            }
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+        when (val preflight = state.preflight) {
+            is ApiResult.Success -> {
+                Text(if (preflight.value.canRestore) stringResource(R.string.backup_recovery_ready_new_instance)
+                    else stringResource(R.string.backup_recovery_blocked), color = if (preflight.value.canRestore) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                preflight.value.blockers.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+            null -> Unit
+            else -> Text(stringResource(R.string.backup_recovery_preflight_failed), color = MaterialTheme.colorScheme.error)
+        }
     }
 }
 

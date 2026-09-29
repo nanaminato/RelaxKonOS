@@ -18,6 +18,7 @@ Directory.CreateDirectory(root);
 try
 {
     ObservabilityChecks.VerifyProtocolAndSanitization();
+    await BackupRecoveryKeyProviderChecks.RunAsync(root);
     await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(root);
     if (args.Contains("--windows-privileges-only")) { await WindowsPrivilegeChecks.RunAsync(root); return; }
     if (args.Contains("--proxy-geodata-only"))

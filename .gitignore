@@ -280,6 +280,11 @@ Generated_Code/
 # because we have git ;-)
 _UpgradeReport_Files/
 Backup*/
+# Product source namespaces are not generated project-backup folders.
+!RelaxKonOS.Server/BackupRecovery/
+!RelaxKonOS.Server/BackupRecovery/**
+!Shared/RelaxKonOS.Protocol/BackupRecovery/
+!Shared/RelaxKonOS.Protocol/BackupRecovery/**
 UpgradeLog*.XML
 UpgradeLog*.htm
 ServiceFabricBackup/

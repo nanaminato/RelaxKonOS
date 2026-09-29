@@ -7,7 +7,7 @@ enum class AlertNotificationCategory { Deployments, Certificates, Infrastructure
 
 object AlertNotificationCategories {
     fun forType(type: String): AlertNotificationCategory? = when (type) {
-        "deployment.operation_failed", "docker.operation_failed" -> AlertNotificationCategory.Deployments
+        "deployment.operation_failed", "docker.operation_failed", "backup.definition_failed" -> AlertNotificationCategory.Deployments
         "certificate.renewal_failed", "certificate.renewal_exhausted", "certificate.expiring_soon" ->
             AlertNotificationCategory.Certificates
         "docker.engine_unavailable", "tunnel.disconnected", "event-center.source_degraded" ->

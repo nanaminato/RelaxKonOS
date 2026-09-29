@@ -250,4 +250,5 @@ object ServerCapabilities {
     const val WEB_SERVER = "server.web-server"
     const val CERTIFICATES = "server.certificates"
     const val EVENT_ALERTS = "server.event-alerts"
+    const val BACKUP_RECOVERY = "server.backup-recovery"
 }

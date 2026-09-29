@@ -25,6 +25,31 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun createDefinitionBackup(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest> =
+        backupMutation(serverUrl, BackupRecoveryRoutes.definitionBackup(applicationId), accessToken, idempotencyKey, BackupRecoveryWire::manifest)
+    override suspend fun definitionBackupRequest(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest?> =
+        when (val result = execute("GET", serverUrl, BackupRecoveryRoutes.definitionBackupRequest(applicationId), accessToken, null,
+            mapOf("Idempotency-Key" to idempotencyKey))) {
+            is ApiResult.Success -> runCatching { BackupRecoveryWire.manifest(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed backup recovery response.") })
+            is ApiResult.Problem -> if (result.status == 404) ApiResult.Success(null) else result
+            is ApiResult.Transport -> result
+        }
+    override suspend fun backupManifests(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<BackupManifest>> = backupCall("GET", serverUrl, BackupRecoveryRoutes.backups(applicationId), accessToken, BackupRecoveryWire::manifests)
+    override suspend fun backupManifest(serverUrl: String, accessToken: String, backupId: String): ApiResult<BackupManifest> = backupCall("GET", serverUrl, BackupRecoveryRoutes.backup(backupId), accessToken, BackupRecoveryWire::manifest)
+    override suspend fun backupPreflight(serverUrl: String, accessToken: String, backupId: String): ApiResult<BackupPreflight> = backupCall("GET", serverUrl, BackupRecoveryRoutes.preflight(backupId), accessToken, BackupRecoveryWire::preflight)
+    private suspend fun <T> backupCall(method: String, serverUrl: String, route: String, accessToken: String, parse: (String) -> T): ApiResult<T> = when (val result = execute(method, serverUrl, route, accessToken, null)) {
+        is ApiResult.Success -> runCatching { parse(result.value) }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed backup recovery response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+    private suspend fun <T> backupMutation(serverUrl: String, route: String, accessToken: String, idempotencyKey: String,
+        parse: (String) -> T): ApiResult<T> = when (val result = execute("POST", serverUrl, route, accessToken, JsonBody(),
+            mapOf("Idempotency-Key" to idempotencyKey))) {
+        is ApiResult.Success -> runCatching { parse(result.value) }.fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed backup recovery response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
     override suspend fun alerts(serverUrl: String, accessToken: String, cursor: String?): ApiResult<OperationalAlertPage> =
         eventAlertCall("GET", serverUrl, EventAlertRoutes.page(cursor), accessToken, null, EventAlertWire::page)
 

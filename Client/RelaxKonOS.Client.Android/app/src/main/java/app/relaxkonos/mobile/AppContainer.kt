@@ -30,6 +30,9 @@ import app.relaxkonos.mobile.data.RecentOperationJournal
 import app.relaxkonos.mobile.data.OperationIndex
 import app.relaxkonos.mobile.data.OperationCenter
 import app.relaxkonos.mobile.data.EventAlertRepository
+import app.relaxkonos.mobile.data.BackupRecoveryRepository
+import app.relaxkonos.mobile.data.BackupRecoveryRequestJournal
+import app.relaxkonos.mobile.data.FileBackupRecoveryRequestStorage
 import app.relaxkonos.mobile.data.AlertNotificationStore
 import app.relaxkonos.mobile.data.ForegroundAlertNotifier
 import app.relaxkonos.mobile.data.ScriptTaskRepository
@@ -244,7 +247,9 @@ class AppContainer(context: Context) {
     val docker = app.relaxkonos.mobile.data.DockerRepository(gateway, session, operationIndex)
     val webPublishing = app.relaxkonos.mobile.data.WebPublishingRepository(gateway, session, elevations, operationIndex)
     val scriptTasks = ScriptTaskRepository(gateway, session, operationIndex)
-    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks)
+    val backupRecovery = BackupRecoveryRepository(gateway, session, operationIndex,
+        BackupRecoveryRequestJournal(FileBackupRecoveryRequestStorage(appContext.noBackupFilesDir)))
+    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery)
     val eventAlerts = EventAlertRepository(gateway, session)
     val alertNotificationStore = AlertNotificationStore(appContext)
     val foregroundAlertNotifier = ForegroundAlertNotifier(appContext, session, eventAlerts, alertNotificationStore, appScope)

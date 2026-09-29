@@ -51,14 +51,14 @@ class OperationIndexTest {
     }
 
     @Test
-    fun `compose git and script references remain distinct and hidden records stay hidden`() {
+    fun `compose git script and backup references remain distinct and hidden records stay hidden`() {
         val storage = MemoryStorage()
         val index = OperationIndex(storage)
         val alice = owner("installation-1", "alice")
         val bob = owner("installation-1", "bob")
-        listOf(OperationDomain.Compose, OperationDomain.GitBuild, OperationDomain.Script)
+        listOf(OperationDomain.Compose, OperationDomain.GitBuild, OperationDomain.Script, OperationDomain.Backup)
             .forEach { index.record(alice, it, "resource-${it.name}", "shared-id") }
-        assertEquals(3, OperationIndex(storage).forOwner(alice).size)
+        assertEquals(4, OperationIndex(storage).forOwner(alice).size)
         assertTrue(OperationIndex(storage).forOwner(bob).isEmpty())
 
         val compose = index.forOwner(alice).single { it.domain == OperationDomain.Compose }
@@ -67,7 +67,7 @@ class OperationIndexTest {
         index.record(alice, OperationDomain.Compose, compose.resourceId, compose.operationId)
         val restored = OperationIndex(storage)
         assertTrue(restored.isHidden(alice, OperationDomain.Compose, "shared-id"))
-        assertEquals(setOf(OperationDomain.GitBuild, OperationDomain.Script),
+        assertEquals(setOf(OperationDomain.GitBuild, OperationDomain.Script, OperationDomain.Backup),
             restored.forOwner(alice).map { it.domain }.toSet())
     }
 

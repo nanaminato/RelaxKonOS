@@ -232,6 +232,7 @@ private fun alertCategoryLabel(category: AlertNotificationCategory): Int = when 
 private fun alertTitle(type: String): String {
     val resource = when (type) {
         "deployment.operation_failed" -> R.string.alert_deployment_failed
+        "backup.definition_failed" -> R.string.alert_backup_definition_failed
         "certificate.renewal_failed" -> R.string.alert_certificate_renewal_failed
         "certificate.renewal_exhausted" -> R.string.alert_certificate_renewal_exhausted
         "certificate.expiring_soon" -> R.string.alert_certificate_expiring

@@ -404,6 +404,21 @@
 
     <string name="manage_title">管理</string>
     <string name="operations_title">タスクと復旧</string>
+    <string name="backup_recovery_title">バックアップと復旧</string>
+    <string name="backup_recovery_note">バックアップはサーバーで暗号化されます。変更前に復旧条件を確認してください。</string>
+    <string name="backup_recovery_empty">このアプリケーションに利用可能な検証済みバックアップはありません。</string>
+    <string name="backup_recovery_item">バックアップ %1$s · %2$s</string>
+    <string name="backup_recovery_objects">暗号化済みオブジェクト %1$d 件</string>
+    <string name="backup_recovery_preflight">復旧条件を確認</string>
+    <string name="backup_recovery_create">定義バックアップを作成</string>
+    <string name="backup_recovery_retry_create">バックアップ要求を再試行</string>
+    <string name="backup_recovery_request_unknown">前の要求は確認中です。再試行では同じ安全な要求キーを使用します。</string>
+    <string name="backup_recovery_created">バックアップ要求を受け付けました。検証済みの結果がこの一覧に表示されます。</string>
+    <string name="backup_recovery_create_failed">バックアップ要求を確認できませんでした。再試行前にタスク一覧を確認してください。</string>
+    <string name="backup_recovery_unavailable">バックアップ記録を読み取れませんでした。</string>
+    <string name="backup_recovery_ready_new_instance">復旧は新しい停止済みアプリケーション・インスタンスを作成できます。既存のアプリケーションは上書きされません。</string>
+    <string name="backup_recovery_blocked">復旧はブロックされています。表示されたすべての要件を先に解決してください。</string>
+    <string name="backup_recovery_preflight_failed">サーバーはこのバックアップの復旧可否を検証できませんでした。</string>
     <string name="operations_tasks">タスク</string>
     <string name="operations_subtitle">デプロイと公開の結果を確認</string>
     <string name="operations_empty">このアカウントのデプロイまたは公開操作はありません。</string>
@@ -413,6 +428,7 @@
     <string name="operations_compose">Compose プロジェクト</string>
     <string name="operations_git_build">Git ビルド</string>
     <string name="operations_script">スクリプトタスク</string>
+    <string name="operations_backup">アプリケーションのバックアップ</string>
     <string name="operations_detail">操作の詳細</string>
     <string name="operations_open_target">対象を開く</string>
     <string name="operations_stage">段階: %1$s</string>
@@ -449,6 +465,7 @@
     <string name="operations_alert_action_failed">アラート操作の結果を確認できません。</string>
     <string name="operations_acknowledge">確認済みにする</string>
     <string name="alert_deployment_failed">アプリのデプロイに失敗</string>
+    <string name="alert_backup_definition_failed">アプリのバックアップに失敗</string>
     <string name="alert_certificate_renewal_failed">証明書の更新に失敗</string>
     <string name="alert_certificate_renewal_exhausted">証明書の更新試行が終了</string>
     <string name="alert_certificate_expiring">証明書の期限が近づいています</string>

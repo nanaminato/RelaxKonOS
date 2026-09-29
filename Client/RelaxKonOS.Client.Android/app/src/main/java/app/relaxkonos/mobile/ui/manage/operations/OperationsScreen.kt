@@ -222,6 +222,7 @@ fun OperationsScreen(
                     OperationDomain.Compose -> R.string.operations_compose
                     OperationDomain.GitBuild -> R.string.operations_git_build
                     OperationDomain.Script -> R.string.operations_script
+                    OperationDomain.Backup -> R.string.operations_backup
                 }),
                 supporting = operationStatus(item),
                 selected = (item.reference.domain to item.reference.operationId) == state.selectedKey,
@@ -250,6 +251,7 @@ fun OperationsScreen(
                     OperationDomain.Compose -> onOpenCompose(selected.reference.resourceId)
                     OperationDomain.GitBuild -> onOpenGitBuild(selected.reference.operationId)
                     OperationDomain.Script -> onOpenScript(selected.reference.operationId)
+                    OperationDomain.Backup -> onOpenDeployment(selected.reference.resourceId)
                 }
             }) { Text(stringResource(R.string.operations_open_target)) }
             if (selected.cancellable && selected.check == OperationCheck.Verified) {
@@ -259,11 +261,11 @@ fun OperationsScreen(
             }
             TextButton(onClick = viewModel::requestHide) { Text(stringResource(R.string.operations_hide)) }
             val diagnostics = state.diagnostics
-            if (selected.reference.domain != OperationDomain.Website && diagnostics is ApiResult.Success && diagnostics.value.isNotEmpty()) {
+            if (selected.reference.domain != OperationDomain.Website && selected.reference.domain != OperationDomain.Backup && diagnostics is ApiResult.Success && diagnostics.value.isNotEmpty()) {
                 Text(stringResource(R.string.operations_diagnostics), style = MaterialTheme.typography.titleSmall)
                 diagnostics.value.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
-            OutlinedButton(onClick = {
+            if (selected.reference.domain != OperationDomain.Backup) OutlinedButton(onClick = {
                 pendingReport = OperationDiagnosticReport.create(selected,
                     (diagnostics as? ApiResult.Success)?.value.orEmpty(), diagnostics is ApiResult.Success)
                 pendingOperationId = selected.reference.operationId
@@ -316,7 +318,7 @@ private fun operationStatus(item: ObservedOperation): String = when (item.check)
     OperationCheck.Verified -> when (item.state?.lowercase()) {
         "queued", "running" -> stringResource(R.string.operations_running)
         "cancelling" -> stringResource(R.string.scripts_cancelling)
-        "succeeded" -> stringResource(R.string.operations_succeeded)
+        "succeeded", "verified" -> stringResource(R.string.operations_succeeded)
         "failed", "partialfailed", "timedout" -> stringResource(R.string.operations_failed)
         "cancelled" -> stringResource(R.string.operations_cancelled)
         "interrupted" -> stringResource(R.string.operations_interrupted)
