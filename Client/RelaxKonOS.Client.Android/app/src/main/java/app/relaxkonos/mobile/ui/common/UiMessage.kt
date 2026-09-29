@@ -60,6 +60,10 @@ fun problemMessage(code: String): UiMessage = UiMessage(
     when (code) {
         ProblemCodes.INVALID_CREDENTIAL -> R.string.error_invalid_credential
         ProblemCodes.LOGIN_RATE_LIMITED -> R.string.error_login_rate_limited
+        // A 503 about the server's own authentication backend, never about the typed password. It gets
+        // its own sentence because the generic refusal is actively misleading here: it reads as "the
+        // credential was judged and rejected", and the only remedy is on the server, not in the field.
+        ProblemCodes.AUTHENTICATION_UNAVAILABLE -> R.string.error_authentication_unavailable
         ProblemCodes.ACCOUNT_DISABLED -> R.string.error_account_disabled
         ProblemCodes.ACCOUNT_LOCKED -> R.string.error_account_locked
         ProblemCodes.ACCOUNT_EXPIRED -> R.string.error_account_expired

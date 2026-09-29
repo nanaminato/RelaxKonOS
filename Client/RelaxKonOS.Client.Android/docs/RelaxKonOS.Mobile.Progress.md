@@ -714,3 +714,21 @@ aapt2 compile --dir app/src/main/res -o <已存在的目录>/res.zip   # build-t
 ## 2026-09-29：Windows 权限提示与授权边界
 
 主页根据服务端 `executionEligibility.reason` 分别显示 Windows profile、Linux 保留身份/系统账户和缺少家目录原因；Windows 登录不再显示 Linux UID/root 的泛化文案。Android 的业务授权保留在客户端；宿主 UAC 只用于部署/启动特权 Helper，日常操作不要求用户操作 Windows。文件沿用专用路径授权；Windows 受管 Nginx/FRP 的执行规则由 [Server/Helper 运维契约](../../../docs/platform/RelaxKonOS.PrivilegedOperations.Operations.md) 定义。当前 Android 未提供 FRP 生命周期管理页面；该能力的 Server/桌面调用者已更新，不把它记为移动端功能完成。
+
+## 2026-09-29：登录 503 `authentication-unavailable` 的文案映射
+
+- **背景**：手机连 Ubuntu，登录界面只给出 `error_generic`（「服务器拒绝了该请求。」），而服务端同一时刻的日志是
+  `StatusCode=503 ProblemCode=authentication-unavailable`。这个码是 Linux **System Mode** 登录的**唯一**失败出口：
+  宿主账户密码由 root 的 PrivilegedHelper 校验，于是 Helper 未安装、Server/Helper 协议版本不一致（`1.1` vs `1.2`）、
+  `sudo -n` 规则失效、`/etc/pam.d/relaxkonos` 丢失、乃至数据库不可读，在 `LinuxPamProvider.Verify` 里全部折叠成
+  `CredentialError.Unknown` → 503。桌面端早已映射同一个 `type` URI（`LoginViewModel.MapProblemToMessage`），Android
+  漏了这一条，结果把「后端没能回答」读成了「你的凭据被拒绝了」——用户唯一能做的只剩重输一个从未被校验过的密码。
+- **契约镜像**：`ProblemCodes.AUTHENTICATION_UNAVAILABLE = "authentication-unavailable"`，与
+  `AuthenticationEndpointFilter.Failure` 写进 RFC 7807 `type` 的后缀逐字对齐（拼写由断言钉住）。
+- **文案**：`problemMessage` 增加该码映射，新增字符串键 `error_authentication_unavailable`（三语）。文案同时给出
+  **故障**（服务器无法校验宿主账户密码）与**出路**（检查服务器上的身份认证配置），刻意不写「请稍后再试」：
+  重试不会让一个缺失或版本不匹配的 Helper 出现。
+- **凭据安全**：它是 5xx，`isCredentialRejection()` 本来就只承认 4xx，所以保存的密码不会被删；新增断言把这一点钉住，
+  防止将来有人把这个码并进凭据判定（§7.3）。
+- 验证：`:app:assembleDebug` 与 `:app:testDebugUnitTest` 均成功，**57 个测试类、465 个用例、0 失败/错误/跳过**；
+  三份 `strings.xml` 均为 **982** 个键且键集一致（`ProblemCodesTest` 由 20 个用例增至 23 个）。

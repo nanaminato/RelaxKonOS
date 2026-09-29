@@ -123,6 +123,38 @@ class ProblemCodesTest {
     }
 
     @Test
+    fun `an unavailable authentication backend keeps the wire spelling the server writes`() {
+        // The server writes the code into the RFC 7807 `type` URI (`AuthenticationEndpointFilter.Failure`),
+        // so the spelling is the whole contract: a rename on either side has to fail here, not on a phone.
+        assertEquals("authentication-unavailable", ProblemCodes.AUTHENTICATION_UNAVAILABLE)
+        assertEquals(
+            ProblemCodes.AUTHENTICATION_UNAVAILABLE,
+            ProblemCodes.from("https://relaxkonos.app/problems/authentication-unavailable", null),
+        )
+    }
+
+    @Test
+    fun `a named 503 from the authentication backend is explained rather than shown as a generic refusal`() {
+        // On Linux the host password is checked through the privileged helper, so this code covers an
+        // absent, stale or version-mismatched helper, a missing PAM service and a failing sudo rule alike.
+        // "The server refused the request" reads as a verdict on the typed password; the remedy is on the
+        // server, so the sentence has to say so.
+        assertTrue(readsAsProblem(503, "https://relaxkonos.app/problems/authentication-unavailable", null))
+        assertEquals(
+            R.string.error_authentication_unavailable,
+            problemMessage(ProblemCodes.AUTHENTICATION_UNAVAILABLE).resId,
+        )
+    }
+
+    @Test
+    fun `an unavailable authentication backend is not a rejected credential`() {
+        // The server never reached the password question, so a stored one must survive the attempt
+        // (`…LoginCredentials.Design.md` §7.3). Deleting it here would punish the user for a server fault.
+        assertFalse(ApiResult.Problem(503, ProblemCodes.AUTHENTICATION_UNAVAILABLE, null).isCredentialRejection())
+        assertFalse(ApiResult.Problem(503, ProblemCodes.AUTHENTICATION_UNAVAILABLE, null).isSessionExpired())
+    }
+
+    @Test
     fun `the execution codes keep the wire spelling the server writes`() {
         // Mirror of `UserExecutionProblemTypes`: the client branches on these exact suffixes, so a
         // rename on either side has to fail a test rather than a user.

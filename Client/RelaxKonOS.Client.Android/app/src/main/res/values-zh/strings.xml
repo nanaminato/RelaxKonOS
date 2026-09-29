@@ -257,6 +257,7 @@
     <string name="debug_detail">调试信息：%1$s</string>
     <string name="error_invalid_credential">账户或密码不正确。</string>
     <string name="error_login_rate_limited">登录尝试过于频繁，请稍后再试。</string>
+    <string name="error_authentication_unavailable">服务器当前无法校验宿主账户密码，请检查服务器上的身份认证配置后重试。</string>
     <string name="error_account_disabled">该账户已被禁用。</string>
     <string name="error_account_locked">该账户已被锁定。</string>
     <string name="error_account_expired">该账户已过期。</string>

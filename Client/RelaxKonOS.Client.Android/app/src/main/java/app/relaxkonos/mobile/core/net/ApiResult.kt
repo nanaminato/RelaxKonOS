@@ -27,6 +27,21 @@ object ProblemCodes {
      * decision: see [ApiResult.Problem.isCredentialRejection], which excludes it.
      */
     const val LOGIN_RATE_LIMITED = "login-rate-limited"
+
+    /**
+     * The server reached no verdict about the submitted credential because its own authentication
+     * backend is unavailable (503, `RelaxKonOS.Login.md` §5).
+     *
+     * On Linux the host account password is verified through the root-owned privileged helper, so a
+     * missing, stale or version-mismatched helper, an absent PAM service, a failing `sudo` rule and an
+     * unreadable database all surface as this one code. That is exactly why it has to be named: the same
+     * status also carries "the password is wrong, but we cannot tell you" — reading it as a refusal sends
+     * the user to re-type a password that was never checked.
+     *
+     * It is a 5xx and never an answer about the credential, so
+     * [ApiResult.Problem.isCredentialRejection] already excludes it: a stored password stays put.
+     */
+    const val AUTHENTICATION_UNAVAILABLE = "authentication-unavailable"
     const val ACCOUNT_DISABLED = "account-disabled"
     const val ACCOUNT_LOCKED = "account-locked"
     const val ACCOUNT_EXPIRED = "account-expired"

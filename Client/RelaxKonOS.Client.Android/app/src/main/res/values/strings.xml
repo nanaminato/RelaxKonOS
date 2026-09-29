@@ -281,6 +281,7 @@
     <string name="debug_detail">Debug: %1$s</string>
     <string name="error_invalid_credential">The account or password is incorrect.</string>
     <string name="error_login_rate_limited">Too many sign-in attempts. Wait a moment and try again.</string>
+    <string name="error_authentication_unavailable">The server cannot check host account passwords right now. Check the server\'s authentication configuration and try again.</string>
     <string name="error_account_disabled">This account is disabled.</string>
     <string name="error_account_locked">This account is locked.</string>
     <string name="error_account_expired">This account has expired.</string>
