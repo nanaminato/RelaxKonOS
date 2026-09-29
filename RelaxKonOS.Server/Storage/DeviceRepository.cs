@@ -3,7 +3,7 @@ using RelaxKonOS.Server.Domain;
 
 namespace RelaxKonOS.Server.Storage;
 
-/// <summary>Device 仓储。按 (name, platform) 与 Id 索引。同一设备重复登录复用记录。</summary>
+/// <summary>Device storage. Id is the identity; name and platform are display/login lookup fields.</summary>
 public interface IDeviceRepository
 {
     Device? FindByNameAndPlatform(string name, string platform);
@@ -15,17 +15,15 @@ public interface IDeviceRepository
 public sealed class InMemoryDeviceRepository : IDeviceRepository
 {
     private readonly ConcurrentDictionary<Guid, Device> _byId = new();
-    private readonly ConcurrentDictionary<(string name, string platform), Guid> _byKey = new();
-
     public Device? FindByNameAndPlatform(string name, string platform)
-        => _byKey.TryGetValue((name, platform), out var id) && _byId.TryGetValue(id, out var d) ? d : null;
+        => _byId.Values.Where(d => d.Name == name && d.Platform == platform)
+            .OrderBy(d => d.Id).FirstOrDefault();
 
     public Device? FindById(Guid id) => _byId.TryGetValue(id, out var d) ? d : null;
 
     public Device Add(Device d)
     {
         _byId[d.Id] = d;
-        _byKey[(d.Name, d.Platform)] = d.Id;
         return d;
     }
 

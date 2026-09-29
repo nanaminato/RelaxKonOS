@@ -8,15 +8,17 @@ Each controller owns a distinct P-256 ECDSA key pair. The private key remains in
 
 The local Windows device is enrolled from a loopback-only Negotiate endpoint while the same local Windows administrator that runs Server is signed in. It is unavailable over a LAN address, tunnel, or reverse proxy. That route may also replace a lost local key for the same device; it never accepts a remote request. An enrolled controller creates a one-time, ten-minute pairing invitation for another controller. The invitation carries no private key and may be represented as a QR payload containing the server origin and invitation token.
 
+`deviceName` is a display label, not a unique enrollment key: Android commonly reports the same manufacturer/model on multiple phones, and a stale local record may use the same label. A valid invitation always creates a new server device identity; owner-key proof binds to that generated identity rather than to the name.
+
 The current desktop flow serializes the QR payload as base64-encoded UTF-8 JSON:
 
 ```json
 { "version": 1, "serverUrl": "https://host.example/", "token": "…", "expiresAt": "…" }
 ```
 
-Android must scan this exact payload with CameraX/ML Kit, show the resolved Server origin for explicit confirmation, and reject expired or non-HTTPS origins before creating its Android Keystore key. Manual paste is only an input alternative, not a second wire format.
+Android must accept this exact payload from a live QR scan, a user-selected local image, or manual paste; these are input alternatives, never distinct wire formats. Live scanning uses the permissionless Google Code Scanner when available, while local-image recognition uses the bundled ML Kit QR reader so it works without a model download. Before creating its Android Keystore key, the app shows the resolved HTTP(S) Server origin and expiry for explicit confirmation, and rejects expired or unsupported-protocol origins.
 
-To sign in, a controller requests a 32-byte, two-minute nonce and returns an ECDSA SHA-256 signature. The Server consumes each nonce once, then issues the usual short-lived access and refresh tokens with `amr=owner-device-key`.
+To sign in, a controller requests a 32-byte, two-minute nonce and returns an ECDSA SHA-256 signature over the raw nonce bytes (never over the base64url text). The signature is the ASN.1 DER SEQUENCE of RFC 3279 / X9.62: that is what Android Keystore (`SHA256withECDSA`), any JVM and OpenSSL emit natively, and the encoding both the mobile client and the desktop client must send. It is deliberately not the fixed-field IEEE P1363 `r‖s` concatenation, which is merely .NET's `ECDsa.SignData`/`VerifyData` default and is accepted by no other platform. The Server consumes each nonce once, then issues the usual short-lived access and refresh tokens with `amr=owner-device-key`.
 
 ## Host elevation
 
@@ -27,6 +29,6 @@ Owner devices can list and revoke other owner devices. The final active device c
 ## Mobile flow
 
 1. Generate a P-256 Android Keystore key with user authentication enabled when available.
-2. Scan a pairing QR code created by an enrolled controller.
+2. Scan a pairing QR code, select a local QR image, or paste the code created by an enrolled controller.
 3. Show the scanned Server origin and expiry, then submit the invitation token and SPKI public key; request and sign a nonce to obtain the normal login session.
 4. On each remote sign-in, repeat only nonce signing; never transmit an administrator or Microsoft-account password.

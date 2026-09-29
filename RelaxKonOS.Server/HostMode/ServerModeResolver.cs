@@ -29,13 +29,9 @@ public sealed class ServerModeResolver : IServerModeResolver
     private readonly string _listenerScope;
     private readonly ServerExecutionIdentityDto _identity;
     private readonly UserExecutionBackend _userExecutionBackend;
-    private readonly WindowsDesktopSessionOptions _windowsDesktopSession;
-
-    public ServerModeResolver(IConfiguration configuration, UserExecutionBackend userExecutionBackend,
-        WindowsDesktopSessionOptions windowsDesktopSession)
+    public ServerModeResolver(IConfiguration configuration, UserExecutionBackend userExecutionBackend)
     {
         _userExecutionBackend = userExecutionBackend;
-        _windowsDesktopSession = windowsDesktopSession;
         var configured = configuration["Server:Mode"]?.Trim().ToLowerInvariant() ?? "system";
         Mode = configured switch
         {
@@ -86,12 +82,10 @@ public sealed class ServerModeResolver : IServerModeResolver
         var limitations = new List<string>();
         if (user)
             limitations.AddRange(["user-mode-loopback-required", "privileged-feature-unavailable", "root-equivalent-docker-access", "guardian.cross_user_unavailable"]);
-        else if (_windowsDesktopSession.Enabled)
-            limitations.AddRange(["windows-desktop-single-operator", "windows-desktop-session-authentication"]);
-        else if (_userExecutionBackend == UserExecutionBackend.LocalIdentity)
+        if (!user && _userExecutionBackend == UserExecutionBackend.LocalIdentity)
             limitations.Add("user-execution-local-identity");
         return new ServerCapabilitiesDto(Mode, _identity, new ServerListenerDto(_listenerScope),
-            new ServerAuthenticationDto(user ? "currentUnixUser" : _windowsDesktopSession.Enabled ? "windowsDesktopSession" : "hostAccount", _pamTransport), capabilities, limitations);
+            new ServerAuthenticationDto(user ? "currentUnixUser" : "hostAccount", _pamTransport), capabilities, limitations);
     }
 
     private static string ResolveListenerScope(IConfiguration configuration)

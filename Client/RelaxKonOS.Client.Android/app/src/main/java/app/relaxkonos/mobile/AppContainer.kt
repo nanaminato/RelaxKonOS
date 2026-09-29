@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.core.auth.OwnerDeviceAuthenticationService
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.RelaxKonApi
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
@@ -20,6 +21,7 @@ import app.relaxkonos.mobile.data.ElevationCoordinator
 import app.relaxkonos.mobile.data.ElevationRepository
 import app.relaxkonos.mobile.data.FileProfileStorage
 import app.relaxkonos.mobile.data.FilesRepository
+import app.relaxkonos.mobile.data.HostOperatingSystemLookup
 import app.relaxkonos.mobile.data.ImageDecoder
 import app.relaxkonos.mobile.data.ImagePreviewCache
 import app.relaxkonos.mobile.data.PREVIEW_CACHE_DIRECTORY
@@ -37,6 +39,7 @@ import app.relaxkonos.mobile.security.CredentialVault
 import app.relaxkonos.mobile.security.DebugCredentialStore
 import app.relaxkonos.mobile.security.FileDebugCredentialStorage
 import app.relaxkonos.mobile.security.FileVaultStorage
+import app.relaxkonos.mobile.security.OwnerDeviceKeyStore
 import app.relaxkonos.mobile.security.VaultAccess
 import app.relaxkonos.mobile.security.VaultDiagnostics
 import app.relaxkonos.mobile.security.VaultKeyManager
@@ -186,7 +189,19 @@ class AppContainer(context: Context) {
 
     val gateway: RelaxKonGateway = RelaxKonApi(clientVersion = BuildConfig.VERSION_NAME)
 
-    val session = AuthSession(gateway)
+    /**
+     * 连接列表打开时，补全那些还没问过宿主的连接是哪一类操作系统。
+     *
+     * 它属于进程而不是某个页面：登录页的对话框与 Shell 内的连接管理读的是同一份记录，也就该走同一个入口。
+     */
+    val hostOperatingSystems = HostOperatingSystemLookup(profiles, gateway)
+
+    /** Android private keys for the Windows workstation owner-device protocol. */
+    val ownerDeviceKeys = OwnerDeviceKeyStore(appContext, biometrics)
+
+    val ownerDevices = OwnerDeviceAuthenticationService(gateway, ownerDeviceKeys)
+
+    val session = AuthSession(gateway, ownerDevices = ownerDevices)
 
     val elevations = ElevationRepository(gateway, session, vault)
 

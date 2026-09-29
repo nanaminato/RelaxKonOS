@@ -11,6 +11,14 @@ namespace RelaxKonOS.Server.Identity;
 /// Issues and verifies proof-of-possession challenges for owner devices. This service is disabled
 /// outside Windows 10/11 workstation editions, including every Windows Server SKU.
 /// </summary>
+/// <remarks>
+/// A challenge signature is ECDSA/SHA-256 over the raw 32-byte nonce, encoded as the RFC 3279 /
+/// X9.62 ASN.1 DER SEQUENCE. That is the only form every client platform emits natively: Android
+/// Keystore signs through <c>SHA256withECDSA</c>, and any JVM or OpenSSL caller produces the same
+/// bytes. .NET's <c>ECDsa.SignData</c>/<c>VerifyData</c> instead default to the fixed-field IEEE
+/// P1363 <c>r‖s</c> concatenation, which is not this contract; the format must therefore always be
+/// passed explicitly. Omitting it silently rejects every Android and OpenSSL signature.
+/// </remarks>
 public sealed class OwnerDeviceKeyService(IServiceScopeFactory scopes)
 {
     private static readonly TimeSpan ChallengeLifetime = TimeSpan.FromMinutes(2);
@@ -45,7 +53,8 @@ public sealed class OwnerDeviceKeyService(IServiceScopeFactory scopes)
                 var signatureBytes = Convert.FromBase64String(signature);
                 using var ecdsa = ECDsa.Create();
                 ecdsa.ImportSubjectPublicKeyInfo(Convert.FromBase64String(key.PublicKeySpki), out _);
-                if (!ecdsa.VerifyData(challenge.Nonce, signatureBytes, HashAlgorithmName.SHA256))
+                if (!ecdsa.VerifyData(challenge.Nonce, signatureBytes, HashAlgorithmName.SHA256,
+                        DSASignatureFormat.Rfc3279DerSequence))
                     throw new OwnerDeviceKeyException(401, "owner-device-signature-invalid");
             }
             catch (FormatException) { throw new OwnerDeviceKeyException(400, "owner-device-signature-invalid"); }

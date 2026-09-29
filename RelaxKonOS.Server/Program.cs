@@ -98,9 +98,7 @@ if (eventAlertsOptions.Enabled)
 // The ordinary-user execution backend is the same kind of decision, so it is resolved and
 // validated once, next to the mode, and passed along rather than re-read per call site.
 var userExecutionBackend = RelaxKonOS.Server.UserExecution.UserExecutionBackendResolver.Resolve(builder.Configuration, builder.Environment);
-var windowsDesktopSession = new WindowsDesktopSessionOptions(builder.Configuration, builder.Environment, userExecutionBackend);
-builder.Services.AddSingleton(windowsDesktopSession);
-var serverModeResolver = new ServerModeResolver(builder.Configuration, userExecutionBackend, windowsDesktopSession);
+var serverModeResolver = new ServerModeResolver(builder.Configuration, userExecutionBackend);
 builder.Services.AddSingleton<IServerModeResolver>(serverModeResolver);
 // The deployment installer registers this executable with the Windows Service
 // Control Manager. Opt in to its lifetime protocol so SCM receives the start
@@ -358,7 +356,7 @@ builder.Services.AddAuthentication(options =>
             }
         };
     })
-    .AddNegotiate(RelaxKonOSAuthSchemes.WindowsDesktopSession, _ => { })
+    .AddNegotiate(RelaxKonOSAuthSchemes.WindowsOwnerDeviceBootstrap, _ => { })
     .AddJwtBearer(RelaxKonOSAuthSchemes.FileCapability, opts =>
     {
         opts.TokenValidationParameters = new TokenValidationParameters
@@ -387,11 +385,8 @@ builder.Services.AddAuthentication(options =>
     });
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("WindowsDesktopSessionLogin", policy => policy
-        .AddAuthenticationSchemes(RelaxKonOSAuthSchemes.WindowsDesktopSession)
-        .RequireAuthenticatedUser());
     options.AddPolicy("WindowsOwnerDeviceBootstrap", policy => policy
-        .AddAuthenticationSchemes(RelaxKonOSAuthSchemes.WindowsDesktopSession)
+        .AddAuthenticationSchemes(RelaxKonOSAuthSchemes.WindowsOwnerDeviceBootstrap)
         .RequireAuthenticatedUser());
     foreach (var policyName in new[]
              {
@@ -551,6 +546,7 @@ builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostAccountPrivilegeSer
 builder.Services.AddScoped<RelaxKonOS.Server.Privileged.IHostFileAuthorizationService, RelaxKonOS.Server.Privileged.HostFileAuthorizationService>();
 builder.Services.AddSingleton<RelaxKonOS.Server.ProcessGuardian.IPrivilegedNativeServiceOperations, RelaxKonOS.Server.ProcessGuardian.PrivilegedNativeServiceOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IPrivilegedNginxOperations, RelaxKonOS.Server.WebServer.PrivilegedNginxOperations>();
+builder.Services.AddSingleton<RelaxKonOS.Server.Privileged.WindowsManagedRuntimeOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IPrivilegedSmbOperations, RelaxKonOS.Server.FileServices.PrivilegedSmbOperations>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.ISambaPlatformAdapter, RelaxKonOS.Server.FileServices.LinuxSambaPlatformAdapter>();
 builder.Services.AddSingleton<RelaxKonOS.Server.FileServices.IWindowsSmbPlatformAdapter, RelaxKonOS.Server.FileServices.WindowsSmbPlatformAdapter>();
@@ -653,7 +649,10 @@ builder.Services.AddSingleton<RelaxKonOS.Server.Firewall.IFirewallChangeAuthoriz
 // Web Server V1: host-global Nginx discovery/read state plus an explicitly confirmed,
 // marker-owned conf.d integration. It never accepts shell text or elevation credentials from HTTP.
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.IHostPrivilegeService, RelaxKonOS.Server.WebServer.HostPrivilegeService>();
-builder.Services.AddSingleton(builder.Configuration.GetSection("NginxManaged").Get<RelaxKonOS.Server.WebServer.NginxManagedOptions>() ?? new RelaxKonOS.Server.WebServer.NginxManagedOptions());
+var nginxManagedOptions = builder.Configuration.GetSection("NginxManaged").Get<RelaxKonOS.Server.WebServer.NginxManagedOptions>() ?? new();
+if (OperatingSystem.IsLinux() && builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(nginxManagedOptions.InstallationRoot))
+    nginxManagedOptions = new() { InstallationRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share", "RelaxKonOS", "debug", "webserver", "nginx") };
+builder.Services.AddSingleton(nginxManagedOptions);
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.NginxInstallPackageStore>();
 builder.Services.AddSingleton<RelaxKonOS.Server.Certificate.HostOperationJournal>();
 builder.Services.AddSingleton<RelaxKonOS.Server.WebServer.WebServerMetadataRepository>();
@@ -1048,6 +1047,7 @@ app.UseAuthorization();
 app.UseMiddleware<UserModeRequestGuardMiddleware>();
 app.UseRateLimiter();
 app.MapHealthEndpoints();
+app.MapServerHostEndpoints();
 app.MapAuthEndpoints();
 app.MapAliasEndpoints();
 app.MapFileEndpoints();

@@ -280,6 +280,9 @@ fun decideLogin(
 **取消「简洁模式」。** V1 §3.1 的启动裁决「有档案 → 简洁模式（隐藏密码框）」被本设计取代：密码框**始终可见**，因为隐藏它正是 G2/G3 的病根——「有没有保存密码」被编码成了「表单在不在」，而不是一个可读的状态。
 
 ```text
+                    RelaxKonOS        ← 品牌标记（登录卡片之外）
+              添加 Windows 10/11 设备  ← 文字链接
+                  安装或管理服务器      ← 文字链接（同款、同侧）
 ┌────────────────────────────────────────────┐
 │ 登录                                        │
 │ 连接到 RelaxKonOS 服务器。密码只用于在本机  │
@@ -287,14 +290,19 @@ fun decideLogin(
 │                                            │
 │ [错误横幅]                                  │
 │                                            │
+│ [连接管理]（有记录时才显示）                 │
 │ 服务器地址  [ office.example.com        ]   │
 │ 登录标识    [ root                      ]   │
 │ 密码        [                           ]   │
 │             🔒 已保存密码 · 留空即可用指纹登录  ← 状态行（supportingText）
 │ ☑ 在本机保存密码，用指纹解封                 │
-│ [ 登录 ]                    [ 管理连接 ]     │
+│ [ 登录 ]                                    │
 └────────────────────────────────────────────┘
 ```
+
+品牌标记下方的“添加 Windows 10/11 设备”是滚动内容的一部分，不能固定在安全区右上角；小高度设备上固定按钮会与标记重叠。“安装或管理服务器”紧随其后；连接管理入口保留在登录卡片内、服务器地址之前。它们要么创建可填入的服务器，要么选择已有身份，都是地址输入的前置动作。
+
+两条入口是**同类动作**，因此画成同一种形状：品牌标记下方的两个文字链接，同侧对齐，谁也不占一整行。这条界面里唯一的主动作是「登录」，把「安装或管理服务器」画成整宽描边按钮会把它误报成第二个主按钮；文字链接既保持它可达，也保持它与「添加 Windows 10/11 设备」的并列关系。两者上下排列而不是并排，是因为英文/日文文案在小屏上一行放不下两条链接。
 
 ### 6.2 「已保存密码」怎么表达
 
@@ -314,7 +322,15 @@ fun decideLogin(
 
 ### 6.3 连接管理（登录页与 Shell 内共用）
 
-每条记录展示：可读的服务器身份、登录标识、凭据状态、最后使用时间；两个**互不替代**的动作（资料 §11）：
+每条密码登录记录展示：服务器类型（直连或受管）、可读的服务器身份、登录标识、凭据状态、最后使用时间；点击有可用保存密码的直连记录会立即按 §5 的既有决策表连接。没有保存密码、凭据无法解封，或连接失败时，仍保留刚选记录的服务器和登录标识在表单中，并把焦点交给密码输入，而不是丢失用户的选择。
+
+连接管理还列出已配对的 **Windows 10/11 设备**，与密码登录记录分开呈现，明确标为“Windows 10/11 · 已配对的设备密钥登录”，并显示对应服务器身份。点击此项直接发起 nonce 签名登录；它不伪装成 Android 设备，也不使用或显示密码。
+
+连接管理在首部显示 Ubuntu、Windows Server、Windows 10、Windows 11 的平台标记，并在相邻商标声明中注明 Ubuntu 归 Canonical、Windows 系列归 Microsoft。图例与每条记录的标记来自**同一份映射**，所以图例不会宣传一条记录永远显示不出的标记，也不会漏掉记录能显示的标记。
+
+每条密码登录记录只有在**服务器自己说过它运行什么系统**时才显示对应标记：答案来自 `GET /api/v1.0/server/host-operating-system`（匿名、只回答系统类别，见 [架构文档](../../../docs/architecture/RelaxKonOS.Protocol.md)）。答案随记录保存，因此只有「还没问过」的记录才会在打开列表时并发补问一次；已经问过的记录（含答案是「不是这几类」）不再重问。**失败不是答案**：网络或契约失败保持「未问过」，下次打开再试，而不是把「问不到」固化成结论。受管登录不参与补问——它的地址是隧道，只在打开宿主时才存在。系统未知、或不是这四类时回落通用连接标记：绝不从 URL、端口、客户端平台或已配对设备推断服务器操作系统。已配对设备行使用 Windows 11 风格标记并明确其 Windows 10/11 兼容范围。
+
+密码登录记录左滑显示管理入口，其中的两个**互不替代**动作（资料 §11）为：
 
 | 动作 | 对凭据 | 对档案 | 确认文案要点 |
 | --- | --- | --- | --- |
@@ -454,13 +470,16 @@ CredentialStore(密文)
 | `core/auth/SavedCredentialState.kt` | 四态 + `credentialState(record, unlockMode)` 纯函数 |
 | `core/auth/LoginDecision.kt` | `LoginDecision` / `CredentialGap` / `decideLogin()` 纯函数 |
 | `ui/connect/LoginViewModel.kt` | 从 `LoginScreen.kt` 拆出，承载状态与两条执行路径 |
+| `data/HostOperatingSystemLookup.kt` | 打开连接管理时，为「还没问过宿主」的直连记录并发补全系统类别（§6.3） |
+| `ui/icons/HostPlatformMark.kt` | 系统类别 → 标记与无障碍名称的唯一映射；未知一律回落通用连接标记 |
+| `core/net/HostOperatingSystem.kt` | `HostOperatingSystemKind` 与线上名字解析（同名不同大小写一律接受，不认识的答案降为 `Unknown`） |
 
 ### 9.2 修改
 
 | 文件 | 改动 |
 | --- | --- |
-| `data/ConnectionProfileStore.kt` | 所有身份操作按 `(serviceId, identifier)`；直连旧记录的首字段在相同 `RKC2` 布局中直接解释为 URL 型 `serviceId` |
-| `security/model/SavedConnection.kt` | 直接改名 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey`（见 §12） |
+| `data/ConnectionProfileStore.kt` | 所有身份操作按 `(serviceId, identifier)`；直连旧记录的首字段在相同 `RKC2` 布局中直接解释为 URL 型 `serviceId`；布局升 `RKC3` 增加每条的宿主系统类别列（§6.3） |
+| `security/model/SavedConnection.kt` | 直接改名 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey` / `hostOperatingSystem`（见 §12） |
 | `security/CredentialVault.kt` | `VaultRecordState`、`VaultRecord.state`、`markInvalidated()` / `markAllInvalidated()`、`VaultRecordInvalidatedException`、`open()` 拒绝作废记录；AAD 与记录键按 `serviceId` 绑定 |
 | `security/BiometricUnlock.kt` | `VaultAccess.load` 映射新异常；明确保存时轮换一次失效 alias 并重新密封当前身份 |
 | `ui/connect/LoginScreen.kt` | 表单改为单形态；按钮文案随决策；凭据状态行；错误提示按 `CredentialGap` 分派 |
@@ -481,7 +500,9 @@ CredentialStore(密文)
 | `LoginDecisionTest`（新） | §5.1 决策表逐行，含「PasswordText 非空时 `Available` 被忽略」与「字段不全优先于一切」 |
 | `SavedCredentialStateTest`（新） | 四态派生；`Invalidated` 优先于 `unlockMode == null`；`Unavailable ≠ Invalidated` |
 | `SelectedLoginTest`（新） | 直连 URL 规范化；账号与路径大小写不折叠；同服务不同账号、不同服务同账号不碰撞；受管隧道换端口后 `loginId` / `credentialKey` 不变 |
-| `ConnectionProfileStoreTest`（改） | 按对删除只影响一条；同服务器多账号互不牵连 |
+| `ConnectionProfileStoreTest`（改） | 按对删除只影响一条；同服务器多账号互不牵连；宿主系统类别往返、只影响一条、重复答案不写盘、旧布局（`RKC2`）文件降级为空 |
+| `HostOperatingSystemLookupTest`（新） | §6.3 的补问规则：问过的不再问、`Unknown` 是终局答案、失败与拒绝都不落盘、受管登录不问、全部待问项都会被问到、重复答案不算变化 |
+| `HostOperatingSystemTest`（新） | 线上名字解析：camelCase 名字、不认识的答案降为 `Unknown` |
 | `CredentialVaultTest`（改） | `markInvalidated` 后记录与密文仍在、`open()` 被拒绝；「忘记密码」删记录；格式升版后旧文件降级为空 |
 | `AuthSessionTest`（改） | 认证失败不触碰凭据；`invalid-credential`、`429` 与 `Transport` 均不会修改保存凭据；同一受管身份重绑定后请求使用新端口而会话身份不变 |
 | `DebugCredentialStoreTest`（新） | §8.1 的兜底存储：连续保存两次后只剩一条、身份不匹配读取为空、`reveal` 返回可清零的副本、`delete` 只删匹配身份、`clear` 清空、异 magic 与截断文件降级为无记录、断言落盘内容确实含明文 |

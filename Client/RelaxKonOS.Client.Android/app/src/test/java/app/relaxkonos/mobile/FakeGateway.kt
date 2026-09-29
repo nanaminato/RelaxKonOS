@@ -12,6 +12,7 @@ import app.relaxkonos.mobile.core.net.DirectoryListing
 import app.relaxkonos.mobile.core.net.DownloadSink
 import app.relaxkonos.mobile.core.net.ElevationGrant
 import app.relaxkonos.mobile.core.net.FileElevationGrant
+import app.relaxkonos.mobile.core.net.HostOperatingSystemKind
 import app.relaxkonos.mobile.core.net.LoginSession
 import app.relaxkonos.mobile.core.net.PerformanceSnapshot
 import app.relaxkonos.mobile.core.net.ProcessPage
@@ -51,6 +52,7 @@ class FakeGateway : RelaxKonGateway {
         requireNotNull(onRollbackDeployment)(serverUrl, accessToken, applicationId, revisionId, idempotencyKey)
 
     var onLogin: (suspend (String, String, CharArray) -> ApiResult<LoginSession>)? = null
+    var onHostOperatingSystem: (suspend (String) -> ApiResult<HostOperatingSystemKind>)? = null
     var onRefresh: (suspend (String, String) -> ApiResult<AuthTokens>)? = null
     var onLogout: (suspend (String, String, String) -> ApiResult<Unit>)? = null
     var onElevation: (suspend (String, String, String, String, CharArray?, String?) -> ApiResult<ElevationGrant>)? = null
@@ -103,6 +105,14 @@ class FakeGateway : RelaxKonGateway {
     override suspend fun login(serverUrl: String, identifier: String, password: CharArray): ApiResult<LoginSession> {
         loginCount++
         return requireHandler(onLogin, "login")(serverUrl, identifier, password)
+    }
+
+    /** Addresses asked for their host operating system, so a test can prove who was *not* asked. */
+    val hostOperatingSystemLookups = mutableListOf<String>()
+
+    override suspend fun hostOperatingSystem(serverUrl: String): ApiResult<HostOperatingSystemKind> {
+        hostOperatingSystemLookups += serverUrl
+        return requireHandler(onHostOperatingSystem, "hostOperatingSystem")(serverUrl)
     }
 
     override suspend fun refresh(serverUrl: String, refreshToken: String): ApiResult<AuthTokens> {

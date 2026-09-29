@@ -7,11 +7,13 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.DataProtection;
 using RelaxKonOS.Protocol.Tunnels;
 using RelaxKonOS.Server.Runtimes;
+using RelaxKonOS.Server.Privileged;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.Server.Tunnels;
 
 /// <summary>Host-local frps supervisor. Configuration is private, generated TOML is never returned over HTTP.</summary>
-public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtectionProvider dataProtection, IRuntimeManager runtimes, IServiceScopeFactory scopes)
+public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtectionProvider dataProtection, IRuntimeManager runtimes, IServiceScopeFactory scopes, WindowsManagedRuntimeOperations windowsRuntime)
     : IManagedFrpsService, IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -26,6 +28,13 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
     public async Task<ManagedFrpsConfigurationDto> GetAsync(CancellationToken ct)
     {
         var saved = await ReadAsync(ct);
+        if (OperatingSystem.IsWindows() && saved is not null)
+        {
+            var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Status), ct);
+            _state = result.Success ? result.WindowsProcess?.Running == true ? ManagedFrpsState.Running : ManagedFrpsState.Stopped : ManagedFrpsState.Failed;
+            _problemCode = result.Success ? "" : WindowsManagedRuntimeOperations.Problem(result);
+            _startedAt = result.WindowsProcess?.StartedAt;
+        }
         return ToDto(saved);
     }
 
@@ -73,6 +82,18 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
             if (config.DashboardEnabled && (string.IsNullOrEmpty(config.DashboardUser) || string.IsNullOrEmpty(config.ProtectedDashboardPassword))) return await CompleteAsync(actorUserId, "frps.start", false, "tunnel.frps_dashboard_credentials_required", ct);
             var ports = Ports(config).Distinct().ToArray();
             foreach (var port in ports) EnsurePortAvailable(config.BindAddress, port);
+            if (OperatingSystem.IsWindows())
+            {
+                var request = new WindowsFrpsConfiguration(config.BindAddress, config.BindPort, config.AllowPorts,
+                    config.VhostHttpPort, config.VhostHttpsPort, config.ForceTls, _protector.Unprotect(config.ProtectedToken!),
+                    config.DashboardEnabled, config.DashboardAddress, config.DashboardPort, config.DashboardUser,
+                    config.ProtectedDashboardPassword is null ? null : _protector.Unprotect(config.ProtectedDashboardPassword));
+                var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Start, runtime.Version, Server: request), ct);
+                _state = result.Success ? ManagedFrpsState.Running : ManagedFrpsState.Failed;
+                _startedAt = result.WindowsProcess?.StartedAt;
+                _problemCode = result.Success ? "" : WindowsManagedRuntimeOperations.Problem(result);
+                return await CompleteAsync(actorUserId, "frps.start", result.Success, _problemCode, ct);
+            }
             Directory.CreateDirectory(_root); SetPrivateDirectory(_root);
             var toml = Path.Combine(_root, "frps.toml");
             var temporary = Path.Combine(_root, $".frps.{Guid.NewGuid():N}.tmp");
@@ -101,6 +122,11 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
         await _gate.WaitAsync(ct);
         try
         {
+            if (OperatingSystem.IsWindows())
+            {
+                var stopped = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Stop), ct);
+                if (!stopped.Success) return await CompleteAsync(actorUserId, "frps.stop", false, WindowsManagedRuntimeOperations.Problem(stopped), ct);
+            }
             if (_process is { } process)
             {
                 try { if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(ct); } }
@@ -114,7 +140,12 @@ public sealed class ManagedFrpsService(IHostEnvironment environment, IDataProtec
         finally { _gate.Release(); }
     }
 
-    public Task<IReadOnlyList<TunnelLogEntryDto>> GetLogsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<TunnelLogEntryDto>>(_logs.ToArray());
+    public async Task<IReadOnlyList<TunnelLogEntryDto>> GetLogsAsync(CancellationToken ct)
+    {
+        if (!OperatingSystem.IsWindows()) return _logs.ToArray();
+        var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frps, WindowsManagedRuntimeAction.Status), ct);
+        return result.Success ? result.WindowsProcess?.Logs ?? [] : [new(DateTimeOffset.UtcNow, "error", WindowsManagedRuntimeOperations.Problem(result))];
+    }
     private async Task<TunnelOperationResultDto> CompleteAsync(string actor, string action, bool succeeded, string code, CancellationToken ct) { await AuditAsync(actor, action, succeeded ? "succeeded" : "failed", code, ct); return new(succeeded, succeeded ? TunnelConnectionState.Connected : TunnelConnectionState.RuntimeUnavailable, code); }
     private async Task AuditAsync(string actor, string action, string result, string code, CancellationToken ct) { using var scope = scopes.CreateScope(); await scope.ServiceProvider.GetRequiredService<ITunnelAudit>().RecordAsync(actor, action, null, result, code, ct); }
     private static string? Validate(UpdateManagedFrpsConfigurationRequest r, StoredConfiguration? previous)

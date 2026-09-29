@@ -11,7 +11,8 @@ public sealed class SqliteDeviceRepository : IDeviceRepository
     public SqliteDeviceRepository(RelaxKonOSDbContext db) => _db = db;
 
     public Device? FindByNameAndPlatform(string name, string platform)
-        => _db.Devices.AsNoTracking().FirstOrDefault(d => d.Name == name && d.Platform == platform);
+        => _db.Devices.AsNoTracking().Where(d => d.Name == name && d.Platform == platform)
+            .OrderBy(d => d.Id).FirstOrDefault();
 
     public Device? FindById(Guid id)
         => _db.Devices.AsNoTracking().FirstOrDefault(d => d.Id == id);

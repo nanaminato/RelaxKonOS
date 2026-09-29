@@ -91,6 +91,10 @@ fun problemMessage(code: String): UiMessage = UiMessage(
 fun executionEligibilityMessage(reason: String?): UiMessage = UiMessage(
     when (reason) {
         ExecutionEligibilityReasons.SERVER_ACCOUNT_REQUIRED -> R.string.error_identity_not_executable
+        ExecutionEligibilityReasons.WINDOWS_PROFILE_REQUIRED -> R.string.error_windows_profile_required
+        ExecutionEligibilityReasons.RESERVED_IDENTITY -> R.string.error_reserved_identity
+        ExecutionEligibilityReasons.SYSTEM_ACCOUNT -> R.string.error_system_account
+        ExecutionEligibilityReasons.UNVERIFIED_HOME_DIRECTORY -> R.string.error_home_directory_required
         else -> R.string.error_identity_not_eligible
     },
 )

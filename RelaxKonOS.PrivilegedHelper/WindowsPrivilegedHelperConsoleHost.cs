@@ -2,6 +2,7 @@ using System.Security.Principal;
 using System.Text.Json;
 using System.Runtime.Versioning;
 using RelaxKonOS.Protocol.UserExecution;
+using RelaxKonOS.Protocol.Privileged;
 
 namespace RelaxKonOS.PrivilegedHelper;
 
@@ -65,6 +66,9 @@ public static class WindowsPrivilegedHelperConsoleHost
             + $"Authorized client SIDs: {string.Join(", ", authorizedClientSids)} (plus LocalSystem and local Administrators). Press Ctrl+C to stop.");
         try { await Task.Delay(Timeout.InfiniteTimeSpan, stopping.Token); }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
+        await pipeServer.StopAsync();
+        await WindowsManagedRuntimeHost.StopForHelperShutdownAsync();
+        await WindowsMihomoPrivilegedProcessHost.StopForHelperShutdownAsync();
     }
 
     private static string FindConfigPath(string[] args)
@@ -89,7 +93,8 @@ public static class WindowsPrivilegedHelperConsoleHost
 public sealed record WindowsHelperConsoleConfiguration(string PipeName, string SharedSecret,
     IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds, bool AllowConsoleDebug = false,
     IReadOnlyList<string>? DeveloperUserSids = null, bool EnableWindowsUserExecution = false,
-    int UserExecutionTimeoutSeconds = 25)
+    int UserExecutionTimeoutSeconds = 25, string? NginxRoot = null, string? RuntimePrivateRoot = null,
+    IReadOnlyList<string>? RuntimeArchiveRoots = null, IReadOnlyList<WindowsFrpRelease>? FrpReleases = null)
 {
     public void Validate()
     {
@@ -103,9 +108,11 @@ public sealed record WindowsHelperConsoleConfiguration(string PipeName, string S
             throw new InvalidOperationException("Windows Helper console configuration is incomplete.");
         if (Convert.FromBase64String(SharedSecret).Length < 32)
             throw new InvalidOperationException("Windows Helper console secret is too short.");
+        WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, [], FrpReleases).Validate();
     }
 
     internal WindowsHelperPipeConfiguration ToPipeConfiguration(IReadOnlyList<string> authorizedClientSids)
         => new(PipeName, SharedSecret, FileAllowedRoots, AllowedServiceIds,
-            DeveloperUserSids: authorizedClientSids, UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds);
+            DeveloperUserSids: authorizedClientSids, UserExecutionTimeoutSeconds: UserExecutionTimeoutSeconds,
+            WindowsRuntimes: WindowsManagedRuntimePolicy.Create(NginxRoot, RuntimePrivateRoot, RuntimeArchiveRoots, authorizedClientSids, FrpReleases));
 }

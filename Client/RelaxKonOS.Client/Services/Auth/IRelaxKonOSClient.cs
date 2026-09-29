@@ -9,10 +9,6 @@ public interface IRelaxKonOSClient
     /// <summary>登录。serverUrl 形如 "http://localhost:5090"。</summary>
     Task<LoginResponse> LoginAsync(string serverUrl, LoginRequest request, CancellationToken ct = default);
 
-    /// <summary>Explicit Windows Desktop loopback login using the current Windows session.</summary>
-    Task<LoginResponse> LoginWindowsDesktopSessionAsync(string serverUrl, WindowsDesktopSessionLoginRequest request,
-        CancellationToken ct = default);
-
     /// <summary>Creates or recovers this Windows device's owner key through local Windows Negotiate authentication.</summary>
     Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(string serverUrl, OwnerDeviceBootstrapRequest request,
         CancellationToken ct = default);

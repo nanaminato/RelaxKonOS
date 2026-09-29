@@ -40,7 +40,11 @@ public sealed class OwnerDeviceAuthenticationService(IRelaxKonOSClient client, I
         {
             using var key = ECDsa.Create();
             key.ImportPkcs8PrivateKey(material.PrivateKeyPkcs8, out _);
-            var signature = Convert.ToBase64String(key.SignData(nonce, HashAlgorithmName.SHA256));
+            // The wire contract is the RFC 3279 ASN.1 DER signature that Android Keystore, JVMs and
+            // OpenSSL emit natively. ECDsa.SignData defaults to IEEE P1363 instead, so the format is
+            // explicit here and in OwnerDeviceKeyService; a mismatch fails every signature check.
+            var signature = Convert.ToBase64String(
+                key.SignData(nonce, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence));
             return await client.SignInWithOwnerDeviceAsync(identity.EffectiveBaseUrl,
                 new OwnerDeviceSignInRequest(challenge.ChallengeId, material.DeviceId, signature), ct);
         }

@@ -1,5 +1,25 @@
 # RelaxKonOS Mobile 实施进展
 
+## 连接管理的宿主系统标记与登录页入口（已实现，2026-09-28）
+
+- 登录页的两条设置入口改为同类形状：品牌标记下方两个文字链接（「添加 Windows 10/11 设备」「安装或管理服务器」），同侧对齐、上下排列。「安装或管理服务器」原来是一条整宽描边按钮，而这条界面上唯一的主动作是「登录」，整宽按钮会把它读成第二个主按钮。两者上下排列而非并排，是因为英文/日文文案在小屏上一行放不下两条链接。
+- 连接管理里每条密码登录记录左侧的标记改为**该宿主的操作系统类别**，来源是新增的匿名只读路由 `GET /api/v1.0/server/host-operating-system`（只回答 `unknown` / `ubuntu` / `windows10` / `windows11` / `windowsServer`）。判定在服务端只有一处（`HostOperatingSystemDescriptor`）：Windows 工作站与 Server 靠 `RtlGetVersion` 的 `ProductType` 分开（`Environment.OSVersion` 在两者上都是 10.0.x），`BuildNumber >= 22000` 记作 Windows 11；Linux 只认 `/etc/os-release` 的 `ID=ubuntu`，其余发行版（含 Debian）与读不到的情况一律 `unknown`——宁可回落通用标记，也不套一个错的商标。这是 Server 上**唯一不需要凭据的信息面**，因此只带系统类别，不含账号、版本、配置或主机身份。
+- 答案是**随记录保存**的显示投影（`SavedLogin.hostOperatingSystem`），落盘布局升 `RKC3`。按本仓库既有规则「布局升版即降级为空、不写迁移」，升级后旧的连接列表会被清空——密码仍在保险箱里，重新登录一次即可恢复记录与指纹登录。`null`（还没问过）与 `unknown`（问过，且不是这四类）是两个不同状态：前者下次打开列表会再问一次，后者不会再产生请求。
+- 连接管理打开时会为「还没问过」的直连记录**并发补问一次**（`HostOperatingSystemLookup`，并发上限 4），答完即落盘并刷新列表。受管登录不参与：它的地址是隧道，只在打开宿主时才存在。失败与拒绝都不落盘——「问不到」不会被固化成结论，下次打开再试；重复答案不写盘，因此界面也不会无谓重组。
+- 首部图例与每行标记共用同一份映射（`ui/icons/HostPlatformMark.kt`），所以图例不会宣传一条记录永远显示不出的标记，也不会漏掉记录能显示的标记。标记带本地化无障碍名称（`host_platform_*`，三语同名）。
+- **未做**：Shell 内「更多 → 连接」页面仍不显示标记（那里原本不显示任何图标），桌面客户端的连接列表同样未加。两处都可以复用同一份映射，需要时再补。
+- **本轮验证**：服务端完整套件通过（含新增 `HostOperatingSystemChecks`，独立入口 `--host-os-only`）；Android `:app:assembleDebug` + `:app:testDebugUnitTest` 通过（49 类 / 435 用例 / 0 失败），三语 `strings.xml` 各 752 键且键集一致。新增/扩展用例：`HostOperatingSystemTest`（线上名字解析）、`HostOperatingSystemLookupTest`（补问规则）、`ConnectionProfileStoreTest`（宿主列往返、只影响一条、重复答案不写盘、`RKC2` 文件降级为空）。
+
+## Windows 10/11 所有者设备注册与登录（已实现；待真机验收，2026-09-28）
+
+- Android 登录页现在接受由已注册 Windows 控制器创建的一次性配对码。它只接受桌面端既有的 base64 UTF-8 JSON 载荷（`version`、HTTP(S) `serverUrl`、`token`、`expiresAt`）；拒绝过期、非 HTTP(S)、含用户信息/查询/片段或非根路径的地址，不引入 Android 专用的第二种协议格式。
+- 配对前，应用在 Android Keystore 生成不可导出的 P-256 密钥；私钥不进入文件、网络或备份。仅 `(serviceId, deviceId)` 落在 `noBackupFilesDir`，公钥 SPKI 与设备名通过现有 `accept-invitation` 路由注册。配对失败会清除刚生成的本地密钥和记录。
+- 后续登录先向既有 `challenge` 路由请求一次性 nonce，再由 Keystore 使用 ECDSA SHA-256 签名并调用 `sign-in`。强生物识别可用时每次签名都要求确认；只有屏幕锁/弱生物识别时使用 Android 平台允许的五分钟解锁窗口；完全没有本机认证能力时密钥仍不导出。此路径从不采集、缓存或提交 Windows/Microsoft/本地管理员密码。
+- 登录页的“添加 Windows 10/11 设备”位于品牌标记下方的主滚动内容中，不再固定在右上角而与小设备上的图标重叠。它进入独立页面后可粘贴配对码、打开免相机权限的系统 QR 扫描器，或选择本地图片交给内置 ML Kit QR 阅读器。扫描结果只回填到同一个输入框；解析成功后必须在确认服务器 HTTP(S) 地址与到期时间的对话框中再次确认，才会创建密钥或消耗邀请码。
+- “安装或管理服务器”和“连接管理”已移至服务器地址之前。连接列表点击有可用保存密码的直连记录会直接连接；没有可用密码或连接失败时保留刚选服务器和登录标识在表单中以便输入密码。列表还独立列出“Windows 10/11 · 已配对的设备密钥登录”并可直接用 Keystore 密钥登录；密码登录记录左滑可进入“忘记密码”或“删除登录记录”的确认流程。尚未在真实 Windows 10/11 主机和 Android 设备上验证邀请码过期、取消生物识别、屏幕锁窗口过期和密钥失效后的端到端行为。
+- “安装或管理服务器”现紧随“添加 Windows 10/11 设备”，而连接管理仍在服务器地址之前。连接管理的可滑动条目改为不透明表面，避免左滑操作层的文字与连接正文重叠；增加 Ubuntu、Windows Server、Windows 10、Windows 11 平台标记及 Canonical/Microsoft 商标归属说明。
+- **本轮验证**：` :app:compileDebugKotlin :app:testDebugUnitTest --rerun-tasks` 使用 Gradle 9.7.1 成功（26 个任务全部执行）。
+
 ## 无电脑部署规划（2026-09-26）
 
 新增 [总路线图](./RelaxKonOS.Mobile.Deployment.Roadmap.md) 及 AD01–AD08 独立计划，覆盖服务器初始化、应用部署、模板应用库、Docker/Compose、网站发布、Git/轻量编辑、终端/守护和运维恢复。
@@ -647,3 +667,7 @@ aapt2 compile --dir app/src/main/res -o <已存在的目录>/res.zip   # build-t
   正常授权提示而不是「已失效」。
 - V1-C 终端：SignalR 客户端与 PTY 渲染。
 - V1-E 其余域：Docker、部署、守护（按服务端能力门控）。
+
+## 2026-09-29：Windows 权限提示与授权边界
+
+主页根据服务端 `executionEligibility.reason` 分别显示 Windows profile、Linux 保留身份/系统账户和缺少家目录原因；Windows 登录不再显示 Linux UID/root 的泛化文案。Android 的业务授权保留在客户端；宿主 UAC 只用于部署/启动特权 Helper，日常操作不要求用户操作 Windows。文件沿用专用路径授权；Windows 受管 Nginx/FRP 的执行规则由 [Server/Helper 运维契约](../../../docs/platform/RelaxKonOS.PrivilegedOperations.Operations.md) 定义。当前 Android 未提供 FRP 生命周期管理页面；该能力的 Server/桌面调用者已更新，不把它记为移动端功能完成。

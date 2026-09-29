@@ -106,3 +106,9 @@ Server 使用新增 `HostIdentityChange` 短期授权，精确目标 `host/ident
 Linux 仅支持固定 `host/environment/machine` 的 `/etc/environment` provider。Helper 先确认本机 PAM 配置存在未禁用、未重定向 `envfile` 的 `pam_env.so`，否则返回不支持；不会伪造 Linux `HostUser` 存储。读写使用受限无 shell 语法的保真解析、字节 revision、Helper 互斥、写前二次 revision 检查、同目录临时文件、落盘及原子替换、读回验证。保留原文件模式并拒绝链接/目录。其生效语义是“新的 PAM 登录会话”，绝不声称会更新运行中进程、Shell 配置或 systemd 服务。
 
 原始变量仅存在于受认证本地 IPC 的 `hostEnvironment` 结果；禁止直接透传 HTTP、普通审计或诊断。审计只记录资源标识摘要。环境 HTTP/授权协调器已接入；Windows 实机读写/注册表 ACL/服务运行时隔离，以及 Linux 真实 PAM 登录、外部改写与回滚仍待指定远程测试目标验证。
+
+## Windows 日常授权不需要宿主 UAC
+
+首次安装/更新 LocalSystem 服务或启动开发控制台时使用提升的 Windows 会话。之后普通权限 Server 通过既有命名管道调用 Helper，客户端授予约 5 分钟、绑定会话与资源的权限；Helper 不再请求宿主点击确认。Windows 受管 Nginx 的安装、配置和生命周期，以及受管 frpc/frps 生命周期均通过协议 1.2 的固定入口执行。Helper 核验软件包来源、保存只读完整性清单并持有进程；不接受任意程序、命令行、环境或 PID。
+
+开发时使用普通 `dotnet run --project RelaxKonOS.Server --launch-profile http`，再从管理员 PowerShell 启动 `dotnet run --project RelaxKonOS.PrivilegedHelper -- --console --config <debug-config>`；两侧管道和密钥一致，Server SID 获准且配置 `runtimeArchiveRoots` 为 Server 包暂存目录。文件范围与软件包入口独立。完整步骤及受管目录限制见 [开发调试指南](../docs/development/RelaxKonOS.Develop.md) 和 [特权操作运维说明](../docs/platform/RelaxKonOS.PrivilegedOperations.Operations.md)。

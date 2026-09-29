@@ -103,7 +103,7 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
         // the executor in-process also avoids a second, debugger-hostile worker process.
         var result = await PrivilegedOperationExecutor.ExecuteAsync(request,
             new PrivilegedOperationPolicy(configuration.FileAllowedRoots, configuration.FileAllowedRoots,
-                configuration.FileAllowedRoots, configuration.AllowedServiceIds),
+                configuration.FileAllowedRoots, configuration.AllowedServiceIds, configuration.WindowsRuntimes),
             progress => WriteProtocolFrameAsync(pipe, secret, progress, CancellationToken.None));
         await WriteResultAsync(pipe, secret, result, cancellationToken);
     }
@@ -179,4 +179,4 @@ internal sealed class WindowsPrivilegedPipeServer(WindowsHelperPipeConfiguration
 internal sealed record WindowsHelperPipeConfiguration(string PipeName, string SharedSecret,
     IReadOnlyList<string> FileAllowedRoots, IReadOnlyList<string> AllowedServiceIds,
     string? ServerServiceSid = null, IReadOnlyList<string>? DeveloperUserSids = null,
-    int UserExecutionTimeoutSeconds = 25);
+    int UserExecutionTimeoutSeconds = 25, WindowsManagedRuntimePolicy? WindowsRuntimes = null);

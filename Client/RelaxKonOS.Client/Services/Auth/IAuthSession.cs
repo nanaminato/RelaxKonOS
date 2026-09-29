@@ -48,9 +48,6 @@ public interface IAuthSession
         bool rememberPassword,
         CancellationToken ct = default);
 
-    Task<LoginResponse> LoginWindowsDesktopSessionAsync(ServerConnectionIdentity identity,
-        WindowsDesktopSessionLoginRequest request, bool rememberServer, CancellationToken ct = default);
-
     /// <summary>Creates or recovers this Windows device's owner key through local Windows session authentication.</summary>
     Task<LoginResponse> BootstrapWindowsOwnerDeviceAsync(ServerConnectionIdentity identity, string deviceName,
         string clientVersion, CancellationToken ct = default);

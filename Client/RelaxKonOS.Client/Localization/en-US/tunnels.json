@@ -225,6 +225,8 @@
     "tunnels.problem.tunnel.runtime_previous_unhealthy": "The previous FRP runtime version did not pass its health check.",
     "tunnels.problem.tunnel.runtime_release_not_configured": "No trusted FRP runtime release is configured for this platform and version.",
     "tunnels.problem.tunnel.runtime_start_failed": "The managed FRP runtime could not be started.",
+    "tunnels.problem.privileged-helper-unavailable": "The privileged helper is unavailable. Check that it is running on the host and its connection settings match.",
+    "tunnels.problem.tunnel.runtime_helper_policy_denied": "The host privileged helper denied this runtime operation. Check the trusted version and managed directory settings.",
     "tunnels.problem.tunnel.runtime_uninstall_confirmation_required": "Confirm runtime uninstallation before continuing.",
     "tunnels.problem.tunnel.runtime_uninstall_failed": "The managed FRP runtime could not be uninstalled.",
     "tunnels.problem.tunnel.runtime_version_invalid": "Select a valid FRP runtime version.",

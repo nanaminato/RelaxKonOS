@@ -168,13 +168,19 @@
                         <TextBlock Text="{Binding OwnerDeviceTitle}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{Binding OwnerDeviceDescription}"
                                    TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <WrapPanel>
+                        <Grid IsVisible="{Binding WindowsOwnerDeviceBootstrapAvailable}" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                            <TextBlock Text="{Binding OwnerDeviceSetupHeading}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                             <Button Classes="connect-button" Content="{Binding BootstrapWindowsOwnerDeviceText}"
                                     Command="{Binding BootstrapWindowsOwnerDeviceCommand}"
-                                    IsVisible="{Binding WindowsOwnerDeviceBootstrapAvailable}" Margin="0,0,8,0" />
+                                    Grid.Column="1" VerticalAlignment="Center" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                            <TextBlock Text="{Binding OwnerDeviceSignInHeading}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                             <Button Classes="connect-button" Content="{Binding ConnectOwnerDeviceText}"
-                                    Command="{Binding ConnectOwnerDeviceCommand}" />
-                        </WrapPanel>
+                                    Command="{Binding ConnectOwnerDeviceCommand}" Grid.Column="1" VerticalAlignment="Center" />
+                        </Grid>
                         <StackPanel IsVisible="{Binding OwnerDevicePassphraseInputVisible}" Spacing="4">
                             <TextBox Classes="connection-input" Text="{Binding OwnerDeviceKeyPassphrase}" PasswordChar="•" MaxLength="256"
                                      HorizontalAlignment="Stretch" MaxWidth="520"
@@ -183,8 +189,12 @@
                                        Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.72" />
                         </StackPanel>
                         <Border Background="{DynamicResource BorderDefaultBrush}" Height="1" Margin="0,2" />
-                        <TextBlock Text="{Binding OwnerDevicePairingDescription}" TextWrapping="Wrap" FontSize="12"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding OwnerDevicePairingHeading}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding OwnerDevicePairingDescription}" TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" Opacity="0.72" />
+                        </StackPanel>
                         <!-- Mirror the pairing-code presentation in Account Security: full-width,
                              visually wrapped, and tall enough for the code to remain legible. -->
                         <TextBox Text="{Binding OwnerDevicePairingCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -225,9 +235,6 @@
                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="10">
                     <Button Classes="primary connect-button" Content="{Binding ConnectText}" Command="{Binding ConnectCommand}"
                             IsVisible="{Binding StandardAuthenticationVisible}" />
-                    <Button Classes="connect-button" Content="{Binding WindowsDesktopSessionConnectText}"
-                            Command="{Binding ConnectWindowsDesktopSessionCommand}"
-                            IsVisible="{Binding WindowsDesktopSessionFooterAvailable}" />
                 </StackPanel>
             </Grid>
         </Border>

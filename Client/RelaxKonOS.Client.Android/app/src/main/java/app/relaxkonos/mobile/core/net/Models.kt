@@ -51,6 +51,15 @@ data class LoginSession(
     val executionEligibility: ExecutionEligibility = ExecutionEligibility.Available,
 )
 
+/** A short-lived nonce that an enrolled owner device signs instead of sending a host password. */
+data class OwnerDeviceChallenge(
+    val challengeId: String,
+    val nonce: String,
+)
+
+/** Server acknowledgement for an Android public key enrolled through a Windows-created invitation. */
+data class OwnerDeviceEnrollment(val deviceId: String)
+
 /** `HostElevationResult` / result of the one-shot elevation call. */
 data class ElevationGrant(val elevated: Boolean, val expiresAtMillis: Long?)
 

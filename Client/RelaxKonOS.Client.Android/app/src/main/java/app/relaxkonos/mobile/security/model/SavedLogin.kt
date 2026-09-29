@@ -1,6 +1,7 @@
 package app.relaxkonos.mobile.security.model
 
 import app.relaxkonos.mobile.core.auth.loginId
+import app.relaxkonos.mobile.core.net.HostOperatingSystemKind
 import app.relaxkonos.mobile.security.VaultKind
 import app.relaxkonos.mobile.security.recordId
 import app.relaxkonos.mobile.servercenter.ServerInstallationId
@@ -28,6 +29,18 @@ data class SavedLogin(
      * every start so the two cannot drift apart (§2.2, §4.2, D6).
      */
     val hasSavedCredential: Boolean = false,
+    /**
+     * The operating system class of the host this login points at, or `null` while nobody has asked.
+     *
+     * Another display projection, and it is read the same way [hasSavedCredential] is: what the server
+     * said about *itself* when the list asked (`RelaxKonOS.Protocol.HostOperatingSystemDto`), never a
+     * guess from the address.
+     *
+     * `null` and [HostOperatingSystemKind.Unknown] are deliberately different states: the first means
+     * "no answer yet" and is worth asking again next time the list opens, the second means "asked, and
+     * this host is not one this build draws a mark for" and must not cost a request every time.
+     */
+    val hostOperatingSystem: HostOperatingSystemKind? = null,
 ) {
     val id: String get() = loginId(serviceId, identifier)
 

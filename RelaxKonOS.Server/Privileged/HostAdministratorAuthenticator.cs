@@ -46,11 +46,13 @@ public sealed class HostAdministratorAuthenticator(IIdentityProvider identities,
         IntPtr token = IntPtr.Zero;
         try
         {
-            if (!LogonUser(account, domain, password, Logon32LogonNetwork, Logon32ProviderDefault, out token))
+            // The administrator challenge uses an interactive logon token: network logon can
+            // strip local administrative membership without supplying a linked UAC token.
+            // This validates credentials only; the token never starts a process or impersonates.
+            if (!LogonUser(account, domain, password, Logon32LogonInteractive, Logon32ProviderDefault, out token))
                 return new(false, "elevation-password-invalid", "none");
             using var identity = new WindowsIdentity(token);
-            var principal = new WindowsPrincipal(identity);
-            return principal.IsInRole(WindowsBuiltInRole.Administrator)
+            return WindowsAdministratorMembership.IsAdministratorOrCanElevate(identity)
                 ? new(true, string.Empty, "windows-logonuser-administrators")
                 : new(false, "elevation-account-not-administrator", "none");
         }
@@ -66,13 +68,13 @@ public sealed class HostAdministratorAuthenticator(IIdentityProvider identities,
 
     private static void ParseUsername(string value, out string account, out string? domain)
     {
-        if (value.IndexOf('@') is var at && at >= 0) { account = value[..at]; domain = value[(at + 1)..]; return; }
         if (value.IndexOf('\\') is var slash && slash >= 0) { domain = value[..slash]; account = value[(slash + 1)..]; return; }
+        if (value.Contains('@')) { account = value; domain = null; return; }
         account = value;
         domain = Environment.MachineName;
     }
 
-    private const int Logon32LogonNetwork = 3;
+    private const int Logon32LogonInteractive = 2;
     private const int Logon32ProviderDefault = 0;
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

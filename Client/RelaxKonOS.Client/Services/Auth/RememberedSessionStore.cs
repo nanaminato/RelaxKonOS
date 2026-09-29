@@ -76,6 +76,7 @@ internal sealed record LegacyRememberedSession(string ServerUrl, AuthTokens Toke
 /// </summary>
 public sealed class RememberedSessionStore : IRememberedSessionStore
 {
+    private const string RemovedWindowsDesktopSessionIdentifier = "windows-desktop-session";
     private static readonly byte[] Entropy = "RelaxKonOS.RememberedSession.v2"u8.ToArray();
     private static readonly IPlatformSecretStore MacKeychainStore =
         new MacKeychainStore(PlatformSecretSlot.MacKeychain("RelaxKonOS.Client.RememberedSession"));
@@ -305,7 +306,9 @@ public sealed class RememberedSessionStore : IRememberedSessionStore
                 ?? Array.Empty<SavedLoginProfile>();
             // A record without a stable identity cannot address any login; drop it instead of surfacing
             // an entry whose credential key would be empty.
-            return profiles.Where(profile => !string.IsNullOrWhiteSpace(profile.ServiceId)).ToArray();
+            return profiles.Where(profile => !string.IsNullOrWhiteSpace(profile.ServiceId)
+                                             && !string.Equals(profile.Identifier, RemovedWindowsDesktopSessionIdentifier,
+                                                 StringComparison.Ordinal)).ToArray();
         }
 
         var legacy = JsonSerializer.Deserialize<LegacyRememberedSession>(bytes, RelaxKonOSJsonOptions.Default);

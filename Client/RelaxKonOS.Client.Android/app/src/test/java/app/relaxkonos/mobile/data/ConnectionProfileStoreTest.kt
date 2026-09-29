@@ -1,6 +1,9 @@
 package app.relaxkonos.mobile.data
 
+import app.relaxkonos.mobile.core.net.HostOperatingSystemKind
 import app.relaxkonos.mobile.security.model.SavedLogin
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -184,6 +187,75 @@ class ConnectionProfileStoreTest {
         store.upsert(alpha)
         val full = storage.read()!!
         storage.write(full.copyOfRange(0, full.size - 2))
+
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test
+    fun `a host operating system survives a round trip`() {
+        store.upsert(alpha.copy(hostOperatingSystem = HostOperatingSystemKind.WindowsServer))
+
+        assertEquals(HostOperatingSystemKind.WindowsServer, store.all().single().hostOperatingSystem)
+    }
+
+    @Test
+    fun `a login nobody has asked keeps no host answer`() {
+        store.upsert(alpha)
+
+        assertNull(store.all().single().hostOperatingSystem)
+    }
+
+    @Test
+    fun `storing a host answer addresses exactly one login`() {
+        store.upsert(alpha)
+        store.upsert(otherAccount)
+
+        assertTrue(store.setHostOperatingSystem(server, "nana", HostOperatingSystemKind.Ubuntu))
+
+        assertEquals(HostOperatingSystemKind.Ubuntu, store.all().first { it.identifier == "nana" }.hostOperatingSystem)
+        assertNull(store.all().first { it.identifier == "root" }.hostOperatingSystem)
+    }
+
+    @Test
+    fun `storing the same host answer again does not rewrite the file`() {
+        val counting = CountingProfileStorage()
+        val watched = ConnectionProfileStore(counting)
+        watched.upsert(alpha.copy(hostOperatingSystem = HostOperatingSystemKind.Ubuntu))
+        val writesBefore = counting.writes
+
+        assertFalse(watched.setHostOperatingSystem(server, "nana", HostOperatingSystemKind.Ubuntu))
+
+        assertEquals(writesBefore, counting.writes)
+    }
+
+    @Test
+    fun `a host answer for a login that is gone writes nothing`() {
+        val counting = CountingProfileStorage()
+        val watched = ConnectionProfileStore(counting)
+        watched.upsert(alpha)
+        val writesAfterUpsert = counting.writes
+
+        assertFalse(watched.setHostOperatingSystem(server, "nobody", HostOperatingSystemKind.Ubuntu))
+
+        assertEquals(writesAfterUpsert, counting.writes)
+    }
+
+    @Test
+    fun `a file written by the previous layout is discarded rather than half-read`() {
+        // `RKC2` had no host column. Reading it as if it had one would misplace every byte after the
+        // first record, so the layout rule is "a version this build does not know means empty" — and
+        // this is the row that keeps that honest.
+        val previous = ByteArrayOutputStream()
+        DataOutputStream(previous).use { output ->
+            output.writeInt(0x524B4332)
+            output.writeInt(1)
+            output.writeUTF(server)
+            output.writeUTF("nana")
+            output.writeLong(100L)
+            output.writeByte(0)
+            output.writeByte(1)
+        }
+        storage.write(previous.toByteArray())
 
         assertTrue(store.all().isEmpty())
     }
