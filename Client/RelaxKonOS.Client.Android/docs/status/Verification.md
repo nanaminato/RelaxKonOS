@@ -159,14 +159,14 @@
 
 ## 12. BP 测试进度
 
-> BP24-M1 对应第一批测试追踪；本表于 2026-09-30 建立；BP01-M1 在提交 `89114399` 上完成静态核对、Debug 主代码与单元测试代码编译，24 个专项 JVM 用例通过。拉取后的 `0a59bb52` 尚未复测；BP02-M1 自动化检查及设备/宿主验收仍未执行。第 11 节历史证据不自动覆盖尚未实现的新功能。
+> BP24-M1 对应第一批测试追踪；本表于 2026-09-30 建立；BP01-M1 在提交 `89114399` 上完成静态核对、Debug 主代码与单元测试代码编译，24 个专项 JVM 用例通过，后续提交尚未复测该组用例。BP02-M1 在提交 `02b54f19` 上完成 Debug 主代码与单元测试代码编译，12 个专项 JVM 用例通过；设备/宿主验收仍未执行。第 11 节历史证据不自动覆盖尚未实现的新功能。
 
 实现是否完成只在 Progress 更新；用例准备使用“未开始 / 进行中 / 已准备”，测试代码与场景清单作为准备证据，准备缺失不阻止下一项实现。各执行列按“未执行 / 进行中 / 部分通过 / 通过 / 失败 / 环境受限 / 不适用”记录每类测试状态。尚无功能代码不记为失败；没有尝试执行不记为环境受限。新增后续批次时沿用 BP 编号分行，不把测试完成设为下一实现步骤的前置条件。
 
 | 关联实现 | 用例准备 | 自动化构建/测试 | 手机/平板交互 | Ubuntu 宿主 | Windows 宿主 | 重点范围 / 待补证据 |
 | --- | --- | --- | --- | --- | --- | --- |
 | BP01-M1 | 进行中 | 通过（`89114399`：Debug 主代码/单元测试代码编译；专项 JVM 24/24）；`0a59bb52` 未复测 | 未执行 | 未执行 | 未执行 | wire/HTTP/Repository/Journal 24 个用例已执行；取消竞争、完整认证刷新、设备 SAF 与 OperationCenter 端到端用例待补；执行证据 BP01-M1-V1 见下文，APK/仪器测试/lint 不在本次范围 |
-| BP02-M1 | 进行中 | 未执行（按用户要求跳过 Android 构建/测试） | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Editor 12 个用例；实际认证刷新、真实消费者网络、手机/平板交互待补；静态证据见下文 |
+| BP02-M1 | 进行中 | 通过（`02b54f19`：Debug 主代码/单元测试代码编译；专项 JVM 12/12） | 未执行 | 未执行 | 未执行 | wire/HTTP/Editor 12 个用例已执行；实际认证刷新、真实消费者网络、手机/平板交互待补；执行证据 BP02-M1-V1 见下文，APK/仪器测试/lint 不在本次范围 |
 | BP03-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 全新安装、手机包/服务器引用、已有实例接管、启停/重启/重载 |
 | BP03-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 静态/反代、配置错误、端口冲突、并发更新与断线核实 |
 | BP04-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 预检/ACME/自签名/续期/撤销/删除/取消、秘密脱敏 |
@@ -216,13 +216,39 @@ $bp01Gradle = 'C:/Users/betha/.gradle/wrapper/dists/gradle-9.7.1-all/6yde0y3ecw7
 - 在 `89114399` 上复查三语 XML：各 1,081 个字符串键，无重复且键集一致；运维页面 134 个 `R.string` 引用全部存在。静态比对共享契约：6 个服务、4 个动作、6 个状态、17 个阶段及其 camelCase wire 值一致，15 个共享安装问题码均有 Android 定义。后续新增代理资源的静态证据另见 BP02-M1。
 - 编译仅报告 `OperationsScreen.kt:253` 的 Material 3 `TabRow` 弃用警告，无编译错误。已有缺口仍见上面的待补范围；该次未执行其他 JVM 用例、设备测试或宿主集成验收。
 
-### BP02-M1 静态证据与未执行范围（2026-09-30）
+### BP02-M1 静态证据与待补范围（2026-09-30）
 
-- 工作树新增 `OutboundProxyWireTest`（4）、`OutboundProxyHttpTest`（2）、`OutboundProxyEditorTest`（6），共 12 个用例。覆盖 URL 凭据原样回读/提交、HTTPS 空值/NO_PROXY、独立范围、Desktop 上游、严格枚举/必需字段、当前 GET/PUT/DELETE 与认证头、明确拒绝/损坏响应、确认取消零写入、固定确认草稿、结果不明确先刷新、编辑放弃、确认期间切身份、旧响应隔离、离页秘密状态清理。用例尚未编译或运行；401 刷新/并发设置等可执行集成用例待补。
+- `OutboundProxyWireTest`（4）、`OutboundProxyHttpTest`（2）、`OutboundProxyEditorTest`（6），共 12 个用例。覆盖 URL 凭据原样回读/提交、HTTPS 空值/NO_PROXY、独立范围、Desktop 上游、严格枚举/必需字段、当前 GET/PUT/DELETE 与认证头、明确拒绝/损坏响应、确认取消零写入、固定确认草稿、结果不明确先刷新、编辑放弃、确认期间切身份、旧响应隔离、离页秘密状态清理。初次交付仅准备用例，基本测试结果见 BP02-M1-V1；401 刷新/并发设置等可执行集成用例待补。
 - `git diff --check` 通过。Python ElementTree 解析三语资源：各 1147 个唯一键、键集一致，新增代理页面/映射及设置/Docker 入口资源引用均存在。该检查不执行 Android 资源或 Compose 编译。
-- .NET 临时控制台直接编入当前共享 `DockerProxyContracts.cs`、`RelaxKonOSJsonOptions.cs`、`RelaxKonOSEndpoints.cs`；`DOTNET_CLI_HOME=/tmp/relaxkon-dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run --project /tmp/relaxkon-proxy-wire/Wire.csproj --verbosity quiet` 通过。确认当前路由、十字段保存请求、camelCase 枚举/字段、确认字段，并用 Python 比较实际 .NET 状态 JSON 与 Android `PROXY_STATUS` 用例 fixture 完全一致（包括 Desktop 上游）。仅为共享契约格式核对，不是 Android 或服务端集成测试。
-- 用户明确本机无 Android 环境并允许跳过；本轮未执行 Gradle/Kotlin 编译、JVM/仪器测试、lint 或手机/平板验收。未执行真实 Ubuntu/Windows 宿主读写、Docker 重启或任何代理网络验收。
+- 初次交付时，.NET 临时控制台直接编入共享 `DockerProxyContracts.cs`、`RelaxKonOSJsonOptions.cs`、`RelaxKonOSEndpoints.cs`；`DOTNET_CLI_HOME=/tmp/relaxkon-dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run --project /tmp/relaxkon-proxy-wire/Wire.csproj --verbosity quiet` 通过。确认当前路由、十字段保存请求、camelCase 枚举/字段、确认字段，并用 Python 比较实际 .NET 状态 JSON 与 Android `PROXY_STATUS` 用例 fixture 完全一致（包括 Desktop 上游）。仅为共享契约格式核对，不是 Android 或服务端集成测试。
+- 初次交付按用户要求跳过 Android 编译/测试；本次用户要求基本测试，沿用 JVM 验证范围执行。未执行 APK 打包、仪器测试、lint、手机/平板验收或真实 Ubuntu/Windows 宿主读写、Docker 重启、代理网络验收。
 - 待宿主/设备验证：新设置与无 Docker daemon、引擎应用/替换/退役失败、Desktop 手动/系统上游差异、loopback 构建不可达、带认证代理、HTTPS 空值、NO_PROXY 域名/地址绕过、各范围独立消费、禁用/清除后的实际直连、401 刷新及拒绝、外部并发修改、断网写入后刷新核实、手机/平板三语/IME/大字体与离页/旋转。镜像查询/运行时下载只显示消费策略，当前 DTO 没有实际请求结果，必须以真实消费者请求验证，不能把选中范围写成联网通过。
+
+### BP02-M1-V1 基本 JVM 执行证据（2026-09-30）
+
+- 被测提交：`02b54f19`；执行前工作树干净。本次仅更新验证与状态文档，没有修改实现或测试代码，BP01-M1 的已有执行证据保留。
+- 环境：Windows 11 amd64；本机 Gradle 9.7.1、缓存的 JetBrains JDK 25、Android SDK platform 36；AGP 9.4.1。使用 `--offline`，未下载依赖。
+- 在 `Client/RelaxKonOS.Client.Android/` 执行以下 PowerShell 命令；`:app:compileDebugKotlin`、`:app:compileDebugUnitTestKotlin` 与 `:app:testDebugUnitTest` 成功，Gradle 返回 `BUILD SUCCESSFUL`（5 秒）。Debug 主代码、资源和单元测试代码编译通过，未进行 APK 打包或设备运行。
+
+```powershell
+$bp02Gradle = 'C:/Users/betha/.gradle/wrapper/dists/gradle-9.7.1-all/6yde0y3ecw7psqwo4h66kup3z/gradle-9.7.1/bin/gradle.bat'
+& $bp02Gradle :app:testDebugUnitTest `
+  --tests 'app.relaxkonos.mobile.core.net.OutboundProxyWireTest' `
+  --tests 'app.relaxkonos.mobile.core.net.OutboundProxyHttpTest' `
+  --tests 'app.relaxkonos.mobile.ui.more.OutboundProxyEditorTest' `
+  --offline --console=plain
+```
+
+| 测试类 | 用例 | 失败 / 错误 / 跳过 |
+| --- | --- | --- |
+| OutboundProxyWireTest | 4 | 0 / 0 / 0 |
+| OutboundProxyHttpTest | 2 | 0 / 0 / 0 |
+| OutboundProxyEditorTest | 6 | 0 / 0 / 0 |
+| 合计 | 12 | 0 / 0 / 0 |
+
+- Python XML 解析核对了 `app/build/test-results/testDebugUnitTest/TEST-*OutboundProxy*Test.xml` 的三份报告；本机 HTML 报告为 `app/build/reports/tests/testDebugUnitTest/index.html`。这些是忽略的本机构建产物，不提交到仓库。本次报告只覆盖选择的 BP02-M1 用例，不是全量 JVM 回归。
+- 复查三语 XML：各 1,147 个字符串键，无重复且键集一致；`OutboundProxy*.kt` 中 72 个 `R.string` 引用全部存在。静态比对 `DockerProxyContracts.cs`：2 个来源、2 个目标、5 个层状态及其 camelCase wire 值一致，保存请求的 10 个字段和 `/api/v1.0/docker/proxy` 路由一致。
+- 基本用例未发现失败，无需修复实现。HTTP 用例调用本机测试服务器，Editor 用例使用 FakeGateway；不证明真实宿主的代理连通性、Docker 重启、401 刷新或手机/平板交互，待补范围继续保留。
 
 ## 13. 记录方式
 

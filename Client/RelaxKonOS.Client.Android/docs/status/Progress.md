@@ -38,7 +38,7 @@
 | BP01-M1-3 | 已实现 | `InstallationRequestJournal`、OperationIndex：稳定提交/取消键、持久原 ID、未知结果留待核实；AuthSession 与 Host 提权按会话隔离，User Mode 能力门控 | 完全丢失的终态响应按当前契约保留未知 |
 | BP01-M1-4 | 已实现 | OperationCenter/OperationsScreen：发现/恢复/阶段进度/取消终态查询、离页停止观察；三语文案；安装记录无虚假领域跳转 | 设备与宿主检查见 Verification |
 | BP01-M1-5 | 已实现 | `features/Installations.md`、运维说明、索引及进度/验证记录同步；已完成拆分移出计划 | 验证单独追踪 |
-| BP02-M1 | 已实现 | `OutboundProxy.kt`、Gateway/API、DockerRepository、OutboundProxyScreen/Labels：设置与 Docker 共用 GET/PUT/DELETE；HTTP/HTTPS/NO_PROXY、四范围、引擎/构建实际状态与 daemon/Desktop 回读、写入确认、结果不明确先刷新、会话隔离；三语与功能文档已同步 | BP03-M1；受管来源新选择/管理另归 BP02-M2/BP06；Android 检查未执行 |
+| BP02-M1 | 已实现 | `OutboundProxy.kt`、Gateway/API、DockerRepository、OutboundProxyScreen/Labels：设置与 Docker 共用 GET/PUT/DELETE；HTTP/HTTPS/NO_PROXY、四范围、引擎/构建实际状态与 daemon/Desktop 回读、写入确认、结果不明确先刷新、会话隔离；三语与功能文档已同步 | BP03-M1；受管来源新选择/管理另归 BP02-M2/BP06；测试证据见 Verification |
 | BP03-M1 | 未开始 | 既有网站诊断/发布不含 Nginx 安装与完整生命周期 | BP01-M1、BP02-M1 后完成首个 Nginx 闭环 |
 | BP03-M2 | 未开始 | 缺通用站点编辑/删除与相应操作恢复 | BP03-M1 后接站点管理 |
 | BP04-M1 | 未开始 | 网站已有部分证书链路，缺独立生命周期任务流 | 接独立列表/详情与证书操作 |

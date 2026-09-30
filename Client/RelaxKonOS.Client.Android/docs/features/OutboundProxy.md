@@ -26,4 +26,4 @@ URL 可含凭据，表单始终保存真实值供再次提交，默认遮挡 URL
 
 编辑状态只驻留页面内存，不写 SavedState、偏好文件、日志、诊断或任务索引；离页取消页面观察与协程，旋转/重新进入重新读取宿主。精确身份变化取消 Repository 调用，旧结果不覆盖新会话。刷新和页面返回有未保存编辑确认；清除确认明确说明将放弃编辑。页面可滚动并处理 IME，按钮纵向排列，适用于设置详情栏和大字体。
 
-Android 编译/测试以及手机/平板和 Ubuntu/Windows 验收未执行，按用户说明跳过本机 Android 检查。准备代码与剩余验收见 [Verification](../status/Verification.md#bp02-m1-静态证据与未执行范围2026-09-30)。
+当前测试结果、被测提交与剩余验收见 [Verification](../status/Verification.md#12-bp-测试进度)。手机/平板交互及真实 Ubuntu/Windows 代理行为尚未验收。
