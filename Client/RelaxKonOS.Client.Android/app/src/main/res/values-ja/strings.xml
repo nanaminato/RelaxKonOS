@@ -222,7 +222,8 @@
     <string name="ssh_workspace_deploy_windows_system">Windows サービス</string>
     <string name="ssh_workspace_deploy_network">ネットワークプロファイル</string>
     <string name="ssh_workspace_deploy_loopback">ループバックのみ</string>
-    <string name="ssh_workspace_deploy_lan">LAN</string>
+    <string name="ssh_workspace_deploy_lan">0.0.0.0（すべてのネットワーク インターフェイス）</string>
+    <string name="ssh_workspace_deploy_lan_note">すべての IPv4 インターフェイスにバインドするため、同一サブネットから到達できます。インストーラーはファイアウォールを開放しません。別端末からの直接接続には信頼された TLS またはクライアントの SSH トンネルが必要です。</string>
     <string name="ssh_workspace_deploy_proxy">リバースプロキシ</string>
     <string name="ssh_workspace_deploy_port">サーバーポート</string>
     <string name="ssh_workspace_deploy_version">バージョン（任意）</string>

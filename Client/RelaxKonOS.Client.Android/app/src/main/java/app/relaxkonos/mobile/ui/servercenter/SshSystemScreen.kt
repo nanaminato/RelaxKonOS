@@ -34,6 +34,7 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.SshCredential
 import app.relaxkonos.mobile.servercenter.SshSystemProbe
 import app.relaxkonos.mobile.servercenter.SshSystemSnapshot
+import app.relaxkonos.mobile.servercenter.SshDiagnostics
 import app.relaxkonos.mobile.servercenter.SshCredentialKind
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.MetricTile
@@ -74,7 +75,8 @@ class SshSystemViewModel(application: Application) : AndroidViewModel(applicatio
                     SshSystemProbe.read(session.sshTransport)
                 }
                 mutableState.update { it.copy(snapshot = snapshot ?: it.snapshot, loading = false, problem = snapshot == null) }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                SshDiagnostics.failure("system.failed", error)
                 mutableState.update { it.copy(loading = false, problem = true) }
             } finally {
                 secret.fill('\u0000')
@@ -155,8 +157,9 @@ private fun SystemMetrics(snapshot: SshSystemSnapshot) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
         MetricTile(
             label = stringResource(R.string.home_label_cpu),
-            value = stringResource(R.string.home_value_percent, snapshot.cpuPercent),
-            progress = (snapshot.cpuPercent / 100.0).toFloat(),
+            value = snapshot.cpuPercent?.let { stringResource(R.string.home_value_percent, it) }
+                ?: stringResource(R.string.ssh_workspace_metric_unavailable),
+            progress = snapshot.cpuPercent?.let { (it / 100.0).toFloat() },
             tone = StatusTone.Primary,
             modifier = Modifier.weight(1f),
         )

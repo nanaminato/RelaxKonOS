@@ -84,6 +84,6 @@ Android 后台可中断客户端进程。包上传等需要持续本地传输的
 
 ## 5. 当前边界
 
-SSH 工作区提供文件、交互式终端、部署配置和 Windows / Linux 只读系统快照。系统页进入时和手动刷新时通过 SSH 采集 CPU 使用率、内存已用/总量、磁盘已用/总量、运行时间和系统版本。Linux 使用 `/proc` 和 `df`（排除内存文件系统），Windows 使用 PowerShell CIM（本地固定磁盘）；无需安装 RelaxKonOS 服务。刷新失败时保留本页上次快照并提示失败，切换主机使用独立页面状态。部署配置的来源/模式选择是草稿；最后的首次安装按钮仍不可用。安装回执查询只暂存 APK 内的固定启动器并执行读取，不执行安装 `--run`。
+SSH 工作区提供文件、交互式终端、部署配置和 Windows / Linux 只读系统快照。系统页进入时和手动刷新时通过 SSH 采集 CPU 使用率、内存已用/总量、磁盘已用/总量、运行时间和系统版本。Linux 使用 `/proc` 和 `df`（排除内存文件系统），Windows 通过 PowerShell 调用原生 `GlobalMemoryStatusEx`、`GetSystemTimes`、`GetTickCount64` 和 .NET `DriveInfo`，不依赖 CIM/WMI 权限或服务；CPU 通过两次系统时间采样计算；CPU 不可用时标记暂不可用并保留内存和磁盘。PowerShell 固定以纯文本输出，避免 SSH 默认 shell 影响输出格式；无需安装 RelaxKonOS 服务。刷新失败时保留本页上次快照并提示失败，切换主机使用独立页面状态。部署配置的来源/模式选择是草稿；最后的首次安装按钮仍不可用。安装回执查询只暂存 APK 内的固定启动器并执行读取，不执行安装 `--run`。
 
 可信校验器、发布资产获取、安装页面调用链、健康核实与完整安装恢复交付见 [部署后续计划](../plans/Deployment.md)。真实 SSH、主机密钥变化、隧道换端口、后台回收及卸载检查集中见 [验收清单](../status/Verification.md)。

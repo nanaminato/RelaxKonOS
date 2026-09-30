@@ -39,6 +39,8 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.ServerHostTarget
 import app.relaxkonos.mobile.ui.common.PasswordTextField
 import app.relaxkonos.mobile.ui.common.SectionCard
+import app.relaxkonos.mobile.ui.common.SelectField
+import app.relaxkonos.mobile.ui.common.SelectOption
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -170,25 +172,56 @@ private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = 
                     subtitle = stringResource(R.string.ssh_workspace_deploy_draft),
                     leading = DesktopIcons.deployments,
                 ) {
-                    Text(stringResource(R.string.ssh_workspace_deploy_mode), style = MaterialTheme.typography.labelLarge)
-                    FilterChip(mode == "automatic", { mode = "automatic" }, { Text(stringResource(R.string.ssh_workspace_deploy_automatic)) })
-                    FilterChip(mode == "linuxUser", { mode = "linuxUser" }, { Text(stringResource(R.string.ssh_workspace_deploy_linux_user)) })
-                    FilterChip(mode == "linuxSystem", { mode = "linuxSystem" }, { Text(stringResource(R.string.ssh_workspace_deploy_linux_system)) })
-                    FilterChip(mode == "windowsSystem", { mode = "windowsSystem" }, { Text(stringResource(R.string.ssh_workspace_deploy_windows_system)) })
-                    Text(stringResource(R.string.ssh_workspace_deploy_file_access), style = MaterialTheme.typography.labelLarge)
-                    FilterChip(fileAccess == "restricted", { fileAccess = "restricted" }, { Text(stringResource(R.string.ssh_workspace_deploy_restricted)) })
-                    FilterChip(fileAccess == "full", { fileAccess = "full" }, { Text(stringResource(R.string.ssh_workspace_deploy_full_access)) })
-                    Text(stringResource(R.string.ssh_workspace_deploy_network), style = MaterialTheme.typography.labelLarge)
-                    FilterChip(network == "loopback", { network = "loopback" }, { Text(stringResource(R.string.ssh_workspace_deploy_loopback)) })
-                    FilterChip(network == "lan", { network = "lan" }, { Text(stringResource(R.string.ssh_workspace_deploy_lan)) })
-                    Text(stringResource(R.string.ssh_workspace_deploy_certificate), style = MaterialTheme.typography.labelLarge)
-                    FilterChip(certificateMode == "none", { certificateMode = "none" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_none)) })
-                    FilterChip(certificateMode == "custom", { certificateMode = "custom" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_custom)) })
-                    FilterChip(certificateMode == "selfSigned", { certificateMode = "selfSigned" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_self_signed)) })
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_mode),
+                        options = listOf(
+                            SelectOption("automatic", stringResource(R.string.ssh_workspace_deploy_automatic)),
+                            SelectOption("linuxUser", stringResource(R.string.ssh_workspace_deploy_linux_user)),
+                            SelectOption("linuxSystem", stringResource(R.string.ssh_workspace_deploy_linux_system)),
+                            SelectOption("windowsSystem", stringResource(R.string.ssh_workspace_deploy_windows_system)),
+                        ),
+                        value = mode,
+                        onValueChange = { mode = it },
+                    )
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_file_access),
+                        options = listOf(
+                            SelectOption("restricted", stringResource(R.string.ssh_workspace_deploy_restricted)),
+                            SelectOption("full", stringResource(R.string.ssh_workspace_deploy_full_access)),
+                        ),
+                        value = fileAccess,
+                        onValueChange = { fileAccess = it },
+                    )
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_network),
+                        options = listOf(
+                            SelectOption("loopback", stringResource(R.string.ssh_workspace_deploy_loopback)),
+                            SelectOption("lan", stringResource(R.string.ssh_workspace_deploy_lan)),
+                        ),
+                        value = network,
+                        onValueChange = { network = it },
+                        supportingText = stringResource(R.string.ssh_workspace_deploy_lan_note).takeIf { network == "lan" },
+                    )
+                    SelectField(
+                        label = stringResource(R.string.ssh_workspace_deploy_certificate),
+                        options = listOf(
+                            SelectOption("none", stringResource(R.string.ssh_workspace_deploy_certificate_none)),
+                            SelectOption("custom", stringResource(R.string.ssh_workspace_deploy_certificate_custom)),
+                            SelectOption("selfSigned", stringResource(R.string.ssh_workspace_deploy_certificate_self_signed)),
+                        ),
+                        value = certificateMode,
+                        onValueChange = { certificateMode = it },
+                    )
                     if (certificateMode == "custom") {
-                        Text(stringResource(R.string.ssh_workspace_deploy_certificate_format), style = MaterialTheme.typography.labelLarge)
-                        FilterChip(certificateFormat == "pfx", { certificateFormat = "pfx" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_pfx)) })
-                        FilterChip(certificateFormat == "pem", { certificateFormat = "pem" }, { Text(stringResource(R.string.ssh_workspace_deploy_certificate_pem)) })
+                        SelectField(
+                            label = stringResource(R.string.ssh_workspace_deploy_certificate_format),
+                            options = listOf(
+                                SelectOption("pfx", stringResource(R.string.ssh_workspace_deploy_certificate_pfx)),
+                                SelectOption("pem", stringResource(R.string.ssh_workspace_deploy_certificate_pem)),
+                            ),
+                            value = certificateFormat,
+                            onValueChange = { certificateFormat = it },
+                        )
                         OutlinedButton({ pickCertificate.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.ssh_workspace_deploy_choose_certificate)) }
                         if (certificateName.isNotBlank()) Text(certificateName, style = MaterialTheme.typography.bodySmall)
                         if (certificateFormat == "pem") {

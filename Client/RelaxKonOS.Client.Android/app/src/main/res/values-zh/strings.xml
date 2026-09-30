@@ -183,6 +183,7 @@
     <string name="ssh_workspace_system_subtitle">%1$s 的资源状态</string>
     <string name="ssh_workspace_system_unavailable">无法读取主机资源，请检查连接和主机命令权限后刷新。</string>
     <string name="ssh_workspace_system_disk">磁盘 · %1$s</string>
+    <string name="ssh_workspace_metric_unavailable">暂不可用</string>
     <string name="ssh_workspace_system_platform">平台</string>
     <string name="ssh_workspace_exit">退出 SSH 工作区</string>
     <string name="ssh_workspace_deploy">部署</string>
@@ -222,7 +223,8 @@
     <string name="ssh_workspace_deploy_windows_system">Windows 服务</string>
     <string name="ssh_workspace_deploy_network">网络配置</string>
     <string name="ssh_workspace_deploy_loopback">仅回环</string>
-    <string name="ssh_workspace_deploy_lan">局域网</string>
+    <string name="ssh_workspace_deploy_lan">0.0.0.0（所有网络接口）</string>
+    <string name="ssh_workspace_deploy_lan_note">绑定所有 IPv4 网卡，同网段可直接访问；安装器不会自动开放防火墙。跨设备直连需可信 TLS 或客户端 SSH 隧道。</string>
     <string name="ssh_workspace_deploy_proxy">反向代理</string>
     <string name="ssh_workspace_deploy_port">服务器端口</string>
     <string name="ssh_workspace_deploy_version">版本（可选）</string>
