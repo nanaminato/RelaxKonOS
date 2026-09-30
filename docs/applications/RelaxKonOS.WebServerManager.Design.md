@@ -1192,11 +1192,16 @@ POST /api/v1.0/webservers/{id}/reload
 ```text
 GET    /api/v1.0/webservers/{id}/sites
 POST   /api/v1.0/webservers/{id}/sites
-PUT    /api/v1.0/webservers/{id}/sites/{siteId}
 DELETE /api/v1.0/webservers/{id}/sites/{siteId}
 ```
 
 ---
+
+当前站点创建/更新共用 POST，直接返回 `WebServerSiteDto`；删除返回 204。站点写入没有长任务 ID 或服务端幂等重放能力。客户端连接中断后必须回读站点定义、运行状态与配置检查，不把站点缺失或字段一致当原请求成功，也不伪造操作 ID。
+
+创建请求的 `expectedUpdatedAt` 为 null；可省略 ID 由名称生成，也可提供稳定 ID。更新必须提供已读站点的完整 `updatedAt`（保留亚毫秒精度）。DELETE 正文为 `{ "expectedUpdatedAt": "<已读原时间戳>" }`。Provider 在站点变更锁内、任何配置/include/权限副作用之前比较版本：创建撞 ID 返回 `webserver.site_already_exists`，更新/删除版本失配或目标消失返回 409 `webserver.site_changed`，不覆盖更新后的定义，也不把更新当新建。成功更新的时间戳严格递增；站点元数据损坏或不可读时拒绝写入，不能当空目录覆盖。
+
+桌面与 Android 均发送该当前契约；网站发布、应用部署代理联动也带原版本。失败补偿仅能恢复它自己刚写入的版本，不能覆盖其后其他客户端的更新。默认读写不添加旧时间戳格式、无版本更新入口或旧路由。
 
 ## 24. 创建可组合站点流程
 
@@ -1598,7 +1603,7 @@ webserver.install_elevation_required
 
 ### 30.4 Protocol、异步操作与审计
 
-所有 WebServer DTO、枚举、路由常量和序列化规则位于 `Shared/RelaxKonOS.Protocol/WebServers/`。Endpoint、Client 和 UI 不硬编码 API 字符串或平台命令。发现、读取状态和测试可同步返回；安装、升级、卸载、集成、站点修改、reload 和证书部署必须携带 `Idempotency-Key` 并创建持久化操作：
+所有 WebServer DTO、枚举、路由常量和序列化规则位于 `Shared/RelaxKonOS.Protocol/WebServers/`。Endpoint、Client 和 UI 不硬编码 API 字符串或平台命令。发现、读取状态和测试可同步返回；安装走统一 Installation 契约，集成与生命周期（包括 reload）使用 `Idempotency-Key` 和持久化操作。当前站点修改/删除采用上文同步版本校验契约，客户端通过事实回读核实未知结果；若后续将其转为持久化操作，必须同步所有调用方，不能将当前同步响应包装成虚假的操作：
 
 ```text
 OperationId
@@ -1626,3 +1631,5 @@ WebServerManager 不拥有 Kestrel 的证书或监听配置。证书签发完成
 V1 支持目标为 **Ubuntu 24.04 LTS** 与 **Windows Server 2016 及以上**。V1 仅交付 Nginx 的发现/只读状态和经管理员确认的最小集成；Nginx 安装、升级、卸载、IIS、Apache、Caddy 和自动 HTTPS 部署均为后续阶段，除非在两个目标平台完成验证。
 
 UI 必须使用 `webserver.*` 三语言本地化 key，显示管理模式、实际能力、权限不足、用户配置变更冲突、风险确认、操作进度和可恢复建议。验收至少覆盖：两平台检测；未集成候选项不写入；Integrated 的 include 上下文；并发修改锁；`nginx -t` 失败；reload 失败回退；取消/断线重连；管理员/非管理员降级；以及配置、日志和审计的秘密脱敏。
+
+受管 HTTPS 站点保存还需证书 Issued/Active、处于有效期内且 SAN 覆盖全部域名绑定；规范化 IDN/IP，单层通配符不覆盖 apex、多层或 IP。校验在版本检查后、权限/include/配置副作用前执行，不可用返回 `webserver.site_certificate_not_usable`，不覆盖返回 `webserver.site_certificate_domain_mismatch`。宿主 PEM 路径模式不通过元数据推断有效期或客户端信任。

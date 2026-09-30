@@ -27,10 +27,15 @@ data class ObservedOperation(
     val cancellable: Boolean = false,
     val checkedAtMillis: Long? = null,
     val installation: InstallationOperation? = null,
+    val webServer: app.relaxkonos.mobile.core.net.WebServerOperation? = null,
+    val certificate: app.relaxkonos.mobile.core.net.CertificateOperation? = null,
 )
 
 data class OperationCenterSnapshot(val items: List<ObservedOperation>, val incomplete: Boolean,
-    val pendingInstallations: List<PendingInstallationRequest> = emptyList())
+    val pendingInstallations: List<PendingInstallationRequest> = emptyList(),
+    val pendingSites: List<PendingSiteMutation> = emptyList(),
+    val pendingCertificates: List<PendingCertificateRequest> = emptyList(),
+    val pendingTunnels: List<PendingTunnelMutation> = emptyList())
 
 /** Reads each domain's own durable record. Discovery also recovers operations not yet in the local index. */
 class OperationCenter(
@@ -43,6 +48,10 @@ class OperationCenter(
     private val scripts: ScriptTaskRepository,
     private val backups: BackupRecoveryRepository,
     private val installations: InstallationRepository,
+    private val webServers: WebServerRepository,
+    private val webSites: WebSiteRepository,
+    private val certificates: CertificateRepository,
+    private val tunnels: TunnelRepository,
 ) {
     suspend fun refresh(owner: SessionState.Active): OperationCenterSnapshot {
         verify(owner)
@@ -134,13 +143,21 @@ class OperationCenter(
                 else -> incomplete = true
             }
         }
+        if (ServerCapabilities.WEB_SERVER in owner.capabilities) webServers.pending(owner).mapNotNull { it.operationId }.forEach { id ->
+            val result = webServers.operation(owner, id)
+            if (result !is ApiResult.Success) incomplete = true
+        }
+        if (ServerCapabilities.CERTIFICATES in owner.capabilities) certificates.pending(owner).mapNotNull { it.operationId }.forEach { id ->
+            if (certificates.operation(owner, id) !is ApiResult.Success) incomplete = true
+        }
         index.forOwner(owner).forEach { reference ->
             verify(owner)
             val key = reference.domain to reference.operationId
             if (key !in discovered) discovered[key] = query(owner, reference)
         }
         verify(owner)
-        return OperationCenterSnapshot(discovered.values.sortedByDescending { it.reference.seenAtMillis }, incomplete, installations.pending(owner).filter { it.attempted })
+        return OperationCenterSnapshot(discovered.values.sortedByDescending { it.reference.seenAtMillis }, incomplete, installations.pending(owner).filter { it.attempted }, webSites.pending(owner).filter { it.attempted }, certificates.pending(owner).filter { it.attempted },
+            if (ServerCapabilities.TUNNELS in owner.capabilities) tunnels.pending(owner) else emptyList())
     }
 
     suspend fun diagnostics(owner: SessionState.Active, item: ObservedOperation): ApiResult<List<String>> {
@@ -188,6 +205,8 @@ class OperationCenter(
                     "cancel:${owner.serviceId}:${owner.userName}:${item.reference.operationId}".toByteArray(Charsets.UTF_8)).toString()
                 deployments.cancel(owner, item.reference.operationId, key)
             }
+            OperationDomain.Certificate -> certificates.cancel(owner, item.reference.operationId)
+            OperationDomain.WebServer -> webServers.cancel(owner, item.reference.operationId)
             OperationDomain.Installation -> installations.cancel(owner, item.reference.operationId)
             OperationDomain.Compose -> docker.cancelStackOperation(owner, item.reference.operationId)
             OperationDomain.GitBuild -> git.cancelBuild(owner, item.reference.operationId)
@@ -206,6 +225,20 @@ class OperationCenter(
             OperationDomain.Deployment -> when (val result = deployments.operation(owner, reference.operationId)) {
                 is ApiResult.Success -> if (result.value.applicationId == reference.resourceId)
                     fromDeployment(owner, result.value, reference.resourceId) else unknown(reference, OperationCheck.Missing)
+                is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
+                is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
+            }
+            OperationDomain.Certificate -> when (val result = certificates.operation(owner, reference.operationId)) {
+                is ApiResult.Success -> if (result.value.certificateId == reference.resourceId) fromCertificate(owner, result.value) else unknown(reference, OperationCheck.Missing)
+                is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
+                is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
+            }
+            OperationDomain.WebServer -> when (val result = webServers.operation(owner, reference.operationId)) {
+                is ApiResult.Success -> if (result.value.instanceId == reference.resourceId)
+                    verified(owner, OperationDomain.WebServer, result.value.instanceId, result.value.operationId,
+                        result.value.instanceId, result.value.state.wire, result.value.stage, null,
+                        result.value.problemCode.takeIf(String::isNotBlank), result.value.state.active).copy(webServer = result.value)
+                    else unknown(reference, OperationCheck.Missing)
                 is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
                 is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
             }
@@ -247,6 +280,11 @@ class OperationCenter(
                 is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
             }
         }
+
+    private fun fromCertificate(owner: SessionState.Active, operation: app.relaxkonos.mobile.core.net.CertificateOperation): ObservedOperation =
+        verified(owner, OperationDomain.Certificate, requireNotNull(operation.certificateId), operation.operationId,
+            requireNotNull(operation.certificateId), operation.state.wire, operation.stage, null,
+            operation.problemCode.takeIf(String::isNotBlank), operation.state.active).copy(certificate = operation)
 
     private fun fromDeployment(owner: SessionState.Active, operation: DeploymentOperation, target: String): ObservedOperation =
         verified(owner, OperationDomain.Deployment, operation.applicationId, operation.operationId,

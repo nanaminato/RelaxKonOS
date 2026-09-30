@@ -67,14 +67,15 @@ public sealed class RemoteWebServerClient(HttpClient http, IAuthSession session)
         }
     }
 
-    public async Task DeleteSiteAsync(string id, string siteId, CancellationToken cancellationToken = default)
+    public async Task DeleteSiteAsync(string id, string siteId, DeleteWebServerSiteRequest deletion, CancellationToken cancellationToken = default)
     {
         if (session.State != AuthSessionState.Authenticated || session.Tokens is null || session.EffectiveBaseUrl is null)
             throw new InvalidOperationException("RelaxKonOS session is not authenticated.");
-        using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(new Uri(session.EffectiveBaseUrl), WebServerApiRoutes.SiteById.Replace("{id}", WebUtility.UrlEncode(id)).Replace("{siteId}", WebUtility.UrlEncode(siteId)).TrimStart('/')));
+        using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(new Uri(session.EffectiveBaseUrl), WebServerApiRoutes.SiteById.Replace("{id}", WebUtility.UrlEncode(id)).Replace("{siteId}", WebUtility.UrlEncode(siteId)).TrimStart('/')))
+        { Content = JsonContent.Create(deletion, options: RelaxKonOSJsonOptions.Default) };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Tokens.AccessToken);
         using var response = await http.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"Unable to delete site ({(int)response.StatusCode}).", null, response.StatusCode);
+        if (!response.IsSuccessStatusCode) throw new WebServerApiException(await ReadProblemCodeAsync(response, cancellationToken) ?? FallbackProblemCode(response.StatusCode), response.StatusCode);
     }
 
     private static string NewKey() => Guid.NewGuid().ToString("N");

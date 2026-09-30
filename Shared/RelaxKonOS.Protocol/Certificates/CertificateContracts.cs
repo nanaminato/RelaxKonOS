@@ -75,3 +75,16 @@ public sealed record CertificateOperationDto(
     [property: JsonPropertyName("problemCode")] string ProblemCode,
     [property: JsonPropertyName("startedAt")] DateTimeOffset? StartedAt,
     [property: JsonPropertyName("completedAt")] DateTimeOffset? CompletedAt);
+
+/// <summary>Host-observed live selector facts. No private material, filesystem paths or claim of client trust.</summary>
+public sealed record KestrelCertificateDeploymentDto(
+    [property: JsonPropertyName("certificateId")] Guid CertificateId,
+    [property: JsonPropertyName("certificateExists")] bool CertificateExists,
+    [property: JsonPropertyName("httpsConfigured")] bool HttpsConfigured,
+    [property: JsonPropertyName("registered")] bool Registered,
+    [property: JsonPropertyName("isDefault")] bool IsDefault,
+    [property: JsonPropertyName("hostNames")] IReadOnlyList<string> HostNames,
+    [property: JsonPropertyName("fingerprintSha256")] string? FingerprintSha256,
+    [property: JsonPropertyName("notBefore")] DateTimeOffset? NotBefore,
+    [property: JsonPropertyName("notAfter")] DateTimeOffset? NotAfter,
+    [property: JsonPropertyName("observedAt")] DateTimeOffset ObservedAt);

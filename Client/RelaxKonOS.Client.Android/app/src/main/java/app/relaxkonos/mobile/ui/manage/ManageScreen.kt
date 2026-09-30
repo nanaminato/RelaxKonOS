@@ -197,8 +197,7 @@ private data class ManageDomain(
  * Manage.
  *
  * Only domains with a working mobile workflow are listed. The design forbids adding an entry just
- * because the desktop has one (`Shell.Design.md` §8). Web publishing currently has
- * a read-only diagnostic workflow; site, certificate and network mutations remain outside this screen.
+ * because the desktop has one (`Shell.Design.md` §8). Each entry opens its implemented domain workflow, including Nginx sites and certificate management.
  *
  * The domains sit in one group rather than in one card each: they are alternatives at the same level,
  * and stacking them made a two-item list look like a dashboard.
@@ -211,6 +210,8 @@ fun ManageScreen(
     onOpenDocker: () -> Unit,
     onOpenGit: () -> Unit,
     onOpenWebsites: () -> Unit,
+    onOpenCertificates: () -> Unit,
+    onOpenTunnels: () -> Unit,
     onOpenGuardian: () -> Unit,
     onOpenScripts: () -> Unit,
     onOpenOperations: () -> Unit,
@@ -221,7 +222,8 @@ fun ManageScreen(
     val domains = buildList {
         if (container.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS) ||
             container.capabilities.contains(ServerCapabilities.WEB_SERVER) ||
-            container.capabilities.contains(ServerCapabilities.EVENT_ALERTS)) {
+            container.capabilities.contains(ServerCapabilities.EVENT_ALERTS) ||
+            container.capabilities.contains(ServerCapabilities.CERTIFICATES) || container.capabilities.contains(ServerCapabilities.TUNNELS)) {
             add(ManageDomain(R.string.operations_title, R.string.operations_subtitle,
                 DesktopIcons.notice, onOpenOperations))
         }
@@ -237,6 +239,12 @@ fun ManageScreen(
         }
         if (container.capabilities.contains(ServerCapabilities.WEB_SERVER)) {
             add(ManageDomain(R.string.websites_title, R.string.websites_subtitle, R.drawable.ic_app_webservers, onOpenWebsites))
+        }
+        if (container.capabilities.contains(ServerCapabilities.CERTIFICATES)) {
+            add(ManageDomain(R.string.certificates_title, R.string.certificates_subtitle, DesktopIcons.notice, onOpenCertificates))
+        }
+        if (container.capabilities.contains(ServerCapabilities.TUNNELS)) {
+            add(ManageDomain(R.string.tunnels_title, R.string.tunnels_subtitle, R.drawable.ic_app_tunnels, onOpenTunnels))
         }
         if (container.capabilities.contains(ServerCapabilities.GUARDIAN)) {
             add(ManageDomain(R.string.guardian_title, R.string.guardian_subtitle, R.drawable.ic_app_processguardian, onOpenGuardian))

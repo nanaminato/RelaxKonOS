@@ -31,7 +31,7 @@
 ### 1.3 非目标
 
 - 不将 Desktop、Taskbar、Start Menu、WindowManager、桌面内 `RemoteWindow` 迁移到移动端。
-- 桌面应用的移动接入按 [内置应用补齐计划](../plans/BuiltInParity.md) 逐项设计；普通文本编辑、证书与网络管理属于后续交付范围。
+- 桌面应用的移动接入按 [内置应用补齐计划](../plans/BuiltInParity.md) 逐项设计；证书生命周期/部署、Nginx/通用站点与 FRP 客户端/frps/运行时管理已接入；普通文本编辑与代理管理的剩余范围按计划交付。
 - 不把移动端后台连接当作服务端任务的存活条件；Android 随时可能暂停或终止 App。
 
 ---

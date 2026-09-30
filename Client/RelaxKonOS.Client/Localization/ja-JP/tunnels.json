@@ -239,6 +239,18 @@
     "tunnels.connection_state.Connected": "接続済み",
     "tunnels.connection_state.Disconnected": "切断",
     "tunnels.connection_state.RuntimeUnavailable": "Runtime を利用できません",
-    "tunnels.connection_state.Unknown": "不明"
+    "tunnels.connection_state.Unknown": "不明",
+    "tunnels.problem.tunnel.definition_not_applied": "保存済みの定義または Token は適用済み frpc 設定と異なります。現在の版を使用するにはこのサーバー設定を適用してください。",
+    "tunnels.problem.tunnel.applied_revision_unknown": "実行中プロセスに適用済みの版は未確認です。接続ログは現在の保存済みの定義の適用を証明しません。",
+    "tunnels.frps.state.Unknown": "不明",
+    "tunnels.problem.tunnel.frps_restart_required": "保存したリビジョンを適用するには frps を停止して再起動してください。",
+    "tunnels.problem.tunnel.frps_process_unverified": "Server 再起動後の frps プロセス所有権を確認できません。停止前にホストで管理プロセスを復旧してください。",
+    "tunnels.problem.tunnel.frps_secret_invalid": "シークレットは長さが制限された単一行の値にしてください。",
+    "tunnels.frps.revision": "保存したリビジョン: {0}",
+    "tunnels.frps.saved_stopped": "保存した設定は実行されていません。",
+    "tunnels.frps.applied_unknown": "実行中プロセスの適用済みリビジョンは未確認です。",
+    "tunnels.frps.applied_current": "実行中プロセスは保存したリビジョンを使用しています。",
+    "tunnels.frps.reload_confirmation": "現在の frps 設定を再読み込みして、この下書きと置換用シークレットを破棄しますか？",
+    "tunnels.problem.tunnel.frps_stop_failed": "frps を停止できませんでした。次の操作の前に現在の状態を取得してください。"
   }
 }

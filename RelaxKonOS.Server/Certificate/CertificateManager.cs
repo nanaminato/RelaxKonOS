@@ -19,6 +19,7 @@ internal interface ICertificateManager
     Task<CertificateOperationDto> RequestAsync(string idempotencyKey, RequestCertificateRequest request, string? actor, CancellationToken cancellationToken);
     Task<CertificateOperationDto> CreateSelfSignedAsync(string idempotencyKey, CreateSelfSignedCertificateRequest request, string? actor, CancellationToken cancellationToken);
     Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken);
+    Task<KestrelCertificateDeploymentDto> GetKestrelDeploymentAsync(Guid certificateId, CancellationToken cancellationToken);
     Task<CertificateOperationDto> DeployKestrelAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken);
     Task<CertificateOperationDto> DeleteAsync(Guid certificateId, string idempotencyKey, DeleteCertificateRequest request, string? actor, CancellationToken cancellationToken);
     Task<CertificateOperationDto> RevokeAsync(Guid certificateId, string idempotencyKey, RevokeCertificateRequest request, string? actor, CancellationToken cancellationToken);
@@ -75,6 +76,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
             return Failure("issue", "certificate.request_invalid");
         if (!privileges.IsAdministrator)
             return Failure("issue", "certificate.admin_required");
+        if (await operations.FindRequestAsync(idempotencyKey, Guid.Empty, "issue", actor, cancellationToken) is { } replay) return replay;
         if (!request.AcceptedTerms)
             return Failure("issue", "certificate.terms_not_accepted");
         if (!Enum.IsDefined(request.ChallengeType))
@@ -112,6 +114,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
     {
         if (request is null) return Failure("create-self-signed", "certificate.request_invalid");
         if (!privileges.IsAdministrator) return Failure("create-self-signed", "certificate.admin_required");
+        if (await operations.FindRequestAsync(idempotencyKey, Guid.Empty, "create-self-signed", actor, cancellationToken) is { } replay) return replay;
         if (!Enum.IsDefined(request.KeyAlgorithm)) return Failure("create-self-signed", "certificate.key_algorithm_invalid");
         if (request.ValidityDays is < 1 or > 825) return Failure("create-self-signed", "certificate.validity_days_invalid");
         if (!TryNormalizeSelfSignedIdentifiers(request.Domains, out var domains, out var problem))
@@ -126,27 +129,39 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
         }, lifetime.ApplicationStopping);
     }
 
+    public async Task<KestrelCertificateDeploymentDto> GetKestrelDeploymentAsync(Guid certificateId, CancellationToken cancellationToken)
+    {
+        var exists = await certificates.GetAsync(certificateId, cancellationToken) is not null;
+        var selector = kestrel.Snapshot(certificateId);
+        return new(certificateId, exists, HasHttpsBinding(), selector.Registered, selector.IsDefault, selector.HostNames,
+            selector.FingerprintSha256, selector.NotBefore, selector.NotAfter, DateTimeOffset.UtcNow);
+    }
+
     public async Task<CertificateOperationDto> DeployKestrelAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
     {
         if (!privileges.IsAdministrator) return Failure("deploy-kestrel", "certificate.deployment_elevation_required");
+        if (await operations.FindRequestAsync(idempotencyKey, certificateId, "deploy-kestrel", actor, cancellationToken) is { } replay) return replay;
         var record = await certificates.GetAsync(certificateId, cancellationToken);
-        if (record is null) return Failure("deploy-kestrel", "certificate.not_found");
+        if (CertificateUsagePolicy.Problem(record, DateTimeOffset.UtcNow) is { } problem) return Failure("deploy-kestrel", problem);
         if (!HasHttpsBinding()) return Failure("deploy-kestrel", "certificate.kestrel_https_not_configured");
         return await operations.StartAsync(idempotencyKey, certificateId, "deploy-kestrel", actor, async ct =>
         {
+            // Re-read under the per-certificate operation gate; the metadata may have changed since submission.
+            var current = await certificates.GetAsync(certificateId, ct);
+            if (CertificateUsagePolicy.Problem(current, DateTimeOffset.UtcNow) is { } currentProblem) return currentProblem;
             var certificate = await certificates.LoadCurrentAsync(certificateId, ct);
             if (certificate is null)
             {
-                await deployments.RecordKestrelAsync(record, false, "certificate.material_unavailable", ct);
+                await deployments.RecordKestrelAsync(current!, false, "certificate.material_unavailable", ct);
                 return "certificate.material_unavailable";
             }
-            if (!kestrel.Activate(certificateId, certificate, record.Domains))
+            if (!kestrel.Activate(certificateId, certificate, current!.Domains))
             {
                 certificate.Dispose();
-                await deployments.RecordKestrelAsync(record, false, "certificate.kestrel_activation_failed", ct);
+                await deployments.RecordKestrelAsync(current!, false, "certificate.kestrel_activation_failed", ct);
                 return "certificate.kestrel_activation_failed";
             }
-            await deployments.RecordKestrelAsync(record, true, null, ct);
+            await deployments.RecordKestrelAsync(current!, true, null, ct);
             return "";
         }, lifetime.ApplicationStopping);
     }
@@ -154,6 +169,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
     public async Task<CertificateOperationDto> RenewAsync(Guid certificateId, string idempotencyKey, string? actor, CancellationToken cancellationToken)
     {
         if (!privileges.IsAdministrator) return Failure("renew", "certificate.admin_required");
+        if (await operations.FindRequestAsync(idempotencyKey, certificateId, "renew", actor, cancellationToken) is { } replay) return replay;
         var existing = await certificates.GetAsync(certificateId, cancellationToken);
         if (existing is null) return Failure("renew", "certificate.not_found");
         if (existing.Kind == CertificateKind.SelfSigned) return Failure("renew", "certificate.self_signed_not_renewable");
@@ -186,6 +202,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
     public async Task<CertificateOperationDto> DeleteAsync(Guid certificateId, string idempotencyKey, DeleteCertificateRequest request, string? actor, CancellationToken cancellationToken)
     {
         if (!privileges.IsAdministrator) return Failure("delete", "certificate.admin_required");
+        if (await operations.FindRequestAsync(idempotencyKey, certificateId, "delete", actor, cancellationToken) is { } replay) return replay;
         if (!request.Confirmed) return Failure("delete", "certificate.confirmation_required");
         if (await certificates.GetAsync(certificateId, cancellationToken) is null) return Failure("delete", "certificate.not_found");
         return await operations.StartAsync(idempotencyKey, certificateId, "delete", actor, async ct =>
@@ -201,6 +218,7 @@ internal sealed class CertificateManager(ICertificateStore certificates, IAcmeSe
     public async Task<CertificateOperationDto> RevokeAsync(Guid certificateId, string idempotencyKey, RevokeCertificateRequest request, string? actor, CancellationToken cancellationToken)
     {
         if (!privileges.IsAdministrator) return Failure("revoke", "certificate.admin_required");
+        if (await operations.FindRequestAsync(idempotencyKey, certificateId, "revoke", actor, cancellationToken) is { } replay) return replay;
         if (!request.Confirmed) return Failure("revoke", "certificate.confirmation_required");
         var existing = await certificates.GetAsync(certificateId, cancellationToken);
         if (existing is null) return Failure("revoke", "certificate.not_found");

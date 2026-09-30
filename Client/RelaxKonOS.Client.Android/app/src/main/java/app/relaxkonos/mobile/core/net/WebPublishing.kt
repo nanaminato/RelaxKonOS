@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Read-only AD05 projections. Site ownership and certificate material remain on the server. */
+/** Current WebServerContracts projection. Runtime paths and configuration stay on the host. */
 data class WebServer(
     val id: String,
     val type: String,
@@ -13,12 +13,21 @@ data class WebServer(
     val version: String?,
     val canRead: Boolean,
     val canTestConfiguration: Boolean,
+    val providerId: String,
+    val executablePath: String,
+    val configurationPath: String?,
+    val detectedAtMillis: Long,
+    val canReload: Boolean,
+    val canStart: Boolean,
+    val canStop: Boolean,
+    val canRestart: Boolean,
+    val canUninstall: Boolean,
 )
 
 data class WebServerStatus(val instanceId: String, val runtimeState: String, val problemCode: String)
 data class WebServerConfigTest(val valid: Boolean, val problemCode: String)
 data class WebServerBinding(val domain: String, val port: Int)
-data class WebServerRoute(val path: String, val upstream: String)
+data class WebServerRoute(val path: String, val upstream: String, val disableBuffering: Boolean)
 
 data class WebServerSite(
     val id: String,
@@ -29,15 +38,14 @@ data class WebServerSite(
     val certificateId: String?,
     val httpsEnabled: Boolean,
     val updatedAtMillis: Long?,
-)
-
-data class ManagedCertificate(
-    val id: String,
-    val primaryDomain: String,
-    val subjectAlternativeNames: List<String>,
-    val status: String,
-    val challengeType: String,
-    val notAfterMillis: Long?,
+    /** Preserve server timestamp precision for atomic edit/delete checks. */
+    val updatedAt: String,
+    val rootPath: String?,
+    val spaFallback: Boolean,
+    val redirectHttpToHttps: Boolean,
+    val ipv6Enabled: Boolean,
+    val certificatePath: String?,
+    val privateKeyPath: String?,
 )
 
 /** A request is explicit about every externally visible side effect; DNS credentials never cross this boundary. */
@@ -82,7 +90,6 @@ data class WebsitePublicationOperation(
 /** Mirrors Protocol route ownership; dynamic segments are encoded as one path segment. */
 object WebPublishingRoutes {
     private const val WEBSERVERS = "/api/v1.0/webservers"
-    const val CERTIFICATES = "/api/v1.0/certificates"
     private const val PUBLICATIONS = "/api/v1.0/website-publications"
     fun publish(): String = PUBLICATIONS
     fun publicationHistory(applicationId: String): String = "$PUBLICATIONS/applications/${segment(applicationId)}"
@@ -90,7 +97,15 @@ object WebPublishingRoutes {
     fun servers(): String = WEBSERVERS
     fun status(id: String): String = "${server(id)}/status"
     fun testConfiguration(id: String): String = "${server(id)}/config/test"
+    fun site(id: String, siteId: String): String = "${sites(id)}/${segment(siteId)}"
     fun sites(id: String): String = "${server(id)}/sites"
+    fun discover(): String = "$WEBSERVERS/discover"
+    fun candidates(): String = "$WEBSERVERS/integration-candidates"
+    fun integrate(id: String): String = "${candidates()}/${segment(id)}/integrate"
+    fun catalog(): String = "$WEBSERVERS/managed/catalog"
+    fun lifecycle(id: String, action: WebServerAction): String = "${server(id)}/lifecycle/${action.route}"
+    fun operation(id: String): String = "$WEBSERVERS/operations/${InstallationRoutes.canonicalId(id)}"
+    fun cancel(id: String): String = "${operation(id)}/cancel"
     private fun server(id: String): String = "$WEBSERVERS/${segment(id)}"
     private fun segment(value: String): String {
         require(value.isNotBlank()) { "Path segment is required." }
@@ -101,9 +116,32 @@ object WebPublishingRoutes {
 /** Strict wire readers: a malformed host response is not mistaken for a healthy publication. */
 internal object WebPublishingWire {
     fun servers(payload: String): List<WebServer> = JSONArray(payload).objects { json ->
+        require(json.getString("type") == "nginx" && json.getString("managementMode") in setOf("integrated", "managed"))
         val capabilities = json.getJSONObject("capabilities")
         WebServer(json.getString("id"), json.getString("type"), json.getString("managementMode"),
-            json.nullableText("version"), capabilities.getBoolean("canRead"), capabilities.getBoolean("canTestConfiguration"))
+            json.nullableText("version"), capabilities.getBoolean("canRead"), capabilities.getBoolean("canTestConfiguration"),
+            json.getString("providerId"), json.getString("executablePath"), json.nullableText("configurationPath"),
+            requireNotNull(json.nullableInstant("detectedAt")), capabilities.getBoolean("canReload"),
+            capabilities.getBoolean("canStart"), capabilities.getBoolean("canStop"),
+            capabilities.getBoolean("canRestart"), capabilities.getBoolean("canUninstall"))
+    }
+
+    fun candidates(payload: String): List<WebServerCandidate> = JSONArray(payload).objects { json ->
+        require(json.getString("type") == "nginx")
+        WebServerCandidate(json.getString("id"), json.getString("providerId"), json.getString("executablePath"),
+            json.nullableText("configurationPath"), json.nullableText("version"), requireNotNull(json.nullableInstant("detectedAt")))
+    }
+
+    fun catalog(payload: String): WebServerInstallCatalog = JSONObject(payload).let { json ->
+        WebServerInstallCatalog(json.nullableText("mainlineVersion"), json.nullableText("stableVersion"),
+            json.getJSONArray("versions").strings(), json.getString("problemCode"))
+    }
+
+    fun operation(payload: String): WebServerOperation = JSONObject(payload).let { json ->
+        WebServerOperation(InstallationRoutes.canonicalId(json.getString("operationId")), json.getString("instanceId"),
+            json.getString("kind"), WebServerOperationState.entries.single { it.wire == json.getString("state") },
+            json.getString("stage"), json.getString("problemCode"), json.nullableText("snapshotId"),
+            json.nullableInstant("startedAt"), json.nullableInstant("completedAt"))
     }
 
     fun status(payload: String): WebServerStatus = JSONObject(payload).let { json ->
@@ -114,21 +152,16 @@ internal object WebPublishingWire {
         WebServerConfigTest(json.getBoolean("valid"), json.getString("problemCode"))
     }
 
-    fun sites(payload: String): List<WebServerSite> = JSONArray(payload).objects { json ->
-        WebServerSite(
-            json.getString("id"), json.getString("serverId"), json.getString("name"),
-            json.getJSONArray("bindings").objects { WebServerBinding(it.getString("domain"), it.getInt("port")) },
-            json.getJSONArray("routes").objects { WebServerRoute(it.getString("path"), it.getString("upstream")) },
-            json.nullableText("certificateId"), json.getBoolean("httpsEnabled"),
-            json.nullableInstant("updatedAt"),
-        )
-    }
-
-    fun certificates(payload: String): List<ManagedCertificate> = JSONArray(payload).objects { json ->
-        ManagedCertificate(json.getString("id"), json.getString("primaryDomain"),
-            json.getJSONArray("subjectAlternativeNames").strings(), json.getString("status"),
-            json.getString("challengeType"), json.nullableInstant("notAfter"))
-    }
+    fun sites(payload: String): List<WebServerSite> = JSONArray(payload).objects { it.site() }
+    fun site(payload: String): WebServerSite = JSONObject(payload).site()
+    private fun JSONObject.site(): WebServerSite = WebServerSite(
+        getString("id"), getString("serverId"), getString("name"),
+        getJSONArray("bindings").objects { WebServerBinding(it.getString("domain"), it.getInt("port")) },
+        getJSONArray("routes").objects { WebServerRoute(it.getString("path"), it.getString("upstream"), it.getBoolean("disableBuffering")) },
+        nullableText("certificateId"), getBoolean("httpsEnabled"), requireNotNull(nullableInstant("updatedAt")),
+        getString("updatedAt"), nullableText("rootPath"), getBoolean("spaFallback"), getBoolean("redirectHttpToHttps"),
+        getBoolean("ipv6Enabled"), nullableText("certificatePath"), nullableText("privateKeyPath"),
+    )
 
     fun publication(payload: String): WebsitePublicationOperation = JSONObject(payload).publication()
     fun publicationHistory(payload: String): List<WebsitePublicationOperation> = JSONArray(payload).objects { it.publication() }

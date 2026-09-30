@@ -367,18 +367,36 @@ internal static async Task VerifyFrpApplyLifecycleAsync(string root, IHostEnviro
         var profile = await service.UpsertProfileAsync(null, new UpsertTunnelServerProfileRequest("managed", "frps.example.test", 7000, TunnelAuthKind.None, TunnelTlsMode.Default, TunnelRuntimeMode.Managed, null), "apply-user", CancellationToken.None);
         await service.UpsertTunnelAsync(null, new UpsertTunnelDefinitionRequest(profile.Id, "ssh", TunnelProtocol.Tcp, "127.0.0.1", 22, 6000, null, true, false, false), "apply-user", CancellationToken.None);
         var provider = scope.ServiceProvider.GetRequiredService<ITunnelProvider>();
-        var applied = await provider.ApplyAsync(profile.Id, "apply-user", CancellationToken.None);
-        TestAssert.Assert(applied.Succeeded && applied.State == TunnelConnectionState.Starting, "Managed FRP desired state was not started.");
-        IReadOnlyList<TunnelDefinitionDto> current = [];
-        for (var attempt = 0; attempt < 10; attempt++)
+        try
         {
+            var applied = await provider.ApplyAsync(profile.Id, "apply-user", CancellationToken.None);
+            TestAssert.Assert(applied.Succeeded && applied.State == TunnelConnectionState.Starting, "Managed FRP desired state was not started.");
+            IReadOnlyList<TunnelDefinitionDto> current = [];
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                current = await provider.ListAsync("apply-user", CancellationToken.None);
+                if (current.Single().State == TunnelConnectionState.Connected) break;
+                await Task.Delay(100);
+            }
+            TestAssert.Assert(current.Single().State == TunnelConnectionState.Connected, "Successful FRP login was overwritten by the startup state.");
+            var original = current.Single();
+            await service.UpsertTunnelAsync(original.Id, new UpsertTunnelDefinitionRequest(profile.Id, original.Name, original.Protocol,
+                original.LocalHost, 23, original.RemotePort, null, true, false, false, original.Revision), "apply-user", CancellationToken.None);
             current = await provider.ListAsync("apply-user", CancellationToken.None);
-            if (current.Single().State == TunnelConnectionState.Connected) break;
-            await Task.Delay(100);
+            TestAssert.Assert(current.Single().State == TunnelConnectionState.SavedNotApplied && current.Single().ProblemCode == "tunnel.definition_not_applied",
+                "Live FRP login incorrectly proved a newer desired definition was applied.");
+            TestAssert.Assert((await provider.ApplyAsync(profile.Id, "apply-user", CancellationToken.None)).Succeeded, "Changed desired state could not reapply.");
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                current = await provider.ListAsync("apply-user", CancellationToken.None);
+                if (current.Single().State == TunnelConnectionState.Connected) break;
+                await Task.Delay(100);
+            }
+            TestAssert.Assert(current.Single().State == TunnelConnectionState.Connected, "Reapplied desired revision did not connect.");
+            TestAssert.Assert((await provider.GetLogsAsync(profile.Id, "apply-user", CancellationToken.None))?.All(entry => !entry.Message.Contains("token", StringComparison.OrdinalIgnoreCase)) == true, "Runtime log exposed a token.");
+            TestAssert.Assert((await provider.StopAsync(profile.Id, "apply-user", CancellationToken.None)).Succeeded, "Managed FRP process could not be stopped.");
         }
-        TestAssert.Assert(current.Single().State == TunnelConnectionState.Connected, "Successful FRP login was overwritten by the startup state.");
-        TestAssert.Assert((await provider.GetLogsAsync(profile.Id, "apply-user", CancellationToken.None))?.All(entry => !entry.Message.Contains("token", StringComparison.OrdinalIgnoreCase)) == true, "Runtime log exposed a token.");
-        TestAssert.Assert((await provider.StopAsync(profile.Id, "apply-user", CancellationToken.None)).Succeeded, "Managed FRP process could not be stopped.");
+        finally { await provider.StopAsync(profile.Id, "apply-user", CancellationToken.None); }
     }
 }
 

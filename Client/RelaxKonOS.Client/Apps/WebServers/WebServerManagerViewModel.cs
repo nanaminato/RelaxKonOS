@@ -458,7 +458,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
                 string.IsNullOrWhiteSpace(SiteRootPath) ? null : SiteRootPath.Trim(), SiteGrantNginxReadAccess, SiteSpaFallback, routes,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.Managed ? SelectedSiteCertificate?.Id : null, SiteHttpsEnabled, SiteRedirectHttpToHttps, SiteIpv6Enabled,
                 SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SiteCertificatePath) ? SiteCertificatePath : null,
-                SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null);
+                SelectedSiteCertificateSource?.Value == SiteCertificateSource.ServerFiles && !string.IsNullOrWhiteSpace(SitePrivateKeyPath) ? SitePrivateKeyPath : null, SelectedSite?.UpdatedAt);
             var saved = await _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id,
                 () => _client.UpsertSiteAsync(server.Id, request));
             if (saved is null) { await ReportSiteSaveErrorAsync(LocalizedText.Ref("webservers.site.save_failed")); return; }
@@ -487,7 +487,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         {
             await _elevations.ExecuteAsync(HostElevationCapability.NginxConfigurationWrite, server.Id, async () =>
             {
-                await _client.DeleteSiteAsync(server.Id, site.Id);
+                await _client.DeleteSiteAsync(server.Id, site.Id, new DeleteWebServerSiteRequest(site.UpdatedAt));
                 return true;
             });
             ResetSiteEditor();
@@ -498,6 +498,7 @@ public sealed partial class WebServerManagerViewModel : LocalizedObservableObjec
         {
             SiteStatusText = LocalizedText.Ref("webservers.problem.site_elevation_required");
         }
+        catch (WebServerApiException exception) { SiteStatusText = LocalizedStatus.Literal(ProblemText(exception.ProblemCode)); }
         catch (Exception) { SiteStatusText = LocalizedText.Ref("webservers.site.delete_failed"); }
     }
 

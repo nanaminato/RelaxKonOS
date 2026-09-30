@@ -69,13 +69,13 @@ internal sealed class WebServerManager(IEnumerable<IWebServerProvider> providers
     public async Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request, CancellationToken cancellationToken)
         => await WithProviderAsync(instanceId, (provider, ct) => provider.UpsertSiteAsync(instanceId, request, ct), cancellationToken);
 
-    public async Task<bool?> DeleteSiteAsync(string instanceId, string siteId, CancellationToken cancellationToken)
+    public async Task<bool?> DeleteSiteAsync(string instanceId, string siteId, DeleteWebServerSiteRequest request, CancellationToken cancellationToken)
     {
         foreach (var provider in _providers)
         {
             var instances = await provider.DiscoverAsync(cancellationToken);
             if (instances.Any(instance => string.Equals(instance.Id, instanceId, StringComparison.Ordinal)))
-                return await provider.DeleteSiteAsync(instanceId, siteId, cancellationToken);
+                return await provider.DeleteSiteAsync(instanceId, siteId, request, cancellationToken);
         }
         return null;
     }

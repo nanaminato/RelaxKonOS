@@ -217,6 +217,7 @@
     "webservers.problem.site_server_name_required": "Enter at least one domain name or IP address.",
     "webservers.problem.site_server_name_invalid": "The domain name or IP address is invalid. Enter one per line, for example app.example.com or 192.168.1.20.",
     "webservers.problem.site_already_exists": "A site with this name already exists. Close this dialog and select it in the list to edit it; creating a site does not overwrite an existing one.",
+    "webservers.problem.site_changed": "The site changed or was removed after it was opened. Refresh and review the current definition before saving or deleting.",
     "webservers.problem.site_binding_conflict": "A domain/IP address and listening-port combination is already used by another site. Adjust the domains or ports and try again.",
     "webservers.problem.site_conflict": "The site conflicts with an existing configuration. Check the site name, domains/IP addresses, and listening ports, then try again.",
     "webservers.problem.site_certificate_required": "Select an active certificate when HTTPS is enabled. When using an IP address, HTTPS should usually be disabled.",
@@ -234,6 +235,8 @@
     "webservers.enum.runtime.unknown": "Unknown",
     "webservers.enum.runtime.running": "Running",
     "webservers.enum.runtime.stopped": "Stopped",
-    "webservers.problem.version_catalog_unavailable": "Unable to load the Nginx Windows version list. Refresh and try again, or choose a local ZIP package."
+    "webservers.problem.version_catalog_unavailable": "Unable to load the Nginx Windows version list. Refresh and try again, or choose a local ZIP package.",
+    "webservers.problem.site_certificate_not_usable": "The selected certificate is unavailable, expired, revoked, or not usable.",
+    "webservers.problem.site_certificate_domain_mismatch": "Certificate SANs do not cover all site bindings."
   }
 }

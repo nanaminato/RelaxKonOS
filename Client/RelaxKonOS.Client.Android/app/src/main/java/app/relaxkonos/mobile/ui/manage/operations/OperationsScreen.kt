@@ -69,6 +69,9 @@ internal data class OperationsState(
     val hideRequested: Boolean = false,
     val error: Boolean = false,
     val pendingInstallations: List<PendingInstallationRequest> = emptyList(),
+    val pendingSites: List<app.relaxkonos.mobile.data.PendingSiteMutation> = emptyList(),
+    val pendingCertificates: List<app.relaxkonos.mobile.data.PendingCertificateRequest> = emptyList(),
+    val pendingTunnels: List<app.relaxkonos.mobile.data.PendingTunnelMutation> = emptyList(),
 )
 
 internal class OperationsViewModel(application: Application) : AndroidViewModel(application) {
@@ -87,7 +90,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
 
     fun poll(owner: SessionState.Active) {
         if (state.owner !== owner || state.loading || refreshJob?.isActive == true || state.cancelling || state.cancelRequested || state.hideRequested) return
-        if (state.items.any { it.check == OperationCheck.Unavailable || it.state == "queued" || it.state == "running" } || state.pendingInstallations.isNotEmpty())
+        if (state.items.any { it.check == OperationCheck.Unavailable || it.state == "queued" || it.state == "running" } || state.pendingInstallations.isNotEmpty() || state.pendingSites.isNotEmpty() || state.pendingCertificates.isNotEmpty() || state.pendingTunnels.isNotEmpty())
             refresh(owner, quiet = true)
     }
 
@@ -119,7 +122,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
                 if (current(owner, request)) {
                     state = state.copy(loading = false, items = items,
                         selectedKey = state.selectedKey?.takeIf { key -> items.any { (it.reference.domain to it.reference.operationId) == key } },
-                        error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations)
+                        error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -190,6 +193,9 @@ fun OperationsScreen(
     onStartOnAlertsConsumed: () -> Unit = {},
     onOpenDeployment: (String) -> Unit,
     onOpenWebsite: (String) -> Unit,
+    onOpenWebServers: () -> Unit,
+    onOpenCertificates: (String?) -> Unit,
+    onOpenTunnels: () -> Unit,
     onOpenCompose: (String) -> Unit,
     onOpenGitBuild: (String) -> Unit,
     onOpenScript: (String) -> Unit,
@@ -263,6 +269,20 @@ fun OperationsScreen(
         if (owner.privilegedOperations) OutlinedButton(onClick = { recoverDialog = true }, enabled = visible && !state.loading) {
             Text(stringResource(R.string.installation_recover))
         }
+        if (visible) state.pendingCertificates.forEach { pending ->
+            Text(stringResource(R.string.certificates_pending,
+                app.relaxkonos.mobile.ui.manage.certificates.certificateActionLabel(pending.action),
+                pending.target ?: stringResource(R.string.certificates_new_target)))
+            TextButton(onClick = { onOpenCertificates(pending.operationId) }) { Text(stringResource(R.string.certificates_recover)) }
+        }
+        if (visible) state.pendingTunnels.forEach { pending ->
+            Text(stringResource(R.string.tunnels_pending, app.relaxkonos.mobile.ui.manage.tunnels.tunnelMutationLabel(pending.action), pending.target ?: "—"))
+            TextButton(onClick = onOpenTunnels) { Text(stringResource(R.string.tunnels_inspect)) }
+        }
+        if (visible) state.pendingSites.forEach { pending ->
+            Text(stringResource(R.string.websites_site_pending, pending.serverId, pending.siteId))
+            TextButton(onClick = onOpenWebServers) { Text(stringResource(R.string.websites_site_inspect)) }
+        }
         if (visible) state.pendingInstallations.forEach { pending ->
             Text(stringResource(R.string.installation_pending,
                 installationServiceLabel(pending.service), installationKindLabel(pending.kind)),
@@ -280,6 +300,8 @@ fun OperationsScreen(
                     OperationDomain.Script -> R.string.operations_script
                     OperationDomain.Backup -> R.string.operations_backup
                     OperationDomain.Installation -> R.string.operations_installation
+                    OperationDomain.WebServer -> R.string.nginx_title
+                    OperationDomain.Certificate -> R.string.certificates_title
                 }),
                 supporting = operationStatus(item),
                 selected = (item.reference.domain to item.reference.operationId) == state.selectedKey,
@@ -297,6 +319,17 @@ fun OperationsScreen(
                 Text(stringResource(R.string.operations_stage, installationStageLabel(installation.stage)))
                 installation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
                 installation.problemCode?.let { Text(installationProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+            } else if (selected.certificate != null) {
+                Text(app.relaxkonos.mobile.ui.manage.certificates.certificateActionLabel(selected.certificate.kind))
+                Text(app.relaxkonos.mobile.ui.manage.certificates.certificateStageLabel(selected.certificate.stage))
+                selected.certificate.problemCode.takeIf(String::isNotBlank)?.let {
+                    Text(app.relaxkonos.mobile.ui.manage.certificates.certificateProblemLabel(it), color = MaterialTheme.colorScheme.error)
+                }
+            } else if (selected.webServer != null) {
+                Text(app.relaxkonos.mobile.ui.manage.websites.nginxOperationStateLabel(selected.webServer.state))
+                selected.webServer.problemCode.takeIf(String::isNotBlank)?.let {
+                    Text(app.relaxkonos.mobile.ui.manage.websites.nginxProblemLabel(it), color = MaterialTheme.colorScheme.error)
+                }
             } else {
                 selected.stage?.takeIf(String::isNotBlank)?.let { Text(stringResource(R.string.operations_stage, it)) }
                 selected.progress?.let { Text(stringResource(R.string.operations_progress, it)) }
@@ -318,6 +351,8 @@ fun OperationsScreen(
                     OperationDomain.Script -> onOpenScript(selected.reference.operationId)
                     OperationDomain.Backup -> onOpenDeployment(selected.reference.resourceId)
                     OperationDomain.Installation -> Unit
+                    OperationDomain.WebServer -> onOpenWebServers()
+                    OperationDomain.Certificate -> onOpenCertificates(selected.reference.operationId)
                 }
             }) { Text(stringResource(R.string.operations_open_target)) }
             if (selected.cancellable && selected.check == OperationCheck.Verified) {

@@ -1,5 +1,32 @@
 internal static class WebServerChecks
 {
+internal static void VerifySiteConcurrency()
+{
+    var timestamp = DateTimeOffset.Parse("2026-09-30T00:00:00.1234567Z");
+    var site = new WebServerSiteDto("one", "nginx", "one", [new("one.example.test", 80)], null,
+        false, [new("/", "http://127.0.0.1:8080")], null, false, false, false, timestamp);
+    WebServerSiteConcurrency.RequireCurrent(null, null);
+    WebServerSiteConcurrency.RequireCurrent(site, timestamp);
+    static void Conflict(WebServerSiteDto? existing, DateTimeOffset? expected, string code)
+    {
+        try { WebServerSiteConcurrency.RequireCurrent(existing, expected); throw new InvalidOperationException("Stale site mutation was accepted."); }
+        catch (NginxWebServerManager.WebServerSiteConflictException error) { TestAssert.Assert(error.ProblemCode == code, "Wrong site conflict code."); }
+    }
+    Conflict(site, null, "webserver.site_already_exists");
+    Conflict(null, timestamp, "webserver.site_changed");
+    Conflict(site, timestamp.AddTicks(-1), "webserver.site_changed");
+    Conflict(site, default(DateTimeOffset), "webserver.site_changed");
+    // Two editors saw the same version. Only the first update can use it, including sub-millisecond changes.
+    Conflict(site with { UpdatedAt = timestamp.AddTicks(1) }, timestamp, "webserver.site_changed");
+    var request = new UpsertWebServerSiteRequest(site.Id, site.Name, site.Bindings, Routes: site.Routes, ExpectedUpdatedAt: timestamp);
+    var wire = System.Text.Json.JsonSerializer.Serialize(request, RelaxKonOSJsonOptions.Default);
+    var roundTrip = System.Text.Json.JsonSerializer.Deserialize<UpsertWebServerSiteRequest>(wire, RelaxKonOSJsonOptions.Default)!;
+    TestAssert.Assert(roundTrip.ExpectedUpdatedAt == timestamp, "Site version lost its timestamp precision.");
+    try { System.Text.Json.JsonSerializer.Deserialize<DeleteWebServerSiteRequest>("{}", RelaxKonOSJsonOptions.Default); throw new InvalidOperationException("Missing delete version was accepted."); }
+    catch (System.Text.Json.JsonException) { }
+    try { System.Text.Json.JsonSerializer.Deserialize<UpsertWebServerSiteRequest>(wire.TrimEnd('}') + ",\"legacyVersion\":1}", RelaxKonOSJsonOptions.Default); throw new InvalidOperationException("Unknown site request field was accepted."); }
+    catch (System.Text.Json.JsonException) { }
+}
 internal static async Task VerifyDeploymentAndNginxSnapshotsAsync(string root)
 {
     var databasePath = Path.Combine(root, "deployment-and-snapshots.db");

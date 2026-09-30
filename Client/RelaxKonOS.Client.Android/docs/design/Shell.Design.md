@@ -91,7 +91,9 @@ Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录
 | `manage/deployments`、`manage/deployments/detail` | 应用部署列表与详情 |
 | `manage/docker` | Docker 与 Compose |
 | `manage/git` | Git 编辑与构建 |
-| `manage/websites` | 网站发布 |
+| `manage/websites` | Nginx、站点管理与网站发布 |
+| `manage/certificates` | 独立证书管理与任务恢复 |
+| `manage/tunnels` | FRP 客户端/frps、运行时与同步请求核实 |
 | `manage/guardian`、`manage/scripts` | 进程守护与脚本任务 |
 | `manage/operations` | 任务与恢复 |
 | `more/connections`、`more/server-information` | 连接与服务器信息 |
@@ -121,7 +123,7 @@ connect/login ─ 认证成功 ─ MobileShell
                             ├─ home：身份与状态
                             ├─ files：目录 → files/detail；上传卡片
                             ├─ terminal：会话/输入/输出（页面内部状态）
-                            ├─ manage：docker / deployments / websites / git
+                            ├─ manage：docker / deployments / websites / certificates / tunnels / git
                             │          monitor / processes / guardian / scripts / operations
                             └─ more：connections / account-security / server-information
                                       appearance / diagnostics / about

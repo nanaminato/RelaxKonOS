@@ -1360,15 +1360,9 @@ RelaxKonOS 当前只管理本机，因此证书管理功能应保持为一个**�
 
 RelaxKonOS 面向单台服务器的网站管理员。证书管理器是内置可信管理应用，不采用 User / Workspace / `AppPermissions` 的细粒度权限模型；证书、ACME account 和部署目标均为**当前宿主机全局资源**。
 
-所有会改变宿主机状态的操作（申请、续期、删除、导入、部署、监听 TCP 80、修改 HTTPS 绑定）只在 RelaxKonOS 以管理员身份运行时可执行。Server 缺少所需权限时必须返回稳定问题码，例如：
+当前证书写入仍依赖 `IHostPrivilegeService` 的旧入口；生产 `HostPrivilegeService.IsAdministrator` 固定为 false，故申请、自签名、续期、撤销、删除和部署返回 `certificate.admin_required` / `certificate.deployment_elevation_required`，Direct HTTP-01 预检返回 `certificate.port80_elevation_required`。以 root/Admin 进程运行不能绕过此 gate。受授权 Helper 的证书写入迁移尚未完成，测试注入管理员权限服务不代表生产路径可用。
 
-```text
-certificate.admin_required
-certificate.port80_elevation_required
-certificate.deployment_elevation_required
-```
-
-客户端只显示本地化说明，提示管理员以更高权限重新启动/安装 RelaxKonOS；不得收集或转发 sudo、UAC、服务账户密码，也不得把 HTTP API 变成任意命令提权通道。读取证书元数据可以在可访问证书目录时提供；私钥永不出现在 DTO、日志、审计或错误详情中。
+读取元数据和 Kestrel 部署事实仍按当前宿主 feature/JWT 提供；客户端不得伪造提权 capability、收集 sudo/UAC/服务账号密码或把 HTTP API 变成任意命令执行入口。私钥永不出现在 DTO、日志、审计或错误详情中。
 
 ### 35.2 HTTP-01 可用性预检
 
@@ -1392,6 +1386,12 @@ Kestrel 部署必须先实现，不能只在签发成功后尝试替换文件。
 4. 部署失败保留前一可用版本，记录稳定问题码与关联操作 ID；证书签发成功不等同于部署成功。
 5. 一张证书可具有多个 DNS 名称和部署目标；SNI、端口、绑定、目标版本和最后一次健康检查均应作为部署元数据保存。
 
+当前部署查询 `GET /api/v1.0/certificates/{id}/deployments/kestrel` 返回 `KestrelCertificateDeploymentDto`：元数据存在、HTTPS 配置、选择器注册/默认、实际 SNI 名称、运行时材料 SHA-256 与有效期、观察时间；无私钥、PEM 或服务器文件路径。已删除/未知 ID 也返回事实，区分元数据与运行时注册，不将签发状态当作部署状态。
+
+部署要求 Issued/Active 且当前有效，选择器校验实际材料私钥与有效期。精确名称优先，再匹配单层 DNS 通配符，最后使用首个注册的默认证书；后续注册不主动切换默认，删除默认后选择剩余证书。新连接使用新选择，已建立连接可保留旧材料。启动恢复跳过已撤销记录，失败不替换现有有效选择。实际选择器事实不证明公网前端或客户端信任；部署不改变监听地址/端口，也不改客户端 URL 或证书信任。
+
+Nginx 的受管证书站点绑定在配置副作用前校验状态/有效期与每个绑定的 SAN 覆盖，IDN/IP 规范化，通配符仅覆盖一层 DNS 名称；宿主 PEM 路径仍由配置语法/文件校验，不能把该模式当作受管元数据已核实。
+
 ### 35.4 Protocol 与操作模型
 
 Certificate 模块新增的路由常量、DTO、枚举和 JSON 约定必须位于 `Shared/RelaxKonOS.Protocol/Certificates/`，不得在 UI 或 Endpoint 中硬编码字符串。所有变更请求携带 `Idempotency-Key`，并返回：
@@ -1405,6 +1405,10 @@ StartedAt / CompletedAt
 ```
 
 签发、续期、部署、导入、删除和撤销属于长任务。Client 可轮询 operation 端点或订阅后续定义的事件契约；关闭窗口、断线和取消不得丢失服务端操作状态。审计记录操作者、目标、确认、结果和 OperationId，但绝不记录私钥、account key、DNS token、CSR 或完整 CA 响应。
+
+当前签发与自签名的请求身份由账号、动作和原 `Idempotency-Key` 决定，不包含每次尝试临时生成的证书 ID；重试返回原证书/操作 ID，不重复创建。续期、撤销、删除和 Kestrel 部署的身份另包含目标证书 ID。客户端必须冻结原请求内容并复用原键；更改请求应等待原任务核实后再建立新意图。取消端点不要求幂等键，按原操作 ID 返回实际状态；预检也不要求幂等键。
+
+当前只有按操作 ID 查询和取消，没有操作集合或按请求键查询接口。在宿主权限检查后，先查询当前账号/动作/目标/原键的持久账本；已知请求直接返回原任务，再次预检或目标已删除不会遮蔽原结果。首次请求才执行当前预检和目标有效性校验。权限拒绝或记录缺失不能据此推断原任务失败或成功。记录取消不证明副作用已回滚，仍需读取证书及关联服务事实。
 
 ### 35.5 持久化、并发与保留期
 

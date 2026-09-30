@@ -17,6 +17,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _profileLocks = new();
     private readonly ConcurrentDictionary<Guid, ManagedProcess> _processes = new();
     private readonly ConcurrentDictionary<Guid, RuntimeSnapshot> _states = new();
+    private readonly ConcurrentDictionary<Guid, string> _applied = new();
     private readonly ConcurrentDictionary<Guid, ConcurrentQueue<TunnelLogEntryDto>> _logs = new();
     private readonly string _configurationRoot = Path.Combine(environment.ContentRootPath, "data", "tunnels", "frp");
     public string ProviderId => "frp";
@@ -38,7 +39,18 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
                     : snapshot?.Running == true ? new(TunnelConnectionState.Starting, "") : new(TunnelConnectionState.SavedNotApplied, "");
             }
         }
-        return (await db.TunnelDefinitions.AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.Name).ToListAsync(ct)).Select(x => ToDto(x) with { State = _states.TryGetValue(x.ServerProfileId, out var state) ? state.State : TunnelConnectionState.SavedNotApplied, ProblemCode = _states.TryGetValue(x.ServerProfileId, out state) ? state.ProblemCode : "" }).ToList();
+        var profiles = await db.TunnelServerProfiles.AsNoTracking().Where(x => x.UserId == userId).ToDictionaryAsync(x => x.Id, ct);
+        var definitions = await db.TunnelDefinitions.AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.Name).ToListAsync(ct);
+        var tokens = await db.TunnelSecrets.AsNoTracking().Where(x => profiles.Keys.Contains(x.ServerProfileId) && x.Purpose == "token").ToDictionaryAsync(x => x.ServerProfileId, x => x.ProtectedValue, ct);
+        var desired = profiles.ToDictionary(x => x.Key, x => FrpcAppliedState.Fingerprint(x.Value, definitions.Where(item => item.ServerProfileId == x.Key), tokens.GetValueOrDefault(x.Key)));
+        return definitions.Select(x =>
+        {
+            var runtime = _states.GetValueOrDefault(x.ServerProfileId);
+            var projected = FrpcAppliedState.Project(runtime?.State ?? TunnelConnectionState.SavedNotApplied,
+                _applied.GetValueOrDefault(x.ServerProfileId), desired.GetValueOrDefault(x.ServerProfileId) ?? "", x.Enabled);
+            return ToDto(x) with { State = projected, ProblemCode = projected == TunnelConnectionState.Unknown ? "tunnel.applied_revision_unknown"
+                : projected == TunnelConnectionState.SavedNotApplied && runtime?.State is TunnelConnectionState.Starting or TunnelConnectionState.Connected ? "tunnel.definition_not_applied" : runtime?.ProblemCode ?? "" };
+        }).ToArray();
     }
 
     public async Task<TunnelOperationResultDto> ApplyAsync(Guid profileId, string userId, CancellationToken ct)
@@ -54,6 +66,9 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
             if (profile is null) return new(false, TunnelConnectionState.Unknown, "tunnel.profile_not_found");
             var definitions = await db.TunnelDefinitions.AsNoTracking().Where(x => x.ServerProfileId == profileId && x.UserId == userId).ToListAsync(ct);
             var dto = new TunnelServerProfileDto(profile.Id, profile.Name, profile.Host, profile.Port, profile.AuthKind, await secrets.HasProfileTokenAsync(profile.Id, ct), profile.TlsMode, profile.RuntimeMode, profile.ExternalExecutablePath, profile.Revision, profile.CreatedAt, profile.UpdatedAt);
+            // Read the protected token identity before decrypting. A concurrent change produces a conservative mismatch on readback.
+            var protectedToken = await db.TunnelSecrets.AsNoTracking().Where(x => x.ServerProfileId == profileId && x.Purpose == "token").Select(x => x.ProtectedValue).SingleOrDefaultAsync(ct);
+            var appliedIdentity = FrpcAppliedState.Fingerprint(profile, definitions, protectedToken);
             var token = profile.AuthKind == TunnelAuthKind.Token ? await secrets.GetProfileTokenAsync(profile.Id, ct) : null;
             if (OperatingSystem.IsWindows() && profile.RuntimeMode == TunnelRuntimeMode.Managed)
             {
@@ -65,6 +80,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
                 var result = await windowsRuntime.ExecuteAsync(new(WindowsManagedRuntime.Frpc, WindowsManagedRuntimeAction.Start,
                     runtime.Version, profileId, Client: helperConfiguration), ct);
                 var state = result.WindowsProcess?.Connected == true ? TunnelConnectionState.Connected : TunnelConnectionState.Starting;
+                if (result.Success) _applied[profileId] = appliedIdentity;
                 return await CompleteAsync(db, profileId, userId, result.Success ? new(true, state)
                     : new(false, TunnelConnectionState.RuntimeUnavailable, WindowsManagedRuntimeOperations.Problem(result)), ct);
             }
@@ -88,6 +104,7 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
                 _processes[profileId] = started;
                 await Task.Delay(200, ct);
                 if (started.Process.HasExited) throw new InvalidOperationException();
+                _applied[profileId] = appliedIdentity;
                 return await CompleteAsync(db, profileId, userId, new(true, TunnelConnectionState.Starting), ct);
             }
             catch
@@ -200,12 +217,15 @@ public sealed class FrpTunnelProvider(IServiceScopeFactory scopes, IHostEnvironm
     {
         var process = new Process { StartInfo = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true, CreateNoWindow = true }, EnableRaisingEvents = true };
         process.StartInfo.ArgumentList.Add("-c"); process.StartInfo.ArgumentList.Add(config);
-        process.OutputDataReceived += (_, eventArgs) => AppendLog(profileId, "information", eventArgs.Data);
-        process.ErrorDataReceived += (_, eventArgs) => AppendLog(profileId, "error", eventArgs.Data);
-        process.Exited += (_, _) => { if (_processes.ContainsKey(profileId)) _states[profileId] = new(TunnelConnectionState.Disconnected, "tunnel.runtime_exited"); };
+        bool IsCurrent() => _processes.TryGetValue(profileId, out var current) && ReferenceEquals(current.Process, process);
+        process.OutputDataReceived += (_, eventArgs) => { if (IsCurrent()) AppendLog(profileId, "information", eventArgs.Data); };
+        process.ErrorDataReceived += (_, eventArgs) => { if (IsCurrent()) AppendLog(profileId, "error", eventArgs.Data); };
+        process.Exited += (_, _) => { if (IsCurrent()) _states[profileId] = new(TunnelConnectionState.Disconnected, "tunnel.runtime_exited"); };
         if (!process.Start()) throw new InvalidOperationException();
+        var managed = new ManagedProcess(process, process.Id, process.StartTime.ToUniversalTime(), isManaged);
+        _processes[profileId] = managed;
         process.BeginOutputReadLine(); process.BeginErrorReadLine();
-        return new ManagedProcess(process, process.Id, process.StartTime.ToUniversalTime(), isManaged);
+        return managed;
     }
     private async Task StopCoreAsync(Guid profileId)
     {

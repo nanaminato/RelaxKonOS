@@ -15,7 +15,7 @@ class WebPublishingWireTest {
     }
 
     @Test fun `reads server site and certificate diagnostics without certificate material`() {
-        val server = WebPublishingWire.servers("""[{"id":"nginx1","type":"nginx","managementMode":"managed","version":null,"capabilities":{"canRead":true,"canTestConfiguration":true}}]""").single()
+        val server = WebPublishingWire.servers("""[{"id":"nginx1","type":"nginx","managementMode":"managed","version":null,"providerId":"nginx","executablePath":"/usr/sbin/nginx","configurationPath":null,"detectedAt":"2026-09-30T00:00:00Z","capabilities":{"canRead":true,"canTestConfiguration":true,"canReload":true,"canStart":true,"canStop":true,"canRestart":true,"canUninstall":false}}]""").single()
         assertEquals("nginx1", server.id)
         assertNull(server.version)
         assertTrue(server.canTestConfiguration)
@@ -30,9 +30,9 @@ class WebPublishingWireTest {
         assertEquals("127.0.0.1:8080", site.routes.single().upstream)
         assertEquals("0fded9ef-ed50-4d5e-8e87-74caf3311be7", site.certificateId)
 
-        val certificate = WebPublishingWire.certificates("""[{"id":"0fded9ef-ed50-4d5e-8e87-74caf3311be7","primaryDomain":"app.example.test","subjectAlternativeNames":[],"issuer":null,"serialNumber":null,"thumbprint":null,"notBefore":null,"notAfter":null,"status":"issued","challengeType":"directHttp01","keyAlgorithm":"ecdsaP256","renewalWindowStart":null,"renewalWindowEnd":null,"lastRenewalAt":null,"lastRenewalProblemCode":null,"createdAt":"2026-09-27T00:00:00Z","updatedAt":"2026-09-27T00:00:00Z"}]""").single()
+        val certificate = CertificateWire.list("""[{"id":"0fded9ef-ed50-4d5e-8e87-74caf3311be7","primaryDomain":"app.example.test","subjectAlternativeNames":[],"issuer":null,"serialNumber":null,"thumbprint":null,"notBefore":null,"notAfter":null,"status":"issued","challengeType":"directHttp01","keyAlgorithm":"ecdsaP256","renewalWindowStart":null,"renewalWindowEnd":null,"lastRenewalAt":null,"lastRenewalProblemCode":null,"createdAt":"2026-09-27T00:00:00Z","updatedAt":"2026-09-27T00:00:00Z","kind":"acme","fingerprintSha256":null}]""").single()
         assertEquals("app.example.test", certificate.primaryDomain)
-        assertEquals("issued", certificate.status)
+        assertEquals(CertificateStatus.Issued, certificate.status)
         assertNull(certificate.notAfterMillis)
     }
 

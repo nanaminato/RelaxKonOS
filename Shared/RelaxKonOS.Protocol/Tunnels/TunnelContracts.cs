@@ -9,7 +9,7 @@ public enum TunnelRuntimeMode { Managed, External }
 public enum TunnelConnectionState { SavedNotApplied, Starting, Connected, Disconnected, RuntimeUnavailable, Unknown }
 public enum TunnelRuntimeState { NotInstalled, Available, Running, Stopped, ExternalInvalid, Unknown }
 
-/// <summary>Profile projection. Token is populated only by the Controller-authorized profile editing endpoint.</summary>
+/// <summary>Safe profile projection. All profile reads expose only TokenConfigured; Token is write-only.</summary>
 public sealed record TunnelServerProfileDto(
     Guid Id, string Name, string Host, int Port, TunnelAuthKind AuthKind, bool TokenConfigured,
     TunnelTlsMode TlsMode, TunnelRuntimeMode RuntimeMode, string? ExternalExecutablePath,
@@ -32,19 +32,19 @@ public sealed record TunnelRuntimeDownloadDto(string Version, string Url);
 public sealed record TunnelLogEntryDto(DateTimeOffset Timestamp, string Level, string Message);
 public sealed record TunnelAuditEntryDto(DateTimeOffset Timestamp, string Action, string Result, string ProblemCode);
 
-public enum ManagedFrpsState { NotConfigured, Stopped, Starting, Running, RuntimeUnavailable, Failed }
+public enum ManagedFrpsState { NotConfigured, Stopped, Starting, Running, RuntimeUnavailable, Failed, Unknown }
 public sealed record TunnelPortRangeDto(int Start, int End);
-/// <summary>Host-local frps projection. Token is populated only by Controller-authorized editing routes.</summary>
+/// <summary>Host-local frps projection. Token is populated only by the Controller-authorized GET editor route.</summary>
 public sealed record ManagedFrpsConfigurationDto(
     string BindAddress, int BindPort, IReadOnlyList<TunnelPortRangeDto> AllowPorts,
     int? VhostHttpPort, int? VhostHttpsPort, bool ForceTls, bool TokenConfigured,
     bool DashboardEnabled, string DashboardAddress, int? DashboardPort, string? DashboardUser,
-    bool DashboardPasswordConfigured, ManagedFrpsState State, string ProblemCode = "", DateTimeOffset? StartedAt = null,
+    bool DashboardPasswordConfigured, ManagedFrpsState State, [property: JsonRequired] long Revision, [property: JsonRequired] long? AppliedRevision, string ProblemCode = "", DateTimeOffset? StartedAt = null,
     string? Token = null);
 public sealed record UpdateManagedFrpsConfigurationRequest(
     bool Confirmed, string BindAddress, int BindPort, IReadOnlyList<TunnelPortRangeDto>? AllowPorts,
     int? VhostHttpPort, int? VhostHttpsPort, bool ForceTls, string? Token,
-    bool DashboardEnabled, string DashboardAddress, int? DashboardPort, string? DashboardUser, string? DashboardPassword);
+    bool DashboardEnabled, string DashboardAddress, int? DashboardPort, string? DashboardUser, string? DashboardPassword, [property: JsonRequired] long ExpectedRevision);
 
 public sealed record UpsertTunnelServerProfileRequest(
     string Name, string Host, int Port, TunnelAuthKind AuthKind, TunnelTlsMode TlsMode,

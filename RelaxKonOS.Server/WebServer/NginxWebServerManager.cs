@@ -292,6 +292,23 @@ internal sealed partial class NginxWebServerManager(
         await IntegrationGate.WaitAsync(cancellationToken);
         try
         {
+            var sites = (await ReadSitesAsync(instance, cancellationToken)).ToList();
+            var index = sites.FindIndex(item => item.Id == site.Id);
+            WebServerSiteConcurrency.RequireCurrent(index >= 0 ? sites[index] : null, request.ExpectedUpdatedAt);
+            if (site.HttpsEnabled && site.CertificateId is { } certificateId)
+            {
+                var certificate = await certificates.GetAsync(certificateId, cancellationToken);
+                if (CertificateUsagePolicy.Problem(certificate, DateTimeOffset.UtcNow) is not null)
+                    throw new WebServerSiteValidationException("webserver.site_certificate_not_usable");
+                if (site.Bindings.Any(binding => !CertificateUsagePolicy.Covers(certificate!.Domains, binding.Domain)))
+                    throw new WebServerSiteValidationException("webserver.site_certificate_domain_mismatch");
+            }
+            if (FindRoutingConflict(sites, site) is { } conflict)
+            {
+                logger.LogInformation("Nginx site save rejected because a domain and port are already assigned. InstanceId={InstanceId}, SiteId={SiteId}, ConflictingSiteId={ConflictingSiteId}, Domain={Domain}, Port={Port}", instance.Id, site.Id, conflict.SiteId, conflict.Domain, conflict.Port);
+                throw new WebServerSiteConflictException("webserver.site_binding_conflict");
+            }
+            if (index >= 0 && site.UpdatedAt <= sites[index].UpdatedAt) site = site with { UpdatedAt = sites[index].UpdatedAt.AddTicks(1) };
             var anchorProblem = await EnsureSiteIncludeAnchorAsync(instance, cancellationToken);
             if (anchorProblem is not null)
             {
@@ -302,18 +319,6 @@ internal sealed partial class NginxWebServerManager(
             {
                 logger.LogWarning("Nginx site save rejected because the sites directory is a symbolic link. InstanceId={InstanceId}, SitesDirectory={SitesDirectory}", instance.Id, directory);
                 return null;
-            }
-            var sites = (await ReadSitesAsync(instance, cancellationToken)).ToList();
-            var index = sites.FindIndex(item => item.Id == site.Id);
-            if (string.IsNullOrWhiteSpace(request.Id) && index >= 0)
-            {
-                logger.LogInformation("Nginx site creation rejected because its generated ID is already in use. InstanceId={InstanceId}, SiteId={SiteId}, Name={Name}", instance.Id, site.Id, site.Name);
-                throw new WebServerSiteConflictException("webserver.site_already_exists");
-            }
-            if (FindRoutingConflict(sites, site) is { } conflict)
-            {
-                logger.LogInformation("Nginx site save rejected because a domain and port are already assigned. InstanceId={InstanceId}, SiteId={SiteId}, ConflictingSiteId={ConflictingSiteId}, Domain={Domain}, Port={Port}", instance.Id, site.Id, conflict.SiteId, conflict.Domain, conflict.Port);
-                throw new WebServerSiteConflictException("webserver.site_binding_conflict");
             }
             if (request.GrantNginxReadAccess && site.RootPath is not null
                 && !(await privilegedNginx.GrantStaticSiteReadAccessAsync(site.RootPath, cancellationToken)).Success)
@@ -335,7 +340,7 @@ internal sealed partial class NginxWebServerManager(
         finally { IntegrationGate.Release(); }
     }
 
-    public async Task<bool?> DeleteSiteAsync(string instanceId, string siteId, CancellationToken cancellationToken)
+    public async Task<bool?> DeleteSiteAsync(string instanceId, string siteId, DeleteWebServerSiteRequest request, CancellationToken cancellationToken)
     {
         var instance = (await DiscoverAsync(cancellationToken)).FirstOrDefault(candidate => candidate.Id == instanceId);
         if (instance is null || instance.ManagementMode is not (WebServerManagementMode.Integrated or WebServerManagementMode.Managed) || !SiteIdPattern().IsMatch(siteId)) return null;
@@ -345,6 +350,8 @@ internal sealed partial class NginxWebServerManager(
         try
         {
             var sites = (await ReadSitesAsync(instance, cancellationToken)).ToList();
+            var existing = sites.SingleOrDefault(site => site.Id == siteId);
+            WebServerSiteConcurrency.RequireCurrent(existing, request.ExpectedUpdatedAt);
             if (!sites.RemoveAll(site => site.Id == siteId).Equals(1)) return false;
             var config = Path.Combine(directory, $"{siteId}.conf");
             if (!IsRelaxKonOSSiteConfig(config)) return null;
@@ -367,17 +374,24 @@ internal sealed partial class NginxWebServerManager(
     private async Task<IReadOnlyList<WebServerSiteDto>> ReadSitesAsync(WebServerDto instance, CancellationToken cancellationToken)
     {
         var directory = GetSitesDirectory(instance);
-        if (directory is null || IsSymbolicLink(directory)) return [];
+        if (directory is null) return [];
+        if (IsSymbolicLink(directory)) throw new IOException("Web site metadata directory is unsafe.");
         var path = Path.Combine(directory, "sites.json");
-        if (!File.Exists(path) || IsSymbolicLink(path)) return [];
+        if (IsSymbolicLink(path)) throw new IOException("Web site metadata file is unsafe.");
+        if (!File.Exists(path)) return [];
         try
         {
             await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<List<WebServerSiteDto>>(stream, SiteJson, cancellationToken) ?? [];
+            var sites = await JsonSerializer.DeserializeAsync<List<WebServerSiteDto>>(stream, SiteJson, cancellationToken)
+                ?? throw new IOException("Web site metadata is empty.");
+            if (sites.Any(site => site is null || !SiteIdPattern().IsMatch(site.Id ?? "") || site.ServerId != instance.Id
+                || site.Bindings is null || site.Routes is null || site.UpdatedAt == default)
+                || sites.Select(site => site.Id).Distinct(StringComparer.Ordinal).Count() != sites.Count)
+                throw new IOException("Web site metadata is invalid.");
+            return sites;
         }
-        catch (JsonException) { return []; }
-        catch (IOException) { return []; }
-        catch (UnauthorizedAccessException) { return []; }
+        catch (JsonException exception) { throw new IOException("Web site metadata is invalid.", exception); }
+        catch (UnauthorizedAccessException exception) { throw new IOException("Web site metadata is inaccessible.", exception); }
     }
 
     private async Task<string?> EnsureSiteIncludeAnchorAsync(WebServerDto instance, CancellationToken cancellationToken)
