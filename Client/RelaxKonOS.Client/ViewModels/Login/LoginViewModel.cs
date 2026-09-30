@@ -229,8 +229,16 @@ public partial class LoginViewModel : ObservableObject
     public string OwnerDeviceKeyPassphraseText => T("login.owner_device.passphrase", "Key-file passphrase");
     public string OwnerDeviceKeyPassphraseHint => T("login.owner_device.passphrase_hint", "Required only when Linux has no desktop keyring.");
     public string AcceptOwnerDevicePairingText => T("login.owner_device.accept", "Pair and sign in");
-    public string ConfirmHostKeyText => T("login.ssh_confirm_host_key", "I verified this fingerprint; trust and connect");
-    public string HostKeyDialogTitle => T("login.ssh_host_key_title", "Verify SSH host key");
+    // 首次固定与替换已固定的密钥共用同一个对话框，区别只在文案与是否需要并排展示被取代的旧指纹
+    // （判定见 SshHostKeyReviewRules）。
+    public string ConfirmHostKeyText => HostKeyReplacesPinnedKey
+        ? T("login.ssh_replace_host_key", "Accept the new fingerprint; trust and connect")
+        : T("login.ssh_confirm_host_key", "I verified this fingerprint; trust and connect");
+    public string HostKeyDialogTitle => HostKeyReplacesPinnedKey
+        ? T("login.ssh_host_key_changed_title", "SSH host key changed")
+        : T("login.ssh_host_key_title", "Verify SSH host key");
+    public string PinnedFingerprintLabel => T("login.ssh_pinned_fingerprint", "Fingerprint saved on this device");
+    public string ObservedFingerprintLabel => T("login.ssh_observed_fingerprint", "Fingerprint this handshake presented");
     public string CancelText => T("common.cancel", "Cancel");
 
     [ObservableProperty] private string _statusMessage = string.Empty;
@@ -239,6 +247,11 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty] private bool _needsHostKeyConfirmation;
     [ObservableProperty] private string _hostKeyFingerprint = string.Empty;
     [ObservableProperty] private string _hostKeyMessage = string.Empty;
+
+    /// <summary>本次核对是「替换已固定的密钥」，而不是「首次固定」。</summary>
+    [ObservableProperty] private bool _hostKeyReplacesPinnedKey;
+    [ObservableProperty] private string _previousHostKeyFingerprint = string.Empty;
+    [ObservableProperty] private string _previousHostKeyConfirmedText = string.Empty;
 
     partial void OnServerUrlChanged(string value)
     {
@@ -602,8 +615,17 @@ public partial class LoginViewModel : ObservableObject
         _pendingHostKey = null;
         _pendingHost = null;
         NeedsHostKeyConfirmation = false;
+        HostKeyReplacesPinnedKey = false;
         HostKeyFingerprint = string.Empty;
+        PreviousHostKeyFingerprint = string.Empty;
+        PreviousHostKeyConfirmedText = string.Empty;
         HostKeyMessage = string.Empty;
+    }
+
+    partial void OnHostKeyReplacesPinnedKeyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ConfirmHostKeyText));
+        OnPropertyChanged(nameof(HostKeyDialogTitle));
     }
 
     /// <summary>Cancels a pending host-key decision without changing the trusted-host store.</summary>
@@ -670,11 +692,30 @@ public partial class LoginViewModel : ObservableObject
         {
             _pendingHost = target;
             _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            HostKeyMessage = rejected.Trust == ServerHostKeyTrust.Changed
+            // 密钥变更时必须把被取代的那条固定记录一并取出交给用户：只看新指纹无法分辨
+            // 「重装/重建过的同一台机器」和「这个地址被另一台机器接管」（SshHostKeyReviewRules）。
+            ServerHostKeyRecord? previous = null;
+            if (rejected.Trust == ServerHostKeyTrust.Changed)
+            {
+                var known = await _hostKeys.LoadAsync(ct).ConfigureAwait(true);
+                previous = ServerHostTrustRules.Find(
+                    known, rejected.Observation.Host, rejected.Observation.Port, rejected.Observation.Algorithm);
+            }
+            var review = SshHostKeyReviewRules.Plan(rejected.Trust, rejected.Observation, previous);
+            HostKeyReplacesPinnedKey = review?.ReplacesPinnedKey == true;
+            HostKeyFingerprint = review is null ? string.Empty : rejected.Observation.GroupedFingerprint;
+            PreviousHostKeyFingerprint = review?.Previous is { } pinned
+                ? ServerHostTrustRules.GroupedFingerprint(pinned.Fingerprint)
+                : string.Empty;
+            PreviousHostKeyConfirmedText = review?.Previous is { } recorded
+                ? string.Format(
+                    T("login.ssh_pinned_fingerprint_confirmed_at", "Confirmed {0}"),
+                    recorded.ConfirmedAtUtc.LocalDateTime.ToString("g"))
+                : string.Empty;
+            HostKeyMessage = HostKeyReplacesPinnedKey
                 ? T("login.ssh_host_key_changed", "The SSH host key changed. Confirm the new fingerprint with the host administrator before trusting it.")
                 : T("login.ssh_host_key_unknown", "New SSH host key. Verify this fingerprint with the host administrator before trusting it.");
-            NeedsHostKeyConfirmation = true;
+            NeedsHostKeyConfirmation = review is not null;
             StatusMessage = string.Empty;
         }
         catch (OperationCanceledException) { StatusMessage = string.Empty; }

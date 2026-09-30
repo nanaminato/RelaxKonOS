@@ -72,7 +72,13 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _sshPassword = string.Empty;
     [ObservableProperty] private string _hostKeyFingerprint = string.Empty;
     [ObservableProperty] private bool _needsHostKeyConfirmation;
+
+    /// <summary>本次核对是「替换已固定的密钥」，而不是「首次固定」。</summary>
+    [ObservableProperty] private bool _hostKeyReplacesPinnedKey;
+
     [ObservableProperty] private bool _hostKeyChanged;
+    [ObservableProperty] private string _previousHostKeyFingerprint = string.Empty;
+    [ObservableProperty] private string _previousHostKeyConfirmedText = string.Empty;
     [ObservableProperty] private HostPlatformOption? _selectedPlatform;
     [ObservableProperty] private string _verifiedStateText = string.Empty;
     [ObservableProperty] private string _lastProbeText = string.Empty;
@@ -105,9 +111,20 @@ public partial class ServerCenterViewModel : ObservableObject
     public string SaveNewHostPasswordText => T("server_center.save_new_host_password", "Save this password securely on this device");
     public string DeploymentPasswordHint => T("server_center.deployment_password", "SSH password (leave blank to use the saved password)");
     public string SelectedTargetLabel => T("server_center.selected_target", "Server and user");
-    public string ConfirmHostKeyText => T("server_center.confirm_host_key", "I verified this fingerprint");
-    public string HostKeyReviewText => T("server_center.host_key_review", "Verify this SSH host-key fingerprint with the host administrator before trusting it:");
-    public string HostKeyChangedText => T("server_center.host_key_changed", "The SSH host key changed. Deployment is blocked until an administrator confirms it.");
+    // 首次固定与替换已固定的密钥共用一次核对，只有文案与是否需要并排展示旧指纹不同
+    // （判定见 SshHostKeyReviewRules）。密钥变更曾经只是一行红字、没有任何出口——而 DHCP 地址漂移、
+    // 克隆虚拟机或重装系统都会让指纹变化，用户必须有办法核对并接受新指纹后再继续。
+    public string ConfirmHostKeyText => HostKeyReplacesPinnedKey
+        ? T("server_center.host_key_replace_confirm", "Accept the new fingerprint")
+        : T("server_center.confirm_host_key", "I verified this fingerprint");
+    public string HostKeyReviewTitle => HostKeyReplacesPinnedKey
+        ? T("server_center.host_key_replace_title", "SSH host key changed")
+        : T("server_center.host_key_review_title", "Confirm SSH host key");
+    public string HostKeyReviewText => HostKeyReplacesPinnedKey
+        ? T("server_center.host_key_replace_message", "The fingerprint this host presented no longer matches the one saved on this device. A host rebuilt with new keys and another machine taking over this address under DHCP look exactly the same here. Accepting replaces the saved fingerprint; it is never replaced silently.")
+        : T("server_center.host_key_review", "Verify this SSH host-key fingerprint with the host administrator before trusting it:");
+    public string PinnedFingerprintLabel => T("server_center.pinned_fingerprint", "Fingerprint saved on this device");
+    public string ObservedFingerprintLabel => T("server_center.observed_fingerprint", "Fingerprint this handshake presented");
     public string PlatformLabel => T("server_center.host_platform", "Host platform");
     public string ProbeText => T("server_center.probe", "Run host preflight");
     public string ProbeHelpText => T("server_center.probe_help", "Preflight uploads the fixed deployment launcher, reads OS, architecture, permissions and current installation status, then saves a timestamped SSH verification.");
@@ -324,10 +341,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
@@ -425,10 +439,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
@@ -611,10 +622,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
             return false;
         }
         catch (OperationCanceledException)
@@ -702,10 +710,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
@@ -747,10 +752,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
@@ -805,10 +807,7 @@ public partial class ServerCenterViewModel : ObservableObject
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
-            _pendingHostKey = rejected.Observation;
-            HostKeyFingerprint = rejected.Observation.GroupedFingerprint;
-            NeedsHostKeyConfirmation = rejected.Trust == ServerHostKeyTrust.Unknown;
-            HostKeyChanged = rejected.Trust == ServerHostKeyTrust.Changed;
+            await ApplyHostKeyRejectionAsync(rejected, cancellationToken).ConfigureAwait(true);
             return null;
         }
         catch (Exception)
@@ -842,10 +841,10 @@ public partial class ServerCenterViewModel : ObservableObject
         ErrorMessage = string.Empty;
         try
         {
+            // 首次固定与替换已固定的密钥在这里是同一个动作：用户已经看过（替换时还包括旧指纹）
+            // 并显式按下确认，Replace 语义由信任仓库保证同端点同算法只留一条。
             await _hostKeys.TrustAsync(endpoint, observation, cancellationToken).ConfigureAwait(true);
-            _pendingHostKey = null;
-            NeedsHostKeyConfirmation = false;
-            HostKeyFingerprint = string.Empty;
+            ClearPendingHostKey();
             StatusMessage = T("server_center.host_key_trusted", "Host key saved. Retry the deployment action.");
         }
         catch (Exception)
@@ -856,6 +855,50 @@ public partial class ServerCenterViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// 把一次被拒绝的握手翻译成「还差哪一步」，并在密钥变更时把被取代的那条固定记录一并取出。
+    /// 旧指纹必须与新指纹同时交给用户：只看新指纹无法区分「重装/重建过的同一台机器」和
+    /// 「这个地址被另一台机器接管」（判定见 <see cref="SshHostKeyReviewRules"/>）。
+    /// </summary>
+    private async Task ApplyHostKeyRejectionAsync(
+        ServerCenterHostKeyRejectedException rejected, CancellationToken cancellationToken)
+    {
+        var observation = rejected.Observation;
+        ServerHostKeyRecord? previous = null;
+        if (rejected.Trust == ServerHostKeyTrust.Changed)
+        {
+            var known = await _hostKeys.LoadAsync(cancellationToken).ConfigureAwait(true);
+            previous = ServerHostTrustRules.Find(known, observation.Host, observation.Port, observation.Algorithm);
+        }
+
+        var review = SshHostKeyReviewRules.Plan(rejected.Trust, observation, previous);
+        _pendingHostKey = observation;
+        NeedsHostKeyConfirmation = review is not null;
+        HostKeyReplacesPinnedKey = review?.ReplacesPinnedKey == true;
+        HostKeyChanged = review?.ReplacesPinnedKey == true;
+        HostKeyFingerprint = review is null ? string.Empty : observation.GroupedFingerprint;
+        PreviousHostKeyFingerprint = review?.Previous is { } pinned
+            ? ServerHostTrustRules.GroupedFingerprint(pinned.Fingerprint)
+            : string.Empty;
+        PreviousHostKeyConfirmedText = review?.Previous is { } recorded
+            ? string.Format(
+                T("server_center.pinned_fingerprint_confirmed_at", "Confirmed {0}"),
+                recorded.ConfirmedAtUtc.LocalDateTime.ToString("g"))
+            : string.Empty;
+    }
+
+    /// <summary>丢掉一次待核对的主机密钥，同时解除由它造成的写操作阻断。</summary>
+    private void ClearPendingHostKey()
+    {
+        _pendingHostKey = null;
+        NeedsHostKeyConfirmation = false;
+        HostKeyReplacesPinnedKey = false;
+        HostKeyChanged = false;
+        HostKeyFingerprint = string.Empty;
+        PreviousHostKeyFingerprint = string.Empty;
+        PreviousHostKeyConfirmedText = string.Empty;
     }
 
     private bool CanProbeHost() => !IsBusy && SelectedHost is not null && !HostKeyChanged;
@@ -887,10 +930,7 @@ public partial class ServerCenterViewModel : ObservableObject
     {
         var changedTarget = !string.Equals(_selectedPlatformHostId, value?.HostId, StringComparison.Ordinal);
         _selectedPlatformHostId = value?.HostId;
-        _pendingHostKey = null;
-        NeedsHostKeyConfirmation = false;
-        HostKeyChanged = false;
-        HostKeyFingerprint = string.Empty;
+        ClearPendingHostKey();
         SshPassword = string.Empty;
         if (changedTarget) SelectedPlatform = null;
         VerifiedStateText = value?.LastVerified is { } verified ? FormatSnapshot(verified) : string.Empty;
@@ -925,6 +965,12 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasError));
     partial void OnNeedsHostKeyConfirmationChanged(bool value) => ConfirmHostKeyCommand.NotifyCanExecuteChanged();
+    partial void OnHostKeyReplacesPinnedKeyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ConfirmHostKeyText));
+        OnPropertyChanged(nameof(HostKeyReviewTitle));
+        OnPropertyChanged(nameof(HostKeyReviewText));
+    }
     partial void OnHostKeyChangedChanged(bool value)
     {
         ProbeHostCommand.NotifyCanExecuteChanged();

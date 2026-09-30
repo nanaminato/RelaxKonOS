@@ -32,6 +32,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.servercenter.SshCredential
+import app.relaxkonos.mobile.servercenter.SshSystemProbe
+import app.relaxkonos.mobile.servercenter.SshSystemSnapshot
 import app.relaxkonos.mobile.servercenter.SshCredentialKind
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.MetricTile
@@ -48,7 +50,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Fixed, read-only Linux host inspection.  The UI never accepts a command string from the user. */
+/** Fixed, read-only Windows and Linux host inspection.  The UI never accepts a command string from the user. */
 class SshSystemViewModel(application: Application) : AndroidViewModel(application) {
     private val container = getApplication<RelaxKonApplication>().container
     private val mutableState = MutableStateFlow(SshSystemUiState())
@@ -69,10 +71,9 @@ class SshSystemViewModel(application: Application) : AndroidViewModel(applicatio
                     SshCredential(SshCredentialKind.Password, secret, null),
                     System.currentTimeMillis(),
                 ).use { session ->
-                    val result = session.sshTransport.run(SYSTEM_SNAPSHOT_COMMAND)
-                    if (!result.succeeded) null else parseSnapshot(result.standardOutput)
+                    SshSystemProbe.read(session.sshTransport)
                 }
-                mutableState.update { it.copy(snapshot = snapshot, loading = false, problem = snapshot == null) }
+                mutableState.update { it.copy(snapshot = snapshot ?: it.snapshot, loading = false, problem = snapshot == null) }
             } catch (_: Exception) {
                 mutableState.update { it.copy(loading = false, problem = true) }
             } finally {
@@ -81,30 +82,6 @@ class SshSystemViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private fun parseSnapshot(output: String): SshSystemSnapshot? {
-        val values = output.lineSequence()
-            .mapNotNull { line -> line.split('=', limit = 2).takeIf { it.size == 2 } }
-            .associate { (key, value) -> key to value }
-        val cpu = values["cpu"]?.toDoubleOrNull()?.coerceIn(0.0, 100.0) ?: return null
-        val total = values["memoryTotal"]?.toLongOrNull()?.takeIf { it > 0 } ?: return null
-        val available = values["memoryAvailable"]?.toLongOrNull()?.coerceIn(0L, total) ?: return null
-        val uptime = values["uptime"]?.toLongOrNull()?.coerceAtLeast(0L) ?: return null
-        return SshSystemSnapshot(cpu, total - available, total, uptime, values["system"].orEmpty())
-    }
-
-    private companion object {
-        val SYSTEM_SNAPSHOT_COMMAND = """
-            sh -c 'read _ u n s i w x y z _ &lt; /proc/stat
-            t1=${'$'}((u+n+s+i+w+x+y+z)); idle1=${'$'}((i+w)); sleep 1
-            read _ u n s i w x y z _ &lt; /proc/stat
-            t2=${'$'}((u+n+s+i+w+x+y+z)); idle2=${'$'}((i+w)); delta=${'$'}((t2-t1))
-            [ "${'$'}delta" -gt 0 ] || delta=1; cpu=${'$'}((100*(delta-(idle2-idle1))/delta))
-            total=${'$'}(awk "/^MemTotal:/ {print ${'$'}2 * 1024}" /proc/meminfo)
-            available=${'$'}(awk "/^MemAvailable:/ {print ${'$'}2 * 1024}" /proc/meminfo)
-            uptime=${'$'}(cut -d. -f1 /proc/uptime)
-            printf "cpu=%s\\nmemoryTotal=%s\\nmemoryAvailable=%s\\nuptime=%s\\nsystem=%s\\n" "${'$'}cpu" "${'$'}total" "${'$'}available" "${'$'}uptime" "${'$'}(uname -sr)"'
-        """.trimIndent().replace("&lt;", "<")
-    }
 }
 
 data class SshSystemUiState(
@@ -113,17 +90,9 @@ data class SshSystemUiState(
     val problem: Boolean = false,
 )
 
-data class SshSystemSnapshot(
-    val cpuPercent: Double,
-    val memoryUsedBytes: Long,
-    val memoryTotalBytes: Long,
-    val uptimeSeconds: Long,
-    val system: String,
-)
-
 @Composable
 fun SshSystemScreen(hostId: String, onExit: () -> Unit, modifier: Modifier = Modifier) {
-    val model: SshSystemViewModel = viewModel()
+    val model: SshSystemViewModel = viewModel(key = "ssh-system-$hostId")
     val state by model.state.collectAsState()
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
@@ -164,7 +133,10 @@ fun SshSystemScreen(hostId: String, onExit: () -> Unit, modifier: Modifier = Mod
         ) {
             when {
                 state.loading && snapshot == null -> CircularProgressIndicator()
-                snapshot != null -> SystemMetrics(snapshot)
+                snapshot != null -> {
+                    SystemMetrics(snapshot)
+                    if (state.problem) Text(stringResource(R.string.ssh_workspace_system_unavailable), color = MaterialTheme.colorScheme.error)
+                }
                 state.problem -> Text(stringResource(R.string.ssh_workspace_system_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -199,6 +171,16 @@ private fun SystemMetrics(snapshot: SshSystemSnapshot) {
             progress = memoryFraction,
             tone = StatusTone.Primary,
             modifier = Modifier.weight(1f),
+        )
+    }
+    snapshot.disks.forEach { disk ->
+        MetricTile(
+            label = stringResource(R.string.ssh_workspace_system_disk, disk.name),
+            value = stringResource(R.string.home_value_percent, disk.usedBytes.toDouble() / disk.totalBytes * 100),
+            supporting = stringResource(R.string.home_value_used_of_total, formatSize(disk.usedBytes).orEmpty(), formatSize(disk.totalBytes).orEmpty()),
+            progress = (disk.usedBytes.toDouble() / disk.totalBytes).toFloat(),
+            tone = StatusTone.Primary,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
     KeyValueRow(stringResource(R.string.home_label_uptime), formatUptime(snapshot.uptimeSeconds))

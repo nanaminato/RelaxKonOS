@@ -37,7 +37,10 @@ public partial class LoginView : UserControl
         try
         {
             var accepted = await new SshHostKeyDialog(
-                viewModel.HostKeyDialogTitle, viewModel.HostKeyMessage, viewModel.HostKeyFingerprint,
+                viewModel.HostKeyDialogTitle, viewModel.HostKeyMessage,
+                viewModel.ObservedFingerprintLabel, viewModel.HostKeyFingerprint,
+                viewModel.PinnedFingerprintLabel, viewModel.PreviousHostKeyFingerprint,
+                viewModel.PreviousHostKeyConfirmedText,
                 viewModel.ConfirmHostKeyText, viewModel.CancelText).ShowDialog<bool>(owner);
             if (accepted) await viewModel.ConfirmHostKeyFromDialogAsync();
             else viewModel.CancelHostKeyConfirmation();

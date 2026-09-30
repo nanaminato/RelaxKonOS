@@ -181,7 +181,8 @@
     <string name="ssh_terminal_empty">新建 SSH 会话以打开终端。</string>
     <string name="ssh_workspace_system">系统</string>
     <string name="ssh_workspace_system_subtitle">%1$s 的资源状态</string>
-    <string name="ssh_workspace_system_unavailable">此主机未提供 Linux 资源快照。</string>
+    <string name="ssh_workspace_system_unavailable">无法读取主机资源，请检查连接和主机命令权限后刷新。</string>
+    <string name="ssh_workspace_system_disk">磁盘 · %1$s</string>
     <string name="ssh_workspace_system_platform">平台</string>
     <string name="ssh_workspace_exit">退出 SSH 工作区</string>
     <string name="ssh_workspace_deploy">部署</string>

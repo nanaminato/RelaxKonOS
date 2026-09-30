@@ -192,7 +192,8 @@
     <string name="ssh_terminal_empty">Create an SSH session to open a terminal.</string>
     <string name="ssh_workspace_system">System</string>
     <string name="ssh_workspace_system_subtitle">Resource status for %1$s</string>
-    <string name="ssh_workspace_system_unavailable">This host did not provide a Linux resource snapshot.</string>
+    <string name="ssh_workspace_system_unavailable">Unable to read host resources. Check the connection and host command permissions, then refresh.</string>
+    <string name="ssh_workspace_system_disk">Disk · %1$s</string>
     <string name="ssh_workspace_system_platform">Platform</string>
     <string name="ssh_workspace_exit">Exit SSH workspace</string>
     <string name="ssh_workspace_deploy">Deploy</string>
