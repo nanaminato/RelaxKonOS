@@ -373,7 +373,7 @@ private fun operationKind(kind: DockerStackOperationKind): String = stringResour
 )
 
 @Composable
-fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null) {
+fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null, onOpenProxy: () -> Unit) {
     val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
@@ -395,6 +395,7 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         state.message?.let { message -> ErrorBanner(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
         if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        TextButton(onClick = onOpenProxy) { Text(stringResource(R.string.proxy_title)) }
         DockerStatusCard(state.status)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.weight(1f)) {
             item {

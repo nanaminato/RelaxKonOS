@@ -1,0 +1,253 @@
+package app.relaxkonos.mobile.ui.more
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.*
+import app.relaxkonos.mobile.data.DockerRepository
+import app.relaxkonos.mobile.ui.common.*
+import app.relaxkonos.mobile.ui.theme.Spacing
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+
+internal sealed interface ProxyReview {
+    data class Save(val settings: OutboundProxySettings) : ProxyReview
+    data object Clear : ProxyReview
+    data object Refresh : ProxyReview
+    data object Leave : ProxyReview
+}
+
+/** In-memory form lifetime follows the page and exact authenticated owner, including its jobs. */
+internal class OutboundProxyEditor(
+    private val repository: DockerRepository,
+    private val owner: SessionState.Active,
+    private val isCurrentOwner: () -> Boolean,
+    private val scope: CoroutineScope,
+) {
+    var status by mutableStateOf<OutboundProxyStatus?>(null)
+        private set
+    var draft by mutableStateOf<OutboundProxySettings?>(null)
+        private set
+    var busy by mutableStateOf(false)
+        private set
+    var message by mutableStateOf<UiMessage?>(null)
+        private set
+    var review by mutableStateOf<ProxyReview?>(null)
+        private set
+    private var activeJob: Job? = null
+    private var closed = false
+    fun close() {
+        closed = true
+        activeJob?.cancel()
+        status = null
+        draft = null
+        review = null
+        message = null
+    }
+    val dirty: Boolean get() = draft != null && draft != status?.settings
+    val canSubmit: Boolean get() = status != null && draft != null && !busy && review == null
+
+    fun change(transform: (OutboundProxySettings) -> OutboundProxySettings) {
+        if (!busy && review == null) draft = draft?.let(transform)
+    }
+    fun refresh() {
+        if (busy) return
+        if (dirty) review = ProxyReview.Refresh else load()
+    }
+    fun load() = call(false) { repository.proxyStatus(owner) }
+    fun save() { if (canSubmit) review = ProxyReview.Save(requireNotNull(draft)) }
+    fun clear() { if (canSubmit) review = ProxyReview.Clear }
+    fun leave(onBack: () -> Unit) { if (!busy) { if (dirty) review = ProxyReview.Leave else onBack() } }
+    fun dismiss() { review = null }
+    fun confirm(onBack: (() -> Unit)?) {
+        val pending = review ?: return
+        review = null
+        when (pending) {
+            is ProxyReview.Save -> call(true) { repository.saveProxy(owner, pending.settings, confirmed = true) }
+            ProxyReview.Clear -> call(true) { repository.clearProxy(owner) }
+            ProxyReview.Refresh -> load()
+            ProxyReview.Leave -> onBack?.invoke()
+        }
+    }
+    private fun call(write: Boolean, action: suspend () -> ApiResult<OutboundProxyStatus>) {
+        if (closed || busy || !isCurrentOwner()) return
+        busy = true
+        message = null
+        activeJob = scope.launch {
+            try {
+                val result = action()
+                if (closed || !isCurrentOwner()) return@launch
+                when (result) {
+                    is ApiResult.Success -> {
+                        status = result.value
+                        draft = result.value.settings
+                        if (write) message = UiMessage(R.string.proxy_saved, tone = StatusTone.Success)
+                    }
+                    is ApiResult.Problem -> {
+                        message = proxyProblem(result.code)
+                        // A failed read or write requires a fresh host snapshot before another change.
+                        status = null
+                    }
+                    is ApiResult.Transport -> {
+                        status = null
+                        message = UiMessage(if (write) R.string.proxy_result_unknown else R.string.error_connectivity)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (!closed && isCurrentOwner()) {
+                    status = null
+                    message = UiMessage(if (write) R.string.proxy_result_unknown else R.string.error_generic)
+                }
+            } finally {
+                if (!closed && isCurrentOwner()) busy = false
+            }
+        }
+    }
+}
+
+/** Compose keys normally compare Active structurally; login ownership is an identity boundary. */
+private class ProxyOwnerKey(private val owner: SessionState.Active?) {
+    override fun equals(other: Any?): Boolean = other is ProxyOwnerKey && other.owner === owner
+    override fun hashCode(): Int = System.identityHashCode(owner)
+}
+
+@Composable
+fun OutboundProxyScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val container = appContainer()
+    val owner = container.activeSession
+    val available = owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
+    val scope = rememberCoroutineScope()
+    val ownerKey = ProxyOwnerKey(owner)
+    val editor = remember(ownerKey, scope) {
+        owner?.let { OutboundProxyEditor(container.docker, it, { container.activeSession === it }, scope) }
+    }
+    DisposableEffect(editor) { onDispose { editor?.close() } }
+    var showUrls by remember(ownerKey) { mutableStateOf(false) }
+    LaunchedEffect(editor) { if (available) editor?.load() }
+    BackHandler(enabled = onBack != null && editor != null) { editor?.leave { onBack?.invoke() } }
+    Column(modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        ScreenHeader(stringResource(R.string.proxy_title), onBack = onBack?.let { { editor?.leave(it) } },
+            trailing = { TextButton(onClick = { editor?.refresh() }, enabled = available && editor != null && !editor.busy && editor.review == null) {
+                Text(stringResource(R.string.common_refresh))
+            } })
+        if (owner == null || ServerCapabilities.DOCKER !in owner.capabilities || editor == null) {
+            EmptyHint(stringResource(R.string.error_capability_missing)); return@Column
+        }
+        Text(stringResource(R.string.proxy_host_scope))
+        editor.message?.let { Text(it.text(), color = if (it.tone == StatusTone.Success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+        if (editor.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        val status = editor.status
+        val draft = editor.draft
+        if (draft != null) {
+            val editable = status != null && !editor.busy && editor.review == null
+            SectionCard(stringResource(R.string.proxy_preference)) {
+                ProxyToggle(R.string.proxy_enabled, draft.enabled, editable) { value -> editor.change { it.copy(enabled = value) } }
+                if (draft.source == OutboundProxySource.ManagedProxy) {
+                    Text(stringResource(R.string.proxy_managed_source))
+                    if (status != null) Text(stringResource(if (status.managedProxyAvailable) R.string.proxy_managed_available else R.string.proxy_problem_managed_proxy_unavailable))
+                    TextButton(onClick = { editor.change { it.copy(source = OutboundProxySource.Custom, httpProxy = "", httpsProxy = "") } }, enabled = editable) {
+                        Text(stringResource(R.string.proxy_use_custom))
+                    }
+                } else Text(stringResource(R.string.proxy_custom_source))
+                ProxyToggle(R.string.proxy_show_urls, showUrls, !editor.busy) { showUrls = it }
+                val custom = editable && draft.source == OutboundProxySource.Custom
+                ProxyUrlField(R.string.proxy_http, draft.httpProxy, custom, showUrls) { value -> editor.change { it.copy(httpProxy = value) } }
+                ProxyUrlField(R.string.proxy_https, draft.httpsProxy, custom, showUrls) { value -> editor.change { it.copy(httpsProxy = value) } }
+                Text(stringResource(R.string.proxy_https_hint), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(draft.noProxy, { value -> editor.change { it.copy(noProxy = value) } },
+                    label = { Text(stringResource(R.string.proxy_no_proxy)) }, enabled = editable, modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.proxy_no_proxy_hint), style = MaterialTheme.typography.bodySmall)
+                ProxyToggle(R.string.proxy_engine, draft.applyToEngine, editable) { value -> editor.change { it.copy(applyToEngine = value) } }
+                ProxyToggle(R.string.proxy_build, draft.applyToBuild, editable) { value -> editor.change { it.copy(applyToBuild = value) } }
+                ProxyToggle(R.string.proxy_image_tags, draft.applyToImageTags, editable) { value -> editor.change { it.copy(applyToImageTags = value) } }
+                ProxyToggle(R.string.proxy_runtime_downloads, draft.applyToRuntimeDownloads, editable) { value -> editor.change { it.copy(applyToRuntimeDownloads = value) } }
+                Button(onClick = editor::save, enabled = editor.canSubmit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.common_save)) }
+                OutlinedButton(onClick = editor::clear, enabled = editor.canSubmit, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.proxy_clear)) }
+            }
+        }
+        status?.let { ProxyStatusCard(it, showUrls) }
+    }
+    editor?.review?.let { pending ->
+        val discard = pending == ProxyReview.Refresh || pending == ProxyReview.Leave
+        AlertDialog(onDismissRequest = editor::dismiss,
+            title = { Text(stringResource(if (discard) R.string.proxy_discard_title else R.string.proxy_confirm_title)) },
+            text = { Text(stringResource(when {
+                discard -> R.string.proxy_discard_message
+                pending == ProxyReview.Clear -> R.string.proxy_confirm_clear
+                // Removal can restart an engine even when the last read reports Disabled: the
+                // private server installation marker is not part of the public status contract.
+                else -> R.string.proxy_confirm_save
+            })) },
+            confirmButton = { Button(onClick = { editor.confirm(onBack) }) {
+                Text(stringResource(if (discard) R.string.proxy_discard else R.string.proxy_apply))
+            } },
+            dismissButton = { TextButton(onClick = editor::dismiss) { Text(stringResource(R.string.common_cancel)) } })
+    }
+}
+
+@Composable private fun ProxyToggle(label: Int, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        Text(stringResource(label), Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    }
+}
+@Composable private fun ProxyUrlField(label: Int, value: String, enabled: Boolean, show: Boolean, onChange: (String) -> Unit) {
+    OutlinedTextField(value, onChange, label = { Text(stringResource(label)) }, enabled = enabled,
+        visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+}
+@Composable private fun ProxyStatusCard(status: OutboundProxyStatus, showUrls: Boolean) {
+    SectionCard(stringResource(R.string.proxy_actual_status)) {
+        KeyValueRow(stringResource(R.string.home_label_platform), status.platform)
+        listOf(OutboundProxyTarget.Engine to R.string.proxy_engine, OutboundProxyTarget.Build to R.string.proxy_build).forEach { (target, label) ->
+            val layer = status.layers.firstOrNull { it.target == target }
+            KeyValueRow(stringResource(label), stringResource(when (layer?.state) {
+                OutboundProxyLayerState.Disabled -> R.string.proxy_state_disabled
+                OutboundProxyLayerState.Applied -> R.string.proxy_state_applied
+                OutboundProxyLayerState.RestartRequired -> R.string.proxy_state_restart_required
+                OutboundProxyLayerState.Unsupported -> R.string.proxy_state_unsupported
+                OutboundProxyLayerState.Failed -> R.string.proxy_state_failed
+                null -> R.string.proxy_state_unknown
+            }))
+            if (!layer?.problemCode.isNullOrEmpty()) Text(proxyProblem(layer!!.problemCode).text())
+            layer?.detail?.takeIf { it.isNotEmpty() }?.let { Text(proxyDetail(it).text()) }
+        }
+        val settings = status.settings
+        // These two consumers have no observed layer in DockerProxyStatusDto. Label their saved
+        // policy honestly; a successful socket or download is not reported by this endpoint.
+        KeyValueRow(stringResource(R.string.proxy_image_tags), stringResource(if (settings.enabled && settings.applyToImageTags) R.string.proxy_scope_selected else R.string.proxy_state_disabled))
+        KeyValueRow(stringResource(R.string.proxy_runtime_downloads), stringResource(if (settings.enabled && settings.applyToRuntimeDownloads) R.string.proxy_scope_selected else R.string.proxy_state_disabled))
+        Text(stringResource(R.string.proxy_scope_status_hint), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.proxy_effective_engine), style = MaterialTheme.typography.titleSmall)
+        ProxyReportedUrl(R.string.proxy_http, status.effectiveHttpProxy, showUrls)
+        ProxyReportedUrl(R.string.proxy_https, status.effectiveHttpsProxy, showUrls)
+        KeyValueRow(stringResource(R.string.proxy_no_proxy), status.effectiveNoProxy.ifEmpty { stringResource(R.string.proxy_empty) })
+        status.desktopProxy?.let { desktop ->
+            Text(stringResource(R.string.proxy_desktop), style = MaterialTheme.typography.titleSmall)
+            KeyValueRow(stringResource(R.string.proxy_desktop_mode), stringResource(if (desktop.mode.equals("manual", true)) R.string.proxy_desktop_manual else R.string.proxy_desktop_system))
+            ProxyReportedUrl(R.string.proxy_http, desktop.httpProxy, showUrls)
+            ProxyReportedUrl(R.string.proxy_https, desktop.httpsProxy, showUrls)
+            KeyValueRow(stringResource(R.string.proxy_no_proxy), desktop.noProxy.ifEmpty { stringResource(R.string.proxy_empty) })
+        }
+    }
+}
+@Composable private fun ProxyReportedUrl(label: Int, value: String, show: Boolean) {
+    KeyValueRow(stringResource(label), if (value.isEmpty()) stringResource(R.string.proxy_empty) else if (show) value else stringResource(R.string.proxy_hidden))
+}

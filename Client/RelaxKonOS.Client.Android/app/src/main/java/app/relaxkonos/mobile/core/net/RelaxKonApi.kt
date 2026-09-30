@@ -309,6 +309,23 @@ class RelaxKonApi(
     override suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> =
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.publication(operationId), WebPublishingWire::publication)
 
+    override suspend fun outboundProxyStatus(serverUrl: String, accessToken: String): ApiResult<OutboundProxyStatus> =
+        outboundProxyCall("GET", serverUrl, accessToken, null)
+
+    override suspend fun saveOutboundProxy(serverUrl: String, accessToken: String, settings: OutboundProxySettings, confirmed: Boolean): ApiResult<OutboundProxyStatus> =
+        outboundProxyCall("PUT", serverUrl, accessToken, OutboundProxyWire.request(settings, confirmed))
+
+    override suspend fun clearOutboundProxy(serverUrl: String, accessToken: String): ApiResult<OutboundProxyStatus> =
+        outboundProxyCall("DELETE", serverUrl, accessToken, null)
+
+    private suspend fun outboundProxyCall(method: String, serverUrl: String, accessToken: String, body: JsonBody?): ApiResult<OutboundProxyStatus> =
+        when (val result = execute(method, serverUrl, OutboundProxyWire.ROUTE, accessToken, body)) {
+            is ApiResult.Success -> runCatching { OutboundProxyWire.status(result.value) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport(null) })
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
     override suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> =
         dockerRead(serverUrl, accessToken, DockerRoutes.STATUS, DockerWire::status)
 

@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.OutboundProxySettings
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DockerContainer
 import app.relaxkonos.mobile.core.net.DockerImage
@@ -28,6 +29,10 @@ class DockerRepository(
     private val operationIndex: OperationIndex,
 ) {
     private val reads = Mutex()
+    suspend fun proxyStatus(owner: SessionState.Active) = read(owner) { url, token -> gateway.outboundProxyStatus(url, token) }
+    suspend fun saveProxy(owner: SessionState.Active, settings: OutboundProxySettings, confirmed: Boolean) =
+        read(owner) { url, token -> gateway.saveOutboundProxy(url, token, settings, confirmed) }
+    suspend fun clearProxy(owner: SessionState.Active) = read(owner) { url, token -> gateway.clearOutboundProxy(url, token) }
     suspend fun status(owner: SessionState.Active) = read(owner) { url, token -> gateway.dockerStatus(url, token) }
     suspend fun containers(owner: SessionState.Active) = read(owner) { url, token -> gateway.dockerContainers(url, token) }
     suspend fun images(owner: SessionState.Active) = read(owner) { url, token -> gateway.dockerImages(url, token) }

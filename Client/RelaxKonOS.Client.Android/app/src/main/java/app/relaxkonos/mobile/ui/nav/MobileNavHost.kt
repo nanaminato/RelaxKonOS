@@ -46,6 +46,7 @@ import app.relaxkonos.mobile.ui.more.AccountSecurityScreen
 import app.relaxkonos.mobile.ui.more.AppearanceScreen
 import app.relaxkonos.mobile.ui.more.ConnectionsScreen
 import app.relaxkonos.mobile.ui.more.DiagnosticsScreen
+import app.relaxkonos.mobile.ui.more.OutboundProxyScreen
 import app.relaxkonos.mobile.ui.more.MoreScreen
 import app.relaxkonos.mobile.ui.more.ServerInformationScreen
 import app.relaxkonos.mobile.ui.terminal.ServerTerminalScreen
@@ -77,7 +78,7 @@ fun MobileNavHost(
                 onBack = { navigator.pop() },
                 initialApplicationId = taskTarget,
             )
-            Routes.MANAGE_DOCKER -> DockerScreen(onBack = { navigator.pop() }, initialStackName = taskTarget,
+            Routes.MANAGE_DOCKER -> DockerScreen(onBack = { navigator.pop() }, onOpenProxy = { navigator.push(Routes.MORE_NETWORK) }, initialStackName = taskTarget,
                 modifier = Modifier.fillMaxSize())
             Routes.MANAGE_GIT -> GitScreen(owner = session, onBack = { navigator.pop() },
                 initialBuildId = taskTarget, modifier = Modifier.fillMaxSize())
@@ -99,6 +100,7 @@ fun MobileNavHost(
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES ->
                 ManageDestination(navigator, layoutState, clearTaskTarget = { taskTarget = null })
+            Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MORE,
             Routes.MORE_ACCOUNT_SECURITY,
             Routes.MORE_CONNECTIONS,
@@ -248,6 +250,7 @@ private fun MorePane(route: String, onBack: (() -> Unit)?, onSwitchLogin: (Saved
         Routes.MORE_ACCOUNT_SECURITY -> AccountSecurityScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_CONNECTIONS -> ConnectionsScreen(onBack = onBack, onSwitchLogin = onSwitchLogin, modifier = Modifier.fillMaxSize())
         Routes.MORE_SERVER_INFORMATION -> ServerInformationScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
+        Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_APPEARANCE -> AppearanceScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_DIAGNOSTICS -> DiagnosticsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize())

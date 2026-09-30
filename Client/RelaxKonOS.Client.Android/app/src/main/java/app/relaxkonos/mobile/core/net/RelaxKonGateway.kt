@@ -83,6 +83,10 @@ interface RelaxKonGateway {
     suspend fun websitePublicationHistory(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<WebsitePublicationOperation>> = ApiResult.Transport("Website publishing history is unavailable.")
     suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> = ApiResult.Transport("Website publishing operation is unavailable.")
 
+    suspend fun outboundProxyStatus(serverUrl: String, accessToken: String): ApiResult<OutboundProxyStatus>
+    suspend fun saveOutboundProxy(serverUrl: String, accessToken: String, settings: OutboundProxySettings, confirmed: Boolean): ApiResult<OutboundProxyStatus>
+    suspend fun clearOutboundProxy(serverUrl: String, accessToken: String): ApiResult<OutboundProxyStatus>
+
     suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerContainers(serverUrl: String, accessToken: String): ApiResult<List<DockerContainer>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerImages(serverUrl: String, accessToken: String): ApiResult<List<DockerImage>> = ApiResult.Transport("Docker is unavailable.")

@@ -95,6 +95,7 @@ Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录
 | `manage/guardian`、`manage/scripts` | 进程守护与脚本任务 |
 | `manage/operations` | 任务与恢复 |
 | `more/connections`、`more/server-information` | 连接与服务器信息 |
+| `more/network` | 宿主出站代理；按 `server.docker` 门控，Docker 页面共用入口 |
 | `more/account-security` | 账户与安全 |
 | `more/appearance`、`more/diagnostics`、`more/about` | 外观、诊断、关于 |
 

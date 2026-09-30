@@ -15,7 +15,7 @@
 | 服务器中心 / AD01 | 宿主资料、SSH 主机密钥固定、SSH/SFTP/终端、隧道与稳定受管登录、部署选项、固定启动器回执读取 | 可信首次安装执行、发布资产/校验器接入、完整维护 UI；安装按钮仍不可用 |
 | 应用部署 / AD02 | 四类来源、七步向导、流式归档暂存/服务器引用、日志、生命周期、修订与回滚、原操作恢复 | 新安装依赖不由登录隐式安装 |
 | 模板目录 / AD03 | 可信内置目录、动态受限字段、兼容阻断、精确版本安装、实例/修订版本关联 | M4 更新说明/差异/显式版本更新（BP16）；M3 是验收任务 |
-| Docker/Compose / AD04 | 资源浏览、生命周期、日志、受限导入、definitionVersion 预览、持久 Stack 操作、部分失败/重启核实、卷保护 | 完整引擎/资源创建编辑与代理集成见 BP02/BP09 |
+| Docker/Compose / AD04 | 资源浏览、生命周期、日志、受限导入、definitionVersion 预览、持久 Stack 操作、部分失败/重启核实、卷保护 | 宿主自定义出站代理已接入；完整引擎/资源创建编辑与受管代理联动见 BP02-M2/BP09 |
 | 网站 / AD05 | 只读诊断、确认式 HTTPS 发布、权威站点关联、持久操作恢复、带观察位置/时间的 DNS/TLS/HTTP 结果 | 独立 Nginx/证书全生命周期（BP03/BP04）；DNS/内网集成 M4 |
 | Git / AD06 | 注册既有仓库、受限 UTF-8 编辑/差异/条件保存/单文件提交/推送；引用/固定 SHA、受限 Ubuntu BuildKit 任务、镜像发布关联 | 基础分支/暂存/历史/冲突补齐 BP10/BP11；M4 模板扩展与安全产物回收 |
 | 终端/脚本/守护 / AD07 | Server Hub 会话/恢复/扩展键、固定活动屏幕与有界历史、200ms 稳定期后的串行尺寸同步、独立 SSH 终端、持久结构化脚本任务、Agent 工作负载管理 | 平板会话双栏 BP13；完整桌面字段/动作按 BP14 核对 |
@@ -27,18 +27,18 @@
 
 > 更新：2026-09-30。只追踪实现；测试状态与执行证据独立维护在 [Verification](Verification.md#12-bp-测试进度)。未执行测试可继续下一项，缺测试不回退实现状态。
 
-状态使用“未开始 / 进行中 / 部分实现 / 已实现 / 不实施”。BP01-M1 公共安装链路已接入，实际行为见 [Installations](../features/Installations.md)。下一项为 [BP02-M1](../plans/BuiltInParity.md#41-下一轮起点)。不把桌面/Server 已有实现记为 Android 已实现，也不把既有 Android 部分功能当作整个 BP 项完成。
+状态使用“未开始 / 进行中 / 部分实现 / 已实现 / 不实施”。BP01-M1 公共安装链路与 BP02-M1 宿主自定义出站代理已接入，实际行为见 [Installations](../features/Installations.md) 与 [OutboundProxy](../features/OutboundProxy.md)。下一项为 [BP03-M1](../plans/BuiltInParity.md#41-下一轮起点)。不把桌面/Server 已有实现记为 Android 已实现，也不把既有 Android 部分功能当作整个 BP 项完成。
 
 | 编号 | 实现状态 | 当前证据 / 剩余实现 | 下一步 |
 | --- | --- | --- | --- |
 | BP00 | 已实现（差异基线） | BuiltInParity 第 2 节已建立 25 应用差异清单；本次统一排除范围与推进规则 | 各功能开工时继续逐动作核对 |
-| BP01-M1 | 已实现 | 以下五项公共安装交付完成；独立服务表单随各领域接入，Android 构建/测试未执行 | BP02-M1 |
+| BP01-M1 | 已实现 | 以下五项公共安装交付完成；独立服务表单随各领域接入，Android 构建/测试未执行 | BP03-M1 |
 | BP01-M1-1 | 已实现 | `Installations.kt`：六服务/动作/状态/阶段/问题码、严格 wire、typed 请求、当前路由与限时包引用 | 验证单独追踪 |
 | BP01-M1-2 | 已实现 | `RelaxKonGateway/RelaxKonApi`、`InstallationRepository`、AppContainer：提交/按 ID 与活动查询/取消/服务器引用/受限手机包流式上传 | 服务表单随 BP03 等接入 |
 | BP01-M1-3 | 已实现 | `InstallationRequestJournal`、OperationIndex：稳定提交/取消键、持久原 ID、未知结果留待核实；AuthSession 与 Host 提权按会话隔离，User Mode 能力门控 | 完全丢失的终态响应按当前契约保留未知 |
 | BP01-M1-4 | 已实现 | OperationCenter/OperationsScreen：发现/恢复/阶段进度/取消终态查询、离页停止观察；三语文案；安装记录无虚假领域跳转 | 设备与宿主检查见 Verification |
-| BP01-M1-5 | 已实现 | `features/Installations.md`、运维说明、索引及进度/验证记录同步；已完成拆分移出计划 | BP02-M1 |
-| BP02-M1 | 未开始 | 缺宿主自定义出站代理设置 | BP01-M1 后接网络设置 |
+| BP01-M1-5 | 已实现 | `features/Installations.md`、运维说明、索引及进度/验证记录同步；已完成拆分移出计划 | 验证单独追踪 |
+| BP02-M1 | 已实现 | `OutboundProxy.kt`、Gateway/API、DockerRepository、OutboundProxyScreen/Labels：设置与 Docker 共用 GET/PUT/DELETE；HTTP/HTTPS/NO_PROXY、四范围、引擎/构建实际状态与 daemon/Desktop 回读、写入确认、结果不明确先刷新、会话隔离；三语与功能文档已同步 | BP03-M1；受管来源新选择/管理另归 BP02-M2/BP06；Android 检查未执行 |
 | BP03-M1 | 未开始 | 既有网站诊断/发布不含 Nginx 安装与完整生命周期 | BP01-M1、BP02-M1 后完成首个 Nginx 闭环 |
 | BP03-M2 | 未开始 | 缺通用站点编辑/删除与相应操作恢复 | BP03-M1 后接站点管理 |
 | BP04-M1 | 未开始 | 网站已有部分证书链路，缺独立生命周期任务流 | 接独立列表/详情与证书操作 |
@@ -58,7 +58,7 @@
 
 ## 3. 当前限制与下一步
 
-- 下一项实现为 BP02-M1 宿主自定义出站代理设置；BP01-M1 的未执行 Android 检查独立追踪，不阻止后续实现。
+- 下一项实现为 BP03-M1 Nginx 安装、发现、接管与实例生命周期。BP01-M1/BP02-M1 的未执行 Android 检查独立追踪，不阻止后续实现。
 - 公共安装链路不含各服务的安装表单；完全丢失首次响应且已结束的任务不能从活动列表推断终态。
 - 现有能力表不等于全手机首次安装到公网访问闭环通过；首次安装还缺实现，其他领域的真实宿主/设备检查见集中验收清单。
 - Server 终端是有界常用 VT 文本实现，复杂全屏程序、CJK 单元格和 IME 组合仍须设备核对；平板会话双栏尚未实现。

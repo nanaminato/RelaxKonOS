@@ -18,6 +18,7 @@
 | [服务器中心](features/ServerCenter.md) | SSH 信任、文件/终端、稳定身份与隧道、安装回执；首次安装仍缺执行链路 |
 | [文件传输](features/FileTransfers.md) | 分块上传、源暂存、续传、前台通知与清理 |
 | [应用部署与模板](features/ApplicationDeployments.md) | 四来源七步向导、日志、版本/回滚、可信动态模板 |
+| [宿主出站代理](features/OutboundProxy.md) | 设置/Docker 共用宿主偏好、四消费范围、重启确认与状态核实 |
 | [Docker 与 Compose](features/DockerCompose.md) | 资源归属、导入/预览、持久操作、部分失败和卷保护 |
 | [网站发布](features/WebPublishing.md) | 诊断、确认式 HTTPS、发布恢复和访问观测 |
 | [Git 编辑与构建](features/Git.md) | 受限文本编辑、固定 SHA、隔离构建与产物发布 |

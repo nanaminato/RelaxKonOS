@@ -166,7 +166,7 @@
 | 关联实现 | 用例准备 | 自动化构建/测试 | 手机/平板交互 | Ubuntu 宿主 | Windows 宿主 | 重点范围 / 待补证据 |
 | --- | --- | --- | --- | --- | --- | --- |
 | BP01-M1 | 进行中 | 未执行（按用户要求跳过 Android 构建/测试） | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Repository/Journal 24 个用例；取消竞争、完整认证刷新、设备 SAF 与 OperationCenter 端到端用例待补；静态证据见下文 |
-| BP02-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 保存/回读/清除、NO_PROXY、各消费范围实际状态、Docker 重启确认 |
+| BP02-M1 | 进行中 | 未执行（按用户要求跳过 Android 构建/测试） | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Editor 12 个用例；实际认证刷新、真实消费者网络、手机/平板交互待补；静态证据见下文 |
 | BP03-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 全新安装、手机包/服务器引用、已有实例接管、启停/重启/重载 |
 | BP03-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 静态/反代、配置错误、端口冲突、并发更新与断线核实 |
 | BP04-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 预检/ACME/自签名/续期/撤销/删除/取消、秘密脱敏 |
@@ -187,6 +187,14 @@
 - .NET 10.0.400 临时控制台直接编入当前共享 `InstallationContracts.cs`、`RelaxKonOSJsonOptions.cs` 与 `RelaxKonOSEndpoints.cs`；`DOTNET_CLI_HOME=/tmp/relaxkon-dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run --project /tmp/relaxkon-installation-wire/Wire.csproj --verbosity quiet` 通过：确认 `service=nginx`、`stage=updatingPackageLists`、camelCase 字段与 `/api/v1.0/installations/Nginx/Install` 路由。临时项目不属于发布产物；检查仅验证共享序列化约定，不是 Android/Server 集成测试。
 - 用户说明本机无 Android 环境并允许跳过测试，本轮没有运行 Gradle Kotlin 编译、JVM/仪器测试、lint 或设备交互；也未执行真实 Ubuntu/Windows 安装、上传、提权、取消与重启恢复。历史 Android 构建结果不覆盖这次新增代码。
 - 待补可执行检查：401 刷新与提权两次授权组合、同意提权后的拒绝、取消阶段切换/资源竞争、服务响应丢失后任务已结束、索引写失败/进程杀死、隐蔽记录与活动发现、User Mode 仅 Git 能力、SAF 未知长度/源重新打开/断网、三语/IME/大字体/手机平板、真实六类服务支持矩阵。当前 API 没有按幂等键只读查询，完全丢失首个终态响应的“结果待核实”必须保留，不能用空活动列表替代终态。
+
+### BP02-M1 静态证据与未执行范围（2026-09-30）
+
+- 工作树新增 `OutboundProxyWireTest`（4）、`OutboundProxyHttpTest`（2）、`OutboundProxyEditorTest`（6），共 12 个用例。覆盖 URL 凭据原样回读/提交、HTTPS 空值/NO_PROXY、独立范围、Desktop 上游、严格枚举/必需字段、当前 GET/PUT/DELETE 与认证头、明确拒绝/损坏响应、确认取消零写入、固定确认草稿、结果不明确先刷新、编辑放弃、确认期间切身份、旧响应隔离、离页秘密状态清理。用例尚未编译或运行；401 刷新/并发设置等可执行集成用例待补。
+- `git diff --check` 通过。Python ElementTree 解析三语资源：各 1147 个唯一键、键集一致，新增代理页面/映射及设置/Docker 入口资源引用均存在。该检查不执行 Android 资源或 Compose 编译。
+- .NET 临时控制台直接编入当前共享 `DockerProxyContracts.cs`、`RelaxKonOSJsonOptions.cs`、`RelaxKonOSEndpoints.cs`；`DOTNET_CLI_HOME=/tmp/relaxkon-dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run --project /tmp/relaxkon-proxy-wire/Wire.csproj --verbosity quiet` 通过。确认当前路由、十字段保存请求、camelCase 枚举/字段、确认字段，并用 Python 比较实际 .NET 状态 JSON 与 Android `PROXY_STATUS` 用例 fixture 完全一致（包括 Desktop 上游）。仅为共享契约格式核对，不是 Android 或服务端集成测试。
+- 用户明确本机无 Android 环境并允许跳过；本轮未执行 Gradle/Kotlin 编译、JVM/仪器测试、lint 或手机/平板验收。未执行真实 Ubuntu/Windows 宿主读写、Docker 重启或任何代理网络验收。
+- 待宿主/设备验证：新设置与无 Docker daemon、引擎应用/替换/退役失败、Desktop 手动/系统上游差异、loopback 构建不可达、带认证代理、HTTPS 空值、NO_PROXY 域名/地址绕过、各范围独立消费、禁用/清除后的实际直连、401 刷新及拒绝、外部并发修改、断网写入后刷新核实、手机/平板三语/IME/大字体与离页/旋转。镜像查询/运行时下载只显示消费策略，当前 DTO 没有实际请求结果，必须以真实消费者请求验证，不能把选中范围写成联网通过。
 
 ## 13. 记录方式
 

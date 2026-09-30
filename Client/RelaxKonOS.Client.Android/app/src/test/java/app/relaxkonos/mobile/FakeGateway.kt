@@ -32,6 +32,14 @@ import java.io.InputStream
  * returned a default.
  */
 class FakeGateway : RelaxKonGateway {
+    var onOutboundProxyStatus: (suspend () -> ApiResult<OutboundProxyStatus>)? = null
+    var onSaveOutboundProxy: (suspend (OutboundProxySettings, Boolean) -> ApiResult<OutboundProxyStatus>)? = null
+    var onClearOutboundProxy: (suspend () -> ApiResult<OutboundProxyStatus>)? = null
+    override suspend fun outboundProxyStatus(serverUrl: String, accessToken: String) = requireNotNull(onOutboundProxyStatus)()
+    override suspend fun saveOutboundProxy(serverUrl: String, accessToken: String, settings: OutboundProxySettings, confirmed: Boolean) =
+        requireNotNull(onSaveOutboundProxy)(settings, confirmed)
+    override suspend fun clearOutboundProxy(serverUrl: String, accessToken: String) = requireNotNull(onClearOutboundProxy)()
+
     var onStartInstallation: (suspend (InstallationKind, InstallationRequest, String) -> ApiResult<InstallationOperation>)? = null
     var onInstallation: (suspend (String) -> ApiResult<InstallationOperation>)? = null
     var onActiveInstallation: (suspend (InstallationService) -> ApiResult<InstallationOperation?>)? = null

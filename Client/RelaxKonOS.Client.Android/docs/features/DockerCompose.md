@@ -4,7 +4,7 @@
 
 ## 1. 能力与资源归属
 
-“管理 → Docker”按 `server.docker` 门控，读取 Engine、容器、镜像、卷、网络和 Stack，提供容器/Stack 生命周期与日志、卷详情与受控删除。完整引擎安装、容器编辑和镜像/网络/卷创建等缺口见 BP02/BP09 [补齐计划](../plans/BuiltInParity.md)。
+“管理 → Docker”按 `server.docker` 门控，读取 Engine、容器、镜像、卷、网络和 Stack，提供容器/Stack 生命周期与日志、卷详情与受控删除。宿主自定义出站代理入口共用 [设置页面](OutboundProxy.md)；受管来源联动、完整引擎安装、容器编辑和镜像/网络/卷创建等缺口见 BP02-M2/BP09 [补齐计划](../plans/BuiltInParity.md)。
 
 应用部署资源显示归属并返回应用详情修改定义；Compose 资源走 Stack 操作；外部/未知资源明确标记，不自动纳管。共享行为见 [Docker 管理设计](../../../../docs/applications/RelaxKonOS.DockerManager.md)。
 

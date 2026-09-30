@@ -24,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
+import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
@@ -60,6 +62,10 @@ fun MoreScreen(
         ScreenHeader(title = stringResource(R.string.more_title))
 
         SectionGroup {
+            if (ServerCapabilities.DOCKER in appContainer().capabilities) {
+                SettingsRow(icon = DesktopIcons.connections, titleRes = R.string.proxy_title,
+                    subtitleRes = R.string.proxy_subtitle) { onOpenRoute(Routes.MORE_NETWORK) }
+            }
             SettingsRow(
                 icon = DesktopIcons.credentials,
                 titleRes = R.string.more_account_security,
