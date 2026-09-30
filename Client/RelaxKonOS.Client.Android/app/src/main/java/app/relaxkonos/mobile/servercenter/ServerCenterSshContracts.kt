@@ -173,7 +173,7 @@ interface ServerCenterSshTransport : AutoCloseable {
 interface ServerCenterSshTerminal : AutoCloseable {
     suspend fun read(): String?
     suspend fun write(value: String)
-    fun resize(columns: Int, rows: Int)
+    suspend fun resize(columns: Int, rows: Int)
 }
 
 /** 创建传输实例。每次会话一条独立连接，由会话负责释放。 */

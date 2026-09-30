@@ -4,6 +4,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.relaxkonos.mobile.R
@@ -45,9 +49,11 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     var page by rememberSaveable(hostId) { mutableIntStateOf(0) }
     val host = (LocalContext.current.applicationContext as RelaxKonApplication)
         .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
+    val terminalTyping = page == 1 && WindowInsets.ime.getBottom(LocalDensity.current) > 0
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
         bottomBar = {
+            if (!terminalTyping)
             NavigationBar {
                 NavigationBarItem(
                     selected = page == 0,
@@ -78,7 +84,7 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     ) { padding ->
         when (page) {
             0 -> SshFilesScreen(hostId, Modifier.padding(padding))
-            1 -> SshTerminalScreen(hostId, onClose, Modifier.padding(padding))
+            1 -> SshTerminalScreen(hostId, onClose, Modifier.padding(padding).consumeWindowInsets(padding))
             2 -> DeploymentSetupScreen(host, Modifier.padding(padding))
             else -> SshSystemScreen(hostId, onClose, Modifier.padding(padding))
         }

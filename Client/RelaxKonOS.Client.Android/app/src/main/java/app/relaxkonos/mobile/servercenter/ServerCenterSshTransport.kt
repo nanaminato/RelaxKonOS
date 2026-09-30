@@ -469,8 +469,12 @@ internal class JschInteractiveTerminal(
         }
     }
 
-    override fun resize(columns: Int, rows: Int) {
-        if (channel.isConnected) channel.setPtySize(columns, rows, 0, 0)
+    override suspend fun resize(columns: Int, rows: Int) = withContext(Dispatchers.IO) {
+        // setPtySize sends an SSH packet synchronously. JSch swallows its exceptions, so a
+        // main-thread socket write can silently leave the cipher out of sync with the peer.
+        writerGate.withLock {
+            if (channel.isConnected) channel.setPtySize(columns, rows, 0, 0)
+        }
     }
 
     override fun close() {
