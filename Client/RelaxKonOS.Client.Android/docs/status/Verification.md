@@ -13,7 +13,7 @@
 | Windows owner-device keys | 真 Windows 10/11 配对、邀请码过期/取消、QR 扫描/图片/粘贴确认、nonce 签名、锁屏窗口、密钥失效与撤销；Windows Server 不走工作站授权 |
 | 文件下载/预览 | MediaStore 下载目录与重名文案；缩略图→详细图、EXIF 方向、大图耗时、缓存预算/淘汰、显式授权才预览；Android org.json null 显示与 executionEligibility 解析 |
 | Server 终端布局 | API 35 平板模拟器已验证 8 项 IME/边距/大字体/草稿检查；厂商输入法、实体手机/平板、真实 PTY 和中文组合/复杂 VT 仍需执行 |
-| SSH 终端输入 | 平板模拟器已验证 5 项输入可见性、IME 发送、边距、大字体和草稿检查；实体手机/厂商输入法、真实 SSH 主机上键盘显隐后的连续命令与远端退出仍需联调 |
+| SSH 终端 | 平板模拟器已验证 6 项输入可见性、IME 发送、边距、大字体、草稿及离页返回/多会话控件检查；实体手机/厂商输入法、真实多 SSH 主机连续命令、后台保活与远端退出仍需联调 |
 | 发布 | Release 签名/渠道证书、HTTPS 网络策略、诊断脱敏、后台恢复与危险操作确认；按 [发布说明](../development/android-release.md) 执行 |
 | Lint | 2026-09-27 记录 5 错误/75 warning，之后无完整成功证据；重新运行并核实/修复，不能当作已通过 |
 
@@ -120,6 +120,8 @@
 | AD07-T5 | User Mode、错误 run-as 或权限不足 | 不跨账号执行，不因客户端输入绕过服务端限制 |
 | AD07-T6 | SSH 与 Server 终端互切、SSH 断线 | 身份清晰，准确说明任务是否仍存活 |
 | AD07-T6a | 实体手机连接真实 SSH 主机，键盘显隐、字号调整后连续发送命令 | 输入/光标始终可见；沿用同一 shell、不误报关闭；远端退出或断网时准确禁用输入 |
+| AD07-T6b | 同宿主两个 SSH 终端与不同宿主并行；切换部署/文件/系统、返回服务器中心及旋转 | 沿用每个原 shell；输出/草稿/隐藏状态隔离；关闭一个不影响其它连接；后台输出继续入有界缓冲 |
+| AD07-T6c | 重启/系统回收应用进程后重新打开 SSH 终端 | 旧会话/选中状态/草稿/输出清空，不显示待重连记录或重放命令；进入宿主终端建立新 shell；宿主资料和用户保存的凭据仍保留 |
 
 ## 10. AD08：Android 运维与恢复中心
 
@@ -140,6 +142,7 @@
 
 | 日期 | 检查与结果 | 证明范围 / 限制 |
 | --- | --- | --- |
+| 2026-09-30 | SSH 多会话与重启清空：离线 Debug 应用/测试 APK 构建成功，93 类 / 669 JVM 用例，0 失败/错误/跳过；`SshTerminalSessionsLayoutTest` 在 `emulator-5558` 1 项通过；中英日 1555 键一致无重复；`git diff --check` 通过 | 6 项 SSH 会话 JVM 用例覆盖重进页面、宿主/终端输入输出尺寸隔离、单独关闭、新应用实例从空列表开始且不重放旧输入、EOF/写失败及连接关闭竞态；持久保存接口与待重连恢复状态已移除。Compose 用例实际移除页面后返回，验证后台输出/草稿保留、新建/切换/发送/确认结束及其它会话存活。此前 5 项键盘布局检查通过，本次仅编译而未重跑。使用假传输，真实宿主/实体设备/长时间后台保活未执行 |
 | 2026-09-30 | SSH 输入修复：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，92 类 / 663 JVM 用例，0 失败/错误/跳过；模拟器 `emulator-5558` instrumentation 的 `SshTerminalKeyboardLayoutTest` 5 项通过；`git diff --check` 通过 | 新增 3 项 JSch 终端用例验证尺寸请求离开调用线程、与输入互斥、尺寸变化后的连续写入/UTF-8 输出；5 项 Compose 用例覆盖手机/平板视口、真实系统 IME 和发送、大字体、已消费边距及草稿。传输用例使用记录请求的 JSch shell，未连接真实 SSH 主机；未操作实体手机 |
 | 2026-09-30 | 远端提交 `382196f2` 记录离线 `:app:assembleDebug :app:testDebugUnitTest --offline --no-daemon` 成功；61 类 / 522 JVM 用例，0 失败/错误/跳过；`git diff --check` 通过 | 固定活动屏幕/历史、Windows 清屏与光标重绘、缩放与跨帧解析；包含 14 个屏幕回归和 1 个控制器用例，以及键盘动画期间旧 Windows 重绘、尺寸合并/回到原尺寸、会话切换/附加期间变更。尺寸同步的 6 项场景在旧实现失败、修复后通过；真实手机 IME 与远端 Windows PowerShell 联调仍待验证。本轮合并未重新执行产品构建或测试 |
 | 2026-09-30 | `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest --offline --no-daemon` 成功；61 类 / 500 JVM 用例，0 失败/错误/跳过；中英日各 1024 键一致无重复 | 当前登录切换、徽标查询竞态、认证和终端等逻辑；未执行本轮实体设备验收 |

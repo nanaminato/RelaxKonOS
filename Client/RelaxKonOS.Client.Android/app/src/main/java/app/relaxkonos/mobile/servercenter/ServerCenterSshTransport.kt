@@ -82,6 +82,8 @@ class JschServerCenterTransport : ServerCenterSshTransport {
             }
 
             val created = jsch.getSession(endpoint.userName, endpoint.host, endpoint.port)
+            created.setServerAliveInterval(30_000)
+            created.setServerAliveCountMax(3)
             if (credential.kind == SshCredentialKind.Password) {
                 val passwordBytes = encodeUtf8(credential.secret)
                 try {

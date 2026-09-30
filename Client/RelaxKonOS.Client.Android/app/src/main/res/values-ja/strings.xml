@@ -139,6 +139,7 @@
     <string name="ssh_terminal_send">送信</string>
     <string name="ssh_terminal_retry">再接続</string>
     <string name="ssh_terminal_hide_input">入力を隠す</string>
+    <string name="ssh_terminal_empty">SSH セッションを作成してターミナルを開いてください。</string>
     <string name="ssh_workspace_system">システム</string>
     <string name="ssh_workspace_system_subtitle">%1$s のリソース状態</string>
     <string name="ssh_workspace_system_unavailable">このホストは Linux リソーススナップショットを提供しませんでした。</string>

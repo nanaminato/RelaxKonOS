@@ -1,6 +1,5 @@
 package app.relaxkonos.mobile.ui.servercenter
 
-import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -11,6 +10,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +22,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -28,7 +32,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -46,151 +49,35 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
-import app.relaxkonos.mobile.servercenter.ServerCenterSshTerminal
-import app.relaxkonos.mobile.servercenter.SshCredential
-import app.relaxkonos.mobile.servercenter.SshCredentialKind
-import app.relaxkonos.mobile.servercenter.SshTerminalTranscript
+import app.relaxkonos.mobile.servercenter.SshTerminalUiState
+import app.relaxkonos.mobile.servercenter.SshTerminalSessions
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
 import app.relaxkonos.mobile.ui.icons.DesktopIcons
 import app.relaxkonos.mobile.ui.terminal.TerminalScreenLayout
 import app.relaxkonos.mobile.ui.theme.Spacing
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-
-/** The PTY belongs only to this page. Leaving it closes the shell and clears its transcript. */
-class SshTerminalViewModel(application: Application) : AndroidViewModel(application) {
-    private val coordinator = getApplication<RelaxKonApplication>().container.serverCenter
-    private val connections = getApplication<RelaxKonApplication>().container.serverCenterConnections
-    private val mutableState = MutableStateFlow(SshTerminalUiState())
-    val state = mutableState.asStateFlow()
-
-    private var generation = 0
-    private var connectionJob: Job? = null
-    private var terminal: ServerCenterSshTerminal? = null
-
-    fun start(hostId: String) {
-        if (mutableState.value.hostId == hostId && connectionJob?.isActive == true &&
-            (mutableState.value.connecting || mutableState.value.connected)) return
-        stop()
-        val current = ++generation
-        mutableState.value = SshTerminalUiState(hostId = hostId, connecting = true)
-        connectionJob = viewModelScope.launch {
-            val secret = coordinator.workspacePasswordCopy()
-            if (secret == null) {
-                if (current == generation) mutableState.update { it.copy(connecting = false, problem = true) }
-                return@launch
-            }
-            try {
-                connections.connect(
-                    hostId,
-                    SshCredential(SshCredentialKind.Password, secret, null),
-                    System.currentTimeMillis(),
-                ).use { session ->
-                    secret.fill('\u0000')
-                    if (current != generation) return@use
-                    val shell = session.sshTransport.openTerminal()
-                    if (current != generation) { shell.close(); return@use }
-                    terminal = shell
-                    val transcript = SshTerminalTranscript()
-                    mutableState.update { it.copy(connecting = false, connected = true) }
-                    while (current == generation && currentCoroutineContext().isActive) {
-                        val output = shell.read() ?: break
-                        if (current != generation) break
-                        val visible = transcript.append(output)
-                        mutableState.update { it.copy(output = visible) }
-                    }
-                }
-                if (current == generation) mutableState.update { it.copy(connected = false, connecting = false) }
-            } catch (_: CancellationException) {
-                // Disposing the page closes the PTY and cancels the reader.
-            } catch (_: Exception) {
-                if (current == generation) mutableState.update {
-                    it.copy(connected = false, connecting = false, problem = true)
-                }
-            } finally {
-                secret.fill('\u0000')
-                if (current == generation) terminal = null
-            }
-        }
-    }
-
-    fun send(value: String) {
-        val shell = terminal ?: return
-        val current = generation
-        viewModelScope.launch {
-            try {
-                shell.write(value)
-            } catch (_: CancellationException) {
-                // Leaving the page cancels pending input without reporting a transport failure.
-            } catch (_: Exception) {
-                if (current == generation) mutableState.update { it.copy(connected = false, problem = true) }
-            }
-        }
-    }
-
-    fun resize(columns: Int, rows: Int) {
-        val shell = terminal ?: return
-        val current = generation
-        viewModelScope.launch {
-            if (current == generation) {
-                try {
-                    shell.resize(columns.coerceIn(20, 300), rows.coerceIn(5, 100))
-                } catch (_: CancellationException) {
-                    // Disposing the page cancels a pending resize.
-                } catch (_: Exception) {
-                    if (current == generation) mutableState.update { it.copy(connected = false, problem = true) }
-                }
-            }
-        }
-    }
-
-    fun stop() {
-        generation++
-        terminal?.close()
-        terminal = null
-        connectionJob?.cancel()
-        connectionJob = null
-        mutableState.value = SshTerminalUiState()
-    }
-
-    override fun onCleared() {
-        stop()
-        super.onCleared()
-    }
-}
-
-data class SshTerminalUiState(
-    val hostId: String = "",
-    val connecting: Boolean = false,
-    val connected: Boolean = false,
-    val problem: Boolean = false,
-    val output: String = "",
-)
 
 @Composable
 fun SshTerminalScreen(hostId: String, onClose: () -> Unit, modifier: Modifier = Modifier) {
-    val target = (LocalContext.current.applicationContext as RelaxKonApplication)
-        .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
-    val model: SshTerminalViewModel = viewModel()
-    val state by model.state.collectAsState()
-    LaunchedEffect(hostId) { model.start(hostId) }
-    DisposableEffect(hostId) { onDispose { model.stop() } }
+    val container = (LocalContext.current.applicationContext as RelaxKonApplication).container
+    val target = container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
+    val model = container.sshTerminals
+    val all by model.state.collectAsState()
+    LaunchedEffect(hostId) { model.enter(hostId) }
+    val state = all.selectedForHost(hostId) ?: SshTerminalUiState(hostId = hostId)
+    val sessions = all.sessions.filter { it.hostId == hostId }
     SshTerminalContent(hostId, target?.let { "${it.sshUserName}@${it.sshHost}:${it.sshPort}" },
-        state, { model.start(hostId) }, model::send, model::resize, onClose, modifier)
+        state, { model.reconnect(state.sessionId) }, { model.send(state.sessionId, it) },
+        { columns, rows -> model.resize(state.sessionId, columns, rows) }, onClose,
+        { model.updateDraft(state.sessionId, it) }, { model.concealInput(state.sessionId, it) },
+        { model.fontSize(state.sessionId, it) }, sessions, all.sessions.size < SshTerminalSessions.MAX_SESSIONS, model::select,
+        { model.create(hostId) }, model::end, modifier)
 }
 
 @Composable
@@ -202,16 +89,26 @@ internal fun SshTerminalContent(
     onSend: (String) -> Unit,
     onResize: (Int, Int) -> Unit,
     onClose: () -> Unit,
+    onDraftChange: (String) -> Unit,
+    onConcealChange: (Boolean) -> Unit,
+    onFontSizeChange: (Int) -> Unit,
+    sessions: List<SshTerminalUiState>,
+    canCreate: Boolean,
+    onSelect: (String) -> Unit,
+    onNew: () -> Unit,
+    onEnd: (String) -> Unit,
     modifier: Modifier = Modifier,
     imeInsets: WindowInsets = WindowInsets.ime,
 ) {
-    var input by remember(hostId) { mutableStateOf("") }
-    var concealInput by remember(hostId) { mutableStateOf(false) }
-    var pasteReview by remember(hostId) { mutableStateOf<String?>(null) }
-    var ctrlNext by remember(hostId) { mutableStateOf(false) }
-    var altNext by remember(hostId) { mutableStateOf(false) }
-    var fontSize by remember(hostId) { mutableStateOf(13) }
-    val scroll = rememberScrollState()
+    val input = state.draft
+    val concealInput = state.concealInput
+    var pasteReview by remember(hostId, state.sessionId) { mutableStateOf<String?>(null) }
+    var ctrlNext by remember(hostId, state.sessionId) { mutableStateOf(false) }
+    var altNext by remember(hostId, state.sessionId) { mutableStateOf(false) }
+    val fontSize = state.fontSize
+    var menuOpen by remember { mutableStateOf(false) }
+    var endReview by remember { mutableStateOf<String?>(null) }
+    val scroll = remember(state.sessionId) { androidx.compose.foundation.ScrollState(0) }
     val fontScale = LocalDensity.current.fontScale
     LaunchedEffect(state.output, scroll.maxValue) { scroll.scrollTo(scroll.maxValue) }
 
@@ -222,7 +119,7 @@ internal fun SshTerminalContent(
             val value = if (ctrlNext && input.length == 1) ((input[0].uppercaseChar().code) and 0x1f).toChar().toString()
                 else if (ctrlNext || altNext) input else input + "\r"
             onSend(if (altNext) "\u001b$value" else value)
-            input = ""
+            onDraftChange("")
             ctrlNext = false
             altNext = false
         }
@@ -232,10 +129,35 @@ internal fun SshTerminalContent(
         onDismissRequest = { pasteReview = null },
         title = { Text(stringResource(R.string.terminal_paste_title)) },
         text = { SelectionContainer { Text(pasteReview.orEmpty().take(2000)) } },
-        confirmButton = { TextButton(enabled = state.connected, onClick = { onSend(pasteReview.orEmpty()); input = ""; pasteReview = null }) {
+        confirmButton = { TextButton(enabled = state.connected, onClick = { onSend(pasteReview.orEmpty()); onDraftChange(""); pasteReview = null }) {
             Text(stringResource(R.string.terminal_send)) } },
         dismissButton = { TextButton(onClick = { pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     )
+
+    endReview?.let { id -> AlertDialog(
+        onDismissRequest = { endReview = null },
+        title = { Text(stringResource(R.string.terminal_close)) },
+        text = { Text(stringResource(R.string.terminal_close_confirm, id.take(8))) },
+        confirmButton = { TextButton(onClick = { onEnd(id); endReview = null }) { Text(stringResource(R.string.terminal_close)) } },
+        dismissButton = { TextButton(onClick = { endReview = null }) { Text(stringResource(R.string.common_cancel)) } },
+    ) }
+
+    val actions: @Composable () -> Unit = {
+        androidx.compose.foundation.layout.Box {
+            val actionsLabel = stringResource(R.string.terminal_session_actions)
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.semantics { contentDescription = actionsLabel }) { Text("⋮") }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.terminal_new)) },
+                    onClick = { menuOpen = false; onNew() }, enabled = canCreate)
+                sessions.forEach { session ->
+                    DropdownMenuItem(text = { Text(sshSessionLabel(session)) },
+                        onClick = { menuOpen = false; onSelect(session.sessionId) })
+                }
+                if (state.sessionId.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.terminal_close)) },
+                    onClick = { menuOpen = false; endReview = state.sessionId })
+            }
+        }
+    }
 
     TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets, header = { compact ->
         if (compact) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -244,6 +166,7 @@ internal fun SshTerminalContent(
             }
             Text(hostLabel ?: stringResource(R.string.ssh_terminal_title), modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            actions()
         } else ScreenHeader(
             title = stringResource(R.string.ssh_terminal_title),
             subtitle = hostLabel,
@@ -264,15 +187,29 @@ internal fun SshTerminalContent(
                 Text(stringResource(R.string.ssh_terminal_retry))
             }
         }
-        if (!compact) Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            OutlinedButton(onClick = { fontSize = (fontSize - 1).coerceAtLeast(9) }) { Text("A−") }
-            OutlinedButton(onClick = { fontSize = (fontSize + 1).coerceAtMost(24) }) { Text("A+") }
+        if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = onNew, enabled = canCreate, modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.terminal_new), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            OutlinedButton(onClick = { onFontSizeChange((fontSize - 1).coerceAtLeast(9)) }, modifier = Modifier.width(48.dp),
+                contentPadding = PaddingValues(0.dp)) { Text("A−") }
+            OutlinedButton(onClick = { onFontSizeChange((fontSize + 1).coerceAtMost(24)) }, modifier = Modifier.width(48.dp),
+                contentPadding = PaddingValues(0.dp)) { Text("A+") }
+            actions()
         }
+        if (!compact && sessions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            sessions.forEach { session -> FilterChip(selected = session.sessionId == state.sessionId,
+                onClick = { onSelect(session.sessionId) }, label = { Text(sshSessionLabel(session)) }) }
+        }
+        if (state.sessionId.isEmpty() && !compact) Text(stringResource(R.string.ssh_terminal_empty),
+            style = MaterialTheme.typography.bodySmall)
     }, output = {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val width = maxWidth.value
             val height = maxHeight.value
-            LaunchedEffect(width, height, fontSize, fontScale, state.connected) {
+            LaunchedEffect(width, height, fontSize, fontScale, state.connected, state.sessionId) {
                 if (state.connected) onResize(
                     ((width - 2 * Spacing.md.value) / (fontSize * fontScale * 0.61f)).toInt(),
                     ((height - 2 * Spacing.md.value) / (fontSize * fontScale * 1.5f)).toInt(),
@@ -305,14 +242,14 @@ internal fun SshTerminalContent(
     }, input = { compact ->
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             if (!compact) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Checkbox(checked = concealInput, onCheckedChange = { concealInput = it })
+                Checkbox(checked = concealInput, onCheckedChange = onConcealChange)
                 Text(stringResource(R.string.ssh_terminal_hide_input), modifier = Modifier.padding(top = Spacing.sm))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = input,
-                    onValueChange = { input = it },
+                    onValueChange = onDraftChange,
                     modifier = Modifier.weight(1f).heightIn(min = 56.dp),
                     label = { Text(stringResource(R.string.ssh_terminal_input)) },
                     maxLines = if (compact) 1 else 3,
@@ -327,4 +264,15 @@ internal fun SshTerminalContent(
             }
         }
     })
+}
+
+@Composable
+private fun sshSessionLabel(session: SshTerminalUiState): String {
+    val status = stringResource(when {
+        session.connecting -> R.string.ssh_terminal_connecting
+        session.connected -> R.string.ssh_terminal_connected
+        session.problem -> R.string.ssh_terminal_failed
+        else -> R.string.ssh_terminal_disconnected
+    })
+    return "${session.sessionId.take(8)} · $status"
 }

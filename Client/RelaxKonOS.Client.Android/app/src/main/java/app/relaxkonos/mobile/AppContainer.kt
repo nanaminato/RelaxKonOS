@@ -69,6 +69,11 @@ import app.relaxkonos.mobile.servercenter.ServerHostKeyTrustStore
 import app.relaxkonos.mobile.servercenter.ServerHostTargetStore
 import app.relaxkonos.mobile.servercenter.ServerInstallOperationIndex
 import app.relaxkonos.mobile.servercenter.SshDiagnostics
+import app.relaxkonos.mobile.servercenter.SshTerminalSessions
+import app.relaxkonos.mobile.servercenter.SshTerminalConnector
+import app.relaxkonos.mobile.servercenter.SshTerminalConnection
+import app.relaxkonos.mobile.servercenter.SshCredential
+import app.relaxkonos.mobile.servercenter.SshCredentialKind
 import app.relaxkonos.mobile.servercenter.StoreManagedLoginResolver
 import app.relaxkonos.mobile.ui.theme.AppearancePreferences
 import app.relaxkonos.mobile.ui.theme.AppearanceState
@@ -96,8 +101,7 @@ class AppContainer(context: Context) {
     /**
      * Scope for work that must outlive every screen.
      *
-     * Only an upload uses it today, and that is the point: a multi-gigabyte transfer cannot be tied to
-     * the page that started it, and it has to survive that page being destroyed.
+     * Transfers and SSH terminals survive the page that started them being destroyed.
      */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -147,6 +151,26 @@ class AppContainer(context: Context) {
     /** App-owned server-centre navigation; it remains available before and after authentication. */
     val serverCenter = ServerCenterCoordinator(
         serverHostTargets, serverCenterConnections, sshHostKeyTrust, serverInstallOperations,
+    )
+
+    /** Each terminal has a dedicated transport and remains live across navigation/rotation. */
+    val sshTerminals = SshTerminalSessions(
+        CoroutineScope(appScope.coroutineContext + Dispatchers.Main.immediate),
+        SshTerminalConnector { hostId ->
+            val secret = serverCenter.verifiedPasswordCopy(hostId)
+                ?: throw IllegalStateException("Verify the selected SSH host before connecting.")
+            val credential = SshCredential(SshCredentialKind.Password, secret, null)
+            try {
+                val hostSession = serverCenterConnections.connect(hostId, credential, System.currentTimeMillis())
+                try {
+                    SshTerminalConnection(hostSession.sshTransport.openTerminal(), hostSession)
+                } catch (error: Throwable) {
+                    hostSession.close()
+                    throw error
+                }
+            } finally { credential.clear() }
+        },
+        { serverHostTargets.find(it) != null },
     )
 
     /**
