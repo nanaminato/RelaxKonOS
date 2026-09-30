@@ -13,7 +13,8 @@ namespace RelaxKonOS.PrivilegedHelper;
 /// <summary>
 /// One-shot Linux dispatcher for normal user file I/O. It validates the canonical NSS identity
 /// while privileged, then permanently drops groups/GID/UID before touching user-controlled paths.
-/// This process exits after one request and never regains privilege.
+/// File/Git workers also prohibit privilege gain on exec; interactive terminals leave sudo policy
+/// to the host after the same irreversible identity transition.
 /// </summary>
 public static class UserExecutionExecutor
 {
@@ -39,7 +40,7 @@ public static class UserExecutionExecutor
         if (!TryResolve(request.Identity, out var account)) return await WriteAsync(Fail(UserExecutionProblemCode.IdentityMismatch, "OS identity changed or is not executable"));
         try
         {
-            if (!TryAssumeIdentity(account))
+            if (!TryAssumeIdentity(account, preventPrivilegeGain: true))
                 return await WriteAsync(Fail(UserExecutionProblemCode.IdentityNotExecutable, "could not assume OS user identity"));
             return await WriteAsync(await ExecuteAsync(request, account.Home));
         }
@@ -72,7 +73,10 @@ public static class UserExecutionExecutor
         var heightPixels = request.TerminalHeightPixels ?? 0;
         try { UserTerminalStreamProtocol.ValidateDimensions(columns, rows, widthPixels, heightPixels); }
         catch (ArgumentOutOfRangeException) { return 64; }
-        if (!TryAssumeIdentity(account)) return 77;
+        // An interactive shell must retain the account's normal ability to use sudo/su under the
+        // host's authentication and authorization policy. Do not set no_new_privs on this path:
+        // the flag is inherited by the PTY shell and cannot be cleared once set.
+        if (!TryAssumeIdentity(account, preventPrivilegeGain: false)) return 77;
 
         // The package creates the PTY only after the irreversible UID/GID transition. The control
         // stream carries framed input and resize messages; it never accepts an executable or
@@ -375,16 +379,17 @@ public static class UserExecutionExecutor
             || !UserExecutionProtocol.IsEligibleLinuxUserId(uid)) return false;
         var buffer = Marshal.AllocHGlobal(1_048_576); try { if (getpwuid_r(uid, out var entry, buffer, 1_048_576, out var found) != 0 || found == IntPtr.Zero) return false; var name = Text(entry.Name); var home = Text(entry.Home); if (name != expected.CanonicalAccount || home != expected.HomeDirectory || !Path.IsPathFullyQualified(home!)) return false; account = new(name!, home!, entry.Uid, entry.Gid); return true; } finally { Marshal.FreeHGlobal(buffer); }
     }
-    private static bool TryAssumeIdentity(Account account)
+    private static bool TryAssumeIdentity(Account account, bool preventPrivilegeGain)
     {
         // Supplementary groups must be initialized while privileged. setresgid/setresuid replace
         // the real, effective and saved IDs together so the worker has no saved-root identity to
-        // regain. no_new_privs also prevents later exec from acquiring privilege through setuid
-        // binaries or file capabilities.
+        // regain. File/Git workers additionally prevent later exec from acquiring privilege through
+        // setuid binaries or file capabilities; interactive terminals use the host's sudo policy.
         if (initgroups(account.Name, account.Gid) != 0
             || setresgid(account.Gid, account.Gid, account.Gid) != 0
-            || setresuid(account.Uid, account.Uid, account.Uid) != 0
-            || prctl(PrSetNoNewPrivileges, 1, 0, 0, 0) != 0)
+            || setresuid(account.Uid, account.Uid, account.Uid) != 0)
+            return false;
+        if (preventPrivilegeGain && prctl(PrSetNoNewPrivileges, 1, 0, 0, 0) != 0)
             return false;
         if (getresuid(out var realUid, out var effectiveUid, out var savedUid) != 0
             || getresgid(out var realGid, out var effectiveGid, out var savedGid) != 0
