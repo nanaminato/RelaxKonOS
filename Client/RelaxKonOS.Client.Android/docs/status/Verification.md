@@ -159,13 +159,13 @@
 
 ## 12. BP 测试进度
 
-> BP24-M1 对应第一批测试追踪；本表于 2026-09-30 建立；BP01-M1 已准备专项用例并完成静态核对，Android 构建/测试及设备/宿主验收未执行。第 11 节历史证据不自动覆盖尚未实现的新功能。
+> BP24-M1 对应第一批测试追踪；本表于 2026-09-30 建立；BP01-M1 在提交 `89114399` 上完成静态核对、Debug 主代码与单元测试代码编译，24 个专项 JVM 用例通过。拉取后的 `0a59bb52` 尚未复测；BP02-M1 自动化检查及设备/宿主验收仍未执行。第 11 节历史证据不自动覆盖尚未实现的新功能。
 
 实现是否完成只在 Progress 更新；用例准备使用“未开始 / 进行中 / 已准备”，测试代码与场景清单作为准备证据，准备缺失不阻止下一项实现。各执行列按“未执行 / 进行中 / 部分通过 / 通过 / 失败 / 环境受限 / 不适用”记录每类测试状态。尚无功能代码不记为失败；没有尝试执行不记为环境受限。新增后续批次时沿用 BP 编号分行，不把测试完成设为下一实现步骤的前置条件。
 
 | 关联实现 | 用例准备 | 自动化构建/测试 | 手机/平板交互 | Ubuntu 宿主 | Windows 宿主 | 重点范围 / 待补证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| BP01-M1 | 进行中 | 未执行（按用户要求跳过 Android 构建/测试） | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Repository/Journal 24 个用例；取消竞争、完整认证刷新、设备 SAF 与 OperationCenter 端到端用例待补；静态证据见下文 |
+| BP01-M1 | 进行中 | 通过（`89114399`：Debug 主代码/单元测试代码编译；专项 JVM 24/24）；`0a59bb52` 未复测 | 未执行 | 未执行 | 未执行 | wire/HTTP/Repository/Journal 24 个用例已执行；取消竞争、完整认证刷新、设备 SAF 与 OperationCenter 端到端用例待补；执行证据 BP01-M1-V1 见下文，APK/仪器测试/lint 不在本次范围 |
 | BP02-M1 | 进行中 | 未执行（按用户要求跳过 Android 构建/测试） | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Editor 12 个用例；实际认证刷新、真实消费者网络、手机/平板交互待补；静态证据见下文 |
 | BP03-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 全新安装、手机包/服务器引用、已有实例接管、启停/重启/重载 |
 | BP03-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 静态/反代、配置错误、端口冲突、并发更新与断线核实 |
@@ -180,13 +180,41 @@
 
 用例准备列只追踪该 BP 新增测试代码和可执行场景，不把本文的场景概述当作已准备；自动化列分别注明编译/构建和测试结果；两者结论不同时写“部分通过”并列出范围。设备列细分手机/平板、IME/大字体和三语；宿主列细分版本/模式/服务能力与联网条件，宿主明确不支持的动作可写“不适用”并说明依据。新增证据按编号写日期、提交、命令/人工步骤、环境、结果和未覆盖项，再更新对应单元格；BP01-M1 的静态检查证据见下文，不代替 Android 执行结果。
 
-### BP01-M1 静态证据与未执行范围（2026-09-30）
+### BP01-M1 静态证据与待补范围（2026-09-30）
 
-- 工作树新增 `InstallationWireTest`（6）、`InstallationHttpTest`（4）、`InstallationRequestJournalTest`（4）、`InstallationRepositoryTest`（10），共 24 个用例。覆盖当前枚举/路由/包字段、异常 wire、限时引用、专用 multipart/128 MiB、明确提权、稳定提交/取消键、响应丢失后的显式重试、原 ID 只读恢复、账户/提示期间切换、损坏日志 fail-closed 等；本轮未编译或运行这些用例。
+- `InstallationWireTest`（6）、`InstallationHttpTest`（4）、`InstallationRequestJournalTest`（4）、`InstallationRepositoryTest`（10），共 24 个用例。覆盖当前枚举/路由/包字段、异常 wire、限时引用、专用 multipart/128 MiB、明确提权、稳定提交/取消键、响应丢失后的显式重试、原 ID 只读恢复、账户/提示期间切换、损坏日志 fail-closed 等；初次交付仅准备用例，后续执行结果见 BP01-M1-V1。
 - `git diff --check` 通过；Python XML 解析检查通过三语文件有效、无重复资源键、键集一致、新增运维页面资源引用存在。该检查不执行 Compose 或 Android 资源编译。
-- .NET 10.0.400 临时控制台直接编入当前共享 `InstallationContracts.cs`、`RelaxKonOSJsonOptions.cs` 与 `RelaxKonOSEndpoints.cs`；`DOTNET_CLI_HOME=/tmp/relaxkon-dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run --project /tmp/relaxkon-installation-wire/Wire.csproj --verbosity quiet` 通过：确认 `service=nginx`、`stage=updatingPackageLists`、camelCase 字段与 `/api/v1.0/installations/Nginx/Install` 路由。临时项目不属于发布产物；检查仅验证共享序列化约定，不是 Android/Server 集成测试。
-- 用户说明本机无 Android 环境并允许跳过测试，本轮没有运行 Gradle Kotlin 编译、JVM/仪器测试、lint 或设备交互；也未执行真实 Ubuntu/Windows 安装、上传、提权、取消与重启恢复。历史 Android 构建结果不覆盖这次新增代码。
+- 初次交付时，.NET 10.0.400 临时控制台直接编入共享 `InstallationContracts.cs`、`RelaxKonOSJsonOptions.cs` 与 `RelaxKonOSEndpoints.cs`；`DOTNET_CLI_HOME=/tmp/relaxkon-dotnet DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run --project /tmp/relaxkon-installation-wire/Wire.csproj --verbosity quiet` 通过：确认 `service=nginx`、`stage=updatingPackageLists`、camelCase 字段与 `/api/v1.0/installations/Nginx/Install` 路由。临时项目不属于发布产物；检查仅验证共享序列化约定，不是 Android/Server 集成测试。
+- 初次交付按用户要求跳过 Android 编译/测试；后续用户明确授权执行 24 个 JVM 用例，暂不做设备测试。该次没有执行 APK 打包、仪器测试、lint、设备交互或真实 Ubuntu/Windows 安装、上传、提权、取消与重启恢复；第 11 节既有 lint 未通过记录仍待核实。
 - 待补可执行检查：401 刷新与提权两次授权组合、同意提权后的拒绝、取消阶段切换/资源竞争、服务响应丢失后任务已结束、索引写失败/进程杀死、隐蔽记录与活动发现、User Mode 仅 Git 能力、SAF 未知长度/源重新打开/断网、三语/IME/大字体/手机平板、真实六类服务支持矩阵。当前 API 没有按幂等键只读查询，完全丢失首个终态响应的“结果待核实”必须保留，不能用空活动列表替代终态。
+
+### BP01-M1-V1 初步 JVM 执行证据（2026-09-30）
+
+- 被测提交：`89114399`；执行前工作树干净，该次仅更新验证文档，没有修改实现或测试代码。本条记录恢复合入 `0a59bb52` 的文档，执行结果不扩展为该提交或 BP02-M1 的验证证据。
+- 环境：Windows 11 amd64；本机 Gradle 9.7.1、缓存的 JetBrains JDK 25、Android SDK platform 36；AGP 9.4.1。使用 `--offline`，未下载依赖。
+- 在 `Client/RelaxKonOS.Client.Android/` 执行以下 PowerShell 命令；`:app:compileDebugKotlin`、`:app:compileDebugUnitTestKotlin` 与 `:app:testDebugUnitTest` 成功，Gradle 返回 `BUILD SUCCESSFUL`（22 秒）。这证明被测提交的 Debug 主代码、资源和 JVM 用例可以编译并执行，不代表 APK 打包或设备运行通过。
+
+```powershell
+$bp01Gradle = 'C:/Users/betha/.gradle/wrapper/dists/gradle-9.7.1-all/6yde0y3ecw7psqwo4h66kup3z/gradle-9.7.1/bin/gradle.bat'
+& $bp01Gradle :app:testDebugUnitTest `
+  --tests 'app.relaxkonos.mobile.core.net.InstallationWireTest' `
+  --tests 'app.relaxkonos.mobile.core.net.InstallationHttpTest' `
+  --tests 'app.relaxkonos.mobile.data.InstallationRequestJournalTest' `
+  --tests 'app.relaxkonos.mobile.data.InstallationRepositoryTest' `
+  --offline --console=plain
+```
+
+| 测试类 | 用例 | 失败 / 错误 / 跳过 |
+| --- | --- | --- |
+| InstallationWireTest | 6 | 0 / 0 / 0 |
+| InstallationHttpTest | 4 | 0 / 0 / 0 |
+| InstallationRequestJournalTest | 4 | 0 / 0 / 0 |
+| InstallationRepositoryTest | 10 | 0 / 0 / 0 |
+| 合计 | 24 | 0 / 0 / 0 |
+
+- Python XML 解析核对了 `app/build/test-results/testDebugUnitTest/TEST-*Installation*Test.xml` 的四份报告；本机 HTML 报告为 `app/build/reports/tests/testDebugUnitTest/index.html`。这些是忽略的本机构建产物，不提交到仓库；本次恢复记录时仍可从四份 XML 确认 24 个用例、零失败、零错误、零跳过。
+- 在 `89114399` 上复查三语 XML：各 1,081 个字符串键，无重复且键集一致；运维页面 134 个 `R.string` 引用全部存在。静态比对共享契约：6 个服务、4 个动作、6 个状态、17 个阶段及其 camelCase wire 值一致，15 个共享安装问题码均有 Android 定义。后续新增代理资源的静态证据另见 BP02-M1。
+- 编译仅报告 `OperationsScreen.kt:253` 的 Material 3 `TabRow` 弃用警告，无编译错误。已有缺口仍见上面的待补范围；该次未执行其他 JVM 用例、设备测试或宿主集成验收。
 
 ### BP02-M1 静态证据与未执行范围（2026-09-30）
 

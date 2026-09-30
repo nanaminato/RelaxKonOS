@@ -111,7 +111,7 @@ BP01-M1 已接入安装任务观察；BP17-M1 在后续领域交付时持续补�
 
 BP01-M1 的公共数据链路、安装任务恢复/观察/取消和功能文档已交付，已完成拆分不再保留在本计划。当前行为见 [公共运行时安装](../features/Installations.md)，实现证据见 [Progress](../status/Progress.md#2-bp-实现进度)，未执行检查见 [Verification](../status/Verification.md#12-bp-测试进度)。公共链路不替代各服务表单；第一个完整安装业务闭环仍由 BP03-M1 的 Nginx 管理承担。
 
-BP02-M1 已交付宿主自定义代理，当前行为见 [宿主出站代理](../features/OutboundProxy.md)，已完成拆分从本计划移除。下一项为 BP03-M1：Nginx 安装、发现、接管与实例生命周期。BP01-M1/BP02-M1 未执行 Android 编译/测试不作为后续实现依赖；若后续检查发现真实代码缺陷，在 Progress 关联受影响的实现待办。
+BP02-M1 已交付宿主自定义代理，当前行为见 [宿主出站代理](../features/OutboundProxy.md)，已完成拆分从本计划移除。下一项为 BP03-M1：Nginx 安装、发现、接管与实例生命周期。BP01-M1/BP02-M1 剩余检查不作为后续实现依赖；各提交的测试证据见 Verification，若后续检查发现真实代码缺陷，在 Progress 关联受影响的实现待办。
 
 ## 5. 实施边界与共用规则
 
