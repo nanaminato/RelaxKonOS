@@ -1,6 +1,6 @@
 # Android 文档
 
-本目录是 Android 手机与平板的唯一详细文档源。先查 [当前状态](status/Progress.md) 了解已实现范围；缺少测试看 [验收清单](status/Verification.md)，新增功能看后续计划。仓库级 [移动端入口](../../../docs/mobile/README.md) 仅链接到这里。
+本目录是 Android 手机与平板的唯一详细文档源。先查 [实现进度](status/Progress.md) 了解已实现范围与下一项；测试进度、执行证据及未关闭检查看 [测试与验收](status/Verification.md)，新增功能看后续计划。实现和测试独立追踪，即使未执行测试，也可按实现依赖继续下一步。仓库级 [移动端入口](../../../docs/mobile/README.md) 仅链接到这里。
 
 ## 设计规范 `design/`
 
@@ -29,7 +29,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [部署剩余工作](plans/Deployment.md) | 首次安装、模板更新、构建回收、数据恢复与后台通知的代码缺口 |
-| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；优先安装/网络/Nginx/证书/FRP/Mihomo |
+| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；BP01-M1 起步拆分，随后网络/Nginx/证书/FRP/Mihomo |
 
 ## 开发与发布 `development/`
 
@@ -42,9 +42,9 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [当前实现与证据](status/Progress.md) | 当前功能、代码缺口、已有检查及明确的适用范围 |
-| [未关闭验收](status/Verification.md) | 设备/宿主/故障矩阵，保留 AD 验收 ID 与 Compose 部分通过事实 |
+| [当前实现与进度](status/Progress.md) | 当前功能、代码缺口、BP 实现状态与下一项 |
+| [测试进度与验收](status/Verification.md) | 独立 BP 测试进度、已有执行证据与设备/宿主/故障矩阵；保留 AD 验收 ID 与 Compose 部分通过事实 |
 
 ## 维护规则
 
-规范写行为，功能说明写当前接入，计划只写未实现交付，状态记录证据，验收集中保留未关闭检查。目标实现后移出计划；仅缺真机/宿主测试时将检查归入验收，不保留整份旧目标。历史流水账由 Git 保存，不建存档副本或旧路径跳转文件。共享 Protocol/Server 执行语义只链接仓库领域文档，不复制到 Android 文档。
+规范写行为，功能说明写当前接入，计划只写未实现交付，Progress 记录实现状态与代码证据，Verification 独立记录测试进度、执行证据和未关闭检查。未测不阻止继续实现，不将已实现自动写成已验收。目标实现后移出计划；仅缺真机/宿主测试时将检查归入验收，不保留整份旧目标。历史流水账由 Git 保存，不建存档副本或旧路径跳转文件。共享 Protocol/Server 执行语义只链接仓库领域文档，不复制到 Android 文档。

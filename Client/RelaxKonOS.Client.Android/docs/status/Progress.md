@@ -1,6 +1,6 @@
-# Android 当前实现与验证状态
+# Android 当前实现状态
 
-> 更新：2026-09-30。本文件维护当前事实与已有验证证据；详细行为见 [文档目录](../README.md)，未关闭测试见 [验收清单](Verification.md)，未实现功能见 [部署后续工作](../plans/Deployment.md) 与 [内置应用补齐计划](../plans/BuiltInParity.md)。
+> 更新：2026-09-30。本文件维护当前实现事实与代码缺口；测试进度和已有验证证据统一见 [Verification](Verification.md)；详细行为见 [文档目录](../README.md)，未关闭测试见 [验收清单](Verification.md)，未实现功能见 [部署后续工作](../plans/Deployment.md) 与 [内置应用补齐计划](../plans/BuiltInParity.md)。
 >
 > 已移除重复修复流水账、旧环境路径、过时“待实现”步骤和已完成目标。历史完整记录可查 Git；本轮文档整理没有执行构建或产品测试，也没有把未验证项目标成通过。
 
@@ -23,30 +23,38 @@
 
 服务端已有无卷/无秘密定义恢复为新停机实例的路径，Android 未接入提交 UI。定义备份已验证不代表数据卷/数据库可以恢复。
 
-## 2. 已有验证证据
+## 2. BP 实现进度
 
-下表压缩自整理前的执行记录，日期与范围保留。构建产物/报告是历史位置，可能已被后续构建覆盖；最新测试总数只描述当次套件，不代表所有领域端到端通过。
+> 更新：2026-09-30。只追踪实现；测试状态与执行证据独立维护在 [Verification](Verification.md#12-bp-测试进度)。未执行测试可继续下一项，缺测试不回退实现状态。
 
-| 日期 | 检查与结果 | 证明范围 / 限制 |
-| --- | --- | --- |
-| 2026-09-30 | 远端提交 `382196f2` 记录离线 `:app:assembleDebug :app:testDebugUnitTest --offline --no-daemon` 成功；61 类 / 522 JVM 用例，0 失败/错误/跳过；`git diff --check` 通过 | 固定活动屏幕/历史、Windows 清屏与光标重绘、缩放与跨帧解析；包含 14 个屏幕回归和 1 个控制器用例，以及键盘动画期间旧 Windows 重绘、尺寸合并/回到原尺寸、会话切换/附加期间变更。尺寸同步的 6 项场景在旧实现失败、修复后通过；真实手机 IME 与远端 Windows PowerShell 联调仍待验证。本轮合并未重新执行产品构建或测试 |
-| 2026-09-30 | `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest --offline --no-daemon` 成功；61 类 / 500 JVM 用例，0 失败/错误/跳过；中英日各 1024 键一致无重复 | 当前登录切换、徽标查询竞态、认证和终端等逻辑；未执行本轮实体设备验收 |
-| 2026-09-30 | API 35 平板模拟器 `emulator-5558` 直接 instrumentation：`TerminalKeyboardLayoutTest` 8 项通过 | 实际终端控件、真实系统 IME、手机/平板视口、已消费边距、大字体、草稿；截图 `app/build/reports/terminal-layout/terminal-real-keyboard.png`；不代表厂商 IME/实体设备/真实 PTY |
-| 2026-09-30 | 终端连接恢复对应 61 类 / 492 JVM 用例通过，新增控制器与认证用例 | 首次附加、空列表/丢失会话、401/403/503、临期与并发刷新、输入互斥、后台返回与清理；真实 token 到期联调未执行 |
-| 2026-09-29 | Android 57 类 / 462 用例通过；Server/Server.Tests 隔离构建成功；备份定向检查通过 | 密钥缺失、篡改、幂等、配额、每应用保留、重启残留清理；Server 3 条既有 CA1416 警告；不是数据恢复演练 |
-| 2026-09-29 | Guardian Agent 构建通过（0 警告）；Server 构建通过；终端缓冲 JVM 用例通过 | 分块 UTF-8、VT 重绘、清屏/有界行保留；真实 PTY/SSH/Agent 权限矩阵未执行 |
-| 2026-09-29 | Git 代码包含在 Android Debug 构建与全量 JVM 462 用例中，三语键集检查通过 | 尚无 Git 构建专项 Android 测试类，也未配置/验证真实 rootless BuildKit |
-| 2026-09-29 | 任务/告警：Android 54 类 / 455 JVM 用例、Server 构建与 `--stack-operations-only` 通过 | 操作索引、回执查询、告警规则、诊断报告；系统文件选择器/通知/真实 SSH 未验收 |
-| 2026-09-28 | owner-device keys：`:app:compileDebugKotlin :app:testDebugUnitTest --rerun-tasks` 成功 | Android 编译和 JVM；真实 Windows 10/11 与设备配对/签名/撤销未验收 |
-| 2026-09-27 | 应用部署聚焦 `ApplicationDeploymentWireTest`、`DeploymentHttpTest`、`DeploymentBrowserTest`；全量 393 JVM 用例通过 | 四来源、暂存、秘密、生命周期、回滚/保卷和幂等；真实 Docker/SAF 大包/设备未验收 |
-| 2026-09-27 | 模板目录：Android 401 JVM 用例通过；Server `--deployment-progress-only` 通过 | 四模板契约、受信任来源、schema/字段/能力/资源阻断；不启动 Docker、不创建真实模板实例 |
-| 2026-09-27 | Compose：Server 完整套件、`--stack-operations-only`、`--stack-live-only` 通过；桌面构建通过；Android 42 类 / 406 JVM 用例通过 | 真实 Docker 29.8.0 / Compose v5.5.1：部分失败→成功更新、同键原操作回放、运行/停止引用卷拒删、删 Stack 保卷；认证 HTTP、故障注入、设备仍有缺项 |
-| 2026-09-27 | 网站：Android 44 类 / 409 JVM 用例及后续 Debug 构建、Server 隔离构建通过 | 网站 wire、站点/证书/配置检查及发布代码；真实 Nginx/ACME/DNS/外网未验收 |
-| 2026-09-24 | 普通上传：续传日志、源暂存、协调器 43 项检查（含当次全量 275 项）通过 | 权威偏移、重试预算、源变化、缓存/取消/身份隔离；SAF 与系统后台行为待设备验证 |
-| 2026-09-24 | 缩略图：Server 22 项 `PASS THUMBNAILS` 与全量后端检查通过；Android 24 类 / 232 JVM 用例通过 | 传输/授权、缓存键、降采样计算；BitmapFactory/EXIF/真实过渡和 org.json null 设备路径未覆盖 |
-| 2026-09-27 | `:app:lintDebug` 未通过，记录 5 错误 / 75 warning | MediaStore、contentLengthLong、Keystore API、Context→Activity；之后无完整通过证据，保留待核实 |
+状态使用“未开始 / 进行中 / 部分实现 / 已实现 / 不实施”。按实际动作和代码证据更新；当前仅建立推进安排，未新增功能代码。下一项为 [BP01-M1-1](../plans/BuiltInParity.md#41-起步依据与第一轮范围)。不把桌面/Server 已有实现记为 Android 已实现，也不把既有 Android 部分功能当作整个 BP 项完成。
 
-离线 `connectedDebugAndroidTest` 曾因缺 UTP `gradle-work-action:32.4.1` 缓存无法调度，终端布局改用已编译 APK 与 `adb shell am instrument` 执行；该模拟器实例测试后关闭，未操作实体设备。
+| 编号 | 实现状态 | 当前证据 / 剩余实现 | 下一步 |
+| --- | --- | --- | --- |
+| BP00 | 已实现（差异基线） | BuiltInParity 第 2 节已建立 25 应用差异清单；本次统一排除范围与推进规则 | 各功能开工时继续逐动作核对 |
+| BP01-M1 | 未开始 | 以下五项为第一轮交付，新增功能代码尚未开工 | 从 BP01-M1-1 开始 |
+| BP01-M1-1 | 未开始 | 共享 InstallationContracts 已存在；Android 未接入 typed 模型/wire | 接入当前模型、路由、枚举与请求 |
+| BP01-M1-2 | 未开始 | RelaxKonGateway/RelaxKonApi 尚无统一安装调用；缺 InstallationRepository | 提交/查询/取消/引用/上传链路 |
+| BP01-M1-3 | 未开始 | 可复用 AuthSession、ElevationRepository、OperationIndex；缺安装任务领域 | 幂等、提权、索引、恢复与身份隔离 |
+| BP01-M1-4 | 未开始 | OperationCenter/OperationsScreen 尚无统一安装任务观察 | 接入观察与取消界面，补三语 |
+| BP01-M1-5 | 未开始 | 尚无本轮安装链路功能说明 | 更新功能说明和实现进度；测试准备/执行单独记录 |
+| BP02-M1 | 未开始 | 缺宿主自定义出站代理设置 | BP01-M1 后接网络设置 |
+| BP03-M1 | 未开始 | 既有网站诊断/发布不含 Nginx 安装与完整生命周期 | BP01-M1、BP02-M1 后完成首个 Nginx 闭环 |
+| BP03-M2 | 未开始 | 缺通用站点编辑/删除与相应操作恢复 | BP03-M1 后接站点管理 |
+| BP04-M1 | 未开始 | 网站已有部分证书链路，缺独立生命周期任务流 | 接独立列表/详情与证书操作 |
+| BP04-M2 | 未开始 | 缺本轮完整站点证书联动与 Kestrel 部署 | BP04-M1 后联动站点与部署 |
+| BP05-M1 | 未开始 | 缺 FRP 运行时与 frpc 管理 | 接安装、配置、隧道与应用状态 |
+| BP05-M2 | 未开始 | 缺 frps 管理 | BP05-M1 后接生命周期与诊断 |
+| BP06-M1 | 未开始 | 缺 Mihomo 运行时与配置/订阅/节点管理 | 接安装与代理基础任务流 |
+| BP06-M2 | 未开始 | 缺系统代理/TUN/恢复等宿主管理 | BP06-M1 后接能力门控与恢复 |
+| BP02-M2 | 未开始 | 缺受管 Mihomo 出站来源联动 | BP06 实现后联动设置与 Docker |
+| BP17-M1 | 未开始 | 既有运维中心可复用，新增领域尚未接入 | BP01 接安装，其余领域随实现逐步接入 |
+| BP07、BP08、BP09、BP10、BP11、BP12、BP14、BP15、BP16、BP22 | 未开始（本轮补齐） | 既有实现见第 1 节；新增动作见计划，按第二批拆分 | 不重写既有功能，按实现依赖推进 |
+| BP13、BP19、BP20、BP21、BP23 | 未开始（本轮补齐） | 新增动作见计划，按第三批拆分 | 复用既有终端/SSH/引导，遵守平台与排除范围 |
+| BP18 | 不实施 | 本轮排除独立注册表应用；编号保留 | BP22 直接接具体设置契约 |
+| BP24 | 进行中 | 本次已建立实现/测试分离与第一批测试表；功能变更的测试代码和文档随各项更新 | 测试执行进度仅在 Verification 更新 |
+
+每次实现交付更新对应行，注明文件/提交、已完成动作、剩余代码与下一项；后续拆分任务时替换组合行，编号保持稳定。代码缺陷关联对应 BP 编号，测试未执行不单独作为代码缺口。
 
 ## 3. 当前限制与下一步
 
@@ -54,4 +62,4 @@
 - Server 终端是有界常用 VT 文本实现，复杂全屏程序、CJK 单元格和 IME 组合仍须设备核对；平板会话双栏尚未实现。
 - 登录密码被服务端拒绝不会自动删除；管理员提权凭据被明确拒绝会删除，网络/5xx 无结论保留。弱生物识别设备只能通过设备锁解封连接凭据，不能保存提权密码。debug 无锁屏兜底明文且标注未加密，release 不提供。
 - 原登录“已知系统不再查询”、没有 SignalR、终端/Docker/守护待实现、创建备份按钮未开放等描述均已被当前实现取代，不保留旧结论。
-- 已完成修复不再追加流水账；发生行为变化时修改对应规范和本表，只新增真实验证证据或未关闭事项。构建方式与图标同步见 [开发发布](../development/android-release.md)。
+- 已完成修复不再追加流水账；发生行为变化时修改对应规范和实现表，验证证据与未关闭检查统一维护在 Verification。构建方式与图标同步见 [开发发布](../development/android-release.md)。
