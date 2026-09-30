@@ -328,7 +328,9 @@ fun decideLogin(
 
 连接管理在首部显示 Ubuntu、Windows Server、Windows 10、Windows 11 的平台标记，并在相邻商标声明中注明 Ubuntu 归 Canonical、Windows 系列归 Microsoft。图例与每条记录的标记来自**同一份映射**，所以图例不会宣传一条记录永远显示不出的标记，也不会漏掉记录能显示的标记。
 
-每条密码登录记录只有在**服务器自己说过它运行什么系统**时才显示对应标记：答案来自 `GET /api/v1.0/server/host-operating-system`（匿名、只回答系统类别，见 [架构文档](../../../docs/architecture/RelaxKonOS.Protocol.md)）。答案随记录保存，因此只有「还没问过」的记录才会在打开列表时并发补问一次；已经问过的记录（含答案是「不是这几类」）不再重问。**失败不是答案**：网络或契约失败保持「未问过」，下次打开再试，而不是把「问不到」固化成结论。受管登录不参与补问——它的地址是隧道，只在打开宿主时才存在。系统未知、或不是这四类时回落通用连接标记：绝不从 URL、端口、客户端平台或已配对设备推断服务器操作系统。已配对设备行使用 Windows 11 风格标记并明确其 Windows 10/11 兼容范围。
+登录选择列表、Shell 内连接管理和已保存密码列表只有在**服务器自己说过它运行什么系统**时才显示对应标记：答案来自 `GET /api/v1.0/server/host-operating-system`（匿名、只回答系统类别，见 [架构文档](../../../docs/architecture/RelaxKonOS.Protocol.md)）。保存的值是最后一次观测结果；每次打开列表和登录成功时重新查询，包括已有标记及 `Unknown`，因为同一 IP/URL 可以换系统。同一服务的多个账号共享一次查询与实时标记，更新档案中的系统字段但不改密码或最后使用时间。并发最多四个查询，旧请求迟到不能覆盖更新请求的结果。网络或契约失败保留最后结果，下次打开继续尝试；从未成功或系统未知时显示通用连接标记。仅有密码记录、没有连接档案时也可查询和显示，但不重建档案。受管安装只有当前登录会话存在已核实隧道时才能通过其 `effectiveBaseUrl` 查询，不主动开 SSH，不落盘临时端口。已配对设备行也使用当前系统标记，文字仍明确密钥登录的 Windows 10/11 兼容范围，不从配对关系推断当前系统。
+
+已登录时，「更多 → 切换登录」先登出旧会话并打开登录选择列表；「连接管理 → 某条记录 → 切换登录」先登出再选择该身份，并按既有登录决策使用保存密码或要求输入密码。切换清空导航栈、密码输入、配对代码与窗口授权标记，保留所有连接与密码记录。关闭选择列表或取消指纹后停留登录页；不会恢复旧会话。重复点击切换/登出期间只执行一次会话结束。远端登出请求失败也必须清除本地 token，再允许下一次登录。
 
 密码登录记录左滑显示管理入口，其中的两个**互不替代**动作（资料 §11）为：
 
@@ -500,8 +502,8 @@ CredentialStore(密文)
 | `LoginDecisionTest`（新） | §5.1 决策表逐行，含「PasswordText 非空时 `Available` 被忽略」与「字段不全优先于一切」 |
 | `SavedCredentialStateTest`（新） | 四态派生；`Invalidated` 优先于 `unlockMode == null`；`Unavailable ≠ Invalidated` |
 | `SelectedLoginTest`（新） | 直连 URL 规范化；账号与路径大小写不折叠；同服务不同账号、不同服务同账号不碰撞；受管隧道换端口后 `loginId` / `credentialKey` 不变 |
-| `ConnectionProfileStoreTest`（改） | 按对删除只影响一条；同服务器多账号互不牵连；宿主系统类别往返、只影响一条、重复答案不写盘、旧布局（`RKC2`）文件降级为空 |
-| `HostOperatingSystemLookupTest`（新） | §6.3 的补问规则：问过的不再问、`Unknown` 是终局答案、失败与拒绝都不落盘、受管登录不问、全部待问项都会被问到、重复答案不算变化 |
+| `ConnectionProfileStoreTest`（改） | 按对删除只影响一条；凭据独立；宿主系统类别往返、同服务全部账号同步、重复答案不写盘、旧布局（`RKC2`）文件降级为空 |
+| `HostOperatingSystemLookupTest`（改） | 同地址换系统、Unknown 重查、失败保留最后结果、多账号去重、仅密码记录、受管活跃隧道及换端口、迟到结果不能覆盖新系统、重复答案不算变化 |
 | `HostOperatingSystemTest`（新） | 线上名字解析：camelCase 名字、不认识的答案降为 `Unknown` |
 | `CredentialVaultTest`（改） | `markInvalidated` 后记录与密文仍在、`open()` 被拒绝；「忘记密码」删记录；格式升版后旧文件降级为空 |
 | `AuthSessionTest`（改） | 认证失败不触碰凭据；`invalid-credential`、`429` 与 `Transport` 均不会修改保存凭据；同一受管身份重绑定后请求使用新端口而会话身份不变 |

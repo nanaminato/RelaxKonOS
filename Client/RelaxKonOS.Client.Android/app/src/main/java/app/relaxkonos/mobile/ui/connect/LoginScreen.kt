@@ -69,9 +69,9 @@ fun LoginScreen(
     modifier: Modifier = Modifier,
     onOpenServerCenter: () -> Unit = {},
     onOpenOwnerDevicePairing: () -> Unit = {},
+    viewModel: LoginViewModel = viewModel(),
 ) {
     val activity = LocalContext.current as? FragmentActivity ?: return
-    val viewModel: LoginViewModel = viewModel()
 
     val serverFocus = remember { FocusRequester() }
     val identifierFocus = remember { FocusRequester() }

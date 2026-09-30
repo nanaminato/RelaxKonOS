@@ -36,9 +36,8 @@ data class SavedLogin(
      * said about *itself* when the list asked (`RelaxKonOS.Protocol.HostOperatingSystemDto`), never a
      * guess from the address.
      *
-     * `null` and [HostOperatingSystemKind.Unknown] are deliberately different states: the first means
-     * "no answer yet" and is worth asking again next time the list opens, the second means "asked, and
-     * this host is not one this build draws a mark for" and must not cost a request every time.
+     * This is the last observed answer, refreshed whenever a list opens or a session becomes active.
+     * Both missing and unknown answers are queried again because an endpoint may change systems.
      */
     val hostOperatingSystem: HostOperatingSystemKind? = null,
 ) {

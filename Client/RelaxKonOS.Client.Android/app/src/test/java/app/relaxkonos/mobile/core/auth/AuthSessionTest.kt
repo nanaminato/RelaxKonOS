@@ -384,6 +384,37 @@ class AuthSessionTest {
     }
 
     @Test
+    fun `failed remote revocation still clears local tokens for switching login`() = runTest {
+        signIn()
+        gateway.onLogout = { _, _, _ -> throw IllegalStateException("offline") }
+        try {
+            session.logout()
+        } catch (_: IllegalStateException) {
+            // The caller may proceed to the next login even when revocation could not complete.
+        }
+        assertEquals(SessionState.SignedOut, session.state.value)
+        assertNull(session.accessToken)
+    }
+
+    @Test
+    fun `switching replaces the server account tokens and capabilities`() = runTest {
+        signIn()
+        gateway.onLogout = { _, _, _ -> ApiResult.Success(Unit) }
+        session.logout()
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession().copy(
+            userName = "other", tokens = AuthTokens("other-access", "other-refresh", null, null),
+            server = ServerDescriptor("windows", setOf("files")),
+        )) }
+        session.login(direct("https://other:5090"), "other", "pw".toCharArray()) {}
+        val active = session.state.value as SessionState.Active
+        assertEquals("https://other:5090", active.serviceId)
+        assertEquals("other", active.userName)
+        assertEquals(setOf("files"), active.capabilities)
+        assertEquals("other-access", session.accessToken)
+        assertEquals(1, gateway.logoutCount)
+    }
+
+    @Test
     fun `managed tunnel rebind changes request address without changing service identity`() = runTest {
         val installationId = "rki-0123456789abcdef0123456789abcdef"
         val first = ServerConnectionIdentityRules.managedTunnel(installationId, "http://127.0.0.1:51000")

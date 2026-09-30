@@ -206,14 +206,14 @@ class ConnectionProfileStoreTest {
     }
 
     @Test
-    fun `storing a host answer addresses exactly one login`() {
+    fun `storing a host answer updates every account on the same service`() {
         store.upsert(alpha)
         store.upsert(otherAccount)
 
-        assertTrue(store.setHostOperatingSystem(server, "nana", HostOperatingSystemKind.Ubuntu))
+        assertTrue(store.setHostOperatingSystem(server, HostOperatingSystemKind.Ubuntu))
 
         assertEquals(HostOperatingSystemKind.Ubuntu, store.all().first { it.identifier == "nana" }.hostOperatingSystem)
-        assertNull(store.all().first { it.identifier == "root" }.hostOperatingSystem)
+        assertEquals(HostOperatingSystemKind.Ubuntu, store.all().first { it.identifier == "root" }.hostOperatingSystem)
     }
 
     @Test
@@ -223,7 +223,7 @@ class ConnectionProfileStoreTest {
         watched.upsert(alpha.copy(hostOperatingSystem = HostOperatingSystemKind.Ubuntu))
         val writesBefore = counting.writes
 
-        assertFalse(watched.setHostOperatingSystem(server, "nana", HostOperatingSystemKind.Ubuntu))
+        assertFalse(watched.setHostOperatingSystem(server, HostOperatingSystemKind.Ubuntu))
 
         assertEquals(writesBefore, counting.writes)
     }
@@ -235,7 +235,7 @@ class ConnectionProfileStoreTest {
         watched.upsert(alpha)
         val writesAfterUpsert = counting.writes
 
-        assertFalse(watched.setHostOperatingSystem(server, "nobody", HostOperatingSystemKind.Ubuntu))
+        assertFalse(watched.setHostOperatingSystem("https://gone:5090", HostOperatingSystemKind.Ubuntu))
 
         assertEquals(writesAfterUpsert, counting.writes)
     }

@@ -236,10 +236,13 @@ class AuthSession(
         val url = effectiveBaseUrl
         val access = tokenStore.accessToken
         val refresh = tokenStore.refreshToken
-        if (url != null && access != null && refresh != null) {
-            gateway.logout(url, access, refresh)
+        try {
+            if (url != null && access != null && refresh != null) {
+                gateway.logout(url, access, refresh)
+            }
+        } finally {
+            clearSession()
         }
-        clearSession()
     }
 
     /** Drops the session without touching the server, e.g. after a rejected refresh. */

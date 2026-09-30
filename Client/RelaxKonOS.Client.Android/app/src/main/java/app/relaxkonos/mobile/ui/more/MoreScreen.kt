@@ -41,13 +41,14 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * reaching for a preference. The design's "list + detail" Expanded variant is served by the ordinary
  * pushed pages, which keeps one implementation of each settings page instead of two.
  *
- * Sign-out is drawn as a destructive outlined button rather than as a list row: it is the one entry
- * here that ends the session, and it should not look like the entries that only open a page.
+ * Switch login and sign-out are separate actions below the settings. Sign-out retains its destructive
+ * styling and confirmation; switching explicitly returns to the ordinary login picker.
  */
 @Composable
 fun MoreScreen(
     onOpenRoute: (String) -> Unit,
     onSignOut: () -> Unit,
+    onSwitchLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var confirmSignOut by remember { mutableStateOf(false) }
@@ -89,6 +90,12 @@ fun MoreScreen(
                 titleRes = R.string.more_about,
                 subtitleRes = R.string.more_about_subtitle,
             ) { onOpenRoute(Routes.MORE_ABOUT) }
+        }
+
+        OutlinedButton(onClick = onSwitchLogin, modifier = Modifier.fillMaxWidth()) {
+            DesktopIcon(icon = DesktopIcons.connections, size = 18.dp)
+            Spacer(Modifier.width(Spacing.sm))
+            Text(stringResource(R.string.more_switch_login))
         }
 
         OutlinedButton(

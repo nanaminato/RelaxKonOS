@@ -16,7 +16,7 @@
 |---|---|---|
 | `ui/connect/LoginScreen.kt` | 品牌标记下方、与「添加 Windows 10/11 设备」同款的文字链接；可带入当前合法的地址，但不提交登录。 | 单形态三字段、凭据状态行、手动密码优先、保存凭据的生物识别决策。 |
 | `ui/connect/ConnectionListScreen.kt` | 每条登录行的更多操作中可进入其**已明确关联**的宿主详情；未关联时提供「设置 SSH 管理连接」，不增加第四个常驻文字按钮。 | “使用 / 忘记密码 / 删除登录记录”仍只作用于该 `(serviceId, identifier)`。 |
-| `ui/more/ConnectionsScreen.kt` | 在登录资料组之后增加「服务器维护」区，显示当前宿主的安装状态和「打开服务器中心」。 | 已登录时不从此页切换账号；登出仍是切换服务器登录的显式路径。 |
+| `ui/more/ConnectionsScreen.kt` | 在登录资料组之后增加「服务器维护」区，显示当前宿主的安装状态和「打开服务器中心」。 | 每条记录可切换登录：先登出旧会话，直连按既有登录决策继续，受管记录仍需由服务器中心恢复并核实隧道。 |
 | `ui/home/HomeScreen.kt` | 只在已核实当前安装有更新或异常时显示轻量提示，点入详情。 | 首页 hero 的身份、主机与指标信息；不把部署进度塞进指标卡。 |
 | `ui/nav/Routes.kt`、`MobileNavHost.kt` | 已认证层仅增加通往宿主流程的入口；宿主列表、详情和操作步骤由独立的服务器中心导航状态管理，路由不携带凭据、路径或操作 JSON。 | 五个 `TopDestination`、能力门控、Compact/Medium/Expanded 的导航策略。 |
 | `MainActivity.kt` / `AppContainer.kt` | `MainActivity` 的根界面在登录/Shell 之外呈现服务器中心；`AppContainer` 持有协调器和当前宿主流程状态，退出时返回来源页面。 | `AuthSession` 是登录真源；主题背景和现有 `ElevationDialog` 不变。 |

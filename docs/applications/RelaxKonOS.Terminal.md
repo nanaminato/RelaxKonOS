@@ -9,6 +9,15 @@ Android 客户端使用同一 Server Hub；`AttachExisting(sessionId)` 只附加
 Linux System Mode 的远程终端由 `--user-terminal` Helper 在验证登录账号的 canonical username、UID 和 home 后启动。Helper 初始化该账号的 supplementary groups，并同时替换 real/effective/saved UID/GID、验证无法直接恢复 UID 0，再创建 PTY。交互终端不设置 `PR_SET_NO_NEW_PRIVS`，因此 `sudo` / `su` 按宿主的 sudoers、PAM 与账号权限工作；不要求 RelaxKonOS 管理员角色，也不会自动授予 root 权限。独立的 `--user-execution` 文件/Git worker 继续设置该标志。
 
 若终端报 `sudo: The "no new privileges" flag is set`，可用 `grep '^NoNewPrivs:' /proc/$$/status` 检查 shell：正常交互终端应为 `0`。旧版 Helper 创建的会话需要关闭后新建，重新附加旧会话不会移除标志。更新并重新部署 Helper 后若新会话仍为 `1`，应检查 Server 的 systemd sandbox、容器或上游 launcher 是否设置了 `NoNewPrivileges` / `no-new-privileges`；Linux 会继承该标志且不能在运行中的进程内清除，必须从未设置标志的启动环境重新启动。
+
+开发配置 `http-linux-privileged` 使用安装到 `/usr/local/lib/relaxkonos/privileged-helper-development/` 的 root-owned Helper 副本，重建 Server 或更新 Android APK 不会替换它。应在 Linux 仓库根目录重建并重新安装，再关闭旧会话、新建终端：
+
+```bash
+dotnet build RelaxKonOS.PrivilegedHelper/RelaxKonOS.PrivilegedHelper.csproj -c Debug
+sudo bash deployment/linux/install-relaxkonos-privileged-helper-development.sh "$USER"
+```
+
+若此前安装时显式指定了文件访问策略，应在重装时保留同样的参数。System Mode 正式安装则应通过发布包升级流程一并更新 Helper。
 >
 > - 架构原则见 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md)（§6 Application Execution Model / §6.2 Remote Service Application）
 > - 项目当前状态见 [`RelaxKonOS.md`](../README.md)（§7 RemoteTerminal）

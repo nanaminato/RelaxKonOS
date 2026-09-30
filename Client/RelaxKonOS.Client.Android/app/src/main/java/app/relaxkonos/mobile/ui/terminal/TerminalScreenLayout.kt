@@ -30,8 +30,11 @@ internal fun TerminalScreenLayout(
     input: @Composable (compact: Boolean) -> Unit,
 ) {
     BoxWithConstraints(modifier.fillMaxSize().windowInsetsPadding(imeInsets)) {
-        val fontScale = LocalDensity.current.fontScale
-        val compact = maxHeight < 400.dp * fontScale
+        val density = LocalDensity.current
+        val fontScale = density.fontScale
+        // A tall phone can retain >400dp above its IME. Still fold management controls while
+        // typing so the transcript gets that space, including when a parent consumed the inset.
+        val compact = imeInsets.getBottom(density) > 0 || maxHeight < 400.dp * fontScale
         val showKeys = maxHeight >= 200.dp * fontScale
         Column(
             Modifier.fillMaxSize().padding(horizontal = Spacing.lg, vertical = Spacing.sm),

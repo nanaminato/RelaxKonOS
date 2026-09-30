@@ -11,14 +11,18 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.data.ForegroundAlertNotifier
 import app.relaxkonos.mobile.ui.common.AppBackdrop
 import app.relaxkonos.mobile.ui.common.ElevationDialog
@@ -27,6 +31,7 @@ import app.relaxkonos.mobile.ui.common.LocalAppContainer
 import app.relaxkonos.mobile.ui.common.collectAsStateValue
 import app.relaxkonos.mobile.ui.common.text
 import app.relaxkonos.mobile.ui.connect.LoginScreen
+import app.relaxkonos.mobile.ui.connect.LoginViewModel
 import app.relaxkonos.mobile.ui.connect.OwnerDevicePairingScreen
 import app.relaxkonos.mobile.ui.servercenter.ServerCenterScreen
 import app.relaxkonos.mobile.ui.servercenter.SshWorkspaceScreen
@@ -38,6 +43,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import app.relaxkonos.mobile.ui.theme.applyAppLanguage
 import app.relaxkonos.mobile.ui.theme.applyAppNightMode
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 /**
  * The single activity. It hosts Compose and nothing else.
@@ -97,8 +103,36 @@ private fun RelaxKonApp(container: AppContainer) {
     RelaxKonOSTheme(colorMode = appearance.colorMode, highContrast = appearance.highContrast) {
         val sessionState = container.session.state.collectAsStateValue()
         val shell: ShellViewModel = viewModel()
+        val login: LoginViewModel = viewModel()
         val scope = rememberCoroutineScope()
         var ownerDevicePairingOpen by rememberSaveable { mutableStateOf(false) }
+        var changingSession by remember { mutableStateOf(false) }
+        val activity = LocalContext.current as FragmentActivity
+
+        fun endSession(switching: Boolean, target: SavedLogin? = null) {
+            if (changingSession) return
+            changingSession = true
+            scope.launch {
+                try {
+                    container.session.logout()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Local logout still completes when revoking the remote token fails.
+                } finally {
+                    changingSession = false
+                    login.clearSessionInput()
+                }
+                shell.navigator.resetTo(Routes.HOME)
+                ownerDevicePairingOpen = false
+                if (switching) login.switchLogin(activity, target)
+            }
+        }
+
+        LaunchedEffect((sessionState as? SessionState.Active)?.let { it.serviceId to it.effectiveBaseUrl }) {
+            val active = sessionState as? SessionState.Active ?: return@LaunchedEffect
+            container.hostOperatingSystems.resolve(listOf(active.serviceId), active)
+        }
 
         // Sign-out and a rejected refresh both clear the navigation stacks;
         // the saved connection profiles are untouched (design §4.1, rule 3).
@@ -132,13 +166,15 @@ private fun RelaxKonApp(container: AppContainer) {
                     container = container,
                     navigator = shell.navigator,
                     session = sessionState,
-                    onSignOut = { scope.launch { container.session.logout() } },
+                    onSignOut = { endSession(switching = false) },
+                    onSwitchLogin = { endSession(switching = true, target = it) },
                 )
 
                 else -> if (ownerDevicePairingOpen) {
                     OwnerDevicePairingScreen(onClose = { ownerDevicePairingOpen = false })
                 } else {
                     LoginScreen(
+                        viewModel = login,
                         onOpenServerCenter = container.serverCenter::open,
                         onOpenOwnerDevicePairing = { ownerDevicePairingOpen = true },
                     )

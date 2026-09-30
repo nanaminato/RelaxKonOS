@@ -173,11 +173,10 @@ internal fun ServerTerminalContent(
             val selectedSession = state.sessions.firstOrNull { it.sessionId == state.sessionId }
             val sessionLabel = selectedSession?.let {
                 terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
-            } ?: stringResource(R.string.terminal_server_title)
-            Text("${owner.userName} · $sessionLabel", style = MaterialTheme.typography.bodySmall,
+            }
+            Text(listOfNotNull(owner.userName, sessionLabel).joinToString(" · "), style = MaterialTheme.typography.bodySmall,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         } else Column {
-            Text(stringResource(R.string.terminal_server_title), style = MaterialTheme.typography.titleLarge)
             Text("${owner.userName} · ${owner.effectiveBaseUrl}", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

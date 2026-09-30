@@ -218,6 +218,25 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         refreshHostOperatingSystems()
     }
 
+    /** Clears the previous session's form state before selecting a login or opening the picker. */
+    fun switchLogin(activity: FragmentActivity, login: SavedLogin?) {
+        clearSessionInput()
+        if (login == null) openConnections() else connectSavedLogin(activity, login)
+    }
+
+    fun clearSessionInput() {
+        discoveryJob?.cancel()
+        hostLookupJob?.cancel()
+        passwordText = ""
+        ownerDevicePairingCode = ""
+        windowUnlocked = emptySet()
+        message = null
+        focusRequest = null
+        endpointDiscoveryState = EndpointDiscoveryState.Idle
+        connectionsOpen = false
+        revision++
+    }
+
     fun closeConnections() {
         connectionsOpen = false
         // The list is gone, so an answer nobody will see is not worth a socket.
@@ -225,18 +244,15 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Asks the servers behind saved connections what they run on, so a row that has never learned it can
-     * still carry the matching mark (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
-     *
-     * Background work with no message of its own: the list is usable the moment it opens, rows that
-     * already know their mark do not move, and a host that does not answer keeps the generic mark. The
-     * job is bound to the dialog — reopening cancels the older lookup, whose answers were already stored
-     * per row as they arrived.
+     * Refreshes every directly reachable host when the picker opens, including previously known marks.
+     * The list stays usable while looking up, and failures retain the last observed mark.
      */
     private fun refreshHostOperatingSystems() {
         hostLookupJob?.cancel()
         hostLookupJob = viewModelScope.launch {
-            val stored = container.hostOperatingSystems.resolve(container.profiles.all())
+            val stored = container.hostOperatingSystems.resolve(
+                container.profiles.all().map { it.serviceId } + pairedOwnerDeviceServiceIds,
+            )
             if (stored > 0) revision++
         }
     }

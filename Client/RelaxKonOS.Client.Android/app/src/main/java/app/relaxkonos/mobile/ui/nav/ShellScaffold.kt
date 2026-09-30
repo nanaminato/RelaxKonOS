@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.core.layout.layoutStateFor
 import app.relaxkonos.mobile.ui.icons.DesktopIcon
@@ -66,6 +67,7 @@ fun ShellScaffold(
     navigator: MobileNavigator,
     session: SessionState.Active,
     onSignOut: () -> Unit,
+    onSwitchLogin: (SavedLogin?) -> Unit,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val layoutState = layoutStateFor(maxWidth)
@@ -119,6 +121,7 @@ fun ShellScaffold(
                     session = session,
                     layoutState = layoutState,
                     onSignOut = onSignOut,
+                    onSwitchLogin = onSwitchLogin,
                     modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
                 )
             }
@@ -151,6 +154,7 @@ fun ShellScaffold(
                     session = session,
                     layoutState = layoutState,
                     onSignOut = onSignOut,
+                    onSwitchLogin = onSwitchLogin,
                     // The rail is opaque, so the content needs no border of its own — only a gap.
                     modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.xs),
                 )

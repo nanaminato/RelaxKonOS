@@ -48,8 +48,8 @@ class InMemoryProfileStorage : ProfileStorage {
 /**
  * The login list shown on the sign-in and connections screens.
  *
- * Every mutation addresses one login through the pair `(serviceId, identifier)`. There is deliberately
- * no operation that acts on a service identity alone: one server can hold several accounts, and removing
+ * Credential and deletion operations address one login through the pair `(serviceId, identifier)`:
+ * one server can hold several accounts, and removing
  * "the server" would silently take the other accounts' records with it
  * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
  *
@@ -103,20 +103,19 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
     }
 
     /**
-     * Stores what one login's host answered about its operating system.
+     * Stores the host's answer for every account on this service, without changing credentials.
      *
      * Returns whether the file was written: a login that is gone is never resurrected by a background
      * answer, and an answer that changes nothing does not rewrite the file — the list is opened often,
      * and a write per open would be churn with no visible difference. Nothing else writes this field,
      * so a value here always came from the server; a failed request never reaches this method.
      */
-    fun setHostOperatingSystem(serviceId: String, identifier: String, kind: HostOperatingSystemKind): Boolean {
+    fun setHostOperatingSystem(serviceId: String, kind: HostOperatingSystemKind): Boolean {
         val current = read()
-        val target = current.firstOrNull { it.serviceId == serviceId && it.identifier == identifier } ?: return false
-        if (target.hostOperatingSystem == kind) return false
+        if (current.none { it.serviceId == serviceId && it.hostOperatingSystem != kind }) return false
         write(
             current.map {
-                if (it.serviceId == serviceId && it.identifier == identifier) {
+                if (it.serviceId == serviceId) {
                     it.copy(hostOperatingSystem = kind)
                 } else {
                     it

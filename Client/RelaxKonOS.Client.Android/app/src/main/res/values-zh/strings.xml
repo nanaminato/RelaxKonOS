@@ -1053,4 +1053,5 @@
     <string name="server_feature_firewall">防火墙管理</string>
     <string name="server_feature_proxy">反向代理</string>
     <string name="server_feature_tunnels">网络隧道</string>
+    <string name="more_switch_login">切换登录</string>
 </resources>

@@ -13,6 +13,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,14 +29,13 @@ import app.relaxkonos.mobile.security.VaultRecordState
 import app.relaxkonos.mobile.security.VaultUnlockMode
 import app.relaxkonos.mobile.ui.common.ConfirmDangerousDialog
 import app.relaxkonos.mobile.ui.common.EmptyHint
-import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.formatTimestamp
-import app.relaxkonos.mobile.ui.icons.DesktopIcons
+import app.relaxkonos.mobile.ui.icons.ServerPlatformBadge
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
@@ -70,6 +70,13 @@ fun AccountSecurityScreen(
     val debugRecord = remember(revision) { container.debugCredentials?.record() }
     val connectionMode = container.unlockMode(VaultKind.Connection)
     val elevationMode = container.unlockMode(VaultKind.Elevation)
+    LaunchedEffect(Unit) {
+        container.hostOperatingSystems.resolve(
+            connectionRecords.map { it.serviceId } + elevationRecords.map { it.serviceId } +
+                listOfNotNull(debugRecord?.serviceId),
+            container.activeSession,
+        )
+    }
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
@@ -149,7 +156,7 @@ fun AccountSecurityScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
-                        IconBadge(icon = DesktopIcons.connections)
+                        ServerPlatformBadge(record.serviceId)
                         Column(Modifier.weight(1f)) {
                             Text(record.serviceId, style = MaterialTheme.typography.bodyMedium)
                             Text(
@@ -170,7 +177,7 @@ fun AccountSecurityScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
-                        IconBadge(icon = DesktopIcons.connections)
+                        ServerPlatformBadge(record.serviceId)
                         Column(Modifier.weight(1f)) {
                             Text(record.serviceId, style = MaterialTheme.typography.bodyMedium)
                             Text(
@@ -202,7 +209,7 @@ fun AccountSecurityScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     ) {
-                        IconBadge(icon = DesktopIcons.host)
+                        ServerPlatformBadge(record.serviceId)
                         Column(Modifier.weight(1f)) {
                             Text(record.account, style = MaterialTheme.typography.bodyMedium)
                             Text(

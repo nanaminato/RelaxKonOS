@@ -209,7 +209,7 @@ class AppContainer(context: Context) {
     val gateway: RelaxKonGateway = RelaxKonApi(clientVersion = BuildConfig.VERSION_NAME)
 
     /**
-     * 连接列表打开时，补全那些还没问过宿主的连接是哪一类操作系统。
+     * 登录成功及列表打开时重新查询宿主系统，避免同一地址换系统后固定旧徽标。
      *
      * 它属于进程而不是某个页面：登录页的对话框与 Shell 内的连接管理读的是同一份记录，也就该走同一个入口。
      */

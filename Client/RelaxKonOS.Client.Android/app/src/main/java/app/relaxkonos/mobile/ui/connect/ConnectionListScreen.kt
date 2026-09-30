@@ -41,8 +41,8 @@ import app.relaxkonos.mobile.ui.common.EmptyState
 import app.relaxkonos.mobile.ui.common.IconBadge
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.formatTimestamp
+import app.relaxkonos.mobile.ui.icons.ServerPlatformBadge
 import app.relaxkonos.mobile.ui.icons.hostPlatformMark
-import app.relaxkonos.mobile.ui.icons.hostPlatformMarkLabel
 import app.relaxkonos.mobile.ui.theme.Radius
 import app.relaxkonos.mobile.ui.theme.Spacing
 
@@ -163,7 +163,7 @@ private fun OwnerDeviceEntry(serviceId: String, onSelect: () -> Unit) {
         title = stringResource(R.string.connections_windows_device),
         subtitle = serviceId,
         supporting = stringResource(R.string.connections_windows_device_support),
-        leading = { IconBadge(icon = R.drawable.ic_platform_windows11) },
+        leading = { ServerPlatformBadge(serviceId) },
         onClick = onSelect,
     )
 }
@@ -246,10 +246,7 @@ private fun SwipeableSavedLoginEntry(
                 // connection mark while it has not: a row never guesses a platform from an address
                 // (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
                 leading = {
-                    IconBadge(
-                        icon = hostPlatformMark(login.hostOperatingSystem),
-                        contentDescription = hostPlatformMarkLabel(login.hostOperatingSystem)?.let { stringResource(it) },
-                    )
+                    ServerPlatformBadge(login.serviceId)
                 },
                 trailing = {
                     Text(

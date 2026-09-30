@@ -19,6 +19,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.AppContainer
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.security.model.SavedLogin
 import app.relaxkonos.mobile.core.layout.LayoutState
 import app.relaxkonos.mobile.ui.common.EmptyHint
 import app.relaxkonos.mobile.ui.files.FileDetailScreen
@@ -63,6 +64,7 @@ fun MobileNavHost(
     session: SessionState.Active,
     layoutState: LayoutState,
     onSignOut: () -> Unit,
+    onSwitchLogin: (SavedLogin?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var taskTarget by remember(session) { mutableStateOf<String?>(null) }
@@ -104,7 +106,7 @@ fun MobileNavHost(
             Routes.MORE_APPEARANCE,
             Routes.MORE_DIAGNOSTICS,
             Routes.MORE_ABOUT,
-            -> MoreDestination(navigator, layoutState, onSignOut)
+            -> MoreDestination(navigator, layoutState, onSignOut, onSwitchLogin)
 
             else -> HomeScreen(
                 session = session,
@@ -199,7 +201,12 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
 }
 
 @Composable
-private fun MoreDestination(navigator: MobileNavigator, layoutState: LayoutState, onSignOut: () -> Unit) {
+private fun MoreDestination(
+    navigator: MobileNavigator,
+    layoutState: LayoutState,
+    onSignOut: () -> Unit,
+    onSwitchLogin: (SavedLogin?) -> Unit,
+) {
     var pane by remember { mutableStateOf<String?>(null) }
 
     if (layoutState == LayoutState.Expanded) {
@@ -207,13 +214,14 @@ private fun MoreDestination(navigator: MobileNavigator, layoutState: LayoutState
             MoreScreen(
                 onOpenRoute = { pane = it },
                 onSignOut = onSignOut,
+                onSwitchLogin = { onSwitchLogin(null) },
                 modifier = Modifier.weight(1f),
             )
             Box(Modifier.weight(1.2f)) {
                 if (pane == null) {
                     EmptyHint(stringResource(R.string.more_select_section), Modifier.padding(16.dp))
                 } else {
-                    MorePane(route = pane!!, onBack = null)
+                    MorePane(route = pane!!, onBack = null, onSwitchLogin = onSwitchLogin)
                 }
             }
         }
@@ -225,19 +233,20 @@ private fun MoreDestination(navigator: MobileNavigator, layoutState: LayoutState
         MoreScreen(
             onOpenRoute = { navigator.push(it) },
             onSignOut = onSignOut,
+            onSwitchLogin = { onSwitchLogin(null) },
             modifier = Modifier.fillMaxSize(),
         )
     } else {
-        MorePane(route = route, onBack = { navigator.pop() })
+        MorePane(route = route, onBack = { navigator.pop() }, onSwitchLogin = onSwitchLogin)
     }
 }
 
 /** One settings page, rendered either as a pushed page ([onBack] non-null) or as a pane. */
 @Composable
-private fun MorePane(route: String, onBack: (() -> Unit)?) {
+private fun MorePane(route: String, onBack: (() -> Unit)?, onSwitchLogin: (SavedLogin?) -> Unit) {
     when (route) {
         Routes.MORE_ACCOUNT_SECURITY -> AccountSecurityScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
-        Routes.MORE_CONNECTIONS -> ConnectionsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
+        Routes.MORE_CONNECTIONS -> ConnectionsScreen(onBack = onBack, onSwitchLogin = onSwitchLogin, modifier = Modifier.fillMaxSize())
         Routes.MORE_SERVER_INFORMATION -> ServerInformationScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_APPEARANCE -> AppearanceScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_DIAGNOSTICS -> DiagnosticsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())

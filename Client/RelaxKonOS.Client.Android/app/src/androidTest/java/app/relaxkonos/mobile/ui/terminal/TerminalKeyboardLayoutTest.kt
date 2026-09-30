@@ -87,6 +87,13 @@ class TerminalKeyboardLayoutTest {
         assertReadableEditorAndOutput()
     }
 
+    @Test fun tallViewportStillFoldsManagementControlsWhileTyping() {
+        show(360.dp, 900.dp, 330.dp)
+        assertReadableEditorAndOutput()
+        rule.onNodeWithText("A+").assertDoesNotExist()
+        rule.onNodeWithText("second").assertDoesNotExist()
+    }
+
     @Test fun parentThatAlreadyAvoidedKeyboardDoesNotApplyImeInsetTwice() {
         show(960.dp, 600.dp, 330.dp, consumedBottom = 330.dp)
         assertReadableEditorAndOutput()

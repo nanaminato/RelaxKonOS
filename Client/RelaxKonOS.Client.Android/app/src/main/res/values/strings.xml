@@ -1090,4 +1090,5 @@
     <string name="server_feature_firewall">Firewall management</string>
     <string name="server_feature_proxy">Reverse proxy</string>
     <string name="server_feature_tunnels">Network tunnels</string>
+    <string name="more_switch_login">Switch login</string>
 </resources>

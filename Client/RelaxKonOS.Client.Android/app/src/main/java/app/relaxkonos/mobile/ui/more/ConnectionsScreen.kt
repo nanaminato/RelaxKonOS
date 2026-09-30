@@ -13,11 +13,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.core.auth.credentialState
@@ -32,6 +34,7 @@ import app.relaxkonos.mobile.ui.common.SectionLabel
 import app.relaxkonos.mobile.ui.common.appContainer
 import app.relaxkonos.mobile.ui.common.formatTimestamp
 import app.relaxkonos.mobile.ui.connect.credentialStatusLabel
+import app.relaxkonos.mobile.ui.icons.ServerPlatformBadge
 import app.relaxkonos.mobile.ui.theme.Spacing
 
 /**
@@ -42,12 +45,12 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3): forgetting a password keeps the login, deleting
  * a login removes both.
  *
- * Switching to another server is not offered here — that would mean tearing down the live session, and
- * the design keeps sign-out as the single, explicit way to do that.
+ * Switching explicitly ends the current session and continues through the ordinary sign-in flow.
  */
 @Composable
 fun ConnectionsScreen(
     onBack: (() -> Unit)?,
+    onSwitchLogin: (SavedLogin) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val container = appContainer()
@@ -56,7 +59,10 @@ fun ConnectionsScreen(
     var deleteTarget by remember { mutableStateOf<SavedLogin?>(null) }
 
     val logins = remember(revision) { container.profiles.all() }
-    val activeServiceId = container.session.serviceId
+    val active = container.activeSession
+    LaunchedEffect(Unit) {
+        container.hostOperatingSystems.resolve(logins.map { it.serviceId }, active)
+    }
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
@@ -75,7 +81,12 @@ fun ConnectionsScreen(
                 logins.forEach { login ->
                     val mode = container.unlockMode(VaultKind.Connection)
                     val record = container.vault.record(VaultKind.Connection, login.serviceId, login.identifier)
-                    Row(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ServerPlatformBadge(login.serviceId)
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                             Text(login.displayName ?: login.serviceId, style = MaterialTheme.typography.bodyLarge)
                             if (login.displayName != null) {
@@ -91,7 +102,7 @@ fun ConnectionsScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (login.serviceId == activeServiceId) {
+                            if (login.serviceId == active?.serviceId && login.identifier == active.userName) {
                                 Text(
                                     stringResource(R.string.connections_active),
                                     style = MaterialTheme.typography.bodySmall,
@@ -100,6 +111,9 @@ fun ConnectionsScreen(
                             }
                         }
                         Column {
+                            TextButton(onClick = { onSwitchLogin(login) }) {
+                                Text(stringResource(R.string.more_switch_login))
+                            }
                             TextButton(onClick = { forgetTarget = login }) {
                                 Text(stringResource(R.string.connections_forget_password))
                             }
