@@ -24,7 +24,7 @@ class VaultKeyUnavailableException(message: String, cause: Throwable? = null) : 
  *
  * Key material is generated inside the Keystore and never leaves it; callers only ever receive a
  * [`Cipher`] that the platform has bound to a user-authentication requirement. See
- * `RelaxKonOS.Mobile.V1.Design.md` §5.4 for the parameter choices.
+ * `Shell.Design.md` §5.4 for the parameter choices.
  */
 class VaultKeyManager : VaultCrypto {
     override fun sealCipher(kind: VaultKind): Cipher = newCipher(kind, Cipher.ENCRYPT_MODE, null)

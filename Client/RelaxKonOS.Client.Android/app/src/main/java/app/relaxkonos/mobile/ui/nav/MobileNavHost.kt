@@ -55,7 +55,7 @@ import app.relaxkonos.mobile.ui.terminal.ServerTerminalScreen
  *
  * The Expanded layout does not push sub-pages: `files/detail` becomes a second pane beside the list and
  * the manage and more destinations select a pane. Everything else is a pushed page with a back
- * affordance, which is the Compact and Medium shape (`RelaxKonOS.Mobile.V1.Design.md` §3.2, §4.1).
+ * affordance, which is the Compact and Medium shape (`Shell.Design.md` §3.2, §4.1).
  */
 @Composable
 fun MobileNavHost(

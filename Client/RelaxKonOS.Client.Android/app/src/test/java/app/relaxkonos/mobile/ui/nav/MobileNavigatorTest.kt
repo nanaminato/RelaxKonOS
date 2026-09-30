@@ -14,7 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The three navigation rules of `RelaxKonOS.Mobile.V1.Design.md` §4.1, asserted directly because they
+ * The three navigation rules of `Shell.Design.md` §4.1, asserted directly because they
  * are product behaviour rather than an implementation detail of a navigation library.
  */
 class MobileNavigatorTest {

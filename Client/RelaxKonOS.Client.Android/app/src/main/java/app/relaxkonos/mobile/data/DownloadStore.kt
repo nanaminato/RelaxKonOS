@@ -46,7 +46,7 @@ interface DownloadTarget : DownloadSink {
  * Downloads the moment the transfer finishes, and it stays there if the app is uninstalled. A
  * download that ends in a private cache handing the bytes to a share sheet never reaches the device
  * at all — the user has to pick a destination from a chooser for every single file
- * (`RelaxKonOS.Mobile.Design.md` §7).
+ * (`Product.Design.md` §7).
  *
  * **API 23–28** have no such write path. Reaching the public `Download/` folder there means either the
  * broad `WRITE_EXTERNAL_STORAGE` permission or a storage-access-framework picker, and the mobile

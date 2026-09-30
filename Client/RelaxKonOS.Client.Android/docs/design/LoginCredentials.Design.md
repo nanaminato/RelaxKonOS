@@ -3,12 +3,12 @@
 > **状态：规范。** 本文规定 Android 端「登录身份 + 本地保存凭据」的状态模型与决策规则；实现不得以旧的简洁模式、隐藏密码框或自动删除凭据绕开这些规则。
 >
 > 上位约束（冲突时以上位为准）：
-> - [`RelaxKonOS.Mobile.V1.Design.md`](./RelaxKonOS.Mobile.V1.Design.md) — V1 功能集、页面清单、两个凭据保险箱的安全约束（§5.3 不可变）
-> - [`RelaxKonOS.Mobile.Design.md`](./RelaxKonOS.Mobile.Design.md) — 移动端产品与技术决策
-> - [`RelaxKonOS.Login.md`](../../../docs/platform/RelaxKonOS.Login.md) — 登录、已保存连接、错误码矩阵
-> - [`RelaxKonOS.Security.md`](../../../docs/platform/RelaxKonOS.Security.md) — 提权、危险操作确认
+> - [`Shell.Design.md`](Shell.Design.md) — Shell 能力门控、页面清单、两个凭据保险箱的安全约束（§5.3 不可变）
+> - [`Product.Design.md`](Product.Design.md) — 移动端产品与技术决策
+> - [`RelaxKonOS.Login.md`](../../../../docs/platform/RelaxKonOS.Login.md) — 登录、已保存连接、错误码矩阵
+> - [`RelaxKonOS.Security.md`](../../../../docs/platform/RelaxKonOS.Security.md) — 提权、危险操作确认
 >
-> 实现状态不写入本文，统一记入 [`RelaxKonOS.Mobile.Progress.md`](./RelaxKonOS.Mobile.Progress.md)。
+> 实现状态不写入本文，统一记入 [`Progress.md`](../status/Progress.md)。
 
 ---
 
@@ -25,7 +25,7 @@
 - 切换账号、密码被服务端拒绝、密钥失效、忘记密码、删除登录记录各自做什么；
 - 明文密码从解封到释放的完整生命周期。
 
-不覆盖：`/auth/*` 的 wire contract（见 [`RelaxKonOS.Protocol.md`](../../../docs/architecture/RelaxKonOS.Protocol.md)）、token 刷新与重连状态机（见 V1 §4.2）、提权凭据的产品规则（见 V1 §5.8）；提权保险箱仅在 §7.5 沿用同一处置规则。
+不覆盖：`/auth/*` 的 wire contract（见 [`RelaxKonOS.Protocol.md`](../../../../docs/architecture/RelaxKonOS.Protocol.md)）、token 刷新与重连状态机（见 Shell §4.2）、提权凭据的产品规则（见 Shell §5.8）；提权保险箱仅在 §7.5 沿用同一处置规则。
 
 ---
 
@@ -50,13 +50,13 @@
 连接B + nanami    ─┘
 ```
 
-- `Username` 是协议里的 **`identifier`**（[`LoginRequest`](../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 的字段名）。`ServiceId` 在直连时是规范化的持久服务器 URL，在服务器中心管理的 SSH 隧道连接中则是经过核实的安装 ID。
+- `Username` 是协议里的 **`identifier`**（[`LoginRequest`](../../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 的字段名）。`ServiceId` 在直连时是规范化的持久服务器 URL，在服务器中心管理的 SSH 隧道连接中则是经过核实的安装 ID。
 - 本机稳定身份：`loginId(serviceId, identifier)`。保险箱和登录档案只使用这个身份；临时 `http://127.0.0.1:<port>` 不得写入其中。
 - 直连 URL 归一化会小写 scheme 与 host、去除默认端口和结尾斜杠、丢弃 query / fragment，同时保留可能区分大小写的 path。`identifier` 只去首尾空白，**不折叠大小写**。
 - 本次请求地址是 `effectiveBaseUrl`。直连时它等于 URL 型 `serviceId`；隧道时它可以随重连换端口，但 `serviceId` 不变。
-- 与保存凭据的连接键：`CredentialKey` = `recordId(VaultKind.Connection, serviceId, identifier)`，即 [`CredentialVault.kt`](../app/src/main/java/app/relaxkonos/mobile/security/CredentialVault.kt) 里已有的 `recordId(...)`。
+- 与保存凭据的连接键：`CredentialKey` = `recordId(VaultKind.Connection, serviceId, identifier)`，即 [`CredentialVault.kt`](../../app/src/main/java/app/relaxkonos/mobile/security/CredentialVault.kt) 里已有的 `recordId(...)`。
 
-> **同一服务身份上的两个账号是两条记录，不是一个记录的两个字段。** 任何按 `serviceId` 单独删除的操作都是缺陷，见 §3 的 G7。
+> **同一服务身份上的两个账号是两条记录，不是一个记录的两个字段。** 任何按 `serviceId` 单独删除的操作都是缺陷，见 §3 和 §6.3。
 
 ### 2.2 `SavedLogin` 与 `SavedCredential` 分离
 
@@ -79,36 +79,25 @@
 | --- | --- | --- |
 | `SavedLogin`：稳定 `serviceId`、登录标识、显示名（如有）、`HasSavedCredential`、`CredentialKey`、最后使用时间 | `noBackupFilesDir/connections.bin` | 非敏感；不含任何秘密或临时隧道地址 |
 | 登录密码 | `noBackupFilesDir/connection-vault.bin`，AES-256-GCM + Keystore | 密文；明文永不落盘 |
-| AccessToken / RefreshToken | **仅内存** | V1 §5.3.3；进程结束即失效 |
+| AccessToken / RefreshToken | **仅内存** | Shell §5.3.3；进程结束即失效 |
 
 **不保存**：明文密码、`PasswordText`、RefreshToken、凭据的明文副本、任何形式的「已解锁明文缓存」。
 
 ---
 
-## 3. 与当前实现的差异清单
+## 3. 登录交互的不变量
 
-> 本节是**设计时的快照**：它记录了本文各条规则相对当时实现的落差，也是每条规则存在的理由。哪些已经落地，看 [`RelaxKonOS.Mobile.Progress.md`](./RelaxKonOS.Mobile.Progress.md)。
+- 手动密码优先，其次读取可用保存凭据，否则要求输入；密码框始终显示且不回填保存密码。
+- 保存凭据状态独立于输入框，读取之前必须重新判断记录与设备能力。
+- 生物识别取消、失败或不可用不删除记录；永久密钥失效标记作废并保留密文。
+- 认证成功后且用户明确勾选才保存；账号切换清空本次密码与临时授权。
+- 忘记密码保留连接；删除登录记录仅删除选中身份，不影响同服务其他账号或 SSH 宿主。
 
-现状来自 `app/src/main/java/app/relaxkonos/mobile/` 的实际代码（非文档声明）。判定沿用仓库规则：**注释与实现矛盾时以实现为准**。
-
-| 编号 | 资料要求 | 当前实现 | 判定 | 优先级 |
-| --- | --- | --- | --- | --- |
-| G1 | 登录决策统一为「手动密码 > 保存密码 > 要求输入」（§5、§12） | `LoginViewModel.signIn` 在 `password.isEmpty()` 时直接返回 `login_missing_fields`；使用保存密码是**另一个按钮**（`使用指纹登录`），两条路径互不回落 | **不符合** | P0 |
-| G2 | 密码框只表示「本次手动输入的密码」（§3） | 密码框本身从不回填，符合；但存在保存凭据时整张表单被折叠成「简洁模式」，密码框直接消失 | **部分** | P0 |
-| G3 | 「存在保存凭据」必须是独立于 `PasswordText` 的状态（§3、§9） | 目前由「表单是否显示」隐式表达，没有可读状态 | **不符合** | P0 |
-| G4 | 生物识别失败 / 取消 / 无法完成，绝不自动删除保存的凭据（§5、§11） | `LoginScreen.signInWithFingerprint`、`ElevationDialog` 在 `UnlockFailure.KeyInvalidated` 时执行 `vault.delete(record)` | **不符合**（且这是 V1 §5.4 已登记的既有决策，需按 D5 修订） | P0 |
-| G5 | 切换账号要清空 `PasswordText` 与内存中的临时凭据（§6） | `select()` 只清 `password`；没有内存凭据概念 | 部分 | P1 |
-| G6 | 保存动作必须在认证成功之后（§8） | `AuthSession.login` 的 `afterSuccessfulLogin` 回调保证写保险箱发生在认证成功之后；认证失败不改动任何凭据 | **已符合**（保持，不重做） | — |
-| G7 | 「忘记密码」与「删除登录记录」是两个动作（§11） | 只有一个「删除」，两件事一起做；且 `ConnectionProfileStore.remove(serverUrl)` 会删掉该服务器下**所有**账号的档案 | **不符合**（含真实缺陷） | P0 |
-| G8 | 唯一键 `(服务器, 标识)`（§1） | 保险箱记录键已按对；档案删除按 `serverUrl`（同 G7） | 部分 | P0 |
-| G9 | 显式状态模型（§9） | `serverUrl/identifier/password/rememberCredential/busy` 散落在 ViewModel；决策逻辑与 Composable 同文件、无纯函数单测 | **不符合** | P1 |
-| G10 | `SavedLogin` 字段齐全（§2） | `SavedConnection(serverUrl, identifier, lastUsedEpochMillis)`，缺 `Id` / `CredentialKey` / `DisplayName` / `HasSavedCredential` | 部分 | 见 §11 |
-
-**已经在正确一侧、本轮只做保留的**：保险箱 AAD 绑定（§5.3.5）、明文以 `CharArray` 承载并及时清零（§5.3.2）、RefreshToken 不落盘（§5.3.3）、首次保存必须先过指纹（§5.3.7）、指纹不产生服务端凭据（§5.3.1）。
+这些规则已纳入当前实现，旧 G1–G10 差异快照和修复任务表不再维护。执行证据见 [当前状态](../status/Progress.md)。
 
 ---
 
-## 4. 目标状态模型
+## 4. 状态模型
 
 状态集中在一个**不依赖 Android 类型**的纯 Kotlin 状态里，因此决策表可以被 JVM 单测完整覆盖（沿用 `LayoutState` / `unlockModeFor` 的既有做法）。
 
@@ -150,7 +139,7 @@ fun credentialState(record: VaultRecord?, unlockMode: VaultUnlockMode?): SavedCr
 | `SelectedLogin` | `SelectedLogin` | 直连时由 `serverUrl` + `identifier` 输入派生；受管连接由已验证安装 ID、当前隧道地址和 `identifier` 构造 |
 | `HasSavedCredential` | `SavedLogin.HasSavedCredential` + `credentialState` 复核 | 持久化的非敏感显示投影，不构成安全边界，见 §4.2 |
 | `PasswordText` | `OutlinedTextField.value` | 提交后立即置空 |
-| `UseBiometricProtection` | `AppearanceState.fingerprintEnabled` | 已有的全局指纹总开关（V1 §5.5） |
+| `UseBiometricProtection` | `AppearanceState.fingerprintEnabled` | 已有的全局指纹总开关（Shell §5.5） |
 | `CredentialUnlocked` | `unlockedIdentities: Set<String>` | 见 §4.3 |
 | `IsLoggingIn` | `isLoggingIn` | 并发闸门 |
 
@@ -163,7 +152,7 @@ fun credentialState(record: VaultRecord?, unlockMode: VaultUnlockMode?): SavedCr
 | `Unavailable` | 「本机当前无法解封保存的密码，请手动输入」 | 可恢复：重新录入指纹、重新开启总开关后该条记录**仍然有效** |
 | `Invalidated` | 「设备指纹已变更，保存的密码当前不可用，请重新输入并在成功后重新保存」 | 当前不可读取；保留原记录与密文，只有用户显式删除才会移除 |
 
-`Unavailable` 时**不能**提示「已失效」——那会诱导用户白白重新保存一次。这也是 V1 §5.4「无法使用不是已失效的证据」那条实现的延续。
+`Unavailable` 时**不能**提示「已失效」——那会诱导用户白白重新保存一次。这也是 Shell §5.4「无法使用不是已失效的证据」那条实现的延续。
 
 ### 4.2 `HasSavedCredential` 的边界
 
@@ -205,9 +194,9 @@ fun credentialState(record: VaultRecord?, unlockMode: VaultUnlockMode?): SavedCr
 
 要点：
 
-- **第 3 行优先于第 4 行。** 只要 `PasswordText` 非空，本次就明确使用用户手动输入的密码，旧的 `SavedCredential` 本次忽略——**但不删除、不覆盖**（资料 §7）。
+- **第 3 行优先于第 4 行。** 只要 `PasswordText` 非空，本次就明确使用用户手动输入的密码，旧的 `SavedCredential` 本次忽略——**但不删除、不覆盖**。
 - **只有一个「登录」按钮。** 按钮不区分「指纹登录」与「密码登录」两条分支；点击后统一按本表决策，避免两条路径互不回落（G1）。
-- **不允许空密码登录。** 资料 §4 的例外「除非目标服务本身明确支持空密码」在 RelaxKonOS 不成立：[`LoginRequest.Password`](../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 是必填 `string`，服务端空字段返回 `400 invalid-input`（[`RelaxKonOS.Login.md`](../../../docs/platform/RelaxKonOS.Login.md) §4.5）。因此不引入空密码分支。
+- **不允许空密码登录。** 资料 §4 的例外「除非目标服务本身明确支持空密码」在 RelaxKonOS 不成立：[`LoginRequest.Password`](../../../../Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs) 是必填 `string`，服务端空字段返回 `400 invalid-input`（[`RelaxKonOS.Login.md`](../../../../docs/platform/RelaxKonOS.Login.md) §4.5）。因此不引入空密码分支。
 
 ```kotlin
 sealed interface LoginDecision {
@@ -266,7 +255,7 @@ fun decideLogin(
 认证成功
    ├─ 连接档案 upsert(serviceId, identifier, now)          ← 回填稳定身份，不含秘密/临时端口
    └─ 用户勾选了「在本机保存密码」？
-        ├─ 是 ──► 生物识别确认一次（V1 §5.3.7）──► 写入 / 覆盖该身份的凭据
+        ├─ 是 ──► 生物识别确认一次（Shell §5.3.7）──► 写入 / 覆盖该身份的凭据
         │            └─ 取消或失败 ──► 不写；提示「已登录，但密码没有保存」（不视为登录失败）
         └─ 否 ──► 不写；**已有的旧凭据保持不变**（不是删除，见 §7.3）
 ```
@@ -277,7 +266,7 @@ fun decideLogin(
 
 ### 6.1 登录页（单形态）
 
-**取消「简洁模式」。** V1 §3.1 的启动裁决「有档案 → 简洁模式（隐藏密码框）」被本设计取代：密码框**始终可见**，因为隐藏它正是 G2/G3 的病根——「有没有保存密码」被编码成了「表单在不在」，而不是一个可读的状态。
+登录页始终采用统一表单：密码框可见、可编辑；是否保存密码由独立状态行表达，不能通过隐藏表单表达。
 
 ```text
                     RelaxKonOS        ← 品牌标记（登录卡片之外）
@@ -328,11 +317,11 @@ fun decideLogin(
 
 连接管理在首部显示 Ubuntu、Windows Server、Windows 10、Windows 11 的平台标记，并在相邻商标声明中注明 Ubuntu 归 Canonical、Windows 系列归 Microsoft。图例与每条记录的标记来自**同一份映射**，所以图例不会宣传一条记录永远显示不出的标记，也不会漏掉记录能显示的标记。
 
-登录选择列表、Shell 内连接管理和已保存密码列表只有在**服务器自己说过它运行什么系统**时才显示对应标记：答案来自 `GET /api/v1.0/server/host-operating-system`（匿名、只回答系统类别，见 [架构文档](../../../docs/architecture/RelaxKonOS.Protocol.md)）。保存的值是最后一次观测结果；每次打开列表和登录成功时重新查询，包括已有标记及 `Unknown`，因为同一 IP/URL 可以换系统。同一服务的多个账号共享一次查询与实时标记，更新档案中的系统字段但不改密码或最后使用时间。并发最多四个查询，旧请求迟到不能覆盖更新请求的结果。网络或契约失败保留最后结果，下次打开继续尝试；从未成功或系统未知时显示通用连接标记。仅有密码记录、没有连接档案时也可查询和显示，但不重建档案。受管安装只有当前登录会话存在已核实隧道时才能通过其 `effectiveBaseUrl` 查询，不主动开 SSH，不落盘临时端口。已配对设备行也使用当前系统标记，文字仍明确密钥登录的 Windows 10/11 兼容范围，不从配对关系推断当前系统。
+登录选择列表、Shell 内连接管理和已保存密码列表只有在**服务器自己说过它运行什么系统**时才显示对应标记：答案来自 `GET /api/v1.0/server/host-operating-system`（匿名、只回答系统类别，见 [架构文档](../../../../docs/architecture/RelaxKonOS.Protocol.md)）。保存的值是最后一次观测结果；每次打开列表和登录成功时重新查询，包括已有标记及 `Unknown`，因为同一 IP/URL 可以换系统。同一服务的多个账号共享一次查询与实时标记，更新档案中的系统字段但不改密码或最后使用时间。并发最多四个查询，旧请求迟到不能覆盖更新请求的结果。网络或契约失败保留最后结果，下次打开继续尝试；从未成功或系统未知时显示通用连接标记。仅有密码记录、没有连接档案时也可查询和显示，但不重建档案。受管安装只有当前登录会话存在已核实隧道时才能通过其 `effectiveBaseUrl` 查询，不主动开 SSH，不落盘临时端口。已配对设备行也使用当前系统标记，文字仍明确密钥登录的 Windows 10/11 兼容范围，不从配对关系推断当前系统。
 
 已登录时，「更多 → 切换登录」先登出旧会话并打开登录选择列表；「连接管理 → 某条记录 → 切换登录」先登出再选择该身份，并按既有登录决策使用保存密码或要求输入密码。切换清空导航栈、密码输入、配对代码与窗口授权标记，保留所有连接与密码记录。关闭选择列表或取消指纹后停留登录页；不会恢复旧会话。重复点击切换/登出期间只执行一次会话结束。远端登出请求失败也必须清除本地 token，再允许下一次登录。
 
-密码登录记录左滑显示管理入口，其中的两个**互不替代**动作（资料 §11）为：
+密码登录记录左滑显示管理入口，其中的两个**互不替代**动作为：
 
 | 动作 | 对凭据 | 对档案 | 确认文案要点 |
 | --- | --- | --- | --- |
@@ -345,7 +334,7 @@ fun decideLogin(
 
 ## 7. 场景规格
 
-### 7.1 切换账号（资料 §6）
+### 7.1 切换账号
 
 ```text
 用户选择另一条登录记录
@@ -359,7 +348,7 @@ fun decideLogin(
 
 「切换账号」不是凭据事件：不读明文、不删凭据、不要求指纹。**也不提前验证生物识别**——验证只在真正要用保存密码时发生（即点击登录、且 `PasswordText` 为空）。
 
-### 7.2 生物识别失败与取消（资料 §5、§11）
+### 7.2 生物识别失败与取消
 
 | 情形 | 密码框 | 保存的凭据 | 用户可做什么 |
 | --- | --- | --- | --- |
@@ -369,7 +358,7 @@ fun decideLogin(
 | 密钥永久失效 | 保持空 | **保留记录与密文；同一 `VaultKind` 的共享 Keystore alias 保护的全部记录都标记为 `Invalidated`**（D5），禁止读取 | 手动输入密码并勾选保存；客户端轮换失效 alias、再次请求本次明确的授权，仅把当前身份重新密封 |
 | 本机无可用认证方式 | 保持空 | 不动，状态降为 `Unavailable` | 手动输入密码 |
 
-**取消是静默的**（V1 §5.4）：`ERROR_USER_CANCELED` / `ERROR_NEGATIVE_BUTTON` 不弹错误、不改记录。上表除「取消」外的情形都要给出原因，但绝不给出任何与密码内容有关的信息。
+**取消是静默的**（Shell §5.4）：`ERROR_USER_CANCELED` / `ERROR_NEGATIVE_BUTTON` 不弹错误、不改记录。上表除「取消」外的情形都要给出原因，但绝不给出任何与密码内容有关的信息。
 
 ### 7.3 认证失败不修改保存凭据
 
@@ -385,11 +374,11 @@ fun decideLogin(
 
 ### 7.4 密钥永久失效改为「标记」而非「删除」（D5）
 
-**变更点：** V1 §5.4 的旧规则是「清除该保险箱中受影响的记录，保留服务器与账户」。本设计改为**保留记录和密文、标记为 `Invalidated`、禁止读取**。一个 `VaultKind` 只有一个 Keystore alias，因此 alias 永久失效时，该保险箱内的所有记录都受影响；不能只把第一次尝试读取的那一条标成失效。
+本机密钥永久失效时，保留记录和密文、标记 `Invalidated` 并禁止读取。一个 `VaultKind` 共用一个 Keystore alias，alias 失效时该保险箱全部记录都需标记失效。
 
 理由：
 
-1. 资料 §5、§11 要求生物识别相关的失败**绝不**自动丢弃用户数据。密钥永久失效是生物识别链路里唯一会走到「删除」的路径，正好是这条要求的靶子。
+1. 本规范要求生物识别相关的失败**绝不**自动丢弃用户数据。密钥永久失效是生物识别链路里唯一会走到「删除」的路径，正好是这条要求的靶子。
 2. 「删除」会让用户失去「这个身份曾经保存过密码」这条信息。实际后果是：列表说「未保存密码」，用户不知道发生过什么，也没有任何东西提示他「新录入的指纹作废了旧凭据」。
 3. 「标记」保留了这条信息，并且能给出准确的原因。它同时避免了一个真实的坑：如果自动删除，用户在安全页里看不到任何痕迹，会反复重新保存、反复失效。
 
@@ -398,17 +387,17 @@ fun decideLogin(
 - `VaultRecord` 增加 `state: VaultRecordState { Sealed, Invalidated }`；转为 `Invalidated` 时保留 `iv` / `ciphertext`，但任何读取路径都必须拒绝解封。
 - 新增 `CredentialVault.markInvalidated(record)` 与 `markAllInvalidated(kind)`；`open()` 对 `Invalidated` 记录直接抛 `VaultRecordInvalidatedException`。后者用于共享 alias 失效，避免同保险箱的兄弟记录显示成可用。
 - `VaultAccess.load` 把该异常映射为 `UnlockFailure.KeyInvalidated`（与 Keystore 的 `KeyPermanentlyInvalidatedException` 同一出口），调用方只做「标记」，不再做「删除」。用户随后用手动密码成功登录并明确勾选保存时，`VaultAccess.save` 仅轮换一次失效 alias、重新请求生物识别授权，并重新密封当前身份；不会无限重试，也不会复活其他旧记录。
-- 保险箱文件格式 `MAGIC` 升版并新增 `state` 字节。按 [AGENTS.md](../../../AGENTS.md) 的 API 演进策略，**不写迁移适配**：旧文件按版本不匹配降级为「无已保存凭据」，用户重新保存一次即可。
+- 保险箱文件格式 `MAGIC` 升版并新增 `state` 字节。按 [AGENTS.md](../../../../AGENTS.md) 的 API 演进策略，**不写迁移适配**：旧文件按版本不匹配降级为「无已保存凭据」，用户重新保存一次即可。
 
 ### 7.5 同一规则适用于提权保险箱
 
 `ElevationDialog` 目前在 `UnlockFailure.KeyInvalidated` 时同样 `vault.delete(record)`。同一个 D5 规则一并适用：**标记作废、保留记录**。提权对话框在选择管理员凭据时把 `Invalidated` 记录排除在「使用指纹确认」之外，只提供「输入密码」。
 
-注意这与 V1 §5.8.2（D4：服务端拒绝提权一律删除该条密码）**不冲突**：D4 是服务端明确判定，D5 是本机密钥状态，两者处置不同且都有依据。
+注意这与 Shell §5.8.2（D4：服务端拒绝提权一律删除该条密码）**不冲突**：D4 是服务端明确判定，D5 是本机密钥状态，两者处置不同且都有依据。
 
 ### 7.6 登出与退出登录
 
-- 登出（`POST /auth/logout` + 清空 back stack）：不清凭据、不清连接档案；清空 `CredentialUnlocked` 标记与内存 token（V1 §4.1 规则 3）。
+- 登出（`POST /auth/logout` + 清空 back stack）：不清凭据、不清连接档案；清空 `CredentialUnlocked` 标记与内存 token（Shell §4.1 规则 3）。
 - 「关闭指纹保存」总开关（安全页）：清空两个保险箱并销毁 Keystore 密钥（现状保留）。会删除凭据，但这是用户在安全页里的**显式**操作，不属于「失败自动删除」。
 
 ---
@@ -424,7 +413,7 @@ CredentialStore(密文)
    → fill('\u0000')               ← 生命周期终点
 ```
 
-| 禁止项（资料 §10） | 本设计的对应保障 |
+| 禁止项 | 本设计的对应保障 |
 | --- | --- |
 | 日志输出密码 | 登录链路不写日志；`loginProblemMessage` 只带 `status` / `problem code` / `traceId` |
 | Exception 携带密码 | 异常消息只描述密钥与保险箱状态，从不拼接凭据内容 |
@@ -462,73 +451,24 @@ CredentialStore(密文)
 
 ---
 
-## 9. 落地方案
+## 9. 当前实现职责
 
-### 9.1 新增
-
-| 文件 | 内容 |
+| 文件 / 目录 | 职责 |
 | --- | --- |
-| `core/auth/SelectedLogin.kt` | `SelectedLogin` + `loginId()` + `credentialKey()` |
-| `core/auth/SavedCredentialState.kt` | 四态 + `credentialState(record, unlockMode)` 纯函数 |
-| `core/auth/LoginDecision.kt` | `LoginDecision` / `CredentialGap` / `decideLogin()` 纯函数 |
-| `ui/connect/LoginViewModel.kt` | 从 `LoginScreen.kt` 拆出，承载状态与两条执行路径 |
-| `data/HostOperatingSystemLookup.kt` | 打开连接管理时，为「还没问过宿主」的直连记录并发补全系统类别（§6.3） |
-| `ui/icons/HostPlatformMark.kt` | 系统类别 → 标记与无障碍名称的唯一映射；未知一律回落通用连接标记 |
-| `core/net/HostOperatingSystem.kt` | `HostOperatingSystemKind` 与线上名字解析（同名不同大小写一律接受，不认识的答案降为 `Unknown`） |
+| `core/auth/SelectedLogin.kt`、`LoginDecision.kt`、`SavedCredentialState.kt` | 身份键、登录裁决、凭据四态 |
+| `ui/connect/LoginViewModel.kt` | 密码与保存凭据两条登录执行路径 |
+| `data/ConnectionProfileStore.kt`、`HostOperatingSystemLookup.kt` | 连接档案、每次打开列表/登录成功后的系统徽标重新核实；失败保留最后观测，迟到响应不能覆盖新结果 |
+| `security/model/SavedLogin.kt`、`security/CredentialVault.kt` | 保存身份、保险箱、失效标记与按身份删除 |
+| `core/auth/AuthSession.kt` | 稳定 serviceId、当前 effectiveBaseUrl、刷新与注销 |
+| `ui/icons/ServerPlatformBadge.kt` | 登录选择、连接和密码列表共用系统徽标 |
 
-### 9.2 修改
+## 10. 验证归属
 
-| 文件 | 改动 |
-| --- | --- |
-| `data/ConnectionProfileStore.kt` | 所有身份操作按 `(serviceId, identifier)`；直连旧记录的首字段在相同 `RKC2` 布局中直接解释为 URL 型 `serviceId`；布局升 `RKC3` 增加每条的宿主系统类别列（§6.3） |
-| `security/model/SavedConnection.kt` | 直接改名 `SavedLogin`，补 `id` / `displayName` / `hasSavedCredential` / `credentialKey` / `hostOperatingSystem`（见 §12） |
-| `security/CredentialVault.kt` | `VaultRecordState`、`VaultRecord.state`、`markInvalidated()` / `markAllInvalidated()`、`VaultRecordInvalidatedException`、`open()` 拒绝作废记录；AAD 与记录键按 `serviceId` 绑定 |
-| `security/BiometricUnlock.kt` | `VaultAccess.load` 映射新异常；明确保存时轮换一次失效 alias 并重新密封当前身份 |
-| `ui/connect/LoginScreen.kt` | 表单改为单形态；按钮文案随决策；凭据状态行；错误提示按 `CredentialGap` 分派 |
-| `ui/connect/ConnectionListScreen.kt` | 每项两个动作：忘记密码 / 删除登录记录 |
-| `ui/more/ConnectionsScreen.kt` | 同上；按 `(serviceId, identifier)` 精确删除，修掉按服务器全删的缺陷 |
-| `core/auth/AuthSession.kt` | 同时持有稳定 `serviceId` 与当前 `effectiveBaseUrl`；隧道重绑定只允许传输地址变化，API 请求始终读取当前地址 |
-| `ui/more/AccountSecurityScreen.kt` | `Invalidated` 记录单独标注失效原因 |
-| `ui/common/ElevationDialog.kt` | `KeyInvalidated` → 标记作废（§7.5） |
-| `core/net/ApiResult.kt` | 补 `ProblemCodes.LOGIN_RATE_LIMITED`，提供准确的限流文案；不参与任何凭据删除决策 |
-| `core/net/RelaxKonApi.kt` | 登录失败只映射用户可读错误；凭据处置统一由成功后的保存流程和显式删除操作处理 |
-| `res/values*/strings.xml` | 新文案，`values` / `values-zh` / `values-ja` 三份同步（缺项会回落英文） |
-| `docs/` | 本文档 + V1 修订（§10） |
-
-### 9.3 测试计划
-
-| 测试类 | 覆盖 |
-| --- | --- |
-| `LoginDecisionTest`（新） | §5.1 决策表逐行，含「PasswordText 非空时 `Available` 被忽略」与「字段不全优先于一切」 |
-| `SavedCredentialStateTest`（新） | 四态派生；`Invalidated` 优先于 `unlockMode == null`；`Unavailable ≠ Invalidated` |
-| `SelectedLoginTest`（新） | 直连 URL 规范化；账号与路径大小写不折叠；同服务不同账号、不同服务同账号不碰撞；受管隧道换端口后 `loginId` / `credentialKey` 不变 |
-| `ConnectionProfileStoreTest`（改） | 按对删除只影响一条；凭据独立；宿主系统类别往返、同服务全部账号同步、重复答案不写盘、旧布局（`RKC2`）文件降级为空 |
-| `HostOperatingSystemLookupTest`（改） | 同地址换系统、Unknown 重查、失败保留最后结果、多账号去重、仅密码记录、受管活跃隧道及换端口、迟到结果不能覆盖新系统、重复答案不算变化 |
-| `HostOperatingSystemTest`（新） | 线上名字解析：camelCase 名字、不认识的答案降为 `Unknown` |
-| `CredentialVaultTest`（改） | `markInvalidated` 后记录与密文仍在、`open()` 被拒绝；「忘记密码」删记录；格式升版后旧文件降级为空 |
-| `AuthSessionTest`（改） | 认证失败不触碰凭据；`invalid-credential`、`429` 与 `Transport` 均不会修改保存凭据；同一受管身份重绑定后请求使用新端口而会话身份不变 |
-| `DebugCredentialStoreTest`（新） | §8.1 的兜底存储：连续保存两次后只剩一条、身份不匹配读取为空、`reveal` 返回可清零的副本、`delete` 只删匹配身份、`clear` 清空、异 magic 与截断文件降级为无记录、断言落盘内容确实含明文 |
-| `VaultAccessTest`（新） | 平台不可命名的异常变成 `Failed(Unknown)` 而不是逃逸；四种已知拒绝各自保留原结论；`Invalidated` 记录在触达 Keystore 之前就被拒 |
-| `SavedCredentialStateTest`（改） | §8.1 的兜底映射只填 `Absent` / `Unavailable`，绝不覆盖 `Available` / `Invalidated`；`SavedInDebugBuild` 优先于解锁方式 |
-
----
-
-## 10. 需要同步修订的既有文档
-
-| 文档 | 位置 | 修订 |
-| --- | --- | --- |
-| [`RelaxKonOS.Mobile.V1.Design.md`](./RelaxKonOS.Mobile.V1.Design.md) | §5.2 表格「清除时机」行 | 「密钥永久失效」由**删除**改为**标记作废、保留记录与密文**（D5） |
-| 同上 | §5.4 失败分类表 `KeyPermanentlyInvalidatedException` 行 | 同上 |
-| 同上 | §5 开头 | 指向本文，声明登录决策与本地凭据模型的细化归属 |
-| 同上 | §3.1 认证入口、启动裁决段、§5.5 指纹登录流程 | 已同步：取消「简洁模式」与不可见密码回填，并入统一登录决策。 |
-| [`RelaxKonOS.Mobile.Progress.md`](./RelaxKonOS.Mobile.Progress.md) | 全文 | 实现完成后更新（本轮不动） |
-| [`RelaxKonOS.Login.md`](../../../docs/platform/RelaxKonOS.Login.md) | §10 | **不改**。桌面端继续「简洁选择模式 + 回填不可见的已保存密码」；Android 按本文是有意分歧，理由见 §6.1 |
-
----
+当前实现与自动化验证见 [当前状态](../status/Progress.md)。指纹变更、锁定、设备窗口、账号切换和真机视觉的未关闭检查集中在 [验收清单](../status/Verification.md)，不再保留已完成的新增/修改任务表。
 
 ## 11. 决策记录
 
-编号接续 V1 §5.8 的 D1–D4（凭据保存例外、弱生物识别、时间窗降级、提权拒绝即删除），不重开已确认项。
+编号接续 Shell §5.8 的 D1–D4（凭据保存例外、弱生物识别、时间窗降级、提权拒绝即删除），不重开已确认项。
 
 | 编号 | 决策 | 结论 | 落点 |
 | --- | --- | --- | --- |
@@ -541,7 +481,7 @@ CredentialStore(密文)
 
 ## 12. 实施约束
 
-- `SavedConnection` 应直接更名为 `SavedLogin`，并同步更新 Android 端全部调用点、测试与文档；该应用尚未发布，不保留旧名称或兼容别名。
+- 使用当前 `SavedLogin` 模型；不保留旧名称、别名或格式兼容分支。
 - `DisplayName` 是可选非敏感字段。服务端尚未提供时保持缺省，不显示空占位；日后确定来源时再补编辑入口。
 - `CredentialKey` 仅用于关联 `SavedLogin` 和保险箱记录，不在常规界面展示，也不写入日志或诊断导出；如需排障，只能显示脱敏值。
 - §7.5 的提权保险箱同样遵守「生物识别失败不自动删除记录」；它与服务端明确拒绝提权时的既有 D4 规则分别处理。

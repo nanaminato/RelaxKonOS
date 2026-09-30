@@ -1,8 +1,6 @@
 # Android 服务器中心接入设计
 
-> 状态：接入中。Android 已有独立宿主资料、SSH 凭据域、主机密钥固定、JSch 传输、隧道基础件、ZIP 清单与逐文件摘要检查、远端操作层，以及稳定 `serviceId` / 动态 `effectiveBaseUrl` 的登录与会话模型；受管登录选择已接入按安装标识查找宿主的隧道解析，并把隧道解析结果绑定回登录身份。登录前的次级入口、已登录「更多 → 连接」入口和应用级服务器中心导航已接入，用户可添加独立 SSH 宿主资料并以本次输入的 SSH 密码完成无命令握手；首次主机密钥必须显式核对后固定，变化会阻断。权威 SSH 状态回执可以写回带核验时间的宿主缓存，但详情步骤、远端操作恢复及真机验收尚未完成。跨客户端部署契约、宿主安全与验收以 [ServerCenter Goal](../../../docs/platform/RelaxKonOS.ServerCenter.Goal.md) 为准；本文只规定现有 Android App 如何接入。
->
-> 基线：独立 Kotlin / Jetpack Compose / Material 3 工程；`MainActivity` 在未认证时显示 `LoginScreen`，认证后显示五类导航的 `ShellScaffold`。服务器中心的 SSH 工作区已有受固定主机密钥保护的文件、交互式终端、部署配置和系统页；部署配置按桌面端呈现「选择发布来源 → 选择安装方式 → 核对并安装」三步。终端使用独立 PTY 会话，离开页面即关闭，只呈现有限长度的纯文本输出，暂不提供全屏终端程序的完整光标/颜色仿真。系统页展示只读 Linux 资源快照，并提供工作区退出入口。由于 Android 构建尚未打包启动器、检查器和发布源，最后的安装按钮保持不可用，不能把选项草稿视作完成部署。
+> 当前接入规范：宿主资料、主机密钥固定、SSH/SFTP、终端、受管隧道登录和安装回执查询已接入；首次安装执行仍未打通。实现与验证统一见 [当前状态](../status/Progress.md)，剩余工作见 [部署后续计划](../plans/Deployment.md)。
 
 ## 1. 体验原则
 
@@ -41,7 +39,7 @@
 | 资料 | 用途与键 | 持有者 |
 |---|---|---|
 | `SavedLogin` | 键为稳定 `(serviceId, identifier)`；直连使用规范化 URL，受管连接使用安装 ID，不保存临时隧道端口 | `ConnectionProfileStore` 与 `VaultKind.Connection` |
-| `HostTarget`（新设计名） | 以规范化 `(SSH host, port, SSH user)` 为一项 SSH 目标，记录已确认主机密钥、受管安装 ID、部署模式和最近验证状态；同一服务器可保留多个管理用户，且可在没有 `SavedLogin` 时存在 | 新的设备本地宿主仓库 |
+| `ServerHostTarget` | 以规范化 `(SSH host, port, SSH user)` 为一项 SSH 目标，记录已确认主机密钥、受管安装 ID、部署模式和最近验证状态；同一服务器可保留多个管理用户，且可在没有 `SavedLogin` 时存在 | `ServerHostTargetStore` |
 | SSH 凭据（可选保存） | 只用于连接宿主 SSH；以主机密钥身份、端口和 SSH 用户绑定 | 独立 Keystore 凭据域；不可重用 `Connection` / `Elevation` 记录 |
 | 宿主提权凭据 | Linux sudo / Windows 管理权限预检与操作；不是 RelaxKonOS API 提权 token | 本次操作的最小生命周期；如设计保存，另立规则，不自动读取现有 `Elevation` 保险箱 |
 
@@ -55,13 +53,13 @@ Android 本地模型已将**稳定身份**与**请求地址**拆开：`SelectedL
 - `effectiveBaseUrl` 是当前会话的实际 HTTP 地址。直连时等于持久 URL；隧道时由连接解析器建立并持有。`AuthSession.updateConnection` 只接受不改变 `kind + serviceId` 的重绑定；文件、指标、提权和上传等调用都从会话取得当前地址。隧道断开时先重建并核对主机身份，换端口后只更新传输地址。
 - 受管登录选择经 `servercenter/ManagedLoginTunnelResolution.kt` 接入隧道解析：`ManagedLoginTunnelRules.hostFor` 只按安装标识在 `ServerHostTargetStore` 中找宿主（相同 IP、URL 文本或 DNS 解析都不足以合并），`bind` 要求宿主与隧道解析结果都属于同一安装，否则拒绝——宿主重装后安装标识会变，旧登录绝不能被静默接到新安装上，否则会复用错误的保险箱记录。宿主资料缺失时登录表单说明「缺宿主资料」，不回落到猜测地址。建立隧道本身需要 SSH 凭据与一次用户确认，仍属宿主详情页与保险箱。
 - 登录表单的“服务器”字段在直连模式仍可编辑原 URL；选择受管隧道时显示宿主名称和「通过 SSH 连接」说明，编辑入口回到宿主详情。不能把临时 loopback 地址伪装为用户应保存的服务器地址。
-- 这是发布前的本地接口演进，已直接更新 `SelectedLogin`、档案存储、保险箱 AAD、登录决策、会话、API 调用和 JVM 测试；没有增设依赖旧端口键的兼容分支。`RKC2` / `RKV2` 的二进制布局未改变，原先保存的直连 URL 在新语义下就是直连 `serviceId`；受管安装 ID 只由后续经过验证的服务器中心流程写入。
+- 本地资料只消费当前稳定身份模型；格式变更直接升级，不维护旧端口键或旧布局的迁移适配器。
 
 在宿主目标中记录由部署引擎签发/读取的安装 ID；连接到 API 后，再用经验证的安装信息把目标与一个或多个 `SavedLogin` 关联。安装和维护先选择一个明确的“服务器 + SSH 用户”目标，绝不按服务器地址猜测用户。**删除登录记录不删宿主，忘记密码不删 SSH 凭据，卸载服务端不批量删除登录记录。** 删除宿主资料时要提示其关联的登录记录和 SSH 凭据分别如何处理，不能把三件事合成一个按钮。
 
 ## 4. 操作状态的归属
 
-`LoginViewModel` 和 `MobileNavHost` 只负责各自现有界面。新增 `ServerCenterCoordinator` 由 `AppContainer` 持有，负责 SSH 会话、阶段事件、宿主锁/操作 ID、通知和重连；`MainActivity` 的根界面按当前流程选择登录、Shell 或服务器中心。进入服务器中心时记录来源，返回时恢复原页面。任务在页面销毁、旋转或语言切换时不因 Composable 被移除而丢失。
+`LoginViewModel` 和 `MobileNavHost` 只负责各自现有界面。`ServerCenterCoordinator` 由 `AppContainer` 持有，负责 SSH 会话、阶段事件、宿主锁/操作 ID、通知和重连；`MainActivity` 的根界面按当前流程选择登录、Shell 或服务器中心。进入服务器中心时记录来源，返回时恢复原页面。任务在页面销毁、旋转或语言切换时不因 Composable 被移除而丢失。
 
 远端操作记录是权威结果，本地另建**不含凭据**的恢复记录：安装 ID 或待安装主机指纹、操作 ID、阶段序号、启动时间、目标版本与最近核验时间。恢复时先重新验证 SSH 主机密钥，再读取远端结果，不能用本地缓存直接宣称成功。`RecentOperationJournal` 只保存本进程内的简短成功操作，不承担部署恢复或审计；文件上传的 `UploadResumeJournal` 记录的是 API 上传会话，也不能拿来复用部署操作 ID。
 
@@ -69,11 +67,8 @@ Android 后台可中断客户端进程。包上传等需要持续本地传输的
 
 状态区分 `SSH 不可达`、`SSH 已认证`、`宿主已安装`、`API 健康`、`RelaxKonOS 已登录`；`ServerEndpointDiscovery` 仍只是登录表单的地址提示，不能作为部署预检门禁。卸载后 `AuthSession` 失效是预期结果，服务器中心必须留在可访问的未登录层。
 
-## 5. 验收与实施顺序
+## 5. 当前边界
 
-1. 先落地跨客户端部署契约、稳定 `serviceId` / 动态 `effectiveBaseUrl` 的 Android 模型和 `HostTarget` / SSH 信任存储测试，再接入内置 SSH/SFTP；首个竖切实现「未登录预检 → 安装 → 返回现有登录表单」。
-2. 接入「更多 → 连接」与主页轻量提示，再完成更新、修复、卸载以及后台恢复；不抢先重画整个 Shell。
-3. 对 `LoginViewModel` 的现有登录决策、`ConnectionProfileStore` 同服多账号、两种保险箱、`TopDestination.visible` 与三种 `LayoutState` 做回归。增加未安装、SSH 不可达、主机密钥变化、后台回收、更新断线和卸载保留数据的状态测试。
-4. 在手机竖/横屏、约 8 英寸与 11 英寸平板上核验软键盘、长指纹、长主机名、大字号、系统返回、语言切换和通知权限被拒时的进度可见性。未经真机核验不把“后台任务持续”或“远程 Windows 管理员可用”标为已完成。
+SSH 工作区提供文件、交互式终端、部署配置和 Linux 只读系统快照。部署配置的来源/模式选择是草稿；最后的首次安装按钮仍不可用。安装回执查询只暂存 APK 内的固定启动器并执行读取，不执行安装 `--run`。
 
-服务器中心首次发布时，`LoginScreen` 直接连接已安装服务器的路径和已有登录记录的密码操作必须原样可用；没有 SSH 权限的用户仍可按现有方式登录工作区。
+可信校验器、发布资产获取、安装页面调用链、健康核实与完整安装恢复交付见 [部署后续计划](../plans/Deployment.md)。真实 SSH、主机密钥变化、隧道换端口、后台回收及卸载检查集中见 [验收清单](../status/Verification.md)。

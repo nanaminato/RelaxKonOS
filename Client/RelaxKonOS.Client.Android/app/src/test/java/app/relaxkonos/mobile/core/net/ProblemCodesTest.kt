@@ -10,7 +10,7 @@ import org.junit.Test
 
 /**
  * Problem handling, asserted because the distinction between a `Problem` and a `Transport` decides two
- * things: whether a stored credential is deleted (`RelaxKonOS.Mobile.V1.Design.md` §5.8.2), and what the
+ * things: whether a stored credential is deleted (`Shell.Design.md` §5.8.2), and what the
  * UI says about a failure. Reading a named 5xx code as a transport failure is what turned the server's
  * "the sampler has no sample yet" into "cannot reach the server".
  */

@@ -1,9 +1,9 @@
-# RelaxKonOS Android Mobile（手机与平板）设计
+# Android 产品、架构与交互规范
 
-> **状态：产品与技术设计初稿；M0 架构准备已启动。**
+> 当前规范。已实现范围与验证结果见 [当前状态](../status/Progress.md)。
 > **首发范围：Android 手机与 Android 平板；iOS/iPadOS 为同一架构下的后续平台。**
 >
-> 本文定义移动客户端的产品边界、项目布局、模块依赖、协议演进、响应式交互、安全与验收要求；不代表当前已实现功能。本文与现有架构冲突时，遵守 [`RelaxKonOS.Architecture.md`](../architecture/RelaxKonOS.Architecture.md) 的“本地渲染、状态同步、Protocol 契约优先”原则。
+> 本文定义移动客户端的产品边界、项目布局、模块依赖、协议演进、响应式交互、安全与验收要求；具体页面的实现情况以当前状态为准。本文与现有架构冲突时，遵守 [`RelaxKonOS.Architecture.md`](../../../../docs/architecture/RelaxKonOS.Architecture.md) 的“本地渲染、状态同步、Protocol 契约优先”原则。
 
 ---
 
@@ -23,7 +23,7 @@
 ### 1.2 目标
 
 - 在手机上可靠完成登录、查看状态、文件操作、终端连接及常见服务操作。
-- 后续扩展以“只有手机也能部署”为目标：首次安装、应用发布与日常维护均可在 Android 完成。分期与验收见 [无电脑部署路线图](./RelaxKonOS.Mobile.Deployment.Roadmap.md)；该规划不代表功能已实现。
+- 后续扩展以“只有手机也能部署”为目标：首次安装、应用发布与日常维护均可在 Android 完成。剩余交付见 [部署后续计划](../plans/Deployment.md)，设备与宿主测试统一见 [验收清单](../status/Verification.md)。
 - 在平板横屏上同时查看列表、详情、日志或终端，不退化为放大的手机界面。
 - 遵守现有认证、Workspace、设备控制权、权限提升和能力声明模型。
 - 把可跨平台复用的网络/业务代码从桌面 Shell 中逐步提炼，避免为移动端复制 REST、SignalR 与认证逻辑。
@@ -31,7 +31,7 @@
 ### 1.3 非目标
 
 - 不将 Desktop、Taskbar、Start Menu、WindowManager、桌面内 `RemoteWindow` 迁移到移动端。
-- 首版不实现本地 Browser、IDE、图片/视频编辑、注册表完整编辑、证书全生命周期等高密度桌面工作流。
+- 桌面应用的移动接入按 [内置应用补齐计划](../plans/BuiltInParity.md) 逐项设计；普通文本编辑、证书与网络管理属于后续交付范围。
 - 不把移动端后台连接当作服务端任务的存活条件；Android 随时可能暂停或终止 App。
 
 ---
@@ -60,38 +60,13 @@ Android 不引用现有 `RelaxKonOS.Client`：它是桌面 Shell，已包含 Win
 
 ---
 
-## 3. 规划中的源码与文档位置
+## 3. 源码与文档位置
 
-### 3.1 解决方案目录
+### 3.1 工程目录
 
-```text
-RelaxKonOS/
-├─ Client/
-│  ├─ RelaxKonOS.Client/                    # 既有：Desktop Shell；不供 Mobile 引用
-│  ├─ RelaxKonOS.Client.Desktop/            # 既有：桌面启动入口
-│  └─ RelaxKonOS.Client.Android/            # Gradle Kotlin/Compose Android 应用
-│     ├─ settings.gradle.kts
-│     ├─ build.gradle.kts
-│     ├─ AGENTS.md                           # Android 文档与实现约束
-│     ├─ docs/                               # Android 文档的唯一详细来源
-│     │  ├─ RelaxKonOS.Mobile.Design.md      # 本文：产品与技术设计初稿
-│     │  ├─ RelaxKonOS.Mobile.Progress.md    # 阶段、验证与已知问题
-│     │  └─ android-release.md               # 构建、签名与发布
-│     └─ app/
-│        └─ src/
-│           ├─ main/java/app/relaxkonos/mobile/
-│           │  ├─ MainActivity.kt
-│           │  ├─ RelaxKonApi.kt
-│           │  └─ LayoutState.kt
-│           └─ test/java/app/relaxkonos/mobile/
-├─ Shared/RelaxKonOS.Protocol/               # 既有：仅跨端 DTO/路由/Hub 契约
-├─ Framework/RelaxKonOS.UI/                  # 既有：只复用经移动验证的颜色、字体、令牌
-└─ docs/
-   └─ mobile/
-      └─ README.md                           # 仅作跨仓库入口，链接到 Android docs/
-```
+Android 工程位于 `Client/RelaxKonOS.Client.Android/`，由 Gradle 独立构建，不加入 .NET 解决方案。`app/src/main/java/app/relaxkonos/mobile/` 下的 `core/`、`data/`、`security/`、`servercenter/` 和 `ui/` 分别承担网络与认证、领域访问、本机安全、SSH 工作区和 Compose 界面。Gradle 依赖不由 `Directory.Packages.props` 管理。
 
-Android 工程由 Gradle 构建，不加入 `RelaxKonOS.sln`。Android UI 仅使用 Kotlin、Compose 与 Android SDK；`Directory.Packages.props` 不管理 Android 的 Gradle 依赖，也不保留 Avalonia Android 或 AndroidX 占位依赖。
+Android 详细文档只维护在本工程 `docs/`，分类与入口见 [文档目录](../README.md)。仓库级 `docs/mobile/` 只提供跨项目入口。
 
 ### 3.2 依赖规则
 
@@ -106,26 +81,11 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
 
 ---
 
-## 4. 先决协议调整
+## 4. 协议边界
 
-`LoginRequest.ClientPlatform` 曾使用同时描述 Server 宿主平台的 `PlatformKind`，会使 Android 客户端被错误归类。M0 已完成下列直接 breaking change。
+`HostPlatformKind`（Linux、Windows）描述服务端宿主；`ClientPlatformKind`（Windows、Linux、Android、iOS）描述登录和设备注册的客户端。Android 发送 `android`，不得复用宿主平台枚举。
 
-实施前必须将两种语义拆开：
-
-| 新契约 | 值 | 用途 |
-| --- | --- | --- |
-| `HostPlatformKind` | `Linux`、`Windows` | Server 描述、宿主权限与平台能力判断。 |
-| `ClientPlatformKind` | `Windows`、`Linux`、`Android`、`iOS` | 登录请求、Device 注册、客户端兼容性与设备列表。 |
-
-涉及位置：
-
-- `Shared/RelaxKonOS.Protocol/Common/PlatformKind.cs`：已替换为语义明确的两个枚举。
-- `Shared/RelaxKonOS.Protocol/Identity/LoginRequest.cs`：`ClientPlatform` 改为 `ClientPlatformKind`。
-- `Shared/RelaxKonOS.Protocol/Workspace/RegisterDeviceRequest.cs`、设备 DTO/仓储/测试：使用客户端平台。
-- Server 的 `ServerDescriptorDto`、身份 Provider、宿主能力判断：使用 `HostPlatformKind`。
-- Desktop 登录 ViewModel：显式返回 `Windows` 或 `Linux`；Android Host 返回 `Android`。
-
-项目处于首个正式版本前，按仓库 API 演进规则直接完成 breaking change，更新所有调用方、测试和文档；不保留旧枚举、双格式解析或兼容路由。
+共享 Protocol 是字段、路由、枚举与 Hub 方法的唯一契约来源。接口变化直接同步 Server、桌面、Android、测试、示例与文档，不保留旧路由、别名或双格式解析。
 
 ---
 
@@ -150,21 +110,21 @@ Protocol wire contract ──→ Kotlin Android data layer ──→ Compose UI
 
 不支持的服务不显示入口，不以灰色“伪功能”占位。影响运行环境的操作必须显示目标、后果和状态；现有的控制权与受限提权流程仍由 Server 决定，Mobile 只负责清晰确认与结果展示。
 
-### 5.2 首发应用目录
+### 5.2 应用目录与布局目标
 
 Mobile Shell 的导航项是能力类别，不是把桌面所有应用逐一缩小后塞进底栏。具体应用只有在 Server 同时声明能力、当前账号拥有权限且该布局状态具备可用操作路径时才出现。
 
-| 类别 / 应用 | 目标工作流 | 首发优先级 | 手机与平板差异 |
+| 类别 / 应用 | 目标工作流 | 关注顺序 | 手机与平板差异 |
 | --- | --- | --- | --- |
 | 主页（Home） | 连接健康、主机资源与近期操作 | P0 | 手机显示可扫读的状态卡；平板将告警、趋势和近期操作并列。 |
 | 文件（Files） | 浏览、上传、下载、新建、重命名、复制/移动、属性与删除确认 | P0 | 手机为列表→详情的导航栈；平板为位置/目录、列表、详情或预览多栏。 |
-| 终端（Terminal） | 打开、恢复和关闭远端 PTY；输入命令与查看输出 | P0 PoC | 手机只聚焦一个会话并提供扩展键栏；平板可保留会话列表。 |
+| 终端（Terminal） | 打开、恢复和关闭远端 PTY；输入命令与查看输出 | P0 | 手机只聚焦一个会话并提供扩展键栏；平板可保留会话列表。 |
 | 容器（Docker） | 容器、镜像、Stack、网络和卷的查看与受控操作 | P1 | 手机先呈现状态和单资源详情；平板增加日志/操作栏，不复制桌面表格。 |
 | 进程与守护（Processes & Guardian） | 指标、受管工作负载、日志和重启等受控操作 | P1 | 手机用筛选列表；平板并列指标、资源和日志。 |
 | 部署与 Web 服务（Deployments & Web） | 查看发布、任务状态、站点和服务操作 | P2 | 手机按向导分步完成；平板允许列表、详情和任务状态并列。 |
 | 设置与诊断（More） | 账户、服务器连接与信息、语言、主题、无障碍、日志导出、关于和登出 | P0（设置骨架） | 使用同一偏好模型；平板仅扩大内容列，不将设置拆成窗口。 |
 
-Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑等桌面应用不属于首批 Mobile Shell。将来只有在能定义移动端独立、可完成且安全的任务流后才加入管理目录；不得因为桌面端已有图标而添加只读或不可操作的占位入口。
+Git 的受限编辑和构建链路已接入；其他内置应用缺口见 [补齐计划](../plans/BuiltInParity.md)。目录中的布局描述是交互目标，不能据此认定平板分栏或全部桌面动作已经实现。
 
 ---
 
@@ -202,7 +162,7 @@ Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑�
 
 #### 多主题与无障碍
 
-设置提供 **跟随系统、浅色、深色** 三种颜色模式，并提供独立的“提高对比度”开关。模式优先级为用户显式选择 > 系统设置；未选择时跟随系统。主题偏好属于客户端体验设置，M1 先本地持久化，只有在跨设备偏好契约已定义后才能同步到 Workspace。
+设置提供 **跟随系统、浅色、深色** 三种颜色模式，并提供独立的“提高对比度”开关。模式优先级为用户显式选择 > 系统设置；未选择时跟随系统。主题偏好属于客户端体验设置，本地持久化，只有在跨设备偏好契约已定义后才能同步到 Workspace。
 
 - 基于 Material 3 `ColorScheme` 和语义设计令牌（`primary`、`surface`、`error`、`outline` 等）实现；业务页面不得直接写入十六进制颜色、特定背景色或仅靠颜色表达状态。
 - Android 12+ 的动态颜色只能作为“跟随系统”模式的可选输入，且必须通过对比度和状态色验证；浅色、深色和高对比度方案必须有确定的 RelaxKonOS 回退调色板。
@@ -236,16 +196,16 @@ Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑�
 
 ### 7.1 服务映射
 
-| Mobile 功能 | 复用的既有契约 | 首个实现优先级 |
-| --- | --- | --- |
-| 首页状态 | SystemMonitor REST + Performance Hub | P0 |
-| 文件 | `FileApiRoutes` | P0 |
-| 终端 | Terminal Hub / PTY attach、resize、input | P0（先做 Android 真机 PoC） |
-| Docker | `DockerApiRoutes` | P1 |
-| 进程/守护 | SystemMonitor、Guardian API/Hub | P1 |
-| Web Server/部署 | 既有 REST 操作模型 | P2 |
+| Mobile 功能 | 当前契约接入 |
+| --- | --- |
+| 首页/性能/进程 | SystemMonitor REST 快照与进程 API |
+| 文件 | FileApiRoutes，流式/分块上传与受控文件操作 |
+| Server 终端 | Terminal Hub、会话附加、尺寸与输入 |
+| Docker/Compose | DockerApiRoutes、Stack 持久操作 |
+| 脚本/守护 | Guardian Agent 任务与工作负载 API |
+| 部署/网站/Git/运维 | 对应领域 REST 操作与权威任务记录 |
 
-终端包及其依赖必须先在真实 Android 手机和平板验证触摸选择、IME、横屏、软键盘、Ctrl/Alt/Esc/Tab/方向键扩展栏和旋转后的 resize；验证失败前，不把桌面终端控件直接承诺为移动端正式方案。
+真实终端触摸选择、IME、软键盘、扩展键与旋转 resize 的检查见集中验收清单，不能从桌面控件行为推断 Android 体验。
 
 ### 7.2 后台与断网
 
@@ -256,41 +216,21 @@ Git、隧道/代理、防火墙、证书、注册表、浏览器和代码编辑�
 
 ### 7.3 Android 平台边界
 
-- 凭据使用 Android Keystore；日志、诊断、崩溃报告不得写入密码、JWT、refresh token 或命令中的秘密。登录密码与宿主管理员密码分属两个独立保险箱，指纹只解封本机密文，不产生任何免验证凭据；管理员密码的保存条件是 [`RelaxKonOS.Security.md`](../../../docs/platform/RelaxKonOS.Security.md) §5.2 定义的受限例外，详细设计见 [`RelaxKonOS.Mobile.V1.Design.md`](./RelaxKonOS.Mobile.V1.Design.md) §5。
+- 凭据使用 Android Keystore；日志、诊断、崩溃报告不得写入密码、JWT、refresh token 或命令中的秘密。登录密码与宿主管理员密码分属两个独立保险箱，指纹只解封本机密文，不产生任何免验证凭据；管理员密码的保存条件是 [`RelaxKonOS.Security.md`](../../../../docs/platform/RelaxKonOS.Security.md) §5.2 定义的受限例外，详细设计见 [`Shell.Design.md`](Shell.Design.md) §5。
 - 文件上传通过 Android 系统文件选择器取得内容流，不将用户文件路径假定为可访问的本地路径；下载直接落盘到本机下载目录（API 29+ 经 `MediaStore` 写入共享的 `Download/RelaxKonOS`，无需权限、无需对话框；API 23–28 没有这条写入路径，落入应用自身的外部 `Download` 目录），完成提示给出实际落盘位置，不以分享面板作为中转。
 - 服务端绝对路径输入保留手动编辑，并在输入框附近提供服务器浏览入口。文件接口下的 Git 仓库注册、脚本及守护任务的可执行文件和工作目录、文件复制/移动目标使用同一目录浏览能力；目录需进入后明确选用，复制/移动会保留原条目名称。部署归档只显示受支持的归档文件。服务器中心的 SSH 发布包沿用已验证主机的 SFTP 浏览能力，只显示 ZIP 文件，不将手机的系统文件选择器误作服务器路径选择器。
-- 选中图片时在详情页直接显示图片，字节先落入应用私有的预览缓存：键为 `服务器 + 远端路径 + 文件大小 + 修改时间` 的摘要，容量上限 64 MB 并按最久未查看淘汰，随 `cacheDir` 被系统回收；长度与服务器报告的大小不符的副本一律不视为命中，因此崩溃或中断留下的半截文件不会被当成图片显示。呈现是分级的，且**传输与解码各自分级**：服务端 `GET /files/thumbnail`（最长边 320 px）与原图传输**并行**发起，小图先到就先上屏（画在进度条下方），因此慢链路与大图也能先看到能认出的画面；服务端给不出小图（415 `thumbnail-unsupported`，或旧服务端根本没有该路由）则回落到本地 96 px 解码。随后按当前显示框的像素尺寸解码详细图替换（像素总量上限 400 万，按显示框降采样，永不超过 heap 可承受的范围）。全屏查看器只对已缓存的文件重新解码到屏幕尺寸，不产生第二次传输。
-- 预览不为自己申请提权：选中受保护路径时以「拒绝作答」的授权提供者发起请求，服务端拒绝后界面显示「读取该文件需要管理员密码」并提供「授权并预览」，只有用户点击该按钮才弹出管理员密码提示（§5.3.8 的「无显式作答不提权」同样适用于自动发起的读取）。缩略图预取同样如此：它是应用自己的主意而非用户的请求，因此**恒以「拒绝作答」发起且永不等待**，受保护路径在这次预取上一律得到 `elevation-required` 并被静默忽略——需要授权的是随后那张能看见按钮、需要用户按下的下载卡片。
-- 读取线上可空字段必须用 `JSONObject.isNull` 判定，不能只看 `optString` 的返回值：Android 的 `org.json` 把 JSON null 渲染成**字面字符串** `"null"`（`JSON.toString(JSONObject.NULL)` → `String.valueOf(NULL)`），因此「取值后判空串」这条守卫拦不住它，四个字母会一路进到界面（进程列表每一行的属主就是这样显示的）。`RelaxKonApi` 的 `optNullableString` / `optNullableLong` 是唯一入口。这条同时保护错误判定：`problemCode` 一旦被读成 `"null"`，`ProblemCodes.namesContractCode` 会认为服务端已经给出契约码，5xx 于是被读成 `Problem`，违反 §5.8.2「5xx 不携带服务端问题码时不构成凭据判定」。
+- 选中图片时在详情页直接显示图片，字节先落入应用私有的预览缓存：键为 `服务器 + 远端路径 + 文件大小 + 修改时间` 的摘要，容量上限 64 MB 并按最久未查看淘汰，随 `cacheDir` 被系统回收；长度与服务器报告的大小不符的副本一律不视为命中，因此崩溃或中断留下的半截文件不会被当成图片显示。呈现是分级的，且**传输与解码各自分级**：服务端 `GET /files/thumbnail`（最长边 320 px）与原图传输**并行**发起，小图先到就先上屏（画在进度条下方），因此慢链路与大图也能先看到能认出的画面；服务端给不出小图（415 `thumbnail-unsupported`）则回落到本地 96 px 解码。随后按当前显示框的像素尺寸解码详细图替换（像素总量上限 400 万，按显示框降采样，永不超过 heap 可承受的范围）。全屏查看器只对已缓存的文件重新解码到屏幕尺寸，不产生第二次传输。
+- 预览不为自己申请提权：选中受保护路径时以「拒绝作答」的授权提供者发起请求，服务端拒绝后界面显示「读取该文件需要管理员密码」并提供「授权并预览」，只有用户点击该按钮才弹出管理员密码提示（Shell §5.3.8 的「无显式作答不提权」同样适用于自动发起的读取）。缩略图预取同样如此：它是应用自己的主意而非用户的请求，因此**恒以「拒绝作答」发起且永不等待**，受保护路径在这次预取上一律得到 `elevation-required` 并被静默忽略——需要授权的是随后那张能看见按钮、需要用户按下的下载卡片。
+- 读取线上可空字段必须用 `JSONObject.isNull` 判定，不能只看 `optString` 的返回值：Android 的 `org.json` 把 JSON null 渲染成**字面字符串** `"null"`（`JSON.toString(JSONObject.NULL)` → `String.valueOf(NULL)`），因此「取值后判空串」这条守卫拦不住它，四个字母会一路进到界面（进程列表每一行的属主就是这样显示的）。`RelaxKonApi` 的 `optNullableString` / `optNullableLong` 是唯一入口。这条同时保护错误判定：`problemCode` 一旦被读成 `"null"`，`ProblemCodes.namesContractCode` 会认为服务端已经给出契约码，5xx 于是被读成 `Problem`，违反 Shell §5.8.2「5xx 不携带服务端问题码时不构成凭据判定」。
 - 仅按功能声明网络、通知等权限；不申请存储全盘访问、常驻后台或无关权限。
 - 高风险动作（删除、停止/重启服务、部署、关闭终端）必须二次确认；确认文本必须包含具体目标。
 
 ---
 
-## 8. 实施阶段与验收
+## 8. 验收归属
 
-| 阶段 | 交付 | 退出条件 |
-| --- | --- | --- |
-| M0：架构准备 | Kotlin/Compose 项目骨架、Protocol 平台语义拆分、Android 认证/HTTP、应用可启动 | Desktop 回归；Android 模拟器和真机均能显示登录页。 |
-| M1：自适应 Shell | 登录、Keystore、能力读取、Compact/Medium/Expanded 导航和首页 | 手机/平板旋转、分屏、重启后布局正确；无凭据泄露。 |
-| M2：核心操作 | 文件、状态、终端真机 PoC 与断线恢复 | Android 手机和两种平板尺寸完成登录、文件上传、终端 reconnect。 |
-| M3：管理工作台 | Docker、守护/进程、日志与明确确认操作 | 仅显示受支持能力；失败、取消、超时均有可理解状态。 |
-| M4：发布准备 | 图标/启动页、AAB 签名、崩溃诊断、Android 发布文档 | Release 包可安装；签名材料不入库；设备矩阵通过。 |
+自动化证据与已实现范围见 [当前状态](../status/Progress.md)；设备、宿主、故障恢复与发布检查见 [验收清单](../status/Verification.md)。已实现而尚未完成设备测试的功能不再另立实施阶段。
 
-最小人工设备矩阵为：一台 Android 手机（竖/横屏）、一台约 8 英寸平板和一台约 11 英寸平板；每台验证登录、网络切换、软键盘、旋转、后台恢复、终端及危险操作确认。自动测试覆盖 ViewModel、布局状态计算、能力过滤、认证状态机、HTTP/Hub reconnect 和 Protocol 序列化。
+## 9. 其他移动平台
 
----
-
-## 9. 后续 iOS/iPadOS 接入
-
-在 Android M2 之后才评估 `Client/RelaxKonOS.Client.iOS/`。它遵循 Protocol wire contract；页面、导航、网络和平台服务由 iOS 原生框架实现，不复制服务端业务逻辑。
-
----
-
-## 10. 实施约束清单
-
-- 新的移动功能先定义/修正 Protocol，再实现 Server（若需要），最后实现 Kotlin data layer 与 Compose 页面。
-- Compose 页面不得直接执行 HTTP、拼接路由或访问桌面窗口管理器。
-- 不以“能编译”为移动兼容性依据；终端、文件选择、软键盘、后台恢复和横竖屏必须在真实手机与平板验证。
-- 不为保留当前错误的平台语义添加兼容 shim；直接更新仓库内所有调用者、测试和文档。
-- 所有实施进展、已验证设备、已知限制和待决风险记录在同目录的 [`RelaxKonOS.Mobile.Progress.md`](./RelaxKonOS.Mobile.Progress.md)，而不是在本文中混写实现状态。
+iOS/iPadOS 尚无本仓库交付承诺。如需支持，采用独立原生 UI 与平台安全实现，复用当前 Protocol；构建、签名和发布另行设计。

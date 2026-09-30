@@ -7,7 +7,7 @@ using RelaxKonOS.Server.Hubs;
 /// </summary>
 /// <remarks>
 /// SignalR 按方法名与参数个数匹配 Hub 方法，两端任何一处漂移都只在运行时暴露，而客户端只会看到笼统的
-/// invoke 失败（「新建会话」历史上正是这样坏的，见 `RelaxKonOS.Mobile.Progress.md`）。这里用反射把契约钉在
+/// invoke 失败（「新建会话」历史上正是这样坏的，见 `Progress.md`）。这里用反射把契约钉在
 /// 编译产物上：不需要真实 Hub 连接、PTY 或网络，因此可以进默认套件。
 /// </remarks>
 internal static class TerminalHubContractChecks

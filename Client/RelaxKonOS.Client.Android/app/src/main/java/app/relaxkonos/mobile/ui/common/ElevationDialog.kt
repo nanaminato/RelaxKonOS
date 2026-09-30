@@ -35,14 +35,14 @@ import kotlinx.coroutines.launch
 /**
  * Host elevation dialog.
  *
- * It is a full dialog rather than a bottom sheet on purpose (`RelaxKonOS.Mobile.V1.Design.md` §3.4):
+ * It is a full dialog rather than a bottom sheet on purpose (`Shell.Design.md` §3.4):
  * a stray tap must not be able to authorize a host-level change. The dialog names the exact capability
  * and target, is the only place an administrator password is entered, and is the only place one can be
  * stored — saving requires ticking an explicit box and passing a second strong-biometric check (D1).
  *
  * An administrator credential whose key was permanently invalidated is still listed on the account and
  * security page, but it is not offered here: the only way to authorize is to type the password again
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.5).
+ * (`LoginCredentials.Design.md` §7.5).
  */
 @Composable
 fun ElevationDialog(container: AppContainer) {

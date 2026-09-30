@@ -167,14 +167,14 @@ RelaxKonOS
 
 默认策略是**客户端不保存宿主管理员密码**，每次提权现场输入。桌面端维持该策略不变。
 
-Android 客户端是唯一获批的例外（2026-09-22 决策，见 [`RelaxKonOS.Mobile.V1.Design.md`](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.V1.Design.md) §5.8.1）：允许把管理员密码保存到 Android Keystore 保护的客户端保险箱，用指纹免去重复输入。理由是移动端软键盘输入长密码体验差、易被肩窥。
+Android 客户端是唯一获批的例外（2026-09-22 决策，见 [`Shell.Design.md`](../../Client/RelaxKonOS.Client.Android/docs/design/Shell.Design.md) §5.8.1）：允许把管理员密码保存到 Android Keystore 保护的客户端保险箱，用指纹免去重复输入。理由是移动端软键盘输入长密码体验差、易被肩窥。
 
 例外必须在以下**全部**条件成立时才成立：
 
 - 用户在提权对话框中显式勾选，并当场通过一次强生物识别验证；不得默认勾选、不得静默保存。
 - 只能由 `BIOMETRIC_STRONG` 与 `CryptoObject` 按次授权解封。仅支持弱生物识别或仅有设备凭据的设备**不得**保存管理员密码。
 - 密文与密钥分离：密钥在 Keystore 内且从不导出；密文绑定记录身份（服务器 + 账户）。
-- 每条记录可按条删除，账户与安全页可见、可清空。服务端一旦拒绝一次提权，必须立即丢弃对应记录（不区分拒绝原因；仅"未取得判定结论"的网络失败、超时、5xx 不触发删除），见 [`RelaxKonOS.Mobile.V1.Design.md`](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.V1.Design.md) §5.8.2。
+- 每条记录可按条删除，账户与安全页可见、可清空。服务端一旦拒绝一次提权，必须立即丢弃对应记录（不区分拒绝原因；仅"未取得判定结论"的网络失败、超时、5xx 不触发删除），见 [`Shell.Design.md`](../../Client/RelaxKonOS.Client.Android/docs/design/Shell.Design.md) §5.8.2。
 - 不得随系统备份、云同步或跨设备迁移。
 - **不改变服务端信任模型**：每次提权仍由服务端重新校验密码，仍受 capability + target + `jti` + 5 分钟授权约束，仍要求危险操作确认。已保存密码不得成为任何形式的免验证凭据。
 

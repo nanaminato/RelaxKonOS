@@ -50,7 +50,7 @@ enum class EndpointDiscoveryState { Idle, Checking, Found, InvalidAddress, Unava
  * Sign-in state for the single-form login screen.
  *
  * Four independent facts are held apart, exactly as the design requires
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §2, §4): who is being signed in as
+ * (`LoginCredentials.Design.md` §2, §4): who is being signed in as
  * ([selectedLogin]), whether a password is stored and usable ([savedCredentialState]), whether this
  * device may unseal it ([vaultUnlockMode]), and what the user typed *this time* ([passwordText]).
  * Nothing here is derived from the password field, and the field is never filled from the vault.

@@ -52,8 +52,7 @@ fun genericProblemMessage(): UiMessage = UiMessage(R.string.error_generic)
 /**
  * Maps a stable problem code to the sentence the user should read.
  *
- * An unknown code degrades to the generic sentence rather than echoing the code: `RelaxKonOS.Mobile.V1.
- * Design.md` §8 forbids surfacing raw protocol identifiers, and a code the client does not know is by
+ * An unknown code degrades to the generic sentence rather than echoing the code: `Shell.Design.md` §8 forbids surfacing raw protocol identifiers, and a code the client does not know is by
  * definition not something it can explain.
  */
 fun problemMessage(code: String): UiMessage = UiMessage(

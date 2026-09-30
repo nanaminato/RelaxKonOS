@@ -21,7 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The elevation rules of `RelaxKonOS.Mobile.V1.Design.md` §4.3 and §5.8.2: one grant, one retry, no
+ * The elevation rules of `Shell.Design.md` §4.3 and §5.8.2: one grant, one retry, no
  * loop, grants bound to the access token, and a stored administrator password discarded on any server
  * rejection but never on a transport failure or a user cancellation.
  */

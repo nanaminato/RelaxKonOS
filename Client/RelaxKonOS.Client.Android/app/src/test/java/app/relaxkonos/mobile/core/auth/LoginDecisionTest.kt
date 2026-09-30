@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The sign-in decision table of `RelaxKonOS.Mobile.LoginCredentials.Design.md` §5.1, row by row.
+ * The sign-in decision table of `LoginCredentials.Design.md` §5.1, row by row.
  *
  * This is the table the single sign-in button follows. Keeping it as a pure function is what makes it
  * possible to state every row here instead of reasoning about a Compose click handler.

@@ -17,7 +17,7 @@ import javax.crypto.Cipher
  * [Ssh] is the server centre's SSH credential domain. It is a separate kind rather than a reuse of
  * [Connection] because an SSH credential is bound to a host endpoint and SSH user, not to a RelaxKonOS
  * service identity and login identifier; two records that happen to hold the same password are still two
- * records (`RelaxKonOS.Mobile.ServerCenter.Design.md` §3).
+ * records (`ServerCenter.md` §3).
  */
 enum class VaultKind { Connection, Elevation, Ssh }
 
@@ -27,7 +27,7 @@ enum class VaultKind { Connection, Elevation, Ssh }
  * A record whose key was permanently invalidated — typically because the user enrolled a new
  * fingerprint — cannot be read again, but it is **not** deleted: the fact that this identity once had a
  * saved password is information the user needs, and the only thing that removes a record is an explicit
- * delete (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.4, D5).
+ * delete (`LoginCredentials.Design.md` §7.4, D5).
  */
 enum class VaultRecordState { Sealed, Invalidated }
 
@@ -142,7 +142,7 @@ class InMemoryVaultStorage : VaultStorage {
 
 /**
  * The client-side credential vault. Holds the independent vaults required by
- * `RelaxKonOS.Mobile.V1.Design.md` §5.2 and enforces the invariants of §5.3:
+ * `Shell.Design.md` §5.2 and enforces the invariants of §5.3:
  *
  * - payloads are bound to `vault|serviceId|account` through AES-GCM additional authenticated data;
  * - a record can only be opened through its own [VaultRecord], so a connection payload cannot be
@@ -355,7 +355,7 @@ class CredentialVault(
  * The magic carries the version, and the version is bumped whenever the layout changes instead of
  * carrying migration code for a build that has never shipped: a file from another version decodes as
  * "no stored credentials" and the user saves the password once more (`AGENTS.md`, and
- * `RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.4).
+ * `LoginCredentials.Design.md` §7.4).
  */
 internal object VaultFileFormat {
     private const val MAGIC = 0x524B5632
@@ -428,7 +428,7 @@ internal fun decodeUtf8(bytes: ByteArray): CharArray {
  * The split matters now that an invalidated key only marks a record instead of deleting it: a failure
  * that merely means "not authorized right now" — the device is locked, or the window key has expired —
  * must not be reported as a dead key, because that would permanently brand a perfectly good record
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §4.1: unavailable is not invalidated).
+ * (`LoginCredentials.Design.md` §4.1: unavailable is not invalidated).
  */
 internal fun mapKeyException(kind: VaultKind, error: Throwable): Nothing {
     // The raw type and message are the only things that tell the four platform refusals apart, and

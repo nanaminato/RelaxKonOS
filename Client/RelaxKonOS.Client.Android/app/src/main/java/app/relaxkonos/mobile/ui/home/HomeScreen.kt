@@ -118,7 +118,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
  * The page leads with identity rather than with a list of facts: who this session is, on which host,
  * and whether that host is healthy — which is the question the screen exists to answer. Compact shows
  * the readings in one column; Medium and Expanded widen the same content
- * (`RelaxKonOS.Mobile.V1.Design.md` §3.2, `home` row). The recent-operations region exists only where
+ * (`Shell.Design.md` §3.2, `home` row). The recent-operations region exists only where
  * the design gives it a column and shows bounded, in-memory successes from this app session.
  */
 @Composable

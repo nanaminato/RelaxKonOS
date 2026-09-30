@@ -52,7 +52,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
  * The authenticated shell.
  *
  * Three shapes, one source of truth for what exists: Compact uses a bottom bar, Medium a compact rail
- * and Expanded a full rail (`RelaxKonOS.Mobile.V1.Design.md` §3.2). The destination list is derived
+ * and Expanded a full rail (`Shell.Design.md` §3.2). The destination list is derived
  * from the server's advertised capabilities, so an entry that the server cannot serve is absent rather
  * than disabled.
  *

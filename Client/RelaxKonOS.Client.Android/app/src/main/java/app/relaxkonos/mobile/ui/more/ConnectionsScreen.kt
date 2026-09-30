@@ -42,7 +42,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  *
  * The same content as the sign-in list, with one difference that only makes sense while signed in:
  * the actions also affect the stored credential. They stay two separate actions, per row
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3): forgetting a password keeps the login, deleting
+ * (`LoginCredentials.Design.md` §6.3): forgetting a password keeps the login, deleting
  * a login removes both.
  *
  * Switching explicitly ends the current session and continues through the ordinary sign-in flow.

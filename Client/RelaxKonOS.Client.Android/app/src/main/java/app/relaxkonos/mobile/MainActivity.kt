@@ -49,7 +49,7 @@ import kotlinx.coroutines.CancellationException
  * The single activity. It hosts Compose and nothing else.
  *
  * It extends `AppCompatActivity` for one reason: per-app language selection below API 33 is implemented
- * by AppCompat, and that requires an AppCompat host activity (`RelaxKonOS.Mobile.V1.Design.md` §3.3,
+ * by AppCompat, and that requires an AppCompat host activity (`Shell.Design.md` §3.3,
  * `more/appearance`). It is also a `FragmentActivity`, which is what `BiometricPrompt` needs.
  */
 class MainActivity : AppCompatActivity() {

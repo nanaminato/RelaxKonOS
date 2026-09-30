@@ -193,7 +193,7 @@ class AppContainer(context: Context) {
      * The vault owns the answer to "is a password saved"; the projection in the profile file is only a
      * convenience for lists. Reconciling here means a projection left behind by an interrupted save, or
      * written by an older build, cannot outlive the record it describes
-     * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §2.2, §4.2). Reading the vault is not a biometric
+     * (`LoginCredentials.Design.md` §2.2, §4.2). Reading the vault is not a biometric
      * operation: only the payload is encrypted, and it stays encrypted.
      */
     init {
@@ -377,7 +377,7 @@ class AppContainer(context: Context) {
      *
      * The elevation dialog is its only implementation, which is what makes "nothing is elevated
      * without an explicit user answer" structural rather than conventional
-     * (`RelaxKonOS.Mobile.V1.Design.md` §5.3.8).
+     * (`Shell.Design.md` §5.3.8).
      */
     val elevationAnswers = ElevationAnswerProvider { capability, target ->
         elevationPrompts.request(capability, target, suggestedAdministratorAccount())

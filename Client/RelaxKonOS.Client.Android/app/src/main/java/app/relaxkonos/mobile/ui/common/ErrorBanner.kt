@@ -25,7 +25,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * Inline banner for a reported outcome.
  *
  * Only the mapped, localised sentence is rendered: the raw RFC 7807 `type` URI, the problem code and
- * the server's English `detail` stay out of the UI (`RelaxKonOS.Mobile.V1.Design.md` §8).
+ * the server's English `detail` stay out of the UI (`Shell.Design.md` §8).
  *
  * [tone] defaults to danger because a message worth interrupting the page for is usually a refusal,
  * but a completed action reports itself through the same banner with `StatusTone.Success`: one

@@ -10,7 +10,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 /**
  * Navigation state for the shell.
  *
- * The three navigation rules of `RelaxKonOS.Mobile.V1.Design.md` §4.1 are expressed directly here
+ * The three navigation rules of `Shell.Design.md` §4.1 are expressed directly here
  * instead of emerging from a generic graph:
  *
  * 1. top-level destinations do not push onto each other — each owns its own stack, so leaving and

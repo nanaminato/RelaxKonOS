@@ -3,7 +3,7 @@
 > 状态：已实现（P1 服务端 / P2 特权路径 / P3 桌面 / P4 Android / P5 文档均落地；自动化验证见 §9.1–§9.3，§9.4 的真实宿主验收需在目标环境执行）
 > 日期：2026-09-24
 > 适用范围：`.NET 10` Server、Avalonia 桌面客户端、Android 客户端、PrivilegedHelper、共享 Protocol
-> 相关文档：[通信协议](./RelaxKonOS.Protocol.md)、[文件管理器](../applications/RelaxKonOS.Explorer.md)、[文件操作中心](../applications/RelaxKonOS.Explorer.Operations.md)、[特权操作](../platform/RelaxKonOS.PrivilegedOperations.Operations.md)、[Android 大文件上传（客户端细节）](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.BulkUpload.Design.md)
+> 相关文档：[通信协议](./RelaxKonOS.Protocol.md)、[文件管理器](../applications/RelaxKonOS.Explorer.md)、[文件操作中心](../applications/RelaxKonOS.Explorer.Operations.md)、[特权操作](../platform/RelaxKonOS.PrivilegedOperations.Operations.md)、[Android 大文件上传（客户端细节）](../../Client/RelaxKonOS.Client.Android/docs/features/FileTransfers.md)
 
 ---
 
@@ -527,7 +527,7 @@ CommitAsync() → POST .../commit（带 sha256 时先本地算）
 
 ## 6. Android 客户端（摘要）
 
-Android 的客户端细节由 [`RelaxKonOS.Mobile.BulkUpload.Design.md`](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.BulkUpload.Design.md) 拥有（AGENTS.md 的文档归属规则）。此处只固定与本协议耦合、不允许两端分歧的四点：
+Android 的客户端细节由 [`FileTransfers.md`](../../Client/RelaxKonOS.Client.Android/docs/features/FileTransfers.md) 拥有（AGENTS.md 的文档归属规则）。此处只固定与本协议耦合、不允许两端分歧的四点：
 
 1. **源必须是可寻址的**。SAF 的一次性 `InputStream` 不能用于续传。策略：优先以 `openFileDescriptor` + 可定位通道按偏移读取；**不可寻址或长度未知的源先落应用私有缓存的临时文件**（阶段显示"准备中"），再从缓存文件分块上传；缓存文件在成功/取消/失败后删除，并在开始前检查可用空间。
 2. **传输必须移出页面作用域**：跑在前台服务（`dataSync` 类型，带进度通知与通知内取消）中，而不是 `FilesScreen.viewModelScope`；转移卡片的状态持有者上移到 `MobileNavHost` 可见的应用级作用域（与 `MobileNavHost.kt:84` 的既有约定一致：下载/上传的生命周期长于发起它的页面）。
@@ -599,14 +599,14 @@ proxy_send_timeout 120s;
 
 ### 9.3 Android
 
-完整验收清单由 [`RelaxKonOS.Mobile.BulkUpload.Design.md` §10](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.BulkUpload.Design.md) 拥有（AGENTS.md 的文档归属规则）。这里固定两端**不允许分歧**、且已在 JVM 层被锁住的四点：
+完整验收清单由 [Android 验收清单](../../Client/RelaxKonOS.Client.Android/docs/status/Verification.md) 拥有（AGENTS.md 的文档归属规则）。这里固定两端**不允许分歧**、且已在 JVM 层被锁住的四点：
 
 1. **同一份偏移规则**：Android 断言的是"权威偏移小于本地记忆时采用权威值且不回退显示"，而不是自己算一遍偏移；`RelaxKonGateway`/`RelaxKonApi` 里没有偏移算术。
 2. **核对态是独立字段**：`UploadState.resynchronising`（桌面端对应 `LargeFileUploadProgress.Reconciling`），文案键 `files_upload_reconciling`；核对期间界面与前台通知都不显示字节数。
 3. **无进展的答复与传输失败共用重试预算**（`MAXIMUM_CHUNK_FAILURES = 10`）：服务端反复回答同一偏移时必须有出口；耗尽后**会话与续传条目都保留**，只把条目状态标为失败。
 4. **分片长度 ≤ 服务端下发的 `chunkSize`**，自适应缩小的下限同样被该值夹住（`min(客户端偏好, ceiling)`）。
 
-JVM 覆盖（`app/src/test/java/app/relaxkonos/mobile/data/`，共 **41 项**，与全仓 273 项一起全绿）：`UploadCoordinatorTest`(14)、`UploadSourceStagerTest`(14)、`UploadResumeJournalTest`(13)。真机矩阵（前台服务、网络切换、强杀重启、受保护目录提权）**无法**用编译或 JVM 测试代替，见 Android 文档 §10.2。
+JVM 覆盖（`app/src/test/java/app/relaxkonos/mobile/data/`，共 **41 项**，与全仓 273 项一起全绿）：`UploadCoordinatorTest`(14)、`UploadSourceStagerTest`(14)、`UploadResumeJournalTest`(13)。真机矩阵（前台服务、网络切换、强杀重启、受保护目录提权）**无法**用编译或 JVM 测试代替，见 Android 验收清单 §2。
 
 ### 9.4 真实宿主验收（必须在目标环境执行，不能以编译代替）
 

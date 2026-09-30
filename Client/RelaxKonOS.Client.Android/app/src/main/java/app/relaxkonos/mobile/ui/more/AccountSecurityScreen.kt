@@ -45,7 +45,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * master switch lives. Turning the switch off clears both vaults *and* both Keystore keys, because a
  * ciphertext nobody can decrypt is still a liability sitting in the app's private storage. The design
  * forbids merging the two vaults, so they are listed and cleared as two separate domains throughout
- * (`RelaxKonOS.Mobile.V1.Design.md` §5.2).
+ * (`Shell.Design.md` §5.2).
  */
 @Composable
 fun AccountSecurityScreen(
@@ -322,7 +322,7 @@ private sealed interface DeletionTarget {
  *
  * A record in this state stays listed on purpose: removing it would erase the only trace of what
  * happened to the saved password, and the user would go on saving it and losing it without ever seeing
- * a reason (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.4).
+ * a reason (`LoginCredentials.Design.md` §7.4).
  */
 @Composable
 private fun InvalidatedNote(record: VaultRecord) {

@@ -40,7 +40,7 @@ object Routes {
 }
 
 /**
- * The five fixed top-level destinations of `RelaxKonOS.Mobile.Design.md` §5.1.
+ * The five fixed top-level destinations of `Product.Design.md` §5.1.
  *
  * [implemented] marks what this build actually ships. An entry that is not implemented yet is not
  * rendered at all, matching the rule that the shell never shows an entry without a usable workflow.
@@ -65,7 +65,7 @@ enum class TopDestination(
          * The destinations this build can actually render for a server advertising [capabilities].
          *
          * An unimplemented destination and one whose capability is absent are both omitted, because
-         * the design forbids an entry without a usable workflow (`RelaxKonOS.Mobile.V1.Design.md` §8).
+         * the design forbids an entry without a usable workflow (`Shell.Design.md` §8).
          */
         fun visible(capabilities: Set<String>): List<TopDestination> = entries.filter { destination ->
             destination.implemented && (destination.requiredCapability == null || capabilities.contains(destination.requiredCapability))

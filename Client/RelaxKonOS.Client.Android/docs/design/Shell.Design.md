@@ -1,21 +1,21 @@
-# RelaxKonOS Android 初版（V1）设计
+# Android Shell、认证与安全规范
 
-> **状态：设计初稿，待评审。** 本文是 [`RelaxKonOS.Mobile.Design.md`](./RelaxKonOS.Mobile.Design.md) 的可落地细化：给出**初版的确定功能集、页面清单、导航流转**，以及**用指纹解锁已保存凭据（服务器密码 + 管理员密码）**的完整设计。
+> 当前规范：页面、导航、认证与本机凭据安全。功能范围与验证证据统一见 [当前状态](../status/Progress.md)。
 >
 > 上位约束（冲突时以上位为准）：
-> - [`RelaxKonOS.Mobile.Design.md`](./RelaxKonOS.Mobile.Design.md) — 移动端产品/技术决策、手机与平板自适应、国际化与主题
-> - [`RelaxKonOS.Protocol.md`](../../../docs/architecture/RelaxKonOS.Protocol.md) — REST / Hub wire contract
-> - [`RelaxKonOS.Security.md`](../../../docs/platform/RelaxKonOS.Security.md) — 权限提升、危险操作确认、风险分级
-> - [`RelaxKonOS.PrivilegedOperations.Goal.md`](../../../docs/platform/RelaxKonOS.PrivilegedOperations.Goal.md) — 宿主提权（capability + target + 5 分钟授权）
-> - [`RelaxKonOS.Login.md`](../../../docs/platform/RelaxKonOS.Login.md) — 登录、已保存连接、错误码矩阵
+> - [`Product.Design.md`](Product.Design.md) — 移动端产品/技术决策、手机与平板自适应、国际化与主题
+> - [`RelaxKonOS.Protocol.md`](../../../../docs/architecture/RelaxKonOS.Protocol.md) — REST / Hub wire contract
+> - [`RelaxKonOS.Security.md`](../../../../docs/platform/RelaxKonOS.Security.md) — 权限提升、危险操作确认、风险分级
+> - [`RelaxKonOS.PrivilegedOperations.Goal.md`](../../../../docs/platform/RelaxKonOS.PrivilegedOperations.Goal.md) — 宿主提权（capability + target + 5 分钟授权）
+> - [`RelaxKonOS.Login.md`](../../../../docs/platform/RelaxKonOS.Login.md) — 登录、已保存连接、错误码矩阵
 >
-> 实现状态不写入本文，统一记入 [`RelaxKonOS.Mobile.Progress.md`](./RelaxKonOS.Mobile.Progress.md)。
+> 实现状态不写入本文，统一记入 [`Progress.md`](../status/Progress.md)。
 
 ---
 
 ## 1. 定位
 
-初版 Android 客户端是 **Mobile Shell 的最小可用闭环**：能在手机和平板上登录一台服务器，看到主机状态，操作文件，连上终端，做几类受控的管理操作，并且**把"每次都要手输密码"这件事收敛为指纹一次确认**——同时不放松任何服务端校验。
+Android 客户端采用 **原生 Mobile Shell**：能在手机和平板上登录一台服务器，看到主机状态，操作文件，连上终端，做几类受控的管理操作，并且**把"每次都要手输密码"这件事收敛为指纹一次确认**——同时不放松任何服务端校验。
 
 三条底线：
 
@@ -25,9 +25,9 @@
 
 ---
 
-## 2. 初版功能集
+## 2. 能力与权限边界
 
-### 2.1 交付范围
+### 2.1 能力门控
 
 能力可见性由**登录后拿到的 `ServerDescriptorDto.capabilities`** 决定：能力缺失时入口不出现，不用灰色占位。
 
@@ -36,39 +36,26 @@
 入口照常出现；当普通执行和特权文件路由都不可用时，首页先显示服务端给的原因（`ExecutionEligibilityNotice`）。
 客户端只消费服务端给的稳定原因码（`ExecutionEligibilityReasons`），文案一律取自本工程自己的 `strings.xml`。
 
-| 域 | 初版内容 | 门控能力标识 | 优先级 |
-| --- | --- | --- | --- |
-| 连接与认证 | 多服务器连接档案；指纹免密登录；token 刷新；登出；会话过期回到登录页 | —（`/auth/*` 恒可用） | P0 |
-| 首页 | 服务器名/平台/版本、连接状态、CPU/内存/磁盘/网络实时、近期告警与操作；文件浏览统一从顶级「文件」入口进入 | `server.metrics`（无则只显示连接与基本信息） | P0 |
-| 文件 | 浏览、上传、下载、新建目录、重命名、复制/移动、删除（二次确认）、属性、受保护路径提权 | `server.files`；POSIX 权限显示另需 `server.posix.permissions` | P0 |
-| 终端 | PTY 会话打开/附加/尺寸同步、扩展键栏、会话切换、断开即 detach | `server.terminal` | P0 |
-| 容器 | 容器/镜像/Stack/网络/卷的查看与受控操作、容器日志 | `server.docker` | P1 |
-| 进程与守护 | 性能趋势、进程分页查询与结束进程、受管工作负载与实时日志 | `server.processes` / `server.metrics` / `server.guardian` | P1 |
-| 设置与诊断 | 连接管理、服务器信息与功能支持、账户与安全（凭据保险箱）、外观与语言、诊断导出、关于、登出 | — | P0（骨架） |
-| 部署与 Web 服务 | 查看发布与运行状态、站点列表与受控操作 | `server.application-deployments` / `server.web-server` | P2（能力可用才显示） |
+实际可用功能见 [当前状态](../status/Progress.md)。新增功能见 [内置应用补齐计划](../plans/BuiltInParity.md)，不再沿用旧 V1 排除清单。
 
-### 2.2 初版明确不做
+### 2.2 布局目标与实现状态
 
-Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码编辑器、文件服务（SMB）、任务栏/多窗口、桌面壁纸与主题调色板同步。
-
-上述限制针对本 V1 范围。后续“只有手机也能部署”的扩展见 [无电脑部署路线图](./RelaxKonOS.Mobile.Deployment.Roadmap.md)：其中 Git、轻量编辑、证书与网络发布有独立实施计划，按阶段交付，不因建立文档就纳入 V1 已实现功能。2026-09-30 用户要求继续补齐手机端相对于桌面的内置应用与功能，完整差异和 BP 编号见 [内置应用补齐计划](./RelaxKonOS.Mobile.BuiltInParity.Plan.md)；这些后续任务不再受首版排除清单限制，实际交付状态仍以实施进展为准。认证、凭据、自适应和能力门控继续遵守本文及对应专属设计。
-
-理由：这些应用的桌面工作流密度高（多栏 diff、表格批量编辑、配置原文编辑），在移动端没有已定义的"可完成且安全"的任务流。宁可没有入口，也不给只读或不可操作的占位。
+下文规定交互与安全约束；平板分栏等布局目标需要按页面核对实现，不能仅因定义了断点就视为完成。设备验收统一见 [验收清单](../status/Verification.md)。
 
 ### 2.3 一个必须先讲清的密码域问题
 
-登录标识可能是**宿主系统账户名**，也可能是 **Alias**（见 [`RelaxKonOS.AliasLogin.Goal.md`](../../../docs/platform/RelaxKonOS.AliasLogin.Goal.md)）。这两个不是同一个密码域：
+登录标识可能是**宿主系统账户名**，也可能是 **Alias**（见 [`RelaxKonOS.AliasLogin.Goal.md`](../../../../docs/platform/RelaxKonOS.AliasLogin.Goal.md)）。这两个不是同一个密码域：
 
 - **登录凭据**：满足 `/auth/login`。Alias 密码可满足。
 - **提权凭据**：满足 `POST /privileged/elevation` 的 `elevation-password-required` 挑战，必须是**宿主 OS 账户密码**，且该账户当前必须是宿主管理员。Alias 密码**永远不能满足**提权挑战（AliasLogin 明文规则：「Alias 密码不能通过任何现有 OS 提权复验」）。
 
-因此初版必须把两者做成**两个独立保险箱**，不能"登录密码顺便当管理员密码"。§5 全部围绕这一点展开。
+因此必须把两者做成**两个独立保险箱**，不能"登录密码顺便当管理员密码"。§5 全部围绕这一点展开。
 
 ---
 
 ## 3. 页面清单
 
-路由常量集中在 Kotlin `ui/nav/Routes.kt`，与 `AuthApiRoutes` / `PrivilegedApiRoutes` 一样只定义一次。布局列标明该页在各断点下的形态（Compact `<600dp`、Medium `600–839dp`、Expanded `≥840dp`，沿用 [`LayoutState.kt`](../app/src/main/java/app/relaxkonos/mobile/core/layout/LayoutState.kt) 的既有实现）。
+路由常量集中在 Kotlin `ui/nav/Routes.kt`，与 `AuthApiRoutes` / `PrivilegedApiRoutes` 一样只定义一次。布局列标明该页在各断点下的形态（Compact `<600dp`、Medium `600–839dp`、Expanded `≥840dp`，沿用 [`LayoutState.kt`](../../app/src/main/java/app/relaxkonos/mobile/core/layout/LayoutState.kt) 的既有实现）。
 
 ### 3.1 认证入口（Shell 之外）
 
@@ -77,13 +64,13 @@ Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码�
 | `connect/list` | 连接档案列表 | 多服务器选择、编辑、删除单条记录；显示该条是否已保存密码/是否受指纹保护 | 单栏列表；平板为列表 + 详情两栏 |
 | `connect/login` | 登录 | 服务器地址、登录标识、密码、记住连接、已保存密码状态、**登录** | 单栏卡片；平板居中卡片 + 连接信息侧栏 |
 
-启动裁决（不是独立路由，是 `AuthSession` 的一个状态）：进程启动后先读本地连接档案；无论是否有档案，均进入同一形态的 `connect/login`。有档案时仅默认选中最近使用项并显示该身份的「已保存密码」状态；密码输入框仍为空且始终可用。实际读取保存密码只在用户点击「登录」、且本次未手动输入密码时发生。完整状态模型与决策见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md)。
+启动裁决（不是独立路由，是 `AuthSession` 的一个状态）：进程启动后先读本地连接档案；无论是否有档案，均进入同一形态的 `connect/login`。有档案时仅默认选中最近使用项并显示该身份的「已保存密码」状态；密码输入框仍为空且始终可用。实际读取保存密码只在用户点击「登录」、且本次未手动输入密码时发生。完整状态模型与决策见 [`LoginCredentials.Design.md`](LoginCredentials.Design.md)。
 
 密码输入框（登录页与提权对话框共用同一个控件）是**两态**的：默认掩码，点击尾部眼睛图标切成明文并**保持在明文**，再点一次回到掩码。它不是"按住才可见"的手势——长密码需要能看清，而不是靠按住按键维持。可见性只是展示状态（`rememberSaveable`），不写入会话、保险箱或任何文件；密码本身仍按 §5.3.2 的规则以 `CharArray` 承载并在请求结束后清零。
 
 ### 3.2 Shell 顶级目的地
 
-顶级导航固定五项，对齐 [`RelaxKonOS.Mobile.Design.md`](./RelaxKonOS.Mobile.Design.md) §5.1：**主页 / 文件 / 终端 / 管理 / 更多**。
+顶级导航固定五项，对齐 [`Product.Design.md`](Product.Design.md) §5.1：**主页 / 文件 / 终端 / 管理 / 更多**。
 
 | 路由 | 页面 | Compact | Medium | Expanded |
 | --- | --- | --- | --- | --- |
@@ -95,27 +82,21 @@ Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码�
 
 ### 3.3 嵌套页面
 
-| 路由 | 页面 | 说明 | 归属 |
-| --- | --- | --- | --- |
-| `files/detail?path=` | 文件详情/属性 | 大小、时间、POSIX 权限、打开方式 | files |
-| `files/upload` | 上传（概览 + 逐项进度） | 走系统文件选择器取流 | files |
-| `terminal/sessions` | 会话列表 | 多实例切换、显式关闭 PTY | terminal |
-| `manage/docker/containers` | 容器列表 | 筛选、状态徽标 | manage |
-| `manage/docker/containers/{id}` | 容器详情 | 详情 + 日志 + 受控操作 | manage |
-| `manage/docker/images` | 镜像列表 | 拉取、删除 | manage |
-| `manage/docker/stacks` | Stack 列表 | 定义查看、启停 | manage |
-| `manage/monitor` | 性能 | CPU/内存/磁盘/网络/GPU 趋势 | manage |
-| `manage/processes` | 进程 | 分页查询、结束进程 | manage |
-| `manage/guardian` | 守护工作负载 | 列表 + 状态 | manage |
-| `manage/guardian/{id}` | 工作负载详情 | 声明、实时日志、启停/重启 | manage |
-| `manage/deployments` | 部署 | 发布与操作状态 | manage |
-| `manage/webservers` | Web 服务 | 实例/站点、重载、配置测试 | manage |
-| `more/connections` | 连接管理 | 等同 `connect/list`（Shell 内入口） | more |
-| `more/server-information` | 服务器信息 | 基本信息、本地化功能名称、默认折叠的原始能力标识 | more |
-| `more/account-security` | **账户与安全** | 两个凭据保险箱、指纹开关、清除 | more |
-| `more/appearance` | 外观与语言 | 颜色模式、跟随系统、语言覆写 | more |
-| `more/diagnostics` | 诊断 | 连接自检、服务端健康、日志导出（已脱敏） | more |
-| `more/about` | 关于 | 客户端版本、开源许可 | more |
+实际路由以 [`Routes.kt`](../../app/src/main/java/app/relaxkonos/mobile/ui/nav/Routes.kt) 为准。资源 ID 和路径由页面状态持有，不放入路由字符串；详情不另建虚构的 `/{id}` 或查询参数路由。
+
+| 路由 | 页面 |
+| --- | --- |
+| `files/detail` | 文件详情与预览 |
+| `manage/monitor`、`manage/processes` | 性能与进程 |
+| `manage/deployments`、`manage/deployments/detail` | 应用部署列表与详情 |
+| `manage/docker` | Docker 与 Compose |
+| `manage/git` | Git 编辑与构建 |
+| `manage/websites` | 网站发布 |
+| `manage/guardian`、`manage/scripts` | 进程守护与脚本任务 |
+| `manage/operations` | 任务与恢复 |
+| `more/connections`、`more/server-information` | 连接与服务器信息 |
+| `more/account-security` | 账户与安全 |
+| `more/appearance`、`more/diagnostics`、`more/about` | 外观、诊断、关于 |
 
 首页不展示服务器能力清单，也不提供与顶级「文件」导航重复的「打开文件」按钮。「更多 → 服务器信息」读取当前会话的服务器描述，以本地化名称展示支持的功能；这些名称只说明服务器上报的支持，不承诺手机端已有操作入口或当前账户有权限。未知能力以附加功能数量提示，所有原始标识仅在用户展开「技术详情」后展示，并可选择复制。该页在 Compact/Medium 作为可返回的独立页面，Expanded 复用更多页的详情栏。
 
@@ -124,7 +105,7 @@ Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码�
 | 叠加层 | 触发 | 约束 |
 | --- | --- | --- |
 | 提权对话框 | 收到 `403 elevation-required` / `elevation-password-required` | 显示 capability 与**规范化目标**、账户名、`使用指纹确认` 与 `输入密码`；不做成底部 Sheet（避免误触绕过） |
-| 危险操作确认 | 删除、停止/重启服务、部署、关闭终端 | 确认文本必须含具体目标（[`RelaxKonOS.Security.md`](../../../docs/platform/RelaxKonOS.Security.md) §7） |
+| 危险操作确认 | 删除、停止/重启服务、部署、关闭终端 | 确认文本必须含具体目标（[`RelaxKonOS.Security.md`](../../../../docs/platform/RelaxKonOS.Security.md) §7） |
 | 错误横幅 / Snackbar | 网络、能力缺失、问题码 | 只显示映射后的本地化文案，不显示原始 `type` URI |
 | 进度 Sheet | 上传/下载/长操作 | 可折叠，不阻塞导航 |
 
@@ -135,32 +116,21 @@ Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码�
 ### 4.1 导航图
 
 ```text
-启动
- │
- ├─ 无连接档案 ──────────────► connect/login（统一登录表单）
- │                                  │
- └─ 有连接档案 ──► connect/login（统一登录表单；显示已保存密码状态）
-                                    │
-                         认证成功 → 拉取 ServerDescriptorDto
-                                    │
-                          ┌─────────▼─────────┐
-                          │   MobileShell      │  ← 五项顶级导航
-                          └─────────┬─────────┘
-        ┌───────────┬───────────────┼───────────────┬───────────┐
-        ▼           ▼               ▼               ▼           ▼
-      home        files         terminal         manage       more
-                    │               │               │           │
-              files/detail   terminal/sessions  docker/*   account-security
-              files/upload                      monitor   connections
-                                                processes appearance
-                                                guardian  diagnostics
-                                                deploy    about
-                                                webservers
+connect/login ─ 认证成功 ─ MobileShell
+                            ├─ home：身份与状态
+                            ├─ files：目录 → files/detail；上传卡片
+                            ├─ terminal：会话/输入/输出（页面内部状态）
+                            ├─ manage：docker / deployments / websites / git
+                            │          monitor / processes / guardian / scripts / operations
+                            └─ more：connections / account-security / server-information
+                                      appearance / diagnostics / about
 ```
+
+图中 manage/more 子项使用各自完整路由（见 §3.3）；会话和上传卡片不是额外路由。
 
 三条流转规则：
 
-1. **顶级目的地互不压栈。** 在 `files` 里进了详情再点 `terminal`，切回 `files` 时应回到该目的地自己的栈顶（Compose Navigation 的 save/restore state），而不是被重置到列表——平板上尤其明显。
+1. **顶级目的地互不压栈。** 在 `files` 里进了详情再点 `terminal`，切回 `files` 时应回到该目的地自己的栈顶（`MobileNavigator` 为每个目的地保留独立栈），而不是被重置到列表——平板上尤其明显。
 2. **同一目的地在不同断点下用不同承载方式。** Expanded 下 `files/detail` 渲染为右栏而不是入栈页面，系统返回键因此不"返回"到列表，而是直接退出该目的地（与平板预期一致）。
 3. **登出是清栈操作。** 登出先 `POST /auth/logout` 吊销 refresh token，再清空整个 back stack 到 `connect/login`，并保留连接档案（对齐桌面「退出远程桌面只注销会话，不清除已保存连接」）。
 
@@ -180,7 +150,7 @@ Git、隧道/代理、防火墙、证书、注册表、内置浏览器、代码�
  └─ 后台/进程回收 ─► 回前台重建：先刷新 token，再按当前路由重建页面与 Hub 订阅
 ```
 
-服务端重启会让 refresh token 失效（[`RelaxKonOS.Login.md`](../../../docs/platform/RelaxKonOS.Login.md) §7），此时属于「refresh 被明确拒绝」，走回登录页但**不删凭据**。
+服务端重启会让 refresh token 失效（[`RelaxKonOS.Login.md`](../../../../docs/platform/RelaxKonOS.Login.md) §7），此时属于「refresh 被明确拒绝」，走回登录页但**不删凭据**。
 
 ### 4.3 提权流转
 
@@ -218,7 +188,7 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 
 ## 5. 指纹解锁已保存凭据（核心需求）
 
-> 本章规定凭据保险箱的安全约束与解锁机制。**登录决策、密码输入框与本地凭据状态模型**（何时用手动密码、何时读保存密码、何时允许删记录）另见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md)。两文冲突时，本章 §5.3「不可变安全约束」优先。
+> 本章规定凭据保险箱的安全约束与解锁机制。**登录决策、密码输入框与本地凭据状态模型**（何时用手动密码、何时读保存密码、何时允许删记录）另见 [`LoginCredentials.Design.md`](LoginCredentials.Design.md)。两文冲突时，本章 §5.3「不可变安全约束」优先。
 
 ### 5.1 需求分解
 
@@ -243,13 +213,13 @@ ElevationRepository：本 jti 下 (capability, target) 是否已有有效授权�
 
 **为什么提权保险箱更严格。** 提权密码一行就能改变宿主机状态（文件删除、服务启停、部署、宿主时区/主机名），且服务端只给 5 分钟、单 capability 的窗口。允许它被「PIN 解锁的长期密钥」保护，等于把设备 PIN 的强度降级为宿主管理员强度。宁可让用户每次手输，也不降级。
 
-**密钥永久失效不再删除记录（2026-09-23 修订）。** 用户新录入指纹会令 Keystore 密钥永久失效。两个保险箱的处置统一改为**标记作废、保留记录与密文、禁止读取**：一个保险箱共用一个 Keystore alias，所以 alias 失效时该保险箱的全部记录都必须标记作废。用户手动登录成功并明确选择保存时，客户端删除失效 alias、创建新 alias、再次请求授权，只重新密封当前身份；其他旧记录保持作废。只有用户显式的「忘记密码」或「删除登录记录」才会删掉记录本身。生物识别链路上的任何失败——取消、不匹配、暂时锁定、密钥失效——都不自动丢弃用户保存过的凭据。见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md) §7.4（D5）。
+**密钥永久失效不再删除记录（2026-09-23 修订）。** 用户新录入指纹会令 Keystore 密钥永久失效。两个保险箱的处置统一改为**标记作废、保留记录与密文、禁止读取**：一个保险箱共用一个 Keystore alias，所以 alias 失效时该保险箱的全部记录都必须标记作废。用户手动登录成功并明确选择保存时，客户端删除失效 alias、创建新 alias、再次请求授权，只重新密封当前身份；其他旧记录保持作废。只有用户显式的「忘记密码」或「删除登录记录」才会删掉记录本身。生物识别链路上的任何失败——取消、不匹配、暂时锁定、密钥失效——都不自动丢弃用户保存过的凭据。见 [`LoginCredentials.Design.md`](LoginCredentials.Design.md) §7.4（D5）。
 
 ### 5.3 不可变安全约束
 
 1. **指纹不产生任何服务端凭据。** 指理解封的只是本地密文；`/auth/login` 与 `/privileged/elevation` 每次仍由服务端用 `IIdentityProvider` 重新验证密码。
 2. **服务器不存储密码**（既有原则，不变）。Android 端明文也只在内存中短暂存在：用 `ByteArray`/`CharArray` 承载，提交后立即清零；不进入 `String` 常量池、不进入日志、崩溃报告、分析事件或诊断导出。
-3. **不保存 RefreshToken。** 沿用桌面与 M0 规则：iOS/Android 均只在内存中持有 token。
+3. **不保存 RefreshToken。** 沿用当前跨端规则：iOS/Android 均只在内存中持有 token。
 4. **密文与元数据分离。** 密文写入 `noBackupFilesDir`（`allowBackup="false"` 已设置）；Keystore 只保存密钥，不保存数据。
 5. **AAD 绑定记录身份。** AES-GCM 的附加认证数据绑定 `vault | serviceId | account`，防止把 A 服务身份的密文挪到 B 服务身份条目下复用；临时隧道端口不参与 AAD。
 6. **不做跨设备迁移。** 不导出、不云同步、不随系统备份恢复。卸载即失效（Keystore 密钥随应用卸载销毁）。
@@ -353,7 +323,7 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
         └─ 任意失败 ─► 立即清除本次明文；不删除、不覆盖已保存凭据
 ```
 
-生物识别取消、失败、锁定或密钥失效时均不读取或删除保存密码；密码框保持为空，用户仍可手动输入或重新尝试。密钥永久失效的记录标记为作废并保留记录，详见 [`RelaxKonOS.Mobile.LoginCredentials.Design.md`](./RelaxKonOS.Mobile.LoginCredentials.Design.md) §7。
+生物识别取消、失败、锁定或密钥失效时均不读取或删除保存密码；密码框保持为空，用户仍可手动输入或重新尝试。密钥永久失效的记录标记为作废并保留记录，详见 [`LoginCredentials.Design.md`](LoginCredentials.Design.md) §7。
 
 **指纹提权**
 
@@ -417,7 +387,7 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
 
 | 编号 | 决策 | 结论 | 落点 |
 | --- | --- | --- | --- |
-| D1 | 是否允许在客户端保存宿主管理员密码 | **允许** | 见下方 §5.8.1；已在 [`RelaxKonOS.Security.md`](../../../docs/platform/RelaxKonOS.Security.md) §5.1 登记为受限例外 |
+| D1 | 是否允许在客户端保存宿主管理员密码 | **允许** | 见下方 §5.8.1；已在 [`RelaxKonOS.Security.md`](../../../../docs/platform/RelaxKonOS.Security.md) §5.1 登记为受限例外 |
 | D2 | `WEAK_ONLY` 设备是否允许开启连接保险箱 | **允许**，仅限连接保险箱；设置页必须标注强度较低 | §5.6 |
 | D3 | `DEVICE_CREDENTIAL_ONLY` 的时间窗降级 | **接受**，仅限连接保险箱，5 分钟窗口 | §5.6 |
 | D4 | 服务端拒绝提权时如何处置已保存的密码 | **一律删除**，不按拒绝原因区分 | §5.5、§5.8.2 |
@@ -451,103 +421,15 @@ connect/login（统一表单；密码框 value 始终只表示本次手动输入
 
 ---
 
-## 6. Kotlin 工程落点
+## 6. 实现职责
 
-下面是**已落地**的目录（与源码逐项对应；尚未落地的部分单列在表后）：
+`AppContainer` 组合应用级会话、保险箱、上传及领域仓库；`AuthSession` 管理登录、刷新与注销；`MobileNavigator` 保存各顶级目的地的导航栈。平台安全由 `security/` 实现，SSH 工作区使用独立 `servercenter/` 域，页面由 `ui/` 内对应 ViewModel 和 Compose 控件承载。
 
-```text
-app/src/main/java/app/relaxkonos/mobile/
-├─ MainActivity.kt                      # AppCompatActivity 宿主：应用语言/夜间模式、会话裁决、全局叠加层
-├─ AppContainer.kt                      # 组合根（含 RelaxKonApplication）
-├─ core/
-│  ├─ auth/  AuthSession.kt             # SessionState / TokenStore 同文件；401 单次刷新 + 单次重试
-│  ├─ layout/LayoutState.kt             # Compact / Medium / Expanded 断点
-│  └─ net/   RelaxKonApi.kt             # REST 实现（路由常量按域分组，同文件私有）
-│            RelaxKonGateway.kt         # 便于替换的网关接口
-│            Models.kt  ApiResult.kt  Wire.kt
-├─ security/
-│  ├─ BiometricCapability.kt            # STRONG / WEAK_ONLY / DEVICE_CREDENTIAL_ONLY / NONE + 解锁模式映射
-│  ├─ VaultKeyManager.kt                # Keystore 密钥生成、失效检测、StrongBox 探测
-│  ├─ CredentialVault.kt                # 两个保险箱的读写、AAD 绑定、二进制容器
-│  ├─ BiometricUnlock.kt                # BiometricPrompt 封装 + VaultAccess（保存/解封全序列）
-│  └─ model/SavedConnection.kt
-├─ data/
-│  ├─ ConnectionProfileStore.kt
-│  ├─ ElevationRepository.kt            # 含 ElevationCoordinator / ElevationAnswer(Provider)
-│  ├─ FilesRepository.kt
-│  └─ SystemRepository.kt
-└─ ui/
-   ├─ nav/    Routes.kt  MobileNavigator.kt  MobileNavHost.kt  ShellScaffold.kt
-   ├─ connect/ LoginScreen.kt  ConnectionListScreen.kt
-   ├─ home/    HomeScreen.kt
-   ├─ files/   FilesScreen.kt  FileDetailScreen.kt
-   ├─ manage/  ManageScreen.kt  monitor/MonitorScreen.kt  processes/ProcessesScreen.kt
-   ├─ more/    MoreScreen.kt  AccountSecurityScreen.kt  ConnectionsScreen.kt
-   │           AppearanceScreen.kt  DiagnosticsScreen.kt  AboutScreen.kt
-   └─ common/  CommonState.kt  UiMessage.kt  Labels.kt  SectionCard.kt
-               ElevationDialog.kt  ConfirmDangerousDialog.kt  ErrorBanner.kt  ProgressSheet.kt
-```
+不再维护逐阶段的“待新增文件”清单。具体领域行为见 [文档目录](../README.md)，依赖和 Manifest 以源码为准。`allowBackup="false"`：凭据密文不得随系统备份跨设备迁移。
 
-尚未落地（按阶段归属，落地时补入上表）：
+## 7. 验证
 
-| 计划文件 | 阶段 | 说明 |
-| --- | --- | --- |
-| `core/net/ProblemDetails.kt` `RelaxKonJson.kt` | — | 已由 `ApiResult.kt` + `Wire.kt` 覆盖，不单独拆文件 |
-| `data/AuthRepository.kt` | — | 认证职责已在 `AuthSession` 内，不另加一层 |
-| `data/TerminalRepository.kt`、`ui/terminal/*` | V1-C | 需要 SignalR 客户端与 PTY 渲染 |
-| `data/ManageRepository.kt`、`ui/manage/docker|guardian|deployments|webservers/*` | V1-E | Docker、守护工作负载、部署、Web 服务 |
-| `ui/files/UploadScreen.kt` | V1-C | 需要网关新增流式上传入口；当前 `RelaxKonGateway` 无上传方法 |
-| `security/model/SavedElevationCredential.kt` | — | 管理员凭据即 `VaultRecord`，无需额外模型 |
-
-依赖新增（仅 Android 侧 Gradle，不进 `Directory.Packages.props`）：
-
-| 依赖 | 用途 | 状态 |
-| --- | --- | --- |
-| `androidx.biometric:biometric` | `BiometricPrompt` / `BiometricManager` 兼容封装 | 已用于 `security/` |
-| `androidx.fragment:fragment` | `FragmentActivity` 宿主（`BiometricPrompt` 要求） | 已用于 `MainActivity` |
-| `androidx.lifecycle:lifecycle-viewmodel-compose` | 页面状态与意图 | 已用于各目的地状态 |
-| `androidx.compose.material:material-icons-core` | 导航项图标 | 已用于 `ui/nav/` |
-| `androidx.appcompat:appcompat` | API 33 以下的“应用语言”实现（`AppCompatDelegate.setApplicationLocales`） | 已用于 `MainActivity` + `more/appearance` |
-| `androidx.datastore:datastore` | 原子写入 | 未采用：现有实现用 `noBackupFilesDir` 下的临时文件 + `renameTo` 原子提交，`CredentialVault` / `ConnectionProfileStore` 已覆盖该需求 |
-| `androidx.navigation:navigation-compose` | 导航图与 save/restore state | 未采用：§4.1 的“每个目的地各自保有栈”由 `ui/nav/MobileNavigator.kt` 直接表达，避免为三条规则引入整张导航图 |
-| `androidx.security:security-crypto` | `EncryptedFile` | 未采用：密文已由 Keystore 密钥直接加密，`EncryptedFile` 只会再包一层非必要的加密 |
-
-Manifest 新增：
-
-```xml
-<uses-permission android:name="android.permission.USE_BIOMETRIC" />
-<!-- API 23–27 旧接口回退，按探测结果决定是否需要 -->
-<uses-permission android:name="android.permission.USE_FINGERPRINT" />
-```
-
-另有 `android:localeConfig="@xml/locales_config"`（语言级标签 en / zh / ja，与 `values*` 目录一一对应）与
-`androidx.appcompat.app.AppCompatDelegate.autoStoreLocales`（API 33 以下的语言持久化）。
-
-`allowBackup="false"` 保持不动——凭据密文不得随系统备份迁移到其他设备。
-
----
-
-## 7. 阶段与验收
-
-| 阶段 | 交付 | 退出条件 |
-| --- | --- | --- |
-| V1-A：认证闭环 | 连接档案、登录、token 刷新、**连接保险箱 + 指纹登录**、登出 | 手机与平板均能用指纹登录；新录指纹后要求重新输入；卸载重装后保险箱为空 |
-| V1-B：自适应 Shell | 五项顶级导航、断点布局、能力门控、首页 | 旋转/分屏/重启后布局正确；能力缺失时入口不出现 |
-| V1-C：核心操作 | 文件、终端（含真机触摸/IME/软键盘 PoC） | 手机 + 两种平板尺寸完成登录、上传、终端 attach 与断线恢复 |
-| V1-D：提权闭环 | 提权对话框、**提权保险箱 + 指纹提权**、危险操作确认 | 受保护路径删除与服务操作经指纹完成；5 分钟窗口内复用、token 刷新后失效均验证 |
-| V1-E：管理工作台 | Docker、进程/守护、部署（按能力） | 失败、取消、超时均有可理解状态 |
-
-**必须覆盖的自动化测试**
-
-- `CredentialVault`：加解密往返、AAD 不匹配拒绝、记录键隔离、密钥失效处理、明文清零。
-- `BiometricCapability`：四种探测结果的映射与 UI 门控。
-- `AuthSession` 状态机：登录成功/失败、401 单次刷新重试、refresh 被拒后的清会话、网络错误不清会话。
-- `ElevationRepository`：`elevation-required` → 授权 → 单次重试；jti 变化后授权失效；重试不循环。
-- 秘密扫描：断言日志、诊断导出与崩溃报告上下文中不出现密码与 token。
-
-**必须的真机矩阵**：一台手机（竖/横屏）、一台约 8 英寸平板、一台约 11 英寸平板。每台验证：指纹登录（成功/取消/失败/锁定）、指纹提权、软键盘遮挡、旋转、后台恢复、危险操作确认文本。
-
----
+认证、凭据、授权和导航的自动化证据见 [当前状态](../status/Progress.md)。指纹、锁屏窗口、软键盘、旋转与后台恢复的设备矩阵见 [验收清单](../status/Verification.md)。
 
 ## 8. AI Agent 实施规则
 

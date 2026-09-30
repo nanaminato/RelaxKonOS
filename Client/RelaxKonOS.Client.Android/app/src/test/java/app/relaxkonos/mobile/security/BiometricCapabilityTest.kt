@@ -8,7 +8,7 @@ import org.junit.Test
 
 /**
  * The four-state authenticator mapping and the vault gating decisions D1-D3 of
- * `RelaxKonOS.Mobile.V1.Design.md` §5.6. These are product decisions, so they are asserted rather than
+ * `Shell.Design.md` §5.6. These are product decisions, so they are asserted rather than
  * left to whichever screen happens to call the mapping.
  */
 class BiometricCapabilityTest {

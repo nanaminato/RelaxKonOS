@@ -21,7 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The authentication state machine of `RelaxKonOS.Mobile.V1.Design.md` §4.2: a 401 refreshes exactly
+ * The authentication state machine of `Shell.Design.md` §4.2: a 401 refreshes exactly
  * once and retries exactly once, a refresh the server rejects clears the session, and a transport
  * failure changes nothing.
  */
@@ -239,7 +239,7 @@ class AuthSessionTest {
     /**
      * The only thing that may touch a stored credential after a sign-in attempt is the step that runs
      * when the server accepted it. A rejected sign-in must therefore never reach that step
-     * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.3).
+     * (`LoginCredentials.Design.md` §7.3).
      */
     @Test
     fun `a failed sign-in never runs the post-login credential step`() = runTest {

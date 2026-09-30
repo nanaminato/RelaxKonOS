@@ -4,7 +4,7 @@
 
 > 内置终端应用：基于 [RoyalTerminal](https://github.com/royalapplications/RoyalTerminal) NuGet 包引入终端能力，支持 **Remote Mode**（SignalR 远端 PTY）与 **Local Mode**（本地 PTY 回退）。
 
-Android 客户端使用同一 Server Hub；`AttachExisting(sessionId)` 只附加当前用户仍存活的会话，找不到时返回 `terminal.session_not_found`，供网络恢复路径避免误创建 PTY。移动端交互规范和验收状态由 [Android AD07 文档](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.TerminalAutomation.Plan.md) 维护。
+Android 客户端使用同一 Server Hub；`AttachExisting(sessionId)` 只附加当前用户仍存活的会话，找不到时返回 `terminal.session_not_found`，供网络恢复路径避免误创建 PTY。移动端交互规范和验收状态由 [Android AD07 文档](../../Client/RelaxKonOS.Client.Android/docs/features/TerminalAutomation.md) 维护。
 
 Linux System Mode 的远程终端由 `--user-terminal` Helper 在验证登录账号的 canonical username、UID 和 home 后启动。Helper 初始化该账号的 supplementary groups，并同时替换 real/effective/saved UID/GID、验证无法直接恢复 UID 0，再创建 PTY。交互终端不设置 `PR_SET_NO_NEW_PRIVS`，因此 `sudo` / `su` 按宿主的 sudoers、PAM 与账号权限工作；不要求 RelaxKonOS 管理员角色，也不会自动授予 root 权限。独立的 `--user-execution` 文件/Git worker 继续设置该标志。
 

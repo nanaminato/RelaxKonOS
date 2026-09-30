@@ -197,7 +197,7 @@ private data class ManageDomain(
  * Manage.
  *
  * Only domains with a working mobile workflow are listed. The design forbids adding an entry just
- * because the desktop has one (`RelaxKonOS.Mobile.V1.Design.md` §8). Web publishing currently has
+ * because the desktop has one (`Shell.Design.md` §8). Web publishing currently has
  * a read-only diagnostic workflow; site, certificate and network mutations remain outside this screen.
  *
  * The domains sit in one group rather than in one card each: they are alternatives at the same level,

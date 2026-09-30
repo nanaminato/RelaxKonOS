@@ -50,7 +50,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * The saved-login picker shown from the sign-in screen.
  *
  * Each row offers two actions that never stand in for each other
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3): **forget the password** drops the credential
+ * (`LoginCredentials.Design.md` §6.3): **forget the password** drops the credential
  * and keeps the login, **delete login** drops both. Both address exactly one row — nothing here acts on
  * a server address alone, because one server can hold several accounts and their records are independent.
  *
@@ -244,7 +244,7 @@ private fun SwipeableSavedLoginEntry(
                 ).joinToString(" · "),
                 // The host's own operating system once the server has said what it is, the generic
                 // connection mark while it has not: a row never guesses a platform from an address
-                // (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
+                // (`LoginCredentials.Design.md` §6.3).
                 leading = {
                     ServerPlatformBadge(login.serviceId)
                 },

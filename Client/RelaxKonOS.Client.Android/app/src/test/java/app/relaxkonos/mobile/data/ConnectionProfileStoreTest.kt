@@ -12,7 +12,7 @@ import org.junit.Test
 
 /**
  * The saved login list holds no secret, but two properties matter
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §2.2, §6.3):
+ * (`LoginCredentials.Design.md` §2.2, §6.3):
  *
  * - every mutation addresses one `(serviceId, identifier)` pair, so one server's other accounts are
  *   never touched;

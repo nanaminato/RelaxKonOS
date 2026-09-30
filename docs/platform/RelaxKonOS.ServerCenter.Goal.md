@@ -4,7 +4,7 @@
 >
 > 范围：桌面客户端、Android 手机客户端、Windows Server / Linux System Mode / Linux User Mode 服务端，以及发布与部署工具。iOS 客户端不在当前代码基线中；实现 iOS 时须遵循同一交互与安全契约。
 >
-> 关联：[部署说明](../../deployment/README.md)、[User Mode Goal](../services/RelaxKonOS.UserModeServer.Goal.md)、[登录](./RelaxKonOS.Login.md)、[安全](./RelaxKonOS.Security.md)、[端口转发](../applications/RelaxKonOS.PortForwarding.md)、[Android 接入设计](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.ServerCenter.Design.md)。
+> 关联：[部署说明](../../deployment/README.md)、[User Mode Goal](../services/RelaxKonOS.UserModeServer.Goal.md)、[登录](./RelaxKonOS.Login.md)、[安全](./RelaxKonOS.Security.md)、[端口转发](../applications/RelaxKonOS.PortForwarding.md)、[Android 接入设计](../../Client/RelaxKonOS.Client.Android/docs/features/ServerCenter.md)。
 
 ## 1. Goal
 
@@ -73,7 +73,7 @@
 
 - 未登录时保留 `LoginScreen` 的三字段单形态与保存密码状态行，增设「安装或管理服务器」次级入口；现有 `ConnectionListScreen` 仍是**按账号选择登录**，不变成宿主列表。
 - 已登录时沿用「主页 / 文件 / 终端 / 管理 / 更多」五类导航。主页可提示当前宿主有更新；「更多 → 连接」提供进入宿主详情的入口，登录记录的忘记密码/删除行为保持原语义。服务器部署不是「管理」下一个由 Server Capabilities 控制的应用，因为首次安装时 Server 不存在。
-- Android 专属的页面、路由、状态归属、凭据与后台恢复规则集中见 [Android 接入设计](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.ServerCenter.Design.md)，遵循该工程 `AGENTS.md` 的文档归属规则。未来 iOS 另做平台实现，不改变这里的部署契约。
+- Android 专属的页面、路由、状态归属、凭据与后台恢复规则集中见 [Android 接入设计](../../Client/RelaxKonOS.Client.Android/docs/features/ServerCenter.md)，遵循该工程 `AGENTS.md` 的文档归属规则。未来 iOS 另做平台实现，不改变这里的部署契约。
 
 ### 3.4 统一操作步骤
 

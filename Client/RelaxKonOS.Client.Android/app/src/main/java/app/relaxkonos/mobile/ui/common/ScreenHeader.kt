@@ -27,7 +27,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * One composable rather than a `Text(headlineSmall)` per screen, so the title size, the gap to the
  * content and the back affordance cannot drift apart. [onBack] is `null` when the screen is rendered
  * as a pane in the Expanded layout, and a pane has nothing to go back from — a visible but inert
- * button would misdescribe the layout (`RelaxKonOS.Mobile.V1.Design.md` §4.1).
+ * button would misdescribe the layout (`Shell.Design.md` §4.1).
  */
 @Composable
 fun ScreenHeader(

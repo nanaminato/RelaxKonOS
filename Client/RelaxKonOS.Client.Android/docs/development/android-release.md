@@ -4,7 +4,7 @@
 
 Android 客户端是独立的 Kotlin + Jetpack Compose Gradle 工程，位于 `Client/RelaxKonOS.Client.Android`，不使用 .NET Android workload 或 Avalonia。
 
-工程的 [`gradle/wrapper/gradle-wrapper.properties`](../gradle/wrapper/gradle-wrapper.properties) 将发行包固定为本机 `D:\environments\gradle-9.7.1-all.zip`（`file:///D:/environments/gradle-9.7.1-all.zip`）。首次执行环境初始化时，`Initialize-AndroidEnvironment.ps1` 从该本地包解压 Gradle；构建过程不应改回在线 Gradle 分发地址。
+工程的 [`gradle/wrapper/gradle-wrapper.properties`](../../gradle/wrapper/gradle-wrapper.properties) 将发行包固定为本机 `D:\environments\gradle-9.7.1-all.zip`（`file:///D:/environments/gradle-9.7.1-all.zip`）。首次执行环境初始化时，`Initialize-AndroidEnvironment.ps1` 从该本地包解压 Gradle；构建过程不应改回在线 Gradle 分发地址。
 
 ```powershell
 pwsh Tools/Mobile/Initialize-AndroidEnvironment.ps1
@@ -31,7 +31,7 @@ Pop-Location
 
 ## 调试服务器地址
 
-Android 模拟器访问开发机服务器使用 `http://10.0.2.2:5090`；真机必须填写开发机在局域网中可访问的 HTTP(S) 地址。M0 Manifest 暂时允许 cleartext，以便开发服务器联调。发布前改为只接受 HTTPS，并配置网络安全策略与证书验证。
+Android 模拟器访问开发机服务器使用 `http://10.0.2.2:5090`；真机必须填写开发机在局域网中可访问的 HTTP(S) 地址。当前开发 Manifest 允许 cleartext，以便开发服务器联调。发布前改为只接受 HTTPS，并配置网络安全策略与证书验证。
 
 ## 本机 Release 签名与发布机
 
@@ -78,3 +78,7 @@ RelaxKonOS-<version>-android-universal.release.json
 
 - 移除 cleartext 支持，验证 Android Keystore、文件分享 URI、后台恢复及危险操作确认。
 - 至少覆盖一台手机、一台 8 英寸平板和一台 11 英寸平板的竖横屏、软键盘、网络切换与恢复。
+
+## 图标与资源检查
+
+桌面 `Client/RelaxKonOS.Client/Assets` 是图标来源。修改后从仓库根目录运行 `python3 Tools/Mobile/sync-desktop-icons.py`，同步 Android 图标与派生启动图标；检查模式使用 `--check`，不写文件且差异时返回非零。同步检查三套 `values`、`values-zh`、`values-ja` 的字符串键集、重复键和 XML 解析；实际视觉仍按集中设备矩阵核验。

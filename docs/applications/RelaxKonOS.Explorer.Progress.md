@@ -93,7 +93,7 @@
 
 ## 第七轮完成（2026-09-24）：大文件分块上传与断点续传
 
-设计规格见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md)（服务端协议、桌面客户端、提权路径与部署要求），Android 侧见 [Android 大文件上传设计](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.BulkUpload.Design.md)。
+设计规格见 [`RelaxKonOS.FileUpload.Design.md`](../architecture/RelaxKonOS.FileUpload.Design.md)（服务端协议、桌面客户端、提权路径与部署要求），Android 侧见 [Android 大文件上传设计](../../Client/RelaxKonOS.Client.Android/docs/features/FileTransfers.md)。
 
 - [x] 服务端新增可续传会话路由 `POST/PATCH/GET/DELETE /api/v1.0/files/uploads`（`Upload-Offset` 权威偏移、`Idempotency-Key` 幂等、会话索引跨重启恢复、TTL 清理、暂存文件同卷原子提交）。
 - [x] 单发路由 `POST /api/v1.0/files/upload` 重新声明为"≤ 4 MiB 快路径"，显式上限 16 MiB，超限返回 `413 upload-too-large-for-single-shot` 而不依赖框架默认值。

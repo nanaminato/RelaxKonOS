@@ -4,7 +4,7 @@ package app.relaxkonos.mobile.core.auth
  * What the single sign-in button must do on this click.
  *
  * The design keeps one button whose *label* follows the decision, instead of two buttons that can each
- * fail to fall back to the other (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §5.1, G1).
+ * fail to fall back to the other (`LoginCredentials.Design.md` §5.1, G1).
  */
 sealed interface LoginDecision {
     /**

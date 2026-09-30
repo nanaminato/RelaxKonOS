@@ -41,7 +41,7 @@ sealed interface SessionState {
 /**
  * Access and refresh tokens held in memory only.
  *
- * The design keeps refresh tokens out of storage on every platform (`RelaxKonOS.Mobile.Design.md`
+ * The design keeps refresh tokens out of storage on every platform (`Product.Design.md`
  * §5.1), which also means a process death simply requires the user to log in again — with the vault
  * that is one fingerprint.
  */
@@ -65,7 +65,7 @@ class TokenStore {
 }
 
 /**
- * Owns the authentication state machine described in `RelaxKonOS.Mobile.V1.Design.md` §4.2:
+ * Owns the authentication state machine described in `Shell.Design.md` §4.2:
  *
  * - a 401 triggers exactly one silent refresh followed by exactly one retry;
  * - a refresh the server explicitly rejects clears the session but never the saved credentials;

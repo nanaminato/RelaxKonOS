@@ -12,7 +12,7 @@ import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 
 /**
- * The invariants of `RelaxKonOS.Mobile.V1.Design.md` §5.3 that the vault itself must hold: payloads are
+ * The invariants of `Shell.Design.md` §5.3 that the vault itself must hold: payloads are
  * bound to their record identity, the two vaults stay separate, and the password never appears in the
  * stored bytes.
  */

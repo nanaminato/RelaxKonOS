@@ -10,7 +10,7 @@ import java.util.TimeZone
  * The relay exists for one reason: a password must never be materialised as a `String`. Building the
  * body with `org.json` would require exactly that, so strings come from [java.lang.String] values
  * for everything except credentials, which are written straight from a `CharArray`
- * (`RelaxKonOS.Mobile.V1.Design.md` §5.3.2).
+ * (`Shell.Design.md` §5.3.2).
  */
 class JsonBody {
     private val fields = mutableListOf<Pair<String, (OutputStream) -> Unit>>()

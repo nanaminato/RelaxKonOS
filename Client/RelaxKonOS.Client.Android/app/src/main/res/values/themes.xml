@@ -2,7 +2,7 @@
 <resources>
     <!--
       The activity is a platform AppCompatActivity host so per-app language selection keeps working
-      below API 33 (RelaxKonOS.Mobile.V1.Design.md §3.3, `more/appearance`). All visible styling comes
+      below API 33 (Shell.Design.md §3.3, `more/appearance`). All visible styling comes
       from the Compose theme in ui/theme/RelaxKonTheme.kt; this theme only owns the window frame that
       is drawn before the first Compose frame.
     -->

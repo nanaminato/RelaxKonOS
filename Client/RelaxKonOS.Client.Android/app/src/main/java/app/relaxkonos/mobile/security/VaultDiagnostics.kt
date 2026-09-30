@@ -11,8 +11,8 @@ package app.relaxkonos.mobile.security
  *
  * Nothing here ever receives a secret: no password, no account, no server address, no `Cipher` and no
  * key material — by design, the vault's own logging is limited to the vault kind, the provider
- * decisions, exception classes and outcome enums (`RelaxKonOS.Mobile.V1.Design.md` §5.2,
- * `RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.3).
+ * decisions, exception classes and outcome enums (`Shell.Design.md` §5.2,
+ * `LoginCredentials.Design.md` §7.3).
  *
  * The sink is installed by the application, so this object stays loadable in JVM tests: with no sink
  * installed every call is a no-op and nothing touches `android.util.Log`.

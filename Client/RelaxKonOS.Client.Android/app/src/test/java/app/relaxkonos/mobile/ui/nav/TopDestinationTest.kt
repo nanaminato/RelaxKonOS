@@ -9,7 +9,7 @@ import org.junit.Test
 /**
  * Capability gating of the top-level navigation.
  *
- * `RelaxKonOS.Mobile.V1.Design.md` §8 forbids an entry without a usable workflow, so an unimplemented
+ * `Shell.Design.md` §8 forbids an entry without a usable workflow, so an unimplemented
  * destination and a destination the server cannot serve are both absent rather than disabled.
  */
 class TopDestinationTest {

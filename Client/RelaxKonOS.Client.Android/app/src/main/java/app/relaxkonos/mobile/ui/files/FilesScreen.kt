@@ -724,7 +724,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      *
      * [authorize] is what separates the two: only a tap on the card's own authorization button may
      * raise the elevation prompt, which is the same answer-the-dialog-or-decline contract every other
-     * file operation follows (`RelaxKonOS.Mobile.V1.Design.md` §5.3.8).
+     * file operation follows (`Shell.Design.md` §5.3.8).
      */
     fun reloadPreview(authorize: Boolean) {
         val entry = selected ?: return
@@ -807,7 +807,7 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
      *
      * It never raises the elevation prompt, whatever [reloadPreview] was last asked to do. A prefetch
      * is the app's own idea rather than the user's, and asking for a password on nobody's behalf is
-     * exactly what `RelaxKonOS.Mobile.V1.Design.md` §5.3.8 forbids. The consequence is deliberately
+     * exactly what `Shell.Design.md` §5.3.8 forbids. The consequence is deliberately
      * dull: a protected file answers `elevation-required` here and is simply left without a thumbnail,
      * and the download that follows is where authorization is asked for — from a card the user can
      * see, behind a button they pressed.
@@ -1186,7 +1186,7 @@ fun FileMessageBanner(viewModel: FilesViewModel, modifier: Modifier = Modifier) 
  * Like the banner, it belongs to the destination: a download started from the detail page is still
  * running when that page is popped, and a card that left with it would be the only sign the user ever
  * gets that anything happened. The card is collapsible and never blocks navigation
- * (`RelaxKonOS.Mobile.V1.Design.md` §3.4).
+ * (`Shell.Design.md` §3.4).
  */
 @Composable
 fun FileTransferCard(viewModel: FilesViewModel, modifier: Modifier = Modifier) {

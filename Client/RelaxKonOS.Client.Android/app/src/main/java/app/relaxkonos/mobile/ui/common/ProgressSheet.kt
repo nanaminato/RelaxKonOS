@@ -27,7 +27,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * Progress for a long transfer.
  *
  * It is a card pinned to the bottom of the content area rather than a modal sheet, because
- * `RelaxKonOS.Mobile.V1.Design.md` §3.4 requires long operations to stay collapsible and to never
+ * `Shell.Design.md` §3.4 requires long operations to stay collapsible and to never
  * block navigation. [onCollapse] hides the detail line; the transfer itself is unaffected.
  *
  * The surface is raised above the page rather than outlined like [SectionCard]: this one genuinely

@@ -97,7 +97,7 @@ internal object SshCredentialCodec {
  * 它使用**独立于登录与提权凭据**的保险箱域：[VaultKind.Ssh] 有自己的文件（`ssh-vault.bin`）
  * 与 Keystore alias（`rk.ssh.vault`），AAD 又按 `Ssh|host:port|user` 绑定，因此既不会与另两个
  * 保险箱互相命中，也不因用户名或密码看起来相同而复用记录。现有 debug-only 明文登录兜底
- * 不适用于 SSH（`RelaxKonOS.Mobile.ServerCenter.Design.md` §3）。
+ * 不适用于 SSH（`ServerCenter.md` §3）。
  */
 class ServerCenterSshCredentialStore(
     private val vault: CredentialVault,

@@ -10,7 +10,7 @@ import org.junit.Test
 
 /**
  * The four states of a saved credential, and the status line each one produces
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §4, §6.2).
+ * (`LoginCredentials.Design.md` §4, §6.2).
  *
  * The distinction that matters most is `Unavailable` versus `Invalidated`: reporting a temporarily
  * unusable credential as a dead one makes the user save it again for no reason, while reporting a dead

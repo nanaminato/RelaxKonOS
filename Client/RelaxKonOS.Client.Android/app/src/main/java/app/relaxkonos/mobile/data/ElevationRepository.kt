@@ -69,7 +69,7 @@ data class ElevationPrompt(
  *
  * A screen renders [request] as a modal dialog; the dialog answers through [supply] or [cancel].
  * Nothing is ever answered automatically, which keeps "no silent elevation" structural rather than
- * conventional (`RelaxKonOS.Mobile.V1.Design.md` §5.3.8).
+ * conventional (`Shell.Design.md` §5.3.8).
  */
 class ElevationCoordinator {
     private val requestFlow = MutableStateFlow<ElevationPrompt?>(null)

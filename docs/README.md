@@ -16,7 +16,7 @@
 > - 权限模型与项目重构规范见 [`RelaxKonOS.PermissionModel.Refactor.md`](./platform/RelaxKonOS.PermissionModel.Refactor.md)
 > - 桌面外壳与模态对话框见 [`RelaxKonOS.Desktop.md`](./desktop/RelaxKonOS.Desktop.md)
 > - 文件管理器见 [`RelaxKonOS.Explorer.md`](./applications/RelaxKonOS.Explorer.md)；Windows 11 体验优化进度与后续 API 清单见 [`RelaxKonOS.Explorer.Progress.md`](./applications/RelaxKonOS.Explorer.Progress.md)
-> - 大文件上传（分块会话、断点续传、受保护目录）的设计与实现规格见 [`RelaxKonOS.FileUpload.Design.md`](./architecture/RelaxKonOS.FileUpload.Design.md)（已实现：服务端 86 项、桌面端 196 项、Android 41 项自动化检查全绿，真机验收清单见其 §9.4）；Android 客户端细节见 [Android 文档](../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.BulkUpload.Design.md)
+> - 大文件上传（分块会话、断点续传、受保护目录）的设计与实现规格见 [`RelaxKonOS.FileUpload.Design.md`](./architecture/RelaxKonOS.FileUpload.Design.md)（已实现：服务端 86 项、桌面端 196 项、Android 41 项自动化检查全绿，真机验收清单见其 §9.4）；Android 客户端细节见 [Android 文档](../Client/RelaxKonOS.Client.Android/docs/features/FileTransfers.md)
 > - 受管安装服务（SMB、Nginx、FRP、Mihomo、Docker）的统一任务、进度与恢复基线见 [`RelaxKonOS.InstallationServices.Goal.md`](./services/RelaxKonOS.InstallationServices.Goal.md)。File Services 首轮 SMB（Linux Samba + Windows SMB Server）Goal 执行基线见 [`RelaxKonOS.FileServices.Smb.Goal.md`](./services/file-services/RelaxKonOS.FileServices.Smb.Goal.md)；长期设计规格见 [`RelaxKonOS.FileServices.Specification.md`](./services/file-services/RelaxKonOS.FileServices.Specification.md)
 > - 无 sudo Linux 用户账号（大学 / HPC / 共享 GPU 服务器）部署的双模式设计、PAM 调试边界和实施验收见 [`RelaxKonOS.UserModeServer.Goal.md`](./services/RelaxKonOS.UserModeServer.Goal.md)（提案，尚未实现）
 > - 浏览器见 [`RelaxKonOS.Browser.md`](./applications/RelaxKonOS.Browser.md)

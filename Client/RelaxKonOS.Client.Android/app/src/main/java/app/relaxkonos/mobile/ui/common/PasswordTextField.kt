@@ -34,7 +34,7 @@ import app.relaxkonos.mobile.R
  * [supportingText] is where "a password is saved" is reported. It is the only place that fact may be
  * rendered: writing dots into `value`, or into a placeholder that looks identical to typed text, would
  * make the field claim the user had typed something
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §3, §6.2).
+ * (`LoginCredentials.Design.md` §3, §6.2).
  */
 @Composable
 fun PasswordTextField(

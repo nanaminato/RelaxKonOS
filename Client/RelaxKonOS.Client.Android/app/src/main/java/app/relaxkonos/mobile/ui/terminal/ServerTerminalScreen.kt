@@ -221,7 +221,7 @@ internal fun ServerTerminalContent(
                 }
             }
             if (state.sessions.isNotEmpty()) {
-                // One scrolling row rather than a growing column. `RelaxKonOS.Mobile.Design.md` gives a phone
+                // One scrolling row rather than a growing column. `Product.Design.md` gives a phone
                 // a single focused session, so switching and pruning must never take rows away from the
                 // terminal — which is exactly what a vertical session list did, one session at a time.
                 Row(

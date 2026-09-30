@@ -10,7 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The debug-only plaintext store (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.5).
+ * The debug-only plaintext store (`LoginCredentials.Design.md` §7.5).
  *
  * Two properties matter more than the round trip. It never holds more than one record — that is what
  * "only one" means structurally rather than by convention — and a file it cannot parse degrades to

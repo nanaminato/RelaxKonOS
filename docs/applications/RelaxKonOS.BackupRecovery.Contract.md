@@ -1,6 +1,6 @@
 # 共享备份与恢复契约（AD08-M3）
 
-状态：服务端已实现运维提供恢复密钥的 AES-GCM 数据密钥封装、受管加密对象存储、持久清单及应用定义/修订快照；Android 可在能力门控下读取清单并执行只读预检。无卷、无秘密的定义备份可经显式确认恢复为新的停机应用实例；卷、数据库、秘密跨安装重绑定和真实恢复演练尚未实现。本文是跨客户端的服务端契约，不定义 Android 页面布局；移动端实施见 [AD08 计划](../../Client/RelaxKonOS.Client.Android/docs/RelaxKonOS.Mobile.OperationsRecovery.Plan.md)。
+状态：服务端已实现运维提供恢复密钥的 AES-GCM 数据密钥封装、受管加密对象存储、持久清单及应用定义/修订快照；Android 可在能力门控下读取清单并执行只读预检。无卷、无秘密的定义备份可经显式确认恢复为新的停机应用实例；卷、数据库、秘密跨安装重绑定和真实恢复演练尚未实现。本文是跨客户端的服务端契约，不定义 Android 页面布局；移动端实施见 [Android 任务与恢复说明](../../Client/RelaxKonOS.Client.Android/docs/features/OperationsRecovery.md)。
 
 ## 1. 权威记录
 

@@ -7,7 +7,7 @@ import androidx.biometric.BiometricManager
  * Result of probing the device for a usable authenticator. The set is deliberately exhaustive:
  * the UI renders one of four shapes and never guesses whether biometrics "might" work.
  *
- * `RelaxKonOS.Mobile.V1.Design.md` §5.6 fixes which vault each result unlocks. Those product
+ * `Shell.Design.md` §5.6 fixes which vault each result unlocks. Those product
  * decisions (D2, D3) are not implementation options, so they are encoded here instead of being
  * re-derived in each screen.
  */

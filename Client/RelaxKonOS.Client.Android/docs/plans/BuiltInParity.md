@@ -6,15 +6,15 @@
 
 ## 1. 对照依据与范围
 
-以桌面端 [`BuiltInApplicationRegistry.cs`](../../RelaxKonOS.Client/Services/BuiltInApplicationRegistry.cs) 注册的 **25 个内置应用**为清单，以实际 ViewModel、Android 页面、Gateway 实现和共享 Protocol 为功能证据。`examples/`、外置应用和仅有设计文档的功能不计作已实现内置应用。
+以桌面端 [`BuiltInApplicationRegistry.cs`](../../../RelaxKonOS.Client/Services/BuiltInApplicationRegistry.cs) 注册的 **25 个内置应用**为清单，以实际 ViewModel、Android 页面、Gateway 实现和共享 Protocol 为功能证据。`examples/`、外置应用和仅有设计文档的功能不计作已实现内置应用。
 
 Android 对照入口：
 
-- [`ManageScreen.kt`](../app/src/main/java/app/relaxkonos/mobile/ui/manage/ManageScreen.kt)、[`Routes.kt`](../app/src/main/java/app/relaxkonos/mobile/ui/nav/Routes.kt)：手机管理目录与导航。
-- [`MoreScreen.kt`](../app/src/main/java/app/relaxkonos/mobile/ui/more/MoreScreen.kt)：设置及账户入口。
-- [`RelaxKonGateway.kt`](../app/src/main/java/app/relaxkonos/mobile/core/net/RelaxKonGateway.kt)、[`RelaxKonApi.kt`](../app/src/main/java/app/relaxkonos/mobile/core/net/RelaxKonApi.kt)：实际远端调用范围。接口中的默认失败实现不算交付。
-- [`WebPublishing.kt`](../app/src/main/java/app/relaxkonos/mobile/core/net/WebPublishing.kt)：已有网站和证书投影；当前不含独立证书全生命周期或 Nginx 安装管理。
-- [`Mobile Progress`](./RelaxKonOS.Mobile.Progress.md)：既有实现和验证限制。
+- [`ManageScreen.kt`](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/ManageScreen.kt)、[`Routes.kt`](../../app/src/main/java/app/relaxkonos/mobile/ui/nav/Routes.kt)：手机管理目录与导航。
+- [`MoreScreen.kt`](../../app/src/main/java/app/relaxkonos/mobile/ui/more/MoreScreen.kt)：设置及账户入口。
+- [`RelaxKonGateway.kt`](../../app/src/main/java/app/relaxkonos/mobile/core/net/RelaxKonGateway.kt)、[`RelaxKonApi.kt`](../../app/src/main/java/app/relaxkonos/mobile/core/net/RelaxKonApi.kt)：实际远端调用范围。接口中的默认失败实现不算交付。
+- [`WebPublishing.kt`](../../app/src/main/java/app/relaxkonos/mobile/core/net/WebPublishing.kt)：已有网站和证书投影；当前不含独立证书全生命周期或 Nginx 安装管理。
+- [`Mobile Progress`](../status/Progress.md)：既有实现和验证限制。
 
 补齐目标是手机能完成与桌面等价的管理任务，采用原生 Compose 页面、手机导航和手机/平板布局。服务器上的 Nginx、FRP、Mihomo、SMB 等仍由 Server 管理；客户端本地的 SSH 转发、浏览器和桌面扩展包按其真实运行位置单独设计。
 
@@ -22,33 +22,33 @@ Android 对照入口：
 
 “已有”只说明存在实现，不能替代真机或实际宿主验收。“缺少”指没有对应可完成的手机任务流；在首页看到能力名称或在其他流程里看到数据，不等于独立应用已交付。
 
-| 序号 | 桌面内置应用 / BuiltIn key | Android 当前实现 | 缺口或处理方式 | 实施编号 |
-| --- | --- | --- | --- | --- |
-| 01 | 欢迎 / `welcome` | 登录页、首页、关于承担部分引导与介绍 | 将管理入口、首次使用引导和帮助纳入手机导航，不复制桌面窗口 | BP23 |
-| 02 | 记事本 / `notepad` | Git 页有受限文本编辑 | 缺少独立普通文件打开、新建、编辑、另存为、编码处理与未保存保护 | BP11 |
-| 03 | 代码编辑器 / `codeeditor` | Git 页有配置文件编辑 | 缺少普通服务器文件编辑、语法显示、搜索、差异与保存冲突处理 | BP11 |
-| 04 | 图片查看器 / `imageviewer` | 文件页已有缩略图与图片预览 | 逐项核对桌面缩放、适配、旋转及文件切换；补足移动查看操作 | BP12 |
-| 05 | 设置 / `settings` | 账户、连接、服务器信息、外观、诊断、关于 | 缺少宿主出站代理、环境变量、宿主时间/身份及应用管理等设置 | BP02、BP22 |
-| 06 | 终端 / `terminal` | Server PTY、会话管理、恢复、扩展键已有 | 平板会话列表与终端双栏尚未实现；补齐与桌面可用交互的差异 | BP13 |
-| 07 | 服务器中心 / `server-center` | 已有 SSH 接入、部署、系统、文件、终端 | 逐项核对部署操作、安装记录、连接恢复与宿主生命周期；不重写已有流程 | BP19 |
-| 08 | SSH 文件浏览器 / `ssh-files` | 服务器中心已有 SFTP 文件页 | 核对文件操作、传输取消、恢复与大文件边界，补齐缺口 | BP19 |
-| 09 | 文件资源管理器 / `explorer` | 列表、详情、创建目录、复制/移动、改名、删除、传输和预览已有 | 补齐普通文本打开/编辑及可用桌面文件操作；核对批量操作和权限详情 | BP11、BP12 |
-| 10 | 浏览器 / `browser` | 没有独立内置浏览器 | 新增移动 Web 服务打开/浏览任务流；明确外部浏览器与应用内浏览的信任边界 | BP20 |
-| 11 | 端口转发 / `port-forwarding` | 受管登录隧道已有内部用途 | 缺少供用户管理的手机本地 SSH 转发列表、创建/修改/停止和连通检查 | BP19 |
-| 12 | 任务管理器 / `taskmanager` | 系统监控、进程列表、过滤/分页、结束进程已有 | 核对桌面指标、刷新频率、筛选及平板布局，补足缺口 | BP15 |
-| 13 | Docker 管理器 / `docker` | 资源列表、容器生命周期/日志、Compose、卷详情/删除已有 | 缺少完整引擎安装/生命周期、容器创建/编辑、镜像拉取/删除、网络与卷创建等；代理和镜像源设置缺失 | BP02、BP09 |
-| 14 | 进程守护 / `processguardian` | 工作负载定义、生命周期、日志及一次性脚本已有 | 逐项核对桌面编辑字段、审批、健康/恢复状态和日志观察；补齐未暴露字段与交互 | BP14 |
-| 15 | 防火墙 / `firewall` | 能力标识已声明，无管理页和对应调用 | 缺少状态、启停、默认策略、规则增删改与操作确认 | BP07 |
-| 16 | 证书管理器 / `certificates` | 网站发布中使用证书列表与申请链路 | 缺少独立列表/详情、预检、申请、自签名、续期、撤销、删除、Kestrel 部署、操作观察与取消 | BP04 |
-| 17 | Web 服务器管理器 / `webservers` | 网站页已有实例状态、配置检查、站点列表及应用网站发布 | 缺少 Nginx 安装、已有实例发现/接管、启停/重启/重载、卸载和通用站点编辑/删除 | BP03 |
-| 18 | 文件服务 / `file-services` | 能力标识已声明，无 SMB 管理页和对应调用 | 缺少 SMB/Samba 安装、服务生命周期、共享管理、用户启停与凭据设置 | BP08 |
-| 19 | 隧道管理器 / `tunnels` | 能力标识已声明，无 FRP 管理页和对应调用 | 缺少 FRP 安装/升级/修复/卸载、frpc 配置/隧道管理、frps 配置/生命周期和诊断 | BP05 |
-| 20 | 代理管理器 / `proxy` | 能力标识已声明，无 Mihomo 管理页和对应调用 | 缺少运行时安装、配置/订阅、路由/节点、连接/流量、DNS、系统代理、TUN 与恢复 | BP06 |
-| 21 | Git / `git` | 仓库注册、分支查看、状态、文件编辑、提交/推送、隔离构建与部署已有 | 缺少桌面的分支修改、fetch/pull、完整暂存与差异、历史和冲突解决等任务流，以及 Git 安装入口 | BP10 |
+| 序号 | 桌面内置应用 / BuiltIn key | Android 当前实现 | 缺口或处理方式                                                                                  | 实施编号 |
+| --- | --- | --- |-------------------------------------------------------------------------------------------------| --- |
+| 01 | 欢迎 / `welcome` | 登录页、首页、关于承担部分引导与介绍 | 不实现独立欢迎应用                                                                              | BP23 |
+| 02 | 记事本 / `notepad` | Git 页有受限文本编辑 | 不实现独立记事本应用                                                                            | BP11 |
+| 03 | 代码编辑器 / `codeeditor` | Git 页有配置文件编辑 | 可引入外部包实现；补齐普通服务器文件编辑、语法显示、搜索、差异与保存冲突处理                    | BP11 |
+| 04 | 图片查看器 / `imageviewer` | 文件页已有缩略图与图片预览 | 逐项核对桌面缩放、适配、旋转及文件切换；补足移动查看操作                                        | BP12 |
+| 05 | 设置 / `settings` | 账户、连接、服务器信息、外观、诊断、关于 | 缺少宿主出站代理、环境变量、宿主时间/身份及应用管理等设置                                       | BP02、BP22 |
+| 06 | 终端 / `terminal` | Server PTY、会话管理、恢复、扩展键已有 | 平板会话列表与终端双栏尚未实现；补齐与桌面可用交互的差异                                        | BP13 |
+| 07 | 服务器中心 / `server-center` | 已有 SSH 接入、部署、系统、文件、终端 | 逐项核对部署操作、安装记录、连接恢复与宿主生命周期；不重写已有流程                              | BP19 |
+| 08 | SSH 文件浏览器 / `ssh-files` | 服务器中心已有 SFTP 文件页 | 核对文件操作、传输取消、恢复与大文件边界，补齐缺口                                              | BP19 |
+| 09 | 文件资源管理器 / `explorer` | 列表、详情、创建目录、复制/移动、改名、删除、传输和预览已有 | 补齐普通文本打开/编辑及可用桌面文件操作；核对批量操作和权限详情                                 | BP11、BP12 |
+| 10 | 浏览器 / `browser` | 没有独立内置浏览器 | 不实现独立内置浏览器                                                                            | BP20 |
+| 11 | 端口转发 / `port-forwarding` | 受管登录隧道已有内部用途 | 缺少供用户管理的手机本地 SSH 转发列表、创建/修改/停止和连通检查                                 | BP19 |
+| 12 | 任务管理器 / `taskmanager` | 系统监控、进程列表、过滤/分页、结束进程已有 | 核对桌面指标、刷新频率、筛选及平板布局，补足缺口                                                | BP15 |
+| 13 | Docker 管理器 / `docker` | 资源列表、容器生命周期/日志、Compose、卷详情/删除已有 | 缺少完整引擎安装/生命周期、容器创建/编辑、镜像拉取/删除、网络与卷创建等；代理和镜像源设置缺失   | BP02、BP09 |
+| 14 | 进程守护 / `processguardian` | 工作负载定义、生命周期、日志及一次性脚本已有 | 逐项核对桌面编辑字段、审批、健康/恢复状态和日志观察；补齐未暴露字段与交互                       | BP14 |
+| 15 | 防火墙 / `firewall` | 能力标识已声明，无管理页和对应调用 | 缺少状态、启停、默认策略、规则增删改与操作确认                                                  | BP07 |
+| 16 | 证书管理器 / `certificates` | 网站发布中使用证书列表与申请链路 | 缺少独立列表/详情、预检、申请、自签名、续期、撤销、删除、Kestrel 部署、操作观察与取消           | BP04 |
+| 17 | Web 服务器管理器 / `webservers` | 网站页已有实例状态、配置检查、站点列表及应用网站发布 | 缺少 Nginx 安装、已有实例发现/接管、启停/重启/重载、卸载和通用站点编辑/删除                     | BP03 |
+| 18 | 文件服务 / `file-services` | 能力标识已声明，无 SMB 管理页和对应调用 | 缺少 SMB/Samba 安装、服务生命周期、共享管理、用户启停与凭据设置                                 | BP08 |
+| 19 | 隧道管理器 / `tunnels` | 能力标识已声明，无 FRP 管理页和对应调用 | 缺少 FRP 安装/升级/修复/卸载、frpc 配置/隧道管理、frps 配置/生命周期和诊断                      | BP05 |
+| 20 | 代理管理器 / `proxy` | 能力标识已声明，无 Mihomo 管理页和对应调用 | 缺少运行时安装、配置/订阅、路由/节点、连接/流量、DNS、系统代理、TUN 与恢复                      | BP06 |
+| 21 | Git / `git` | 仓库注册、分支查看、状态、文件编辑、提交/推送、隔离构建与部署已有 | 缺少桌面的分支修改、fetch/pull、完整暂存与差异、历史和冲突解决等任务流，以及 Git 安装入口       | BP10 |
 | 22 | 应用安装器 / `appinstaller` | 已有服务端应用部署与模板目录；没有桌面扩展包安装器 | 桌面扩展包与服务端部署包是不同产品；先定义移动包管理能力，不能将 Avalonia 包当 Android 应用运行 | BP21 |
-| 23 | 注册表 / `registry` | 无对应管理页和调用 | 缺少 RelaxKonOS User/Workspace/Device 配置树、键值编辑及应用状态；不是 Windows 注册表 | BP18 |
-| 24 | 应用部署 / `application-deployments` | 镜像/归档/模板部署、更新/回滚、操作、日志和定义备份已有 | 核对桌面完整编辑/操作范围，补齐模板更新说明、版本关联和差异预览 | BP16 |
-| 25 | 事件与告警中心 / `event-alerts` | 运维中心已有告警列表/详情/确认和修复跳转 | 核对桌面提供的筛选、策略/通知设置、事件观察；缺失项按现有契约补齐 | BP17 |
+| 23 | 注册表 / `registry` | 无对应管理页和调用 | 不实现注册表应用                                                                                | BP18 |
+| 24 | 应用部署 / `application-deployments` | 镜像/归档/模板部署、更新/回滚、操作、日志和定义备份已有 | 核对桌面完整编辑/操作范围，补齐模板更新说明、版本关联和差异预览                                 | BP16 |
+| 25 | 事件与告警中心 / `event-alerts` | 运维中心已有告警列表/详情/确认和修复跳转 | 核对桌面提供的筛选、策略/通知设置、事件观察；缺失项按现有契约补齐                               | BP17 |
 
 ## 3. 编号实施计划
 
@@ -115,13 +115,13 @@ P0 为安装、网络和发布的优先批次；P1 为其他远端管理与已�
 
 ### 5.2 代理集成的两个配置面
 
-[`NetworkPageViewModel.OutboundProxy`](../../RelaxKonOS.Client/Apps/Settings/ViewModels/NetworkPageViewModel.cs) 使用 [`DockerProxyViewModel`](../../RelaxKonOS.Client/Apps/Docker/DockerProxyViewModel.cs)，对应共享 [`DockerProxyContracts`](../../../Shared/RelaxKonOS.Protocol/Docker/DockerProxyContracts.cs)。它是宿主级出站偏好，设置页和 Docker 页必须共用同一状态。
+[`NetworkPageViewModel.OutboundProxy`](../../../RelaxKonOS.Client/Apps/Settings/ViewModels/NetworkPageViewModel.cs) 使用 [`DockerProxyViewModel`](../../../RelaxKonOS.Client/Apps/Docker/DockerProxyViewModel.cs)，对应共享 [`DockerProxyContracts`](../../../../Shared/RelaxKonOS.Protocol/Docker/DockerProxyContracts.cs)。它是宿主级出站偏好，设置页和 Docker 页必须共用同一状态。
 
-[`ProxyContracts`](../../../Shared/RelaxKonOS.Protocol/Proxy/ProxyContracts.cs) 则管理 Mihomo 引擎、系统代理、TUN、订阅、配置和流量。两者通过“受管代理来源”关联，但不能复制成两份出站设置，也不能让改订阅隐式修改 Docker 重启范围。
+[`ProxyContracts`](../../../../Shared/RelaxKonOS.Protocol/Proxy/ProxyContracts.cs) 则管理 Mihomo 引擎、系统代理、TUN、订阅、配置和流量。两者通过“受管代理来源”关联，但不能复制成两份出站设置，也不能让改订阅隐式修改 Docker 重启范围。
 
 ### 5.3 安装与操作契约
 
-使用 [`InstallationContracts`](../../../Shared/RelaxKonOS.Protocol/Installations/InstallationContracts.cs) 的统一入口，服务种类为 Smb/Nginx/Frp/Mihomo/Docker/Git；每种服务可用动作根据 Server 支持与宿主能力显示，不假定所有种类都支持全部操作。
+使用 [`InstallationContracts`](../../../../Shared/RelaxKonOS.Protocol/Installations/InstallationContracts.cs) 的统一入口，服务种类为 Smb/Nginx/Frp/Mihomo/Docker/Git；每种服务可用动作根据 Server 支持与宿主能力显示，不假定所有种类都支持全部操作。
 
 安装包使用限时 FileReferenceId 或当前受控上传端点，不把任意服务器路径塞入安装请求。手机上传通过系统文档选择器读取，服务器文件通过现有远端路径选择器选择。领域操作与安装操作的状态、枚举、取消条件分别按当前契约读取，不强行共用错误的状态转换。
 
@@ -136,6 +136,6 @@ P0 为安装、网络和发布的优先批次；P1 为其他远端管理与已�
 
 ## 6. 进展与验收记录方式
 
-每个 BP 项至少记录四类证据：实现文件与动作清单、自动化构建/测试、设备交互验收、宿主联网/安装验收。完成动作与完成真机验收分别记录；未知或未测不能写成“已通过”。所有 Android 专属进展继续维护在 [`Mobile Progress`](./RelaxKonOS.Mobile.Progress.md)，不在仓库根 `docs/` 维护第二份移动功能目录。
+每个 BP 项至少记录四类证据：实现文件与动作清单、自动化构建/测试、设备交互验收、宿主联网/安装验收。完成动作与完成真机验收分别记录；未知或未测不能写成“已通过”。所有 Android 专属进展继续维护在 [`Mobile Progress`](../status/Progress.md)，不在仓库根 `docs/` 维护第二份移动功能目录。
 
-已有 AD01–AD08 文档仍是各部署领域的详细依据。本计划覆盖全量内置应用差异，并通过 BP 编号追踪补齐；与 AD03 模板应用库等文档协作，不替代其 schema、实例版本与验收语义。V1 里的首版排除项是历史范围，本次请求正式将对应任务纳入后续范围，不能继续以首版排除项为由省略这些补齐任务。
+已实现部署领域的当前说明见 [文档目录](../README.md)，首次安装及部署剩余工作见 [部署后续计划](Deployment.md)，设备/宿主检查见 [验收清单](../status/Verification.md)。本计划追踪新增功能，未完成测试不单独变成“重新实现”任务；共享 schema 与执行语义仍由对应领域契约维护。

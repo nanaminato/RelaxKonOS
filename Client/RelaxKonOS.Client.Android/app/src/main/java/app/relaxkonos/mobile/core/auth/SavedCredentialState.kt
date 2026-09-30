@@ -9,7 +9,7 @@ import app.relaxkonos.mobile.security.VaultUnlockMode
  *
  * The four states are mutually exclusive, and none of them is derived from the password field: a
  * screen asking "is there a saved password?" must ask this, never whether a text field happens to be
- * showing dots (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §2, §3).
+ * showing dots (`LoginCredentials.Design.md` §2, §3).
  *
  * [Unavailable] and [Invalidated] are separate on purpose. An authenticator that cannot be used right
  * now — the master switch is off, the device has no usable lock screen, the key is temporarily

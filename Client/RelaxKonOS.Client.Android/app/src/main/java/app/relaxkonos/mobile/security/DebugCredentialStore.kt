@@ -67,7 +67,7 @@ data class DebugCredentialRecord(val serviceId: String, val identifier: String)
  * `AndroidKeyStore` can only produce a key that is gated on user authentication, and
  * `setUserAuthenticationParameters` accepts nothing but strong biometrics and the device credential.
  * A device with **no lock screen at all** therefore cannot host the vault: the connection vault is
- * always reported as unavailable and `RelaxKonOS.Mobile.LoginCredentials.Design.md` §7.4 correctly
+ * always reported as unavailable and `LoginCredentials.Design.md` §7.4 correctly
  * degrades to "type the password every time". That is the right product behaviour and it stays the
  * behaviour of every release build.
  *

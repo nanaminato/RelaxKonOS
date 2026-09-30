@@ -55,7 +55,7 @@ import app.relaxkonos.mobile.ui.theme.Spacing
  * The address, the account and the password are always visible. There is deliberately no "short form"
  * that hides the password field when a credential is stored: hiding it encodes "a password is saved" as
  * "a field is missing", which is not a state anything can read or act on
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.1, D7).
+ * (`LoginCredentials.Design.md` §6.1, D7).
  *
  * The password field only ever holds what the user typed in this session. That a password is saved is
  * reported by the line beside the field, which is derived from the vault and never from the field's

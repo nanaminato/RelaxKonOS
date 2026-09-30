@@ -51,7 +51,7 @@ class InMemoryProfileStorage : ProfileStorage {
  * Credential and deletion operations address one login through the pair `(serviceId, identifier)`:
  * one server can hold several accounts, and removing
  * "the server" would silently take the other accounts' records with it
- * (`RelaxKonOS.Mobile.LoginCredentials.Design.md` §6.3).
+ * (`LoginCredentials.Design.md` §6.3).
  *
  * The list holds no secret — the password is in the connection vault — and the one flag it does carry
  * about credentials ([SavedLogin.hasSavedCredential]) is a projection that is reconciled against the
@@ -190,7 +190,7 @@ class ConnectionProfileStore(private val storage: ProfileStorage) {
          * `RKC3`: `RKC2` plus the host operating system class of each login.
          *
          * The layout gained a field, so the older magic is discarded rather than migrated — the same
-         * rule the vault and the account archive follow (`RelaxKonOS.Mobile.LoginCredentials.Design.md`
+         * rule the vault and the account archive follow (`LoginCredentials.Design.md`
          * §2.2). What is lost is the list of remembered endpoints and accounts; every password stays in
          * the vault, and signing in again brings the row back with it.
          */

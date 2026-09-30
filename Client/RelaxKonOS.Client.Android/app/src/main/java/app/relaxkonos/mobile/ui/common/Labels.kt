@@ -17,7 +17,7 @@ const val CAPABILITY_NATIVE_SERVICE_ACTION = "nativeServiceAction"
 /**
  * Localised name of an elevation capability.
  *
- * `RelaxKonOS.Mobile.V1.Design.md` §3.4 requires the elevation dialog to name the capability being
+ * `Shell.Design.md` §3.4 requires the elevation dialog to name the capability being
  * authorized, while §8 forbids putting the raw enum name on screen. Those two rules together mean the
  * capability must be translated here rather than interpolated.
  */

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Canonical strings. Every user-visible sentence lives here; the Kotlin sources contain no literals
-  (`RelaxKonOS.Mobile.V1.Design.md` §8).
+  (`Shell.Design.md` §8).
 
   Locales shipped: en (this file, the fallback for anything that is not Chinese or Japanese), zh, ja.
   The Chinese folder is language-level on purpose — see `values-zh/strings.xml`.

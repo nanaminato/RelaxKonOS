@@ -3,7 +3,7 @@ package app.relaxkonos.mobile.core.net
 /**
  * Outcome of one REST call. The distinction between [Problem] and [Transport] is not cosmetic: the
  * design only treats an explicit server rejection as evidence that a stored credential is invalid.
- * A timeout or a 5xx leaves the credential untouched (`RelaxKonOS.Mobile.V1.Design.md` §5.8.2).
+ * A timeout or a 5xx leaves the credential untouched (`Shell.Design.md` §5.8.2).
  */
 sealed interface ApiResult<out T> {
     data class Success<T>(val value: T) : ApiResult<T>
@@ -106,7 +106,7 @@ object ProblemCodes {
  * failure ([ApiResult.Transport]).
  *
  * Every 4xx is a verdict: the server deliberately refused the request. A 5xx is a verdict only when its
- * body names a RelaxKonOS problem code. Two reasons: `RelaxKonOS.Mobile.V1.Design.md` §5.8.2 forbids
+ * body names a RelaxKonOS problem code. Two reasons: `Shell.Design.md` §5.8.2 forbids
  * reading a 5xx as a judgement about the submitted credential, and an unrecognised 5xx body says nothing
  * the UI could put into words. Reporting a named 5xx code as a transport failure is not a safe default —
  * a `503 performance-not-ready` shown as "cannot reach the server" sends the user hunting for a network
