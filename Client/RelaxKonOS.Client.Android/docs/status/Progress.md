@@ -41,12 +41,12 @@
 | BP01-M1-4 | 已实现 | OperationCenter/OperationsScreen：发现/恢复/阶段进度/取消终态查询、离页停止观察；三语文案；安装记录无虚假领域跳转 | 设备与宿主检查见 Verification |
 | BP01-M1-5 | 已实现 | `features/Installations.md`、运维说明、索引及进度/验证记录同步；已完成拆分移出计划 | 验证单独追踪 |
 | BP02-M1 | 已实现 | `OutboundProxy.kt`、Gateway/API、DockerRepository、OutboundProxyScreen/Labels：设置与 Docker 共用 GET/PUT/DELETE；HTTP/HTTPS/NO_PROXY、四范围、引擎/构建实际状态与 daemon/Desktop 回读、写入确认、结果不明确先刷新、会话隔离；三语与功能文档已同步 | BP03-M1；受管来源新选择/管理另归 BP02-M2/BP06；测试证据见 Verification |
-| BP03-M1 | 已实现 | `WebServerManagement/WebPublishing`、Gateway/API、`WebServerRepository/RequestJournal`、`NginxViewModel/Manager`：Ubuntu APT/Windows 版本与三来源安装、发现/接管、能力门控生命周期、ACME include、受管卸载、原键/ID 恢复及会话隔离；OperationCenter 已接入 Web 操作；三语和功能文档已同步 | BP04-M1；Android 构建/测试及宿主验收未执行 |
-| BP03-M2 | 已实现 | `WebServerSites/WebPublishing`、Gateway/API、`WebSiteRepository/MutationJournal`、`WebSiteDraft/Manager`、Nginx ViewModel 与运维中心：静态/SPA、多绑定、反代/缓冲、TLS/IPv6、远端路径、未保存保护、删除、原版本冲突回读和同步未知结果核实；Protocol/Server/桌面调用与补偿同步采用 `expectedUpdatedAt`，三语和功能文档已同步 | BP04-M1；Server 构建与站点契约检查通过，Android 未执行，桌面构建未通过框架引用解析 |
-| BP04-M1 | 已实现 | `Certificates.kt`、Gateway/API、`CertificateRepository/RequestJournal`、`CertificateDraft/ViewModel/Screen/Labels`：独立元数据、ACME 预检/签发、自签名、续期/撤销/删除、原意图摘要与原键/ID、手机/平板和三语；运维及深链接入证书领域；Server 修正创建重放身份并验证账本重开恢复 | BP04-M2；Android 编译/测试未执行，Server 构建与创建重放检查通过 |
-| BP04-M2 | 已实现 | `CertificateUsage/Binding`、网站显式选择、详情 Kestrel 部署/实际选择器与观察时间、丢失响应原键/ID 核实；Protocol/Server/桌面客户端接入只读部署 DTO，Server 校验证书状态/有效期/SAN 并保证事实变化后原请求重放，三语与功能文档已同步 | BP05-M1；Server 构建与绑定/部署恢复检查通过，Android 与真实宿主/设备检查未执行 |
-| BP05-M1 | 已实现 | `Tunnels.kt`、Gateway/API、`TunnelRepository/MutationJournal`、`TunnelsViewModel/Screen/Draft/Editors/Labels`：固定版本三来源安装及原键/ID、外部检测、profile/写入式 Token/四协议隧道、revision 冲突、应用/停止、日志/待核实与运维跳转；Server 应用指纹投影和进程事件归属已修正，三语/协议/功能文档同步 | BP05-M2；Server 构建与本地 FRP/SQLite/子进程专项检查通过，Android 与真实 FRP/宿主/设备检查未执行 |
-| BP05-M2 | 已实现 | `ManagedFrps.kt/Draft/Manager`、Gateway/API、Tunnel Repository/Journal/ViewModel：宿主配置/Token/dashboard 秘密、显式编辑读取、CAS/应用 revision、启动/停止/重启、日志/审计与待核实；Protocol/Server/桌面同步当前字段和安全 PUT，停止不再返回 connected，进程归属未知不伪报停止，三语/文档同步 | BP06-M1；Server 构建与本地 frps 专项检查通过，Android/真实 FRP/Windows Helper 未执行 |
+| BP03-M1 | 已实现 | `WebServerManagement/WebPublishing`、Gateway/API、`WebServerRepository/RequestJournal`、`NginxViewModel/Manager`：Ubuntu APT/Windows 版本与三来源安装、发现/接管、能力门控生命周期、ACME include、受管卸载、原键/ID 恢复及会话隔离；OperationCenter 已接入 Web 操作；三语和功能文档已同步 | BP04-M1；基本自动化结果见 Verification；真实宿主/设备待验收 |
+| BP03-M2 | 已实现 | `WebServerSites/WebPublishing`、Gateway/API、`WebSiteRepository/MutationJournal`、`WebSiteDraft/Manager`、Nginx ViewModel 与运维中心：静态/SPA、多绑定、反代/缓冲、TLS/IPv6、远端路径、未保存保护、删除、原版本冲突回读和同步未知结果核实；Protocol/Server/桌面调用与补偿同步采用 `expectedUpdatedAt`，三语和功能文档已同步 | BP04-M1；基本自动化结果见 Verification；真实宿主/设备待验收 |
+| BP04-M1 | 已实现 | `Certificates.kt`、Gateway/API、`CertificateRepository/RequestJournal`、`CertificateDraft/ViewModel/Screen/Labels`：独立元数据、ACME 预检/签发、自签名、续期/撤销/删除、原意图摘要与原键/ID、手机/平板和三语；运维及深链接入证书领域；Server 修正创建重放身份并验证账本重开恢复 | BP04-M2；基本自动化结果见 Verification；真实宿主/设备待验收 |
+| BP04-M2 | 已实现 | `CertificateUsage/Binding`、网站显式选择、详情 Kestrel 部署/实际选择器与观察时间、丢失响应原键/ID 核实；Protocol/Server/桌面客户端接入只读部署 DTO，Server 校验证书状态/有效期/SAN 并保证事实变化后原请求重放，三语与功能文档已同步 | BP05-M1；基本自动化结果见 Verification；真实宿主/设备待验收 |
+| BP05-M1 | 已实现 | `Tunnels.kt`、Gateway/API、`TunnelRepository/MutationJournal`、`TunnelsViewModel/Screen/Draft/Editors/Labels`：固定版本三来源安装及原键/ID、外部检测、profile/写入式 Token/四协议隧道、revision 冲突、应用/停止、日志/待核实与运维跳转；Server 应用指纹投影和进程事件归属已修正，三语/协议/功能文档同步 | BP05-M2；基本自动化结果见 Verification；真实宿主/设备待验收 |
+| BP05-M2 | 已实现 | `ManagedFrps.kt/Draft/Manager`、Gateway/API、Tunnel Repository/Journal/ViewModel：宿主配置/Token/dashboard 秘密、显式编辑读取、CAS/应用 revision、启动/停止/重启、日志/审计与待核实；Protocol/Server/桌面同步当前字段和安全 PUT，停止不再返回 connected，进程归属未知不伪报停止，三语/文档同步 | BP06-M1；基本自动化结果见 Verification；真实宿主/设备待验收 |
 | BP06-M1 | 未开始 | 缺 Mihomo 运行时与配置/订阅/节点管理 | 接安装与代理基础任务流 |
 | BP06-M2 | 未开始 | 缺系统代理/TUN/恢复等宿主管理 | BP06-M1 后接能力门控与恢复 |
 | BP02-M2 | 未开始 | 缺受管 Mihomo 出站来源联动 | BP06 实现后联动设置与 Docker |
@@ -60,7 +60,7 @@
 
 ## 3. 当前限制与下一步
 
-- 下一项实现为 BP06-M1 Mihomo 安装、生命周期、配置/订阅与节点。BP03-M1/M2、BP04-M1/M2、BP05-M1/M2 已接入；未执行 Android 检查独立追踪，不阻止后续实现。
+- 下一项实现为 BP06-M1 Mihomo 安装、生命周期、配置/订阅与节点。BP03-M1/M2、BP04-M1/M2、BP05-M1/M2 已接入；剩余宿主/设备检查独立追踪，不阻止后续实现。
 - Android 证书管理/部署已接入现有 API；Server 证书写入仍调用固定拒绝的 `HostPrivilegeService`，需服务端迁移至受授权 Helper 后才能形成生产写入闭环，未伪造 capability 或绕过权限。
 - 公共安装链路已接入 Nginx 和 FRP 表单；其他服务表单仍随领域交付。完全丢失首次响应且已结束的任务不能从活动列表推断终态。
 - 现有能力表不等于全手机首次安装到公网访问闭环通过；首次安装还缺实现，其他领域的真实宿主/设备检查见集中验收清单。

@@ -9,7 +9,7 @@ import org.junit.Test
 class WebPublishingWireTest {
     @Test fun `routes retain the protocol base and encode a server id as one segment`() {
         assertEquals("/api/v1.0/webservers", WebPublishingRoutes.servers())
-        assertEquals("/api/v1.0/certificates", WebPublishingRoutes.CERTIFICATES)
+        assertEquals("/api/v1.0/certificates", CertificateRoutes.ROOT)
         assertEquals("/api/v1.0/webservers/managed%2Fnginx/status", WebPublishingRoutes.status("managed/nginx"))
         assertEquals("/api/v1.0/webservers/managed%2Fnginx/config/test", WebPublishingRoutes.testConfiguration("managed/nginx"))
     }

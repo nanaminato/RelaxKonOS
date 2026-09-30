@@ -165,14 +165,14 @@
 
 | 关联实现 | 用例准备 | 自动化构建/测试 | 手机/平板交互 | Ubuntu 宿主 | Windows 宿主 | 重点范围 / 待补证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| BP01-M1 | 进行中 | 通过（`89114399`：Debug 主代码/单元测试代码编译；专项 JVM 24/24）；`0a59bb52` 未复测 | 未执行 | 未执行 | 未执行 | wire/HTTP/Repository/Journal 24 个用例已执行；取消竞争、完整认证刷新、设备 SAF 与 OperationCenter 端到端用例待补；执行证据 BP01-M1-V1 见下文，APK/仪器测试/lint 不在本次范围 |
-| BP02-M1 | 进行中 | 通过（`02b54f19`：Debug 主代码/单元测试代码编译；专项 JVM 12/12） | 未执行 | 未执行 | 未执行 | wire/HTTP/Editor 12 个用例已执行；实际认证刷新、真实消费者网络、手机/平板交互待补；执行证据 BP02-M1-V1 见下文，APK/仪器测试/lint 不在本次范围 |
-| BP03-M1 | 进行中 | 未执行（按用户要求跳过 Android 构建/测试） | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Repository 12 个用例；全新 Ubuntu/Windows 安装、手机包/服务器引用、接管、生命周期/卸载、设备交互及断线/取消验收待执行 |
-| BP03-M2 | 进行中 | 部分通过：Server 构建/站点契约检查通过；Android 按用户要求未执行；桌面框架引用解析失败 | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Draft/Repository 18 个 Android 用例；静态/反代、配置错误、端口冲突、并发更新与断线核实及真机交互待执行；执行证据见下文 |
-| BP04-M1 | 进行中 | 部分通过：Server 构建/创建重放检查通过；Android 按用户要求未执行 | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Draft/Repository/Journal 21 个 Android 用例；真实预检/ACME/自签名/续期/撤销/删除/取消与秘密脱敏、设备交互待执行 |
-| BP04-M2 | 进行中 | 部分通过：Server 构建/实际选择器/部署恢复检查通过；Android 按用户要求未执行 | 未执行 | 未执行 | 未执行 | 新增 12 个 Android 用例；真实 Nginx/SNI/信任及管理连接中断恢复待验证 |
-| BP05-M1 | 已准备 | 部分通过：Server 构建/本地 FRP 夹具专项检查通过；Android 按用户要求未执行 | 未执行 | 未执行 | 未执行 | 新增 21 个 Android 用例；真实 FRP 安装/连接、Windows Helper、手机/平板/IME 与断线恢复待验收 |
-| BP05-M2 | 已准备 | 部分通过：Server 构建/frps 夹具专项检查通过；Android 按用户要求未执行 | 未执行 | 未执行 | 未执行 | 新增 18 个 Android 用例；真实 frps 网络、Windows Helper、秘密/会话/手机/平板/IME 待验收 |
+| BP01-M1 | 进行中 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | wire/HTTP/Repository/Journal 24 个用例已执行；取消竞争、完整认证刷新、设备 SAF 与 OperationCenter 端到端用例待补；执行证据 BP01-M1-V1 见下文，本次 APK/JVM 已验证；仪器测试/lint 未执行 |
+| BP02-M1 | 进行中 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | wire/HTTP/Editor 12 个用例已执行；实际认证刷新、真实消费者网络、手机/平板交互待补；执行证据 BP02-M1-V1 见下文，本次 APK/JVM 已验证；仪器测试/lint 未执行 |
+| BP03-M1 | 进行中 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 已执行 wire/HTTP/Repository 12 个用例；全新 Ubuntu/Windows 安装、手机包/服务器引用、接管、生命周期/卸载、设备交互及断线/取消验收待执行 |
+| BP03-M2 | 进行中 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 已执行 wire/HTTP/Draft/Repository 18 个 Android 用例；静态/反代、配置错误、端口冲突、并发更新与断线核实及真机交互待执行；执行证据见下文 |
+| BP04-M1 | 进行中 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 已执行 wire/HTTP/Draft/Repository/Journal 21 个 Android 用例；真实预检/ACME/自签名/续期/撤销/删除/取消与秘密脱敏、设备交互待执行 |
+| BP04-M2 | 进行中 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 新增 12 个 Android 用例；真实 Nginx/SNI/信任及管理连接中断恢复待验证 |
+| BP05-M1 | 已准备 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 新增 21 个 Android 用例；真实 FRP 安装/连接、Windows Helper、手机/平板/IME 与断线恢复待验收 |
+| BP05-M2 | 已准备 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 新增 18 个 Android 用例；真实 frps 网络、Windows Helper、秘密/会话/手机/平板/IME 待验收 |
 | BP06-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | Mihomo 安装/修复/升级/回滚、订阅/配置/节点与失败诊断 |
 | BP06-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 系统代理/TUN、能力门控、管理路径保护、紧急恢复、DNS/GeoData |
 | BP02-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 受管 Mihomo 缺失/停止/运行与地址更新；Docker/下载真实代理行为 |
@@ -311,3 +311,32 @@ $bp02Gradle = 'C:/Users/betha/.gradle/wrapper/dists/gradle-9.7.1-all/6yde0y3ecw7
 - 最后一次进程句柄、启动错误与配置读取修改后已重建并重跑 `--frps-only`；同时重跑 `--frpc-state-only` 和 `--frpc-lifecycle-only`，均通过，覆盖本次共享 FRP 改动的客户端回归范围。
 - 已准备 Android ManagedFrpsWire 4、HTTP 2、Draft 4、Repository 8，共 18 个用例；涉及安全/编辑读取分离、当前 revision/appliedRevision、缺字段/错误 proof、有界审计、PUT 路由、IP/范围/秘密/监听冲突、未知请求身份隔离、匹配 revision 才返回 Token、停止丢失/异常/失败阻止启动、每阶段独立提权与精确 frps 授权、切会话丢弃并清零秘密响应、未知写入结束后清零请求凭据。Android 编译、JVM/仪器测试和 lint 按用户要求未执行。
 - 新增三语资源、桌面 JSON 键/占位符、XML、Android 文档链接与 `git diff --check` 静态检查通过。待目标环境执行：真实 frps/frpc 认证/隧道/vhost/Dashboard、防火墙/公网/TLS 信任、Windows Helper 管理进程与授权、Linux 重启遗留进程核实、并发修改/管理路径中断/未知请求恢复、手机/平板/旋转/IME/大字体。
+
+### BP03-BP05-MERGE-V1 合并基本测试（2026-09-30）
+
+- 合并提交 `ccdf8478`：将 `5f6f37be`（bp03_05）合入 `4c8685b6`（master）。四份 Android 文档冲突保留 BP01/BP02 的既有测试证据，同时采用 BP03～BP05 的当前实现与剩余计划。以下结果覆盖该合并代码及同批提交的两处 Kotlin 修正。
+- 环境：Windows 11 amd64、.NET SDK 10.0.300、Gradle 9.7.1、Temurin JDK 21.0.12.1、Android SDK 36；Android 使用离线缓存。未安装或升级工具链。
+- 首次 Android 主代码编译发现 `WebSiteDraft` 的可空 certificateId 在 lambda 内无法收窄，改用 `let` 验证已选 ID；随后单元测试代码编译发现 `WebPublishingWireTest` 仍引用已删除的证书路由常量，直接更新为当前 `CertificateRoutes.ROOT`。修正后重跑以下命令成功（最终 Gradle `BUILD SUCCESSFUL`，退出码 0）：
+
+```powershell
+# 在 Client/RelaxKonOS.Client.Android/ 执行
+$bpMergeGradle = 'C:/Users/betha/.gradle/wrapper/dists/gradle-9.7.1-all/6yde0y3ecw7psqwo4h66kup3z/gradle-9.7.1/bin/gradle.bat'
+& $bpMergeGradle :app:assembleDebug :app:testDebugUnitTest --offline --console=plain
+```
+
+- XML 报告合计 91 个测试类 / 660 个用例，失败 0、错误 0、跳过 0。BP03 实例管理 12、站点管理 18、BP04 证书管理/绑定 33、BP05 frpc 19 与 frps 18 个用例全部通过；InstallationRepository 的 12 个用例也通过（含 BP05 新增 2 个原 ID 识别用例）。BP01/BP02 已有测试包含在此次全量回归中。
+- Debug APK 已生成：`app/build/outputs/apk/debug/app-debug.apk`；JVM XML 报告：`app/build/test-results/testDebugUnitTest/TEST-*.xml`；HTML 报告：`app/build/reports/tests/testDebugUnitTest/index.html`。这些是忽略的本机构建产物，不提交。
+- .NET 首次默认并行构建因共享中间产物被占用失败（CS2012）；采用串行构建后成功，0 错误、5 条警告（CS8604、MVVMTK0034、AVLN5001 及两条 AVLN3001）。Server.Tests 正常项目引用构建成功，0 警告/错误；本次未使用预构建程序集选项。最终命令及四项专项均退出码 0：
+
+```powershell
+# 在仓库根目录执行
+dotnet build RelaxKonOS.sln -c Debug --no-restore -v minimal -m:1 -p:UseSharedCompilation=false
+dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug --no-restore -v minimal -m:1 -p:UseSharedCompilation=false
+dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --webserver-sites-only
+dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --certificate-binding-only
+dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --certificate-replay-only
+dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --frpc-state-only
+```
+
+- 站点并发/CAS 与严格契约、证书绑定/实时选择器事实/部署重放、创建重放、FRP applied-state/协议/TOML 安全检查通过。三语 XML 各 1554 个唯一字符串键、无重复且键集一致；`git diff --check` 通过。
+- 未执行整套 Server.Tests、Android lint/仪器测试/手机平板交互，也未执行真实 Nginx/ACME/FRP 网络、安装或 Windows Helper 验收。`--frps-only` 的 shell 夹具要求 Linux；frpc 生命周期夹具在 Windows 跳过，所以本轮未将其计为通过。原有 Linux 夹具历史证据继续保留。

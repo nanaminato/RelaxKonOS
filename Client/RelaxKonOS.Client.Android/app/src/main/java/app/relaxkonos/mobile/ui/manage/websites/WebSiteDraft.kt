@@ -18,7 +18,7 @@ internal data class WebSiteDraft(val serverId: String, val id: String = "site-${
             bindings.any { it.domain.isBlank() || it.domain.any(Char::isWhitespace) } || (rootPath.isBlank() && routes.isEmpty()) ||
             (grantReadAccess && rootPath.isBlank()) || (redirectHttpToHttps && !httpsEnabled) ||
             (httpsEnabled && if (useServerCertificate) certificatePath.isBlank() else certificateId == null)) return null
-        if (certificateId != null && runCatching { InstallationRoutes.operation(certificateId) }.isFailure && !useServerCertificate) return null
+        if (!useServerCertificate && certificateId?.let { runCatching { InstallationRoutes.operation(it) }.isFailure } == true) return null
         if (routes.map { it.path.trim() }.distinct().size != routes.size || routes.any { route ->
             !route.path.trim().matches(Regex("^/(?:[A-Za-z0-9._~-]+/)*$")) || runCatching {
                 val uri = URI(route.upstream.trim()); uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank() || uri.userInfo != null || uri.fragment != null
