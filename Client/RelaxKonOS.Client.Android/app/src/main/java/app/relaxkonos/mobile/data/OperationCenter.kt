@@ -2,6 +2,8 @@ package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.core.auth.AuthSession
 import app.relaxkonos.mobile.core.auth.SessionState
+import app.relaxkonos.mobile.core.net.InstallationOperation
+import app.relaxkonos.mobile.core.net.InstallationService
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.BackupManifest
 import app.relaxkonos.mobile.core.net.DeploymentOperation
@@ -24,9 +26,11 @@ data class ObservedOperation(
     val problemCode: String? = null,
     val cancellable: Boolean = false,
     val checkedAtMillis: Long? = null,
+    val installation: InstallationOperation? = null,
 )
 
-data class OperationCenterSnapshot(val items: List<ObservedOperation>, val incomplete: Boolean)
+data class OperationCenterSnapshot(val items: List<ObservedOperation>, val incomplete: Boolean,
+    val pendingInstallations: List<PendingInstallationRequest> = emptyList())
 
 /** Reads each domain's own durable record. Discovery also recovers operations not yet in the local index. */
 class OperationCenter(
@@ -38,6 +42,7 @@ class OperationCenter(
     private val git: GitRepositoryClient,
     private val scripts: ScriptTaskRepository,
     private val backups: BackupRecoveryRepository,
+    private val installations: InstallationRepository,
 ) {
     suspend fun refresh(owner: SessionState.Active): OperationCenterSnapshot {
         verify(owner)
@@ -113,13 +118,29 @@ class OperationCenter(
                 discovered[OperationDomain.Script to task.id] = fromScript(owner, task)
             }
         }
+        val pendingInstallations = installations.pending(owner)
+        pendingInstallations.filter { it.operationId != null }.forEach { pending ->
+            val result = installations.recover(owner, pending)
+            if (result !is ApiResult.Success) incomplete = true
+        }
+        InstallationService.entries.filter { owner.privilegedOperations && it.capability in owner.capabilities }.forEach { service ->
+            verify(owner)
+            when (val result = installations.active(owner, service)) {
+                is ApiResult.Success -> result.value?.let { operation ->
+                    if (!index.isHidden(owner, OperationDomain.Installation, operation.operationId)) {
+                        discovered[OperationDomain.Installation to operation.operationId] = fromInstallation(owner, operation)
+                    }
+                }
+                else -> incomplete = true
+            }
+        }
         index.forOwner(owner).forEach { reference ->
             verify(owner)
             val key = reference.domain to reference.operationId
             if (key !in discovered) discovered[key] = query(owner, reference)
         }
         verify(owner)
-        return OperationCenterSnapshot(discovered.values.sortedByDescending { it.reference.seenAtMillis }, incomplete)
+        return OperationCenterSnapshot(discovered.values.sortedByDescending { it.reference.seenAtMillis }, incomplete, installations.pending(owner).filter { it.attempted })
     }
 
     suspend fun diagnostics(owner: SessionState.Active, item: ObservedOperation): ApiResult<List<String>> {
@@ -167,6 +188,7 @@ class OperationCenter(
                     "cancel:${owner.serviceId}:${owner.userName}:${item.reference.operationId}".toByteArray(Charsets.UTF_8)).toString()
                 deployments.cancel(owner, item.reference.operationId, key)
             }
+            OperationDomain.Installation -> installations.cancel(owner, item.reference.operationId)
             OperationDomain.Compose -> docker.cancelStackOperation(owner, item.reference.operationId)
             OperationDomain.GitBuild -> git.cancelBuild(owner, item.reference.operationId)
             OperationDomain.Script -> when (val result = scripts.cancel(owner, item.reference.operationId)) {
@@ -212,6 +234,12 @@ class OperationCenter(
                 is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
                 is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
             }
+            OperationDomain.Installation -> when (val result = installations.operation(owner, reference.operationId)) {
+                is ApiResult.Success -> if (result.value.service.name == reference.resourceId)
+                    fromInstallation(owner, result.value) else unknown(reference, OperationCheck.Missing)
+                is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
+                is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
+            }
             OperationDomain.Backup -> when (val result = backups.manifest(owner, reference.operationId)) {
                 is ApiResult.Success -> if (result.value.applicationId == reference.resourceId)
                     fromBackup(owner, result.value, reference.resourceId) else unknown(reference, OperationCheck.Missing)
@@ -244,6 +272,11 @@ class OperationCenter(
         verified(owner, OperationDomain.Script, task.id, task.id,
             task.executablePath.substringAfterLast('/').substringAfterLast('\\'), task.state, "", null, task.problemCode,
             task.state == "queued" || task.state == "running")
+
+    private fun fromInstallation(owner: SessionState.Active, operation: InstallationOperation): ObservedOperation =
+        verified(owner, OperationDomain.Installation, operation.service.name, operation.operationId,
+            operation.service.name, operation.state.wire, operation.stage.wire, operation.progress,
+            operation.problemCode, operation.cancellable && operation.state.active).copy(installation = operation)
 
     private fun fromBackup(owner: SessionState.Active, backup: BackupManifest, target: String): ObservedOperation =
         verified(owner, OperationDomain.Backup, backup.applicationId, backup.backupId,

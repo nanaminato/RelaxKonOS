@@ -1,5 +1,6 @@
 package app.relaxkonos.mobile
 
+import app.relaxkonos.mobile.core.net.*
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DeploymentApplication
 import app.relaxkonos.mobile.core.net.DeploymentLog
@@ -31,6 +32,24 @@ import java.io.InputStream
  * returned a default.
  */
 class FakeGateway : RelaxKonGateway {
+    var onStartInstallation: (suspend (InstallationKind, InstallationRequest, String) -> ApiResult<InstallationOperation>)? = null
+    var onInstallation: (suspend (String) -> ApiResult<InstallationOperation>)? = null
+    var onActiveInstallation: (suspend (InstallationService) -> ApiResult<InstallationOperation?>)? = null
+    var onCancelInstallation: (suspend (String, String) -> ApiResult<InstallationOperation>)? = null
+    var onInstallationFileReference: (suspend (InstallationService, String) -> ApiResult<InstallationFileReference>)? = null
+    var onInstallationUpload: (suspend (InstallationService, String, Long?, () -> InputStream) -> ApiResult<InstallationFileReference>)? = null
+    override suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
+        request: InstallationRequest, idempotencyKey: String) = requireNotNull(onStartInstallation)(kind, request, idempotencyKey)
+    override suspend fun installation(serverUrl: String, accessToken: String, operationId: String) = requireNotNull(onInstallation)(operationId)
+    override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService) = requireNotNull(onActiveInstallation)(service)
+    override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String,
+        idempotencyKey: String) = requireNotNull(onCancelInstallation)(operationId, idempotencyKey)
+    override suspend fun installationFileReference(serverUrl: String, accessToken: String, service: InstallationService,
+        path: String) = requireNotNull(onInstallationFileReference)(service, path)
+    override suspend fun uploadInstallationPackage(serverUrl: String, accessToken: String, service: InstallationService,
+        fileName: String, length: Long?, open: () -> InputStream, onProgress: ((Long) -> Unit)?) =
+        requireNotNull(onInstallationUpload)(service, fileName, length, open)
+
     var onDeploymentApplications: (suspend (String, String) -> ApiResult<List<DeploymentApplication>>)? = null
     var onDeploymentSnapshot: (suspend (String, String, String) -> ApiResult<DeploymentSnapshot>)? = null
     var onDeploymentRuntime: (suspend (String, String) -> ApiResult<DeploymentRuntime>)? = null

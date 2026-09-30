@@ -35,6 +35,7 @@ sealed interface SessionState {
          * it. Screens read it to say so up front; the server still refuses on its own.
          */
         val executionEligibility: ExecutionEligibility,
+        val privilegedOperations: Boolean = false,
     ) : SessionState
 }
 
@@ -276,6 +277,7 @@ class AuthSession(
             capabilities = session.server.capabilities,
             serverPlatform = session.server.platform,
             executionEligibility = session.executionEligibility,
+            privilegedOperations = session.server.privilegedOperations,
         )
     }
 }

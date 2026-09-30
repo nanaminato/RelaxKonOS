@@ -11,7 +11,7 @@ data class AuthTokens(
     val refreshTokenExpiresAtMillis: Long?,
 )
 
-data class ServerDescriptor(val platform: String, val capabilities: Set<String>)
+data class ServerDescriptor(val platform: String, val capabilities: Set<String>, val privilegedOperations: Boolean = false)
 
 /**
  * Whether the identity that just signed in may run ordinary operations (files, terminal, Git) on the

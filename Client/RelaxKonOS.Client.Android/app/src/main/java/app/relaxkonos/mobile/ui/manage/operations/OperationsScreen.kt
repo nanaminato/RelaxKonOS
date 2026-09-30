@@ -15,12 +15,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +41,7 @@ import app.relaxkonos.mobile.RelaxKonApplication
 import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ServerCapabilities
+import app.relaxkonos.mobile.data.PendingInstallationRequest
 import app.relaxkonos.mobile.data.ObservedOperation
 import app.relaxkonos.mobile.data.OperationCheck
 import app.relaxkonos.mobile.data.OperationDomain
@@ -48,6 +51,8 @@ import app.relaxkonos.mobile.ui.theme.Spacing
 import java.util.Date
 import java.text.DateFormat
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -63,6 +68,7 @@ internal data class OperationsState(
     val cancelRequested: Boolean = false,
     val hideRequested: Boolean = false,
     val error: Boolean = false,
+    val pendingInstallations: List<PendingInstallationRequest> = emptyList(),
 )
 
 internal class OperationsViewModel(application: Application) : AndroidViewModel(application) {
@@ -72,10 +78,40 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
     private var refreshJob: Job? = null
     private var generation = 0
 
-    fun refresh(owner: SessionState.Active, cancellationUnverified: Boolean = false) {
+    fun stopObserving(owner: SessionState.Active) {
+        if (state.owner !== owner) return
+        generation++
+        refreshJob?.cancel()
+        state = OperationsState()
+    }
+
+    fun poll(owner: SessionState.Active) {
+        if (state.owner !== owner || state.loading || refreshJob?.isActive == true || state.cancelling || state.cancelRequested || state.hideRequested) return
+        if (state.items.any { it.check == OperationCheck.Unavailable || it.state == "queued" || it.state == "running" } || state.pendingInstallations.isNotEmpty())
+            refresh(owner, quiet = true)
+    }
+
+    fun recoverInstallation(owner: SessionState.Active, id: String) {
+        if (state.owner !== owner || state.loading) return
+        val request = generation
+        state = state.copy(loading = true)
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { container.installations.recoverById(owner, id.trim()) }
+                if (current(owner, request)) refresh(owner, result !is ApiResult.Success)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (current(owner, request)) state = state.copy(loading = false, error = true)
+            }
+        }
+    }
+
+    fun refresh(owner: SessionState.Active, cancellationUnverified: Boolean = false, quiet: Boolean = false) {
         refreshJob?.cancel()
         val request = ++generation
-        state = OperationsState(owner = owner, loading = true, selectedKey = state.selectedKey.takeIf { state.owner === owner })
+        state = if (state.owner === owner) state.copy(loading = !quiet, cancelling = false,
+            cancelRequested = false, hideRequested = false) else OperationsState(owner = owner, loading = true)
         refreshJob = viewModelScope.launch {
             try {
                 val snapshot = withContext(Dispatchers.IO) { container.operationCenter.refresh(owner) }
@@ -83,7 +119,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
                 if (current(owner, request)) {
                     state = state.copy(loading = false, items = items,
                         selectedKey = state.selectedKey?.takeIf { key -> items.any { (it.reference.domain to it.reference.operationId) == key } },
-                        error = snapshot.incomplete || cancellationUnverified)
+                        error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -97,7 +133,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
         if (state.owner !== owner) return
         val key = item.reference.domain to item.reference.operationId
         state = state.copy(selectedKey = key, diagnostics = null, cancelRequested = false)
-        if (item.check != OperationCheck.Verified || item.reference.domain == OperationDomain.Website) return
+        if (item.check != OperationCheck.Verified || item.reference.domain in setOf(OperationDomain.Website, OperationDomain.Installation)) return
         viewModelScope.launch {
             val result = container.operationCenter.diagnostics(owner, item)
             if (state.owner === owner && state.selectedKey == key && container.session.state.value === owner) {
@@ -113,29 +149,31 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
 
     fun hide(owner: SessionState.Active, item: ObservedOperation) {
         if (state.owner !== owner) return
+        val request = generation
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { container.operationCenter.hide(owner, item) }
-                if (container.session.state.value === owner) state = state.copy(
+                if (current(owner, request)) state = state.copy(
                     items = state.items.filterNot { it.reference == item.reference }, selectedKey = null,
                     hideRequested = false)
             } catch (_: Exception) {
-                if (container.session.state.value === owner) state = state.copy(hideRequested = false, error = true)
+                if (current(owner, request)) state = state.copy(hideRequested = false, error = true)
             }
         }
     }
 
     fun cancel(owner: SessionState.Active, item: ObservedOperation) {
         if (state.owner !== owner || !item.cancellable) return
+        val request = generation
         state = state.copy(cancelRequested = false, cancelling = true)
         viewModelScope.launch {
             try {
                 val result = container.operationCenter.cancel(owner, item)
-                if (container.session.state.value === owner) refresh(owner, result !is ApiResult.Success)
+                if (current(owner, request)) refresh(owner, result !is ApiResult.Success)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                if (container.session.state.value === owner) state = state.copy(cancelling = false, error = true)
+                if (current(owner, request)) state = state.copy(cancelling = false, error = true)
             }
         }
     }
@@ -172,6 +210,15 @@ fun OperationsScreen(
             onStartOnAlertsConsumed()
         }
     }
+    DisposableEffect(owner) { onDispose { viewModel.stopObserving(owner) } }
+    LaunchedEffect(owner, tab) {
+        while (isActive) {
+            delay(5_000)
+            if (tab == 0) viewModel.poll(owner)
+        }
+    }
+    var recoverDialog by remember(owner) { mutableStateOf(false) }
+    var recoverId by remember(owner) { mutableStateOf("") }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var exportPreview by remember(owner) { mutableStateOf(false) }
@@ -213,9 +260,18 @@ fun OperationsScreen(
         if (visible && !state.loading && state.items.isEmpty() && !state.error) {
             Text(stringResource(R.string.operations_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (owner.privilegedOperations) OutlinedButton(onClick = { recoverDialog = true }, enabled = visible && !state.loading) {
+            Text(stringResource(R.string.installation_recover))
+        }
+        if (visible) state.pendingInstallations.forEach { pending ->
+            Text(stringResource(R.string.installation_pending,
+                installationServiceLabel(pending.service), installationKindLabel(pending.kind)),
+                color = MaterialTheme.colorScheme.error)
+        }
         if (visible) state.items.forEach { item ->
             ListRow(
-                title = item.target,
+                title = item.installation?.let { installationServiceLabel(it.service) }
+                    ?: if (item.reference.domain == OperationDomain.Installation) installationReferenceLabel(item.reference.resourceId) else item.target,
                 subtitle = stringResource(when (item.reference.domain) {
                     OperationDomain.Deployment -> R.string.operations_deployment
                     OperationDomain.Website -> R.string.operations_website
@@ -223,6 +279,7 @@ fun OperationsScreen(
                     OperationDomain.GitBuild -> R.string.operations_git_build
                     OperationDomain.Script -> R.string.operations_script
                     OperationDomain.Backup -> R.string.operations_backup
+                    OperationDomain.Installation -> R.string.operations_installation
                 }),
                 supporting = operationStatus(item),
                 selected = (item.reference.domain to item.reference.operationId) == state.selectedKey,
@@ -234,9 +291,17 @@ fun OperationsScreen(
             Text(stringResource(R.string.operations_detail), style = MaterialTheme.typography.titleMedium)
             Text(selected.reference.operationId, style = MaterialTheme.typography.bodySmall)
             Text(operationStatus(selected))
-            selected.stage?.takeIf(String::isNotBlank)?.let { Text(stringResource(R.string.operations_stage, it)) }
-            selected.progress?.let { Text(stringResource(R.string.operations_progress, it)) }
-            selected.problemCode?.let { Text(stringResource(R.string.operations_problem, it), color = MaterialTheme.colorScheme.error) }
+            val installation = selected.installation
+            if (installation != null) {
+                Text(stringResource(R.string.installation_action, installationKindLabel(installation.kind)))
+                Text(stringResource(R.string.operations_stage, installationStageLabel(installation.stage)))
+                installation.progress?.let { Text(stringResource(R.string.installation_stage_progress, it)) }
+                installation.problemCode?.let { Text(installationProblemLabel(it), color = MaterialTheme.colorScheme.error) }
+            } else {
+                selected.stage?.takeIf(String::isNotBlank)?.let { Text(stringResource(R.string.operations_stage, it)) }
+                selected.progress?.let { Text(stringResource(R.string.operations_progress, it)) }
+                selected.problemCode?.let { Text(stringResource(R.string.operations_problem, it), color = MaterialTheme.colorScheme.error) }
+            }
             selected.checkedAtMillis?.let { millis ->
                 Text(stringResource(R.string.operations_checked,
                     DateFormat.getDateTimeInstance().format(Date(millis))))
@@ -244,7 +309,7 @@ fun OperationsScreen(
             if (selected.check == OperationCheck.Missing) {
                 Text(stringResource(R.string.operations_check_target), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            OutlinedButton(onClick = {
+            if (selected.reference.domain != OperationDomain.Installation) OutlinedButton(onClick = {
                 when (selected.reference.domain) {
                     OperationDomain.Deployment -> onOpenDeployment(selected.reference.resourceId)
                     OperationDomain.Website -> onOpenWebsite(selected.reference.resourceId)
@@ -252,6 +317,7 @@ fun OperationsScreen(
                     OperationDomain.GitBuild -> onOpenGitBuild(selected.reference.operationId)
                     OperationDomain.Script -> onOpenScript(selected.reference.operationId)
                     OperationDomain.Backup -> onOpenDeployment(selected.reference.resourceId)
+                    OperationDomain.Installation -> Unit
                 }
             }) { Text(stringResource(R.string.operations_open_target)) }
             if (selected.cancellable && selected.check == OperationCheck.Verified) {
@@ -278,6 +344,20 @@ fun OperationsScreen(
         }
         } else if (hasAlerts) AlertPanel(owner, onOpenDeployment)
     }
+    if (recoverDialog) AlertDialog(
+        onDismissRequest = { recoverDialog = false },
+        title = { Text(stringResource(R.string.installation_recover)) },
+        text = { Column {
+            Text(stringResource(R.string.installation_recover_help))
+            OutlinedTextField(value = recoverId, onValueChange = { recoverId = it }, singleLine = true,
+                label = { Text(stringResource(R.string.installation_operation_id)) })
+        } },
+        confirmButton = { TextButton(onClick = { recoverDialog = false; viewModel.recoverInstallation(owner, recoverId) },
+            enabled = runCatching { app.relaxkonos.mobile.core.net.InstallationRoutes.operation(recoverId.trim()) }.isSuccess) {
+            Text(stringResource(R.string.common_refresh))
+        } },
+        dismissButton = { TextButton(onClick = { recoverDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
+    )
     if (selected != null && state.cancelRequested) AlertDialog(
         onDismissRequest = viewModel::dismissCancel,
         title = { Text(stringResource(R.string.operations_request_cancel)) },
@@ -315,7 +395,7 @@ fun OperationsScreen(
 private fun operationStatus(item: ObservedOperation): String = when (item.check) {
     OperationCheck.Unavailable -> stringResource(R.string.operations_unverified)
     OperationCheck.Missing -> stringResource(R.string.operations_missing)
-    OperationCheck.Verified -> when (item.state?.lowercase()) {
+    OperationCheck.Verified -> if (item.installation != null) installationStateLabel(item.installation.state) else when (item.state?.lowercase()) {
         "queued", "running" -> stringResource(R.string.operations_running)
         "cancelling" -> stringResource(R.string.scripts_cancelling)
         "succeeded", "verified" -> stringResource(R.string.operations_succeeded)

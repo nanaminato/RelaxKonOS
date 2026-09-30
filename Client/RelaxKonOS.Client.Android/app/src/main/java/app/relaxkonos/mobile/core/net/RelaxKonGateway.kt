@@ -22,6 +22,18 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
+        request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation>
+    suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation>
+    suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?>
+    suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String,
+        idempotencyKey: String): ApiResult<InstallationOperation>
+    suspend fun installationFileReference(serverUrl: String, accessToken: String, service: InstallationService,
+        path: String): ApiResult<InstallationFileReference>
+    suspend fun uploadInstallationPackage(serverUrl: String, accessToken: String, service: InstallationService,
+        fileName: String, length: Long?, open: () -> InputStream,
+        onProgress: ((Long) -> Unit)? = null): ApiResult<InstallationFileReference>
+
     suspend fun createDefinitionBackup(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest> = ApiResult.Transport("Backup recovery unavailable.")
     suspend fun definitionBackupRequest(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest?> = ApiResult.Transport("Backup recovery unavailable.")
     suspend fun backupManifests(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<BackupManifest>> = ApiResult.Transport("Backup recovery unavailable.")

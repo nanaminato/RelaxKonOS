@@ -7,7 +7,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 
-enum class OperationDomain { Deployment, Website, Compose, GitBuild, Script, Backup }
+enum class OperationDomain { Deployment, Website, Compose, GitBuild, Script, Backup, Installation }
 
 /** Only lookup keys are persisted. The remote domain record owns state, progress and diagnostics. */
 data class OperationReference(
@@ -72,6 +72,13 @@ class OperationIndex(private val storage: OperationIndexStorage) {
                     it.domain == reference.domain && it.operationId == reference.operationId) it.copy(hidden = true) else it }
         } else listOf(reference.copy(hidden = true)) + current
         write(updated.take(MAX_RECORDS))
+    }
+
+    /** Explicit recovery may show a previously hidden reference after the host verified it. */
+    @Synchronized
+    fun reveal(owner: SessionState.Active, domain: OperationDomain, operationId: String) {
+        write(read().map { if (it.serviceId == owner.serviceId && it.account == owner.userName &&
+            it.domain == domain && it.operationId == operationId) it.copy(hidden = false) else it })
     }
 
     @Synchronized

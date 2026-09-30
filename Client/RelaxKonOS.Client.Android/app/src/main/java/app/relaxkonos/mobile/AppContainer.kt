@@ -249,7 +249,10 @@ class AppContainer(context: Context) {
     val scriptTasks = ScriptTaskRepository(gateway, session, operationIndex)
     val backupRecovery = BackupRecoveryRepository(gateway, session, operationIndex,
         BackupRecoveryRequestJournal(FileBackupRecoveryRequestStorage(appContext.noBackupFilesDir)))
-    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery)
+    val installations = app.relaxkonos.mobile.data.InstallationRepository(gateway, session, elevations, operationIndex,
+        app.relaxkonos.mobile.data.InstallationRequestJournal(
+            app.relaxkonos.mobile.data.FileInstallationRequestStorage(appContext.noBackupFilesDir)))
+    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery, installations)
     val eventAlerts = EventAlertRepository(gateway, session)
     val alertNotificationStore = AlertNotificationStore(appContext)
     val foregroundAlertNotifier = ForegroundAlertNotifier(appContext, session, eventAlerts, alertNotificationStore, appScope)

@@ -22,6 +22,7 @@
 | [网站发布](features/WebPublishing.md) | 诊断、确认式 HTTPS、发布恢复和访问观测 |
 | [Git 编辑与构建](features/Git.md) | 受限文本编辑、固定 SHA、隔离构建与产物发布 |
 | [终端、脚本与守护](features/TerminalAutomation.md) | Server/SSH 会话、输入/恢复、远端任务与工作负载 |
+| [公共运行时安装](features/Installations.md) | 当前安装契约、包引用/上传、幂等提权、任务观察/取消与恢复边界 |
 | [任务、告警与恢复](features/OperationsRecovery.md) | 领域操作索引、诊断、前台通知、定义备份与预检 |
 
 ## 后续计划 `plans/`
@@ -29,7 +30,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [部署剩余工作](plans/Deployment.md) | 首次安装、模板更新、构建回收、数据恢复与后台通知的代码缺口 |
-| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；BP01-M1 起步拆分，随后网络/Nginx/证书/FRP/Mihomo |
+| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；公共安装链路见功能说明；后续网络/Nginx/证书/FRP/Mihomo |
 
 ## 开发与发布 `development/`
 

@@ -2,6 +2,7 @@ package app.relaxkonos.mobile.core.net
 
 import android.os.Build
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.ensureActive
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -193,6 +194,87 @@ class RelaxKonApi(
         is ApiResult.Problem -> result
         is ApiResult.Transport -> result
     }
+    override suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
+        request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation> =
+        installationCall("POST", serverUrl, InstallationRoutes.start(request.service, kind), accessToken,
+            InstallationWire.request(request, kind), idempotencyKey, InstallationWire::operation)
+
+    override suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation> =
+        installationCall("GET", serverUrl, InstallationRoutes.operation(operationId), accessToken, null, null, InstallationWire::operation)
+
+    override suspend fun activeInstallation(serverUrl: String, accessToken: String, service: InstallationService): ApiResult<InstallationOperation?> =
+        when (val result = installationCall("GET", serverUrl, InstallationRoutes.active(service), accessToken, null, null, InstallationWire::operation)) {
+            is ApiResult.Problem -> if (result.status == 404 && result.code.isBlank()) ApiResult.Success(null) else result
+            else -> result
+        }
+
+    override suspend fun cancelInstallation(serverUrl: String, accessToken: String, operationId: String,
+        idempotencyKey: String): ApiResult<InstallationOperation> =
+        installationCall("POST", serverUrl, InstallationRoutes.cancel(operationId), accessToken, null, idempotencyKey, InstallationWire::operation)
+
+    override suspend fun installationFileReference(serverUrl: String, accessToken: String, service: InstallationService,
+        path: String): ApiResult<InstallationFileReference> = installationCall("POST", serverUrl,
+        InstallationRoutes.fileReference(service), accessToken, JsonBody().string("path", path), null, InstallationWire::fileReference)
+
+    private suspend fun <T> installationCall(method: String, serverUrl: String, route: String, accessToken: String,
+        body: JsonBody?, key: String?, parse: (String) -> T): ApiResult<T> = when (val result = execute(method,
+        serverUrl, route, accessToken, body, key?.let { mapOf("Idempotency-Key" to it) }.orEmpty())) {
+        is ApiResult.Success -> runCatching { parse(result.value) }
+            .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed installation response.") })
+        is ApiResult.Problem -> result
+        is ApiResult.Transport -> result
+    }
+
+    override suspend fun uploadInstallationPackage(serverUrl: String, accessToken: String, service: InstallationService,
+        fileName: String, length: Long?, open: () -> InputStream,
+        onProgress: ((Long) -> Unit)?): ApiResult<InstallationFileReference> = withContext(Dispatchers.IO) {
+        val maximum = 128L * 1024 * 1024
+        if (length != null && (length <= 0 || length > maximum))
+            return@withContext ApiResult.Problem(400, InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE, null)
+        var connection: HttpURLConnection? = null
+        try {
+            val boundary = "RelaxKonOS-installation-${java.util.UUID.randomUUID()}"
+            val header = buildMultipartHeader(boundary, fileName.substringAfterLast('/').substringAfterLast('\\'), "package")
+            val footer = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+            connection = openConnection(serverUrl, InstallationRoutes.packageUpload(service), "POST", accessToken, CHUNK_READ_TIMEOUT_MILLIS)
+            connection.instanceFollowRedirects = false
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            if (length != null) connection.setFixedLengthStreamingMode(header.size.toLong() + length + footer.size)
+            else connection.setChunkedStreamingMode(BUFFER_SIZE)
+            connection.outputStream.use { output ->
+                output.write(header)
+                open().use { input ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    var written = 0L
+                    while (true) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        written += count
+                        if (written > maximum || (length != null && written > length))
+                            return@withContext ApiResult.Problem(400, InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE, null)
+                        output.write(buffer, 0, count)
+                        onProgress?.invoke(written)
+                    }
+                    if (written == 0L || (length != null && written != length))
+                        return@withContext ApiResult.Problem(400, InstallationProblemCodes.FILE_REFERENCE_UNAVAILABLE, null)
+                }
+                output.write(footer)
+            }
+            val code = connection.responseCode
+            if (code !in 200..299) return@withContext readProblem(connection, code)
+            runCatching { InstallationWire.fileReference(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }) }
+                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed installation package response.") })
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            ApiResult.Transport("Installation package transfer unavailable.")
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
     override suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> =
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.servers(), WebPublishingWire::servers)
 
@@ -1190,8 +1272,10 @@ class RelaxKonApi(
         body: JsonBody?,
         headers: Map<String, String> = emptyMap(),
     ): ApiResult<String> = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
         try {
-            val connection = openConnection(serverUrl, path, method, accessToken)
+            connection = openConnection(serverUrl, path, method, accessToken)
+            connection.instanceFollowRedirects = false
             for ((name, value) in headers) {
                 connection.setRequestProperty(name, value)
             }
@@ -1208,8 +1292,12 @@ class RelaxKonApi(
                 return@withContext readProblem(connection, code)
             }
             ApiResult.Success(connection.inputStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty())
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             ApiResult.Transport(error.message)
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -1291,6 +1379,7 @@ class RelaxKonApi(
             server = ServerDescriptor(
                 platform = server.optString("platform"),
                 capabilities = (0 until capabilities.length()).map { capabilities.getString(it) }.toSet(),
+                privilegedOperations = server.optJSONObject("host")?.getJSONObject("capabilities")?.getBoolean("privilegedOperations") == true,
             ),
             tokens = json.getJSONObject("tokens").let { tokens ->
                 AuthTokens(
@@ -1317,12 +1406,12 @@ class RelaxKonApi(
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
-    private fun buildMultipartHeader(boundary: String, fileName: String): ByteArray {
+    private fun buildMultipartHeader(boundary: String, fileName: String, field: String = "file"): ByteArray {
         // A Content-Disposition filename is a header value, not a display string. Remove control
         // characters and delimiters so a malicious provider cannot inject a second MIME header.
         val safeName = fileName.replace(Regex("[\\r\\n\\\"\\\\]"), "_")
         return (
-            "--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$safeName\"\r\n" +
+            "--$boundary\r\nContent-Disposition: form-data; name=\"$field\"; filename=\"$safeName\"\r\n" +
                 "Content-Type: application/octet-stream\r\n\r\n"
             ).toByteArray(Charsets.UTF_8)
     }

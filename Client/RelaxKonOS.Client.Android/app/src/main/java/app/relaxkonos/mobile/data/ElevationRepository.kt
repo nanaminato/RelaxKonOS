@@ -1,11 +1,13 @@
 package app.relaxkonos.mobile.data
 
 import app.relaxkonos.mobile.core.auth.AuthSession
+import app.relaxkonos.mobile.core.auth.SessionState
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.ProblemCodes
 import app.relaxkonos.mobile.core.net.RelaxKonGateway
 import app.relaxkonos.mobile.security.CredentialVault
 import app.relaxkonos.mobile.security.VaultKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -141,14 +143,19 @@ class ElevationRepository(
         target: String,
         provider: ElevationAnswerProvider,
     ): ElevationOutcome {
+        val owner = session.state.value as? SessionState.Active
+            ?: return ElevationOutcome.Rejected(ProblemCodes.UNAUTHORIZED, credentialDiscarded = false)
         val answer = provider.answer(capability, target) ?: return ElevationOutcome.Cancelled
         val result = try {
+            verifyOwner(owner)
             session.authenticated { serverUrl, accessToken ->
+                verifyOwner(owner)
                 gateway.requestElevation(serverUrl, accessToken, capability, target, answer.password, answer.account)
             }
         } finally {
             answer.password.fill('\u0000')
         }
+        verifyOwner(owner)
         return when (result) {
             is ApiResult.Success -> if (result.value.elevated) {
                 val expiresAt = result.value.expiresAtMillis ?: (System.currentTimeMillis() + DEFAULT_GRANT_MILLIS)
@@ -178,18 +185,29 @@ class ElevationRepository(
         provider: ElevationAnswerProvider,
         call: suspend (serverUrl: String, accessToken: String) -> ApiResult<T>,
     ): ApiResult<T> {
-        val first = session.authenticated(call)
+        val owner = session.state.value as? SessionState.Active
+            ?: return ApiResult.Problem(401, ProblemCodes.UNAUTHORIZED, null)
+        val guardedCall: suspend (String, String) -> ApiResult<T> = { url, token ->
+            verifyOwner(owner)
+            call(url, token)
+        }
+        val first = session.authenticated(guardedCall)
+        verifyOwner(owner)
         if (first !is ApiResult.Problem || first.code != ProblemCodes.ELEVATION_REQUIRED) {
             return first
         }
 
         return when (val outcome = elevateHost(capability, target, provider)) {
-            is ElevationOutcome.Granted -> session.authenticated(call)
+            is ElevationOutcome.Granted -> session.authenticated(guardedCall).also { verifyOwner(owner) }
             is ElevationOutcome.Rejected -> ApiResult.Problem(403, outcome.code, null)
             is ElevationOutcome.Transport -> ApiResult.Transport(outcome.detail)
             // Declining leaves the operation unfinished; the honest answer is the original refusal.
             ElevationOutcome.Cancelled -> first
         }
+    }
+
+    private fun verifyOwner(owner: SessionState.Active) {
+        if (session.state.value !== owner) throw CancellationException("Host elevation session changed")
     }
 
     /** File elevation follows the file-specific entry point rather than the host one. */

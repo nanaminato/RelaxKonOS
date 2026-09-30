@@ -1,6 +1,6 @@
 # Android 内置应用功能补齐计划
 
-> 更新：2026-09-30。状态：差异基线与推进安排已建立，新增功能尚未开工。
+> 更新：2026-09-30。状态：公共安装 BP01-M1 已接入，剩余实现从 BP02-M1 推进。
 > 用户已确认对照对象是 Android 手机端与桌面端。
 > 本文维护差异清单、实施范围与推进顺序；实现进度见 [Progress](../status/Progress.md#2-bp-实现进度)，测试进度见 [Verification](../status/Verification.md#12-bp-测试进度)。两者独立记录，未测试不阻止下一步实现，也不代表验收通过。
 
@@ -92,7 +92,6 @@ P0 为安装、网络和发布的优先批次；P1 为其他远端管理与已�
 
 | 顺序 / 子编号 | 交付 | 验收场景 |
 | --- | --- | --- |
-| 1 / BP01-M1 | 当前安装 wire、typed Gateway/Repository、安装任务观察与取消 | 正确枚举/字段与幂等键；提权失败；切账号；任务取消；中断后查询原 OperationId |
 | 2 / BP02-M1 | 网络设置与宿主自定义出站代理 | 保存/回读/清除；NO_PROXY；引擎/构建/镜像查询/运行时下载分层状态；重启影响确认 |
 | 3 / BP03-M1 | Nginx 安装、发现、接管与实例生命周期 | 全新 Ubuntu/Windows 宿主安装；服务器本地包与手机包来源；已有 Nginx 接管；启停/重启/重载 |
 | 4 / BP03-M2 | 通用站点编辑/删除与 Web 操作恢复 | 静态站点/反向代理；配置错误；端口冲突；并发更新；断线后核实 |
@@ -105,27 +104,15 @@ P0 为安装、网络和发布的优先批次；P1 为其他远端管理与已�
 | 11 / BP02-M2 | 设置集成受管 Mihomo；与 Docker/下载联调 | 运行时缺失/停止/运行；受管地址更新；每个消费范围的真实代理行为 |
 | 12 / BP17-M1 | 第一批运维聚合补齐；各领域交付时逐步接入 | 离页/旋转/重连原任务；操作归属、取消与修复入口 |
 
-BP01-M1 即接入安装任务观察；BP17-M1 在后续领域交付时持续补齐，不将所有运维接入推迟到第一批末尾。BP24-M1 独立追踪第一批测试，从每次实现变更开始记录，不作为上述步骤之间的前置条件。
+BP01-M1 已接入安装任务观察；BP17-M1 在后续领域交付时持续补齐，不将所有运维接入推迟到第一批末尾。BP24-M1 独立追踪第一批测试，从每次实现变更开始记录，不作为上述步骤之间的前置条件。
 
 第二批：BP07–BP10、BP11/BP12、BP14/BP15/BP16/BP22，随各应用交付同步 BP17，并独立追踪 BP24。第三批：BP13/BP19/BP20/BP21/BP23，并继续追踪 BP24。BP18 不实施。独立任务可调整先后，但不跳过实现依赖；测试未执行仍可进入下一项。
 
-### 4.1 起步依据与第一轮范围
+### 4.1 下一轮起点
 
-2026-09-30 已核对公共安装链路：共享 [InstallationContracts](../../../../Shared/RelaxKonOS.Protocol/Installations/InstallationContracts.cs)、Server [InstallationEndpoints](../../../../RelaxKonOS.Server/Endpoints/InstallationEndpoints.cs) 和桌面 [InstallationClient](../../../RelaxKonOS.Client/Services/Installation/InstallationClient.cs) 已存在；Android RelaxKonGateway/RelaxKonApi 尚未接入统一 Installations API，[OperationIndex](../../app/src/main/java/app/relaxkonos/mobile/data/OperationIndex.kt) 与 [OperationCenter](../../app/src/main/java/app/relaxkonos/mobile/data/OperationCenter.kt) 尚无 Installation 领域。服务器中心现有 SSH 安装回执不替代这条登录后的运行时安装链路。
+BP01-M1 的公共数据链路、安装任务恢复/观察/取消和功能文档已交付，已完成拆分不再保留在本计划。当前行为见 [公共运行时安装](../features/Installations.md)，实现证据见 [Progress](../status/Progress.md#2-bp-实现进度)，未执行检查见 [Verification](../status/Verification.md#12-bp-测试进度)。公共链路不替代各服务表单；第一个完整安装业务闭环仍由 BP03-M1 的 Nginx 管理承担。
 
-第一轮围绕 BP01-M1 交付公共数据链路、任务恢复与观察界面和功能文档；测试用例准备与执行独立追踪。直接接入当前服务端接口；六类服务的动作与包来源按实际支持显示。第一个完整业务闭环由随后 BP03-M1 的 Nginx 安装与实例管理承担。
-
-| 子任务 | 实现交付 | 涉及位置 / 约束 |
-| --- | --- | --- |
-| BP01-M1-1 | typed 模型、路由与 wire；服务/动作/状态/阶段/问题码；各服务请求与包引用 | Android core/net；以共享 Protocol 为准，阶段进度不当总进度 |
-| BP01-M1-2 | Gateway/API 与 InstallationRepository；提交、按 ID 查询、活动任务查询、取消、服务器文件引用、手机包上传 | core/net、data、AppContainer；复用现有受控上传与文件选择能力，安装请求只使用 FileReferenceId |
-| BP01-M1-3 | 认证、提权与幂等提交；任务 ID 持久索引、断线恢复和会话隔离 | 复用 AuthSession/ElevationRepository/OperationIndex；同一提交及重试复用幂等键，响应未知先核实原任务，不自动重复提交 |
-| BP01-M1-4 | 接入任务与恢复页面；展示服务、动作、阶段、阶段进度、问题和取消；同步三语 | OperationCenter、OperationsScreen、资源文件；取消后查询真实终态，停止观察不表示任务取消 |
-| BP01-M1-5 | 更新实际功能说明与实现进度 | features、status；测试用例准备和执行结果均单独进入 Verification，不作为下一项实现的依赖 |
-
-推进顺序为 BP01-M1-1 → BP01-M1-2 → BP01-M1-3 → BP01-M1-4 → BP01-M1-5 → BP02-M1 → BP03-M1。每项有部分交付时在 Progress 写明已完成动作和剩余代码；未测或缺真实环境时仍可继续后续实现。已知契约不符、未完成依赖或明确代码缺陷按实际影响保留实现待办。
-
-第一轮重点测试场景为重复提交、提权失败、取消竞争、响应丢失后恢复、切账号隔离及包引用过期；具体执行状态见 Verification。实现完成但测试未执行时分别记录“已实现”和“未执行”，不得合并成“已验收”。
+下一项为 BP02-M1：宿主自定义出站代理设置，共用当前 DockerProxyContracts 读取、编辑、清除与消费范围状态。随后按第 4 节剩余顺序进入 BP03-M1。BP01-M1 未执行 Android 编译/测试不作为后续实现依赖；若后续检查发现真实代码缺陷，在 Progress 关联受影响的实现待办。
 
 ## 5. 实施边界与共用规则
 
