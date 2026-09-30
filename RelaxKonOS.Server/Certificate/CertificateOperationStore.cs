@@ -32,10 +32,14 @@ internal sealed class CertificateOperationStore
         LoadAndRecover();
     }
 
+    // Creation retries have a freshly proposed certificate ID; it cannot be part of their request identity.
+    internal static string RequestScope(string requestKey, Guid certificateId, string kind, string? actor) =>
+        JsonSerializer.Serialize(new[] { actor ?? "", kind, kind is "issue" or "create-self-signed" ? "" : certificateId.ToString("D"), requestKey });
+
     public async Task<CertificateOperationDto> StartAsync(string idempotencyKey, Guid certificateId, string kind, string? actor,
         Func<CancellationToken, Task<string>> action, CancellationToken applicationStopping)
     {
-        var key = $"{kind}:{certificateId:D}:{idempotencyKey}";
+        var key = RequestScope(idempotencyKey, certificateId, kind, actor);
         PersistedOperation operation;
         await _gate.WaitAsync(applicationStopping);
         try
@@ -56,6 +60,14 @@ internal sealed class CertificateOperationStore
         finally { _gate.Release(); }
         _ = RunAsync(operation.OperationId, operation.CertificateId, action, applicationStopping);
         return operation.ToDto();
+    }
+
+    public async Task<CertificateOperationDto?> FindRequestAsync(string requestKey, Guid certificateId, string kind, string? actor, CancellationToken cancellationToken)
+    {
+        var key = RequestScope(requestKey, certificateId, kind, actor);
+        await _gate.WaitAsync(cancellationToken);
+        try { return _byIdempotency.TryGetValue(key, out var id) ? _operations[id].ToDto() : null; }
+        finally { _gate.Release(); }
     }
 
     public async Task<CertificateOperationDto?> GetAsync(Guid id, CancellationToken cancellationToken)

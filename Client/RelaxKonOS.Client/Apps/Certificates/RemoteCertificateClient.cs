@@ -10,8 +10,8 @@ namespace RelaxKonOS.Client.Apps.Certificates;
 
 /// <summary>
 /// HTTP implementation of <see cref="IRemoteCertificateClient"/>. Mutating endpoints require an
-/// Idempotency-Key header (server-enforced); each call generates a fresh key so retries never
-/// duplicate an operation. 202 Accepted responses carry the operation dto in the body.
+/// Idempotency-Key header (server-enforced); each invocation generates a fresh key. Retrying an accepted intent must retain its original key;
+/// issuing another invocation creates a new intent. 202 Accepted responses carry the operation dto in the body.
 /// </summary>
 public sealed class RemoteCertificateClient(HttpClient http, IAuthSession session) : IRemoteCertificateClient
 {
@@ -29,6 +29,9 @@ public sealed class RemoteCertificateClient(HttpClient http, IAuthSession sessio
 
     public Task<CertificateOperationDto> CreateSelfSignedAsync(CreateSelfSignedCertificateRequest request, CancellationToken cancellationToken = default)
         => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.SelfSigned, request, NewKey(), cancellationToken);
+
+    public Task<KestrelCertificateDeploymentDto> GetKestrelDeploymentAsync(Guid id, CancellationToken cancellationToken = default)
+        => SendAsync<KestrelCertificateDeploymentDto>(HttpMethod.Get, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("N")), null, null, cancellationToken);
 
     public Task<CertificateOperationDto> DeployKestrelAsync(Guid id, CancellationToken cancellationToken = default)
         => SendAsync<CertificateOperationDto>(HttpMethod.Post, CertificateApiRoutes.Deploy.Replace("{id}", id.ToString("N")), null, NewKey(), cancellationToken);

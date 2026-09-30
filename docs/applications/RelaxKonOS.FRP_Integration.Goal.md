@@ -111,7 +111,7 @@ API 输入 → 领域校验 → 保存 Desired State → 生成临时 TOML
 
 ### 3.3 Secret 与 API 边界
 
-Token、OIDC client secret、TLS 私钥、STCP secret 和任何等价凭据必须保留在 Server 的 SecretStore 中。普通表只保存不可猜测的引用和 `Configured` 状态；列表与普通展示 DTO 使用 `tokenConfigured: true` 等布尔状态，绝不返回原文、掩码可逆值或可下载的 FRP TOML。已授权的 Controller 可通过专用编辑读取流程回显其 Profile 或托管 FRPS Token；该读取必须逐用户授权并写入审计记录。
+Token、OIDC client secret、TLS 私钥、STCP secret 和任何等价凭据必须保留在 Server 的 SecretStore 中。普通表只保存不可猜测的引用和 `Configured` 状态；列表与普通展示 DTO 使用 `tokenConfigured: true` 等布尔状态，绝不返回原文、掩码可逆值或可下载的 FRP TOML。Profile Token 为写入式秘密，不通过任何读取接口返回。已授权的 Controller 可通过专用编辑读取流程回显托管 FRPS Token；该读取必须授权并写入审计记录。
 
 第一个 Goal 必须先实现一个受保护的 SecretStore 抽象及当前平台实现，再允许保存包含认证的 Profile。生产实现使用服务器受保护的持久化机制（例如 Data Protection 保护的受限文件或表字段）；密钥来源、轮换、删除、备份恢复和访问失败都必须有明确行为。不得把秘密放进 `appsettings.json`、Workspace JSON、日志、异常 `Detail`、诊断 ZIP 或 Client 本地设置。
 

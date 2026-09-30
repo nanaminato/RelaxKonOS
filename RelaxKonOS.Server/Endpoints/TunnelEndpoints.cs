@@ -58,6 +58,7 @@ public static class TunnelEndpoints
         {
             try { return Results.Ok(await frps.UpdateAsync(request, UserId(user), ct)); }
             catch (ManagedFrpsValidationException ex) { return Problem(ex.ProblemCode, StatusCodes.Status400BadRequest); }
+            catch (ManagedFrpsRevisionConflictException) { return Problem("tunnel.revision_conflict", StatusCodes.Status409Conflict); }
         }).RequireAuthorization("TunnelsManage");
         group.MapPost(TunnelApiRoutes.ManagedFrpsStartPattern, (HttpContext http, IManagedFrpsService frps, IHostElevationSessionStore grants, CancellationToken ct) =>
             FrpsLifecycleAsync(http, grants, () => frps.StartAsync(UserId(http.User), ct))).RequireAuthorization("TunnelsManage");

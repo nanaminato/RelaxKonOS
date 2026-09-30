@@ -239,6 +239,18 @@
     "tunnels.connection_state.Connected": "Connected",
     "tunnels.connection_state.Disconnected": "Disconnected",
     "tunnels.connection_state.RuntimeUnavailable": "Runtime unavailable",
-    "tunnels.connection_state.Unknown": "Unknown"
+    "tunnels.connection_state.Unknown": "Unknown",
+    "tunnels.problem.tunnel.definition_not_applied": "Saved definitions or Token differ from the applied frpc configuration. Apply this profile to use the current revision.",
+    "tunnels.problem.tunnel.applied_revision_unknown": "The running process applied revision is unverified. A connection log does not prove the current saved definition is applied.",
+    "tunnels.frps.state.Unknown": "Unknown",
+    "tunnels.problem.tunnel.frps_restart_required": "Stop and restart frps to apply the saved revision.",
+    "tunnels.problem.tunnel.frps_process_unverified": "The frps process is unverified after Server restart. Recover the owned process on the host before stopping it.",
+    "tunnels.problem.tunnel.frps_secret_invalid": "Secrets must be bounded single-line values.",
+    "tunnels.frps.revision": "Saved revision: {0}",
+    "tunnels.frps.saved_stopped": "Saved configuration is not running.",
+    "tunnels.frps.applied_unknown": "The running process applied revision is unverified.",
+    "tunnels.frps.applied_current": "The running process uses the saved revision.",
+    "tunnels.frps.reload_confirmation": "Reload the current frps settings and discard this editor draft and replacement secrets?",
+    "tunnels.problem.tunnel.frps_stop_failed": "frps could not be stopped. Read current state before taking another action."
   }
 }

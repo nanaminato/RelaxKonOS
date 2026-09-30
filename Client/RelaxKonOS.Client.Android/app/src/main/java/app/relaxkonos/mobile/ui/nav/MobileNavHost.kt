@@ -30,6 +30,8 @@ import app.relaxkonos.mobile.ui.files.FileUploadCard
 import app.relaxkonos.mobile.ui.files.FilesScreen
 import app.relaxkonos.mobile.ui.files.FilesViewModel
 import app.relaxkonos.mobile.ui.home.HomeScreen
+import app.relaxkonos.mobile.ui.manage.tunnels.TunnelsScreen
+import app.relaxkonos.mobile.ui.manage.certificates.CertificatesScreen
 import app.relaxkonos.mobile.ui.manage.ManageScreen
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
 import app.relaxkonos.mobile.ui.manage.deployments.DeploymentsScreen
@@ -87,11 +89,16 @@ fun MobileNavHost(
             Routes.MANAGE_GUARDIAN -> GuardianScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_SCRIPTS -> ScriptsScreen(owner = session, onBack = { navigator.pop() },
                 initialTaskId = taskTarget, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_TUNNELS -> TunnelsScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_CERTIFICATES -> CertificatesScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_OPERATIONS -> OperationsScreen(owner = session, onBack = { navigator.pop() },
                 startOnAlerts = container.openAlertsOnNextScreen,
                 onStartOnAlertsConsumed = container::consumeAlertScreen,
                 onOpenDeployment = { taskTarget = it; navigator.push(Routes.MANAGE_DEPLOYMENT_DETAIL) },
                 onOpenWebsite = { taskTarget = it; navigator.push(Routes.MANAGE_WEBSITES) },
+                onOpenWebServers = { taskTarget = null; navigator.push(Routes.MANAGE_WEBSITES) },
+                onOpenCertificates = { taskTarget = it; navigator.push(Routes.MANAGE_CERTIFICATES) },
+                onOpenTunnels = { taskTarget = null; navigator.push(Routes.MANAGE_TUNNELS) },
                 onOpenCompose = { taskTarget = it; navigator.push(Routes.MANAGE_DOCKER) },
                 onOpenGitBuild = { taskTarget = it; navigator.push(Routes.MANAGE_GIT) },
                 onOpenScript = { taskTarget = it; navigator.push(Routes.MANAGE_SCRIPTS) },
@@ -166,6 +173,8 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
                 onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
                 onOpenGit = { clearTaskTarget(); navigator.push(Routes.MANAGE_GIT) },
                 onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
+            onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
+                onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
                 onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
                 onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
                 onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
@@ -194,6 +203,8 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             onOpenDocker = { clearTaskTarget(); navigator.push(Routes.MANAGE_DOCKER) },
             onOpenGit = { clearTaskTarget(); navigator.push(Routes.MANAGE_GIT) },
             onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
+            onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
+            onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
             onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
             onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
             onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },

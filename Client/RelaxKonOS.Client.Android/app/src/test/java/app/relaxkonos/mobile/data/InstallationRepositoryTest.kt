@@ -35,6 +35,20 @@ class InstallationRepositoryTest {
     private val operation = InstallationOperation(id, InstallationService.Nginx, InstallationKind.Install,
         InstallationState.Running, InstallationStage.Preparing, null, null, 1L, null, null, true)
 
+    @Test fun `explicit original ID identification validates service and kind before resolving pending request`() = runTest {
+        val owner = signIn(); val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Install, "digest")
+        gateway.onInstallation = { ApiResult.Success(operation.copy(service = InstallationService.Frp)) }
+        assertTrue(repository.identifyOriginal(owner, pending, id) is ApiResult.Transport)
+        assertEquals(1, journal.pending(owner).size)
+        gateway.onInstallation = { ApiResult.Success(operation) }
+        assertTrue(repository.identifyOriginal(owner, pending, id) is ApiResult.Success)
+        assertTrue(journal.pending(owner).isEmpty()); assertEquals(id, index.forOwner(owner).single().operationId)
+    }
+    @Test fun `original ID identification refuses another actor pending marker`() = runTest {
+        val owner = signIn(); val pending = journal.begin(owner, InstallationService.Nginx, InstallationKind.Install, "digest")
+        signIn("bob"); val other = session.state.value as SessionState.Active
+        assertTrue(runCatching { repository.identifyOriginal(other, pending, id) }.isFailure)
+    }
     private suspend fun signIn(account: String = "alice", privileged: Boolean = true): SessionState.Active {
         val login = loginSession().let { it.copy(server = it.server.copy(capabilities = setOf(ServerCapabilities.WEB_SERVER), privilegedOperations = privileged)) }
         gateway.onLogin = { _, _, _ -> ApiResult.Success(login.copy(userName = account)) }

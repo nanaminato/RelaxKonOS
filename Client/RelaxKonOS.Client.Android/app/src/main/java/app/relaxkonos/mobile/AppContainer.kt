@@ -252,7 +252,18 @@ class AppContainer(context: Context) {
     val installations = app.relaxkonos.mobile.data.InstallationRepository(gateway, session, elevations, operationIndex,
         app.relaxkonos.mobile.data.InstallationRequestJournal(
             app.relaxkonos.mobile.data.FileInstallationRequestStorage(appContext.noBackupFilesDir)))
-    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery, installations)
+    val webServers = app.relaxkonos.mobile.data.WebServerRepository(gateway, session, elevations, operationIndex,
+        app.relaxkonos.mobile.data.WebServerRequestJournal(
+            app.relaxkonos.mobile.data.FileWebServerRequestStorage(appContext.noBackupFilesDir)))
+    val webSites = app.relaxkonos.mobile.data.WebSiteRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.WebSiteMutationJournal(
+            app.relaxkonos.mobile.data.FileSiteMutationStorage(appContext.noBackupFilesDir)))
+    val certificates = app.relaxkonos.mobile.data.CertificateRepository(gateway, session, operationIndex,
+        app.relaxkonos.mobile.data.CertificateRequestJournal(
+            app.relaxkonos.mobile.data.FileCertificateRequestStorage(appContext.noBackupFilesDir)))
+    val tunnels = app.relaxkonos.mobile.data.TunnelRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.TunnelMutationJournal(app.relaxkonos.mobile.data.FileTunnelMutationStorage(appContext.noBackupFilesDir)))
+    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery, installations, webServers, webSites, certificates, tunnels)
     val eventAlerts = EventAlertRepository(gateway, session)
     val alertNotificationStore = AlertNotificationStore(appContext)
     val foregroundAlertNotifier = ForegroundAlertNotifier(appContext, session, eventAlerts, alertNotificationStore, appScope)

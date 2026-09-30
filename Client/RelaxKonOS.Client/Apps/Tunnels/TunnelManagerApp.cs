@@ -67,8 +67,9 @@ public sealed class TunnelManagerApp : RemoteApplicationBase
         vm.ShowManagedFrpsConfigurationAsync = async () =>
         {
             await vm.LoadManagedFrpsForEditingAsync();
-            await context.ShowDialogAsync<bool?>(window, LocalizedText.Get("tunnels.frps.configuration"), dialog =>
-                new TunnelManagedFrpsConfigurationView { DataContext = vm, CloseAction = dialog.Cancel }, new Size(720, 690));
+            try { await context.ShowDialogAsync<bool?>(window, LocalizedText.Get("tunnels.frps.configuration"), dialog =>
+                new TunnelManagedFrpsConfigurationView { DataContext = vm, CloseAction = dialog.Cancel }, new Size(720, 690)); }
+            finally { vm.EndManagedFrpsEditing(); }
         };
         vm.ShowManagedFrpsDiagnosticsAsync = async () =>
         {

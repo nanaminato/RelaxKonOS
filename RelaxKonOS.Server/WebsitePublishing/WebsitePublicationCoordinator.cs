@@ -116,7 +116,7 @@ internal sealed class WebsitePublicationCoordinator(
             {
                 site = await webServers.UpsertSiteAsync(server.Id, new UpsertWebServerSiteRequest(
                     siteId, application.Name, [new WebServerSiteBindingDto(request.Domain, 80)], null, false, false,
-                    [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false), lifetime.ApplicationStopping)
+                    [new WebServerProxyRouteDto("/", $"http://127.0.0.1:{hostPort}")], certificateId, true, true, false, ExpectedUpdatedAt: existingSite?.UpdatedAt), lifetime.ApplicationStopping)
                     ?? throw new WebsitePublicationException("website.site_apply_failed");
             }
             catch (NginxWebServerManager.WebServerSiteValidationException error) { throw new WebsitePublicationException(error.ProblemCode, 400); }
@@ -130,7 +130,7 @@ internal sealed class WebsitePublicationCoordinator(
             }
             catch (Exception error) when (error is ApplicationDeploymentException or IOException)
             {
-                var rollback = await RestoreSiteAsync(server.Id, previousSite, site.Id);
+                var rollback = await RestoreSiteAsync(server.Id, previousSite, site);
                 throw new WebsitePublicationException(rollback ? "website.application_association_failed" : "website.application_association_recovery_failed", 503);
             }
 
@@ -164,9 +164,10 @@ internal sealed class WebsitePublicationCoordinator(
         {
             var certificate = await certificates.GetAsync(existing, lifetime.ApplicationStopping);
             if (certificate is null) throw new WebsitePublicationException("website.certificate_not_found", 404);
-            if (certificate.Status is CertificateStatus.Failed or CertificateStatus.Expired or CertificateStatus.Revoked)
+            if (certificate.Status is not (CertificateStatus.Issued or CertificateStatus.Active) || certificate.NotBefore is null || certificate.NotAfter is null
+                || certificate.NotBefore > DateTimeOffset.UtcNow || certificate.NotAfter <= DateTimeOffset.UtcNow)
                 throw new WebsitePublicationException("website.certificate_not_usable", 409);
-            if (!certificate.SubjectAlternativeNames.Contains(request.Domain, StringComparer.OrdinalIgnoreCase))
+            if (!CertificateUsagePolicy.Covers(certificate.SubjectAlternativeNames, request.Domain))
                 throw new WebsitePublicationException("website.certificate_domain_mismatch", 409);
             SetStage(operationId, WebsitePublicationStage.Certificate, certificateId: existing);
             return existing;
@@ -227,14 +228,14 @@ internal sealed class WebsitePublicationCoordinator(
         return checks;
     }
 
-    private async Task<bool> RestoreSiteAsync(string serverId, WebServerSiteDto? previous, string createdSiteId)
+    private async Task<bool> RestoreSiteAsync(string serverId, WebServerSiteDto? previous, WebServerSiteDto applied)
     {
         try
         {
-            if (previous is null) return await webServers.DeleteSiteAsync(serverId, createdSiteId, CancellationToken.None) is true;
+            if (previous is null) return await webServers.DeleteSiteAsync(serverId, applied.Id, new DeleteWebServerSiteRequest(applied.UpdatedAt), CancellationToken.None) is true;
             var restored = await webServers.UpsertSiteAsync(serverId, new UpsertWebServerSiteRequest(previous.Id, previous.Name, previous.Bindings,
                 previous.RootPath, false, previous.SpaFallback, previous.Routes, previous.CertificateId, previous.HttpsEnabled,
-                previous.RedirectHttpToHttps, previous.Ipv6Enabled, previous.CertificatePath, previous.PrivateKeyPath), CancellationToken.None);
+                previous.RedirectHttpToHttps, previous.Ipv6Enabled, previous.CertificatePath, previous.PrivateKeyPath, applied.UpdatedAt), CancellationToken.None);
             return restored is not null;
         }
         catch { return false; }

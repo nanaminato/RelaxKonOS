@@ -46,7 +46,7 @@ internal sealed class ApplicationDeploymentProxyIntegration(
         var request = new UpsertWebServerSiteRequest(
             site.Id, site.Name, site.Bindings, site.RootPath, GrantNginxReadAccess: false, site.SpaFallback,
             routes, site.CertificateId, site.HttpsEnabled, site.RedirectHttpToHttps, site.Ipv6Enabled,
-            site.CertificatePath, site.PrivateKeyPath);
+            site.CertificatePath, site.PrivateKeyPath, site.UpdatedAt);
 
         try
         {
@@ -59,12 +59,12 @@ internal sealed class ApplicationDeploymentProxyIntegration(
             {
                 logger.LogWarning("Reverse-proxy validation rejected the application route. SiteId={SiteId}", site.Id);
                 return new(false, Protocol.ApplicationDeployments.ApplicationDeploymentProblemCodes.ProxyValidationFailed,
-                    instanceId, site.Id, saved.DomainsDisplay, Describe(site));
+                    instanceId, site.Id, saved.DomainsDisplay, Describe(site, saved.UpdatedAt));
             }
 
-            return new(true, null, instanceId, site.Id, saved.DomainsDisplay, Describe(site));
+            return new(true, null, instanceId, site.Id, saved.DomainsDisplay, Describe(site, saved.UpdatedAt));
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or NginxWebServerManager.WebServerSiteConflictException or NginxWebServerManager.WebServerSiteValidationException or NginxWebServerManager.WebServerSiteApplyException)
         {
             logger.LogWarning(exception, "Reverse-proxy activation failed for site {SiteId}.", site.Id);
             return new(false, Protocol.ApplicationDeployments.ApplicationDeploymentProblemCodes.ActivationFailed, null, null, null, null);
@@ -85,7 +85,7 @@ internal sealed class ApplicationDeploymentProxyIntegration(
                 : new(true, Protocol.ApplicationDeployments.ApplicationDeploymentProblemCodes.PreviousInstanceRestored,
                     applied.SiteInstanceId, applied.SiteId, restored.DomainsDisplay, applied.PreviousDefinition);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or NginxWebServerManager.WebServerSiteConflictException or NginxWebServerManager.WebServerSiteValidationException or NginxWebServerManager.WebServerSiteApplyException)
         {
             logger.LogWarning(exception, "Reverse-proxy restore failed for site {SiteId}.", applied.SiteId);
             return new(false, Protocol.ApplicationDeployments.ApplicationDeploymentProblemCodes.RecoveryFailed, null, null, null, null);
@@ -113,7 +113,7 @@ internal sealed class ApplicationDeploymentProxyIntegration(
         var request = new UpsertWebServerSiteRequest(
             site.Id, site.Name, site.Bindings, site.RootPath, GrantNginxReadAccess: false, site.SpaFallback,
             retained, site.CertificateId, site.HttpsEnabled, site.RedirectHttpToHttps, site.Ipv6Enabled,
-            site.CertificatePath, site.PrivateKeyPath);
+            site.CertificatePath, site.PrivateKeyPath, site.UpdatedAt);
 
         try
         {
@@ -123,11 +123,11 @@ internal sealed class ApplicationDeploymentProxyIntegration(
 
             var validation = await manager.TestConfigurationAsync(instanceId, cancellationToken);
             if (validation is { Valid: false })
-                return new(false, Protocol.ApplicationDeployments.ApplicationDeploymentProblemCodes.ProxyValidationFailed, instanceId, site.Id, saved.DomainsDisplay, Describe(site));
+                return new(false, Protocol.ApplicationDeployments.ApplicationDeploymentProblemCodes.ProxyValidationFailed, instanceId, site.Id, saved.DomainsDisplay, Describe(site, saved.UpdatedAt));
 
-            return new(true, null, instanceId, site.Id, saved.DomainsDisplay, Describe(site));
+            return new(true, null, instanceId, site.Id, saved.DomainsDisplay, Describe(site, saved.UpdatedAt));
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException)
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or NginxWebServerManager.WebServerSiteConflictException or NginxWebServerManager.WebServerSiteValidationException or NginxWebServerManager.WebServerSiteApplyException)
         {
             logger.LogWarning(exception, "Reverse-proxy detach failed for site {SiteId}.", site.Id);
             return new(false, Protocol.ApplicationDeployments.ApplicationDeploymentProblemCodes.ActivationFailed, null, null, null, null);
@@ -146,10 +146,10 @@ internal sealed class ApplicationDeploymentProxyIntegration(
         return null;
     }
 
-    private static string Describe(WebServerSiteDto site) => System.Text.Json.JsonSerializer.Serialize(new UpsertWebServerSiteRequest(
+    private static string Describe(WebServerSiteDto site, DateTimeOffset appliedUpdatedAt) => System.Text.Json.JsonSerializer.Serialize(new UpsertWebServerSiteRequest(
         site.Id, site.Name, site.Bindings, site.RootPath, GrantNginxReadAccess: false, site.SpaFallback,
         site.Routes, site.CertificateId, site.HttpsEnabled, site.RedirectHttpToHttps, site.Ipv6Enabled,
-        site.CertificatePath, site.PrivateKeyPath));
+        site.CertificatePath, site.PrivateKeyPath, appliedUpdatedAt));
 
     private static UpsertWebServerSiteRequest? Deserialize(string value)
     {

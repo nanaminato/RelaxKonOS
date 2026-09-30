@@ -26,8 +26,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.relaxkonos.mobile.AppContainer
+import app.relaxkonos.mobile.ui.manage.certificates.*
 import app.relaxkonos.mobile.R
 import app.relaxkonos.mobile.RelaxKonApplication
+import app.relaxkonos.mobile.core.net.usageProblem
 import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.DeploymentApplication
 import app.relaxkonos.mobile.core.net.ManagedCertificate
@@ -43,6 +45,7 @@ import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.common.SectionCard
 import app.relaxkonos.mobile.ui.theme.Spacing
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
@@ -70,6 +73,12 @@ internal class WebsitesViewModel(application: Application) : AndroidViewModel(ap
     var state by mutableStateOf(WebsitesState())
         private set
 
+    var sessionEpoch by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+    init {
+        viewModelScope.launch { container.session.state.collect { state = WebsitesState(); sessionEpoch++ } }
+    }
+
     fun refresh() {
         val owner = container.activeSession ?: return
         if (state.loading) return
@@ -93,7 +102,8 @@ internal class WebsitesViewModel(application: Application) : AndroidViewModel(ap
             val applications = if (owner.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS)) container.deployments.applications(owner) else null
             val firstServer = (details as? ApiResult.Success)?.value?.firstOrNull { it.server.canRead && it.server.canTestConfiguration }?.server?.id
             val firstApplication = (applications as? ApiResult.Success)?.value?.firstOrNull { it.actualState.equals("running", true) }?.id
-            state = WebsitesState(
+            if (container.activeSession !== owner) return@launch
+            state = state.copy(loading = false,
                 servers = details, certificates = certificates, applications = applications,
                 selectedServerId = state.selectedServerId ?: firstServer,
                 selectedApplicationId = state.selectedApplicationId ?: firstApplication,
@@ -111,15 +121,28 @@ internal class WebsitesViewModel(application: Application) : AndroidViewModel(ap
         val owner = container.activeSession ?: return
         val serverId = state.selectedServerId ?: return
         val applicationId = state.selectedApplicationId ?: return
+        if (state.publishing) return
         state = state.copy(publishing = true, publication = null)
         viewModelScope.launch {
-            val result = container.webPublishing.publish(WebsitePublishRequest(
-                applicationId = applicationId, webServerId = serverId, domain = domain,
-                certificateId = certificateId, contactEmail = contactEmail, acceptedTerms = acceptedTerms,
-                publicReachabilityConfirmed = publiclyReachable, confirmed = true,
-            ), container.elevationAnswers)
-            state = state.copy(publishing = false, publication = result)
-            if (result is ApiResult.Success) loadHistory(result.value.applicationId)
+            try {
+                if (certificateId != null) {
+                    val certificate = container.certificates.certificate(owner, certificateId)
+                    if (container.activeSession !== owner) return@launch
+                    if (certificate !is ApiResult.Success || certificate.value.usageProblem(listOf(domain)) != null) {
+                        state = state.copy(publishing = false, publication = ApiResult.Problem(409, "webserver.site_certificate_unverified", null)); return@launch
+                    }
+                }
+                val result = container.webPublishing.publish(WebsitePublishRequest(
+                    applicationId = applicationId, webServerId = serverId, domain = domain,
+                    certificateId = certificateId, contactEmail = contactEmail, acceptedTerms = acceptedTerms,
+                    publicReachabilityConfirmed = publiclyReachable, confirmed = true,
+                ), container.elevationAnswers)
+                if (container.activeSession !== owner) return@launch
+                state = state.copy(publishing = false, publication = result)
+                if (result is ApiResult.Success) loadHistory(result.value.applicationId)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (container.activeSession === owner) state = state.copy(publication = ApiResult.Transport(null)) }
+            finally { if (container.activeSession === owner) state = state.copy(publishing = false) }
         }
     }
 
@@ -127,6 +150,7 @@ internal class WebsitesViewModel(application: Application) : AndroidViewModel(ap
         val owner = container.activeSession ?: return
         viewModelScope.launch {
             val result = container.webPublishing.operation(owner, operationId)
+            if (container.activeSession !== owner) return@launch
             state = state.copy(publication = result)
             if (result is ApiResult.Success && result.value.isTerminal()) loadHistory(result.value.applicationId)
         }
@@ -134,7 +158,10 @@ internal class WebsitesViewModel(application: Application) : AndroidViewModel(ap
 
     private fun loadHistory(applicationId: String) {
         val owner = container.activeSession ?: return
-        viewModelScope.launch { state = state.copy(publicationHistory = container.webPublishing.history(owner, applicationId)) }
+        viewModelScope.launch {
+            val result = container.webPublishing.history(owner, applicationId)
+            if (container.activeSession === owner && state.selectedApplicationId == applicationId) state = state.copy(publicationHistory = result)
+        }
     }
 
 }
@@ -145,9 +172,9 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
     val state = viewModel.state
     val container = app.relaxkonos.mobile.ui.common.appContainer()
     val available = container.capabilities.contains(ServerCapabilities.WEB_SERVER)
-    androidx.compose.runtime.LaunchedEffect(available) { if (available && state.servers == null) viewModel.refresh() }
+    androidx.compose.runtime.LaunchedEffect(container.activeSession, viewModel.sessionEpoch, available) { if (available && state.servers == null) viewModel.refresh() }
     androidx.compose.runtime.LaunchedEffect(initialApplicationId, state.applications) {
-        if (initialApplicationId != null && state.applications is ApiResult.Success &&
+        if (!initialApplicationId.isNullOrBlank() && state.applications is ApiResult.Success &&
             state.selectedApplicationId != initialApplicationId) viewModel.selectApplication(initialApplicationId)
     }
 
@@ -165,7 +192,8 @@ fun WebsitesScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initial
         }
         Text(stringResource(R.string.websites_publish_note), style = MaterialTheme.typography.bodySmall)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        WebsitePublisher(state, viewModel)
+        NginxManager(onChanged = viewModel::refresh)
+        androidx.compose.runtime.key(viewModel.sessionEpoch) { WebsitePublisher(state, viewModel) }
         WebsiteServers(state, state.certificates, state.applications)
     }
 }
@@ -181,9 +209,9 @@ private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel)
     var acceptedTerms by remember { mutableStateOf(false) }
     var publicReachability by remember { mutableStateOf(false) }
     val certificates = (state.certificates as? ApiResult.Success)?.value.orEmpty()
-    val selectedCertificate = certificates.firstOrNull { certificate ->
-        useExistingCertificate && certificate.subjectAlternativeNames.any { it.equals(domain.trim(), true) }
-    }
+    var selectedCertificateId by remember { mutableStateOf<String?>(null) }
+    val selectedCertificate = certificates.firstOrNull { it.id == selectedCertificateId }
+    val certificateReady = certificateSelectionProblem(state.certificates, selectedCertificateId, listOf(domain)) == null
     SectionCard(stringResource(R.string.websites_publish_title)) {
         Text(stringResource(R.string.websites_publish_intro), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.websites_publish_server), style = MaterialTheme.typography.labelLarge)
@@ -199,17 +227,11 @@ private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel)
             }
         }
         OutlinedTextField(domain, { domain = it.trim() }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.websites_domain)) }, singleLine = true)
-        if (certificates.isNotEmpty()) {
-            androidx.compose.foundation.layout.Row {
-                Checkbox(checked = useExistingCertificate, onCheckedChange = { useExistingCertificate = it })
-                Text(stringResource(R.string.websites_use_existing_certificate))
-            }
-            if (useExistingCertificate) Text(
-                selectedCertificate?.let { stringResource(R.string.websites_existing_certificate_selected, it.primaryDomain) }
-                    ?: stringResource(R.string.websites_existing_certificate_missing),
-                style = MaterialTheme.typography.bodySmall,
-            )
+        androidx.compose.foundation.layout.Row {
+            Checkbox(checked = useExistingCertificate, onCheckedChange = { useExistingCertificate = it }, enabled = !state.publishing)
+            Text(stringResource(R.string.websites_use_existing_certificate))
         }
+        if (useExistingCertificate) ManagedCertificatePicker(state.certificates, listOf(domain), selectedCertificateId, !state.publishing) { selectedCertificateId = it }
         if (!useExistingCertificate) {
             OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.websites_contact_email)) }, singleLine = true)
             androidx.compose.foundation.layout.Row {
@@ -222,8 +244,8 @@ private fun WebsitePublisher(state: WebsitesState, viewModel: WebsitesViewModel)
             }
         }
         Button(
-            enabled = !state.publishing && domain.isNotBlank() && (useExistingCertificate || (email.isNotBlank() && acceptedTerms && publicReachability)),
-            onClick = { viewModel.publish(domain, email, selectedCertificate?.id, acceptedTerms, publicReachability) },
+            enabled = !state.publishing && domain.isNotBlank() && ((useExistingCertificate && certificateReady) || (!useExistingCertificate && email.isNotBlank() && acceptedTerms && publicReachability)),
+            onClick = { viewModel.publish(domain, email, if (useExistingCertificate) selectedCertificate?.id else null, acceptedTerms, publicReachability) },
         ) { Text(stringResource(if (state.publishing) R.string.websites_publishing else R.string.websites_publish)) }
         PublicationResult(state, viewModel)
     }
@@ -313,15 +335,6 @@ private fun WebsiteSite(
         }
         else -> Text(stringResource(R.string.websites_application_association_unverified), style = MaterialTheme.typography.bodySmall)
     }
-    if (!site.httpsEnabled) {
-        Text(stringResource(R.string.websites_tls_disabled), style = MaterialTheme.typography.bodySmall)
-    } else {
-        val certificate = (certificates as? ApiResult.Success)?.value?.firstOrNull { it.id == site.certificateId }
-        Text(
-            stringResource(if (certificate == null) R.string.websites_certificate_unverified else R.string.websites_certificate_status,
-                certificate?.primaryDomain ?: "", certificate?.status ?: ""),
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
+    SiteCertificateBinding(site, certificates)
     if (site.routes.isNotEmpty()) Text(stringResource(R.string.websites_route_count, site.routes.size), style = MaterialTheme.typography.bodySmall)
 }

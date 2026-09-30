@@ -335,44 +335,52 @@ Compose 编排的**每个变更都是持久操作，不是同步结果**（`stac
 
 ### Tunnels（FRP 隧道管理）
 
-路由常量见 `TunnelApiRoutes`。服务端 `ITunnelService` + `FrpTunnelProvider` 管理 FRP profiles、隧道定义、运行时安装/管理、托管 frps 与审计。详见 [FRP 集成文档系列](../applications/RelaxKonOS.FRP_Integration.Goal.md) 与 [`RelaxKonOS.FRP_Integration.Implementation.md`](../applications/RelaxKonOS.FRP_Integration.Implementation.md)。
+路由和类型以 `Shared/RelaxKonOS.Protocol/Tunnels/TunnelApiRoutes.cs` 与 `TunnelContracts.cs` 为准。所有路由要求登录及宿主 Tunnels feature；`TunnelsRead` 允许 Controller/Observer，`TunnelsManage` 仅允许 Controller，profile/definition 按 JWT 主体隔离。当前执行边界见 [FRP 实现](../applications/RelaxKonOS.FRP_Integration.Implementation.md)。
 
-**Profiles（用户级 FRP 连接配置）**
+**Profiles 与隧道定义**
 
-| 方法     | 路径                                            | 请求                              | 响应                                       | 认证                                    |
-| ------ | --------------------------------------------- | ------------------------------- | ---------------------------------------- | ------------------------------------- |
-| GET    | `/api/v1.0/tunnels/profiles`                    | —                               | TunnelProfileDto\[]（含摘要状态）               | JWT                                   |
-| GET    | `/api/v1.0/tunnels/profiles/{profileId}`        | —                               | TunnelProfileDto 详情                      | JWT                                   |
-| POST   | `/api/v1.0/tunnels/profiles`                    | body: CreateProfileRequest      | Profile（201）                             | JWT                                   |
-| PUT    | `/api/v1.0/tunnels/profiles/{profileId}`        | body: UpdateProfileRequest      | Profile                                  | JWT                                   |
-| DELETE | `/api/v1.0/tunnels/profiles/{profileId}`        | —                               | 204                                      | JWT                                   |
-| POST   | `/api/v1.0/tunnels/profiles/{profileId}/secret` | multipart/form-data：token 或凭据文件 | Secret 保存结果（仅返回存储版本/时间）                  | JWT（Secret 经 ISecretStore 加密存储，不回传明文） |
-| DELETE | `/api/v1.0/tunnels/profiles/{profileId}/secret` | —                               | 204                                      | JWT                                   |
-| POST   | `/api/v1.0/tunnels/profiles/{profileId}/apply`  | —                               | Apply 结果 DTO（启动 frpc、PID、状态快照）或 409（已运行） | JWT                                   |
-| POST   | `/api/v1.0/tunnels/profiles/{profileId}/stop`   | —                               | Stop 结果（进程终止确认）                          | JWT                                   |
-| GET    | `/api/v1.0/tunnels/profiles/{profileId}/logs`   | query: tail（默认 200）             | 文本日志行 DTO\[]                             | JWT                                   |
+| 方法 | 路径 | 请求 / 响应 | 策略 |
+| --- | --- | --- | --- |
+| GET | `/api/v1.0/tunnels/profiles` | `TunnelServerProfileDto[]` 安全元数据，只有 `tokenConfigured` | TunnelsRead |
+| GET | `/api/v1.0/tunnels/profiles/{profileId}` | `TunnelServerProfileDto`，不返回 Token | TunnelsManage |
+| POST / PUT | `/api/v1.0/tunnels/profiles` / `/api/v1.0/tunnels/profiles/{profileId}` | `UpsertTunnelServerProfileRequest` → profile；创建 201，更新 200，`expectedRevision` 冲突 409 | TunnelsManage |
+| DELETE | `/api/v1.0/tunnels/profiles/{profileId}` | 204；存在关联隧道时 409，不提供 revision CAS 或隐式停止 | TunnelsManage |
+| PUT | `/api/v1.0/tunnels/profiles/{profileId}/secret` | JSON `SetTunnelProfileTokenRequest` → 204；独立写入式入口，不反射正文 | TunnelsManage |
+| POST | `/api/v1.0/tunnels/profiles/{profileId}/apply`、`/stop` | 无正文 → `TunnelOperationResultDto { succeeded, state, problemCode }` | TunnelsManage |
+| GET | `/api/v1.0/tunnels/profiles/{profileId}/logs` | `TunnelLogEntryDto[]`，最多 200 行脱敏日志，无 tail 参数 | TunnelsRead |
+| GET | `/api/v1.0/tunnels` | `TunnelDefinitionDto[]`，provider 增补当前运行/应用状态 | TunnelsRead |
+| GET | `/api/v1.0/tunnels/{tunnelId}` | 单项期望状态 `TunnelDefinitionDto` | TunnelsRead |
+| POST / PUT | `/api/v1.0/tunnels` / `/api/v1.0/tunnels/{tunnelId}` | `UpsertTunnelDefinitionRequest` → definition；创建 201，更新 200，revision 冲突 409 | TunnelsManage |
+| DELETE | `/api/v1.0/tunnels/{tunnelId}` | 204，不隐式应用运行配置，不提供 revision CAS | TunnelsManage |
 
-**Runtime（FRP 运行时安装 / 外部检测）**
+Profile Token 不通过任何 GET 返回，没有 Token DELETE、multipart 秘密或配置下载接口。应用、停止与配置变更是同步 API，没有领域 operation ID、PID 响应、`Idempotency-Key` 或取消接口。Windows 受管 profile 生命周期另需 `FrpLifecycle + profileId` 授权。客户端未知结果需读取当前事实，不能把请求重发或当前资源存在当作原动作已成功。
 
-| 方法     | 路径                                                  | 请求                                           | 响应                       | 认证                  |
-| ------ | --------------------------------------------------- | -------------------------------------------- | ------------------------ | ------------------- |
-| GET    | `/api/v1.0/tunnels/runtime/managed/install/status`    | —                                            | 安装状态 DTO（版本/路径/完整性）      | JWT                 |
-| POST   | `/api/v1.0/tunnels/runtime/managed/install`           | query: version?（默认 latest stable）+ platform? | 下载+安装 operation          | JWT（HostGlobal 管理员） |
-| POST   | `/api/v1.0/tunnels/runtime/managed/install/from-file` | multipart: tar.gz/zip 安装包                    | 安装 operation             | JWT（HostGlobal 管理员） |
-| DELETE | `/api/v1.0/tunnels/runtime/managed`                   | —                                            | 卸载 operation（保留配置）       | JWT（HostGlobal 管理员） |
-| POST   | `/api/v1.0/tunnels/runtime/managed/rollback`          | —                                            | 回滚到上一版本 operation        | JWT（HostGlobal 管理员） |
-| GET    | `/api/v1.0/tunnels/runtime/external/detect`           | —                                            | 检测系统级 frpc/frps（PATH、版本） | JWT                 |
+Provider 以应用时 profile revision、隧道 ID/revision 集合和受保护 Token 的内存指纹区分运行配置与当前期望状态：运行中发生修改投影 `savedNotApplied`；缺少应用身份为 `unknown`；禁用项不显示连接。指纹不进入 DTO，重启后没有凭据证明便不推断当前配置已应用。`connected` 只证明 frpc 的服务器登录，不证明每个 proxy 注册或公网访问。
 
-**Managed Frps（托管 FRP Server 进程，仅本机回环或受控绑定）**
+**Runtime**
 
-| 方法   | 路径                            | 请求                                             | 响应                                              | 认证                  |
-| ---- | ----------------------------- | ---------------------------------------------- | ----------------------------------------------- | ------------------- |
-| GET  | `/api/v1.0/tunnels/frps/editor` | —                                              | 当前 frps.toml DTO（结构化配置对象，非原始 TOML）              | JWT（HostGlobal 管理员） |
-| PUT  | `/api/v1.0/tunnels/frps/editor` | body: FrpsConfigDto（结构化，经 TunnelValidation 校验） | 写入+校验结果                                         | JWT（HostGlobal 管理员） |
-| POST | `/api/v1.0/tunnels/frps/start`  | —                                              | 启动 operation + PID                              | JWT（HostGlobal 管理员） |
-| POST | `/api/v1.0/tunnels/frps/stop`   | —                                              | 停止 operation                                    | JWT（HostGlobal 管理员） |
-| GET  | `/api/v1.0/tunnels/frps/logs`   | query: tail                                    | frps 日志 DTO\[]                                  | JWT（HostGlobal 管理员） |
-| GET  | `/api/v1.0/tunnels/frps/audit`  | query: limit/skip                              | TunnelAuditEntryDto\[]（连接建立/断开/拒绝事件，持久化 SQLite） | JWT（HostGlobal 管理员） |
+| 方法 | 路径 | 请求 / 响应 | 策略 |
+| --- | --- | --- | --- |
+| GET | `/api/v1.0/tunnels/runtime` | `TunnelRuntimeDto`（当前/上一版本、路径、完整性与状态） | TunnelsRead |
+| GET | `/api/v1.0/tunnels/runtime/download?version={version}` | 固定版本 → `TunnelRuntimeDownloadDto`；未受信版本 404 | TunnelsRead |
+| POST | `/api/v1.0/tunnels/runtime/external/detect` | `DetectExternalTunnelRuntimeRequest { executablePath }` → `TunnelRuntimeDto`；只探测指定绝对文件 | TunnelsManage |
+
+运行时安装统一走 `POST /api/v1.0/installations/Frp/{Install|Upgrade|Repair|Uninstall}`，请求 `FrpInstallationRequest`，沿用公共安装的确认、稳定键、提权、操作 ID、活动查询与取消语义；回滚为 Repair + rollback。Install 的包来源通过 `/installations/Frp/file-reference` 或 `/package` 产生限时 FileReferenceId，其余动作不借用包引用。安装/升级/非回滚修复要求受信固定版本；没有 latest、旧 runtime/managed 路由或客户端任意 URL 安装。
+
+**Managed Frps（宿主级）**
+
+| 方法 | 路径 | 请求 / 响应 | 策略 |
+| --- | --- | --- | --- |
+| GET | `/api/v1.0/tunnels/frps` | 安全 `ManagedFrpsConfigurationDto`，不返回 Token | TunnelsRead |
+| GET | `/api/v1.0/tunnels/frps/editor` | 编辑 DTO，含当前 Token；成功读取秘密有审计，不返回 dashboard 密码 | TunnelsManage |
+| PUT | `/api/v1.0/tunnels/frps` | `UpdateManagedFrpsConfigurationRequest` → 安全 DTO；要求 confirmed 与必需 expectedRevision（首次 0，冲突 409） | TunnelsManage |
+| POST | `/api/v1.0/tunnels/frps/start`、`/stop` | 同步 `TunnelOperationResultDto`，无 PID/operation ID | TunnelsManage |
+| GET | `/api/v1.0/tunnels/frps/logs` | 有界脱敏 `TunnelLogEntryDto[]` | TunnelsRead |
+| GET | `/api/v1.0/tunnels/frps/audit` | 有界配置/生命周期/秘密读取 `TunnelAuditEntryDto[]`，不接收 limit/skip | TunnelsRead |
+
+frps DTO 必需 `revision/appliedRevision`：首次未配置 revision=0；保存版本为正数，应用版本仅在活跃进程已核实时返回。保存推进 revision，不重启或重新应用运行配置；活跃进程应用版本不同的 Start 返回 `tunnel.frps_restart_required`。成功 Stop 返回 disconnected，不能返回 connected。Linux 重新打开配置但缺少原进程归属时返回 Unknown，并拒绝宣称停止未知进程；不按名称杀进程。配置记录直接采用必需 revision 的当前格式，不解析旧格式。PUT 不回传 Token，空白替换保留已存 Token/dashboard 密码。
+
+Windows frps 生命周期另需 `FrpLifecycle + frps` 授权。frps Token 编辑读取与 profile Token 写入式接口具有不同边界；不得将两者写成共享秘密读取 API。日志与审计不返回 TOML、受保护密钥载荷或 dashboard 密码。
 
 ### Certificates / WebServers（V1 后端）
 
@@ -386,37 +394,44 @@ Compose 编排的**每个变更都是持久操作，不是同步结果**（`stac
 
 * Operation 查询、取消和后续进度事件使用 Protocol 契约，不能让 UI 通过日志文本推断状态。
 
-**Certificates（证书 ACME 管理，路由见 CertificateApiRoutes）**
+**Certificates（当前路由见 CertificateApiRoutes）**
 
-| 方法     | 路径                                              | 请求                                                        | 响应                                         | 认证                                    |
-| ------ | ----------------------------------------------- | --------------------------------------------------------- | ------------------------------------------ | ------------------------------------- |
-| GET    | `/api/v1.0/certificates/records`                  | —                                                         | CertificateRecordDto\[]（规范化元数据 + 受保护引用）    | JWT（HostGlobal 管理员）                   |
-| GET    | `/api/v1.0/certificates/records/{id}`             | —                                                         | 单证书详情 + 部署历史摘要                             | JWT（HostGlobal 管理员）                   |
-| POST   | `/api/v1.0/certificates/records/{id}/precheck`    | body: 挑战方式 + 域名列表 + 可选部署目标                                | PrecheckResultDto（可达性、DNS、端口、问题列表）         | JWT（HostGlobal 管理员）                   |
-| POST   | `/api/v1.0/certificates/records/issue`            | body: IssueCertificateRequest（ACME account、域名、挑战类型、密钥算法等） | OperationDto（签发异步）                         | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| POST   | `/api/v1.0/certificates/records/{id}/renew`       | body: 可选新配置                                               | OperationDto（续期异步）                         | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| POST   | `/api/v1.0/certificates/records/{id}/deploy`      | body: DeployTarget（kestrel/nginx/iis/apache + 目标名）        | OperationDto（部署到指定前端）                      | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| POST   | `/api/v1.0/certificates/records/{id}/revoke`      | body: RevokeReason                                        | OperationDto（吊销）                           | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| DELETE | `/api/v1.0/certificates/records/{id}`             | —                                                         | OperationDto（删除元数据 + 受保护 PEM 引用；数据库绝不保存私钥） | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| GET    | `/api/v1.0/certificates/operations`               | query: status/limit                                       | OperationDto\[]（查询操作状态）                    | JWT（HostGlobal 管理员）                   |
-| GET    | `/api/v1.0/certificates/operations/{opId}`        | —                                                         | OperationDto 详情                            | JWT（HostGlobal 管理员）                   |
-| POST   | `/api/v1.0/certificates/operations/{opId}/cancel` | —                                                         | 取消结果（支持操作中止语义）                             | JWT（HostGlobal 管理员）                   |
+| 方法 | 路径 | 请求 | 响应 | 认证 |
+| --- | --- | --- | --- | --- |
+| GET | `/api/v1.0/certificates` | — | CertificateDto[]，只含元数据 | JWT + Certificates 宿主能力 |
+| GET | `/api/v1.0/certificates/{id}` | — | CertificateDto | JWT + Certificates 宿主能力 |
+| POST | `/api/v1.0/certificates/preflight` | CertificatePreflightRequest：domains、challengeType | CertificatePreflightResultDto | JWT + Certificates 宿主能力；无幂等键 |
+| POST | `/api/v1.0/certificates` | RequestCertificateRequest：域名、挑战、邮箱、条款、密钥与公网确认 | CertificateOperationDto | JWT + Idempotency-Key；宿主管理员 |
+| POST | `/api/v1.0/certificates/self-signed` | CreateSelfSignedCertificateRequest：SAN、密钥、有效天数 | CertificateOperationDto | JWT + Idempotency-Key；宿主管理员 |
+| POST | `/api/v1.0/certificates/{id}/renew` | — | CertificateOperationDto | JWT + Idempotency-Key；宿主管理员 |
+| GET | `/api/v1.0/certificates/{id}/deployments/kestrel` | — | KestrelCertificateDeploymentDto | JWT；实际选择器/监听/指纹与观察时间，无私钥 |
+| POST | `/api/v1.0/certificates/{id}/deployments/kestrel` | — | CertificateOperationDto | JWT + Idempotency-Key；宿主管理员 |
+| POST | `/api/v1.0/certificates/{id}/revoke` | RevokeCertificateRequest：confirmed | CertificateOperationDto | JWT + Idempotency-Key；宿主管理员 |
+| DELETE | `/api/v1.0/certificates/{id}` | DeleteCertificateRequest：confirmed | CertificateOperationDto | JWT + Idempotency-Key；宿主管理员 |
+| GET | `/api/v1.0/certificates/operations/{operationId}` | — | CertificateOperationDto | JWT + Certificates 宿主能力 |
+| POST | `/api/v1.0/certificates/operations/{operationId}/cancel` | — | CertificateOperationDto | JWT + Certificates 宿主能力；无幂等键 |
 
-**WebServers（Nginx 集成，路由见 WebServerApiRoutes）**
+当前没有操作集合或按请求键查询接口。DNS-01 返回不可用；Direct/Webroot HTTP-01 预检不证明公网可达。私钥/PEM 不进入 DTO；自签名支持私有 IP/DNS SAN，但不提供 ACME 续期或撤销。幂等身份、恢复限制和宿主权限见 [证书管理](../applications/RelaxKonOS.CertificateManager.md#354-protocol-与操作模型)。
 
-| 方法             | 路径                                            | 请求                                                        | 响应                                                      | 认证                                    |
-| -------------- | --------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------- |
-| GET            | `/api/v1.0/webservers/instances`                | —                                                         | NginxInstanceDto\[]（发现/检测结果：版本、二进制、配置路径、状态、systemd/SCM） | JWT（HostGlobal 管理员）                   |
-| GET            | `/api/v1.0/webservers/instances/{id}`           | —                                                         | 实例详情 + 当前运行时统计                                          | JWT（HostGlobal 管理员）                   |
-| POST           | `/api/v1.0/webservers/instances/{id}/reload`    | —                                                         | OperationDto（重载配置，失败回滚）                                 | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| POST           | `/api/v1.0/webservers/instances/{id}/test`      | —                                                         | ConfigTestResultDto（nginx -t 结构化输出）                     | JWT（HostGlobal 管理员）                   |
-| GET            | `/api/v1.0/webservers/integration-candidates`   | —                                                         | WebServerIntegrationCandidateDto[]（可手动集成的未受管 Nginx）      | JWT（HostGlobal 管理员）                   |
-| POST           | `/api/v1.0/webservers/integration-candidates/{candidateId}/integrate` | body: IntegrateWebServerRequest（确认写入 RelaxKonOS 管理片段） | OperationDto（最小侵入集成 + 回滚点）                              | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| GET            | `/api/v1.0/webservers/sites`                    | —                                                         | WebServerSiteDto\[]（站点列表：域名、根、上游、证书、监听）                 | JWT（HostGlobal 管理员）                   |
-| GET/PUT/DELETE | `/api/v1.0/webservers/sites/{id}`               | body: SiteConfigDto                                       | 站点详情 / 更新 / 删除                                          | JWT（HostGlobal 管理员 + Idempotency-Key） |
-| GET            | `/api/v1.0/webservers/operations`               | query: status/limit                                       | OperationDto\[]                                         | JWT（HostGlobal 管理员）                   |
-| GET            | `/api/v1.0/webservers/operations/{opId}`        | —                                                         | OperationDto 详情                                         | JWT（HostGlobal 管理员）                   |
-| POST           | `/api/v1.0/webservers/operations/{opId}/cancel` | —                                                         | 取消结果                                                    | JWT（HostGlobal 管理员）                   |
+**WebServers（当前 Nginx 端点，路由见 WebServerApiRoutes）**
+
+| 方法 | 路径 | 请求 | 响应 | 认证 |
+| --- | --- | --- | --- | --- |
+| GET | `/api/v1.0/webservers`、`/api/v1.0/webservers/{id}` | — | WebServerDto 列表 / 详情，包含真实能力 | JWT + WebServer 宿主能力 |
+| POST | `/api/v1.0/webservers/discover` | — | WebServerDto[] | JWT + WebServer 宿主能力 |
+| GET | `/api/v1.0/webservers/{id}/status` | — | WebServerStatusDto | JWT + WebServer 宿主能力 |
+| POST | `/api/v1.0/webservers/{id}/config/test` | — | WebServerConfigTestDto | JWT + WebServer 宿主能力 |
+| GET | `/api/v1.0/webservers/managed/catalog`、`/api/v1.0/webservers/managed/download` | download query: version | Nginx 安装目录 / 下载引用 | JWT + WebServer 宿主能力 |
+| GET | `/api/v1.0/webservers/integration-candidates` | — | WebServerIntegrationCandidateDto[] | JWT + WebServer 宿主能力 |
+| POST | `/api/v1.0/webservers/integration-candidates/{candidateId}/integrate` | IntegrateWebServerRequest | WebServerOperationDto | JWT + Idempotency-Key + NginxConfigurationWrite |
+| POST | `/api/v1.0/webservers/{id}/lifecycle/{action}`、`/api/v1.0/webservers/{id}/reload` | — | WebServerOperationDto | JWT + Idempotency-Key + NginxLifecycle；ACME include 使用 NginxConfigurationWrite |
+| GET | `/api/v1.0/webservers/{id}/sites` | — | WebServerSiteDto[] | JWT + WebServer 宿主能力 |
+| POST | `/api/v1.0/webservers/{id}/sites` | UpsertWebServerSiteRequest：创建的 expectedUpdatedAt 为 null；更新为已读完整 updatedAt | WebServerSiteDto（同步） | JWT + NginxConfigurationWrite；无 Idempotency-Key |
+| DELETE | `/api/v1.0/webservers/{id}/sites/{siteId}` | DeleteWebServerSiteRequest：必需 expectedUpdatedAt | 204（同步） | JWT + NginxConfigurationWrite；无 Idempotency-Key |
+| GET | `/api/v1.0/webservers/operations/{operationId}` | — | WebServerOperationDto | JWT + WebServer 宿主能力 |
+| POST | `/api/v1.0/webservers/operations/{operationId}/cancel` | — | WebServerOperationDto | JWT + WebServer 宿主能力 |
+
+站点变更在写入锁内比较原版本，冲突返回 409，不能静默覆盖；完整时间精度必须保留。站点提交没有操作 ID，失联后读取事实并显式处理未知结果。Web 长任务目前只有按 ID 查询接口，没有集合或按请求键查找接口。共享执行与补偿细节见 [Web Server 设计](../applications/RelaxKonOS.WebServerManager.Design.md#23-api-建议)。
 
 ### 注册表（Registry）
 

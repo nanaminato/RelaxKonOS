@@ -217,6 +217,7 @@
     "webservers.problem.site_server_name_required": "少なくとも 1 つのドメイン名または IP アドレスを入力してください。",
     "webservers.problem.site_server_name_invalid": "ドメイン名または IP アドレスが無効です。例: app.example.com または 192.168.1.20 を 1 行ずつ入力してください。",
     "webservers.problem.site_already_exists": "同じ名前のサイトが既に存在します。このダイアログを閉じて一覧から選択して編集してください。新規作成では既存サイトを上書きしません。",
+    "webservers.problem.site_changed": "サイトを開いた後に変更または削除されました。最新の定義を更新して確認してから保存または削除してください。",
     "webservers.problem.site_binding_conflict": "ドメイン/IP アドレスと待受ポートの組み合わせが別のサイトで使用されています。ドメインまたはポートを調整して再試行してください。",
     "webservers.problem.site_conflict": "サイトが既存の構成と競合しています。サイト名、ドメイン/IP アドレス、待受ポートを確認して再試行してください。",
     "webservers.problem.site_certificate_required": "HTTPS を有効にする場合は有効な証明書を選択してください。IP アドレスを使用する場合は通常 HTTPS を無効にしてください。",
@@ -234,6 +235,8 @@
     "webservers.enum.runtime.unknown": "不明",
     "webservers.enum.runtime.running": "実行中",
     "webservers.enum.runtime.stopped": "停止中",
-    "webservers.problem.version_catalog_unavailable": "Nginx Windows のバージョン一覧を読み込めません。更新して再試行するか、ローカル ZIP パッケージを選択してください。"
+    "webservers.problem.version_catalog_unavailable": "Nginx Windows のバージョン一覧を読み込めません。更新して再試行するか、ローカル ZIP パッケージを選択してください。",
+    "webservers.problem.site_certificate_not_usable": "選択した証明書は存在しないか、期限切れ、失効済み、または使用できません。",
+    "webservers.problem.site_certificate_domain_mismatch": "証明書の SAN がすべてのサイトのバインドをカバーしていません。"
   }
 }

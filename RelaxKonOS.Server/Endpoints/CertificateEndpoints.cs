@@ -16,6 +16,8 @@ public static class CertificateEndpoints
             await StartAsync(context, key => manager.RequestAsync(key, request, Actor(context), ct)));
         group.MapPost(CertificateApiRoutes.SelfSignedPattern, async (CreateSelfSignedCertificateRequest request, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             await StartAsync(context, key => manager.CreateSelfSignedAsync(key, request, Actor(context), ct)));
+        group.MapGet(CertificateApiRoutes.DeployPattern, (Guid id, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
+            manager.GetKestrelDeploymentAsync(id, ct));
         group.MapPost(CertificateApiRoutes.DeployPattern, async (Guid id, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>
             await StartAsync(context, key => manager.DeployKestrelAsync(id, key, Actor(context), ct)));
         group.MapPost(CertificateApiRoutes.RenewPattern, async (Guid id, HttpContext context, RelaxKonOS.Server.Certificate.ICertificateManager manager, CancellationToken ct) =>

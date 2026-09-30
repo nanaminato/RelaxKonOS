@@ -275,6 +275,76 @@ class RelaxKonApi(
         }
     }
 
+    override suspend fun managedFrps(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, ManagedFrpsRoutes.ROOT, ManagedFrpsWire::configuration)
+    override suspend fun managedFrpsEditing(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, ManagedFrpsRoutes.EDITOR, ManagedFrpsWire::editing)
+    override suspend fun saveManagedFrps(serverUrl: String, accessToken: String, request: ManagedFrpsRequest) = webPublishingCall("PUT", serverUrl, ManagedFrpsRoutes.ROOT, accessToken, request.body(), ManagedFrpsWire::configuration)
+    override suspend fun startManagedFrps(serverUrl: String, accessToken: String) = webPublishingCall("POST", serverUrl, ManagedFrpsRoutes.START, accessToken, JsonBody(), TunnelWire::result)
+    override suspend fun stopManagedFrps(serverUrl: String, accessToken: String) = webPublishingCall("POST", serverUrl, ManagedFrpsRoutes.STOP, accessToken, JsonBody(), TunnelWire::result)
+    override suspend fun managedFrpsLogs(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, ManagedFrpsRoutes.LOGS, TunnelWire::logs)
+    override suspend fun managedFrpsAudit(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, ManagedFrpsRoutes.AUDIT, ManagedFrpsWire::audit)
+    override suspend fun tunnelProfiles(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, TunnelRoutes.PROFILES, TunnelWire::profiles)
+    override suspend fun tunnelDefinitions(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, TunnelRoutes.ROOT, TunnelWire::definitions)
+    override suspend fun tunnelRuntime(serverUrl: String, accessToken: String) = webPublishingRead(serverUrl, accessToken, TunnelRoutes.RUNTIME, TunnelWire::runtime)
+    override suspend fun tunnelRuntimeDownload(serverUrl: String, accessToken: String, version: String) = webPublishingRead(serverUrl, accessToken, TunnelRoutes.download(version), TunnelWire::download)
+    override suspend fun detectTunnelRuntime(serverUrl: String, accessToken: String, path: String) = webPublishingCall("POST", serverUrl, TunnelRoutes.DETECT, accessToken, JsonBody().string("executablePath", path), TunnelWire::runtime)
+    override suspend fun saveTunnelProfile(serverUrl: String, accessToken: String, id: String?, request: TunnelProfileRequest) = webPublishingCall(if (id == null) "POST" else "PUT", serverUrl, id?.let(TunnelRoutes::profile) ?: TunnelRoutes.PROFILES, accessToken, request.body(), TunnelWire::profile)
+    override suspend fun deleteTunnelProfile(serverUrl: String, accessToken: String, id: String) = tunnelEmpty("DELETE", serverUrl, accessToken, TunnelRoutes.profile(id))
+    override suspend fun setTunnelToken(serverUrl: String, accessToken: String, id: String, secret: String) = tunnelEmpty("PUT", serverUrl, accessToken, TunnelRoutes.token(id), JsonBody().string("token", secret))
+    override suspend fun saveTunnelDefinition(serverUrl: String, accessToken: String, id: String?, request: TunnelDefinitionRequest) = webPublishingCall(if (id == null) "POST" else "PUT", serverUrl, id?.let(TunnelRoutes::definition) ?: TunnelRoutes.ROOT, accessToken, request.body(), TunnelWire::definition)
+    override suspend fun deleteTunnelDefinition(serverUrl: String, accessToken: String, id: String) = tunnelEmpty("DELETE", serverUrl, accessToken, TunnelRoutes.definition(id))
+    override suspend fun applyTunnelProfile(serverUrl: String, accessToken: String, id: String) = webPublishingCall("POST", serverUrl, TunnelRoutes.apply(id), accessToken, JsonBody(), TunnelWire::result)
+    override suspend fun stopTunnelProfile(serverUrl: String, accessToken: String, id: String) = webPublishingCall("POST", serverUrl, TunnelRoutes.stop(id), accessToken, JsonBody(), TunnelWire::result)
+    override suspend fun tunnelLogs(serverUrl: String, accessToken: String, id: String) = webPublishingRead(serverUrl, accessToken, TunnelRoutes.logs(id), TunnelWire::logs)
+    private suspend fun tunnelEmpty(method: String, serverUrl: String, accessToken: String, route: String, body: JsonBody? = null): ApiResult<Unit> =
+        when (val result = execute(method, serverUrl, route, accessToken, body)) {
+            is ApiResult.Success -> if (result.value.isBlank()) ApiResult.Success(Unit) else ApiResult.Transport(null)
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+
+    override suspend fun certificate(serverUrl: String, accessToken: String, id: String): ApiResult<ManagedCertificate> =
+        webPublishingCall("GET", serverUrl, CertificateRoutes.certificate(id), accessToken, null, CertificateWire::certificate)
+    override suspend fun kestrelCertificateDeployment(serverUrl: String, accessToken: String, id: String): ApiResult<KestrelCertificateDeployment> =
+        webPublishingCall("GET", serverUrl, CertificateRoutes.kestrel(id), accessToken, null, CertificateWire::kestrel)
+    override suspend fun certificatePreflight(serverUrl: String, accessToken: String, domains: List<String>, challenge: CertificateChallenge): ApiResult<CertificatePreflight> =
+        webPublishingCall("POST", serverUrl, CertificateRoutes.PREFLIGHT, accessToken,
+            JsonBody().raw("domains", org.json.JSONArray(domains).toString()).string("challengeType", challenge.wire), CertificateWire::preflight)
+    override suspend fun certificateMutation(serverUrl: String, accessToken: String, action: CertificateAction, id: String?, body: JsonBody,
+        idempotencyKey: String): ApiResult<CertificateOperation> = deploymentMutation(if (action == CertificateAction.Delete) "DELETE" else "POST",
+            serverUrl, CertificateRoutes.mutation(action, id), accessToken, body, idempotencyKey, CertificateWire::operation)
+    override suspend fun certificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> =
+        webPublishingCall("GET", serverUrl, CertificateRoutes.operation(id), accessToken, null, CertificateWire::operation)
+    override suspend fun cancelCertificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation> =
+        webPublishingCall("POST", serverUrl, CertificateRoutes.cancel(id), accessToken, JsonBody(), CertificateWire::operation)
+
+    override suspend fun saveWebServerSite(serverUrl: String, accessToken: String, instanceId: String,
+        request: WebServerSiteRequest): ApiResult<WebServerSite> = webPublishingCall("POST", serverUrl,
+        WebPublishingRoutes.sites(instanceId), accessToken, request.body(), WebPublishingWire::site)
+    override suspend fun deleteWebServerSite(serverUrl: String, accessToken: String, instanceId: String, siteId: String,
+        expectedUpdatedAt: String): ApiResult<Unit> = when (val result = execute("DELETE", serverUrl, WebPublishingRoutes.site(instanceId, siteId),
+        accessToken, JsonBody().string("expectedUpdatedAt", expectedUpdatedAt))) {
+            is ApiResult.Success -> if (result.value.isBlank()) ApiResult.Success(Unit) else ApiResult.Transport(null)
+            is ApiResult.Problem -> result
+            is ApiResult.Transport -> result
+        }
+    override suspend fun discoverWebServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> =
+        webPublishingCall("POST", serverUrl, WebPublishingRoutes.discover(), accessToken, JsonBody(), WebPublishingWire::servers)
+    override suspend fun webServerCandidates(serverUrl: String, accessToken: String): ApiResult<List<WebServerCandidate>> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.candidates(), WebPublishingWire::candidates)
+    override suspend fun webServerInstallCatalog(serverUrl: String, accessToken: String): ApiResult<WebServerInstallCatalog> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.catalog(), WebPublishingWire::catalog)
+    override suspend fun integrateWebServer(serverUrl: String, accessToken: String, candidateId: String, confirmed: Boolean,
+        idempotencyKey: String): ApiResult<WebServerOperation> = webPublishingMutation(serverUrl, accessToken,
+        WebPublishingRoutes.integrate(candidateId), JsonBody().bool("confirmed", confirmed), idempotencyKey, WebPublishingWire::operation)
+    override suspend fun webServerLifecycle(serverUrl: String, accessToken: String, instanceId: String, action: WebServerAction,
+        idempotencyKey: String): ApiResult<WebServerOperation> = webPublishingMutation(serverUrl, accessToken,
+        WebPublishingRoutes.lifecycle(instanceId, action), JsonBody(), idempotencyKey, WebPublishingWire::operation)
+    override suspend fun webServerOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebServerOperation> =
+        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.operation(operationId), WebPublishingWire::operation)
+    override suspend fun cancelWebServerOperation(serverUrl: String, accessToken: String, operationId: String,
+        idempotencyKey: String): ApiResult<WebServerOperation> = webPublishingMutation(serverUrl, accessToken,
+        WebPublishingRoutes.cancel(operationId), JsonBody(), idempotencyKey, WebPublishingWire::operation)
+
     override suspend fun webServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>> =
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.servers(), WebPublishingWire::servers)
 
@@ -288,7 +358,7 @@ class RelaxKonApi(
         webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.sites(instanceId), WebPublishingWire::sites)
 
     override suspend fun certificates(serverUrl: String, accessToken: String): ApiResult<List<ManagedCertificate>> =
-        webPublishingRead(serverUrl, accessToken, WebPublishingRoutes.CERTIFICATES, WebPublishingWire::certificates)
+        webPublishingRead(serverUrl, accessToken, CertificateRoutes.ROOT, CertificateWire::list)
 
     override suspend fun publishWebsite(
         serverUrl: String, accessToken: String, request: WebsitePublishRequest, idempotencyKey: String,

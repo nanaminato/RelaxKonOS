@@ -78,12 +78,19 @@ public static class WebServerEndpoints
                 return Results.BadRequest(new { problemCode = exception.ProblemCode });
             }
         });
-        group.MapDelete(WebServerApiRoutes.SiteByIdPattern, async (string id, string siteId, HttpContext context,
+        group.MapDelete(WebServerApiRoutes.SiteByIdPattern, async (string id, string siteId, [Microsoft.AspNetCore.Mvc.FromBody] DeleteWebServerSiteRequest request, HttpContext context,
             IHostElevationSessionStore elevations, RelaxKonOS.Server.WebServer.IWebServerManager manager, CancellationToken ct) =>
         {
             if (!elevations.IsGranted(context.User, HostElevationCapability.NginxConfigurationWrite, id))
                 return ElevationRequired("此 Nginx 站点配置操作需要当前会话对该实例的管理员授权。");
-            return await manager.DeleteSiteAsync(id, siteId, ct) switch { true => Results.NoContent(), false => Results.NotFound(), _ => Results.BadRequest(new { problemCode = "webserver.site_delete_failed" }) };
+            try
+            {
+                return await manager.DeleteSiteAsync(id, siteId, request, ct) switch { true => Results.NoContent(), false => Results.NotFound(), _ => Results.BadRequest(new { problemCode = "webserver.site_delete_failed" }) };
+            }
+            catch (RelaxKonOS.Server.WebServer.NginxWebServerManager.WebServerSiteConflictException exception)
+            {
+                return Results.Conflict(new { problemCode = exception.ProblemCode });
+            }
         });
         group.MapGet(WebServerApiRoutes.OperationsPattern, async (Guid operationId, RelaxKonOS.Server.WebServer.WebServerOperationStore operations, CancellationToken ct) =>
             await operations.GetAsync(operationId, ct) is { } operation ? Results.Ok(operation) : Results.NotFound());

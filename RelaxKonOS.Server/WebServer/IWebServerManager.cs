@@ -14,7 +14,7 @@ public interface IWebServerManager
     Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken);
     Task<IReadOnlyList<WebServerSiteDto>?> ListSitesAsync(string instanceId, CancellationToken cancellationToken);
     Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request, CancellationToken cancellationToken);
-    Task<bool?> DeleteSiteAsync(string instanceId, string siteId, CancellationToken cancellationToken);
+    Task<bool?> DeleteSiteAsync(string instanceId, string siteId, DeleteWebServerSiteRequest request, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -35,5 +35,5 @@ public interface IWebServerProvider
     Task<WebServerOperationDto?> ReloadAsync(string instanceId, string idempotencyKey, string? actor, CancellationToken cancellationToken);
     Task<IReadOnlyList<WebServerSiteDto>?> ListSitesAsync(string instanceId, CancellationToken cancellationToken);
     Task<WebServerSiteDto?> UpsertSiteAsync(string instanceId, UpsertWebServerSiteRequest request, CancellationToken cancellationToken);
-    Task<bool?> DeleteSiteAsync(string instanceId, string siteId, CancellationToken cancellationToken);
+    Task<bool?> DeleteSiteAsync(string instanceId, string siteId, DeleteWebServerSiteRequest request, CancellationToken cancellationToken);
 }

@@ -1,6 +1,6 @@
 # Android 测试进度与验收清单
 
-> 更新：2026-09-30。统一维护测试进度、已有执行证据和未关闭检查，区分自动化、模拟器、真实宿主和实体设备；实现进度见 [Progress](Progress.md#2-bp-实现进度)。未执行测试不阻止下一步实现，未测结果不得写成通过。本轮只整理文档，没有重新运行产品测试。AD 表为真实宿主/设备检查，已有 JVM 或构建证据不代表整项通过；依赖尚未实现能力的项目先完成 [部署后续工作](../plans/Deployment.md)。
+> 更新：2026-09-30。统一维护测试进度、已有执行证据和未关闭检查，区分自动化、模拟器、真实宿主和实体设备；实现进度见 [Progress](Progress.md#2-bp-实现进度)。未执行测试不阻止下一步实现，未测结果不得写成通过。本轮新增验证范围按 BP 编号记录，不将历史验证覆盖到新代码。AD 表为真实宿主/设备检查，已有 JVM 或构建证据不代表整项通过；依赖尚未实现能力的项目先完成 [部署后续工作](../plans/Deployment.md)。
 
 ## 1. 共同设备与发布检查
 
@@ -167,12 +167,12 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | BP01-M1 | 进行中 | 通过（`89114399`：Debug 主代码/单元测试代码编译；专项 JVM 24/24）；`0a59bb52` 未复测 | 未执行 | 未执行 | 未执行 | wire/HTTP/Repository/Journal 24 个用例已执行；取消竞争、完整认证刷新、设备 SAF 与 OperationCenter 端到端用例待补；执行证据 BP01-M1-V1 见下文，APK/仪器测试/lint 不在本次范围 |
 | BP02-M1 | 进行中 | 通过（`02b54f19`：Debug 主代码/单元测试代码编译；专项 JVM 12/12） | 未执行 | 未执行 | 未执行 | wire/HTTP/Editor 12 个用例已执行；实际认证刷新、真实消费者网络、手机/平板交互待补；执行证据 BP02-M1-V1 见下文，APK/仪器测试/lint 不在本次范围 |
-| BP03-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 全新安装、手机包/服务器引用、已有实例接管、启停/重启/重载 |
-| BP03-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 静态/反代、配置错误、端口冲突、并发更新与断线核实 |
-| BP04-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 预检/ACME/自签名/续期/撤销/删除/取消、秘密脱敏 |
-| BP04-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | HTTPS 站点证书、到期/缺失、Kestrel 部署与管理连接恢复 |
-| BP05-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | FRP 安装/更新/回滚、外部检测、frpc 配置与隧道实际连接 |
-| BP05-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | frps 配置、秘密、生命周期、日志/审计 |
+| BP03-M1 | 进行中 | 未执行（按用户要求跳过 Android 构建/测试） | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Repository 12 个用例；全新 Ubuntu/Windows 安装、手机包/服务器引用、接管、生命周期/卸载、设备交互及断线/取消验收待执行 |
+| BP03-M2 | 进行中 | 部分通过：Server 构建/站点契约检查通过；Android 按用户要求未执行；桌面框架引用解析失败 | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Draft/Repository 18 个 Android 用例；静态/反代、配置错误、端口冲突、并发更新与断线核实及真机交互待执行；执行证据见下文 |
+| BP04-M1 | 进行中 | 部分通过：Server 构建/创建重放检查通过；Android 按用户要求未执行 | 未执行 | 未执行 | 未执行 | 已准备 wire/HTTP/Draft/Repository/Journal 21 个 Android 用例；真实预检/ACME/自签名/续期/撤销/删除/取消与秘密脱敏、设备交互待执行 |
+| BP04-M2 | 进行中 | 部分通过：Server 构建/实际选择器/部署恢复检查通过；Android 按用户要求未执行 | 未执行 | 未执行 | 未执行 | 新增 12 个 Android 用例；真实 Nginx/SNI/信任及管理连接中断恢复待验证 |
+| BP05-M1 | 已准备 | 部分通过：Server 构建/本地 FRP 夹具专项检查通过；Android 按用户要求未执行 | 未执行 | 未执行 | 未执行 | 新增 21 个 Android 用例；真实 FRP 安装/连接、Windows Helper、手机/平板/IME 与断线恢复待验收 |
+| BP05-M2 | 已准备 | 部分通过：Server 构建/frps 夹具专项检查通过；Android 按用户要求未执行 | 未执行 | 未执行 | 未执行 | 新增 18 个 Android 用例；真实 frps 网络、Windows Helper、秘密/会话/手机/平板/IME 待验收 |
 | BP06-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | Mihomo 安装/修复/升级/回滚、订阅/配置/节点与失败诊断 |
 | BP06-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 系统代理/TUN、能力门控、管理路径保护、紧急恢复、DNS/GeoData |
 | BP02-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 受管 Mihomo 缺失/停止/运行与地址更新；Docker/下载真实代理行为 |
@@ -255,3 +255,59 @@ $bp02Gradle = 'C:/Users/betha/.gradle/wrapper/dists/gradle-9.7.1-all/6yde0y3ecw7
 实现交付只更新 Progress 的状态、动作、文件/提交与剩余代码；测试执行后在本文记录日期、提交、命令或人工步骤、环境、结果与检查范围，并关闭对应检查。未测平台、跳过和部分通过明确保留；无测试时仍可按实现依赖继续下一项。测试发现真实缺陷时关联 Progress 的代码待办，不将缺测试本身标为实现阻塞。
 
 秘密、token、私钥与实际宿主密码不进入记录。AD/BP 编号用于关联领域与实现项，不要求保留已完成计划文件；测试证据不在 Progress 或计划中重复维护。
+
+
+### BP03-M1 静态证据与未执行范围（2026-09-30）
+
+- 代码核对：WebServerContracts/ApiRoutes 与现有 Server/桌面调用对照，接入当前 discovery/candidate/catalog/lifecycle/operation/cancel 路由；无旧路由或双格式兼容。ACME 路由动作是 `enableacmehttp01`，返回任务 kind 是 `enable-acme-http01`，分别映射。
+- 静态检查：Python XML 解析与三语键集合/格式占位符核对、Kotlin `R.string` 引用扫描；`git diff --check`。结果通过。上述结果仅是源文件/资源检查，未验证 Kotlin/Compose 编译、HTTP 执行或实际安装。
+- 用例准备：`WebServerManagementWireTest` 4 个（段编码、ACME action/kind、严格 ID/状态、能力字段及目录/候选）；`WebServerManagementHttpTest` 3 个（方法/路由/Bearer/幂等键/确认、原 ID 查询/取消、畸形响应与问题码）；`WebServerRepositoryTest` 5 个（未知结果原键/事实查询、响应归属、换会话、首次明确拒绝、未决动作锁）。总计 12 个，未执行。
+- 自动化未执行：本机无 Android 环境，依用户授权跳过 Android 编译、单元测试和仪器测试；未安装 SDK/Gradle 或更改 Windows 本地 Gradle 分发设置。
+- 设备待验收：手机列表/详情、平板 600 dp 分栏、IME/大字体/三语、SAF 上传与远端路径选择；离页停止观察、旋转/进程回收恢复、相同资料重新登录及切宿主隔离。
+- Ubuntu 待验收：APT 新装、已有系统 Nginx 接管、配置备份/校验、能力允许的启停/重启/重载、ACME include、受管卸载、提权 Helper 不可用及权限拒绝。
+- Windows 待验收：官方目录/指定版本、服务器 ZIP 引用/手机 ZIP 上传、限时引用过期、ZIP/版本不匹配、新装和已有实例接管、生命周期/卸载。
+- 故障待验收：HTTP 401 刷新/提权后的原键复用、提交/取消响应丢失、已知 ID 查询与运维中心恢复、索引写入失败、任务取消与配置事实再核实。当前接管端点候选消失后可能无法原键重放，未知 ID 保留待核实，不按 404/候选消失判定成功。
+
+### BP03-M2 执行证据与未执行范围（2026-09-30）
+
+- 提交：当前工作区未提交改动。环境：Linux，本机 .NET SDK 10.0.400；没有 Android SDK，未安装 Android 环境。
+- Server：`~/.dotnet/dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -v minimal` 通过，0 错误、3 条既有 CA1416 平台告警。Protocol 随依赖构建通过。
+- 契约检查：`~/.dotnet/dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UsePrebuiltServerAssembly=true -v minimal` 通过（0 告警/错误），随后 `~/.dotnet/dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --webserver-sites-only` 通过。验证创建/版本匹配/过期/删除后冲突、亚毫秒版本精度、必需删除版本及拒绝未知请求字段；未连接真实 Nginx，不代表整套 Server 测试通过。
+- 桌面：`~/.dotnet/dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -v minimal` 未通过，停在 Framework 项目的 `ResolveFrameworkReferences/GetPackageDirectory`，没有进入桌面 C# 编译。调用方已同步，不声称桌面编译通过；未修改无关框架构建配置。
+- Android 用例已准备但未执行：`WebServerSiteWireTest` 3 个、`WebServerSiteHttpTest` 4 个、`WebSiteDraftTest` 6 个、`WebSiteRepositoryTest` 5 个，共 18 个；包含完整字段/精确版本、DELETE 请求体、拒绝伪操作响应、编辑校验、未知结果/并发冲突/事实确认及账号隔离。
+- 静态检查：三语 XML 可解析、键集一致、无重复键、Kotlin `R.string` 引用可解析、格式占位符一致、文档本地链接存在；`git diff --check` 通过。静态检查不代替 Kotlin 编译或行为测试。
+- Android Gradle 编译、JVM/仪器测试和 lint 按用户要求跳过。手机/平板、IME/大字体、真实 Ubuntu/Windows Nginx、权限授予、TLS、端口冲突、配置失败恢复与并发/断线验收均未执行，继续保留待验收。
+
+### BP04-M1 执行证据与未执行范围（2026-09-30）
+
+- 提交：当前工作区未提交改动。环境：Linux，.NET SDK 10.0.400；本机没有 Android 环境，未安装 SDK/Gradle。
+- `~/.dotnet/dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -v minimal` 通过，0 错误、3 条既有 CA1416 平台告警。Protocol 依赖构建通过。
+- `~/.dotnet/dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UsePrebuiltServerAssembly=true -v minimal` 通过，0 告警/错误；`~/.dotnet/dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --certificate-replay-only` 通过。实际执行文件账本，验证签发/自签名重放保留原证书与操作 ID、同账号同键不重复动作、账号/动作/目标隔离、重新打开账本后仍复用原记录。测试使用文件模式，不连接 SQLite、ACME、Nginx 或真实证书服务，不等同整套 Server 验收。
+- 已准备 Android 用例但未执行：CertificateWireTest 4 个、CertificateHttpTest 4 个、CertificateDraftTest 5 个、CertificateRepositoryTest 6 个、CertificateRequestJournalTest 2 个，共 21 个；包括完整元数据/枚举、预检未知端口、真实路由/键/DELETE body、输入与 DNS 不可用、原键重试、摘要无正文、错误归属、先持久 ID 后索引、会话隔离、损坏/写入失败阻止提交。
+- 静态检查：三语 XML/键集、重复键、Kotlin 字符串引用、新增占位符/转义、文档本地链接及 `git diff --check` 通过，不代替 Kotlin 编译或行为验证。
+- Android 编译、JVM/仪器测试、lint、手机/平板、IME/大字体按用户要求未执行。Ubuntu/Windows 的真实 ACME、DNS、HTTP-01、自签名材料权限、关联部署、撤销/删除副作用、取消竞争、断线/重启恢复均未执行。Kestrel 与完整站点联动的后续执行证据见 BP04-M2。
+
+### BP04-M2 执行证据与未执行范围（2026-09-30）
+
+- Server `--no-restore` 构建通过：0 错误、3 条既有 CA1416；Server.Tests 使用 `UsePrebuiltServerAssembly=true` 构建通过：0 告警/错误。
+- 实际执行 `--certificate-binding-only` 通过：真实 X509 材料、文件存储/账本、有效期边界、撤销状态、IDN/IP/单层通配符、精确 SNI 优先、实际运行时指纹/默认选择、元数据存在与监听配置区分、无 HTTPS 拒绝、配置监听后的部署、删除解除选择、事实变化后的原请求重放。使用测试 IServer 地址和权限服务，不启动真实 TLS 监听。生产 `HostPrivilegeService.IsAdministrator` 固定为 false，现有证书写入路径被拒绝；需服务端迁移至受授权 Helper，不能以 root/Admin 进程或模拟权限测试宣称生产写入可用。
+- 重新执行 `--certificate-replay-only` 和 `--webserver-sites-only` 通过；未执行整套 Server.Tests、真实 ACME/Nginx/Windows/Ubuntu 监听或外网访问。
+- 新增 12 个 Android 测试代码：SAN/有效期/指纹 4、选择缺失/未核实/域名变化 3、部署 wire 2、GET HTTP 1、丢失部署响应/错误目标 Repository 2。Android 编译、测试、lint 按用户要求跳过，不宣称通过。
+- 三语 XML、键集合、Kotlin 资源引用、占位符/转义、Android 文档链接及 `git diff --check` 静态检查通过。桌面客户端只读 DTO 调用已同步；既有桌面框架引用解析阻碍仍未关闭。
+- 尚待目标环境验证：站点证书共享/过期/缺失、真实 Nginx 配置拒绝与失败回退、管理主机名/SNI/default 切换、客户端信任和自签名握手、原管理连接中断后的原操作查询/原键重放、重启后的健康版本恢复、取消竞争、手机/平板与 IME/大字体。
+
+### BP05-M1 执行证据与未执行范围（2026-09-30）
+
+- `~/.dotnet/dotnet build RelaxKonOS.Server/RelaxKonOS.Server.csproj --no-restore -v minimal` 通过，0 错误、3 个既有 CA1416 平台告警；`~/.dotnet/dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UsePrebuiltServerAssembly=true -v minimal` 通过，0 告警/错误。
+- `~/.dotnet/dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --frpc-state-only` 通过：revision/隧道集合/Token 变更、重启后未知指纹、禁用与停止投影、现有协议校验与 TOML 秘密边界。
+- 同一测试程序集 `--frpc-lifecycle-only` 通过：本地 tar.gz/HTTP 夹具、实际 SQLite/Data Protection、shell frpc 子进程，覆盖可信安装、当前/上一版本、哈希/异常归档拒绝、应用/连接、编辑后尚未应用、重新应用、停止、脱敏日志、回滚、卸载与秘密生命周期。最后一次子进程事件归属修改后已重建并重跑以上专项检查。没有互联网下载、真实 frps、proxy 注册、公网可达或 Windows Helper 验收；本地子进程结果不能覆盖这些范围。
+- 已准备 Android 用例：TunnelWire 4、TunnelHttp 3、TunnelDraft 4、TunnelRepository 6、TunnelMutationJournal 2，以及 InstallationRepository 原 ID 识别 2，共 21 个；涉及 current routes/revision、Token 仅写入、协议字段、外部路径、错误 ID/版本、同步未知结果、进程回收、身份隔离、存储损坏和删除前停止顺序。Android 编译、JVM/仪器测试和 lint 按用户要求未执行，用例准备不代表通过。
+- 三语 XML/资源引用/占位符、Android 文档本地链接与 `git diff --check` 静态检查通过。尚待目标环境执行：真实 FRP 发布归档/平台兼容、frpc/frps 认证与每 proxy 连接、外部检测、Windows Helper 授权/运行、管理路径中断、并发写入/原键或原 ID 恢复、Token 脱敏、手机/平板/旋转/IME/大字体。
+
+### BP05-M2 执行证据与未执行范围（2026-09-30）
+
+- Server `--no-restore` 构建通过，0 错误、3 个既有 CA1416 平台告警；Server.Tests 使用 `-p:UsePrebuiltServerAssembly=true --no-restore` 构建通过，0 告警/错误。桌面调用与视图已按当前 DTO/CAS 同步，本轮未重复执行已知失败的框架引用解析构建；不宣称桌面已构建。
+- `~/.dotnet/dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --frps-only` 通过。初次执行因沙箱拒绝本机 socket 未能进入生命周期检查；获准放宽沙箱限制后在本机回环监听、SQLite/Data Protection、实际 shell 子进程夹具执行通过。覆盖安全 PUT/编辑 Token 审计、缺少 expectedRevision 拒绝、revision 冲突、不反射秘密、受保护文件、单行秘密限制、保存/应用版本区分、拒绝隐式应用、缺失进程归属时 Unknown/停止拒绝、停止 disconnected、重新应用、dashboard 凭据保留、实际端口占用稳定失败与脱敏日志。不下载互联网资产、不执行真实 frps 协议、不开启公网端口，不代表真实 FRP 或 Windows Helper 验收。
+- 最后一次进程句柄、启动错误与配置读取修改后已重建并重跑 `--frps-only`；同时重跑 `--frpc-state-only` 和 `--frpc-lifecycle-only`，均通过，覆盖本次共享 FRP 改动的客户端回归范围。
+- 已准备 Android ManagedFrpsWire 4、HTTP 2、Draft 4、Repository 8，共 18 个用例；涉及安全/编辑读取分离、当前 revision/appliedRevision、缺字段/错误 proof、有界审计、PUT 路由、IP/范围/秘密/监听冲突、未知请求身份隔离、匹配 revision 才返回 Token、停止丢失/异常/失败阻止启动、每阶段独立提权与精确 frps 授权、切会话丢弃并清零秘密响应、未知写入结束后清零请求凭据。Android 编译、JVM/仪器测试和 lint 按用户要求未执行。
+- 新增三语资源、桌面 JSON 键/占位符、XML、Android 文档链接与 `git diff --check` 静态检查通过。待目标环境执行：真实 frps/frpc 认证/隧道/vhost/Dashboard、防火墙/公网/TLS 信任、Windows Helper 管理进程与授权、Linux 重启遗留进程核实、并发修改/管理路径中断/未知请求恢复、手机/平板/旋转/IME/大字体。

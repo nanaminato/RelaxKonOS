@@ -239,6 +239,18 @@
     "tunnels.connection_state.Connected": "已连接",
     "tunnels.connection_state.Disconnected": "已断开",
     "tunnels.connection_state.RuntimeUnavailable": "运行时不可用",
-    "tunnels.connection_state.Unknown": "未知"
+    "tunnels.connection_state.Unknown": "未知",
+    "tunnels.problem.tunnel.definition_not_applied": "已保存定义或 Token 与当前 frpc 配置不同，请应用此服务器配置以使用当前版本。",
+    "tunnels.problem.tunnel.applied_revision_unknown": "运行进程的应用版本未核实，连接日志不能证明当前保存定义已应用。",
+    "tunnels.frps.state.Unknown": "未知",
+    "tunnels.problem.tunnel.frps_restart_required": "停止并重新启动 frps，以应用保存的修订。",
+    "tunnels.problem.tunnel.frps_process_unverified": "Server 重启后无法核实 frps 进程归属。须先在宿主恢复受管进程，才能确认停止。",
+    "tunnels.problem.tunnel.frps_secret_invalid": "秘密须为长度受限的单行值。",
+    "tunnels.frps.revision": "保存的修订：{0}",
+    "tunnels.frps.saved_stopped": "保存的配置当前未运行。",
+    "tunnels.frps.applied_unknown": "运行进程的已应用修订尚未核实。",
+    "tunnels.frps.applied_current": "运行进程使用当前保存的修订。",
+    "tunnels.frps.reload_confirmation": "重新读取当前 frps 设置，丢弃此编辑草稿和替换秘密？",
+    "tunnels.problem.tunnel.frps_stop_failed": "无法停止 frps。采取下一动作前请读取当前状态。"
   }
 }

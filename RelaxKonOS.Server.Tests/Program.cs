@@ -11,12 +11,71 @@ if (args.Length == 5 && args[0] == "--installed-windows-user-execution")
     return;
 }
 
+if (args.Contains("--webserver-sites-only"))
+{
+    WebServerChecks.VerifySiteConcurrency();
+    Console.WriteLine("Web site concurrency and contract checks passed.");
+    return;
+}
+if (args.Contains("--certificate-binding-only"))
+{
+    var bindingRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-certificate-binding-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(bindingRoot);
+    try { await CertificateBindingChecks.RunAsync(bindingRoot); }
+    finally { Directory.Delete(bindingRoot, recursive: true); }
+    Console.WriteLine("Certificate binding, live facts, and deployment replay checks passed.");
+    return;
+}
+if (args.Contains("--certificate-replay-only"))
+{
+    var replayRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-certificate-replay-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(replayRoot);
+    try { await CertificateOperationReplayChecks.RunAsync(replayRoot); }
+    finally { Directory.Delete(replayRoot, recursive: true); }
+    Console.WriteLine("Certificate creation replay checks passed.");
+    return;
+}
+if (args.Contains("--frpc-state-only"))
+{
+    FrpcAppliedStateChecks.Run();
+    NetworkProxyTunnelChecks.VerifyTunnelProtocolContract();
+    NetworkProxyTunnelChecks.VerifyFrpTomlSafety();
+    Console.WriteLine("FRP applied-state, protocol, and TOML safety checks passed.");
+    return;
+}
 Batteries_V2.Init();
+if (args.Contains("--frps-only"))
+{
+    var frpsRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-frps-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(frpsRoot);
+    try { await ManagedFrpsChecks.RunAsync(frpsRoot); }
+    finally { Directory.Delete(frpsRoot, recursive: true); }
+    Console.WriteLine("Managed frps revision, secret, process, and audit checks passed.");
+    return;
+}
+if (args.Contains("--frpc-lifecycle-only"))
+{
+    var frpRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-frpc-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(frpRoot);
+    try
+    {
+        FrpcAppliedStateChecks.Run();
+        await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(frpRoot);
+        await NetworkProxyTunnelChecks.VerifyTunnelSecretLifecycleAsync(frpRoot);
+    }
+    finally { Directory.Delete(frpRoot, recursive: true); }
+    Console.WriteLine("FRP fixture runtime, applied revision, and secret lifecycle checks passed.");
+    return;
+}
+
 
 var root = Path.Combine(Path.GetTempPath(), $"relaxkonos-server-tests-{Guid.NewGuid():N}");
 Directory.CreateDirectory(root);
 try
 {
+    await CertificateOperationReplayChecks.RunAsync(Path.Combine(root, "certificate-replay"));
+    await CertificateBindingChecks.RunAsync(Path.Combine(root, "certificate-binding"));
+    FrpcAppliedStateChecks.Run();
     ObservabilityChecks.VerifyProtocolAndSanitization();
     await BackupRecoveryKeyProviderChecks.RunAsync(root);
     await EventAlertChecks.VerifyAppendProjectionAndRecoveryAsync(root);
@@ -124,6 +183,7 @@ try
     await ProxyConfigurationChecks.VerifyProxyTunSafetyAsync(root);
     await ProxyConfigurationChecks.VerifyMihomoTunActivationPreservationAsync(root);
     await ProxyConfigurationChecks.VerifyHostNetworkSafetyDiscoveryAsync();
+    WebServerChecks.VerifySiteConcurrency();
     await WebServerChecks.VerifyDeploymentAndNginxSnapshotsAsync(root);
     await WebServerChecks.VerifyWebServerProviderRoutingAsync();
     await WebServerChecks.VerifyOperationIdempotencyAsync(root);
@@ -137,7 +197,8 @@ try
     await NetworkProxyTunnelChecks.VerifyLinuxMihomoRuntimeLinkActivationAsync(root);
     await NetworkProxyTunnelChecks.VerifyMihomoRuntimeSafetyAsync(root);
     NetworkProxyTunnelChecks.VerifyFrpTomlSafety();
-    await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(root);
+    await ManagedFrpsChecks.RunAsync(Path.Combine(root, "managed-frps"));
+await NetworkProxyTunnelChecks.VerifyFrpRuntimeInstallAndRollbackAsync(root);
     await NetworkProxyTunnelChecks.VerifyTunnelSecretLifecycleAsync(root);
     ServerCoreChecks.VerifyWorkspacePreferencesJsonContract();
     ServerCoreChecks.VerifyThemePaletteContract();

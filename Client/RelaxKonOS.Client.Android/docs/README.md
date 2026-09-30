@@ -20,6 +20,10 @@
 | [应用部署与模板](features/ApplicationDeployments.md) | 四来源七步向导、日志、版本/回滚、可信动态模板 |
 | [宿主出站代理](features/OutboundProxy.md) | 设置/Docker 共用宿主偏好、四消费范围、重启确认与状态核实 |
 | [Docker 与 Compose](features/DockerCompose.md) | 资源归属、导入/预览、持久操作、部分失败和卷保护 |
+| [Nginx 管理](features/Nginx.md) | Ubuntu APT/Windows 三种包来源、实例发现/接管、生命周期、卸载及 Web 操作恢复 |
+| [站点管理](features/WebSites.md) | 静态/SPA/反向代理、完整字段编辑、版本冲突与同步提交事实核实 |
+| [证书管理](features/Certificates.md) | 独立列表/详情、ACME/自签名、生命周期、站点证书选择、Kestrel 部署与原任务恢复 |
+| [FRP 隧道与运行时](features/Tunnels.md) | 受管/外部运行时、三来源安装与回滚、frpc 配置/Token/隧道、frps 配置/启停/审计及未知请求核实 |
 | [网站发布](features/WebPublishing.md) | 诊断、确认式 HTTPS、发布恢复和访问观测 |
 | [Git 编辑与构建](features/Git.md) | 受限文本编辑、固定 SHA、隔离构建与产物发布 |
 | [终端、脚本与守护](features/TerminalAutomation.md) | Server/SSH 会话、输入/恢复、远端任务与工作负载 |
@@ -31,7 +35,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [部署剩余工作](plans/Deployment.md) | 首次安装、模板更新、构建回收、数据恢复与后台通知的代码缺口 |
-| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；公共安装链路见功能说明；后续网络/Nginx/证书/FRP/Mihomo |
+| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；公共安装链路见功能说明；后续 Mihomo 及其他内置应用 |
 
 ## 开发与发布 `development/`
 

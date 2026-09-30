@@ -105,6 +105,19 @@ class InstallationRepository(
         return result
     }
 
+    /** User explicitly identifies this pending request with its original operation ID; facts alone never establish ownership. */
+    suspend fun identifyOriginal(owner: SessionState.Active, pending: PendingInstallationRequest, id: String): ApiResult<InstallationOperation> = mutations.withLock {
+        verify(owner); require(pending in journal.pending(owner))
+        val result = operation(owner, id)
+        if (result is ApiResult.Success) {
+            if (result.value.service != pending.service || result.value.kind != pending.kind || (pending.operationId != null && pending.operationId != result.value.operationId))
+                return@withLock ApiResult.Transport("Installation ownership mismatch.")
+            index.reveal(owner, OperationDomain.Installation, result.value.operationId)
+            journal.complete(pending)
+        }
+        result
+    }
+
     suspend fun active(owner: SessionState.Active, service: InstallationService): ApiResult<InstallationOperation?> {
         return read(owner) { url, token -> gateway.activeInstallation(url, token, service) }.let { result ->
             if (result is ApiResult.Success && result.value != null) {

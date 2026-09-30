@@ -1,6 +1,6 @@
 # Android 内置应用功能补齐计划
 
-> 更新：2026-09-30。状态：公共安装 BP01-M1、宿主自定义代理 BP02-M1 已接入，剩余实现从 BP03-M1 推进。
+> 更新：2026-09-30。状态：公共安装 BP01-M1、宿主自定义代理 BP02-M1、Nginx 与通用站点管理 BP03-M1/M2 已接入，独立证书与站点/Kestrel 联动 BP04-M1/M2 已接入，FRP 客户端/frps/运行时 BP05-M1/M2 已接入，剩余实现从 BP06-M1 推进。
 > 用户已确认对照对象是 Android 手机端与桌面端。
 > 本文维护差异清单、实施范围与推进顺序；实现进度见 [Progress](../status/Progress.md#2-bp-实现进度)，测试进度见 [Verification](../status/Verification.md#12-bp-测试进度)。两者独立记录，未测试不阻止下一步实现，也不代表验收通过。
 
@@ -13,7 +13,7 @@ Android 对照入口：
 - [`ManageScreen.kt`](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/ManageScreen.kt)、[`Routes.kt`](../../app/src/main/java/app/relaxkonos/mobile/ui/nav/Routes.kt)：手机管理目录与导航。
 - [`MoreScreen.kt`](../../app/src/main/java/app/relaxkonos/mobile/ui/more/MoreScreen.kt)：设置及账户入口。
 - [`RelaxKonGateway.kt`](../../app/src/main/java/app/relaxkonos/mobile/core/net/RelaxKonGateway.kt)、[`RelaxKonApi.kt`](../../app/src/main/java/app/relaxkonos/mobile/core/net/RelaxKonApi.kt)：实际远端调用范围。接口中的默认失败实现不算交付。
-- [`WebPublishing.kt`](../../app/src/main/java/app/relaxkonos/mobile/core/net/WebPublishing.kt)：已有网站和证书投影；当前不含独立证书全生命周期或 Nginx 安装管理。
+- [`WebPublishing.kt`](../../app/src/main/java/app/relaxkonos/mobile/core/net/WebPublishing.kt)：已有网站和证书投影；现已包含 Nginx 实例及生命周期投影，页面见 [Nginx 管理](../features/Nginx.md)；独立证书生命周期与部署见 [证书管理](../features/Certificates.md)。
 - [`Mobile Progress`](../status/Progress.md)：既有实现和验证限制。
 
 补齐目标是手机能完成与桌面等价的管理任务，采用原生 Compose 页面、手机导航和手机/平板布局。服务器上的 Nginx、FRP、Mihomo、SMB 等仍由 Server 管理；客户端本地的 SSH 转发、浏览器和桌面扩展包按其真实运行位置单独设计。
@@ -41,10 +41,10 @@ Android 对照入口：
 | 13 | Docker 管理器 / `docker` | 资源列表、容器生命周期/日志、Compose、卷详情/删除已有 | 缺少完整引擎安装/生命周期、容器创建/编辑、镜像拉取/删除、网络与卷创建等；自定义出站代理已有，缺受管来源联动和镜像源设置   | BP02、BP09 |
 | 14 | 进程守护 / `processguardian` | 工作负载定义、生命周期、日志及一次性脚本已有 | 逐项核对桌面编辑字段、审批、健康/恢复状态和日志观察；补齐未暴露字段与交互                       | BP14 |
 | 15 | 防火墙 / `firewall` | 能力标识已声明，无管理页和对应调用 | 缺少状态、启停、默认策略、规则增删改与操作确认                                                  | BP07 |
-| 16 | 证书管理器 / `certificates` | 网站发布中使用证书列表与申请链路 | 缺少独立列表/详情、预检、申请、自签名、续期、撤销、删除、Kestrel 部署、操作观察与取消           | BP04 |
-| 17 | Web 服务器管理器 / `webservers` | 网站页已有实例状态、配置检查、站点列表及应用网站发布 | 缺少 Nginx 安装、已有实例发现/接管、启停/重启/重载、卸载和通用站点编辑/删除                     | BP03 |
+| 16 | 证书管理器 / `certificates` | 独立列表/详情、预检/ACME、自签名、生命周期、站点显式选择与 Kestrel 实际部署、原任务观察/取消/恢复已有 | BP04 已接入；真实设备与宿主验收独立追踪 | BP04 |
+| 17 | Web 服务器管理器 / `webservers` | 网站页已有 Nginx 安装/发现/接管、实例生命周期/卸载、配置检查、通用站点增删改、版本冲突/断线核实及应用网站发布 | BP03 已接入；真实设备与宿主验收独立追踪                     | BP03 |
 | 18 | 文件服务 / `file-services` | 能力标识已声明，无 SMB 管理页和对应调用 | 缺少 SMB/Samba 安装、服务生命周期、共享管理、用户启停与凭据设置                                 | BP08 |
-| 19 | 隧道管理器 / `tunnels` | 能力标识已声明，无 FRP 管理页和对应调用 | 缺少 FRP 安装/升级/修复/卸载、frpc 配置/隧道管理、frps 配置/生命周期和诊断                      | BP05 |
+| 19 | 隧道管理器 / `tunnels` | FRP 运行时、frpc 配置/Token/隧道、应用/停止，frps 完整配置/启停/重启/日志/审计、修订冲突与未知请求核实已有 | BP05 已接入；真实 FRP、Windows Helper 和设备验收独立追踪 | BP05 |
 | 20 | 代理管理器 / `proxy` | 能力标识已声明，无 Mihomo 管理页和对应调用 | 缺少运行时安装、配置/订阅、路由/节点、连接/流量、DNS、系统代理、TUN 与恢复                      | BP06 |
 | 21 | Git / `git` | 仓库注册、分支查看、状态、文件编辑、提交/推送、隔离构建与部署已有 | 缺少桌面的分支修改、fetch/pull、完整暂存与差异、历史和冲突解决等任务流，以及 Git 安装入口       | BP10 |
 | 22 | 应用安装器 / `appinstaller` | 已有服务端应用部署与模板目录；没有桌面扩展包安装器 | 桌面扩展包与服务端部署包是不同产品；先定义移动包管理能力，不能将 Avalonia 包当 Android 应用运行 | BP21 |
@@ -63,9 +63,6 @@ P0 为安装、网络和发布的优先批次；P1 为其他远端管理与已�
 | BP00 | P0 | 全量差异基线 | 对照 25 个注册应用、手机实际路由/调用与共享契约；记录已有、缺功能、缺应用及平台边界 | 无 | 本文清单建立；每个实现任务开工时继续逐动作核对，遗漏追加子编号 |
 | BP01 | P0 | 共用安装与任务能力 | 接入统一 Installations 契约：安装/升级/修复/卸载、在线/手机包上传/服务器文件引用、任务状态/取消/断线恢复；加入运维中心 | BP00 | 六类安装服务按各自支持动作门控；幂等提交、提权确认、包引用过期及取消可验证 |
 | BP02 | P0 | 设置的受管代理联动 | BP02-M1 自定义代理已交付，见功能说明；剩余 BP02-M2：选择受管 Mihomo，联动运行时地址及 Docker/下载真实消费行为 | BP06 | 宿主来源缺失/停止/运行状态准确，设置与 Docker 共用真源；各范围行为与重启确认真实 |
-| BP03 | P0 | Nginx / Web 服务器 | 安装版本/来源选择、发现与接管、实例详情、启动/停止/重启/重载、ACME HTTP-01、卸载、站点增删改及操作恢复 | BP01；HTTPS 联动 BP04 | 无 Nginx 的宿主能用手机安装并建站；已有实例能接管；配置失败保留诊断，支持的长任务可取消 |
-| BP04 | P0 | 独立证书管理器 | 列表与详情、域名/SAN、ACME 预检与申请、自签名、续期/撤销/删除、Kestrel 部署、证书任务观察/取消、过期提示 | BP00；站点联动 BP03 | 独立完成证书生命周期；公网与条款确认有明确步骤；私钥/秘密不进入普通缓存、日志或任务摘要 |
-| BP05 | P0 | FRP 隧道管理器 | 受管/外部运行时检测；安装/升级/修复/回滚/卸载；服务器配置、Token 设置、TCP/UDP/HTTP/HTTPS 隧道增删改与应用/停止；frps 配置、启停、日志/审计 | BP01 | 手机完成 frpc 到 frps 的配置与连接；区分已保存/已应用/已连接；并发 revision 冲突有反馈；秘密不随列表返回 |
 | BP06 | P0 | Mihomo 代理管理器 | 运行时安装/更新/修复/回滚/卸载及生命周期；配置/订阅导入与更新/激活；Rule/Global/Direct、节点选择/延迟；流量、连接、日志、DNS、GeoData；系统代理、TUN 与紧急恢复 | BP01；BP02 联动 | 可安装并使用代理；各宿主支持能力分别门控；远程管理断线后能恢复操作事实；不将宿主 TUN 宣称为手机 VPN |
 | BP07 | P1 | 防火墙 | 状态、启停、默认策略、规则增删改、端口/协议/地址范围编辑及应用结果 | BP00；网络验证联动 BP03/BP05 | 手机完成规则管理；修改前说明对当前管理连接的影响；Ubuntu/Windows 以真实能力展示 |
 | BP08 | P1 | SMB 文件服务 | Samba/SMB 安装与检测、启停/重启、共享列表/详情/创建/编辑/删除、路径选择、用户启停与密码设置 | BP01、BP12 | 完成安装到创建共享闭环；路径与权限由服务端校验；凭据输入和存储遵循现有安全模型 |
@@ -92,12 +89,6 @@ P0 为安装、网络和发布的优先批次；P1 为其他远端管理与已�
 
 | 顺序 / 子编号 | 交付 | 验收场景 |
 | --- | --- | --- |
-| 3 / BP03-M1 | Nginx 安装、发现、接管与实例生命周期 | 全新 Ubuntu/Windows 宿主安装；服务器本地包与手机包来源；已有 Nginx 接管；启停/重启/重载 |
-| 4 / BP03-M2 | 通用站点编辑/删除与 Web 操作恢复 | 静态站点/反向代理；配置错误；端口冲突；并发更新；断线后核实 |
-| 5 / BP04-M1 | 独立证书管理与操作 | ACME 预检/申请、自签名、续期/撤销/删除、取消；失败信息与秘密脱敏 |
-| 6 / BP04-M2 | 站点证书选择与 Kestrel 部署 | HTTPS 站点；证书到期/缺失；管理连接中断后的核实；当前 API 的部署影响说明 |
-| 7 / BP05-M1 | FRP 运行时与 frpc 任务流 | 安装/更新/回滚；外部检测；服务器配置和 Token；隧道保存、应用、停止与连接状态 |
-| 8 / BP05-M2 | frps 配置、生命周期与诊断 | bind/vhost/允许端口/TLS；Token 与 dashboard 密码；启动/停止；日志/审计 |
 | 9 / BP06-M1 | Mihomo 安装、生命周期、配置/订阅与节点 | 安装/修复/升级/回滚；订阅刷新/激活；路由与延迟；配置校验失败 |
 | 10 / BP06-M2 | 系统代理/TUN/恢复、连接/流量、DNS/GeoData | 能力门控；管理路径保护；紧急关闭；宿主中断恢复；日志有界 |
 | 11 / BP02-M2 | 设置集成受管 Mihomo；与 Docker/下载联调 | 运行时缺失/停止/运行；受管地址更新；每个消费范围的真实代理行为 |
@@ -109,9 +100,9 @@ BP01-M1 已接入安装任务观察；BP17-M1 在后续领域交付时持续补�
 
 ### 4.1 下一轮起点
 
-BP01-M1 的公共数据链路、安装任务恢复/观察/取消和功能文档已交付，已完成拆分不再保留在本计划。当前行为见 [公共运行时安装](../features/Installations.md)，实现证据见 [Progress](../status/Progress.md#2-bp-实现进度)，未执行检查见 [Verification](../status/Verification.md#12-bp-测试进度)。公共链路不替代各服务表单；第一个完整安装业务闭环仍由 BP03-M1 的 Nginx 管理承担。
+BP01-M1 的公共数据链路、安装任务恢复/观察/取消和功能文档已交付，已完成拆分不再保留在本计划。当前行为见 [公共运行时安装](../features/Installations.md)，实现证据见 [Progress](../status/Progress.md#2-bp-实现进度)，未执行检查见 [Verification](../status/Verification.md#12-bp-测试进度)。公共链路不替代各服务表单；Nginx 服务表单和实例闭环已由 BP03-M1 接入，其他服务仍随其领域交付。
 
-BP02-M1 已交付宿主自定义代理，当前行为见 [宿主出站代理](../features/OutboundProxy.md)，已完成拆分从本计划移除。下一项为 BP03-M1：Nginx 安装、发现、接管与实例生命周期。BP01-M1/BP02-M1 剩余检查不作为后续实现依赖；各提交的测试证据见 Verification，若后续检查发现真实代码缺陷，在 Progress 关联受影响的实现待办。
+BP02-M1 已交付宿主自定义代理，当前行为见 [宿主出站代理](../features/OutboundProxy.md)，已完成拆分从本计划移除。BP03-M1 已交付 Nginx 安装、发现、接管与实例生命周期，已完成交付从本计划移除；行为见 [Nginx 管理](../features/Nginx.md)。BP03-M2 已交付通用站点增删改、版本冲突与同步提交事实核实，已完成交付从本计划移除，行为见 [站点管理](../features/WebSites.md)。BP04-M1 已交付独立证书生命周期与原任务恢复，已完成交付从本计划移除；行为见 [证书管理](../features/Certificates.md)。BP04-M2 已交付显式证书选择、状态/有效期/SAN 门控、Kestrel 实际部署查询与原键/ID 恢复，已完成拆分从本计划移除；行为见 [证书管理](../features/Certificates.md) 和 [站点管理](../features/WebSites.md)。BP05-M1 已交付固定版本运行时管理、frpc 配置/Token/四协议隧道、应用/停止与事实核实，已完成拆分从本计划移除，行为见 [FRP 客户端与运行时](../features/Tunnels.md)。BP05-M2 已交付 frps 配置/秘密/生命周期/日志/审计与版本/未知事实核实，已完成拆分从本计划移除，行为见 [FRP 隧道与运行时](../features/Tunnels.md)。下一项为 BP06-M1：Mihomo 安装、生命周期、配置/订阅与节点。BP01-M1/BP02-M1/BP03-M1/M2/BP04-M1/M2/BP05-M1/M2 剩余检查不作为后续实现依赖；各提交的测试证据见 Verification；若后续检查发现真实代码缺陷，在 Progress 关联受影响的实现待办。
 
 ## 5. 实施边界与共用规则
 

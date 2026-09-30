@@ -43,7 +43,9 @@ public sealed record WebServerSiteDto(
         (RootPath is null ? Array.Empty<string>() : ["/"]).Concat(Routes.Select(route => route.Path)));
 }
 
-/// <summary>Creates a site when Id is empty, otherwise updates that RelaxKonOS-owned site.</summary>
+/// <summary>Creates a site when ExpectedUpdatedAt is null (Id may be server-selected or explicit).
+/// Updates require the exact UpdatedAt of the observed site; stale or missing tokens cannot overwrite it.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record UpsertWebServerSiteRequest(
     [property: JsonPropertyName("id")] string? Id,
     [property: JsonPropertyName("name")] string Name,
@@ -57,4 +59,9 @@ public sealed record UpsertWebServerSiteRequest(
     [property: JsonPropertyName("redirectHttpToHttps")] bool RedirectHttpToHttps = false,
     [property: JsonPropertyName("ipv6Enabled")] bool Ipv6Enabled = false,
     [property: JsonPropertyName("certificatePath")] string? CertificatePath = null,
-    [property: JsonPropertyName("privateKeyPath")] string? PrivateKeyPath = null);
+    [property: JsonPropertyName("privateKeyPath")] string? PrivateKeyPath = null,
+    [property: JsonPropertyName("expectedUpdatedAt")] DateTimeOffset? ExpectedUpdatedAt = null);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record DeleteWebServerSiteRequest(
+    [property: JsonPropertyName("expectedUpdatedAt"), JsonRequired] DateTimeOffset ExpectedUpdatedAt);

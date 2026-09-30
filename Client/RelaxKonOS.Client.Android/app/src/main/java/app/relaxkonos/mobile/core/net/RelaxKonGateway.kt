@@ -22,6 +22,21 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun saveWebServerSite(serverUrl: String, accessToken: String, instanceId: String,
+        request: WebServerSiteRequest): ApiResult<WebServerSite>
+    suspend fun deleteWebServerSite(serverUrl: String, accessToken: String, instanceId: String, siteId: String,
+        expectedUpdatedAt: String): ApiResult<Unit>
+    suspend fun discoverWebServers(serverUrl: String, accessToken: String): ApiResult<List<WebServer>>
+    suspend fun webServerCandidates(serverUrl: String, accessToken: String): ApiResult<List<WebServerCandidate>>
+    suspend fun webServerInstallCatalog(serverUrl: String, accessToken: String): ApiResult<WebServerInstallCatalog>
+    suspend fun integrateWebServer(serverUrl: String, accessToken: String, candidateId: String, confirmed: Boolean,
+        idempotencyKey: String): ApiResult<WebServerOperation>
+    suspend fun webServerLifecycle(serverUrl: String, accessToken: String, instanceId: String, action: WebServerAction,
+        idempotencyKey: String): ApiResult<WebServerOperation>
+    suspend fun webServerOperation(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebServerOperation>
+    suspend fun cancelWebServerOperation(serverUrl: String, accessToken: String, operationId: String,
+        idempotencyKey: String): ApiResult<WebServerOperation>
+
     suspend fun startInstallation(serverUrl: String, accessToken: String, kind: InstallationKind,
         request: InstallationRequest, idempotencyKey: String): ApiResult<InstallationOperation>
     suspend fun installation(serverUrl: String, accessToken: String, operationId: String): ApiResult<InstallationOperation>
@@ -79,6 +94,32 @@ interface RelaxKonGateway {
     suspend fun webServerConfigTest(serverUrl: String, accessToken: String, instanceId: String): ApiResult<WebServerConfigTest> = ApiResult.Transport("Web server configuration diagnostics are unavailable.")
     suspend fun webServerSites(serverUrl: String, accessToken: String, instanceId: String): ApiResult<List<WebServerSite>> = ApiResult.Transport("Web server sites are unavailable.")
     suspend fun certificates(serverUrl: String, accessToken: String): ApiResult<List<ManagedCertificate>> = ApiResult.Transport("Certificates are unavailable.")
+    suspend fun managedFrps(serverUrl: String, accessToken: String): ApiResult<ManagedFrps>
+    suspend fun managedFrpsEditing(serverUrl: String, accessToken: String): ApiResult<ManagedFrpsEditing>
+    suspend fun saveManagedFrps(serverUrl: String, accessToken: String, request: ManagedFrpsRequest): ApiResult<ManagedFrps>
+    suspend fun startManagedFrps(serverUrl: String, accessToken: String): ApiResult<TunnelResult>
+    suspend fun stopManagedFrps(serverUrl: String, accessToken: String): ApiResult<TunnelResult>
+    suspend fun managedFrpsLogs(serverUrl: String, accessToken: String): ApiResult<List<TunnelLog>>
+    suspend fun managedFrpsAudit(serverUrl: String, accessToken: String): ApiResult<List<TunnelAudit>>
+    suspend fun tunnelProfiles(serverUrl: String, accessToken: String): ApiResult<List<TunnelProfile>>
+    suspend fun tunnelDefinitions(serverUrl: String, accessToken: String): ApiResult<List<TunnelDefinition>>
+    suspend fun tunnelRuntime(serverUrl: String, accessToken: String): ApiResult<TunnelRuntime>
+    suspend fun tunnelRuntimeDownload(serverUrl: String, accessToken: String, version: String): ApiResult<TunnelRuntimeDownload>
+    suspend fun detectTunnelRuntime(serverUrl: String, accessToken: String, path: String): ApiResult<TunnelRuntime>
+    suspend fun saveTunnelProfile(serverUrl: String, accessToken: String, id: String?, request: TunnelProfileRequest): ApiResult<TunnelProfile>
+    suspend fun deleteTunnelProfile(serverUrl: String, accessToken: String, id: String): ApiResult<Unit>
+    suspend fun setTunnelToken(serverUrl: String, accessToken: String, id: String, secret: String): ApiResult<Unit>
+    suspend fun saveTunnelDefinition(serverUrl: String, accessToken: String, id: String?, request: TunnelDefinitionRequest): ApiResult<TunnelDefinition>
+    suspend fun deleteTunnelDefinition(serverUrl: String, accessToken: String, id: String): ApiResult<Unit>
+    suspend fun applyTunnelProfile(serverUrl: String, accessToken: String, id: String): ApiResult<TunnelResult>
+    suspend fun stopTunnelProfile(serverUrl: String, accessToken: String, id: String): ApiResult<TunnelResult>
+    suspend fun tunnelLogs(serverUrl: String, accessToken: String, id: String): ApiResult<List<TunnelLog>>
+    suspend fun certificate(serverUrl: String, accessToken: String, id: String): ApiResult<ManagedCertificate>
+    suspend fun kestrelCertificateDeployment(serverUrl: String, accessToken: String, id: String): ApiResult<KestrelCertificateDeployment>
+    suspend fun certificatePreflight(serverUrl: String, accessToken: String, domains: List<String>, challenge: CertificateChallenge): ApiResult<CertificatePreflight>
+    suspend fun certificateMutation(serverUrl: String, accessToken: String, action: CertificateAction, id: String?, body: JsonBody, idempotencyKey: String): ApiResult<CertificateOperation>
+    suspend fun certificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation>
+    suspend fun cancelCertificateOperation(serverUrl: String, accessToken: String, id: String): ApiResult<CertificateOperation>
     suspend fun publishWebsite(serverUrl: String, accessToken: String, request: WebsitePublishRequest, idempotencyKey: String): ApiResult<WebsitePublicationOperation> = ApiResult.Transport("Website publishing is unavailable.")
     suspend fun websitePublicationHistory(serverUrl: String, accessToken: String, applicationId: String): ApiResult<List<WebsitePublicationOperation>> = ApiResult.Transport("Website publishing history is unavailable.")
     suspend fun websitePublication(serverUrl: String, accessToken: String, operationId: String): ApiResult<WebsitePublicationOperation> = ApiResult.Transport("Website publishing operation is unavailable.")
