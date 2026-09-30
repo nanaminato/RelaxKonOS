@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -88,6 +91,27 @@ class ServerTerminalViewModel(application: Application) : AndroidViewModel(appli
 fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifier) {
     val model: ServerTerminalViewModel = viewModel()
     val state by model.state.collectAsState()
+    LifecycleStartEffect(owner) {
+        model.connect(owner)
+        onStopOrDispose { model.detach() }
+    }
+    ServerTerminalContent(owner, state, { model.connect(owner) }, model::attach, model::send,
+        model::resize, model::close, model::closeOtherSessions, modifier)
+}
+
+@Composable
+internal fun ServerTerminalContent(
+    owner: SessionState.Active,
+    state: ServerTerminalState,
+    onConnect: () -> Unit,
+    onAttach: (String?) -> Unit,
+    onSend: (String) -> Boolean,
+    onResize: (Int, Int) -> Unit,
+    onCloseSession: (String) -> Unit,
+    onCloseOthers: () -> Unit,
+    modifier: Modifier = Modifier,
+    imeInsets: WindowInsets = WindowInsets.ime,
+) {
     var input by remember { mutableStateOf("") }
     var pasteReview by remember { mutableStateOf<String?>(null) }
     var ctrlNext by remember { mutableStateOf(false) }
@@ -102,10 +126,6 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
     val decreaseFontLabel = stringResource(R.string.terminal_font_smaller)
     val increaseFontLabel = stringResource(R.string.terminal_font_larger)
     val sessionActionsLabel = stringResource(R.string.terminal_session_actions)
-    LifecycleStartEffect(owner) {
-        model.connect(owner)
-        onStopOrDispose { model.detach() }
-    }
     LaunchedEffect(state.sessionId) { ctrlNext = false; altNext = false; followOutput = true }
     LaunchedEffect(scroll) {
         snapshotFlow { scroll.isScrollInProgress to scroll.value }.collect { (scrolling, value) ->
@@ -120,7 +140,7 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
             val payload = if (ctrlNext && input.length == 1) {
                 ((input[0].uppercaseChar().code) and 0x1f).toChar().toString()
             } else if (ctrlNext || altNext) input else input + "\r"
-            if (model.send(if (altNext) "\u001b$payload" else payload)) {
+            if (onSend(if (altNext) "\u001b$payload" else payload)) {
                 input = ""
                 ctrlNext = false
                 altNext = false
@@ -132,7 +152,7 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
         title = { Text(stringResource(R.string.terminal_paste_title)) },
         text = { SelectionContainer { Text(pasteReview.orEmpty().take(2000)) } },
         confirmButton = { TextButton(enabled = state.canInput, onClick = {
-            if (model.send(pasteReview.orEmpty())) { input = ""; pasteReview = null }
+            if (onSend(pasteReview.orEmpty())) { input = ""; pasteReview = null }
         }) {
             Text(stringResource(R.string.terminal_send)) } },
         dismissButton = { TextButton(onClick = { pasteReview = null }) { Text(stringResource(R.string.common_cancel)) } },
@@ -142,19 +162,26 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
         title = { Text(stringResource(R.string.terminal_close)) },
         text = { Text(stringResource(R.string.terminal_close_confirm, target)) },
         confirmButton = { TextButton(enabled = state.connected && !state.busy, onClick = {
-            if (id == null) model.closeOtherSessions() else model.close(id)
+            if (id == null) onCloseOthers() else onCloseSession(id)
             closeReview = null
         }) { Text(stringResource(R.string.terminal_close)) } },
         dismissButton = { TextButton(onClick = { closeReview = null }) { Text(stringResource(R.string.common_cancel)) } },
     ) }
-    Column(modifier.fillMaxSize().padding(horizontal = Spacing.lg, vertical = Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+    TerminalScreenLayout(modifier = modifier, imeInsets = imeInsets, header = { compact ->
         // Keep long server addresses to one line so they cannot consume the terminal viewport.
-        Column {
+        if (compact) {
+            val selectedSession = state.sessions.firstOrNull { it.sessionId == state.sessionId }
+            val sessionLabel = selectedSession?.let {
+                terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
+            } ?: stringResource(R.string.terminal_server_title)
+            Text("${owner.userName} · $sessionLabel", style = MaterialTheme.typography.bodySmall,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        } else Column {
             Text(stringResource(R.string.terminal_server_title), style = MaterialTheme.typography.titleLarge)
             Text("${owner.userName} · ${owner.effectiveBaseUrl}", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(stringResource(when {
+        if (!compact || !state.connected || state.error || state.sessionLost || state.busy) Text(stringResource(when {
             state.connecting && state.retryAttempt > 0 -> R.string.terminal_recovering
             state.connecting -> R.string.terminal_connecting
             state.busy -> R.string.terminal_switching
@@ -162,66 +189,69 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
             state.sessionLost -> R.string.terminal_session_lost
             state.connected -> R.string.terminal_connected
             else -> R.string.terminal_detached
-        }), style = MaterialTheme.typography.bodySmall,
+        }), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = if (state.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            Box(Modifier.weight(1f)) {
-                if (!state.connected && !state.connecting) Button(onClick = { model.connect(owner) }) {
-                    Text(stringResource(R.string.terminal_reconnect), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                } else Button(onClick = { model.attach(null) }, enabled = state.connected && !state.busy) {
-                    Text(stringResource(R.string.terminal_new), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (!compact) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Box(Modifier.weight(1f)) {
+                    if (!state.connected && !state.connecting) Button(onClick = { onConnect() }) {
+                        Text(stringResource(R.string.terminal_reconnect), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    } else Button(onClick = { onAttach(null) }, enabled = state.connected && !state.busy) {
+                        Text(stringResource(R.string.terminal_new), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                TextButton(onClick = { fontSize = (fontSize - 1).coerceAtLeast(9) }, enabled = fontSize > 9,
+                    contentPadding = PaddingValues(horizontal = Spacing.xs),
+                    modifier = Modifier.width(48.dp).semantics { contentDescription = decreaseFontLabel }) { Text("A−") }
+                TextButton(onClick = { fontSize = (fontSize + 1).coerceAtMost(24) }, enabled = fontSize < 24,
+                    contentPadding = PaddingValues(horizontal = Spacing.xs),
+                    modifier = Modifier.width(48.dp).semantics { contentDescription = increaseFontLabel }) { Text("A+") }
+                if (state.sessions.size > 1) Box {
+                    TextButton(onClick = { menuOpen = true }, enabled = state.connected && !state.busy,
+                        modifier = Modifier.width(48.dp).semantics { contentDescription = sessionActionsLabel }) { Text("⋮") }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        val target = stringResource(R.string.terminal_close_others)
+                        DropdownMenuItem(text = { Text(target) }, onClick = {
+                            menuOpen = false
+                            closeReview = null to state.sessions.filter { it.sessionId != state.sessionId }.joinToString("\n") {
+                                terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
+                            }
+                        })
+                    }
                 }
             }
-            TextButton(onClick = { fontSize = (fontSize - 1).coerceAtLeast(9) }, enabled = fontSize > 9,
-                contentPadding = PaddingValues(horizontal = Spacing.xs),
-                modifier = Modifier.width(48.dp).semantics { contentDescription = decreaseFontLabel }) { Text("A−") }
-            TextButton(onClick = { fontSize = (fontSize + 1).coerceAtMost(24) }, enabled = fontSize < 24,
-                contentPadding = PaddingValues(horizontal = Spacing.xs),
-                modifier = Modifier.width(48.dp).semantics { contentDescription = increaseFontLabel }) { Text("A+") }
-            if (state.sessions.size > 1) Box {
-                TextButton(onClick = { menuOpen = true }, enabled = state.connected && !state.busy,
-                    modifier = Modifier.width(48.dp).semantics { contentDescription = sessionActionsLabel }) { Text("⋮") }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    val target = stringResource(R.string.terminal_close_others)
-                    DropdownMenuItem(text = { Text(target) }, onClick = {
-                        menuOpen = false
-                        closeReview = null to state.sessions.filter { it.sessionId != state.sessionId }.joinToString("\n") {
-                            terminalSessionLabel(it.createdAt, it.sessionId, System.currentTimeMillis())
-                        }
-                    })
-                }
-            }
-        }
-        if (state.sessions.isNotEmpty()) {
-            // One scrolling row rather than a growing column. `RelaxKonOS.Mobile.Design.md` gives a phone
-            // a single focused session, so switching and pruning must never take rows away from the
-            // terminal — which is exactly what a vertical session list did, one session at a time.
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-            ) {
-                state.sessions.forEach { session ->
-                    val active = session.sessionId == state.sessionId
-                    val stamp = terminalSessionLabel(session.createdAt, session.sessionId, System.currentTimeMillis())
-                    TerminalSessionChip(
-                        label = if (active) "${stringResource(R.string.terminal_session_current)} · $stamp" else stamp,
-                        active = active,
-                        closeLabel = "${stringResource(R.string.terminal_close)} · $stamp",
-                        enabled = state.connected && !state.busy,
-                        onSelect = { if (!active) model.attach(session.sessionId) },
-                        onClose = { closeReview = session.sessionId to stamp },
-                    )
+            if (state.sessions.isNotEmpty()) {
+                // One scrolling row rather than a growing column. `RelaxKonOS.Mobile.Design.md` gives a phone
+                // a single focused session, so switching and pruning must never take rows away from the
+                // terminal — which is exactly what a vertical session list did, one session at a time.
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    state.sessions.forEach { session ->
+                        val active = session.sessionId == state.sessionId
+                        val stamp = terminalSessionLabel(session.createdAt, session.sessionId, System.currentTimeMillis())
+                        TerminalSessionChip(
+                            label = if (active) "${stringResource(R.string.terminal_session_current)} · $stamp" else stamp,
+                            active = active,
+                            closeLabel = "${stringResource(R.string.terminal_close)} · $stamp",
+                            enabled = state.connected && !state.busy,
+                            onSelect = { if (!active) onAttach(session.sessionId) },
+                            onClose = { closeReview = session.sessionId to stamp },
+                        )
+                    }
                 }
             }
         }
         state.exitCode?.let { Text(stringResource(R.string.terminal_exit_code, it), style = MaterialTheme.typography.bodySmall) }
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+    }, output = {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             val width = maxWidth.value
             val height = maxHeight.value
             LaunchedEffect(width, height, fontSize, fontScale) {
                 // Text size is in scaled pixels; subtract the actual transcript padding first.
-                model.resize(((width - 2 * Spacing.md.value) / (fontSize * fontScale * 0.61f)).toInt(),
+                onResize(((width - 2 * Spacing.md.value) / (fontSize * fontScale * 0.61f)).toInt(),
                     ((height - 2 * Spacing.md.value) / (fontSize * fontScale * 1.5f)).toInt())
             }
             Surface(Modifier.fillMaxSize(), color = Color(0xFF101820), contentColor = Color(0xFFF2F5F7), shape = MaterialTheme.shapes.medium) {
@@ -240,6 +270,7 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
                 }
             }
         }
+    }, keys = {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             OutlinedButton(onClick = { ctrlNext = !ctrlNext }, enabled = state.canInput) {
                 Text(if (ctrlNext) "Ctrl ✓" else "Ctrl")
@@ -248,15 +279,17 @@ fun ServerTerminalScreen(owner: SessionState.Active, modifier: Modifier = Modifi
                 Text(if (altNext) "Alt ✓" else "Alt")
             }
             listOf("Esc" to "\u001b", "Tab" to "\t", "Ctrl+C" to "\u0003", "↑" to "\u001b[A", "↓" to "\u001b[B", "←" to "\u001b[D", "→" to "\u001b[C")
-                .forEach { (label, key) -> OutlinedButton(onClick = { model.send(key) }, enabled = state.canInput) { Text(label) } }
+                .forEach { (label, key) -> OutlinedButton(onClick = { onSend(key) }, enabled = state.canInput) { Text(label) } }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f),
-                label = { Text(stringResource(R.string.terminal_input)) }, enabled = state.canInput, maxLines = 3,
+    }, input = { compact ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                label = { Text(stringResource(R.string.terminal_input)) }, enabled = state.canInput,
+                maxLines = if (compact) 1 else 3,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { sendLine() }))
             Button(onClick = { sendLine() }, enabled = state.canInput) { Text(stringResource(R.string.terminal_send)) }
         }
-    }
+    })
 }
 
 /**

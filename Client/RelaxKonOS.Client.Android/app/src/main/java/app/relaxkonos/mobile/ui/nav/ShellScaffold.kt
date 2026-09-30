@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -23,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import app.relaxkonos.mobile.AppContainer
@@ -66,6 +69,7 @@ fun ShellScaffold(
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val layoutState = layoutStateFor(maxWidth)
+        val terminalKeyboardOpen = navigator.currentDestination == Routes.TERMINAL && WindowInsets.ime.getBottom(LocalDensity.current) > 0
         val destinations = remember(session.capabilities) { TopDestination.visible(session.capabilities) }
 
         // The system back key unwinds the active destination's own stack first, and only then leaves
@@ -84,7 +88,7 @@ fun ShellScaffold(
             LayoutState.Compact -> Scaffold(
                 containerColor = Color.Transparent,
                 bottomBar = {
-                    Column {
+                    if (!terminalKeyboardOpen) Column {
                         HorizontalDivider(
                             thickness = 1.dp,
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -115,7 +119,7 @@ fun ShellScaffold(
                     session = session,
                     layoutState = layoutState,
                     onSignOut = onSignOut,
-                    modifier = Modifier.fillMaxSize().padding(padding),
+                    modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
                 )
             }
 

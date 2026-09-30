@@ -1,5 +1,12 @@
 # RelaxKonOS Mobile 实施进展
 
+## Server 终端软键盘遮挡与输入框压缩修复（已实现，2026-09-30）
+
+- 根因：Compact Shell 未处理 IME，手机键盘会覆盖页面底部；平板的 `safeDrawingPadding` 已消耗键盘边距，但原终端 Column 先测量标题/操作/会话/扩展键，最后才测量输入，横屏剩余高度不足时会压缩输入文字与光标，终端区域也可能消失。
+- 修复：抽出 `TerminalScreenLayout`，统一使用尊重已消耗边距的 IME padding；Compact Shell 显式消耗 Scaffold padding，终端键盘打开时隐藏底部导航，关闭后恢复。输入区作为外层唯一非权重内容优先测量，至少 56dp；顶部控件、输出和扩展键放入剩余高度的主体。短视口按系统字体缩放切换单行身份/会话摘要并收起管理控件，输入显示一行；极短视口暂时收起扩展键。键盘收起恢复完整布局，草稿始终保留，多行确认/发送语义不改变。
+- 验证：离线 `:app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest --offline --no-daemon` 成功，61 类 / 492 个 JVM 用例，0 失败、错误、跳过。新增 `TerminalKeyboardLayoutTest`，在专用 API 35 平板模拟器直接运行 instrumentation，7 项全部通过：手机 360×640dp + 330dp IME、平板 960×600dp + 330dp IME、外层已消耗全部 IME、大字体 1.5 倍/短视口、键盘关闭还原控件、展开/收起保留未发送草稿、真实系统输入法弹出后的输入边界。测试使用实际 `ServerTerminalContent`，检查输入可见、输入框高度、终端输出可见和键盘上方边界；真实输入法截图已查看，产物在 `app/build/reports/terminal-layout/terminal-real-keyboard.png`。`git diff --check` 通过。
+- 测试执行说明：离线 `connectedDebugAndroidTest` 因缺少 UTP `gradle-work-action:32.4.1` 缓存无法调度，改用已编译 APK 和 `adb -s emulator-5558 shell am instrument` 完成测试。未操作已连接实体设备；厂商 IME、实体手机/平板和真实 Server PTY 验收仍未标记通过。
+
 ## Server 终端连接恢复与紧凑交互（已实现，2026-09-30）
 
 - 鉴权缺口：服务端终端 Hub 已启用 `CloseOnAuthenticationExpiration`，access token 到期会主动断开；Android 此前只读取内存中的旧 token，未接入 `AuthSession` 的 401 刷新/重试，也未自动恢复连接。这条链路可导致 `/hubs/terminals/negotiate` 返回 401 后终端一直不可用。现连接前检查 30 秒到期窗口，明确 401 时刷新一次并用新 token 重建传输，REST 与 Hub 并发刷新由 Mutex 合并；迟到的刷新响应不能恢复已注销的登录状态。403 或刷新后的 401 停止恢复，临时网络/5xx 失败按 1/2/5 秒间隔有限重试，然后提供手动重连。
