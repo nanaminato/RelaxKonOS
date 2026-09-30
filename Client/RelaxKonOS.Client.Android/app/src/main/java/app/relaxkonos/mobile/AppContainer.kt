@@ -244,7 +244,6 @@ class AppContainer(context: Context) {
     val operationIndex = OperationIndex(FileOperationIndexStorage(appContext.noBackupFilesDir))
     val deployments = app.relaxkonos.mobile.data.DeploymentRepository(gateway, session, operationIndex)
     val git = app.relaxkonos.mobile.data.GitRepositoryClient(gateway, session, operationIndex)
-    val docker = app.relaxkonos.mobile.data.DockerRepository(gateway, session, operationIndex)
     val webPublishing = app.relaxkonos.mobile.data.WebPublishingRepository(gateway, session, elevations, operationIndex)
     val scriptTasks = ScriptTaskRepository(gateway, session, operationIndex)
     val backupRecovery = BackupRecoveryRepository(gateway, session, operationIndex,
@@ -263,7 +262,28 @@ class AppContainer(context: Context) {
             app.relaxkonos.mobile.data.FileCertificateRequestStorage(appContext.noBackupFilesDir)))
     val tunnels = app.relaxkonos.mobile.data.TunnelRepository(gateway, session, elevations,
         app.relaxkonos.mobile.data.TunnelMutationJournal(app.relaxkonos.mobile.data.FileTunnelMutationStorage(appContext.noBackupFilesDir)))
-    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery, installations, webServers, webSites, certificates, tunnels)
+    val proxy = app.relaxkonos.mobile.data.ProxyRepository(gateway, session, operationIndex,
+        app.relaxkonos.mobile.data.ProxyRequestJournal(app.relaxkonos.mobile.data.FileProxyRequestStorage(appContext.noBackupFilesDir)))
+    val firewall = app.relaxkonos.mobile.data.FirewallRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.FirewallMutationJournal(app.relaxkonos.mobile.data.FileFirewallRequestStorage(appContext.noBackupFilesDir)))
+    val smb = app.relaxkonos.mobile.data.SmbRepository(gateway, session, elevations,
+        app.relaxkonos.mobile.data.SmbMutationJournal(app.relaxkonos.mobile.data.FileSmbMutationStorage(appContext.noBackupFilesDir)))
+    private val dockerControlJournal = app.relaxkonos.mobile.data.DockerControlJournal(app.relaxkonos.mobile.data.FileDockerControlStorage(appContext.noBackupFilesDir))
+    private val dockerResourceJournal = app.relaxkonos.mobile.data.DockerResourceJournal(app.relaxkonos.mobile.data.FileDockerResourceStorage(appContext.noBackupFilesDir))
+    val dockerMutationGate = app.relaxkonos.mobile.data.DockerMutationGate(dockerControlJournal, dockerResourceJournal) { owner ->
+        if (installations.pending(owner).any { it.service == app.relaxkonos.mobile.core.net.InstallationService.Docker })
+            app.relaxkonos.mobile.core.net.ApiResult.Problem(409, "docker.resources.pending", null)
+        else when (val active = installations.active(owner, app.relaxkonos.mobile.core.net.InstallationService.Docker)) {
+            is app.relaxkonos.mobile.core.net.ApiResult.Success -> if (active.value == null) app.relaxkonos.mobile.core.net.ApiResult.Success(Unit)
+                else app.relaxkonos.mobile.core.net.ApiResult.Problem(409, "docker.resources.installation_active", null)
+            is app.relaxkonos.mobile.core.net.ApiResult.Problem -> active
+            is app.relaxkonos.mobile.core.net.ApiResult.Transport -> active
+        }
+    }
+    val docker = app.relaxkonos.mobile.data.DockerRepository(gateway, session, operationIndex, dockerMutationGate)
+    val dockerControl = app.relaxkonos.mobile.data.DockerControlRepository(gateway, session, dockerControlJournal, dockerMutationGate)
+    val dockerResources = app.relaxkonos.mobile.data.DockerResourceRepository(gateway, session, dockerResourceJournal, dockerMutationGate)
+    val operationCenter = OperationCenter(session, operationIndex, deployments, webPublishing, docker, git, scriptTasks, backupRecovery, installations, webServers, webSites, certificates, tunnels, proxy, firewall, smb, dockerControl, dockerResources)
     val eventAlerts = EventAlertRepository(gateway, session)
     val alertNotificationStore = AlertNotificationStore(appContext)
     val foregroundAlertNotifier = ForegroundAlertNotifier(appContext, session, eventAlerts, alertNotificationStore, appScope)

@@ -175,6 +175,10 @@ Docker Engine 仍是容器、镜像、卷、网络和运行状态的真源；Rel
 
 **卷保护**：`docker.volume_in_use` 与 `DockerVolumeDetailsDto.UsedBy` 是同一判据的两面。`GET /volumes/{name}` 用 `docker ps --all --filter volume=<name>` 列出引用容器（**停止**的容器也算占用），`DELETE /volumes/{name}` 在引用非空时返回 `docker.volume_in_use` 而不是先解绑再删。`compose down` 不带 `--volumes`，所以删除项目后卷仍在。
 
+容器日志合并 Docker CLI 的 stdout/stderr，有统一 UTC 时间前缀时按前缀排序，再保留请求尾部；单行最多 512 字符，裁剪或可能截尾时 `Truncated` 为 true。
+
+资源读取采用完整当前事实：容器/镜像/网络/卷列表与统计的 CLI 失败返回 `503` 及实际问题码，不伪造成功空集合；成功但表格列数错误或缺少 ID 同样拒绝。卷引用查询失败禁止继续删除。容器、网络、卷 inspect 的所有权标签必须为当前 Docker 的对象或显式 null；缺失/损坏不能解释为无所有者。`DockerNetworkDetailsDto.Labels` 是共享 REST 必需字段，桌面详情显示该字段。镜像删除接受 Engine 列表提供的完整 `sha256:` + 64 位十六进制 ID，名称/镜像引用拒绝以 `-` 开头的选项文本。
+
 ### 3.4 Docker Hub 镜像源
 
 镜像源在 Docker 管理器的“镜像源”页面按 RelaxKonOS 账户配置，而不是写入宿主机的全局 `daemon.json`。用户可维护多个 HTTPS、Docker Hub 兼容的 registry host，并选择其中一个或“默认”。

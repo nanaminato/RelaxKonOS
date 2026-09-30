@@ -59,9 +59,18 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && validated.Contains("geo-auto-update: false\n", StringComparison.Ordinal)
         && !validated.Contains("untrusted.example", StringComparison.Ordinal),
         "Subscription validation did not use the managed offline GEO configuration.");
+    var appliedProfile = await profiles.GetAsync(profile.Id, CancellationToken.None);
+    TestAssert.Assert(appliedProfile is { IsActive: true } && appliedProfile.Revision == profile.Revision + 1,
+        "Successful configuration application did not update active profile metadata exactly once.");
+    var second = await profiles.UpsertAsync(null, "Second", MihomoEngine.Id, null, CancellationToken.None);
+    TestAssert.Assert(await service.StoreAsync(second.Id, "mode: global\n", CancellationToken.None) is null,
+        "Second profile configuration was not stored.");
     engine.FailNextReload = true;
-    TestAssert.Assert(await service.ApplyAsync(profile.Id, "mode: global\n", CancellationToken.None) == ProxyProblemCodes.ConfigApplyFailed,
+    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, CancellationToken.None) == ProxyProblemCodes.ConfigApplyFailed,
         "Failed reload did not report a transactional apply failure.");
+    TestAssert.Assert((await profiles.GetAsync(profile.Id, CancellationToken.None))!.IsActive
+        && !(await profiles.GetAsync(second.Id, CancellationToken.None))!.IsActive,
+        "Failed profile activation changed the active profile despite rolling back its YAML.");
     var active = await File.ReadAllTextAsync(Path.Combine(paths.GetProtectedConfigurationDirectory(), "active.yaml"));
     var normalizedActive = active.Replace("\r\n", "\n", StringComparison.Ordinal);
     TestAssert.Assert(normalizedActive.Contains("mode: rule\n", StringComparison.Ordinal)
@@ -73,6 +82,10 @@ internal static async Task VerifyProxyConfigurationTransactionAsync(string root)
         && !normalizedActive.Contains("stale-secret", StringComparison.Ordinal)
         && !normalizedActive.Contains("untrusted.example", StringComparison.Ordinal),
         "Managed Proxy configuration did not preserve its server-owned controller and GEO settings.");
+    TestAssert.Assert(await service.ActivateStoredAsync(second.Id, CancellationToken.None) is null
+        && (await profiles.GetAsync(second.Id, CancellationToken.None))!.IsActive
+        && !(await profiles.GetAsync(profile.Id, CancellationToken.None))!.IsActive,
+        "Stored profile activation did not switch both runtime YAML and active metadata.");
 }
 
 internal static async Task VerifyProxyTunSafetyAsync(string root)

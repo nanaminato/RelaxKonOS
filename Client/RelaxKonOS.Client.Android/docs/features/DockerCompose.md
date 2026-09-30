@@ -4,15 +4,15 @@
 
 ## 1. 能力与资源归属
 
-“管理 → Docker”按 `server.docker` 门控，读取 Engine、容器、镜像、卷、网络和 Stack，提供容器/Stack 生命周期与日志、卷详情与受控删除。宿主自定义出站代理入口共用 [设置页面](OutboundProxy.md)；受管来源联动、完整引擎安装、容器编辑和镜像/网络/卷创建等缺口见 BP02-M2/BP09 [补齐计划](../plans/BuiltInParity.md)。
+“管理 → Docker”按 `server.docker` 门控，读取 Engine、容器、镜像、卷、网络和 Stack，提供容器/Stack 生命周期与日志、卷详情与受控删除。宿主自定义/受管出站代理入口共用 [设置页面](OutboundProxy.md)；引擎安装/生命周期与账户镜像源管理已由 BP09-M1 接入，见 [引擎与镜像源](DockerEngine.md)；容器详情/统计/完整创建/重命名/生命周期、镜像拉取/删除和网络/卷动作由 BP09-M2 接入，见 [Docker 资源](DockerResources.md)。
 
-应用部署资源显示归属并返回应用详情修改定义；Compose 资源走 Stack 操作；外部/未知资源明确标记，不自动纳管。共享行为见 [Docker 管理设计](../../../../docs/applications/RelaxKonOS.DockerManager.md)。
+资源详情读取所有权标签；应用部署资源返回应用详情，Compose 资源返回 Stack，保留归属标签未知的资源只读，独立资源不自动纳管。共享行为见 [Docker 管理设计](../../../../docs/applications/RelaxKonOS.DockerManager.md)。
 
 ## 2. Compose 准入与预览
 
 受限导入不接受 `build`、特权、devices、外部资源、宿主 bind mount 或 Docker socket。未设置变量在准入阶段拒绝，不能让 Compose 默默替换为空串。
 
-预览返回 `definitionVersion`、服务、卷与网络；部署必须回传同一版本，不能对未确认的 YAML 执行。列表进入详情读取 Stack 操作历史，有活动操作时每秒查询，上限五分钟；离页不停止远端操作。
+预览返回 `definitionVersion`、服务、卷与网络；部署必须回传同一版本，不能对未确认的 YAML 执行。部署及生命周期提交接入与引擎/独立资源共用的 DockerMutationGate；同步未知写入或 Docker 安装待核实/活动/不可读时阻止新提交。列表进入详情读取 Stack 操作历史，有活动操作时每秒查询，上限五分钟；离页不停止远端操作。
 
 ## 3. 持久操作与恢复
 

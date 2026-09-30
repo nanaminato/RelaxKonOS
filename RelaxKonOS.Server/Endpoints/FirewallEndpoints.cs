@@ -13,7 +13,15 @@ public static class FirewallEndpoints
     {
         var group = app.MapGroup($"/{RelaxKonOS.Protocol.Common.RelaxKonOSEndpoints.ApiVersionPrefix}/firewall").RequireAuthorization().WithTags("Firewall").RequireHostFeature(ServerHostFeature.Firewall);
         group.MapGet("/status", (RelaxKonOS.Server.Firewall.IHostFirewallService firewall, CancellationToken ct) => firewall.GetStatusAsync(ct));
-        group.MapGet("/rules", (RelaxKonOS.Server.Firewall.IHostFirewallService firewall, CancellationToken ct) => firewall.ListRulesAsync(ct));
+        group.MapGet("/rules", async (RelaxKonOS.Server.Firewall.IHostFirewallService firewall, CancellationToken ct) =>
+        {
+            try { return Results.Ok(await firewall.ListRulesAsync(ct)); }
+            catch (RelaxKonOS.Server.Firewall.FirewallRulesUnavailableException error)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: error.ProblemCode, extensions: new Dictionary<string, object?> { ["problemCode"] = error.ProblemCode });
+            }
+        });
         group.MapPut("/enabled", (UpdateFirewallEnabledRequest request, HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.Firewall.IFirewallChangeAuthorizationService authorization, RelaxKonOS.Server.Firewall.IHostFirewallService firewall, ILoggerFactory loggers, CancellationToken ct) =>
             AuthorizeThenRun(context.User, elevations, request.CredentialConfirmation, authorization, loggers.CreateLogger("FirewallAudit"), "set-enabled", () => firewall.SetEnabledAsync(request.Enabled, ct)));
         group.MapPut("/defaults", (UpdateFirewallDefaultsRequest request, HttpContext context, IHostElevationSessionStore elevations, RelaxKonOS.Server.Firewall.IFirewallChangeAuthorizationService authorization, RelaxKonOS.Server.Firewall.IHostFirewallService firewall, ILoggerFactory loggers, CancellationToken ct) =>

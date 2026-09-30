@@ -27,6 +27,7 @@ class DockerRepository(
     private val gateway: RelaxKonGateway,
     private val session: AuthSession,
     private val operationIndex: OperationIndex,
+    private val gate: DockerMutationGate,
 ) {
     private val reads = Mutex()
     suspend fun proxyStatus(owner: SessionState.Active) = read(owner) { url, token -> gateway.outboundProxyStatus(url, token) }
@@ -41,11 +42,9 @@ class DockerRepository(
     /** The reference list the operator has to see before deciding to release a volume's data. */
     suspend fun volumeDetails(owner: SessionState.Active, name: String) = read(owner) { url, token -> gateway.dockerVolumeDetails(url, token, name) }
     /** Releases a volume's data. The server refuses while a container still references it. */
-    suspend fun deleteVolume(owner: SessionState.Active, name: String, confirmed: Boolean) = read(owner) { url, token -> gateway.dockerDeleteVolume(url, token, name, confirmed) }
     suspend fun stacks(owner: SessionState.Active) = read(owner) { url, token -> gateway.dockerStacks(url, token) }
     suspend fun services(owner: SessionState.Active, name: String) = read(owner) { url, token -> gateway.dockerStackServices(url, token, name) }
     suspend fun logs(owner: SessionState.Active, id: String, tail: Int) = read(owner) { url, token -> gateway.dockerContainerLogs(url, token, id, tail) }
-    suspend fun containerAction(owner: SessionState.Active, id: String, action: String, confirmed: Boolean) = read(owner) { url, token -> gateway.dockerContainerAction(url, token, id, action, confirmed) }
 
     /** Parses a definition without applying it. The answer is what the operator approves. */
     suspend fun previewStack(owner: SessionState.Active, name: String, composeYaml: String): ApiResult<DockerStackPreview> =
@@ -58,12 +57,12 @@ class DockerRepository(
      */
     suspend fun deployStack(owner: SessionState.Active, name: String, composeYaml: String, definitionVersion: String): ApiResult<DockerStackOperation> {
         val key = UUID.randomUUID().toString()
-        return read(owner) { url, token -> gateway.dockerStackDeploy(url, token, name, composeYaml, definitionVersion, key) }
+        return mutate(owner) { url, token -> gateway.dockerStackDeploy(url, token, name, composeYaml, definitionVersion, key) }
     }
 
     suspend fun stackAction(owner: SessionState.Active, name: String, action: String, confirmed: Boolean): ApiResult<DockerStackOperation> {
         val key = UUID.randomUUID().toString()
-        return read(owner) { url, token -> gateway.dockerStackAction(url, token, name, action, confirmed, key) }
+        return mutate(owner) { url, token -> gateway.dockerStackAction(url, token, name, action, confirmed, key) }
     }
 
     suspend fun stackOperations(owner: SessionState.Active, name: String, limit: Int = 20): ApiResult<List<DockerStackOperation>> =
@@ -80,6 +79,11 @@ class DockerRepository(
         return read(owner) { url, token -> gateway.dockerStackOperationCancel(url, token, operationId, key) }
     }
 
+    private suspend fun mutate(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<DockerStackOperation>): ApiResult<DockerStackOperation> = gate.mutex.withLock {
+        if (session.state.value !== owner) throw CancellationException("Docker session changed")
+        val allowed = gate.check(owner)
+        when (allowed) { is ApiResult.Problem -> allowed; is ApiResult.Transport -> allowed; is ApiResult.Success -> read(owner, call) }
+    }
     private suspend fun <T> read(owner: SessionState.Active, call: suspend (String, String) -> ApiResult<T>): ApiResult<T> = reads.withLock {
         fun verifyOwner() { if (session.state.value !== owner) throw CancellationException("Docker session changed") }
         verifyOwner()

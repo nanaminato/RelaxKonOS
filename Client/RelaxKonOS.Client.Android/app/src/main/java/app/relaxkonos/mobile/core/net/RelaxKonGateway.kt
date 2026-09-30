@@ -22,6 +22,43 @@ fun interface DownloadSink {
  * The implementation is [RelaxKonApi]; route names and payload shapes stay owned by that class.
  */
 interface RelaxKonGateway {
+    suspend fun smbStatus(serverUrl: String, accessToken: String): ApiResult<SmbStatus>
+    suspend fun smbCapabilities(serverUrl: String, accessToken: String): ApiResult<SmbCapabilities>
+    suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>>
+    suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>>
+    suspend fun smbConnection(serverUrl: String, accessToken: String): ApiResult<SmbConnection>
+    suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt>
+    suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus>
+    suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>>
+    suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange, password: CharArray?): ApiResult<FirewallResult>
+    suspend fun proxySettings(serverUrl: String, accessToken: String): ApiResult<ProxySettings>
+    suspend fun proxyRecovery(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery>
+    suspend fun proxyTun(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery>
+    suspend fun proxyTraffic(serverUrl: String, accessToken: String): ApiResult<ProxyTraffic>
+    suspend fun proxyConnections(serverUrl: String, accessToken: String): ApiResult<List<ProxyConnection>>
+    suspend fun proxyLogs(serverUrl: String, accessToken: String): ApiResult<List<ProxyLog>>
+    suspend fun proxyDns(serverUrl: String, accessToken: String): ApiResult<ProxyDns>
+    suspend fun proxyGeoData(serverUrl: String, accessToken: String): ApiResult<ProxyGeoData>
+    suspend fun saveProxySettings(serverUrl: String, accessToken: String, settings: ProxySettings): ApiResult<Unit>
+    suspend fun configureProxyGeoData(serverUrl: String, accessToken: String, path: String): ApiResult<Unit>
+    suspend fun closeProxyConnection(serverUrl: String, accessToken: String, id: String): ApiResult<Unit>
+    suspend fun proxyOverview(serverUrl: String, accessToken: String): ApiResult<ProxyOverview>
+    suspend fun proxyProfiles(serverUrl: String, accessToken: String): ApiResult<List<ProxyProfile>>
+    suspend fun proxySubscriptions(serverUrl: String, accessToken: String): ApiResult<List<ProxySubscription>>
+    suspend fun proxyGroups(serverUrl: String, accessToken: String): ApiResult<List<ProxyGroup>>
+    suspend fun proxyRouting(serverUrl: String, accessToken: String): ApiResult<ProxyRoutingMode>
+    suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean>
+    suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation>
+    suspend fun proxyDownload(serverUrl: String, accessToken: String, version: String): ApiResult<ProxyDownload>
+    suspend fun proxyQueue(serverUrl: String, accessToken: String, action: ProxyAction, target: String?, key: String): ApiResult<String>
+    suspend fun saveProxyProfile(serverUrl: String, accessToken: String, id: String?, request: ProxyProfileRequest): ApiResult<ProxyProfile>
+    suspend fun activateProxyProfile(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyProfile>
+    suspend fun deleteProxyProfile(serverUrl: String, accessToken: String, id: String): ApiResult<Unit>
+    suspend fun applyProxyConfiguration(serverUrl: String, accessToken: String, id: String, yaml: String): ApiResult<Unit>
+    suspend fun importProxySubscription(serverUrl: String, accessToken: String, request: ProxyImportRequest): ApiResult<ProxySubscription>
+    suspend fun selectProxyNode(serverUrl: String, accessToken: String, group: String, proxy: String): ApiResult<Unit>
+    suspend fun setProxyRouting(serverUrl: String, accessToken: String, mode: ProxyRoutingMode): ApiResult<Unit>
+    suspend fun testProxyDelay(serverUrl: String, accessToken: String, group: String, proxy: String, url: String, timeout: Int): ApiResult<ProxyDelay>
     suspend fun saveWebServerSite(serverUrl: String, accessToken: String, instanceId: String,
         request: WebServerSiteRequest): ApiResult<WebServerSite>
     suspend fun deleteWebServerSite(serverUrl: String, accessToken: String, instanceId: String, siteId: String,
@@ -128,6 +165,16 @@ interface RelaxKonGateway {
     suspend fun saveOutboundProxy(serverUrl: String, accessToken: String, settings: OutboundProxySettings, confirmed: Boolean): ApiResult<OutboundProxyStatus>
     suspend fun clearOutboundProxy(serverUrl: String, accessToken: String): ApiResult<OutboundProxyStatus>
 
+    suspend fun dockerContainerDetails(serverUrl: String, accessToken: String, id: String): ApiResult<DockerContainerDetails>
+    suspend fun dockerContainerStats(serverUrl: String, accessToken: String, id: String): ApiResult<DockerContainerStats>
+    suspend fun dockerNetworkDetails(serverUrl: String, accessToken: String, id: String): ApiResult<DockerNetworkDetails>
+    suspend fun dockerResourceChange(serverUrl: String, accessToken: String, change: DockerResourceChange): ApiResult<DockerOperation>
+    suspend fun dockerEngineAction(serverUrl: String, accessToken: String, action: DockerEngineAction, confirmed: Boolean): ApiResult<DockerEngineResult>
+    suspend fun dockerMirrors(serverUrl: String, accessToken: String): ApiResult<List<DockerImageMirror>>
+    suspend fun dockerCreateMirror(serverUrl: String, accessToken: String, request: DockerMirrorRequest): ApiResult<DockerImageMirror>
+    suspend fun dockerUpdateMirror(serverUrl: String, accessToken: String, id: String, request: DockerMirrorRequest): ApiResult<DockerImageMirror>
+    suspend fun dockerDeleteMirror(serverUrl: String, accessToken: String, id: String): ApiResult<Unit>
+    suspend fun dockerSelectMirror(serverUrl: String, accessToken: String, id: String?): ApiResult<Unit>
     suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerContainers(serverUrl: String, accessToken: String): ApiResult<List<DockerContainer>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerImages(serverUrl: String, accessToken: String): ApiResult<List<DockerImage>> = ApiResult.Transport("Docker is unavailable.")
@@ -135,11 +182,9 @@ interface RelaxKonGateway {
     suspend fun dockerVolumes(serverUrl: String, accessToken: String): ApiResult<List<DockerVolume>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerVolumeDetails(serverUrl: String, accessToken: String, name: String): ApiResult<DockerVolumeDetails> = ApiResult.Transport("Docker is unavailable.")
     /** Releases a volume's data. The server refuses while a container still references it. */
-    suspend fun dockerDeleteVolume(serverUrl: String, accessToken: String, name: String, confirmed: Boolean): ApiResult<DockerOperation> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerStacks(serverUrl: String, accessToken: String): ApiResult<List<DockerStack>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerStackServices(serverUrl: String, accessToken: String, name: String): ApiResult<List<DockerStackService>> = ApiResult.Transport("Docker is unavailable.")
     suspend fun dockerContainerLogs(serverUrl: String, accessToken: String, id: String, tail: Int): ApiResult<DockerLogs> = ApiResult.Transport("Docker is unavailable.")
-    suspend fun dockerContainerAction(serverUrl: String, accessToken: String, id: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> = ApiResult.Transport("Docker is unavailable.")
     /** Parses a Compose definition without applying it. Nothing on the host changes. */
     suspend fun dockerStackPreview(serverUrl: String, accessToken: String, name: String, composeYaml: String): ApiResult<DockerStackPreview> = ApiResult.Transport("Docker Compose is unavailable.")
     /** Submits a deployment, or returns the operation already bound to this idempotency key. */

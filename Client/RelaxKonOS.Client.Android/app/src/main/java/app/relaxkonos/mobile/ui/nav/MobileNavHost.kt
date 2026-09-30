@@ -31,6 +31,7 @@ import app.relaxkonos.mobile.ui.files.FilesScreen
 import app.relaxkonos.mobile.ui.files.FilesViewModel
 import app.relaxkonos.mobile.ui.home.HomeScreen
 import app.relaxkonos.mobile.ui.manage.tunnels.TunnelsScreen
+import app.relaxkonos.mobile.ui.manage.proxy.ProxyScreen
 import app.relaxkonos.mobile.ui.manage.certificates.CertificatesScreen
 import app.relaxkonos.mobile.ui.manage.ManageScreen
 import app.relaxkonos.mobile.ui.manage.ManageViewModel
@@ -80,7 +81,12 @@ fun MobileNavHost(
                 onBack = { navigator.pop() },
                 initialApplicationId = taskTarget,
             )
-            Routes.MANAGE_DOCKER -> DockerScreen(onBack = { navigator.pop() }, onOpenProxy = { navigator.push(Routes.MORE_NETWORK) }, initialStackName = taskTarget,
+            Routes.MANAGE_DOCKER_RESOURCES -> app.relaxkonos.mobile.ui.manage.docker.DockerResourceScreen(
+                onBack = { navigator.pop() }, onOpenControl = { navigator.push(Routes.MANAGE_DOCKER_CONTROL) },
+                onOpenCompose = { taskTarget = it; navigator.push(Routes.MANAGE_DOCKER) },
+                onOpenApplication = { taskTarget = it; navigator.push(Routes.MANAGE_DEPLOYMENTS) }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_DOCKER_CONTROL -> app.relaxkonos.mobile.ui.manage.docker.DockerControlScreen(onBack = { navigator.pop() }, onOpenProxy = { navigator.push(Routes.MORE_NETWORK) }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_DOCKER -> DockerScreen(onOpenResources = { navigator.push(Routes.MANAGE_DOCKER_RESOURCES) }, onOpenControl = { navigator.push(Routes.MANAGE_DOCKER_CONTROL) }, onBack = { navigator.pop() }, onOpenProxy = { navigator.push(Routes.MORE_NETWORK) }, initialStackName = taskTarget,
                 modifier = Modifier.fillMaxSize())
             Routes.MANAGE_GIT -> GitScreen(owner = session, onBack = { navigator.pop() },
                 initialBuildId = taskTarget, modifier = Modifier.fillMaxSize())
@@ -89,6 +95,9 @@ fun MobileNavHost(
             Routes.MANAGE_GUARDIAN -> GuardianScreen(owner = session, onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_SCRIPTS -> ScriptsScreen(owner = session, onBack = { navigator.pop() },
                 initialTaskId = taskTarget, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_SMB -> app.relaxkonos.mobile.ui.manage.smb.SmbScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_FIREWALL -> app.relaxkonos.mobile.ui.manage.firewall.FirewallScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MANAGE_PROXY -> ProxyScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_TUNNELS -> TunnelsScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_CERTIFICATES -> CertificatesScreen(onBack = { navigator.pop() }, initialOperationId = taskTarget, modifier = Modifier.fillMaxSize())
             Routes.MANAGE_OPERATIONS -> OperationsScreen(owner = session, onBack = { navigator.pop() },
@@ -99,15 +108,22 @@ fun MobileNavHost(
                 onOpenWebServers = { taskTarget = null; navigator.push(Routes.MANAGE_WEBSITES) },
                 onOpenCertificates = { taskTarget = it; navigator.push(Routes.MANAGE_CERTIFICATES) },
                 onOpenTunnels = { taskTarget = null; navigator.push(Routes.MANAGE_TUNNELS) },
+                onOpenDockerResources = { navigator.push(Routes.MANAGE_DOCKER_RESOURCES) },
+                onOpenDockerControl = { taskTarget = null; navigator.push(Routes.MANAGE_DOCKER_CONTROL) },
+                onOpenSmb = { taskTarget = null; navigator.push(Routes.MANAGE_SMB) },
+                onOpenFirewall = { taskTarget = null; navigator.push(Routes.MANAGE_FIREWALL) },
+                onOpenProxy = { taskTarget = it; navigator.push(Routes.MANAGE_PROXY) },
                 onOpenCompose = { taskTarget = it; navigator.push(Routes.MANAGE_DOCKER) },
                 onOpenGitBuild = { taskTarget = it; navigator.push(Routes.MANAGE_GIT) },
                 onOpenScript = { taskTarget = it; navigator.push(Routes.MANAGE_SCRIPTS) },
+                onOpenDocker = { taskTarget = null; navigator.push(Routes.MANAGE_DOCKER) },
+                onOpenGuardian = { taskTarget = null; navigator.push(Routes.MANAGE_GUARDIAN) },
                 modifier = Modifier.fillMaxSize())
             Routes.TERMINAL -> ServerTerminalScreen(owner = session, modifier = Modifier.fillMaxSize())
             Routes.FILES, Routes.FILES_DETAIL -> FilesDestination(navigator, layoutState)
             Routes.MANAGE, Routes.MANAGE_MONITOR, Routes.MANAGE_PROCESSES ->
                 ManageDestination(navigator, layoutState, clearTaskTarget = { taskTarget = null })
-            Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = { navigator.pop() }, modifier = Modifier.fillMaxSize())
+            Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = { navigator.pop() }, onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) }, modifier = Modifier.fillMaxSize())
             Routes.MORE,
             Routes.MORE_ACCOUNT_SECURITY,
             Routes.MORE_CONNECTIONS,
@@ -115,7 +131,7 @@ fun MobileNavHost(
             Routes.MORE_APPEARANCE,
             Routes.MORE_DIAGNOSTICS,
             Routes.MORE_ABOUT,
-            -> MoreDestination(navigator, layoutState, onSignOut, onSwitchLogin)
+            -> MoreDestination(navigator, layoutState, onSignOut, onSwitchLogin, onOpenManagedProxy = { taskTarget = null; navigator.push(Routes.MANAGE_PROXY) })
 
             else -> HomeScreen(
                 session = session,
@@ -175,6 +191,9 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
                 onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
             onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
                 onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
+            onOpenSmb = { clearTaskTarget(); navigator.push(Routes.MANAGE_SMB) },
+            onOpenFirewall = { clearTaskTarget(); navigator.push(Routes.MANAGE_FIREWALL) },
+            onOpenProxy = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY) },
                 onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
                 onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
                 onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
@@ -205,6 +224,9 @@ private fun ManageDestination(navigator: MobileNavigator, layoutState: LayoutSta
             onOpenWebsites = { clearTaskTarget(); navigator.push(Routes.MANAGE_WEBSITES) },
             onOpenCertificates = { clearTaskTarget(); navigator.push(Routes.MANAGE_CERTIFICATES) },
             onOpenTunnels = { clearTaskTarget(); navigator.push(Routes.MANAGE_TUNNELS) },
+            onOpenSmb = { clearTaskTarget(); navigator.push(Routes.MANAGE_SMB) },
+            onOpenFirewall = { clearTaskTarget(); navigator.push(Routes.MANAGE_FIREWALL) },
+            onOpenProxy = { clearTaskTarget(); navigator.push(Routes.MANAGE_PROXY) },
             onOpenGuardian = { navigator.push(Routes.MANAGE_GUARDIAN) },
             onOpenScripts = { clearTaskTarget(); navigator.push(Routes.MANAGE_SCRIPTS) },
             onOpenOperations = { navigator.push(Routes.MANAGE_OPERATIONS) },
@@ -219,6 +241,7 @@ private fun MoreDestination(
     layoutState: LayoutState,
     onSignOut: () -> Unit,
     onSwitchLogin: (SavedLogin?) -> Unit,
+    onOpenManagedProxy: () -> Unit,
 ) {
     var pane by remember { mutableStateOf<String?>(null) }
 
@@ -234,7 +257,7 @@ private fun MoreDestination(
                 if (pane == null) {
                     EmptyHint(stringResource(R.string.more_select_section), Modifier.padding(16.dp))
                 } else {
-                    MorePane(route = pane!!, onBack = null, onSwitchLogin = onSwitchLogin)
+                    MorePane(route = pane!!, onBack = null, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
                 }
             }
         }
@@ -250,18 +273,18 @@ private fun MoreDestination(
             modifier = Modifier.fillMaxSize(),
         )
     } else {
-        MorePane(route = route, onBack = { navigator.pop() }, onSwitchLogin = onSwitchLogin)
+        MorePane(route = route, onBack = { navigator.pop() }, onSwitchLogin = onSwitchLogin, onOpenManagedProxy = onOpenManagedProxy)
     }
 }
 
 /** One settings page, rendered either as a pushed page ([onBack] non-null) or as a pane. */
 @Composable
-private fun MorePane(route: String, onBack: (() -> Unit)?, onSwitchLogin: (SavedLogin?) -> Unit) {
+private fun MorePane(route: String, onBack: (() -> Unit)?, onSwitchLogin: (SavedLogin?) -> Unit, onOpenManagedProxy: () -> Unit) {
     when (route) {
         Routes.MORE_ACCOUNT_SECURITY -> AccountSecurityScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_CONNECTIONS -> ConnectionsScreen(onBack = onBack, onSwitchLogin = onSwitchLogin, modifier = Modifier.fillMaxSize())
         Routes.MORE_SERVER_INFORMATION -> ServerInformationScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
-        Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
+        Routes.MORE_NETWORK -> OutboundProxyScreen(onBack = onBack, onOpenManagedProxy = onOpenManagedProxy, modifier = Modifier.fillMaxSize())
         Routes.MORE_APPEARANCE -> AppearanceScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_DIAGNOSTICS -> DiagnosticsScreen(onBack = onBack, modifier = Modifier.fillMaxSize())
         Routes.MORE_ABOUT -> AboutScreen(onBack = onBack, modifier = Modifier.fillMaxSize())

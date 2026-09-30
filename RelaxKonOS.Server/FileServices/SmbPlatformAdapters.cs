@@ -53,12 +53,12 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
     public async Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct)
     {
         var result = await helper.ReadManagedConfigurationAsync(Guid.NewGuid(), ct);
-        return result.Success ? Decode<List<FileShareDto>>(result) ?? [] : [];
+        return ReadCollection<FileShareDto>(result);
     }
     public async Task<IReadOnlyList<FileServiceUserDto>> ReadUsersAsync(CancellationToken ct)
     {
         var result = await helper.ReadUsersAsync(Guid.NewGuid(), ct);
-        return result.Success ? Decode<List<FileServiceUserDto>>(result) ?? [] : [];
+        return ReadCollection<FileServiceUserDto>(result);
     }
     public async Task<FileServiceOperationResultDto> ApplySharesAsync(IReadOnlyList<FileShareDto> current, Guid operationId, CancellationToken ct)
     {
@@ -119,6 +119,15 @@ public sealed class LinuxSambaPlatformAdapter(IPrivilegedSmbOperations helper) :
             _ => FileServiceProblemCodes.ConfigurationInvalid,
         };
     }
+    internal static IReadOnlyList<T> ReadCollection<T>(PrivilegedOperationResult result)
+    {
+        if (!result.Success) throw new FileServiceReadException(Problem(result));
+        try
+        {
+            return Decode<List<T>>(result) ?? throw new FileServiceReadException(FileServiceProblemCodes.DetectionFailed);
+        }
+        catch (FormatException) { throw new FileServiceReadException(FileServiceProblemCodes.DetectionFailed); }
+    }
     internal static T? Decode<T>(PrivilegedOperationResult result)
     {
         try { return result.OutputBase64 is null ? default : JsonSerializer.Deserialize<T>(Convert.FromBase64String(result.OutputBase64)); }
@@ -153,7 +162,7 @@ public sealed class WindowsSmbPlatformAdapter(IPrivilegedSmbOperations helper) :
     public async Task<IReadOnlyList<FileShareDto>> ReadManagedSharesAsync(CancellationToken ct)
     {
         var result = await helper.ReadManagedConfigurationAsync(Guid.NewGuid(), ct);
-        return result.Success ? LinuxSambaPlatformAdapter.Decode<List<FileShareDto>>(result) ?? [] : [];
+        return LinuxSambaPlatformAdapter.ReadCollection<FileShareDto>(result);
     }
     public async Task<FileServiceOperationResultDto> ApplyShareAsync(FileShareDto share, string? expectedSnapshot, Guid id, CancellationToken ct) => LinuxSambaPlatformAdapter.Result(id,
         await helper.ApplyWindowsShareAsync(new(share.Id, share.Name, share.Path, share.Description, share.ReadOnly, share.Enabled, share.GuestAllowed,

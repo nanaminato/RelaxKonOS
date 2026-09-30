@@ -23,10 +23,10 @@ class OutboundProxyEditorTest {
     private val repository = DockerRepository(gateway, session, OperationIndex(object : OperationIndexStorage {
         override fun read(): ByteArray? = null
         override fun write(bytes: ByteArray) = Unit
-    }))
+    }), app.relaxkonos.mobile.data.testDockerGate())
     private val status get() = OutboundProxyWire.status(PROXY_STATUS)
-    private suspend fun TestScope.editor(): OutboundProxyEditor {
-        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession()) }
+    private suspend fun TestScope.editor(manage: Boolean = true): OutboundProxyEditor {
+        gateway.onLogin = { _, _, _ -> ApiResult.Success(loginSession().let { it.copy(server = it.server.copy(privilegedOperations = manage, capabilities = setOf(ServerCapabilities.DOCKER, ServerCapabilities.PROXY))) }) }
         session.login(ServerConnectionIdentityRules.direct("https://example.test"), "alice", "pw".toCharArray()) {}
         val owner = session.state.value as SessionState.Active
         gateway.onOutboundProxyStatus = { ApiResult.Success(status) }
@@ -118,6 +118,29 @@ class OutboundProxyEditorTest {
         editor.load()
         runCurrent()
         assertNull(editor.draft)
+    }
+    @Test fun `managed selection discards custom credentials but retains shared consumer scopes`() = runTest {
+        val editor = editor(); val before = editor.draft!!
+        editor.selectManaged()
+        assertEquals(OutboundProxySource.ManagedProxy, editor.draft!!.source)
+        assertEquals("", editor.draft!!.httpProxy); assertEquals("", editor.draft!!.httpsProxy)
+        assertEquals(before.noProxy, editor.draft!!.noProxy); assertEquals(before.applyToEngine, editor.draft!!.applyToEngine)
+        assertEquals(before.applyToRuntimeDownloads, editor.draft!!.applyToRuntimeDownloads)
+        var submitted = 0
+        gateway.onSaveOutboundProxy = { settings, confirmed -> submitted++; assertTrue(confirmed); assertEquals(OutboundProxySource.ManagedProxy, settings.source); ApiResult.Success(status.copy(settings = settings)) }
+        editor.save(); assertEquals(0, submitted); editor.confirm(null); runCurrent(); assertEquals(1, submitted)
+    }
+    @Test fun `opening managed runtime from dirty outbound form requires discarding and opens requested target`() = runTest {
+        val editor = editor(); var managerOpened = false; var backOpened = false
+        editor.change { it.copy(noProxy = "changed") }; editor.leave { managerOpened = true }
+        assertFalse(managerOpened); editor.dismiss(); assertEquals("changed", editor.draft!!.noProxy)
+        editor.leave { managerOpened = true }; editor.confirm { backOpened = true }
+        assertTrue(managerOpened); assertFalse(backOpened)
+    }
+    @Test fun `observer can read but cannot change shared outbound settings`() = runTest {
+        val editor = editor(manage = false); val before = editor.draft
+        editor.selectManaged(); editor.change { it.copy(noProxy = "new") }; editor.save(); editor.clear()
+        assertEquals(before, editor.draft); assertFalse(editor.canSubmit); assertNull(editor.review)
     }
 
 }

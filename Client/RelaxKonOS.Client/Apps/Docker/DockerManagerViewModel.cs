@@ -922,7 +922,8 @@ public sealed partial class DockerManagerViewModel(IRemoteDockerClient client) :
         $"{LocalizedText.Get("docker.container.id")}: {details.Id}",
         $"{LocalizedText.Get("docker.network.driver")}: {details.Driver}",
         $"{LocalizedText.Get("docker.table.scope")}: {details.Scope}",
-        FormatSection(LocalizedText.Get("docker.resource.attached_containers"), details.Containers)
+        FormatSection(LocalizedText.Get("docker.resource.attached_containers"), details.Containers),
+        FormatSection(LocalizedText.Get("docker.container.labels"), details.Labels.Select(label => $"{label.Key}={label.Value}"))
     });
     private static string FormatVolumeDetails(DockerVolumeDetailsDto details)
     {

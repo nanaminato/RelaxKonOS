@@ -49,11 +49,29 @@ class InstallationRepositoryTest {
         signIn("bob"); val other = session.state.value as SessionState.Active
         assertTrue(runCatching { repository.identifyOriginal(other, pending, id) }.isFailure)
     }
-    private suspend fun signIn(account: String = "alice", privileged: Boolean = true): SessionState.Active {
-        val login = loginSession().let { it.copy(server = it.server.copy(capabilities = setOf(ServerCapabilities.WEB_SERVER), privilegedOperations = privileged)) }
+    private suspend fun signIn(account: String = "alice", privileged: Boolean = true, capability: String = ServerCapabilities.WEB_SERVER): SessionState.Active {
+        val login = loginSession().let { it.copy(server = it.server.copy(capabilities = setOf(capability), privilegedOperations = privileged)) }
         gateway.onLogin = { _, _, _ -> ApiResult.Success(login.copy(userName = account)) }
         session.login(ServerConnectionIdentityRules.direct("https://example.test"), account, "pw".toCharArray()) {}
         return session.state.value as SessionState.Active
+    }
+
+    @Test fun `Docker install grants exact capability and preserves original key with typed confirmed request`() = runTest {
+        val owner = signIn(capability = ServerCapabilities.DOCKER); val keys = mutableListOf<String>()
+        val current = operation.copy(service = InstallationService.Docker)
+        gateway.onStartInstallation = { kind, request, key ->
+            assertEquals(InstallationKind.Install, kind); assertEquals(DockerInstallationRequest(true), request); keys += key
+            if (keys.size == 1) ApiResult.Problem(403, ProblemCodes.ELEVATION_REQUIRED, null) else ApiResult.Success(current)
+        }
+        gateway.onElevation = { _, _, capability, target, _, _ ->
+            assertEquals("dockerInstall", capability); assertEquals("docker", target); ApiResult.Success(ElevationGrant(true, null))
+        }
+        val password = "host-admin-secret".toCharArray()
+        val intent = repository.prepare(owner, InstallationKind.Install, DockerInstallationRequest(true))
+        assertTrue(repository.submit(intent, ElevationAnswerProvider { _, _ -> ElevationAnswer("root", password) }) is ApiResult.Success)
+        assertEquals(listOf(intent.pending.key, intent.pending.key), keys); assertTrue(password.all { it == '\u0000' })
+        assertTrue(repository.pending(owner).isEmpty()); assertEquals("Docker", index.forOwner(owner).single().resourceId)
+        assertTrue(runCatching { repository.prepare(owner, InstallationKind.Upgrade, DockerInstallationRequest(true)) }.isFailure)
     }
 
     @Test fun `transport ambiguity is retained and explicit replay queries facts with same key`() = runTest {

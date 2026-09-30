@@ -13,10 +13,14 @@ class EventAlertRepository(private val gateway: RelaxKonGateway, private val ses
     private val requests = Mutex()
     suspend fun page(owner: SessionState.Active, cursor: String? = null) =
         call(owner) { url, token -> gateway.alerts(url, token, cursor) }
-    suspend fun detail(owner: SessionState.Active, id: String) =
-        call(owner) { url, token -> gateway.alertDetail(url, token, id) }
-    suspend fun acknowledge(owner: SessionState.Active, id: String) =
-        call(owner) { url, token -> gateway.acknowledgeAlert(url, token, id) }
+    suspend fun detail(owner: SessionState.Active, id: String): ApiResult<app.relaxkonos.mobile.core.net.OperationalAlertDetail> =
+        call(owner) { url, token -> gateway.alertDetail(url, token, id) }.let {
+            if (it is ApiResult.Success && it.value.alert.id != id) ApiResult.Transport(null) else it
+        }
+    suspend fun acknowledge(owner: SessionState.Active, id: String): ApiResult<app.relaxkonos.mobile.core.net.OperationalAlert> =
+        call(owner) { url, token -> gateway.acknowledgeAlert(url, token, id) }.let {
+            if (it is ApiResult.Success && it.value.id != id) ApiResult.Transport(null) else it
+        }
 
     private suspend fun <T> call(owner: SessionState.Active, request: suspend (String, String) -> ApiResult<T>): ApiResult<T> =
         requests.withLock {

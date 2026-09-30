@@ -45,6 +45,9 @@ import app.relaxkonos.mobile.data.PendingInstallationRequest
 import app.relaxkonos.mobile.data.ObservedOperation
 import app.relaxkonos.mobile.data.OperationCheck
 import app.relaxkonos.mobile.data.OperationDomain
+import app.relaxkonos.mobile.data.OperationDestinations
+import app.relaxkonos.mobile.data.OperationDestination
+import app.relaxkonos.mobile.data.OperationTarget
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.common.ScreenHeader
 import app.relaxkonos.mobile.ui.theme.Spacing
@@ -72,6 +75,12 @@ internal data class OperationsState(
     val pendingSites: List<app.relaxkonos.mobile.data.PendingSiteMutation> = emptyList(),
     val pendingCertificates: List<app.relaxkonos.mobile.data.PendingCertificateRequest> = emptyList(),
     val pendingTunnels: List<app.relaxkonos.mobile.data.PendingTunnelMutation> = emptyList(),
+    val pendingProxy: List<app.relaxkonos.mobile.data.PendingProxyRequest> = emptyList(),
+    val pendingDockerResources: List<app.relaxkonos.mobile.data.PendingDockerResource> = emptyList(),
+    val pendingDockerControl: List<app.relaxkonos.mobile.data.PendingDockerControl> = emptyList(),
+    val pendingSmb: List<app.relaxkonos.mobile.data.PendingSmbMutation> = emptyList(),
+    val pendingFirewall: List<app.relaxkonos.mobile.data.PendingFirewallChange> = emptyList(),
+    val pendingWebServers: List<app.relaxkonos.mobile.data.PendingWebServerRequest> = emptyList(),
 )
 
 internal class OperationsViewModel(application: Application) : AndroidViewModel(application) {
@@ -90,7 +99,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
 
     fun poll(owner: SessionState.Active) {
         if (state.owner !== owner || state.loading || refreshJob?.isActive == true || state.cancelling || state.cancelRequested || state.hideRequested) return
-        if (state.items.any { it.check == OperationCheck.Unavailable || it.state == "queued" || it.state == "running" } || state.pendingInstallations.isNotEmpty() || state.pendingSites.isNotEmpty() || state.pendingCertificates.isNotEmpty() || state.pendingTunnels.isNotEmpty())
+        if (state.items.any { it.check == OperationCheck.Unavailable || it.state in setOf("queued", "running", "cancelling") } || state.error || state.pendingInstallations.isNotEmpty() || state.pendingSites.isNotEmpty() || state.pendingCertificates.isNotEmpty() || state.pendingTunnels.isNotEmpty() || state.pendingProxy.isNotEmpty() || state.pendingWebServers.isNotEmpty() || state.pendingFirewall.isNotEmpty() || state.pendingSmb.isNotEmpty() || state.pendingDockerControl.isNotEmpty() || state.pendingDockerResources.isNotEmpty())
             refresh(owner, quiet = true)
     }
 
@@ -114,7 +123,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
         refreshJob?.cancel()
         val request = ++generation
         state = if (state.owner === owner) state.copy(loading = !quiet, cancelling = false,
-            cancelRequested = false, hideRequested = false) else OperationsState(owner = owner, loading = true)
+            cancelRequested = false, hideRequested = false, diagnostics = null) else OperationsState(owner = owner, loading = true)
         refreshJob = viewModelScope.launch {
             try {
                 val snapshot = withContext(Dispatchers.IO) { container.operationCenter.refresh(owner) }
@@ -122,7 +131,7 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
                 if (current(owner, request)) {
                     state = state.copy(loading = false, items = items,
                         selectedKey = state.selectedKey?.takeIf { key -> items.any { (it.reference.domain to it.reference.operationId) == key } },
-                        error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels)
+                        error = snapshot.incomplete || cancellationUnverified, pendingInstallations = snapshot.pendingInstallations, pendingSites = snapshot.pendingSites, pendingCertificates = snapshot.pendingCertificates, pendingTunnels = snapshot.pendingTunnels, pendingProxy = snapshot.pendingProxy, pendingWebServers = snapshot.pendingWebServers, pendingFirewall = snapshot.pendingFirewall, pendingSmb = snapshot.pendingSmb, pendingDockerControl = snapshot.pendingDockerControl, pendingDockerResources = snapshot.pendingDockerResources)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -134,12 +143,13 @@ internal class OperationsViewModel(application: Application) : AndroidViewModel(
 
     fun select(owner: SessionState.Active, item: ObservedOperation) {
         if (state.owner !== owner) return
+        val request = generation
         val key = item.reference.domain to item.reference.operationId
         state = state.copy(selectedKey = key, diagnostics = null, cancelRequested = false)
         if (item.check != OperationCheck.Verified || item.reference.domain in setOf(OperationDomain.Website, OperationDomain.Installation)) return
         viewModelScope.launch {
             val result = container.operationCenter.diagnostics(owner, item)
-            if (state.owner === owner && state.selectedKey == key && container.session.state.value === owner) {
+            if (current(owner, request) && state.selectedKey == key) {
                 state = state.copy(diagnostics = result)
             }
         }
@@ -196,9 +206,16 @@ fun OperationsScreen(
     onOpenWebServers: () -> Unit,
     onOpenCertificates: (String?) -> Unit,
     onOpenTunnels: () -> Unit,
+    onOpenProxy: (String?) -> Unit,
     onOpenCompose: (String) -> Unit,
     onOpenGitBuild: (String) -> Unit,
     onOpenScript: (String) -> Unit,
+    onOpenDocker: () -> Unit,
+    onOpenGuardian: () -> Unit,
+    onOpenDockerResources: () -> Unit,
+    onOpenDockerControl: () -> Unit,
+    onOpenSmb: () -> Unit,
+    onOpenFirewall: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: OperationsViewModel = viewModel()
@@ -209,6 +226,24 @@ fun OperationsScreen(
         (it.reference.domain to it.reference.operationId) == state.selectedKey
     } else null
     val hasAlerts = ServerCapabilities.EVENT_ALERTS in owner.capabilities
+    val openTarget: (OperationTarget) -> Unit = { target ->
+        when (target.destination) {
+            OperationDestination.Deployment -> onOpenDeployment(requireNotNull(target.id))
+            OperationDestination.Website -> onOpenWebsite(requireNotNull(target.id))
+            OperationDestination.Compose -> onOpenCompose(requireNotNull(target.id))
+            OperationDestination.GitBuild -> onOpenGitBuild(requireNotNull(target.id))
+            OperationDestination.Script -> onOpenScript(requireNotNull(target.id))
+            OperationDestination.WebServer -> onOpenWebServers()
+            OperationDestination.Certificate -> onOpenCertificates(target.id)
+            OperationDestination.Proxy -> onOpenProxy(target.id)
+            OperationDestination.Tunnels -> onOpenTunnels()
+            OperationDestination.DockerControl -> onOpenDockerControl()
+            OperationDestination.Docker -> onOpenDocker()
+            OperationDestination.Guardian -> onOpenGuardian()
+            OperationDestination.Smb -> onOpenSmb()
+            OperationDestination.Firewall -> onOpenFirewall()
+        }
+    }
     var tab by remember(owner) { mutableIntStateOf(if (startOnAlerts && hasAlerts) 1 else 0) }
     LaunchedEffect(startOnAlerts, hasAlerts) {
         if (startOnAlerts && hasAlerts) {
@@ -275,6 +310,33 @@ fun OperationsScreen(
                 pending.target ?: stringResource(R.string.certificates_new_target)))
             TextButton(onClick = { onOpenCertificates(pending.operationId) }) { Text(stringResource(R.string.certificates_recover)) }
         }
+        if (visible) state.pendingProxy.forEach {
+            Text(stringResource(R.string.mihomo_pending), color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = { onOpenProxy(null) }) { Text(stringResource(R.string.mihomo_title)) }
+        }
+        if (visible) state.pendingDockerResources.forEach {
+            Text(stringResource(R.string.docker_resources_pending), color = MaterialTheme.colorScheme.error)
+            Text(app.relaxkonos.mobile.ui.manage.docker.resourceActionLabel(it.action))
+            TextButton(onClick = onOpenDockerResources) { Text(stringResource(R.string.docker_resources_title)) }
+        }
+        if (visible) state.pendingDockerControl.forEach { pending ->
+            Text(stringResource(R.string.docker_control_pending), color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onOpenDockerControl) { Text(stringResource(R.string.docker_control_title)) }
+        }
+        if (visible) state.pendingSmb.forEach { pending ->
+            Text(stringResource(R.string.smb_pending), color = MaterialTheme.colorScheme.error)
+            pending.receiptId?.let { Text(stringResource(R.string.smb_receipt_id, it)) }
+            TextButton(onClick = onOpenSmb) { Text(stringResource(R.string.smb_title)) }
+        }
+        if (visible) state.pendingFirewall.forEach { pending ->
+            Text(stringResource(R.string.firewall_pending), color = MaterialTheme.colorScheme.error)
+            Text(app.relaxkonos.mobile.ui.manage.firewall.firewallChangeLabel(pending.kind))
+            TextButton(onClick = onOpenFirewall) { Text(stringResource(R.string.firewall_title)) }
+        }
+        if (visible) state.pendingWebServers.forEach { pending ->
+            Text(stringResource(R.string.nginx_pending, pending.target), color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onOpenWebServers) { Text(stringResource(R.string.nginx_title)) }
+        }
         if (visible) state.pendingTunnels.forEach { pending ->
             Text(stringResource(R.string.tunnels_pending, app.relaxkonos.mobile.ui.manage.tunnels.tunnelMutationLabel(pending.action), pending.target ?: "—"))
             TextButton(onClick = onOpenTunnels) { Text(stringResource(R.string.tunnels_inspect)) }
@@ -287,6 +349,9 @@ fun OperationsScreen(
             Text(stringResource(R.string.installation_pending,
                 installationServiceLabel(pending.service), installationKindLabel(pending.kind)),
                 color = MaterialTheme.colorScheme.error)
+            OperationDestinations.installation(owner, pending.service.name)?.let { target ->
+                TextButton(onClick = { openTarget(target) }) { Text(stringResource(R.string.operations_open_target)) }
+            }
         }
         if (visible) state.items.forEach { item ->
             ListRow(
@@ -302,6 +367,7 @@ fun OperationsScreen(
                     OperationDomain.Installation -> R.string.operations_installation
                     OperationDomain.WebServer -> R.string.nginx_title
                     OperationDomain.Certificate -> R.string.certificates_title
+                    OperationDomain.Proxy -> R.string.mihomo_title
                 }),
                 supporting = operationStatus(item),
                 selected = (item.reference.domain to item.reference.operationId) == state.selectedKey,
@@ -330,6 +396,12 @@ fun OperationsScreen(
                 selected.webServer.problemCode.takeIf(String::isNotBlank)?.let {
                     Text(app.relaxkonos.mobile.ui.manage.websites.nginxProblemLabel(it), color = MaterialTheme.colorScheme.error)
                 }
+            } else if (selected.proxy != null) {
+                Text(app.relaxkonos.mobile.ui.manage.proxy.proxyOperationLabel(selected.proxy.state))
+                Text(app.relaxkonos.mobile.ui.manage.proxy.proxyStageLabel(selected.proxy.stage))
+                selected.proxy.problemCode.takeIf(String::isNotBlank)?.let {
+                    Text(app.relaxkonos.mobile.ui.manage.proxy.proxyProblemLabel(it), color = MaterialTheme.colorScheme.error)
+                }
             } else {
                 selected.stage?.takeIf(String::isNotBlank)?.let { Text(stringResource(R.string.operations_stage, it)) }
                 selected.progress?.let { Text(stringResource(R.string.operations_progress, it)) }
@@ -342,19 +414,9 @@ fun OperationsScreen(
             if (selected.check == OperationCheck.Missing) {
                 Text(stringResource(R.string.operations_check_target), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (selected.reference.domain != OperationDomain.Installation) OutlinedButton(onClick = {
-                when (selected.reference.domain) {
-                    OperationDomain.Deployment -> onOpenDeployment(selected.reference.resourceId)
-                    OperationDomain.Website -> onOpenWebsite(selected.reference.resourceId)
-                    OperationDomain.Compose -> onOpenCompose(selected.reference.resourceId)
-                    OperationDomain.GitBuild -> onOpenGitBuild(selected.reference.operationId)
-                    OperationDomain.Script -> onOpenScript(selected.reference.operationId)
-                    OperationDomain.Backup -> onOpenDeployment(selected.reference.resourceId)
-                    OperationDomain.Installation -> Unit
-                    OperationDomain.WebServer -> onOpenWebServers()
-                    OperationDomain.Certificate -> onOpenCertificates(selected.reference.operationId)
-                }
-            }) { Text(stringResource(R.string.operations_open_target)) }
+            OperationDestinations.operation(owner, selected.reference)?.let { target ->
+                OutlinedButton(onClick = { openTarget(target) }) { Text(stringResource(R.string.operations_open_target)) }
+            }
             if (selected.cancellable && selected.check == OperationCheck.Verified) {
                 OutlinedButton(onClick = viewModel::requestCancel, enabled = !state.cancelling) {
                     Text(stringResource(R.string.operations_request_cancel))
@@ -377,7 +439,7 @@ fun OperationsScreen(
             if (exportFailed) Text(stringResource(R.string.operations_export_failed), color = MaterialTheme.colorScheme.error)
             if (exportSaved) Text(stringResource(R.string.operations_export_saved))
         }
-        } else if (hasAlerts) AlertPanel(owner, onOpenDeployment)
+        } else if (hasAlerts) AlertPanel(owner, openTarget)
     }
     if (recoverDialog) AlertDialog(
         onDismissRequest = { recoverDialog = false },

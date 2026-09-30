@@ -130,6 +130,8 @@ public sealed class ProxyConfigurationTransactionService(
                 var health = string.IsNullOrEmpty(reload) ? await engine.GetHealthAsync(cancellationToken) : null;
                 if (string.IsNullOrEmpty(reload) && health?.State == ProxyHealthState.Healthy)
                 {
+                    if (await profiles.SetActiveAsync(profileId, cancellationToken) is null)
+                        return ProxyProblemCodes.RecoveryRequired;
                     logger?.LogInformation("Proxy configuration activated. ProfileId={ProfileId} EngineId={EngineId} BackupCreated={BackupCreated}", profileId, engine.EngineId, File.Exists(backup));
                     return null;
                 }

@@ -77,7 +77,7 @@ public sealed class ProxySubscriptionService(
         if (record is null) return ProxyProblemCodes.SubscriptionInvalid;
         var problem = await configurations.ActivateStoredAsync(record.Subscription.ProfileId, cancellationToken);
         if (!string.IsNullOrEmpty(problem)) return problem;
-        return await profiles.SetActiveAsync(record.Subscription.ProfileId, cancellationToken) is null ? ProxyProblemCodes.SubscriptionInvalid : null;
+        return null;
     }
 
     public async Task<ProxySubscriptionContentDto?> GetContentAsync(Guid subscriptionId, CancellationToken cancellationToken)

@@ -29,13 +29,19 @@ data class ObservedOperation(
     val installation: InstallationOperation? = null,
     val webServer: app.relaxkonos.mobile.core.net.WebServerOperation? = null,
     val certificate: app.relaxkonos.mobile.core.net.CertificateOperation? = null,
+    val proxy: app.relaxkonos.mobile.core.net.ProxyOperation? = null,
 )
 
 data class OperationCenterSnapshot(val items: List<ObservedOperation>, val incomplete: Boolean,
     val pendingInstallations: List<PendingInstallationRequest> = emptyList(),
     val pendingSites: List<PendingSiteMutation> = emptyList(),
     val pendingCertificates: List<PendingCertificateRequest> = emptyList(),
-    val pendingTunnels: List<PendingTunnelMutation> = emptyList())
+    val pendingTunnels: List<PendingTunnelMutation> = emptyList(), val pendingProxy: List<PendingProxyRequest> = emptyList(),
+    val pendingWebServers: List<PendingWebServerRequest> = emptyList(),
+    val pendingFirewall: List<PendingFirewallChange> = emptyList(),
+    val pendingSmb: List<PendingSmbMutation> = emptyList(),
+    val pendingDockerControl: List<PendingDockerControl> = emptyList(),
+    val pendingDockerResources: List<PendingDockerResource> = emptyList())
 
 /** Reads each domain's own durable record. Discovery also recovers operations not yet in the local index. */
 class OperationCenter(
@@ -52,6 +58,11 @@ class OperationCenter(
     private val webSites: WebSiteRepository,
     private val certificates: CertificateRepository,
     private val tunnels: TunnelRepository,
+    private val proxy: ProxyRepository,
+    private val firewall: FirewallRepository,
+    private val smb: SmbRepository,
+    private val dockerControl: DockerControlRepository,
+    private val dockerResources: DockerResourceRepository,
 ) {
     suspend fun refresh(owner: SessionState.Active): OperationCenterSnapshot {
         verify(owner)
@@ -156,8 +167,16 @@ class OperationCenter(
             if (key !in discovered) discovered[key] = query(owner, reference)
         }
         verify(owner)
-        return OperationCenterSnapshot(discovered.values.sortedByDescending { it.reference.seenAtMillis }, incomplete, installations.pending(owner).filter { it.attempted }, webSites.pending(owner).filter { it.attempted }, certificates.pending(owner).filter { it.attempted },
-            if (ServerCapabilities.TUNNELS in owner.capabilities) tunnels.pending(owner) else emptyList())
+        return OperationCenterSnapshot(discovered.values.sortedByDescending { it.reference.seenAtMillis }, incomplete, installations.pending(owner).filter { it.attempted },
+            if (ServerCapabilities.WEB_SERVER in owner.capabilities) webSites.pending(owner).filter { it.attempted } else emptyList(),
+            if (ServerCapabilities.CERTIFICATES in owner.capabilities) certificates.pending(owner).filter { it.attempted } else emptyList(),
+            if (ServerCapabilities.TUNNELS in owner.capabilities) tunnels.pending(owner) else emptyList(),
+            if (ServerCapabilities.PROXY in owner.capabilities) proxy.pending(owner) else emptyList(),
+            if (ServerCapabilities.WEB_SERVER in owner.capabilities) webServers.pending(owner).filter { it.attempted } else emptyList(),
+            if (ServerCapabilities.FIREWALL in owner.capabilities) firewall.pending(owner) else emptyList(),
+            if (ServerCapabilities.FILE_SERVICES in owner.capabilities) smb.pending(owner) else emptyList(),
+            if (ServerCapabilities.DOCKER in owner.capabilities) dockerControl.pending(owner) else emptyList(),
+            if (ServerCapabilities.DOCKER in owner.capabilities) dockerResources.pending(owner) else emptyList())
     }
 
     suspend fun diagnostics(owner: SessionState.Active, item: ObservedOperation): ApiResult<List<String>> {
@@ -196,7 +215,9 @@ class OperationCenter(
 
     suspend fun cancel(owner: SessionState.Active, item: ObservedOperation): ApiResult<*> {
         verify(owner)
-        if (!item.cancellable) {
+        if (!item.cancellable || item.check != OperationCheck.Verified ||
+            item.reference.serviceId != owner.serviceId || item.reference.account != owner.userName ||
+            OperationDestinations.capability(item.reference.domain, item.reference.resourceId) !in owner.capabilities) {
             return ApiResult.Transport("Cancellation is unavailable for this operation.")
         }
         return when (item.reference.domain) {
@@ -220,8 +241,18 @@ class OperationCenter(
 
     fun hide(owner: SessionState.Active, item: ObservedOperation) = index.hide(owner, item.reference)
 
-    private suspend fun query(owner: SessionState.Active, reference: OperationReference): ObservedOperation =
-        when (reference.domain) {
+    private suspend fun query(owner: SessionState.Active, reference: OperationReference): ObservedOperation {
+        if (OperationDestinations.capability(reference.domain, reference.resourceId) !in owner.capabilities)
+            return unknown(reference, OperationCheck.Unavailable)
+        return when (reference.domain) {
+            OperationDomain.Proxy -> when (val result = proxy.operation(owner, reference.operationId)) {
+                is ApiResult.Success -> if (result.value.kind == reference.resourceId)
+                    verified(owner, OperationDomain.Proxy, result.value.kind, result.value.operationId, "Mihomo", result.value.state.wire,
+                        result.value.stage, null, result.value.problemCode.takeIf(String::isNotBlank), false).copy(proxy = result.value)
+                    else unknown(reference, OperationCheck.Missing)
+                is ApiResult.Problem -> unknown(reference, if (result.status == 404) OperationCheck.Missing else OperationCheck.Unavailable)
+                is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
+            }
             OperationDomain.Deployment -> when (val result = deployments.operation(owner, reference.operationId)) {
                 is ApiResult.Success -> if (result.value.applicationId == reference.resourceId)
                     fromDeployment(owner, result.value, reference.resourceId) else unknown(reference, OperationCheck.Missing)
@@ -280,6 +311,7 @@ class OperationCenter(
                 is ApiResult.Transport -> unknown(reference, OperationCheck.Unavailable)
             }
         }
+    }
 
     private fun fromCertificate(owner: SessionState.Active, operation: app.relaxkonos.mobile.core.net.CertificateOperation): ObservedOperation =
         verified(owner, OperationDomain.Certificate, requireNotNull(operation.certificateId), operation.operationId,

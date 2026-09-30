@@ -11,11 +11,11 @@ data class DockerNetwork(val id: String, val name: String, val driver: String, v
 data class DockerVolume(val name: String, val driver: String, val mountpoint: String)
 /** [usedBy] lists containers — running or stopped — that still reference the volume. The server
  * refuses to delete an in-use volume, so this is the impact shown before a deletion is attempted. */
-data class DockerVolumeDetails(val name: String, val driver: String, val mountpoint: String, val usedBy: List<String>)
+data class DockerVolumeDetails(val name: String, val driver: String, val mountpoint: String, val usedBy: List<String>, val labels: Map<String, String>)
 data class DockerStack(val name: String, val status: String, val configFiles: String, val configDirectory: String)
 data class DockerStackService(val service: String, val container: String, val image: String, val state: String, val status: String)
 data class DockerLogs(val lines: List<String>, val truncated: Boolean)
-data class DockerOperation(val success: Boolean, val problemCode: String, val messages: List<String>)
+data class DockerOperation(val success: Boolean, val problemCode: String, val logLines: List<String>, val logTruncated: Boolean)
 
 /** What the server's Compose parser resolved for a definition. Nothing has been applied. */
 data class DockerStackPreviewService(val service: String, val image: String, val ports: List<String>)
@@ -105,21 +105,22 @@ object DockerRoutes {
 
 internal object DockerWire {
     fun status(body: String): DockerStatus = JSONObject(body).let { json ->
-        DockerStatus(json.optBoolean("isAvailable"), json.optString("problemCode"), json.optString("serverVersion"),
-            json.optString("operatingSystem"), json.optString("architecture"))
+        DockerStatus(json.getBoolean("isAvailable"), json.getString("problemCode"), nullableStatus(json, "serverVersion"),
+            nullableStatus(json, "operatingSystem"), nullableStatus(json, "architecture"))
     }
-    fun containers(body: String) = array(body) { json -> DockerContainer(json.optString("id"), json.optString("names"), json.optString("image"), json.optString("state"), json.optString("status")) }
-    fun images(body: String) = array(body) { json -> DockerImage(json.optString("id"), json.optString("repository"), json.optString("tag"), json.optString("size"), json.optString("createdSince")) }
-    fun networks(body: String) = array(body) { json -> DockerNetwork(json.optString("id"), json.optString("name"), json.optString("driver"), json.optString("scope")) }
-    fun volumes(body: String) = array(body) { json -> DockerVolume(json.optString("name"), json.optString("driver"), json.optString("mountpoint")) }
-    fun volumeDetails(body: String) = JSONObject(body).let { json ->
-        DockerVolumeDetails(json.optString("name"), json.optString("driver"), json.optString("mountpoint"),
-            json.optJSONArray("usedBy").strings())
-    }
+    fun containers(body: String) = array(body) { json -> DockerContainer(json.getString("id"), json.getString("names"), json.getString("image"), json.getString("state"), json.getString("status")) }
+    fun images(body: String) = array(body) { json -> DockerImage(json.getString("id"), json.getString("repository"), json.getString("tag"), json.getString("size"), json.getString("createdSince")) }
+    fun networks(body: String) = array(body) { json -> DockerNetwork(json.getString("id"), json.getString("name"), json.getString("driver"), json.getString("scope")) }
+    fun volumes(body: String) = array(body) { json -> DockerVolume(json.getString("name"), json.getString("driver"), json.getString("mountpoint")) }
+    fun volumeDetails(body: String) = DockerResourceWire.volume(body)
     fun stacks(body: String) = array(body) { json -> DockerStack(json.optString("name"), json.optString("status"), json.optString("configFiles"), json.optString("configDirectory")) }
     fun services(body: String) = array(body) { json -> service(json) }
-    fun logs(body: String) = JSONObject(body).let { DockerLogs(it.optJSONArray("lines").strings(), it.optBoolean("truncated")) }
-    fun operation(body: String) = JSONObject(body).let { DockerOperation(it.optBoolean("success"), it.optString("problemCode"), it.optJSONArray("messages").strings()) }
+    fun logs(body: String) = JSONObject(body).let { DockerLogs(it.getJSONArray("lines").let { a -> require(a.length() <= 1000); List(a.length()) { a.getString(it) } }, it.getBoolean("truncated")) }
+    fun operation(body: String) = JSONObject(body).let {
+        require(it.has("logLines"))
+        DockerOperation(it.getBoolean("success"), it.getString("problemCode"), if (it.isNull("logLines")) emptyList() else it.getJSONArray("logLines").strings(), it.getBoolean("logTruncated"))
+    }
+    private fun nullableStatus(json: JSONObject, key: String): String { require(json.has(key)); return if (json.isNull(key)) "" else json.getString(key) }
     fun preview(body: String): DockerStackPreview = JSONObject(body).let { json ->
         DockerStackPreview(
             json.optString("projectName"), json.optString("definitionVersion"),

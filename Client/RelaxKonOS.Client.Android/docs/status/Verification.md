@@ -173,10 +173,14 @@
 | BP04-M2 | 进行中 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 新增 12 个 Android 用例；真实 Nginx/SNI/信任及管理连接中断恢复待验证 |
 | BP05-M1 | 已准备 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 新增 21 个 Android 用例；真实 FRP 安装/连接、Windows Helper、手机/平板/IME 与断线恢复待验收 |
 | BP05-M2 | 已准备 | 通过：合并后 Debug APK/全量 JVM 与 .NET 构建；专项范围见 BP03-BP05-MERGE-V1 | 未执行 | 未执行 | 未执行 | 新增 18 个 Android 用例；真实 frps 网络、Windows Helper、秘密/会话/手机/平板/IME 待验收 |
-| BP06-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | Mihomo 安装/修复/升级/回滚、订阅/配置/节点与失败诊断 |
-| BP06-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 系统代理/TUN、能力门控、管理路径保护、紧急恢复、DNS/GeoData |
-| BP02-M2 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 受管 Mihomo 缺失/停止/运行与地址更新；Docker/下载真实代理行为 |
-| BP17-M1 | 未开始 | 未执行 | 未执行 | 未执行 | 未执行 | 新领域观察/取消/修复入口、离页/旋转/重连、三语与归属 |
+| BP06-M1 | 进行中 | 通过：Debug APK、94 类/669 个全量 JVM、Server 构建与配置激活/回滚专项 | 未执行 | 未执行 | 未执行 | 新增 wire/HTTP/Repository 9 例；真实 Mihomo 安装/修复/升级/回滚、订阅联网、设备与故障诊断待验收；证据 BP06-M1-V1 |
+| BP06-M2 | 进行中 | 通过：Debug APK 与全量 JVM；新增 7 例 | 未执行 | 未执行 | 未执行 | 完整 TUN/Windows 字段保留、有界日志、原键紧急恢复保留先前待核实提交、控制器事实门控与 HTTP TUN 提交通过；真实管理路径/设备/DNS/GeoData 待验收 |
+| BP02-M2 | 已准备并执行 3 例 | JVM/APK 及 Server 本地 HTTP 消费通过 | 未执行 | 未执行 | 未执行 | 受管缺失/停止/地址变更、四消费范围、真实 Docker/外网与设备待验收 |
+| BP09-M2 | 已执行 18 例 | JVM/APK 全量 754 例、Server 资源 HTTP/失败读取/日志及桌面编译通过 | 未执行 | 未执行 | 未执行 | 实际 Docker CRUD/引用/受管归属、stdout/stderr 日志、断线/并发、手机平板/IME/大字体 |
+| BP09-M1 | 已执行 17 例 | JVM/APK 全量 736 例、Server 引擎和镜像源 HTTP 专项通过 | 未执行 | 未执行 | 未执行 | Linux 安装/Helper 与全容器影响、Windows Desktop CLI、真实镜像源消费、断线/并发、手机平板/IME/大字体 |
+| BP08-M1 | 已执行 20 例 | JVM/APK 全量 719 例及 Server SMB 专项通过 | 未执行 | 未执行 | 未执行 | Samba 包/服务/凭据、共享访问、Windows ACL/安全/漂移、断线/并发、手机平板/IME/大字体 |
+| BP07-M1 | 已准备 11 例 | JVM/APK 11 例及 Server 只读专项通过 | 未执行 | 未执行 | 未执行 | UFW 实际启停/规则/授权、管理路径中断、并发编号、手机平板/IME/大字体 |
+| BP17-M1 | 已准备并执行 9 例 | JVM/APK 通过，原任务/归属/能力/告警专项通过 | 未执行 | 未执行 | 未执行 | 新领域观察/取消/修复入口、离页/旋转/重连、三语与归属 |
 
 用例准备列只追踪该 BP 新增测试代码和可执行场景，不把本文的场景概述当作已准备；自动化列分别注明编译/构建和测试结果；两者结论不同时写“部分通过”并列出范围。设备列细分手机/平板、IME/大字体和三语；宿主列细分版本/模式/服务能力与联网条件，宿主明确不支持的动作可写“不适用”并说明依据。新增证据按编号写日期、提交、命令/人工步骤、环境、结果和未覆盖项，再更新对应单元格；BP01-M1 的静态检查证据见下文，不代替 Android 执行结果。
 
@@ -340,3 +344,89 @@ dotnet RelaxKonOS.Server.Tests/bin/Debug/net10.0/RelaxKonOS.Server.Tests.dll --f
 
 - 站点并发/CAS 与严格契约、证书绑定/实时选择器事实/部署重放、创建重放、FRP applied-state/协议/TOML 安全检查通过。三语 XML 各 1554 个唯一字符串键、无重复且键集一致；`git diff --check` 通过。
 - 未执行整套 Server.Tests、Android lint/仪器测试/手机平板交互，也未执行真实 Nginx/ACME/FRP 网络、安装或 Windows Helper 验收。`--frps-only` 的 shell 夹具要求 Linux；frpc 生命周期夹具在 Windows 跳过，所以本轮未将其计为通过。原有 Linux 夹具历史证据继续保留。
+
+### BP06-M1-V1（2026-09-30，当前工作树）
+
+- Android：`JAVA_HOME=C:/Program Files/Android/openjdk/jdk-21.0.8`，`E:/environments/gradle-9.7.1-all/gradle-9.7.1/bin/gradle.bat :app:testDebugUnitTest :app:assembleDebug --offline --no-daemon -p Client/RelaxKonOS.Client.Android` 通过；94 类/669 JVM 用例零失败，新增 ProxyWireTest 4、ProxyHttpTest 1、ProxyRepositoryTest 4。生成 Debug APK，未部署设备。覆盖路由编码、严格当前格式、原键显式重试、接受 ID 后查询失败、秘密不落日志、会话/观察者隔离、损坏标记拒绝写入。
+- Server：`dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -v minimal` 通过；`dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -- --proxy-configuration-only` 通过，证明存储配置加载后才更新活动元数据、重载失败回滚且保留旧标记、随后激活成功。NU1900（离线漏洞数据不可用）及既有平台分析警告保留。
+- 原 `--proxy-geodata-only` 在执行代理检查前因既有 CertificateBindingChecks 临时目录缺失失败，未算代理专项通过。新增独立配置专项入口；首次清理遇到 Windows SQLite 连接池文件占用，入口已在删除前清空连接池，最终命令通过。
+- 三语 XML 有效、无重复键、键集一致与 `git diff --check` 通过。`python Tools/Mobile/sync-desktop-icons.py --check` 因此 Python 缺 Pillow 未执行；没有修改图标资产。
+- 未执行：设备/模拟器交互、IME/大字体/三语视觉、真实 Ubuntu/Windows Mihomo 安装与 Helper、SAF/取消竞争/重启恢复、真实订阅/Docker 网络、lint 和仪器测试。成功构建不替代这些验收。
+
+### BP06-M2-V1（2026-09-30，当前工作树）
+
+- 使用 BP06-M1-V1 的同一 Gradle 命令，`:app:testDebugUnitTest :app:assembleDebug --offline --no-daemon` 通过。新增 ProxyDiagnosticsWireTest 4、ProxyHttpTest 增加 1、ProxyRepositoryTest 增加 2，共 7 例；证明修改一个设置字段保留完整 TUN/Windows 嵌套选项、恢复标记保持、负计数/超限日志拒绝、TUN HTTP 请求正确、紧急恢复不依赖概览且保留先前未知写入、选择变更须控制器事实后清除标记。
+- 设备和真实 Linux/Windows TUN/系统代理、断线管理路径保护、紧急恢复、GeoData 文件与 DNS 实际行为未执行；已有 Server 网络安全专项不自动替代本次真实宿主验收。
+
+### BP02-M2-V1（2026-09-30，当前工作树）
+
+- Android 全量 JVM/APK 通过，新增 OutboundProxyEditorTest 3 例：受管来源清除 URL/凭据并保留消费范围、未保存保护确认后到达请求的目标、观察者不修改设置。
+- `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp06-validation/ -v quiet` 通过；运行该目录 `RelaxKonOS.Server.Tests.dll --managed-outbound-proxy-only` 通过。使用本地 TCP 代理/源站真实 HTTP 请求，覆盖镜像标签及运行时下载、NO_PROXY、未选择范围直连、即时解析新监听地址、监听器停止后拒绝所选请求及不向源站直连。包含既有 Docker proxy 结构/凭据/引擎夹具；未执行真实 Docker Engine 或外网请求。
+- 首次夹具执行暴露既有 DataProtectionProvider 字符串重载将目录当应用名；改用 DirectoryInfo 保证测试密钥留在临时目录。Windows 未处理异常进程暂占默认测试产物，最终使用上述独立输出目录重建及执行，均退出码 0。没有更改生产密钥位置。
+- 真实 Ubuntu/Windows Docker 重启、Mihomo 安装/监听、外网下载和手机/平板跳转仍待验收。
+
+### BP17-M1-V1（2026-09-30，当前工作树）
+
+- 使用 BP06-M1-V1 的 Gradle 命令，JVM/APK 通过。新增 OperationDestinationsTest 4、OperationCenterTest 3、EventAlertRepositoryTest 2，共 9 例；覆盖首批已实现安装表单、缺失 capability/跨领域目标、原 Proxy ID 失联后核实、错误 kind/404、未伪造未知任务、固定告警目标及详情/确认响应归属。再次刷新清空旧诊断，异步诊断结果按观察代次隔离。
+- 手机/平板、离页/旋转/进程回收与真实修复入口未执行；后续领域交付继续同步 BP17。
+
+### BP07-M1-V1（2026-09-30，当前工作树）
+
+- Android 同一离线 Gradle 命令的全量 JVM/APK 通过。新增 FirewallWireTest 3、FirewallHttpTest 1、FirewallRepositoryTest 7，共 11 例；覆盖完整状态/配对地址族/编号、IP/CIDR/端口与命令文本校验、五类实际 HTTP 方法/路由/DELETE 密码正文、密码不反射/可变数组清零（含等待锁时取消）、未知请求无重放/显式采用、状态变化拒绝、精确授权和提权后再读、不可用平台及观察者/会话/损坏存储边界。首次编译因两处通用资源名不存在失败，已改为独立三语防火墙资源，随后完整命令通过。
+- `dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp06-validation/ -v quiet` 通过；该程序集 `--firewall-read-only` 通过，验证 Helper 拒绝不返回空集合、成功空集合、IPv4/IPv6 逻辑配对及非法字段不会调用 Helper。使用内存 transport，不执行宿主 UFW 命令。首次测试编译引用了错误的 Output 参数，已更新为当前 OutputBase64 并重建通过。
+- Server 及 Android 均未执行真实 UFW/Helper 写入、管理网络断线或多客户端并发。现有规则 API 没有原子 revision/CAS，提交前快照比较不能代替并发原子性。设备/模拟器、IME/大字体、三語视觉、lint/仪器测试未执行。
+
+### BP06–BP07-FINAL-V1（2026-09-30，当前工作树）
+
+- 最后一次密码等待取消保护后执行同一离线 Gradle 全量命令成功：101 个测试类、699 个用例，失败/错误/跳过均为 0；Debug APK 已生成。相对合并基线新增 39 例，覆盖 BP06-M1/M2、BP02-M2、BP17-M1 与 BP07-M1。
+- 三语 XML 各 1734 个唯一键，键集一致、Kotlin 资源引用有效；本轮功能/状态/计划文件的本地链接存在；`git diff --check` 通过。图标校验仍受缺 Pillow 限制，没有图标改动。
+- Server 配置激活/回滚、受管出站实际本地 HTTP 消费、防火墙失败读取/逻辑配对专项分别通过。未运行整套 Server.Tests、真实网络/安装/Helper 副作用、设备/模拟器、lint 或仪器测试；不将这些标为通过。
+
+### BP08-M1-V1
+
+- 2026-09-30，当前未提交工作树；Windows，本地 Gradle 9.7.1 / JDK 21.0.8。使用 BP06-M1-V1 的离线 Gradle 命令，全量 JVM/APK 通过：105 类、719 例，失败/错误/跳过均为 0。新增 SmbWireTest 4、SmbHttpTest 1、SmbDraftTest 4、SmbRepositoryTest 9，OperationCenterTest 和 OperationDestinationsTest 各增加 1，共 20 例。实际本地 HTTP 验证九种同步请求方法/编码/完整正文与无伪幂等键；覆盖权限/访客/root 暴露边界、精确提权后复核、未知写入不重放/显式采用、回执后失联、无凭据持久化、会话/观察者/损坏存储及密码等待取消清零。
+- 首次 Android 编译发现三处资源键拼写及 ListRow 位置参数错误，已修正；随后完整命令通过。仅有既有 TabRow 弃用警告；Debug APK 已生成，未部署设备。
+- Server 当前 C# DTO 使用 RelaxKonOSJsonOptions.Default 的实际序列化验证 camelCase；内存 Helper transport 验证 Linux/Windows 失败、缺少输出、无效 base64/JSON 不返回空集合，显式成功 [] 有效；Linux 创建共享读取失败时禁止 apply。包含现有文件服务 provider、验证器、锁、Windows ACL/ledger/drift、安全快照及安装 capability 检查。以下命令均退出码 0：
+
+```powershell
+dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp08-wire-validation/ -v quiet
+dotnet RelaxKonOS.Server.Tests/bin/bp08-wire-validation/RelaxKonOS.Server.Tests.dll --file-services-only
+```
+
+- 首次服务端 fixture 错误预期 PascalCase，已改为当前 camelCase 并重建验证通过；最终使用独立输出目录避开 Windows 未处理异常进程暂占旧 DLL。--file-services-only 分支提前到初始化后执行，避开无关证书临时目录夹具。NU1900 离线漏洞数据及既有平台分析警告保留。
+- 未执行真实 Samba 包安装、服务启停、TCP 445/第三方 SMB 文件传输、Samba 凭据后端、Windows SMB Server/ACL/安全基线/回滚、Helper 提权副作用、断线/多客户端并发、手机平板/IME/大字体/三语视觉、lint 或仪器测试。快照预读没有原子 revision/CAS；客户端检查不能替代宿主并发验收。
+
+- BP08 静态收尾检查通过：三语 XML 各 1807 个唯一键、键集一致、无重复；Kotlin 资源引用全部存在，当前文档本地链接有效，`git diff --check` 通过。复用既有文件服务图标，无资产修改；图标同步校验仍受 Python 缺 Pillow 限制。
+
+### BP09-M1-V1
+
+- 2026-09-30，当前未提交工作树；Windows，沿用本地 Gradle 9.7.1 / JDK 21.0.8 及 BP06-M1-V1 离线命令。全量 JVM/APK 通过：108 类、736 例，失败/错误/跳过均为 0。新增 DockerControlWireTest 4、DockerControlHttpTest 1、DockerControlRepositoryTest 10；InstallationRepositoryTest 和 OperationCenterTest 各增加 1，共 17 例。DockerWireTest 原 2 例改为当前 logLines/logTruncated，不继续读取 messages；原安装跳转用例同步支持 Docker 原生表单。
+- 实际本地 HTTP 验证三类 engine action 的 confirmed、镜像源 CRUD/默认选择 null/Bearer/无伪幂等键与当前 201/204；strict 状态/默认源/target/选择一致性及 URL 校验、未知写入无正文/不重放/显式采用、引擎 Stop 成功但不可达、成功后失联、错误镜像源响应、观察者/会话/损坏存储均通过。401 原请求明确拒绝后重试复核事实，事实变化时不发送第二次写入；Docker 安装精确 dockerInstall/docker 授权后复用原键、清零密码、拒绝 Upgrade。
+- Server 以下命令通过，0 错误，NU1900 离线漏洞数据及既有 CA1416 平台分析警告保留：
+
+```powershell
+dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp09-validation/ -v quiet
+dotnet RelaxKonOS.Server.Tests/bin/bp09-validation/RelaxKonOS.Server.Tests.dll --docker-control-only
+```
+
+- 引擎专项使用 recording host controller/daemon，验证固定 action、Stop/Restart 未确认零宿主派发、平台拒绝及操作后状态。DockerMirrorChecks 使用内存仓库、真实本地 Kestrel/HttpClient 和测试身份验证当前 REST、地址规范化、账户隔离、选择/更新/删除/default、Docker Hub resolver 和显式其他 registry 保留；不访问真实 registry、不修改实际 host Engine。新增早期专项入口不依赖无关证书夹具。
+- 未执行真实 Linux Docker 安装、Helper 授权/服务控制及对实际容器的中断影响、Windows Docker Desktop CLI、镜像源 TLS/实际拉取、外部并发/断网/进程回收、手机平板/三语视觉/IME/大字体、lint 或仪器测试。预读没有原子 revision/CAS；当前证据不支持宿主验收通过。该批证据只覆盖 BP09-M1，不替代后续 BP09-M2 的独立验证。
+
+- BP09-M1 静态收尾通过：三语 XML 各 1842 个唯一键、键集与格式占位符一致，Kotlin 资源引用全部有效；当前功能/计划/状态文档的本地链接存在；`git diff --check` 通过。复用既有 Docker 图标，无资产改动。
+
+### BP09-M2-V1
+
+- 2026-09-30，当前未提交工作树；Windows，沿用 Gradle 9.7.1 / JDK 21.0.8 离线命令。全量 JVM/APK 通过：112 类、754 例，失败/错误/跳过均为 0。新增 DockerResourceWireTest 3、DockerResourceHttpTest 1、DockerResourceRepositoryTest 12、DockerResourceDraftTest 1，OperationCenterTest 增加 1，共 18 例；Debug APK 已生成。
+- HTTP 使用本地 HttpServer/RelaxKonApi，验证创建/名称 PUT、容器 delete POST/force/confirmed、镜像 DELETE 正文/编码 sha256 ID、network/volume DELETE query 且无正文、完整标签/类型化资源参数、Bearer 和无伪任务键。用例覆盖所有权标签必读、详情/统计身份与十六进制前缀、资源/数值/标签校验、未知创建不保存正文/不重放/显式采纳、不可达 Engine 不清除资源未知记录、摘要未变但详情变化、受管资源/内置网络/停止容器卷引用保护、控制/资源/Compose 共用阻断、安装不可读阻断、成功后回读、失败/失联保留、401 后详情再查、观察者/会话/损坏存储、等待共享锁时取消及运维无伪任务。
+- Server 以下命令通过，0 错误；NU1900 离线漏洞数据和既有 CA1416 警告保留：
+
+```powershell
+dotnet build RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj --no-restore -p:UseAppHost=false -p:OutDir=E:/riderprojects/RelaxKon/RelaxKonOS/RelaxKonOS.Server.Tests/bin/bp09-resource-validation/ -v quiet
+dotnet RelaxKonOS.Server.Tests/bin/bp09-resource-validation/RelaxKonOS.Server.Tests.dll --docker-resources-only
+dotnet RelaxKonOS.Server.Tests/bin/bp09-resource-validation/RelaxKonOS.Server.Tests.dll --docker-control-only
+```
+
+- DockerResourceChecks 使用指定的必不存在 Docker CLI 路径、真实本地 Kestrel/HttpClient、测试身份及 host-mode fixture，不派发真实 Docker 命令。验证四种列表/统计失败返回 503、卷引用读取失败禁止删除、完整镜像 ID 通过校验并到达必失败 CLI、错误表格/所有权标签拒绝、实际 null 标签合法、网络 labels 当前序列化、容器 stdout/stderr 合并及尾部/512 字符截断。引擎/账户镜像源既有专项回归通过；未执行整套 Server.Tests。
+- 桌面共享 DTO 调用方编译通过：`dotnet build Client/RelaxKonOS.Client/RelaxKonOS.Client.csproj --no-restore -p:UseAppHost=false -p:UsedAvaloniaProducts= -m:1 -v quiet`，0 错误、5 个既有警告。最初正常编译被 Avalonia 外部遥测日志目录写入权限阻止；读取已有 BuildServices targets 后，使用该参数跳过遥测任务，未修改项目文件或安装依赖。
+- 三语 XML 各 1890 个唯一键，键集/占位符一致、Kotlin 字符串资源引用有效；当前文档本地链接存在，`git diff --check` 通过。无图标资产修改。
+- 未执行实际 Docker Engine 的创建/拉取/生命周期/强制操作、网络/卷数据及引用竞争、真实归属/镜像源/代理消费、进程回收/多客户端并发、手机平板/三语视觉/IME/大字体、lint 或仪器测试。快照复核没有服务端原子 CAS；当前记录不标记这些宿主/设备验收通过。

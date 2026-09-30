@@ -50,3 +50,7 @@ CI 的无 root/Linux Samba、无 LocalSystem/Windows Server 环境不执行真�
 可单独执行它和 SMB 契约验证：`dotnet run --project RelaxKonOS.Server.Tests/RelaxKonOS.Server.Tests.csproj -c Debug --no-build --no-restore /p:UsePrebuiltServerAssembly=true -- --file-services-only`。
 
 当前开发容器还禁止 Kestrel 绑定测试回环 socket，因此现有 `RelaxKonOS.Server.Tests` 的 HTTP settings smoke test 会在 socket bind 阶段失败；这不是 SMB 服务或协议测试结果。上面的 File Services 专用测试可正常编译和执行。该容器的 .NET SDK 10.0.400 还缺少 `Microsoft.NET.SDK.WorkloadAutoImportPropsLocator` / `Microsoft.NET.SDK.WorkloadManifestTargetsLocator` 的 SDK 目录；这会使 Avalonia Client 的 MSBuild 以零诊断失败，需在完整桌面 SDK 环境重新构建 Client。
+
+## 集合读取失败边界
+
+SMB 共享和 Samba 用户读取必须区分成功空集合与 Helper 失败/缺失输出/损坏 base64 或 JSON。后者返回稳定 problemCode 的 HTTP 503，不作为空集合；Linux 共享变更依赖读取现有受管配置，读取失败即停止，不能生成覆盖配置。自动化证据见 `SmbReadChecks` 和 `--file-services-only`。Android 当前流程由 [Android SMB 文件服务](../../../Client/RelaxKonOS.Client.Android/docs/features/Smb.md) 维护。

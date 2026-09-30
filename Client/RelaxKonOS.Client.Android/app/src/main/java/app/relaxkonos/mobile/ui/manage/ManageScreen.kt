@@ -212,6 +212,9 @@ fun ManageScreen(
     onOpenWebsites: () -> Unit,
     onOpenCertificates: () -> Unit,
     onOpenTunnels: () -> Unit,
+    onOpenProxy: () -> Unit,
+    onOpenSmb: () -> Unit,
+    onOpenFirewall: () -> Unit,
     onOpenGuardian: () -> Unit,
     onOpenScripts: () -> Unit,
     onOpenOperations: () -> Unit,
@@ -223,7 +226,7 @@ fun ManageScreen(
         if (container.capabilities.contains(ServerCapabilities.APPLICATION_DEPLOYMENTS) ||
             container.capabilities.contains(ServerCapabilities.WEB_SERVER) ||
             container.capabilities.contains(ServerCapabilities.EVENT_ALERTS) ||
-            container.capabilities.contains(ServerCapabilities.CERTIFICATES) || container.capabilities.contains(ServerCapabilities.TUNNELS)) {
+            container.capabilities.contains(ServerCapabilities.CERTIFICATES) || container.capabilities.contains(ServerCapabilities.TUNNELS) || container.capabilities.contains(ServerCapabilities.PROXY) || container.capabilities.contains(ServerCapabilities.FIREWALL)) {
             add(ManageDomain(R.string.operations_title, R.string.operations_subtitle,
                 DesktopIcons.notice, onOpenOperations))
         }
@@ -245,6 +248,15 @@ fun ManageScreen(
         }
         if (container.capabilities.contains(ServerCapabilities.TUNNELS)) {
             add(ManageDomain(R.string.tunnels_title, R.string.tunnels_subtitle, R.drawable.ic_app_tunnels, onOpenTunnels))
+        }
+        if (container.capabilities.contains(ServerCapabilities.FILE_SERVICES)) {
+            add(ManageDomain(R.string.smb_title, R.string.smb_intro, R.drawable.ic_app_file_services, onOpenSmb))
+        }
+        if (container.capabilities.contains(ServerCapabilities.FIREWALL)) {
+            add(ManageDomain(R.string.firewall_title, R.string.firewall_intro, R.drawable.ic_app_firewall, onOpenFirewall))
+        }
+        if (container.capabilities.contains(ServerCapabilities.PROXY)) {
+            add(ManageDomain(R.string.mihomo_title, R.string.mihomo_intro, R.drawable.ic_app_proxy, onOpenProxy))
         }
         if (container.capabilities.contains(ServerCapabilities.GUARDIAN)) {
             add(ManageDomain(R.string.guardian_title, R.string.guardian_subtitle, R.drawable.ic_app_processguardian, onOpenGuardian))

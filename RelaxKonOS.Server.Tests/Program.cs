@@ -44,6 +44,45 @@ if (args.Contains("--frpc-state-only"))
     return;
 }
 Batteries_V2.Init();
+if (args.Contains("--docker-resources-only"))
+{
+    await DockerResourceChecks.RunAsync();
+    return;
+}
+if (args.Contains("--docker-control-only"))
+{
+    await DockerChecks.VerifyDockerEngineControlAsync(Path.GetTempPath());
+    await DockerMirrorChecks.RunAsync();
+    return;
+}
+if (args.Contains("--file-services-only"))
+{
+    ServerCoreChecks.VerifySmbProtocolAndElevationContract();
+    await FileServiceChecks.RunAsync();
+    return;
+}
+if (args.Contains("--firewall-read-only"))
+{
+    await FirewallReadChecks.RunAsync();
+    return;
+}
+if (args.Contains("--managed-outbound-proxy-only"))
+{
+    var proxyRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-managed-outbound-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(proxyRoot);
+    try { await ManagedOutboundProxyChecks.RunAsync(proxyRoot); }
+    finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(proxyRoot, recursive: true); }
+    return;
+}
+if (args.Contains("--proxy-configuration-only"))
+{
+    var proxyRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-proxy-configuration-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(proxyRoot);
+    try { await ProxyConfigurationChecks.VerifyProxyConfigurationTransactionAsync(proxyRoot); }
+    finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(proxyRoot, recursive: true); }
+    Console.WriteLine("Proxy configuration activation and rollback checks passed.");
+    return;
+}
 if (args.Contains("--frps-only"))
 {
     var frpsRoot = Path.Combine(Path.GetTempPath(), $"relaxkonos-frps-{Guid.NewGuid():N}");
@@ -139,16 +178,9 @@ try
     if (args.Contains("--alias-only")) { await AliasLoginVerification.RunAsync(root); return; }
     var settingsOnly = args.Contains("--settings-only", StringComparer.Ordinal);
     var fileOperationsOnly = args.Contains("--file-operations-only", StringComparer.Ordinal);
-    var fileServicesOnly = args.Contains("--file-services-only", StringComparer.Ordinal);
     if (fileOperationsOnly)
     {
         await FileOperationChecks.RunAsync(root);
-        return;
-    }
-    if (fileServicesOnly)
-    {
-        ServerCoreChecks.VerifySmbProtocolAndElevationContract();
-        await FileServiceChecks.RunAsync();
         return;
     }
     // Static contract checks first: they need no loopback listener, so a Hub rename regression is

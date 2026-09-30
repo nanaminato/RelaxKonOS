@@ -5,6 +5,7 @@ public static class FileServiceChecks
 {
     public static async Task RunAsync()
     {
+        await SmbReadChecks.RunAsync();
         var replayTransport = new ReplayCheckingSmbTransport();
         var wireAdapter = new WindowsSmbPlatformAdapter(new PrivilegedSmbOperations(replayTransport));
         var publicOperation = Guid.NewGuid();

@@ -176,7 +176,7 @@ internal static async Task VerifyDockerProxyAsync(string root)
     await HostGlobalMigrationRunner.MigrateAsync($"Data Source={databasePath}", CancellationToken.None);
     var repository = new SqliteDockerProxySettingsRepository(new TestHostEnvironment(root),
         Options.Create(new StorageOptions { DatabasePath = databasePath }),
-        DataProtectionProvider.Create(Path.Combine(root, "docker-proxy-keys")));
+        DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "docker-proxy-keys"))));
     const string secret = "http://operator:s3cr3t@proxy.example:8080";
     await repository.SaveAsync(new DockerProxySetting
     {

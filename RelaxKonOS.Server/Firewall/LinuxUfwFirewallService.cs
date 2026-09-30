@@ -36,7 +36,7 @@ public sealed class LinuxUfwFirewallService : IHostFirewallService
     public async Task<IReadOnlyList<FirewallRuleDto>> ListRulesAsync(CancellationToken cancellationToken)
     {
         var result = await ReadRulesAsync(cancellationToken);
-        if (!result.Success) return [];
+        if (!result.Success) throw new FirewallRulesUnavailableException(result.ProblemCode);
 
         // UFW expands an any-to-any rule into adjacent IPv4 and IPv6 entries.
         // They remain one logical rule for mutation, while its address-family

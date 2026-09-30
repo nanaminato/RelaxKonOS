@@ -19,6 +19,14 @@ public sealed class OutboundProxyHttpClientFactory(IDockerProxyResolver resolver
     public async Task<HttpClient> CreateAsync(OutboundProxyTarget target, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         var resolution = await resolver.ResolveAsync(cancellationToken);
+        var requested = resolution.Enabled && (target switch
+        {
+            OutboundProxyTarget.ImageTags => resolution.ApplyToImageTags,
+            OutboundProxyTarget.RuntimeDownloads => resolution.ApplyToRuntimeDownloads,
+            _ => false,
+        });
+        if (requested && !resolution.IsUsable)
+            throw new HttpRequestException(resolution.ProblemCode);
         var enabled = target switch
         {
             OutboundProxyTarget.ImageTags => resolution.ImageTagsActive,

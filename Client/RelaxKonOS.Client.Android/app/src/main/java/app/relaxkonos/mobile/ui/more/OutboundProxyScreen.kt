@@ -49,6 +49,7 @@ internal class OutboundProxyEditor(
         private set
     private var activeJob: Job? = null
     private var closed = false
+    private var navigation: (() -> Unit)? = null
     fun close() {
         closed = true
         activeJob?.cancel()
@@ -56,12 +57,16 @@ internal class OutboundProxyEditor(
         draft = null
         review = null
         message = null
+        navigation = null
     }
     val dirty: Boolean get() = draft != null && draft != status?.settings
-    val canSubmit: Boolean get() = status != null && draft != null && !busy && review == null
+    val canSubmit: Boolean get() = owner.privilegedOperations && status != null && draft != null && !busy && review == null
 
     fun change(transform: (OutboundProxySettings) -> OutboundProxySettings) {
-        if (!busy && review == null) draft = draft?.let(transform)
+        if (canSubmit) draft = draft?.let(transform)
+    }
+    fun selectManaged() {
+        if (ServerCapabilities.PROXY in owner.capabilities) change { it.copy(source = OutboundProxySource.ManagedProxy, httpProxy = "", httpsProxy = "") }
     }
     fun refresh() {
         if (busy) return
@@ -70,16 +75,18 @@ internal class OutboundProxyEditor(
     fun load() = call(false) { repository.proxyStatus(owner) }
     fun save() { if (canSubmit) review = ProxyReview.Save(requireNotNull(draft)) }
     fun clear() { if (canSubmit) review = ProxyReview.Clear }
-    fun leave(onBack: () -> Unit) { if (!busy) { if (dirty) review = ProxyReview.Leave else onBack() } }
-    fun dismiss() { review = null }
+    fun leave(onBack: () -> Unit) { if (!busy) { if (dirty) { navigation = onBack; review = ProxyReview.Leave } else onBack() } }
+    fun dismiss() { review = null; navigation = null }
     fun confirm(onBack: (() -> Unit)?) {
+        if (closed || busy || !isCurrentOwner()) return
         val pending = review ?: return
+        val target = navigation; navigation = null
         review = null
         when (pending) {
             is ProxyReview.Save -> call(true) { repository.saveProxy(owner, pending.settings, confirmed = true) }
             ProxyReview.Clear -> call(true) { repository.clearProxy(owner) }
             ProxyReview.Refresh -> load()
-            ProxyReview.Leave -> onBack?.invoke()
+            ProxyReview.Leave -> (target ?: onBack)?.invoke()
         }
     }
     private fun call(write: Boolean, action: suspend () -> ApiResult<OutboundProxyStatus>) {
@@ -127,7 +134,7 @@ private class ProxyOwnerKey(private val owner: SessionState.Active?) {
 }
 
 @Composable
-fun OutboundProxyScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+fun OutboundProxyScreen(onBack: (() -> Unit)?, onOpenManagedProxy: (() -> Unit)?, modifier: Modifier = Modifier) {
     val container = appContainer()
     val owner = container.activeSession
     val available = owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
@@ -155,7 +162,7 @@ fun OutboundProxyScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
         val status = editor.status
         val draft = editor.draft
         if (draft != null) {
-            val editable = status != null && !editor.busy && editor.review == null
+            val editable = editor.canSubmit
             SectionCard(stringResource(R.string.proxy_preference)) {
                 ProxyToggle(R.string.proxy_enabled, draft.enabled, editable) { value -> editor.change { it.copy(enabled = value) } }
                 if (draft.source == OutboundProxySource.ManagedProxy) {
@@ -164,7 +171,17 @@ fun OutboundProxyScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
                     TextButton(onClick = { editor.change { it.copy(source = OutboundProxySource.Custom, httpProxy = "", httpsProxy = "") } }, enabled = editable) {
                         Text(stringResource(R.string.proxy_use_custom))
                     }
-                } else Text(stringResource(R.string.proxy_custom_source))
+                } else {
+                    Text(stringResource(R.string.proxy_custom_source))
+                    if (ServerCapabilities.PROXY in owner.capabilities) TextButton(onClick = editor::selectManaged, enabled = editable) { Text(stringResource(R.string.proxy_use_managed)) }
+                }
+                if (ServerCapabilities.PROXY in owner.capabilities && onOpenManagedProxy != null) {
+                    TextButton(enabled = !editor.busy, onClick = { editor.leave(onOpenManagedProxy) }) { Text(stringResource(R.string.proxy_manage_mihomo)) }
+                    Text(stringResource(R.string.proxy_managed_note), style = MaterialTheme.typography.bodySmall)
+                }
+                if (draft.source == OutboundProxySource.ManagedProxy && status != null) {
+                    KeyValueRow(stringResource(R.string.proxy_managed_endpoint), status.managedProxyEndpoint.ifEmpty { stringResource(R.string.proxy_empty) })
+                }
                 ProxyToggle(R.string.proxy_show_urls, showUrls, !editor.busy) { showUrls = it }
                 val custom = editable && draft.source == OutboundProxySource.Custom
                 ProxyUrlField(R.string.proxy_http, draft.httpProxy, custom, showUrls) { value -> editor.change { it.copy(httpProxy = value) } }

@@ -26,6 +26,46 @@ class RelaxKonApi(
     private val clientVersion: String,
     private val deviceName: String = defaultDeviceName(),
 ) : RelaxKonGateway {
+    override suspend fun smbStatus(serverUrl: String, accessToken: String): ApiResult<SmbStatus> = webPublishingRead(serverUrl, accessToken, SmbRoutes.ROOT + "/status", SmbWire::status)
+    override suspend fun smbCapabilities(serverUrl: String, accessToken: String): ApiResult<SmbCapabilities> = webPublishingRead(serverUrl, accessToken, SmbRoutes.ROOT + "/capabilities", SmbWire::capabilities)
+    override suspend fun smbShares(serverUrl: String, accessToken: String): ApiResult<List<SmbShare>> = webPublishingRead(serverUrl, accessToken, SmbRoutes.ROOT + "/shares", SmbWire::shares)
+    override suspend fun smbUsers(serverUrl: String, accessToken: String): ApiResult<List<SmbUser>> = webPublishingRead(serverUrl, accessToken, SmbRoutes.ROOT + "/users", SmbWire::users)
+    override suspend fun smbConnection(serverUrl: String, accessToken: String): ApiResult<SmbConnection> = webPublishingRead(serverUrl, accessToken, SmbRoutes.ROOT + "/connection", SmbWire::connection)
+    override suspend fun smbChange(serverUrl: String, accessToken: String, change: SmbChange, password: CharArray?): ApiResult<SmbReceipt> =
+        webPublishingCall(SmbRoutes.method(change.kind), serverUrl, SmbRoutes.route(change), accessToken,
+            if (change.kind == SmbChangeKind.Password) JsonBody().secret("password", requireNotNull(password)) else change.share?.body(), SmbWire::receipt)
+    override suspend fun firewallStatus(serverUrl: String, accessToken: String): ApiResult<FirewallStatus> = webPublishingRead(serverUrl, accessToken, FirewallRoutes.ROOT + "/status", FirewallWire::status)
+    override suspend fun firewallRules(serverUrl: String, accessToken: String): ApiResult<List<FirewallRule>> = webPublishingRead(serverUrl, accessToken, FirewallRoutes.ROOT + "/rules", FirewallWire::rules)
+    override suspend fun changeFirewall(serverUrl: String, accessToken: String, change: FirewallChange, password: CharArray?): ApiResult<FirewallResult> =
+        webPublishingCall(FirewallRoutes.method(change.kind), serverUrl, FirewallRoutes.route(change), accessToken, change.body(password), FirewallWire::result)
+    override suspend fun proxySettings(serverUrl: String, accessToken: String): ApiResult<ProxySettings> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/settings", ProxyDiagnosticsWire::settings)
+    override suspend fun proxyRecovery(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/recovery", ProxyDiagnosticsWire::recovery)
+    override suspend fun proxyTun(serverUrl: String, accessToken: String): ApiResult<ProxyRecovery> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/tun", ProxyDiagnosticsWire::recovery)
+    override suspend fun proxyTraffic(serverUrl: String, accessToken: String): ApiResult<ProxyTraffic> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/traffic", ProxyDiagnosticsWire::traffic)
+    override suspend fun proxyConnections(serverUrl: String, accessToken: String): ApiResult<List<ProxyConnection>> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/connections", ProxyDiagnosticsWire::connections)
+    override suspend fun proxyLogs(serverUrl: String, accessToken: String): ApiResult<List<ProxyLog>> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/logs?limit=100", ProxyDiagnosticsWire::logs)
+    override suspend fun proxyDns(serverUrl: String, accessToken: String): ApiResult<ProxyDns> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/dns", ProxyDiagnosticsWire::dns)
+    override suspend fun proxyGeoData(serverUrl: String, accessToken: String): ApiResult<ProxyGeoData> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/geodata", ProxyDiagnosticsWire::geoData)
+    override suspend fun saveProxySettings(serverUrl: String, accessToken: String, settings: ProxySettings): ApiResult<Unit> = tunnelEmpty("PUT", serverUrl, accessToken, ProxyRoutes.ROOT + "/settings", settings.body())
+    override suspend fun configureProxyGeoData(serverUrl: String, accessToken: String, path: String): ApiResult<Unit> = tunnelEmpty("PUT", serverUrl, accessToken, ProxyRoutes.ROOT + "/geodata", JsonBody().string("filePath", path))
+    override suspend fun closeProxyConnection(serverUrl: String, accessToken: String, id: String): ApiResult<Unit> = tunnelEmpty("DELETE", serverUrl, accessToken, ProxyRoutes.ROOT + "/connections/" + ProxyRoutes.segment(id))
+    override suspend fun proxyOverview(serverUrl: String, accessToken: String): ApiResult<ProxyOverview> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT, ProxyWire::overview)
+    override suspend fun proxyProfiles(serverUrl: String, accessToken: String): ApiResult<List<ProxyProfile>> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.PROFILES, ProxyWire::profiles)
+    override suspend fun proxySubscriptions(serverUrl: String, accessToken: String): ApiResult<List<ProxySubscription>> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.SUBSCRIPTIONS, ProxyWire::subscriptions)
+    override suspend fun proxyGroups(serverUrl: String, accessToken: String): ApiResult<List<ProxyGroup>> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.GROUPS, ProxyWire::groups)
+    override suspend fun proxyRouting(serverUrl: String, accessToken: String): ApiResult<ProxyRoutingMode> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROUTING, ProxyWire::routing)
+    override suspend fun proxyDownloadOptions(serverUrl: String, accessToken: String): ApiResult<Boolean> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.SUBSCRIPTIONS + "/download-options", ProxyWire::downloadOptions)
+    override suspend fun proxyOperation(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyOperation> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.operation(id), ProxyWire::operation)
+    override suspend fun proxyDownload(serverUrl: String, accessToken: String, version: String): ApiResult<ProxyDownload> = webPublishingRead(serverUrl, accessToken, ProxyRoutes.ROOT + "/runtime/download?version=" + ProxyRoutes.segment(version), ProxyWire::download)
+    override suspend fun proxyQueue(serverUrl: String, accessToken: String, action: ProxyAction, target: String?, key: String): ApiResult<String> = deploymentMutation("POST", serverUrl, ProxyRoutes.action(action, target), accessToken, if (action == ProxyAction.EnableTun) JsonBody().string("profileId", InstallationRoutes.canonicalId(requireNotNull(target))) else JsonBody(), key, ProxyWire::accepted)
+    override suspend fun saveProxyProfile(serverUrl: String, accessToken: String, id: String?, request: ProxyProfileRequest): ApiResult<ProxyProfile> = webPublishingCall(if (id == null) "POST" else "PUT", serverUrl, id?.let(ProxyRoutes::profile) ?: ProxyRoutes.PROFILES, accessToken, request.body(), ProxyWire::profile)
+    override suspend fun activateProxyProfile(serverUrl: String, accessToken: String, id: String): ApiResult<ProxyProfile> = webPublishingCall("POST", serverUrl, ProxyRoutes.profile(id) + "/activate", accessToken, JsonBody(), ProxyWire::profile)
+    override suspend fun deleteProxyProfile(serverUrl: String, accessToken: String, id: String): ApiResult<Unit> = tunnelEmpty("DELETE", serverUrl, accessToken, ProxyRoutes.profile(id))
+    override suspend fun applyProxyConfiguration(serverUrl: String, accessToken: String, id: String, yaml: String): ApiResult<Unit> = tunnelEmpty("POST", serverUrl, accessToken, ProxyRoutes.profile(id) + "/configuration/apply", JsonBody().string("yaml", yaml))
+    override suspend fun importProxySubscription(serverUrl: String, accessToken: String, request: ProxyImportRequest): ApiResult<ProxySubscription> = webPublishingCall("POST", serverUrl, ProxyRoutes.SUBSCRIPTIONS, accessToken, request.body(), ProxyWire::subscription)
+    override suspend fun selectProxyNode(serverUrl: String, accessToken: String, group: String, proxy: String): ApiResult<Unit> = tunnelEmpty("PUT", serverUrl, accessToken, ProxyRoutes.selection(group), JsonBody().string("proxy", proxy))
+    override suspend fun setProxyRouting(serverUrl: String, accessToken: String, mode: ProxyRoutingMode): ApiResult<Unit> = tunnelEmpty("PUT", serverUrl, accessToken, ProxyRoutes.ROUTING, JsonBody().string("mode", mode.wire))
+    override suspend fun testProxyDelay(serverUrl: String, accessToken: String, group: String, proxy: String, url: String, timeout: Int): ApiResult<ProxyDelay> = webPublishingCall("POST", serverUrl, ProxyRoutes.delay(group, proxy), accessToken, JsonBody().string("url", url).raw("timeoutMilliseconds", timeout.toString()), ProxyWire::delay)
     override suspend fun createDefinitionBackup(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest> =
         backupMutation(serverUrl, BackupRecoveryRoutes.definitionBackup(applicationId), accessToken, idempotencyKey, BackupRecoveryWire::manifest)
     override suspend fun definitionBackupRequest(serverUrl: String, accessToken: String, applicationId: String, idempotencyKey: String): ApiResult<BackupManifest?> =
@@ -396,6 +436,28 @@ class RelaxKonApi(
             is ApiResult.Transport -> result
         }
 
+    override suspend fun dockerContainerDetails(serverUrl: String, accessToken: String, id: String): ApiResult<DockerContainerDetails> =
+        webPublishingRead(serverUrl, accessToken, DockerResourceRoutes.resource(DockerResourceKind.Containers, id), DockerResourceWire::container)
+    override suspend fun dockerContainerStats(serverUrl: String, accessToken: String, id: String): ApiResult<DockerContainerStats> =
+        webPublishingRead(serverUrl, accessToken, DockerResourceRoutes.stats(id), DockerResourceWire::stats)
+    override suspend fun dockerNetworkDetails(serverUrl: String, accessToken: String, id: String): ApiResult<DockerNetworkDetails> =
+        webPublishingRead(serverUrl, accessToken, DockerResourceRoutes.resource(DockerResourceKind.Networks, id), DockerResourceWire::network)
+    override suspend fun dockerResourceChange(serverUrl: String, accessToken: String, change: DockerResourceChange): ApiResult<DockerOperation> =
+        webPublishingCall(DockerResourceRoutes.method(change.action), serverUrl, DockerResourceRoutes.route(change), accessToken, DockerResourceRoutes.body(change), DockerWire::operation)
+    override suspend fun dockerEngineAction(serverUrl: String, accessToken: String, action: DockerEngineAction, confirmed: Boolean): ApiResult<DockerEngineResult> =
+        webPublishingCall("POST", serverUrl, DockerControlRoutes.engine(action), accessToken, JsonBody().bool("confirmed", confirmed), DockerControlWire::engine)
+    override suspend fun dockerMirrors(serverUrl: String, accessToken: String): ApiResult<List<DockerImageMirror>> =
+        webPublishingRead(serverUrl, accessToken, DockerControlRoutes.MIRRORS, DockerControlWire::mirrors)
+    override suspend fun dockerCreateMirror(serverUrl: String, accessToken: String, request: DockerMirrorRequest): ApiResult<DockerImageMirror> =
+        webPublishingCall("POST", serverUrl, DockerControlRoutes.MIRRORS, accessToken, request.body(), DockerControlWire::mirror)
+    override suspend fun dockerUpdateMirror(serverUrl: String, accessToken: String, id: String, request: DockerMirrorRequest): ApiResult<DockerImageMirror> =
+        webPublishingCall("PUT", serverUrl, DockerControlRoutes.mirror(id), accessToken, request.body(), DockerControlWire::mirror)
+    override suspend fun dockerDeleteMirror(serverUrl: String, accessToken: String, id: String): ApiResult<Unit> =
+        tunnelEmpty("DELETE", serverUrl, accessToken, DockerControlRoutes.mirror(id))
+    override suspend fun dockerSelectMirror(serverUrl: String, accessToken: String, id: String?): ApiResult<Unit> =
+        tunnelEmpty("PUT", serverUrl, accessToken, DockerControlRoutes.MIRRORS + "/selection", JsonBody().apply {
+            if (id == null) raw("mirrorId", "null") else string("mirrorId", InstallationRoutes.canonicalId(id))
+        })
     override suspend fun dockerStatus(serverUrl: String, accessToken: String): ApiResult<DockerStatus> =
         dockerRead(serverUrl, accessToken, DockerRoutes.STATUS, DockerWire::status)
 
@@ -414,20 +476,6 @@ class RelaxKonApi(
     override suspend fun dockerVolumeDetails(serverUrl: String, accessToken: String, name: String): ApiResult<DockerVolumeDetails> =
         dockerRead(serverUrl, accessToken, DockerRoutes.volumeDetails(name), DockerWire::volumeDetails)
 
-    /**
-     * Releases a volume's data. Deleting a volume is destructive and irreversible, so the reference
-     * check happens on the server: a volume a container still holds is refused with
-     * `docker.volume_in_use` rather than being detached.
-     */
-    override suspend fun dockerDeleteVolume(serverUrl: String, accessToken: String, name: String, confirmed: Boolean): ApiResult<DockerOperation> =
-        // The confirmation travels as a query parameter, so there is no request body to send.
-        when (val result = execute("DELETE", serverUrl, DockerRoutes.volumeDelete(name, confirmed), accessToken, null)) {
-            is ApiResult.Success -> runCatching { DockerWire.operation(result.value) }
-                .fold({ ApiResult.Success(it) }, { ApiResult.Transport("Malformed Docker operation response.") })
-            is ApiResult.Problem -> result
-            is ApiResult.Transport -> result
-        }
-
     override suspend fun dockerStacks(serverUrl: String, accessToken: String): ApiResult<List<DockerStack>> =
         dockerRead(serverUrl, accessToken, DockerRoutes.STACKS, DockerWire::stacks)
 
@@ -436,10 +484,6 @@ class RelaxKonApi(
 
     override suspend fun dockerContainerLogs(serverUrl: String, accessToken: String, id: String, tail: Int): ApiResult<DockerLogs> =
         dockerRead(serverUrl, accessToken, DockerRoutes.containerLogs(id, tail.coerceIn(1, 500)), DockerWire::logs)
-
-    override suspend fun dockerContainerAction(serverUrl: String, accessToken: String, id: String, action: String, confirmed: Boolean): ApiResult<DockerOperation> =
-        dockerMutation("POST", serverUrl, DockerRoutes.containerAction(id, action), accessToken,
-            JsonBody().bool("confirmed", confirmed).bool("force", false))
 
     override suspend fun dockerStackAction(serverUrl: String, accessToken: String, name: String, action: String, confirmed: Boolean, idempotencyKey: String): ApiResult<DockerStackOperation> =
         dockerStackMutation("POST", serverUrl, DockerRoutes.stackAction(name, action), accessToken,

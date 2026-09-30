@@ -136,10 +136,11 @@ public static class ProxyEndpoints
             var deleted = await profiles.DeleteAsync(profileId, ct); await audit.RecordAsync(Actor(context.User), "profile.delete", deleted ? "succeeded" : "failed", deleted ? null : ProxyProblemCodes.ConfigApplyFailed, ct);
             return deleted ? Results.NoContent() : Results.Conflict();
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
-        app.MapPost(Route(ProxyApiRoutes.ProfileActivatePattern), async (Guid profileId, IProxyProfileRepository profiles, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
+        app.MapPost(Route(ProxyApiRoutes.ProfileActivatePattern), async (Guid profileId, IProxyProfileRepository profiles, IProxyConfigurationTransactionService configuration, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {
-            var profile = await profiles.SetActiveAsync(profileId, ct); await audit.RecordAsync(Actor(context.User), "profile.activate", profile is null ? "failed" : "succeeded", profile is null ? ProxyProblemCodes.ConfigInvalid : null, ct);
-            return profile is null ? Results.NotFound() : Results.Ok(profile);
+            var problem = await configuration.ActivateStoredAsync(profileId, ct);
+            await audit.RecordAsync(Actor(context.User), "profile.activate", string.IsNullOrEmpty(problem) ? "succeeded" : "failed", problem, ct);
+            return string.IsNullOrEmpty(problem) ? Results.Ok(await profiles.GetAsync(profileId, ct)) : Problem(problem, StatusCodes.Status400BadRequest);
         }).RequireAuthorization("ProxyManage").WithTags("Proxy");
         app.MapPost(Route(ProxyApiRoutes.ProfileConfigurationApplyPattern), async (Guid profileId, ApplyProxyConfigurationRequest request, IProxyConfigurationTransactionService configuration, ProxyAuditStore audit, HttpContext context, CancellationToken ct) =>
         {

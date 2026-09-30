@@ -49,20 +49,20 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
     }
 
     public async Task<IReadOnlyList<DockerContainerDto>> ListContainersAsync(CancellationToken cancellationToken = default)
-        => (await RunTableAsync(["ps", "-a", "--format", "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}"], cancellationToken))
-            .Select(row => new DockerContainerDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4))).ToArray();
+        => (await RunTableAsync(["ps", "-a", "--format", "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}"], cancellationToken, 5))
+            .Select(row => new DockerContainerDto(row[0], row[1], row[2], row[3], row[4])).ToArray();
 
     public async Task<IReadOnlyList<DockerImageDto>> ListImagesAsync(CancellationToken cancellationToken = default)
-        => (await RunTableAsync(["image", "ls", "--no-trunc", "--format", "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"], cancellationToken))
-            .Select(row => new DockerImageDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4))).ToArray();
+        => (await RunTableAsync(["image", "ls", "--no-trunc", "--format", "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"], cancellationToken, 5))
+            .Select(row => new DockerImageDto(row[0], row[1], row[2], row[3], row[4])).ToArray();
 
     public async Task<IReadOnlyList<DockerNetworkDto>> ListNetworksAsync(CancellationToken cancellationToken = default)
-        => (await RunTableAsync(["network", "ls", "--format", "{{.ID}}\t{{.Name}}\t{{.Driver}}\t{{.Scope}}"], cancellationToken))
-            .Select(row => new DockerNetworkDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3))).ToArray();
+        => (await RunTableAsync(["network", "ls", "--format", "{{.ID}}\t{{.Name}}\t{{.Driver}}\t{{.Scope}}"], cancellationToken, 4))
+            .Select(row => new DockerNetworkDto(row[0], row[1], row[2], row[3])).ToArray();
 
     public async Task<IReadOnlyList<DockerVolumeDto>> ListVolumesAsync(CancellationToken cancellationToken = default)
-        => (await RunTableAsync(["volume", "ls", "--format", "{{.Name}}\t{{.Driver}}\t{{.Mountpoint}}"], cancellationToken))
-            .Select(row => new DockerVolumeDto(Value(row, 0), Value(row, 1), Value(row, 2))).ToArray();
+        => (await RunTableAsync(["volume", "ls", "--format", "{{.Name}}\t{{.Driver}}\t{{.Mountpoint}}"], cancellationToken, 3))
+            .Select(row => new DockerVolumeDto(row[0], row[1], row[2])).ToArray();
 
     public async Task<DockerContainerDetailsDto?> GetContainerAsync(string id, CancellationToken cancellationToken = default)
     {
@@ -86,8 +86,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
                 ? networkMap.EnumerateObject().Select(network => network.Name).ToArray() : [];
             var environment = config.ValueKind == JsonValueKind.Object && config.TryGetProperty("Env", out var environmentValues) && environmentValues.ValueKind == JsonValueKind.Array
                 ? environmentValues.EnumerateArray().Select(value => value.GetString() ?? string.Empty).ToArray() : [];
-            var labels = config.ValueKind == JsonValueKind.Object && config.TryGetProperty("Labels", out var labelValues) && labelValues.ValueKind == JsonValueKind.Object
-                ? labelValues.EnumerateObject().ToDictionary(label => label.Name, label => label.Value.GetString() ?? string.Empty, StringComparer.Ordinal) : new Dictionary<string, string>(StringComparer.Ordinal);
+            var labels = ReadLabels(config);
             return new DockerContainerDetailsDto(
                 Read(root, "Id"), Read(root, "Name").TrimStart('/'), Read(config, "Image"), Read(root, "Created"),
                 Read(state, "Status"), Read(state, "Status"), Join(root, "Path", "Args"), Read(config, "WorkingDir"), Read(restart, "Name"),
@@ -120,7 +119,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
     public async Task<DockerOperationResult> DeleteImageAsync(string imageId, DockerImageOperationRequest request, CancellationToken cancellationToken = default)
     {
         if (!request.Confirmed) return new DockerOperationResult(false, "docker.confirmation_required");
-        if (!IsContainerId(imageId)) return new DockerOperationResult(false, "docker.validation_failed");
+        if (!IsImageId(imageId)) return new DockerOperationResult(false, "docker.validation_failed");
         return ToOperationResult(await RunAsync(["image", "rm", imageId], cancellationToken));
     }
 
@@ -178,9 +177,12 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         try
         {
             using var document = JsonDocument.Parse(result.Output); var root = document.RootElement;
-            var containers = root.TryGetProperty("Containers", out var containerMap) && containerMap.ValueKind == JsonValueKind.Object
-                ? containerMap.EnumerateObject().Select(property => property.Value.TryGetProperty("Name", out var name) ? name.GetString() ?? property.Name : property.Name).ToArray() : [];
-            return new DockerNetworkDetailsDto(Read(root, "Id"), Read(root, "Name"), Read(root, "Driver"), Read(root, "Scope"), containers);
+            if (!root.TryGetProperty("Containers", out var containerMap) || containerMap.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null))
+                throw new DockerReadException("docker.api_incompatible");
+            var containers = containerMap.ValueKind == JsonValueKind.Null ? Array.Empty<string>() : containerMap.EnumerateObject().Select(property =>
+                property.Value.TryGetProperty("Name", out var name) && name.ValueKind == JsonValueKind.String
+                    ? name.GetString()! : throw new DockerReadException("docker.api_incompatible")).ToArray();
+            return new DockerNetworkDetailsDto(Read(root, "Id"), Read(root, "Name"), Read(root, "Driver"), Read(root, "Scope"), containers, ReadLabels(root));
         }
         catch (JsonException) { return null; }
     }
@@ -193,8 +195,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         try
         {
             using var document = JsonDocument.Parse(result.Output); var root = document.RootElement;
-            var labels = root.TryGetProperty("Labels", out var labelMap) && labelMap.ValueKind == JsonValueKind.Object
-                ? labelMap.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.GetString() ?? string.Empty, StringComparer.Ordinal) : new Dictionary<string, string>();
+            var labels = ReadLabels(root);
             return new DockerVolumeDetailsDto(Read(root, "Name"), Read(root, "Driver"), Read(root, "Mountpoint"), labels,
                 await ReferencingContainersAsync(name, cancellationToken));
         }
@@ -208,9 +209,8 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
     private async Task<IReadOnlyList<string>> ReferencingContainersAsync(string name, CancellationToken cancellationToken)
     {
         var result = await RunAsync(["ps", "--all", "--filter", $"volume={name}", "--format", "{{.Names}}"], cancellationToken);
-        return result.Success
-            ? [.. result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]
-            : [];
+        if (!result.Success) throw new DockerReadException(ToProblemCode(result));
+        return [.. result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
     }
 
     public async Task<DockerOperationResult> CreateNetworkAsync(DockerNetworkCreateRequest request, CancellationToken cancellationToken = default)
@@ -254,16 +254,26 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         if (!IsContainerId(id) || tail is < 1 or > 1000) return null;
         var result = await RunAsync(["logs", "--timestamps", "--tail", tail.ToString(System.Globalization.CultureInfo.InvariantCulture), id], cancellationToken);
         if (!result.Success) return null;
-        var lines = result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return new DockerContainerLogsDto(lines, lines.Length == tail);
+        return ContainerLogs(result.Output, result.Error, tail);
+    }
+
+    internal static DockerContainerLogsDto ContainerLogs(string output, string error, int tail)
+    {
+        var lines = (output + "\n" + error).Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+        // docker logs --timestamps writes container stdout and stderr to separate CLI streams.
+        // Its UTC timestamp prefix orders the captured lines when every line has one.
+        if (lines.All(line => line.Length > 20 && char.IsAsciiDigit(line[0]) && line[4] == '-' && line[10] == 'T'))
+            lines = lines.OrderBy(line => line.Split(' ', 2)[0], StringComparer.Ordinal).ToArray();
+        var truncated = lines.Length >= tail || lines.Any(line => line.Length > MaximumLogLineLength);
+        return new DockerContainerLogsDto(lines.TakeLast(tail).Select(line => line.Length <= MaximumLogLineLength ? line : line[..MaximumLogLineLength]).ToArray(), truncated);
     }
 
     public async Task<DockerContainerStatsDto?> GetContainerStatsAsync(string id, CancellationToken cancellationToken = default)
     {
         if (!IsContainerId(id)) return null;
-        var rows = await RunTableAsync(["stats", "--no-stream", "--format", "{{.ID}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}", id], cancellationToken);
+        var rows = await RunTableAsync(["stats", "--no-stream", "--format", "{{.ID}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}", id], cancellationToken, 5);
         var row = rows.FirstOrDefault();
-        return row is null ? null : new DockerContainerStatsDto(Value(row, 0), Value(row, 1), Value(row, 2), Value(row, 3), Value(row, 4));
+        return row is null ? null : new DockerContainerStatsDto(row[0], row[1], row[2], row[3], row[4]);
     }
 
     public async Task<DockerOperationResult> BuildImageAsync(DockerBuildRequest request, bool includeBuildOutput = false, CancellationToken cancellationToken = default, Action<string>? onOutput = null)
@@ -332,12 +342,19 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         "json-file", "local", "journald", "syslog", "none"
     };
 
-    private async Task<IReadOnlyList<string[]>> RunTableAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string[]>> RunTableAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, int columns)
     {
         var result = await RunAsync(arguments, cancellationToken);
-        if (!result.Success) return Array.Empty<string[]>();
-        return result.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => line.Split('\t')).ToArray();
+        if (!result.Success) throw new DockerReadException(ToProblemCode(result));
+        return ParseTable(result.Output, columns);
+    }
+
+    internal static IReadOnlyList<string[]> ParseTable(string output, int columns)
+    {
+        var rows = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(line => line.Split('\t')).ToArray();
+        if (rows.Length > 10000 || rows.Any(row => row.Length != columns || string.IsNullOrWhiteSpace(row[0])))
+            throw new DockerReadException("docker.api_incompatible");
+        return rows;
     }
 
     private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken, CommandTimeout commandTimeout = CommandTimeout.Standard, Action<string>? onOutput = null, bool carriesBuildProxy = false)
@@ -346,7 +363,7 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
         logger.LogInformation("Docker command {DockerCommand} started.", commandName);
         try
         {
-            using var process = new Process { StartInfo = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
+            using var process = new Process { StartInfo = new ProcessStartInfo(options.ExecutablePath) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true } };
             // Only a build consumes the proxy, so the preference is read for a build command alone;
             // every other command keeps running with the environment it inherited.
             var proxy = carriesBuildProxy ? await proxyResolver.ResolveAsync(cancellationToken) : null;
@@ -425,9 +442,17 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
     private static string PortBindings(JsonElement bindings) => bindings.ValueKind == JsonValueKind.Array
         ? string.Join(", ", bindings.EnumerateArray().Select(binding => $"{Read(binding, "HostIp")}:{Read(binding, "HostPort")}"))
         : string.Empty;
-    private static string Value(IReadOnlyList<string> row, int index) => index < row.Count ? row[index] : string.Empty;
-    private static bool IsContainerId(string value) => value.Length is >= 3 and <= 128 && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.');
-    private static bool IsImageReference(string value) => value.Length is >= 1 and <= 255 && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or ':' or '.' or '_' or '-');
+    private static bool IsContainerId(string value) => value.Length is >= 3 and <= 128 && !value.StartsWith('-') && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.');
+    internal static bool IsImageId(string value) => IsContainerId(value) || value.StartsWith("sha256:", StringComparison.Ordinal)
+        && value.Length == 71 && value.AsSpan(7).IndexOfAnyExcept("0123456789abcdefABCDEF") < 0;
+    internal static IReadOnlyDictionary<string, string> ReadLabels(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("Labels", out var labels)
+            || labels.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null)) throw new DockerReadException("docker.api_incompatible");
+        return labels.ValueKind == JsonValueKind.Null ? new Dictionary<string, string>() : labels.EnumerateObject().ToDictionary(label => label.Name,
+            label => label.Value.ValueKind == JsonValueKind.String ? label.Value.GetString()! : throw new DockerReadException("docker.api_incompatible"), StringComparer.Ordinal);
+    }
+    private static bool IsImageReference(string value) => value.Length is >= 1 and <= 255 && !value.StartsWith('-') && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or ':' or '.' or '_' or '-');
     private static bool IsOptionValue(string value) => value.Length is >= 1 and <= 4096 && !value.Contains('\0') && !value.Any(char.IsControl);
     /// <summary>A label is a bounded <c>key=value</c> pair; it is never treated as shell text.</summary>
     private static bool IsLabel(string value) => value.Length is >= 3 and <= 256 && value.Contains('=')
@@ -466,6 +491,8 @@ public sealed class DockerCliEngineService(DockerCliEngineOptions options, IDock
 /// <summary>Host-admin approved source roots for Docker builds; an API caller cannot read arbitrary paths.</summary>
 public sealed record DockerCliEngineOptions
 {
+    /// <summary>Host-configured Docker CLI path. Never taken from an API request.</summary>
+    public string ExecutablePath { get; init; } = "docker";
     public IReadOnlyList<string> BuildRoots { get; init; } = [];
     /// <summary>Maximum duration for fast availability checks.</summary>
     public int StatusCommandTimeoutSeconds { get; init; } = 10;

@@ -41,6 +41,7 @@ Linux 部署脚本会安装 root:root 的统一 `RelaxKonOS.PrivilegedHelper`，
 - 不接受 shell 字符串。协议仅允许 `allow`/`deny`/`reject`/`limit`、`in`/`out`、`tcp`/`udp`/`any`、合法端口（或范围）和 IP/CIDR（或 `any`）。来源、目标和端口留空时按 `any` 处理，界面会给出格式示例。
 - 修改规则使用受限的 `replace` helper 子命令：先删除该编号，再以相同编号插入经过验证的新规则，从而保留其他规则的相对顺序；它不接受任意 UFW 参数。
 - UFW 原始 stderr、密码及规则以外的敏感信息不回显给客户端；日志只记录退出状态。
+- 编号规则读取失败返回 HTTP 503 与稳定 `problemCode`，不把 Helper 拒绝或不可用映射成成功的空规则集合。
 - 本版本不持久化配置副本；UFW 是唯一真源。刷新、断线重连后重新读取主机状态。
 
 ## 验收

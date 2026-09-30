@@ -34,6 +34,9 @@ public sealed class DockerProxyService(
 {
     public async Task<DockerProxyStatusDto> GetStatusAsync(CancellationToken cancellationToken = default)
     {
+        // An explicit host status read must observe a stopped listener or changed Mihomo port,
+        // even while download/build consumers still hold the short resolution cache.
+        resolver.Invalidate();
         var resolution = await resolver.ResolveAsync(cancellationToken);
         var saved = await ReadSavedAsync(cancellationToken);
         var engineState = await SafeReadEngineProxyAsync(cancellationToken);

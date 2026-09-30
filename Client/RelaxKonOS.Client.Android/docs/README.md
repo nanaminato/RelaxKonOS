@@ -19,10 +19,15 @@
 | [文件传输](features/FileTransfers.md) | 分块上传、源暂存、续传、前台通知与清理 |
 | [应用部署与模板](features/ApplicationDeployments.md) | 四来源七步向导、日志、版本/回滚、可信动态模板 |
 | [宿主出站代理](features/OutboundProxy.md) | 设置/Docker 共用宿主偏好、四消费范围、重启确认与状态核实 |
+| [Docker 引擎与镜像源](features/DockerEngine.md) | Linux 安装/原任务恢复、全宿主生命周期、账户镜像源 CRUD/选择与未知同步写入核实 |
+| [Docker 资源](features/DockerResources.md) | 容器详情/统计/完整创建/生命周期、镜像/网络/卷动作、归属保护及未知结果门禁 |
 | [Docker 与 Compose](features/DockerCompose.md) | 资源归属、导入/预览、持久操作、部分失败和卷保护 |
 | [Nginx 管理](features/Nginx.md) | Ubuntu APT/Windows 三种包来源、实例发现/接管、生命周期、卸载及 Web 操作恢复 |
 | [站点管理](features/WebSites.md) | 静态/SPA/反向代理、完整字段编辑、版本冲突与同步提交事实核实 |
 | [证书管理](features/Certificates.md) | 独立列表/详情、ACME/自签名、生命周期、站点证书选择、Kestrel 部署与原任务恢复 |
+| [Mihomo 代理管理器](features/Proxy.md) | 运行时安装/生命周期、配置/订阅、节点与任务/同步写入恢复 |
+| [SMB 文件服务](features/Smb.md) | Samba 安装/服务、受管共享与权限、Unix 凭据及未知同步写入核实 |
+| [宿主防火墙](features/Firewall.md) | UFW 状态/默认策略/规则、一次账号确认、提权后快照复核与未知结果核实 |
 | [FRP 隧道与运行时](features/Tunnels.md) | 受管/外部运行时、三来源安装与回滚、frpc 配置/Token/隧道、frps 配置/启停/审计及未知请求核实 |
 | [网站发布](features/WebPublishing.md) | 诊断、确认式 HTTPS、发布恢复和访问观测 |
 | [Git 编辑与构建](features/Git.md) | 受限文本编辑、固定 SHA、隔离构建与产物发布 |
@@ -35,7 +40,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [部署剩余工作](plans/Deployment.md) | 首次安装、模板更新、构建回收、数据恢复与后台通知的代码缺口 |
-| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；公共安装链路见功能说明；后续 Mihomo 及其他内置应用 |
+| [内置应用补齐](plans/BuiltInParity.md) | 桌面 25 个应用差异与 BP00–BP24；已实现流程见功能说明；后续 Git/编辑器等内置应用 |
 
 ## 开发与发布 `development/`
 

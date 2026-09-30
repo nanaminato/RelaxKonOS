@@ -211,21 +211,6 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun containerAction(item: DockerContainer, action: String) {
-        val owner = state.owner ?: return
-        if (state.busy) return
-        state = state.copy(busy = true, message = null)
-        viewModelScope.launch {
-            val result = container.docker.containerAction(owner, item.id, action, confirmed = action == "delete")
-            if (container.activeSession !== owner) return@launch
-            state = state.copy(busy = false, message = when (result) {
-                is ApiResult.Success -> if (result.value.success) UiMessage(R.string.docker_operation_complete, tone = StatusTone.Success) else UiMessage(R.string.docker_operation_failed)
-                else -> result.dockerFailure()
-            })
-            if (result is ApiResult.Success) refresh()
-        }
-    }
-
     fun loadLogs(id: String) {
         val owner = state.owner ?: return
         viewModelScope.launch {
@@ -246,26 +231,6 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
             if (state.volume?.first == name) state = state.copy(volume = null)
             else if (result is ApiResult.Success) state = state.copy(volume = name to result.value)
             else state = state.copy(message = result.dockerFailure())
-        }
-    }
-
-    /**
-     * Releases a volume's data. This is the one Docker action here that destroys something the server
-     * cannot recreate, so the reference list is dropped first and the server's own answer decides the
-     * wording: an in-use volume comes back as a refusal, not as a failure the caller has to guess at.
-     */
-    fun deleteVolume(name: String) {
-        val owner = state.owner ?: return
-        if (state.busy) return
-        state = state.copy(busy = true, message = null, volume = null)
-        viewModelScope.launch {
-            val result = container.docker.deleteVolume(owner, name, confirmed = true)
-            if (container.activeSession !== owner) return@launch
-            state = state.copy(busy = false, message = when (result) {
-                is ApiResult.Success -> if (result.value.success) UiMessage(R.string.docker_operation_complete, tone = StatusTone.Success) else UiMessage(R.string.docker_operation_failed)
-                else -> result.dockerFailure()
-            })
-            refresh()
         }
     }
 
@@ -334,15 +299,11 @@ class DockerViewModel(application: Application) : AndroidViewModel(application) 
 // the click handlers that raise it are not composable contexts.
 private sealed interface DockerRemoval {
     data class Stack(val name: String) : DockerRemoval
-    data class Container(val name: String) : DockerRemoval
-    data class Volume(val name: String) : DockerRemoval
 }
 
 @Composable
 private fun removalMessage(removal: DockerRemoval): String = when (removal) {
     is DockerRemoval.Stack -> stringResource(R.string.docker_confirm_remove_stack, removal.name)
-    is DockerRemoval.Container -> stringResource(R.string.docker_confirm_remove_container, removal.name)
-    is DockerRemoval.Volume -> stringResource(R.string.docker_confirm_remove_volume, removal.name)
 }
 
 /** The state word shown next to an operation, and the tone that goes with it. */
@@ -373,7 +334,7 @@ private fun operationKind(kind: DockerStackOperationKind): String = stringResour
 )
 
 @Composable
-fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null, onOpenProxy: () -> Unit) {
+fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialStackName: String? = null, onOpenResources: () -> Unit, onOpenControl: () -> Unit, onOpenProxy: () -> Unit) {
     val viewModel: DockerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val state = viewModel.state
     val available = state.owner?.capabilities?.contains(ServerCapabilities.DOCKER) == true
@@ -395,6 +356,8 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
         if (!available) { EmptyHint(stringResource(R.string.error_capability_missing)); return@Column }
         state.message?.let { message -> ErrorBanner(message.text(), viewModel::refresh, viewModel::dismissMessage, tone = message.tone) }
         if (state.loading || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        TextButton(onClick = onOpenResources) { Text(stringResource(R.string.docker_resources_title)) }
+        TextButton(onClick = onOpenControl) { Text(stringResource(R.string.docker_control_title)) }
         TextButton(onClick = onOpenProxy) { Text(stringResource(R.string.proxy_title)) }
         DockerStatusCard(state.status)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(Spacing.md), modifier = Modifier.weight(1f)) {
@@ -403,12 +366,9 @@ fun DockerScreen(onBack: (() -> Unit)?, modifier: Modifier = Modifier, initialSt
                     onDelete = { destructive = DockerRemoval.Stack(it.name) to { viewModel.stackAction(it, "delete", confirmed = true) } },
                     onCancel = viewModel::cancelOperation)
             }
-            item { DockerContainers(state, viewModel, { item, action -> if (action == "delete") destructive = DockerRemoval.Container(item.names) to { viewModel.containerAction(item, action) } else viewModel.containerAction(item, action) }) }
+            item { SimpleList(stringResource(R.string.docker_containers), state.containers) { "${it.names} · ${it.status}" } }
             item { SimpleList(stringResource(R.string.docker_images), state.images) { "${it.repository}:${it.tag} · ${it.size}" } }
-            item {
-                DockerVolumes(state.volumes, state.volume, viewModel::loadVolume,
-                    onDelete = { name -> destructive = DockerRemoval.Volume(name) to { viewModel.deleteVolume(name) } })
-            }
+            item { SimpleList(stringResource(R.string.docker_volumes), state.volumes) { "${it.name} · ${it.driver}" } }
             item { SimpleList(stringResource(R.string.docker_networks), state.networks) { "${it.name} · ${it.driver}" } }
         }
     }
@@ -499,35 +459,6 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: nginx:alpine\
         // Truncation is stated rather than hidden: a cut-off command output that looks complete is
         // how an operator concludes the wrong cause.
         if (diagnostics.truncated) Text(stringResource(R.string.docker_logs_truncated), style = MaterialTheme.typography.bodySmall)
-    }
-}
-
-@Composable private fun DockerContainers(state: DockerScreenState, viewModel: DockerViewModel, action: (DockerContainer, String) -> Unit) = SectionCard(stringResource(R.string.docker_containers)) {
-    when (val result = state.containers) { is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_containers)) else result.value.forEach { item -> ListRow(item.names, subtitle = "${item.image} · ${item.status}", leading = { DesktopIcon(R.drawable.ic_app_docker, size = 22.dp) }, trailing = { Row { TextButton(onClick = { action(item, if (item.state.equals("running", true)) "stop" else "start") }) { Text(stringResource(if (item.state.equals("running", true)) R.string.docker_stop else R.string.docker_start)) }; TextButton(onClick = { action(item, "delete") }) { Text(stringResource(R.string.common_delete)) } } }) }; null -> Text(stringResource(R.string.common_loading)); else -> Text(stringResource(R.string.docker_list_failed)) }
-}
-
-/**
- * Volumes are listed with their references on demand, because a volume is persistent data: the operator
- * has to see which containers still hold it before choosing to release it.
- */
-@Composable private fun DockerVolumes(
-    result: ApiResult<List<DockerVolume>>?, details: Pair<String, DockerVolumeDetails>?,
-    onSelect: (String) -> Unit, onDelete: (String) -> Unit,
-) = SectionCard(stringResource(R.string.docker_volumes)) {
-    when (result) {
-        is ApiResult.Success -> if (result.value.isEmpty()) Text(stringResource(R.string.docker_empty_resources)) else result.value.forEach { volume ->
-            ListRow(volume.name, subtitle = volume.driver, onClick = { onSelect(volume.name) },
-                trailing = { TextButton(onClick = { onDelete(volume.name) }) { Text(stringResource(R.string.common_delete)) } })
-            details?.takeIf { it.first == volume.name }?.let { (_, value) ->
-                Text(
-                    if (value.usedBy.isEmpty()) stringResource(R.string.docker_volume_unused)
-                    else stringResource(R.string.docker_volume_used_by, value.usedBy.joinToString(", ")),
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(start = Spacing.md),
-                )
-            }
-        }
-        null -> Text(stringResource(R.string.common_loading))
-        else -> Text(stringResource(R.string.docker_list_failed))
     }
 }
 

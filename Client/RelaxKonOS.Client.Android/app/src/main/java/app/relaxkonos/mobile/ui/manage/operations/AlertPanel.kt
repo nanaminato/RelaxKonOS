@@ -18,6 +18,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,10 +39,14 @@ import app.relaxkonos.mobile.core.net.ApiResult
 import app.relaxkonos.mobile.core.net.OperationalAlert
 import app.relaxkonos.mobile.core.net.OperationalAlertDetail
 import app.relaxkonos.mobile.data.AlertNotificationCategory
+import app.relaxkonos.mobile.data.OperationDestinations
+import app.relaxkonos.mobile.data.OperationTarget
 import app.relaxkonos.mobile.ui.common.ListRow
 import app.relaxkonos.mobile.ui.theme.Spacing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
 
 internal data class AlertState(
     val owner: SessionState.Active? = null,
@@ -59,14 +64,29 @@ internal class AlertViewModel(application: Application) : AndroidViewModel(appli
     var state by mutableStateOf(AlertState())
         private set
     private var generation = 0
+    private val requests = mutableSetOf<Job>()
+
+    private fun observe(block: suspend CoroutineScope.() -> Unit) {
+        val job = viewModelScope.launch(block = block)
+        requests += job
+        job.invokeOnCompletion { requests -= job }
+    }
+
+    fun stopObserving(owner: SessionState.Active) {
+        if (state.owner !== owner) return
+        generation++
+        requests.toList().forEach(Job::cancel)
+        requests.clear()
+        state = AlertState()
+    }
 
     fun refresh(owner: SessionState.Active) {
         val request = ++generation
         state = AlertState(owner = owner, loading = true)
-        viewModelScope.launch {
+        observe {
             try {
                 val result = container.eventAlerts.page(owner)
-                if (!current(owner, request)) return@launch
+                if (!current(owner, request)) return@observe
                 state = when (result) {
                     is ApiResult.Success -> state.copy(loading = false, alerts = result.value.items, nextCursor = result.value.nextCursor)
                     else -> state.copy(loading = false, error = true)
@@ -84,9 +104,9 @@ internal class AlertViewModel(application: Application) : AndroidViewModel(appli
         if (state.owner !== owner || state.loading) return
         val request = generation
         state = state.copy(loading = true)
-        viewModelScope.launch {
+        observe {
             val result = container.eventAlerts.page(owner, cursor)
-            if (!current(owner, request)) return@launch
+            if (!current(owner, request)) return@observe
             state = when (result) {
                 is ApiResult.Success -> state.copy(loading = false,
                     alerts = (state.alerts + result.value.items).distinctBy { it.id }, nextCursor = result.value.nextCursor)
@@ -99,7 +119,7 @@ internal class AlertViewModel(application: Application) : AndroidViewModel(appli
         if (state.owner !== owner) return
         val request = generation
         state = state.copy(selectedId = id, detail = null, actionError = false)
-        viewModelScope.launch {
+        observe {
             val result = container.eventAlerts.detail(owner, id)
             if (current(owner, request) && state.selectedId == id) {
                 state = state.copy(detail = (result as? ApiResult.Success)?.value,
@@ -111,9 +131,9 @@ internal class AlertViewModel(application: Application) : AndroidViewModel(appli
     fun acknowledge(owner: SessionState.Active, id: String) {
         if (state.owner !== owner || state.selectedId != id) return
         val request = generation
-        viewModelScope.launch {
+        observe {
             val result = container.eventAlerts.acknowledge(owner, id)
-            if (!current(owner, request)) return@launch
+            if (!current(owner, request)) return@observe
             if (result is ApiResult.Success) {
                 state = state.copy(alerts = state.alerts.map { if (it.id == id) result.value else it }, actionError = false)
                 select(owner, id)
@@ -126,10 +146,11 @@ internal class AlertViewModel(application: Application) : AndroidViewModel(appli
 }
 
 @Composable
-internal fun AlertPanel(owner: SessionState.Active, onOpenDeployment: (String) -> Unit) {
+internal fun AlertPanel(owner: SessionState.Active, onOpenTarget: (OperationTarget) -> Unit) {
     val viewModel: AlertViewModel = viewModel()
     val state = viewModel.state
     LaunchedEffect(owner) { viewModel.refresh(owner) }
+    DisposableEffect(owner) { onDispose { viewModel.stopObserving(owner) } }
     val visible = state.owner === owner
     val selected = if (visible) state.alerts.firstOrNull { it.id == state.selectedId } else null
 
@@ -168,9 +189,8 @@ internal fun AlertPanel(owner: SessionState.Active, onOpenDeployment: (String) -
                     Text(stringResource(R.string.operations_acknowledge))
                 }
             }
-            if (selected.targetKind in setOf("applicationDeployment", "applicationDeploymentOperation") &&
-                selected.targetResourceId != null) {
-                OutlinedButton(onClick = { onOpenDeployment(selected.targetResourceId) }) {
+            OperationDestinations.alert(owner, selected)?.let { target ->
+                OutlinedButton(onClick = { onOpenTarget(target) }) {
                     Text(stringResource(R.string.operations_open_target))
                 }
             }

@@ -1,0 +1,39 @@
+# Android SMB 文件服务
+
+> BP08-M1 已接入。自动化证据和设备/宿主待验收项目见 [Verification](../status/Verification.md#bp08-m1-v1)。共享协议与宿主实现见仓库 [SMB 运维说明](../../../../docs/services/file-services/RelaxKonOS.FileServices.Smb.Operations.md)，本文仅说明 Android 行为。
+
+## 入口与当前事实
+
+管理目录在当前宿主提供 `server.file-services` 时显示 SMB。页面读取 capability、状态、连接信息，以及支持的共享/用户集合；观察者可以查看，写入要求当前会话具备 privilegedOperations。服务状态与 TCP 445 监听分别展示，不以其中一个推断另一个。
+
+仅 Running/Stopped 且对应 capability 可用时查询集合。未查询使用未知事实，成功的空集合才显示没有共享/用户。任何读取失败都撤下可写事实。Windows 不查询 Linux 用户路由，也不提供 Windows 账户密码设置。
+
+## 共享与账户
+
+共享列表保留 Server 的 opaque ID，包括 Unicode Windows 共享名；路由编码为一个段。手机依次显示列表/详情/编辑，可用宽度达到 600 dp 时分栏。外部共享和受管漂移共享只能查看。
+
+编辑保留名称、绝对路径、描述、只读、启用、访客和完整权限列表。目录字段使用现有远端 Directory 选择器；服务器负责实际目录存在、权限和链接校验。Windows 权限使用 SID，Samba 权限使用主机主体；Windows 的自动访客 SID 由 guestAllowed 生成，不重复作为用户权限提交。校验拒绝控制字符、配置注入、重复主体和无效访客写权限。
+
+保存确认展示目录、启用/读写、访客和权限；目录位于建议共享根以外时显示暴露范围提醒，仍允许显式确认。删除只移除受管共享入口，保留目录文件。离页、返回、刷新和切换列表/标签均保护未保存草稿。
+
+Samba 用户页面仅针对 Server 报告的 eligible Unix 账户提供启用/禁用与密码设置。密码需两次匹配、12–1024 字符且无控制字符；密码只用于本次请求，不持久保存或回读。可变密码数组在完成、失败及等待锁时取消均清零。界面秘密在确认结束或离页时清理。
+
+## 写入与结果未知
+
+共享、生命周期和凭据写入授权固定为 `smbManage` / `smb:managed`。确认后重新读取完整事实，提权或认证重试后再次比较，变化时拒绝继续写入。客户端比较不构成 Server 的原子 CAS，也不能替代多客户端并发验收。
+
+同步 SMB API 没有幂等键、任务查询、取消或重放接口。提交前持久保存当前宿主/账户的未知标记，只有动作、opaque 目标和本地标记 ID；不保存共享正文、目录或密码。本地 ID 不作为网络幂等键发送。网络丢失、写入失败或回执后事实读取失败均保留标记，禁止新的写入。
+
+成功回执中的 operationId 仅关联审计。运维中心展示待核实入口，不伪造远端任务。普通刷新不清除未知标记；用户可显式“读取并接受主机当前状态”，成功读取受支持、可管理事实后解除标记，这不证明原写入成功，也不会重复原写入。
+
+## Samba 安装
+
+仅 installSupported 且 NotInstalled 时提供安装，复用 [公共运行时安装](Installations.md) 的 `SmbInstallationRequest(confirmed)` / Install。没有自定义包或升级表单。安装提交使用原幂等键，结果未知仅显式重试原请求；已知 ID 优先恢复，完全丢失 ID 可显式识别原请求。活动任务在页面可见时观察，取消按服务返回的 cancellable 与当前事实确认；离页仅停止观察。
+
+恢复响应必须属于 Smb / Install，不能将其他服务任务当作本领域结果。当前宿主/账户变化或退出会停止观察并清除页面事实；未知记录保留到重新核实。
+
+## 代码位置
+
+- [Smb.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/Smb.kt)、[SmbValidation.kt](../../app/src/main/java/app/relaxkonos/mobile/core/net/SmbValidation.kt)：当前 typed 格式、路由和校验。
+- [SmbRepository.kt](../../app/src/main/java/app/relaxkonos/mobile/data/SmbRepository.kt)、[SmbMutationJournal.kt](../../app/src/main/java/app/relaxkonos/mobile/data/SmbMutationJournal.kt)：读取、提权、复核和未知标记。
+- [SmbScreen.kt](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/smb/SmbScreen.kt)、[SmbViewModel.kt](../../app/src/main/java/app/relaxkonos/mobile/ui/manage/smb/SmbViewModel.kt)：页面、安装恢复与观察。
