@@ -7,16 +7,24 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -28,6 +36,7 @@ import app.relaxkonos.mobile.servercenter.SshCredentialKind
 import app.relaxkonos.mobile.ui.common.KeyValueRow
 import app.relaxkonos.mobile.ui.common.MetricTile
 import app.relaxkonos.mobile.ui.common.SectionCard
+import app.relaxkonos.mobile.ui.common.StatusChip
 import app.relaxkonos.mobile.ui.common.StatusTone
 import app.relaxkonos.mobile.ui.common.formatSize
 import app.relaxkonos.mobile.ui.common.formatUptime
@@ -116,15 +125,36 @@ data class SshSystemSnapshot(
 fun SshSystemScreen(hostId: String, onExit: () -> Unit, modifier: Modifier = Modifier) {
     val model: SshSystemViewModel = viewModel()
     val state by model.state.collectAsState()
+    val host = (LocalContext.current.applicationContext as RelaxKonApplication)
+        .container.serverCenter.hosts().firstOrNull { it.hostId == hostId }
+    // 工作区里唯一一处主机切换入口。放在系统页：文件、终端与部署页各自在讲自己的事，
+    // 「我在哪台主机上、换一台」是对这台主机的总览，与这里的资源状态同源。
+    var switcherOpen by remember(hostId) { mutableStateOf(false) }
     LaunchedEffect(hostId) { model.refresh(hostId) }
     val snapshot = state.snapshot
     Column(
-        modifier.fillMaxSize().padding(Spacing.lg),
+        // 多了当前主机卡片之后这一页不再保证一屏放得下，因此改成可滚动：小屏上至少能滚到退出按钮。
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         SectionCard(
+            title = host?.displayName ?: hostId,
+            subtitle = host?.let { "${it.sshUserName}@${it.sshHost}:${it.sshPort}" },
+            leading = DesktopIcons.host,
+            trailing = {
+                TextButton(onClick = { switcherOpen = true }) {
+                    Text(stringResource(R.string.server_center_switch_host))
+                }
+            },
+        ) {
+            StatusChip(
+                text = stringResource(R.string.server_center_current_host),
+                tone = StatusTone.Primary,
+            )
+        }
+        SectionCard(
             title = stringResource(R.string.ssh_workspace_system),
-            subtitle = stringResource(R.string.ssh_workspace_system_subtitle, hostId),
+            subtitle = stringResource(R.string.ssh_workspace_system_subtitle, host?.displayName ?: hostId),
             leading = DesktopIcons.system,
             trailing = {
                 IconButton(onClick = { model.refresh(hostId) }, enabled = !state.loading) {
@@ -141,6 +171,9 @@ fun SshSystemScreen(hostId: String, onExit: () -> Unit, modifier: Modifier = Mod
         OutlinedButton(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.ssh_workspace_exit))
         }
+    }
+    if (switcherOpen) {
+        SshHostSwitcherDialog(currentHostId = hostId, onDismiss = { switcherOpen = false })
     }
 }
 

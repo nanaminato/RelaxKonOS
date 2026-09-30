@@ -148,9 +148,15 @@ class AppContainer(context: Context) {
         transportFactory = JschServerCenterSshTransportFactory(),
     )
 
-    /** App-owned server-centre navigation; it remains available before and after authentication. */
+    /**
+     * App-owned server-centre navigation; it remains available before and after authentication.
+     *
+     * It is handed [unlockMode] instead of the appearance and biometric sources, so the SSH vault can
+     * never disagree with the account-and-security page about how a saved password is unlocked.
+     */
     val serverCenter = ServerCenterCoordinator(
         serverHostTargets, serverCenterConnections, sshHostKeyTrust, serverInstallOperations,
+        sshCredentials, ::unlockMode,
     )
 
     /** Each terminal has a dedicated transport and remains live across navigation/rotation. */

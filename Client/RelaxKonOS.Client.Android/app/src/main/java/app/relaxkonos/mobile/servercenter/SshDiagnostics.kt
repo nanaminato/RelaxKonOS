@@ -1,18 +1,13 @@
 package app.relaxkonos.mobile.servercenter
 
-import com.jcraft.jsch.JSchException
-import java.net.ConnectException
-import java.net.SocketTimeoutException
-import java.net.UnknownHostException
-
 /**
  * Debug-only, non-secret trace of the Android SSH handshake.
  *
- * Server-centre verification deliberately presents one short user-facing failure.  On a real
- * device, however, an SSH algorithm mismatch, an unreachable port and a rejected password look
- * identical without a trace.  This object records only the handshake stage, SSH configuration and
- * a classified exception type.  It never receives an endpoint, user name, password, private key,
- * host-key blob, fingerprint, or a raw exception message.
+ * Server-centre verification names the cause of a failure in the UI (see [SshFailureReason]) and
+ * still keeps this trace: it is the only place that records where in the handshake the attempt
+ * stopped, which SSH configuration was used, and the exception type chain with stack locations.
+ * It never receives an endpoint, user name, password, private key, host-key blob, fingerprint, or
+ * a raw exception message.
  *
  * The application installs [sink] for debug builds only.  With no sink this is a no-op, which keeps
  * JVM tests and release builds independent of Android Logcat.
@@ -32,27 +27,14 @@ internal object SshDiagnostics {
     }
 
     private fun summary(error: Throwable): String {
-        val classification = when {
-            error is ServerCenterHostKeyRejectedException -> "host_key_${error.trust.name.lowercase()}"
-            error.findCause<UnknownHostException>() != null -> "name_resolution_failed"
-            error.findCause<ConnectException>() != null -> "tcp_connect_failed"
-            error.findCause<SocketTimeoutException>() != null -> "connect_timed_out"
-            error is JSchException -> jschClassification(error)
-            else -> "unexpected_failure"
+        // The classification comes from SshFailureRules, so the log and the user-facing sentence can
+        // never drift apart. The host-key rejection carries its trust decision, which the reason enum
+        // deliberately does not model.
+        val classification = when (error) {
+            is ServerCenterHostKeyRejectedException -> "host_key_${error.trust.name.lowercase()}"
+            else -> SshFailureRules.classify(error).diagnosticName
         }
         return "classification=$classification types=${errorTypeChain(error)} frames=${stackFrames(error)}"
-    }
-
-    private fun jschClassification(error: JSchException): String {
-        // Inspect fixed library message prefixes only; never copy a message to the log because a
-        // server or proxy can put endpoint data into it.
-        return when {
-            error.message?.startsWith("Auth fail") == true -> "authentication_failed"
-            error.message?.startsWith("Auth cancel") == true -> "authentication_cancelled"
-            error.message?.startsWith("Algorithm negotiation fail") == true -> "algorithm_negotiation_failed"
-            error.message?.startsWith("reject HostKey") == true -> "host_key_rejected"
-            else -> "jsch_handshake_failed"
-        }
     }
 
     private fun errorTypeChain(error: Throwable): String = buildList {
@@ -73,15 +55,6 @@ internal object SshDiagnostics {
         .joinToString(">") { frame ->
             "${frame.className.substringAfterLast('.')}.${frame.methodName}:${frame.lineNumber}"
         }
-
-    private inline fun <reified T : Throwable> Throwable.findCause(): T? {
-        var current: Throwable? = this
-        while (current != null) {
-            if (current is T) return current
-            current = current.cause
-        }
-        return null
-    }
 
     private const val STACK_FRAME_LIMIT = 6
 }

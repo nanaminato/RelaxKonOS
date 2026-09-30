@@ -52,6 +52,9 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
     val terminalTyping = page == 1 && WindowInsets.ime.getBottom(LocalDensity.current) > 0
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        // 这里**没有** topBar：主机是谁、换一台主机这两件事只属于系统页（`SshSystemScreen`）。
+        // 少了这条 TopBar，`Scaffold` 的 `contentWindowInsets` 会自己把状态栏那一段加进
+        // 内边距里，各页仍然不会被时钟压住。
         bottomBar = {
             if (!terminalTyping)
             NavigationBar {

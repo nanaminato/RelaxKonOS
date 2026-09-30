@@ -1,6 +1,6 @@
 # Android 服务器中心接入设计
 
-> 当前接入规范：宿主资料、主机密钥固定、SSH/SFTP、终端、受管隧道登录和安装回执查询已接入；首次安装执行仍未打通。实现与验证统一见 [当前状态](../status/Progress.md)，剩余工作见 [部署后续计划](../plans/Deployment.md)。
+> 当前接入规范：宿主资料、主机密钥固定、SSH/SFTP、终端、受管隧道登录、安装回执查询与**可选的 SSH 凭据保存**已接入；首次安装执行仍未打通。实现与验证统一见 [当前状态](../status/Progress.md)，剩余工作见 [部署后续计划](../plans/Deployment.md)。
 
 ## 1. 体验原则
 
@@ -40,10 +40,25 @@
 |---|---|---|
 | `SavedLogin` | 键为稳定 `(serviceId, identifier)`；直连使用规范化 URL，受管连接使用安装 ID，不保存临时隧道端口 | `ConnectionProfileStore` 与 `VaultKind.Connection` |
 | `ServerHostTarget` | 以规范化 `(SSH host, port, SSH user)` 为一项 SSH 目标，记录已确认主机密钥、受管安装 ID、部署模式和最近验证状态；同一服务器可保留多个管理用户，且可在没有 `SavedLogin` 时存在 | `ServerHostTargetStore` |
-| SSH 凭据（可选保存） | 只用于连接宿主 SSH；以主机密钥身份、端口和 SSH 用户绑定 | 独立 Keystore 凭据域；不可重用 `Connection` / `Elevation` 记录 |
+| SSH 凭据（可选保存） | 只用于连接宿主 SSH；按端点（主机、端口）与 SSH 用户绑定；由用户显式勾选、且只在一次成功握手之后写入，解封需一次指纹或锁屏确认 | 独立 Keystore 凭据域 `VaultKind.Ssh`（文件 `ssh-vault.bin`、alias `rk.ssh.vault`，AAD 为 `Ssh\|host:port\|user`）；不可重用 `Connection` / `Elevation` 记录，也没有 debug 明文兜底 |
 | 宿主提权凭据 | Linux sudo / Windows 管理权限预检与操作；不是 RelaxKonOS API 提权 token | 本次操作的最小生命周期；如设计保存，另立规则，不自动读取现有 `Elevation` 保险箱 |
 
-`VaultKind.Connection` 保存的是 RelaxKonOS 登录密码，`VaultKind.Elevation` 服务于现有 `/privileged/elevation`；两者的 AAD 都按稳定 `serviceId` 与账号绑定，不适用于 SSH 的主机密钥身份。若扩展现有 `CredentialVault`，须新增独立 kind、文件与 Keystore alias，并同步更新每一个 `when`、保险箱管理页面和测试。现有 debug-only 明文登录兜底不能用于 SSH 凭据。主机指纹可明文保存，但必须抗意外覆盖并在变化时阻断写操作。
+`VaultKind.Connection` 保存的是 RelaxKonOS 登录密码，`VaultKind.Elevation` 服务于现有 `/privileged/elevation`；两者的 AAD 都按稳定 `serviceId` 与账号绑定，不适用于 SSH 的主机密钥身份。SSH 凭据已按「新增独立 kind、文件与 Keystore alias，并同步每一个 `when`、保险箱管理页面和测试」的要求落地为 `VaultKind.Ssh`。`unlockModeFor` 对它与连接凭据给出同一策略：有强生物识别就按次确认，否则退到锁屏五分钟窗口；本机两者都没有时勾选框直接禁用，不做降级。现有 debug-only 明文登录兜底**不适用于** SSH 凭据（`ServerCenter.md` §3）。主机指纹可明文保存，但必须抗意外覆盖并在变化时阻断写操作。
+
+### 3.2 连接页与「切换主机」
+
+服务器中心是**先选主机、再添主机**的一页：
+
+- 「已管理主机」每行整块可点，点开即连接：本会话已验证过的主机静默复核；有可解封保存密码的主机先解封再握手；两者都没有时不猜、不静默失败，就地打开同一个表单并说明原因是「未保存」「本机当前解不开」还是「已失效」中的哪一种。行内的「管理」是次级动作，只打开表单，不发起连接。
+- 「添加主机」与「管理主机」共用一个表单，按 `formMode` 决定字段是否可编辑：新增时校验主机、端口、用户与密码；管理时主机、端口、用户只读，密码框留空即等于「用保存的密码」（状态行已写清这一点，与登录页 §6.2 同一约定）。
+- 表单里的「在本机保存这个 SSH 密码」默认勾选，只有本机能保护它（有指纹，或退一步有锁屏）时才可点，且只在一次成功握手之后、且这份密码确实是**用户本次输入**的时才真的写入。从保险箱解封得来的、以及本会话内存里上一次已验证的副本都**不再问一次保存**（`SshPasswordOrigin`）：刚用指纹解封完立刻再弹一次一模一样的加密确认，等于让同一次授权做两遍（解封一遍、加密一遍），用户只会怀疑上一次是不是没生效；本会话的副本更是来自一次已经问过的验证，之后每次静默复核都再问就是骚扰。取消勾选**不删除**已有记录；删除是独立的「忘记已保存密码」确认动作，与删除主机记录互不替代（与 `LoginCredentials.Design.md` §6.3 同一条规则）。保存失败只读作「已连接，但密码没保存」，绝不冒充连接失败。
+- 工作区的**系统页**（`SshSystemScreen`）顶部是当前主机卡片：主机名、`用户@地址:端口` 与状态标签「当前」，右上角「切换主机」是工作区里**唯一**一处主机切换入口。文件、终端与部署页都不再有主机条，也不再各留一个切换入口——一次连接之后「我在哪台主机上、换一台」是对这台主机的总览，与系统页的资源状态同源；把它挂在每一页的顶栏上，会让每条页面都背上两份互相竞争的信息（`Scaffold` 少了一条 `topBar` 之后，状态栏那一段由 `contentWindowInsets` 自动进入各页内边距，各页仍然不会被时钟压住）。选另一台主机时：本会话已验证或已有可用保存密码的主机就地切换工作区；需要输入密码的主机会**退出工作区**回到这一页的表单——密码只有一个输入位置，不做第二套。
+
+判定本身是纯函数 `planSshHostOpen`（`servercenter/SshHostOpenRules.kt`）与 `shouldSaveSshPassword`（勾选 × 本机能保护 × 密码来源是本次输入），界面不自己发明结论；凭据的读写集中在 `ServerCenterCoordinator`，界面拿不到明文。
+
+握手失败按**原因**上报，不用一句话让用户同时猜主机、账号、密码和网络：分类规则是纯函数 `SshFailureRules.classify`（`servercenter/SshFailureRules.kt`），把异常归为认证被拒、认证被中止、TCP 超时、端口不可达、主机名无法解析、算法协商失败、主机密钥未接受、握手失败与无法归因，每一项对应一句可执行的文案。判定顺序是**网络层原因优先于 SSH 库消息**：JSch 会把 `SocketTimeoutException`、`ConnectException` 包进 `JSchException`，先看库消息就会把「手机连不上主机」误报成「密码错误」。同一个分类名（`SshFailureReason.diagnosticName`）也是 `adb logcat -s RelaxKonSsh:D` 里的稳定标记，界面与诊断日志不会各说一套；异常原文、端点与用户名都不进入界面（`SshDiagnostics` 只记录阶段、SSH 配置与类型链）。
+
+主机密钥的核对走**同一条确认路径**，但两种情形的措辞分得清清楚楚。判定是纯函数 `planSshHostKeyReview`（`servercenter/SshHostKeyReviewRules.kt`），只回答「还差哪一步」：`Trusted` 已经通过，`Failed` 该显示失败原因（**永远不弹指纹对话框**——把认证失败说成信任问题，就是让用户对一个与密钥无关的问题做决定），`NeedsTrust` 与 `KeyChanged` 都要求显式确认。首次见面只展示新指纹；**密钥变更则必须并排展示被取代的旧指纹与它的确认日期**，因为用户要判断的是「同一台主机重装或重建了密钥」还是「这个地址现在被另一台机器占用」——在 DHCP 网段和克隆出来的虚拟机上后者是常态而非攻击信号，只给一句「密钥已变化，已被阻断」会让用户无路可走。两种情形都只有用户点确认才写入固定（`ServerHostTrustRules.replace` 保证同端点同算法只留一条），**没有任何静默接受或跳过核对的入口**；确认后立刻用同一份密码重新握手，不需要用户再点一次。
 
 ### 3.1 稳定身份与动态隧道端口
 

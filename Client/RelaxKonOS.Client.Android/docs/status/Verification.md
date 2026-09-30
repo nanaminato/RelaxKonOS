@@ -49,6 +49,11 @@
 | AD01-T4 | 上传断网；执行后断网；旋转与进程回收 | 可核实原操作，不重复安装、不误报成功 |
 | AD01-T5 | 升级失败、修复、卸载保留数据 | 真实结果可查；卸载后仍可进入服务器中心 |
 | AD01-T6 | 隧道端口变化或主机重装 | 同安装保留稳定身份；新安装不复用旧安装信任与登录绑定 |
+| AD01-T7 | 勾选「在本机保存 SSH 密码」后重新打开服务器中心（含重启应用），再点该主机 | 用一次指纹/锁屏确认即可连接，不再需要输入密码；取消勾选后已有记录仍在，只有「忘记已保存密码」才删除它 |
+| AD01-T8 | 同一设备保存两台以上主机，在工作区**系统页**点「切换主机」 | 已保存密码的主机就地切换工作区并显示新主机名；未保存密码的主机退回服务器中心表单，不出现第二个密码输入位置；文件、终端与部署页都没有主机条，也没有第二个切换入口 |
+| AD01-T9 | 新增一台连不上的主机（密码错、TCP 超时、端口无监听、主机名写错各一次） | 四种情况给出四句不同的可执行文案，不再共用「无法验证 SSH 连接」；`adb logcat -s RelaxKonSsh:D` 里的分类名与界面结论一致，且日志与界面都不出现端点、用户名或异常原文 |
+| AD01-T10 | 主机的 SSH 主机密钥在设备上已固定后发生变化（重装/重建密钥，或 DHCP 把该地址分给另一台机器），再点这台主机 | 弹出标题为「SSH 主机密钥已变更」的核对对话框，**并排展示旧指纹与它的确认日期、以及本次收到的新指纹**；确认后立刻用同一份密码重新握手进入工作区，且该端点的固定记录只剩新指纹一条。关闭对话框只留下「核对并接受后才能继续」的提示，不存在任何跳过核对的入口 |
+| AD01-T11 | 点开一台已保存密码的主机，进入工作区后看系统页 | 指纹/锁屏确认**只出现一次**（解封那一次），不再紧接着弹第二次加密保存的确认；系统页顶部是当前主机卡片（主机名 + `用户@地址:端口` + 「当前」标签）与「切换主机」，四个页面的内容与标题都不与状态栏、时钟重叠 |
 
 ## 4. AD02：Android 应用部署向导
 
@@ -142,6 +147,11 @@
 
 | 日期 | 检查与结果 | 证明范围 / 限制 |
 | --- | --- | --- |
+| 2026-09-30 | 工作区「切换主机」收进系统页：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，96 类 / 691 JVM 用例，0 失败/错误/跳过；三语未增删键（各 1595 键一致）；`git diff --check` 通过 | `SshWorkspaceHeader` 与工作区的 `topBar` 一并删除，主机身份卡片（主机名 + `用户@地址:端口` + 「当前」）与「切换主机」移到 `SshSystemScreen` 顶部；文件、终端与部署页不再有主机条，也就没有第二个切换入口。少了 `topBar` 之后状态栏内边距由顶层 `Scaffold` 的 `contentWindowInsets` 提供。切换本身的判定与凭据路径未改（仍是 `planSshHostOpen` + `SshHostSwitcherDialog`），因此只需按 AD01-T8 复测入口位置；系统页新增卡片后可滚动，真机观感未在本轮复测 |
+| 2026-09-30 | SSH 连接不再重复请求指纹保存 + 工作区顶栏让出状态栏：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，96 类 / 691 JVM 用例，0 失败/错误/跳过；`git diff --check` 通过 | 真机截图里「192.168.1.8:22 / codexdev@… / 切换主机」与状态栏时钟同高：`SshWorkspaceHeader` 作为 `Scaffold` 顶栏没有让出 `statusBarsPadding`，而 `Scaffold` 只按它量出的高度给下方内容留位。另：`beginVerification` 在每次握手成功后都按勾选框写保险箱，从保险箱解封来的密码因此被要求再加密一次（`VaultAccess.save` 会弹确认）。现在 `shouldSaveSshPassword` 增加密码来源这一个条件（`SshPasswordOrigin`），只有用户本次输入的密码才问；2 项新 JVM 用例覆盖「解封/会话内存来的都不再问」与「恰好一个来源值得问」。真机上的实际观感与指纹只弹一次未在本轮重测 |
+| 2026-09-30 | 主机密钥变更不再是无出口的阻断：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，96 类 / 689 JVM 用例，0 失败/错误/跳过；中英日各 1595 键一致无重复；`git diff --check` 通过 | 改动前 `KeyChanged` 只有一行红字、没有任何动作，且密码/target 在返回时被清掉，用户无法接受新指纹；现在与首次固定共用一次显式核对，并排展示旧指纹与确认日期。新增 4 项 JVM 用例覆盖「首次见面不展示旧指纹」「变更必须携带被取代的固定记录」「Trusted/Failed 一律不弹指纹对话框」「两种确认共用同一条替换规则」。变更路径的真实触发（改主机密钥后重新握手）未在实体设备执行，需按 AD01-T10 联调；本轮仍未验证指纹/锁屏解封与保险箱实际写入 |
+| 2026-09-30 | SSH 握手失败归因：真机 `SM-S9380` 上新增主机报「无法验证 SSH 连接」，`adb logcat -s RelaxKonSsh:D` 里该次只有一个 `connect.begin` 加 `connect.failed: classification=connect_timed_out types=JSchException>SocketTimeoutException frames=Util.createSocket:387`，全程没有 `host_key.observed`；能连上的主机则先出现 `host_key.observed: trust=Trusted` 再 `connect.authenticated`。改动后离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，95 类 / 685 JVM 用例，0 失败/错误/跳过；中英日各 1592 键一致无重复；`git diff --check` 通过 | 失败发生在 TCP 建连阶段、主机密钥尚未交换，因此与指纹确认无关；同一手机 `toybox nc` 连该主机另一地址的 22 端口立即收到 SSH banner，而报错地址超时，主机侧 `ss`/防火墙未在本轮核对。12 项新用例覆盖九类原因、网络层原因优先于库消息、诊断名唯一稳定；实体设备上的四类失败文案（AD01-T9）与指纹解封、保险箱实际写入未在本轮重测 |
+| 2026-09-30 | SSH 凭据保存与主机切换：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，94 类 / 673 JVM 用例，0 失败/错误/跳过；中英日各 1585 键一致无重复；`git diff --check` 通过 | 新增 4 项 JVM 用例覆盖「只有可用保存凭据才免输入直连」「三种索要密码的原因两两可区分」「未勾选或本机无法保护时不写入保险箱」；界面改动为服务器中心列表点开直连、保存密码勾选与状态行、忘记已保存密码、工作区「切换主机」。`VaultAccess` 指纹/锁屏解封、保险箱实际写入与真实 SSH 握手未执行，需按 AD01-T7/T8 在实体设备联调 |
 | 2026-09-30 | SSH 多会话与重启清空：离线 Debug 应用/测试 APK 构建成功，93 类 / 669 JVM 用例，0 失败/错误/跳过；`SshTerminalSessionsLayoutTest` 在 `emulator-5558` 1 项通过；中英日 1555 键一致无重复；`git diff --check` 通过 | 6 项 SSH 会话 JVM 用例覆盖重进页面、宿主/终端输入输出尺寸隔离、单独关闭、新应用实例从空列表开始且不重放旧输入、EOF/写失败及连接关闭竞态；持久保存接口与待重连恢复状态已移除。Compose 用例实际移除页面后返回，验证后台输出/草稿保留、新建/切换/发送/确认结束及其它会话存活。此前 5 项键盘布局检查通过，本次仅编译而未重跑。使用假传输，真实宿主/实体设备/长时间后台保活未执行 |
 | 2026-09-30 | SSH 输入修复：离线 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest` 成功，92 类 / 663 JVM 用例，0 失败/错误/跳过；模拟器 `emulator-5558` instrumentation 的 `SshTerminalKeyboardLayoutTest` 5 项通过；`git diff --check` 通过 | 新增 3 项 JSch 终端用例验证尺寸请求离开调用线程、与输入互斥、尺寸变化后的连续写入/UTF-8 输出；5 项 Compose 用例覆盖手机/平板视口、真实系统 IME 和发送、大字体、已消费边距及草稿。传输用例使用记录请求的 JSch shell，未连接真实 SSH 主机；未操作实体手机 |
 | 2026-09-30 | 远端提交 `382196f2` 记录离线 `:app:assembleDebug :app:testDebugUnitTest --offline --no-daemon` 成功；61 类 / 522 JVM 用例，0 失败/错误/跳过；`git diff --check` 通过 | 固定活动屏幕/历史、Windows 清屏与光标重绘、缩放与跨帧解析；包含 14 个屏幕回归和 1 个控制器用例，以及键盘动画期间旧 Windows 重绘、尺寸合并/回到原尺寸、会话切换/附加期间变更。尺寸同步的 6 项场景在旧实现失败、修复后通过；真实手机 IME 与远端 Windows PowerShell 联调仍待验证。本轮合并未重新执行产品构建或测试 |
