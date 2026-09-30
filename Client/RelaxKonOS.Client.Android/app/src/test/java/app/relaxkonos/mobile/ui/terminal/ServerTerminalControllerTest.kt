@@ -29,7 +29,13 @@ class ServerTerminalControllerTest {
         var startFailure: Exception? = null
         var attachGate: CompletableDeferred<Unit>? = null
         val attached = mutableListOf<String?>()
+        val attachedSizes = mutableListOf<Pair<Int, Int>>()
         val inputs = mutableListOf<String>()
+        val sizes = mutableListOf<Pair<Int, Int>>()
+        var onResize: ((Int, Int) -> Unit)? = null
+        var resizeGate: CompletableDeferred<Unit>? = null
+        var activeResizes = 0
+        var maximumActiveResizes = 0
         var inputGate: CompletableDeferred<Unit>? = null
         var stops = 0
         var closeGate: CompletableDeferred<Unit>? = null
@@ -37,6 +43,7 @@ class ServerTerminalControllerTest {
         override suspend fun sessions() = listed
         override suspend fun attach(sessionId: String?, columns: Int, rows: Int): TerminalAttachment {
             attached += sessionId
+            attachedSizes += columns to rows
             attachGate?.await()
             val id = sessionId ?: "new"
             if (sessionId == null) listed = listed + summary(id)
@@ -44,7 +51,12 @@ class ServerTerminalControllerTest {
             return TerminalAttachment().also { it.sessionId = id }
         }
         override suspend fun input(bytes: ByteArray) { inputs += bytes.toString(Charsets.UTF_8); inputGate?.await() }
-        override suspend fun resize(columns: Int, rows: Int) {}
+        override suspend fun resize(columns: Int, rows: Int) {
+            activeResizes++
+            maximumActiveResizes = maxOf(maximumActiveResizes, activeResizes)
+            try { sizes += columns to rows; onResize?.invoke(columns, rows); resizeGate?.await() }
+            finally { activeResizes-- }
+        }
         override suspend fun closeSession(sessionId: String) { closeGate?.await(); listed = listed.filterNot { it.sessionId == sessionId } }
         override suspend fun disconnect() { stops++; closed() }
     }
@@ -83,6 +95,122 @@ class ServerTerminalControllerTest {
         assertTrue(h.connections.single().attached.isEmpty())
         h.controller.attach(null); runCurrent()
         assertEquals("new", h.controller.state.value.sessionId)
+    }
+
+    @Test fun `resize waits for layout to settle before changing the parser grid`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        val connection = h.connections.single()
+        connection.output("\u001b[2J\u001b[H1234567890123456789012345".toByteArray()); runCurrent()
+        h.controller.resize(20, 5)
+        runCurrent()
+        assertEquals("1234567890123456789012345", h.controller.state.value.output)
+        assertTrue(connection.sizes.isEmpty())
+        advanceTimeBy(200); runCurrent()
+        assertEquals("12345678901234567890", h.controller.state.value.output)
+        assertEquals(listOf(20 to 5), connection.sizes)
+        connection.output("\u001b[HPS test>\u001b[J".toByteArray()); runCurrent()
+        assertEquals("PS test>", h.controller.state.value.output)
+    }
+
+    @Test fun `keyboard animation sends only the final size and never submits input`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        val connection = h.connections.single()
+        for (height in listOf(28, 26, 24, 20, 16, 12, 10)) {
+            h.controller.resize(48, height); runCurrent()
+            advanceTimeBy(30); runCurrent()
+        }
+        assertTrue(connection.sizes.isEmpty())
+        advanceTimeBy(400); runCurrent()
+        assertEquals(listOf(48 to 10), connection.sizes)
+        assertTrue(connection.inputs.isEmpty())
+    }
+
+    @Test fun `old Windows repaint during keyboard animation does not become duplicate history`() = runTest {
+        val h = harness()
+        h.controller.resize(48, 18)
+        h.controller.connect(h.owner); runCurrent()
+        val connection = h.connections.single()
+        fun repaint(height: Int) = "\u001b[?25l\u001b[HPS test>\u001b[K\r\n" +
+            "\u001b[K\r\n".repeat(height - 2) + "\u001b[K\u001b[H\u001b[?25h"
+        connection.output(("\u001b[2J" + repaint(18)).toByteArray()); runCurrent()
+        connection.onResize = { _, height -> connection.output(repaint(height).toByteArray()) }
+        for (height in listOf(16, 14, 12, 10, 7)) {
+            h.controller.resize(48, height); runCurrent()
+            connection.output(repaint(18).toByteArray()); runCurrent()
+            advanceTimeBy(30); runCurrent()
+        }
+        advanceTimeBy(400); runCurrent()
+        assertEquals("PS test>", h.controller.state.value.output)
+        assertEquals(listOf(48 to 7), connection.sizes)
+        assertTrue(connection.inputs.isEmpty())
+    }
+
+    @Test fun `layout returning to the negotiated size skips resize entirely`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        h.controller.resize(48, 10); runCurrent()
+        advanceTimeBy(50); runCurrent()
+        h.controller.resize(80, 24); runCurrent()
+        advanceTimeBy(400); runCurrent()
+        assertTrue(h.connections.single().sizes.isEmpty())
+        assertEquals("prompt first", h.controller.state.value.output)
+    }
+
+    @Test fun `resizes are serialized and a newer layout waits for the in flight call`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        val connection = h.connections.single()
+        val gate = CompletableDeferred<Unit>()
+        connection.resizeGate = gate
+        h.controller.resize(48, 12); runCurrent()
+        advanceTimeBy(400); runCurrent()
+        assertEquals(listOf(48 to 12), connection.sizes)
+        h.controller.resize(48, 10); runCurrent()
+        h.controller.resize(48, 7); runCurrent()
+        advanceTimeBy(400); runCurrent()
+        assertEquals(listOf(48 to 12), connection.sizes)
+        connection.resizeGate = null
+        gate.complete(Unit); runCurrent()
+        advanceTimeBy(400); runCurrent()
+        assertEquals(listOf(48 to 12, 48 to 7), connection.sizes)
+        assertEquals(1, connection.maximumActiveResizes)
+    }
+
+    @Test fun `detaching cancels pending resize instead of sending it to a stale transport`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        h.controller.resize(48, 7); runCurrent()
+        h.controller.detach(); runCurrent()
+        advanceTimeBy(400); runCurrent()
+        assertTrue(h.connections.single().sizes.isEmpty())
+    }
+
+    @Test fun `switching sessions uses latest layout and drops the old pending resize`() = runTest {
+        val h = harness()
+        h.controller.connect(h.owner); runCurrent()
+        h.controller.resize(48, 7); runCurrent()
+        h.controller.attach("second"); runCurrent()
+        advanceTimeBy(400); runCurrent()
+        val connection = h.connections.single()
+        assertEquals(listOf(80 to 24, 48 to 7), connection.attachedSizes)
+        assertTrue(connection.sizes.isEmpty())
+        assertEquals("prompt second", h.controller.state.value.output)
+    }
+
+    @Test fun `layout changing during attachment is synchronized once after attachment completes`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val h = harness { connection, _ -> connection.attachGate = gate }
+        h.controller.connect(h.owner); runCurrent()
+        h.controller.resize(48, 12); runCurrent()
+        h.controller.resize(48, 7); runCurrent()
+        advanceTimeBy(400); runCurrent()
+        assertTrue(h.connections.single().sizes.isEmpty())
+        gate.complete(Unit); runCurrent()
+        advanceTimeBy(400); runCurrent()
+        assertEquals(listOf(48 to 7), h.connections.single().sizes)
+        assertTrue(h.controller.state.value.canInput)
     }
 
     @Test fun `401 negotiate renews token once and rebuilds authenticated transport`() = runTest {

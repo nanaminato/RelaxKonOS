@@ -37,6 +37,7 @@ internal class ServerTerminalController(
     private var transport: TerminalConnection? = null
     private var connectionJob: Job? = null
     private var operationJob: Job? = null
+    private var resizeJob: Job? = null
     private val inputMutex = Mutex()
     private var generation = 0
     private var owner: SessionState.Active? = null
@@ -44,6 +45,8 @@ internal class ServerTerminalController(
     private var transcript = TerminalTranscript()
     private var columns = 80
     private var rows = 24
+    private var appliedSize = columns to rows
+    private var resizeRevision = 0
 
     fun connect(active: SessionState.Active) {
         if (connectionJob?.isActive == true || mutable.value.connected) return
@@ -55,6 +58,7 @@ internal class ServerTerminalController(
         owner = active
         val current = ++generation
         operationJob?.cancel()
+        resizeJob?.cancel()
         val old = transport
         transport = null
         mutable.update { it.copy(connecting = true, connected = false, busy = false, error = false, retryAttempt = 0) }
@@ -135,6 +139,7 @@ internal class ServerTerminalController(
                     }
                     if (connectionClosed) error("The terminal disconnected while attaching.")
                     mutable.update { it.copy(connecting = false, connected = true, error = false, retryAttempt = 0) }
+                    scheduleResize()
                     return@launch
                 } catch (cancelled: CancellationException) {
                     dispose(connection)
@@ -158,13 +163,15 @@ internal class ServerTerminalController(
     }
 
     private suspend fun attachTo(connection: TerminalConnection, id: String?, current: Int) {
+        resizeJob?.cancel()
+        resizeJob = null
         transcript = TerminalTranscript().also { it.resize(columns, rows) }
         mutable.update { it.copy(output = "", sessionLost = false, sessionId = null, exitCode = null) }
         val attachColumns = columns
         val attachRows = rows
+        appliedSize = attachColumns to attachRows
         val result = connection.attach(id, attachColumns, attachRows)
         if (current != generation) return
-        if (columns != attachColumns || rows != attachRows) connection.resize(columns, rows)
         selectedId = result.sessionId
         mutable.update { it.copy(sessionId = result.sessionId) }
     }
@@ -178,7 +185,10 @@ internal class ServerTerminalController(
             try { inputMutex.withLock { if (current == generation) action(connection, current) } }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (current == generation) mutable.update { it.copy(error = true) } }
-            finally { if (current == generation) mutable.update { it.copy(busy = false) } }
+            finally { if (current == generation) {
+                mutable.update { it.copy(busy = false) }
+                scheduleResize()
+            } }
         }
     }
 
@@ -217,14 +227,45 @@ internal class ServerTerminalController(
         if (columns == nextColumns && rows == nextRows) return
         columns = nextColumns
         rows = nextRows
-        transcript.resize(columns, rows)
+        resizeRevision++
+        scheduleResize()
+    }
+
+    private fun scheduleResize() {
         val connection = transport ?: return
-        if (!mutable.value.canInput) return
+        if (!mutable.value.canInput || resizeJob?.isActive == true || appliedSize == (columns to rows)) return
         val current = generation
-        scope.launch {
-            try { connection.resize(nextColumns, nextRows) }
+        val sessionId = selectedId
+        fun ready() = current == generation && transport === connection && selectedId == sessionId && mutable.value.canInput
+        resizeJob = scope.launch {
+            var failed = false
+            try {
+                while (ready() && appliedSize != (columns to rows)) {
+                    val revision = resizeRevision
+                    // IME animation changes the viewport on every frame. Keep parsing at the
+                    // negotiated size until the layout settles, and never overlap remote resizes.
+                    delay(200)
+                    if (revision != resizeRevision) continue
+                    inputMutex.withLock {
+                        if (!ready() || revision != resizeRevision || appliedSize == (columns to rows)) return@withLock
+                        val size = columns to rows
+                        mutable.update { it.copy(output = transcript.resize(size.first, size.second)) }
+                        connection.resize(size.first, size.second)
+                        appliedSize = size
+                    }
+                }
+            }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (current == generation) mutable.update { it.copy(error = true) } }
+            catch (_: Exception) {
+                failed = true
+                if (current == generation) mutable.update { it.copy(error = true) }
+            }
+            finally {
+                if (resizeJob === coroutineContext[Job]) {
+                    resizeJob = null
+                    if (!failed) scheduleResize()
+                }
+            }
         }
     }
 
@@ -253,6 +294,7 @@ internal class ServerTerminalController(
 
     fun detach() {
         generation++
+        resizeJob?.cancel()
         connectionJob?.cancel()
         operationJob?.cancel()
         val previous = transport
