@@ -1,6 +1,6 @@
 # Android 测试进度与验收清单
 
-> 更新：2026-09-30。统一维护测试进度、已有执行证据和未关闭检查，区分自动化、模拟器、真实宿主和实体设备；实现进度见 [Progress](Progress.md#2-bp-实现进度)。未执行测试不阻止下一步实现，未测结果不得写成通过。本轮新增验证范围按 BP 编号记录，不将历史验证覆盖到新代码。AD 表为真实宿主/设备检查，已有 JVM 或构建证据不代表整项通过；依赖尚未实现能力的项目先完成 [部署后续工作](../plans/Deployment.md)。
+> 更新：2026-10-01。统一维护测试进度、已有执行证据和未关闭检查，区分自动化、模拟器、真实宿主和实体设备；实现进度见 [Progress](Progress.md#2-bp-实现进度)。未执行测试不阻止下一步实现，未测结果不得写成通过。本轮新增验证范围按 BP 编号记录，不将历史验证覆盖到新代码。AD 表为真实宿主/设备检查，已有 JVM 或构建证据不代表整项通过；依赖尚未实现能力的项目先完成 [部署后续工作](../plans/Deployment.md)。
 
 ## 1. 共同设备与发布检查
 
@@ -14,7 +14,7 @@
 | 文件下载/预览 | MediaStore 下载目录与重名文案；缩略图→详细图、EXIF 方向、大图耗时、缓存预算/淘汰、显式授权才预览；Android org.json null 显示与 executionEligibility 解析 |
 | Server 终端布局 | API 35 平板模拟器已验证 8 项 IME/边距/大字体/草稿检查；厂商输入法、实体手机/平板、真实 PTY 和中文组合/复杂 VT 仍需执行 |
 | 发布 | Release 签名/渠道证书、HTTPS 网络策略、诊断脱敏、后台恢复与危险操作确认；按 [发布说明](../development/android-release.md) 执行 |
-| Lint | 2026-09-27 记录 5 错误/75 warning，之后无完整成功证据；重新运行并核实/修复，不能当作已通过 |
+| Lint | 2026-10-01 BP24-V5 实际运行失败：16 errors / 159 warnings / 12 hints；包括 BP19 API 23 文件排序兼容性与 BP20 Compose 资源读取问题，详情见本次记录，不能当作已通过 |
 
 ## 2. 文件上传与跨端一致性
 
@@ -660,3 +660,35 @@ $env:JAVA_HOME = 'C:/Program Files/Android/openjdk/jdk-21.0.8'
 本轮按实现依赖推进至 BP23：BP18 不实施、BP21 交付平台方案；各阶段实现、源码测试和实际执行证据分别记录在 BP16/BP17/BP19/BP20/BP21/BP22/BP23 小节。Android 编译、JVM、APK、lint、Compose、设备全部按用户本机缺环境要求跳过；未安装 SDK 或用静态检查冒充 Kotlin 编译。BP16 Server/桌面构建和专项、BP17 实际事件账本专项、BP22 实际宿主设置专项及最终三语/引用/链接/差异检查已记录。真实 SSH/SAF、容器、前台服务和 Ubuntu/Windows 平台作用仍保留在集中待验矩阵。
 
 BP24 持续验证与文档同步不是新的 Android 编译环境搭建任务，也不能因跳过设备验证将未实现的 AD01/AD08 工作标为完成。后续任何实现变更只重跑受影响的必要检查；发现真实缺陷关联对应 BP，而非保留已完成的实现计划。
+
+### BP24-V5（2026-10-01，BP16–BP23 基本测试）
+
+- 被测提交 `10d2984f`，执行前工作树干净。此次补跑此前仅有源码/静态证据的测试；未修改产品实现或测试代码。BP18 按既定范围不实施；BP21 仅核对平台方案、运行边界和本地文档链接，不存在可验收的手机第三方包运行时。
+- 使用现有 Android SDK 36、Gradle 9.7.1、启动 JDK 21 和项目指定的缓存 JetBrains JDK 25，离线执行 `:app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest --offline --no-daemon`，返回 `BUILD SUCCESSFUL`。生产 Kotlin、JVM 测试和 instrumentation 源码编译及两份 Debug APK 打包通过。沙箱内首次启动因仓库外 Gradle native library/cache 访问失败，经自动审批在沙箱外沿用现有缓存运行成功；没有下载或安装依赖。
+- 实际解析本次 `app/build/test-results/testDebugUnitTest/TEST-*.xml`：全量 **152 类 / 970 用例，0 失败、0 错误、0 跳过**。其中下表是 BP16–BP23 对应的明确关联测试子集，全量还包含其他领域回归；不把全量数当作这些 BP 的专属用例数。
+
+| 编号 | 关联 JVM 测试 | 类 / 用例 | 失败 / 错误 / 跳过 |
+| --- | --- | --- | --- |
+| BP16 | ApplicationDeploymentWire、DeploymentHttp/Browser、DefinitionHttp/Repository/Draft、RevisionHttp/Source/Repository、CreateForm、Labels | 11 / 71 | 0 / 0 / 0 |
+| BP17 | EventAlertWire/Http/Repository/Browser、AlertNotificationRules | 5 / 23 | 0 / 0 / 0 |
+| BP19 | SshLocalForwards、SshFileTransfers | 2 / 14 | 0 / 0 / 0 |
+| BP20 | ExternalServiceAddresses | 1 / 6 | 0 / 0 / 0 |
+| BP22 | HostSettingsWire/Http/Repository | 3 / 12 | 0 / 0 / 0 |
+| BP23 | MobileFeatureCatalog | 1 / 3 | 0 / 0 / 0 |
+| 合计 | 明确关联子集 | 23 / 129 | 0 / 0 / 0 |
+
+- .NET SDK 10.0.400：Server 与 Server.Tests 标准项目引用构建均使用 `--no-restore -p:OutputPath=bin/BP16-BP23/net10.0/ -m:1 -v quiet` 成功；此次不需要 prebuilt 测试路径。首次默认输出构建受到运行中进程占用 `RelaxKonOS.Protocol.dll` 阻止，随后改用隔离目录成功，没有停止现有服务。Server 保留 3 项 CA1416 警告，Server.Tests 保留 1 项离线漏洞数据 NU1900 警告。
+- 对此次隔离构建的 `RelaxKonOS.Server.Tests/bin/BP16-BP23/net10.0/RelaxKonOS.Server.Tests.dll` 实际执行 `--deployment-definition-only`、`--catalog-update-only`、`--event-alerts-only`、`--host-settings-only`，四项均正常退出并打印通过。覆盖 BP16 定义/完整版本/权限/原操作/冲突/秘密保留/模板预览与绑定，BP17 SQLite 事件聚合/确认/脱敏/抑制恢复，BP22 加密计划/身份/提权/读回/冲突/Unknown 不重放及生产 HTTP wire。使用临时目录与受控提供方，不进行本机环境变量/时区/名称写入或真实容器部署。
+- 静态 XML 检查通过：中/英/日各 **2441 个唯一字符串键**，键集和格式占位符一致（`%%` 按字面百分号处理）；**2381 个生产 Kotlin 文案引用**全部存在；**344 个 Android 本地文档链接**目标存在。链接检查不证明外部网站可达性。
+- 实际执行 `:app:lintDebug --offline --no-daemon` **失败**：**16 errors / 159 warnings / 12 hints**，没有创建 baseline 或关闭规则。HTML/XML 报告位于 `app/build/reports/lint-results-debug.html` / `lint-results-debug.xml`。本次测试范围不修改产品代码，以下错误保留为明确待修缺陷；JVM/APK 构建成功不能覆盖 lint 失败。
+
+| 关联范围 | 错误位置 | 规则与待修问题 |
+| --- | --- | --- |
+| BP19 | `ui/servercenter/SshFilesScreen.kt:119` | `NewApi`：`Comparator.reversed()` 需要 API 24，项目 minSdk 为 23；真实 API 23 文件排序尚未验证 |
+| BP20 | `ui/common/ServiceAccess.kt:33` | `LocalContextGetResourceValueCall`：Compose 中通过 LocalContext 直接读取资源，应采用能响应配置变化的资源读取方式 |
+| BP12 / 文件 | `data/DownloadStore.kt:79`、`data/ImagePreviewCache.kt:22` | 5 项 `NewApi`：MediaStore Downloads API 29、Files.move/File.toPath/REPLACE_EXISTING API 26 |
+| 通用网络 / 安全 | `core/net/RelaxKonApi.kt:1492`、`security/VaultKeyManager.kt:129,159` | 3 项 `NewApi`：contentLengthLong API 24、指纹录入失效 API 24、StrongBox API 28；需核实或补足版本门控 |
+| 登录 / Shell | `ui/connect/LoginScreen.kt:84`、`MainActivity.kt:110`、`ui/connect/OwnerDevicePairingScreen.kt:54` | 3 项 `ContextCastToActivity`，需使用合适的 Activity 获取方式 |
+| BP12 / BP09 | `ui/files/FilesScreen.kt:1827`、`ui/manage/docker/DockerScreen.kt:472` | 1 项 `StateFlowValueCalledInComposition`、2 项 `UnrememberedMutableState`；需修复 Compose 状态观察/状态创建 |
+
+- `adb devices -l` 实际返回空设备列表；没有执行 instrumentation、Compose 页面或手机/平板视觉/IME/旋转/后台/前台服务验收。真实 SSH/SFTP/SAF、Docker 更新/回滚/数据恢复、Ubuntu/Windows 设置写入、外部浏览器和通知仍保留在对应 BP 待验项。JVM 假传输/提供方检查和 instrumentation APK 打包不替代设备或真实宿主结果。
