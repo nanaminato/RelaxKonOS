@@ -1,6 +1,14 @@
 {
     "Culture": "en-US",
     "Strings": {
+        "login.certificate.title": "Verify server TLS certificate",
+        "login.certificate.trust": "Trust this server certificate",
+        "login.certificate.fingerprint": "Certificate SHA-256 fingerprint",
+        "login.certificate.previous": "Previously trusted certificate",
+        "login.certificate.details": "Server: {0}\nSubject: {1}\nIssuer: {2}\nValid from: {3}\nValid until: {4}\n\nThe certificate is not trusted by the system or has changed. Verify its fingerprint before trusting it. Trust is saved only for this server address and certificate in RelaxKonOS.",
+        "login.error.certificate_untrusted": "The TLS certificate was not trusted. Confirm the server certificate to connect.",
+        "login.error.certificate_invalid": "The TLS certificate is expired, does not match the server name, or has another validation error. Correct the server certificate.",
+        "login.error.certificate_save_failed": "Could not save certificate trust. Retry the connection.",
         "login.title": "RelaxKonOS",
         "login.mode": "Login method:",
         "login.mode.relaxkonos": "RelaxKonOS Server",

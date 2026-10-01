@@ -22,6 +22,25 @@ public partial class LoginViewModel : ObservableObject
     private readonly string? _debugPassword = Environment.GetEnvironmentVariable(DebugPasswordEnvironmentVariable);
 #endif
 
+    public Func<ServerCertificateReview, Task<bool>>? ConfirmServerCertificateAsync { get; set; }
+    private string? _certificateTrustError;
+    public string CertificateDialogTitle => T("login.certificate.title", "Verify server TLS certificate");
+    public string TrustCertificateText => T("login.certificate.trust", "Trust this server certificate");
+    public string CertificateFingerprintLabel => T("login.certificate.fingerprint", "Certificate SHA-256 fingerprint");
+    public string PreviousCertificateFingerprintLabel => T("login.certificate.previous", "Previously trusted certificate");
+    public string CertificateReviewText(ServerCertificateReview review) => string.Format(
+        T("login.certificate.details", "Server: {0}\nSubject: {1}\nIssuer: {2}\nValid from: {3}\nValid until: {4}\n\nThe certificate is not trusted by the system or has changed. Verify its fingerprint before trusting it. Trust is saved only for this server address and certificate in RelaxKonOS."),
+        review.Origin, review.Subject, review.Issuer, review.NotBefore.ToString("g"), review.NotAfter.ToString("g"));
+
+    private string DescribeResolutionError(ServerEndpointResolution resolution) => _certificateTrustError ??
+        (resolution.CertificateIssue is { } review
+            ? review.CanTrust
+                ? T("login.error.certificate_untrusted", "The TLS certificate was not trusted. Confirm the server certificate to connect.")
+                : T("login.error.certificate_invalid", "The TLS certificate is expired, does not match the server name, or has another validation error. Correct the server certificate.")
+            : resolution.IsValidInput
+                ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
+                : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port."));
+
     private readonly IAuthSession _session;
     private readonly LoginLocalizationService _localization;
     private readonly ServerEndpointResolver _endpointResolver;
@@ -305,9 +324,7 @@ public partial class LoginViewModel : ObservableObject
         var resolution = await ResolveServerEndpointAsync(ct);
         if (!resolution.IsResolved)
         {
-            ErrorMessage = resolution.IsValidInput
-                ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
-                : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port.");
+            ErrorMessage = DescribeResolutionError(resolution);
             HasError = true;
             StatusMessage = string.Empty;
             return;
@@ -381,7 +398,7 @@ public partial class LoginViewModel : ObservableObject
         var resolution = await ResolveServerEndpointAsync(ct);
         if (!resolution.IsResolved)
         {
-            ErrorMessage = T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.");
+            ErrorMessage = DescribeResolutionError(resolution);
             HasError = true;
             return;
         }
@@ -406,7 +423,7 @@ public partial class LoginViewModel : ObservableObject
         var resolution = await ResolveServerEndpointAsync(ct);
         if (!resolution.IsResolved)
         {
-            ErrorMessage = T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.");
+            ErrorMessage = DescribeResolutionError(resolution);
             HasError = true;
             return;
         }
@@ -596,7 +613,7 @@ public partial class LoginViewModel : ObservableObject
     /// <summary>Invoked by the address control when focus leaves it, before credentials are sent.</summary>
     public async Task DiscoverServerEndpointAsync(CancellationToken ct = default)
     {
-        if (UseSshLogin) return;
+        if (UseSshLogin || IsDiscoveringServer || IsConnecting) return;
         if (string.IsNullOrWhiteSpace(ServerUrl)) return;
 
         var enteredValue = ServerUrl;
@@ -604,9 +621,7 @@ public partial class LoginViewModel : ObservableObject
         if (UseSshLogin) return;
         if (resolution.IsResolved || !string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal)) return;
 
-        ErrorMessage = resolution.IsValidInput
-            ? T("login.error.server_unavailable", "Could not find a RelaxKonOS login endpoint at this address. Check the host and port.")
-            : T("login.error.invalid_server", "The server address is invalid. Enter a host name or a complete HTTP(S) address, for example: host:port.");
+        ErrorMessage = DescribeResolutionError(resolution);
         HasError = true;
     }
 
@@ -765,12 +780,30 @@ public partial class LoginViewModel : ObservableObject
     private async Task<ServerEndpointResolution> ResolveServerEndpointAsync(CancellationToken ct)
     {
         var enteredValue = ServerUrl;
+        _certificateTrustError = null;
         IsDiscoveringServer = true;
         StatusMessage = T("login.status.discovering_server", "Checking secure and standard server endpoints...");
         ClearError();
         try
         {
             var resolution = await _endpointResolver.ResolveAsync(enteredValue, ct);
+            if (resolution.CertificateIssue is { CanTrust: true } review && ConfirmServerCertificateAsync is { } confirm &&
+                !UseSshLogin && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
+            {
+                var accepted = await confirm(review);
+                if (accepted && !ct.IsCancellationRequested && !UseSshLogin && string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal))
+                {
+                    try
+                    {
+                        _endpointResolver.TrustCertificate(review);
+                        resolution = await _endpointResolver.ResolveAsync(enteredValue, ct);
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+                    {
+                        _certificateTrustError = T("login.error.certificate_save_failed", "Could not save certificate trust. Retry the connection.");
+                    }
+                }
+            }
             if (UseSshLogin) return resolution;
             // A later edit wins over this asynchronous result.
             if (string.Equals(ServerUrl, enteredValue, StringComparison.Ordinal) && resolution.Endpoint is { } endpoint)

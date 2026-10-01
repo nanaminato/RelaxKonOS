@@ -711,18 +711,27 @@ user_engine_path() {
   [[ -x $installed ]] && { printf '%s' "$installed"; return; }
   launcher_fail not_supported "no User Mode deployment engine is available on this host"
 }
+system_engine_is_executable() {
+  # System installation scripts may be root-readable only. Resolve them with the
+  # same authenticated privileges that run_engine will use, not the SSH user's.
+  if [[ $sudo_requested == true && $options_mode == linuxSystem && $EUID -ne 0 ]]; then
+    run_privileged test -f "$1" && run_privileged test -x "$1"
+  else
+    [[ -f $1 && -x $1 ]]
+  fi
+}
 system_engine_path() {
   [[ -x $package_root/deployment/bootstrap/install-relaxkonos.sh ]] && { printf '%s/deployment/bootstrap/install-relaxkonos.sh' "$package_root"; return; }
   # The engine publishes its own deployment scripts beside the installation, so repair and rollback
   # work over SSH without re-uploading a package.
-  local installed="$(system_install_root)/deployment/bootstrap/install-relaxkonos.sh"
-  [[ -x $installed ]] && { printf '%s' "$installed"; return; }
+  local installed="$(system_install_root)/current/deployment/bootstrap/install-relaxkonos.sh"
+  system_engine_is_executable "$installed" && { printf '%s' "$installed"; return; }
   launcher_fail not_supported "no System Mode deployment engine is available on this host"
 }
 system_uninstall_engine_path() {
   [[ -x $package_root/deployment/bootstrap/uninstall-relaxkonos.sh ]] && { printf '%s/deployment/bootstrap/uninstall-relaxkonos.sh' "$package_root"; return; }
-  local installed="$(system_install_root)/deployment/bootstrap/uninstall-relaxkonos.sh"
-  [[ -x $installed ]] && { printf '%s' "$installed"; return; }
+  local installed="$(system_install_root)/current/deployment/bootstrap/uninstall-relaxkonos.sh"
+  system_engine_is_executable "$installed" && { printf '%s' "$installed"; return; }
   launcher_fail not_supported "no System Mode uninstall engine is available on this host"
 }
 

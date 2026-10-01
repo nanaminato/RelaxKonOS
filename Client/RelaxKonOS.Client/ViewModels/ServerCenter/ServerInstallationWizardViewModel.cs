@@ -113,6 +113,8 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
     public string ShowHostAddressesText => Text("server_center.wizard.show_host_addresses", "View this host's IP addresses");
     public string CertificateText => Text("server_center.wizard.certificate", "TLS certificate");
     public string CertificateFormatText => Text("server_center.wizard.certificate_format", "Certificate format");
+    public string CertificateFileText => Text("server_center.wizard.certificate_file", "Certificate file");
+    public string CertificatePrivateKeyFileText => Text("server_center.wizard.certificate_private_key_file", "Private key file");
     public string ChooseCertificateText => IsPemCertificate
         ? Text("server_center.wizard.choose_pem_certificate", "Choose PEM certificate chain")
         : Text("server_center.wizard.choose_certificate", "Choose PFX certificate");

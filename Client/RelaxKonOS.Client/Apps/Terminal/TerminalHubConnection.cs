@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Client.Services.Diagnostics;
 using RelaxKonOS.Protocol.Hubs;
 
@@ -17,12 +18,13 @@ public static class TerminalHubConnection
         var connection = new HubConnectionBuilder()
             .WithUrl(opts.HubUrl, http =>
             {
+                ServerCertificateTrust.ConfigureSignalR(http, new Uri(opts.HubUrl.ToString()));
                 http.AccessTokenProvider = () =>
                     opts.TokenProvider?.Invoke() ?? Task.FromResult(opts.AccessToken);
                 if (opts.Diagnostics is not null)
                     http.HttpMessageHandlerFactory = inner => new NetworkDiagnosticsHandler(opts.Diagnostics, "terminal-signalr")
                     {
-                        InnerHandler = inner,
+                        InnerHandler = ServerCertificateTrust.Shared.Configure(inner),
                     };
             })
             .Build();

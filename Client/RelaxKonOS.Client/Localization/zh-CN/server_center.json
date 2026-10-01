@@ -1,6 +1,10 @@
 {
   "Culture": "zh-CN",
   "Strings": {
+    "server_center.wizard.certificate_file": "证书文件",
+    "server_center.wizard.certificate_private_key_file": "私钥文件",
+    "server_center.maintenance_receipt_failed": "操作未成功：{0}",
+    "server_center.maintenance_verification_failed": "操作后的宿主状态未能确认成功，请查看操作记录。",
     "server_center.installation.title": "已安装服务器详情",
     "server_center.installation.note": "以下信息以 SSH 核验时的结果为准，并非实时状态。点击宿主预检可刷新；宿主未返回的字段显示“未提供”。",
     "server_center.installation.unknown": "未提供",

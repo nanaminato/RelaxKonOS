@@ -20,6 +20,7 @@ static void Check(bool condition, string message)
 }
 
 InstallationDetailsChecks.Run();
+await CertificateTrustChecks.RunAsync();
 
 var sshOptions = new SshTransportOptions(
     new SshEndpointOptions("127.0.0.1", 1, "alice"), true, "xterm-256color", null,
@@ -222,6 +223,7 @@ Check(recovered.OperationId == recoveryId && recovery.Commands.Any(command =>
 
 await LoginPickerChecks.RunAsync();
 await HostKeyReviewChecks.RunAsync();
+await MaintenanceOutcomeChecks.RunAsync();
 SecretStoreChecks.Run();
 
 Console.WriteLine("桌面服务器中心传输检查通过。");

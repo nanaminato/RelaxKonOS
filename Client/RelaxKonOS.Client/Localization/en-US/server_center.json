@@ -1,6 +1,10 @@
 {
   "Culture": "en-US",
   "Strings": {
+    "server_center.wizard.certificate_file": "Certificate file",
+    "server_center.wizard.certificate_private_key_file": "Private key file",
+    "server_center.maintenance_receipt_failed": "The operation did not succeed: {0}",
+    "server_center.maintenance_verification_failed": "The host state after the operation does not confirm success. Check the operation record.",
     "server_center.installation.unknown": "Not provided",
     "server_center.installation.yes": "Yes",
     "server_center.installation.no": "No",

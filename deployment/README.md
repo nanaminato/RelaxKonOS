@@ -25,6 +25,12 @@ dotnet run --project ./deployment/packaging/RelaxKonOS.ReleaseVerifier -- verify
 
 服务器中心部署脚本随客户端内置：桌面使用嵌入资源，Android 使用 APK assets。无需放置外部 `launcher/`、设置发布目录环境变量或准备目标 RID 的 `release-verifier`。Windows 使用系统 PowerShell/.NET，Linux 使用 Bash 和 Python 3 完成严格 JSON 解析及安全 ZIP 解压。
 
+Linux 系统模式在未上传新发布包的维护操作中，从 `/opt/relaxkonos/current/deployment/bootstrap/` 读取当前版本的安装和卸载引擎。桌面端必须同时核对操作终态回执及随后读取的宿主状态：失败回执显示实际失败原因；卸载只有在操作成功且状态确认 `installed=false` 时显示成功，保留数据不等于仍然安装。
+
+普通 SSH 账户通过 sudo 维护系统安装时，已安装引擎的文件和可执行权限检查也必须使用同一次经验证的 sudo 身份。部署目录仅 root 可遍历时，不能用普通 SSH 用户的 `test -x` 判断引擎缺失；无 sudo 授权或脚本实际缺失时仍须拒绝操作。
+
+SSH 私有解压目录使用 `0700/0600` 权限；发布到系统模式安装目录后，必须让服务账户可遍历程序目录并读取运行库和程序集，同时保持程序文件仅 root 可写。程序的 `server/data` 必须链接到持久化的受管服务器数据目录。修复部署脚本后必须重新制作 Server ZIP，因为安装实际执行的是 ZIP 内的版本化引擎，仅更新桌面客户端不会更新旧 ZIP 中的安装器。安装器等待 HTTP/HTTPS 健康端点最多 60 秒，不能用 systemd 的 active 状态替代健康检查成功。
+
 安装来源使用当前请求契约：`officialStable` 不上传 ZIP，由服务器读取官网描述符、下载并自动校验；`localBundle` 上传用户选择的 ZIP，`stagedPackageName` 为必填；`remoteBundle` 通过 `remotePackagePath` 引用服务器绝对路径，直接读取，不下载回客户端或重新上传。用户文件无需 `packageDigest`。所有来源仍拒绝路径穿越、重复 ZIP 路径、符号链接、不匹配的架构或包类型，并只将包解压到本次操作的私有目录。Linux 引擎对用户包使用 `--skip-file-checks`，仅省略摘要比对；官网包保留摘要检查。
 
 打包脚本仍导出 `artifacts/launcher/` 中的两种脚本，供维护者手动使用，但客户端运行不依赖这个目录。仓库的 `RelaxKonOS.ReleaseVerifier` 仍可用于发布前检查，不再发布或上传它作为安装依赖。
@@ -149,3 +155,7 @@ no previous version is inferred from unrelated directories.
 
 If verification fails, inspect the repair operation's diagnostic details. A stopped
 or inconsistent installation must be repaired before its managed state can be recovered.
+
+## 桌面 HTTPS 证书信任
+
+桌面登录在发送凭据前探测登录端点。遇到有效但未受系统信任的自签名证书时，显示服务器地址、主题、签发者、有效期和 SHA-256 指纹，由用户选择信任或取消。确认记录保存于本机应用数据目录的 `RelaxKonOS/servercenter/tls-certificate-pins.json`，仅适用于相同服务器地址、端口和证书指纹，不修改操作系统信任库。登录、API、上传和 SignalR HTTP/WebSocket 连接共用该记录。证书变化时停止连接并展示新旧指纹重新确认；过期、主机名不匹配或其他证书链错误仍拒绝连接。拒绝 HTTPS 证书后不会自动降级到 HTTP。

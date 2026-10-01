@@ -1,6 +1,10 @@
 {
   "Culture": "ja-JP",
   "Strings": {
+    "server_center.wizard.certificate_file": "証明書ファイル",
+    "server_center.wizard.certificate_private_key_file": "秘密鍵ファイル",
+    "server_center.maintenance_receipt_failed": "操作に失敗しました：{0}",
+    "server_center.maintenance_verification_failed": "操作後のホスト状態で成功を確認できません。操作記録を確認してください。",
     "server_center.installation.title": "インストール済みサーバーの詳細",
     "server_center.installation.note": "SSH 検証時の情報であり、リアルタイムの状態ではありません。ホストの事前確認で更新できます。返されない項目は「未提供」と表示されます。",
     "server_center.installation.unknown": "未提供",

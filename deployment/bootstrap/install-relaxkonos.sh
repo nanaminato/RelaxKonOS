@@ -241,7 +241,7 @@ publish_payload() { # bundle version
   chown -R root:root "$root"
   # Private SSH extraction uses 0700/0600. Published binaries must be readable and
   # traversable by the service account, while remaining writable only by root.
-  chmod 0755 "$INSTALL_ROOT"
+  chmod 0755 "$INSTALL_ROOT" "$(versions_root)"
   chmod -R u=rwX,go=rX "$root"
   chmod 0755 "$root/server/RelaxKonOS.Server" "$root/guardian/RelaxKonOS.Guardian.Agent" "$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
 }
@@ -452,10 +452,16 @@ run_services_installer() { # version listenUrl
   return $status
 }
 verify_health() {
-  local arguments=(--fail --silent --max-time 15)
+  local deadline=$((SECONDS + 60)) arguments=(--fail --silent --max-time 2)
   [[ "$LISTEN_SCHEME" != https ]] || arguments+=(--insecure)
-  command -v curl >/dev/null && curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null && return 0
-  systemctl is-active --quiet relaxkonos-server.service
+  command -v curl >/dev/null || { echo 'curl is required to verify server health.' >&2; return 1; }
+  while (( SECONDS < deadline )); do
+    if curl "${arguments[@]}" "${LISTEN_SCHEME}://127.0.0.1:$SERVER_PORT/healthz" >/dev/null; then return 0; fi
+    sleep 1
+  done
+  echo 'Server health endpoint did not respond successfully within 60 seconds.' >&2
+  systemctl show relaxkonos-server.service --property=ActiveState --property=SubState --property=ExecMainStatus >&2 || true
+  return 1
 }
 
 case "$ACTION" in

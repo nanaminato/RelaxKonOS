@@ -23,7 +23,11 @@ public sealed class PerformanceStream(IAuthSession session) : IAsyncDisposable
 
         var hubUrl = new Uri(new Uri(session.EffectiveBaseUrl), RelaxKonOSEndpoints.PerformanceHubPath.TrimStart('/')).ToString();
         var connection = new HubConnectionBuilder()
-            .WithUrl(hubUrl, options => options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1)))
+            .WithUrl(hubUrl, options =>
+            {
+                ServerCertificateTrust.ConfigureSignalR(options, new Uri(hubUrl));
+                options.AccessTokenProvider = () => session.GetAccessTokenAsync(TimeSpan.FromMinutes(1));
+            })
             .WithAutomaticReconnect()
             .Build();
         connection.On<PerformanceRealtimeSnapshotDto>(PerformanceHubEvents.OnPerformanceSnapshot, snapshot => SnapshotReceived?.Invoke(snapshot));

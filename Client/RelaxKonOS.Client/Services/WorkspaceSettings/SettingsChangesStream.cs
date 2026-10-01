@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using RelaxKonOS.Client.Services.Auth;
 using RelaxKonOS.Protocol.Common;
 using RelaxKonOS.Protocol.Hubs;
 
@@ -14,7 +15,11 @@ public static class SettingsChangesStream
         {
             await using var connection = new HubConnectionBuilder()
                 .WithUrl(new Uri(new Uri(url), RelaxKonOSEndpoints.SettingsChangesHubPath.TrimStart('/')),
-                    options => options.AccessTokenProvider = () => Task.FromResult<string?>(token))
+                    options =>
+                    {
+                        ServerCertificateTrust.ConfigureSignalR(options, new Uri(url));
+                        options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+                    })
                 .WithAutomaticReconnect().Build();
             connection.On<WorkspaceSettingsChanged>(SettingsChangesMethods.Changed, async change =>
             {

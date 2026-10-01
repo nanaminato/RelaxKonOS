@@ -37,7 +37,7 @@ public sealed class RelaxKonOSClient : IRelaxKonOSClient
             AllowAutoRedirect = false,
             UseProxy = false,
         };
-        using var client = new HttpClient(handler);
+        using var client = new HttpClient(ServerCertificateTrust.Shared.Configure(handler));
         using var response = await client.PostAsJsonAsync(BuildUri(serverUrl, OwnerDeviceKeyApiRoutes.LocalBootstrap), request,
             RelaxKonOSJsonOptions.Default, ct);
         await EnsureSuccessAsync(response, ct);

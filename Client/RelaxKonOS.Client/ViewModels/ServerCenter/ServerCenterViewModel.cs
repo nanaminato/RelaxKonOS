@@ -495,6 +495,20 @@ public partial class ServerCenterViewModel : ObservableObject
             await ApplySnapshotAsync(target, status.Snapshot, cancellationToken).ConfigureAwait(true);
             HasIncompleteInstallation = false;
             LastProbeText = FormatProbe(probe);
+            if (receipt.State != ServerDeploymentState.Succeeded)
+            {
+                ErrorMessage = string.Format(
+                    T("server_center.maintenance_receipt_failed", "The operation did not succeed: {0}"),
+                    receipt.SafeMessage ?? receipt.ProblemCode ?? receipt.State.ToString());
+                return;
+            }
+            if (status.State != ServerDeploymentState.Succeeded ||
+                (kind == ServerDeploymentKind.Uninstall ? status.Snapshot.Installed :
+                    !status.Snapshot.Installed || !status.Snapshot.Healthy))
+            {
+                ErrorMessage = T("server_center.maintenance_verification_failed", "The host state after the operation does not confirm success. Check the operation record.");
+                return;
+            }
             StatusMessage = kind switch
             {
                 ServerDeploymentKind.Repair => T("server_center.repair_succeeded", "The current installation was repaired and verified through SSH."),

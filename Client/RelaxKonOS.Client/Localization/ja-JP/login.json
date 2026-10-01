@@ -1,6 +1,14 @@
 {
     "Culture": "ja-JP",
     "Strings": {
+        "login.certificate.title": "サーバーの TLS 証明書を確認",
+        "login.certificate.trust": "このサーバー証明書を信頼",
+        "login.certificate.fingerprint": "証明書の SHA-256 指紋",
+        "login.certificate.previous": "以前信頼した証明書の指紋",
+        "login.certificate.details": "サーバー：{0}\nサブジェクト：{1}\n発行者：{2}\n有効開始：{3}\n有効期限：{4}\n\n証明書がシステムで信頼されていないか、以前の証明書から変更されています。指紋を確認してから信頼してください。このサーバーアドレスと証明書に限定して RelaxKonOS 内に保存されます。",
+        "login.error.certificate_untrusted": "TLS 証明書がまだ信頼されていません。証明書を確認してから接続してください。",
+        "login.error.certificate_invalid": "TLS 証明書が期限切れ、サーバー名に不一致、または検証エラーがあります。サーバー証明書を修正してください。",
+        "login.error.certificate_save_failed": "証明書の信頼記録を保存できません。接続を再試行してください。",
         "login.title": "RelaxKonOS",
         "login.mode": "ログイン方法:",
         "login.mode.relaxkonos": "RelaxKonOS Server",
