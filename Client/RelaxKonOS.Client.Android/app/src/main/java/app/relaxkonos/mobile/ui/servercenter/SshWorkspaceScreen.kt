@@ -93,7 +93,7 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
         when (page) {
             0 -> SshFilesScreen(hostId, Modifier.padding(padding))
             1 -> SshTerminalScreen(hostId, onClose, Modifier.padding(padding).consumeWindowInsets(padding))
-            2 -> DeploymentSetupScreen(host, Modifier.padding(padding).consumeWindowInsets(padding))
+            2 -> ServerMaintenanceScreen(host, Modifier.padding(padding).consumeWindowInsets(padding))
             else -> SshSystemScreen(hostId, onClose, Modifier.padding(padding))
         }
     }
@@ -101,9 +101,11 @@ fun SshWorkspaceScreen(hostId: String, onClose: () -> Unit) {
 
 /** Matches the desktop source → mode → review flow. Executes the embedded launcher with source-specific package checks. */
 @Composable
-private fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = Modifier) {
-    val installer: ServerInstallViewModel = viewModel(key = "install-${host?.hostId}")
+internal fun DeploymentSetupScreen(host: ServerHostTarget?, modifier: Modifier = Modifier, onBusyChanged: (Boolean) -> Unit = {}) {
+    val installKey = remember(host?.hostId) { "install-${host?.hostId}-${host?.lastVerified?.verifiedAtEpochMillis}" }
+    val installer: ServerInstallViewModel = viewModel(key = installKey)
     val installState by installer.state.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(installState.busy) { onBusyChanged(installState.busy) }
     var bundleUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }
     var certificateUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }
     var privateKeyUri by rememberSaveable(host?.hostId) { mutableStateOf<String?>(null) }

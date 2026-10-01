@@ -1686,4 +1686,16 @@
     <string name="login_certificate_trust">Trust</string>
     <string name="login_certificate_scope">Trust applies only to this server address, port and certificate. Check its SHA-256 fingerprint before continuing.</string>
     <string name="login_certificate_previous">Previously trusted SHA-256: %1$s</string>
+    <string name="server_maintenance_title">Installation and maintenance</string>
+    <string name="server_maintenance_check">Check server</string>
+    <string name="server_maintenance_absent">Not installed</string>
+    <string name="server_maintenance_healthy">Healthy</string>
+    <string name="server_maintenance_unhealthy">Health check failed</string>
+    <string name="server_maintenance_repair">Repair installation</string>
+    <string name="server_maintenance_uninstall">Uninstall server</string>
+    <string name="server_maintenance_history">Operation history</string>
+    <string name="server_maintenance_complete">Operation completed</string>
+    <string name="server_maintenance_uninstall_note">Uninstall RelaxKonOS Server and its Guardian service. Retained data can be reused on reinstall. Deleting managed data is permanent.</string>
+    <string name="server_maintenance_purge">Permanently delete managed data</string>
+    <string name="server_maintenance_probe">OS supported: %1$s\nSudo available: %2$s\nSystemd available: %3$s\nFree disk space (bytes): %4$s\nPort 5000 available: %5$s\nMissing dependencies: %6$s</string>
 </resources>

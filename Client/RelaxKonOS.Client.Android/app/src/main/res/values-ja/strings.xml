@@ -1647,4 +1647,16 @@
     <string name="login_certificate_trust">信頼</string>
     <string name="login_certificate_scope">このアドレス、ポート、証明書だけを信頼します。SHA-256 指紋を確認してください。</string>
     <string name="login_certificate_previous">以前の SHA-256：%1$s</string>
+    <string name="server_maintenance_title">インストールと保守</string>
+    <string name="server_maintenance_check">サーバーを確認</string>
+    <string name="server_maintenance_absent">未インストール</string>
+    <string name="server_maintenance_healthy">正常性確認済み</string>
+    <string name="server_maintenance_unhealthy">正常性確認失敗</string>
+    <string name="server_maintenance_repair">インストールを修復</string>
+    <string name="server_maintenance_uninstall">サーバーをアンインストール</string>
+    <string name="server_maintenance_history">操作履歴</string>
+    <string name="server_maintenance_complete">操作完了</string>
+    <string name="server_maintenance_uninstall_note">RelaxKonOS Server と Guardian をアンインストールします。保持したデータは再インストールで利用できます。管理データの削除は元に戻せません。</string>
+    <string name="server_maintenance_purge">管理データを完全に削除</string>
+    <string name="server_maintenance_probe">OS 対応：%1$s\nsudo 利用可能：%2$s\nsystemd 利用可能：%3$s\n空き容量（バイト）：%4$s\n5000 ポート利用可能：%5$s\n不足する依存関係：%6$s</string>
 </resources>

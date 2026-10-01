@@ -1648,4 +1648,16 @@
     <string name="login_certificate_trust">信任</string>
     <string name="login_certificate_scope">信任仅限此服务器地址、端口和证书。请核对 SHA-256 指纹后继续。</string>
     <string name="login_certificate_previous">原来信任的 SHA-256：%1$s</string>
+    <string name="server_maintenance_title">安装与维护</string>
+    <string name="server_maintenance_check">检查服务器</string>
+    <string name="server_maintenance_absent">未安装</string>
+    <string name="server_maintenance_healthy">健康检查通过</string>
+    <string name="server_maintenance_unhealthy">健康检查未通过</string>
+    <string name="server_maintenance_repair">修复当前安装</string>
+    <string name="server_maintenance_uninstall">卸载服务器</string>
+    <string name="server_maintenance_history">操作记录</string>
+    <string name="server_maintenance_complete">操作已完成</string>
+    <string name="server_maintenance_uninstall_note">卸载 RelaxKonOS Server 和 Guardian 服务。保留的数据可用于重新安装；删除受管数据不可恢复。</string>
+    <string name="server_maintenance_purge">永久删除受管数据</string>
+    <string name="server_maintenance_probe">系统支持：%1$s\n可使用 sudo：%2$s\n可使用 systemd：%3$s\n磁盘可用字节数：%4$s\n5000 端口可用：%5$s\n缺少依赖：%6$s</string>
 </resources>
