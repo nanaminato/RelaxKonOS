@@ -151,6 +151,90 @@ deployment_python() {
   python3 - "$@" <<'PY'
 import errno, hashlib, json, os, re, shutil, stat, sys, urllib.request, zipfile
 from pathlib import Path
+import datetime, ssl, subprocess, uuid, tempfile
+
+def recovery_trusted(path):
+    # Every ancestor must prevent non-root replacement, including symlink targets.
+    resolved = path.resolve(strict=True)
+    for item in [resolved, *resolved.parents]:
+        info = item.stat()
+        if info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError('Untrusted installation path: ' + str(item))
+    return resolved
+
+def recovery_state(root=Path("/opt/relaxkonos"), data=Path("/var/lib/relaxkonos"), config=Path("/etc/relaxkonos")):
+    """Reconstruct only a verified, live installation at the fixed system paths."""
+    if os.geteuid() != 0: raise ValueError('Recovery requires root or authenticated sudo')
+    trusted = recovery_trusted
+    state = data/'install-state.json'
+    if state.exists() or state.is_symlink(): raise ValueError('An installation record already exists; use repair')
+    trusted(root)
+    if (root/'current').lstat().st_uid != 0: raise ValueError('Current version link is not root-owned')
+    current = trusted(root/'current')
+    if current.parent != root/'versions' or not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z.+_-]{0,127}', current.name):
+        raise ValueError('Current version does not point to a managed version directory')
+    def show(unit, field):
+        return subprocess.check_output(['systemctl','show',unit,'--property='+field,'--value'],text=True).strip()
+    for unit, folder, executable, user in (
+        ('relaxkonos-server.service','server','RelaxKonOS.Server','relaxkonos-server'),
+        ('relaxkonos-guardian.service','guardian','RelaxKonOS.Guardian.Agent','')):
+        binary = trusted(current/folder/executable)
+        with binary.open('rb') as binary_stream: magic = binary_stream.read(4)
+        if magic != b'\x7fELF': raise ValueError('Invalid deployed executable: ' + executable)
+        trusted(Path(show(unit,'FragmentPath')))
+        if show(unit,'ActiveState') != 'active' or show(unit,'User') not in ({user} if user else {'','root'}):
+            raise ValueError('Service is inactive or has an unexpected account: ' + unit)
+        if ('path='+str(binary)+' ;') not in show(unit,'ExecStart'):
+            raise ValueError('Unexpected service executable: ' + unit)
+    trusted(current/'privileged-helper/RelaxKonOS.PrivilegedHelper')
+    if Path(show('relaxkonos-server.service','WorkingDirectory')).resolve() != current/'server':
+        raise ValueError('Unexpected server working directory')
+    environment = dict(line.split('=',1) for line in trusted(config/'server.env').read_text().splitlines() if line and not line.startswith('#') and '=' in line)
+    if environment.get('Storage__DatabasePath') != str(data/'server/relaxkonos.db'):
+        raise ValueError('Server database is outside the managed data directory')
+    if not (data/'server/relaxkonos.db').is_file() or (current/'server/data').resolve() != data/'server':
+        raise ValueError('Managed database or server data link is missing')
+    listen = re.findall(r'(?:^|\s)ASPNETCORE_URLS=(https?://(?:127\.0\.0\.1|0\.0\.0\.0):[0-9]+)(?:\s|$)',show('relaxkonos-server.service','Environment'))
+    if len(listen) != 1: raise ValueError('Unsupported or ambiguous server listening address')
+    url = listen[0]; scheme, port = url.split('://')[0], int(url.rsplit(':',1)[1])
+    if not 1 <= port <= 65535: raise ValueError('Invalid server port')
+    certificate = 'none'
+    if scheme == 'https':
+        certificate_path = Path(environment.get('Kestrel__Certificates__Default__Path',''))
+        if certificate_path != data/'server/certificates/bootstrap.pfx': raise ValueError('Unexpected TLS certificate path')
+        # The server data directory is deliberately owned by the service account.
+        # Validate the fixed TLS files themselves rather than demanding root ownership
+        # of that writable parent, which would reject every normal installation.
+        for item in (certificate_path.parent, certificate_path):
+            info = item.lstat()
+            if item.is_symlink() or info.st_uid != 0 or info.st_mode & 0o022:
+                raise ValueError('Unexpected TLS file ownership or permissions')
+        if not environment.get('Kestrel__Certificates__Default__Password'): raise ValueError('TLS credential is missing')
+        certificate = 'custom' # Preserve the actual installed certificate; never rotate it during recovery.
+    with urllib.request.urlopen(f'{scheme}://127.0.0.1:{port}/healthz',timeout=15,context=ssl._create_unverified_context()) as response:
+        if response.status != 200: raise ValueError('Server health check failed')
+    def access(suffix):
+        lines = trusted(config/('privileged-helper-roots'+suffix)).read_text().splitlines()
+        if not lines or any(not line.startswith('/') for line in lines): raise ValueError('Invalid file access policy')
+        if lines == ['/']: return 'full'
+        expected = ['/etc/relaxkonos',str(data)] + (['/root'] if suffix == '-root' else [])
+        return 'restricted' if lines == expected else 'whitelist'
+    docker = config/'docker-access-user'
+    if docker.exists() and trusted(docker).read_text().strip() != 'relaxkonos-server': raise ValueError('Unexpected Docker access account')
+    value = dict(schemaVersion=2,installed=True,mode='linuxSystem',installationId="rki-"+uuid.uuid4().hex,version=current.name,
+                 previousVersion=None,installedAtUtc=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                 installRoot=str(root),dataRoot=str(data),networkProfile='lan' if '0.0.0.0' in url else 'local',listenUrl=url,
+                 certificateMode=certificate,fileAccess=access(''),administratorFileAccess=access('-administrator'),
+                 rootFileAccess=access('-root'),dockerAccess=docker.exists())
+    trusted(data)
+    # Publish atomically without overwriting a record created by another operation.
+    descriptor, temporary = tempfile.mkstemp(prefix='.recovery-',dir=data)
+    try:
+        with os.fdopen(descriptor,'w') as output:
+            json.dump(value,output); output.flush(); os.fsync(output.fileno())
+        os.link(temporary,state)
+    finally: os.unlink(temporary)
+    print('Verified installation recovered: '+current.name)
 
 def unique(pairs):
     result = {}
@@ -272,6 +356,7 @@ try:
         value = request(args[0]); key = args[1]
         print(json.dumps(value.get(key, (value.get('options') or {}).get(key)),separators=(',',':')),end='')
     elif action == 'extract': extract(*args)
+    elif action == 'recover': recovery_state()
     else: raise ValueError('unsupported helper action')
 except Exception as error:
     print('Deployment input rejected: ' + str(error),file=sys.stderr)
@@ -673,7 +758,8 @@ preflight_install() {
   installed=$(state_flag "$file" installed)
   case "$operation_kind" in
     install) [[ $installed != true ]] || launcher_fail already_installed "RelaxKonOS is already installed on this host; use upgrade or repair";;
-    upgrade|repair|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
+    repair) [[ $installed == true || $options_mode == linuxSystem ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
+    upgrade|rollback|uninstall) [[ $installed == true ]] || launcher_fail not_installed "RelaxKonOS is not installed on this host";;
   esac
   case "$options_mode" in
     linuxSystem)
@@ -748,7 +834,9 @@ action_install_like() {
       esac
       ;;
     linuxSystem)
-      if [[ $operation_kind == rollback ]]; then
+      if [[ $operation_kind == repair && $(state_flag "$(mode_install_state "$options_mode")" installed) != true ]]; then
+        run_engine bash "$staging_root/relaxkonos-deploy.sh" --recover-state || status=$?
+      elif [[ $operation_kind == rollback ]]; then
         engine=$(system_engine_path)
         run_engine bash "$engine" --mode system --action rollback --non-interactive || status=$?
       else
@@ -859,6 +947,10 @@ action_uninstall() {
 
 # --- entry -------------------------------------------------------------------------------------
 case "${1:-}" in
+  --recover-state)
+    deployment_python recover
+    exit $?
+    ;;
   --diagnostics)
     operation_id=${2:-}
     [[ $operation_id =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || exit 64

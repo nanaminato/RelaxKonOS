@@ -27,6 +27,14 @@ public partial class ServerCenterViewModel : ObservableObject
     private ServerCenterHostKeyObservation? _pendingHostKey;
     private string? _selectedPlatformHostId;
     private bool _refreshingHostSelection;
+    private readonly Dictionary<string, ServerHostSnapshotDto> _installationSnapshots = new();
+    private readonly Dictionary<string, ServerHostProbeDto> _hostProbes = new();
+    public string InstallationInfoTitle => T("server_center.installation.title", "Installed server details");
+    public string InstallationInfoNote => T("server_center.installation.note", "These facts reflect the SSH verification time. Use host preflight to refresh. Fields not returned by the host are shown as not provided.");
+    public IReadOnlyList<ServerInstallationDetail> InstallationDetails => SelectedHost is { } host
+        ? ServerInstallationDetails.Build(host, _installationSnapshots.GetValueOrDefault(host.HostId),
+            _hostProbes.GetValueOrDefault(host.HostId), T)
+        : Array.Empty<ServerInstallationDetail>();
 
     public ServerCenterViewModel(
         IHostTargetStore targets,
@@ -71,6 +79,14 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _installationWizardOpen;
+    [ObservableProperty] private bool _hasPreviousVersion;
+    [ObservableProperty] private bool _hasIncompleteInstallation;
+    [ObservableProperty] private string _maintenanceSudoPassword = string.Empty;
+    public bool HasManagedInstallation => SelectedHost?.LastVerified?.Installed == true;
+    public string UpdateText => T("server_center.update", "Update RelaxKonOS");
+    public string RecoverText => T("server_center.recover", "Recover installation");
+    public string IncompleteInstallationText => T("server_center.incomplete_installation", "Services exist but the managed installation record is missing. Recover the installation before updating or uninstalling.");
+    public string MaintenanceSudoPasswordText => T("server_center.wizard.sudo_password", "sudo password (leave blank to use the SSH password)");
     [ObservableProperty] private string _operationDiagnostics = string.Empty;
     public bool ShowWorkspaceProgress => IsBusy && !InstallationWizardOpen;
     public string OperationDetailsText => SelectedOperation is { } operation
@@ -90,7 +106,6 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _verifiedStateText = string.Empty;
     [ObservableProperty] private string _lastProbeText = string.Empty;
     [ObservableProperty] private bool _deleteServerData;
-    [ObservableProperty] private string _uninstallNameConfirmation = string.Empty;
     [ObservableProperty] private ServerCenterOperationRecord? _selectedOperation;
 
     /// <summary>Workspace-owned modal presentation; the view model owns the deployment action only.</summary>
@@ -142,7 +157,6 @@ public partial class ServerCenterViewModel : ObservableObject
     public string RollbackText => T("server_center.rollback", "Restore previous version");
     public string UninstallText => T("server_center.uninstall", "Uninstall server");
     public string DeleteServerDataText => T("server_center.delete_data", "Also permanently delete managed data");
-    public string UninstallNameLabel => T("server_center.uninstall_name", "Type the server name to delete data");
     public string OperationHistoryText => T("server_center.operation_history", "Operation history");
     public string LoadOperationHistoryText => T("server_center.load_operation_history", "Load operation history");
     public string ClearOperationHistoryText => T("server_center.clear_operation_history", "Clear completed records");
@@ -270,13 +284,19 @@ public partial class ServerCenterViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanRecover))]
+    private Task RecoverAsync(CancellationToken cancellationToken = default) =>
+        PerformInstalledOperationAsync(ServerDeploymentKind.Repair, ServerDataRetention.Retain, cancellationToken, recovering: true);
+
+    private bool CanRecover() => CanProbeHost() && HasIncompleteInstallation && SelectedPlatform?.Platform == HostPlatformKind.Linux;
+
     private bool CanRemoveHost() => !IsBusy && SelectedHost is not null;
 
     [RelayCommand(CanExecute = nameof(CanMaintain))]
     private Task RepairAsync(CancellationToken cancellationToken = default) =>
         PerformInstalledOperationAsync(ServerDeploymentKind.Repair, ServerDataRetention.Retain, cancellationToken);
 
-    [RelayCommand(CanExecute = nameof(CanMaintain))]
+    [RelayCommand(CanExecute = nameof(CanRollback))]
     private Task RollbackAsync(CancellationToken cancellationToken = default) =>
         PerformInstalledOperationAsync(ServerDeploymentKind.Rollback, ServerDataRetention.Retain, cancellationToken);
 
@@ -401,13 +421,11 @@ public partial class ServerCenterViewModel : ObservableObject
     private async Task PerformInstalledOperationAsync(
         ServerDeploymentKind kind,
         ServerDataRetention retention,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool recovering = false)
     {
         var target = SelectedHost;
         var platform = SelectedPlatform;
         if (target is null || platform is null) return;
-        if (retention == ServerDataRetention.Delete &&
-            !string.Equals(UninstallNameConfirmation.Trim(), target.DisplayName, StringComparison.Ordinal)) return;
 
         IsBusy = true;
         ErrorMessage = string.Empty;
@@ -430,14 +448,22 @@ public partial class ServerCenterViewModel : ObservableObject
                 cancellationToken).ConfigureAwait(true);
             var probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
             var probe = probeReceipt.Probe;
+            var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe?.Elevated == false && probe.SudoAvailable && probe.ExistingMode != ServerInstallMode.LinuxUser
+                ? (!string.IsNullOrEmpty(MaintenanceSudoPassword) ? MaintenanceSudoPassword : (credential as ServerCenterSshCredential.Password)?.Secret ?? "") : null;
+            if (sudoPassword is not null)
+            {
+                probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken, sudoPassword).ConfigureAwait(true);
+                probe = probeReceipt.Probe;
+            }
             if (probe is null || !probe.OsSupported || !PlatformMatches(platform.Platform, probe.HostPlatform) ||
-                !probe.ExistingInstalled || probe.ExistingMode is null ||
-                !ServerInstallationId.IsValid(probe.ExistingInstallationId))
+                (recovering ? probe.ExistingInstalled || platform.Platform != HostPlatformKind.Linux :
+                !probe.ExistingInstalled || probe.ExistingMode is null || !ServerInstallationId.IsValid(probe.ExistingInstallationId)))
             {
                 ErrorMessage = T("server_center.maintenance_preflight_failed", "The host no longer reports a supported managed installation. This operation is blocked.");
                 return;
             }
 
+            var operationMode = recovering ? ServerInstallMode.LinuxSystem : probe.ExistingMode!.Value;
             var request = new ServerDeploymentRequest(
                 ServerDeploymentProtocol.Version,
                 Guid.NewGuid(),
@@ -446,7 +472,7 @@ public partial class ServerCenterViewModel : ObservableObject
                     ServerPackageSourceKind.OfficialStable,
                     ServerNetworkProfile.Loopback,
                     retention,
-                    probe.ExistingMode,
+                    operationMode,
                     null,
                     null,
                     null,
@@ -454,12 +480,12 @@ public partial class ServerCenterViewModel : ObservableObject
                     probe.ExistingInstallationId,
                     null,
                     Confirmed: true));
-            var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken).ConfigureAwait(true);
+            var receipt = await ExecuteFixedOperationAsync(session, tools, request, cancellationToken, sudoPassword).ConfigureAwait(true);
 
             // Read the separate status receipt even after uninstall. The install identity is retained
             // locally only as a stable association for preserved data; it is never treated as live API health.
             var status = await ExecuteReadOnlyAsync(
-                session, tools, ServerDeploymentKind.Status, StatusOptions(probe.ExistingMode.Value), cancellationToken).ConfigureAwait(true);
+                session, tools, ServerDeploymentKind.Status, StatusOptions(operationMode), cancellationToken, sudoPassword).ConfigureAwait(true);
             if (status.Snapshot is null)
             {
                 ErrorMessage = T("server_center.status_missing", "The deployment finished, but no authoritative SSH-side status receipt was returned.");
@@ -467,6 +493,7 @@ public partial class ServerCenterViewModel : ObservableObject
             }
 
             await ApplySnapshotAsync(target, status.Snapshot, cancellationToken).ConfigureAwait(true);
+            HasIncompleteInstallation = false;
             LastProbeText = FormatProbe(probe);
             StatusMessage = kind switch
             {
@@ -493,7 +520,6 @@ public partial class ServerCenterViewModel : ObservableObject
         {
             SshPassword = string.Empty;
             DeleteServerData = false;
-            UninstallNameConfirmation = string.Empty;
             IsBusy = false;
         }
     }
@@ -506,6 +532,8 @@ public partial class ServerCenterViewModel : ObservableObject
         finally { InstallationWizardOpen = false; }
     }
     partial void OnInstallationWizardOpenChanged(bool value) => OnPropertyChanged(nameof(ShowWorkspaceProgress));
+    [RelayCommand(CanExecute = nameof(CanMaintain))]
+    private Task UpdateAsync() => OpenInstallationWizardAsync();
     partial void OnOperationDiagnosticsChanged(string value) => OnPropertyChanged(nameof(OperationDetailsText));
 
     public async Task<bool> DeployAsync(
@@ -684,12 +712,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 ErrorMessage = T("server_center.status_missing", "The deployment finished, but no authoritative SSH-side status receipt was returned.");
                 return false;
             }
-            var verified = ServerHostTargetRules.ApplyVerifiedState(
-                target, ServerHostTargetRules.VerifiedStateFrom(status.Snapshot), DateTimeOffset.UtcNow);
-            var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
-            ReplaceHost(saved);
-            SelectedHost = saved;
-            VerifiedStateText = FormatSnapshot(saved.LastVerified!);
+            await ApplySnapshotAsync(target, status.Snapshot, cancellationToken).ConfigureAwait(true);
             LastProbeText = FormatProbe(probe);
             StatusMessage = kind == ServerDeploymentKind.Install
                 ? T("server_center.install_succeeded", "RelaxKonOS was installed and verified through SSH. Return to the login window to sign in.")
@@ -756,26 +779,30 @@ public partial class ServerCenterViewModel : ObservableObject
                 DateTimeOffset.UtcNow,
                 cancellationToken).ConfigureAwait(true);
             var probe = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken).ConfigureAwait(true);
+            var sudoPassword = platform.Platform == HostPlatformKind.Linux && probe.Probe?.Elevated == false && probe.Probe.SudoAvailable && probe.Probe.ExistingMode != ServerInstallMode.LinuxUser
+                ? (!string.IsNullOrEmpty(MaintenanceSudoPassword) ? MaintenanceSudoPassword : (credential as ServerCenterSshCredential.Password)?.Secret ?? "") : null;
+            if (sudoPassword is not null)
+                probe = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null, cancellationToken, sudoPassword).ConfigureAwait(true);
+            if (probe.Probe is null) { ErrorMessage = probe.SafeMessage ?? T("server_center.sudo_failed", "sudo authentication failed."); return; }
 
             // Status is separate from reachability/preflight.  Query it in the same trusted session
             // so a host with a stopped API is not incorrectly offered a reinstall.
             var probeFacts = probe.Probe;
-            var statusMode = probeFacts is null ? null : StatusMode(platform.Platform, probeFacts);
+            var statusMode = probeFacts is null ? null : sudoPassword is not null && probeFacts.ExistingMode is null
+                ? ServerInstallMode.LinuxSystem : StatusMode(platform.Platform, probeFacts);
             if (statusMode is null)
             {
                 ErrorMessage = T("server_center.status_mode_missing", "The host did not report an installation mode that can be checked safely.");
                 return;
             }
             var status = await ExecuteReadOnlyAsync(
-                session, tools, ServerDeploymentKind.Status, StatusOptions(statusMode.Value), cancellationToken).ConfigureAwait(true);
+                session, tools, ServerDeploymentKind.Status, StatusOptions(statusMode.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
+            HasPreviousVersion = !string.IsNullOrWhiteSpace(status.Snapshot?.PreviousVersion);
+            HasIncompleteInstallation = status.Snapshot?.Installed != true && platform.Platform == HostPlatformKind.Linux &&
+                (await session.Transport.RunAsync("systemctl is-active --quiet relaxkonos-server.service", cancellationToken).ConfigureAwait(true)).Succeeded;
             if (status.Snapshot is not null)
             {
-                var verified = ServerHostTargetRules.ApplyVerifiedState(
-                    target, ServerHostTargetRules.VerifiedStateFrom(status.Snapshot), DateTimeOffset.UtcNow);
-                var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
-                ReplaceHost(saved);
-                SelectedHost = saved;
-                VerifiedStateText = FormatSnapshot(saved.LastVerified!);
+                await ApplySnapshotAsync(target, status.Snapshot, cancellationToken).ConfigureAwait(true);
             }
             if (probe.Probe is not null)
                 LastProbeText = FormatProbe(probe.Probe);
@@ -975,11 +1002,16 @@ public partial class ServerCenterViewModel : ObservableObject
     }
 
     private bool CanProbeHost() => !IsBusy && SelectedHost is not null && !HostKeyChanged;
-    private bool CanOpenInstallationWizard() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null && !HostKeyChanged;
+    private bool CanOpenInstallationWizard() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null && !HostKeyChanged && !HasIncompleteInstallation;
+    partial void OnHasIncompleteInstallationChanged(bool value)
+    {
+        OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
+    }
     private bool CanMaintain() => CanProbeHost() && SelectedPlatform is not null && HasLastProbe && SelectedHost?.LastVerified?.Installed == true;
-    private bool CanUninstall() => CanMaintain() &&
-                                   (!DeleteServerData || string.Equals(
-                                       UninstallNameConfirmation.Trim(), SelectedHost?.DisplayName, StringComparison.Ordinal));
+    private bool CanRollback() => CanMaintain() && HasPreviousVersion;
+    partial void OnHasPreviousVersionChanged(bool value) => RollbackCommand.NotifyCanExecuteChanged();
+    private bool CanUninstall() => CanMaintain();
     private bool CanLoadOperationHistory() => !IsBusy && SelectedHost is not null;
     private bool CanRefreshOperation() => !IsBusy && SelectedHost is not null && SelectedPlatform is not null &&
                                           SelectedOperation is not null && !HostKeyChanged;
@@ -1008,19 +1040,28 @@ public partial class ServerCenterViewModel : ObservableObject
         _selectedPlatformHostId = value?.HostId;
         ClearPendingHostKey();
         SshPassword = string.Empty;
-        if (changedTarget) SelectedPlatform = null;
+        if (changedTarget)
+        {
+            SelectedPlatform = null;
+            HasPreviousVersion = false;
+            HasIncompleteInstallation = false;
+            MaintenanceSudoPassword = string.Empty;
+        }
         VerifiedStateText = value?.LastVerified is { } verified ? FormatSnapshot(verified) : string.Empty;
         LastProbeText = string.Empty;
         DeleteServerData = false;
-        UninstallNameConfirmation = string.Empty;
         Operations.Clear();
         SelectedOperation = null;
         OnPropertyChanged(nameof(HasOperations));
         OnPropertyChanged(nameof(DeployText));
+        OnPropertyChanged(nameof(HasManagedInstallation));
+        OnPropertyChanged(nameof(InstallationDetails));
+        UpdateCommand.NotifyCanExecuteChanged();
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -1030,12 +1071,15 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnIsBusyChanged(bool value)
     {
+        if (!value) MaintenanceSudoPassword = string.Empty;
+        UpdateCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ShowWorkspaceProgress));
         ClearOperationHistoryCommand.NotifyCanExecuteChanged();
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -1054,6 +1098,7 @@ public partial class ServerCenterViewModel : ObservableObject
     {
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -1064,6 +1109,7 @@ public partial class ServerCenterViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedPlatformText));
         ProbeHostCommand.NotifyCanExecuteChanged();
         OpenInstallationWizardCommand.NotifyCanExecuteChanged();
+        RecoverCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
@@ -1071,12 +1117,12 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnLastProbeTextChanged(string value)
     {
+        UpdateCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
         RollbackCommand.NotifyCanExecuteChanged();
         UninstallCommand.NotifyCanExecuteChanged();
     }
     partial void OnDeleteServerDataChanged(bool value) => UninstallCommand.NotifyCanExecuteChanged();
-    partial void OnUninstallNameConfirmationChanged(string value) => UninstallCommand.NotifyCanExecuteChanged();
     partial void OnSelectedOperationChanged(ServerCenterOperationRecord? value)
     {
         OperationDiagnostics = string.Empty;
@@ -1113,14 +1159,15 @@ public partial class ServerCenterViewModel : ObservableObject
         ServerCenterHostSession session,
         ServerCenterDeploymentTools tools,
         ServerDeploymentRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? sudoPassword = null)
     {
         await using var launcher = tools.OpenLauncher();
 
         var client = new ServerCenterDeploymentClient(session.Transport);
         var staged = await client.StageAsync(
             request, tools.Platform, launcher, null, null, null, null, cancellationToken).ConfigureAwait(true);
-        var receipt = await client.ExecuteAsync(staged, cancellationToken).ConfigureAwait(true);
+        var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
         await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(session.Target.HostId, receipt), cancellationToken)
             .ConfigureAwait(true);
         return receipt;
@@ -1131,6 +1178,7 @@ public partial class ServerCenterViewModel : ObservableObject
         ServerHostSnapshotDto snapshot,
         CancellationToken cancellationToken)
     {
+        _installationSnapshots[target.HostId] = snapshot;
         var verified = ServerHostTargetRules.ApplyVerifiedState(
             target, ServerHostTargetRules.VerifiedStateFrom(snapshot), DateTimeOffset.UtcNow);
         var saved = await _targets.UpsertAsync(verified, cancellationToken).ConfigureAwait(true);
@@ -1163,10 +1211,15 @@ public partial class ServerCenterViewModel : ObservableObject
         OnPropertyChanged(nameof(HasHosts));
     }
 
-    private string FormatProbe(ServerHostProbeDto probe) => string.Format(
-        T("server_center.probe_summary", "{0} · {1} · {2}"),
-        probe.HostPlatform, probe.Architecture,
-        probe.Elevated ? T("server_center.elevated", "elevated") : T("server_center.not_elevated", "not elevated"));
+    private string FormatProbe(ServerHostProbeDto probe)
+    {
+        if (SelectedHost is { } host) _hostProbes[host.HostId] = probe;
+        OnPropertyChanged(nameof(InstallationDetails));
+        return string.Format(
+            T("server_center.probe_summary", "{0} · {1} · {2}"),
+            probe.HostPlatform, probe.Architecture,
+            probe.Elevated ? T("server_center.elevated", "elevated") : T("server_center.not_elevated", "not elevated"));
+    }
 
     private string FormatSnapshot(ServerHostVerifiedState state) => string.Format(
         T("server_center.verified_state", "Verified through SSH at {0}: {1}"),

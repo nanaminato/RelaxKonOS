@@ -131,3 +131,21 @@ Docker 管理默认关闭，因为 Docker socket 等同高权限主机控制。�
 User Mode 仅写入该账号的 XDG 数据、配置、状态和缓存目录；它只绑定 `127.0.0.1`，不创建 systemd system unit、不修改 PAM、sudoers、防火墙或 `/etc`。远程连接请使用 SSH 本地转发。`relaxkon upgrade`、`stop` 和 `uninstall` 使用相同的用户态目录；没有 user systemd 或 linger 也可以使用这些命令。
 
 User Mode 也会在该账号私有的 XDG 配置目录自动生成并保存审计实例编号和密钥；用户无需执行额外步骤。
+# Recover a Linux system installation
+
+If the server and Guardian are running but `/var/lib/relaxkonos/install-state.json`
+is missing, run host preflight in the desktop Server Center, enter the sudo password
+when required, and choose **Recover installation**. This uses the fixed SSH repair
+operation in Linux System Mode and does not require another release ZIP.
+
+Recovery checks root ownership and write permissions of the deployed version and
+configuration, service executable paths and accounts, the managed database and data
+link, effective listening address, TLS configuration, file access policies, and an
+HTTP 200 response from the local health endpoint. Only after all checks pass does it
+atomically publish a schema 2 installation record with a new installation identity.
+Existing records are never overwritten. Data, services, and certificates are preserved.
+The installed certificate is recorded as custom so later repair preserves its identity;
+no previous version is inferred from unrelated directories.
+
+If verification fails, inspect the repair operation's diagnostic details. A stopped
+or inconsistent installation must be repaired before its managed state can be recovered.

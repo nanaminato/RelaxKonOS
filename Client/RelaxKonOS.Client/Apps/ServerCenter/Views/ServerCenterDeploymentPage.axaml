@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:services="clr-namespace:RelaxKonOS.Client.Services.ServerCenter"
              xmlns:vm="clr-namespace:RelaxKonOS.Client.ViewModels.ServerCenter"
              x:Class="RelaxKonOS.Client.Apps.ServerCenter.Views.ServerCenterDeploymentPage"
              x:DataType="vm:ServerCenterViewModel">
@@ -31,24 +32,44 @@
                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
                 <TextBlock Text="{Binding ProbeHelpText}" FontSize="12" TextWrapping="Wrap" />
                 <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding DeploymentPasswordHint}" />
+                <TextBox Text="{Binding MaintenanceSudoPassword}" PasswordChar="●" PlaceholderText="{Binding MaintenanceSudoPasswordText}" />
                 <StackPanel Spacing="2">
                     <TextBlock Text="{Binding PlatformLabel}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding SelectedPlatformText}" />
                 </StackPanel>
                 <Button Command="{Binding ProbeHostCommand}" Content="{Binding ProbeText}" HorizontalAlignment="Left" />
                 <TextBlock Text="{Binding LastProbeText}" IsVisible="{Binding HasLastProbe}" TextWrapping="Wrap" />
-                <Button Command="{Binding OpenInstallationWizardCommand}" Content="{Binding DeployText}" HorizontalAlignment="Left" />
+                <TextBlock Text="{Binding IncompleteInstallationText}" IsVisible="{Binding HasIncompleteInstallation}" TextWrapping="Wrap" />
+                <Button Command="{Binding RecoverCommand}" Content="{Binding RecoverText}" IsVisible="{Binding HasIncompleteInstallation}" HorizontalAlignment="Left" />
+                <Button Command="{Binding OpenInstallationWizardCommand}" Content="{Binding DeployText}" IsVisible="{Binding !HasManagedInstallation}" HorizontalAlignment="Left" />
             </StackPanel>
         </Border>
-        <Border Classes="card" Padding="20" IsVisible="{Binding SelectedHost.LastVerified.Installed}">
+        <Border Classes="card" Padding="20" IsVisible="{Binding HasManagedInstallation}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding InstallationInfoTitle}" FontSize="17" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding VerifiedStateText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding InstallationInfoNote}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <Separator />
+                <ItemsControl ItemsSource="{Binding InstallationDetails}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="services:ServerInstallationDetail">
+                            <Grid ColumnDefinitions="160,*" ColumnSpacing="18" Margin="0,5">
+                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+        <Border Classes="card" Padding="20" IsVisible="{Binding HasManagedInstallation}">
             <StackPanel Spacing="12">
                 <TextBlock Text="{Binding DeploymentPageTitle}" FontSize="17" FontWeight="SemiBold" />
+                <Button Command="{Binding UpdateCommand}" Content="{Binding UpdateText}" HorizontalAlignment="Left" />
                 <Button Command="{Binding RepairCommand}" Content="{Binding RepairText}" HorizontalAlignment="Left" />
-                <Button Command="{Binding RollbackCommand}" Content="{Binding RollbackText}" HorizontalAlignment="Left" />
+                <Button Command="{Binding RollbackCommand}" Content="{Binding RollbackText}" IsVisible="{Binding HasPreviousVersion}" HorizontalAlignment="Left" />
                 <Separator />
                 <CheckBox IsChecked="{Binding DeleteServerData}" Content="{Binding DeleteServerDataText}" />
-                <TextBox Text="{Binding UninstallNameConfirmation}" IsVisible="{Binding DeleteServerData}"
-                         PlaceholderText="{Binding UninstallNameLabel}" />
                 <Button Command="{Binding UninstallCommand}" Content="{Binding UninstallText}" HorizontalAlignment="Left" Classes="danger" />
             </StackPanel>
         </Border>

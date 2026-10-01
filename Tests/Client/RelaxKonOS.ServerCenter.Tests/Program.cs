@@ -19,6 +19,8 @@ static void Check(bool condition, string message)
     Console.WriteLine("PASS: " + message);
 }
 
+InstallationDetailsChecks.Run();
+
 var sshOptions = new SshTransportOptions(
     new SshEndpointOptions("127.0.0.1", 1, "alice"), true, "xterm-256color", null,
     new SshAuthenticationOptions(true, "session", Array.Empty<string>(), false),
