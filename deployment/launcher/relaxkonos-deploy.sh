@@ -149,7 +149,7 @@ record_json_only() {
 # No RID-specific client executable is uploaded or required.
 deployment_python() {
   python3 - "$@" <<'PY'
-import hashlib, json, os, re, shutil, stat, sys, urllib.request, zipfile
+import errno, hashlib, json, os, re, shutil, stat, sys, urllib.request, zipfile
 from pathlib import Path
 
 def unique(pairs):
@@ -224,6 +224,8 @@ def extract(source, runtime, kind, destination, archive):
     with zipfile.ZipFile(path) as package:
         entries = package.infolist()
         if len(entries) > 20000 or sum(e.file_size for e in entries) > 8*1024**3: raise ValueError('package limits')
+        if shutil.disk_usage(destination.parent).free < sum(e.file_size for e in entries) + 64*1024**2:
+            raise OSError(errno.ENOSPC, 'Insufficient space for extracted package')
         seen = set()
         for entry in entries:
             name = entry.filename.rstrip('/')
@@ -256,7 +258,7 @@ def extract(source, runtime, kind, destination, archive):
                 with package.open(entry) as src, target.open('xb') as dst: shutil.copyfileobj(src,dst)
                 target.chmod(0o700 if name.endswith('.sh') or name in required else 0o600)
         except BaseException:
-            shutil.rmtree(destination)
+            shutil.rmtree(destination, ignore_errors=True)
             raise
 
 try:
@@ -273,7 +275,8 @@ try:
     else: raise ValueError('unsupported helper action')
 except Exception as error:
     print('Deployment input rejected: ' + str(error),file=sys.stderr)
-    sys.exit(1)
+    sys.exit(73 if isinstance(error, OSError) and error.errno == errno.EDQUOT else
+             74 if isinstance(error, OSError) and error.errno == errno.ENOSPC else 1)
 PY
 }
 
@@ -596,8 +599,25 @@ require_package() {
     remoteBundle) archive=$options_remote_path;;
   esac
   package_root=$staging_root/package-$operation_id
-  deployment_python extract "$options_source" "$architecture" "$kind" "$package_root" "$archive" >>"$(diagnostics_path)" 2>&1 \
-    || launcher_fail package_manifest_invalid "the release could not be downloaded, checked or safely extracted"
+  local extract_status=0
+  deployment_python extract "$options_source" "$architecture" "$kind" "$package_root" "$archive" >>"$(diagnostics_path)" 2>&1 || extract_status=$?
+  case "$extract_status" in
+    0) ;;
+    73) launcher_fail disk_quota_exceeded "服务器当前 SSH 用户的存储配额已耗尽，请清理本应用的安装暂存文件或调整配额后重试。";;
+    74) launcher_fail disk_space_insufficient "服务器安装暂存分区空间不足，请释放空间后重试。";;
+    *) launcher_fail package_manifest_invalid "the release could not be downloaded, checked or safely extracted";;
+  esac
+}
+
+cleanup_staged_payload() {
+  # Keep account-wide receipts and logs; remove only payloads from this validated staging directory.
+  [[ $staging_root =~ ^/tmp/relaxkonos-deploy\.[A-Za-z0-9]{8,32}$ && -O $staging_root && ! -L $staging_root ]] || return 0
+  rm -rf -- "$staging_root/package-$operation_id"
+  rm -f -- "$staging_root/package-$operation_id.zip" "$staging_root/package-$operation_id.json" \
+    "$staging_root/certificate.pfx" "$staging_root/certificate-password.txt"
+  if [[ $options_source == localBundle && $options_staged_name == server.zip ]]; then
+    rm -f -- "$staging_root/server.zip"
+  fi
 }
 
 user_engine_path() {
@@ -633,6 +653,7 @@ run_engine() { # command...
   fi
   local status=$?
   set -e
+  printf '\nDeployment engine exit status: %s\n' "$status" >> "$diagnostics"
   chmod 600 -- "$diagnostics" 2>/dev/null || true
   return $status
 }
@@ -838,6 +859,16 @@ action_uninstall() {
 
 # --- entry -------------------------------------------------------------------------------------
 case "${1:-}" in
+  --diagnostics)
+    operation_id=${2:-}
+    [[ $operation_id =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || exit 64
+    operation_id=${operation_id,,}
+    ensure_journal
+    [[ -f $(record_path) ]] || exit 66
+    [[ -f $(diagnostics_path) && ! -L $(diagnostics_path) ]] || exit 0
+    head -c 65536 -- "$(diagnostics_path)"
+    exit 0
+    ;;
   --query)
     operation_id=${2:-}
     [[ $operation_id =~ ^[0-9a-fA-F-]{36}$ ]] || { launcher_note "usage: $0 --query OPERATION_ID"; exit 64; }
@@ -864,6 +895,7 @@ esac
 ensure_journal
 read_request
 parse_request
+trap cleanup_staged_payload EXIT
 check_idempotency
 started_at=$(now_utc)
 persist_digest

@@ -9,7 +9,7 @@
         <TextBlock Text="{Binding HistoryPageTitle}" FontSize="21" FontWeight="SemiBold" />
         <TextBlock Grid.Row="1" Text="{Binding SelectHostHint}" IsVisible="{Binding !SelectedHost}" TextWrapping="Wrap" />
         <Border Grid.Row="2" Classes="card" Padding="20" IsVisible="{Binding SelectedHost}">
-            <Grid RowDefinitions="Auto,*" RowSpacing="12">
+            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
                 <StackPanel Spacing="12">
                 <TextBlock Text="{Binding SelectedHost.DisplayName}" FontSize="17" FontWeight="SemiBold" />
                 <TextBox Text="{Binding SshPassword}" PasswordChar="●" PlaceholderText="{Binding DeploymentPasswordHint}" />
@@ -47,6 +47,7 @@
                         </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
+                <TextBox Grid.Row="2" Text="{Binding OperationDetailsText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="220" MinHeight="70" />
             </Grid>
         </Border>
     </Grid>

@@ -18,6 +18,7 @@
 param(
     # Replay the persistent record of an earlier operation instead of running a new one.
     [string] $QueryOperationId,
+    [string] $DiagnosticsOperationId,
     # List the most recent operation records on this host.
     [switch] $ListOperations
 )
@@ -1036,6 +1037,17 @@ function Invoke-UninstallAction {
 }
 
 # --- entry ---------------------------------------------------------------------------------------
+if ($DiagnosticsOperationId) {
+    if ($DiagnosticsOperationId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { exit 64 }
+    $script:record.operationId = $DiagnosticsOperationId.ToLowerInvariant()
+    Initialize-Journal
+    $path = Get-OperationDiagnosticsPath
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $text = [IO.File]::ReadAllText($path)
+        [Console]::Write($text.Substring(0, [Math]::Min(65536, $text.Length)))
+    }
+    exit 0
+}
 if ($QueryOperationId) {
     if ($QueryOperationId -notmatch '^[0-9a-fA-F-]{36}$') {
         Write-Note "usage: $($MyInvocation.MyCommand.Name) -QueryOperationId <uuid> | -ListOperations"

@@ -1,5 +1,6 @@
 """Test the Linux launcher's actual helper without running any service installer."""
-import hashlib, json, tempfile, unittest, zipfile
+import errno, hashlib, json, tempfile, unittest, zipfile
+from unittest.mock import patch
 from pathlib import Path
 
 script = (Path(__file__).resolve().parents[2]/'deployment/launcher/relaxkonos-deploy.sh').read_text(encoding='utf-8')
@@ -69,5 +70,19 @@ class PackageSourceChecks(unittest.TestCase):
                     json.dumps(value | {'command':'rm'}),json.dumps(value | {'options':value['options'] | {'confirmed':'true'}})]:
             path.write_text(raw)
             with self.assertRaises(ValueError):helper['request'](path)
+
+    def test_full_partition_is_rejected_before_extraction(self):
+        self.package()
+        with patch.object(helper['shutil'], 'disk_usage', return_value=type('Usage', (), {'free':0})()):
+            with self.assertRaises(OSError) as caught:self.extract()
+        self.assertEqual(errno.ENOSPC, caught.exception.errno)
+        self.assertFalse((self.root/'out').exists())
+
+    def test_quota_failure_removes_partial_extraction(self):
+        self.package()
+        with patch.object(helper['shutil'], 'copyfileobj', side_effect=OSError(errno.EDQUOT, 'quota exceeded')):
+            with self.assertRaises(OSError) as caught:self.extract()
+        self.assertEqual(errno.EDQUOT, caught.exception.errno)
+        self.assertFalse((self.root/'out').exists())
 
 if __name__=='__main__':unittest.main()

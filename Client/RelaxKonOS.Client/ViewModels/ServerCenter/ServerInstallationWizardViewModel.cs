@@ -100,6 +100,7 @@ public sealed partial class ServerInstallationWizardViewModel : ObservableObject
         : string.Empty;
 
     public string Title => Text("server_center.wizard.title", "Install RelaxKonOS");
+    public string InstallingText => Text("server_center.wizard.installing", "Installing…");
     public string SourceStepTitle => Text("server_center.wizard.source_title", "Choose the release source");
     public string ModeStepTitle => Text("server_center.wizard.mode_title", "Choose the installation mode");
     public string SourceChecksText => Text("server_center.wizard.source_checks", "Official packages are downloaded and verified on the server. Selected ZIPs receive layout and architecture checks.");

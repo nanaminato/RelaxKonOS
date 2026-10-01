@@ -70,6 +70,12 @@ public partial class ServerCenterViewModel : ObservableObject
     [ObservableProperty] private string _statusMessage = string.Empty;
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private bool _installationWizardOpen;
+    [ObservableProperty] private string _operationDiagnostics = string.Empty;
+    public bool ShowWorkspaceProgress => IsBusy && !InstallationWizardOpen;
+    public string OperationDetailsText => SelectedOperation is { } operation
+        ? $"{operation.OperationId}\n{operation.Kind} · {operation.State} · {operation.Phase}\n{operation.ProblemCode}\n{operation.SafeMessage}\n{OperationDiagnostics}"
+        : string.Empty;
     [ObservableProperty] private string _sshPassword = string.Empty;
     [ObservableProperty] private string _hostKeyFingerprint = string.Empty;
     [ObservableProperty] private bool _needsHostKeyConfirmation;
@@ -357,6 +363,9 @@ public partial class ServerCenterViewModel : ObservableObject
             var staged = await client.StageQueryAsync(record.OperationId, platform.Platform, launcher, cancellationToken)
                 .ConfigureAwait(true);
             var receipt = await client.QueryAsync(staged, cancellationToken).ConfigureAwait(true);
+            var diagnostics = await client.ReadDiagnosticsAsync(staged, cancellationToken).ConfigureAwait(true);
+            if (credential is ServerCenterSshCredential.Password password && !string.IsNullOrEmpty(password.Secret))
+                diagnostics = diagnostics.Replace(password.Secret, "[redacted]", StringComparison.Ordinal);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
 
@@ -364,6 +373,10 @@ public partial class ServerCenterViewModel : ObservableObject
                 await ApplySnapshotAsync(target, receipt.Snapshot, cancellationToken).ConfigureAwait(true);
             StatusMessage = T("server_center.operation_refreshed", "The selected operation receipt was refreshed from the host.");
             await ReloadOperationHistoryAsync(target.HostId, cancellationToken).ConfigureAwait(true);
+            SelectedOperation = Operations.FirstOrDefault(item => item.OperationId == record.OperationId);
+            OperationDiagnostics = string.IsNullOrWhiteSpace(diagnostics)
+                ? T("server_center.diagnostics_empty", "The host returned no deployment log. This older operation may have no saved diagnostics; retry installation with the updated client.")
+                : diagnostics;
         }
         catch (ServerCenterHostKeyRejectedException rejected)
         {
@@ -376,6 +389,7 @@ public partial class ServerCenterViewModel : ObservableObject
         catch (Exception)
         {
             ErrorMessage = T("server_center.operation_refresh_failed", "The remote operation receipt could not be refreshed. Check SSH access and try again.");
+            OperationDiagnostics = T("server_center.diagnostics_failed", "Could not read the host deployment log. Check SSH access and refresh this operation again.");
         }
         finally
         {
@@ -485,7 +499,14 @@ public partial class ServerCenterViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenInstallationWizard))]
-    private Task OpenInstallationWizardAsync() => ShowInstallationWizardAsync?.Invoke() ?? Task.CompletedTask;
+    private async Task OpenInstallationWizardAsync()
+    {
+        InstallationWizardOpen = true;
+        try { if (ShowInstallationWizardAsync is not null) await ShowInstallationWizardAsync(); }
+        finally { InstallationWizardOpen = false; }
+    }
+    partial void OnInstallationWizardOpenChanged(bool value) => OnPropertyChanged(nameof(ShowWorkspaceProgress));
+    partial void OnOperationDiagnosticsChanged(string value) => OnPropertyChanged(nameof(OperationDetailsText));
 
     public async Task<bool> DeployAsync(
         ServerInstallationOptions installation, CancellationToken cancellationToken = default)
@@ -498,6 +519,7 @@ public partial class ServerCenterViewModel : ObservableObject
         ErrorMessage = string.Empty;
         StatusMessage = string.Empty;
         string? convertedCertificate = null;
+        var deploymentStage = "SSH";
         try
         {
             var tools = await _releaseSource.ResolveToolsAsync(platform.Platform, cancellationToken).ConfigureAwait(true);
@@ -559,6 +581,7 @@ public partial class ServerCenterViewModel : ObservableObject
                 : null;
             if (sudoPassword is not null)
             {
+                deploymentStage = "sudo";
                 probeReceipt = await ExecuteReadOnlyAsync(session, tools, ServerDeploymentKind.Probe, null,
                     cancellationToken, sudoPassword).ConfigureAwait(true);
                 if (probeReceipt.State != ServerDeploymentState.Succeeded || probeReceipt.Probe is null ||
@@ -636,9 +659,11 @@ public partial class ServerCenterViewModel : ObservableObject
             var client = new ServerCenterDeploymentClient(session.Transport);
             await using var certificate = installation.CertificateMode == ServerCertificateMode.Custom
                 ? File.OpenRead(convertedCertificate ?? installation.CertificatePath!) : null;
+            deploymentStage = "SFTP";
             var staged = await client.StageAsync(
                 request, platform.Platform, launcher, archive, runtime,
                 certificate, installation.CertificatePassword, cancellationToken).ConfigureAwait(true);
+            deploymentStage = "install";
             var receipt = await client.ExecuteAsync(staged, cancellationToken, sudoPassword).ConfigureAwait(true);
             await _operationJournal.RecordAsync(ServerCenterOperationRecord.From(target.HostId, receipt), cancellationToken)
                 .ConfigureAwait(true);
@@ -651,6 +676,7 @@ public partial class ServerCenterViewModel : ObservableObject
 
             // A successful launcher process is only a transport result.  Read a separate SSH-side
             // status receipt before declaring success or refreshing the local cached state.
+            deploymentStage = "status";
             var status = await ExecuteReadOnlyAsync(
                 session, tools, ServerDeploymentKind.Status, StatusOptions(mode.Value), cancellationToken, sudoPassword).ConfigureAwait(true);
             if (status.Snapshot is null)
@@ -680,9 +706,11 @@ public partial class ServerCenterViewModel : ObservableObject
             StatusMessage = string.Empty;
             return false;
         }
-        catch (Exception)
+        catch (Exception error)
         {
-            ErrorMessage = T("server_center.deploy_failed", "The server operation could not be completed. Its SSH-side receipt can be checked from this host later.");
+            // Never surface arbitrary exception messages: transport errors can contain credentials.
+            ErrorMessage = string.Format(T("server_center.deploy_failed_detail", "Server operation failed at {0} ({1}). Check the operation record."),
+                deploymentStage, error.GetType().Name);
             return false;
         }
         finally
@@ -1002,6 +1030,7 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(ShowWorkspaceProgress));
         ClearOperationHistoryCommand.NotifyCanExecuteChanged();
         RemoveHostCommand.NotifyCanExecuteChanged();
         ConfirmHostKeyCommand.NotifyCanExecuteChanged();
@@ -1048,7 +1077,17 @@ public partial class ServerCenterViewModel : ObservableObject
     }
     partial void OnDeleteServerDataChanged(bool value) => UninstallCommand.NotifyCanExecuteChanged();
     partial void OnUninstallNameConfirmationChanged(string value) => UninstallCommand.NotifyCanExecuteChanged();
-    partial void OnSelectedOperationChanged(ServerCenterOperationRecord? value) => RefreshOperationCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedOperationChanged(ServerCenterOperationRecord? value)
+    {
+        OperationDiagnostics = string.Empty;
+        OnPropertyChanged(nameof(OperationDetailsText));
+        RefreshOperationCommand.NotifyCanExecuteChanged();
+        if (value is not null && CanRefreshOperation())
+        {
+            OperationDiagnostics = T("server_center.diagnostics_loading", "Reading deployment log from host…");
+            _ = RefreshOperationCommand.ExecuteAsync(null);
+        }
+    }
 
     private async Task<ServerDeploymentOperationDto> ExecuteReadOnlyAsync(
         ServerCenterHostSession session,

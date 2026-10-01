@@ -98,6 +98,7 @@
                 </StackPanel>
 
                 <TextBlock Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}" Classes="error" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding InstallingText}" IsVisible="{Binding IsBusy}" />
                 <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
             </StackPanel>
         </ScrollViewer>

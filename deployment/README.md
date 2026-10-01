@@ -100,6 +100,10 @@ System Mode（需要 root）使用显式模式：
 
 服务器中心可由普通 SSH 管理账户显式选择 Linux 系统模式：安装前验证 sudo 密码和权限，部署引擎通过 sudo 执行，系统状态文件通过 sudo 核验。向导中的 sudo 密码留空时使用 SSH 登录密码；密码只通过 SSH 标准输入传递，不写入命令、请求或日志。无需 root SSH 登录或配置免密 sudo。暂存与操作日志保留在原 SSH 账户下，安装器不会改变这些目录的所有者。
 
+桌面操作记录选中后显示操作 ID、阶段、问题码和完整摘要；“从宿主刷新所选操作”同时通过固定的 Linux `--diagnostics OPERATION_ID` 或 Windows `-DiagnosticsOperationId` 读取至多 64 KiB 部署日志。日志仅在当前界面显示，不写入本地索引，并遮盖密码、secret、token 和 authorization 字段。安装向导打开时，工作区隐藏重复进度条，由向导显示“安装中”和一个进度条。
+
+Linux 安装结束（成功或失败）会清理当前操作的解压目录、本次上传的 `server.zip`、官方包下载文件和证书暂存，保留 SSH 用户的回执与日志；服务器来源的原始 ZIP 不删除。解压前按 ZIP 未压缩大小加 64 MiB 余量检查暂存分区容量；用户配额仍以实际写入返回的 `EDQUOT` 为准，并报告 `disk_quota_exceeded`，分区耗尽报告 `disk_space_insufficient`。旧版客户端遗留的 `/tmp/relaxkonos-deploy.*` 目录需要检查后清理，不能把配额失败归类为包清单损坏。
+
 ```bash
 sudo ./deployment/bootstrap/install-relaxkonos.sh --mode system --bundle /mnt/RelaxKonOS-release
 ```

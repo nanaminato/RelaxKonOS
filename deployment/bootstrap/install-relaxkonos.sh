@@ -239,7 +239,10 @@ publish_payload() { # bundle version
   [[ -d "$bundle/deployment" ]] || { echo 'The release bundle has no deployment engine.' >&2; exit 65; }
   cp -a "$bundle/deployment" "$root/deployment"
   chown -R root:root "$root"
-  chmod -R go-w "$root"
+  # Private SSH extraction uses 0700/0600. Published binaries must be readable and
+  # traversable by the service account, while remaining writable only by root.
+  chmod 0755 "$INSTALL_ROOT"
+  chmod -R u=rwX,go=rX "$root"
   chmod 0755 "$root/server/RelaxKonOS.Server" "$root/guardian/RelaxKonOS.Guardian.Agent" "$root/privileged-helper/RelaxKonOS.PrivilegedHelper"
 }
 

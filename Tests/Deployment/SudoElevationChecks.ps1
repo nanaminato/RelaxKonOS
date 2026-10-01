@@ -41,13 +41,13 @@ $test += $lf + ($functions -join $lf) + $lf
 $test += @'
 authenticate_sudo
 run_engine bash -c '[[ $TEST_ELEVATED == true ]]; if IFS= read -r leaked; then exit 91; fi; printf engine-ok'
-[[ $(<"$TEST_DIAGNOSTICS") == engine-ok ]]
+[[ $(<"$TEST_DIAGNOSTICS") == *engine-ok* && $(<"$TEST_DIAGNOSTICS") == *'exit status: 0'* ]]
 [[ $(read_state /missing-system-state/install-state.json) == privileged-state ]]
 sudo_policy=nopasswd
 sudo_password=''
 authenticate_sudo
 run_engine bash -c 'if IFS= read -r leaked; then exit 91; fi; printf nopasswd-ok'
-[[ $(<"$TEST_DIAGNOSTICS") == nopasswd-ok ]]
+[[ $(<"$TEST_DIAGNOSTICS") == *nopasswd-ok* && $(<"$TEST_DIAGNOSTICS") == *'exit status: 0'* ]]
 sudo_policy=password
 sudo_password=wrong
 if failure=$(authenticate_sudo); then exit 92; else [[ $? == 77 && $failure == elevation_required ]]; fi

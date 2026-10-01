@@ -106,6 +106,11 @@ Check(transport.Commands.Any(command => command.StartsWith("chmod 700 ", StringC
     "Linux 内置启动器被设为可执行");
 
 var receipt = await client.ExecuteAsync(staged, CancellationToken.None);
+var diagnostics = await client.ReadDiagnosticsAsync(staged, CancellationToken.None);
+Check(diagnostics.Contains("unknown option", StringComparison.Ordinal) &&
+    !diagnostics.Contains("diagnostic-secret", StringComparison.Ordinal) &&
+    transport.Commands[^1].Contains(" --diagnostics ", StringComparison.Ordinal),
+    "操作详情读取独立部署日志，并遮盖日志中的密码字段");
 await client.ExecuteAsync(staged, CancellationToken.None, "sudo-secret");
 Check(transport.InputLines.SequenceEqual(new[] { "sudo-secret" }) &&
     transport.Commands.Any(command => command.EndsWith(" --run-with-sudo", StringComparison.Ordinal)) &&
@@ -265,6 +270,8 @@ sealed class FakeTransport : IServerCenterSshTransport
     public Task<ServerCenterSshCommandResult> RunAsync(string command, CancellationToken cancellationToken)
     {
         Commands.Add(command);
+        if (command.Contains(" --diagnostics ", StringComparison.Ordinal))
+            return Task.FromResult(new ServerCenterSshCommandResult(0, "unknown option\npassword=diagnostic-secret\n", ""));
         if (WindowsDirectory is not null && Commands.Count == 1)
             return Task.FromResult(new ServerCenterSshCommandResult(0, WindowsDirectory + "\n", ""));
         if (command.Contains("mktemp", StringComparison.Ordinal))

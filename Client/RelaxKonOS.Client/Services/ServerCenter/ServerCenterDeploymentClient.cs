@@ -149,6 +149,25 @@ public sealed class ServerCenterDeploymentClient(IServerCenterSshTransport trans
         return ServerDeploymentRecordReader.ReadRecord(result.StandardOutput.Trim(), staged.OperationId);
     }
 
+    public async Task<string> ReadDiagnosticsAsync(ServerCenterStagedOperation staged, CancellationToken cancellationToken)
+    {
+        var command = LauncherCommand(staged, query: true);
+        if (staged.Platform == HostPlatformKind.Linux)
+            command = command.Replace(" --query ", " --diagnostics ", StringComparison.Ordinal);
+        else
+        {
+            var encoded = command[(command.LastIndexOf(' ') + 1)..];
+            var script = Encoding.Unicode.GetString(Convert.FromBase64String(encoded))
+                .Replace(" -QueryOperationId ", " -DiagnosticsOperationId ", StringComparison.Ordinal);
+            command = "powershell.exe -NoProfile -NonInteractive -EncodedCommand " + Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+        }
+        var result = await transport.RunAsync(command, cancellationToken).ConfigureAwait(false);
+        if (!result.Succeeded) throw new IOException($"Deployment diagnostics query failed (exit {result.ExitStatus}).");
+        var text = result.StandardOutput;
+        text = Regex.Replace(text, @"(?im)(password|secret|token|authorization)(\s*[:=]\s*)[^\r\n]+", "$1$2[redacted]");
+        return text.Length > 65536 ? text[..65536] : text;
+    }
+
     private async Task<string> CreatePrivateDirectoryAsync(HostPlatformKind platform, CancellationToken cancellationToken)
     {
         string command;
