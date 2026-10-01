@@ -1698,4 +1698,16 @@
     <string name="server_maintenance_uninstall_note">Uninstall RelaxKonOS Server and its Guardian service. Retained data can be reused on reinstall. Deleting managed data is permanent.</string>
     <string name="server_maintenance_purge">Permanently delete managed data</string>
     <string name="server_maintenance_probe">OS supported: %1$s\nSudo available: %2$s\nSystemd available: %3$s\nFree disk space (bytes): %4$s\nPort 5000 available: %5$s\nMissing dependencies: %6$s</string>
+    <string name="server_maintenance_overview">Overview</string>
+    <string name="server_maintenance_environment">Environment</string>
+    <string name="server_maintenance_actions">Maintenance</string>
+    <string name="server_maintenance_version">Version</string>
+    <string name="server_maintenance_mode">Installation mode</string>
+    <string name="server_maintenance_endpoint">Listening endpoint</string>
+    <string name="server_maintenance_checked_at">Last checked</string>
+    <string name="server_maintenance_install_root">Installation directory</string>
+    <string name="server_maintenance_data_root">Data directory</string>
+    <string name="server_maintenance_services">Services</string>
+    <string name="server_maintenance_identity">Installation ID</string>
+    <string name="server_maintenance_actions_note">Upgrade selects a new package. Repair fixes the current installation. Uninstall asks whether to retain managed data.</string>
 </resources>

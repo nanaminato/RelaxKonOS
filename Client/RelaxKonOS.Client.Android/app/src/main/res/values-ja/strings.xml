@@ -1659,4 +1659,16 @@
     <string name="server_maintenance_uninstall_note">RelaxKonOS Server と Guardian をアンインストールします。保持したデータは再インストールで利用できます。管理データの削除は元に戻せません。</string>
     <string name="server_maintenance_purge">管理データを完全に削除</string>
     <string name="server_maintenance_probe">OS 対応：%1$s\nsudo 利用可能：%2$s\nsystemd 利用可能：%3$s\n空き容量（バイト）：%4$s\n5000 ポート利用可能：%5$s\n不足する依存関係：%6$s</string>
+    <string name="server_maintenance_overview">概要</string>
+    <string name="server_maintenance_environment">環境確認</string>
+    <string name="server_maintenance_actions">保守操作</string>
+    <string name="server_maintenance_version">バージョン</string>
+    <string name="server_maintenance_mode">インストール方式</string>
+    <string name="server_maintenance_endpoint">待受アドレス</string>
+    <string name="server_maintenance_checked_at">確認日時</string>
+    <string name="server_maintenance_install_root">インストール先</string>
+    <string name="server_maintenance_data_root">データ保存先</string>
+    <string name="server_maintenance_services">サービス</string>
+    <string name="server_maintenance_identity">インストール ID</string>
+    <string name="server_maintenance_actions_note">更新は新しいパッケージを選択します。修復は現在のインストールを修正します。削除時に管理データの保持を選択できます。</string>
 </resources>

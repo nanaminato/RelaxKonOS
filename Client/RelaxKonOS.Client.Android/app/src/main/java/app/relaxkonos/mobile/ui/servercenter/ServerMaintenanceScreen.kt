@@ -89,43 +89,84 @@ internal fun ServerMaintenanceScreen(host: ServerHostTarget?, modifier: Modifier
     val state by model.state.collectAsState()
     var wizard by rememberSaveable(host?.hostId) { mutableStateOf(false) }
     var installing by remember { mutableStateOf(false) }
-    var history by rememberSaveable(host?.hostId) { mutableStateOf(false) }
+    var page by rememberSaveable(host?.hostId) { mutableIntStateOf(0) }
+    val pageScroll = remember(page) { androidx.compose.foundation.ScrollState(0) }
     var uninstall by remember { mutableStateOf(false) }
     var purge by remember { mutableStateOf(false) }
     var sudo by remember { mutableStateOf("") }
+    androidx.activity.compose.BackHandler(enabled = wizard || page != 0) {
+        if (!installing && !state.busy) {
+            if (wizard) wizard = false else page = 0
+        }
+    }
     LaunchedEffect(host?.hostId, wizard) { if (host != null && !wizard) model.run(host.hostId) }
     Column(modifier.fillMaxSize().imePadding()) {
         if (wizard) {
             TextButton(onClick = { wizard = false }, enabled = !installing) { Text(stringResource(R.string.common_back)) }
             DeploymentSetupScreen(host, Modifier.weight(1f), onBusyChanged = { installing = it })
-        } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        } else Column(Modifier.fillMaxSize().verticalScroll(pageScroll).padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text(stringResource(R.string.server_maintenance_title), style = MaterialTheme.typography.titleLarge)
+            Text("${host?.displayName.orEmpty()} · ${host?.sshHost.orEmpty()}:${host?.sshPort ?: 22}", style = MaterialTheme.typography.bodySmall)
+            ScrollableTabRow(selectedTabIndex = page, edgePadding = Spacing.xs) {
+                listOf(R.string.server_maintenance_overview, R.string.server_maintenance_environment,
+                    R.string.server_maintenance_actions, R.string.server_maintenance_history).forEachIndexed { index, title ->
+                    Tab(selected = page == index, onClick = { page = index }, text = { Text(stringResource(title)) })
+                }
+            }
             TextButton(onClick = { host?.let { model.run(it.hostId, sudo = sudo) } }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_check)) }
             if (state.busy) CircularProgressIndicator()
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            state.snapshot?.let { snapshot ->
+            if (page != 3) state.snapshot?.let { snapshot ->
+                if (page == 0) {
+                    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(stringResource(if (snapshot.installed) R.string.ssh_workspace_deploy_installed else R.string.server_maintenance_absent))
-                state.probe?.let {
+                    if (snapshot.installed) {
+                        Text(stringResource(if (snapshot.healthy) R.string.server_maintenance_healthy else R.string.server_maintenance_unhealthy))
+                        MaintenanceDetail(R.string.server_maintenance_version, snapshot.version)
+                        MaintenanceDetail(R.string.server_maintenance_mode, snapshot.mode?.name)
+                        MaintenanceDetail(R.string.server_maintenance_endpoint, snapshot.listenUrl)
+                    }
+                    MaintenanceDetail(R.string.server_maintenance_checked_at, snapshot.verifiedAtUtc)
+                    } }
+                    if (snapshot.installed) {
+                        Button(onClick = { page = 2 }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_actions)) }
+                        OutlinedButton(onClick = { page = 1 }) { Text(stringResource(R.string.server_maintenance_environment)) }
+                    } else Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.osSupported == true) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
+                }
+                if (page == 1) state.probe?.let {
+                    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text("${it.hostPlatform} · ${it.architecture} · ${it.osId.orEmpty()} ${it.osVersion.orEmpty()}\n${it.runtimeIdentifier}\n${it.verifiedAtUtc}")
                     Text(stringResource(R.string.server_maintenance_probe, it.osSupported.toString(), it.sudoAvailable.toString(),
                         it.systemdAvailable.toString(), it.diskAvailableBytes?.toString().orEmpty(), it.requestedPortAvailable?.toString().orEmpty(), it.missingDependencies.joinToString()))
+                    HorizontalDivider()
+                    MaintenanceDetail(R.string.server_maintenance_install_root, snapshot.installRoot)
+                    MaintenanceDetail(R.string.server_maintenance_data_root, snapshot.dataRoot)
+                    MaintenanceDetail(R.string.server_maintenance_services, snapshot.serviceNames.joinToString())
+                    MaintenanceDetail(R.string.server_maintenance_identity, snapshot.installationId)
+                    } }
                 }
-                if (snapshot.installed) {
-                    Text("${snapshot.mode} · ${snapshot.version.orEmpty()}\n${snapshot.listenUrl.orEmpty()}\n${snapshot.installRoot.orEmpty()}\n${snapshot.dataRoot.orEmpty()}\n${snapshot.serviceNames.joinToString()}\n${snapshot.installationId.orEmpty()}")
-                    Text(stringResource(if (snapshot.healthy) R.string.server_maintenance_healthy else R.string.server_maintenance_unhealthy))
+                if (page == 2 && snapshot.installed) {
+                    Text(stringResource(R.string.server_maintenance_actions_note), style = MaterialTheme.typography.bodySmall)
                     PasswordTextField(sudo, { sudo = it }, stringResource(R.string.ssh_workspace_deploy_sudo_password))
                     Button(onClick = { wizard = true }, enabled = !state.busy) { Text(stringResource(R.string.installation_kind_upgrade)) }
                     OutlinedButton(onClick = { host?.let { model.run(it.hostId, ServerDeploymentKind.Repair, sudo = sudo) }; sudo = "" }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_repair)) }
                     OutlinedButton(onClick = { purge = false; uninstall = true }, enabled = !state.busy) { Text(stringResource(R.string.server_maintenance_uninstall)) }
-                } else Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.osSupported == true) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
+                } else if (page == 2) Button(onClick = { wizard = true }, enabled = !state.busy && state.probe?.osSupported == true) { Text(stringResource(R.string.ssh_workspace_deploy_install)) }
             }
             if (state.complete) Text(stringResource(R.string.server_maintenance_complete))
-            TextButton(onClick = { history = !history }) { Text(stringResource(R.string.server_maintenance_history)) }
-            if (history && host != null) ServerInstallRecoveryPanel(host.hostId)
+            if (page == 3 && host != null) ServerInstallRecoveryPanel(host.hostId)
         }
     }
     if (uninstall) AlertDialog(onDismissRequest = { uninstall = false }, title = { Text(stringResource(R.string.server_maintenance_uninstall)) },
         text = { Column { Text(stringResource(R.string.server_maintenance_uninstall_note)); Row { Checkbox(purge, { purge = it }); Text(stringResource(R.string.server_maintenance_purge)) } } },
         confirmButton = { TextButton(onClick = { uninstall = false; host?.let { model.run(it.hostId, ServerDeploymentKind.Uninstall, purge, sudo) }; sudo = "" }) { Text(stringResource(R.string.server_maintenance_uninstall)) } },
         dismissButton = { TextButton(onClick = { uninstall = false }) { Text(stringResource(R.string.common_cancel)) } })
+}
+
+@Composable
+private fun MaintenanceDetail(label: Int, value: String?) {
+    Column {
+        Text(stringResource(label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.foundation.text.selection.SelectionContainer { Text(value?.takeIf { it.isNotBlank() } ?: "—") }
+    }
 }

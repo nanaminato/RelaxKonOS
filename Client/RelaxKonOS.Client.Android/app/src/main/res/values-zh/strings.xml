@@ -1660,4 +1660,16 @@
     <string name="server_maintenance_uninstall_note">卸载 RelaxKonOS Server 和 Guardian 服务。保留的数据可用于重新安装；删除受管数据不可恢复。</string>
     <string name="server_maintenance_purge">永久删除受管数据</string>
     <string name="server_maintenance_probe">系统支持：%1$s\n可使用 sudo：%2$s\n可使用 systemd：%3$s\n磁盘可用字节数：%4$s\n5000 端口可用：%5$s\n缺少依赖：%6$s</string>
+    <string name="server_maintenance_overview">概览</string>
+    <string name="server_maintenance_environment">环境检查</string>
+    <string name="server_maintenance_actions">维护操作</string>
+    <string name="server_maintenance_version">版本</string>
+    <string name="server_maintenance_mode">安装模式</string>
+    <string name="server_maintenance_endpoint">监听地址</string>
+    <string name="server_maintenance_checked_at">检查时间</string>
+    <string name="server_maintenance_install_root">安装目录</string>
+    <string name="server_maintenance_data_root">数据目录</string>
+    <string name="server_maintenance_services">服务</string>
+    <string name="server_maintenance_identity">安装标识</string>
+    <string name="server_maintenance_actions_note">升级可选择新发布包；修复处理当前安装；卸载时可选择保留受管数据。</string>
 </resources>
